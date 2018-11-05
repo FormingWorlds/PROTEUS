@@ -20,5 +20,5 @@ OLRFlux = GGRadConv.RadConvEqm(surfaceT)
 
 
 # save OLR flux for interior code
-np.savetxt('OLRFlux.txt',OLRFlux)
+np.savetxt('OLRFlux.txt',OLRFlux*np.ones(1))
 
