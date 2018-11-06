@@ -13,6 +13,7 @@ from ClimateUtilities import *
 import math,phys
 import planets
 import numpy as np
+import matplotlib.pyplot as plt
 
 #Set the gravity and thermodynamic constants
 Rcp = 2./7.
@@ -52,7 +53,7 @@ def RadConvEqm(Tg):
         
     #----------------Set initial time step--------------------------------
     
-    dtime = .1# 1. # (for CO2 case; gray gas evolves faster)
+    dtime = 1.# 1. # (for CO2 case; gray gas evolves faster)
                 #Timestep in days; 5 days is the usual for Earthlike case
                 #For the radiative convective case, you can get away with
                 #using 50 for the first few hundred time steps, then
@@ -73,8 +74,8 @@ def RadConvEqm(Tg):
     #Ground temperature (held fixed in this computation)
     Tg = 280.
     #---Temperature and moisture arrays (initialized)
-    #T = Tg*(p/p[-1])**Rcp  #Initialize on an adiabat
-    T = Tg*numpy.ones(len(p))
+    T = Tg*(p/p[-1])**Rcp  #Initialize on an adiabat
+    #T = Tg*numpy.ones(len(p))
 
     
     
@@ -83,14 +84,14 @@ def RadConvEqm(Tg):
     
     
     #Grey Gas:
-    Grey.tauInf = 1.
+    Grey.tauInf = 2.
     
-    
+    PrevOLR = 0.
     #---------------------------------------------------------
     #--------------Initializations Done-----------------------
     #--------------Now do the time stepping-------------------
     #---------------------------------------------------------
-    for i in range(0,10):
+    for i in range(0,50):
         nout = 10*i
         print(dtime)
         #if i%50 == 0 & i > 200:
@@ -98,6 +99,18 @@ def RadConvEqm(Tg):
         Tg,Tad,T,flux,fluxStellar,fluxLW,heat,heatStellar,heatLW = steps(Tg,T,p,q,10,dtime)
         print('History step',Tg,flux[-1],max(heat),min(heat))
         #history(nout,caseTag)
+        if abs(flux[-1]-PrevOLR) < 1.0:
+               break    # break here
+        PrevOLR = flux[-1]
+
+    # plot equilibrium temperature profile
+    plt.figure()
+    plt.semilogy(T,p)
+    plt.gca().invert_yaxis()
+    plt.ylabel('Pressure (mb)')
+    plt.xlabel('Temperature (K)')
+    plt.savefig('Tprofile.pdf',bb_inches='tight')
+
         
     return flux[-1]
 
