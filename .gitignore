@@ -1,0 +1,13 @@
+# .pyc files
+############
+*.pyc
+
+# .txt files
+############
+*.txt
+
+
+# misc
+######
+.DS_Store
+__pycache__/
