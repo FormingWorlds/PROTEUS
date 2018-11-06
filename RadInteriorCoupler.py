@@ -13,7 +13,9 @@ import GGRadConv
 surfaceT = 300.0*np.ones(1) # interior code goes here
 np.savetxt('surfaceT.txt',surfaceT)
 
+# load in surface temperature
 surfaceT = np.loadtxt('surfaceT.txt')
+
 
 # calculate OLR flux given surface T
 OLRFlux = GGRadConv.RadConvEqm(surfaceT)
