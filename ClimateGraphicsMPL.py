@@ -39,8 +39,8 @@ try:
     #format is supported. If you want higher resolution formats
     #(notably eps) you should run using ipython -pylab , and eliminate
     #the following two commands.
-    mpl.rcParams['backend'] = 'TkAgg'
-    mpl.rcParams['interactive'] = True
+    #mpl.rcParams['backend'] = 'TkAgg'
+    #mpl.rcParams['interactive'] = True
     #
     import pylab as pl
 except:

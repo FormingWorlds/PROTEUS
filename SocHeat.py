@@ -14,15 +14,20 @@
 
 import math,phys
 from ClimateUtilities import *
+from SocRadModel import radCompSoc
+import numpy as np
 
 
 #Pressure in mb, for consistency with ccmrad
 def radcomp(pList,TList,Tg,q):
 
     # Socrates heating
+
     hrtssw,hrtslw,uflxlw,nflxsw = radCompSoc(pList,TList,Tg)
-    heat = hrtssw[:] + hrtslw[:]
-    flux = uflxlw[:]
+    heat = np.squeeze(np.sum(hrtssw[:,:],axis=0) + np.sum(hrtslw[:,:],axis=0))
+    flux = np.sum(uflxlw[:,:],axis=0)
+
+
     
     #
     #Re-dimensionalize heating to K/day

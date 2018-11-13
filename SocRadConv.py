@@ -8,12 +8,15 @@
 #
 
 
-import GreyHeat as Grey
-from ClimateUtilities import *
+import SocHeat as Soc
+#from ClimateUtilities import *
 import math,phys
 import planets
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
+
+
 
 #Set the gravity and thermodynamic constants
 Rcp = 2./7.
@@ -21,12 +24,12 @@ n=20
 
 
 #Choose the radiation model for computing the longwave and shortwave heating
-radcomp = Grey.radcomp
+radcomp = Soc.radcomp
 
 def RadConvEqm(Tg):
     #--------------------Set radmodel options-------------------
     #---Instantiate the radiation model---
-    n = 20
+    n = 30
     #
 
     
@@ -37,13 +40,13 @@ def RadConvEqm(Tg):
     dt = 24.*3600. #time step in seconds
     
     #---Set up pressure array (a global)----
-    ptop = 50. #Top pressure in mb (Changed from 1mb in original)
+    ptop = 5. #Top pressure in mb (Changed from 1mb in original)
     pstart = .995*ps
     rat = (ptop/pstart)**(1./n)
     logLevels = [pstart*rat**i for i in range(n)]
     logLevels.reverse()
     levels = [ptop + i*(pstart-ptop)/(n-1) for i in range(n)]
-    p = numpy.array(logLevels)
+    p = np.array(logLevels)
     
     
     
@@ -53,7 +56,7 @@ def RadConvEqm(Tg):
         
     #----------------Set initial time step--------------------------------
     
-    dtime = 1.# 1. # (for CO2 case; gray gas evolves faster)
+    dtime = 0.1# 1. # (for CO2 case; gray gas evolves faster)
                 #Timestep in days; 5 days is the usual for Earthlike case
                 #For the radiative convective case, you can get away with
                 #using 50 for the first few hundred time steps, then
@@ -62,7 +65,7 @@ def RadConvEqm(Tg):
     #----------------------------------------------------------------------
     
     #---Temperature and moisture arrays (initialized)
-    T = numpy.zeros(n) + 230.
+    T = np.zeros(n) + 230.
     
     
     #--------------Other parameters-------------------------------------------
@@ -75,7 +78,7 @@ def RadConvEqm(Tg):
     Tg = 280.
     #---Temperature and moisture arrays (initialized)
     T = Tg*(p/p[-1])**Rcp  #Initialize on an adiabat
-    #T = Tg*numpy.ones(len(p))
+    #T = Tg*np.ones(len(p))
 
     
     
@@ -84,23 +87,41 @@ def RadConvEqm(Tg):
     
     
     #Grey Gas:
-    Grey.tauInf = 2.
+    #Grey.tauInf = 2.
     
     PrevOLR = 0.
     #---------------------------------------------------------
     #--------------Initializations Done-----------------------
     #--------------Now do the time stepping-------------------
     #---------------------------------------------------------
-    for i in range(0,50):
+    matplotlib.rc('axes',edgecolor='w')
+    for i in range(0,10):
         nout = 10*i
         print(dtime)
         #if i%50 == 0 & i > 200:
         #     dtime = .5*dtime
         Tg,Tad,T,flux,fluxStellar,fluxLW,heat,heatStellar,heatLW = steps(Tg,T,p,q,10,dtime)
-        print('History step',Tg,flux[-1],max(heat),min(heat))
+        
+        #hack!
+        T[0] = T[1]
+        
+        
+        plt.figure(figsize=(7,4))
+        plt.semilogy(T,p)
+        plt.gca().invert_yaxis()
+        plt.ylabel('Pressure (mb)')
+        plt.xlabel('Temperature (K)')
+        plt.gca().xaxis.label.set_color('white')
+        plt.tick_params(axis='x', colors='white')
+        plt.gca().yaxis.label.set_color('white')
+        plt.tick_params(axis='y', colors='white')
+        plt.show()
+        
+        print('History step',Tg,flux[-1],max(heat),min(heat),flux[-1])
+
         #history(nout,caseTag)
-        if abs(flux[-1]-PrevOLR) < 1.0:
-               break    # break here
+        #if abs(flux[-1]-PrevOLR) < 1.0:
+        #       break    # break here
         PrevOLR = flux[-1]
 
     # plot equilibrium temperature profile
@@ -161,15 +182,15 @@ def steps(Tg,T,p,q,nSteps,dtime):
         flux,heat = radcomp(p,T,Tg,q)
         dT = heat*dtime
         #Limit the temperature change per step
-        dT = numpy.where(dT>5.,5.,dT)
-        dT = numpy.where(dT<-5.,-5.,dT)
+        dT = np.where(dT>5.,5.,dT)
+        dT = np.where(dT<-5.,-5.,dT)
         #Midpoint method time stepping
         #changed call to r.  Also modified to hold Tg fixed
         flux,heat = radcomp(p,T+.5*dT,Tg,q)
         dT = heat*dtime
         #Limit the temperature change per step
-        dT = numpy.where(dT>5.,5.,dT)
-        dT = numpy.where(dT<-5.,-5.,dT)
+        dT = np.where(dT>5.,5.,dT)
+        dT = np.where(dT<-5.,-5.,dT)
         T += dT
         #
         dTmax = max(abs(dT)) #To keep track of convergence
@@ -182,8 +203,8 @@ def steps(Tg,T,p,q,nSteps,dtime):
             dryAdj(T,p)
         Tad = T[-1]*(p/p[-1])**Rcp
         #** Temporary kludge to keep stratosphere from getting too cold
-        T = numpy.where(T<50.,50.,T)  #**KLUDGE
+        T = np.where(T<50.,50.,T)  #**KLUDGE
         #
         #Dummies for separate LW and stellar. **FIX THIS**
-        fluxStellar = fluxLW = heatStellar = heatLW = numpy.zeros(n)
+        fluxStellar = fluxLW = heatStellar = heatLW = np.zeros(n)
     return Tg,Tad,T,flux,fluxStellar,fluxLW,heat,heatStellar,heatLW

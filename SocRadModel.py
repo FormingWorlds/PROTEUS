@@ -26,9 +26,11 @@ def radCompSoc(p,T,Tg):
     #p.wait()
     #os.chdir('/Users/markhammond/Work/Projects/SOCRATES/socrates_1703/')
     #os.system('. ./set_rad_env')
-    status = call('. ./set_rad_env',cwd='/Users/markhammond/Work/Projects/SOCRATES/socrates_1703/',shell=True)
+    #status = call('. ./set_rad_env',cwd='/Users/markhammond/Work/Projects/SOCRATES/socrates_1703/',shell=True)
 
 
+    #print(np.shape(p))
+    #print(np.shape(T))
 
     # Write temperature, pressure, and mixing ratios
     temp_list = T[:]
@@ -38,8 +40,8 @@ def radCompSoc(p,T,Tg):
     presl_list = np.append(0.99*pres_list,1.03*pres_list[-1])
     
 
-    co2_mr_list = 0.0*1e-5*np.ones(len(T))
-
+    co2_mr_list = 3e-4*np.ones(len(T))
+    q_mr_list = 1e-3*np.ones(len(T))
 
 
 
@@ -48,7 +50,10 @@ def radCompSoc(p,T,Tg):
     t_surf = Tg
     p_surf=p[-1]
     solar_zenith_angle = 0.0
-    solar_toa = 1370.*2590.
+    solar_toa = 1370.
+    
+    #print(np.shape(pres_list))
+    #print(np.shape(temp_list))
     
     # Write values to netcdf
     nctools.ncout_surf('profile.surf',0,0,1,0.1)
@@ -60,7 +65,7 @@ def radCompSoc(p,T,Tg):
     nctools.ncout3d('profile.tl',0,0,presl_list,templ_list,'tl',longname="Temperature",units='K')
     nctools.ncout3d('profile.p',0,0,pres_list,pres_list,'p',longname="Pressure",units='PA')
     nctools.ncout3d('profile.co2',0,0,pres_list,co2_mr_list,'co2',longname="CO2",units='PPMV')
-    #nctools.ncout3d('profile.q',0,0,pres_list,q_mr_list,'co2',longname="q",units='PPMV')
+    nctools.ncout3d('profile.q',0,0,pres_list,q_mr_list,'co2',longname="q",units='PPMV')
     
     
     basename = 'profile'
@@ -71,9 +76,14 @@ def radCompSoc(p,T,Tg):
     s = " "
 
     
-    seq4 = ("Cl_run_cdf -B", basename,"-s $RAD_DIR/data/spectra/ga7/sp_lw_ga7 -R 1 9 -ch 9 -S -g 1 4 -C 5")
+    #seq4 = ("Cl_run_cdf -B", basename,"-s /Users/markhammond/Work/Projects/1D-RC-SOC/socrates/socrates_1806/data/spectra/ga7/sp_lw_ga7 -R 1 9 -ch 9 -S -g 1 4 -C 5")
+    #seq5 = ("fmove", basename,"currentsw")
+    #seq6 = ("Cl_run_cdf -B", basename,"-s /Users/markhammond/Work/Projects/1D-RC-SOC/socrates/socrates_1806/data/spectra/ga7/sp_lw_ga7 -R 1 6 -ch 6  -I -g 1 4 -C 5")
+    #seq7 = ("fmove", basename,"currentlw")
+    
+    seq4 = ("Cl_run_cdf -B", basename,"-s /Users/markhammond/Work/Projects/1D-RC-SOC/socrates/socrates_1806/data/spectra/ga7/sp_sw_ga7 -R 1 6 -ch 6 -S -g 2 -C 5")
     seq5 = ("fmove", basename,"currentsw")
-    seq6 = ("Cl_run_cdf -B", basename,"-s $RAD_DIR/data/spectra/ga7/sp_lw_ga7 -R 1 6 -ch 6  -I -g 1 4 -C 5")
+    seq6 = ("Cl_run_cdf -B", basename,"-s /Users/markhammond/Work/Projects/1D-RC-SOC/socrates/socrates_1806/data/spectra/ga7/sp_lw_ga7 -R 1 9 -ch 9 -I -g 2 -C 5")
     seq7 = ("fmove", basename,"currentlw")
 
     
