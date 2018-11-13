@@ -6,6 +6,9 @@
 ############
 *.txt
 
+# Socrates source
+#################
+/socrates/socrates_1806/
 
 # misc
 ######
