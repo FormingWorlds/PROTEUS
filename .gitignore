@@ -10,6 +10,12 @@
 #################
 /socrates/socrates_1806/
 
+# Model files
+#############
+current*
+profile*
+radiation_code.lock
+
 # misc
 ######
 .DS_Store
