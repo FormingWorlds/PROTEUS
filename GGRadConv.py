@@ -1,11 +1,7 @@
-#Modified for Exoclimes2012.  Uses dry enthalpy conserving convective
-#adjustment and implements an energy conserving surface flux scheme
-#(Note enthalpy is the right thing to conserve, not dry static energy)
-#
-#Modified further to make it easier to swap in homebrew or graygas models.
-# (8/28/2012, for Beijing lectures)
-#
-#
+'''
+GGRadConv.py
+'''
+
 
 
 import GreyHeat as Grey
@@ -29,7 +25,6 @@ def RadConvEqm(Tg):
     n = 20
     #
 
-    
     #Set global constants
     ps = 1000.
     rh = 1.e-30#Relative humidity
@@ -54,10 +49,6 @@ def RadConvEqm(Tg):
     #----------------Set initial time step--------------------------------
     
     dtime = 1.# 1. # (for CO2 case; gray gas evolves faster)
-                #Timestep in days; 5 days is the usual for Earthlike case
-                #For the radiative convective case, you can get away with
-                #using 50 for the first few hundred time steps, then
-                #reducing to 5 or less later as the solution converges
     
     #----------------------------------------------------------------------
     
@@ -77,7 +68,6 @@ def RadConvEqm(Tg):
     T = Tg*(p/p[-1])**Rcp  #Initialize on an adiabat
     #T = Tg*numpy.ones(len(p))
 
-    
     
     #Set composition parameters for the radiation code you are using
     q=np.zeros(n)

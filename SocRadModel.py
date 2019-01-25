@@ -1,6 +1,9 @@
+'''
+SocRadModel.py
+Returns heating rates
+MDH 25/01/19
+'''
 
-# SocRadModel.py
-# Returns heating rates
 import os
 import netCDF4 as net
 import sys
@@ -11,26 +14,10 @@ import math
 import subprocess
 import nctools
 from subprocess import call
-
-
-
 from netCDF4 import Dataset
 
 
 def radCompSoc(p,T,Tg):
-    # Set working environment
-    #os.chdir('/Users/markhammond/Work/Projects/SOCRATES/socrates_1703/')
-    #os.system('. ./set_rad_env')
-    #os.chdir('/Users/markhammond/Work/Projects/SOCRATES/')
-    #p = subprocess.Popen(['. .\set_rad_env'], cwd='/Users/markhammond/Work/Projects/SOCRATES/socrates_1703/')
-    #p.wait()
-    #os.chdir('/Users/markhammond/Work/Projects/SOCRATES/socrates_1703/')
-    #os.system('. ./set_rad_env')
-    #status = call('. ./set_rad_env',cwd='/Users/markhammond/Work/Projects/SOCRATES/socrates_1703/',shell=True)
-
-
-    #print(np.shape(p))
-    #print(np.shape(T))
 
     # Write temperature, pressure, and mixing ratios
     temp_list = T[:]
@@ -43,8 +30,6 @@ def radCompSoc(p,T,Tg):
     co2_mr_list = 3e-4*np.ones(len(T))
     q_mr_list = 1e-3*np.ones(len(T))
 
-
-
     
     # Write single values
     t_surf = Tg
@@ -52,8 +37,6 @@ def radCompSoc(p,T,Tg):
     solar_zenith_angle = 0.0
     solar_toa = 1370.
     
-    #print(np.shape(pres_list))
-    #print(np.shape(temp_list))
     
     # Write values to netcdf
     nctools.ncout_surf('profile.surf',0,0,1,0.1)
@@ -72,14 +55,8 @@ def radCompSoc(p,T,Tg):
     s = "."
     
     #call SOCRATES for both LW and SW, moving outputfiles and saving as numpy
-    #arrays for plotting
-    s = " "
 
     
-    #seq4 = ("Cl_run_cdf -B", basename,"-s /Users/markhammond/Work/Projects/1D-RC-SOC/socrates/socrates_1806/data/spectra/ga7/sp_lw_ga7 -R 1 9 -ch 9 -S -g 1 4 -C 5")
-    #seq5 = ("fmove", basename,"currentsw")
-    #seq6 = ("Cl_run_cdf -B", basename,"-s /Users/markhammond/Work/Projects/1D-RC-SOC/socrates/socrates_1806/data/spectra/ga7/sp_lw_ga7 -R 1 6 -ch 6  -I -g 1 4 -C 5")
-    #seq7 = ("fmove", basename,"currentlw")
     
     seq4 = ("Cl_run_cdf -B", basename,"-s /Users/markhammond/Work/Projects/1D-RC-SOC/socrates/socrates_1806/data/spectra/ga7/sp_sw_ga7 -R 1 6 -ch 6 -S -g 2 -C 5")
     seq5 = ("fmove", basename,"currentsw")
@@ -91,11 +68,13 @@ def radCompSoc(p,T,Tg):
     comline2 = s.join(seq5)
     comline3 = s.join(seq6)
     comline4 = s.join(seq7)
+
     if 1==1:
         os.system(comline1)
         os.system(comline2)
         os.system(comline3)
         os.system(comline4)
+
     #open netCDF files produced by SOCRATES
     ncfile1 = net.Dataset('currentsw.vflx')
     ncfile2 = net.Dataset('currentsw.sflx')
@@ -107,6 +86,7 @@ def radCompSoc(p,T,Tg):
     ncfile8 = net.Dataset('currentlw.nflx')
     ncfile9 = net.Dataset('currentlw.uflx')
     ncfile10 = net.Dataset('currentlw.hrts')
+
     #create appropriately sized arrays to hold flux data
     p = ncfile1.variables['plev'][:]
     levels = len(p)
@@ -120,9 +100,8 @@ def radCompSoc(p,T,Tg):
     nflxlw = np.zeros(levels)
     uflxlw = np.zeros(levels)
     hrtslw = np.zeros(levels-1)
+
     #loop through netCDF variables and populate arrays
-    
-    
     uflxlw = ncfile9.variables['uflx']
     #uflxsw = ncfile4.variables['uflx']
     vflxsw = ncfile1.variables['vflx']

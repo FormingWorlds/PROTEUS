@@ -78,7 +78,7 @@ def RadConvEqm(Tg):
     Tg = 280.
     #---Temperature and moisture arrays (initialized)
     T = Tg*(p/p[-1])**Rcp  #Initialize on an adiabat
-    #T = Tg*np.ones(len(p))
+    T = Tg*np.ones(len(p))
 
     
     
@@ -105,7 +105,7 @@ def RadConvEqm(Tg):
         #hack!
         T[0] = T[1]
         
-        
+        print 'plotting'
         plt.figure(figsize=(7,4))
         plt.semilogy(T,p)
         plt.gca().invert_yaxis()
@@ -117,7 +117,7 @@ def RadConvEqm(Tg):
         plt.tick_params(axis='y', colors='white')
         plt.show()
         
-        print('History step',Tg,flux[-1],max(heat),min(heat),flux[-1])
+        #print('History step',Tg,flux[-1],max(heat),min(heat),flux[-1])
 
         #history(nout,caseTag)
         #if abs(flux[-1]-PrevOLR) < 1.0:
@@ -207,4 +207,5 @@ def steps(Tg,T,p,q,nSteps,dtime):
         #
         #Dummies for separate LW and stellar. **FIX THIS**
         fluxStellar = fluxLW = heatStellar = heatLW = np.zeros(n)
+    print 'done steps'
     return Tg,Tad,T,flux,fluxStellar,fluxLW,heat,heatStellar,heatLW
