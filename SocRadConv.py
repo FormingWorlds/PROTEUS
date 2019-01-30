@@ -14,8 +14,7 @@ import SocRadModel
 
 #Set the gravity and thermodynamic constants
 Rcp = 2./7.
-n=20
-
+n = 30
 
 def RadConvEqm(Tg):
     #--------------------Set radmodel options-------------------
@@ -47,11 +46,7 @@ def RadConvEqm(Tg):
         
     #----------------Set initial time step--------------------------------
     
-    dtime = 0.1# 1. # (for CO2 case; gray gas evolves faster)
-                #Timestep in days; 5 days is the usual for Earthlike case
-                #For the radiative convective case, you can get away with
-                #using 50 for the first few hundred time steps, then
-                #reducing to 5 or less later as the solution converges
+    dtime = 0.2# 1. # (for CO2 case; gray gas evolves faster)
     
     #----------------------------------------------------------------------
     
@@ -62,26 +57,24 @@ def RadConvEqm(Tg):
     #--------------Other parameters-------------------------------------------
     doStellarAbs = False
 
-    #Set composition constants (globals)
-    #co2 = 300.
     
     #Ground temperature (held fixed in this computation)
     Tg = 280.
+
     #---Temperature and moisture arrays (initialized)
     T = Tg*(p/p[-1])**Rcp  #Initialize on an adiabat
     T = Tg*(p/p[-1])**(Rcp*2)  #Initialize not on an adiabat
     #T = Tg*np.ones(len(p))
 
     
-    
     #Set composition parameters for the radiation code you are using
     q=np.zeros(n)
     
     
-    #Grey Gas:
-    #Grey.tauInf = 2.
-    
+    # Initialise previous OLR and TOA heating to zero
     PrevOLR = 0.
+    PrevTOAHeat = 0.
+
     #---------------------------------------------------------
     #--------------Initializations Done-----------------------
     #--------------Now do the time stepping-------------------
@@ -89,9 +82,6 @@ def RadConvEqm(Tg):
     matplotlib.rc('axes',edgecolor='w')
     for i in range(0,50):
         nout = 10*i
-        print(dtime)
-        #if i%50 == 0 & i > 200:
-        #     dtime = .5*dtime
         Tg,Tad,T,flux,fluxStellar,fluxLW,heat,heatStellar,heatLW = steps(Tg,T,p,q,10,dtime)
         
         #hack!
@@ -108,12 +98,14 @@ def RadConvEqm(Tg):
         plt.tick_params(axis='y', colors='white')
         plt.show()
 #        print flux[-1]
-        print heat[-1]
-        #print('History step',Tg,flux[-1],max(heat),min(heat),flux[-1])
+	print "TOA heating: " + str(heat[-1])
 
-        #history(nout,caseTag)
 #        if abs(flux[-1]-PrevOLR) < 0.1:
 #               break    # break here
+
+        if abs(heat[-1]-PrevTOAHeat) < 0.1:
+               break    # break here
+
         PrevOLR = flux[-1]
 	PrevTOAHeat = heat[-1]
 
@@ -131,10 +123,6 @@ def RadConvEqm(Tg):
 
 
 #Dry adjustment routine.
-#**ToDo: Modify so it handles non-uniform pressure levels
-#        correctly, and conserves integrated enthalpy cp T
-#
-#Iterative routine for dry convective adjustment
 def dryAdj(T,p):
     #Rcp is a global
     #Downward pass

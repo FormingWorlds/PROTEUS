@@ -26,8 +26,9 @@ def radCompSoc(p,T,Tg):
     pres_list = p[:]
     presl_list = np.append(0.99*pres_list,1.03*pres_list[-1])
     
-
+    # CO2 mixing ratio profile
     co2_mr_list = 3e-4*np.ones(len(T))
+    # Water vapour mixing ratio profile
     q_mr_list = 1e-3*np.ones(len(T))
 
     
