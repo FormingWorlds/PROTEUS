@@ -52,7 +52,7 @@ def radCompSoc(p,T,Tg):
     
     
     basename = 'profile'
-    s = "."
+    s = " "
     
     #call SOCRATES for both LW and SW, moving outputfiles and saving as numpy
 

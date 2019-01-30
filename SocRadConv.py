@@ -1,30 +1,21 @@
-#Modified for Exoclimes2012.  Uses dry enthalpy conserving convective
-#adjustment and implements an energy conserving surface flux scheme
-#(Note enthalpy is the right thing to conserve, not dry static energy)
-#
-#Modified further to make it easier to swap in homebrew or graygas models.
-# (8/28/2012, for Beijing lectures)
-#
-#
+'''
+MDH 28/01/19
 
+Socrates radiative-convective model
+'''
 
-import SocHeat as Soc
-#from ClimateUtilities import *
 import math,phys
 import planets
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
-
+import SocRadModel
 
 
 #Set the gravity and thermodynamic constants
 Rcp = 2./7.
 n=20
 
-
-#Choose the radiation model for computing the longwave and shortwave heating
-radcomp = Soc.radcomp
 
 def RadConvEqm(Tg):
     #--------------------Set radmodel options-------------------
@@ -78,7 +69,8 @@ def RadConvEqm(Tg):
     Tg = 280.
     #---Temperature and moisture arrays (initialized)
     T = Tg*(p/p[-1])**Rcp  #Initialize on an adiabat
-    T = Tg*np.ones(len(p))
+    T = Tg*(p/p[-1])**(Rcp*2)  #Initialize not on an adiabat
+    #T = Tg*np.ones(len(p))
 
     
     
@@ -95,7 +87,7 @@ def RadConvEqm(Tg):
     #--------------Now do the time stepping-------------------
     #---------------------------------------------------------
     matplotlib.rc('axes',edgecolor='w')
-    for i in range(0,10):
+    for i in range(0,50):
         nout = 10*i
         print(dtime)
         #if i%50 == 0 & i > 200:
@@ -105,7 +97,6 @@ def RadConvEqm(Tg):
         #hack!
         T[0] = T[1]
         
-        print 'plotting'
         plt.figure(figsize=(7,4))
         plt.semilogy(T,p)
         plt.gca().invert_yaxis()
@@ -116,13 +107,15 @@ def RadConvEqm(Tg):
         plt.gca().yaxis.label.set_color('white')
         plt.tick_params(axis='y', colors='white')
         plt.show()
-        
+#        print flux[-1]
+        print heat[-1]
         #print('History step',Tg,flux[-1],max(heat),min(heat),flux[-1])
 
         #history(nout,caseTag)
-        #if abs(flux[-1]-PrevOLR) < 1.0:
-        #       break    # break here
+#        if abs(flux[-1]-PrevOLR) < 0.1:
+#               break    # break here
         PrevOLR = flux[-1]
+	PrevTOAHeat = heat[-1]
 
     # plot equilibrium temperature profile
     plt.figure()
@@ -175,10 +168,6 @@ def dryAdj(T,p):
 #Define function to do time integration for n steps
 def steps(Tg,T,p,q,nSteps,dtime):
     for i in range(nSteps):
-        #Do smoothing
-##        if i%20 == 0:
-##            for j in range(1,len(T)-1):
-##                T[j] = .25*T[j-1] + .5*T[j] + .25*T[j+1]
         flux,heat = radcomp(p,T,Tg,q)
         dT = heat*dtime
         #Limit the temperature change per step
@@ -195,7 +184,7 @@ def steps(Tg,T,p,q,nSteps,dtime):
         #
         dTmax = max(abs(dT)) #To keep track of convergence
         
-#   Do the surface balance
+        #   Do the surface balance
         kturb = .1
         T[-1] += -dtime*kturb*(T[-1] - Tg)
         #Dry adjustment step
@@ -207,5 +196,17 @@ def steps(Tg,T,p,q,nSteps,dtime):
         #
         #Dummies for separate LW and stellar. **FIX THIS**
         fluxStellar = fluxLW = heatStellar = heatLW = np.zeros(n)
-    print 'done steps'
     return Tg,Tad,T,flux,fluxStellar,fluxLW,heat,heatStellar,heatLW
+
+# Call Socrates radiative transfer
+def radcomp(pList,TList,Tg,q):
+
+    # Call Socrates
+    hrtssw,hrtslw,uflxlw,nflxsw = SocRadModel.radCompSoc(pList,TList,Tg)
+
+    # Combine shortwave and longwave heating
+    heat = np.squeeze(np.sum(hrtssw[:,:],axis=0) + np.sum(hrtslw[:,:],axis=0))
+
+    # Sum LW flux over all bands
+    flux = np.sum(uflxlw[:,:],axis=0)
+    return flux,heat
