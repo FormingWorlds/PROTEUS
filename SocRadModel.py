@@ -29,7 +29,7 @@ def radCompSoc(p,T,Tg):
     # CO2 mixing ratio profile
     co2_mr_list = 3e-4*np.ones(len(T))
     # Water vapour mixing ratio profile
-    q_mr_list = 1e-3*np.ones(len(T))
+    q_mr_list = 0.0*1e-3*np.ones(len(T))
 
     
     # Write single values
