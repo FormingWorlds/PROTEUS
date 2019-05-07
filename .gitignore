@@ -19,5 +19,6 @@ radiation_code.lock
 
 # misc
 ######
+Tprofile.pdf
 .DS_Store
 __pycache__/
