@@ -19,7 +19,7 @@ n = 30
 def RadConvEqm(Tg):
     #--------------------Set radmodel options-------------------
     #---Instantiate the radiation model---
-    n = 30
+    n = 50
     #
 
     
@@ -80,7 +80,7 @@ def RadConvEqm(Tg):
     #--------------Now do the time stepping-------------------
     #---------------------------------------------------------
     matplotlib.rc('axes',edgecolor='w')
-    for i in range(0,50):
+    for i in range(0,1):
         nout = 10*i
         Tg,Tad,T,flux,fluxStellar,fluxLW,heat,heatStellar,heatLW = steps(Tg,T,p,q,10,dtime)
         
