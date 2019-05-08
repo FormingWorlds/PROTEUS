@@ -16,6 +16,7 @@ import nctools
 from subprocess import call
 from netCDF4 import Dataset
 
+path_to_socrates = os.getcwd()+"/socrates/socrates_main"
 
 def radCompSoc(p,T,Tg):
 
@@ -59,9 +60,9 @@ def radCompSoc(p,T,Tg):
 
     
     
-    seq4 = ("Cl_run_cdf -B", basename,"-s /Users/markhammond/Work/Projects/1D-RC-SOC/socrates/socrates_1806/data/spectra/ga7/sp_sw_ga7 -R 1 6 -ch 6 -S -g 2 -C 5")
+    seq4 = ("Cl_run_cdf -B", basename,"-s "+path_to_socrates+"/data/spectra/ga7/sp_sw_ga7 -R 1 6 -ch 6 -S -g 2 -C 5")
     seq5 = ("fmove", basename,"currentsw")
-    seq6 = ("Cl_run_cdf -B", basename,"-s /Users/markhammond/Work/Projects/1D-RC-SOC/socrates/socrates_1806/data/spectra/ga7/sp_lw_ga7 -R 1 9 -ch 9 -I -g 2 -C 5")
+    seq6 = ("Cl_run_cdf -B", basename,"-s "+path_to_socrates+"/data/spectra/ga7/sp_lw_ga7 -R 1 9 -ch 9 -I -g 2 -C 5")
     seq7 = ("fmove", basename,"currentlw")
 
     

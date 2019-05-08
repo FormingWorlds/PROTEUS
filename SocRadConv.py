@@ -96,7 +96,7 @@ def RadConvEqm(Tg):
         plt.tick_params(axis='x', colors='white')
         plt.gca().yaxis.label.set_color('white')
         plt.tick_params(axis='y', colors='white')
-        plt.show()
+        # plt.show()
 #        print flux[-1]
 	print "TOA heating: " + str(heat[-1])
 

@@ -5,7 +5,7 @@ GGRadConv.py
 
 
 import GreyHeat as Grey
-from ClimateUtilities import *
+# from ClimateUtilities import *
 import math,phys
 import planets
 import numpy as np

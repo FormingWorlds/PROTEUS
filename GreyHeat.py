@@ -19,7 +19,7 @@ Problem = '{Workbook:RadBalance2:PressBroadenedHeating}'
 
 
 import math,phys
-from ClimateUtilities import *
+# from ClimateUtilities import *
 
 
 #Grey gas transmission function.
