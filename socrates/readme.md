@@ -1,1 +1,2 @@
-Socrates source goes here. Path should be /socrates/socrates_1806/
+- Socrates source goes here. Path should be /socrates/socrates_main/
+- Overwrite ./socrates_main/make/Mk_cmd with Mk_cmd from this folder
