@@ -1,13 +1,28 @@
-## Coupled model, description
+## COUPLED MODEL DESCRIPTION
 
 Run *RadInteriorCoupler.py*.
 
 It runs until the OLR changes by less than 1W/m<sup>2</sup>, or stops after 50 iterations.
 
 ABBREVIATIONS:
-Mark Hammond - MH
+Mark Hammond    - MH
 Tim Lichtenberg - TL
 Ryan Boukrouche - RB
+
+## FILE DESCRIPTIONS
+
+GGRadConv.py - Grey gas radiative convective model
+GreyHeat.py - Calculates heating rates in grey model
+OLRFlux.txt - Outgoing heat flux in W, coupler-file
+SocRadConv.py - Radiative convective model w/ SOCRATES
+SocRadModel.py - Calculates heating rates in for SOCRATES version
+atmosphere_column.py - Class for atmospheric column data
+nctools.py - Some useful functions for netCDF
+phys.py - Constants
+planets.py - Planet-specific constants
+profile.*
+readme.md - This file
+surfaceT.txt - Surface temperature form interior model, coupler-file
 
 ## INSTALLATION FOR DUMMIES (mostly by and for TL)
 
@@ -25,7 +40,6 @@ Ryan Boukrouche - RB
 (3) Compile SOCRATES:
     - Overwrite Mk_cmd in /socrates/socrates_main/make/:
         $ cd /socrates/ && cp -rf Mk_cmd /socrates_main/make/
-    
     - Build SOCRATES:
         $ cd /socrates/socrates_main/
         $ ./build_code
