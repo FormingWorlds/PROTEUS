@@ -11,11 +11,18 @@ ABBREVIATIONS:
 * RP - Ray Pierrehumbert
 * DB - Dan Bower
 
-LaTeX file to discuss technical roadmap and science questions:
-https://www.overleaf.com/read/cbbvgpyttcqm
+#### COMMUNICATION
 
-Slack channel for day-to-day use: http://bit.ly/2LvB1FR
---> #interior-atmosphere
+###### LaTeX file for discussion/draft
+
+Read-only: https://www.overleaf.com/read/cbbvgpyttcqm
+
+Edit: https://www.overleaf.com/8481699571kkycnphnmgdg
+
+###### Slack channel for day-to-day use
+http://bit.ly/2LvB1FR
+
+Channel: #interior-atmosphere
 
 ## FILE DESCRIPTIONS
 
