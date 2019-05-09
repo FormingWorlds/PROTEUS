@@ -5,39 +5,39 @@ Run *RadInteriorCoupler.py*.
 It runs until the OLR changes by less than 1W/m<sup>2</sup>, or stops after 50 iterations.
 
 ABBREVIATIONS:
-Mark Hammond    - MH
-Tim Lichtenberg - TL
-Ryan Boukrouche - RB
+* Mark Hammond    - MH
+* Tim Lichtenberg - TL
+* Ryan Boukrouche - RB
 
 ## FILE DESCRIPTIONS
 
-GGRadConv.py - Grey gas radiative convective model
-GreyHeat.py - Calculates heating rates in grey model
-OLRFlux.txt - Outgoing heat flux in W, coupler-file
-SocRadConv.py - Radiative convective model w/ SOCRATES
-SocRadModel.py - Calculates heating rates in for SOCRATES version
-atmosphere_column.py - Class for atmospheric column data
-nctools.py - Some useful functions for netCDF
-phys.py - Constants
-planets.py - Planet-specific constants
-profile.*
-readme.md - This file
-surfaceT.txt - Surface temperature form interior model, coupler-file
+* GGRadConv.py - Grey gas radiative convective model
+* GreyHeat.py - Calculates heating rates in grey model
+* OLRFlux.txt - Outgoing heat flux in W, coupler-file
+* SocRadConv.py - Radiative convective model w/ SOCRATES
+* SocRadModel.py - Calculates heating rates in for SOCRATES version
+* atmosphere_column.py - Class for atmospheric column data
+* nctools.py - Some useful functions for netCDF
+* phys.py - Constants
+* planets.py - Planet-specific constants
+* profile.* - 
+* readme.md - This file
+* surfaceT.txt - Surface temperature form interior model, coupler-file
 
 ## INSTALLATION FOR DUMMIES (mostly by and for TL)
 
-(1) Get access to SOCRATES: https://code.metoffice.gov.uk/trac/home
-    - For website access talk to MH
-    - Download the latest version, unzip to /socrates/socrates_main/
+1. Get access to SOCRATES: https://code.metoffice.gov.uk/trac/home
+    * For website access talk to MH
+    * Download the latest version, unzip to /socrates/socrates_main/
 
-(2) Install dependencies:
-    - Make sure you have the FORTRAN version of netCDF installed:
-        e.g., $ brew install netcdf
-    - Same for netCDF python:
-        e.g., $ conda install netcdf
-    - Relaunch terminal window, or source bash_profile, to reset environment
+1. Install dependencies:
+    * Make sure you have the FORTRAN version of netCDF installed:
+        * e.g., $ brew install netcdf
+    * Same for netCDF python:
+        * e.g., $ conda install netcdf
+    * Relaunch terminal window, or source bash_profile, to reset environment
 
-(3) Compile SOCRATES:
+1. Compile SOCRATES:
     - Overwrite Mk_cmd in /socrates/socrates_main/make/:
         $ cd /socrates/ && cp -rf Mk_cmd /socrates_main/make/
     - Build SOCRATES:
@@ -47,7 +47,7 @@ surfaceT.txt - Surface temperature form interior model, coupler-file
         $ cd /socrates/socrates_main/
         $ . ./set_rad_env
 
-(4) Run code:
+1. Run code:
     $ python RadInteriorCoupler.py
 
 
