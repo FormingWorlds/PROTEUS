@@ -49,7 +49,7 @@ Channel: #interior-atmosphere
     * Make sure you have the FORTRAN version of netCDF installed:
         * e.g., $ brew install netcdf
     * Same for netCDF python:
-        * e.g., $ conda install netcdf
+        * e.g., $ conda install netcdf4
     * Relaunch terminal window, or source bash_profile, to reset environment
 
 1. Compile SOCRATES:
