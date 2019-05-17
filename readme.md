@@ -2,12 +2,27 @@
 
 Run *RadInteriorCoupler.py*.
 
-It runs until the OLR changes by less than 1W/m<sup>2</sup>, or stops after 50 iterations.
+It runs until the OLR changes by less than a threshold value in W/m<sup>2</sup>, or stops after a fixed number of iterations.
 
 ABBREVIATIONS:
-* Mark Hammond    - MH
-* Tim Lichtenberg - TL
-* Ryan Boukrouche - RB
+* MH - Mark Hammond
+* TL - Tim Lichtenberg
+* RB - Ryan Boukrouche
+* RP - Ray Pierrehumbert
+* DB - Dan Bower
+
+#### COMMUNICATION
+
+###### LaTeX file for discussion/draft
+
+Read-only: https://www.overleaf.com/read/cbbvgpyttcqm
+
+Edit: https://www.overleaf.com/8481699571kkycnphnmgdg
+
+###### Slack channel for day-to-day use
+http://bit.ly/2LvB1FR
+
+Channel: #interior-atmosphere
 
 ## FILE DESCRIPTIONS
 
@@ -24,7 +39,7 @@ ABBREVIATIONS:
 * readme.md - This file
 * surfaceT.txt - Surface temperature form interior model, coupler-file
 
-## INSTALLATION FOR DUMMIES (mostly by and for TL)
+## INSTALLATION
 
 1. Get access to SOCRATES: https://code.metoffice.gov.uk/trac/home
     * For website access talk to MH
@@ -34,7 +49,7 @@ ABBREVIATIONS:
     * Make sure you have the FORTRAN version of netCDF installed:
         * e.g., $ brew install netcdf
     * Same for netCDF python:
-        * e.g., $ conda install netcdf
+        * e.g., $ conda install netcdf4
     * Relaunch terminal window, or source bash_profile, to reset environment
 
 1. Compile SOCRATES:
