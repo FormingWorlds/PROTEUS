@@ -10,6 +10,7 @@ ABBREVIATIONS:
 * RB - Ryan Boukrouche
 * RP - Ray Pierrehumbert
 * DB - Dan Bower
+* ST - Shang-Min Tsai
 
 #### COMMUNICATION
 
@@ -59,9 +60,11 @@ Channel: #interior-atmosphere
     - Build SOCRATES:
         $ cd /socrates/socrates_main/
         $ ./build_code
-    - Set environment (EVERYTIME SOCRATES IS USED, or otherwise set in environment variables):
+    - Set environment:
         $ cd /socrates/socrates_main/
         $ . ./set_rad_env
+    - If you want SOCRATES to be readily available in every new shell, put the following in you .bash_profile:
+        $ source /PATH_TO_COUPLER/socrates/socrates_main/set_rad_env
 
 1. Run code:
     $ python RadInteriorCoupler.py
