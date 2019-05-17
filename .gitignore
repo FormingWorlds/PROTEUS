@@ -23,3 +23,6 @@ Tprofile.pdf
 .DS_Store
 __pycache__/
 socrates/socrates_main
+output
+mylog.log
+atmosphere.pdf
