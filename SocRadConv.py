@@ -60,7 +60,7 @@ def RadConvEqm(Tg):
         # atm.temp[0] = atm.temp[1]
 
         if i % 20 == 0:
-            print i
+            print(i)
             if 1==2:
                 plt.figure(figsize=(7,4))
                 plt.semilogy(atm.temp,atm.p)
@@ -72,21 +72,21 @@ def RadConvEqm(Tg):
                 plt.gca().yaxis.label.set_color('white')
                 plt.tick_params(axis='y', colors='white')
                 plt.show()
-            #print "OLR " + str(atm.LW_flux_up[-1])
-            #print "OLR change " + str(atm.LW_flux_up[-1]-PrevOLR)
-            #print "Max heating " + str(np.max(atm.total_heating))
-            #print "Max dT " + str(abs(np.max(atm.temp-PrevTemp[:])))
+            #print("OLR " + str(atm.LW_flux_up[-1]))
+            #print("OLR change " + str(atm.LW_flux_up[-1]-PrevOLR))
+            #print("Max heating " + str(np.max(atm.total_heating)))
+            #print("Max dT " + str(abs(np.max(atm.temp-PrevTemp[:]))))
 
 
         # Reduce timestep if heating not converging
         if abs(np.max(atm.temp-PrevTemp[:])) < 0.05 or abs(atm.temp[0]-atm.temp[1]) > 3.0:
-            #print "reducing timestep"
+            #print("reducing timestep")
             atm.dt  = atm.dt*0.99
 
 
         if abs(atm.LW_flux_up[-1]-PrevOLR) < 0.1 and abs(np.max(atm.temp-PrevTemp[:])) < 0.5:
-           print "break"
-           #print PrevTemp[:]-atm.temp
+           print("break")
+           #print(PrevTemp[:]-atm.temp)
            break    # break here
 
         PrevOLR = atm.LW_flux_up[-1]

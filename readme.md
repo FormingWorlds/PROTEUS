@@ -35,7 +35,7 @@ Channel: #interior-atmosphere
 * nctools.py - Some useful functions for netCDF
 * phys.py - Constants
 * planets.py - Planet-specific constants
-* profile.* - 
+* profile.* -
 * readme.md - This file
 * surfaceT.txt - Surface temperature form interior model, coupler-file
 
@@ -50,6 +50,7 @@ Channel: #interior-atmosphere
         * e.g., $ brew install netcdf
     * Same for netCDF python:
         * e.g., $ conda install netcdf4
+        * make sure you use a Python 3 environment, possibly need to reinstall all typical packages, see e.g., here: http://bit.ly/2HowQaA
     * Relaunch terminal window, or source bash_profile, to reset environment
 
 1. Compile SOCRATES:
@@ -64,5 +65,3 @@ Channel: #interior-atmosphere
 
 1. Run code:
     $ python RadInteriorCoupler.py
-
-

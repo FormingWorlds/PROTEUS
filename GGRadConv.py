@@ -30,7 +30,7 @@ def RadConvEqm(Tg):
     rh = 1.e-30#Relative humidity
     rhbdd = 1.e-30
     dt = 24.*3600. #time step in seconds
-    
+
     #---Set up pressure array (a global)----
     ptop = 50. #Top pressure in mb (Changed from 1mb in original)
     pstart = .995*ps
@@ -39,43 +39,43 @@ def RadConvEqm(Tg):
     logLevels.reverse()
     levels = [ptop + i*(pstart-ptop)/(n-1) for i in range(n)]
     p = numpy.array(logLevels)
-    
-    
-    
+
+
+
     #==============Now do the calculation====================================
-    
+
     #--------------Initializations-------------------------------------------
-        
+
     #----------------Set initial time step--------------------------------
-    
+
     dtime = 1.# 1. # (for CO2 case; gray gas evolves faster)
-    
+
     #----------------------------------------------------------------------
-    
+
     #---Temperature and moisture arrays (initialized)
     T = numpy.zeros(n) + 230.
-    
-    
+
+
     #--------------Other parameters-------------------------------------------
     doStellarAbs = False
 
     #Set composition constants (globals)
     #co2 = 300.
-    
+
     #Ground temperature (held fixed in this computation)
     Tg = 280.
     #---Temperature and moisture arrays (initialized)
     T = Tg*(p/p[-1])**Rcp  #Initialize on an adiabat
     #T = Tg*numpy.ones(len(p))
 
-    
+
     #Set composition parameters for the radiation code you are using
     q=np.zeros(n)
-    
-    
+
+
     #Grey Gas:
     Grey.tauInf = 2.
-    
+
     PrevOLR = 0.
     #---------------------------------------------------------
     #--------------Initializations Done-----------------------
@@ -101,7 +101,7 @@ def RadConvEqm(Tg):
     plt.xlabel('Temperature (K)')
     plt.savefig('Tprofile.pdf',bb_inches='tight')
 
-        
+
     return flux[-1]
 
 
@@ -139,7 +139,7 @@ def dryAdj(T,p):
             T1 = T2*pfact
             T[i] = T1
             T[i+1] = T2
-            
+
 
 #Define function to do time integration for n steps
 def steps(Tg,T,p,q,nSteps,dtime):
@@ -163,7 +163,7 @@ def steps(Tg,T,p,q,nSteps,dtime):
         T += dT
         #
         dTmax = max(abs(dT)) #To keep track of convergence
-        
+
 #   Do the surface balance
         kturb = .1
         T[-1] += -dtime*kturb*(T[-1] - Tg)
