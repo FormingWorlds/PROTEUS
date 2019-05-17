@@ -11,7 +11,7 @@ import numpy as np
 # logger = su.get_my_logger(__name__)
 
 #====================================================================
-def write_surface_temp():
+def write_surface_quantitites():
 
     # logger.info( 'building atmosphere' )
 
@@ -67,6 +67,10 @@ def write_surface_temp():
     # output surface
     out_a = np.column_stack( (sim_times, temperature_surface_a ) )
     np.savetxt( 'surfaceT.dat', out_a )
+
+    # output volatiles
+    out_volatiles = np.column_stack( (sim_times, H2O_atmos_kg_a, H2O_atmos_kg_a ) )
+    np.savetxt( 'volatiles_out.dat', out_volatiles )
 
 #
 # #====================================================================
