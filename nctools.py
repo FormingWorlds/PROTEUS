@@ -47,7 +47,7 @@ def ncout_surf(file, lon, lat, basis, alb):
         raise RuntimeError(' Error in ncout_surf: arrays dont match', nvals
                             , n_lon * n_lat * levels)
 
-    #print 'ncout_surf - file: ',file
+    #print('ncout_surf - file: ',file)
 
     ncdf_file = create_cdf(file)
 
@@ -56,7 +56,7 @@ def ncout_surf(file, lon, lat, basis, alb):
     write_dim(ncdf_file, levels, basis, 'basis', 'i2', 'basis', 'None',
               'BASIS FUNCTION')
 
-    write_var(ncdf_file, albs, 'alb', 'f4', ('basis', 'lat', 'lon'),'None', 
+    write_var(ncdf_file, albs, 'alb', 'f4', ('basis', 'lat', 'lon'),'None',
               'ALBEDO WEIGHTS')
 
     ncdf_file.close()
@@ -83,14 +83,14 @@ def ncout_spectral_surf(file, lon, lat, bands, alb):
         raise RuntimeError(' Error in ncout_surf: arrays dont match', nvals
                            , n_lon * n_lat * bands)
 
-    #print 'ncout_spectral_surf - file: ', file
+    #print('ncout_spectral_surf - file: ', file)
 
     ncdf_file = create_cdf(file)
     write_dim(ncdf_file, n_lon, lon, 'lon', 'f4', 'lon', 'degree', 'LONGITUDE')
     write_dim(ncdf_file, n_lat, lat, 'lat', 'f4', 'lat', 'degree', 'LATITUDE')
     write_dim(ncdf_file, 1, basis, 'basis', 'i2', 'basis', 'None',
               'BASIS FUNCTION')
-    write_dim(ncdf_file, np.sum(bands), np.arange(bands) + 1, 'bands', 'i2', 
+    write_dim(ncdf_file, np.sum(bands), np.arange(bands) + 1, 'bands', 'i2',
               'bands', 'None', 'BANDS')
 
     write_var(ncdf_file, albs, 'alb', 'f4', ('bands', 'basis', 'lat', 'lon'),
@@ -123,7 +123,7 @@ def ncout2d(file, lon, lat, val, name = None, longname = None
     if (type(name) is not str):
         patterns = re.compile(r'\\|\.')
         name = file[patterns.search(file).start() + 1:]
-    #print 'ncout2d - file: ',file
+    #print('ncout2d - file: ',file)
 
     ncdf_file = create_cdf(file)
 
@@ -132,7 +132,7 @@ def ncout2d(file, lon, lat, val, name = None, longname = None
 
     write_var(ncdf_file, vals, name, 'f4', ('lat', 'lon'), units, longname)
 
-    ncdf_file.close()   
+    ncdf_file.close()
 
 #-------------------------------------------------------------------------------
 
@@ -168,12 +168,12 @@ def ncout3d(file, lon, lat, p, val, name = None
         if (any (p[order] != p)):
             p = p[order]
             vals = vals[order,:,:]
-    
+
     if (type(name) is not str):
         patterns = re.compile(r'\\|\.')
         name = file[patterns.search(file).start() + 1:]
 
-    #print 'ncout3d - file: ',file
+    #print('ncout3d - file: ',file)
 
     ncdf_file = create_cdf(file)
 
@@ -188,13 +188,13 @@ def ncout3d(file, lon, lat, p, val, name = None
         title = longname
     write_var(ncdf_file, vals, name, 'f4', ('plev', 'lat', 'lon'), units, title)
 
-    ncdf_file.close()   
+    ncdf_file.close()
 
 #-------------------------------------------------------------------------------
 
 def ncout_opt_prop(file, lon, lat, p, bands, absp, scat, phf):
 
-# ; Program to create netCDF files of prescribed optical properties 
+# ; Program to create netCDF files of prescribed optical properties
 # ; on pressure levels.
 # ; For example (lon, lat, p, absp, scat and phf are arrays):
 # ; ncout_opt_prop, 'out.op_soot', lon, lat, p, 6, absp, scat, phf
@@ -206,7 +206,7 @@ def ncout_opt_prop(file, lon, lat, p, bands, absp, scat, phf):
     nvals = np.size(absp)
     if (nvals == levels*bands):
         absp.reshape(bands, levels)
-        absp_vals = np.zeros(n_lon * n_lat * levels * bands).reshape(bands, 
+        absp_vals = np.zeros(n_lon * n_lat * levels * bands).reshape(bands,
                     levels, n_lat, n_lon)
         for i in np.arange(n_lon):
             for j in np.arange(n_lat):
@@ -233,9 +233,9 @@ def ncout_opt_prop(file, lon, lat, p, bands, absp, scat, phf):
 
     nvals = np.size(phf)
     if (nvals == 1):
-        phf_vals = np.zeros(n_lon * n_lat * levels * bands).reshape(bands, 1, 
+        phf_vals = np.zeros(n_lon * n_lat * levels * bands).reshape(bands, 1,
                    levels, n_lat, n_lon)
-        phf_vals += np.sum(phf)    
+        phf_vals += np.sum(phf)
     elif (nvals == levels*bands):
         phf.reshape(levels, bands)
         temp = np.zeros(n_lon * n_lat * levels * bands).reshape(bands, levels,
@@ -256,7 +256,7 @@ def ncout_opt_prop(file, lon, lat, p, bands, absp, scat, phf):
         scat_vals = scat_vals[:, order, :, :]
         phf_vals = phf_vals[:, :, order, :, :]
 
-    #print 'ncout_opt_prop - file: ', file
+    #print('ncout_opt_prop - file: ', file)
 
     ncdf_file = create_cdf(file)
 
@@ -264,9 +264,9 @@ def ncout_opt_prop(file, lon, lat, p, bands, absp, scat, phf):
     write_dim(ncdf_file, n_lat, lat, 'lat', 'f4', 'lat', 'degree', 'LATITUDE')
     write_dim(ncdf_file, levels, p, 'plev', 'f4', 'plev', 'Pa', 'PRESSURE')
     write_dim(ncdf_file, 1, 1, 'mom', 'i2', 'mom', 'none', 'moment')
-    #print 'bands=', bands
-    #print 'np.sum(bands)=', np.sum(bands)
-    #print 'np.arange(bands)+1=', np.arange(bands)+1
+    #print('bands=', bands)
+    #print('np.sum(bands)=', np.sum(bands))
+    #print('np.arange(bands)+1=', np.arange(bands)+1)
     write_dim(ncdf_file, bands, np.arange(bands)+1, 'band', 'i2', 'band',
               'none', 'band')
 
@@ -274,10 +274,10 @@ def ncout_opt_prop(file, lon, lat, p, bands, absp, scat, phf):
               , 'M-1', 'absorption')
     write_var(ncdf_file, scat_vals, 'scat', 'f4', ('band', 'plev', 'lat', 'lon')
               , 'M-1', 'scattering')
-    write_var(ncdf_file, phf_vals, 'phf', 'f4', ('band', 'mom', 'plev', 'lat', 
+    write_var(ncdf_file, phf_vals, 'phf', 'f4', ('band', 'mom', 'plev', 'lat',
               'lon'), 'none', 'phase function')
 
-    ncdf_file.close()   
+    ncdf_file.close()
 
 #-------------------------------------------------------------------------------
 
@@ -334,7 +334,7 @@ def ncout_view(file, lon, lat, direction, level, pol, azim, rlev):
     write_var(ncdf_file, rlevs, 'rlev', 'f4', ('level')
               , 'None', 'VIEWING LEVEL')
 
-    ncdf_file.close()   
+    ncdf_file.close()
 
 #-------------------------------------------------------------------------------
 

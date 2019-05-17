@@ -11,7 +11,7 @@ class Planet:
            P.g = Surface gravitational acceleration (m/s**2)
            P.L = Annual mean solar constant (current) (W/m**2)
            P.albedo Bond albedo (fraction)
-           
+
            P.rsm = Semi-major axis of orbit about Sun (m)
            P.year = Sidereal length of year (s)
            P.eccentricity =  Eccentricity (unitless)
@@ -38,7 +38,7 @@ class Planet:
         self.g = None #Surface gravitational acceleration
         self.L = None #Annual mean solar constant (current)
         self.albedo = None #Bond albedo
-        
+
         self.rsm = None #Semi-major axis
         self.year = None #Sidereal length of year
         self.eccentricity = None # Eccentricity
@@ -49,8 +49,8 @@ class Planet:
         self.Tsbar = None #Mean surface temperature
         self.Tsmax = None #Maximum surface temperature
 
-#----------------------------------------------------       
-Mercury = Planet()        
+#----------------------------------------------------
+Mercury = Planet()
 Mercury.name = 'Mercury' #Name of the planet
 Mercury.a = 2.4397e6 #Mean radius of planet
 Mercury.g = 3.70 #Surface gravitational acceleration
@@ -67,7 +67,7 @@ Mercury.Lequinox = None #Longitude of equinox (deg)
 Mercury.Tsbar = 440. #Mean surface temperature
 Mercury.Tsmax = 725. #Maximum surface temperature
 
-#----------------------------------------------------        
+#----------------------------------------------------
 Venus = Planet()
 Venus.name = 'Venus' #Name of the planet
 Venus.a = 6.0518e6 #Mean radius of planet
@@ -85,7 +85,7 @@ Venus.Lequinox = None #Longitude of equinox (deg)
 Venus.Tsbar = 737. #Mean surface temperature
 Venus.Tsmax = 737. #Maximum surface temperature
 
-#----------------------------------------------------        
+#----------------------------------------------------
 Earth = Planet()
 Earth.name = 'Earth' #Name of the planet
 Earth.a = 6.371e6 #Mean radius of planet
@@ -103,7 +103,7 @@ Earth.Lequinox = None #Longitude of equinox (deg)
 Earth.Tsbar = 288. #Mean surface temperature
 Earth.Tsmax = None #Maximum surface temperature
 
-#----------------------------------------------------        
+#----------------------------------------------------
 Mars = Planet()
 Mars.name = 'Mars' #Name of the planet
 Mars.a = 3.390e6 #Mean radius of planet
@@ -121,7 +121,7 @@ Mars.Lequinox = None #Longitude of equinox (deg)
 Mars.Tsbar = 210. #Mean surface temperature
 Mars.Tsmax = 295. #Maximum surface temperature
 
-#----------------------------------------------------        
+#----------------------------------------------------
 Jupiter = Planet()
 Jupiter.name = 'Jupiter' #Name of the planet
 Jupiter.a = 69.911e6 #Mean radius of planet
@@ -139,7 +139,7 @@ Jupiter.Lequinox = None #Longitude of equinox (deg)
 Jupiter.Tsbar = 165. #Mean surface temperature
 Jupiter.Tsmax = None #Maximum surface temperature
 
-#----------------------------------------------------        
+#----------------------------------------------------
 Saturn = Planet()
 Saturn.name = 'Saturn' #Name of the planet
 Saturn.a = 58.232e6 #Mean radius of planet
@@ -157,7 +157,7 @@ Saturn.Lequinox = None #Longitude of equinox (deg)
 Saturn.Tsbar = 134. #Mean surface temperature
 Saturn.Tsmax = None #Maximum surface temperature
 
-#----------------------------------------------------        
+#----------------------------------------------------
 Uranus = Planet()
 Uranus.name = 'Uranus' #Name of the planet
 Uranus.a = 25.362e6 #Mean radius of planet
@@ -176,7 +176,7 @@ Uranus.Tsbar = 76. #Mean surface temperature
 Uranus.Tsmax = None #Maximum surface temperature
 
 
-#----------------------------------------------------        
+#----------------------------------------------------
 Neptune = Planet()
 Neptune.name = 'Neptune' #Name of the planet
 Neptune.a = 26.624e6 #Mean radius of planet
@@ -194,7 +194,7 @@ Neptune.Lequinox = None #Longitude of equinox (deg)
 Neptune.Tsbar = 72. #Mean surface temperature
 Neptune.Tsmax = None #Maximum surface temperature
 
-#----------------------------------------------------        
+#----------------------------------------------------
 Pluto = Planet()
 Pluto.name = 'Pluto' #Name of the planet
 Pluto.a = 1.195e6 #Mean radius of planet
@@ -216,7 +216,7 @@ Pluto.Tsmax = None #Maximum surface temperature
 
 #Selected moons
 
-#----------------------------------------------------        
+#----------------------------------------------------
 Moon = Planet()
 Moon.name = 'Moon' #Name of the planet
 Moon.a = 1.737e6 #Mean radius of planet
@@ -241,7 +241,7 @@ Titan.a = 2.575e6 #Mean radius of planet
 Titan.g = 1.35 #Surface gravitational acceleration
 Titan.L = Saturn.L #Annual mean solar constant (current)
 Titan.albedo = .21 #Bond albedo (Not yet updated from Cassini)
-#        
+#
 Titan.rsm = None #Semi-major axis
 Titan.year = Saturn.year #Sidereal length of year
 Titan.eccentricity = Saturn.eccentricity # Eccentricity ABOUT SUN
@@ -260,7 +260,7 @@ Europa.a = 1.560e6 #Mean radius of planet
 Europa.g = 1.31 #Surface gravitational acceleration
 Europa.L = Jupiter.L #Annual mean solar constant (current)
 Europa.albedo = .67 #Bond albedo
-#        
+#
 Europa.rsm = Jupiter.rsm #Semi-major axis
 Europa.year = Jupiter.year #Sidereal length of year
 Europa.eccentricity = Jupiter.eccentricity # Eccentricity
@@ -277,7 +277,7 @@ Triton.a = 2.7068e6/2. #Mean radius of planet
 Triton.g = .78 #Surface gravitational acceleration
 Triton.L = Neptune.L #Annual mean solar constant (current)
 Triton.albedo = .76 #Bond albedo
-#        
+#
 Triton.rsm = Neptune.rsm #Semi-major axis
 Triton.year = Neptune.year #Sidereal length of year
 Triton.eccentricity = Neptune.eccentricity # Eccentricity about Sun
@@ -293,5 +293,3 @@ Triton.Tsbar = 34.5 #Mean surface temperature
                     #This is probably a computed blackbody
                     #temperature, rather than an observation
 Triton.Tsmax = None #Maximum surface temperature
-
-

@@ -35,7 +35,7 @@ Channel: #interior-atmosphere
 * nctools.py - Some useful functions for netCDF
 * phys.py - Constants
 * planets.py - Planet-specific constants
-* profile.* - 
+* profile.* -
 * readme.md - This file
 * surfaceT.txt - Surface temperature form interior model, coupler-file
 
@@ -64,5 +64,3 @@ Channel: #interior-atmosphere
 
 1. Run code:
     $ python RadInteriorCoupler.py
-
-

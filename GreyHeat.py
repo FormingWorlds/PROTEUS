@@ -102,10 +102,3 @@ PressureBroadening = True
 #Gravity and cp (for diminensionalization)
 g = 10.
 cp = 1000.
-
-
-
-
-
-
-
