@@ -8,7 +8,7 @@ import numpy as np
 import SocRadConv
 
 # placeholder, interior code will produce surfaceT
-surfaceT = 300.0*np.ones(1)  # interior code goes here
+surfaceT = 2800.0*np.ones(1)  # interior code goes here
 np.savetxt('surfaceT.txt', surfaceT)
 
 # load in surface temperature

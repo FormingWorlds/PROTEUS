@@ -25,8 +25,8 @@ def radCompSoc(atm):
 
     templ_list = np.interp(atm.pl[:],atm.p[:],atm.temp[:])
     temp_list =  (templ_list[1:] + templ_list[:-1]) / 2
-    pres_list = atm.p[:]
-    presl_list = atm.pl[:]
+    pres_list = 100.0*atm.p[:]
+    presl_list = 100.0*atm.pl[:]
 
 
     # CO2 mixing ratio profile
@@ -37,7 +37,7 @@ def radCompSoc(atm):
 
     # Write single values
     t_surf = atm.ts
-    p_surf=atm.p[-1]
+    p_surf = 100.0*atm.p[-1]
     solar_zenith_angle = 0.0
     solar_toa = 1370.
 
@@ -52,7 +52,8 @@ def radCompSoc(atm):
     nctools.ncout3d('profile.tl',0,0,presl_list,templ_list,'tl',longname="Temperature",units='K')
     nctools.ncout3d('profile.p',0,0,pres_list,pres_list,'p',longname="Pressure",units='PA')
     nctools.ncout3d('profile.co2',0,0,pres_list,co2_mr_list,'co2',longname="CO2",units='PPMV')
-    nctools.ncout3d('profile.q',0,0,pres_list,q_mr_list,'co2',longname="q",units='PPMV')
+    nctools.ncout3d('profile.q',0,0,pres_list,q_mr_list,'q',longname="q",units='PPMV')
+#    nctools.ncout3d('profile.h2o',0,0,pres_list,q_mr_list,'h2o',longname="h2o",units='PPMV')
 
 
     basename = 'profile'
@@ -61,7 +62,7 @@ def radCompSoc(atm):
 
     seq4 = ("Cl_run_cdf -B", basename,"-s "+path_to_socrates+"/data/spectra/ga7/sp_sw_ga7 -R 1 6 -ch 6 -S -g 2 -C 5")
     seq5 = ("fmove", basename,"currentsw")
-    seq6 = ("Cl_run_cdf -B", basename,"-s "+path_to_socrates+"/data/spectra/ga7/sp_lw_ga7 -R 1 9 -ch 9 -I -g 2 -C 5")
+    seq6 = ("Cl_run_cdf -B", basename,"-s sp_spider_3000K_300 -R 1 300 -ch 300 -I -g 2 -C 5")
     seq7 = ("fmove", basename,"currentlw")
 
 
@@ -117,5 +118,6 @@ def radCompSoc(atm):
 
     # Sum LW flux over all bands
     atm.LW_flux_up = np.sum(uflxlw[:,:],axis=0)[:,0,0]
+    atm.LW_spectral_flux_up = uflxlw[:,:,0,0]
 
     return atm
