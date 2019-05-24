@@ -21,7 +21,7 @@ def surf_Planck_nu(atm):
         nu = atm.band_centres[i]
         B[i] = (c1*nu**3 / (np.exp(c2*nu/atm.ts)-1))
 
-    B = 0.24*4*np.pi*B * atm.band_widths / 1000.0
+    B = B * atm.band_widths/1000.0
     return B
 
 def RadConvEqm(Tg):
@@ -46,13 +46,13 @@ def RadConvEqm(Tg):
     atm.ts = Tg
     atm.Rcp = 2./7.
     atm.temp = atm.ts*(atm.p/atm.p[-1])**atm.Rcp  #Initialize on an adiabat
-    atm.temp  = np.where(atm.temp<180.,180,atm.temp)
+    atm.temp  = np.where(atm.temp<atm.ts/2.,atm.ts/2.,atm.temp)
     atm.n_species = 2
 
     # Water vapour
-    atm.mixing_ratios[0] = 3.0*1.e-5
+    atm.mixing_ratios[0] = 1.e-5
     # CO2
-    atm.mixing_ratios[1] = 3.0*1.e-5
+    atm.mixing_ratios[1] = 1.e-5
 
 
     # Initialise previous OLR and TOA heating to zero
@@ -89,19 +89,21 @@ def RadConvEqm(Tg):
             #print("OLR change " + str(atm.LW_flux_up[-1]-PrevOLR))
             print("Max heating " + str(np.max(atm.total_heating)))
             #print("Max dT " + str(abs(np.max(atm.temp-PrevTemp[:]))))
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10,4))
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15,7))
             ax1.semilogy(atm.temp,atm.p)
             ax1.invert_yaxis()
             ax1.set_xlabel('Temperature')
             ax1.set_ylabel('Pressure')
             ax2.plot(atm.band_centres,atm.LW_spectral_flux_up[:,0]/atm.band_widths,'k')
-            ax2.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths,'k--')
-            ax2.set_xlim([0,25000])
+#            ax2.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths,'k--')
+            ax2.set_xlim([0,8*atm.ts])
             ax2.set_ylabel('Spectral Flux')
             ax2.set_xlabel('Wavenumber')
             ax2.set_title('Spectral OLR')
             plt.show()
             plt.savefig('tp.png')
+            plt.close(fig)
+            print("OLR = " + str(PrevOLR))
 
         # Reduce timestep if heating not converging
         if abs(np.max(atm.temp-PrevTemp[:])) < 0.05 or abs(atm.temp[0]-atm.temp[1]) > 3.0:
@@ -114,7 +116,7 @@ def RadConvEqm(Tg):
            #print(PrevTemp[:]-atm.temp)
            break    # break here
 
-        PrevOLR = atm.LW_flux_up[-1]
+        PrevOLR = atm.LW_flux_up[0]
         PrevMaxHeat = abs(np.max(atm.total_heating))
         PrevTemp[:] = atm.temp[:]
 
