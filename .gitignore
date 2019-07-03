@@ -6,10 +6,6 @@
 ############
 *.txt
 
-# .json files
-###########
-*.json
-
 # Socrates source
 #################
 /socrates/socrates_1806/
@@ -23,9 +19,13 @@ radiation_code.lock
 
 # misc
 ######
+*.png
 Tprofile.pdf
 .DS_Store
 __pycache__/
 socrates/socrates_main
+output
 mylog.log
 atmosphere.pdf
+volatiles_out.dat
+surfaceT.dat

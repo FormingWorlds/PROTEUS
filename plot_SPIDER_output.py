@@ -209,7 +209,7 @@ def plot_atmosphere():
 def main():
 
     plot_atmosphere()
-    plt.show()
+    # plt.show()
 
 #====================================================================
 
