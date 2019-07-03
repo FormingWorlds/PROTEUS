@@ -30,9 +30,9 @@ class atmos:
 		self.n_species = n_absorbing_species
 		self.mixing_ratios = np.zeros([self.n_species,self.nlev])
 		self.fluxes = self.atmos_fluxes(self.nlev)
-                self.bands = np.concatenate((np.arange(0,3000,20),np.arange(3000,9000,50),np.arange(9000,24500,500)))
-                self.band_centres = (self.bands[1:] + self.bands[:-1]) / 2
-                self.band_widths = np.diff(self.bands)
+		self.bands = np.concatenate((np.arange(0,3000,20),np.arange(3000,9000,50),np.arange(9000,24500,500)))
+		self.band_centres = (self.bands[1:] + self.bands[:-1]) / 2
+		self.band_widths = np.diff(self.bands)
 
 	class atmos_fluxes:
 		'''

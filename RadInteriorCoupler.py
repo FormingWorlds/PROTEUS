@@ -10,6 +10,7 @@ import ReadInterior
 import subprocess
 import glob
 import os
+import math
 from natsort import natsorted #https://pypi.python.org/pypi/natsort
 
 # SPIDER start input options
@@ -27,7 +28,7 @@ start_condition     = "1"            # 1: Start from beginning, 2: Restart from 
 
 # Total runtime
 time_current = 0
-time_max     = 1000000
+time_goal     = 1000000
 
 # Start SPIDER to generate first output file
 call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", "1", "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-nstepsmacro", "0", "-dtmacro", "1" ]
@@ -37,7 +38,7 @@ subprocess.call(call_sequence)
 # Set restart flag
 start_condition     = "2"
 
-while time_current < time_max:
+while time_current < time_goal:
 
     # SPIDER restart call sequence
     call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro ]
@@ -74,3 +75,7 @@ while time_current < time_max:
 
     # Set to str for subprocess
     heat_flux = str(heat_flux)
+
+    # Reset number of computing steps to reach time_goal
+    dtime       = time_goal - time_current
+    nstepsmacro = str( math.ceil( dtime / float(dtmacro) ) )
