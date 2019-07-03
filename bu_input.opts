@@ -106,8 +106,8 @@
 # eddy diffusivity
 # if negative, this value is adopted (units m^2/s)
 # if positive, this value is used to scale the internally calculated eddy diffusivity
--eddy_diffusivity_thermal 1.0
--eddy_diffusivity_chemical 1.0
+-eddy_diffusivity_thermal 1.0 
+-eddy_diffusivity_chemical 1.0 
 
 # material properties
 -cond_sol 4.0 # conductivity of solid
@@ -129,7 +129,7 @@
 # [2] heat flux (prescribe value using core_bc_value)
 # [3] entropy
 -CORE_BC 1
--core_bc_value 0.0
+-core_bc_value 0.0 
 
 # core parameters for CORE_BC=1
 -coresize 0.55 # fractional radius of core-mantle boundary
@@ -174,13 +174,14 @@
 
 # parameters relating to CO2 volatile
 #-CO2_initial 0.0 # ppm
-#-CO2_initial 1000.0 # ppm, Elkins-Tanton (2008) case 1
--CO2_initial 100.0 # ppm, Elkins-Tanton (2008) case 2
+#-CO2_initial 1000.0 # ppm, Elkins-Tanton (2008) case 1 
+-CO2_initial 100.0 # ppm, Elkins-Tanton (2008) case 2 
 #-CO2_initial 6000.0 # ppm, Elkins-Tanton (2008) case 3
 -CO2_kdist 5.0E-4 # distribution coefficient between solid and melt (non-dimensional)
 -CO2_kabs 0.05 # absorption (m^2/kg)
 -CO2_henry 4.4E-6 # ppm/Pa (Lebrun et al., 2013)
 -CO2_henry_pow 1.0 # power for Henry's law (Lebrun et al., 2013)
+-CO2_molar_mass 0.04401 # kg/mol
 
 # parameters relating to H2O volatile
 #-H2O_initial 0.0 # ppm
@@ -191,6 +192,7 @@
 -H2O_kabs 0.01 # absorption (m^2/kg)
 -H2O_henry 6.8E-2 # ppm/Pa (Lebrun et al., 2013)
 -H2O_henry_pow 1.4285714285714286 # Power for Henry's law (1.0/0.7) (Lebrun et al., 2013)
+-H2O_molar_mass 0.01801528 # kg/mol
 
 # internal heat sources
 # Al26 (extinct at present day)
@@ -209,7 +211,7 @@
 
 # Fe60 (extinct at present day)
 -fe60_t0 0.0 # years
--fe60_abundance 0.0
+-fe60_abundance 0.0 
 -fe_concentration 0.0 # ppm
 -fe60_heat_production 3.6579E-2 # W/kg (Ruedas, 2017)
 -fe60_half_life 2.62E6 # years (Ruedas, 2017)
