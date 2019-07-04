@@ -11,11 +11,11 @@ import numpy as np
 # logger = su.get_my_logger(__name__)
 
 #====================================================================
-def write_surface_quantitites():
+def write_surface_quantitites(output_dir):
 
     # logger.info( 'building atmosphere' )
 
-    sim_times = su.get_all_output_times()  # yr
+    sim_times = su.get_all_output_times(output_dir)  # yr
 
     keys_t = ( ('atmosphere','mass_liquid'),
                ('atmosphere','mass_solid'),
@@ -64,13 +64,9 @@ def write_surface_quantitites():
     phi_global = data_a[15,:]               # global melt fraction
     Fatm = data_a[16,:]
 
-    # output surface
-    out_a = np.column_stack( (sim_times, temperature_surface_a ) )
-    np.savetxt( 'surfaceT.dat', out_a )
-
-    # output volatiles
-    out_volatiles = np.column_stack( (sim_times, H2O_atmos_kg_a, H2O_atmos_kg_a ) )
-    np.savetxt( 'volatiles_out.dat', out_volatiles )
+    # output surface + atmosphere quantities
+    out_a = np.column_stack( (sim_times, temperature_surface_a, H2O_atmos_kg_a, CO2_atmos_kg_a ) )
+    np.savetxt( output_dir+'/surface_atmosphere.dat', out_a )
 
 #
 # #====================================================================

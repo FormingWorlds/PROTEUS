@@ -183,7 +183,7 @@ def plot_atmosphere():
     if 1:
         title = r'\textbf{(d) Fatm}'
         ylabel = '$F_{atm}$'
-        yticks = (1.0E3,1.0E4,1.0E5)
+        yticks = (1.0E2,1.0E3,1.0E4,1.0E5,1.0E6,1.0E7)
         h1, = ax3.loglog( timeMyr_a, Fatm,'k', )
         fig_o.set_myaxes( ax3, title=title, xlabel=xlabel, ylabel=ylabel, yticks=yticks)#, xticks=xticks )
         ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )

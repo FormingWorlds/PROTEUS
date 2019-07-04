@@ -74,6 +74,7 @@
 -rhoSol_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/density_solid.dat
 -tempSol_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/temperature_solid.dat
 
+
 # mixing length
 # [1] is conventional, i.e. distance from the nearest boundary
 #     which is either the surface or core-mantle boundary
@@ -106,8 +107,8 @@
 # eddy diffusivity
 # if negative, this value is adopted (units m^2/s)
 # if positive, this value is used to scale the internally calculated eddy diffusivity
--eddy_diffusivity_thermal 1.0 
--eddy_diffusivity_chemical 1.0 
+-eddy_diffusivity_thermal 1.0
+-eddy_diffusivity_chemical 1.0
 
 # material properties
 -cond_sol 4.0 # conductivity of solid
@@ -129,7 +130,7 @@
 # [2] heat flux (prescribe value using core_bc_value)
 # [3] entropy
 -CORE_BC 1
--core_bc_value 0.0 
+-core_bc_value 0.0
 
 # core parameters for CORE_BC=1
 -coresize 0.55 # fractional radius of core-mantle boundary
@@ -174,8 +175,8 @@
 
 # parameters relating to CO2 volatile
 #-CO2_initial 0.0 # ppm
-#-CO2_initial 1000.0 # ppm, Elkins-Tanton (2008) case 1 
--CO2_initial 100.0 # ppm, Elkins-Tanton (2008) case 2 
+#-CO2_initial 1000.0 # ppm, Elkins-Tanton (2008) case 1
+-CO2_initial 100.0 # ppm, Elkins-Tanton (2008) case 2
 #-CO2_initial 6000.0 # ppm, Elkins-Tanton (2008) case 3
 -CO2_kdist 5.0E-4 # distribution coefficient between solid and melt (non-dimensional)
 -CO2_kabs 0.05 # absorption (m^2/kg)
@@ -211,7 +212,7 @@
 
 # Fe60 (extinct at present day)
 -fe60_t0 0.0 # years
--fe60_abundance 0.0 
+-fe60_abundance 0.0
 -fe_concentration 0.0 # ppm
 -fe60_heat_production 3.6579E-2 # W/kg (Ruedas, 2017)
 -fe60_half_life 2.62E6 # years (Ruedas, 2017)
@@ -229,6 +230,7 @@
 -u_concentration 0.031 # ppm (Turcotte & Schubert, 2014, p. 170)
 -u235_heat_production 5.68402E-4 # W/kg (Ruedas, 2017)
 -u235_half_life 704E6 # years (Ruedas, 2017)
+
 # U238
 -u238_t0 4.55E9 # years
 -u238_abundance 0.9927955 # (238U/U) Ruedas (2017)

@@ -4,7 +4,6 @@
 
 import numpy as np
 
-
 surface_pressure = 1.e3 # Surface pressure in mbar
 top_pressure = 5.0
 n_vertical_levels = 50

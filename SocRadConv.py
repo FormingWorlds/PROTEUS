@@ -24,7 +24,7 @@ def surf_Planck_nu(atm):
     B = B * atm.band_widths/1000.0
     return B
 
-def RadConvEqm(Tg):
+def RadConvEqm(output_dir, time_current, Tg):
     #--------------------Set radmodel options-------------------
     #---Instantiate the radiation model---
 
@@ -78,8 +78,8 @@ def RadConvEqm(Tg):
                 plt.figure(figsize=(7,4))
                 plt.semilogy(atm.temp,atm.p)
                 plt.gca().invert_yaxis()
-                plt.ylabel('Pressure (mb)')
-                plt.xlabel('Temperature (K)')
+                plt.ylabel('Pressure [mb]')
+                plt.xlabel('Temperature [K]')
                 plt.gca().xaxis.label.set_color('white')
                 plt.tick_params(axis='x', colors='white')
                 plt.gca().yaxis.label.set_color('white')
@@ -92,8 +92,8 @@ def RadConvEqm(Tg):
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15,7))
             ax1.semilogy(atm.temp,atm.p)
             ax1.invert_yaxis()
-            ax1.set_xlabel('Temperature')
-            ax1.set_ylabel('Pressure')
+            ax1.set_xlabel('Temperature [K]')
+            ax1.set_ylabel('Pressure [mb]')
             ax2.plot(atm.band_centres,atm.LW_spectral_flux_up[:,0]/atm.band_widths,'k')
 #            ax2.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths,'k--')
             ax2.set_xlim([0,8*atm.ts])
@@ -101,7 +101,7 @@ def RadConvEqm(Tg):
             ax2.set_xlabel('Wavenumber')
             ax2.set_title('Spectral OLR')
             # plt.show()
-            plt.savefig('tp.png')
+            plt.savefig(output_dir+'/TP_profile_'+str(round(time_current))+'.pdf', bbox_inches="tight")
             plt.close(fig)
             print("OLR = " + str(PrevOLR))
 
@@ -127,9 +127,9 @@ def RadConvEqm(Tg):
     plt.figure()
     plt.semilogy(atm.temp,atm.p)
     plt.gca().invert_yaxis()
-    plt.ylabel('Pressure (mb)')
-    plt.xlabel('Temperature (K)')
-    plt.savefig('Tprofile.pdf',bb_inches='tight')
+    plt.ylabel('Pressure [mb]')
+    plt.xlabel('Temperature [K]')
+    plt.savefig(output_dir+'/T_profile_'+str(round(time_current))+'.pdf', bbox_inches="tight")
 
     return atm.LW_flux_up[-1]
 
