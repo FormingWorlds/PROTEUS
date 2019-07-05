@@ -8,10 +8,12 @@ import SocRadConv
 import ReadInterior
 import subprocess
 import glob
-import os
+import os, shutil
 import math
 from natsort import natsorted #https://pypi.python.org/pypi/natsort
 import coupler_utils
+import plot_SPIDER_output
+import datetime
 
 # SPIDER start input options
 ic_filename         = "0.json"       # JSON file to read in initial condition
@@ -24,8 +26,7 @@ dtmacro             = "50000"        # delta time per macrostep to advance by, i
 heat_flux           = "1.0E4"        # prescribed start surface heat flux (e.g., 10^4 W/m^2)
 
 # Define output output output directory
-output_dir = coupler_utils.make_output_dir() #os.getcwd()+"/output/"
-print("===> Output dir for this run:", output_dir)
+output_dir = os.getcwd()+"/output/"
 
 # Restart flag
 start_condition     = "1"            # 1: Start from beginning, 2: Restart from file "ic_filename"
@@ -37,23 +38,34 @@ time_target  = 1000000
 # Count SPIDER-SOCRATES iterations
 pingpong_no = 0
 
+# Inform about start of runtime
+print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+print("::: START COUPLER RUN –", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), ":::")
+print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+
 # Initialize SPIDER to generate first output file
 if start_condition == "1":
 
-    # # Reset heat flux and surface history and delete old SPIDER output
+    # Reset heat flux and surface history and delete old SPIDER output
     # open('OLRFlux.dat', 'w').close()
     # open('surface_atmosphere.dat', 'w').close()
-    # print("Remove old output files:", end =" ")
-    # for file in natsorted(glob.glob("./output_dir/*.*")):
-    #     os.remove(file)
-    #     print(os.path.basename(file), end =" ")
-    # print("... Done!")
+    print("Remove old output files:", end =" ")
+    for file in natsorted(glob.glob("./output_dir/*.*")):
+        os.remove(file)
+        print(os.path.basename(file), end =" ")
+    print("==> Done.")
 
     # SPIDER initialization call sequence
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", "1", "-outputDirectory", output_dir, "-ic_filename", ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-nstepsmacro", "0", "-dtmacro", "1" ]
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", "1", "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-nstepsmacro", "0", "-dtmacro", "1" ]
+    # , "-outputDirectory", output_dir
 
     # Runtime info
-    print("SPIDER run flags:", call_sequence)
+    print("_______________________________")
+    print("SPIDER run flags:", end =" ")
+    for flag in call_sequence:
+        print(flag, end =" ")
+    print()
+    print("_______________________________")
 
     # Call SPIDER
     subprocess.call(call_sequence)
@@ -79,7 +91,7 @@ while time_current < time_target:
 
     print(time_current, surfaceT_current)
 
-    print("::::::::::::::::::::: SOCRATES :::::::::::::::::::::")
+    print("::::::::::::::::::::: SOCRATES :::::::::::::::::::::", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
     heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current)) # W/m^2
@@ -94,6 +106,7 @@ while time_current < time_target:
 
     # Print current values
     print("_______________________________")
+    print("      ==> RUNTIME INFO <==")
     print("Time [Myr]:", str(float(time_current)/1e6))
     print ("T_surf [K]:", surfaceT_current)
     print ("H2O [kg]:", h2o_current)
@@ -113,15 +126,32 @@ while time_current < time_target:
     pingpong_no += 1
 
     # SPIDER restart call sequence
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-outputDirectory", output_dir, "-ic_filename", ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro ]
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro ]
+    # , "-outputDirectory", output_dir
 
     # Runtime info
-    print("SPIDER run flags:", call_sequence)
+    print("SPIDER run flags:", end =" ")
+    for flag in call_sequence:
+        print(flag, end =" ")
+    print()
 
     # Restart SPIDER
     subprocess.call(call_sequence)
 
     ### / ping-pong
+
+# Plot atmosphere conditions throughout run for analysis
+plot_SPIDER_output.plot_atmosphere(output_dir)
+
+# Copy files to separate folder
+sim_dir = coupler_utils.make_output_dir() #
+print("===> Copy files to separate dir for this run to:", sim_dir)
+shutil.copy(output_dir+"*.*", )
+shutil.copy(os.getcwd()+"bu_input.opts", sim_dir+"/"+"bu_input.opts")
+for file in natsorted(glob.glob(output_dir+"*.*")):
+    shutil.copy(file, sim_dir+"/"+file)
+    print(os.path.basename(file), end =" ")
+print("===> Done!")
 
 # Print final statement
 print("########## Target time reached, final values:")

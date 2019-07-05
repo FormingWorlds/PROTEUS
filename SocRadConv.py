@@ -120,19 +120,15 @@ def RadConvEqm(output_dir, time_current, Tg):
         PrevMaxHeat = abs(np.max(atm.total_heating))
         PrevTemp[:] = atm.temp[:]
 
-
-
-
-    # plot equilibrium temperature profile
-    plt.figure()
-    plt.semilogy(atm.temp,atm.p)
-    plt.gca().invert_yaxis()
-    plt.ylabel('Pressure [mb]')
-    plt.xlabel('Temperature [K]')
-    plt.savefig(output_dir+'/T_profile_'+str(round(time_current))+'.pdf', bbox_inches="tight")
+    # # plot equilibrium temperature profile
+    # plt.figure()
+    # plt.semilogy(atm.temp,atm.p)
+    # plt.gca().invert_yaxis()
+    # plt.ylabel('Pressure [mb]')
+    # plt.xlabel('Temperature [K]')
+    # plt.savefig(output_dir+'/T_profile_'+str(round(time_current))+'.pdf', bbox_inches="tight")
 
     return atm.LW_flux_up[-1]
-
 
 
 #Dry adjustment routine.

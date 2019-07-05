@@ -7,17 +7,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import matplotlib.ticker as ticker
+import argparse
 
 logger = su.get_my_logger(__name__)
 
+# Output dir, optional argument: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
+parser = argparse.ArgumentParser(description='Define file output directory.')
+parser.add_argument('--dir', default="output", help='Provide path to output directory.' )
+
 #====================================================================
-def plot_atmosphere():
+def plot_atmosphere( output_dir='output' ):
 
     logger.info( 'building atmosphere' )
 
     width = 4.7747 #* 3.0/2.0
     height = 4.7747 #/ 2.0
-    fig_o = su.FigureData( 2, 2, width, height, 'atmosphere', units='Myr' )
+    fig_o = su.FigureData( 2, 2, width, height, output_dir+'/atmosphere', units='Myr' )
     fig_o.fig.subplots_adjust(wspace=0.4,hspace=0.5)
 
     ax0 = fig_o.ax[0][0]
@@ -128,9 +133,9 @@ def plot_atmosphere():
         ax0.xaxis.set_minor_formatter(ticker.NullFormatter())
         ax0.set_xlim( *xlim )
         ax0.set_ylim( 0, 350 )
-        ax0.yaxis.set_label_coords(-0.15,0.5)
+        ax0.yaxis.set_label_coords(-0.15,0.40)
         ax0b.set_ylabel( r'$\phi_g$', rotation=0 )
-        ax0b.yaxis.set_label_coords(1.1,0.525)
+        ax0b.yaxis.set_label_coords(1.1,0.45)
 
     ##########
     # figure b
@@ -208,7 +213,10 @@ def plot_atmosphere():
 #====================================================================
 def main():
 
-    plot_atmosphere()
+    # Read optional argument from console to provide output dir
+    output_dir = parser.parse_args().dir
+
+    plot_atmosphere( output_dir )
     # plt.show()
 
 #====================================================================
