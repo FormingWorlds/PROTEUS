@@ -13,10 +13,10 @@ import math
 from natsort import natsorted #https://pypi.python.org/pypi/natsort
 import coupler_utils
 import plot_SPIDER_output
-import datetime
+from datetime import datetime
 
 # SPIDER start input options
-ic_filename         = "0.json"       # JSON file to read in initial condition
+ic_filename         = "981346.json"       # JSON file to read in initial condition
 SURFACE_BC          = "4"            # 4: constant heat flux boundary condition
 SOLVE_FOR_VOLATILES = "1"            # track evolution of volatiles in interior/atmosphere reservoirs
 H2O_poststep_change = "0.05"         # fractional change in melt phase H2O concentration that triggers event
@@ -29,7 +29,7 @@ heat_flux           = "1.0E4"        # prescribed start surface heat flux (e.g.,
 output_dir = os.getcwd()+"/output/"
 
 # Restart flag
-start_condition     = "1"            # 1: Start from beginning, 2: Restart from file "ic_filename"
+start_condition     = "2"            # 1: Start from beginning, 2: Restart from file "ic_filename"
 
 # Total runtime
 time_current = 0
@@ -37,11 +37,13 @@ time_target  = 1000000
 
 # Count SPIDER-SOCRATES iterations
 pingpong_no = 0
+if start_condition == "2":
+    pingpong_no += 1
 
 # Inform about start of runtime
-print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-print("::: START COUPLER RUN –", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), ":::")
-print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+print(":::::::::::::: START COUPLER RUN –", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), ":::::::::::::::")
+print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
 # Initialize SPIDER to generate first output file
 if start_condition == "1":
@@ -80,7 +82,7 @@ while time_current < time_target:
     ReadInterior.write_surface_quantitites(output_dir)
 
     # Load surface temperature and volatiles released, to be fed to SOCRATES
-    surface_quantities  = np.loadtxt(output_dir+'/surface_atmosphere.dat')
+    surface_quantities  = np.loadtxt(output_dir+'surface_atmosphere.dat')
     if pingpong_no > 0: # After first iteration more than one entry
         surface_quantities = surface_quantities[-1]
     print(len(surface_quantities), surface_quantities)
@@ -91,18 +93,18 @@ while time_current < time_target:
 
     print(time_current, surfaceT_current)
 
-    print("::::::::::::::::::::: SOCRATES :::::::::::::::::::::", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print("::::::::::::::::::: START SOCRATES -", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "::::::::")
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
     heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current)) # W/m^2
 
     # Save OLR flux to be fed to SPIDER
-    with open(output_dir+"/OLRFlux.dat", "a") as f:
+    with open(output_dir+"OLRFlux.dat", "a") as f:
         f.write(str(float(time_current))+" "+str(float(heat_flux))+"\n")
         f.close()
 
     # Find last file for SPIDER restart
-    ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"./*.json")])[-1]
+    ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
 
     # Print current values
     print("_______________________________")
@@ -146,12 +148,11 @@ plot_SPIDER_output.plot_atmosphere(output_dir)
 # Copy files to separate folder
 sim_dir = coupler_utils.make_output_dir() #
 print("===> Copy files to separate dir for this run to:", sim_dir)
-shutil.copy(output_dir+"*.*", )
-shutil.copy(os.getcwd()+"bu_input.opts", sim_dir+"/"+"bu_input.opts")
+shutil.copy(os.getcwd()+"/bu_input.opts", sim_dir+"bu_input.opts")
 for file in natsorted(glob.glob(output_dir+"*.*")):
-    shutil.copy(file, sim_dir+"/"+file)
+    shutil.copy(file, sim_dir+os.path.basename(file))
     print(os.path.basename(file), end =" ")
-print("===> Done!")
+print("\n===> Done!")
 
 # Print final statement
 print("########## Target time reached, final values:")
