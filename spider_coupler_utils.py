@@ -338,7 +338,7 @@ class FigureData( object ):
             try:
                 cmap = plt.get_cmap( cmap )
             except ValueError:
-                cmap = plt.get_cmap('jet_r')
+                cmap = plt.get_cmap('roma')
             colors_l = [cmap(i) for i in np.linspace(0, 1, num)]
         dd['colors_l'] = colors_l
 

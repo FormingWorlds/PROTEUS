@@ -181,7 +181,7 @@ def plot_atmosphere( output_dir='output' ):
     #h5, = ax1.semilogx( timeMyr_a, mass_liquid_a / mass_mantle, 'k--', label='melt' )
     h1, = ax1.semilogx( timeMyr_a, (H2O_liquid_kg_a+H2O_solid_kg_a) / H2O_total_kg, lw=lw, color=blue, linestyle='-', label=r'H$_2$O interior' )
     h2, = ax1.semilogx( timeMyr_a, (CO2_liquid_kg_a+CO2_solid_kg_a) / CO2_total_kg, lw=lw, color=red, linestyle='-', label=r'CO$_2$ interior' )
-    fig_o.set_myaxes( ax1, title=title, ylabel='$X_{\mathrm{vol}}$') #, xlabel=xlabel,xticks=xticks )
+    fig_o.set_myaxes( ax1, title=title, ylabel='$X_{\mathrm{int}}$') #, xlabel=xlabel,xticks=xticks )
     ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
@@ -232,7 +232,7 @@ def plot_atmosphere( output_dir='output' ):
     title = r'(e) Atmospheric volatile mass fraction'
     h1, = ax4.semilogx( timeMyr_a, H2O_atmos_kg_a / H2O_total_kg, lw=lw, color=blue, linestyle='-', label=r'H$_2$O atmos')
     h2, = ax4.semilogx( timeMyr_a, CO2_atmos_kg_a / CO2_total_kg, lw=lw, color=red, linestyle='-', label=r'CO$_2$ atmos' )
-    fig_o.set_myaxes( ax4, title=title, ylabel='$X_\mathrm{vol}$') #, xlabel=xlabel,xticks=xticks )
+    fig_o.set_myaxes( ax4, title=title, ylabel='$X_\mathrm{atm}$') #, xlabel=xlabel,xticks=xticks )
     ax4.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
