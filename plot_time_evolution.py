@@ -1,15 +1,48 @@
 #!/usr/bin/env python
 
 import logging
-import spider_utils as su
+import spider_coupler_utils as su
 import matplotlib.transforms as transforms
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import matplotlib.ticker as ticker
 import argparse
+import matplotlib
+# import seaborn as sns
+# # https://seaborn.pydata.org/tutorial/aesthetics.html
+# sns.set_style("white")
 
 logger = su.get_my_logger(__name__)
+
+# Color definitions, https://chrisalbon.com/python/seaborn_color_palettes.html
+qgray       = "#768E95"
+qblue       = "#4283A9" # http://www.color-hex.com/color/4283a9
+qgreen      = "#62B4A9" # http://www.color-hex.com/color/62b4a9
+qred        = "#E6767A"
+qturq       = "#2EC0D1"
+qmagenta    = "#9A607F"
+qyellow     = "#EBB434"
+qgray_dark  = "#465559"
+qblue_dark  = "#274e65"
+qgreen_dark = "#3a6c65"
+qred_dark   = "#b85e61"
+qturq_dark  = "#2499a7"
+qmagenta_dark = "#4d303f"
+qyellow_dark  = "#a47d24"
+qgray_light  = "#acbbbf"
+qblue_light  = "#8db4cb"
+qgreen_light = "#a0d2cb"
+qred_light   = "#eb9194"
+qturq_light  = "#57ccda"
+qmagenta_light = "#c29fb2"
+qyellow_light = "#f1ca70"
+
+# Plot settings
+lw      = 2.5
+fscale  = 1.1
+fsize   = 18
+fs_title=18
 
 # Output dir, optional argument: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
 parser = argparse.ArgumentParser(description='Define file output directory.')
@@ -20,10 +53,10 @@ def plot_atmosphere( output_dir='output' ):
 
     logger.info( 'building atmosphere' )
 
-    width = 6.00 #* 3.0/2.0
-    height = 12.0 #/ 2.0
-    fig_o = su.FigureData( 6, 1, width, height, output_dir+'/time_evolution', units='yr' )
-    fig_o.fig.subplots_adjust(wspace=0.2,hspace=0.2)
+    width = 12.00 #* 3.0/2.0
+    height = 8.0 #/ 2.0
+    fig_o = su.FigureData( 3, 2, width, height, output_dir+'/time_evolution', units='yr' )
+    fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.2)
 
     # Subplot titles
     title_fs = 8
@@ -32,12 +65,16 @@ def plot_atmosphere( output_dir='output' ):
     title_ha="right"
     title_va="center"
 
-    ax0 = fig_o.ax[0]
-    ax1 = fig_o.ax[1]
-    ax2 = fig_o.ax[2]
-    ax3 = fig_o.ax[3]
-    ax4 = fig_o.ax[4]
-    ax5 = fig_o.ax[5]
+    fs_legend = 9
+
+    lw = 1.5
+
+    ax0 = fig_o.ax[0][0]
+    ax1 = fig_o.ax[1][0]
+    ax2 = fig_o.ax[2][0]
+    ax3 = fig_o.ax[0][1]
+    ax4 = fig_o.ax[1][1]
+    ax5 = fig_o.ax[2][1]
 
     fig_o.time = su.get_all_output_times()
     timeMyr_a = fig_o.time #* 1.0E-6 # Myrs
@@ -120,90 +157,118 @@ def plot_atmosphere( output_dir='output' ):
     ##########
     # figure a
     ##########
-    if 1:
-        title = r'\textbf{(a) Volatile partial pressure}'
-        ylabel = '$p_{\mathrm{vol}}$ (bar)'
-        trans = transforms.blended_transform_factory(
-            ax0.transData, ax0.transAxes)
-        #for cc, cont in enumerate(phi_cont_l):
-        #    ax0.axvline( phi_time_l[cc], ymin=0.05, ymax=0.7, color='0.25', linestyle=':' )
-        #    label = cont #int(cont*100) # as percent
-        #    ax0.text( phi_time_l[cc], 0.40, '{:2d}'.format(label), va='bottom', ha='center', rotation=90, bbox=dict(facecolor='white'), transform=trans )
-        #ax0.text( 0.1, 0.9, '$\phi (\%)$', ha='center', va='bottom', transform=ax0.transAxes )
-        h1, = ax0.semilogx( timeMyr_a, CO2_atmos_a, color=red, linestyle='-', label=r'CO$_2$')
-        h2, = ax0.semilogx( timeMyr_a, H2O_atmos_a, color=blue, linestyle='-', label=r'H$_2$O')
-        ax0b = ax0.twinx()
-        h3, = ax0b.semilogx( timeMyr_a, phi_global, color=black, linestyle='--', label=r'Melt, $\phi_g$')
-        handle_l = [h1,h2,h3]
-        fig_o.set_myaxes( ax0, ylabel=ylabel )#, xlabel=xlabel, xticks=xticks )
-        fig_o.set_mylegend( ax0, handle_l, loc='upper center', ncol=1 )
-        ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-        ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-        ax0.xaxis.set_minor_formatter(ticker.NullFormatter())
-        ax0.set_xlim( *xlim )
-        ax0.set_ylim( 0, 350 )
-        ax0.annotate(title, xy=title_xy, xycoords=title_xycoords, ha=title_ha, va=title_va, fontsize=title_fs)
-        ax0.yaxis.set_label_coords(-0.15,0.40)
-        ax0b.set_ylabel( r'$\phi_g$' ) # , rotation=0
-        ax0b.yaxis.set_label_coords(1.1,0.45)
+    title = r'(a) Surface temperature'
+    ylabel = '$T_\mathrm{s}$\n$(K)$'
+    yticks = [200, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000]#range(500,4001,500)
+    h1, = ax0.semilogx( timeMyr_a, temperature_surface_a, 'k-', lw=lw, label=r'Surface temp, $T_s$' )
+    #ax2b = ax2.twinx()
+    #h2, = ax2b.loglog( timeMyr_a, emissivity_a, 'k--', label=r'Emissivity, $\epsilon$' )
+    fig_o.set_myaxes( ax0, title=title, ylabel=ylabel, yticks=yticks)#, xlabel=xlabel )
+    ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
+    ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
+    ax0.xaxis.set_minor_formatter(ticker.NullFormatter())
+    ax0.set_xlim( *xlim )
+    ax0.yaxis.set_label_coords(-0.1,0.5)
+    #ax2.set_ylim( 1050, 1850 )
+    #ax2.set_xlim( 1E-5 , 1 )
+    ax0.set_ylim(200,4000)
+    # ax0.set_title('(a) Surface temperature', fontname='Arial', fontsize=fs_title)
 
     ##########
     # figure b
     ##########
-    if 1:
-        title = r'\textbf{(b) Reservoir mass fraction}'
-        #h5, = ax1.semilogx( timeMyr_a, mass_liquid_a / mass_mantle, 'k--', label='melt' )
-        h1, = ax1.semilogx( timeMyr_a, (CO2_liquid_kg_a+CO2_solid_kg_a) / CO2_total_kg, color=red, linestyle='-', label=r'CO$_2$ interior' )
-        h2, = ax1.semilogx( timeMyr_a, CO2_atmos_kg_a / CO2_total_kg, color=red, linestyle='--', label=r'CO$_2$ atmos' )
-        #h2b, = ax1.semilogx( timeMyr_a, CO2_escape_kg_a / CO2_total_kg, color=red, linestyle=':', label='Escape' )
-        h3, = ax1.semilogx( timeMyr_a, (H2O_liquid_kg_a+H2O_solid_kg_a) / H2O_total_kg, color=blue, linestyle='-', label=r'H$_2$O interior' )
-        h4, = ax1.semilogx( timeMyr_a, H2O_atmos_kg_a / H2O_total_kg, color=blue, linestyle='--', label=r'H$_2$O atmos')
-        #h4b, = ax1.semilogx( timeMyr_a, H2O_escape_kg_a / H2O_total_kg, color=blue, linestyle=':', label='Atmos' )
-        fig_o.set_myaxes( ax1, title=title, ylabel='$x$') #, xlabel=xlabel,xticks=xticks )
-        ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-        ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-        ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
-        ax1.set_xlim( *xlim )
-        handle_l = [h1,h2,h3,h4]#,h2b]
-        fig_o.set_mylegend( ax1, handle_l, loc='center left', ncol=1 )
-        ax1.yaxis.set_label_coords(-0.1,0.47)
+    title = r'(b) Interior volatile mass fraction'
+    #h5, = ax1.semilogx( timeMyr_a, mass_liquid_a / mass_mantle, 'k--', label='melt' )
+    h1, = ax1.semilogx( timeMyr_a, (H2O_liquid_kg_a+H2O_solid_kg_a) / H2O_total_kg, lw=lw, color=blue, linestyle='-', label=r'H$_2$O interior' )
+    h2, = ax1.semilogx( timeMyr_a, (CO2_liquid_kg_a+CO2_solid_kg_a) / CO2_total_kg, lw=lw, color=red, linestyle='-', label=r'CO$_2$ interior' )
+    fig_o.set_myaxes( ax1, title=title, ylabel='$X_{\mathrm{vol}}$') #, xlabel=xlabel,xticks=xticks )
+    ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
+    ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
+    ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
+    ax1.set_xlim( *xlim )
+    ax1.yaxis.set_label_coords(-0.1,0.5)
+    handles, labels = ax1.get_legend_handles_labels()
+    ax1.legend(handles, labels, loc='center left', ncol=1, frameon=0, fontsize=fs_legend)
+    # handle_l=[h1,h2]
+    # fig_o.set_mylegend( ax1, handle_l, loc='center left', ncol=1 , frameon=0)
 
     ##########
     # figure c
     ##########
-    title = r'\textbf{(c) Surface temp and emissivity}'
-    ylabel = '$T_s$ (K)'
-    yticks = range(500,4001,500)
-    h1, = ax2.semilogx( timeMyr_a, temperature_surface_a, 'k-', label=r'Surface temp, $T_s$' )
-    #ax2b = ax2.twinx()
-    #h2, = ax2b.loglog( timeMyr_a, emissivity_a, 'k--', label=r'Emissivity, $\epsilon$' )
-    fig_o.set_myaxes( ax2, title=title, ylabel=ylabel, yticks=yticks )#, xlabel=xlabel, xticks=xticks )
-    ax2.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-    ax2.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-    ax2.xaxis.set_minor_formatter(ticker.NullFormatter())
+    title = r'(c) Global mantle melt fraction'
+    ylabel = '$\phi_\mathrm{g}$'
+    trans = transforms.blended_transform_factory(
+        ax2.transData, ax2.transAxes)
+    h1, = ax2.semilogx( timeMyr_a, phi_global, color=black, linestyle='-', lw=lw, label=r'Melt, $\phi_g$')
+    # h2, = ax2.semilogx( timeMyr_a, mass_liquid_a / mass_mantle, 'k--', label='melt' )
+    fig_o.set_myaxes( ax2, title=title, xlabel=xlabel, ylabel=ylabel )#, xlabel=xlabel, xticks=xticks )
     ax2.set_xlim( *xlim )
-    ax2.yaxis.set_label_coords(-0.175,0.48)
-    #ax2.set_ylim( 1050, 1850 )
-    #ax2.set_xlim( 1E-5 , 1 )
-    ax2.set_ylim(200,4100)
-    #ax2b.set_ylim( 4E-4, 2E-3 )
-    handle_l = [h1,h2]
-    fig_o.set_mylegend( ax2, handle_l, loc='upper right', ncol=1 )
-    #ax2b.set_ylabel( r'$\epsilon$', rotation=0)
-    #ax2b.yaxis.set_label_coords(1.1,0.52)
+    ax2.set_ylim( 0, 1 )
+    # ax0.annotate(title, xy=title_xy, xycoords=title_xycoords, ha=title_ha, va=title_va, fontsize=title_fs)
+    ax2.yaxis.set_label_coords(-0.1,0.5)
+    # handles, labels = ax2.get_legend_handles_labels()
+    # ax2.legend(handles, labels, loc='center left', ncol=1, frameon=0)
 
     ##########
     # figure d
     ##########
-    if 1:
-        title = r'\textbf{(d) Fatm}'
-        ylabel = '$F_{atm}$'
-        yticks = (1.0E2,1.0E3,1.0E4,1.0E5,1.0E6,1.0E7)
-        h1, = ax3.loglog( timeMyr_a, Fatm,'k', )
-        fig_o.set_myaxes( ax3, title=title, ylabel=ylabel, yticks=yticks)#, xlabel=xlabel, xticks=xticks )
-        ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-        ax3.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-        ax3.set_xlim( *xlim )
+    title = r'(d) Atmospheric heat flux'
+    ylabel = '$F_\mathrm{atm}$\n$(W/m^2)$'
+    yticks = (1.0E2,1.0E3,1.0E4,1.0E5,1.0E6,1.0E7)
+    h1, = ax3.loglog( timeMyr_a, Fatm,'k', lw=lw )
+    fig_o.set_myaxes( ax3, title=title, ylabel=ylabel, yticks=yticks)#, xlabel=xlabel, xticks=xticks )
+    ax3.yaxis.tick_right()
+    ax3.yaxis.set_label_position("right")
+    ax3.yaxis.set_label_coords(1.11,0.5)
+    ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
+    ax3.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
+    ax3.set_xlim( *xlim )
+    handles, labels = ax3.get_legend_handles_labels()
+    ax3.legend(handles, labels, loc='upper right', ncol=1, frameon=0, fontsize=fs_legend)
+
+    ##########
+    # figure e
+    ##########
+    title = r'(e) Atmospheric volatile mass fraction'
+    h1, = ax4.semilogx( timeMyr_a, H2O_atmos_kg_a / H2O_total_kg, lw=lw, color=blue, linestyle='-', label=r'H$_2$O atmos')
+    h2, = ax4.semilogx( timeMyr_a, CO2_atmos_kg_a / CO2_total_kg, lw=lw, color=red, linestyle='-', label=r'CO$_2$ atmos' )
+    fig_o.set_myaxes( ax4, title=title, ylabel='$X_\mathrm{vol}$') #, xlabel=xlabel,xticks=xticks )
+    ax4.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
+    ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
+    ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
+    ax4.yaxis.tick_right()
+    ax4.yaxis.set_label_position("right")
+    ax4.yaxis.set_label_coords(1.11,0.5)
+    ax4.set_xlim( *xlim )
+    handles, labels = ax4.get_legend_handles_labels()
+    ax4.legend(handles, labels, loc='center left', ncol=1, frameon=0, fontsize=fs_legend)
+
+    ##########
+    # figure f
+    ##########
+    # if 1:
+    title = r'(f) Atmospheric volatile partial pressure'
+    ylabel = '$p_{\mathrm{vol}}$\n$(\mathrm{bar})$'
+    trans = transforms.blended_transform_factory(
+        ax5.transData, ax5.transAxes)
+    #for cc, cont in enumerate(phi_cont_l):
+    #    ax0.axvline( phi_time_l[cc], ymin=0.05, ymax=0.7, color='0.25', linestyle=':' )
+    #    label = cont #int(cont*100) # as percent
+    #    ax0.text( phi_time_l[cc], 0.40, '{:2d}'.format(label), va='bottom', ha='center', rotation=90, bbox=dict(facecolor='white'), transform=trans )
+    #ax0.text( 0.1, 0.9, '$\phi (\%)$', ha='center', va='bottom', transform=ax0.transAxes )
+    h1, = ax5.semilogx( timeMyr_a, H2O_atmos_a, color=blue, linestyle='-', lw=lw, label=r'H$_2$O atmos')
+    h2, = ax5.semilogx( timeMyr_a, CO2_atmos_a, color=red, linestyle='-', lw=lw, label=r'CO$_2$ atmos')
+    fig_o.set_myaxes( ax5, title=title, xlabel=xlabel, ylabel=ylabel )#, xlabel=xlabel, xticks=xticks )
+    ax5.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
+    ax5.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
+    ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
+    ax5.set_xlim( *xlim )
+    ax5.set_ylim( 0, 350 )
+    ax5.yaxis.tick_right()
+    ax5.yaxis.set_label_position("right")
+    ax5.yaxis.set_label_coords(1.11,0.5)
+    handles, labels = ax5.get_legend_handles_labels()
+    ax5.legend(handles, labels, loc='center left', ncol=1, frameon=0, fontsize=fs_legend)
 
     #title = '(d) Emissivity'
     #ylabel = '$\epsilon$'
