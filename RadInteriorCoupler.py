@@ -12,6 +12,7 @@ import os, shutil
 import math
 from natsort import natsorted #https://pypi.python.org/pypi/natsort
 import coupler_utils
+import spider_coupler_utils as su
 import plot_interior
 import plot_time_evolution
 from datetime import datetime
@@ -52,8 +53,9 @@ if start_condition == "1":
     # Reset heat flux and surface history and delete old SPIDER output
     # open('OLRFlux.dat', 'w').close()
     # open('surface_atmosphere.dat', 'w').close()
+    print("____________________________________________")
     print("Remove old output files:", end =" ")
-    for file in natsorted(glob.glob("output_dir/*.*")):
+    for file in natsorted(glob.glob(output_dir+"*.*")):
         os.remove(file)
         print(os.path.basename(file), end =" ")
     print("==> Done.")
@@ -63,12 +65,12 @@ if start_condition == "1":
     # , "-outputDirectory", output_dir
 
     # Runtime info
-    print("_______________________________")
+    print("____________________________________________")
     print("SPIDER run flags:", end =" ")
     for flag in call_sequence:
         print(flag, end =" ")
     print()
-    print("_______________________________")
+    print("____________________________________________")
 
     # Call SPIDER
     subprocess.call(call_sequence)
@@ -86,7 +88,7 @@ while time_current < time_target:
     surface_quantities  = np.loadtxt(output_dir+'surface_atmosphere.dat')
     if pingpong_no > 0: # After first iteration more than one entry
         surface_quantities = surface_quantities[-1]
-    print(len(surface_quantities), surface_quantities)
+    print("Surface quantities – [time, T_s, H2O, CO2]: ", surface_quantities)
     time_current        = surface_quantities[0]  # K
     surfaceT_current    = surface_quantities[1]  # K
     h2o_current         = surface_quantities[2]  # kg
@@ -144,8 +146,18 @@ while time_current < time_target:
     ### / ping-pong
 
     # Plot conditions throughout run for analysis
-    plot_time_evolution.plot_evolution(output_dir)
-    plot_interior.mantle_evolution()
+    print("*** Plot current evolution,", end=" ")
+    plot_time_evolution.plot_evolution(output_dir) # all times
+    output_times = su.get_all_output_times()
+    if len(output_times) <= 8:
+        plot_times = output_times
+    else:
+        plot_times = [ output_times[0]]     # first snapshot
+        for i in [ 2, 15, 22, 30, 45, 66 ]: # distinct timestamps
+            plot_times.append(output_times[int(round(len(output_times)*(i/100.)))])
+        plot_times.append(output_times[-1]) # last snapshot
+    print("snapshots:", plot_times)
+    plot_interior.mantle_evolution(plot_times)
 
 # Copy files to separate folder
 sim_dir = coupler_utils.make_output_dir() #

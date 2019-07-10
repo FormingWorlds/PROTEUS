@@ -69,7 +69,7 @@ def plot_evolution( output_dir='output' ):
     width = 12.00 #* 3.0/2.0
     height = 8.0 #/ 2.0
     fig_o = su.FigureData( 3, 2, width, height, output_dir+'/time_evolution', units='yr' )
-    fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.2)
+    fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.25)
 
     # Subplot titles
     title_fs = 8
