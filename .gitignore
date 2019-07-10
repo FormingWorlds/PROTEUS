@@ -4,7 +4,7 @@
 
 # .txt files
 ############
-*.txt
+# *.txt
 
 # Socrates source
 #################
@@ -30,3 +30,14 @@ atmosphere.pdf
 volatiles_out.dat
 surfaceT.dat
 out.dat
+plotting_tools/old_plot_files/plot_bower_2019_aa.py
+plotting_tools/old_plot_files/plot_bower_2019_aa_cases.py
+plotting_tools/old_plot_files/plot_rheological_transition.py
+plotting_tools/old_plot_files/plot_solid_evolution.py
+plotting_tools/old_plot_files/plot_spider.py
+plotting_tools/old_plot_files/plot_SPIDER_output.py
+plotting_tools/old_plot_files/plot_teqm.py
+plotting_tools/old_plot_files/rheological_front_phi.pdf
+plotting_tools/old_plot_files/spiderplot_basic.pdf
+plotting_tools/old_plot_files/spiderplot_fluxes.pdf
+plotting_tools/old_plot_files/spiderplot_matprop.pdf
