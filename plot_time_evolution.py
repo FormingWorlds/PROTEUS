@@ -13,15 +13,13 @@ import matplotlib
 # # https://seaborn.pydata.org/tutorial/aesthetics.html
 # sns.set_style("white")
 
-# Define Crameri colormaps
+# Define Crameri colormaps (+ recursive)
 from matplotlib.colors import LinearSegmentedColormap
-folder = "/Users/tim/Dropbox/work/Projects/20_greenedge/colormaps/ScientificColourMaps5/"
-__all__ = {'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
+for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
            'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
            'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
-           'tokyo', 'turku', 'vik'}
-for name in __all__:
-    file = os.path.join(folder, name, name + '.txt')
+           'tokyo', 'turku', 'vik' ]:
+    file = os.path.join("plotting_tools/ScientificColourMaps5/", name + '.txt')
     cm_data = np.loadtxt(file)
     vars()[name] = LinearSegmentedColormap.from_list(name, cm_data)
     vars()[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])

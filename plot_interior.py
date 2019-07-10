@@ -13,16 +13,14 @@ import glob
 from natsort import natsorted #https://pypi.python.org/pypi/natsort
 from decimal import Decimal
 import matplotlib.ticker as ticker
-from matplotlib.colors import LinearSegmentedColormap
 
-# Define Crameri colormaps
-folder = "/Users/tim/Dropbox/work/Projects/20_greenedge/colormaps/ScientificColourMaps5/"
-__all__ = {'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
+# Define Crameri colormaps (+ recursive)
+from matplotlib.colors import LinearSegmentedColormap
+for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
            'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
            'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
-           'tokyo', 'turku', 'vik'}
-for name in __all__:
-    file = os.path.join(folder, name, name + '.txt')
+           'tokyo', 'turku', 'vik' ]:
+    file = os.path.join("plotting_tools/ScientificColourMaps5/", name + '.txt')
     cm_data = np.loadtxt(file)
     vars()[name] = LinearSegmentedColormap.from_list(name, cm_data)
     vars()[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
@@ -88,23 +86,25 @@ def mantle_evolution( times ):
     #print np.mean(yy_liq[20:]-yy_sol[20:])
     #sys.exit(1)
 
-    # dotted lines of constant melt fraction
-    #for xx in range( 0, 11, 2 ):
+    # # dotted lines of constant melt fraction
+    # for xx in range( 0, 11, 2 ):
     #    yy_b = xx/10.0 * (yy_liq - yy_sol) + yy_sol
     #    if xx == 0:
     #        # solidus
-    #        ax0.plot( xx_pres, yy_b, '-', linewidth=0.5, color='black' )
+    #        ax1.plot( yy_b, xx_pres, ':', linewidth=0.5, color='black' )
     #    elif xx == 3:
     #        # typically, the approximate location of the rheological transition
-    #        ax0.plot( xx_pres, yy_b, '-', linewidth=1.0, color='white')
+    #        ax1.plot( yy_b, xx_pres, ':', linewidth=1.0, color='white')
     #    elif xx == 10:
     #        # liquidus
-    #        ax0.plot( xx_pres, yy_b, '-', linewidth=0.5, color='black' )
+    #        ax1.plot( yy_b, xx_pres, ':', linewidth=0.5, color='black' )
     #    else:
     #        # dashed constant melt fraction lines
-    #        ax0.plot( xx_pres, yy_b, '--', linewidth=1.0, color='white' )
-    ax0.plot( xx_pres, yy_sol, '-', linewidth=1.0, color='black' )
-    ax1.plot( xx_pres, yy_solt, '-', linewidth=1.0, color='black' )
+    #        ax1.plot( yy_b, xx_pres, ':', linewidth=1.0, color='white' )
+    # ax1.plot( yy_sol, xx_pres, ':', linewidth=1.0, color='black' )
+    # # ax0.plot( yy_solt, xx_pres, ':', linewidth=1.0, color='black' )
+    # yy_b = xx/10.0 * (yy_liq - yy_sol) + yy_sol
+    # ax1.plot( yy_b, xx_pres, ':', linewidth=1.5, color='black')
 
     handle_l = [] # handles for legend
 
@@ -139,10 +139,22 @@ def mantle_evolution( times ):
         yy = myjson_o.get_dict_values_internal(['data','temp_b'])
         ax0.plot( yy, xx_pres, '--', color=color )
         ax0.plot( yy*MIX, xx_pres*MIX, '-', color=color )
+        # ax0.fill_between( xx_pres, yy_liq, yy_sol, facecolor='grey', alpha=0.35, linewidth=0 )
+        # ax0.fill_between( yy, yy_liqt, yy_solt, facecolor='grey', alpha=0.35, linewidth=0 )
+
+        # # Rheological transition
+        # yy_liq = myjson_o.get_dict_values_internal(['data','liquidus_temp_b'])
+        # yy_sol = myjson_o.get_dict_values_internal(['data','solidus_temp_b'])
+        # ax0.plot( yy_sol, xx_pres, ':', color='k')
+        # ax0.plot( yy_liq, xx_pres, ':', color='k')
 
         # melt fraction
         yy = myjson_o.get_dict_values_internal(['data','phi_b'])
         ax1.plot( yy, xx_pres, '-', color=color )
+        # ax1.fill_between( xx_pres, yy_liq, yy_sol, facecolor='grey', alpha=0.35, linewidth=0 )
+        # yy_b = 3./10.0 * (yy_liq - yy_sol) + yy_sol
+
+
 
         # viscosity
         visc_const = 1 # this is used for the arcsinh scaling
