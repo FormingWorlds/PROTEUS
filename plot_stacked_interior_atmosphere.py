@@ -121,14 +121,13 @@ def stacked_evolution( times ):
 
     fig_o.set_colors(cmap=vik_r) # "magma_r"
 
+    ymax_atm = 0
+
     for nn, time in enumerate( fig_o.time ):
-out_a = np.column_stack( ( atm.temp, atm.p ) )
-np.savetxt( output_dir+str(int(time_current))+"_atm_TP_profile.dat", out_a )
-out_a = np.column_stack( ( atm.band_centres, atm.LW_spectral_flux_up[:,0]/atm.band_widths ) )
-np.savetxt( output_dir+str(int(time_current))+"_atm_spectral_flux.dat", out_a )
+
         # Read atmosphere properties
-        atm_TP_profile  = np.loadtxt(output_dir+str(int(time))+"_atm_TP_profile.dat")
-        atm_spectral_flux = np.loadtxt(output_dir+str(int(time))+"_atm_spectral_flux.dat")
+        atm_TP_profile  = np.loadtxt('output/'+str(int(time))+"_atm_TP_profile.dat")
+        atm_spectral_flux = np.loadtxt('output/'+str(int(time))+"_atm_spectral_flux.dat")
 
         temperature_profile = []
         pressure_profile    = []
@@ -136,7 +135,9 @@ np.savetxt( output_dir+str(int(time_current))+"_atm_spectral_flux.dat", out_a )
         spectral_flux       = []
         for i in range(0, len(atm_TP_profile)):
             temperature_profile.append(atm_TP_profile[i][0])
-
+            pressure_profile.append(atm_TP_profile[i][1])
+            band_centres.append(atm_spectral_flux[i][0])
+            spectral_flux.append(atm_spectral_flux[i][1])
 
         # read json
         myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
@@ -148,16 +149,15 @@ np.savetxt( output_dir+str(int(time_current))+"_atm_spectral_flux.dat", out_a )
 
         label = coupler_utils.latex_float(time)+" yr"
 
-        # temperature
-        yy = myjson_o.get_dict_values_internal(['data','temp_b'])
-        ax0.plot( yy, xx_pres, '--', color=color )
-        ax0.plot( yy*MIX, xx_pres*MIX, '-', color=color )
+        # atmosphere
+        ax0.plot( temperature_profile, pressure_profile, '-', color=color )
 
-        # melt fraction
-        # yy = myjson_o.get_dict_values_internal(['data','phi_b'])
-        # ax1.plot( yy, xx_pres, '-', color=color )
+        # interior
+        yy = myjson_o.get_dict_values_internal(['data','temp_b'])
         ax1.plot( yy, xx_pres, '--', color=color )
         ax1.plot( yy*MIX, xx_pres*MIX, '-', color=color )
+
+        ymax_atm = np.max([ymax_atm, np.max(pressure_profile)])
 
     yticks = [0,20,40,60,80,100,120,int(xx_pres_s[-1])]
     ymax = int(xx_pres_s[-1])
@@ -165,13 +165,16 @@ np.savetxt( output_dir+str(int(time_current))+"_atm_spectral_flux.dat", out_a )
     units = myjson_o.get_dict_units(['data','temp_b'])
     title = 'Atmosphere + mantle temperature profile' #'(a) Temperature, {}'.format(units)
     xticks = [200, 1000, 2000, 3000, 4000, 5000]
-    fig_o.set_myaxes( ax0, title=title, ylabel='$P$\n(GPa)', xticks=xticks, ymax=ymax, yticks=yticks ) # , xmin=300, xmax=4200
+    fig_o.set_myaxes( ax0, xlabel='$T$, '+units, ylabel='$p$\n(bar)', xticks=xticks, ymin=0, ymax=ymax_atm ) # , xmin=300, xmax=4200, , yticks=yticks, , title=title
     ax0.set_xlim( 200, 5000 )
+    ax0.set_ylim( 0, ymax_atm )
     ax0.yaxis.set_label_coords(-0.13,0.5)
     ax0.invert_yaxis()
-    ax0.set_xticklabels([])
-    ax0.set_xticks([])
+    # ax0.set_xticklabels([])
+    # ax0.set_xticks([])
     # fig_o.set_mylegend( ax0, handle_l, loc=3, ncol=1 )
+    ax0.xaxis.set_label_position('top')
+    ax0.xaxis.tick_top()
 
     xticks = [200, 1000, 2000, 3000, 4000, 5000]
     fig_o.set_myaxes( ax1, xlabel='$T$, '+units, ylabel='$d$\n(km)', xticks=xticks, ymax=ymax, yticks=yticks )
