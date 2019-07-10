@@ -66,9 +66,15 @@ def mantle_evolution( times ):
 
     xx_pres = myjson_o.get_dict_values_internal(['data','pressure_b'])
     xx_pres *= 1.0E-9
-
     xx_pres_s = myjson_o.get_dict_values(['data','pressure_s'])
     xx_pres_s *= 1.0E-9
+
+    xx_radius = myjson_o.get_dict_values_internal(['data','radius_b'])
+    xx_radius *= 1.0E-3
+    xx_depth = xx_radius[0] - xx_radius
+    xx_radius_s = myjson_o.get_dict_values(['data','radius_s'])
+    xx_radius_s *= 1.0E-3
+    xx_depth_s = xx_radius_s[0] - xx_radius_s
 
     # shade grey between liquidus and solidus
     yy_liq = myjson_o.get_dict_values_internal(['data','liquidus_b'])
@@ -154,11 +160,13 @@ def mantle_evolution( times ):
         yy = myjson_o.get_dict_values(['data','S_s'])
         #yy = myjson_o.get_dict_values_internal('S_b')
         ax3.plot( yy, xx_pres_s, '-', color=color )
+
+        # legend
         handle, = ax3.plot( yy*MIX_s, xx_pres_s*MIX_s, '-', color=color, label=label )
         handle_l.append( handle )
 
-    yticks = [0,20,40,60,80,100,120,135]
-    ymax = 135
+    yticks = [0,20,40,60,80,100,120,int(xx_pres_s[-1])]
+    ymax = int(xx_pres_s[-1])
 
     # titles and axes labels, legends, etc
 
@@ -167,7 +175,7 @@ def mantle_evolution( times ):
     xticks = [200, 1000, 2000, 3000, 4000, 5000]
     fig_o.set_myaxes( ax0, title=title, xlabel='$T$, '+units, ylabel='$P$\n(GPa)', xticks=xticks, ymax=ymax, yticks=yticks ) # , xmin=300, xmax=4200
     ax0.set_xlim( 200, 5000 )
-    ax0.yaxis.set_label_coords(-0.255,0.5)
+    ax0.yaxis.set_label_coords(-0.25,0.5)
     ax0.invert_yaxis()
     fig_o.set_mylegend( ax0, handle_l, loc=3, ncol=1 )
 
@@ -202,6 +210,15 @@ def mantle_evolution( times ):
     fig_o.set_myaxes( ax3, title=title, xlabel='$S$, '+ units, xticks=xticks, ymax=ymax, yticks=yticks ) # ' $(J \; kg^\mathrm{-1} \; K^\mathrm{-1})$'
     ax3.set_yticklabels([])
     ax3.invert_yaxis()
+
+    # Pressure-depth conversion for y-axis
+    ax3b = ax3.twinx()
+    ax3b.plot( yy, xx_depth_s, alpha=0.0)
+    ax3b.set_ylim(top=xx_depth_s[-1], bottom=xx_depth_s[0])
+    ax3b.set_yticks([0, 500, 1000, 1500, 2000, 2500, int(xx_depth_s[-1])])
+    ax3b.set_ylabel( '$d$\n(km)', rotation=0 )
+    ax3b.yaxis.set_label_coords(1.30,0.55)
+    ax3b.invert_yaxis()
 
     # if 0:
     #     # add sol and liq text boxes to mark solidus and liquidus
