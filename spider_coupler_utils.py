@@ -283,13 +283,13 @@ class FigureData( object ):
     def set_colors( self, num=8, cmap='bkr8' ):
         dd = self.data_d
         # color scheme from Tim.  Nice reds and blues
-        #colors_l = ['#2364A4',
-        #            '#1695F9',
-        #            '#95D5FD',
-        #            '#8B0000',
-        #            '#CD5C5C',
-        #            '#FA141B',
-        #            '#FFA07A']
+        colors_l = ['#2364A4',
+                   '#1695F9',
+                   '#95D5FD',
+                   '#8B0000',
+                   '#CD5C5C',
+                   '#FA141B',
+                   '#FFA07A']
         # color scheme 'bkr8' for light background from Crameri
         # see f_Colours.m at http://www.fabiocrameri.ch/visualisation.php
         # this is actually very similar (same?) as Tim's scheme above
@@ -338,7 +338,7 @@ class FigureData( object ):
             try:
                 cmap = plt.get_cmap( cmap )
             except ValueError:
-                cmap = plt.get_cmap('roma')
+                cmap = plt.get_cmap('viridis_r')
             colors_l = [cmap(i) for i in np.linspace(0, 1, num)]
         dd['colors_l'] = colors_l
 

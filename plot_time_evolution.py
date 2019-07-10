@@ -13,6 +13,19 @@ import matplotlib
 # # https://seaborn.pydata.org/tutorial/aesthetics.html
 # sns.set_style("white")
 
+# Define Crameri colormaps
+from matplotlib.colors import LinearSegmentedColormap
+folder = "/Users/tim/Dropbox/work/Projects/20_greenedge/colormaps/ScientificColourMaps5/"
+__all__ = {'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
+           'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
+           'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
+           'tokyo', 'turku', 'vik'}
+for name in __all__:
+    file = os.path.join(folder, name, name + '.txt')
+    cm_data = np.loadtxt(file)
+    vars()[name] = LinearSegmentedColormap.from_list(name, cm_data)
+    vars()[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
+
 logger = su.get_my_logger(__name__)
 
 # Color definitions, https://chrisalbon.com/python/seaborn_color_palettes.html
@@ -49,7 +62,7 @@ parser = argparse.ArgumentParser(description='Define file output directory.')
 parser.add_argument('--dir', default="output", help='Provide path to output directory.' )
 
 #====================================================================
-def plot_atmosphere( output_dir='output' ):
+def plot_evolution( output_dir='output' ):
 
     logger.info( 'building atmosphere' )
 
@@ -291,7 +304,7 @@ def main():
     # Read optional argument from console to provide output dir
     output_dir = parser.parse_args().dir
 
-    plot_atmosphere( output_dir )
+    plot_evolution( output_dir )
     # plt.show()
 
 #====================================================================

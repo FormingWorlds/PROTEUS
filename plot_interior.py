@@ -30,12 +30,12 @@ for name in __all__:
 logger = su.get_my_logger(__name__)
 
 #====================================================================
-def solid_evolution_fig3( times ):
+def mantle_evolution( times ):
 
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width
 
-    logger.info( 'building solid_evolution_fig3' )
+    logger.info( 'building mantle_evolution' )
 
     width = 12.00 #* 3.0/2.0
     height = 6.0
@@ -227,7 +227,7 @@ def main():
 
     output_list = su.get_all_output_times()
     # plot_list = str(output_list[0])+","+str(output_list[int(round(len(output_list)*(1./5.)))])+","+str( output_list[int(round(len(output_list)*(2./5.)))])+","+str(output_list[int(round(len(output_list)*(3./5.)))])+","+str(output_list[int(round(len(output_list)*(4./5.)))])+","+str(output_list[-1])
-    plot_list = [ output_list[0], output_list[int(round(len(output_list)*(1./20.)))], output_list[int(round(len(output_list)*(1./10.)))], output_list[int(round(len(output_list)*(1./4.)))], output_list[int(round(len(output_list)*(2./3.)))], output_list[-1] ]
+    plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(30./100.)))], output_list[int(round(len(output_list)*(45./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
     print("Snapshot:", plot_list)
 
     # arguments (run with -h to summarize)
@@ -254,7 +254,7 @@ def main():
 
     # output_dir = parser.parse_args().dir
 
-    solid_evolution_fig3( times=plot_list )
+    mantle_evolution( times=plot_list )
 
     # plt.show()
 

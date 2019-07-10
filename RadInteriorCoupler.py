@@ -12,11 +12,12 @@ import os, shutil
 import math
 from natsort import natsorted #https://pypi.python.org/pypi/natsort
 import coupler_utils
-import plot_SPIDER_output
+import plot_interior
+import plot_time_evolution
 from datetime import datetime
 
 # SPIDER start input options
-ic_filename         = "981346.json"       # JSON file to read in initial condition
+ic_filename         = "0.json"       # JSON file to read in initial condition
 SURFACE_BC          = "4"            # 4: constant heat flux boundary condition
 SOLVE_FOR_VOLATILES = "1"            # track evolution of volatiles in interior/atmosphere reservoirs
 H2O_poststep_change = "0.05"         # fractional change in melt phase H2O concentration that triggers event
@@ -29,7 +30,7 @@ heat_flux           = "1.0E4"        # prescribed start surface heat flux (e.g.,
 output_dir = os.getcwd()+"/output/"
 
 # Restart flag
-start_condition     = "2"            # 1: Start from beginning, 2: Restart from file "ic_filename"
+start_condition     = "1"            # 1: Start from beginning, 2: Restart from file "ic_filename"
 
 # Total runtime
 time_current = 0
@@ -52,7 +53,7 @@ if start_condition == "1":
     # open('OLRFlux.dat', 'w').close()
     # open('surface_atmosphere.dat', 'w').close()
     print("Remove old output files:", end =" ")
-    for file in natsorted(glob.glob("./output_dir/*.*")):
+    for file in natsorted(glob.glob("output_dir/*.*")):
         os.remove(file)
         print(os.path.basename(file), end =" ")
     print("==> Done.")
@@ -93,7 +94,7 @@ while time_current < time_target:
 
     print(time_current, surfaceT_current)
 
-    print("::::::::::::::::::: START SOCRATES -", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "::::::::")
+    print("::::::::::::: START SOCRATES ITERATION -", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "::::::::::::::")
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
     heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current)) # W/m^2
@@ -142,8 +143,9 @@ while time_current < time_target:
 
     ### / ping-pong
 
-# Plot atmosphere conditions throughout run for analysis
-plot_SPIDER_output.plot_atmosphere(output_dir)
+    # Plot conditions throughout run for analysis
+    plot_time_evolution.plot_evolution(output_dir)
+    plot_interior.mantle_evolution()
 
 # Copy files to separate folder
 sim_dir = coupler_utils.make_output_dir() #

@@ -42,7 +42,6 @@ def RadConvEqm(output_dir, time_current, Tg):
 
     #==============Now do the calculation====================================
 
-
     atm.ts = Tg
     atm.Rcp = 2./7.
     atm.temp = atm.ts*(atm.p/atm.p[-1])**atm.Rcp  #Initialize on an adiabat
@@ -65,7 +64,7 @@ def RadConvEqm(output_dir, time_current, Tg):
     #--------------Now do the time stepping-------------------
     #---------------------------------------------------------
     matplotlib.rc('axes',edgecolor='k')
-    for i in range(0,100):
+    for i in range(0,50):
 
         atm = steps(atm)
 
@@ -73,7 +72,7 @@ def RadConvEqm(output_dir, time_current, Tg):
         # atm.temp[0] = atm.temp[1]
 
         if i % 5 == 0:
-            print(i)
+            print("Iteration", i, end =", ")
             if 1==2:
                 plt.figure(figsize=(7,4))
                 plt.semilogy(atm.temp,atm.p)
@@ -87,7 +86,7 @@ def RadConvEqm(output_dir, time_current, Tg):
                 # plt.show()
             #print("OLR " + str(atm.LW_flux_up[-1]))
             #print("OLR change " + str(atm.LW_flux_up[-1]-PrevOLR))
-            print("Max heating " + str(np.max(atm.total_heating)))
+            # print("Max heating " + str(np.max(atm.total_heating)))
             #print("Max dT " + str(abs(np.max(atm.temp-PrevTemp[:]))))
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15,7))
             ax1.semilogy(atm.temp,atm.p)
@@ -103,7 +102,7 @@ def RadConvEqm(output_dir, time_current, Tg):
             # plt.show()
             plt.savefig(output_dir+'/TP_profile_'+str(round(time_current))+'.pdf', bbox_inches="tight")
             plt.close(fig)
-            print("OLR = " + str(PrevOLR))
+            print("OLR = " + str(PrevOLR)+" W/m^2,", "Max heating = " + str(np.max(atm.total_heating)))
 
         # Reduce timestep if heating not converging
         if abs(np.max(atm.temp-PrevTemp[:])) < 0.05 or abs(atm.temp[0]-atm.temp[1]) > 3.0:
@@ -127,6 +126,12 @@ def RadConvEqm(output_dir, time_current, Tg):
     # plt.ylabel('Pressure [mb]')
     # plt.xlabel('Temperature [K]')
     # plt.savefig(output_dir+'/T_profile_'+str(round(time_current))+'.pdf', bbox_inches="tight")
+
+    # Write TP and spectral flux profiles for later plotting
+    out_a = np.column_stack( ( atm.temp, atm.p ) )
+    np.savetxt( output_dir+str(int(time_current))+"_atm_TP_profile.dat", out_a )
+    out_a = np.column_stack( ( atm.band_centres, atm.LW_spectral_flux_up[:,0]/atm.band_widths ) )
+    np.savetxt( output_dir+str(int(time_current))+"_atm_spectral_flux.dat", out_a )
 
     return atm.LW_flux_up[-1]
 
