@@ -10,7 +10,7 @@ import numpy as np
 import os
 import sys
 import glob
-from natsort import natsorted #https://pypi.python.org/pypi/natsort
+# from natsort import natsorted #https://pypi.python.org/pypi/natsort
 from decimal import Decimal
 import matplotlib.ticker as ticker
 
@@ -62,62 +62,19 @@ def mantle_evolution( times ):
     #print np.mean(diff[40:])
     #sys.exit(1)
 
-    xx_pres = myjson_o.get_dict_values_internal(['data','pressure_b'])
+    xx_pres = myjson_o.get_dict_values(['data','pressure_b'])
     xx_pres *= 1.0E-9
     xx_pres_s = myjson_o.get_dict_values(['data','pressure_s'])
     xx_pres_s *= 1.0E-9
 
-    xx_radius = myjson_o.get_dict_values_internal(['data','radius_b'])
+    xx_radius = myjson_o.get_dict_values(['data','radius_b'])
     xx_radius *= 1.0E-3
     xx_depth = xx_radius[0] - xx_radius
     xx_radius_s = myjson_o.get_dict_values(['data','radius_s'])
     xx_radius_s *= 1.0E-3
     xx_depth_s = xx_radius_s[0] - xx_radius_s
 
-    # shade grey between liquidus and solidus
-    yy_liq = myjson_o.get_dict_values_internal(['data','liquidus_b'])
-    yy_sol = myjson_o.get_dict_values_internal(['data','solidus_b'])
-    #ax0.fill_between( xx_pres, yy_liq, yy_sol, facecolor='grey', alpha=0.35, linewidth=0 )
-    yy_liqt = myjson_o.get_dict_values_internal(['data','liquidus_temp_b'])
-    yy_solt = myjson_o.get_dict_values_internal(['data','solidus_temp_b'])
-    #ax1.fill_between( xx_pres, yy_liqt, yy_solt, facecolor='grey', alpha=0.35, linewidth=0 )
-    # hack to compute some average properties for Bower et al. (2018)
-    #print xx_sol
-    #print np.mean(yy_liq[20:]-yy_sol[20:])
-    #sys.exit(1)
-
-    # # dotted lines of constant melt fraction
-    # for xx in range( 0, 11, 2 ):
-    #    yy_b = xx/10.0 * (yy_liq - yy_sol) + yy_sol
-    #    if xx == 0:
-    #        # solidus
-    #        ax1.plot( yy_b, xx_pres, ':', linewidth=0.5, color='black' )
-    #    elif xx == 3:
-    #        # typically, the approximate location of the rheological transition
-    #        ax1.plot( yy_b, xx_pres, ':', linewidth=1.0, color='white')
-    #    elif xx == 10:
-    #        # liquidus
-    #        ax1.plot( yy_b, xx_pres, ':', linewidth=0.5, color='black' )
-    #    else:
-    #        # dashed constant melt fraction lines
-    #        ax1.plot( yy_b, xx_pres, ':', linewidth=1.0, color='white' )
-    # ax1.plot( yy_sol, xx_pres, ':', linewidth=1.0, color='black' )
-    # # ax0.plot( yy_solt, xx_pres, ':', linewidth=1.0, color='black' )
-    # yy_b = xx/10.0 * (yy_liq - yy_sol) + yy_sol
-    # ax1.plot( yy_b, xx_pres, ':', linewidth=1.5, color='black')
-
     handle_l = [] # handles for legend
-
-    # folder = "/Users/tim/Dropbox/work/Projects/20_greenedge/colormaps/ScientificColourMaps5/"
-    #
-    # __all__ = {'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
-    #            'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
-    #            'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
-    #            'tokyo', 'turku', 'vik'}
-    #
-    # file = os.path.join("/Users/tim/Dropbox/work/Projects/20_greenedge/colormaps/ScientificColourMaps5/", 'roma', 'roma' + '.txt')
-    # cm_data = np.loadtxt(file)
-    # roma = LinearSegmentedColormap.from_list('roma', cm_data)
 
     fig_o.set_colors(cmap=vik_r) # "magma_r"
 
@@ -127,8 +84,9 @@ def mantle_evolution( times ):
         myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
 
         color = fig_o.get_color( nn )
+
         # use melt fraction to determine mixed region
-        MIX = myjson_o.get_mixed_phase_boolean_array( 'basic_internal' )
+        MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' ) # basic_internal
         MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
         # label = fig_o.get_legend_label( time )
@@ -136,40 +94,27 @@ def mantle_evolution( times ):
         label = coupler_utils.latex_float(time)+" yr"
 
         # temperature
-        yy = myjson_o.get_dict_values_internal(['data','temp_b'])
+        yy = myjson_o.get_dict_values(['data','temp_b'])
         ax0.plot( yy, xx_pres, '--', color=color )
         ax0.plot( yy*MIX, xx_pres*MIX, '-', color=color )
-        # ax0.fill_between( xx_pres, yy_liq, yy_sol, facecolor='grey', alpha=0.35, linewidth=0 )
-        # ax0.fill_between( yy, yy_liqt, yy_solt, facecolor='grey', alpha=0.35, linewidth=0 )
-
-        # # Rheological transition
-        # yy_liq = myjson_o.get_dict_values_internal(['data','liquidus_temp_b'])
-        # yy_sol = myjson_o.get_dict_values_internal(['data','solidus_temp_b'])
-        # ax0.plot( yy_sol, xx_pres, ':', color='k')
-        # ax0.plot( yy_liq, xx_pres, ':', color='k')
 
         # melt fraction
-        yy = myjson_o.get_dict_values_internal(['data','phi_b'])
+        yy = myjson_o.get_dict_values(['data','phi_b'])
         ax1.plot( yy, xx_pres, '-', color=color )
-        # ax1.fill_between( xx_pres, yy_liq, yy_sol, facecolor='grey', alpha=0.35, linewidth=0 )
-        # yy_b = 3./10.0 * (yy_liq - yy_sol) + yy_sol
 
         # viscosity
         visc_const = 1 # this is used for the arcsinh scaling
         visc_fmt = su.MyFuncFormatter( visc_const )
-        yy = myjson_o.get_dict_values_internal(['data','visc_b'], visc_fmt)
+        yy = myjson_o.get_dict_values(['data','visc_b'], visc_fmt)
         ax2.plot( yy, xx_pres, '-', color=color )
-        # visc_const = 1 # this is used for the arcsinh scaling
-        # visc_fmt = su.MyFuncFormatter( visc_const )
-        # yy = myjson_o.get_dict_values_internal(['data','visc_b'], visc_fmt)
-        # ax2.plot( xx_pres, yy, '-', color=color )
 
         # entropy
         # plot staggered, since this is where entropy is defined
         # cell-wise and we can easily see the CMB boundary condition
         yy = myjson_o.get_dict_values(['data','S_s'])
-        #yy = myjson_o.get_dict_values_internal('S_b')
+        # yy = myjson_o.get_dict_values(['data','S_b'])
         # ax3.plot( yy, xx_pres_s, '-', color=color )
+        # print(yy, xx_pres)
 
         # legend
         handle, = ax3.plot( yy*MIX_s, xx_pres_s*MIX_s, '-', color=color, label=label )
@@ -189,8 +134,6 @@ def mantle_evolution( times ):
     ax0.invert_yaxis()
     fig_o.set_mylegend( ax0, handle_l, loc=3, ncol=1 )
 
-    # fig_o.set_mylegend( ax2, handle_l, loc=4, ncol=2 )
-    #fig_o.set_mylegend( ax0, handle_l, loc=2, ncol=2 )
     title = '(b) Melt fraction'
     xticks = [0,0.2,0.4,0.6,0.8,1.0]
     fig_o.set_myaxes( ax1, title=title, xlabel='$\phi$', xticks=xticks, ymax=ymax, yticks=yticks )
@@ -199,17 +142,8 @@ def mantle_evolution( times ):
     ax1.set_yticklabels([])
     ax1.invert_yaxis()
 
-    # units = myjson_o.get_dict_units(['data','visc_b'])
-    # title = '(d) Viscosity, ' + units
-    # yticks = [1.0E1, 1.0E4, 1.0E8, 1.0E12, 1.0E16, 1.0E20, 1.0E22]
-    # fig_o.set_myaxes( ax2, title=title, xlabel='$P$ (GPa)', yticks=yticks,
-    #     ylabel='$\eta$', xticks=[0,20,40,60,80,100,120,140], xmax=140, fmt=visc_fmt )
-    # ax2.yaxis.set_label_coords(-0.075,0.67)
-
     units = myjson_o.get_dict_units(['data','visc_b'])
     title = '(c) Viscosity'#'(c) Viscosity, ' + units
-    # ax2.yticks=[0,20,40,60,80,100,120,140]
-    # ax2.xticks=[1.0E1, 1.0E4, 1.0E8, 1.0E12, 1.0E16, 1.0E20, 1.0E22]
     fig_o.set_myaxes( ax2, title=title, xticks=[1.0E1, 1.0E5, 1.0E10, 1.0E15, 1.0E19, 1.0E22], xlabel='$\eta$, '+ units, yticks=[0,20,40,60,80,100,120,140], xfmt=visc_fmt )
     ax2.set_yticklabels([])
     ax2.invert_yaxis()

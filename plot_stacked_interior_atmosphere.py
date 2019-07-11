@@ -51,12 +51,14 @@ def stacked_evolution( times ):
 
     myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
 
-    xx_pres = myjson_o.get_dict_values_internal(['data','pressure_b'])
+    xx_pres = myjson_o.get_dict_values(['data','pressure_b'])
+    # xx_pres = myjson_o.get_dict_values_internal(['data','pressure_b'])
     xx_pres *= 1.0E-9
     xx_pres_s = myjson_o.get_dict_values(['data','pressure_s'])
     xx_pres_s *= 1.0E-9
 
-    xx_radius = myjson_o.get_dict_values_internal(['data','radius_b'])
+    xx_radius = myjson_o.get_dict_values(['data','radius_b'])
+    # xx_radius = myjson_o.get_dict_values_internal(['data','radius_b'])
     xx_radius *= 1.0E-3
     xx_depth = xx_radius[0] - xx_radius
     xx_radius_s = myjson_o.get_dict_values(['data','radius_s'])
@@ -92,24 +94,25 @@ def stacked_evolution( times ):
 
         color = fig_o.get_color( nn )
         # use melt fraction to determine mixed region
-        MIX = myjson_o.get_mixed_phase_boolean_array( 'basic_internal' )
+        MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' )
+        # MIX = myjson_o.get_mixed_phase_boolean_array( 'basic_internal' )
         MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
         label = coupler_utils.latex_float(time)+" yr"
 
         # atmosphere
-        ax0.plot( temperature_profile, pressure_profile, '-', color=color, label=label )
+        ax0.plot( temperature_profile, pressure_profile, '-', color=color, label=label, lw=1.5)
         # handle_l.append( handle )
 
         # interior
-        yy = myjson_o.get_dict_values_internal(['data','temp_b'])
+        yy = myjson_o.get_dict_values(['data','temp_b'])
         yy_s = myjson_o.get_dict_values_internal(['data','temp_s'])
-        ax1.plot( yy, xx_depth, '--', color=color )
-        ax1.plot( yy*MIX, xx_depth*MIX, '-', color=color, label=label )
+        ax1.plot( yy, xx_depth, '--', color=color, lw=1.5 )
+        ax1.plot( yy*MIX, xx_depth*MIX, '-', color=color, label=label, lw=1.5 )
 
-        print(time)
-        print('temp_b', yy)
-        print('temp_s', yy_s)
+        print(time, 'temperature_profile', temperature_profile[-1], temperature_profile[-2])
+        print(time, 'temp_b', yy[0], yy[1])
+        print(time, 'temp_s', yy_s[0], yy_s[1])
 
         ymax_atm = np.max([ymax_atm, np.max(pressure_profile)])
 
