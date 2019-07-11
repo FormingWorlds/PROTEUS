@@ -10,7 +10,7 @@ import numpy as np
 import os
 import sys
 import glob
-from natsort import natsorted #https://pypi.python.org/pypi/natsort
+# from natsort import natsorted #https://pypi.python.org/pypi/natsort
 from decimal import Decimal
 import matplotlib.ticker as ticker
 
@@ -35,8 +35,8 @@ def stacked_evolution( times ):
 
     logger.info( 'building stacked interior atmosphere' )
 
-    width = 4.00 #* 3.0/2.0
-    height = 8.0
+    width = 5.00 #* 3.0/2.0
+    height = 10.0
     fig_o = su.FigureData( 2, 1, width, height, 'output/'+'stacked_interior_atmosphere', units='kyr' ) #, times
     fig_o.fig.subplots_adjust(wspace=0.0,hspace=0.0)
     fig_o.time = times
@@ -51,17 +51,6 @@ def stacked_evolution( times ):
 
     myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
 
-    # print(myjson_o.data_d)
-    # TIMEYRS = myjson_o.data_d['nstep']
-
-    # hack to compute some average properties for Bower et al. (2018)
-    #xx_liq, yy_liq = fig_o.get_xy_data( 'liquidus_rho', time )
-    #xx_sol, yy_sol = fig_o.get_xy_data( 'solidus_rho', time )
-    #diff = (yy_liq - yy_sol) / yy_sol * 100.0
-    #print diff[40:]
-    #print np.mean(diff[40:])
-    #sys.exit(1)
-
     xx_pres = myjson_o.get_dict_values_internal(['data','pressure_b'])
     xx_pres *= 1.0E-9
     xx_pres_s = myjson_o.get_dict_values(['data','pressure_s'])
@@ -74,50 +63,9 @@ def stacked_evolution( times ):
     xx_radius_s *= 1.0E-3
     xx_depth_s = xx_radius_s[0] - xx_radius_s
 
-    # shade grey between liquidus and solidus
-    yy_liq = myjson_o.get_dict_values_internal(['data','liquidus_b'])
-    yy_sol = myjson_o.get_dict_values_internal(['data','solidus_b'])
-    #ax0.fill_between( xx_pres, yy_liq, yy_sol, facecolor='grey', alpha=0.35, linewidth=0 )
-    yy_liqt = myjson_o.get_dict_values_internal(['data','liquidus_temp_b'])
-    yy_solt = myjson_o.get_dict_values_internal(['data','solidus_temp_b'])
-    #ax1.fill_between( xx_pres, yy_liqt, yy_solt, facecolor='grey', alpha=0.35, linewidth=0 )
-    # hack to compute some average properties for Bower et al. (2018)
-    #print xx_sol
-    #print np.mean(yy_liq[20:]-yy_sol[20:])
-    #sys.exit(1)
-
-    # # dotted lines of constant melt fraction
-    # for xx in range( 0, 11, 2 ):
-    #    yy_b = xx/10.0 * (yy_liq - yy_sol) + yy_sol
-    #    if xx == 0:
-    #        # solidus
-    #        ax1.plot( yy_b, xx_pres, ':', linewidth=0.5, color='black' )
-    #    elif xx == 3:
-    #        # typically, the approximate location of the rheological transition
-    #        ax1.plot( yy_b, xx_pres, ':', linewidth=1.0, color='white')
-    #    elif xx == 10:
-    #        # liquidus
-    #        ax1.plot( yy_b, xx_pres, ':', linewidth=0.5, color='black' )
-    #    else:
-    #        # dashed constant melt fraction lines
-    #        ax1.plot( yy_b, xx_pres, ':', linewidth=1.0, color='white' )
-    # ax1.plot( yy_sol, xx_pres, ':', linewidth=1.0, color='black' )
-    # # ax0.plot( yy_solt, xx_pres, ':', linewidth=1.0, color='black' )
-    # yy_b = xx/10.0 * (yy_liq - yy_sol) + yy_sol
-    # ax1.plot( yy_b, xx_pres, ':', linewidth=1.5, color='black')
 
     handle_l = [] # handles for legend
 
-    # folder = "/Users/tim/Dropbox/work/Projects/20_greenedge/colormaps/ScientificColourMaps5/"
-    #
-    # __all__ = {'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
-    #            'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
-    #            'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
-    #            'tokyo', 'turku', 'vik'}
-    #
-    # file = os.path.join("/Users/tim/Dropbox/work/Projects/20_greenedge/colormaps/ScientificColourMaps5/", 'roma', 'roma' + '.txt')
-    # cm_data = np.loadtxt(file)
-    # roma = LinearSegmentedColormap.from_list('roma', cm_data)
 
     fig_o.set_colors(cmap=vik_r) # "magma_r"
 
@@ -150,38 +98,42 @@ def stacked_evolution( times ):
         label = coupler_utils.latex_float(time)+" yr"
 
         # atmosphere
-        ax0.plot( temperature_profile, pressure_profile, '-', color=color )
+        ax0.plot( temperature_profile, pressure_profile, '-', color=color, label=label )
+        # handle_l.append( handle )
 
         # interior
         yy = myjson_o.get_dict_values_internal(['data','temp_b'])
-        ax1.plot( yy, xx_pres, '--', color=color )
-        ax1.plot( yy*MIX, xx_pres*MIX, '-', color=color )
+        yy_s = myjson_o.get_dict_values_internal(['data','temp_s'])
+        ax1.plot( yy, xx_depth, '--', color=color )
+        ax1.plot( yy*MIX, xx_depth*MIX, '-', color=color, label=label )
+
+        print(time)
+        print('temp_b', yy)
+        print('temp_s', yy_s)
 
         ymax_atm = np.max([ymax_atm, np.max(pressure_profile)])
 
-    yticks = [0,20,40,60,80,100,120,int(xx_pres_s[-1])]
-    ymax = int(xx_pres_s[-1])
+    yticks = [0, 500, 1000, 1500, 2000, 2500,int(xx_depth[-1])]
+    ymax = int(xx_depth[-1])
 
     units = myjson_o.get_dict_units(['data','temp_b'])
     title = 'Atmosphere + mantle temperature profile' #'(a) Temperature, {}'.format(units)
-    xticks = [200, 1000, 2000, 3000, 4000, 5000]
-    fig_o.set_myaxes( ax0, xlabel='$T$, '+units, ylabel='$p$\n(bar)', xticks=xticks, ymin=0, ymax=ymax_atm ) # , xmin=300, xmax=4200, , yticks=yticks, , title=title
-    ax0.set_xlim( 200, 5000 )
+    xticks = [100, 1000, 2000, 3000, 4000, 5000]
+    fig_o.set_myaxes( ax0, ylabel='$P_\mathrm{atm}$\n(bar)', xticks=xticks, ymin=0, ymax=ymax_atm ) # , xmin=300, xmax=4200, , yticks=yticks, , title=title
+    ax0.set_xlim( 100, 5000 )
     ax0.set_ylim( 0, ymax_atm )
     ax0.yaxis.set_label_coords(-0.13,0.5)
     ax0.invert_yaxis()
-    # ax0.set_xticklabels([])
-    # ax0.set_xticks([])
-    # fig_o.set_mylegend( ax0, handle_l, loc=3, ncol=1 )
-    ax0.xaxis.set_label_position('top')
-    ax0.xaxis.tick_top()
+    ax0.set_xticklabels([])
 
-    xticks = [200, 1000, 2000, 3000, 4000, 5000]
-    fig_o.set_myaxes( ax1, xlabel='$T$, '+units, ylabel='$d$\n(km)', xticks=xticks, ymax=ymax, yticks=yticks )
-    ax0.set_xlim( 200, 5000 )
+    fig_o.set_myaxes( ax1, xlabel='$T$, '+units, ylabel='$d_\mathrm{mantle}$\n(km)', xticks=xticks, ymax=ymax, yticks=yticks )
+    ax1.set_xlim( 100, 5000 )
     # ax1.set_yticklabels([])
     ax1.yaxis.set_label_coords(-0.13,0.5)
     ax1.invert_yaxis()
+    # fig_o.set_mylegend( ax1, handle_l, loc=3, ncol=1 )
+
+    ax1.legend( fontsize=8, fancybox=True, framealpha=0.5, loc=3 )
 
     fig_o.savefig(1)
 

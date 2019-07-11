@@ -154,8 +154,6 @@ def mantle_evolution( times ):
         # ax1.fill_between( xx_pres, yy_liq, yy_sol, facecolor='grey', alpha=0.35, linewidth=0 )
         # yy_b = 3./10.0 * (yy_liq - yy_sol) + yy_sol
 
-
-
         # viscosity
         visc_const = 1 # this is used for the arcsinh scaling
         visc_fmt = su.MyFuncFormatter( visc_const )
@@ -171,7 +169,7 @@ def mantle_evolution( times ):
         # cell-wise and we can easily see the CMB boundary condition
         yy = myjson_o.get_dict_values(['data','S_s'])
         #yy = myjson_o.get_dict_values_internal('S_b')
-        ax3.plot( yy, xx_pres_s, '-', color=color )
+        # ax3.plot( yy, xx_pres_s, '-', color=color )
 
         # legend
         handle, = ax3.plot( yy*MIX_s, xx_pres_s*MIX_s, '-', color=color, label=label )

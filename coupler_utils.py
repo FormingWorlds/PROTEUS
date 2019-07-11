@@ -1,7 +1,7 @@
 import errno
 import os
 from datetime import datetime
-from natsort import natsorted #https://pypi.python.org/pypi/natsort
+# from natsort import natsorted #https://pypi.python.org/pypi/natsort
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
