@@ -64,7 +64,7 @@ def RadConvEqm(output_dir, time_current, Tg):
     #--------------Now do the time stepping-------------------
     #---------------------------------------------------------
     matplotlib.rc('axes',edgecolor='k')
-    for i in range(0,50):
+    for i in range(0,100):
 
         atm = steps(atm)
 

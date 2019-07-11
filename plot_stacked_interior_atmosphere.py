@@ -4,6 +4,7 @@ import spider_coupler_utils as su
 import coupler_utils
 import argparse
 import logging
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
@@ -72,71 +73,93 @@ def stacked_evolution( times ):
     fig_o.set_colors(cmap=vik_r) # "magma_r"
 
     ymax_atm = 0
+    ymin_atm = 0
 
     for nn, time in enumerate( fig_o.time ):
 
-        # Read atmosphere properties
-        atm_TP_profile  = np.loadtxt('output/'+str(int(time))+"_atm_TP_profile.dat")
-        atm_spectral_flux = np.loadtxt('output/'+str(int(time))+"_atm_spectral_flux.dat")
+        if os.path.exists('output/'+str(int(time))+"_atm_TP_profile.dat"):
 
-        temperature_profile = []
-        pressure_profile    = []
-        band_centres        = []
-        spectral_flux       = []
-        for i in range(0, len(atm_TP_profile)):
-            temperature_profile.append(atm_TP_profile[i][0])
-            pressure_profile.append(atm_TP_profile[i][1])
-            band_centres.append(atm_spectral_flux[i][0])
-            spectral_flux.append(atm_spectral_flux[i][1])
+            # Read atmosphere properties
+            atm_TP_profile  = np.loadtxt('output/'+str(int(time))+"_atm_TP_profile.dat")
+            atm_spectral_flux = np.loadtxt('output/'+str(int(time))+"_atm_spectral_flux.dat")
 
-        # read json
-        myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
+            temperature_profile = []
+            pressure_profile    = []
+            band_centres        = []
+            spectral_flux       = []
+            for i in range(0, len(atm_TP_profile)):
+                temperature_profile.append(atm_TP_profile[i][0])
+                pressure_profile.append(atm_TP_profile[i][1])
+                band_centres.append(atm_spectral_flux[i][0])
+                spectral_flux.append(atm_spectral_flux[i][1])
 
-        color = fig_o.get_color( nn )
-        # use melt fraction to determine mixed region
-        MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' )
-        # MIX = myjson_o.get_mixed_phase_boolean_array( 'basic_internal' )
-        MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
+            # read json
+            myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
 
-        label = coupler_utils.latex_float(time)+" yr"
+            color = fig_o.get_color( nn )
+            # use melt fraction to determine mixed region
+            MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' )
+            # MIX = myjson_o.get_mixed_phase_boolean_array( 'basic_internal' )
+            # MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
-        # atmosphere
-        ax0.plot( temperature_profile, pressure_profile, '-', color=color, label=label, lw=1.5)
-        # handle_l.append( handle )
+            label = coupler_utils.latex_float(time)+" yr"
 
-        # interior
-        yy = myjson_o.get_dict_values(['data','temp_b'])
-        yy_s = myjson_o.get_dict_values_internal(['data','temp_s'])
-        ax1.plot( yy, xx_depth, '--', color=color, lw=1.5 )
-        ax1.plot( yy*MIX, xx_depth*MIX, '-', color=color, label=label, lw=1.5 )
+            # atmosphere
+            ax0.semilogy( temperature_profile, pressure_profile, '-', color=color, label=label, lw=1.5)
+            # handle_l.append( handle )
 
-        print(time, 'temperature_profile', temperature_profile[-1], temperature_profile[-2])
-        print(time, 'temp_b', yy[0], yy[1])
-        print(time, 'temp_s', yy_s[0], yy_s[1])
+            # interior
+            yy = myjson_o.get_dict_values(['data','temp_b'])
+            # yy_s = myjson_o.get_dict_values_internal(['data','temp_s'])
+            ax1.plot( yy, xx_pres, '--', color=color, lw=1.5 )
+            ax1.plot( yy*MIX, xx_pres*MIX, '-', color=color, label=label, lw=1.5 )
 
-        ymax_atm = np.max([ymax_atm, np.max(pressure_profile)])
+            # print(time, 'temperature_profile', temperature_profile[-1], temperature_profile[-2])
+            # print(time, 'temp_b', yy[0], yy[1])
+            # print(time, 'temp_s', yy_s[0], yy_s[1])
 
-    yticks = [0, 500, 1000, 1500, 2000, 2500,int(xx_depth[-1])]
-    ymax = int(xx_depth[-1])
+            ymax_atm = np.max([ymax_atm, np.max(pressure_profile)])
+            ymin_atm = np.min([ymin_atm, np.min(pressure_profile)])
+
+
+
+    xticks = [100, 1000, 2000, 3000, 4000, 5000]
+    xmin = 100
+    xmax = 5000
 
     units = myjson_o.get_dict_units(['data','temp_b'])
-    title = 'Atmosphere + mantle temperature profile' #'(a) Temperature, {}'.format(units)
-    xticks = [100, 1000, 2000, 3000, 4000, 5000]
-    fig_o.set_myaxes( ax0, ylabel='$P_\mathrm{atm}$\n(bar)', xticks=xticks, ymin=0, ymax=ymax_atm ) # , xmin=300, xmax=4200, , yticks=yticks, , title=title
-    ax0.set_xlim( 100, 5000 )
-    ax0.set_ylim( 0, ymax_atm )
+    # title = 'Atmosphere + mantle temperature profile' #'(a) Temperature, {}'.format(units)
+
+    # Atmosphere part
+    fig_o.set_myaxes( ax0, ylabel='$P_\mathrm{atm}$\n(bar)', xmin=xmin, xmax=xmax, xticks=xticks, ymin=0, ymax=ymax_atm ) # , xmin=300, xmax=4200, , yticks=yticks, , title=title
+    # ax0.set_xlim( 100, 5000 )
+    ax0.set_ylim( top=ymax_atm, bottom=ymin_atm )
+    ax0.set_yticks([ymin_atm, 1e0, 1e1, 1e2, ymax_atm])
+    ax0.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    # ax0.get_yaxis().get_major_formatter().labelOnlyBase = False
     ax0.yaxis.set_label_coords(-0.13,0.5)
     ax0.invert_yaxis()
     ax0.set_xticklabels([])
 
-    fig_o.set_myaxes( ax1, xlabel='$T$, '+units, ylabel='$d_\mathrm{mantle}$\n(km)', xticks=xticks, ymax=ymax, yticks=yticks )
-    ax1.set_xlim( 100, 5000 )
-    # ax1.set_yticklabels([])
+    # Interior part
+    yticks = [0, 20,40,60,80,100,120,int(xx_pres[-1])]
+    ymax = int(xx_pres[-1])
+    fig_o.set_myaxes( ax1, xlabel='$T$, '+units, ylabel='$P_\mathrm{mantle}$\n(GPa)', xmin=xmin, xmax=xmax, xticks=xticks, ymin=0, ymax=ymax, yticks=yticks )
+    ax1.set_yticklabels(["", "20","40","60","80","100","120",str(int(xx_pres[-1]))])
     ax1.yaxis.set_label_coords(-0.13,0.5)
     ax1.invert_yaxis()
-    # fig_o.set_mylegend( ax1, handle_l, loc=3, ncol=1 )
-
     ax1.legend( fontsize=8, fancybox=True, framealpha=0.5, loc=3 )
+
+    # Pressure-depth conversion for y-axis
+    ax1b = ax1.twinx()
+    yy = myjson_o.get_dict_values(['data','temp_b'])
+    ax1b.plot( yy, xx_depth, alpha=0.0)
+    ax1b.set_xlim( right=xmax, left=xmin )
+    ax1b.set_ylim(top=xx_depth[-1], bottom=xx_depth[0])
+    ax1b.set_yticks([0, 500, 1000, 1500, 2000, 2500, int(xx_depth[-1])])
+    ax1b.set_ylabel( '$d$\n(km)', rotation=0 )
+    ax1b.yaxis.set_label_coords(1.15,0.55)
+    ax1b.invert_yaxis()
 
     fig_o.savefig(1)
 

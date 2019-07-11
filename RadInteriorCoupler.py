@@ -15,6 +15,7 @@ import coupler_utils
 import spider_coupler_utils as su
 import plot_interior
 import plot_time_evolution
+import plot_stacked_interior_atmosphere
 from datetime import datetime
 
 # SPIDER start input options
@@ -158,6 +159,7 @@ while time_current < time_target:
         plot_times.append(output_times[-1]) # last snapshot
     print("snapshots:", plot_times)
     plot_interior.mantle_evolution(plot_times)
+    plot_stacked_interior_atmosphere.stacked_evolution(plot_times)
 
 # Copy files to separate folder
 sim_dir = coupler_utils.make_output_dir() #

@@ -95,29 +95,29 @@ def mantle_evolution( times ):
 
         # temperature
         yy = myjson_o.get_dict_values(['data','temp_b'])
-        ax0.plot( yy, xx_pres, '--', color=color )
-        ax0.plot( yy*MIX, xx_pres*MIX, '-', color=color )
+        ax0.plot( yy, xx_pres, '--', color=color, lw=1.5 )
+        handle, = ax0.plot( yy*MIX, xx_pres*MIX, '-', color=color, lw=1.5, label=label )
 
         # melt fraction
         yy = myjson_o.get_dict_values(['data','phi_b'])
-        ax1.plot( yy, xx_pres, '-', color=color )
+        ax1.plot( yy, xx_pres, '-', color=color, lw=1.5 )
 
         # viscosity
         visc_const = 1 # this is used for the arcsinh scaling
         visc_fmt = su.MyFuncFormatter( visc_const )
         yy = myjson_o.get_dict_values(['data','visc_b'], visc_fmt)
-        ax2.plot( yy, xx_pres, '-', color=color )
+        ax2.plot( yy, xx_pres, '-', color=color, lw=1.5 )
 
         # entropy
         # plot staggered, since this is where entropy is defined
         # cell-wise and we can easily see the CMB boundary condition
         yy = myjson_o.get_dict_values(['data','S_s'])
         # yy = myjson_o.get_dict_values(['data','S_b'])
-        # ax3.plot( yy, xx_pres_s, '-', color=color )
+        ax3.plot( yy, xx_pres_s, '-', color=color, lw=1.5 )
         # print(yy, xx_pres)
+        # ax3.plot( yy*MIX_s, xx_pres_s*MIX_s, '-', color=color, label=label )
 
         # legend
-        handle, = ax3.plot( yy*MIX_s, xx_pres_s*MIX_s, '-', color=color, label=label )
         handle_l.append( handle )
 
     yticks = [0,20,40,60,80,100,120,int(xx_pres_s[-1])]
@@ -132,7 +132,8 @@ def mantle_evolution( times ):
     ax0.set_xlim( 200, 5000 )
     ax0.yaxis.set_label_coords(-0.25,0.5)
     ax0.invert_yaxis()
-    fig_o.set_mylegend( ax0, handle_l, loc=3, ncol=1 )
+    # fig_o.set_mylegend( ax0, handle_l, loc=3, ncol=1 )
+    ax0.legend( fontsize=8, fancybox=True, framealpha=0.5, loc=3 )
 
     title = '(b) Melt fraction'
     xticks = [0,0.2,0.4,0.6,0.8,1.0]
@@ -157,9 +158,11 @@ def mantle_evolution( times ):
 
     # Pressure-depth conversion for y-axis
     ax3b = ax3.twinx()
-    ax3b.plot( yy, xx_depth_s, alpha=0.0)
-    ax3b.set_ylim(top=xx_depth_s[-1], bottom=xx_depth_s[0])
-    ax3b.set_yticks([0, 500, 1000, 1500, 2000, 2500, int(xx_depth_s[-1])])
+    yy = myjson_o.get_dict_values(['data','S_b'])
+    ax3b.plot( yy, xx_depth, alpha=0.0)
+    ax3b.set_ylim(top=xx_depth[-1], bottom=xx_depth[0])
+    ax3b.set_xlim(right=np.max(xticks), left=np.min(xticks))
+    ax3b.set_yticks([0, 500, 1000, 1500, 2000, 2500, int(xx_depth[-1])])
     ax3b.set_ylabel( '$d$\n(km)', rotation=0 )
     ax3b.yaxis.set_label_coords(1.30,0.55)
     ax3b.invert_yaxis()

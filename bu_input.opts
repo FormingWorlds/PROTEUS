@@ -21,7 +21,7 @@
 
 # mesh
 # number of basic nodes
--n 50
+-n 100
 
 # initial condition
 # [1] is set dS/dr to constant everywhere
