@@ -118,8 +118,9 @@ def stacked_evolution( times ):
             # print(time, 'temp_b', yy[0], yy[1])
             # print(time, 'temp_s', yy_s[0], yy_s[1])
 
-            ymax_atm = np.max([ymax_atm, np.max(pressure_profile)])
-            ymin_atm = np.min([ymin_atm, np.min(pressure_profile)])
+            if np.min(pressure_profile) > 0:
+                ymax_atm = np.max([ymax_atm, np.max(pressure_profile)])
+                ymin_atm = np.min([ymin_atm, np.min(pressure_profile)])
 
 
 
@@ -133,9 +134,15 @@ def stacked_evolution( times ):
     # Atmosphere part
     fig_o.set_myaxes( ax0, ylabel='$P_\mathrm{atm}$\n(bar)', xmin=xmin, xmax=xmax, xticks=xticks, ymin=0, ymax=ymax_atm ) # , xmin=300, xmax=4200, , yticks=yticks, , title=title
     # ax0.set_xlim( 100, 5000 )
-    ax0.set_ylim( top=ymax_atm, bottom=ymin_atm )
-    ax0.set_yticks([ymin_atm, 1e0, 1e1, 1e2, ymax_atm])
-    ax0.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+
+    # Ensure sensible axes limits
+    ymax_atm = np.min([ymax_atm, 1e+30])
+    ymin_atm = np.max([ymin_atm, 1e-30])
+    print(ymin_atm, ymax_atm)
+
+    # ax0.set_ylim( top=ymax_atm, bottom=ymin_atm )
+    # ax0.set_yticks([ymin_atm, 1e0, 1e1, 1e2, ymax_atm])
+    # ax0.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
     # ax0.get_yaxis().get_major_formatter().labelOnlyBase = False
     ax0.yaxis.set_label_coords(-0.13,0.5)
     ax0.invert_yaxis()
