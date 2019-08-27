@@ -20,10 +20,17 @@ Read-only: https://www.overleaf.com/read/cbbvgpyttcqm
 
 Edit: https://www.overleaf.com/8481699571kkycnphnmgdg
 
+###### LaTeX file for PAPER I
+
+Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
+
+Edit: https://www.overleaf.com/6487644842trtffrfrfxmj
+
 ###### Slack channel for day-to-day use
+
 http://bit.ly/2LvB1FR
 
-Channel: #interior-atmosphere
+--> Channel: #interior-atmosphere
 
 ## FILE DESCRIPTIONS
 
