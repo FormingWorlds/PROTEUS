@@ -5,6 +5,7 @@ RadInteriorCoupler.py
 import numpy as np
 # import GGRadConv
 import SocRadConv
+import SocRadModel
 import ReadInterior
 import subprocess
 import glob
@@ -38,6 +39,11 @@ start_condition     = "1"            # 1: Start from beginning, 2: Restart from 
 time_current = 0
 time_target  = 1000000
 
+# Planetary and magma ocean start configuration
+star_mass       = 1.0       # M_sol
+time_offset     = 4500.     # Myr
+mean_distance   = 1.0       # AU
+
 # Count SPIDER-SOCRATES iterations
 pingpong_no = 0
 if start_condition == "2":
@@ -45,7 +51,7 @@ if start_condition == "2":
 
 # Inform about start of runtime
 print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-print(":::::::::::::: START COUPLER RUN –", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), ":::::::::::::::")
+print(":::::::::::::: START COUPLER RUN –", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "::::::::::::::")
 print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
 # Initialize SPIDER to generate first output file
@@ -99,8 +105,13 @@ while time_current < time_target:
 
     print("::::::::::::: START SOCRATES ITERATION -", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "::::::::::::::")
 
+    # Interpolate TOA heating from Baraffe models and distance from star
+    stellar_toa_heating = SocRadModel.InterpolateStarLuminosity(star_mass, time_current, time_offset, mean_distance)
+
+    print("STELLAR TOA HEATING:", stellar_toa_heating)
+
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
-    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current)) # W/m^2
+    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current, stellar_toa_heating)) # W/m^2
 
     # Save OLR flux to be fed to SPIDER
     with open(output_dir+"OLRFlux.dat", "a") as f:

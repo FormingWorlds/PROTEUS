@@ -24,7 +24,7 @@ def surf_Planck_nu(atm):
     B = B * atm.band_widths/1000.0
     return B
 
-def RadConvEqm(output_dir, time_current, Tg):
+def RadConvEqm(output_dir, time_current, Tg, stellar_toa_heating):
     #--------------------Set radmodel options-------------------
     #---Instantiate the radiation model---
 
@@ -170,15 +170,15 @@ def dryAdj(atm):
 
 
 #Define function to do time integration for n steps
-def steps(atm):
-    atm = SocRadModel.radCompSoc(atm)
+def steps(atm, stellar_toa_heating):
+    atm = SocRadModel.radCompSoc(atm, stellar_toa_heating)
     dT = atm.total_heating*atm.dt
     #Limit the temperature change per step
     dT = np.where(dT>5.,5.,dT)
     dT = np.where(dT<-5.,-5.,dT)
     #Midpoint method time stepping
     #changed call to r.  Also modified to hold Tg fixed
-    atm = SocRadModel.radCompSoc(atm)
+    atm = SocRadModel.radCompSoc(atm, stellar_toa_heating)
     dT = atm.total_heating*atm.dt
     #Limit the temperature change per step
     dT = np.where(dT>5.,5.,dT)
