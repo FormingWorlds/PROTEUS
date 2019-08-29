@@ -37,7 +37,7 @@ for lum_track in reversed(lum_tracks):
     # plt.plot(age_grid, lum_interpolated, '--')
 
     # Plot Sun as reference point
-    if star_mass == "1.00":
+    if star_mass == "1.0":
         # Retrieve last color
         c = p[-1].get_color()
         plt.plot(4603, interpolate_luminosity([4603]), 'o', color=c)
