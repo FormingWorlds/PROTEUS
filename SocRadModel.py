@@ -60,7 +60,8 @@ def radCompSoc(atm, stellar_toa_heating):
     s = " "
 
 
-    seq4 = ("Cl_run_cdf -B", basename,"-s "+path_to_socrates+"/data/spectra/ga7/sp_sw_ga7 -R 1 6 -ch 6 -S -g 2 -C 5")
+    # seq4 = ("Cl_run_cdf -B", basename,"-s "+path_to_socrates+"/data/spectra/ga7/sp_sw_ga7 -R 1 6 -ch 6 -S -g 2 -C 5")
+    seq4 = ("Cl_run_cdf -B", basename,"-s spectral-files/sp_spider_3000K_300 -R 1 300 -ch 300 -S -g 2 -C 5")
     seq5 = ("fmove", basename,"currentsw")
     seq6 = ("Cl_run_cdf -B", basename,"-s spectral-files/sp_spider_3000K_300 -R 1 300 -ch 300 -I -g 2 -C 5")
     seq7 = ("fmove", basename,"currentlw")
