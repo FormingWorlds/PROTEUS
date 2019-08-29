@@ -33,16 +33,17 @@ def latex_float(f):
         return float_str
 
 
-def InterpolateStellarLuminosity(star_mass, time, time_offset, mean_distance):
+def InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance):
 
     luminosity_df = pd.read_csv("luminosity_tracks/Lum_m"+str(star_mass)+".txt")
 
-    ages            = luminosity_df["age"]*1e+3
-    luminosities    = luminosity_df["lum"]
+    time_current    = time_current/1e+6         # Myr
+    ages            = luminosity_df["age"]*1e+3 # Myr
+    luminosities    = luminosity_df["lum"]      # L_sol
 
     # Interpolate luminosity for current time
     interpolate_luminosity  = interpolate.interp1d(ages, luminosities)
-    interpolated_luminosity = interpolate_luminosity([time+time_offset])*L_sun
+    interpolated_luminosity = interpolate_luminosity([time_current+time_offset])*L_sun
 
     stellar_toa_heating = interpolated_luminosity / ( 4. * np.pi * (mean_distance*AU)**2. )
     

@@ -172,6 +172,7 @@ while time_current < time_target:
     print("snapshots:", plot_times)
     plot_interior.mantle_evolution(plot_times)
     plot_stacked_interior_atmosphere.stacked_evolution(plot_times)
+    plt.close()
 
 # Copy files to separate folder
 sim_dir = coupler_utils.make_output_dir() #
