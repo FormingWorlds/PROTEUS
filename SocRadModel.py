@@ -16,24 +16,8 @@ import nctools
 from subprocess import call
 from netCDF4 import Dataset
 from atmosphere_column import atmos
-import pandas as pd
 
 path_to_socrates = os.getcwd()+"/socrates/socrates_main"
-
-def InterpolateStarLuminosity(star_mass, time, time_offset, mean_distance):
-
-    luminosity_df = pd.read_csv("luminosity_tracks/Lum_m"+str(star_mass)+".txt")
-
-    ages            = luminosity_df["age"]*1e+3
-    luminosities    = luminosity_df["lum"]
-
-    # Interpolate luminosity for current time
-    interpolate_luminosity  = interpolate.interp1d(ages, luminosities)
-    interpolated_luminosity = interpolate_luminosity([time+time_offset])
-
-    stellar_toa_heating = interpolated_luminosity / ( 4. * np.pi * (mean_distance*149597870700)**2. )
-    
-    return stellar_toa_heating
 
 def radCompSoc(atm, stellar_toa_heating):
 

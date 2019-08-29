@@ -40,9 +40,10 @@ time_current = 0
 time_target  = 1000000
 
 # Planetary and magma ocean start configuration
-star_mass       = 1.0       # M_sol
-time_offset     = 4500.     # Myr
-mean_distance   = 1.0       # AU
+star_mass       = 1.0       # M_sol: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4
+mean_distance   = 1.0       # AU, star-planet distance
+time_offset     = 100.      # Myr, start of magma ocean after star formation
+
 
 # Count SPIDER-SOCRATES iterations
 pingpong_no = 0
@@ -106,9 +107,9 @@ while time_current < time_target:
     print("::::::::::::: START SOCRATES ITERATION -", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "::::::::::::::")
 
     # Interpolate TOA heating from Baraffe models and distance from star
-    stellar_toa_heating = SocRadModel.InterpolateStarLuminosity(star_mass, time_current, time_offset, mean_distance)
+    stellar_toa_heating, solar_lum = coupler_utils.InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance)
 
-    print("STELLAR TOA HEATING:", stellar_toa_heating)
+    print("STELLAR TOA HEATING:", stellar_toa_heating, solar_lum)
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
     heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current, stellar_toa_heating)) # W/m^2

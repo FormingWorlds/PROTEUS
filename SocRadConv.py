@@ -66,7 +66,7 @@ def RadConvEqm(output_dir, time_current, Tg, stellar_toa_heating):
     matplotlib.rc('axes',edgecolor='k')
     for i in range(0,100):
 
-        atm = steps(atm)
+        atm = steps(atm, stellar_toa_heating)
 
         #hack!
         # atm.temp[0] = atm.temp[1]
