@@ -24,7 +24,7 @@ def surf_Planck_nu(atm):
     B = B * atm.band_widths/1000.0
     return B
 
-def RadConvEqm(output_dir, time_current, Tg, stellar_toa_heating):
+def RadConvEqm(output_dir, time_current, Tg, stellar_toa_heating, h2o, co2):
     #--------------------Set radmodel options-------------------
     #---Instantiate the radiation model---
 

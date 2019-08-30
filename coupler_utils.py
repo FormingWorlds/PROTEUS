@@ -17,6 +17,42 @@ M_earth         = 5.972E24              # kg
 R_core_earth    = 3485000.0             # m
 M_core_earth    = 1.94E24               # kg
 
+h2_mol_mass     = 0.00201588            # kg/mol
+h2o_mol_mass    = 0.01801528            # kg/mol
+co2_mol_mass    = 0.04401               # kg/mol
+ch4_mol_mass    = 0.01604               # kg/mol
+co_mol_mass     = 0.02801               # kg/mol
+n2_mol_mass     = 0.028014              # kg/mol
+o2_mol_mass     = 0.031999              # kg/mol
+he_mol_mass     = 0.0040026             # kg/mol
+
+
+def CalcMolRatios(h2_kg, h2o_kg, co2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg):
+
+    h2_mol  = h2_kg/h2_mol_mass     # mol
+    h2o_mol = h2o_kg/h2o_mol_mass   # mol
+    co2_mol = co2_kg/co2_mol_mass   # mol
+    ch4_mol = ch4_kg/ch4_mol_mass   # mol
+    co_mol  = co_kg/co_mol_mass     # mol
+    n2_mol  = n2_kg/_mol_mass       # mol
+    o2_mol  = o2_kg/_mol_mass       # mol
+    he_mol  = he_kg/he_mol_mass     # mol
+
+    # Radiative gases + He
+    total_mol = h2_mol + h2o_mol + co2_mol + ch4_mol + co_mol + n2_mol + o2_mol + he_mol
+
+    h2_ratio  = h2_mol / total_mol
+    h2o_ratio = h2o_mol / total_mol 
+    co2_ratio = co2_mol / total_mol 
+    ch4_ratio = ch4_mol / total_mol 
+    co_ratio  = co_mol / total_mol 
+    n2_ratio  = n2_mol / total_mol 
+    o2_ratio  = o2_mol / total_mol 
+    he_ratio  = he_mol / total_mol 
+
+    return h2_ratio, h2o_ratio, co2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio
+
+
 # https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
 def make_output_dir():
     output_dir = os.getcwd()+"/output/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
