@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # import logging
-import spider_utils as su
+import spider_coupler_utils as su
 # import matplotlib.transforms as transforms
 # import matplotlib.pyplot as plt
 import numpy as np
