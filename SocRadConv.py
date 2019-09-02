@@ -151,8 +151,7 @@ def RadConvEqm(output_dir, time_current, Tg, stellar_toa_heating, p_s, h2o_ratio
 
     return atm.LW_flux_up[-1]
 
-
-#Dry adjustment routine.
+# Dry adjustment routine
 def dryAdj(atm):
     T = atm.temp
     p = atm.p
