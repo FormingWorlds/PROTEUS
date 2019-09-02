@@ -26,32 +26,30 @@ n2_mol_mass     = 0.028014              # kg/mol
 o2_mol_mass     = 0.031999              # kg/mol
 he_mol_mass     = 0.0040026             # kg/mol
 
-
 def CalcMolRatios(h2_kg, h2o_kg, co2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg):
 
-    h2_mol  = h2_kg/h2_mol_mass     # mol
     h2o_mol = h2o_kg/h2o_mol_mass   # mol
     co2_mol = co2_kg/co2_mol_mass   # mol
+    h2_mol  = h2_kg/h2_mol_mass     # mol
     ch4_mol = ch4_kg/ch4_mol_mass   # mol
     co_mol  = co_kg/co_mol_mass     # mol
-    n2_mol  = n2_kg/_mol_mass       # mol
-    o2_mol  = o2_kg/_mol_mass       # mol
+    n2_mol  = n2_kg/n2_mol_mass     # mol
+    o2_mol  = o2_kg/o2_mol_mass     # mol
     he_mol  = he_kg/he_mol_mass     # mol
 
-    # Radiative gases + He
-    total_mol = h2_mol + h2o_mol + co2_mol + ch4_mol + co_mol + n2_mol + o2_mol + he_mol
+    # Radiative species + He
+    total_mol = h2o_mol + co2_mol + h2_mol + ch4_mol + co_mol + n2_mol + o2_mol + he_mol
 
-    h2_ratio  = h2_mol / total_mol
-    h2o_ratio = h2o_mol / total_mol 
-    co2_ratio = co2_mol / total_mol 
-    ch4_ratio = ch4_mol / total_mol 
-    co_ratio  = co_mol / total_mol 
-    n2_ratio  = n2_mol / total_mol 
-    o2_ratio  = o2_mol / total_mol 
-    he_ratio  = he_mol / total_mol 
+    h2o_ratio = h2o_mol / total_mol  # mol/mol
+    co2_ratio = co2_mol / total_mol  # mol/mol
+    h2_ratio  = h2_mol / total_mol   # mol/mol
+    ch4_ratio = ch4_mol / total_mol  # mol/mol 
+    co_ratio  = co_mol / total_mol   # mol/mol 
+    n2_ratio  = n2_mol / total_mol   # mol/mol 
+    o2_ratio  = o2_mol / total_mol   # mol/mol 
+    he_ratio  = he_mol / total_mol   # mol/mol 
 
-    return h2_ratio, h2o_ratio, co2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio
-
+    return h2o_ratio, co2_ratio, h2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio
 
 # https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
 def make_output_dir():
@@ -107,4 +105,20 @@ def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
         z_profile[n] = - R_gas * T_mean_below * np.log(P_z/P_s) / grav_s
 
     return z_profile
+
+def PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg, co2_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum):
+
+    # Print final statement
+    print("--------------------------------------------------------")
+    print("      ==> RUNTIME INFO <==")
+    print("Time [Myr]:", str(float(time_current)/1e6))
+    print ("T_s [K]:", surfaceT_current)
+    print ("H2O:", h2o_kg, " [kg]", h2o_ratio, " [mol ratio]")
+    print ("CO2:", co2_kg, " [kg]", co2_ratio, " [mol ratio]")
+    print ("p_s:", p_s*1e-3, " [bar]")
+    print ("TOA heating:", stellar_toa_heating)
+    print ("L_star:", solar_lum)
+    print ("Total heat flux [W/m^2]:", heat_flux)
+    print ("Last file name:", ic_filename)
+    print("--------------------------------------------------------")
 

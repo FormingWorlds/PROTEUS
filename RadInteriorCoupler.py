@@ -13,7 +13,7 @@ import os, shutil
 import math
 from natsort import natsorted #https://pypi.python.org/pypi/natsort
 import coupler_utils
-import spider_coupler_utils as su
+import spider_coupler_utils
 import plot_interior
 import plot_time_evolution
 import plot_stacked_interior_atmosphere
@@ -96,23 +96,39 @@ while time_current < time_target:
     surface_quantities  = np.loadtxt(output_dir+'surface_atmosphere.dat')
     if pingpong_no > 0: # After first iteration more than one entry
         surface_quantities = surface_quantities[-1]
-    print("Surface quantities – [time, T_s, H2O, CO2]: ", surface_quantities)
+    
     time_current        = surface_quantities[0]  # K
     surfaceT_current    = surface_quantities[1]  # K
-    h2o_current         = surface_quantities[2]  # kg
-    co2_current         = surface_quantities[3]  # kg
+    h2o_kg              = surface_quantities[2]  # kg
+    co2_kg              = surface_quantities[3]  # kg
+    h2_kg               = 0  # kg
+    ch4_kg              = 0  # kg
+    co_kg               = 0  # kg
+    n2_kg               = 0  # kg
+    o2_kg               = 0  # kg
+    he_kg               = 0  # kg
 
-    print(time_current, surfaceT_current)
+    # Interpolate TOA heating from Baraffe models and distance from star
+    # !! HARDCODED TO EARTH !! #
+    m_planet    = 5.972E24 # kg
+    r_planet    = 6371000  # m
+    grav_s      = spider_coupler_utils.gravity( m_planet, r_planet )
+    M_vol_tot   = h2o_kg + co2_kg + h2_kg + ch4_kg + co_kg + n2_kg + o2_kg + he_kg 
+    p_s = ( M_vol_tot * grav_s / ( 4. * np.pi * (r_planet**2.) ) ) * 1e-2 # mbar
+    stellar_toa_heating, solar_lum = coupler_utils.InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance)
+
+    # Print statements for development
+    # print("Surface quantities – [time, T_s, H2O, CO2]: ", surface_quantities)
+    # print("STELLAR TOA HEATING:", stellar_toa_heating, solar_lum)
+    # coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, "NaN", co2_kg, "NaN", p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
+
+    # Calculate volatile mol ratios from volatile masses in atmosphere
+    h2o_ratio, co2_ratio, h2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio = coupler_utils.CalcMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg)
 
     print("::::::::::::: START SOCRATES ITERATION -", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "::::::::::::::")
 
-    # Interpolate TOA heating from Baraffe models and distance from star
-    stellar_toa_heating, solar_lum = coupler_utils.InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance)
-
-    print("STELLAR TOA HEATING:", stellar_toa_heating, solar_lum)
-
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
-    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current, stellar_toa_heating)) # W/m^2
+    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current, stellar_toa_heating, p_s, h2o_ratio, co2_ratio, h2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio)) # W/m^2
 
     # Save OLR flux to be fed to SPIDER
     with open(output_dir+"OLRFlux.dat", "a") as f:
@@ -122,30 +138,18 @@ while time_current < time_target:
     # Find last file for SPIDER restart
     ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
 
-    # Print current values
-    print("_______________________________")
-    print("      ==> RUNTIME INFO <==")
-    print("Time [Myr]:", str(float(time_current)/1e6))
-    print ("T_surf [K]:", surfaceT_current)
-    print ("H2O [kg]:", h2o_current)
-    print ("CO2 [kg]:", co2_current)
-    print ("Heat flux [W/m^2]:", heat_flux)
-    print ("Last file name:", ic_filename)
-    print("_______________________________")
+    # Output during runtime
+    coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg, co2_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
 
     # Reset number of computing steps to reach time_target
     dtime       = time_target - time_current
     nstepsmacro = str( math.ceil( dtime / float(dtmacro) ) )
 
-    # # Set heat_flux class to str for subprocess call
-    # heat_flux = str(heat_flux)
-
     # Increase iteration counter
     pingpong_no += 1
 
     # SPIDER restart call sequence
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro ]
-    # , "-outputDirectory", output_dir
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro ] # , "-outputDirectory", output_dir
 
     # Runtime info
     print("SPIDER run flags:", end =" ")
@@ -158,10 +162,10 @@ while time_current < time_target:
 
     ### / ping-pong
 
-    # Plot conditions throughout run for analysis
+    # Plot conditions throughout run for on-the-fly analysis
     print("*** Plot current evolution,", end=" ")
     plot_time_evolution.plot_evolution(output_dir) # all times
-    output_times = su.get_all_output_times()
+    output_times = spider_coupler_utils.get_all_output_times()
     if len(output_times) <= 8:
         plot_times = output_times
     else:
@@ -172,9 +176,8 @@ while time_current < time_target:
     print("snapshots:", plot_times)
     plot_interior.mantle_evolution(plot_times)
     plot_stacked_interior_atmosphere.stacked_evolution(plot_times)
-    plt.close()
 
-# Copy files to separate folder
+# Copy old files to separate folder
 sim_dir = coupler_utils.make_output_dir() #
 print("===> Copy files to separate dir for this run to:", sim_dir)
 shutil.copy(os.getcwd()+"/bu_input.opts", sim_dir+"bu_input.opts")
@@ -184,11 +187,4 @@ for file in natsorted(glob.glob(output_dir+"*.*")):
 print("\n===> Done!")
 
 # Print final statement
-print("########## Target time reached, final values:")
-print("Time [Myr]:", str(float(time_current)/1e6))
-print ("T_surf [K]:", surfaceT_current)
-print ("H2O [kg]:", h2o_current)
-print ("CO2 [kg]:", co2_current)
-print ("Heat flux [W/m^2]:", heat_flux)
-print ("Last file name:", ic_filename)
-print("########## / FIN ")
+coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg, co2_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)

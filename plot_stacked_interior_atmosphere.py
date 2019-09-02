@@ -17,11 +17,12 @@ import matplotlib.ticker as ticker
 
 # Font settings
 # https://stackoverflow.com/questions/2537868/sans-serif-math-with-latex-in-matplotlib
+# https://olgabotvinnik.com/blog/how-to-set-helvetica-as-the-default-sans-serif-font-in/
 # matplotlib.rcParams['text.usetex'] = True
-matplotlib.rcParams['font.sans-serif'] = "Helvetica"
-matplotlib.rcParams['font.family'] = "sans-serif"
-params = {'text.usetex': False, 'mathtext.fontset': 'stixsans'}
-matplotlib.rcParams.update(params)
+# matplotlib.rcParams['font.sans-serif'] = "Helvetica"
+# matplotlib.rcParams['font.family'] = "sans-serif"
+# params = {'text.usetex': False, 'mathtext.fontset': 'stixsans'}
+# matplotlib.rcParams.update(params)
 # matplotlib.rcParams['ps.useafm'] = True
 # matplotlib.rcParams['pdf.use14corefonts'] = True
 # matplotlib.rcParams['text.usetex'] = True
@@ -122,7 +123,7 @@ def stacked_evolution( times ):
             
             # Plot height instead of pressure as y-axis
             ### CAREFUL: HARDCODED TO M_EARTH !!!
-            z_profile = coupler_utils.AtmosphericHeight(temperature_atmosphere, pressure_atmosphere, 5.972E24, r_planet)
+            z_profile = coupler_utils.AtmosphericHeight(temperature_atmosphere, pressure_atmosphere, 5.972E24, r_planet) ## WRONG UNITS!
             z_profile = z_profile*1e-3 # km
             # ax0.plot( temperature_atmosphere, z_profile, '-', color=color, label=label, lw=1.5)
 
@@ -159,7 +160,7 @@ def stacked_evolution( times ):
     ##### Atmosphere part
 
     # Y-axis settings for when using T-z
-    fig_o.set_myaxes( ax0, ylabel='$P_\mathrm{atm}$\n(bar)', xmin=xmin, xmax=xmax, xticks=xticks )
+    fig_o.set_myaxes( ax0, ylabel='$P_\mathrm{atm}$\n(mbar)', xmin=xmin, xmax=xmax, xticks=xticks )
     # ax0.yaxis.set_label_coords(-0.13,0.5)
     # ax0.set_ylim( top=ymax_atm_z, bottom=ymin_atm_z )
     # ax0.set_xticklabels([])
@@ -168,10 +169,9 @@ def stacked_evolution( times ):
 
     # Y-axis settings for when plotting T-P as main axis
     ax0.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
-    ax0.set_yticks([ymin_atm_pressure, 1e1, 1e2, ymax_atm_pressure])
+    ax0.set_yticks([ymin_atm_pressure, 1e1, 1e2, 1e3, 1e4, ymax_atm_pressure])
     ax0.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-    # ax0.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-    # ax0.get_yaxis().get_major_formatter().labelOnlyBase = False
+    ax0.get_yaxis().get_major_formatter().labelOnlyBase = False
     ax0.xaxis.tick_top()
     ax0.tick_params(direction='in')
     ax0.yaxis.set_label_coords(-0.13,0.5)
@@ -228,6 +228,7 @@ def stacked_evolution( times ):
     # # ax0b.invert_yaxis()
 
     fig_o.savefig(1)
+    # plt.close(fig_o)
 
 #====================================================================
 def main():
