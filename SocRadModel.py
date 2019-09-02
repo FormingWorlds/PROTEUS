@@ -19,7 +19,7 @@ from atmosphere_column import atmos
 
 path_to_socrates = os.getcwd()+"/socrates/socrates_main"
 
-def radCompSoc(atm):
+def radCompSoc(atm, stellar_toa_heating):
 
     # Write temperature, pressure, and mixing ratios
 
@@ -34,12 +34,12 @@ def radCompSoc(atm):
     # Water vapour mixing ratio profile
     q_mr_list = atm.mixing_ratios[0]
 
-
     # Write single values
     t_surf = atm.ts
     p_surf = 100.0*atm.p[-1]
     solar_zenith_angle = 0.0
-    solar_toa = 0.0 #zero stellar heating for now
+    # solar_toa = 0.0 #zero stellar heating for now
+    solar_toa = stellar_toa_heating
 
 
     # Write values to netcdf
@@ -60,7 +60,8 @@ def radCompSoc(atm):
     s = " "
 
 
-    seq4 = ("Cl_run_cdf -B", basename,"-s "+path_to_socrates+"/data/spectra/ga7/sp_sw_ga7 -R 1 6 -ch 6 -S -g 2 -C 5")
+    # seq4 = ("Cl_run_cdf -B", basename,"-s "+path_to_socrates+"/data/spectra/ga7/sp_sw_ga7 -R 1 6 -ch 6 -S -g 2 -C 5")
+    seq4 = ("Cl_run_cdf -B", basename,"-s spectral-files/sp_spider_3000K_300 -R 1 300 -ch 300 -S -g 2 -C 5")
     seq5 = ("fmove", basename,"currentsw")
     seq6 = ("Cl_run_cdf -B", basename,"-s spectral-files/sp_spider_3000K_300 -R 1 300 -ch 300 -I -g 2 -C 5")
     seq7 = ("fmove", basename,"currentlw")

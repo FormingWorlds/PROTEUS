@@ -10,6 +10,12 @@ import matplotlib
 import SocRadModel
 from atmosphere_column import atmos
 
+
+# # Font settings
+# import matplotlib.pylab as pylab
+# import matplotlib.font_manager as fm
+# font = fm.FontProperties(family = 'Helvetica', fname = '/Users/tim/Dropbox/work/matplotlib_fonts/Helvetica/Helvetica.ttf')
+
 def surf_Planck_nu(atm):
     h = 6.63e-34
     c = 3.0e8
@@ -24,13 +30,14 @@ def surf_Planck_nu(atm):
     B = B * atm.band_widths/1000.0
     return B
 
-def RadConvEqm(output_dir, time_current, Tg):
+def RadConvEqm(output_dir, time_current, Tg, stellar_toa_heating, p_s, h2o_ratio, co2_ratio, h2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio):
     #--------------------Set radmodel options-------------------
     #---Instantiate the radiation model---
 
     atm = atmos()
 
     #---Set up pressure array (a global)----
+    atm.ps = p_s
     pstart = .995*atm.ps
     rat = (atm.ptop/pstart)**(1./atm.nlev)
     logLevels = [pstart*rat**i for i in range(atm.nlev+1)]
@@ -46,12 +53,21 @@ def RadConvEqm(output_dir, time_current, Tg):
     atm.Rcp = 2./7.
     atm.temp = atm.ts*(atm.p/atm.p[-1])**atm.Rcp  #Initialize on an adiabat
     atm.temp  = np.where(atm.temp<atm.ts/2.,atm.ts/2.,atm.temp)
-    atm.n_species = 2
+    # atm.n_species = 2
+    atm.n_species = 7
 
-    # Water vapour
-    atm.mixing_ratios[0] = 1.e-5
-    # CO2
-    atm.mixing_ratios[1] = 1.e-5
+    # # Water vapour
+    # atm.mixing_ratios[0] = 1.e-5
+    # # CO2
+    # atm.mixing_ratios[1] = 1.e-5
+
+    atm.mixing_ratios[0] = h2o_ratio # H2O
+    atm.mixing_ratios[1] = co2_ratio # CO2
+    atm.mixing_ratios[2] = h2_ratio  # H2
+    atm.mixing_ratios[3] = ch4_ratio # CH4
+    atm.mixing_ratios[4] = co_ratio  # CO
+    atm.mixing_ratios[5] = n2_ratio  # N2
+    atm.mixing_ratios[6] = o2_ratio  # O2
 
 
     # Initialise previous OLR and TOA heating to zero
@@ -66,7 +82,7 @@ def RadConvEqm(output_dir, time_current, Tg):
     matplotlib.rc('axes',edgecolor='k')
     for i in range(0,100):
 
-        atm = steps(atm)
+        atm = steps(atm, stellar_toa_heating)
 
         #hack!
         # atm.temp[0] = atm.temp[1]
@@ -100,7 +116,7 @@ def RadConvEqm(output_dir, time_current, Tg):
             ax2.set_xlabel('Wavenumber')
             ax2.set_title('Spectral OLR')
             # plt.show()
-            plt.savefig(output_dir+'/TP_profile_'+str(round(time_current))+'.pdf', bbox_inches="tight")
+            plt.savefig(output_dir+'/TP_profile_'+str(round(time_current))+'.png', bbox_inches="tight")
             plt.close(fig)
             print("OLR = " + str(PrevOLR)+" W/m^2,", "Max heating = " + str(np.max(atm.total_heating)))
 
@@ -170,15 +186,15 @@ def dryAdj(atm):
 
 
 #Define function to do time integration for n steps
-def steps(atm):
-    atm = SocRadModel.radCompSoc(atm)
+def steps(atm, stellar_toa_heating):
+    atm = SocRadModel.radCompSoc(atm, stellar_toa_heating)
     dT = atm.total_heating*atm.dt
     #Limit the temperature change per step
     dT = np.where(dT>5.,5.,dT)
     dT = np.where(dT<-5.,-5.,dT)
     #Midpoint method time stepping
     #changed call to r.  Also modified to hold Tg fixed
-    atm = SocRadModel.radCompSoc(atm)
+    atm = SocRadModel.radCompSoc(atm, stellar_toa_heating)
     dT = atm.total_heating*atm.dt
     #Limit the temperature change per step
     dT = np.where(dT>5.,5.,dT)

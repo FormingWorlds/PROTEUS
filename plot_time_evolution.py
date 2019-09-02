@@ -197,6 +197,7 @@ def plot_evolution( output_dir='output' ):
     ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax1.set_xlim( *xlim )
+    ax1.set_ylim( 0, 1 )
     ax1.yaxis.set_label_coords(-0.11,0.5)
     handles, labels = ax1.get_legend_handles_labels()
     ax1.legend(handles, labels, loc='center left', ncol=1, frameon=0, fontsize=fs_legend)
@@ -251,6 +252,7 @@ def plot_evolution( output_dir='output' ):
     ax4.yaxis.set_label_position("right")
     ax4.yaxis.set_label_coords(1.12,0.5)
     ax4.set_xlim( *xlim )
+    ax4.set_ylim( 0, 1 )
     handles, labels = ax4.get_legend_handles_labels()
     ax4.legend(handles, labels, loc='center left', ncol=1, frameon=0, fontsize=fs_legend)
 
