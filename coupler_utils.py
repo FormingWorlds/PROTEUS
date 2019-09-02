@@ -111,6 +111,7 @@ def PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg,
     # Print final statement
     print("--------------------------------------------------------")
     print("      ==> RUNTIME INFO <==")
+    print(datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     print("Time [Myr]:", str(float(time_current)/1e6))
     print ("T_s [K]:", surfaceT_current)
     print ("H2O:", h2o_kg, " [kg]", h2o_ratio, " [mol ratio]")

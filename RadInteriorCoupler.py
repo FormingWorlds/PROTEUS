@@ -184,7 +184,8 @@ shutil.copy(os.getcwd()+"/bu_input.opts", sim_dir+"bu_input.opts")
 for file in natsorted(glob.glob(output_dir+"*.*")):
     shutil.copy(file, sim_dir+os.path.basename(file))
     print(os.path.basename(file), end =" ")
-print("\n===> Done!")
 
 # Print final statement
 coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg, co2_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
+
+print("\n===> Run finished successfully!")
