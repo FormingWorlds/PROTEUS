@@ -95,6 +95,7 @@ def plot_atmosphere( times ):
         if os.path.exists('output/'+str(int(time))+"_atm_TP_profile.dat"):
 
             # Read atmosphere properties
+            print('output/'+str(int(time))+"_atm_TP_profile.dat")
             atm_TP_profile  = np.loadtxt('output/'+str(int(time))+"_atm_TP_profile.dat")
             atm_spectral_flux = np.loadtxt('output/'+str(int(time))+"_atm_spectral_flux.dat")
 

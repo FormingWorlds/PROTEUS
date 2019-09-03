@@ -157,31 +157,32 @@ def write_surface_quantitites(output_dir):
     mass_mantle = mass_mantle_a[0]          # time independent
     mass_core_a = data_a[3,:]
     mass_core = mass_core_a[0]              # time independent
-    planet_mass = mass_core + mass_mantle
+    planet_mass_a = mass_core_a + mass_mantle_a
+    planet_mass = mass_core + mass_mantle   # time independent
 
     # compute total mass (kg) in each reservoir
-    CO2_liquid_kg_a = data_a[3,:]
-    CO2_solid_kg_a = data_a[4,:]
-    CO2_total_kg_a = data_a[5,:]
+    CO2_liquid_kg_a = data_a[4,:]
+    CO2_solid_kg_a = data_a[5,:]
+    CO2_total_kg_a = data_a[6,:]
     CO2_total_kg = CO2_total_kg_a[0]        # time-independent
-    CO2_atmos_kg_a = data_a[6,:]
-    CO2_atmos_a = data_a[7,:]
+    CO2_atmos_kg_a = data_a[7,:]
+    CO2_atmos_a = data_a[8,:]
     CO2_escape_kg_a = CO2_total_kg - CO2_liquid_kg_a - CO2_solid_kg_a - CO2_atmos_kg_a
 
-    H2O_liquid_kg_a = data_a[8,:]
-    H2O_solid_kg_a = data_a[9,:]
-    H2O_total_kg_a = data_a[10,:]
+    H2O_liquid_kg_a = data_a[9,:]
+    H2O_solid_kg_a = data_a[10,:]
+    H2O_total_kg_a = data_a[11,:]
     H2O_total_kg = H2O_total_kg_a[0]        # time-independent
-    H2O_atmos_kg_a = data_a[11,:]
-    H2O_atmos_a = data_a[12,:]
+    H2O_atmos_kg_a = data_a[12,:]
+    H2O_atmos_a = data_a[13,:]
     H2O_escape_kg_a = H2O_total_kg - H2O_liquid_kg_a - H2O_solid_kg_a - H2O_atmos_kg_a
 
-    temperature_surface_a = data_a[13,:]
-    emissivity_a = data_a[14,:]             # internally computed emissivity
-    phi_global = data_a[15,:]               # global melt fraction
-    Fatm = data_a[16,:]
+    temperature_surface_a = data_a[14,:]
+    emissivity_a = data_a[15,:]             # internally computed emissivity
+    phi_global = data_a[16,:]               # global melt fraction
+    Fatm = data_a[17,:]
 
     # output surface + atmosphere quantities
-    out_a = np.column_stack( (sim_times, temperature_surface_a, H2O_atmos_kg_a, CO2_atmos_kg_a, planet_mass ) )
+    out_a = np.column_stack( (sim_times, temperature_surface_a, H2O_atmos_kg_a, CO2_atmos_kg_a, planet_mass_a ) )
     np.savetxt( output_dir+'/runtime_properties.dat', out_a )
 

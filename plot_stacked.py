@@ -98,6 +98,11 @@ def plot_stacked( times ):
             atm_TP_profile  = np.loadtxt('output/'+str(int(time))+"_atm_TP_profile.dat")
             atm_spectral_flux = np.loadtxt('output/'+str(int(time))+"_atm_spectral_flux.dat")
 
+            # temperature_atmosphere  = atm_TP_profile[:][0]
+            # pressure_atmosphere     = atm_TP_profile[:][1]
+            # band_centres            = atm_spectral_flux[:][0]
+            # spectral_flux           = atm_spectral_flux[:][1]
+
             temperature_atmosphere  = []
             pressure_atmosphere     = []
             band_centres            = []
@@ -159,15 +164,8 @@ def plot_stacked( times ):
 
     ##### Atmosphere part
 
-    # Y-axis settings for when using T-z
+    # Y-axis settings
     fig_o.set_myaxes( ax0, ylabel='$P_\mathrm{atm}$\n(mbar)', xmin=xmin, xmax=xmax, xticks=xticks )
-    # ax0.yaxis.set_label_coords(-0.13,0.5)
-    # ax0.set_ylim( top=ymax_atm_z, bottom=ymin_atm_z )
-    # ax0.set_xticklabels([])
-    # ax0.xaxis.tick_top()
-    # ax0.tick_params(direction='in') # , length=6, width=2, colors='r',grid_color='r', grid_alpha=0.5
-
-    # Y-axis settings for when plotting T-P as main axis
     ax0.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
     ax0.set_yticks([ymin_atm_pressure, 1e1, 1e2, 1e3, 1e4, ymax_atm_pressure])
     ax0.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
@@ -177,7 +175,6 @@ def plot_stacked( times ):
     ax0.yaxis.set_label_coords(-0.13,0.5)
     ax0.invert_yaxis()
     ax0.set_xticklabels([])
-
 
     # # Pressure on Y-axis from min/max values
     # ax0b = ax0.twinx()
@@ -193,13 +190,11 @@ def plot_stacked( times ):
     ax0.legend( fontsize=8, fancybox=True, framealpha=0.5 )
 
     #####  Interior part
-    # ax1.yaxis.tick_right()
     yticks = [0, 20,40,60,80,100,120,int(pressure_interior[-1])]
     ymax = int(pressure_interior[-1])
     fig_o.set_myaxes( ax1, xlabel='$T$, '+units, ylabel='$d_\mathrm{mantle}$\n(km)', xmin=xmin, xmax=xmax, xticks=xticks, ymin=0, ymax=ymax, yticks=yticks )
     ax1.set_yticklabels(["0", "20","40","60","80","100","120",str(int(pressure_interior[-1]))])
     ax1.invert_yaxis()
-    # ax1.set_xscale('log')
     ax1.yaxis.set_label_coords(1.15,0.5)
 
     # Pressure-depth conversion for interior y-axis
