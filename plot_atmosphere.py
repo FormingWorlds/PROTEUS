@@ -48,16 +48,16 @@ def plot_atmosphere( times ):
 
     logger.info( 'building stacked interior atmosphere' )
 
-    width = 5.00 #* 3.0/2.0
-    height = 10.0
-    fig_o = su.FigureData( 2, 1, width, height, 'output/'+'plot_atmosphere', units='kyr' ) #, times
-    fig_o.fig.subplots_adjust(wspace=0.0,hspace=0.04)
+    width = 12.00 #* 3.0/2.0
+    height = 6.0
+    fig_o = su.FigureData( 2, 2, width, height, 'output/'+'plot_atmosphere', units='kyr' ) #, times
+    fig_o.fig.subplots_adjust(wspace=0.07,hspace=0.25)
     fig_o.time = times
 
-    ax0 = fig_o.ax[0]
-    ax1 = fig_o.ax[1]
-    # ax2 = fig_o.ax[2]
-    # ax3 = fig_o.ax[3]
+    ax0 = fig_o.ax[0][0]
+    ax1 = fig_o.ax[1][0]
+    ax2 = fig_o.ax[0][1]
+    ax3 = fig_o.ax[1][1]
 
     time = fig_o.time[0] # first timestep since liquidus and solidus
                          # are time-independent
@@ -79,30 +79,40 @@ def plot_atmosphere( times ):
     xx_depth_s = xx_radius_s[0] - xx_radius_s
     r_planet = np.max(xx_radius*1e3) # m
 
-
     handle_l = [] # handles for legend
 
-
-    fig_o.set_colors(cmap=vik_r) # "magma_r"
+    fig_o.set_colors(cmap="viridis_r") # "magma_r"
 
     ymax_atm_pressure = 0
     ymin_atm_pressure = 1000
     ymax_atm_z = 0
     ymin_atm_z = 0
 
+    # Find planet mass
+    core_mass   = myjson_o.get_dict_values(['atmosphere','mass_core'])
+    mantle_mass = myjson_o.get_dict_values(['atmosphere','mass_mantle'])
+    planet_mass = core_mass + mantle_mass
+
     for nn, time in enumerate( fig_o.time ):
 
         if os.path.exists('output/'+str(int(time))+"_atm_TP_profile.dat"):
 
             # Read atmosphere properties
-            print('output/'+str(int(time))+"_atm_TP_profile.dat")
-            atm_TP_profile  = np.loadtxt('output/'+str(int(time))+"_atm_TP_profile.dat")
-            atm_spectral_flux = np.loadtxt('output/'+str(int(time))+"_atm_spectral_flux.dat")
+            atm_TP_profile      = np.loadtxt('output/'+str(int(time))+"_atm_TP_profile.dat")
+            atm_spectral_flux   = np.loadtxt('output/'+str(int(time))+"_atm_spectral_flux.dat")
 
-            temperature_atmosphere  = atm_TP_profile[:][0]
-            pressure_atmosphere     = atm_TP_profile[:][1]
-            band_centres            = atm_spectral_flux[:][0]
-            spectral_flux           = atm_spectral_flux[:][1]
+            temperature_atmosphere  = []
+            pressure_atmosphere     = []
+            band_centres            = []
+            spectral_flux           = []
+            for i in range(0, len(atm_TP_profile)):
+                temperature_atmosphere.append(atm_TP_profile[i][0])
+                pressure_atmosphere.append(atm_TP_profile[i][1])
+            for i in range(0, len(atm_spectral_flux)):
+                band_centres.append(atm_spectral_flux[i][0])
+                spectral_flux.append(atm_spectral_flux[i][1])
+
+                # print(time, atm_spectral_flux[i])
 
             # read json
             myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
@@ -110,119 +120,88 @@ def plot_atmosphere( times ):
             color = fig_o.get_color( nn )
             # use melt fraction to determine mixed region
             MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' )
-            # MIX = myjson_o.get_mixed_phase_boolean_array( 'basic_internal' )
-            # MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
             label = coupler_utils.latex_float(time)+" yr"
-
-            # Pressure-height conversion for y-axis
             
-            # Plot height instead of pressure as y-axis
-            ### CAREFUL: HARDCODED TO M_EARTH !!!
-            z_profile = coupler_utils.AtmosphericHeight(temperature_atmosphere, pressure_atmosphere, 5.972E24, r_planet) ## WRONG UNITS!
+            # Atmosphere T-Z
+            pressure_atmosphere_Pa = [ n*100. for n in pressure_atmosphere]     # Pa
+            z_profile = coupler_utils.AtmosphericHeight(temperature_atmosphere, pressure_atmosphere_Pa, planet_mass, r_planet) # m
             z_profile = z_profile*1e-3 # km
-            # ax0.plot( temperature_atmosphere, z_profile, '-', color=color, label=label, lw=1.5)
+            ax0.plot( temperature_atmosphere, z_profile, '-', color=color, label=label, lw=1.5)
 
             # Atmosphere T-P
-            ax0.semilogy( temperature_atmosphere, pressure_atmosphere, '-', color=color, label=label, lw=1.5)
-            # ax0.plot( temperature_atmosphere, pressure_atmosphere, '-', color=color, label=label, lw=1.5)
+            pressure_atmosphere_bar = [ n/1000. for n in pressure_atmosphere]    # bar
+            ax1.semilogy( temperature_atmosphere, pressure_atmosphere_bar, '-', color=color, label=label, lw=1.5)
 
-            # Spectral flux
-            ax1.plot( band_centres, spectral_flux, '-', color=color, lw=1.5 )
+            # Atmospheric mixing ratios
+            h2o_kg = myjson_o.get_dict_values( ['atmosphere','H2O','atmosphere_kg'] )
+            co2_kg = myjson_o.get_dict_values( ['atmosphere','CO2','atmosphere_kg'] )
+            h2_kg  = 0  # kg
+            ch4_kg = 0  # kg
+            co_kg  = 0  # kg
+            n2_kg  = 0  # kg
+            o2_kg  = 0  # kg
+            he_kg  = 0  # kg
+            h2o_ratio, co2_ratio, h2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio = coupler_utils.CalcMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg)
+            h2o_ratio = h2o_ratio*np.ones(len(z_profile))
+            co2_ratio = co2_ratio*np.ones(len(z_profile))
+            ax2.plot( h2o_ratio, z_profile, '-', color=color, label=label, lw=1.5)
 
+            # Spectral OLR
+            ax3.plot( band_centres, spectral_flux, '-', color=color, label=label, lw=1.5)
 
-            # # connect atmosphere and interior lines at interface
-            # connecting_line_T = [ temperature_atmosphere[-1], temperature_interior[0] ]
-            # connecting_line_P = [ pressure_atmosphere[-1], pressure_atmosphere[-1]*1.1 ]
-            # ax0.semilogy( connecting_line_T, connecting_line_P, ':', color=color, lw=1.5)
-
-            if np.min(pressure_atmosphere) > 0:
-                ymax_atm_pressure = np.max([ymax_atm_pressure, np.max(pressure_atmosphere)])
-                ymin_atm_pressure = np.min([ymin_atm_pressure, np.min(pressure_atmosphere)])
+            # Reset y-axis boundaries
+            if np.min(pressure_atmosphere_bar) > 0:
+                ymax_atm_pressure = np.max([ymax_atm_pressure, np.max(pressure_atmosphere_bar)])
+                ymin_atm_pressure = np.min([ymin_atm_pressure, np.min(pressure_atmosphere_bar)])
                 ymax_atm_z = np.max([ymax_atm_z, np.max(z_profile)])
                 ymin_atm_z = np.min([ymin_atm_z, np.min(z_profile)])
 
-            # ymax_atm = pressure_atmosphere[-1]*1.1
+    ### Figure settings
+    xticks = [10, 500, 1000, 1500, 2000, 2500, 3000]
+    xmin = 10
+    xmax = 3000
 
-    xticks = [50, 1000, 2000, 3000, 4000, 5000]
-    xmin = 50
-    xmax = 5000
-
-    units = myjson_o.get_dict_units(['data','temp_b'])
-    # title = 'Atmosphere + mantle temperature profile' #'(a) Temperature, {}'.format(units)
-
-    ##### Atmosphere part
-
-    # Y-axis settings for when using T-z
-    fig_o.set_myaxes( ax0, ylabel='$P_\mathrm{atm}$\n(mbar)', xmin=xmin, xmax=xmax, xticks=xticks )
-    # ax0.yaxis.set_label_coords(-0.13,0.5)
-    # ax0.set_ylim( top=ymax_atm_z, bottom=ymin_atm_z )
+    #####  T-Z
+    fig_o.set_myaxes( ax0, xlabel='$T$ (K)', ylabel='$z_\mathrm{atm}$\n(km)', xmin=xmin, xmax=xmax, ymin=0, ymax=ymax_atm_z, xticks=xticks )
+    ax0.set_ylim( top=ymax_atm_z, bottom=ymin_atm_z )
+    # ax0.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
+    ax0.yaxis.set_label_coords(-0.13,0.5)
+    # ax0.tick_params(direction='in')
     # ax0.set_xticklabels([])
     # ax0.xaxis.tick_top()
-    # ax0.tick_params(direction='in') # , length=6, width=2, colors='r',grid_color='r', grid_alpha=0.5
+    # ax0.tick_params(direction='in')
 
-    # Y-axis settings for when plotting T-P as main axis
-    ax0.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
-    ax0.set_yticks([ymin_atm_pressure, 1e1, 1e2, 1e3, 1e4, ymax_atm_pressure])
-    ax0.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-    ax0.get_yaxis().get_major_formatter().labelOnlyBase = False
-    ax0.xaxis.tick_top()
-    ax0.tick_params(direction='in')
-    ax0.yaxis.set_label_coords(-0.13,0.5)
-    ax0.invert_yaxis()
-    # ax0.set_xticklabels([])
+    #####  T-P
+    fig_o.set_myaxes( ax1, xlabel='$T$ (K)', ylabel='$P_\mathrm{atm}$\n(bar)', xmin=xmin, xmax=xmax, xticks=xticks )
+    ax1.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
+    ax1.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
+    ax1.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    ax1.get_yaxis().get_major_formatter().labelOnlyBase = False
+    ax1.yaxis.set_label_coords(-0.13,0.5)
+    ax1.invert_yaxis()
 
+    #####  Volatile mixing ratios
+    ax2.yaxis.set_label_position("right")
+    ax2.yaxis.tick_right()
+    ax2.set_ylabel( "$z_\mathrm{atm}$\n(km)", rotation=0)
+    ax2.yaxis.set_label_coords(1.10,0.5)
+    ax2.set_xlabel( '$X_{H_2O}$ (mol$_i$/mol)')
 
-    # # Pressure on Y-axis from min/max values
-    # ax0b = ax0.twinx()
-    # ax0b.plot( temperature_atmosphere, pressure_atmosphere, alpha=0.0)
-    # ax0b.set_xlim( right=xmax, left=xmin )
-    # ax0b.set_ylim( top=ymin_atm_pressure, bottom=ymax_atm_pressure )
-    # yticks_pressure = [ymin_atm_pressure, ymax_atm_pressure*(1./6.), ymax_atm_pressure*(2./6.), ymax_atm_pressure*(1./2.), ymax_atm_pressure*(4./6.), ymax_atm_pressure*(5./6.), ymax_atm_pressure]
-    # ax0b.set_yticks( yticks_pressure )
-    # ax0b.set_ylabel( '$P_\mathrm{atm}$\n(bar)', rotation=0 )
-    # ax0b.yaxis.set_label_coords(1.15,0.55)
+    #####  Spectral OLR
+    fig_o.set_myaxes( ax3, xlabel='Wave number', ylabel='Spectral flux' )
+    ax3.set_xlim( left=0, right=10000 )
+    ax3.set_ylabel( 'Spectral flux', rotation=90)
+    ax3.yaxis.set_label_position("right")
+    ax3.yaxis.tick_right()
+    # ax3.set_ylim( bottom=0 )
+    # ax0.yaxis.set_label_coords(-0.13,0.5)
 
     # Legend
     ax0.legend( fontsize=8, fancybox=True, framealpha=0.5 )
 
-    # #####  Interior part
-    # # ax1.yaxis.tick_right()
-    # yticks = [0, 20,40,60,80,100,120,int(pressure_interior[-1])]
-    # ymax = int(pressure_interior[-1])
-    # fig_o.set_myaxes( ax1, xlabel='$T$, '+units, ylabel='$d_\mathrm{mantle}$\n(km)', xmin=xmin, xmax=xmax, xticks=xticks, ymin=0, ymax=ymax, yticks=yticks )
-    # ax1.set_yticklabels(["0", "20","40","60","80","100","120",str(int(pressure_interior[-1]))])
-    # ax1.invert_yaxis()
-    # # ax1.set_xscale('log')
-    # ax1.yaxis.set_label_coords(1.15,0.5)
-
-    # # Pressure-depth conversion for interior y-axis
-    # ax1b = ax1.twinx()
-    # yy = myjson_o.get_dict_values(['data','temp_b'])
-    # ax1b.plot( yy, xx_depth, alpha=0.0)
-    # ax1b.set_xlim( right=xmax, left=xmin )
-    # ax1b.set_ylim(top=xx_depth[-1], bottom=xx_depth[0])
-    # ax1b.set_yticks([100, 500, 1000, 1500, 2000, 2500, int(xx_depth[-1])])
-    # ax1b.set_ylabel( '$P_\mathrm{mantle}$\n(GPa)', rotation=0 )
-    # ax1b.yaxis.set_label_coords(-0.13,0.55)
-    # ax1b.invert_yaxis()
-
-    # # Pressure-height conversion for y-axis
-    # ax0b = ax0.twinx()
-    # r_planet = np.max(xx_radius*1e3) # m
-    # ### CAREFUL: HARDCODED TO M_EARTH !!!
-    # z_profile = coupler_utils.AtmosphericHeight(temperature_atmosphere, pressure_atmosphere, 5.972E24, r_planet)
-    # z_profile = z_profile*1e-3 # km
-    # ax0b.plot( temperature_atmosphere, z_profile, alpha=0.0)
-    # ax0b.set_xlim( right=xmax, left=xmin )
-    # ax0b.set_ylim(top=np.max(z_profile), bottom=np.min(z_profile))
-    # ax0b.set_yticks([0, np.max(z_profile)/2., np.max(z_profile)])
-    # ax0b.set_ylabel( '$z$\n(km)', rotation=0 )
-    # ax0b.yaxis.set_label_coords(1.15,0.55)
-    # # ax0b.invert_yaxis()
-
     fig_o.savefig(1)
-    # plt.close(fig_o)
+    plt.close()
 
 #====================================================================
 def main():
@@ -242,4 +221,3 @@ def main():
 if __name__ == "__main__":
 
     main()
-

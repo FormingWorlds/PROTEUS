@@ -223,7 +223,7 @@ def plot_stacked( times ):
     # # ax0b.invert_yaxis()
 
     fig_o.savefig(1)
-    # plt.close(fig_o)
+    plt.close()
 
 #====================================================================
 def main():

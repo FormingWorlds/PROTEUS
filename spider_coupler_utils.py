@@ -359,7 +359,7 @@ class FigureData( object ):
                   'size'   : '10'}
         mpl.rc('font', **font_d)
         # Do NOT use TeX font for labels etc.
-        plt.rc('text', usetex=True)
+        plt.rc('text', usetex=False)
         dd['dpi'] = 300
         dd['extension'] = 'png'
         dd['fontsize_legend'] = 8

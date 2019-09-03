@@ -194,7 +194,7 @@ def main():
     if len(output_list) <= 8:
         plot_list = output_list
     else:
-        plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(30./100.)))], output_list[int(round(len(output_list)*(45./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
+        plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
     print("snapshots:", plot_list)
 
     # arguments (run with -h to summarize)

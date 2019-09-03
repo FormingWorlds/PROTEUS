@@ -67,7 +67,7 @@ def plot_global( output_dir='output' ):
     width = 12.00 #* 3.0/2.0
     height = 8.0 #/ 2.0
     fig_o = su.FigureData( 3, 2, width, height, output_dir+'/plot_global', units='yr' )
-    fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.25)
+    fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.3)
 
     # Subplot titles
     title_fs = 8
@@ -178,7 +178,7 @@ def plot_global( output_dir='output' ):
     ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax0.set_xlim( *xlim )
-    ax0.yaxis.set_label_coords(-0.11,0.5)
+    ax0.yaxis.set_label_coords(-0.13,0.5)
     handles, labels = ax0.get_legend_handles_labels()
     ax0.legend(handles, labels, loc='upper right', ncol=1, frameon=0, fontsize=fs_legend)
 
@@ -187,7 +187,7 @@ def plot_global( output_dir='output' ):
     ##########
     title = r'(b) Surface temperature'
     ylabel = '$T_\mathrm{s}$\n$(K)$'
-    yticks = [200, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000]#range(500,4001,500)
+    yticks = [200, 500, 1000, 1500, 2000, 2500, 3000]
     h1, = ax1.semilogx( timeMyr_a, temperature_surface_a, 'k-', lw=lw, label=r'Surface temp, $T_s$' )
     #ax2b = ax2.twinx()
     #h2, = ax2b.loglog( timeMyr_a, emissivity_a, 'k--', label=r'Emissivity, $\epsilon$' )
@@ -196,10 +196,10 @@ def plot_global( output_dir='output' ):
     ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax1.set_xlim( *xlim )
-    ax1.yaxis.set_label_coords(-0.11,0.5)
+    ax1.yaxis.set_label_coords(-0.13,0.5)
     #ax1.set_ylim( 1050, 1850 )
     #ax1.set_xlim( 1E-5 , 1 )
-    ax1.set_ylim(200,4000)
+    ax1.set_ylim(200,np.max(yticks))
     # ax1.set_title('(a) Surface temperature', fontname='Arial', fontsize=fs_title)
 
     ##########
@@ -215,7 +215,7 @@ def plot_global( output_dir='output' ):
     ax2.set_xlim( *xlim )
     ax2.set_ylim( 0, 1 )
     # ax0.annotate(title, xy=title_xy, xycoords=title_xycoords, ha=title_ha, va=title_va, fontsize=title_fs)
-    ax2.yaxis.set_label_coords(-0.11,0.5)
+    ax2.yaxis.set_label_coords(-0.13,0.5)
     # handles, labels = ax2.get_legend_handles_labels()
     # ax2.legend(handles, labels, loc='center left', ncol=1, frameon=0)
 
@@ -282,25 +282,10 @@ def plot_global( output_dir='output' ):
     ax5.yaxis.set_label_position("right")
     handles, labels = ax5.get_legend_handles_labels()
     ax5.legend(handles, labels, loc='center left', ncol=1, frameon=0, fontsize=fs_legend)
-    # handle_l=[h1,h2]
-    # fig_o.set_mylegend( ax5, handle_l, loc='center left', ncol=1 , frameon=0)
 
-
-
-    #title = '(d) Emissivity'
-    #ylabel = '$\epsilon$'
-    #ax3.loglog( timeMyr_a, emissivity_a, 'k-' )
-    #fig_o.set_myaxes( ax3, title=title, xlabel=xlabel, ylabel=ylabel, xticks=xticks )
-    #ax3.yaxis.set_label_coords(-0.1,0.55)
-    #plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
-    #ax3.set_ylim( 1E-4, 1E-2 )
-    #ax3.set_xlim( 1E-5, 1 )
-
-    # output (effective) emissivity for Bonati et al. (2018), a&a paper
-    #out_a = np.column_stack( (timeMyr_a, temperature_surface_a, emissivity_a ) )
-    #np.savetxt( 'out.dat', out_a )
 
     fig_o.savefig(6)
+    plt.close()
 
 #====================================================================
 def main():
