@@ -120,6 +120,8 @@ def plot_interior( times ):
         # legend
         handle_l.append( handle )
 
+        print(time)
+
     yticks = [0,20,40,60,80,100,120,int(xx_pres_s[-1])]
     ymax = int(xx_pres_s[-1])
 
@@ -187,7 +189,7 @@ def main():
     # output_list = [os.path.basename(x) for x in natsorted(glob.glob("output/"+"*.json"))]
     # output_list = [ int(x[0:-5]) for x in output_list ]
     # print(output_list)
-    # plot_list = [ output_list[0], output_list[int(round(len(output_list)*(1./5.)))], output_list[int(round(len(output_list)*(2./5.)))], output_list[int(round(len(output_list)*(3./5.)))], output_list[int(round(len(output_list)*(4./5.)))], output_list[-1] ]
+    # plot_list = [ output_list[0], output_list[int(round(len(output_list)*(1./5.)))], output_list[int(round(len(output_list)*(2./5.)))], output_list[int(round(len(output_list)*(3./5.)))], output_list[int(round(len(output_list)*(4./5.)))], output_list[-1] ]yticks
 
     output_list = su.get_all_output_times()
     # plot_list = str(output_list[0])+","+str(output_list[int(round(len(output_list)*(1./5.)))])+","+str( output_list[int(round(len(output_list)*(2./5.)))])+","+str(output_list[int(round(len(output_list)*(3./5.)))])+","+str(output_list[int(round(len(output_list)*(4./5.)))])+","+str(output_list[-1])

@@ -96,22 +96,12 @@ def plot_stacked( times ):
 
             # Read atmosphere properties
             atm_TP_profile  = np.loadtxt('output/'+str(int(time))+"_atm_TP_profile.dat")
-            atm_spectral_flux = np.loadtxt('output/'+str(int(time))+"_atm_spectral_flux.dat")
-
-            # temperature_atmosphere  = atm_TP_profile[:][0]
-            # pressure_atmosphere     = atm_TP_profile[:][1]
-            # band_centres            = atm_spectral_flux[:][0]
-            # spectral_flux           = atm_spectral_flux[:][1]
 
             temperature_atmosphere  = []
             pressure_atmosphere     = []
-            band_centres            = []
-            spectral_flux           = []
             for i in range(0, len(atm_TP_profile)):
                 temperature_atmosphere.append(atm_TP_profile[i][0])
                 pressure_atmosphere.append(atm_TP_profile[i][1])
-                band_centres.append(atm_spectral_flux[i][0])
-                spectral_flux.append(atm_spectral_flux[i][1])
 
             # read json
             myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
@@ -154,6 +144,8 @@ def plot_stacked( times ):
                 ymin_atm_z = np.min([ymin_atm_z, np.min(z_profile)])
 
             # ymax_atm = pressure_atmosphere[-1]*1.1
+
+            print(time)
 
     xticks = [50, 1000, 2000, 3000, 4000, 5000]
     xmin = 50
