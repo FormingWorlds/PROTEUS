@@ -6,7 +6,6 @@ import numpy as np
 # import GGRadConv
 import SocRadConv
 import SocRadModel
-import ReadInterior
 import subprocess
 import glob
 import os, shutil
