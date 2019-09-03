@@ -15,8 +15,8 @@ from natsort import natsorted #https://pypi.python.org/pypi/natsort
 import coupler_utils
 import spider_coupler_utils
 import plot_interior
-import plot_time_evolution
-import plot_stacked_interior_atmosphere
+import plot_global
+import plot_stacked
 from datetime import datetime
 
 # SPIDER start input options
@@ -29,6 +29,8 @@ nstepsmacro             = "20"           # number of timesteps
 dtmacro                 = "50000"        # delta time per macrostep to advance by, in years
 heat_flux               = "1.0E4"        # prescribed start surface heat flux (e.g., 10^4 W/m^2)
 tsurf_poststep_change   = "100.0"        # maximum absolute surface temperature change in Kelvin
+planet_radius           = "6371000.0"    # planet radius / m
+planet_coresize         = "0.55"         # fractional radius of core-mantle boundary
 
 # Define output output output directory
 output_dir = os.getcwd()+"/output/"
@@ -45,7 +47,6 @@ star_mass       = 1.0       # M_sol: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4
 mean_distance   = 1.0       # AU, star-planet distance
 time_offset     = 100.      # Myr, start of magma ocean after star formation
 
-
 # Count SPIDER-SOCRATES iterations
 pingpong_no = 0
 if start_condition == "2":
@@ -59,9 +60,7 @@ print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 # Initialize SPIDER to generate first output file
 if start_condition == "1":
 
-    # Reset heat flux and surface history and delete old SPIDER output
-    # open('OLRFlux.dat', 'w').close()
-    # open('surface_atmosphere.dat', 'w').close()
+    # Delete old SPIDER output
     print("____________________________________________")
     print("Remove old output files:", end =" ")
     for file in natsorted(glob.glob(output_dir+"*.*")):
@@ -70,7 +69,7 @@ if start_condition == "1":
     print("==> Done.")
 
     # SPIDER initialization call sequence
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", "1", "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", "0", "-dtmacro", "1" ]
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", "1", "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", "0", "-dtmacro", "1", "-radius", planet_radius, "-coresize", planet_coresize ]
     # , "-outputDirectory", output_dir
 
     # Runtime info
@@ -91,13 +90,12 @@ if start_condition == "1":
 while time_current < time_target:
 
     # Save surface temperature to file in 'output_dir'
-    ReadInterior.write_surface_quantitites(output_dir)
+    coupler_utils.write_surface_quantitites(output_dir)
 
-    # Load surface temperature and volatiles released, to be fed to SOCRATES
-    surface_quantities  = np.loadtxt(output_dir+'surface_atmosphere.dat')
+    # Load surface + global properties released, to be fed to SOCRATES
+    surface_quantities  = np.loadtxt(output_dir+'runtime_properties.dat')
     if pingpong_no > 0: # After first iteration more than one entry
         surface_quantities = surface_quantities[-1]
-    
     time_current        = surface_quantities[0]  # K
     surfaceT_current    = surface_quantities[1]  # K
     h2o_kg              = surface_quantities[2]  # kg
@@ -108,14 +106,12 @@ while time_current < time_target:
     n2_kg               = 0  # kg
     o2_kg               = 0  # kg
     he_kg               = 0  # kg
+    planet_mass         = surface_quantities[4]  # kg
 
     # Interpolate TOA heating from Baraffe models and distance from star
-    # !! HARDCODED TO EARTH !! #
-    m_planet    = 5.972E24 # kg
-    r_planet    = 6371000  # m
-    grav_s      = spider_coupler_utils.gravity( m_planet, r_planet )
+    grav_s      = spider_coupler_utils.gravity( planet_mass, float(planet_radius) )
     M_vol_tot   = h2o_kg + co2_kg + h2_kg + ch4_kg + co_kg + n2_kg + o2_kg + he_kg 
-    p_s = ( M_vol_tot * grav_s / ( 4. * np.pi * (r_planet**2.) ) ) * 1e-2 # mbar
+    p_s = ( M_vol_tot * grav_s / ( 4. * np.pi * (float(planet_radius)**2.) ) ) * 1e-2 # mbar
     stellar_toa_heating, solar_lum = coupler_utils.InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance)
 
     # Print statements for development
@@ -150,7 +146,7 @@ while time_current < time_target:
     pingpong_no += 1
 
     # SPIDER restart call sequence
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro ] # , "-outputDirectory", output_dir
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro, "-radius", planet_radius, "-coresize", planet_coresize ] # , "-outputDirectory", output_dir
 
     # Runtime info
     print("SPIDER run flags:", end =" ")
