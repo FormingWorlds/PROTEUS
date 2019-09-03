@@ -184,6 +184,7 @@ def plot_atmosphere( times ):
     #####  Volatile mixing ratios
     ax2.yaxis.set_label_position("right")
     ax2.yaxis.tick_right()
+    ax2.set_xlim( left=0, right=1 )
     ax2.set_ylabel( "$z_\mathrm{atm}$\n(km)", rotation=0)
     ax2.yaxis.set_label_coords(1.10,0.5)
     ax2.set_xlabel( '$X_{H_2O}$ (mol$_i$/mol)')

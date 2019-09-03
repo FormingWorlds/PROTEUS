@@ -17,16 +17,16 @@ M_earth         = 5.972E24              # kg
 R_core_earth    = 3485000.0             # m
 M_core_earth    = 1.94E24               # kg
 
-h2_mol_mass     = 0.00201588            # kg/mol
 h2o_mol_mass    = 0.01801528            # kg/mol
 co2_mol_mass    = 0.04401               # kg/mol
+h2_mol_mass     = 0.00201588            # kg/mol
 ch4_mol_mass    = 0.01604               # kg/mol
 co_mol_mass     = 0.02801               # kg/mol
 n2_mol_mass     = 0.028014              # kg/mol
 o2_mol_mass     = 0.031999              # kg/mol
 he_mol_mass     = 0.0040026             # kg/mol
 
-def CalcMolRatios(h2_kg, h2o_kg, co2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg):
+def CalcMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg):
 
     h2o_mol = h2o_kg/h2o_mol_mass   # mol
     co2_mol = co2_kg/co2_mol_mass   # mol
