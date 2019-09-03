@@ -28,7 +28,7 @@ for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
 logger = su.get_my_logger(__name__)
 
 #====================================================================
-def mantle_evolution( times ):
+def plot_interior( times ):
 
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width
@@ -37,7 +37,7 @@ def mantle_evolution( times ):
 
     width = 12.00 #* 3.0/2.0
     height = 6.0
-    fig_o = su.FigureData( 1, 4, width, height, 'output/'+'interior_evolution', units='kyr' ) #, times
+    fig_o = su.FigureData( 1, 4, width, height, 'output/'+'plot_interior', units='kyr' ) #, times
     fig_o.fig.subplots_adjust(wspace=0.15,hspace=0.2)
     fig_o.time = times
 
@@ -221,7 +221,7 @@ def main():
 
     # output_dir = parser.parse_args().dir
 
-    mantle_evolution( times=plot_list )
+    plot_interior( times=plot_list )
 
     # plt.show()
 

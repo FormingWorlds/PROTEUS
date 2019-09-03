@@ -41,7 +41,7 @@ for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
 logger = su.get_my_logger(__name__)
 
 #====================================================================
-def stacked_evolution( times ):
+def plot_stacked( times ):
 
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width
@@ -50,7 +50,7 @@ def stacked_evolution( times ):
 
     width = 5.00 #* 3.0/2.0
     height = 10.0
-    fig_o = su.FigureData( 2, 1, width, height, 'output/'+'stacked_interior_atmosphere', units='kyr' ) #, times
+    fig_o = su.FigureData( 2, 1, width, height, 'output/'+'plot_stacked', units='kyr' ) #, times
     fig_o.fig.subplots_adjust(wspace=0.0,hspace=0.04)
     fig_o.time = times
 
@@ -241,7 +241,7 @@ def main():
         plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
     print("snapshots:", plot_list)
 
-    stacked_evolution( times=plot_list )
+    plot_stacked( times=plot_list )
 
 #====================================================================
 

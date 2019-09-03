@@ -20,14 +20,15 @@ import plot_stacked_interior_atmosphere
 from datetime import datetime
 
 # SPIDER start input options
-ic_filename         = "0.json"       # JSON file to read in initial condition
-SURFACE_BC          = "4"            # 4: constant heat flux boundary condition
-SOLVE_FOR_VOLATILES = "1"            # track evolution of volatiles in interior/atmosphere reservoirs
-H2O_poststep_change = "0.05"         # fractional change in melt phase H2O concentration that triggers event
-CO2_poststep_change = "0.05"         # as above for CO2 to trigger an event
-nstepsmacro         = "20"           # number of timesteps
-dtmacro             = "50000"        # delta time per macrostep to advance by, in years
-heat_flux           = "1.0E4"        # prescribed start surface heat flux (e.g., 10^4 W/m^2)
+ic_filename             = "0.json"       # JSON file to read in initial condition
+SURFACE_BC              = "4"            # 4: constant heat flux boundary condition
+SOLVE_FOR_VOLATILES     = "1"            # track evolution of volatiles in interior/atmosphere reservoirs
+H2O_poststep_change     = "0.05"         # fractional change in melt phase H2O concentration that triggers event
+CO2_poststep_change     = "0.05"         # as above for CO2 to trigger an event
+nstepsmacro             = "20"           # number of timesteps
+dtmacro                 = "50000"        # delta time per macrostep to advance by, in years
+heat_flux               = "1.0E4"        # prescribed start surface heat flux (e.g., 10^4 W/m^2)
+tsurf_poststep_change   = "100.0"        # maximum absolute surface temperature change in Kelvin
 
 # Define output output output directory
 output_dir = os.getcwd()+"/output/"
@@ -69,7 +70,7 @@ if start_condition == "1":
     print("==> Done.")
 
     # SPIDER initialization call sequence
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", "1", "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-nstepsmacro", "0", "-dtmacro", "1" ]
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", "1", "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", "0", "-dtmacro", "1" ]
     # , "-outputDirectory", output_dir
 
     # Runtime info
@@ -149,7 +150,7 @@ while time_current < time_target:
     pingpong_no += 1
 
     # SPIDER restart call sequence
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro ] # , "-outputDirectory", output_dir
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro ] # , "-outputDirectory", output_dir
 
     # Runtime info
     print("SPIDER run flags:", end =" ")
@@ -164,18 +165,18 @@ while time_current < time_target:
 
     # Plot conditions throughout run for on-the-fly analysis
     print("*** Plot current evolution,", end=" ")
-    plot_time_evolution.plot_evolution(output_dir) # all times
     output_times = spider_coupler_utils.get_all_output_times()
     if len(output_times) <= 8:
         plot_times = output_times
     else:
-        plot_times = [ output_times[0]]     # first snapshot
-        for i in [ 2, 15, 22, 30, 45, 66 ]: # distinct timestamps
+        plot_times = [ output_times[0]]         # first snapshot
+        for i in [ 2, 15, 22, 30, 45, 66 ]:     # distinct timestamps
             plot_times.append(output_times[int(round(len(output_times)*(i/100.)))])
-        plot_times.append(output_times[-1]) # last snapshot
+        plot_times.append(output_times[-1])     # last snapshot
     print("snapshots:", plot_times)
-    plot_interior.mantle_evolution(plot_times)
-    plot_stacked_interior_atmosphere.stacked_evolution(plot_times)
+    plot_interior.plot_interior(plot_times)     # specific time steps
+    plot_stacked.plot_stacked(plot_times)       # specific time steps
+    plot_global.plot_global(output_dir)         # all time steps
 
 # Copy old files to separate folder
 sim_dir = coupler_utils.make_output_dir() #

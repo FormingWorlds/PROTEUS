@@ -74,7 +74,6 @@
 -rhoSol_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/density_solid.dat
 -tempSol_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/temperature_solid.dat
 
-
 # mixing length
 # [1] is conventional, i.e. distance from the nearest boundary
 #     which is either the surface or core-mantle boundary
@@ -172,6 +171,9 @@
 
 # atmosphere reference pressure (Pa)
 -P0 101325.0 # Pa (= 1 atm)
+
+# Define the volatiles
+-volatile_names CO2,H2O
 
 # parameters relating to CO2 volatile
 #-CO2_initial 0.0 # ppm
