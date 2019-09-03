@@ -170,6 +170,7 @@ while time_current < time_target:
         plot_times.append(output_times[-1])     # last snapshot
     print("snapshots:", plot_times)
     plot_interior.plot_interior(plot_times)     # specific time steps
+    plot_interior.plot_atmosphere(plot_times)   # specific time steps
     plot_stacked.plot_stacked(plot_times)       # specific time steps
     plot_global.plot_global(output_dir)         # all time steps
 
