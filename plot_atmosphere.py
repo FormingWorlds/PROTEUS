@@ -190,7 +190,7 @@ def plot_atmosphere( times ):
     ax2.set_xlabel( '$X_{H_2O}$ (mol$_i$/mol)')
 
     #####  Spectral OLR
-    fig_o.set_myaxes( ax3, xlabel='Wave number', ylabel='Spectral flux' )
+    fig_o.set_myaxes( ax3, xlabel='Wavenumber (cm$^{-1}$)', ylabel='Spectral flux' )
     ax3.set_xlim( left=0, right=10000 )
     ax3.set_ylabel( 'Spectral flux', rotation=90)
     ax3.yaxis.set_label_position("right")
