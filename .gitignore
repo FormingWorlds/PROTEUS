@@ -19,6 +19,7 @@ radiation_code.lock
 
 # misc
 ######
+*_lbl.nc
 *.png
 Tprofile.pdf
 .DS_Store
