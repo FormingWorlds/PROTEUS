@@ -1,0 +1,801 @@
+===============================
+Fitting in band:     1
+Gas required:    H2O
+Band limits:   -24.000000   1025.000000
+Opened HITRAN data file 
+Number of HITRAN lines in band:   8795
+Wavenumbers of min and max lines are:     0.072059   1129.873848
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+03 K
+ pstart, pend:            1       99900
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.511538E-02
+Trial fit contains     1 terms Error =  7.15219E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.853714  0.703553E-02
+ k-term, g-interval, error:   2  1.000000  0.475994E-04
+Trial fit contains     2 terms Error =  8.41614E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.231832  0.380907E-03
+ k-term, g-interval, error:   2  0.994034  0.871844E-03
+ k-term, g-interval, error:   3  1.000000  0.874036E-05
+Trial fit contains     3 terms Error =  3.55175E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.092462  0.338932E-04
+ k-term, g-interval, error:   2  0.853714  0.430144E-02
+ k-term, g-interval, error:   3  0.997588  0.395142E-04
+ k-term, g-interval, error:   4  1.000000  0.270901E-05
+Trial fit contains     4 terms Error =  6.61631E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.032242  0.346607E-05
+ k-term, g-interval, error:   2  0.336927  0.954388E-03
+ k-term, g-interval, error:   3  0.987858  0.143758E-03
+ k-term, g-interval, error:   4  0.998689  0.101918E-04
+ k-term, g-interval, error:   5  1.000000  0.120616E-05
+Trial fit contains     5 terms Error =  3.33618E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.017437  0.585980E-07
+ k-term, g-interval, error:   2  0.231832  0.302895E-03
+ k-term, g-interval, error:   3  0.853714  0.773706E-03
+ k-term, g-interval, error:   4  0.994034  0.174739E-04
+ k-term, g-interval, error:   5  0.999229  0.329245E-05
+ k-term, g-interval, error:   6  1.000000  0.312804E-06
+Trial fit contains     6 terms Error =  3.31321E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.011992  0.587235E-09
+ k-term, g-interval, error:   2  0.156537  0.104211E-03
+ k-term, g-interval, error:   3  0.397878  0.339015E-03
+ k-term, g-interval, error:   4  0.983954  0.513811E-04
+ k-term, g-interval, error:   5  0.996486  0.476790E-05
+ k-term, g-interval, error:   6  0.999389  0.103643E-05
+ k-term, g-interval, error:   7  1.000000  0.155546E-06
+Trial fit contains     7 terms Error =  2.23734E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.009419  0.267288E-09
+ k-term, g-interval, error:   2  0.092462  0.355954E-04
+ k-term, g-interval, error:   3  0.302673  0.197243E-03
+ k-term, g-interval, error:   4  0.853714  0.193177E-03
+ k-term, g-interval, error:   5  0.990450  0.666955E-05
+ k-term, g-interval, error:   6  0.997588  0.240405E-05
+ k-term, g-interval, error:   7  0.999489  0.326567E-06
+ k-term, g-interval, error:   8  1.000000  0.742793E-07
+Trial fit contains     8 terms Error =  2.08684E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.009209  0.177093E-09
+ k-term, g-interval, error:   2  0.050631  0.104251E-04
+ k-term, g-interval, error:   3  0.231832  0.117191E-03
+ k-term, g-interval, error:   4  0.458979  0.142712E-03
+ k-term, g-interval, error:   5  0.981351  0.197509E-04
+ k-term, g-interval, error:   6  0.994034  0.224143E-05
+ k-term, g-interval, error:   7  0.998248  0.759246E-06
+ k-term, g-interval, error:   8  0.999530  0.173270E-06
+ k-term, g-interval, error:   9  1.000000  0.553512E-07
+Trial fit contains     9 terms Error =  1.71263E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.008829  0.955144E-10
+ k-term, g-interval, error:   2  0.032242  0.346161E-05
+ k-term, g-interval, error:   3  0.178809  0.546874E-04
+ k-term, g-interval, error:   4  0.336927  0.622196E-04
+ k-term, g-interval, error:   5  0.853714  0.840685E-04
+ k-term, g-interval, error:   6  0.987858  0.282460E-05
+ k-term, g-interval, error:   7  0.995696  0.939275E-06
+ k-term, g-interval, error:   8  0.998689  0.445550E-06
+ k-term, g-interval, error:   9  0.999580  0.120419E-06
+ k-term, g-interval, error:  10  1.000000  0.336940E-07
+Trial fit contains    10 terms Error =  1.44499E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.008579  0.679506E-10
+ k-term, g-interval, error:   2  0.021962  0.458050E-06
+ k-term, g-interval, error:   3  0.131972  0.274129E-04
+ k-term, g-interval, error:   4  0.286637  0.543258E-04
+ k-term, g-interval, error:   5  0.502042  0.478484E-04
+ k-term, g-interval, error:   6  0.979590  0.935612E-05
+ k-term, g-interval, error:   7  0.991662  0.142521E-05
+ k-term, g-interval, error:   8  0.996917  0.652502E-06
+ k-term, g-interval, error:   9  0.999009  0.263102E-06
+ k-term, g-interval, error:  10  0.999670  0.104738E-06
+ k-term, g-interval, error:  11  1.000000  0.180826E-07
+Trial fit contains    11 terms Error =  1.19107E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.008298  0.535030E-10
+ k-term, g-interval, error:   2  0.017437  0.579507E-07
+ k-term, g-interval, error:   3  0.092462  0.107612E-04
+ k-term, g-interval, error:   4  0.231832  0.356712E-04
+ k-term, g-interval, error:   5  0.368779  0.307446E-04
+ k-term, g-interval, error:   6  0.853714  0.416776E-04
+ k-term, g-interval, error:   7  0.985566  0.116887E-05
+ k-term, g-interval, error:   8  0.994034  0.560222E-06
+ k-term, g-interval, error:   9  0.997588  0.305389E-06
+ k-term, g-interval, error:  10  0.999229  0.109176E-06
+ k-term, g-interval, error:  11  0.999700  0.305882E-07
+ k-term, g-interval, error:  12  1.000000  0.136578E-07
+Trial fit contains    12 terms Error =  1.10046E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.007578  0.299380E-10
+ k-term, g-interval, error:   2  0.015295  0.650060E-08
+ k-term, g-interval, error:   3  0.062993  0.509118E-05
+ k-term, g-interval, error:   4  0.190200  0.204772E-04
+ k-term, g-interval, error:   5  0.313473  0.179559E-04
+ k-term, g-interval, error:   6  0.538809  0.221752E-04
+ k-term, g-interval, error:   7  0.978268  0.530961E-05
+ k-term, g-interval, error:   8  0.989560  0.706716E-06
+ k-term, g-interval, error:   9  0.995355  0.264857E-06
+ k-term, g-interval, error:  10  0.998058  0.138453E-06
+ k-term, g-interval, error:  11  0.999319  0.433342E-07
+ k-term, g-interval, error:  12  0.999730  0.231055E-07
+ k-term, g-interval, error:  13  1.000000  0.977647E-08
+Trial fit contains    13 terms Error =  8.49716E-03
+Fit to tolerance has been obtained.
+ Number of k-terms in band:           13
+===============================
+Fitting in band:     2
+Gas required:    H2O
+Band limits:   975.000000   2025.000000
+Opened HITRAN data file 
+Number of HITRAN lines in band:   8108
+Wavenumbers of min and max lines are:   870.751399   2129.958518
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+03 K
+ pstart, pend:            1      100000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.249306E-02
+Trial fit contains     1 terms Error =  4.99305E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.893510  0.275891E-02
+ k-term, g-interval, error:   2  1.000000  0.132821E-03
+Trial fit contains     2 terms Error =  5.37748E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.316050  0.463610E-03
+ k-term, g-interval, error:   2  0.986910  0.362995E-03
+ k-term, g-interval, error:   3  1.000000  0.171344E-04
+Trial fit contains     3 terms Error =  2.90472E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.174610  0.120534E-03
+ k-term, g-interval, error:   2  0.893510  0.783949E-03
+ k-term, g-interval, error:   3  0.993690  0.491227E-04
+ k-term, g-interval, error:   4  1.000000  0.375964E-05
+Trial fit contains     4 terms Error =  3.09413E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.111600  0.406851E-04
+ k-term, g-interval, error:   2  0.501580  0.261266E-03
+ k-term, g-interval, error:   3  0.980020  0.755848E-04
+ k-term, g-interval, error:   4  0.996270  0.106748E-04
+ k-term, g-interval, error:   5  1.000000  0.108919E-05
+Trial fit contains     5 terms Error =  1.97307E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.080650  0.174679E-04
+ k-term, g-interval, error:   2  0.316050  0.756475E-04
+ k-term, g-interval, error:   3  0.893510  0.196407E-03
+ k-term, g-interval, error:   4  0.986910  0.100051E-04
+ k-term, g-interval, error:   5  0.997420  0.348087E-05
+ k-term, g-interval, error:   6  1.000000  0.489908E-06
+Trial fit contains     6 terms Error =  1.74212E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.060570  0.847254E-05
+ k-term, g-interval, error:   2  0.229670  0.328970E-04
+ k-term, g-interval, error:   3  0.610630  0.831555E-04
+ k-term, g-interval, error:   4  0.976560  0.236345E-04
+ k-term, g-interval, error:   5  0.991010  0.354118E-05
+ k-term, g-interval, error:   6  0.998350  0.187333E-05
+ k-term, g-interval, error:   7  1.000000  0.213468E-06
+Trial fit contains     7 terms Error =  1.24011E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.047920  0.483788E-05
+ k-term, g-interval, error:   2  0.174610  0.136963E-04
+ k-term, g-interval, error:   3  0.421890  0.365831E-04
+ k-term, g-interval, error:   4  0.893510  0.644898E-04
+ k-term, g-interval, error:   5  0.982940  0.301610E-05
+ k-term, g-interval, error:   6  0.993690  0.155396E-05
+ k-term, g-interval, error:   7  0.998840  0.806681E-06
+ k-term, g-interval, error:   8  1.000000  0.947875E-07
+Trial fit contains     8 terms Error =  1.11839E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.038620  0.297970E-05
+ k-term, g-interval, error:   2  0.141700  0.880813E-05
+ k-term, g-interval, error:   3  0.316050  0.143904E-04
+ k-term, g-interval, error:   4  0.672000  0.318751E-04
+ k-term, g-interval, error:   5  0.974070  0.104676E-04
+ k-term, g-interval, error:   6  0.986910  0.131845E-05
+ k-term, g-interval, error:   7  0.995180  0.733903E-06
+ k-term, g-interval, error:   8  0.999050  0.350345E-06
+ k-term, g-interval, error:   9  1.000000  0.605773E-07
+Trial fit contains     9 terms Error =  8.42521E-03
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            9
+===============================
+Fitting in band:     3
+Gas required:    H2O
+Band limits:  1975.000000   3025.000000
+Opened HITRAN data file 
+Number of HITRAN lines in band:   6150
+Wavenumbers of min and max lines are:  1870.036579   3129.924849
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+03 K
+ pstart, pend:            1      100000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.101043E-01
+Trial fit contains     1 terms Error =  1.00520E-01
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.956450  0.142998E-01
+ k-term, g-interval, error:   2  1.000000  0.227241E-04
+Trial fit contains     2 terms Error =  1.19677E-01
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.578000  0.364680E-02
+ k-term, g-interval, error:   2  0.998070  0.345081E-03
+ k-term, g-interval, error:   3  1.000000  0.261399E-05
+Trial fit contains     3 terms Error =  6.32020E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.438740  0.617682E-03
+ k-term, g-interval, error:   2  0.956450  0.453262E-03
+ k-term, g-interval, error:   3  0.998620  0.137226E-04
+ k-term, g-interval, error:   4  1.000000  0.108068E-05
+Trial fit contains     4 terms Error =  3.29507E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.388310  0.220271E-03
+ k-term, g-interval, error:   2  0.779200  0.241762E-03
+ k-term, g-interval, error:   3  0.991550  0.802789E-04
+ k-term, g-interval, error:   4  0.999280  0.291046E-05
+ k-term, g-interval, error:   5  1.000000  0.300060E-06
+Trial fit contains     5 terms Error =  2.33564E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.353030  0.972050E-04
+ k-term, g-interval, error:   2  0.578000  0.120769E-03
+ k-term, g-interval, error:   3  0.956450  0.127470E-03
+ k-term, g-interval, error:   4  0.998070  0.123649E-04
+ k-term, g-interval, error:   5  0.999540  0.600153E-06
+ k-term, g-interval, error:   6  1.000000  0.141571E-06
+Trial fit contains     6 terms Error =  1.89354E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.322240  0.478331E-04
+ k-term, g-interval, error:   2  0.482630  0.546050E-04
+ k-term, g-interval, error:   3  0.853990  0.760302E-04
+ k-term, g-interval, error:   4  0.985230  0.205112E-04
+ k-term, g-interval, error:   5  0.998390  0.925979E-06
+ k-term, g-interval, error:   6  0.999690  0.223339E-06
+ k-term, g-interval, error:   7  1.000000  0.716246E-07
+Trial fit contains     7 terms Error =  1.41492E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.294030  0.247963E-04
+ k-term, g-interval, error:   2  0.438740  0.286324E-04
+ k-term, g-interval, error:   3  0.702540  0.356404E-04
+ k-term, g-interval, error:   4  0.956450  0.379675E-04
+ k-term, g-interval, error:   5  0.994830  0.557414E-05
+ k-term, g-interval, error:   6  0.998620  0.227803E-06
+ k-term, g-interval, error:   7  0.999780  0.241298E-06
+ k-term, g-interval, error:   8  1.000000  0.361599E-07
+Trial fit contains     8 terms Error =  1.15376E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.268060  0.130947E-04
+ k-term, g-interval, error:   2  0.412260  0.192814E-04
+ k-term, g-interval, error:   3  0.578000  0.176703E-04
+ k-term, g-interval, error:   4  0.884100  0.291178E-04
+ k-term, g-interval, error:   5  0.981700  0.746552E-05
+ k-term, g-interval, error:   6  0.998070  0.136845E-05
+ k-term, g-interval, error:   7  0.999100  0.183862E-06
+ k-term, g-interval, error:   8  0.999830  0.710388E-07
+ k-term, g-interval, error:   9  1.000000  0.204742E-07
+Trial fit contains     9 terms Error =  9.39540E-03
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            9
+===============================
+Fitting in band:     4
+Gas required:    H2O
+Band limits:  2975.000000   4025.000000
+Opened HITRAN data file 
+Number of HITRAN lines in band:  11542
+Wavenumbers of min and max lines are:  2870.699284   4129.433977
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+03 K
+ pstart, pend:            1      100000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.391741E-02
+Trial fit contains     1 terms Error =  6.25892E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.856750  0.369794E-02
+ k-term, g-interval, error:   2  1.000000  0.107782E-03
+Trial fit contains     2 terms Error =  6.16905E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.369090  0.471391E-03
+ k-term, g-interval, error:   2  0.982980  0.334551E-03
+ k-term, g-interval, error:   3  1.000000  0.182014E-04
+Trial fit contains     3 terms Error =  2.87079E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.232500  0.102445E-03
+ k-term, g-interval, error:   2  0.856750  0.528680E-03
+ k-term, g-interval, error:   3  0.991450  0.355498E-04
+ k-term, g-interval, error:   4  1.000000  0.434729E-05
+Trial fit contains     4 terms Error =  2.59041E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.160030  0.344146E-04
+ k-term, g-interval, error:   2  0.536870  0.229767E-03
+ k-term, g-interval, error:   3  0.972450  0.793244E-04
+ k-term, g-interval, error:   4  0.994560  0.847168E-05
+ k-term, g-interval, error:   5  1.000000  0.149841E-05
+Trial fit contains     5 terms Error =  1.88010E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.110470  0.149914E-04
+ k-term, g-interval, error:   2  0.369090  0.871428E-04
+ k-term, g-interval, error:   3  0.856750  0.101513E-03
+ k-term, g-interval, error:   4  0.982980  0.888141E-05
+ k-term, g-interval, error:   5  0.996210  0.284686E-05
+ k-term, g-interval, error:   6  1.000000  0.642127E-06
+Trial fit contains     6 terms Error =  1.46976E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.072620  0.639103E-05
+ k-term, g-interval, error:   2  0.288360  0.436700E-04
+ k-term, g-interval, error:   3  0.632670  0.511736E-04
+ k-term, g-interval, error:   4  0.968130  0.302150E-04
+ k-term, g-interval, error:   5  0.988340  0.249154E-05
+ k-term, g-interval, error:   6  0.997260  0.123096E-05
+ k-term, g-interval, error:   7  1.000000  0.299239E-06
+Trial fit contains     7 terms Error =  1.16392E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.052870  0.343462E-05
+ k-term, g-interval, error:   2  0.232500  0.187356E-04
+ k-term, g-interval, error:   3  0.462530  0.251749E-04
+ k-term, g-interval, error:   4  0.856750  0.320700E-04
+ k-term, g-interval, error:   5  0.976840  0.293864E-05
+ k-term, g-interval, error:   6  0.991450  0.126952E-05
+ k-term, g-interval, error:   7  0.997940  0.556417E-06
+ k-term, g-interval, error:   8  1.000000  0.135690E-06
+Trial fit contains     8 terms Error =  9.18235E-03
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            8
+===============================
+Fitting in band:     5
+Gas required:    H2O
+Band limits:  3975.000000   5025.000000
+Opened HITRAN data file 
+Number of HITRAN lines in band:   7183
+Wavenumbers of min and max lines are:  3870.129300   5129.960127
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+03 K
+ pstart, pend:            1      100000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.792358E-02
+Trial fit contains     1 terms Error =  8.90145E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.936290  0.797468E-02
+ k-term, g-interval, error:   2  1.000000  0.515538E-04
+Trial fit contains     2 terms Error =  8.95892E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.754980  0.317600E-02
+ k-term, g-interval, error:   2  0.994560  0.594135E-03
+ k-term, g-interval, error:   3  1.000000  0.116787E-04
+Trial fit contains     3 terms Error =  6.14964E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.593190  0.932551E-03
+ k-term, g-interval, error:   2  0.936290  0.449188E-03
+ k-term, g-interval, error:   3  0.998040  0.344990E-04
+ k-term, g-interval, error:   4  1.000000  0.176104E-05
+Trial fit contains     4 terms Error =  3.76563E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.489990  0.306339E-03
+ k-term, g-interval, error:   2  0.856120  0.262567E-03
+ k-term, g-interval, error:   3  0.983650  0.102236E-03
+ k-term, g-interval, error:   4  0.998730  0.540662E-05
+ k-term, g-interval, error:   5  1.000000  0.677882E-06
+Trial fit contains     5 terms Error =  2.60236E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.413110  0.111086E-03
+ k-term, g-interval, error:   2  0.754980  0.150199E-03
+ k-term, g-interval, error:   3  0.936290  0.836987E-04
+ k-term, g-interval, error:   4  0.994560  0.176977E-04
+ k-term, g-interval, error:   5  0.999080  0.217225E-05
+ k-term, g-interval, error:   6  1.000000  0.328039E-06
+Trial fit contains     6 terms Error =  1.91097E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.355100  0.435623E-04
+ k-term, g-interval, error:   2  0.663610  0.786863E-04
+ k-term, g-interval, error:   3  0.884110  0.509957E-04
+ k-term, g-interval, error:   4  0.975490  0.275393E-04
+ k-term, g-interval, error:   5  0.997250  0.407764E-05
+ k-term, g-interval, error:   6  0.999390  0.874248E-06
+ k-term, g-interval, error:   7  1.000000  0.136351E-06
+Trial fit contains     7 terms Error =  1.43482E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.315450  0.218445E-04
+ k-term, g-interval, error:   2  0.593190  0.421773E-04
+ k-term, g-interval, error:   3  0.821160  0.341647E-04
+ k-term, g-interval, error:   4  0.936290  0.240370E-04
+ k-term, g-interval, error:   5  0.989270  0.742903E-05
+ k-term, g-interval, error:   6  0.998040  0.105606E-05
+ k-term, g-interval, error:   7  0.999500  0.200300E-06
+ k-term, g-interval, error:   8  1.000000  0.900799E-07
+Trial fit contains     8 terms Error =  1.14455E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.281980  0.115989E-04
+ k-term, g-interval, error:   2  0.536030  0.246218E-04
+ k-term, g-interval, error:   3  0.754980  0.229177E-04
+ k-term, g-interval, error:   4  0.896840  0.134584E-04
+ k-term, g-interval, error:   5  0.967890  0.908292E-05
+ k-term, g-interval, error:   6  0.994560  0.292557E-05
+ k-term, g-interval, error:   7  0.998280  0.288696E-06
+ k-term, g-interval, error:   8  0.999640  0.217755E-06
+ k-term, g-interval, error:   9  1.000000  0.481184E-07
+Trial fit contains     9 terms Error =  9.22822E-03
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            9
+===============================
+Fitting in band:     6
+Gas required:    H2O
+Band limits:  4975.000000   6025.000000
+Opened HITRAN data file 
+Number of HITRAN lines in band:   9453
+Wavenumbers of min and max lines are:  4870.069655   6129.858200
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+03 K
+ pstart, pend:            1      100000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.586242E-02
+Trial fit contains     1 terms Error =  7.65665E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.596840  0.554918E-02
+ k-term, g-interval, error:   2  1.000000  0.205648E-03
+Trial fit contains     2 terms Error =  7.58606E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.287610  0.679165E-03
+ k-term, g-interval, error:   2  0.967640  0.855474E-03
+ k-term, g-interval, error:   3  1.000000  0.592587E-04
+Trial fit contains     3 terms Error =  3.99236E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.231430  0.200131E-03
+ k-term, g-interval, error:   2  0.596840  0.262368E-03
+ k-term, g-interval, error:   3  0.990970  0.160199E-03
+ k-term, g-interval, error:   4  1.000000  0.596520E-05
+Trial fit contains     4 terms Error =  2.50732E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.189530  0.642432E-04
+ k-term, g-interval, error:   2  0.350010  0.108265E-03
+ k-term, g-interval, error:   3  0.881380  0.257811E-03
+ k-term, g-interval, error:   4  0.992540  0.124231E-04
+ k-term, g-interval, error:   5  1.000000  0.210682E-05
+Trial fit contains     5 terms Error =  2.10914E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.157950  0.221467E-04
+ k-term, g-interval, error:   2  0.287610  0.364828E-04
+ k-term, g-interval, error:   3  0.596840  0.656736E-04
+ k-term, g-interval, error:   4  0.967640  0.920679E-04
+ k-term, g-interval, error:   5  0.993450  0.278374E-05
+ k-term, g-interval, error:   6  1.000000  0.152587E-05
+Trial fit contains     6 terms Error =  1.48553E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.137350  0.102050E-04
+ k-term, g-interval, error:   2  0.254520  0.156324E-04
+ k-term, g-interval, error:   3  0.400490  0.276736E-04
+ k-term, g-interval, error:   4  0.815370  0.742134E-04
+ k-term, g-interval, error:   5  0.987170  0.185510E-04
+ k-term, g-interval, error:   6  0.995180  0.381184E-05
+ k-term, g-interval, error:   7  1.000000  0.775689E-06
+Trial fit contains     7 terms Error =  1.22826E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.116880  0.425545E-05
+ k-term, g-interval, error:   2  0.231430  0.110107E-04
+ k-term, g-interval, error:   3  0.321060  0.951444E-05
+ k-term, g-interval, error:   4  0.596840  0.276717E-04
+ k-term, g-interval, error:   5  0.926670  0.396441E-04
+ k-term, g-interval, error:   6  0.990970  0.329361E-05
+ k-term, g-interval, error:   7  0.996540  0.920410E-06
+ k-term, g-interval, error:   8  1.000000  0.331763E-06
+Trial fit contains     8 terms Error =  9.83067E-03
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            8
+===============================
+Fitting in band:     7
+Gas required:    H2O
+Band limits:  5975.000000   7025.000000
+Opened HITRAN data file 
+Number of HITRAN lines in band:  10409
+Wavenumbers of min and max lines are:  5870.168480   7129.910300
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+03 K
+ pstart, pend:            1      100000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.102692E-01
+Trial fit contains     1 terms Error =  1.01337E-01
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.871920  0.884285E-02
+ k-term, g-interval, error:   2  1.000000  0.181536E-04
+Trial fit contains     2 terms Error =  9.41329E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.607540  0.126982E-02
+ k-term, g-interval, error:   2  0.992390  0.232829E-03
+ k-term, g-interval, error:   3  1.000000  0.161523E-05
+Trial fit contains     3 terms Error =  3.87848E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.525960  0.352917E-03
+ k-term, g-interval, error:   2  0.871920  0.195771E-03
+ k-term, g-interval, error:   3  0.998380  0.171094E-04
+ k-term, g-interval, error:   4  1.000000  0.827546E-06
+Trial fit contains     4 terms Error =  2.38039E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.477750  0.131835E-03
+ k-term, g-interval, error:   2  0.702240  0.936577E-04
+ k-term, g-interval, error:   3  0.974220  0.505198E-04
+ k-term, g-interval, error:   4  0.999340  0.178351E-05
+ k-term, g-interval, error:   5  1.000000  0.260932E-06
+Trial fit contains     5 terms Error =  1.66750E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.443240  0.588107E-04
+ k-term, g-interval, error:   2  0.607540  0.438933E-04
+ k-term, g-interval, error:   3  0.871920  0.391116E-04
+ k-term, g-interval, error:   4  0.992390  0.913631E-05
+ k-term, g-interval, error:   5  0.999510  0.338669E-06
+ k-term, g-interval, error:   6  1.000000  0.937834E-07
+Trial fit contains     6 terms Error =  1.23038E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.418510  0.324444E-04
+ k-term, g-interval, error:   2  0.556090  0.187651E-04
+ k-term, g-interval, error:   3  0.751650  0.188958E-04
+ k-term, g-interval, error:   4  0.958050  0.144992E-04
+ k-term, g-interval, error:   5  0.997220  0.182134E-05
+ k-term, g-interval, error:   6  0.999620  0.914184E-07
+ k-term, g-interval, error:   7  1.000000  0.222953E-07
+Trial fit contains     7 terms Error =  9.30266E-03
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            7
+===============================
+Fitting in band:     8
+Gas required:    H2O
+Band limits:  6975.000000   8025.000000
+Opened HITRAN data file 
+Number of HITRAN lines in band:  12769
+Wavenumbers of min and max lines are:  6870.049700   8129.500600
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+03 K
+ pstart, pend:            1      100000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.149834E-01
+Trial fit contains     1 terms Error =  1.22407E-01
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.637270  0.857103E-02
+ k-term, g-interval, error:   2  1.000000  0.176263E-03
+Trial fit contains     2 terms Error =  9.35270E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.491490  0.965477E-03
+ k-term, g-interval, error:   2  0.969710  0.326981E-03
+ k-term, g-interval, error:   3  1.000000  0.375240E-04
+Trial fit contains     3 terms Error =  3.64689E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.445910  0.473573E-03
+ k-term, g-interval, error:   2  0.637270  0.252974E-03
+ k-term, g-interval, error:   3  0.993970  0.155773E-03
+ k-term, g-interval, error:   4  1.000000  0.652138E-05
+Trial fit contains     4 terms Error =  2.98135E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.386720  0.189383E-03
+ k-term, g-interval, error:   2  0.509820  0.447168E-04
+ k-term, g-interval, error:   3  0.895170  0.925639E-04
+ k-term, g-interval, error:   4  0.995330  0.117637E-04
+ k-term, g-interval, error:   5  1.000000  0.124299E-05
+Trial fit contains     5 terms Error =  1.84302E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.333420  0.705149E-04
+ k-term, g-interval, error:   2  0.491490  0.299020E-04
+ k-term, g-interval, error:   3  0.637270  0.200467E-04
+ k-term, g-interval, error:   4  0.969710  0.794846E-04
+ k-term, g-interval, error:   5  0.995860  0.159293E-05
+ k-term, g-interval, error:   6  1.000000  0.485534E-06
+Trial fit contains     6 terms Error =  1.42136E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.294830  0.286554E-04
+ k-term, g-interval, error:   2  0.467760  0.168141E-04
+ k-term, g-interval, error:   3  0.519520  0.102068E-04
+ k-term, g-interval, error:   4  0.841550  0.380705E-04
+ k-term, g-interval, error:   5  0.988910  0.172371E-04
+ k-term, g-interval, error:   6  0.996100  0.642215E-06
+ k-term, g-interval, error:   7  1.000000  0.339738E-06
+Trial fit contains     7 terms Error =  1.05814E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.269480  0.137947E-04
+ k-term, g-interval, error:   2  0.445910  0.123166E-04
+ k-term, g-interval, error:   3  0.503170  0.421611E-05
+ k-term, g-interval, error:   4  0.637270  0.606698E-05
+ k-term, g-interval, error:   5  0.930160  0.297417E-04
+ k-term, g-interval, error:   6  0.993970  0.354162E-05
+ k-term, g-interval, error:   7  0.996430  0.411834E-06
+ k-term, g-interval, error:   8  1.000000  0.260261E-06
+Trial fit contains     8 terms Error =  8.38748E-03
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            8
+===============================
+Fitting in band:     9
+Gas required:    H2O
+Band limits:  7975.000000   9025.000000
+Opened HITRAN data file 
+Number of HITRAN lines in band:  10746
+Wavenumbers of min and max lines are:  7870.158800   9129.987117
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+03 K
+ pstart, pend:            1      100000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.687056E-02
+Trial fit contains     1 terms Error =  8.28888E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.677480  0.183931E-02
+ k-term, g-interval, error:   2  1.000000  0.878339E-04
+Trial fit contains     2 terms Error =  4.38993E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.438800  0.121186E-03
+ k-term, g-interval, error:   2  0.905090  0.100735E-03
+ k-term, g-interval, error:   3  1.000000  0.787895E-05
+Trial fit contains     3 terms Error =  1.51592E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.376800  0.282208E-04
+ k-term, g-interval, error:   2  0.677480  0.494760E-04
+ k-term, g-interval, error:   3  0.957830  0.243178E-04
+ k-term, g-interval, error:   4  1.000000  0.114700E-05
+Trial fit contains     4 terms Error =  1.01569E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.342250  0.113653E-04
+ k-term, g-interval, error:   2  0.498300  0.124748E-04
+ k-term, g-interval, error:   3  0.835880  0.161146E-04
+ k-term, g-interval, error:   4  0.976400  0.561489E-05
+ k-term, g-interval, error:   5  1.000000  0.256434E-06
+Trial fit contains     5 terms Error =  6.76949E-03
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            5
+===============================
+Fitting in band:    10
+Gas required:    H2O
+Band limits:  8975.000000  10025.000000
+Opened HITRAN data file 
+Number of HITRAN lines in band:   7851
+Wavenumbers of min and max lines are:  8870.079593  10129.769000
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+00 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+03 Pa and  2.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  5.000E+02 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  1.000E+03 K
+Calculation of absorption coefficients at  1.000E+06 Pa and  2.000E+03 K
+ pstart, pend:            1      100000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.178593E-02
+Trial fit contains     1 terms Error =  4.22602E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.945780  0.442368E-03
+ k-term, g-interval, error:   2  1.000000  0.232412E-04
+Trial fit contains     2 terms Error =  2.15780E-02
+-------------------------------------------------------
+ k-term, g-interval, error:   1  0.892950  0.548939E-04
+ k-term, g-interval, error:   2  0.982060  0.395130E-04
+ k-term, g-interval, error:   3  1.000000  0.218374E-05
+Trial fit contains     3 terms Error =  9.82806E-03
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            3
