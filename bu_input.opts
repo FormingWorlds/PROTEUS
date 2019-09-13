@@ -48,7 +48,7 @@
 -CONDUCTION 1 # conduction
 -CONVECTION 1 # convection
 -MIXING 1 # mixing (latent heat transport)
--SEPARATION 0 # gravitational separation of solid and melt phase
+-SEPARATION 1 # gravitational separation of solid and melt phase
 -HRADIO 0 # radioactive heating
 -HTIDAL 0 # tidal heating (TODO: not currently implemented)
 
@@ -82,7 +82,7 @@
 #     lid from forming at the surface
 # [3] is conventional as [1] above, but additionally allows you to
 #      specify a mid-mantle interface
--mixing_length 2
+-mixing_length 1
 #-mixing_length_layer_radius 0.0 # non-dimensional radius
 
 # physical parameters
