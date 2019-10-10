@@ -33,6 +33,8 @@ def radCompSoc(atm, stellar_toa_heating):
     co2_mr_list = atm.mixing_ratios[1]
     # Water vapour mixing ratio profile
     q_mr_list = atm.mixing_ratios[0]
+    # H2 mixing ratio profile
+    h2_mr_list = 0.1*np.ones(len(atm.mixing_ratios[1]))
 
     # Write single values
     t_surf = atm.ts
@@ -54,16 +56,16 @@ def radCompSoc(atm, stellar_toa_heating):
     nctools.ncout3d('profile.co2',0,0,pres_list,co2_mr_list,'co2',longname="CO2",units='PPMV')
     nctools.ncout3d('profile.q',0,0,pres_list,q_mr_list,'q',longname="q",units='PPMV')
 #    nctools.ncout3d('profile.h2o',0,0,pres_list,q_mr_list,'h2o',longname="h2o",units='PPMV')
-
+    nctools.ncout3d('profile.h2',0,0,pres_list,h2_mr_list,'h2',longname="H2",units='PPMV')
 
     basename = 'profile'
     s = " "
 
 
     # seq4 = ("Cl_run_cdf -B", basename,"-s "+path_to_socrates+"/data/spectra/ga7/sp_sw_ga7 -R 1 6 -ch 6 -S -g 2 -C 5")
-    seq4 = ("Cl_run_cdf -B", basename,"-s spectral-files/sp_spider_3000K_300 -R 1 300 -ch 300 -S -g 2 -C 5")
+    seq4 = ("Cl_run_cdf -B", basename,"-s spectral-files/gen_sp_spider_h2cia_3000K_300/sp_spider -R 1 300 -ch 300 -S -g 2 -C 5 -u")
     seq5 = ("fmove", basename,"currentsw")
-    seq6 = ("Cl_run_cdf -B", basename,"-s spectral-files/sp_spider_3000K_300 -R 1 300 -ch 300 -I -g 2 -C 5")
+    seq6 = ("Cl_run_cdf -B", basename,"-s spectral-files/gen_sp_spider_h2cia_3000K_300/sp_spider -R 1 300 -ch 300 -I -g 2 -C 5 -u")
     seq7 = ("fmove", basename,"currentlw")
 
 
