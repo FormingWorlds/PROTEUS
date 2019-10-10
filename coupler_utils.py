@@ -25,6 +25,9 @@ co_mol_mass     = 0.02801               # kg/mol
 n2_mol_mass     = 0.028014              # kg/mol
 o2_mol_mass     = 0.031999              # kg/mol
 he_mol_mass     = 0.0040026             # kg/mol
+so2_mol_mass    = 0.064066              # kg/mol
+h2s_mol_mass    = 0.0341                # kg/mol
+
 
 def CalcMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg):
 
