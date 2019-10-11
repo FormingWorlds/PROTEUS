@@ -144,7 +144,7 @@ use_PIL = True
 live_plot_frq = 10
 save_movie_rate = live_plot_frq
 y_time_freq = 1  #  storing data for every 'y_time_freq' step
-plot_spec = ['H2O']  
+plot_spec = ['H2O', 'H2', 'CO2', 'CO', 'N2', 'CH4', 'O2', 'He']  
 # output:
 output_humanread = False
 use_shark = False

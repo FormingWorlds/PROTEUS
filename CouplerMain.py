@@ -1,5 +1,5 @@
 """
-RadInteriorCoupler.py
+Coupler Main file – SPIDER-SOCRATES-VULCAN
 """
 
 import numpy as np
@@ -20,7 +20,6 @@ import plot_atmosphere
 from datetime import datetime
 
 # SPIDER start input options
-ic_filename             = "0.json"       # JSON file to read in initial condition
 SURFACE_BC              = "4"            # 4: constant heat flux boundary condition
 SOLVE_FOR_VOLATILES     = "1"            # track evolution of volatiles in interior/atmosphere reservoirs
 H2O_poststep_change     = "0.05"         # fractional change in melt phase H2O concentration that triggers event
@@ -32,11 +31,19 @@ tsurf_poststep_change   = "100.0"        # maximum absolute surface temperature 
 planet_radius           = "6371000.0"    # planet radius / m
 planet_coresize         = "0.55"         # fractional radius of core-mantle boundary
 
+H2O_initial             = "500.0"        # ppm, Elkins-Tanton (2008) case 2
+CO2_initial             = "100.0"        # ppm, Elkins-Tanton (2008) case 2
+H2_initial              = "0.0"          # ppm
+N2_initial              = "0.0"          # ppm
+CH4_initial             = "0.0"          # ppm
+CO_initial              = "0.0"          # ppm
+
 # Define output output output directory
 output_dir = os.getcwd()+"/output/"
 
-# Restart flag
-start_condition     = "1"            # 1: Start from beginning, 2: Restart from file "ic_filename"
+# Restart flags
+start_condition         = "1"            # 1: Start from beginning, 2: Restart from file "ic_filename"
+ic_filename             = "0.json"       # JSON file to read in initial condition
 
 # Total runtime
 time_current = 0
@@ -69,7 +76,7 @@ if start_condition == "1":
     print("==> Done.")
 
     # SPIDER initialization call sequence
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", "1", "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", "0", "-dtmacro", "1", "-radius", planet_radius, "-coresize", planet_coresize ]
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", "1", "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", "0", "-dtmacro", "1", "-radius", planet_radius, "-coresize", planet_coresize, "-H2O_initial", H2O_initial, "-CO2_initial", CO2_initial, "-H2_initial", H2_initial, "-N2_initial", N2_initial, "-CH4_initial", CH4_initial, "-CO_initial", CO_initial ]
     # , "-outputDirectory", output_dir
 
     # Runtime info

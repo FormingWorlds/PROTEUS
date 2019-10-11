@@ -202,7 +202,7 @@
 -CO2_molar_mass 0.04401 # kg/mol
 
 # parameters relating to H2 volatile
--H2_initial 100.0           # ppm
+-H2_initial 0.0             # ppm
 -H2_henry 2.572E-6          # ppm/Pa, alpha (own fit)
 -H2_henry_pow 1.0           # non-dim., beta (own fit)
 -H2_molar_mass 0.00201588   # kg/mol
