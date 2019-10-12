@@ -3,10 +3,10 @@
 # ============================================================================= 
 
 # ====== Setting up the elements included in the network ======
-atom_list = ['H', 'O', 'C']
+atom_list = ['H', 'O', 'C' , 'N', 'S' ]
 # ====== Setting up paths and filenames for the input and output files  ======
 # input:
-network = 'thermo/NCHO_thermo_network.txt'
+network = 'thermo/SNCHO_thermo_oxidising_network.txt' # NCHO_thermo_network.txt
 gibbs_text = 'thermo/gibbs_text.txt' # (all the nasa9 files must be placed in the folder: thermo/NASA9/)
 cross_folder = 'thermo/photo_cross/'
 com_file = 'thermo/all_compose.txt'
@@ -119,7 +119,9 @@ mtol = 1.E-24
 mtol_conv = 1.E-20
 pos_cut = 0
 nega_cut = -1.
+
 loss_eps = 1e-1
+
 yconv_cri = 0.01 # for checking steady-state
 slope_cri = 1.e-4
 yconv_min = 0.1
@@ -144,7 +146,7 @@ use_PIL = True
 live_plot_frq = 10
 save_movie_rate = live_plot_frq
 y_time_freq = 1  #  storing data for every 'y_time_freq' step
-plot_spec = ['H2O', 'H2', 'CO2', 'CO', 'N2', 'CH4', 'O2', 'He']  
+plot_spec = ['H2O', 'CO', 'CO2', 'NH3', 'N2', 'H2S', 'SO2']  
 # output:
 output_humanread = False
 use_shark = False

@@ -31,7 +31,7 @@ tsurf_poststep_change   = "100.0"        # maximum absolute surface temperature 
 planet_radius           = "6371000.0"    # planet radius / m
 planet_coresize         = "0.55"         # fractional radius of core-mantle boundary
 
-H2O_initial             = "500.0"        # ppm, Elkins-Tanton (2008) case 2
+H2O_initial             = "50.0"        # ppm, Elkins-Tanton (2008) case 2
 CO2_initial             = "100.0"        # ppm, Elkins-Tanton (2008) case 2
 H2_initial              = "0.0"          # ppm
 N2_initial              = "0.0"          # ppm
