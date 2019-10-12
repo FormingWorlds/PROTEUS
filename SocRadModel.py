@@ -29,10 +29,10 @@ def radCompSoc(atm, stellar_toa_heating):
     presl_list = 100.0*atm.pl[:]
 
 
+    # H2O mixing ratio profile
+    q_mr_list = atm.mixing_ratios[0]
     # CO2 mixing ratio profile
     co2_mr_list = atm.mixing_ratios[1]
-    # Water vapour mixing ratio profile
-    q_mr_list = atm.mixing_ratios[0]
     # H2 mixing ratio profile
     h2_mr_list = 0.1*np.ones(len(atm.mixing_ratios[1]))
 

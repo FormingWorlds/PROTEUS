@@ -9,27 +9,69 @@ import pandas as pd
 from scipy import interpolate
 import spider_coupler_utils
 
-## Constants:
+### Constants ###
+
+# Astronomical constants
 L_sun           = 3.828e+26             # W, IAU definition
 AU              = 1.495978707e+11       # m
 R_gas           = 8.31446261815324      # J K−1 mol−1
 M_earth         = 5.972E24              # kg
 R_core_earth    = 3485000.0             # m
 M_core_earth    = 1.94E24               # kg
+mol             = 6.02214076e+23        # mol definition
 
-h2o_mol_mass    = 0.01801528            # kg/mol
-co2_mol_mass    = 0.04401               # kg/mol
-h2_mol_mass     = 0.00201588            # kg/mol
-ch4_mol_mass    = 0.01604               # kg/mol
-co_mol_mass     = 0.02801               # kg/mol
-n2_mol_mass     = 0.028014              # kg/mol
-o2_mol_mass     = 0.031999              # kg/mol
-he_mol_mass     = 0.0040026             # kg/mol
-so2_mol_mass    = 0.064066              # kg/mol
-h2s_mol_mass    = 0.0341                # kg/mol
+# Elements
+h_mol_mass      = 0.001008              # kg mol−1
+c_mol_mass      = 0.012011              # kg mol−1
+o_mol_mass      = 0.015999              # kg mol−1
+n_mol_mass      = 0.014007              # kg mol−1
+he_mol_mass     = 0.0040026             # kg mol−1
+ar_mol_mass     = 0.039948              # kg mol−1
+ne_mol_mass     = 0.020180              # kg mol−1
+kr_mol_mass     = 0.083798              # kg mol−1
+xe_mol_mass     = 0.131293              # kg mol−1
 
+# Compounds
+h2o_mol_mass    = 0.01801528            # kg mol−1
+co2_mol_mass    = 0.04401               # kg mol−1
+h2_mol_mass     = 0.00201588            # kg mol−1
+ch4_mol_mass    = 0.01604               # kg mol−1
+co_mol_mass     = 0.02801               # kg mol−1
+n2_mol_mass     = 0.028014              # kg mol−1
+o2_mol_mass     = 0.031999              # kg mol−1
+so2_mol_mass    = 0.064066              # kg mol−1
+h2s_mol_mass    = 0.0341                # kg mol−1
 
-def CalcMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg):
+def Calc_XH_Ratios(mantle_mass, h2o_ppm, co2_ppm, h2_ppm, ch4_ppm, co_ppm, n2_ppm, o2_ppm, he_ppm):
+
+    h2o_mol = float(h2o_ppm)*1e6*mantle_mass/h2o_mol_mass   # mol
+    co2_mol = float(co2_ppm)*1e6*mantle_mass/co2_mol_mass   # mol
+    h2_mol  = float(h2_ppm)*1e6*mantle_mass/h2_mol_mass     # mol
+    ch4_mol = float(ch4_ppm)*1e6*mantle_mass/ch4_mol_mass   # mol
+    co_mol  = float(co_ppm)*1e6*mantle_mass/co_mol_mass     # mol
+    n2_mol  = float(n2_ppm)*1e6*mantle_mass/n2_mol_mass     # mol
+    o2_mol  = float(o2_ppm)*1e6*mantle_mass/o2_mol_mass     # mol
+    he_mol  = float(he_ppm)*1e6*mantle_mass/he_mol_mass     # mol
+
+    # Radiative species + He
+    total_mol = h2o_mol + co2_mol + h2_mol + ch4_mol + co_mol + n2_mol + o2_mol + he_mol
+
+    h_mol_total  = h2o_mol*2. + h2_mol*2. + ch4_mol*4. 
+    o_mol_total  = h2o_mol*1. + co2_mol*2. + co_mol*1. + o2_mol*2.
+    c_mol_total  = co2_mol*1. + ch4_mol*1. + co_mol*1. + 
+    n_mol_total  = n2_mol*2.
+    s_mol_total  = 0.
+    he_mol_total = he_mol*1.
+
+    O_H_mol_ratio = o_mol_total / h_mol_total  # mol/mol
+    C_H_mol_ratio = c_mol_total / h_mol_total  # mol/mol
+    N_H_mol_ratio  = n_mol_total / h_mol_total # mol/mol
+    S_H_mol_ratio = s_mol_total / h_mol_total  # mol/mol 
+    He_H_mol_ratio  = co_mol / he_mol_total    # mol/mol 
+
+    return O_H_mol_ratio, C_H_mol_ratio, N_H_mol_ratio, S_H_mol_ratio, He_H_mol_ratio
+
+def CalcMassMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg):
 
     h2o_mol = h2o_kg/h2o_mol_mass   # mol
     co2_mol = co2_kg/co2_mol_mass   # mol
@@ -52,7 +94,7 @@ def CalcMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg):
     o2_ratio  = o2_mol / total_mol   # mol/mol 
     he_ratio  = he_mol / total_mol   # mol/mol 
 
-    return h2o_ratio, co2_ratio, h2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio
+    return h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio
 
 # https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
 def make_output_dir():
@@ -130,7 +172,7 @@ def write_surface_quantitites(output_dir):
 
     # logger.info( 'building atmosphere' )
 
-    sim_times = spider_coupler_utils.get_all_output_times(output_dir)  # yr
+    sim_times = spider_coupler_utils.get_all_output_times(output_dir, file_name)  # yr
 
     keys_t = ( ('atmosphere','mass_liquid'),
                ('atmosphere','mass_solid'),
@@ -186,6 +228,6 @@ def write_surface_quantitites(output_dir):
     Fatm = data_a[17,:]
 
     # output surface + atmosphere quantities
-    out_a = np.column_stack( (sim_times, temperature_surface_a, H2O_atmos_kg_a, CO2_atmos_kg_a, planet_mass_a ) )
-    np.savetxt( output_dir+'/runtime_properties.dat', out_a )
+    out_a = np.column_stack( (sim_times, temperature_surface_a, mass_core_a, mass_mantle_a, H2O_atmos_kg_a, CO2_atmos_kg_a ) )
+    np.savetxt( output_dir+'/'+file_name, out_a )
 
