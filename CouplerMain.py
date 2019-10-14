@@ -8,7 +8,7 @@ import SocRadConv
 import SocRadModel
 import subprocess
 import glob
-import os, shutil
+import sys, os, shutil
 import math
 from natsort import natsorted #https://pypi.python.org/pypi/natsort
 import coupler_utils
@@ -102,18 +102,18 @@ if start_condition == "1":
     surface_quantities  = np.loadtxt(output_dir + "starting_properties.dat")
     if pingpong_no > 0: # After first iteration more than one entry
         surface_quantities = surface_quantities[-1]
-    time_current        = surface_quantities[0]  # K
-    surfaceT_current    = surface_quantities[1]  # K
-    core_mass           = surface_quantities[2]  # kg
-    mantle_mass         = surface_quantities[3]  # kg
-    h2o_kg              = surface_quantities[4]  # kg
-    co2_kg              = surface_quantities[5]  # kg
-    h2_kg               = 0  # kg
-    ch4_kg              = 0  # kg
-    co_kg               = 0  # kg
-    n2_kg               = 0  # kg
-    o2_kg               = 0  # kg
-    he_kg               = 0  # kg
+    time_current        = surface_quantities[0]               # K
+    surfaceT_current    = surface_quantities[1]               # K
+    core_mass           = surface_quantities[2]               # kg
+    mantle_mass         = surface_quantities[3]               # kg
+    h2o_kg              = float(H2O_initial)*1e6*mantle_mass  # kg
+    co2_kg              = float(CO2_initial)*1e6*mantle_mass  # kg
+    h2_kg               = float(H2_initial)*1e6*mantle_mass   # kg
+    ch4_kg              = float(CH4_initial)*1e6*mantle_mass  # kg
+    co_kg               = float(CO_initial)*1e6*mantle_mass   # kg
+    n2_kg               = float(N2_initial)*1e6*mantle_mass   # kg
+    o2_kg               = float(O2_initial)*1e6*mantle_mass   # kg
+    he_kg               = float(He_initial)*1e6*mantle_mass   # kg
     solid_planet_mass   = core_mass + mantle_mass
 
     # Calculate element mol ratios from mass fractions (relative to mantle)
@@ -124,12 +124,21 @@ if start_condition == "1":
 
     # Generate/adapt VULCAN input files
     with open('vulcan/spider_input/spider_elements.dat', 'w') as file:
-        file.write('time    O    C    N    S   He')
-    with open('vulcan/spider_input/spider_elements.dat', 'w') as file:
-        file.write(time_current, O_H_mol_ratio, C_H_mol_ratio, N_H_mol_ratio, S_H_mol_ratio, He_H_mol_ratio)
+        file.write('time      O      C      N      S      He\n')
+    with open('vulcan/spider_input/spider_elements.dat', 'a') as file:
+        file.write(str(time_current)+" "+str(O_H_mol_ratio)+" "+str(C_H_mol_ratio)+" "+str(N_H_mol_ratio)+" "+str(S_H_mol_ratio)+" "+str(He_H_mol_ratio)+"\n")
+
+    # Switch to VULCAN directory
+    os.chdir("./vulcan/")
+
+    # Run VULCAN
+    subprocess.run(["python", "vulcan.py", "-n"], shell=False)
+
+    # Switch back to main directory
+    os.chdir("../")
 
     # Interpolate TOA heating from Baraffe models and distance from star
-    grav_s      = su.gravity( planet_mass, float(planet_radius) )
+    grav_s      = su.gravity( solid_planet_mass, float(planet_radius) )
     M_vol_tot   = h2o_kg + co2_kg + h2_kg + ch4_kg + co_kg + n2_kg + o2_kg + he_kg 
     p_s = ( M_vol_tot * grav_s / ( 4. * np.pi * (float(planet_radius)**2.) ) ) * 1e-2 # mbar
     stellar_toa_heating, solar_lum = coupler_utils.InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance)
@@ -137,7 +146,7 @@ if start_condition == "1":
     print("::::::::::::: START SOCRATES ITERATION -", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "::::::::::::::")
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
-    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current, stellar_toa_heating, p_s, h2o_ratio, co2_ratio, h2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio)) # W/m^2
+    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current, stellar_toa_heating, p_s, h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio)) # W/m^2
 
     # Save OLR flux to be fed to SPIDER
     with open(output_dir+"OLRFlux.dat", "a") as f:
@@ -148,7 +157,7 @@ if start_condition == "1":
     ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
 
     # Output during runtime
-    coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg, co2_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
+    coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
 
     # Reset number of computing steps to reach time_target
     dtime       = time_target - time_current

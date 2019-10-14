@@ -58,7 +58,7 @@ def Calc_XH_Ratios(mantle_mass, h2o_ppm, co2_ppm, h2_ppm, ch4_ppm, co_ppm, n2_pp
 
     h_mol_total  = h2o_mol*2. + h2_mol*2. + ch4_mol*4. 
     o_mol_total  = h2o_mol*1. + co2_mol*2. + co_mol*1. + o2_mol*2.
-    c_mol_total  = co2_mol*1. + ch4_mol*1. + co_mol*1. + 
+    c_mol_total  = co2_mol*1. + ch4_mol*1. + co_mol*1.
     n_mol_total  = n2_mol*2.
     s_mol_total  = 0.
     he_mol_total = he_mol*1.
@@ -67,7 +67,7 @@ def Calc_XH_Ratios(mantle_mass, h2o_ppm, co2_ppm, h2_ppm, ch4_ppm, co_ppm, n2_pp
     C_H_mol_ratio = c_mol_total / h_mol_total  # mol/mol
     N_H_mol_ratio  = n_mol_total / h_mol_total # mol/mol
     S_H_mol_ratio = s_mol_total / h_mol_total  # mol/mol 
-    He_H_mol_ratio  = co_mol / he_mol_total    # mol/mol 
+    He_H_mol_ratio  = he_mol_total / he_mol_total    # mol/mol 
 
     return O_H_mol_ratio, C_H_mol_ratio, N_H_mol_ratio, S_H_mol_ratio, He_H_mol_ratio
 
@@ -85,14 +85,14 @@ def CalcMassMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg)
     # Radiative species + He
     total_mol = h2o_mol + co2_mol + h2_mol + ch4_mol + co_mol + n2_mol + o2_mol + he_mol
 
-    h2o_ratio = h2o_mol / total_mol  # mol/mol
-    co2_ratio = co2_mol / total_mol  # mol/mol
-    h2_ratio  = h2_mol / total_mol   # mol/mol
-    ch4_ratio = ch4_mol / total_mol  # mol/mol 
-    co_ratio  = co_mol / total_mol   # mol/mol 
-    n2_ratio  = n2_mol / total_mol   # mol/mol 
-    o2_ratio  = o2_mol / total_mol   # mol/mol 
-    he_ratio  = he_mol / total_mol   # mol/mol 
+    h2o_mass_mol_ratio = h2o_mol / total_mol  # mol/mol
+    co2_mass_mol_ratio = co2_mol / total_mol  # mol/mol
+    h2_mass_mol_ratio  = h2_mol / total_mol   # mol/mol
+    ch4_mass_mol_ratio = ch4_mol / total_mol  # mol/mol 
+    co_mass_mol_ratio  = co_mol / total_mol   # mol/mol 
+    n2_mass_mol_ratio  = n2_mol / total_mol   # mol/mol 
+    o2_mass_mol_ratio  = o2_mol / total_mol   # mol/mol 
+    he_mass_mol_ratio  = he_mol / total_mol   # mol/mol 
 
     return h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio
 
@@ -151,7 +151,7 @@ def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
 
     return z_profile
 
-def PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg, co2_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum):
+def PrintCurrentState(time_current, surfaceT_current, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum):
 
     # Print final statement
     print("--------------------------------------------------------")
@@ -159,8 +159,13 @@ def PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg,
     print(datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     print("Time [Myr]:", str(float(time_current)/1e6))
     print ("T_s [K]:", surfaceT_current)
-    print ("H2O:", h2o_kg, " [kg]", h2o_ratio, " [mol ratio]")
-    print ("CO2:", co2_kg, " [kg]", co2_ratio, " [mol ratio]")
+    print ("H2O:", h2o_kg, " [kg]", h2o_mass_mol_ratio, " [mass mol ratio]")
+    print ("CO2:", co2_kg, " [kg]", co2_mass_mol_ratio, " [mass mol ratio]")
+    print ("H2:", h2_kg, " [kg]", h2_mass_mol_ratio, " [mass mol ratio]")
+    print ("CH4:", ch4_kg, " [kg]", ch4_mass_mol_ratio, " [mass mol ratio]")
+    print ("CO:", co_kg, " [kg]", co_mass_mol_ratio, " [mass mol ratio]")
+    print ("N2:", n2_kg, " [kg]", n2_mass_mol_ratio, " [mass mol ratio]")
+    print ("O2:", o2_kg, " [kg]", o2_mass_mol_ratio, " [mass mol ratio]")
     print ("p_s:", p_s*1e-3, " [bar]")
     print ("TOA heating:", stellar_toa_heating)
     print ("L_star:", solar_lum)
@@ -168,11 +173,11 @@ def PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg,
     print ("Last file name:", ic_filename)
     print("--------------------------------------------------------")
 
-def write_surface_quantitites(output_dir):
+def write_surface_quantitites(output_dir, file_name):
 
     # logger.info( 'building atmosphere' )
 
-    sim_times = spider_coupler_utils.get_all_output_times(output_dir, file_name)  # yr
+    sim_times = spider_coupler_utils.get_all_output_times(output_dir)  # yr
 
     keys_t = ( ('atmosphere','mass_liquid'),
                ('atmosphere','mass_solid'),
@@ -229,5 +234,5 @@ def write_surface_quantitites(output_dir):
 
     # output surface + atmosphere quantities
     out_a = np.column_stack( (sim_times, temperature_surface_a, mass_core_a, mass_mantle_a, H2O_atmos_kg_a, CO2_atmos_kg_a ) )
-    np.savetxt( output_dir+'/'+file_name, out_a )
+    np.savetxt( output_dir+file_name, out_a )
 
