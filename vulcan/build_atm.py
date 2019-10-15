@@ -121,7 +121,7 @@ class InitialAbun(object):
         #out_species = ['CH4', 'CO', 'CO2', 'C2H2', 'H2', 'H', 'H2O', 'HCN', 'He', 'NH3', 'O2', 'NO', 'OH']
 
         ost = '{:<8s}'.format('(bar) ')  + '{:>9s}'.format('(K)') + '{:>9s}'.format('(cm)') + '\n'
-        ost += '{:<8s}'.format('Pressure')  + '{:>9s}'.format('Temp')+ '{:>9s}'.format('Hight')
+        ost += '{:<8s}'.format('Pressure')  + '{:>9s}'.format('Temp')+ '{:>9s}'.format('Height')
         for sp in species: ost += '{:>10s}'.format(sp) 
         ost +='\n'
  

@@ -63,11 +63,17 @@ def Calc_XH_Ratios(mantle_mass, h2o_ppm, co2_ppm, h2_ppm, ch4_ppm, co_ppm, n2_pp
     s_mol_total  = 0.
     he_mol_total = he_mol*1.
 
-    O_H_mol_ratio = o_mol_total / h_mol_total  # mol/mol
-    C_H_mol_ratio = c_mol_total / h_mol_total  # mol/mol
-    N_H_mol_ratio  = n_mol_total / h_mol_total # mol/mol
-    S_H_mol_ratio = s_mol_total / h_mol_total  # mol/mol 
-    He_H_mol_ratio  = he_mol_total / he_mol_total    # mol/mol 
+    O_H_mol_ratio = o_mol_total / h_mol_total       # mol/mol
+    C_H_mol_ratio = c_mol_total / h_mol_total       # mol/mol
+    N_H_mol_ratio  = n_mol_total / h_mol_total      # mol/mol
+    S_H_mol_ratio = s_mol_total / h_mol_total       # mol/mol 
+    He_H_mol_ratio  = he_mol_total / h_mol_total    # mol/mol 
+
+    # Counter VULCAN bug with zero abundances
+    if N_H_mol_ratio == 0.: 
+        N_H_mol_ratio = 1e-99
+    if S_H_mol_ratio == 0.: 
+        S_H_mol_ratio = 1e-99
 
     return O_H_mol_ratio, C_H_mol_ratio, N_H_mol_ratio, S_H_mol_ratio, He_H_mol_ratio
 

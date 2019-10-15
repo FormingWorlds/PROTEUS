@@ -18,6 +18,7 @@ import plot_global
 import plot_stacked
 import plot_atmosphere
 from datetime import datetime
+import pandas as pd
 
 # SPIDER start input options
 SURFACE_BC            = "4"            # 4: constant heat flux boundary condition
@@ -31,7 +32,7 @@ tsurf_poststep_change = "100.0"        # maximum absolute surface temperature ch
 planet_radius         = "6371000.0"    # planet radius / m
 planet_coresize       = "0.55"         # fractional radius of core-mantle boundary
 
-H2O_initial           = "50.0"        # ppm, Elkins-Tanton (2008) case 2
+H2O_initial           = "50.0"         # ppm, Elkins-Tanton (2008) case 2
 CO2_initial           = "100.0"        # ppm, Elkins-Tanton (2008) case 2
 H2_initial            = "0.0"          # ppm
 CH4_initial           = "0.0"          # ppm
@@ -124,9 +125,11 @@ if start_condition == "1":
 
     # Generate/adapt VULCAN input files
     with open('vulcan/spider_input/spider_elements.dat', 'w') as file:
-        file.write('time      O      C      N      S      He\n')
+        file.write('time             O                C                N                S                He\n')
     with open('vulcan/spider_input/spider_elements.dat', 'a') as file:
-        file.write(str(time_current)+" "+str(O_H_mol_ratio)+" "+str(C_H_mol_ratio)+" "+str(N_H_mol_ratio)+" "+str(S_H_mol_ratio)+" "+str(He_H_mol_ratio)+"\n")
+        file.write('0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00\n')
+    with open('vulcan/spider_input/spider_elements.dat', 'a') as file:
+        file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(O_H_mol_ratio))+" "+str('{:.10e}'.format(C_H_mol_ratio))+" "+str('{:.10e}'.format(N_H_mol_ratio))+" "+str('{:.10e}'.format(S_H_mol_ratio))+" "+str('{:.10e}'.format(He_H_mol_ratio))+"\n")
 
     # Switch to VULCAN directory
     os.chdir("./vulcan/")
@@ -136,6 +139,10 @@ if start_condition == "1":
 
     # Switch back to main directory
     os.chdir("../")
+
+    # Read in data from VULCAN output
+    atm_chemistry = pd.read_csv('./vulcan/output/vulcan_EQ.txt', skiprows=1, delim_whitespace=True)
+    print(atm_chemistry)
 
     # Interpolate TOA heating from Baraffe models and distance from star
     grav_s      = su.gravity( solid_planet_mass, float(planet_radius) )
@@ -268,7 +275,7 @@ while time_current < time_target:
         plot_times.append(output_times[-1])     # last snapshot
     print("snapshots:", plot_times)
     plot_interior.plot_interior(plot_times)     # specific time steps
-    plot_atmosphere.plot_atmosphere(plot_times)   # specific time steps
+    plot_atmosphere.plot_atmosphere(plot_times) # specific time steps
     plot_stacked.plot_stacked(plot_times)       # specific time steps
     plot_global.plot_global(output_dir)         # all time steps
 
