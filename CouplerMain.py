@@ -41,8 +41,10 @@ N2_initial            = "0.0"          # ppm
 O2_initial            = "0.0"          # ppm
 He_initial            = "0.0"          # ppm
 
-# Define output output output directory
-output_dir = os.getcwd()+"/output/"
+# Define specific directories
+coupler_dir = os.getcwd()+"/"
+output_dir  = os.getcwd()+"/output/"
+vulcan_dir  = os.getcwd()+"/vulcan/"
 
 # Restart flags
 start_condition         = "1"            # 1: Start from beginning, 2: Restart from 'ic_filename'
@@ -124,25 +126,27 @@ if start_condition == "1":
     h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio = coupler_utils.CalcMassMolRatios(float(H2O_initial)*1e6*mantle_mass, float(CO2_initial)*1e6*mantle_mass, float(H2_initial)*1e6*mantle_mass, float(CH4_initial)*1e6*mantle_mass, float(CO_initial)*1e6*mantle_mass, float(N2_initial)*1e6*mantle_mass, float(O2_initial)*1e6*mantle_mass, float(He_initial)*1e6*mantle_mass)
 
     # Generate/adapt VULCAN input files
-    with open('vulcan/spider_input/spider_elements.dat', 'w') as file:
+    with open(vulcan_dir+'spider_input/spider_elements.dat', 'w') as file:
         file.write('time             O                C                N                S                He\n')
     with open('vulcan/spider_input/spider_elements.dat', 'a') as file:
         file.write('0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00\n')
     with open('vulcan/spider_input/spider_elements.dat', 'a') as file:
         file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(O_H_mol_ratio))+" "+str('{:.10e}'.format(C_H_mol_ratio))+" "+str('{:.10e}'.format(N_H_mol_ratio))+" "+str('{:.10e}'.format(S_H_mol_ratio))+" "+str('{:.10e}'.format(He_H_mol_ratio))+"\n")
 
-    # Switch to VULCAN directory
-    os.chdir("./vulcan/")
-
-    # Run VULCAN
+    # Switch to VULCAN directory; run VULCAN, switch back to main directory
+    os.chdir(vulcan_dir)
     subprocess.run(["python", "vulcan.py", "-n"], shell=False)
+    os.chdir(coupler_dir)
 
-    # Switch back to main directory
-    os.chdir("../")
+    # Copy VULCAN dumps to output folder
+    shutil.copy(vulcan_dir+'output/vulcan_EQ.txt', output_dir+str(int(time_current))+"_atm_chemistry.dat")
 
     # Read in data from VULCAN output
-    atm_chemistry = pd.read_csv('./vulcan/output/vulcan_EQ.txt', skiprows=1, delim_whitespace=True)
+    # atm_chemistry = pd.read_csv(vulcan_dir+'output/vulcan_EQ.txt', skiprows=1, delim_whitespace=True)
+    atm_chemistry = pd.read_csv(output_dir+str(int(time_current))+"_atm_chemistry.dat", skiprows=1, delim_whitespace=True)
     print(atm_chemistry)
+
+    plot_atmosphere.plot_mixing_ratios(atm_chemistry, int(time_current)) # specific time steps
 
     # Interpolate TOA heating from Baraffe models and distance from star
     grav_s      = su.gravity( solid_planet_mass, float(planet_radius) )

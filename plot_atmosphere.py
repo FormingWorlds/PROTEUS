@@ -204,6 +204,26 @@ def plot_atmosphere( times ):
     fig_o.savefig(1)
     plt.close()
 
+def plot_mixing_ratios( atm_chemistry, times ):
+
+    plt.plot(atm_chemistry["H2O"], atm_chemistry["Pressure"], label=r"H$_2$O")
+    plt.plot(atm_chemistry["CO2"], atm_chemistry["Pressure"], label=r"CO$_2$")
+    plt.plot(atm_chemistry["H2"], atm_chemistry["Pressure"], label=r"H$_2$")
+    plt.plot(atm_chemistry["N2"], atm_chemistry["Pressure"], label=r"N$_2$")
+    plt.plot(atm_chemistry["O2"], atm_chemistry["Pressure"], label=r"O$_2$")
+    plt.plot(atm_chemistry["CH4"], atm_chemistry["Pressure"], label=r"CH$_4$")
+    plt.plot(atm_chemistry["CO"], atm_chemistry["Pressure"], label=r"CO")
+    plt.xlabel("Mass mixing ratio [mol/mol]")
+    plt.ylabel("Pressure [bar]")
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.legend()
+    plt.xlim(1e-30, 1.)
+    plt.ylim(np.max(atm_chemistry["Pressure"]), np.min(atm_chemistry["Pressure"]))
+    plt.savefig("atm_chemistry.pdf")
+    plt.close()
+
+
 #====================================================================
 def main():
 
@@ -216,6 +236,8 @@ def main():
     print("snapshots:", plot_list)
 
     plot_atmosphere( times=plot_list )
+
+    plot_mixing_ratios( atm_chemistry, time=output_list[-1] )
 
 #====================================================================
 
