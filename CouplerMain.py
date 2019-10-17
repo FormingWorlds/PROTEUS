@@ -128,9 +128,9 @@ if start_condition == "1":
     # Generate/adapt VULCAN input files
     with open(vulcan_dir+'spider_input/spider_elements.dat', 'w') as file:
         file.write('time             O                C                N                S                He\n')
-    with open('vulcan/spider_input/spider_elements.dat', 'a') as file:
+    with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
         file.write('0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00\n')
-    with open('vulcan/spider_input/spider_elements.dat', 'a') as file:
+    with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
         file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(O_H_mol_ratio))+" "+str('{:.10e}'.format(C_H_mol_ratio))+" "+str('{:.10e}'.format(N_H_mol_ratio))+" "+str('{:.10e}'.format(S_H_mol_ratio))+" "+str('{:.10e}'.format(He_H_mol_ratio))+"\n")
 
     # Switch to VULCAN directory; run VULCAN, switch back to main directory
