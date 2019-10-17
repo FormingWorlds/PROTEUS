@@ -7,7 +7,7 @@ It runs until the OLR changes by less than a threshold value in W/m<sup>2</sup>,
 ABBREVIATIONS:
 * MH - Mark Hammond
 * TL - Tim Lichtenberg
-* RB - Ryan Boukrouche
+* PS – Patrick Sanan
 * RP - Ray Pierrehumbert
 * DB - Dan Bower
 * ST - Shang-Min Tsai
@@ -44,7 +44,7 @@ http://bit.ly/2LvB1FR
 * phys.py - Constants
 * planets.py - Planet-specific constants
 * profile.* -
-* readme.md - This file
+* README.md - This file
 * surfaceT.txt - Surface temperature form interior model, coupler-file
 
 ## INSTALLATION
