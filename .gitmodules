@@ -1,0 +1,3 @@
+[submodule "vulcan_spider"]
+	path = vulcan_spider
+	url = https://github.com/shami-EEG/VULCAN-SPIDER.git
