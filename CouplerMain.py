@@ -44,7 +44,7 @@ He_initial            = "0.0"          # ppm
 # Define specific directories
 coupler_dir = os.getcwd()+"/"
 output_dir  = os.getcwd()+"/output/"
-vulcan_dir  = os.getcwd()+"/vulcan/"
+vulcan_dir  = os.getcwd()+"/vulcan_spider/"
 
 # Restart flags
 start_condition         = "1"            # 1: Start from beginning, 2: Restart from 'ic_filename'
