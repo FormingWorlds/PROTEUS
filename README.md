@@ -49,29 +49,35 @@ http://bit.ly/2LvB1FR
 
 ## INSTALLATION
 
+1. Install SPIDER, making sure that the `spider` executable's location is in `$PATH`
+
 1. Get access to SOCRATES: https://code.metoffice.gov.uk/trac/home
     * For website access talk to MH
     * Download the latest version, unzip to /socrates/socrates_main/
 
 1. Install dependencies:
     * Make sure you have the FORTRAN version of netCDF installed:
-        * e.g., $ brew install netcdf
+        * e.g. with Homebrew, $ brew install netcdf
+        * e.g. for MacPorts with GCC 8, $ sudo port install netcdf-fortran +gcc8
     * Same for netCDF python:
-        * e.g., $ conda install netcdf4
+        * e.g. with Anaconda, $ conda install netcdf4 natsort
+        * e.g. for MacPorts with Python 3.7, $ sudo port install py37-netcdf py37-natsort
         * make sure you use a Python 3 environment, possibly need to reinstall all typical packages, see e.g., here: http://bit.ly/2HowQaA
     * Relaunch terminal window, or source bash_profile, to reset environment
 
 1. Compile SOCRATES:
     - Overwrite Mk_cmd in /socrates/socrates_main/make/:
         $ cd /socrates/ && cp -rf Mk_cmd /socrates_main/make/
+        # With MacPorts, change "usr" to "opt" in this file, to find the netcdf module
     - Build SOCRATES:
         $ cd /socrates/socrates_main/
         $ ./build_code
     - Set environment:
         $ cd /socrates/socrates_main/
-        $ . ./set_rad_env
+        $ . ./set_rad_env # Ignore "-bash: ulimit: ... " error
     - If you want SOCRATES to be readily available in every new shell, put the following in you .bash_profile:
         $ source /PATH_TO_COUPLER/socrates/socrates_main/set_rad_env
 
 1. Run code:
-    $ python RadInteriorCoupler.py
+    $ python CouplerMain.py
+    # Examine plots produced in the output/ directory
