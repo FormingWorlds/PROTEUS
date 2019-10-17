@@ -49,6 +49,10 @@ http://bit.ly/2LvB1FR
 
 ## INSTALLATION
 
+1. Ensure that submodules are up to date
+
+        git submodule update --init --recursive
+
 1. Install SPIDER, making sure that the `spider` executable's location is in `$PATH`
 
 1. Get access to SOCRATES: https://code.metoffice.gov.uk/trac/home
