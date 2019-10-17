@@ -72,7 +72,7 @@ http://bit.ly/2LvB1FR
 1. Compile SOCRATES:
     - Overwrite Mk_cmd in /socrates/socrates_main/make/:
         $ cd /socrates/ && cp -rf Mk_cmd /socrates_main/make/
-        # With MacPorts, change "usr" to "opt" in this file, to find the netcdf module
+        With MacPorts, change "usr" to "opt" in this file, to find the netcdf module
     - Build SOCRATES:
         $ cd /socrates/socrates_main/
         $ ./build_code
