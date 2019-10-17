@@ -8,6 +8,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import pandas as pd
 from scipy import interpolate
 import spider_coupler_utils
+import pandas as pd
 
 ### Constants ###
 
@@ -102,6 +103,19 @@ def CalcMassMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg)
 
     return h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio
 
+def CalcPPM(mantle_mass, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg):
+
+    h2o_ppm = str(h2o_kg/(1e6*mantle_mass))   # ppm wt
+    co2_ppm = str(co2_kg/(1e6*mantle_mass))   # ppm wt
+    h2_ppm  = str(h2_kg/(1e6*mantle_mass))    # ppm wt
+    ch4_ppm = str(ch4_kg/(1e6*mantle_mass))   # ppm wt
+    co_ppm  = str(co_kg/(1e6*mantle_mass))    # ppm wt
+    n2_ppm  = str(n2_kg/(1e6*mantle_mass))    # ppm wt
+    o2_ppm  = str(o2_kg/(1e6*mantle_mass))    # ppm wt
+    he_ppm  = str(he_kg/(1e6*mantle_mass))    # ppm wt
+
+    return h2o_ppm, co2_ppm, h2_ppm, ch4_ppm, co_ppm, n2_ppm, o2_ppm, he_ppm
+
 # https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
 def make_output_dir():
     output_dir = os.getcwd()+"/output/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
@@ -160,8 +174,8 @@ def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
 def PrintCurrentState(time_current, surfaceT_current, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum):
 
     # Print final statement
-    print("--------------------------------------------------------")
-    print("      ==> RUNTIME INFO <==")
+    print("---------------------------------------------------------")
+    print("==> RUNTIME INFO <==")
     print(datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     print("Time [Myr]:", str(float(time_current)/1e6))
     print ("T_s [K]:", surfaceT_current)
@@ -177,7 +191,7 @@ def PrintCurrentState(time_current, surfaceT_current, h2o_kg, co2_kg, h2_kg, ch4
     print ("L_star:", solar_lum)
     print ("Total heat flux [W/m^2]:", heat_flux)
     print ("Last file name:", ic_filename)
-    print("--------------------------------------------------------")
+    print("---------------------------------------------------------")
 
 def write_surface_quantitites(output_dir, file_name):
 
@@ -241,4 +255,37 @@ def write_surface_quantitites(output_dir, file_name):
     # output surface + atmosphere quantities
     out_a = np.column_stack( (sim_times, temperature_surface_a, mass_core_a, mass_mantle_a, H2O_atmos_kg_a, CO2_atmos_kg_a ) )
     np.savetxt( output_dir+file_name, out_a )
+
+def PrintSeparator():
+    print("---------------------------------------------------------")
+    pass
+
+# Update volatile masses and mixing ratios w/ VULCAN output
+def TransferVulcanOutput(atm_chemistry):
+
+    # for column in list(atm_chemistry):
+    #     print(column)
+
+    H_mol_tot = atm_chemistry["H"].sum(axis = 0, skipna = True)
+    C_mol_tot = atm_chemistry["C"].sum(axis = 0, skipna = True)
+    N_mol_tot = atm_chemistry["N"].sum(axis = 0, skipna = True)
+    O_mol_tot = atm_chemistry["O"].sum(axis = 0, skipna = True)
+    S_mol_tot = atm_chemistry["S"].sum(axis = 0, skipna = True)
+    total_mol = H_mol_tot + C_mol_tot + N_mol_tot + O_mol_tot + S_mol_tot
+
+    h2o_mol = 
+
+
+    
+    h2o_mass_mol_ratio = h2o_mol / total_mol  # mol/mol
+    co2_mass_mol_ratio = co2_mol / total_mol  # mol/mol
+    h2_mass_mol_ratio  = h2_mol / total_mol   # mol/mol
+    ch4_mass_mol_ratio = ch4_mol / total_mol  # mol/mol 
+    co_mass_mol_ratio  = co_mol / total_mol   # mol/mol 
+    n2_mass_mol_ratio  = n2_mol / total_mol   # mol/mol 
+    o2_mass_mol_ratio  = o2_mol / total_mol   # mol/mol 
+    he_mass_mol_ratio  = he_mol / total_mol   # mol/mol 
+
+
+    return h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio
 
