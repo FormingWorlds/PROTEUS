@@ -549,3 +549,17 @@ def ApplyVulcanOutput(atm_chemistry, mantle_mass, volatiles_ppm, volatiles_mass,
 
     return volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio
 
+# Generate/adapt VULCAN input files
+def GenerateSpiderInputFile( loop_no, vulcan_dir, file_name, elements_XH_ratio ):
+
+    # Overwrite file when starting from scratch
+    if loop_no == 0:
+        with open(vulcan_dir+'spider_input/spider_elements.dat', 'w') as file:
+            file.write('time             O                C                N                S                He\n')
+        with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
+            file.write('0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00\n')
+
+    # Write elemental X/H ratios
+    with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
+        file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["O"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["C"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["N"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["S"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["He"]))+"\n")
+

@@ -120,7 +120,7 @@ if start_condition == "1":
     surfaceT_current    = surface_quantities[1]               # K
     core_mass           = surface_quantities[2]               # kg
     mantle_mass         = surface_quantities[3]               # kg
-    solid_planet_mass   = core_mass + mantle_mass
+    solid_planet_mass   = core_mass + mantle_mass             # kg
 
     # Careful: ATM *all* (mantle+atm) volatiles are converted
     volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio = coupler_utils.ConvertInitialVolatiles(time_current, mantle_mass, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio)
@@ -134,12 +134,13 @@ if start_condition == "1":
     # print("------ VOLATILE RATIOS BEFORE VULCAN:", h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio)
 
     # Generate/adapt VULCAN input files
-    with open(vulcan_dir+'spider_input/spider_elements.dat', 'w') as file:
-        file.write('time             O                C                N                S                He\n')
-    with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
-        file.write('0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00\n')
-    with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
-        file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["O"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["C"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["N"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["S"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["He"]))+"\n")
+    coupler_utils.GenerateSpiderInputFile( loop_no, vulcan_dir, 'spider_input/spider_elements.dat', elements_XH_ratio )
+    # with open(vulcan_dir+'spider_input/spider_elements.dat', 'w') as file:
+    #     file.write('time             O                C                N                S                He\n')
+    # with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
+    #     file.write('0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00\n')
+    # with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
+    #     file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["O"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["C"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["N"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["S"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["He"]))+"\n")
 
     # Runtime info
     coupler_utils.PrintSeparator()
