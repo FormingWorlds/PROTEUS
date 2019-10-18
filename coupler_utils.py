@@ -104,6 +104,89 @@ def CalcMassMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg)
 
     return h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio
 
+def ConvertInitialVolatiles(time_current, mantle_mass, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio):
+
+    ## --> Element X/H ratios for VULCAN input
+    h2o_mol        = volatiles_ppm.iloc[-1]["H2O"]*1e6*mantle_mass/h2o_mol_mass   # mol
+    co2_mol        = volatiles_ppm.iloc[-1]["CO2"]*1e6*mantle_mass/co2_mol_mass   # mol
+    h2_mol         = volatiles_ppm.iloc[-1]["H2"]*1e6*mantle_mass/h2_mol_mass     # mol
+    ch4_mol        = volatiles_ppm.iloc[-1]["CH4"]*1e6*mantle_mass/ch4_mol_mass   # mol
+    co_mol         = volatiles_ppm.iloc[-1]["CO"]*1e6*mantle_mass/co_mol_mass     # mol
+    n2_mol         = volatiles_ppm.iloc[-1]["N2"]*1e6*mantle_mass/n2_mol_mass     # mol
+    o2_mol         = volatiles_ppm.iloc[-1]["O2"]*1e6*mantle_mass/o2_mol_mass     # mol
+    s_mol          = volatiles_ppm.iloc[-1]["S"]*1e6*mantle_mass/he_mol_mass     # mol
+    he_mol         = volatiles_ppm.iloc[-1]["He"]*1e6*mantle_mass/he_mol_mass     # mol
+  
+    # Radiative species + He
+    total_mol      = h2o_mol + co2_mol + h2_mol + ch4_mol + co_mol + n2_mol + o2_mol+ s_mol + he_mol
+
+    h_mol_total    = h2o_mol*2. + h2_mol*2. + ch4_mol*4. 
+    o_mol_total    = h2o_mol*1. + co2_mol*2. + co_mol*1. + o2_mol*2.
+    c_mol_total    = co2_mol*1. + ch4_mol*1. + co_mol*1.
+    n_mol_total    = n2_mol*2.
+    s_mol_total    = s_mol*1. ## TO DO: Take into account major species?
+    he_mol_total   = he_mol*1.
+
+    O_H_mol_ratio  = o_mol_total / h_mol_total       # mol/mol
+    C_H_mol_ratio  = c_mol_total / h_mol_total       # mol/mol
+    N_H_mol_ratio  = n_mol_total / h_mol_total       # mol/mol
+    S_H_mol_ratio  = s_mol_total / h_mol_total       # mol/mol 
+    He_H_mol_ratio = he_mol_total / h_mol_total      # mol/mol 
+
+    # Counter VULCAN bug with zero abundances
+    if N_H_mol_ratio == 0.: 
+        N_H_mol_ratio = 1e-99
+    if S_H_mol_ratio == 0.: 
+        S_H_mol_ratio = 1e-99
+
+    # Add to dataframe
+    elements_XH_ratio_new  = pd.DataFrame({'Time': time_current, 'H_mol_tot': h_mol_total, 'O': O_H_mol_ratio, 'C': C_H_mol_ratio, 'N': N_H_mol_ratio, 'S': S_H_mol_ratio, 'He': He_H_mol_ratio}, index=[0])
+    elements_XH_ratio = elements_XH_ratio.append(elements_XH_ratio_new) 
+
+    ## --> Total volatile masses for SPIDER input/output
+    h2o_kg     = volatiles_ppm.iloc[-1]["H2O"]*1e6*mantle_mass  # kg
+    co2_kg     = volatiles_ppm.iloc[-1]["CO2"]*1e6*mantle_mass  # kg
+    h2_kg      = volatiles_ppm.iloc[-1]["H2"]*1e6*mantle_mass   # kg
+    ch4_kg     = volatiles_ppm.iloc[-1]["CH4"]*1e6*mantle_mass  # kg
+    co_kg      = volatiles_ppm.iloc[-1]["CO"]*1e6*mantle_mass   # kg
+    n2_kg      = volatiles_ppm.iloc[-1]["N2"]*1e6*mantle_mass   # kg
+    o2_kg      = volatiles_ppm.iloc[-1]["O2"]*1e6*mantle_mass   # kg
+    s_kg       = volatiles_ppm.iloc[-1]["S"]*1e6*mantle_mass    # kg
+    he_kg      = volatiles_ppm.iloc[-1]["He"]*1e6*mantle_mass   # kg
+
+    # Add to dataframe
+    volatiles_mass_new  = pd.DataFrame({'Time': time_current, 'H2O': h2o_kg, 'CO2': co2_kg, 'H2': h2_kg, 'CH4': ch4_kg, 'CO': co_kg, 'N2': n2_kg, 'O2': o2_kg, 'S': s_kg, 'He': he_kg}, index=[0])
+    volatiles_mass = volatiles_mass.append(volatiles_mass_new) 
+
+    ## --> Mass mol ratios for SOCRATES input
+    h2o_mol    = h2o_kg/h2o_mol_mass                            # mol
+    co2_mol    = co2_kg/co2_mol_mass                            # mol
+    h2_mol     = h2_kg/h2_mol_mass                              # mol
+    ch4_mol    = ch4_kg/ch4_mol_mass                            # mol
+    co_mol     = co_kg/co_mol_mass                              # mol
+    n2_mol     = n2_kg/n2_mol_mass                              # mol
+    o2_mol     = o2_kg/o2_mol_mass                              # mol
+    s_mol      = s_kg/s_mol_mass                                # mol
+    he_mol     = he_kg/he_mol_mass                              # mol
+
+    total_mol  = h2o_mol + co2_mol + h2_mol + ch4_mol + co_mol + n2_mol + o2_mol+ s_mol + he_mol
+
+    h2o_mass_mol_ratio = h2o_mol / total_mol                    # mol/mol
+    co2_mass_mol_ratio = co2_mol / total_mol                    # mol/mol
+    h2_mass_mol_ratio  = h2_mol / total_mol                     # mol/mol
+    ch4_mass_mol_ratio = ch4_mol / total_mol                    # mol/mol 
+    co_mass_mol_ratio  = co_mol / total_mol                     # mol/mol 
+    n2_mass_mol_ratio  = n2_mol / total_mol                     # mol/mol 
+    o2_mass_mol_ratio  = o2_mol / total_mol                     # mol/mol
+    s_mass_mol_ratio   = s_mol / total_mol                      # mol/mol 
+    he_mass_mol_ratio  = he_mol / total_mol                     # mol/mol 
+
+    # Add to dataframe
+    volatiles_mixing_ratio_new  = pd.DataFrame({'Time': time_current, 'H2O': h2o_mass_mol_ratio, 'CO2': co2_mass_mol_ratio, 'H2': h2_mass_mol_ratio, 'CH4': ch4_mass_mol_ratio, 'CO': co_mass_mol_ratio, 'N2': n2_mass_mol_ratio, 'O2': o2_mass_mol_ratio, 'S': s_mass_mol_ratio, 'He': he_mass_mol_ratio}, index=[0])
+    volatiles_mixing_ratio = volatiles_mixing_ratio.append(volatiles_mixing_ratio_new) 
+
+    return volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio
+
 # https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
 def make_output_dir():
     output_dir = os.getcwd()+"/output/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
@@ -260,8 +343,9 @@ def ConvertVulcanOutput(atm_chemistry, mantle_mass):
     N_kg = atm_chemistry["N"].sum(axis = 0, skipna = True)*n_mol_mass         # kg
     O_kg = atm_chemistry["O"].sum(axis = 0, skipna = True)*o_mol_mass         # kg
     S_kg = atm_chemistry["S"].sum(axis = 0, skipna = True)*s_mol_mass         # kg
+    He_kg = atm_chemistry["He"].sum(axis = 0, skipna = True)*s_mol_mass       # kg
 
-    atm_kg = H_kg + C_kg + N_kg + O_kg + S_kg
+    atm_kg = H_kg + C_kg + N_kg + O_kg + S_kg + He_kg
 
     # Calculate individual mass mol ratios
     h2o_mass_mol_ratio   = atm_chemistry["H2O"].sum(axis = 0, skipna = True)  # mol/mol

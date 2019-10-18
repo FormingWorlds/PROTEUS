@@ -37,16 +37,6 @@ tsurf_poststep_change = "100.0"      # maximum absolute surface temperature chan
 solid_planet_radius   = "6371000.0"  # planet radius / m
 planet_coresize       = "0.55"       # fractional radius of core-mantle boundary
 
-# Initial volatile budget, in ppm relative to solid mantle mass
-H2O_ppm               = "50.0"       # ppm
-CO2_ppm               = "100.0"      # ppm
-H2_ppm                = "0.0"        # ppm
-CH4_ppm               = "0.0"        # ppm
-CO_ppm                = "0.0"        # ppm
-N2_ppm                = "0.0"        # ppm
-O2_ppm                = "0.0"        # ppm
-He_ppm                = "0.0"        # ppm
-
 # Restart flags
 start_condition       = "1"          # 1: Fresh start | 2: Restart from 'ic_filename'
 ic_filename           = "0.json"     # JSON restart file if 'start_condition == 1'
@@ -56,6 +46,22 @@ dtmacro_init          = "1"          # initialization loop delta time per macros
 # Total runtime
 time_current          = 0.           # yr
 time_target           = 1.0e+6       # yr
+
+# Initial volatile budget, in ppm relative to solid mantle mass
+H2O_ppm               = 50.0       # ppm
+CO2_ppm               = 100.0      # ppm
+H2_ppm                = 0.0        # ppm
+CH4_ppm               = 0.0        # ppm
+CO_ppm                = 0.0        # ppm
+N2_ppm                = 0.0        # ppm
+O2_ppm                = 0.0        # ppm
+He_ppm                = 0.0        # ppm
+S_ppm                 = 0.0        # ppm
+
+volatiles_ppm  = pd.DataFrame({'Time': time_current, 'H2O': H2O_ppm, 'CO2': CO2_ppm, 'H2': H2_ppm, 'CH4': CH4_ppm, 'CO': CO_ppm, 'N2': N2_ppm, 'O2': O2_ppm, 'S': S_ppm, 'He': He_ppm}, index=[0])
+volatiles_mass = pd.DataFrame(columns=['Time', 'H2O', 'CO2', 'H2', 'CH4', 'CO', 'N2', 'O2', 'S', 'He'])
+volatiles_mixing_ratio = pd.DataFrame(columns=['Time', 'H2O', 'CO2', 'H2', 'CH4', 'CO', 'N2', 'O2', 'S', 'He'])
+elements_XH_ratio = pd.DataFrame(columns=['Time', 'H_mol_tot', 'O', 'C', 'N', 'S', 'He'])
 
 # Planetary and magma ocean start configuration
 star_mass             = 1.0          # M_sol options: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4
@@ -88,9 +94,8 @@ if start_condition == "1":
         print(os.path.basename(file), end =" ")
     print("==> Done.")
 
-    # SPIDER initialization call sequence
-    
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", output_dir+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", solid_planet_radius, "-coresize", planet_coresize, "-H2O_initial", H2O_ppm, "-CO2_initial", CO2_ppm, "-H2_initial", H2_ppm, "-N2_initial", N2_ppm, "-CH4_initial", CH4_ppm, "-CO_initial", CO_ppm ]
+    # SPIDER initialization call sequence 
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", output_dir+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", solid_planet_radius, "-coresize", planet_coresize, "-H2O_initial", str(volatiles_ppm.iloc[-1]["H2O"]), "-CO2_initial", str(volatiles_ppm.iloc[-1]["CO2"]), "-H2_initial", str(volatiles_ppm.iloc[-1]["H2"]), "-N2_initial", str(volatiles_ppm.iloc[-1]["N2"]), "-CH4_initial", str(volatiles_ppm.iloc[-1]["CH4"]), "-CO_initial", str(volatiles_ppm.iloc[-1]["CO"]) ]
 
     # Runtime info
     coupler_utils.PrintSeparator()
@@ -115,15 +120,17 @@ if start_condition == "1":
     surfaceT_current    = surface_quantities[1]               # K
     core_mass           = surface_quantities[2]               # kg
     mantle_mass         = surface_quantities[3]               # kg
-    h2o_kg              = float(H2O_ppm)*1e6*mantle_mass  # kg
-    co2_kg              = float(CO2_ppm)*1e6*mantle_mass  # kg
-    h2_kg               = float(H2_ppm)*1e6*mantle_mass   # kg
-    ch4_kg              = float(CH4_ppm)*1e6*mantle_mass  # kg
-    co_kg               = float(CO_ppm)*1e6*mantle_mass   # kg
-    n2_kg               = float(N2_ppm)*1e6*mantle_mass   # kg
-    o2_kg               = float(O2_ppm)*1e6*mantle_mass   # kg
-    he_kg               = float(He_ppm)*1e6*mantle_mass   # kg
+    h2o_kg              = float(H2O_ppm)*1e6*mantle_mass      # kg
+    co2_kg              = float(CO2_ppm)*1e6*mantle_mass      # kg
+    h2_kg               = float(H2_ppm)*1e6*mantle_mass       # kg
+    ch4_kg              = float(CH4_ppm)*1e6*mantle_mass      # kg
+    co_kg               = float(CO_ppm)*1e6*mantle_mass       # kg
+    n2_kg               = float(N2_ppm)*1e6*mantle_mass       # kg
+    o2_kg               = float(O2_ppm)*1e6*mantle_mass       # kg
+    he_kg               = float(He_ppm)*1e6*mantle_mass       # kg
     solid_planet_mass   = core_mass + mantle_mass
+
+    volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio = coupler_utils.ConvertInitialVolatiles(time_current, mantle_mass, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio)
 
     # Calculate element mol ratios from mass fractions (relative to mantle)
     O_H_mol_ratio, C_H_mol_ratio, N_H_mol_ratio, S_H_mol_ratio, He_H_mol_ratio = coupler_utils.Calc_XH_Ratios(mantle_mass, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm)
