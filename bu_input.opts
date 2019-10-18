@@ -173,7 +173,7 @@
 -P0 101325.0 # Pa (= 1 atm)
 
 # Define the volatiles
--volatile_names H2O,CO2,H2,N2,CH4,CO
+-volatile_names H2O,CO2,H2,N2,CH4,CO,O2,He,S
 
 # parameters relating to H2O volatile
 #-H2O_initial 0.0 # ppm
@@ -225,6 +225,24 @@
 -CO_henry_pow 1.0           # non-dim., beta (own fit)
 -CO_molar_mass 0.02801      # kg/mol
 
+# parameters relating to O2 volatile
+-O2_initial 0.0             # ppm
+-O2_henry 0.001E-9          # no partitioning, ppm/Pa, alpha (own fit)
+-O2_henry_pow 1.0           # non-dim., beta (own fit)
+-O2_molar_mass 0.031999     # kg/mol
+
+# parameters relating to He volatile
+-S_initial 0.0              # ppm
+-S_henry 0.001E-9           # no partitioning, ppm/Pa, alpha (own fit)
+-S_henry_pow 1.0            # non-dim., beta (own fit)
+-S_molar_mass 0.03206       # kg/mol
+
+# parameters relating to He volatile
+-He_initial 0.0             # ppm
+-He_henry 0.001E-9          # no partitioning, ppm/Pa, alpha (own fit)
+-He_henry_pow 1.0           # non-dim., beta (own fit)
+-He_molar_mass 0.0040026    # kg/mol
+
 # Absorption coefficients for additional volatiles
 -H2_kdist 0.0E-0  # solid-melt distribution coefficient (non-dim.)
 -H2_kabs 0.00     # absorption (m^2/kg)
@@ -234,6 +252,12 @@
 -CH4_kabs 0.00    # absorption (m^2/kg)
 -CO_kdist 0.0E-0  # solid-melt distribution coefficient (non-dim.)
 -CO_kabs 0.00     # absorption (m^2/kg)
+-O2_kdist 0.0E-0  # solid-melt distribution coefficient (non-dim.)
+-O2_kabs 0.00     # absorption (m^2/kg)
+-S_kdist 0.0E-0   # solid-melt distribution coefficient (non-dim.)
+-S_kabs 0.00      # absorption (m^2/kg)
+-He_kdist 0.0E-0  # solid-melt distribution coefficient (non-dim.)
+-He_kabs 0.00     # absorption (m^2/kg)
 
 # internal heat sources
 # Al26 (extinct at present day)

@@ -46,14 +46,14 @@ h2s_mol_mass    = 0.0341                # kg mol−1
 
 def Calc_XH_Ratios(mantle_mass, h2o_ppm, co2_ppm, h2_ppm, ch4_ppm, co_ppm, n2_ppm, o2_ppm, he_ppm):
 
-    h2o_mol = float(h2o_ppm)*1e6*mantle_mass/h2o_mol_mass   # mol
-    co2_mol = float(co2_ppm)*1e6*mantle_mass/co2_mol_mass   # mol
-    h2_mol  = float(h2_ppm)*1e6*mantle_mass/h2_mol_mass     # mol
-    ch4_mol = float(ch4_ppm)*1e6*mantle_mass/ch4_mol_mass   # mol
-    co_mol  = float(co_ppm)*1e6*mantle_mass/co_mol_mass     # mol
-    n2_mol  = float(n2_ppm)*1e6*mantle_mass/n2_mol_mass     # mol
-    o2_mol  = float(o2_ppm)*1e6*mantle_mass/o2_mol_mass     # mol
-    he_mol  = float(he_ppm)*1e6*mantle_mass/he_mol_mass     # mol
+    h2o_mol = float(h2o_ppm)*1e-6*mantle_mass/h2o_mol_mass   # mol
+    co2_mol = float(co2_ppm)*1e-6*mantle_mass/co2_mol_mass   # mol
+    h2_mol  = float(h2_ppm)*1e-6*mantle_mass/h2_mol_mass     # mol
+    ch4_mol = float(ch4_ppm)*1e-6*mantle_mass/ch4_mol_mass   # mol
+    co_mol  = float(co_ppm)*1e-6*mantle_mass/co_mol_mass     # mol
+    n2_mol  = float(n2_ppm)*1e-6*mantle_mass/n2_mol_mass     # mol
+    o2_mol  = float(o2_ppm)*1e-6*mantle_mass/o2_mol_mass     # mol
+    he_mol  = float(he_ppm)*1e-6*mantle_mass/he_mol_mass     # mol
 
     # Radiative species + He
     total_mol = h2o_mol + co2_mol + h2_mol + ch4_mol + co_mol + n2_mol + o2_mol + he_mol
@@ -107,15 +107,15 @@ def CalcMassMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg)
 def ConvertInitialVolatiles(time_current, mantle_mass, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio):
 
     ## --> Element X/H ratios for VULCAN input
-    h2o_mol        = volatiles_ppm.iloc[-1]["H2O"]*1e6*mantle_mass/h2o_mol_mass   # mol
-    co2_mol        = volatiles_ppm.iloc[-1]["CO2"]*1e6*mantle_mass/co2_mol_mass   # mol
-    h2_mol         = volatiles_ppm.iloc[-1]["H2"]*1e6*mantle_mass/h2_mol_mass     # mol
-    ch4_mol        = volatiles_ppm.iloc[-1]["CH4"]*1e6*mantle_mass/ch4_mol_mass   # mol
-    co_mol         = volatiles_ppm.iloc[-1]["CO"]*1e6*mantle_mass/co_mol_mass     # mol
-    n2_mol         = volatiles_ppm.iloc[-1]["N2"]*1e6*mantle_mass/n2_mol_mass     # mol
-    o2_mol         = volatiles_ppm.iloc[-1]["O2"]*1e6*mantle_mass/o2_mol_mass     # mol
-    s_mol          = volatiles_ppm.iloc[-1]["S"]*1e6*mantle_mass/he_mol_mass      # mol
-    he_mol         = volatiles_ppm.iloc[-1]["He"]*1e6*mantle_mass/he_mol_mass     # mol
+    h2o_mol        = volatiles_ppm.iloc[-1]["H2O"]*1e-6*mantle_mass/h2o_mol_mass   # mol
+    co2_mol        = volatiles_ppm.iloc[-1]["CO2"]*1e-6*mantle_mass/co2_mol_mass   # mol
+    h2_mol         = volatiles_ppm.iloc[-1]["H2"]*1e-6*mantle_mass/h2_mol_mass     # mol
+    ch4_mol        = volatiles_ppm.iloc[-1]["CH4"]*1e-6*mantle_mass/ch4_mol_mass   # mol
+    co_mol         = volatiles_ppm.iloc[-1]["CO"]*1e-6*mantle_mass/co_mol_mass     # mol
+    n2_mol         = volatiles_ppm.iloc[-1]["N2"]*1e-6*mantle_mass/n2_mol_mass     # mol
+    o2_mol         = volatiles_ppm.iloc[-1]["O2"]*1e-6*mantle_mass/o2_mol_mass     # mol
+    s_mol          = volatiles_ppm.iloc[-1]["S"]*1e-6*mantle_mass/he_mol_mass      # mol
+    he_mol         = volatiles_ppm.iloc[-1]["He"]*1e-6*mantle_mass/he_mol_mass     # mol
   
     # Radiative species + He
     total_mol      = h2o_mol + co2_mol + h2_mol + ch4_mol + co_mol + n2_mol + o2_mol+ s_mol + he_mol
@@ -144,15 +144,15 @@ def ConvertInitialVolatiles(time_current, mantle_mass, volatiles_ppm, volatiles_
     elements_XH_ratio = elements_XH_ratio.append(elements_XH_ratio_new) 
 
     ## --> Total volatile masses for SPIDER input/output
-    h2o_kg     = volatiles_ppm.iloc[-1]["H2O"]*1e6*mantle_mass  # kg
-    co2_kg     = volatiles_ppm.iloc[-1]["CO2"]*1e6*mantle_mass  # kg
-    h2_kg      = volatiles_ppm.iloc[-1]["H2"]*1e6*mantle_mass   # kg
-    ch4_kg     = volatiles_ppm.iloc[-1]["CH4"]*1e6*mantle_mass  # kg
-    co_kg      = volatiles_ppm.iloc[-1]["CO"]*1e6*mantle_mass   # kg
-    n2_kg      = volatiles_ppm.iloc[-1]["N2"]*1e6*mantle_mass   # kg
-    o2_kg      = volatiles_ppm.iloc[-1]["O2"]*1e6*mantle_mass   # kg
-    s_kg       = volatiles_ppm.iloc[-1]["S"]*1e6*mantle_mass    # kg
-    he_kg      = volatiles_ppm.iloc[-1]["He"]*1e6*mantle_mass   # kg
+    h2o_kg     = volatiles_ppm.iloc[-1]["H2O"]*1e-6*mantle_mass  # kg
+    co2_kg     = volatiles_ppm.iloc[-1]["CO2"]*1e-6*mantle_mass  # kg
+    h2_kg      = volatiles_ppm.iloc[-1]["H2"]*1e-6*mantle_mass   # kg
+    ch4_kg     = volatiles_ppm.iloc[-1]["CH4"]*1e-6*mantle_mass  # kg
+    co_kg      = volatiles_ppm.iloc[-1]["CO"]*1e-6*mantle_mass   # kg
+    n2_kg      = volatiles_ppm.iloc[-1]["N2"]*1e-6*mantle_mass   # kg
+    o2_kg      = volatiles_ppm.iloc[-1]["O2"]*1e-6*mantle_mass   # kg
+    s_kg       = volatiles_ppm.iloc[-1]["S"]*1e-6*mantle_mass    # kg
+    he_kg      = volatiles_ppm.iloc[-1]["He"]*1e-6*mantle_mass   # kg
 
     atm_kg = h2o_kg + co2_kg + h2_kg + ch4_kg + co_kg + n2_kg + o2_kg + s_kg + he_kg # kg
 
@@ -394,7 +394,7 @@ def write_surface_quantitites(output_dir, file_name):
     N2_liquid_kg_a = data_a[29,:]
     N2_solid_kg_a = data_a[30,:]
     N2_total_kg_a = data_a[31,:]
-    N2_total_kg = _total_kg_a[0]        # time-independent
+    N2_total_kg = N2_total_kg_a[0]        # time-independent
     N2_atmos_kg_a = data_a[32,:]
     N2_atmos_a = data_a[33,:]
     N2_escape_kg_a = N2_total_kg - N2_liquid_kg_a - N2_solid_kg_a - N2_atmos_kg_a
@@ -465,19 +465,19 @@ def ConvertVulcanOutput(atm_chemistry, mantle_mass):
 
     # Calculate volatiles in mantle
     ## TO DO: Works only for initial conditions
-    H2O_ppm              = str(h2o_kg/(1e6*mantle_mass))                      # ppm wt
-    CO2_ppm              = str(co2_kg/(1e6*mantle_mass))                      # ppm wt
-    H2_ppm               = str(h2_kg/(1e6*mantle_mass))                       # ppm wt
-    CH4_ppm              = str(ch4_kg/(1e6*mantle_mass))                      # ppm wt
-    CO_ppm               = str(co_kg/(1e6*mantle_mass))                       # ppm wt
-    N2_ppm               = str(n2_kg/(1e6*mantle_mass))                       # ppm wt
-    O2_ppm               = str(o2_kg/(1e6*mantle_mass))                       # ppm wt
-    He_ppm               = str(he_kg/(1e6*mantle_mass))                       # ppm wt
+    H2O_ppm              = str(h2o_kg*1e6/mantle_mass)                      # ppm wt
+    CO2_ppm              = str(co2_kg*1e6/mantle_mass)                      # ppm wt
+    H2_ppm               = str(h2_kg*1e6/mantle_mass)                       # ppm wt
+    CH4_ppm              = str(ch4_kg*1e6/mantle_mass)                      # ppm wt
+    CO_ppm               = str(co_kg*1e6/mantle_mass)                       # ppm wt
+    N2_ppm               = str(n2_kg*1e6/mantle_mass)                       # ppm wt
+    O2_ppm               = str(o2_kg*1e6/mantle_mass)                       # ppm wt
+    He_ppm               = str(he_kg*1e6/mantle_mass)                       # ppm wt
 
     return h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg
 
 # Update volatile masses and mixing ratios w/ VULCAN output
-def ApplyVulcanOutput(atm_chemistry, mantle_mass, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio):
+def ApplyVulcanOutput(time_current, atm_chemistry, mantle_mass, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio):
 
     # Calculate total mass of the atmosphere
     H_kg = atm_chemistry["H"].sum(axis = 0, skipna = True)*h_mol_mass         # kg
@@ -511,6 +511,7 @@ def ApplyVulcanOutput(atm_chemistry, mantle_mass, volatiles_ppm, volatiles_mass,
     co_mass_mol_ratio    = atm_chemistry["CO"].sum(axis = 0, skipna = True)   # mol/mol
     n2_mass_mol_ratio    = atm_chemistry["N2"].sum(axis = 0, skipna = True)   # mol/mol
     o2_mass_mol_ratio    = atm_chemistry["O2"].sum(axis = 0, skipna = True)   # mol/mol
+    s_mass_mol_ratio    = atm_chemistry["S"].sum(axis = 0, skipna = True)     # mol/mol
     he_mass_mol_ratio    = atm_chemistry["He"].sum(axis = 0, skipna = True)   # mol/mol
     
     ## Calculate absolute masses
@@ -521,18 +522,20 @@ def ApplyVulcanOutput(atm_chemistry, mantle_mass, volatiles_ppm, volatiles_mass,
     co_kg                = co_mass_mol_ratio*co_mol_mass                      # kg
     n2_kg                = n2_mass_mol_ratio*n2_mol_mass                      # kg
     o2_kg                = o2_mass_mol_ratio*o2_mol_mass                      # kg
+    s_kg                 = s_mass_mol_ratio*s_mol_mass                        # kg
     he_kg                = he_mass_mol_ratio*he_mol_mass                      # kg
 
     # Calculate mantle fraction
     ## TO DO: Works only for initial conditions
-    H2O_ppm              = str(h2o_kg/(1e6*mantle_mass))                      # ppm wt
-    CO2_ppm              = str(co2_kg/(1e6*mantle_mass))                      # ppm wt
-    H2_ppm               = str(h2_kg/(1e6*mantle_mass))                       # ppm wt
-    CH4_ppm              = str(ch4_kg/(1e6*mantle_mass))                      # ppm wt
-    CO_ppm               = str(co_kg/(1e6*mantle_mass))                       # ppm wt
-    N2_ppm               = str(n2_kg/(1e6*mantle_mass))                       # ppm wt
-    O2_ppm               = str(o2_kg/(1e6*mantle_mass))                       # ppm wt
-    He_ppm               = str(he_kg/(1e6*mantle_mass))                       # ppm wt
+    H2O_ppm              = str(h2o_kg*1e6/mantle_mass)                      # ppm wt
+    CO2_ppm              = str(co2_kg*1e6/mantle_mass)                      # ppm wt
+    H2_ppm               = str(h2_kg*1e6/mantle_mass)                       # ppm wt
+    CH4_ppm              = str(ch4_kg*1e6/mantle_mass)                      # ppm wt
+    CO_ppm               = str(co_kg*1e6/mantle_mass)                       # ppm wt
+    N2_ppm               = str(n2_kg*1e6/mantle_mass)                       # ppm wt
+    O2_ppm               = str(o2_kg*1e6/mantle_mass)                       # ppm wt
+    S_ppm                = str(s_kg*1e6/mantle_mass)                        # ppm wt
+    He_ppm               = str(he_kg*1e6/mantle_mass)                       # ppm wt
 
     # Add to dataframes
     elements_XH_ratio_new  = pd.DataFrame({'Time': time_current, 'Input': 'vulcan', 'H_mol_tot': h_mol_total, 'O': O_H_mol_ratio, 'C': C_H_mol_ratio, 'N': N_H_mol_ratio, 'S': S_H_mol_ratio, 'He': He_H_mol_ratio}, index=[0])
@@ -544,13 +547,13 @@ def ApplyVulcanOutput(atm_chemistry, mantle_mass, volatiles_ppm, volatiles_mass,
     volatiles_mixing_ratio_new  = pd.DataFrame({'Time': time_current, 'Input': 'vulcan', 'H2O': h2o_mass_mol_ratio, 'CO2': co2_mass_mol_ratio, 'H2': h2_mass_mol_ratio, 'CH4': ch4_mass_mol_ratio, 'CO': co_mass_mol_ratio, 'N2': n2_mass_mol_ratio, 'O2': o2_mass_mol_ratio, 'S': s_mass_mol_ratio, 'He': he_mass_mol_ratio}, index=[0])
     volatiles_mixing_ratio = volatiles_mixing_ratio.append(volatiles_mixing_ratio_new) 
 
-    volatiles_ppm_new  = {'Time': time_current, 'Input': 'vulcan', 'H2O': H2O_ppm, 'CO2': CO2_ppm, 'H2': H2_ppm, 'CH4': CH4_ppm, 'CO': CO_ppm, 'N2': N2_ppm, 'O2': O2_ppm, 'S': S_ppm, 'He': He_ppm}, index=[0]
+    volatiles_ppm_new  = pd.DataFrame({'Time': time_current, 'Input': 'vulcan', 'H2O': H2O_ppm, 'CO2': CO2_ppm, 'H2': H2_ppm, 'CH4': CH4_ppm, 'CO': CO_ppm, 'N2': N2_ppm, 'O2': O2_ppm, 'S': S_ppm, 'He': He_ppm}, index=[0])
     volatiles_ppm = volatiles_ppm.append(volatiles_ppm_new) 
 
     return volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio
 
 # Generate/adapt VULCAN input files
-def GenerateSpiderInputFile( loop_no, vulcan_dir, file_name, elements_XH_ratio ):
+def GenerateSpiderInputFile( time_current, loop_no, vulcan_dir, file_name, elements_XH_ratio ):
 
     # Overwrite file when starting from scratch
     if loop_no == 0:
