@@ -58,10 +58,10 @@ O2_ppm                = 0.0        # ppm
 He_ppm                = 0.0        # ppm
 S_ppm                 = 0.0        # ppm
 
-volatiles_ppm  = pd.DataFrame({'Time': time_current, 'H2O': H2O_ppm, 'CO2': CO2_ppm, 'H2': H2_ppm, 'CH4': CH4_ppm, 'CO': CO_ppm, 'N2': N2_ppm, 'O2': O2_ppm, 'S': S_ppm, 'He': He_ppm}, index=[0])
-volatiles_mass = pd.DataFrame(columns=['Time', 'H2O', 'CO2', 'H2', 'CH4', 'CO', 'N2', 'O2', 'S', 'He'])
-volatiles_mixing_ratio = pd.DataFrame(columns=['Time', 'H2O', 'CO2', 'H2', 'CH4', 'CO', 'N2', 'O2', 'S', 'He'])
-elements_XH_ratio = pd.DataFrame(columns=['Time', 'H_mol_tot', 'O', 'C', 'N', 'S', 'He'])
+volatiles_ppm  = pd.DataFrame({'Time': time_current, 'Input': 'init', 'H2O': H2O_ppm, 'CO2': CO2_ppm, 'H2': H2_ppm, 'CH4': CH4_ppm, 'CO': CO_ppm, 'N2': N2_ppm, 'O2': O2_ppm, 'S': S_ppm, 'He': He_ppm}, index=[0])
+volatiles_mass = pd.DataFrame(columns=['Time', 'Input', 'H2O', 'CO2', 'H2', 'CH4', 'CO', 'N2', 'O2', 'S', 'He', 'Atm_mass_tot'])
+volatiles_mixing_ratio = pd.DataFrame(columns=['Time', 'Input', 'H2O', 'CO2', 'H2', 'CH4', 'CO', 'N2', 'O2', 'S', 'He'])
+elements_XH_ratio = pd.DataFrame(columns=['Time', 'Input', 'H_mol_tot', 'O', 'C', 'N', 'S', 'He'])
 
 # Planetary and magma ocean start configuration
 star_mass             = 1.0          # M_sol options: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4
@@ -146,7 +146,7 @@ if start_condition == "1":
     with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
         file.write('0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00\n')
     with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
-        file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(O_H_mol_ratio))+" "+str('{:.10e}'.format(C_H_mol_ratio))+" "+str('{:.10e}'.format(N_H_mol_ratio))+" "+str('{:.10e}'.format(S_H_mol_ratio))+" "+str('{:.10e}'.format(He_H_mol_ratio))+"\n")
+        file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["O"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["C"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["N"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["S"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["He"]))+"\n")
 
     # Runtime info
     coupler_utils.PrintSeparator()
@@ -170,6 +170,8 @@ if start_condition == "1":
     # Update volatile masses, mixing ratios and mantle ppm w/ VULCAN output
     ## TO DO: ppm calc works only for very first initialization step
     h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg = coupler_utils.ConvertVulcanOutput(atm_chemistry, mantle_mass)
+
+    volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio = coupler_utils.ApplyVulcanOutput(atm_chemistry, mantle_mass, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio)
 
     print("-------------- VULCAN VOLATILES:", h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg)
 

@@ -114,7 +114,7 @@ def ConvertInitialVolatiles(time_current, mantle_mass, volatiles_ppm, volatiles_
     co_mol         = volatiles_ppm.iloc[-1]["CO"]*1e6*mantle_mass/co_mol_mass     # mol
     n2_mol         = volatiles_ppm.iloc[-1]["N2"]*1e6*mantle_mass/n2_mol_mass     # mol
     o2_mol         = volatiles_ppm.iloc[-1]["O2"]*1e6*mantle_mass/o2_mol_mass     # mol
-    s_mol          = volatiles_ppm.iloc[-1]["S"]*1e6*mantle_mass/he_mol_mass     # mol
+    s_mol          = volatiles_ppm.iloc[-1]["S"]*1e6*mantle_mass/he_mol_mass      # mol
     he_mol         = volatiles_ppm.iloc[-1]["He"]*1e6*mantle_mass/he_mol_mass     # mol
   
     # Radiative species + He
@@ -140,7 +140,7 @@ def ConvertInitialVolatiles(time_current, mantle_mass, volatiles_ppm, volatiles_
         S_H_mol_ratio = 1e-99
 
     # Add to dataframe
-    elements_XH_ratio_new  = pd.DataFrame({'Time': time_current, 'H_mol_tot': h_mol_total, 'O': O_H_mol_ratio, 'C': C_H_mol_ratio, 'N': N_H_mol_ratio, 'S': S_H_mol_ratio, 'He': He_H_mol_ratio}, index=[0])
+    elements_XH_ratio_new  = pd.DataFrame({'Time': time_current, 'Input': 'init', 'H_mol_tot': h_mol_total, 'O': O_H_mol_ratio, 'C': C_H_mol_ratio, 'N': N_H_mol_ratio, 'S': S_H_mol_ratio, 'He': He_H_mol_ratio}, index=[0])
     elements_XH_ratio = elements_XH_ratio.append(elements_XH_ratio_new) 
 
     ## --> Total volatile masses for SPIDER input/output
@@ -154,8 +154,10 @@ def ConvertInitialVolatiles(time_current, mantle_mass, volatiles_ppm, volatiles_
     s_kg       = volatiles_ppm.iloc[-1]["S"]*1e6*mantle_mass    # kg
     he_kg      = volatiles_ppm.iloc[-1]["He"]*1e6*mantle_mass   # kg
 
+    atm_kg = h2o_kg + co2_kg + h2_kg + ch4_kg + co_kg + n2_kg + o2_kg + s_kg + he_kg # kg
+
     # Add to dataframe
-    volatiles_mass_new  = pd.DataFrame({'Time': time_current, 'H2O': h2o_kg, 'CO2': co2_kg, 'H2': h2_kg, 'CH4': ch4_kg, 'CO': co_kg, 'N2': n2_kg, 'O2': o2_kg, 'S': s_kg, 'He': he_kg}, index=[0])
+    volatiles_mass_new  = pd.DataFrame({'Time': time_current, 'Input': 'init', 'H2O': h2o_kg, 'CO2': co2_kg, 'H2': h2_kg, 'CH4': ch4_kg, 'CO': co_kg, 'N2': n2_kg, 'O2': o2_kg, 'S': s_kg, 'He': he_kg, 'Atm_mass_tot': atm_kg}, index=[0])
     volatiles_mass = volatiles_mass.append(volatiles_mass_new) 
 
     ## --> Mass mol ratios for SOCRATES input
@@ -182,7 +184,7 @@ def ConvertInitialVolatiles(time_current, mantle_mass, volatiles_ppm, volatiles_
     he_mass_mol_ratio  = he_mol / total_mol                     # mol/mol 
 
     # Add to dataframe
-    volatiles_mixing_ratio_new  = pd.DataFrame({'Time': time_current, 'H2O': h2o_mass_mol_ratio, 'CO2': co2_mass_mol_ratio, 'H2': h2_mass_mol_ratio, 'CH4': ch4_mass_mol_ratio, 'CO': co_mass_mol_ratio, 'N2': n2_mass_mol_ratio, 'O2': o2_mass_mol_ratio, 'S': s_mass_mol_ratio, 'He': he_mass_mol_ratio}, index=[0])
+    volatiles_mixing_ratio_new  = pd.DataFrame({'Time': time_current, 'Input': 'init', 'H2O': h2o_mass_mol_ratio, 'CO2': co2_mass_mol_ratio, 'H2': h2_mass_mol_ratio, 'CH4': ch4_mass_mol_ratio, 'CO': co_mass_mol_ratio, 'N2': n2_mass_mol_ratio, 'O2': o2_mass_mol_ratio, 'S': s_mass_mol_ratio, 'He': he_mass_mol_ratio}, index=[0])
     volatiles_mixing_ratio = volatiles_mixing_ratio.append(volatiles_mixing_ratio_new) 
 
     return volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio
@@ -378,3 +380,78 @@ def ConvertVulcanOutput(atm_chemistry, mantle_mass):
     He_ppm               = str(he_kg/(1e6*mantle_mass))                       # ppm wt
 
     return h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg
+
+# Update volatile masses and mixing ratios w/ VULCAN output
+def ApplyVulcanOutput(atm_chemistry, mantle_mass, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio):
+
+    # Calculate total mass of the atmosphere
+    H_kg = atm_chemistry["H"].sum(axis = 0, skipna = True)*h_mol_mass         # kg
+    O_kg = atm_chemistry["O"].sum(axis = 0, skipna = True)*o_mol_mass         # kg
+    C_kg = atm_chemistry["C"].sum(axis = 0, skipna = True)*c_mol_mass         # kg
+    N_kg = atm_chemistry["N"].sum(axis = 0, skipna = True)*n_mol_mass         # kg
+    S_kg = atm_chemistry["S"].sum(axis = 0, skipna = True)*s_mol_mass         # kg
+    He_kg = atm_chemistry["He"].sum(axis = 0, skipna = True)*s_mol_mass       # kg
+
+    atm_kg = H_kg + C_kg + N_kg + O_kg + S_kg + He_kg
+
+    ## Calculate X/H mixing mass mixing ratios
+    h_mol_total    = H_kg / h_mol_mass
+    o_mol_total    = O_kg / o_mol_mass
+    c_mol_total    = C_kg / c_mol_mass
+    n_mol_total    = N_kg / n_mol_mass
+    s_mol_total    = S_kg / s_mol_mass
+    he_mol_total   = He_kg / he_mol_mass
+
+    O_H_mol_ratio  = o_mol_total / h_mol_total       # mol/mol
+    C_H_mol_ratio  = c_mol_total / h_mol_total       # mol/mol
+    N_H_mol_ratio  = n_mol_total / h_mol_total       # mol/mol
+    S_H_mol_ratio  = s_mol_total / h_mol_total       # mol/mol 
+    He_H_mol_ratio = he_mol_total / h_mol_total      # mol/mol 
+
+    ## Calculate individual mass mol ratios
+    h2o_mass_mol_ratio   = atm_chemistry["H2O"].sum(axis = 0, skipna = True)  # mol/mol
+    co2_mass_mol_ratio   = atm_chemistry["CO2"].sum(axis = 0, skipna = True)  # mol/mol
+    h2_mass_mol_ratio    = atm_chemistry["H2"].sum(axis = 0, skipna = True)   # mol/mol
+    ch4_mass_mol_ratio   = atm_chemistry["CH4"].sum(axis = 0, skipna = True)  # mol/mol
+    co_mass_mol_ratio    = atm_chemistry["CO"].sum(axis = 0, skipna = True)   # mol/mol
+    n2_mass_mol_ratio    = atm_chemistry["N2"].sum(axis = 0, skipna = True)   # mol/mol
+    o2_mass_mol_ratio    = atm_chemistry["O2"].sum(axis = 0, skipna = True)   # mol/mol
+    he_mass_mol_ratio    = atm_chemistry["He"].sum(axis = 0, skipna = True)   # mol/mol
+    
+    h2o_kg               = h2o_mass_mol_ratio*h2o_mol_mass                    # kg
+    co2_kg               = co2_mass_mol_ratio*co2_mol_mass                    # kg
+    h2_kg                = h2_mass_mol_ratio*h2_mol_mass                      # kg
+    ch4_kg               = ch4_mass_mol_ratio*ch4_mol_mass                    # kg
+    co_kg                = co_mass_mol_ratio*co_mol_mass                      # kg
+    n2_kg                = n2_mass_mol_ratio*n2_mol_mass                      # kg
+    o2_kg                = o2_mass_mol_ratio*o2_mol_mass                      # kg
+    he_kg                = he_mass_mol_ratio*he_mol_mass                      # kg
+
+    # Calculate volatiles in mantle
+    ## TO DO: Works only for initial conditions
+    H2O_ppm              = str(h2o_kg/(1e6*mantle_mass))                      # ppm wt
+    CO2_ppm              = str(co2_kg/(1e6*mantle_mass))                      # ppm wt
+    H2_ppm               = str(h2_kg/(1e6*mantle_mass))                       # ppm wt
+    CH4_ppm              = str(ch4_kg/(1e6*mantle_mass))                      # ppm wt
+    CO_ppm               = str(co_kg/(1e6*mantle_mass))                       # ppm wt
+    N2_ppm               = str(n2_kg/(1e6*mantle_mass))                       # ppm wt
+    O2_ppm               = str(o2_kg/(1e6*mantle_mass))                       # ppm wt
+    He_ppm               = str(he_kg/(1e6*mantle_mass))                       # ppm wt
+
+    # Add to dataframes
+    elements_XH_ratio_new  = pd.DataFrame({'Time': time_current, 'Input': 'vulcan', 'H_mol_tot': h_mol_total, 'O': O_H_mol_ratio, 'C': C_H_mol_ratio, 'N': N_H_mol_ratio, 'S': S_H_mol_ratio, 'He': He_H_mol_ratio}, index=[0])
+    elements_XH_ratio = elements_XH_ratio.append(elements_XH_ratio_new) 
+
+    volatiles_mass_new  = pd.DataFrame({'Time': time_current, 'Input': 'vulcan', 'H2O': h2o_kg, 'CO2': co2_kg, 'H2': h2_kg, 'CH4': ch4_kg, 'CO': co_kg, 'N2': n2_kg, 'O2': o2_kg, 'S': s_kg, 'He': he_kg, 'Atm_mass_tot': atm_kg}, index=[0])
+    volatiles_mass = volatiles_mass.append(volatiles_mass_new) 
+
+    volatiles_mixing_ratio_new  = pd.DataFrame({'Time': time_current, 'Input': 'vulcan', 'H2O': h2o_mass_mol_ratio, 'CO2': co2_mass_mol_ratio, 'H2': h2_mass_mol_ratio, 'CH4': ch4_mass_mol_ratio, 'CO': co_mass_mol_ratio, 'N2': n2_mass_mol_ratio, 'O2': o2_mass_mol_ratio, 'S': s_mass_mol_ratio, 'He': he_mass_mol_ratio}, index=[0])
+    volatiles_mixing_ratio = volatiles_mixing_ratio.append(volatiles_mixing_ratio_new) 
+
+    volatiles_ppm  = pd.DataFrame({'Time': time_current, 'Input': 'init', 'H2O': H2O_ppm, 'CO2': CO2_ppm, 'H2': H2_ppm, 'CH4': CH4_ppm, 'CO': CO_ppm, 'N2': N2_ppm, 'O2': O2_ppm, 'S': S_ppm, 'He': He_ppm}, index=[0])
+
+    volatiles_ppm_new  = {'Time': time_current, 'Input': 'vulcan', 'H2O': H2O_ppm, 'CO2': CO2_ppm, 'H2': H2_ppm, 'CH4': CH4_ppm, 'CO': CO_ppm, 'N2': N2_ppm, 'O2': O2_ppm, 'S': S_ppm, 'He': He_ppm}, index=[0]
+    volatiles_ppm = volatiles_ppm.append(volatiles_ppm_new) 
+
+    return volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio
+
