@@ -120,25 +120,18 @@ if start_condition == "1":
     surfaceT_current    = surface_quantities[1]               # K
     core_mass           = surface_quantities[2]               # kg
     mantle_mass         = surface_quantities[3]               # kg
-    h2o_kg              = float(H2O_ppm)*1e6*mantle_mass      # kg
-    co2_kg              = float(CO2_ppm)*1e6*mantle_mass      # kg
-    h2_kg               = float(H2_ppm)*1e6*mantle_mass       # kg
-    ch4_kg              = float(CH4_ppm)*1e6*mantle_mass      # kg
-    co_kg               = float(CO_ppm)*1e6*mantle_mass       # kg
-    n2_kg               = float(N2_ppm)*1e6*mantle_mass       # kg
-    o2_kg               = float(O2_ppm)*1e6*mantle_mass       # kg
-    he_kg               = float(He_ppm)*1e6*mantle_mass       # kg
     solid_planet_mass   = core_mass + mantle_mass
 
+    # Careful: ATM *all* (mantle+atm) volatiles are converted
     volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio = coupler_utils.ConvertInitialVolatiles(time_current, mantle_mass, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio)
 
-    # Calculate element mol ratios from mass fractions (relative to mantle)
-    O_H_mol_ratio, C_H_mol_ratio, N_H_mol_ratio, S_H_mol_ratio, He_H_mol_ratio = coupler_utils.Calc_XH_Ratios(mantle_mass, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm)
+    # # Calculate element mol ratios from mass fractions (relative to mantle)
+    # O_H_mol_ratio, C_H_mol_ratio, N_H_mol_ratio, S_H_mol_ratio, He_H_mol_ratio = coupler_utils.Calc_XH_Ratios(mantle_mass, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm)
 
-    # Calculate volatile mol mass ratios from mass fractions (relative to mantle)
-    h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio = coupler_utils.CalcMassMolRatios(float(H2O_ppm)*1e6*mantle_mass, float(CO2_ppm)*1e6*mantle_mass, float(H2_ppm)*1e6*mantle_mass, float(CH4_ppm)*1e6*mantle_mass, float(CO_ppm)*1e6*mantle_mass, float(N2_ppm)*1e6*mantle_mass, float(O2_ppm)*1e6*mantle_mass, float(He_ppm)*1e6*mantle_mass)
+    # # Calculate volatile mol mass ratios from mass fractions (relative to mantle)
+    # h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio = coupler_utils.CalcMassMolRatios(float(H2O_ppm)*1e6*mantle_mass, float(CO2_ppm)*1e6*mantle_mass, float(H2_ppm)*1e6*mantle_mass, float(CH4_ppm)*1e6*mantle_mass, float(CO_ppm)*1e6*mantle_mass, float(N2_ppm)*1e6*mantle_mass, float(O2_ppm)*1e6*mantle_mass, float(He_ppm)*1e6*mantle_mass)
 
-    print("------ VOLATILE RATIOS BEFORE VULCAN:", h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio)
+    # print("------ VOLATILE RATIOS BEFORE VULCAN:", h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio)
 
     # Generate/adapt VULCAN input files
     with open(vulcan_dir+'spider_input/spider_elements.dat', 'w') as file:
@@ -167,13 +160,13 @@ if start_condition == "1":
 
     plot_atmosphere.plot_mixing_ratios(output_dir, atm_chemistry, int(time_current)) # specific time steps
 
-    # Update volatile masses, mixing ratios and mantle ppm w/ VULCAN output
-    ## TO DO: ppm calc works only for very first initialization step
-    h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg = coupler_utils.ConvertVulcanOutput(atm_chemistry, mantle_mass)
+    # # Update volatile masses, mixing ratios and mantle ppm w/ VULCAN output
+    # ## TO DO: ppm calc works only for very first initialization step
+    # h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg = coupler_utils.ConvertVulcanOutput(atm_chemistry, mantle_mass)
 
     volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio = coupler_utils.ApplyVulcanOutput(atm_chemistry, mantle_mass, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio)
 
-    print("-------------- VULCAN VOLATILES:", h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg)
+    # print("-------------- VULCAN VOLATILES:", h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg)
 
     # Interpolate TOA heating from Baraffe models and distance from star
     grav_s      = su.gravity( solid_planet_mass, float(solid_planet_radius) )
@@ -187,7 +180,8 @@ if start_condition == "1":
     coupler_utils.PrintSeparator()
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
-    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current, stellar_toa_heating, p_s, h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio)) # W/m^2
+    ## TO DO: Adapt to read in atmospheric profile from VULCAN
+    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current, stellar_toa_heating, p_s, volatiles_mixing_ratio)) # W/m^2
 
     # Save OLR flux to be fed to SPIDER
     with open(output_dir+"OLRFlux.dat", "a") as f:
@@ -198,7 +192,7 @@ if start_condition == "1":
     ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
 
     # Output during runtime
-    coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
+    coupler_utils.PrintCurrentState(time_current, surfaceT_current, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
 
     # Reset number of computing steps to reach time_target
     dtime       = time_target - time_current
@@ -208,7 +202,7 @@ if start_condition == "1":
     loop_no += 1
 
     # Restart SPIDER with self-consistent atmospheric composition
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", output_dir+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", solid_planet_radius, "-coresize", planet_coresize, "-H2O_initial", H2O_ppm, "-CO2_initial", CO2_ppm, "-H2_initial", H2_ppm, "-N2_initial", N2_ppm, "-CH4_initial", CH4_ppm, "-CO_initial", CO_ppm ]
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", output_dir+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", solid_planet_radius, "-coresize", planet_coresize, "-H2O_initial", str(volatiles_ppm.iloc[-1]["H2O"]), "-CO2_initial", str(volatiles_ppm.iloc[-1]["CO2"]), "-H2_initial", str(volatiles_ppm.iloc[-1]["H2"]), "-N2_initial", str(volatiles_ppm.iloc[-1]["N2"]), "-CH4_initial", str(volatiles_ppm.iloc[-1]["CH4"]), "-CO_initial", str(volatiles_ppm.iloc[-1]["CO"]) ]
 
     # Runtime info
     coupler_utils.PrintSeparator()
@@ -243,19 +237,11 @@ while time_current < time_target:
     surfaceT_current    = surface_quantities[1]               # K
     core_mass           = surface_quantities[2]               # kg
     mantle_mass         = surface_quantities[3]               # kg
-    h2o_kg              = float(H2O_ppm)*1e6*mantle_mass  # kg
-    co2_kg              = float(CO2_ppm)*1e6*mantle_mass  # kg
-    h2_kg               = float(H2_ppm)*1e6*mantle_mass   # kg
-    ch4_kg              = float(CH4_ppm)*1e6*mantle_mass  # kg
-    co_kg               = float(CO_ppm)*1e6*mantle_mass   # kg
-    n2_kg               = float(N2_ppm)*1e6*mantle_mass   # kg
-    o2_kg               = float(O2_ppm)*1e6*mantle_mass   # kg
-    he_kg               = float(He_ppm)*1e6*mantle_mass   # kg
     solid_planet_mass   = core_mass + mantle_mass
 
     # Interpolate TOA heating from Baraffe models and distance from star
     grav_s      = su.gravity( solid_planet_mass, float(solid_planet_radius) )
-    M_vol_tot   = h2o_kg + co2_kg + h2_kg + ch4_kg + co_kg + n2_kg + o2_kg + he_kg 
+    M_vol_tot   = atm_kg
     p_s = ( M_vol_tot * grav_s / ( 4. * np.pi * (float(solid_planet_radius)**2.) ) ) * 1e-2 # mbar
     stellar_toa_heating, solar_lum = coupler_utils.InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance)
 
