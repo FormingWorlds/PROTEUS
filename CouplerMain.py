@@ -74,7 +74,7 @@ if start_condition == "2":
 
 # Inform about start of runtime
 print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-print("::::::::::::: START INITIALIZATION LOOP –", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+print("::::::::::::: START INIT LOOP |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
 # Initialize SPIDER to generate first output file
@@ -131,6 +131,8 @@ if start_condition == "1":
     # Calculate volatile mol mass ratios from mass fractions (relative to mantle)
     h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio = coupler_utils.CalcMassMolRatios(float(H2O_ppm)*1e6*mantle_mass, float(CO2_ppm)*1e6*mantle_mass, float(H2_ppm)*1e6*mantle_mass, float(CH4_ppm)*1e6*mantle_mass, float(CO_ppm)*1e6*mantle_mass, float(N2_ppm)*1e6*mantle_mass, float(O2_ppm)*1e6*mantle_mass, float(He_ppm)*1e6*mantle_mass)
 
+    print("------ VOLATILE RATIOS BEFORE VULCAN:", h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio)
+
     # Generate/adapt VULCAN input files
     with open(vulcan_dir+'spider_input/spider_elements.dat', 'w') as file:
         file.write('time             O                C                N                S                He\n')
@@ -158,12 +160,15 @@ if start_condition == "1":
 
     plot_atmosphere.plot_mixing_ratios(output_dir, atm_chemistry, int(time_current)) # specific time steps
 
-    # Update volatile masses and mixing ratios w/ VULCAN output
-    h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio = coupler_utils.TransferVulcanOutput(atm_chemistry)
+    # Update volatile masses, mixing ratios and mantle ppm w/ VULCAN output
+    ## TO DO: ppm calc works only for very first initialization step
+    h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg = coupler_utils.ConvertVulcanOutput(atm_chemistry, mantle_mass)
+
+    print("-------------- VULCAN VOLATILES:", h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg)
 
     # Interpolate TOA heating from Baraffe models and distance from star
     grav_s      = su.gravity( solid_planet_mass, float(solid_planet_radius) )
-    M_vol_tot   = h2o_kg + co2_kg + h2_kg + ch4_kg + co_kg + n2_kg + o2_kg + he_kg 
+    M_vol_tot   = atm_kg
     p_s = ( M_vol_tot * grav_s / ( 4. * np.pi * (float(solid_planet_radius)**2.) ) ) * 1e-2 # mbar
     stellar_toa_heating, solar_lum = coupler_utils.InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance)
 
@@ -173,7 +178,6 @@ if start_condition == "1":
     coupler_utils.PrintSeparator()
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
-    #### TO DO: HERE FEED VULCAN OUTPUT
     heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current, stellar_toa_heating, p_s, h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio)) # W/m^2
 
     # Save OLR flux to be fed to SPIDER
@@ -185,12 +189,7 @@ if start_condition == "1":
     ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
 
     # Output during runtime
-    #### TO DO: HERE FEED VULCAN OUTPUT
     coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
-
-    # Find ppm values relative to mantle mass for restarting SPIDER
-    #### TO DO: HERE FEED VULCAN OUTPUT
-    H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm = coupler_utils.CalcPPM(mantle_mass, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg)
 
     # Reset number of computing steps to reach time_target
     dtime       = time_target - time_current
@@ -218,7 +217,7 @@ if start_condition == "1":
 
     # Inform about start of main loops
     print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-    print("::::::::::::: START MAIN LOOP –", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print("::::::::::::: START MAIN LOOP |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
 # Ping-pong between SPIDER and SOCRATES until target time is reached

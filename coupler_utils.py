@@ -26,6 +26,7 @@ h_mol_mass      = 0.001008              # kg mol−1
 c_mol_mass      = 0.012011              # kg mol−1
 o_mol_mass      = 0.015999              # kg mol−1
 n_mol_mass      = 0.014007              # kg mol−1
+s_mol_mass      = 0.03206               # kg mol−1
 he_mol_mass     = 0.0040026             # kg mol−1
 ar_mol_mass     = 0.039948              # kg mol−1
 ne_mol_mass     = 0.020180              # kg mol−1
@@ -102,19 +103,6 @@ def CalcMassMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg)
     he_mass_mol_ratio  = he_mol / total_mol   # mol/mol 
 
     return h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio
-
-def CalcPPM(mantle_mass, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg):
-
-    h2o_ppm = str(h2o_kg/(1e6*mantle_mass))   # ppm wt
-    co2_ppm = str(co2_kg/(1e6*mantle_mass))   # ppm wt
-    h2_ppm  = str(h2_kg/(1e6*mantle_mass))    # ppm wt
-    ch4_ppm = str(ch4_kg/(1e6*mantle_mass))   # ppm wt
-    co_ppm  = str(co_kg/(1e6*mantle_mass))    # ppm wt
-    n2_ppm  = str(n2_kg/(1e6*mantle_mass))    # ppm wt
-    o2_ppm  = str(o2_kg/(1e6*mantle_mass))    # ppm wt
-    he_ppm  = str(he_kg/(1e6*mantle_mass))    # ppm wt
-
-    return h2o_ppm, co2_ppm, h2_ppm, ch4_ppm, co_ppm, n2_ppm, o2_ppm, he_ppm
 
 # https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
 def make_output_dir():
@@ -261,31 +249,48 @@ def PrintSeparator():
     pass
 
 # Update volatile masses and mixing ratios w/ VULCAN output
-def TransferVulcanOutput(atm_chemistry):
+def ConvertVulcanOutput(atm_chemistry, mantle_mass):
 
     # for column in list(atm_chemistry):
     #     print(column)
 
-    H_mol_tot = atm_chemistry["H"].sum(axis = 0, skipna = True)
-    C_mol_tot = atm_chemistry["C"].sum(axis = 0, skipna = True)
-    N_mol_tot = atm_chemistry["N"].sum(axis = 0, skipna = True)
-    O_mol_tot = atm_chemistry["O"].sum(axis = 0, skipna = True)
-    S_mol_tot = atm_chemistry["S"].sum(axis = 0, skipna = True)
-    total_mol = H_mol_tot + C_mol_tot + N_mol_tot + O_mol_tot + S_mol_tot
+    # Calculate total mass of the atmosphere
+    H_kg = atm_chemistry["H"].sum(axis = 0, skipna = True)*h_mol_mass         # kg
+    C_kg = atm_chemistry["C"].sum(axis = 0, skipna = True)*c_mol_mass         # kg
+    N_kg = atm_chemistry["N"].sum(axis = 0, skipna = True)*n_mol_mass         # kg
+    O_kg = atm_chemistry["O"].sum(axis = 0, skipna = True)*o_mol_mass         # kg
+    S_kg = atm_chemistry["S"].sum(axis = 0, skipna = True)*s_mol_mass         # kg
 
-    h2o_mol = 
+    atm_kg = H_kg + C_kg + N_kg + O_kg + S_kg
 
-
+    # Calculate individual mass mol ratios
+    h2o_mass_mol_ratio   = atm_chemistry["H2O"].sum(axis = 0, skipna = True)  # mol/mol
+    co2_mass_mol_ratio   = atm_chemistry["CO2"].sum(axis = 0, skipna = True)  # mol/mol
+    h2_mass_mol_ratio    = atm_chemistry["H2"].sum(axis = 0, skipna = True)   # mol/mol
+    ch4_mass_mol_ratio   = atm_chemistry["CH4"].sum(axis = 0, skipna = True)  # mol/mol
+    co_mass_mol_ratio    = atm_chemistry["CO"].sum(axis = 0, skipna = True)   # mol/mol
+    n2_mass_mol_ratio    = atm_chemistry["N2"].sum(axis = 0, skipna = True)   # mol/mol
+    o2_mass_mol_ratio    = atm_chemistry["O2"].sum(axis = 0, skipna = True)   # mol/mol
+    he_mass_mol_ratio    = atm_chemistry["He"].sum(axis = 0, skipna = True)   # mol/mol
     
-    h2o_mass_mol_ratio = h2o_mol / total_mol  # mol/mol
-    co2_mass_mol_ratio = co2_mol / total_mol  # mol/mol
-    h2_mass_mol_ratio  = h2_mol / total_mol   # mol/mol
-    ch4_mass_mol_ratio = ch4_mol / total_mol  # mol/mol 
-    co_mass_mol_ratio  = co_mol / total_mol   # mol/mol 
-    n2_mass_mol_ratio  = n2_mol / total_mol   # mol/mol 
-    o2_mass_mol_ratio  = o2_mol / total_mol   # mol/mol 
-    he_mass_mol_ratio  = he_mol / total_mol   # mol/mol 
+    h2o_kg               = h2o_mass_mol_ratio*h2o_mol_mass                    # kg
+    co2_kg               = co2_mass_mol_ratio*co2_mol_mass                    # kg
+    h2_kg                = h2_mass_mol_ratio*h2_mol_mass                      # kg
+    ch4_kg               = ch4_mass_mol_ratio*ch4_mol_mass                    # kg
+    co_kg                = co_mass_mol_ratio*co_mol_mass                      # kg
+    n2_kg                = n2_mass_mol_ratio*n2_mol_mass                      # kg
+    o2_kg                = o2_mass_mol_ratio*o2_mol_mass                      # kg
+    he_kg                = he_mass_mol_ratio*he_mol_mass                      # kg
 
+    # Calculate volatiles in mantle
+    ## TO DO: Works only for initial conditions
+    H2O_ppm              = str(h2o_kg/(1e6*mantle_mass))                      # ppm wt
+    CO2_ppm              = str(co2_kg/(1e6*mantle_mass))                      # ppm wt
+    H2_ppm               = str(h2_kg/(1e6*mantle_mass))                       # ppm wt
+    CH4_ppm              = str(ch4_kg/(1e6*mantle_mass))                      # ppm wt
+    CO_ppm               = str(co_kg/(1e6*mantle_mass))                       # ppm wt
+    N2_ppm               = str(n2_kg/(1e6*mantle_mass))                       # ppm wt
+    O2_ppm               = str(o2_kg/(1e6*mantle_mass))                       # ppm wt
+    He_ppm               = str(he_kg/(1e6*mantle_mass))                       # ppm wt
 
-    return h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio
-
+    return h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg
