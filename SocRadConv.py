@@ -31,7 +31,7 @@ def surf_Planck_nu(atm):
     B = B * atm.band_widths/1000.0
     return B
 
-def RadConvEqm(output_dir, time_current, Tg, stellar_toa_heating, p_s, volatiles_mixing_ratio):
+def RadConvEqm(output_dir, time_current, Tg, stellar_toa_heating, p_s, atm_chemistry):
     #--------------------Set radmodel options-------------------
     #---Instantiate the radiation model---
 
@@ -62,14 +62,14 @@ def RadConvEqm(output_dir, time_current, Tg, stellar_toa_heating, p_s, volatiles
     # # CO2
     # atm.mixing_ratios[1] = 1.e-5
 
-    ## TO DO: change CONSTANT mixing ratios to varying with height
-    atm.mixing_ratios[0] = volatiles_mixing_ratio[-1]["H2O"] # H2O
-    atm.mixing_ratios[1] = volatiles_mixing_ratio[-1]["CO2"] # CO2
-    atm.mixing_ratios[2] = volatiles_mixing_ratio[-1]["H2"]  # H2
-    atm.mixing_ratios[3] = volatiles_mixing_ratio[-1]["CH4"] # CH4
-    atm.mixing_ratios[4] = volatiles_mixing_ratio[-1]["CO"]  # CO
-    atm.mixing_ratios[5] = volatiles_mixing_ratio[-1]["N2"]  # N2
-    atm.mixing_ratios[6] = volatiles_mixing_ratio[-1]["O2"]  # O2
+    ## TO DO: change the currently CONSTANT mixing ratios to varying with height
+    atm.mixing_ratios[0] = atm_chemistry.iloc[0]["H2O"] # H2O
+    atm.mixing_ratios[1] = atm_chemistry.iloc[0]["CO2"] # CO2
+    atm.mixing_ratios[2] = atm_chemistry.iloc[0]["H2"]  # H2
+    atm.mixing_ratios[3] = atm_chemistry.iloc[0]["CH4"] # CH4
+    atm.mixing_ratios[4] = atm_chemistry.iloc[0]["CO"]  # CO
+    atm.mixing_ratios[5] = atm_chemistry.iloc[0]["N2"]  # N2
+    atm.mixing_ratios[6] = atm_chemistry.iloc[0]["O2"]  # O2
 
 
     # Initialise previous OLR and TOA heating to zero

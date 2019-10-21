@@ -34,7 +34,7 @@ nstepsmacro           = "20"         # number of timesteps
 dtmacro               = "50000"      # delta time per macrostep to advance by, in years
 heat_flux             = "1.0E4"      # prescribed start surface heat flux (e.g., 10^4 W/m^2)
 tsurf_poststep_change = "100.0"      # maximum absolute surface temperature change in Kelvin
-solid_planet_radius   = "6371000.0"  # planet radius / m
+R_solid_planet        = "6371000.0"  # planet radius / m
 planet_coresize       = "0.55"       # fractional radius of core-mantle boundary
 
 # Restart flags
@@ -58,10 +58,9 @@ O2_ppm                = 0.0        # ppm
 He_ppm                = 0.0        # ppm
 S_ppm                 = 0.0        # ppm
 
-volatiles_ppm  = pd.DataFrame({'Time': time_current, 'Input': 'init', 'H2O': H2O_ppm, 'CO2': CO2_ppm, 'H2': H2_ppm, 'CH4': CH4_ppm, 'CO': CO_ppm, 'N2': N2_ppm, 'O2': O2_ppm, 'S': S_ppm, 'He': He_ppm}, index=[0])
-volatiles_mass = pd.DataFrame(columns=['Time', 'Input', 'H2O', 'CO2', 'H2', 'CH4', 'CO', 'N2', 'O2', 'S', 'He', 'Atm_mass_tot'])
-volatiles_mixing_ratio = pd.DataFrame(columns=['Time', 'Input', 'H2O', 'CO2', 'H2', 'CH4', 'CO', 'N2', 'O2', 'S', 'He'])
-elements_XH_ratio = pd.DataFrame(columns=['Time', 'Input', 'H_mol_tot', 'O', 'C', 'N', 'S', 'He'])
+# Define runtime helpfile names and generate dataframes
+runtime_helpfile_name = "runtime_properties.csv"
+# runtime_helpfile = coupler_utils.GenerateRuntimeHelpfiles(output_dir, runtime_helpfile_name)
 
 # Planetary and magma ocean start configuration
 star_mass             = 1.0          # M_sol options: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4
@@ -95,11 +94,11 @@ if start_condition == "1":
     print("==> Done.")
 
     # SPIDER initialization call sequence 
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", output_dir+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", solid_planet_radius, "-coresize", planet_coresize, "-H2O_initial", str(volatiles_ppm.iloc[-1]["H2O"]), "-CO2_initial", str(volatiles_ppm.iloc[-1]["CO2"]), "-H2_initial", str(volatiles_ppm.iloc[-1]["H2"]), "-N2_initial", str(volatiles_ppm.iloc[-1]["N2"]), "-CH4_initial", str(volatiles_ppm.iloc[-1]["CH4"]), "-O2_initial", str(volatiles_ppm.iloc[-1]["O2"]), "-CO_initial", str(volatiles_ppm.iloc[-1]["CO"]) ]
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", output_dir+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(H2O_ppm), "-CO2_initial", str(CO2_ppm), "-H2_initial", str(H2_ppm), "-N2_initial", str(N2_ppm), "-CH4_initial", str(CH4_ppm), "-O2_initial", str(O2_ppm), "-CO_initial", str(CO_ppm), "-S_initial", str(S_ppm), "-He_initial", str(He_ppm) ]
 
     # Runtime info
     coupler_utils.PrintSeparator()
-    print("SPIDER run, loop ", loop_no, "–", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "– flags:")
+    print("SPIDER run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "| flags:")
     for flag in call_sequence:
         print(flag, end =" ")
     print()
@@ -109,42 +108,14 @@ if start_condition == "1":
     subprocess.call(call_sequence)
 
     # Save surface temperature to file in 'output_dir'
-    coupler_utils.write_surface_quantitites(output_dir, "starting_properties.dat")
-
-    # Load surface + global properties released, to be fed to SOCRATES
-    surface_quantities  = np.loadtxt(output_dir + "starting_properties.dat")
-    if loop_no > 0: # After first iteration more than one entry
-        surface_quantities = surface_quantities[-1]
-    print(surface_quantities)
-    time_current        = surface_quantities[0]               # K
-    surfaceT_current    = surface_quantities[1]               # K
-    core_mass           = surface_quantities[2]               # kg
-    mantle_mass         = surface_quantities[3]               # kg
-    solid_planet_mass   = core_mass + mantle_mass             # kg
-
-    # Careful: ATM *all* (mantle+atm) volatiles are converted
-    volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio = coupler_utils.ConvertInitialVolatiles(time_current, mantle_mass, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio)
-
-    # # Calculate element mol ratios from mass fractions (relative to mantle)
-    # O_H_mol_ratio, C_H_mol_ratio, N_H_mol_ratio, S_H_mol_ratio, He_H_mol_ratio = coupler_utils.Calc_XH_Ratios(mantle_mass, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm)
-
-    # # Calculate volatile mol mass ratios from mass fractions (relative to mantle)
-    # h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio = coupler_utils.CalcMassMolRatios(float(H2O_ppm)*1e6*mantle_mass, float(CO2_ppm)*1e6*mantle_mass, float(H2_ppm)*1e6*mantle_mass, float(CH4_ppm)*1e6*mantle_mass, float(CO_ppm)*1e6*mantle_mass, float(N2_ppm)*1e6*mantle_mass, float(O2_ppm)*1e6*mantle_mass, float(He_ppm)*1e6*mantle_mass)
-
-    # print("------ VOLATILE RATIOS BEFORE VULCAN:", h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio)
+    runtime_helpfile = coupler_utils.UpdateHelpfile(loop_no, output_dir, runtime_helpfile_name)
 
     # Generate/adapt VULCAN input files
-    coupler_utils.GenerateSpiderInputFile( time_current, loop_no, vulcan_dir, 'spider_input/spider_elements.dat', elements_XH_ratio )
-    # with open(vulcan_dir+'spider_input/spider_elements.dat', 'w') as file:
-    #     file.write('time             O                C                N                S                He\n')
-    # with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
-    #     file.write('0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00\n')
-    # with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
-    #     file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["O"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["C"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["N"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["S"]))+" "+str('{:.10e}'.format(elements_XH_ratio.iloc[-1]["He"]))+"\n")
+    coupler_utils.GenerateVulcanInputFile( time_current, loop_no, vulcan_dir, 'spider_input/spider_elements.dat', runtime_helpfile )
 
     # Runtime info
     coupler_utils.PrintSeparator()
-    print("VULCAN run, loop ", loop_no, "–", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print("VULCAN run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     coupler_utils.PrintSeparator()
 
     # Switch to VULCAN directory; run VULCAN, switch back to main directory
@@ -157,34 +128,26 @@ if start_condition == "1":
 
     # Read in data from VULCAN output
     atm_chemistry = pd.read_csv(output_dir+str(int(time_current))+"_atm_chemistry.dat", skiprows=1, delim_whitespace=True)
-    print(atm_chemistry)
+    print(atm_chemistry.iloc[:, 0:5])
 
     plot_atmosphere.plot_mixing_ratios(output_dir, atm_chemistry, int(time_current)) # specific time steps
 
-    # # Update volatile masses, mixing ratios and mantle ppm w/ VULCAN output
-    # ## TO DO: ppm calc works only for very first initialization step
-    # h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg = coupler_utils.ConvertVulcanOutput(atm_chemistry, mantle_mass)
-
-    volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio = coupler_utils.ApplyVulcanOutput(time_current, atm_chemistry, mantle_mass, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio)
-
-    # print("-------------- VULCAN VOLATILES:", h2o_mass_mol_ratio, co2_mass_mol_ratio, h2_mass_mol_ratio, ch4_mass_mol_ratio, co_mass_mol_ratio, n2_mass_mol_ratio, o2_mass_mol_ratio, he_mass_mol_ratio, h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg, H2O_ppm, CO2_ppm, H2_ppm, CH4_ppm, CO_ppm, N2_ppm, O2_ppm, He_ppm, atm_kg)
-
     # Interpolate TOA heating from Baraffe models and distance from star
-    grav_s      = su.gravity( solid_planet_mass, float(solid_planet_radius) )
-    print(volatiles_mass)
-    print(volatiles_mass.iloc[-1])
-    M_vol_tot   = volatiles_mass.iloc[-1]["Atm_mass_tot"]
-    p_s = ( M_vol_tot * grav_s / ( 4. * np.pi * (float(solid_planet_radius)**2.) ) ) * 1e-2 # mbar
+    M_solid_planet = runtime_helpfile.iloc[-1]["M_core"] + runtime_helpfile.iloc[-1]["M_mantle"]
+    grav_s      = su.gravity( M_solid_planet, float(R_solid_planet) )
+    M_vol_tot   = runtime_helpfile.iloc[-1]["M_atm"]
+    p_s = ( M_vol_tot * grav_s / ( 4. * np.pi * (float(R_solid_planet)**2.) ) ) * 1e-2 # mbar
     stellar_toa_heating, solar_lum = coupler_utils.InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance)
 
     # Runtime info
     coupler_utils.PrintSeparator()
-    print("SOCRATES run, loop ", loop_no, "–", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print("SOCRATES run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     coupler_utils.PrintSeparator()
+    # print(volatiles_mixing_ratio)
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
     ## TO DO: Adapt to read in atmospheric profile from VULCAN
-    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current, stellar_toa_heating, p_s, volatiles_mixing_ratio)) # W/m^2
+    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, runtime_helpfile.iloc[-1]["T_surf"], stellar_toa_heating, p_s, atm_chemistry)) # W/m^2
 
     # Save OLR flux to be fed to SPIDER
     with open(output_dir+"OLRFlux.dat", "a") as f:
@@ -195,7 +158,7 @@ if start_condition == "1":
     ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
 
     # Output during runtime
-    coupler_utils.PrintCurrentState(time_current, surfaceT_current, volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
+    coupler_utils.PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
 
     # Reset number of computing steps to reach time_target
     dtime       = time_target - time_current
@@ -205,11 +168,12 @@ if start_condition == "1":
     loop_no += 1
 
     # Restart SPIDER with self-consistent atmospheric composition
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", output_dir+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", solid_planet_radius, "-coresize", planet_coresize, "-H2O_initial", str(volatiles_ppm.iloc[-1]["H2O"]), "-CO2_initial", str(volatiles_ppm.iloc[-1]["CO2"]), "-H2_initial", str(volatiles_ppm.iloc[-1]["H2"]), "-N2_initial", str(volatiles_ppm.iloc[-1]["N2"]), "-CH4_initial", str(volatiles_ppm.iloc[-1]["CH4"]), "-O2_initial", str(volatiles_ppm.iloc[-1]["O2"]), "-CO_initial", str(volatiles_ppm.iloc[-1]["CO"]) ]
+    M_mantle = runtime_helpfile.iloc[-1]["M_mantle"]
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", output_dir+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(runtime_helpfile.iloc[-1]["H2O_atm_kg"]/M_mantle), "-CO2_initial", str(runtime_helpfile.iloc[-1]["CO2_atm_kg"]/M_mantle), "-H2_initial", str(runtime_helpfile.iloc[-1]["H2_atm_kg"]/M_mantle), "-N2_initial", str(runtime_helpfile.iloc[-1]["N2_atm_kg"]/M_mantle), "-CH4_initial", str(runtime_helpfile.iloc[-1]["CH4_atm_kg"]/M_mantle), "-O2_initial", str(runtime_helpfile.iloc[-1]["O2_atm_kg"]/M_mantle), "-CO_initial", str(runtime_helpfile.iloc[-1]["CO_atm_kg"]/M_mantle), "-S_initial", str(runtime_helpfile.iloc[-1]["S_atm_kg"]/M_mantle), "-He_initial", str(runtime_helpfile.iloc[-1]["He_atm_kg"]/M_mantle) ]
 
     # Runtime info
     coupler_utils.PrintSeparator()
-    print("SPIDER run, loop ", loop_no, "–", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "– flags:")
+    print("SPIDER run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "| flags:")
     for flag in call_sequence:
         print(flag, end =" ")
     print()
@@ -230,39 +194,23 @@ if start_condition == "1":
 while time_current < time_target:
 
     # Save surface temperature to file in 'output_dir'
-    coupler_utils.write_surface_quantitites(output_dir, "runtime_properties.dat")
-
-    # Load surface + global properties released, to be fed to SOCRATES
-    surface_quantities  = np.loadtxt(output_dir + "runtime_properties.dat")
-    if loop_no > 0: # After first iteration more than one entry
-        surface_quantities = surface_quantities[-1]
-    time_current        = surface_quantities[0]               # K
-    surfaceT_current    = surface_quantities[1]               # K
-    core_mass           = surface_quantities[2]               # kg
-    mantle_mass         = surface_quantities[3]               # kg
-    solid_planet_mass   = core_mass + mantle_mass
+    runtime_helpfile = coupler_utils.UpdateHelpfile(loop_no, output_dir, runtime_helpfile_name, runtime_helpfile)
 
     # Interpolate TOA heating from Baraffe models and distance from star
-    grav_s      = su.gravity( solid_planet_mass, float(solid_planet_radius) )
-    M_vol_tot   = volatiles_mass.iloc[-1]["Atm_mass_tot"]
-    p_s = ( M_vol_tot * grav_s / ( 4. * np.pi * (float(solid_planet_radius)**2.) ) ) * 1e-2 # mbar
+    M_solid_planet = runtime_helpfile.iloc[-1]["M_core"] + runtime_helpfile.iloc[-1]["M_mantle"]
+    grav_s      = su.gravity( M_solid_planet, float(R_solid_planet) )
+    M_vol_tot   = runtime_helpfile.iloc[-1]["M_atm"]
+    p_s = ( M_vol_tot * grav_s / ( 4. * np.pi * (float(R_solid_planet)**2.) ) ) * 1e-2 # mbar
     stellar_toa_heating, solar_lum = coupler_utils.InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance)
-
-    # Print statements for development
-    # print("Surface quantities – [time, T_s, H2O, CO2]: ", surface_quantities)
-    # print("STELLAR TOA HEATING:", stellar_toa_heating, solar_lum)
-    # coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, "NaN", co2_kg, "NaN", p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
-
-    # Calculate volatile mol ratios from volatile masses in atmosphere
-    h2o_ratio, co2_ratio, h2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio = coupler_utils.CalcMassMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg)
 
     # Runtime info
     coupler_utils.PrintSeparator()
-    print("SOCRATES run, loop ", loop_no, "–", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print("SOCRATES run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     coupler_utils.PrintSeparator()
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
-    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, surfaceT_current, stellar_toa_heating, p_s, h2o_ratio, co2_ratio, h2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio)) # W/m^2
+    ## TO DO: Adapt to read in atmospheric profile from VULCAN
+    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, runtime_helpfile.iloc[-1]["T_surf"], stellar_toa_heating, p_s, atm_chemistry)) # W/m^2
 
     # Save OLR flux to be fed to SPIDER
     with open(output_dir+"OLRFlux.dat", "a") as f:
@@ -284,7 +232,7 @@ while time_current < time_target:
 
     # SPIDER restart call sequence
     # ---->> HERE THE VOLATILES FROM VULCAN NEED TO BE RE-FED; OPTION DOES NOT EXIST IN SPIDER CURRENTLY!
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro, "-radius", solid_planet_radius, "-coresize", planet_coresize ] # , "-outputDirectory", output_dir
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro, "-radius", R_solid_planet, "-coresize", planet_coresize ] # , "-outputDirectory", output_dir
 
     # Runtime info
     coupler_utils.PrintSeparator()
