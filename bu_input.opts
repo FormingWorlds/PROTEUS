@@ -231,7 +231,7 @@
 -O2_henry_pow 1.0           # non-dim., beta (own fit)
 -O2_molar_mass 0.031999     # kg/mol
 
-# parameters relating to He volatile
+# parameters relating to S volatile
 -S_initial 0.0              # ppm
 -S_henry 0.001E-9           # no partitioning, ppm/Pa, alpha (own fit)
 -S_henry_pow 1.0            # non-dim., beta (own fit)

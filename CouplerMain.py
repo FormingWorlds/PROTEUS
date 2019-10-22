@@ -39,7 +39,7 @@ planet_coresize       = "0.55"       # fractional radius of core-mantle boundary
 
 # Restart flags
 start_condition       = "1"          # 1: Fresh start | 2: Restart from 'ic_filename'
-ic_filename           = "0.json"     # JSON restart file if 'start_condition == 1'
+ic_filename           = "0.json"     # JSON restart file if 'start_condition == 2'
 nstepsmacro_init      = "0"          # number of timesteps for initialization loop
 dtmacro_init          = "1"          # initialization loop delta time per macrostep [yr]
 
@@ -72,10 +72,10 @@ loop_no = 0
 if start_condition == "2":
     loop_no += 1
 
-    myjson_o = su.MyJSON( output_dir+'{}.json'.format(time) )
-    core_mass   = myjson_o.get_dict_values(['atmosphere','mass_core'])
-    mantle_mass = myjson_o.get_dict_values(['atmosphere','mass_mantle'])
-    planet_mass = core_mass + mantle_mass
+    # myjson_o = su.MyJSON( output_dir+'{}.json'.format(time) )
+    # core_mass   = myjson_o.get_dict_values(['atmosphere','mass_core'])
+    # mantle_mass = myjson_o.get_dict_values(['atmosphere','mass_mantle'])
+    # planet_mass = core_mass + mantle_mass
 
 # Inform about start of runtime
 print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
@@ -94,7 +94,7 @@ if start_condition == "1":
     print("==> Done.")
 
     # SPIDER initialization call sequence 
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", output_dir+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(H2O_ppm), "-CO2_initial", str(CO2_ppm), "-H2_initial", str(H2_ppm), "-N2_initial", str(N2_ppm), "-CH4_initial", str(CH4_ppm), "-O2_initial", str(O2_ppm), "-CO_initial", str(CO_ppm), "-S_initial", str(S_ppm), "-He_initial", str(He_ppm) ]
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(H2O_ppm), "-CO2_initial", str(CO2_ppm), "-H2_initial", str(H2_ppm), "-N2_initial", str(N2_ppm), "-CH4_initial", str(CH4_ppm), "-O2_initial", str(O2_ppm), "-CO_initial", str(CO_ppm), "-S_initial", str(S_ppm), "-He_initial", str(He_ppm) ]
 
     # Runtime info
     coupler_utils.PrintSeparator()
@@ -169,7 +169,7 @@ if start_condition == "1":
 
     # Restart SPIDER with self-consistent atmospheric composition
     M_mantle = runtime_helpfile.iloc[-1]["M_mantle"]
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", output_dir+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(runtime_helpfile.iloc[-1]["H2O_atm_kg"]/M_mantle), "-CO2_initial", str(runtime_helpfile.iloc[-1]["CO2_atm_kg"]/M_mantle), "-H2_initial", str(runtime_helpfile.iloc[-1]["H2_atm_kg"]/M_mantle), "-N2_initial", str(runtime_helpfile.iloc[-1]["N2_atm_kg"]/M_mantle), "-CH4_initial", str(runtime_helpfile.iloc[-1]["CH4_atm_kg"]/M_mantle), "-O2_initial", str(runtime_helpfile.iloc[-1]["O2_atm_kg"]/M_mantle), "-CO_initial", str(runtime_helpfile.iloc[-1]["CO_atm_kg"]/M_mantle), "-S_initial", str(runtime_helpfile.iloc[-1]["S_atm_kg"]/M_mantle), "-He_initial", str(runtime_helpfile.iloc[-1]["He_atm_kg"]/M_mantle) ]
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(runtime_helpfile.iloc[-1]["H2O_atm_kg"]/M_mantle), "-CO2_initial", str(runtime_helpfile.iloc[-1]["CO2_atm_kg"]/M_mantle), "-H2_initial", str(runtime_helpfile.iloc[-1]["H2_atm_kg"]/M_mantle), "-N2_initial", str(runtime_helpfile.iloc[-1]["N2_atm_kg"]/M_mantle), "-CH4_initial", str(runtime_helpfile.iloc[-1]["CH4_atm_kg"]/M_mantle), "-O2_initial", str(runtime_helpfile.iloc[-1]["O2_atm_kg"]/M_mantle), "-CO_initial", str(runtime_helpfile.iloc[-1]["CO_atm_kg"]/M_mantle), "-S_initial", str(runtime_helpfile.iloc[-1]["S_atm_kg"]/M_mantle), "-He_initial", str(runtime_helpfile.iloc[-1]["He_atm_kg"]/M_mantle) ]
 
     # Runtime info
     coupler_utils.PrintSeparator()
@@ -229,6 +229,9 @@ while time_current < time_target:
 
     # Increase iteration counter
     loop_no += 1
+
+    # Recalculate melt phase volatile abundance for SPIDER restart
+    coupler_utils.ModifiedHenrysLaw( atm_chemistry, output_dir, ic_filename )
 
     # SPIDER restart call sequence
     # ---->> HERE THE VOLATILES FROM VULCAN NEED TO BE RE-FED; OPTION DOES NOT EXIST IN SPIDER CURRENTLY!
