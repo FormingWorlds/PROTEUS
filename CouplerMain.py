@@ -111,54 +111,18 @@ if start_condition == "1":
     runtime_helpfile = coupler_utils.UpdateHelpfile(loop_no, output_dir, runtime_helpfile_name)
 
     # Run VULCAN
-    atm_chemistry = coupler_utils.RunVulcan( time_current, loop_no, vulcan_dir, coupler_dir, output_dir, 'spider_input/spider_elements.dat', runtime_helpfile, R_solid_planet )
+    atm_chemistry = coupler_utils.RunVULCAN( time_current, loop_no, vulcan_dir, coupler_dir, output_dir, 'spider_input/spider_elements.dat', runtime_helpfile, R_solid_planet )
 
-    # # Generate/adapt VULCAN input files
-    # coupler_utils.GenerateVulcanInputFile( time_current, loop_no, vulcan_dir, 'spider_input/spider_elements.dat', runtime_helpfile )
+    # plot_atmosphere.plot_mixing_ratios(output_dir, atm_chemistry, int(time_current)) # specific time steps
 
-    # # Runtime info
-    # coupler_utils.PrintSeparator()
-    # print("VULCAN run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-    # coupler_utils.PrintSeparator()
-
-    # # Switch to VULCAN directory; run VULCAN, switch back to main directory
-    # os.chdir(vulcan_dir)
-    # subprocess.run(["python", "vulcan.py", "-n"], shell=False)
-    # os.chdir(coupler_dir)
-
-    # # Copy VULCAN dumps to output folder
-    # shutil.copy(vulcan_dir+'output/vulcan_EQ.txt', output_dir+str(int(time_current))+"_atm_chemistry.dat")
-
-    # # Read in data from VULCAN output
-    # atm_chemistry = pd.read_csv(output_dir+str(int(time_current))+"_atm_chemistry.dat", skiprows=1, delim_whitespace=True)
-    # print(atm_chemistry.iloc[:, 0:5])
-
-    plot_atmosphere.plot_mixing_ratios(output_dir, atm_chemistry, int(time_current)) # specific time steps
-
-    # Interpolate TOA heating from Baraffe models and distance from star
-    p_s = atm_chemistry.iloc[0]["Pressure"]
-    stellar_toa_heating, solar_lum = coupler_utils.InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance)
-
-    # Runtime info
-    coupler_utils.PrintSeparator()
-    print("SOCRATES run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-    coupler_utils.PrintSeparator()
-    # print(volatiles_mixing_ratio)
-
-    # Calculate OLR flux for a given surface temperature w/ SOCRATES
-    ## TO DO: Adapt to read in atmospheric profile from VULCAN
-    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, runtime_helpfile.iloc[-1]["T_surf"], stellar_toa_heating, p_s, atm_chemistry)) # W/m^2
-
-    # Save OLR flux to be fed to SPIDER
-    with open(output_dir+"OLRFlux.dat", "a") as f:
-        f.write(str(float(time_current))+" "+str(float(heat_flux))+"\n")
-        f.close()
+    # Run SOCRATES
+    heat_flux, stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_no )
 
     # Find last file for SPIDER restart
     ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
 
     # Output during runtime
-    coupler_utils.PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
+    coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], heat_flux, ic_filename, stellar_toa_heating, solar_lum)
 
     # Reset number of computing steps to reach time_target
     dtime       = time_target - time_current
