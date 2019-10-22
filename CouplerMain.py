@@ -60,7 +60,6 @@ S_ppm                 = 0.0        # ppm
 
 # Define runtime helpfile names and generate dataframes
 runtime_helpfile_name = "runtime_properties.csv"
-# runtime_helpfile = coupler_utils.GenerateRuntimeHelpfiles(output_dir, runtime_helpfile_name)
 
 # Planetary and magma ocean start configuration
 star_mass             = 1.0          # M_sol options: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4
@@ -72,11 +71,6 @@ loop_no = 0
 if start_condition == "2":
     loop_no += 1
 
-    # myjson_o = su.MyJSON( output_dir+'{}.json'.format(time) )
-    # core_mass   = myjson_o.get_dict_values(['atmosphere','mass_core'])
-    # mantle_mass = myjson_o.get_dict_values(['atmosphere','mass_mantle'])
-    # planet_mass = core_mass + mantle_mass
-
 # Inform about start of runtime
 print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 print("::::::::::::: START INIT LOOP |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
@@ -86,12 +80,7 @@ print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 if start_condition == "1":
 
     # Delete old SPIDER output
-    coupler_utils.PrintSeparator()
-    print("Remove old output files:", end =" ")
-    for file in natsorted(glob.glob(output_dir+"*.*")):
-        os.remove(file)
-        print(os.path.basename(file), end =" ")
-    print("==> Done.")
+    coupler_utils.CleanOutputDir( output_dir )
 
     # SPIDER initialization call sequence 
     call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(H2O_ppm), "-CO2_initial", str(CO2_ppm), "-H2_initial", str(H2_ppm), "-N2_initial", str(N2_ppm), "-CH4_initial", str(CH4_ppm), "-O2_initial", str(O2_ppm), "-CO_initial", str(CO_ppm), "-S_initial", str(S_ppm), "-He_initial", str(He_ppm) ]
@@ -112,8 +101,6 @@ if start_condition == "1":
 
     # Run VULCAN
     atm_chemistry = coupler_utils.RunVULCAN( time_current, loop_no, vulcan_dir, coupler_dir, output_dir, 'spider_input/spider_elements.dat', runtime_helpfile, R_solid_planet )
-
-    # plot_atmosphere.plot_mixing_ratios(output_dir, atm_chemistry, int(time_current)) # specific time steps
 
     # Run SOCRATES
     heat_flux, stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_no )

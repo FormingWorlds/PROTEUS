@@ -15,6 +15,8 @@ import fileinput # https://kaijento.github.io/2017/05/28/python-replacing-lines-
 import plot_atmosphere
 import SocRadConv
 import SocRadModel
+from natsort import natsorted #https://pypi.python.org/pypi/natsort
+import glob
 
 ### Constants ###
 
@@ -548,4 +550,14 @@ def RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir
         f.close()
 
     return heat_flux, stellar_toa_heating, solar_lum
+
+
+def CleanOutputDir( output_dir ):
+
+    PrintSeparator()
+    print("Remove old output files:", end =" ")
+    for file in natsorted(glob.glob(output_dir+"*.*")):
+        os.remove(file)
+        print(os.path.basename(file), end =" ")
+    print("==> Done.")
 
