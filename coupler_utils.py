@@ -7,9 +7,11 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 import pandas as pd
 from scipy import interpolate
-import spider_coupler_utils
+import spider_coupler_utils as su
 import pandas as pd
 import json
+import subprocess
+import fileinput # https://kaijento.github.io/2017/05/28/python-replacing-lines-in-file/
 
 ### Constants ###
 
@@ -246,7 +248,7 @@ def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
 
     z_profile       = np.zeros(len(P_profile))
     P_s             = np.max(P_profile)
-    grav_s          = spider_coupler_utils.gravity( m_planet, r_planet )
+    grav_s          = su.gravity( m_planet, r_planet )
 
     # print(np.max(T_profile), np.min(T_profile))
 
@@ -292,7 +294,7 @@ def UpdateHelpfile(loop_no, output_dir, file_name, runtime_helpfile=[]):
         input_flag = runtime_helpfile.iloc[-1]["Input"]
 
     # Get only last sim time!
-    sim_times = spider_coupler_utils.get_all_output_times(output_dir)  # yr
+    sim_times = su.get_all_output_times(output_dir)  # yr
     sim_time = sim_times[-1]
 
     keys_t = ( ('atmosphere','mass_liquid'),
@@ -359,8 +361,8 @@ def UpdateHelpfile(loop_no, output_dir, file_name, runtime_helpfile=[]):
                ('rheological_front_phi','phi_global'),
                ('atmosphere','Fatm') )
 
-    # data_a = spider_coupler_utils.get_dict_surface_values_for_times( keys_t, sim_times )
-    data_a = spider_coupler_utils.get_dict_surface_values_for_specific_time( keys_t, sim_time )
+    # data_a = su.get_dict_surface_values_for_times( keys_t, sim_times )
+    data_a = su.get_dict_surface_values_for_specific_time( keys_t, sim_time )
 
     # Mass properties
     mass_liquid_a = data_a[0,:]
@@ -690,7 +692,7 @@ def PrintHalfSeparator():
 #     return volatiles_ppm, volatiles_mass, volatiles_mixing_ratio, elements_XH_ratio
 
 # Generate/adapt VULCAN input files
-def GenerateVulcanInputFile( time_current, loop_no, vulcan_dir, file_name, runtime_helpfile ):
+def GenerateVulcanInputFile( time_current, loop_no, vulcan_dir, file_name, runtime_helpfile, R_solid_planet ):
 
     # Overwrite file when starting from scratch
     if loop_no == 0:
@@ -702,6 +704,25 @@ def GenerateVulcanInputFile( time_current, loop_no, vulcan_dir, file_name, runti
     # Write elemental X/H ratios
     with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
         file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["O/H"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["C/H"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["N/H"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["S/H"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["He/H"]))+"\n")
+
+    # Change surface gravity in VULCAN init file
+
+    # Calculate current surface gravity
+    M_solid_planet = runtime_helpfile.iloc[-1]["M_core"] + runtime_helpfile.iloc[-1]["M_mantle"]
+    grav_s         = su.gravity( M_solid_planet, float(R_solid_planet) ) * 100. # cm s^-2
+
+    replacement = {
+        'g = *': 'g = '+str(grav_s)+' # surface gravity (cm/s^2)'
+    }
+
+    for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
+        if line.strip().startswith('g = '):
+            line = 'g = '+str(grav_s)+' # surface gravity (cm/s^2)\n'
+        sys.stdout.write(line)
+
+    # for line in fileinput.input(vulcan_dir+'vulcan_cfg.py'):
+    #     line = line.rstrip('\r\n')
+    #     print(replacement.get(line, line))
 
 
 def ModifiedHenrysLaw( atm_chemistry, output_dir, file_name ):
@@ -759,4 +780,28 @@ def ModifiedHenrysLaw( atm_chemistry, output_dir, file_name ):
         json.dump(data, f)
 
 
+    # run VULCAN
+def RunVulcan( time_current, loop_no, vulcan_dir, coupler_dir, output_dir, spider_input_file, runtime_helpfile, R_solid_planet ):
+
+    # Generate/adapt VULCAN input files
+    GenerateVulcanInputFile( time_current, loop_no, vulcan_dir, spider_input_file, runtime_helpfile, R_solid_planet )
+
+    # Runtime info
+    PrintSeparator()
+    print("VULCAN run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    PrintSeparator()
+
+    # Switch to VULCAN directory; run VULCAN, switch back to main directory
+    os.chdir(vulcan_dir)
+    subprocess.run(["python", "vulcan.py", "-n"], shell=False)
+    os.chdir(coupler_dir)
+
+    # Copy VULCAN dumps to output folder
+    shutil.copy(vulcan_dir+'output/vulcan_EQ.txt', output_dir+str(int(time_current))+"_atm_chemistry.dat")
+
+    # Read in data from VULCAN output
+    atm_chemistry = pd.read_csv(output_dir+str(int(time_current))+"_atm_chemistry.dat", skiprows=1, delim_whitespace=True)
+    print(atm_chemistry.iloc[:, 0:5])
+
+    return atm_chemistry
 

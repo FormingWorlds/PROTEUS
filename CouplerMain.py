@@ -110,33 +110,33 @@ if start_condition == "1":
     # Save surface temperature to file in 'output_dir'
     runtime_helpfile = coupler_utils.UpdateHelpfile(loop_no, output_dir, runtime_helpfile_name)
 
-    # Generate/adapt VULCAN input files
-    coupler_utils.GenerateVulcanInputFile( time_current, loop_no, vulcan_dir, 'spider_input/spider_elements.dat', runtime_helpfile )
+    # Run VULCAN
+    atm_chemistry = coupler_utils.RunVulcan( time_current, loop_no, vulcan_dir, coupler_dir, output_dir, 'spider_input/spider_elements.dat', runtime_helpfile, R_solid_planet )
 
-    # Runtime info
-    coupler_utils.PrintSeparator()
-    print("VULCAN run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-    coupler_utils.PrintSeparator()
+    # # Generate/adapt VULCAN input files
+    # coupler_utils.GenerateVulcanInputFile( time_current, loop_no, vulcan_dir, 'spider_input/spider_elements.dat', runtime_helpfile )
 
-    # Switch to VULCAN directory; run VULCAN, switch back to main directory
-    os.chdir(vulcan_dir)
-    subprocess.run(["python", "vulcan.py", "-n"], shell=False)
-    os.chdir(coupler_dir)
+    # # Runtime info
+    # coupler_utils.PrintSeparator()
+    # print("VULCAN run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    # coupler_utils.PrintSeparator()
 
-    # Copy VULCAN dumps to output folder
-    shutil.copy(vulcan_dir+'output/vulcan_EQ.txt', output_dir+str(int(time_current))+"_atm_chemistry.dat")
+    # # Switch to VULCAN directory; run VULCAN, switch back to main directory
+    # os.chdir(vulcan_dir)
+    # subprocess.run(["python", "vulcan.py", "-n"], shell=False)
+    # os.chdir(coupler_dir)
 
-    # Read in data from VULCAN output
-    atm_chemistry = pd.read_csv(output_dir+str(int(time_current))+"_atm_chemistry.dat", skiprows=1, delim_whitespace=True)
-    print(atm_chemistry.iloc[:, 0:5])
+    # # Copy VULCAN dumps to output folder
+    # shutil.copy(vulcan_dir+'output/vulcan_EQ.txt', output_dir+str(int(time_current))+"_atm_chemistry.dat")
+
+    # # Read in data from VULCAN output
+    # atm_chemistry = pd.read_csv(output_dir+str(int(time_current))+"_atm_chemistry.dat", skiprows=1, delim_whitespace=True)
+    # print(atm_chemistry.iloc[:, 0:5])
 
     plot_atmosphere.plot_mixing_ratios(output_dir, atm_chemistry, int(time_current)) # specific time steps
 
     # Interpolate TOA heating from Baraffe models and distance from star
-    M_solid_planet = runtime_helpfile.iloc[-1]["M_core"] + runtime_helpfile.iloc[-1]["M_mantle"]
-    grav_s      = su.gravity( M_solid_planet, float(R_solid_planet) )
-    M_vol_tot   = runtime_helpfile.iloc[-1]["M_atm"]
-    p_s = ( M_vol_tot * grav_s / ( 4. * np.pi * (float(R_solid_planet)**2.) ) ) * 1e-2 # mbar
+    p_s = atm_chemistry.iloc[0]["Pressure"]
     stellar_toa_heating, solar_lum = coupler_utils.InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance)
 
     # Runtime info
@@ -168,8 +168,8 @@ if start_condition == "1":
     loop_no += 1
 
     # Restart SPIDER with self-consistent atmospheric composition
-    M_mantle = runtime_helpfile.iloc[-1]["M_mantle"]
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(runtime_helpfile.iloc[-1]["H2O_atm_kg"]/M_mantle), "-CO2_initial", str(runtime_helpfile.iloc[-1]["CO2_atm_kg"]/M_mantle), "-H2_initial", str(runtime_helpfile.iloc[-1]["H2_atm_kg"]/M_mantle), "-N2_initial", str(runtime_helpfile.iloc[-1]["N2_atm_kg"]/M_mantle), "-CH4_initial", str(runtime_helpfile.iloc[-1]["CH4_atm_kg"]/M_mantle), "-O2_initial", str(runtime_helpfile.iloc[-1]["O2_atm_kg"]/M_mantle), "-CO_initial", str(runtime_helpfile.iloc[-1]["CO_atm_kg"]/M_mantle), "-S_initial", str(runtime_helpfile.iloc[-1]["S_atm_kg"]/M_mantle), "-He_initial", str(runtime_helpfile.iloc[-1]["He_atm_kg"]/M_mantle) ]
+    M_mantle_liquid = runtime_helpfile.iloc[-1]["M_mantle_liquid"]
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(runtime_helpfile.iloc[-1]["H2O_atm_kg"]/M_mantle_liquid), "-CO2_initial", str(runtime_helpfile.iloc[-1]["CO2_atm_kg"]/M_mantle_liquid), "-H2_initial", str(runtime_helpfile.iloc[-1]["H2_atm_kg"]/M_mantle_liquid), "-N2_initial", str(runtime_helpfile.iloc[-1]["N2_atm_kg"]/M_mantle_liquid), "-CH4_initial", str(runtime_helpfile.iloc[-1]["CH4_atm_kg"]/M_mantle_liquid), "-O2_initial", str(runtime_helpfile.iloc[-1]["O2_atm_kg"]/M_mantle_liquid), "-CO_initial", str(runtime_helpfile.iloc[-1]["CO_atm_kg"]/M_mantle_liquid), "-S_initial", str(runtime_helpfile.iloc[-1]["S_atm_kg"]/M_mantle_liquid), "-He_initial", str(runtime_helpfile.iloc[-1]["He_atm_kg"]/M_mantle_liquid) ]
 
     # Runtime info
     coupler_utils.PrintSeparator()
