@@ -97,74 +97,95 @@ mean_distance         = 1.0          # AU, star-planet distance
 time_offset           = 100.         # Myr, start of magma ocean after star formation
 
 # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
-loop_no = 0
-if start_condition == "2":
-    loop_no += 1
+loop_counter = { "total": 0, "init": 0, "atm": 0 }
+
+# If restart skip init loop
+if SPIDER_options["start_condition"] == 2:
+    loop_counter["total"] += 1
+    loop_counter["init"]  += 1
+    loop_counter["atm"]   += 1
 
 # Inform about start of runtime
-print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 print("::::::::::::: START INIT LOOP |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
-# Initialize SPIDER to generate first output file
-if start_condition == "1":
+if SPIDER_options["start_condition"] == 1:
 
     # Delete old SPIDER output
     coupler_utils.CleanOutputDir( output_dir )
 
-    # Run SPIDER
-    SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_no )
+    # Generate help quantities
+    runtime_helpfile = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name)
 
-    # Save surface temperature to file in 'output_dir'
-    runtime_helpfile = coupler_utils.UpdateHelpfile(loop_no, output_dir, runtime_helpfile_name)
+    print("SPIDER_options:", SPIDER_options)
+    print("runtime_helpfile:", runtime_helpfile)
 
-    # Run VULCAN
-    atm_chemistry = coupler_utils.RunVULCAN( time_current, loop_no, vulcan_dir, coupler_dir, output_dir, 'spider_input/spider_elements.dat', runtime_helpfile, R_solid_planet )
+    # Init loop for coupled interior-atmosphere system to equilibrate starting conditions
+    while loop_counter["init"] < 1:
 
-    # Run SOCRATES
-    SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_no )
+        # Run SPIDER
+        SPIDER_options, runtime_helpfile = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name )
 
-    # Find last file for SPIDER restart
-    ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
+        print("SPIDER_options:", SPIDER_options)
+        print("runtime_helpfile:", runtime_helpfile)
 
-    # Output during runtime
-    coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], ic_filename, stellar_toa_heating, solar_lum)
+        # Init loop atmosphere: equilibrate atmosphere starting conditions
+        while loop_counter["init"] < 1:
 
-    # Reset number of computing steps to reach time_target
-    dtime       = time_target - time_current
-    nstepsmacro = str( math.ceil( dtime / float(dtmacro) ) )
+            # Run VULCAN
+            atm_chemistry = coupler_utils.RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, 'spider_input/spider_elements.dat', runtime_helpfile, SPIDER_options["R_solid_planet"] )
 
-    # Increase iteration counter
-    loop_no += 1
+            # Run SOCRATES
+            SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter )
 
-    # Restart SPIDER with self-consistent atmospheric composition
-    M_mantle_liquid = runtime_helpfile.iloc[-1]["M_mantle_liquid"]
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(runtime_helpfile.iloc[-1]["H2O_atm_kg"]/M_mantle_liquid), "-CO2_initial", str(runtime_helpfile.iloc[-1]["CO2_atm_kg"]/M_mantle_liquid), "-H2_initial", str(runtime_helpfile.iloc[-1]["H2_atm_kg"]/M_mantle_liquid), "-N2_initial", str(runtime_helpfile.iloc[-1]["N2_atm_kg"]/M_mantle_liquid), "-CH4_initial", str(runtime_helpfile.iloc[-1]["CH4_atm_kg"]/M_mantle_liquid), "-O2_initial", str(runtime_helpfile.iloc[-1]["O2_atm_kg"]/M_mantle_liquid), "-CO_initial", str(runtime_helpfile.iloc[-1]["CO_atm_kg"]/M_mantle_liquid), "-S_initial", str(runtime_helpfile.iloc[-1]["S_atm_kg"]/M_mantle_liquid), "-He_initial", str(runtime_helpfile.iloc[-1]["He_atm_kg"]/M_mantle_liquid) ]
+            # Increase iteration counter
+            loop_counter["atm"]  += 1
 
-    # Runtime info
-    coupler_utils.PrintSeparator()
-    print("SPIDER run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "| flags:")
-    for flag in call_sequence:
-        print(flag, end =" ")
-    print()
-    coupler_utils.PrintSeparator()
+            # / init loop atmosphere
 
-    # Restart SPIDER
-    subprocess.call(call_sequence)
+        # Find last file for SPIDER restart
+        ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
+
+        # Output during runtime
+        coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], ic_filename, stellar_toa_heating, solar_lum)
+
+        # Increase iteration counter
+        loop_counter["init"] += 1
+
+         # / init loop interior-atmosphere
+
+    # Increase iteration counters   
+    loop_counter["total"]   += 1
+
+        # # Restart SPIDER with self-consistent atmospheric composition
+        # M_mantle_liquid = runtime_helpfile.iloc[-1]["M_mantle_liquid"]
+        # call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(runtime_helpfile.iloc[-1]["H2O_atm_kg"]/M_mantle_liquid), "-CO2_initial", str(runtime_helpfile.iloc[-1]["CO2_atm_kg"]/M_mantle_liquid), "-H2_initial", str(runtime_helpfile.iloc[-1]["H2_atm_kg"]/M_mantle_liquid), "-N2_initial", str(runtime_helpfile.iloc[-1]["N2_atm_kg"]/M_mantle_liquid), "-CH4_initial", str(runtime_helpfile.iloc[-1]["CH4_atm_kg"]/M_mantle_liquid), "-O2_initial", str(runtime_helpfile.iloc[-1]["O2_atm_kg"]/M_mantle_liquid), "-CO_initial", str(runtime_helpfile.iloc[-1]["CO_atm_kg"]/M_mantle_liquid), "-S_initial", str(runtime_helpfile.iloc[-1]["S_atm_kg"]/M_mantle_liquid), "-He_initial", str(runtime_helpfile.iloc[-1]["He_atm_kg"]/M_mantle_liquid) ]
+
+        # # Runtime info
+        # coupler_utils.PrintSeparator()
+        # print("SPIDER run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "| flags:")
+        # for flag in call_sequence:
+        #     print(flag, end =" ")
+        # print()
+        # coupler_utils.PrintSeparator()
+
+        # # Restart SPIDER
+        # subprocess.call(call_sequence)
 
     # Reset restart flag
-    start_condition     = "2"
+    SPIDER_options["start_condition"] = 2
 
     # Inform about start of main loops
-    print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     print("::::::::::::: START MAIN LOOP |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-    print("::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
 # Ping-pong between SPIDER and SOCRATES until target time is reached
 while time_current < time_target:
 
     # Save surface temperature to file in 'output_dir'
-    runtime_helpfile = coupler_utils.UpdateHelpfile(loop_no, output_dir, runtime_helpfile_name, runtime_helpfile)
+    runtime_helpfile = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name, runtime_helpfile)
 
     # Interpolate TOA heating from Baraffe models and distance from star
     M_solid_planet = runtime_helpfile.iloc[-1]["M_core"] + runtime_helpfile.iloc[-1]["M_mantle"]
@@ -175,7 +196,7 @@ while time_current < time_target:
 
     # Runtime info
     coupler_utils.PrintSeparator()
-    print("SOCRATES run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print("SOCRATES run, loop ", loop_counter, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     coupler_utils.PrintSeparator()
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
@@ -198,7 +219,7 @@ while time_current < time_target:
     nstepsmacro = str( math.ceil( dtime / float(dtmacro) ) )
 
     # Increase iteration counter
-    loop_no += 1
+    loop_counter["total"] += 1
 
     # Recalculate melt phase volatile abundance for SPIDER restart
     coupler_utils.ModifiedHenrysLaw( atm_chemistry, output_dir, last_filename )
@@ -209,7 +230,7 @@ while time_current < time_target:
 
     # Runtime info
     coupler_utils.PrintSeparator()
-    print("SPIDER run, loop ", loop_no, "–", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "– flags:")
+    print("SPIDER run, loop ", loop_counter, "–", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "– flags:")
     for flag in call_sequence:
         print(flag, end =" ")
     print()

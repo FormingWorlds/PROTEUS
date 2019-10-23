@@ -147,7 +147,7 @@ def PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, ic_filenam
     print("Last file name:", ic_filename)
     print("---------------------------------------------------------")
 
-def UpdateHelpfile(loop_no, output_dir, file_name, runtime_helpfile=[]):
+def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
 
     # # Check if file is already existent, if not, generate and save
     # if os.path.isfile(output_dir+file_name):
@@ -155,266 +155,272 @@ def UpdateHelpfile(loop_no, output_dir, file_name, runtime_helpfile=[]):
     # else:
     #     runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_atm', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
     #     runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ") 
-    if runtime_helpfile.empty == True:
+
+    # # Check if SPIDER was previously initalized
+    # if loop_counter["total"] == 0 and loop_counter["init"] == 0 and loop_counter["atm"] == 0:
+
+    # Check if file is already existent, if not, generate and save
+    if loop_counter["total"] == 0 and loop_counter["init"] == 0:
         runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_atm', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
         runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ") 
 
-
-    if runtime_helpfile.empty:
+    if loop_counter["total"] == 0:
         input_flag = "INIT"
     else:
-        input_flag = runtime_helpfile.iloc[-1]["Input"]
+        input_flag = "RUN"
 
-    # Get only last sim time!
-    sim_times = su.get_all_output_times(output_dir)  # yr
-    sim_time = sim_times[-1]
+    if loop_counter["init"] >= 1:
 
-    keys_t = ( ('atmosphere','mass_liquid'),
-               ('atmosphere','mass_solid'),
-               ('atmosphere','mass_mantle'),
-               ('atmosphere','mass_core'),
+        # Get only last sim time!
+        sim_times = su.get_all_output_times(output_dir)  # yr
+        sim_time = sim_times[-1]
 
-               ('atmosphere','H2O','liquid_kg'),
-               ('atmosphere','H2O','solid_kg'),
-               ('atmosphere','H2O','initial_kg'),
-               ('atmosphere','H2O','atmosphere_kg'),
-               ('atmosphere','H2O','atmosphere_bar'),
+        keys_t = ( ('atmosphere','mass_liquid'),
+                   ('atmosphere','mass_solid'),
+                   ('atmosphere','mass_mantle'),
+                   ('atmosphere','mass_core'),
 
-               ('atmosphere','CO2','liquid_kg'),
-               ('atmosphere','CO2','solid_kg'),
-               ('atmosphere','CO2','initial_kg'),
-               ('atmosphere','CO2','atmosphere_kg'),
-               ('atmosphere','CO2','atmosphere_bar'),
+                   ('atmosphere','H2O','liquid_kg'),
+                   ('atmosphere','H2O','solid_kg'),
+                   ('atmosphere','H2O','initial_kg'),
+                   ('atmosphere','H2O','atmosphere_kg'),
+                   ('atmosphere','H2O','atmosphere_bar'),
 
-               ('atmosphere','H2','liquid_kg'),
-               ('atmosphere','H2','solid_kg'),
-               ('atmosphere','H2','initial_kg'),
-               ('atmosphere','H2','atmosphere_kg'),
-               ('atmosphere','H2','atmosphere_bar'),
+                   ('atmosphere','CO2','liquid_kg'),
+                   ('atmosphere','CO2','solid_kg'),
+                   ('atmosphere','CO2','initial_kg'),
+                   ('atmosphere','CO2','atmosphere_kg'),
+                   ('atmosphere','CO2','atmosphere_bar'),
 
-               ('atmosphere','CH4','liquid_kg'),
-               ('atmosphere','CH4','solid_kg'),
-               ('atmosphere','CH4','initial_kg'),
-               ('atmosphere','CH4','atmosphere_kg'),
-               ('atmosphere','CH4','atmosphere_bar'),
+                   ('atmosphere','H2','liquid_kg'),
+                   ('atmosphere','H2','solid_kg'),
+                   ('atmosphere','H2','initial_kg'),
+                   ('atmosphere','H2','atmosphere_kg'),
+                   ('atmosphere','H2','atmosphere_bar'),
 
-               ('atmosphere','CO','liquid_kg'),
-               ('atmosphere','CO','solid_kg'),
-               ('atmosphere','CO','initial_kg'),
-               ('atmosphere','CO','atmosphere_kg'),
-               ('atmosphere','CO','atmosphere_bar'),
+                   ('atmosphere','CH4','liquid_kg'),
+                   ('atmosphere','CH4','solid_kg'),
+                   ('atmosphere','CH4','initial_kg'),
+                   ('atmosphere','CH4','atmosphere_kg'),
+                   ('atmosphere','CH4','atmosphere_bar'),
 
-               ('atmosphere','N2','liquid_kg'),
-               ('atmosphere','N2','solid_kg'),
-               ('atmosphere','N2','initial_kg'),
-               ('atmosphere','N2','atmosphere_kg'),
-               ('atmosphere','N2','atmosphere_bar'),
+                   ('atmosphere','CO','liquid_kg'),
+                   ('atmosphere','CO','solid_kg'),
+                   ('atmosphere','CO','initial_kg'),
+                   ('atmosphere','CO','atmosphere_kg'),
+                   ('atmosphere','CO','atmosphere_bar'),
 
-               ('atmosphere','O2','liquid_kg'),
-               ('atmosphere','O2','solid_kg'),
-               ('atmosphere','O2','initial_kg'),
-               ('atmosphere','O2','atmosphere_kg'),
-               ('atmosphere','O2','atmosphere_bar'),
+                   ('atmosphere','N2','liquid_kg'),
+                   ('atmosphere','N2','solid_kg'),
+                   ('atmosphere','N2','initial_kg'),
+                   ('atmosphere','N2','atmosphere_kg'),
+                   ('atmosphere','N2','atmosphere_bar'),
 
-               ('atmosphere','S','liquid_kg'),
-               ('atmosphere','S','solid_kg'),
-               ('atmosphere','S','initial_kg'),
-               ('atmosphere','S','atmosphere_kg'),
-               ('atmosphere','S','atmosphere_bar'),
+                   ('atmosphere','O2','liquid_kg'),
+                   ('atmosphere','O2','solid_kg'),
+                   ('atmosphere','O2','initial_kg'),
+                   ('atmosphere','O2','atmosphere_kg'),
+                   ('atmosphere','O2','atmosphere_bar'),
 
-               ('atmosphere','He','liquid_kg'),
-               ('atmosphere','He','solid_kg'),
-               ('atmosphere','He','initial_kg'),
-               ('atmosphere','He','atmosphere_kg'),
-               ('atmosphere','He','atmosphere_bar'),
+                   ('atmosphere','S','liquid_kg'),
+                   ('atmosphere','S','solid_kg'),
+                   ('atmosphere','S','initial_kg'),
+                   ('atmosphere','S','atmosphere_kg'),
+                   ('atmosphere','S','atmosphere_bar'),
 
-               ('atmosphere','temperature_surface'),
-               ('atmosphere','emissivity'),
-               ('rheological_front_phi','phi_global'),
-               ('atmosphere','Fatm') )
+                   ('atmosphere','He','liquid_kg'),
+                   ('atmosphere','He','solid_kg'),
+                   ('atmosphere','He','initial_kg'),
+                   ('atmosphere','He','atmosphere_kg'),
+                   ('atmosphere','He','atmosphere_bar'),
 
-    # data_a = su.get_dict_surface_values_for_times( keys_t, sim_times )
-    data_a = su.get_dict_surface_values_for_specific_time( keys_t, sim_time )
+                   ('atmosphere','temperature_surface'),
+                   ('atmosphere','emissivity'),
+                   ('rheological_front_phi','phi_global'),
+                   ('atmosphere','Fatm') )
 
-    # Mass properties
-    mass_liquid_a = data_a[0,:]
-    mass_solid_a = data_a[1,:]
-    mass_mantle_a = data_a[2,:]
-    mass_mantle = mass_mantle_a[0]          # time independent
-    mass_core_a = data_a[3,:]
-    mass_core = mass_core_a[0]              # time independent
-    planet_mass_a = mass_core_a + mass_mantle_a
-    planet_mass = mass_core + mass_mantle   # time independent
+        # data_a = su.get_dict_surface_values_for_times( keys_t, sim_times )
+        data_a = su.get_dict_surface_values_for_specific_time( keys_t, sim_time )
 
-    # compute total mass (kg) in each reservoir
-    H2O_liquid_kg_a = data_a[4,:]
-    H2O_solid_kg_a = data_a[5,:]
-    H2O_total_kg_a = data_a[6,:]
-    H2O_total_kg = H2O_total_kg_a[0]        # time-independent
-    H2O_atmos_kg_a = data_a[7,:]
-    H2O_atmos_a = data_a[8,:]
-    H2O_escape_kg_a = H2O_total_kg - H2O_liquid_kg_a - H2O_solid_kg_a - H2O_atmos_kg_a
+        # Mass properties
+        mass_liquid_a = data_a[0,:]
+        mass_solid_a = data_a[1,:]
+        mass_mantle_a = data_a[2,:]
+        mass_mantle = mass_mantle_a[0]          # time independent
+        mass_core_a = data_a[3,:]
+        mass_core = mass_core_a[0]              # time independent
+        planet_mass_a = mass_core_a + mass_mantle_a
+        planet_mass = mass_core + mass_mantle   # time independent
 
-    CO2_liquid_kg_a = data_a[9,:]
-    CO2_solid_kg_a = data_a[10,:]
-    CO2_total_kg_a = data_a[11,:]
-    CO2_total_kg = CO2_total_kg_a[0]        # time-independent
-    CO2_atmos_kg_a = data_a[12,:]
-    CO2_atmos_a = data_a[13,:]
-    CO2_escape_kg_a = CO2_total_kg - CO2_liquid_kg_a - CO2_solid_kg_a - CO2_atmos_kg_a
+        # compute total mass (kg) in each reservoir
+        H2O_liquid_kg_a = data_a[4,:]
+        H2O_solid_kg_a = data_a[5,:]
+        H2O_total_kg_a = data_a[6,:]
+        H2O_total_kg = H2O_total_kg_a[0]        # time-independent
+        H2O_atmos_kg_a = data_a[7,:]
+        H2O_atmos_a = data_a[8,:]
+        H2O_escape_kg_a = H2O_total_kg - H2O_liquid_kg_a - H2O_solid_kg_a - H2O_atmos_kg_a
 
-    H2_liquid_kg_a = data_a[14,:]
-    H2_solid_kg_a = data_a[15,:]
-    H2_total_kg_a = data_a[16,:]
-    H2_total_kg = H2_total_kg_a[0]        # time-independent
-    H2_atmos_kg_a = data_a[17,:]
-    H2_atmos_a = data_a[18,:]
-    H2_escape_kg_a = H2_total_kg - H2_liquid_kg_a - H2_solid_kg_a - H2_atmos_kg_a
+        CO2_liquid_kg_a = data_a[9,:]
+        CO2_solid_kg_a = data_a[10,:]
+        CO2_total_kg_a = data_a[11,:]
+        CO2_total_kg = CO2_total_kg_a[0]        # time-independent
+        CO2_atmos_kg_a = data_a[12,:]
+        CO2_atmos_a = data_a[13,:]
+        CO2_escape_kg_a = CO2_total_kg - CO2_liquid_kg_a - CO2_solid_kg_a - CO2_atmos_kg_a
 
-    CH4_liquid_kg_a = data_a[19,:]
-    CH4_solid_kg_a = data_a[20,:]
-    CH4_total_kg_a = data_a[21,:]
-    CH4_total_kg = CH4_total_kg_a[0]        # time-independent
-    CH4_atmos_kg_a = data_a[22,:]
-    CH4_atmos_a = data_a[23,:]
-    CH4_escape_kg_a = CH4_total_kg - CH4_liquid_kg_a - CH4_solid_kg_a - CH4_atmos_kg_a
+        H2_liquid_kg_a = data_a[14,:]
+        H2_solid_kg_a = data_a[15,:]
+        H2_total_kg_a = data_a[16,:]
+        H2_total_kg = H2_total_kg_a[0]        # time-independent
+        H2_atmos_kg_a = data_a[17,:]
+        H2_atmos_a = data_a[18,:]
+        H2_escape_kg_a = H2_total_kg - H2_liquid_kg_a - H2_solid_kg_a - H2_atmos_kg_a
 
-    CO_liquid_kg_a = data_a[24,:]
-    CO_solid_kg_a = data_a[25,:]
-    CO_total_kg_a = data_a[26,:]
-    CO_total_kg = CO_total_kg_a[0]        # time-independent
-    CO_atmos_kg_a = data_a[27,:]
-    CO_atmos_a = data_a[28,:]
-    CO_escape_kg_a = CO_total_kg - CO_liquid_kg_a - CO_solid_kg_a - CO_atmos_kg_a
+        CH4_liquid_kg_a = data_a[19,:]
+        CH4_solid_kg_a = data_a[20,:]
+        CH4_total_kg_a = data_a[21,:]
+        CH4_total_kg = CH4_total_kg_a[0]        # time-independent
+        CH4_atmos_kg_a = data_a[22,:]
+        CH4_atmos_a = data_a[23,:]
+        CH4_escape_kg_a = CH4_total_kg - CH4_liquid_kg_a - CH4_solid_kg_a - CH4_atmos_kg_a
 
-    N2_liquid_kg_a = data_a[29,:]
-    N2_solid_kg_a = data_a[30,:]
-    N2_total_kg_a = data_a[31,:]
-    N2_total_kg = N2_total_kg_a[0]        # time-independent
-    N2_atmos_kg_a = data_a[32,:]
-    N2_atmos_a = data_a[33,:]
-    N2_escape_kg_a = N2_total_kg - N2_liquid_kg_a - N2_solid_kg_a - N2_atmos_kg_a
+        CO_liquid_kg_a = data_a[24,:]
+        CO_solid_kg_a = data_a[25,:]
+        CO_total_kg_a = data_a[26,:]
+        CO_total_kg = CO_total_kg_a[0]        # time-independent
+        CO_atmos_kg_a = data_a[27,:]
+        CO_atmos_a = data_a[28,:]
+        CO_escape_kg_a = CO_total_kg - CO_liquid_kg_a - CO_solid_kg_a - CO_atmos_kg_a
 
-    O2_liquid_kg_a = data_a[34,:]
-    O2_solid_kg_a = data_a[35,:]
-    O2_total_kg_a = data_a[36,:]
-    O2_total_kg = O2_total_kg_a[0]        # time-independent
-    O2_atmos_kg_a = data_a[37,:]
-    O2_atmos_a = data_a[38,:]
-    O2_escape_kg_a = O2_total_kg - O2_liquid_kg_a - O2_solid_kg_a - O2_atmos_kg_a
+        N2_liquid_kg_a = data_a[29,:]
+        N2_solid_kg_a = data_a[30,:]
+        N2_total_kg_a = data_a[31,:]
+        N2_total_kg = N2_total_kg_a[0]        # time-independent
+        N2_atmos_kg_a = data_a[32,:]
+        N2_atmos_a = data_a[33,:]
+        N2_escape_kg_a = N2_total_kg - N2_liquid_kg_a - N2_solid_kg_a - N2_atmos_kg_a
 
-    S_liquid_kg_a = data_a[39,:]
-    S_solid_kg_a = data_a[40,:]
-    S_total_kg_a = data_a[41,:]
-    S_total_kg = S_total_kg_a[0]        # time-independent
-    S_atmos_kg_a = data_a[42,:]
-    S_atmos_a = data_a[43,:]
-    S_escape_kg_a = S_total_kg - S_liquid_kg_a - S_solid_kg_a - S_atmos_kg_a
+        O2_liquid_kg_a = data_a[34,:]
+        O2_solid_kg_a = data_a[35,:]
+        O2_total_kg_a = data_a[36,:]
+        O2_total_kg = O2_total_kg_a[0]        # time-independent
+        O2_atmos_kg_a = data_a[37,:]
+        O2_atmos_a = data_a[38,:]
+        O2_escape_kg_a = O2_total_kg - O2_liquid_kg_a - O2_solid_kg_a - O2_atmos_kg_a
 
-    He_liquid_kg_a = data_a[44,:]
-    He_solid_kg_a = data_a[45,:]
-    He_total_kg_a = data_a[46,:]
-    He_total_kg = He_total_kg_a[0]        # time-independent
-    He_atmos_kg_a = data_a[47,:]
-    He_atmos_a = data_a[48,:]
-    He_escape_kg_a = He_total_kg - He_liquid_kg_a - He_solid_kg_a - He_atmos_kg_a
+        S_liquid_kg_a = data_a[39,:]
+        S_solid_kg_a = data_a[40,:]
+        S_total_kg_a = data_a[41,:]
+        S_total_kg = S_total_kg_a[0]        # time-independent
+        S_atmos_kg_a = data_a[42,:]
+        S_atmos_a = data_a[43,:]
+        S_escape_kg_a = S_total_kg - S_liquid_kg_a - S_solid_kg_a - S_atmos_kg_a
 
-    temperature_surface_a = data_a[49,:]
-    emissivity_a = data_a[50,:]             # internally computed emissivity
-    phi_global = data_a[51,:]               # global melt fraction
-    Fatm = data_a[52,:]
+        He_liquid_kg_a = data_a[44,:]
+        He_solid_kg_a = data_a[45,:]
+        He_total_kg_a = data_a[46,:]
+        He_total_kg = He_total_kg_a[0]        # time-independent
+        He_atmos_kg_a = data_a[47,:]
+        He_atmos_a = data_a[48,:]
+        He_escape_kg_a = He_total_kg - He_liquid_kg_a - He_solid_kg_a - He_atmos_kg_a
 
-    if input_flag == "INIT":
+        temperature_surface_a = data_a[49,:]
+        emissivity_a = data_a[50,:]             # internally computed emissivity
+        phi_global = data_a[51,:]               # global melt fraction
+        Fatm = data_a[52,:]
 
-        ## For redistribution of total atmosphere mass in VULCAN:
-        H2O_atmos_kg   = H2O_total_kg
-        CO2_atmos_kg   = CO2_total_kg
-        H2_atmos_kg    = H2_total_kg
-        CH4_atmos_kg   = CH4_total_kg
-        CO_atmos_kg    = CO_total_kg
-        N2_atmos_kg    = N2_total_kg
-        O2_atmos_kg    = O2_total_kg
-        S_atmos_kg     = S_total_kg
-        He_atmos_kg    = He_total_kg
+        if input_flag == "INIT":
 
-        ## --> Element X/H ratios for VULCAN input
-        h2o_mol        = H2O_atmos_kg/h2o_mol_mass # mol
-        co2_mol        = CO2_atmos_kg/co2_mol_mass # mol
-        h2_mol         = H2_atmos_kg/h2_mol_mass   # mol
-        ch4_mol        = CH4_atmos_kg/ch4_mol_mass # mol
-        co_mol         = CO_atmos_kg/co_mol_mass   # mol
-        n2_mol         = N2_atmos_kg/n2_mol_mass   # mol
-        o2_mol         = O2_atmos_kg/o2_mol_mass   # mol
-        s_mol          = S_atmos_kg/he_mol_mass    # mol
-        he_mol         = He_atmos_kg/he_mol_mass   # mol
-      
-        # Radiative species + He
-        total_mol      = h2o_mol + co2_mol + h2_mol + ch4_mol + co_mol + n2_mol + o2_mol+ s_mol + he_mol
+            ## For redistribution of total atmosphere mass in VULCAN:
+            H2O_atmos_kg   = H2O_total_kg
+            CO2_atmos_kg   = CO2_total_kg
+            H2_atmos_kg    = H2_total_kg
+            CH4_atmos_kg   = CH4_total_kg
+            CO_atmos_kg    = CO_total_kg
+            N2_atmos_kg    = N2_total_kg
+            O2_atmos_kg    = O2_total_kg
+            S_atmos_kg     = S_total_kg
+            He_atmos_kg    = He_total_kg
 
-        h_mol_total    = h2o_mol * 2. + h2_mol  * 2. + ch4_mol * 4. 
-        o_mol_total    = h2o_mol * 1. + co2_mol * 2. + co_mol  * 1. + o2_mol * 2.
-        c_mol_total    = co2_mol * 1. + ch4_mol * 1. + co_mol  * 1.
-        n_mol_total    = n2_mol  * 2.
-        s_mol_total    = s_mol   * 1. ## TO DO: Take into account major species?
-        he_mol_total   = he_mol  * 1.
+            ## --> Element X/H ratios for VULCAN input
+            h2o_mol        = H2O_atmos_kg/h2o_mol_mass # mol
+            co2_mol        = CO2_atmos_kg/co2_mol_mass # mol
+            h2_mol         = H2_atmos_kg/h2_mol_mass   # mol
+            ch4_mol        = CH4_atmos_kg/ch4_mol_mass # mol
+            co_mol         = CO_atmos_kg/co_mol_mass   # mol
+            n2_mol         = N2_atmos_kg/n2_mol_mass   # mol
+            o2_mol         = O2_atmos_kg/o2_mol_mass   # mol
+            s_mol          = S_atmos_kg/he_mol_mass    # mol
+            he_mol         = He_atmos_kg/he_mol_mass   # mol
+          
+            # Radiative species + He
+            total_mol      = h2o_mol + co2_mol + h2_mol + ch4_mol + co_mol + n2_mol + o2_mol+ s_mol + he_mol
 
-        O_H_ratio  = o_mol_total / h_mol_total       # mol/mol
-        C_H_ratio  = c_mol_total / h_mol_total       # mol/mol
-        N_H_ratio  = n_mol_total / h_mol_total      # mol/mol
-        S_H_ratio  = s_mol_total / h_mol_total       # mol/mol 
-        He_H_ratio = he_mol_total / h_mol_total      # mol/mol 
+            h_mol_total    = h2o_mol * 2. + h2_mol  * 2. + ch4_mol * 4. 
+            o_mol_total    = h2o_mol * 1. + co2_mol * 2. + co_mol  * 1. + o2_mol * 2.
+            c_mol_total    = co2_mol * 1. + ch4_mol * 1. + co_mol  * 1.
+            n_mol_total    = n2_mol  * 2.
+            s_mol_total    = s_mol   * 1. ## TO DO: Take into account major species?
+            he_mol_total   = he_mol  * 1.
 
-        # Counter VULCAN bug with zero abundances
-        if N_H_ratio == 0.: 
-            N_H_ratio = 1e-99
-        if S_H_ratio == 0.: 
-            S_H_ratio = 1e-99
+            O_H_ratio  = o_mol_total / h_mol_total       # mol/mol
+            C_H_ratio  = c_mol_total / h_mol_total       # mol/mol
+            N_H_ratio  = n_mol_total / h_mol_total      # mol/mol
+            S_H_ratio  = s_mol_total / h_mol_total       # mol/mol 
+            He_H_ratio = he_mol_total / h_mol_total      # mol/mol 
 
-        ### TO DO: ADD RECALC OF VOLATILES_PPM FOR INIT LOOP!!!
+            # Counter VULCAN bug with zero abundances
+            if N_H_ratio == 0.: 
+                N_H_ratio = 1e-99
+            if S_H_ratio == 0.: 
+                S_H_ratio = 1e-99
 
-    else:
+            ### TO DO: ADD RECALC OF VOLATILES_PPM FOR INIT LOOP!!!
 
-        h_mol_total = runtime_helpfile.iloc[-1]['H_mol'] # total mol of H
-        O_H_ratio   = runtime_helpfile.iloc[-1]['O/H']       # elemental ratio (N_x/N_y)
-        C_H_ratio   = runtime_helpfile.iloc[-1]['C/H']
-        N_H_ratio   = runtime_helpfile.iloc[-1]['N/H']
-        S_H_ratio   = runtime_helpfile.iloc[-1]['S/H']
-        He_H_ratio  = runtime_helpfile.iloc[-1]['He/H']
+        else:
 
-    atm_kg = H2O_atmos_kg + CO2_atmos_kg + H2_atmos_kg + CH4_atmos_kg + CO_atmos_kg + N2_atmos_kg + O2_atmos_kg + S_atmos_kg + He_atmos_kg
+            h_mol_total = runtime_helpfile.iloc[-1]['H_mol'] # total mol of H
+            O_H_ratio   = runtime_helpfile.iloc[-1]['O/H']       # elemental ratio (N_x/N_y)
+            C_H_ratio   = runtime_helpfile.iloc[-1]['C/H']
+            N_H_ratio   = runtime_helpfile.iloc[-1]['N/H']
+            S_H_ratio   = runtime_helpfile.iloc[-1]['S/H']
+            He_H_ratio  = runtime_helpfile.iloc[-1]['He/H']
 
-    if loop_no == 0:
-        input_flag = 'INIT'
-    else:
-        input_flag = 'RUN'
+        atm_kg = H2O_atmos_kg + CO2_atmos_kg + H2_atmos_kg + CH4_atmos_kg + CO_atmos_kg + N2_atmos_kg + O2_atmos_kg + S_atmos_kg + He_atmos_kg
 
-    # Add to dataframe + save to disk
-    runtime_helpfile_new = pd.DataFrame({
-        'Time': sim_time, 
-        'Input': input_flag, 
-        'T_surf': temperature_surface_a, 
-        'M_core': mass_core_a, 
-        'M_mantle': mass_mantle_a, 
-        'M_mantle_liquid': mass_liquid_a,
-        'M_mantle_solid': mass_solid_a,
-        'M_atm': atm_kg, 
-        'H2O_atm_kg': H2O_atmos_kg, 
-        'CO2_atm_kg': CO2_atmos_kg, 
-        'H2_atm_kg': H2_atmos_kg, 
-        'CH4_atm_kg': CH4_atmos_kg, 
-        'CO_atm_kg': CO_atmos_kg, 
-        'N2_atm_kg': N2_atmos_kg, 
-        'O2_atm_kg': O2_atmos_kg, 
-        'S_atm_kg': S_atmos_kg, 
-        'He_atm_kg': He_atmos_kg, 
-        'H_mol': h_mol_total, 
-        'O/H': O_H_ratio, 
-        'C/H': C_H_ratio, 
-        'N/H': N_H_ratio, 
-        'S/H': S_H_ratio, 
-        'He/H': He_H_ratio}, index=[0])
-    runtime_helpfile = runtime_helpfile.append(runtime_helpfile_new) 
-    runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ")
+        if loop_no == 0:
+            input_flag = 'INIT'
+        else:
+            input_flag = 'RUN'
+
+        # Add to dataframe + save to disk
+        runtime_helpfile_new = pd.DataFrame({
+            'Time': sim_time, 
+            'Input': input_flag, 
+            'T_surf': temperature_surface_a, 
+            'M_core': mass_core_a, 
+            'M_mantle': mass_mantle_a, 
+            'M_mantle_liquid': mass_liquid_a,
+            'M_mantle_solid': mass_solid_a,
+            'M_atm': atm_kg, 
+            'H2O_atm_kg': H2O_atmos_kg, 
+            'CO2_atm_kg': CO2_atmos_kg, 
+            'H2_atm_kg': H2_atmos_kg, 
+            'CH4_atm_kg': CH4_atmos_kg, 
+            'CO_atm_kg': CO_atmos_kg, 
+            'N2_atm_kg': N2_atmos_kg, 
+            'O2_atm_kg': O2_atmos_kg, 
+            'S_atm_kg': S_atmos_kg, 
+            'He_atm_kg': He_atmos_kg, 
+            'H_mol': h_mol_total, 
+            'O/H': O_H_ratio, 
+            'C/H': C_H_ratio, 
+            'N/H': N_H_ratio, 
+            'S/H': S_H_ratio, 
+            'He/H': He_H_ratio}, index=[0])
+        runtime_helpfile = runtime_helpfile.append(runtime_helpfile_new) 
+        runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ")
 
     return runtime_helpfile
 
@@ -427,10 +433,10 @@ def PrintHalfSeparator():
     pass
 
 # Generate/adapt VULCAN input files
-def GenerateVulcanInputFile( time_current, loop_no, vulcan_dir, file_name, runtime_helpfile, R_solid_planet ):
+def GenerateVulcanInputFile( time_current, loop_counter, vulcan_dir, file_name, runtime_helpfile, R_solid_planet ):
 
     # Overwrite file when starting from scratch
-    if loop_no == 0:
+    if loop_counter["atm"] == 0:
         with open(vulcan_dir+'spider_input/spider_elements.dat', 'w') as file:
             file.write('time             O                C                N                S                He\n')
         with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
@@ -555,7 +561,7 @@ def RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir
 
     return heat_flux, stellar_toa_heating, solar_lum
 
-def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_no, runtime_helpfile=[] ):
+def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name ):
 
     # SPIDER start input options
     SURFACE_BC            = str(SPIDER_options["SURFACE_BC"])
@@ -581,14 +587,14 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_no, r
     if start_condition == "1":
         dtmacro               = str(SPIDER_options["dtmacro_init"])
         nstepsmacro           = str(SPIDER_options["nstepsmacro_init"])
-    else if start_condition == "2":
+    elif start_condition == "2":
         dtmacro               = str(SPIDER_options["dtmacro"])
         # Recalculate time stepping
         dtime                 = time_target - time_current
         nstepsmacro           = str( math.ceil( dtime / float(dtmacro) ) )
 
     # Restart SPIDER with (progressively more) self-consistent atmospheric composition
-    if runtime_helpfile.empty == False:
+    if loop_counter["atm"] >= 1:
         M_mantle_liquid           = runtime_helpfile.iloc[-1]["M_mantle_liquid"] # kg
         SPIDER_options["H2O_ppm"] = str(runtime_helpfile.iloc[-1]["H2O_atm_kg"]/M_mantle_liquid)
         SPIDER_options["CO2_ppm"] = str(runtime_helpfile.iloc[-1]["CO2_atm_kg"]/M_mantle_liquid)
@@ -614,7 +620,7 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_no, r
     # SPIDER call sequence 
     call_sequence = [   
                         "spider", 
-                        "-options_file", "spider_inputs.opts", 
+                        "-options_file", "spider_input.opts", 
                         "-initial_condition",     start_condition, 
                         "-SURFACE_BC",            SURFACE_BC, 
                         "-surface_bc_value",      heat_flux, 
@@ -628,7 +634,7 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_no, r
 
     # Define ppm volatiles only for init loop
     if start_condition == "1":
-        call_sequence = call_sequence.append(
+        call_sequence.extend([
                         "-H2O_initial",           H2O_ppm, 
                         "-CO2_initial",           CO2_ppm, 
                         "-H2_initial",            H2_ppm, 
@@ -638,12 +644,12 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_no, r
                         "-CO_initial",            CO_ppm, 
                         "-S_initial",             S_ppm, 
                         "-He_initial",            He_ppm 
-                        )
+                        ])
     else:
-        call_sequence = call_sequence.append(
-                        "-ic_filename",           output_dir+restart_filename
-                        "-activate_rollback",   
-                        "-activate_poststep",   
+        call_sequence.extend([ 
+                        "-activate_poststep", 
+                        "-activate_rollback",
+                        "-ic_filename",           output_dir+restart_filename,
                         "-H2O_poststep_change",   H2O_poststep_change, 
                         "-CO2_poststep_change",   CO2_poststep_change,
                         "-H2_poststep_change",    H2_poststep_change,
@@ -652,12 +658,12 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_no, r
                         "-N2_poststep_change",    N2_poststep_change, 
                         "-O2_poststep_change",    O2_poststep_change, 
                         "-S_poststep_change",     S_poststep_change, 
-                        "-He_poststep_change",    He_poststep_change, 
-                        )
+                        "-He_poststep_change",    He_poststep_change 
+                        ])
 
     # Runtime info
-    coupler_utils.PrintSeparator()
-    print("SPIDER run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "| flags:")
+    PrintSeparator()
+    print("SPIDER run, loop ", loop_counter, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "| flags:")
     for flag in call_sequence:
         print(flag, end =" ")
     print()
@@ -666,7 +672,10 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_no, r
     # Call SPIDER
     subprocess.call(call_sequence)
 
-    return SPIDER_options
+    # Update helpfile
+    runtime_helpfile = UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name, runtime_helpfile)
+
+    return SPIDER_options, runtime_helpfile
     # / RunSPIDER
 
 def CleanOutputDir( output_dir ):
