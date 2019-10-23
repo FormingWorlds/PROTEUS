@@ -25,38 +25,68 @@ coupler_dir = os.getcwd()+"/"
 output_dir  = os.getcwd()+"/output/"
 vulcan_dir  = os.getcwd()+"/vulcan_spider/"
 
-# SPIDER start input options
-SURFACE_BC            = "4"          # 4: constant heat flux boundary condition
-SOLVE_FOR_VOLATILES   = "1"          # track volatiles in interior/atmosphere reservoirs
-H2O_poststep_change   = "0.05"       # fractional H2O melt phase change event trigger
-CO2_poststep_change   = "0.05"       # CO2 melt phase trigger
-nstepsmacro           = "20"         # number of timesteps
-dtmacro               = "50000"      # delta time per macrostep to advance by, in years
-heat_flux             = "1.0E4"      # prescribed start surface heat flux (e.g., 10^4 W/m^2)
-tsurf_poststep_change = "100.0"      # maximum absolute surface temperature change in Kelvin
-R_solid_planet        = "6371000.0"  # planet radius / m
-planet_coresize       = "0.55"       # fractional radius of core-mantle boundary
+# SPIDER settings
+SPIDER_options = {
+    'SURFACE_BC':            4,       # 4: constant heat flux boundary condition
+    'SOLVE_FOR_VOLATILES':   1,       # track volatiles in interior/atmosphere reservoirs
+    'tsurf_poststep_change': 100.0,   # maximum absolute surface temperature change in Kelvin
+    'R_solid_planet':        6371000, # planet radius / m
+    'planet_coresize':       0.55,    # fractional radius of core-mantle boundary
+    'start_condition':       1,       # 1: Fresh start | 2: Restart from 'restart_filename'
+    'restart_filename':      0,       # Restart manually, [yr]+".json"
+    'nstepsmacro_init':      0,       # init loop: number of timesteps
+    'dtmacro_init':          1,       # init loop: delta time per macrostep [yr]
+    'dtmacro':               50000,   # delta time per macrostep to advance by, in years
+    'heat_flux':             1.0E4,   # init heat flux, re-calculated during runtime [W/m^2]
+    'H2O_ppm':               50,      # init loop: H2O mass relative to mantle [ppm wt]
+    'CO2_ppm':               100,     # [ppm wt]
+    'H2_ppm':                0,       # [ppm wt]
+    'CH4_ppm':               0,       # [ppm wt]
+    'CO_ppm':                0,       # [ppm wt]
+    'N2_ppm':                0,       # [ppm wt]
+    'O2_ppm':                0,       # [ppm wt]
+    'S_ppm':                 0,       # [ppm wt]
+    'He_ppm':                0,       # [ppm wt]
+    'H2O_poststep_change':   0.05,    # fractional H2O melt phase change event trigger
+    'CO2_poststep_change':   0.05,    # CO2 melt phase trigger
+    'H2_poststep_change':    0.00,    # fraction
+    'CH4_poststep_change':   0.00,    # fraction
+    'CO_poststep_change':    0.00,    # fraction
+    'N2_poststep_change':    0.00,    # fraction
+    'O2_poststep_change':    0.00,    # fraction
+    'S_poststep_change':     0.00,    # fraction
+    'He_poststep_change':    0.00,    # fraction
+    }
 
-# Restart flags
-start_condition       = "1"          # 1: Fresh start | 2: Restart from 'ic_filename'
-ic_filename           = "0.json"     # JSON restart file if 'start_condition == 2'
-nstepsmacro_init      = "0"          # number of timesteps for initialization loop
-dtmacro_init          = "1"          # initialization loop delta time per macrostep [yr]
+# # SPIDER start input options
+# SURFACE_BC            = "4"          # 4: constant heat flux boundary condition
+# SOLVE_FOR_VOLATILES   = "1"          # track volatiles in interior/atmosphere reservoirs
+# H2O_poststep_change   = "0.05"       # fractional H2O melt phase change event trigger
+# CO2_poststep_change   = "0.05"       # CO2 melt phase trigger
+# nstepsmacro           = "20"         # number of timesteps
+# dtmacro               = "50000"      # delta time per macrostep to advance by, in years
+# heat_flux             = "1.0E4"      # prescribed start surface heat flux (e.g., 10^4 W/m^2)
+# tsurf_poststep_change = "100.0"      # maximum absolute surface temperature change in Kelvin
+# R_solid_planet        = "6371000.0"  # planet radius / m
+# planet_coresize       = "0.55"       # fractional radius of core-mantle boundary
+# # Restart flags
+# start_condition       = "1"          # 1: Fresh start | 2: Restart from 'ic_filename'
+# nstepsmacro_init      = "0"          # number of timesteps for initialization loop
+# dtmacro_init          = "1"          # initialization loop delta time per macrostep [yr]
+# # Initial volatile budget, in ppm relative to solid mantle mass
+# H2O_ppm               = 50.0       # ppm
+# CO2_ppm               = 100.0      # ppm
+# H2_ppm                = 0.0        # ppm
+# CH4_ppm               = 0.0        # ppm
+# CO_ppm                = 0.0        # ppm
+# N2_ppm                = 0.0        # ppm
+# O2_ppm                = 0.0        # ppm
+# S_ppm                 = 0.0        # ppm
+# He_ppm                = 0.0        # ppm
 
 # Total runtime
 time_current          = 0.           # yr
 time_target           = 1.0e+6       # yr
-
-# Initial volatile budget, in ppm relative to solid mantle mass
-H2O_ppm               = 50.0       # ppm
-CO2_ppm               = 100.0      # ppm
-H2_ppm                = 0.0        # ppm
-CH4_ppm               = 0.0        # ppm
-CO_ppm                = 0.0        # ppm
-N2_ppm                = 0.0        # ppm
-O2_ppm                = 0.0        # ppm
-He_ppm                = 0.0        # ppm
-S_ppm                 = 0.0        # ppm
 
 # Define runtime helpfile names and generate dataframes
 runtime_helpfile_name = "runtime_properties.csv"
@@ -82,19 +112,8 @@ if start_condition == "1":
     # Delete old SPIDER output
     coupler_utils.CleanOutputDir( output_dir )
 
-    # SPIDER initialization call sequence 
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(H2O_ppm), "-CO2_initial", str(CO2_ppm), "-H2_initial", str(H2_ppm), "-N2_initial", str(N2_ppm), "-CH4_initial", str(CH4_ppm), "-O2_initial", str(O2_ppm), "-CO_initial", str(CO_ppm), "-S_initial", str(S_ppm), "-He_initial", str(He_ppm) ]
-
-    # Runtime info
-    coupler_utils.PrintSeparator()
-    print("SPIDER run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "| flags:")
-    for flag in call_sequence:
-        print(flag, end =" ")
-    print()
-    coupler_utils.PrintSeparator()
-
-    # Call SPIDER
-    subprocess.call(call_sequence)
+    # Run SPIDER
+    SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_no )
 
     # Save surface temperature to file in 'output_dir'
     runtime_helpfile = coupler_utils.UpdateHelpfile(loop_no, output_dir, runtime_helpfile_name)
@@ -103,13 +122,13 @@ if start_condition == "1":
     atm_chemistry = coupler_utils.RunVULCAN( time_current, loop_no, vulcan_dir, coupler_dir, output_dir, 'spider_input/spider_elements.dat', runtime_helpfile, R_solid_planet )
 
     # Run SOCRATES
-    heat_flux, stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_no )
+    SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_no )
 
     # Find last file for SPIDER restart
     ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
 
     # Output during runtime
-    coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], heat_flux, ic_filename, stellar_toa_heating, solar_lum)
+    coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], ic_filename, stellar_toa_heating, solar_lum)
 
     # Reset number of computing steps to reach time_target
     dtime       = time_target - time_current
@@ -161,18 +180,18 @@ while time_current < time_target:
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
     ## TO DO: Adapt to read in atmospheric profile from VULCAN
-    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, runtime_helpfile.iloc[-1]["T_surf"], stellar_toa_heating, p_s, atm_chemistry)) # W/m^2
+    SPIDER_options["heat_flux"] = str(SocRadConv.RadConvEqm(output_dir, time_current, runtime_helpfile.iloc[-1]["T_surf"], stellar_toa_heating, p_s, atm_chemistry)) # W/m^2
 
     # Save OLR flux to be fed to SPIDER
     with open(output_dir+"OLRFlux.dat", "a") as f:
-        f.write(str(float(time_current))+" "+str(float(heat_flux))+"\n")
+        f.write(str(float(time_current))+" "+str(float(SPIDER_options["heat_flux"]))+"\n")
         f.close()
 
     # Find last file for SPIDER restart
-    ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
+    last_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
 
     # Output during runtime
-    coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg, co2_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
+    coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg, co2_ratio, p_s, heat_flux, last_filename, stellar_toa_heating, solar_lum)
 
     # Reset number of computing steps to reach time_target
     dtime       = time_target - time_current
@@ -182,11 +201,11 @@ while time_current < time_target:
     loop_no += 1
 
     # Recalculate melt phase volatile abundance for SPIDER restart
-    coupler_utils.ModifiedHenrysLaw( atm_chemistry, output_dir, ic_filename )
+    coupler_utils.ModifiedHenrysLaw( atm_chemistry, output_dir, last_filename )
 
     # SPIDER restart call sequence
     # ---->> HERE THE VOLATILES FROM VULCAN NEED TO BE RE-FED; OPTION DOES NOT EXIST IN SPIDER CURRENTLY!
-    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", "output/"+ic_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro, "-radius", R_solid_planet, "-coresize", planet_coresize ] # , "-outputDirectory", output_dir
+    call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-ic_filename", "output/"+last_filename, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro, "-dtmacro", dtmacro, "-radius", R_solid_planet, "-coresize", planet_coresize ] # , "-outputDirectory", output_dir
 
     # Runtime info
     coupler_utils.PrintSeparator()
@@ -226,6 +245,6 @@ for file in natsorted(glob.glob(output_dir+"*.*")):
     print(os.path.basename(file), end =" ")
 
 # Print final statement
-coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg, co2_ratio, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum)
+coupler_utils.PrintCurrentState(time_current, surfaceT_current, h2o_kg, h2o_ratio, co2_kg, co2_ratio, p_s, heat_flux, last_filename, stellar_toa_heating, solar_lum)
 
 print("\n===> Run finished successfully!")

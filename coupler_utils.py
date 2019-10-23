@@ -149,12 +149,16 @@ def PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, ic_filenam
 
 def UpdateHelpfile(loop_no, output_dir, file_name, runtime_helpfile=[]):
 
-    # Check if file is already existent, if not, generate and save
-    if os.path.isfile(output_dir+file_name):
-        runtime_helpfile = pd.read_csv(output_dir+file_name)
-    else:
+    # # Check if file is already existent, if not, generate and save
+    # if os.path.isfile(output_dir+file_name):
+    #     runtime_helpfile = pd.read_csv(output_dir+file_name)
+    # else:
+    #     runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_atm', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
+    #     runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ") 
+    if runtime_helpfile.empty == True:
         runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_atm', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
         runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ") 
+
 
     if runtime_helpfile.empty:
         input_flag = "INIT"
@@ -551,6 +555,119 @@ def RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir
 
     return heat_flux, stellar_toa_heating, solar_lum
 
+def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_no, runtime_helpfile=[] ):
+
+    # SPIDER start input options
+    SURFACE_BC            = str(SPIDER_options["SURFACE_BC"])
+    SOLVE_FOR_VOLATILES   = str(SPIDER_options["SOLVE_FOR_VOLATILES"])
+    H2O_poststep_change   = str(SPIDER_options["H2O_poststep_change"])
+    CO2_poststep_change   = str(SPIDER_options["CO2_poststep_change"])
+    H2_poststep_change    = str(SPIDER_options["H2_poststep_change"])
+    CH4_poststep_change   = str(SPIDER_options["CH4_poststep_change"])
+    CO_poststep_change    = str(SPIDER_options["CO_poststep_change"])
+    N2_poststep_change    = str(SPIDER_options["N2_poststep_change"])
+    O2_poststep_change    = str(SPIDER_options["O2_poststep_change"])
+    S_poststep_change     = str(SPIDER_options["S_poststep_change"])
+    He_poststep_change    = str(SPIDER_options["He_poststep_change"])
+    tsurf_poststep_change = str(SPIDER_options["tsurf_poststep_change"])
+    R_solid_planet        = str(SPIDER_options["R_solid_planet"])
+    planet_coresize       = str(SPIDER_options["planet_coresize"])
+    heat_flux             = str(SPIDER_options["heat_flux"])
+
+    # Restart flag
+    start_condition       = str(SPIDER_options["start_condition"])
+
+    # Time stepping
+    if start_condition == "1":
+        dtmacro               = str(SPIDER_options["dtmacro_init"])
+        nstepsmacro           = str(SPIDER_options["nstepsmacro_init"])
+    else if start_condition == "2":
+        dtmacro               = str(SPIDER_options["dtmacro"])
+        # Recalculate time stepping
+        dtime                 = time_target - time_current
+        nstepsmacro           = str( math.ceil( dtime / float(dtmacro) ) )
+
+    # Restart SPIDER with (progressively more) self-consistent atmospheric composition
+    if runtime_helpfile.empty == False:
+        M_mantle_liquid           = runtime_helpfile.iloc[-1]["M_mantle_liquid"] # kg
+        SPIDER_options["H2O_ppm"] = str(runtime_helpfile.iloc[-1]["H2O_atm_kg"]/M_mantle_liquid)
+        SPIDER_options["CO2_ppm"] = str(runtime_helpfile.iloc[-1]["CO2_atm_kg"]/M_mantle_liquid)
+        SPIDER_options["H2_ppm"]  = str(runtime_helpfile.iloc[-1]["H2_atm_kg"]/M_mantle_liquid)
+        SPIDER_options["CH4_ppm"] = str(runtime_helpfile.iloc[-1]["CH4_atm_kg"]/M_mantle_liquid)
+        SPIDER_options["CO_ppm"]  = str(runtime_helpfile.iloc[-1]["CO_atm_kg"]/M_mantle_liquid)
+        SPIDER_options["N2_ppm"]  = str(runtime_helpfile.iloc[-1]["N2_atm_kg"]/M_mantle_liquid)
+        SPIDER_options["O2_ppm"]  = str(runtime_helpfile.iloc[-1]["O2_atm_kg"]/M_mantle_liquid)
+        SPIDER_options["S_ppm"]   = str(runtime_helpfile.iloc[-1]["S_atm_kg"]/M_mantle_liquid)
+        SPIDER_options["He_ppm"]  = str(runtime_helpfile.iloc[-1]["He_atm_kg"]/M_mantle_liquid)
+
+    # Initial volatile budget, in ppm relative to molten mantle mass
+    H2O_ppm           = str(SPIDER_options["H2O_ppm"])
+    CO2_ppm           = str(SPIDER_options["CO2_ppm"])
+    H2_ppm            = str(SPIDER_options["H2_ppm"]) 
+    CH4_ppm           = str(SPIDER_options["CH4_ppm"])
+    CO_ppm            = str(SPIDER_options["CO_ppm"]) 
+    N2_ppm            = str(SPIDER_options["N2_ppm"]) 
+    O2_ppm            = str(SPIDER_options["O2_ppm"]) 
+    S_ppm             = str(SPIDER_options["S_ppm"])  
+    He_ppm            = str(SPIDER_options["He_ppm"]) 
+
+    # SPIDER call sequence 
+    call_sequence = [   
+                        "spider", 
+                        "-options_file", "spider_inputs.opts", 
+                        "-initial_condition",     start_condition, 
+                        "-SURFACE_BC",            SURFACE_BC, 
+                        "-surface_bc_value",      heat_flux, 
+                        "-SOLVE_FOR_VOLATILES",   SOLVE_FOR_VOLATILES, 
+                        "-tsurf_poststep_change", tsurf_poststep_change, 
+                        "-nstepsmacro",           nstepsmacro, 
+                        "-dtmacro",               dtmacro, 
+                        "-radius",                R_solid_planet, 
+                        "-coresize",              planet_coresize
+                    ]
+
+    # Define ppm volatiles only for init loop
+    if start_condition == "1":
+        call_sequence = call_sequence.append(
+                        "-H2O_initial",           H2O_ppm, 
+                        "-CO2_initial",           CO2_ppm, 
+                        "-H2_initial",            H2_ppm, 
+                        "-N2_initial",            N2_ppm, 
+                        "-CH4_initial",           CH4_ppm, 
+                        "-O2_initial",            O2_ppm, 
+                        "-CO_initial",            CO_ppm, 
+                        "-S_initial",             S_ppm, 
+                        "-He_initial",            He_ppm 
+                        )
+    else:
+        call_sequence = call_sequence.append(
+                        "-ic_filename",           output_dir+restart_filename
+                        "-activate_rollback",   
+                        "-activate_poststep",   
+                        "-H2O_poststep_change",   H2O_poststep_change, 
+                        "-CO2_poststep_change",   CO2_poststep_change,
+                        "-H2_poststep_change",    H2_poststep_change,
+                        "-CH4_poststep_change",   CH4_poststep_change, 
+                        "-CO_poststep_change",    CO_poststep_change, 
+                        "-N2_poststep_change",    N2_poststep_change, 
+                        "-O2_poststep_change",    O2_poststep_change, 
+                        "-S_poststep_change",     S_poststep_change, 
+                        "-He_poststep_change",    He_poststep_change, 
+                        )
+
+    # Runtime info
+    coupler_utils.PrintSeparator()
+    print("SPIDER run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "| flags:")
+    for flag in call_sequence:
+        print(flag, end =" ")
+    print()
+    PrintSeparator()
+
+    # Call SPIDER
+    subprocess.call(call_sequence)
+
+    return SPIDER_options
+    # / RunSPIDER
 
 def CleanOutputDir( output_dir ):
 
