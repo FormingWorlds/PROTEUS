@@ -156,24 +156,24 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
     #     runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_atm', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
     #     runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ") 
 
-    # # Check if SPIDER was previously initalized
+    # # Check if SPIDER was previously initialized
     # if loop_counter["total"] == 0 and loop_counter["init"] == 0 and loop_counter["atm"] == 0:
 
-    # Check if file is already existent, if not, generate and save
-    if loop_counter["total"] == 0 and loop_counter["init"] == 0:
-        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_atm', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
-        runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ") 
+    # # Check if file is already existent, if not, generate and save
+    # if loop_counter["total"] == 0 and loop_counter["init"] == 0:
+    #     runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_atm', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
+    #     runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ") 
 
     if loop_counter["total"] == 0:
         input_flag = "INIT"
     else:
         input_flag = "RUN"
 
-    if loop_counter["init"] >= 1:
+    if os.path.isfile(output_dir+file_name):
 
-        # Get only last sim time!
+        # Get only last sim time
         sim_times = su.get_all_output_times(output_dir)  # yr
-        sim_time = sim_times[-1]
+        sim_time  = sim_times[-1]
 
         keys_t = ( ('atmosphere','mass_liquid'),
                    ('atmosphere','mass_solid'),
@@ -389,11 +389,6 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
 
         atm_kg = H2O_atmos_kg + CO2_atmos_kg + H2_atmos_kg + CH4_atmos_kg + CO_atmos_kg + N2_atmos_kg + O2_atmos_kg + S_atmos_kg + He_atmos_kg
 
-        if loop_no == 0:
-            input_flag = 'INIT'
-        else:
-            input_flag = 'RUN'
-
         # Add to dataframe + save to disk
         runtime_helpfile_new = pd.DataFrame({
             'Time': sim_time, 
@@ -421,6 +416,10 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
             'He/H': He_H_ratio}, index=[0])
         runtime_helpfile = runtime_helpfile.append(runtime_helpfile_new) 
         runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ")
+
+    else:
+        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_atm', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
+        runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ") 
 
     return runtime_helpfile
 

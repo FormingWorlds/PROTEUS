@@ -118,20 +118,14 @@ if SPIDER_options["start_condition"] == 1:
     # Generate help quantities
     runtime_helpfile = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name)
 
-    print("SPIDER_options:", SPIDER_options)
-    print("runtime_helpfile:", runtime_helpfile)
-
     # Init loop for coupled interior-atmosphere system to equilibrate starting conditions
     while loop_counter["init"] < 1:
 
         # Run SPIDER
         SPIDER_options, runtime_helpfile = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name )
 
-        print("SPIDER_options:", SPIDER_options)
-        print("runtime_helpfile:", runtime_helpfile)
-
         # Init loop atmosphere: equilibrate atmosphere starting conditions
-        while loop_counter["init"] < 1:
+        while loop_counter["atm"] < 1:
 
             # Run VULCAN
             atm_chemistry = coupler_utils.RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, 'spider_input/spider_elements.dat', runtime_helpfile, SPIDER_options["R_solid_planet"] )
@@ -157,21 +151,6 @@ if SPIDER_options["start_condition"] == 1:
 
     # Increase iteration counters   
     loop_counter["total"]   += 1
-
-        # # Restart SPIDER with self-consistent atmospheric composition
-        # M_mantle_liquid = runtime_helpfile.iloc[-1]["M_mantle_liquid"]
-        # call_sequence = [ "spider", "-options_file", "bu_input.opts", "-initial_condition", start_condition, "-SURFACE_BC", SURFACE_BC, "-surface_bc_value", heat_flux, "-SOLVE_FOR_VOLATILES", SOLVE_FOR_VOLATILES, "-activate_rollback", "-activate_poststep", "-H2O_poststep_change", H2O_poststep_change, "-CO2_poststep_change", CO2_poststep_change, "-tsurf_poststep_change", tsurf_poststep_change, "-nstepsmacro", nstepsmacro_init, "-dtmacro", dtmacro_init, "-radius", R_solid_planet, "-coresize", planet_coresize, "-H2O_initial", str(runtime_helpfile.iloc[-1]["H2O_atm_kg"]/M_mantle_liquid), "-CO2_initial", str(runtime_helpfile.iloc[-1]["CO2_atm_kg"]/M_mantle_liquid), "-H2_initial", str(runtime_helpfile.iloc[-1]["H2_atm_kg"]/M_mantle_liquid), "-N2_initial", str(runtime_helpfile.iloc[-1]["N2_atm_kg"]/M_mantle_liquid), "-CH4_initial", str(runtime_helpfile.iloc[-1]["CH4_atm_kg"]/M_mantle_liquid), "-O2_initial", str(runtime_helpfile.iloc[-1]["O2_atm_kg"]/M_mantle_liquid), "-CO_initial", str(runtime_helpfile.iloc[-1]["CO_atm_kg"]/M_mantle_liquid), "-S_initial", str(runtime_helpfile.iloc[-1]["S_atm_kg"]/M_mantle_liquid), "-He_initial", str(runtime_helpfile.iloc[-1]["He_atm_kg"]/M_mantle_liquid) ]
-
-        # # Runtime info
-        # coupler_utils.PrintSeparator()
-        # print("SPIDER run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "| flags:")
-        # for flag in call_sequence:
-        #     print(flag, end =" ")
-        # print()
-        # coupler_utils.PrintSeparator()
-
-        # # Restart SPIDER
-        # subprocess.call(call_sequence)
 
     # Reset restart flag
     SPIDER_options["start_condition"] = 2
