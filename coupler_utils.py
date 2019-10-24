@@ -432,28 +432,47 @@ def PrintHalfSeparator():
     pass
 
 # Generate/adapt VULCAN input files
-def GenerateVulcanInputFile( time_current, loop_counter, vulcan_dir, file_name, runtime_helpfile, R_solid_planet ):
+def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, file_name, runtime_helpfile, R_solid_planet ):
 
-    # Overwrite file when starting from scratch
+    # Initialize VULCAN input files
     if loop_counter["atm"] == 0:
-        with open(vulcan_dir+'spider_input/spider_elements.dat', 'w') as file:
+        with open(output_dir+'vulcan_XH_ratios.dat', 'w') as file:
             file.write('time             O                C                N                S                He\n')
-        with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
+        with open(output_dir+'vulcan_XH_ratios.dat', 'a') as file:
             file.write('0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00\n')
 
+        # Copy config file to version to be modified during runtime
+        shutil.copy(vulcan_dir+'vulcan_cfg.py', output_dir+'vulcan_cfg.py')
+
     # Write elemental X/H ratios
-    with open(vulcan_dir+'/spider_input/spider_elements.dat', 'a') as file:
+    with open(output_dir+'vulcan_XH_ratios.dat', 'a') as file:
         file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["O/H"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["C/H"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["N/H"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["S/H"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["He/H"]))+"\n")
 
-    # Change surface gravity in VULCAN init file
-    M_solid_planet = runtime_helpfile.iloc[-1]["M_core"] + runtime_helpfile.iloc[-1]["M_mantle"]
-    grav_s         = su.gravity( M_solid_planet, float(R_solid_planet) ) * 100. # cm s^-2
+    # Adjust the init .cfg file on the fly
+    if loop_counter["atm"] == 0:
+        
+        # Change surface gravity in VULCAN init file
+        M_solid_planet = runtime_helpfile.iloc[-1]["M_core"] + runtime_helpfile.iloc[-1]["M_mantle"]
+        grav_s         = su.gravity( M_solid_planet, float(R_solid_planet) ) * 100. # cm s^-2
 
+        # Adjust copied file in output_dir
+        for line in fileinput.input(output_dir+'vulcan_cfg.py', inplace=True):
+            if line.strip().startswith('g = '):
+                line = 'g = '+str(grav_s)+' # surface gravity (cm/s^2)\n'
+            if line.strip().startswith('atm_file = '):
+                line = 'spider_file = '+str(output_dir)+'vulcan_XH_ratios.dat'
+            sys.stdout.write(line)
+    else:
 
-    for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
-        if line.strip().startswith('g = '):
-            line = 'g = '+str(grav_s)+' # surface gravity (cm/s^2)\n'
-        sys.stdout.write(line)
+        # Modify the SOCRATES TP structure input
+        SOCRATES_TP = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*_atm_TP_profile.dat")])[-1] 
+
+        # Adjust copied file in output_dir
+        for line in fileinput.input(output_dir+'vulcan_cfg.py', inplace=True):
+            if line.strip().startswith('atm_file = '):
+                line = 'atm_file = '+str(SOCRATES_input)
+            
+            sys.stdout.write(line)
 
 
 def ModifiedHenrysLaw( atm_chemistry, output_dir, file_name ):
@@ -515,7 +534,7 @@ def ModifiedHenrysLaw( atm_chemistry, output_dir, file_name ):
 def RunVULCAN( time_current, loop_no, vulcan_dir, coupler_dir, output_dir, spider_input_file, runtime_helpfile, R_solid_planet ):
 
     # Generate/adapt VULCAN input files
-    GenerateVulcanInputFile( time_current, loop_no, vulcan_dir, spider_input_file, runtime_helpfile, R_solid_planet )
+    UpdateVulcanInputFiles( time_current, loop_no, vulcan_dir, output_dir, spider_input_file, runtime_helpfile, R_solid_planet )
 
     # Runtime info
     PrintSeparator()

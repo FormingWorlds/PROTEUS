@@ -58,32 +58,6 @@ SPIDER_options = {
     'He_poststep_change':    0.00,    # fraction
     }
 
-# # SPIDER start input options
-# SURFACE_BC            = "4"          # 4: constant heat flux boundary condition
-# SOLVE_FOR_VOLATILES   = "1"          # track volatiles in interior/atmosphere reservoirs
-# H2O_poststep_change   = "0.05"       # fractional H2O melt phase change event trigger
-# CO2_poststep_change   = "0.05"       # CO2 melt phase trigger
-# nstepsmacro           = "20"         # number of timesteps
-# dtmacro               = "50000"      # delta time per macrostep to advance by, in years
-# heat_flux             = "1.0E4"      # prescribed start surface heat flux (e.g., 10^4 W/m^2)
-# tsurf_poststep_change = "100.0"      # maximum absolute surface temperature change in Kelvin
-# R_solid_planet        = "6371000.0"  # planet radius / m
-# planet_coresize       = "0.55"       # fractional radius of core-mantle boundary
-# # Restart flags
-# start_condition       = "1"          # 1: Fresh start | 2: Restart from 'ic_filename'
-# nstepsmacro_init      = "0"          # number of timesteps for initialization loop
-# dtmacro_init          = "1"          # initialization loop delta time per macrostep [yr]
-# # Initial volatile budget, in ppm relative to solid mantle mass
-# H2O_ppm               = 50.0       # ppm
-# CO2_ppm               = 100.0      # ppm
-# H2_ppm                = 0.0        # ppm
-# CH4_ppm               = 0.0        # ppm
-# CO_ppm                = 0.0        # ppm
-# N2_ppm                = 0.0        # ppm
-# O2_ppm                = 0.0        # ppm
-# S_ppm                 = 0.0        # ppm
-# He_ppm                = 0.0        # ppm
-
 # Total runtime
 time_current          = 0.           # yr
 time_target           = 1.0e+6       # yr
