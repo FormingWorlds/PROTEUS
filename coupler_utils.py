@@ -12,11 +12,15 @@ import pandas as pd
 import json
 import subprocess
 import fileinput # https://kaijento.github.io/2017/05/28/python-replacing-lines-in-file/
-import plot_atmosphere
 import SocRadConv
 import SocRadModel
 from natsort import natsorted #https://pypi.python.org/pypi/natsort
 import glob
+import math
+import plot_interior
+import plot_global
+import plot_stacked
+import plot_atmosphere
 
 ### Constants ###
 
@@ -130,7 +134,9 @@ def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
 
     return z_profile
 
-def PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum, loop_counter):
+def PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, stellar_toa_heating, solar_lum, loop_counter, output_dir):
+
+    restart_file = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
 
     # Print final statement
     print("---------------------------------------------------------")
@@ -147,6 +153,8 @@ def PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, ic_filenam
     print("Total heat flux [W/m^2]:", heat_flux)
     print("Last file name:", ic_filename)
     print("---------------------------------------------------------")
+
+    return restart_file
 
 def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
 
@@ -379,14 +387,26 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
 
             ### TO DO: ADD RECALC OF VOLATILES_PPM FOR INIT LOOP!!!
 
+        # during main loop
         else:
 
             h_mol_total = runtime_helpfile.iloc[-1]['H_mol'] # total mol of H
-            O_H_ratio   = runtime_helpfile.iloc[-1]['O/H']       # elemental ratio (N_x/N_y)
+            O_H_ratio   = runtime_helpfile.iloc[-1]['O/H']   # elemental ratio (N_x/N_y)
             C_H_ratio   = runtime_helpfile.iloc[-1]['C/H']
             N_H_ratio   = runtime_helpfile.iloc[-1]['N/H']
             S_H_ratio   = runtime_helpfile.iloc[-1]['S/H']
             He_H_ratio  = runtime_helpfile.iloc[-1]['He/H']
+
+            ## For redistribution of total atmosphere mass in VULCAN:
+            H2O_atmos_kg   = H2O_atmos_kg_a
+            CO2_atmos_kg   = CO2_atmos_kg_a
+            H2_atmos_kg    = H2_atmos_kg_a
+            CH4_atmos_kg   = CH4_atmos_kg_a
+            CO_atmos_kg    = CO_atmos_kg_a
+            N2_atmos_kg    = N2_atmos_kg_a
+            O2_atmos_kg    = O2_atmos_kg_a
+            S_atmos_kg     = S_atmos_kg_a
+            He_atmos_kg    = He_atmos_kg_a
 
         atm_kg = H2O_atmos_kg + CO2_atmos_kg + H2_atmos_kg + CH4_atmos_kg + CO_atmos_kg + N2_atmos_kg + O2_atmos_kg + S_atmos_kg + He_atmos_kg
 
@@ -452,6 +472,18 @@ def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, 
                 line = "g = "+str(grav_s)+' # surface gravity (cm/s^2)\n'
             if line.strip().startswith('spider_file = '):
                 line = "spider_file = '"+str(output_dir)+"vulcan_XH_ratios.dat'\n"
+            if line.strip().startswith('atm_file = '):
+                line = "atm_file = 'socrates_input/TP.dat'\n"
+            sys.stdout.write(line)
+    # After first loop use updated TP profiles from SOCRATES
+    else:
+        # Modify the SOCRATES TP structure input
+        SOCRATES_TP = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*_atm_TP_profile.dat")])[-1]
+
+        # Adjust copied file in output_dir
+        for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
+            if line.strip().startswith('atm_file = '):
+                line = "atm_file = '"+str(output_dir)+str(SOCRATES_TP)+"'\n"
             sys.stdout.write(line)
 
     # Write elemental X/H ratios
@@ -471,17 +503,6 @@ def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, 
         if line.strip().startswith('mass_outfile = '):
             line = "mass_outfile = '"+str(output_dir)+str(mass_mixing_ratios)+"'"+' # mass mixing ratio\n'
         sys.stdout.write(line)
-
-    if loop_counter["init"] > 0 or loop_counter["atm"] > 0:
-
-        # Modify the SOCRATES TP structure input
-        SOCRATES_TP = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*_atm_TP_profile.dat")])[-1]
-
-        # Adjust copied file in output_dir
-        for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
-            if line.strip().startswith('atm_file = '):
-                line = "atm_file = '"+str(output_dir)+str(SOCRATES_TP)+"'\n"
-            sys.stdout.write(line)
 
     # Save modified temporary config file to compare versions
     shutil.copy(vulcan_dir+'vulcan_cfg.py', output_dir+str(time_print)+'_vulcan_cfg.py')
@@ -569,7 +590,7 @@ def RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, 
     atm_chemistry = pd.read_csv(output_dir+volume_mixing_ratios_name, skiprows=1, delim_whitespace=True)
     print(atm_chemistry.iloc[:, 0:5])
 
-    plot_atmosphere.plot_mixing_ratios(output_dir, atm_chemistry, int(time_current)) # specific time steps
+    # plot_atmosphere.plot_mixing_ratios(output_dir, atm_chemistry, int(time_current)) # specific time steps
 
     return atm_chemistry
 
@@ -595,7 +616,7 @@ def RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir
 
     return heat_flux, stellar_toa_heating, solar_lum
 
-def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name ):
+def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name, restart_filename ):
 
     # SPIDER start input options
     SURFACE_BC            = str(SPIDER_options["SURFACE_BC"])
@@ -628,7 +649,7 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
         nstepsmacro           = str( math.ceil( dtime / float(dtmacro) ) )
 
     # Restart SPIDER with (progressively more) self-consistent atmospheric composition
-    if loop_counter["atm"] >= 1:
+    if loop_counter["init"] >= 1 or loop_counter["atm"] >= 1:
         M_mantle_liquid           = runtime_helpfile.iloc[-1]["M_mantle_liquid"] # kg
         SPIDER_options["H2O_ppm"] = str(runtime_helpfile.iloc[-1]["H2O_atm_kg"]/M_mantle_liquid)
         SPIDER_options["CO2_ppm"] = str(runtime_helpfile.iloc[-1]["CO2_atm_kg"]/M_mantle_liquid)
@@ -709,7 +730,7 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
     # Update helpfile
     runtime_helpfile = UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name, runtime_helpfile)
 
-    return SPIDER_options, runtime_helpfile
+    return SPIDER_options, runtime_helpfile, runtime_helpfile.iloc[-1]["Time"]
     # / RunSPIDER
 
 def CleanOutputDir( output_dir ):
@@ -720,4 +741,33 @@ def CleanOutputDir( output_dir ):
         os.remove(file)
         print(os.path.basename(file), end =" ")
     print("==> Done.")
+
+# Plot conditions throughout run for on-the-fly analysis
+def UpdatePlots( atm_chemistry ):
+
+    print("*** Plot current evolution,", end=" ")
+    output_times = su.get_all_output_times()
+    if len(output_times) <= 8:
+        plot_times = output_times
+    else:
+        plot_times = [ output_times[0]]         # first snapshot
+        for i in [ 2, 15, 22, 30, 45, 66 ]:     # distinct timestamps
+            plot_times.append(output_times[int(round(len(output_times)*(i/100.)))])
+        plot_times.append(output_times[-1])     # last snapshot
+    print("snapshots:", plot_times)
+    plot_interior.plot_interior(plot_times)     # specific time steps
+    plot_atmosphere.plot_atmosphere(output_dir, plot_times) # specific time steps
+    plot_stacked.plot_stacked(plot_times)       # specific time steps
+    plot_global.plot_global(output_dir)         # all time steps
+    plot_atmosphere.plot_mixing_ratios(output_dir, atm_chemistry, plot_times) # specific time steps
+
+def SaveOutput( output_dir ):
+
+    # Copy old files to separate folder
+    sim_dir = coupler_utils.make_output_dir() #
+    print("===> Copy files to separate dir for this run to:", sim_dir)
+    shutil.copy(os.getcwd()+"/bu_input.opts", sim_dir+"bu_input.opts")
+    for file in natsorted(glob.glob(output_dir+"*.*")):
+        shutil.copy(file, sim_dir+os.path.basename(file))
+        print(os.path.basename(file), end =" ")
 
