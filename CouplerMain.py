@@ -116,7 +116,7 @@ if SPIDER_options["start_condition"] == 1:
         ic_filename = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
 
         # Output during runtime
-        coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], ic_filename, stellar_toa_heating, solar_lum)
+        coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], ic_filename, stellar_toa_heating, solar_lum, loop_counter)
 
         # Increase iteration counter
         loop_counter["init"] += 1

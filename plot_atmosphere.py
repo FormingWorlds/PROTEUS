@@ -220,7 +220,7 @@ def plot_mixing_ratios( output_dir, atm_chemistry, times ):
     plt.legend()
     plt.xlim(1e-30, 1.)
     plt.ylim(np.max(atm_chemistry["Pressure"]), np.min(atm_chemistry["Pressure"]))
-    plt.savefig(output_dir+"atm_chemistry.pdf")
+    plt.savefig(output_dir+"plot_atm_chemistry.pdf")
     plt.close()
 
 

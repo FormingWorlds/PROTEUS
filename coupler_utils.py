@@ -130,12 +130,13 @@ def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
 
     return z_profile
 
-def PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum):
+def PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, ic_filename, stellar_toa_heating, solar_lum, loop_counter):
 
     # Print final statement
     print("---------------------------------------------------------")
     print("==> RUNTIME INFO <==")
     print(datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print("LOOP:", loop_counter)
     print("Time [Myr]:", str(float(time_current)/1e6))
     print("T_s [K]:", runtime_helpfile.iloc[-1]["T_surf"])
     print("Helpfile properties:")
@@ -441,8 +442,17 @@ def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, 
         with open(output_dir+'vulcan_XH_ratios.dat', 'a') as file:
             file.write('0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00\n')
 
-        # Copy config file to version to be modified during runtime
-        shutil.copy(vulcan_dir+'vulcan_cfg.py', output_dir+'vulcan_cfg.py')
+        # Change surface gravity in VULCAN init file
+        M_solid_planet = runtime_helpfile.iloc[-1]["M_core"] + runtime_helpfile.iloc[-1]["M_mantle"]
+        grav_s         = su.gravity( M_solid_planet, float(R_solid_planet) ) * 100. # cm s^-2
+
+        # Adjust copied file in output_dir
+        for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
+            if line.strip().startswith('g = '):
+                line = "g = "+str(grav_s)+' # surface gravity (cm/s^2)\n'
+            if line.strip().startswith('spider_file = '):
+                line = "spider_file = '"+str(output_dir)+"vulcan_XH_ratios.dat'\n"
+            sys.stdout.write(line)
 
     # Write elemental X/H ratios
     with open(output_dir+'vulcan_XH_ratios.dat', 'a') as file:
@@ -450,44 +460,33 @@ def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, 
 
     # Last .json file -> print time
     last_file = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
-    time_print = last_file[:-4]
+    time_print = last_file[:-5]
 
-    # Adjust the init .cfg file on the fly
-    if loop_counter["init"] == 0 and loop_counter["atm"] == 0:
-        
-        # Change surface gravity in VULCAN init file
-        M_solid_planet = runtime_helpfile.iloc[-1]["M_core"] + runtime_helpfile.iloc[-1]["M_mantle"]
-        grav_s         = su.gravity( M_solid_planet, float(R_solid_planet) ) * 100. # cm s^-2
+    # Update VULCAN output file names
+    volume_mixing_ratios = str(time_print)+"_atm_chemistry_volume.dat"
+    mass_mixing_ratios   = str(time_print)+"_atm_chemistry_mass.dat"
+    for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
+        if line.strip().startswith('EQ_outfile = '):
+            line = "EQ_outfile = '"+str(output_dir)+str(volume_mixing_ratios)+"'"+' # volume mixing ratio\n'
+        if line.strip().startswith('mass_outfile = '):
+            line = "mass_outfile = '"+str(output_dir)+str(mass_mixing_ratios)+"'"+' # mass mixing ratio\n'
+        sys.stdout.write(line)
 
-        # Adjust copied file in output_dir
-        for line in fileinput.input(output_dir+'vulcan_cfg.py', inplace=True):
-            if line.strip().startswith('g = '):
-                line = 'g = '+str(grav_s)+' # surface gravity (cm/s^2)\n'
-            if line.strip().startswith('atm_file = '):
-                line = 'spider_file = '+str(output_dir)+'vulcan_XH_ratios.dat'
-            sys.stdout.write(line)
-    else:
+    if loop_counter["init"] > 0 or loop_counter["atm"] > 0:
 
         # Modify the SOCRATES TP structure input
         SOCRATES_TP = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*_atm_TP_profile.dat")])[-1]
 
-        # Output filenames
-        volume_mixing_ratios = str(time_print)+"_atm_chemistry_volume.dat"
-        mass_mixing_ratios   = str(time_print)+"_atm_chemistry_mass.dat"
-
         # Adjust copied file in output_dir
-        for line in fileinput.input(output_dir+'vulcan_cfg.py', inplace=True):
+        for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
             if line.strip().startswith('atm_file = '):
-                line = 'atm_file = '+str(output_dir)+str(SOCRATES_TP)
-            if line.strip().startswith('EQ_outfile = '):
-                line = 'EQ_outfile = '+str(output_dir)+str(volume_mixing_ratios)+' # volume mixing ratio'
-            if line.strip().startswith('mass_outfile = '):
-                line = 'mass_outfile = '+str(output_dir)+str(volume_mixing_ratios)+' # mass mixing ratio'
-            
+                line = "atm_file = '"+str(output_dir)+str(SOCRATES_TP)+"'\n"
             sys.stdout.write(line)
 
     # Save modified temporary config file to compare versions
-    shutil.copy(output_dir+'vulcan_cfg.py', output_dir+str(time_print)+'_vulcan_cfg.py')
+    shutil.copy(vulcan_dir+'vulcan_cfg.py', output_dir+str(time_print)+'_vulcan_cfg.py')
+
+    return volume_mixing_ratios, mass_mixing_ratios
 
 
 def ModifiedHenrysLaw( atm_chemistry, output_dir, file_name ):
@@ -551,7 +550,7 @@ def RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, 
     R_solid_planet = SPIDER_options["R_solid_planet"]
 
     # Generate/adapt VULCAN input files
-    UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, runtime_helpfile, R_solid_planet )
+    volume_mixing_ratios_name, mass_mixing_ratios_name = UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, runtime_helpfile, R_solid_planet )
 
     # Runtime info
     PrintSeparator()
@@ -563,11 +562,11 @@ def RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, 
     subprocess.run(["python", "vulcan.py", "-n"], shell=False)
     os.chdir(coupler_dir)
 
-    # Copy VULCAN dumps to output folder
-    shutil.copy(vulcan_dir+'output/vulcan_EQ.txt', output_dir+str(int(time_current))+"_atm_chemistry.dat")
+    # # Copy VULCAN dumps to output folder
+    # shutil.copy(vulcan_dir+'output/vulcan_EQ.txt', output_dir+str(int(time_current))+"_atm_chemistry.dat")
 
     # Read in data from VULCAN output
-    atm_chemistry = pd.read_csv(output_dir+str(int(time_current))+"_atm_chemistry.dat", skiprows=1, delim_whitespace=True)
+    atm_chemistry = pd.read_csv(output_dir+volume_mixing_ratios_name, skiprows=1, delim_whitespace=True)
     print(atm_chemistry.iloc[:, 0:5])
 
     plot_atmosphere.plot_mixing_ratios(output_dir, atm_chemistry, int(time_current)) # specific time steps
