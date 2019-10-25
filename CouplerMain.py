@@ -99,10 +99,10 @@ if SPIDER_options["start_condition"] == 1:
         SPIDER_options, runtime_helpfile = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name )
 
         # Init loop atmosphere: equilibrate atmosphere starting conditions
-        while loop_counter["atm"] < 1:
+        while loop_counter["atm"] < 2:
 
             # Run VULCAN
-            atm_chemistry = coupler_utils.RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, 'spider_input/spider_elements.dat', runtime_helpfile, SPIDER_options["R_solid_planet"] )
+            atm_chemistry = coupler_utils.RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, runtime_helpfile, SPIDER_options )
 
             # Run SOCRATES
             SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter )

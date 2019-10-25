@@ -432,10 +432,10 @@ def PrintHalfSeparator():
     pass
 
 # Generate/adapt VULCAN input files
-def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, file_name, runtime_helpfile, R_solid_planet ):
+def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, runtime_helpfile, R_solid_planet ):
 
     # Initialize VULCAN input files
-    if loop_counter["atm"] == 0:
+    if loop_counter["init"] == 0 and loop_counter["atm"] == 0:
         with open(output_dir+'vulcan_XH_ratios.dat', 'w') as file:
             file.write('time             O                C                N                S                He\n')
         with open(output_dir+'vulcan_XH_ratios.dat', 'a') as file:
@@ -448,8 +448,12 @@ def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, 
     with open(output_dir+'vulcan_XH_ratios.dat', 'a') as file:
         file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["O/H"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["C/H"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["N/H"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["S/H"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["He/H"]))+"\n")
 
+    # Last .json file -> print time
+    last_file = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
+    time_print = last_file[:-4]
+
     # Adjust the init .cfg file on the fly
-    if loop_counter["atm"] == 0:
+    if loop_counter["init"] == 0 and loop_counter["atm"] == 0:
         
         # Change surface gravity in VULCAN init file
         M_solid_planet = runtime_helpfile.iloc[-1]["M_core"] + runtime_helpfile.iloc[-1]["M_mantle"]
@@ -465,14 +469,25 @@ def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, 
     else:
 
         # Modify the SOCRATES TP structure input
-        SOCRATES_TP = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*_atm_TP_profile.dat")])[-1] 
+        SOCRATES_TP = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*_atm_TP_profile.dat")])[-1]
+
+        # Output filenames
+        volume_mixing_ratios = str(time_print)+"_atm_chemistry_volume.dat"
+        mass_mixing_ratios   = str(time_print)+"_atm_chemistry_mass.dat"
 
         # Adjust copied file in output_dir
         for line in fileinput.input(output_dir+'vulcan_cfg.py', inplace=True):
             if line.strip().startswith('atm_file = '):
-                line = 'atm_file = '+str(SOCRATES_input)
+                line = 'atm_file = '+str(output_dir)+str(SOCRATES_TP)
+            if line.strip().startswith('EQ_outfile = '):
+                line = 'EQ_outfile = '+str(output_dir)+str(volume_mixing_ratios)+' # volume mixing ratio'
+            if line.strip().startswith('mass_outfile = '):
+                line = 'mass_outfile = '+str(output_dir)+str(volume_mixing_ratios)+' # mass mixing ratio'
             
             sys.stdout.write(line)
+
+    # Save modified temporary config file to compare versions
+    shutil.copy(output_dir+'vulcan_cfg.py', output_dir+str(time_print)+'_vulcan_cfg.py')
 
 
 def ModifiedHenrysLaw( atm_chemistry, output_dir, file_name ):
@@ -531,14 +546,16 @@ def ModifiedHenrysLaw( atm_chemistry, output_dir, file_name ):
 
 
     # run VULCAN
-def RunVULCAN( time_current, loop_no, vulcan_dir, coupler_dir, output_dir, spider_input_file, runtime_helpfile, R_solid_planet ):
+def RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, runtime_helpfile, SPIDER_options ):
+
+    R_solid_planet = SPIDER_options["R_solid_planet"]
 
     # Generate/adapt VULCAN input files
-    UpdateVulcanInputFiles( time_current, loop_no, vulcan_dir, output_dir, spider_input_file, runtime_helpfile, R_solid_planet )
+    UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, runtime_helpfile, R_solid_planet )
 
     # Runtime info
     PrintSeparator()
-    print("VULCAN run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print("VULCAN run, loop ", loop_counter, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     PrintSeparator()
 
     # Switch to VULCAN directory; run VULCAN, switch back to main directory
@@ -557,14 +574,14 @@ def RunVULCAN( time_current, loop_no, vulcan_dir, coupler_dir, output_dir, spide
 
     return atm_chemistry
 
-def RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_no ):
+def RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter ):
 
     # Interpolate TOA heating from Baraffe models and distance from star
     stellar_toa_heating, solar_lum = InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance)
 
     # Runtime info
     PrintSeparator()
-    print("SOCRATES run, loop ", loop_no, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print("SOCRATES run, loop ", loop_counter, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     PrintSeparator()
     # print(volatiles_mixing_ratio)
 
