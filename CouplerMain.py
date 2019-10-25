@@ -72,8 +72,9 @@ time_offset           = 100.         # Myr, start of magma ocean after star form
 # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
 loop_counter = { "total": 0, "init": 0, "atm": 0 }
 
-# Equilibration loops for atmosphere
-atm_loops = 2
+# Equilibration loops for init and atmosphere loops
+init_loops = 1
+atm_loops  = 1
 
 # If restart skip init loop
 if SPIDER_options["start_condition"] == 2:
@@ -100,7 +101,7 @@ if SPIDER_options["start_condition"] == 1:
     runtime_helpfile = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name)
 
     # Init loop for coupled interior-atmosphere system to equilibrate starting conditions
-    while loop_counter["init"] < 1:
+    while loop_counter["init"] < init_loops:
 
         # Run SPIDER
         SPIDER_options, runtime_helpfile, time_current = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name, restart_file )
@@ -115,7 +116,7 @@ if SPIDER_options["start_condition"] == 1:
             SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter )
 
             # Increase iteration counter
-            loop_counter["atm"]  += 1
+            loop_counter["atm"] += 1
 
         # / Init loop atmosphere
         loop_counter["atm"] = 0
@@ -129,7 +130,7 @@ if SPIDER_options["start_condition"] == 1:
     # / Init loop interior-atmosphere
 
     # Increase iteration counters   
-    loop_counter["total"]   += 1
+    loop_counter["total"] += 1
 
     # Reset restart flag
     SPIDER_options["start_condition"] = 2
@@ -164,7 +165,7 @@ while time_current < time_target:
     restart_file = coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum, loop_counter, output_dir)
 
     # Plot conditions throughout run for on-the-fly analysis
-    coupler_utils.UpdatePlots( atm_chemistry )
+    coupler_utils.UpdatePlots( output_dir, atm_chemistry )
 
     # Increase iteration counters   
     loop_counter["total"]   += 1

@@ -151,7 +151,7 @@ def PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, stellar_to
     print("TOA heating:", stellar_toa_heating)
     print("L_star:", solar_lum)
     print("Total heat flux [W/m^2]:", heat_flux)
-    print("Last file name:", ic_filename)
+    print("Last file name:", restart_file)
     print("---------------------------------------------------------")
 
     return restart_file
@@ -743,7 +743,7 @@ def CleanOutputDir( output_dir ):
     print("==> Done.")
 
 # Plot conditions throughout run for on-the-fly analysis
-def UpdatePlots( atm_chemistry ):
+def UpdatePlots( output_dir, atm_chemistry ):
 
     print("*** Plot current evolution,", end=" ")
     output_times = su.get_all_output_times()
