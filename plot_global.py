@@ -151,6 +151,18 @@ def plot_global( output_dir='output' ):
     blue = (0.1,0.1,0.5)
     black = 'black'
 
+    # fig_o.set_colors(cmap=vik_r)
+    # volatiles = [ "H2O", "CO2", "H2", "CO", "N2", "O2", "CH4", "He", "S" ]
+    # color_H2O = fig_o.get_color( 0 )
+    # color_CO2 = fig_o.get_color( 1 )
+    # color_H2  = fig_o.get_color( 2 )
+    # color_CO  = fig_o.get_color( 3 )
+    # color_N2  = fig_o.get_color( 4 )
+    # color_O2  = fig_o.get_color( 5 )
+    # color_CH4 = fig_o.get_color( 6 )
+    # color_He  = fig_o.get_color( 7 )
+    # color_S   = fig_o.get_color( 8 )
+
     # to plot melt fraction contours on figure (a)
     # compute time at which desired melt fraction is reached
     #phi_a = mass_liquid_a / mass_mantle
@@ -232,8 +244,8 @@ def plot_global( output_dir='output' ):
     #    label = cont #int(cont*100) # as percent
     #    ax0.text( phi_time_l[cc], 0.40, '{:2d}'.format(label), va='bottom', ha='center', rotation=90, bbox=dict(facecolor='white'), transform=trans )
     #ax0.text( 0.1, 0.9, '$\phi (\%)$', ha='center', va='bottom', transform=ax0.transAxes )
-    h1, = ax3.semilogx( timeMyr_a, H2O_atmos_a, color=blue, linestyle='-', lw=lw, label=r'H$_2$O')
-    h2, = ax3.semilogx( timeMyr_a, CO2_atmos_a, color=red, linestyle='-', lw=lw, label=r'CO$_2$')
+    h1, = ax3.semilogx( timeMyr_a, H2O_atmos_a, color=red, linestyle='-', lw=lw, label=r'H$_2$O')
+    h2, = ax3.semilogx( timeMyr_a, CO2_atmos_a, color=blue, linestyle='-', lw=lw, label=r'CO$_2$')
     fig_o.set_myaxes( ax3, title=title, ylabel=ylabel )#, xlabel=xlabel, xticks=xticks )
     ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax3.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))

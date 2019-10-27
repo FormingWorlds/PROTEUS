@@ -52,7 +52,7 @@ def plot_stacked( output_dir, times ):
     width = 5.00 #* 3.0/2.0
     height = 10.0
     fig_o = su.FigureData( 2, 1, width, height, 'output/'+'plot_stacked', units='kyr' ) #, times
-    fig_o.fig.subplots_adjust(wspace=0.0,hspace=0.04)
+    fig_o.fig.subplots_adjust(wspace=0.0,hspace=0.05)
     fig_o.time = times
 
     ax0 = fig_o.ax[0]
@@ -158,7 +158,7 @@ def plot_stacked( output_dir, times ):
     xticks = [50, 1000, 2000, 3000, 4000, 5000]
     xmin = 50
     xmax = 5000
-    title_xcoord = -0.13
+    title_xcoord = -0.11
     title_ycoord = 0.5
 
     units = myjson_o.get_dict_units(['data','temp_b'])
@@ -166,12 +166,13 @@ def plot_stacked( output_dir, times ):
 
     ##### Atmosphere part
 
-
     # ax0.set_xlabel("Temperature, $T$ (K)")
     ax0.set_ylabel("Height, $z_\mathrm{atm}$ (km)")
     ax0.set_xlim( left=xmin, right=xmax )
     ax0.set_ylim( top=ymax_atm_z, bottom=ymin_atm_z )
     # ax0.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
+    ax0.set_yticks([round(ymin_atm_z,1), round(0.25*ymax_atm_z,1), round(0.5*ymax_atm_z,1), round(0.75*ymax_atm_z,1), round(ymax_atm_z,1)])
+    # ax0.set_yticklabels(["", str(round(0.25*ymax_atm_z,1)), str(round(0.5*ymax_atm_z,1)), str(round(0.75*ymax_atm_z,1)), str(round(ymax_atm_z,1))])
     ax0.yaxis.set_label_coords(title_xcoord,title_ycoord)
     ax0.xaxis.tick_top()
     ax0.set_xticklabels([])
@@ -213,16 +214,19 @@ def plot_stacked( output_dir, times ):
     # Do not show pressure labels for this plot
     ax1.set_yticklabels([])
     ax1.set_yticks([])
-
+    # ax1.tick_params(direction='in')
+    
     # Pressure-depth conversion for interior y-axis
     ax1b = ax1.twinx()
     yy = myjson_o.get_dict_values(['data','temp_b'])
     ax1b.plot( yy, xx_depth, alpha=0.0)
     ax1b.set_xlim( right=xmax, left=xmin )
     ax1b.set_ylim(top=xx_depth[-1], bottom=xx_depth[0])
-    ax1b.set_yticks([100, 500, 1000, 1500, 2000, 2500, int(xx_depth[-1])])
+    # ax1b.set_yticks([0, 100, 500, 1000, 1500, 2000, 2500, int(xx_depth[-1])])
+    ax1b.set_yticks([0, int(0.25*xx_depth[-1]), int(0.5*xx_depth[-1]), int(0.75*xx_depth[-1]), int(xx_depth[-1])])
     ax1b.invert_yaxis()
     ax1b.yaxis.tick_left()
+    ax1b.tick_params(direction='in')
     ax1.set_ylabel( 'Depth, $d_\mathrm{mantle}$ (km)' )
     ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
 

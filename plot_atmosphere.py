@@ -225,15 +225,17 @@ def plot_current_mixing_ratio( output_dir, time ):
     # Read atmospheric chemistry
     atm_chemistry       = pd.read_csv(output_dir+time+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True)
 
-    # plt.figure()
-    plt.plot(atm_chemistry["H2O"], atm_chemistry["Pressure"], label=r"H$_2$O")
-    plt.plot(atm_chemistry["CO2"], atm_chemistry["Pressure"], label=r"CO$_2$")
-    plt.plot(atm_chemistry["CO"], atm_chemistry["Pressure"], label=r"CO")
-    plt.plot(atm_chemistry["H2"], atm_chemistry["Pressure"], label=r"H$_2$")
-    plt.plot(atm_chemistry["N2"], atm_chemistry["Pressure"], label=r"N$_2$")
-    plt.plot(atm_chemistry["O2"], atm_chemistry["Pressure"], label=r"O$_2$")
-    plt.plot(atm_chemistry["CH4"], atm_chemistry["Pressure"], label=r"CH$_4$")
-    plt.plot(atm_chemistry["He"], atm_chemistry["Pressure"], label=r"He")
+    # Plot settings
+    lw=2
+
+    plt.plot(atm_chemistry["H2O"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"H$_2$O")
+    plt.plot(atm_chemistry["CO2"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"CO$_2$")
+    plt.plot(atm_chemistry["H2"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"H$_2$")
+    plt.plot(atm_chemistry["CO"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"CO")
+    plt.plot(atm_chemistry["N2"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"N$_2$")
+    plt.plot(atm_chemistry["O2"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"O$_2$")
+    plt.plot(atm_chemistry["CH4"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"CH$_4$")
+    plt.plot(atm_chemistry["He"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"He")
     plt.xlabel("Volume mixing ratio (n$_{\mathrm{i}}$/n$_{\mathrm{tot}}$)")
     plt.ylabel("Pressure, $P_{\mathrm{tot}}$ (bar)")
     plt.xscale("log")

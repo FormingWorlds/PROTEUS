@@ -414,7 +414,9 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
         runtime_helpfile_new = pd.DataFrame({
             'Time': sim_time, 
             'Input': input_flag, 
-            'T_surf': temperature_surface_a, 
+            'T_surf': temperature_surface_a,
+            'Phi_global': phi_global,
+            'Heat_flux': Fatm,  
             'M_core': mass_core_a, 
             'M_mantle': mass_mantle_a, 
             'M_mantle_liquid': mass_liquid_a,
@@ -439,7 +441,7 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
         runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ")
 
     else:
-        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_atm', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
+        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'Phi_global', 'Heat_flux', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_atm', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
         runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ") 
 
     return runtime_helpfile
@@ -763,16 +765,16 @@ def UpdatePlots( output_dir ):
 
     # Specific timesteps for paper plots
     plot_interior.plot_interior(plot_times)     
-    plot_atmosphere.plot_atmosphere(output_dir)
-    plot_stacked.plot_stacked(output_dir)
+    plot_atmosphere.plot_atmosphere(output_dir, plot_times)
+    plot_stacked.plot_stacked(output_dir, plot_times)
     
     # One plot per timestep for video files
-    plot_atmosphere.plot_current_mixing_ratio(output_dir) 
+    plot_atmosphere.plot_current_mixing_ratio(output_dir, plot_times[-1]) 
 
 def SaveOutput( output_dir ):
 
     # Copy old files to separate folder
-    save_dir = coupler_utils.make_output_dir( output_dir ) #
+    save_dir = make_output_dir( output_dir ) #
     print("===> Copy files to separate dir for this run to:", save_dir)
     shutil.copy(output_dir+"spider_input.opts", save_dir+"spider_input.opts")
     for file in natsorted(glob.glob(output_dir+"*.*")):

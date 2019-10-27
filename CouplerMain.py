@@ -89,7 +89,6 @@ print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 ## TO DO LIST:
 # - feed atmospheric profile to SOCRATES instead of surface abundances
-# - 
 # - add atm abundances to plotting routine
 
 if SPIDER_options["start_condition"] == 1:
