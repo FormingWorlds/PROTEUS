@@ -62,7 +62,7 @@ time_target           = 1.0e+6       # yr
 restart_file = ""
 
 # Define runtime helpfile names and generate dataframes
-runtime_helpfile_name = "runtime_properties.csv"
+runtime_helpfile_name = "runtime_helpfile.csv"
 
 # Planetary and magma ocean start configuration
 star_mass             = 1.0          # M_sol options: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4
@@ -115,6 +115,9 @@ if SPIDER_options["start_condition"] == 1:
             # Run SOCRATES
             SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter )
 
+            # Plot conditions throughout run for on-the-fly analysis
+            coupler_utils.UpdatePlots( output_dir )
+
             # Increase iteration counter
             loop_counter["atm"] += 1
 
@@ -165,7 +168,7 @@ while time_current < time_target:
     restart_file = coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum, loop_counter, output_dir)
 
     # Plot conditions throughout run for on-the-fly analysis
-    coupler_utils.UpdatePlots( output_dir, atm_chemistry )
+    coupler_utils.UpdatePlots( output_dir )
 
     # Increase iteration counters   
     loop_counter["total"]   += 1

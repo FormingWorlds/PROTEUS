@@ -182,6 +182,7 @@ def plot_interior( times ):
     #     ax0.text(110, 2275, r'$\phi=0.2$', fontsize=6 )
 
     fig_o.savefig(1)
+    plt.close()
 
 #====================================================================
 def main():

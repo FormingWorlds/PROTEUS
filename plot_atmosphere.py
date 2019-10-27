@@ -14,6 +14,7 @@ import glob
 # from natsort import natsorted #https://pypi.python.org/pypi/natsort
 from decimal import Decimal
 import matplotlib.ticker as ticker
+import pandas as pd
 
 # Font settings
 # https://stackoverflow.com/questions/2537868/sans-serif-math-with-latex-in-matplotlib
@@ -46,18 +47,19 @@ def plot_atmosphere( output_dir, times ):
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width
 
-    logger.info( 'building stacked interior atmosphere' )
+    # logger.info( 'building stacked interior atmosphere' )
 
-    width = 12.00 #* 3.0/2.0
-    height = 6.0
-    fig_o = su.FigureData( 2, 2, width, height, output_dir+'plot_atmosphere', units='kyr' ) #, times
-    fig_o.fig.subplots_adjust(wspace=0.07,hspace=0.25)
+    width = 6.00 #* 3.0/2.0
+    height = 12.0
+    fig_o = su.FigureData( 3, 1, width, height, output_dir+'plot_atmosphere', units='kyr' ) #, times
+    # fig1 = plt.figure()
+    fig_o.fig.subplots_adjust(wspace=0.07,hspace=0.2)
     fig_o.time = times
 
-    ax0 = fig_o.ax[0][0]
-    ax1 = fig_o.ax[1][0]
-    ax2 = fig_o.ax[0][1]
-    ax3 = fig_o.ax[1][1]
+    ax0 = fig_o.ax[0]#[0]
+    ax1 = fig_o.ax[1]#[0]
+    ax2 = fig_o.ax[2]#[0]
+    # ax3 = fig_o.ax[1][1]
 
     time = fig_o.time[0] # first timestep since liquidus and solidus
                          # are time-independent
@@ -93,6 +95,9 @@ def plot_atmosphere( output_dir, times ):
     mantle_mass = myjson_o.get_dict_values(['atmosphere','mass_mantle'])
     planet_mass = core_mass + mantle_mass
 
+    # # Load runtime helpfile
+    # runtime_helpfile = pd.read_csv(output_dir+"runtime_helpfile.csv")
+
     for nn, time in enumerate( fig_o.time ):
 
         if os.path.exists(output_dir+str(int(time))+"_atm_TP_profile.dat"):
@@ -100,6 +105,9 @@ def plot_atmosphere( output_dir, times ):
             # Read atmosphere properties
             atm_TP_profile      = np.loadtxt(output_dir+str(int(time))+"_atm_TP_profile.dat")
             atm_spectral_flux   = np.loadtxt(output_dir+str(int(time))+"_atm_spectral_flux.dat")
+
+            # # Read atmospheric chemistry
+            # atm_chemistry       = pd.read_csv(output_dir+"runtime_helpfile.csv")
 
             temperature_atmosphere  = []
             pressure_atmosphere     = []
@@ -133,22 +141,22 @@ def plot_atmosphere( output_dir, times ):
             pressure_atmosphere_bar = [ n/1000. for n in pressure_atmosphere]    # bar
             ax1.semilogy( temperature_atmosphere, pressure_atmosphere_bar, '-', color=color, label=label, lw=1.5)
 
-            # Atmospheric mixing ratios
-            h2o_kg = myjson_o.get_dict_values( ['atmosphere','H2O','atmosphere_kg'] )
-            co2_kg = myjson_o.get_dict_values( ['atmosphere','CO2','atmosphere_kg'] )
-            h2_kg  = 0  # kg
-            ch4_kg = 0  # kg
-            co_kg  = 0  # kg
-            n2_kg  = 0  # kg
-            o2_kg  = 0  # kg
-            he_kg  = 0  # kg
-            h2o_ratio, co2_ratio, h2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio = coupler_utils.CalcMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg)
-            h2o_ratio = h2o_ratio*np.ones(len(z_profile))
-            co2_ratio = co2_ratio*np.ones(len(z_profile))
-            ax2.plot( h2o_ratio, z_profile, '-', color=color, label=label, lw=1.5)
+            # # Atmospheric mixing ratios
+            # h2o_kg = myjson_o.get_dict_values( ['atmosphere','H2O','atmosphere_kg'] )
+            # co2_kg = myjson_o.get_dict_values( ['atmosphere','CO2','atmosphere_kg'] )
+            # h2_kg  = 0  # kg
+            # ch4_kg = 0  # kg
+            # co_kg  = 0  # kg
+            # n2_kg  = 0  # kg
+            # o2_kg  = 0  # kg
+            # he_kg  = 0  # kg
+            # h2o_ratio, co2_ratio, h2_ratio, ch4_ratio, co_ratio, n2_ratio, o2_ratio, he_ratio = coupler_utils.CalcMolRatios(h2o_kg, co2_kg, h2_kg, ch4_kg, co_kg, n2_kg, o2_kg, he_kg)
+            # h2o_ratio = h2o_ratio*np.ones(len(z_profile))
+            # co2_ratio = co2_ratio*np.ones(len(z_profile))
+            # ax2.plot( h2o_ratio, z_profile, '-', color=color, label=label, lw=1.5)
 
             # Spectral OLR
-            ax3.plot( band_centres, spectral_flux, '-', color=color, label=label, lw=1.5)
+            ax2.plot( band_centres, spectral_flux, '-', color=color, label=label, lw=1.5)
 
             # Reset y-axis boundaries
             if np.min(pressure_atmosphere_bar) > 0:
@@ -161,42 +169,48 @@ def plot_atmosphere( output_dir, times ):
     xticks = [10, 500, 1000, 1500, 2000, 2500, 3000]
     xmin = 10
     xmax = 3000
+    title_xcoord = -0.09
+    title_ycoord = 0.5
 
     #####  T-Z
-    fig_o.set_myaxes( ax0, xlabel='$T$ (K)', ylabel='$z_\mathrm{atm}$\n(km)', xmin=xmin, xmax=xmax, ymin=0, ymax=ymax_atm_z, xticks=xticks )
+    # fig_o.set_myaxes( ax0, xlabel='$T$ (K)', ylabel='$z_\mathrm{atm}$\n(km)', xmin=xmin, xmax=xmax, ymin=0, ymax=ymax_atm_z, xticks=xticks )
+    ax0.set_xlabel("Temperature, $T$ (K)")
+    ax0.set_ylabel("Height, $z_\mathrm{atm}$ (km)")
     ax0.set_ylim( top=ymax_atm_z, bottom=ymin_atm_z )
     # ax0.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
-    ax0.yaxis.set_label_coords(-0.13,0.5)
+    ax0.yaxis.set_label_coords(title_xcoord,title_ycoord)
     # ax0.tick_params(direction='in')
     # ax0.set_xticklabels([])
     # ax0.xaxis.tick_top()
     # ax0.tick_params(direction='in')
 
     #####  T-P
-    fig_o.set_myaxes( ax1, xlabel='$T$ (K)', ylabel='$P_\mathrm{atm}$\n(bar)', xmin=xmin, xmax=xmax, xticks=xticks )
+    # fig_o.set_myaxes( ax1, xlabel='$T$ (K)', ylabel='$P_\mathrm{atm}$\n(bar)', xmin=xmin, xmax=xmax, xticks=xticks )
+    ax1.set_xlabel("Temperature, $T$ (K)")
+    ax1.set_ylabel("Pressure, $P_\mathrm{tot}$ (bar)")
     ax1.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
-    ax1.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
-    ax1.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    # ax1.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
+    # ax1.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
     ax1.get_yaxis().get_major_formatter().labelOnlyBase = False
-    ax1.yaxis.set_label_coords(-0.13,0.5)
+    ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
     ax1.invert_yaxis()
 
-    #####  Volatile mixing ratios
-    ax2.yaxis.set_label_position("right")
-    ax2.yaxis.tick_right()
-    ax2.set_xlim( left=0, right=1 )
-    ax2.set_ylabel( "$z_\mathrm{atm}$\n(km)", rotation=0)
-    ax2.yaxis.set_label_coords(1.10,0.5)
-    ax2.set_xlabel( '$X_{H_2O}$ (mol$_i$/mol)')
+    # #####  Volatile mixing ratios
+    # ax2.yaxis.set_label_position("right")
+    # ax2.yaxis.tick_right()
+    # ax2.set_xlim( left=0, right=1 )
+    # ax2.set_ylabel( "$z_\mathrm{atm}$\n(km)", rotation=0)
+    # ax2.yaxis.set_label_coords(1.10,0.5)
+    # ax2.set_xlabel( '$X_{H_2O}$ (mol$_i$/mol)')
 
     #####  Spectral OLR
-    fig_o.set_myaxes( ax3, xlabel='Wavenumber (cm$^{-1}$)', ylabel='Spectral flux' )
-    ax3.set_xlim( left=0, right=10000 )
-    ax3.set_ylabel( 'Spectral flux', rotation=90)
-    ax3.yaxis.set_label_position("right")
-    ax3.yaxis.tick_right()
-    # ax3.set_ylim( bottom=0 )
-    # ax0.yaxis.set_label_coords(-0.13,0.5)
+    fig_o.set_myaxes( ax2, xlabel='Wavenumber (cm$^{-1}$)', ylabel='Spectral flux' )
+    ax2.set_xlim( left=0, right=10000 )
+    ax2.set_ylabel( 'Spectral flux density (Jy)', rotation=90)
+    # ax2.yaxis.set_label_position("right")
+    # ax2.yaxis.tick_right()
+    # ax2.set_ylim( bottom=0 )
+    ax2.yaxis.set_label_coords(title_xcoord,title_ycoord)
 
     # Legend
     ax0.legend( fontsize=8, fancybox=True, framealpha=0.5 )
@@ -204,23 +218,31 @@ def plot_atmosphere( output_dir, times ):
     fig_o.savefig(1)
     plt.close()
 
-def plot_mixing_ratios( output_dir, atm_chemistry, time_print ):
+def plot_current_mixing_ratio( output_dir, time ):
 
+    time = str(time)
+
+    # Read atmospheric chemistry
+    atm_chemistry       = pd.read_csv(output_dir+time+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True)
+
+    # plt.figure()
     plt.plot(atm_chemistry["H2O"], atm_chemistry["Pressure"], label=r"H$_2$O")
     plt.plot(atm_chemistry["CO2"], atm_chemistry["Pressure"], label=r"CO$_2$")
+    plt.plot(atm_chemistry["CO"], atm_chemistry["Pressure"], label=r"CO")
     plt.plot(atm_chemistry["H2"], atm_chemistry["Pressure"], label=r"H$_2$")
     plt.plot(atm_chemistry["N2"], atm_chemistry["Pressure"], label=r"N$_2$")
     plt.plot(atm_chemistry["O2"], atm_chemistry["Pressure"], label=r"O$_2$")
     plt.plot(atm_chemistry["CH4"], atm_chemistry["Pressure"], label=r"CH$_4$")
-    plt.plot(atm_chemistry["CO"], atm_chemistry["Pressure"], label=r"CO")
-    plt.xlabel("Volume mixing ratio [n$_i$/n$_tot$]")
-    plt.ylabel("Pressure [bar]")
+    plt.plot(atm_chemistry["He"], atm_chemistry["Pressure"], label=r"He")
+    plt.xlabel("Volume mixing ratio (n$_{\mathrm{i}}$/n$_{\mathrm{tot}}$)")
+    plt.ylabel("Pressure, $P_{\mathrm{tot}}$ (bar)")
     plt.xscale("log")
     plt.yscale("log")
-    plt.legend()
-    plt.xlim(1e-30, 1.)
+    plt.legend(loc=6, fancybox=True, framealpha=0.9)
+    plt.xlim(1e-16, 1.)
     plt.ylim(np.max(atm_chemistry["Pressure"]), np.min(atm_chemistry["Pressure"]))
-    plt.savefig(output_dir+"plot_atm_chemistry_"+str(time_print)+".pdf")
+    plt.savefig(output_dir+"plot_atm_chemistry_"+str(time)+".pdf", bbox_inches = 'tight',
+    pad_inches = 0.1)
     plt.close()
 
 
@@ -229,15 +251,15 @@ def main():
 
     output_list = su.get_all_output_times()
 
+    plot_current_mixing_ratio( output_dir="output/", time=output_list[-1] )
+
     if len(output_list) <= 8:
         plot_list = output_list
     else:
         plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
     print("snapshots:", plot_list)
 
-    plot_atmosphere( output_dir, times=plot_list )
-
-    plot_mixing_ratios( output_dir, atm_chemistry, time=output_list[-1] )
+    plot_atmosphere( output_dir="output/", times=plot_list )
 
 #====================================================================
 

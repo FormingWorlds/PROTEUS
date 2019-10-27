@@ -80,15 +80,15 @@ henry_coefficients = pd.DataFrame({
 
 
 # https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
-def make_output_dir():
-    output_dir = os.getcwd()+"/output/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
+def make_output_dir( output_dir ):
+    output_dir = output_dir+"save/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
     try:
         os.makedirs(output_dir)
     except OSError as e:
         if e.errno != errno.EEXIST:
             raise  # This was not a "directory exist" error..
 
-    return output_dir
+    return save_dir
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
 def latex_float(f):
@@ -743,9 +743,11 @@ def CleanOutputDir( output_dir ):
     print("==> Done.")
 
 # Plot conditions throughout run for on-the-fly analysis
-def UpdatePlots( output_dir, atm_chemistry ):
+def UpdatePlots( output_dir ):
 
-    print("*** Plot current evolution,", end=" ")
+    PrintSeparator()
+    print("Plot current evolution, ", end=" ")
+    PrintSeparator()
     output_times = su.get_all_output_times()
     if len(output_times) <= 8:
         plot_times = output_times
@@ -755,19 +757,25 @@ def UpdatePlots( output_dir, atm_chemistry ):
             plot_times.append(output_times[int(round(len(output_times)*(i/100.)))])
         plot_times.append(output_times[-1])     # last snapshot
     print("snapshots:", plot_times)
-    plot_interior.plot_interior(plot_times)     # specific time steps
-    plot_atmosphere.plot_atmosphere(output_dir, plot_times) # specific time steps
-    plot_stacked.plot_stacked(plot_times)       # specific time steps
-    plot_global.plot_global(output_dir)         # all time steps
-    plot_atmosphere.plot_mixing_ratios(output_dir, atm_chemistry, plot_times) # specific time steps
+
+    # Globale properties for all timesteps
+    plot_global.plot_global(output_dir)   
+
+    # Specific timesteps for paper plots
+    plot_interior.plot_interior(plot_times)     
+    plot_atmosphere.plot_atmosphere(output_dir)
+    plot_stacked.plot_stacked(output_dir)
+    
+    # One plot per timestep for video files
+    plot_atmosphere.plot_current_mixing_ratio(output_dir) 
 
 def SaveOutput( output_dir ):
 
     # Copy old files to separate folder
-    sim_dir = coupler_utils.make_output_dir() #
-    print("===> Copy files to separate dir for this run to:", sim_dir)
-    shutil.copy(os.getcwd()+"/bu_input.opts", sim_dir+"bu_input.opts")
+    save_dir = coupler_utils.make_output_dir( output_dir ) #
+    print("===> Copy files to separate dir for this run to:", save_dir)
+    shutil.copy(output_dir+"spider_input.opts", save_dir+"spider_input.opts")
     for file in natsorted(glob.glob(output_dir+"*.*")):
-        shutil.copy(file, sim_dir+os.path.basename(file))
+        shutil.copy(file, save_dir+os.path.basename(file))
         print(os.path.basename(file), end =" ")
 

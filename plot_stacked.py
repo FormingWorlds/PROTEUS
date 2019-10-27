@@ -14,6 +14,7 @@ import glob
 # from natsort import natsorted #https://pypi.python.org/pypi/natsort
 from decimal import Decimal
 import matplotlib.ticker as ticker
+import pandas as pd
 
 # Font settings
 # https://stackoverflow.com/questions/2537868/sans-serif-math-with-latex-in-matplotlib
@@ -41,7 +42,7 @@ for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
 logger = su.get_my_logger(__name__)
 
 #====================================================================
-def plot_stacked( times ):
+def plot_stacked( output_dir, times ):
 
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width
@@ -90,9 +91,17 @@ def plot_stacked( times ):
     ymax_atm_z = 0
     ymin_atm_z = 0
 
+    # Find planet mass
+    core_mass   = myjson_o.get_dict_values(['atmosphere','mass_core'])
+    mantle_mass = myjson_o.get_dict_values(['atmosphere','mass_mantle'])
+    planet_mass = core_mass + mantle_mass
+
     for nn, time in enumerate( fig_o.time ):
 
         if os.path.exists('output/'+str(int(time))+"_atm_TP_profile.dat"):
+
+            # Read atmospheric chemistry
+            atm_chemistry = pd.read_csv(output_dir+str(time)+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True)
 
             # Read atmosphere properties
             atm_TP_profile  = np.loadtxt('output/'+str(int(time))+"_atm_TP_profile.dat")
@@ -116,15 +125,14 @@ def plot_stacked( times ):
 
             # Pressure-height conversion for y-axis
             
-            # Plot height instead of pressure as y-axis
-            ### CAREFUL: HARDCODED TO M_EARTH !!!
-            z_profile = coupler_utils.AtmosphericHeight(temperature_atmosphere, pressure_atmosphere, 5.972E24, r_planet) ## WRONG UNITS!
+           # Atmosphere T-Z
+            pressure_atmosphere_Pa = [ n*100. for n in pressure_atmosphere]     # Pa
+            z_profile = coupler_utils.AtmosphericHeight(temperature_atmosphere, pressure_atmosphere_Pa, planet_mass, r_planet) # m
             z_profile = z_profile*1e-3 # km
-            # ax0.plot( temperature_atmosphere, z_profile, '-', color=color, label=label, lw=1.5)
+            ax0.plot( temperature_atmosphere, z_profile, '-', color=color, label=label, lw=1.5)
 
-            # Atmospphere T-P
-            ax0.semilogy( temperature_atmosphere, pressure_atmosphere, '-', color=color, label=label, lw=1.5)
-            # ax0.plot( temperature_atmosphere, pressure_atmosphere, '-', color=color, label=label, lw=1.5)
+            # # Atmospphere T-P
+            # ax0.semilogy( temperature_atmosphere, pressure_atmosphere, '-', color=color, label=label, lw=1.5)
 
             # interior
             temperature_interior = myjson_o.get_dict_values(['data','temp_b'])
@@ -150,23 +158,36 @@ def plot_stacked( times ):
     xticks = [50, 1000, 2000, 3000, 4000, 5000]
     xmin = 50
     xmax = 5000
+    title_xcoord = -0.13
+    title_ycoord = 0.5
 
     units = myjson_o.get_dict_units(['data','temp_b'])
     # title = 'Atmosphere + mantle temperature profile' #'(a) Temperature, {}'.format(units)
 
     ##### Atmosphere part
 
-    # Y-axis settings
-    fig_o.set_myaxes( ax0, ylabel='$P_\mathrm{atm}$\n(mbar)', xmin=xmin, xmax=xmax, xticks=xticks )
-    ax0.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
-    ax0.set_yticks([ymin_atm_pressure, 1e1, 1e2, 1e3, 1e4, ymax_atm_pressure])
-    ax0.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-    ax0.get_yaxis().get_major_formatter().labelOnlyBase = False
+
+    # ax0.set_xlabel("Temperature, $T$ (K)")
+    ax0.set_ylabel("Height, $z_\mathrm{atm}$ (km)")
+    ax0.set_xlim( left=xmin, right=xmax )
+    ax0.set_ylim( top=ymax_atm_z, bottom=ymin_atm_z )
+    # ax0.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
+    ax0.yaxis.set_label_coords(title_xcoord,title_ycoord)
     ax0.xaxis.tick_top()
-    ax0.tick_params(direction='in')
-    ax0.yaxis.set_label_coords(-0.13,0.5)
-    ax0.invert_yaxis()
     ax0.set_xticklabels([])
+    ax0.tick_params(direction='in')
+
+    # # Y-axis settings
+    # fig_o.set_myaxes( ax0, ylabel='$P_\mathrm{atm}$\n(mbar)', xmin=xmin, xmax=xmax, xticks=xticks )
+    # ax0.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
+    # ax0.set_yticks([ymin_atm_pressure, 1e1, 1e2, 1e3, 1e4, ymax_atm_pressure])
+    # ax0.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    # ax0.get_yaxis().get_major_formatter().labelOnlyBase = False
+    # ax0.xaxis.tick_top()
+    # ax0.tick_params(direction='in')
+    # ax0.yaxis.set_label_coords(-0.13,0.5)
+    # ax0.invert_yaxis()
+    # ax0.set_xticklabels([])
 
     # # Pressure on Y-axis from min/max values
     # ax0b = ax0.twinx()
@@ -182,12 +203,16 @@ def plot_stacked( times ):
     ax0.legend( fontsize=8, fancybox=True, framealpha=0.5 )
 
     #####  Interior part
-    yticks = [0, 20,40,60,80,100,120,int(pressure_interior[-1])]
+    yticks = [0,20,40,60,80,100,120,int(pressure_interior[-1])]
     ymax = int(pressure_interior[-1])
-    fig_o.set_myaxes( ax1, xlabel='$T$, '+units, ylabel='$d_\mathrm{mantle}$\n(km)', xmin=xmin, xmax=xmax, xticks=xticks, ymin=0, ymax=ymax, yticks=yticks )
-    ax1.set_yticklabels(["0", "20","40","60","80","100","120",str(int(pressure_interior[-1]))])
+    fig_o.set_myaxes( ax1, xlabel='Temperature, $T$ (K)', xmin=xmin, xmax=xmax, xticks=xticks, ymin=0, ymax=ymax, yticks=yticks )
     ax1.invert_yaxis()
-    ax1.yaxis.set_label_coords(1.15,0.5)
+    # ax1.set_ylabel( '$P_\mathrm{mantle}$ (GPa)' ) # , rotation=0
+    # ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
+    ax1.yaxis.tick_right()
+    # Do not show pressure labels for this plot
+    ax1.set_yticklabels([])
+    ax1.set_yticks([])
 
     # Pressure-depth conversion for interior y-axis
     ax1b = ax1.twinx()
@@ -196,9 +221,10 @@ def plot_stacked( times ):
     ax1b.set_xlim( right=xmax, left=xmin )
     ax1b.set_ylim(top=xx_depth[-1], bottom=xx_depth[0])
     ax1b.set_yticks([100, 500, 1000, 1500, 2000, 2500, int(xx_depth[-1])])
-    ax1b.set_ylabel( '$P_\mathrm{mantle}$\n(GPa)', rotation=0 )
-    ax1b.yaxis.set_label_coords(-0.13,0.55)
     ax1b.invert_yaxis()
+    ax1b.yaxis.tick_left()
+    ax1.set_ylabel( 'Depth, $d_\mathrm{mantle}$ (km)' )
+    ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
 
     # # Pressure-height conversion for y-axis
     # ax0b = ax0.twinx()
@@ -228,7 +254,7 @@ def main():
         plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
     print("snapshots:", plot_list)
 
-    plot_stacked( times=plot_list )
+    plot_stacked( output_dir="output/", times=plot_list )
 
 #====================================================================
 
