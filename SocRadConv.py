@@ -31,33 +31,37 @@ def surf_Planck_nu(atm):
     B = B * atm.band_widths/1000.0
     return B
 
-def RadConvEqm(output_dir, time_current, Tg, stellar_toa_heating, atm_chemistry):
+def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, atm_chemistry):
     #--------------------Set radmodel options-------------------
     #---Instantiate the radiation model---
 
+    # Atmosphere struct
     atm = atmos()
 
-    p_s = atm_chemistry.iloc[0]["Pressure"]
-
     #---Set up pressure array (a global)----
-    atm.ps = p_s
-    pstart = .995*atm.ps
-    rat = (atm.ptop/pstart)**(1./atm.nlev)
-    logLevels = [pstart*rat**i for i in range(atm.nlev+1)]
+    atm.ps      = runtime_helpfile.iloc[-1]["P_surf"]*1e3 # bar->mbar
+    pstart      = .995*atm.ps
+    rat         = (atm.ptop/pstart)**(1./atm.nlev)
+    logLevels   = [pstart*rat**i for i in range(atm.nlev+1)]
     logLevels.reverse()
-    levels = [atm.ptop + i*(pstart-atm.ptop)/(atm.nlev-1) for i in range(atm.nlev+1)]
-    atm.pl = np.array(logLevels)
-    atm.p = (atm.pl[1:] + atm.pl[:-1]) / 2
+    levels      = [atm.ptop + i*(pstart-atm.ptop)/(atm.nlev-1) for i in range(atm.nlev+1)]
+    atm.pl      = np.array(logLevels)
+    atm.p       = (atm.pl[1:] + atm.pl[:-1]) / 2
+
+    # print("Pressure calc:")
+    # print("Pressure (VULCAN):", atm_chemistry["Pressure"])
+    # print("Surface pressure:", p_s)
+    # print(atm.p)
 
 
     #==============Now do the calculation====================================
 
-    atm.ts = Tg
-    atm.Rcp = 2./7.
-    atm.temp = atm.ts*(atm.p/atm.p[-1])**atm.Rcp  #Initialize on an adiabat
-    atm.temp  = np.where(atm.temp<atm.ts/2.,atm.ts/2.,atm.temp)
+    atm.ts          = runtime_helpfile.iloc[-1]["T_surf"]
+    atm.Rcp         = 2./7.
+    atm.temp        = atm.ts*(atm.p/atm.p[-1])**atm.Rcp  #Initialize on an adiabat
+    atm.temp        = np.where(atm.temp<atm.ts/2.,atm.ts/2.,atm.temp)
     # atm.n_species = 2
-    atm.n_species = 7
+    atm.n_species   = 7
 
     # # Water vapour
     # atm.mixing_ratios[0] = 1.e-5
@@ -151,7 +155,7 @@ def RadConvEqm(output_dir, time_current, Tg, stellar_toa_heating, atm_chemistry)
     # plt.savefig(output_dir+'/T_profile_'+str(round(time_current))+'.pdf', bbox_inches="tight")
 
     # Write TP and spectral flux profiles for later plotting
-    out_a = np.column_stack( ( atm.temp, atm.p ) )
+    out_a = np.column_stack( ( atm.temp, atm.p*1.e-3 ) ) # K, mbar->bar
     np.savetxt( output_dir+str(int(time_current))+"_atm_TP_profile.dat", out_a )
     out_a = np.column_stack( ( atm.band_centres, atm.LW_spectral_flux_up[:,0]/atm.band_widths ) )
     np.savetxt( output_dir+str(int(time_current))+"_atm_spectral_flux.dat", out_a )

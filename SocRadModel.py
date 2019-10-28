@@ -42,7 +42,6 @@ def radCompSoc(atm, stellar_toa_heating):
     # solar_toa = 0.0 #zero stellar heating for now
     solar_toa = stellar_toa_heating
 
-
     # Write values to netcdf
     nctools.ncout_surf('profile.surf',0,0,1,0.1)
     nctools.ncout2d('profile.tstar',0,0,t_surf,'tstar',longname="Surface Temperature",units='K')

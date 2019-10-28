@@ -21,6 +21,7 @@ import plot_interior
 import plot_global
 import plot_stacked
 import plot_atmosphere
+from atmosphere_column import atmos
 
 ### Constants ###
 
@@ -78,10 +79,9 @@ henry_coefficients = pd.DataFrame({
     'He_alpha': 0.001E-9, 
     'He_beta': 1.0}, index=[0])
 
-
 # https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
 def make_output_dir( output_dir ):
-    output_dir = output_dir+"save/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
+    save_dir = output_dir+"save/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
     try:
         os.makedirs(output_dir)
     except OSError as e:
@@ -267,7 +267,7 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
         H2O_total_kg_a = data_a[6,:]
         H2O_total_kg = H2O_total_kg_a[0]        # time-independent
         H2O_atmos_kg_a = data_a[7,:]
-        H2O_atmos_a = data_a[8,:]
+        H2O_atmos_pressure = data_a[8,:]
         H2O_escape_kg_a = H2O_total_kg - H2O_liquid_kg_a - H2O_solid_kg_a - H2O_atmos_kg_a
 
         CO2_liquid_kg_a = data_a[9,:]
@@ -275,7 +275,7 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
         CO2_total_kg_a = data_a[11,:]
         CO2_total_kg = CO2_total_kg_a[0]        # time-independent
         CO2_atmos_kg_a = data_a[12,:]
-        CO2_atmos_a = data_a[13,:]
+        CO2_atmos_pressure = data_a[13,:]
         CO2_escape_kg_a = CO2_total_kg - CO2_liquid_kg_a - CO2_solid_kg_a - CO2_atmos_kg_a
 
         H2_liquid_kg_a = data_a[14,:]
@@ -283,7 +283,7 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
         H2_total_kg_a = data_a[16,:]
         H2_total_kg = H2_total_kg_a[0]        # time-independent
         H2_atmos_kg_a = data_a[17,:]
-        H2_atmos_a = data_a[18,:]
+        H2_atmos_pressure = data_a[18,:]
         H2_escape_kg_a = H2_total_kg - H2_liquid_kg_a - H2_solid_kg_a - H2_atmos_kg_a
 
         CH4_liquid_kg_a = data_a[19,:]
@@ -291,7 +291,7 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
         CH4_total_kg_a = data_a[21,:]
         CH4_total_kg = CH4_total_kg_a[0]        # time-independent
         CH4_atmos_kg_a = data_a[22,:]
-        CH4_atmos_a = data_a[23,:]
+        CH4_atmos_pressure = data_a[23,:]
         CH4_escape_kg_a = CH4_total_kg - CH4_liquid_kg_a - CH4_solid_kg_a - CH4_atmos_kg_a
 
         CO_liquid_kg_a = data_a[24,:]
@@ -299,7 +299,7 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
         CO_total_kg_a = data_a[26,:]
         CO_total_kg = CO_total_kg_a[0]        # time-independent
         CO_atmos_kg_a = data_a[27,:]
-        CO_atmos_a = data_a[28,:]
+        CO_atmos_pressure = data_a[28,:]
         CO_escape_kg_a = CO_total_kg - CO_liquid_kg_a - CO_solid_kg_a - CO_atmos_kg_a
 
         N2_liquid_kg_a = data_a[29,:]
@@ -307,7 +307,7 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
         N2_total_kg_a = data_a[31,:]
         N2_total_kg = N2_total_kg_a[0]        # time-independent
         N2_atmos_kg_a = data_a[32,:]
-        N2_atmos_a = data_a[33,:]
+        N2_atmos_pressure = data_a[33,:]
         N2_escape_kg_a = N2_total_kg - N2_liquid_kg_a - N2_solid_kg_a - N2_atmos_kg_a
 
         O2_liquid_kg_a = data_a[34,:]
@@ -315,7 +315,7 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
         O2_total_kg_a = data_a[36,:]
         O2_total_kg = O2_total_kg_a[0]        # time-independent
         O2_atmos_kg_a = data_a[37,:]
-        O2_atmos_a = data_a[38,:]
+        O2_atmos_pressure = data_a[38,:]
         O2_escape_kg_a = O2_total_kg - O2_liquid_kg_a - O2_solid_kg_a - O2_atmos_kg_a
 
         S_liquid_kg_a = data_a[39,:]
@@ -323,7 +323,7 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
         S_total_kg_a = data_a[41,:]
         S_total_kg = S_total_kg_a[0]        # time-independent
         S_atmos_kg_a = data_a[42,:]
-        S_atmos_a = data_a[43,:]
+        S_atmos_pressure = data_a[43,:]
         S_escape_kg_a = S_total_kg - S_liquid_kg_a - S_solid_kg_a - S_atmos_kg_a
 
         He_liquid_kg_a = data_a[44,:]
@@ -331,7 +331,7 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
         He_total_kg_a = data_a[46,:]
         He_total_kg = He_total_kg_a[0]        # time-independent
         He_atmos_kg_a = data_a[47,:]
-        He_atmos_a = data_a[48,:]
+        He_atmos_pressure = data_a[48,:]
         He_escape_kg_a = He_total_kg - He_liquid_kg_a - He_solid_kg_a - He_atmos_kg_a
 
         temperature_surface_a = data_a[49,:]
@@ -410,13 +410,16 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
 
         atm_kg = H2O_atmos_kg + CO2_atmos_kg + H2_atmos_kg + CH4_atmos_kg + CO_atmos_kg + N2_atmos_kg + O2_atmos_kg + S_atmos_kg + He_atmos_kg
 
+        P_surf = H2O_atmos_pressure + CO2_atmos_pressure + H2_atmos_pressure + CH4_atmos_pressure + CO_atmos_kg + N2_atmos_pressure + O2_atmos_pressure + S_atmos_pressure + He_atmos_pressure
+
         # Add to dataframe + save to disk
         runtime_helpfile_new = pd.DataFrame({
             'Time': sim_time, 
             'Input': input_flag, 
             'T_surf': temperature_surface_a,
             'Phi_global': phi_global,
-            'Heat_flux': Fatm,  
+            'Heat_flux': Fatm,
+            'P_surf': P_surf,    
             'M_core': mass_core_a, 
             'M_mantle': mass_mantle_a, 
             'M_mantle_liquid': mass_liquid_a,
@@ -441,7 +444,7 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
         runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ")
 
     else:
-        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'Phi_global', 'Heat_flux', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_atm', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
+        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'Phi_global', 'Heat_flux', 'P_surf', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'M_atm', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
         runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ") 
 
     return runtime_helpfile
@@ -468,6 +471,28 @@ def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, 
         M_solid_planet = runtime_helpfile.iloc[-1]["M_core"] + runtime_helpfile.iloc[-1]["M_mantle"]
         grav_s         = su.gravity( M_solid_planet, float(R_solid_planet) ) * 100. # cm s^-2
 
+        # Generate init TP structure
+        atm             = atmos()
+        atm.ps          = runtime_helpfile.iloc[-1]["P_surf"]*1e3 # mbar
+        pstart          = .995*atm.ps
+        rat             = (atm.ptop/pstart)**(1./atm.nlev)
+        logLevels       = [pstart*rat**i for i in range(atm.nlev+1)]
+        logLevels.reverse()
+        levels          = [atm.ptop+i*(pstart-atm.ptop)/(atm.nlev-1) for i in range(atm.nlev+1)]
+        atm.pl          = np.array(logLevels)
+        atm.p           = (atm.pl[1:] + atm.pl[:-1]) / 2
+        pressure_grid   = atm.p*1e-3 # bar
+        temp_grid       = np.ones(len(pressure_grid))*runtime_helpfile.iloc[-1]["T_surf"]
+
+        # Min/max P for VULCAN config file
+        P_b = np.max(pressure_grid)*1e6*1.001 # pressure at the bottom, (bar)->(dyne/cm^2)
+        P_t = np.min(pressure_grid)*1e6*1.001 # pressure at the top, (bar)->(dyne/cm^2)
+        
+        # Generate initial TP structure file
+        out_a       = np.column_stack( ( temp_grid, pressure_grid ) ) # K, bar
+        init_TP     = str(int(time_current))+"_atm_TP_profile_init.dat"
+        np.savetxt( output_dir+init_TP, out_a )
+
         # Adjust copied file in output_dir
         for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
             if line.strip().startswith('g = '):
@@ -475,17 +500,33 @@ def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, 
             if line.strip().startswith('spider_file = '):
                 line = "spider_file = '"+str(output_dir)+"vulcan_XH_ratios.dat'\n"
             if line.strip().startswith('atm_file = '):
-                line = "atm_file = 'socrates_input/TP.dat'\n"
+                line = "atm_file = '"+str(output_dir)+str(init_TP)+"'\n"
+            if line.strip().startswith('P_b = '):
+                line = "P_b = "+str(P_b)+" # pressure at the bottom (dyne/cm^2)\n"
+            if line.strip().startswith('P_t = '):
+                line = "P_t = "+str(P_t)+" # pressure at the top (dyne/cm^2)\n"
             sys.stdout.write(line)
+           
+
     # After first loop use updated TP profiles from SOCRATES
     else:
         # Modify the SOCRATES TP structure input
-        SOCRATES_TP = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*_atm_TP_profile.dat")])[-1]
+        run_TP_file = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*_atm_TP_profile.dat")])[-1]
+        
+        # Min/max P for VULCAN config file
+        atm_table = np.genfromtxt(output_dir+run_TP_file, names=['T', 'Pbar'], dtype=None, skip_header=0)
+        pressure_grid, temp_grid = atm_table['Pbar']*1e6, atm_table['T'] # (bar)->(dyne/cm^2), K
+        P_b = np.max(pressure_grid)*1.001 # pressure at the bottom, (dyne/cm^2)
+        P_t = np.min(pressure_grid)*1.001 # pressure at the top, (dyne/cm^2)
 
         # Adjust copied file in output_dir
         for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
             if line.strip().startswith('atm_file = '):
-                line = "atm_file = '"+str(output_dir)+str(SOCRATES_TP)+"'\n"
+                line = "atm_file = '"+str(output_dir)+str(run_TP_file)+"'\n"
+            if line.strip().startswith('P_b = '):
+                line = "P_b = "+str(P_b)+" # pressure at the bottom (dyne/cm^2)\n"
+            if line.strip().startswith('P_t = '):
+                line = "P_t = "+str(P_t)+" # pressure at the top (dyne/cm^2)\n"
             sys.stdout.write(line)
 
     # Write elemental X/H ratios
@@ -609,7 +650,7 @@ def RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
     ## TO DO: Adapt to read in atmospheric profile from VULCAN
-    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, runtime_helpfile.iloc[-1]["T_surf"], stellar_toa_heating, atm_chemistry)) # W/m^2
+    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, atm_chemistry)) # W/m^2
 
     # Save OLR flux to be fed to SPIDER
     with open(output_dir+"OLRFlux.dat", "a") as f:
@@ -702,6 +743,20 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
                         "-S_initial",             S_ppm, 
                         "-He_initial",            He_ppm 
                         ])
+        # Very first initialization: force all the volatiles into the atmosphere
+        if loop_counter["total"] == 0 and loop_counter["init"] == 0 and loop_counter["atm"] == 0:
+            call_sequence.extend([
+                        "-H2O_henry",             "0.001E-9",
+                        "-CO2_henry",             "0.001E-9", 
+                        "-H2_henry",              "0.001E-9", 
+                        "-CH4_henry",             "0.001E-9", 
+                        "-CO_henry",              "0.001E-9", 
+                        "-N2_henry",              "0.001E-9", 
+                        "-O2_henry",              "0.001E-9", 
+                        "-S_henry",               "0.001E-9", 
+                        "-He_henry",              "0.001E-9"
+                        ])
+    # Main loop
     else:
         call_sequence.extend([ 
                         "-activate_poststep", 

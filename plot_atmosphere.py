@@ -218,9 +218,9 @@ def plot_atmosphere( output_dir, times ):
     fig_o.savefig(1)
     plt.close()
 
-def plot_current_mixing_ratio( output_dir, time ):
+def plot_current_mixing_ratio( output_dir, times ):
 
-    time = str(time)
+    time = str(times)
 
     # Read atmospheric chemistry
     atm_chemistry       = pd.read_csv(output_dir+time+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True)
@@ -251,16 +251,28 @@ def plot_current_mixing_ratio( output_dir, time ):
 #====================================================================
 def main():
 
-    output_list = su.get_all_output_times()
+    # Optional command line arguments for running from the terminal
+    # Usage: $ python plot_atmosphere.py -t 0,718259
+    parser = argparse.ArgumentParser(description='COUPLER plotting script')
+    parser.add_argument('-t', '--times', type=str, help='Comma-separated (no spaces) list of times');
+    args = parser.parse_args()
 
-    plot_current_mixing_ratio( output_dir="output/", time=output_list[-1] )
-
-    if len(output_list) <= 8:
-        plot_list = output_list
+    if args.times:
+        print("Snapshots:", args.times)
+        plot_list = [ int(time) for time in args.times.split(',') ]
     else:
-        plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
-    print("snapshots:", plot_list)
+        output_list = su.get_all_output_times()
 
+        if len(output_list) <= 8:
+            plot_list = output_list
+        else:
+            plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
+        print("Snapshots:", plot_list)
+
+    # Plot only last snapshot
+    plot_current_mixing_ratio( output_dir="output/", times=plot_list[-1] )
+
+    # Plot fixed set from above
     plot_atmosphere( output_dir="output/", times=plot_list )
 
 #====================================================================
