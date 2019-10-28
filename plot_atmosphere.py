@@ -228,6 +228,9 @@ def plot_current_mixing_ratio( output_dir, times ):
     # Plot settings
     lw=2
 
+    # for i in atm_chemistry["CO2"]:
+    #     print(i)
+
     plt.plot(atm_chemistry["H2O"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"H$_2$O")
     plt.plot(atm_chemistry["CO2"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"CO$_2$")
     plt.plot(atm_chemistry["H2"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"H$_2$")

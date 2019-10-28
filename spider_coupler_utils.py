@@ -521,7 +521,12 @@ def get_all_output_times( odir='output' ):
 
     time_l = [fname for fname in file_l]
     time_l = list(filter(lambda a: a.endswith('json'), time_l))
+
+    # Filter out original/non-hacked jsons
+    time_l = [ file for file in time_l if not file.startswith("orig_")]
+
     time_l = [int(time.split('.json')[0]) for time in time_l]
+    
     # ascending order
     time_l = sorted( time_l, key=int)
     time_a = np.array( time_l )

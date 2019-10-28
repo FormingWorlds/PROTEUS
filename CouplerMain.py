@@ -73,8 +73,8 @@ time_offset           = 100.         # Myr, start of magma ocean after star form
 loop_counter = { "total": 0, "init": 0, "atm": 0 }
 
 # Equilibration loops for init and atmosphere loops
-init_loops = 1
-atm_loops  = 1
+init_loops = 2
+atm_loops  = 2
 
 # If restart skip init loop
 if SPIDER_options["start_condition"] == 2:
@@ -87,9 +87,9 @@ print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 print("::::::::::::: START INIT LOOP |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
-## TO DO LIST:
-# - feed atmospheric profile to SOCRATES instead of surface abundances
-# - add atm abundances to plotting routine
+### TO DO LIST ###
+# - Feed atmospheric profile to SOCRATES instead of surface abundances
+# - In "ModifiedHenrysLaw" function, take mass conservation from atm chemistry --> calc mass of atmosphere from atm chemistry and insert into function. So far, mass conservation is calculated from former .json file, which may be inconsistent.
 
 if SPIDER_options["start_condition"] == 1:
 
@@ -97,13 +97,16 @@ if SPIDER_options["start_condition"] == 1:
     coupler_utils.CleanOutputDir( output_dir )
 
     # Generate help quantities
-    runtime_helpfile = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name)
+    runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name)
 
     # Init loop for coupled interior-atmosphere system to equilibrate starting conditions
     while loop_counter["init"] < init_loops:
 
         # Run SPIDER
-        SPIDER_options, runtime_helpfile, time_current = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name, restart_file )
+        SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name, restart_file )
+
+        # Update help quantities after each SPIDER run
+        runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name, runtime_helpfile)
 
         # Init loop atmosphere: equilibrate atmosphere starting conditions
         while loop_counter["atm"] < atm_loops:
@@ -146,7 +149,13 @@ if SPIDER_options["start_condition"] == 1:
 while time_current < time_target:
 
     # Run SPIDER
-    SPIDER_options, runtime_helpfile, time_current = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name, restart_file )
+    SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name, restart_file )
+
+    # !! Apply HACK to JSON files until SOCRATES input option available
+    ModifiedHenrysLaw( atm_chemistry, output_dir, restart_file )
+
+    # Update help quantities after each SPIDER run
+    runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name, runtime_helpfile)
 
     # Atmosphere sub-loop
     while loop_counter["atm"] < atm_loops:
