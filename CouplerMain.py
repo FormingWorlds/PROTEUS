@@ -90,6 +90,9 @@ print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 ### TO DO LIST ###
 # - Feed atmospheric profile to SOCRATES instead of surface abundances
 # - In "ModifiedHenrysLaw" function, take mass conservation from atm chemistry --> calc mass of atmosphere from atm chemistry and insert into function. So far, mass conservation is calculated from former .json file, which may be inconsistent.
+# - Fix Psurf stuff.
+# - Use Height calculation of updated VULCAN versions instead of own function.
+# - Check if "Magma ocean volatile content" needs ot be altered in JSON
 
 if SPIDER_options["start_condition"] == 1:
 
@@ -103,7 +106,7 @@ if SPIDER_options["start_condition"] == 1:
     while loop_counter["init"] < init_loops:
 
         # Run SPIDER
-        SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name, restart_file )
+        SPIDER_options, restart_file = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name, restart_file )
 
         # Update help quantities after each SPIDER run
         runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name, runtime_helpfile)
@@ -127,7 +130,7 @@ if SPIDER_options["start_condition"] == 1:
         loop_counter["atm"] = 0
         
         # Output during runtime + find last file for SPIDER restart
-        restart_file = coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum, loop_counter, output_dir)
+        coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum, loop_counter, output_dir, restart_file)
 
         # Increase iteration counter
         loop_counter["init"] += 1
@@ -149,10 +152,10 @@ if SPIDER_options["start_condition"] == 1:
 while time_current < time_target:
 
     # Run SPIDER
-    SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name, restart_file )
+    SPIDER_options, restart_file = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name, restart_file )
 
     # !! Apply HACK to JSON files until SOCRATES input option available
-    ModifiedHenrysLaw( atm_chemistry, output_dir, restart_file )
+    coupler_utils.ModifiedHenrysLaw( atm_chemistry, output_dir, restart_file )
 
     # Update help quantities after each SPIDER run
     runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name, runtime_helpfile)
@@ -173,7 +176,7 @@ while time_current < time_target:
     loop_counter["atm"] = 0
 
     # Output during runtime + find last file for SPIDER restart
-    restart_file = coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum, loop_counter, output_dir)
+    coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum, loop_counter, output_dir, restart_file)
 
     # Plot conditions throughout run for on-the-fly analysis
     coupler_utils.UpdatePlots( output_dir )

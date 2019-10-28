@@ -134,9 +134,7 @@ def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
 
     return z_profile
 
-def PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, stellar_toa_heating, solar_lum, loop_counter, output_dir):
-
-    restart_file = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
+def PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, stellar_toa_heating, solar_lum, loop_counter, output_dir, restart_file):
 
     # Print final statement
     print("---------------------------------------------------------")
@@ -153,8 +151,6 @@ def PrintCurrentState(time_current, runtime_helpfile, p_s, heat_flux, stellar_to
     print("Total heat flux [W/m^2]:", heat_flux)
     print("Last file name:", restart_file)
     print("---------------------------------------------------------")
-
-    return restart_file
 
 def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile=[]):
 
@@ -601,11 +597,12 @@ def ModifiedHenrysLaw( atm_chemistry, output_dir, file_name ):
 
     volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
 
-    # Make copy of latest JSON --> .txt
-    shutil.copy(output_dir+file_name, output_dir+file_name[:-5]+".txt")
-
+    # Open the .json data
     with open(output_dir+file_name) as f:
         data = json.load(f)
+
+    # Move unaltered JSON --> .txt
+    shutil.move(output_dir+file_name, output_dir+file_name[:-5]+".txt")
 
     mantle_melt_kg = float(data["atmosphere"]["mass_liquid"]["values"][0])*float(data["atmosphere"]["mass_liquid"]["scaling"])
     print("M_mantle_liquid: ", mantle_melt_kg, "kg")
@@ -670,7 +667,7 @@ def ModifiedHenrysLaw( atm_chemistry, output_dir, file_name ):
         data["atmosphere"][volatile]["liquid_kg"]["values"]     = [str(liquid_kg_new_scaled)]
         data["atmosphere"][volatile]["atmosphere_kg"]["values"] = [str(atmosphere_kg_new_scaled)]
         data["atmosphere"][volatile]["atmosphere_bar"]["values"] = [str(atmosphere_bar_new_scaled)]
-        print(data["atmosphere"][volatile])
+        # print(data["atmosphere"][volatile])
         PrintHalfSeparator()
 
         ## THERE IS ANOTHER ENTRY IN JSON:
@@ -681,7 +678,7 @@ def ModifiedHenrysLaw( atm_chemistry, output_dir, file_name ):
     with open(output_dir+file_name, 'w') as f:
         json.dump(data, f, indent=4)
 
-    # run VULCAN
+# run VULCAN
 def RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, runtime_helpfile, SPIDER_options ):
 
     R_solid_planet = SPIDER_options["R_solid_planet"]
@@ -855,7 +852,9 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
     # Call SPIDER
     subprocess.call(call_sequence)
 
-    return SPIDER_options
+    restart_file = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
+
+    return SPIDER_options, restart_file
     # / RunSPIDER
 
     # # !! Apply HACK to JSON files until SOCRATES input option available

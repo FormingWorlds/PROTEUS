@@ -312,7 +312,7 @@ def plot_global( output_dir ):
     # h3, = ax5.loglog( timeMyr_a, vol_mass_total / planet_mass_total, lw=lw, color="gray", linestyle='-', label=r'$M_{\mathrm{vol,tot}}$' )
     
     # fig_o.set_myaxes( ax5, title=title, ylabel='$M_{\mathrm{i}}/M_{\mathrm{planet}}$ [kg]', xlabel=xlabel)#,xticks=xticks )
-    ax5.set_title(title)
+    ax5.set_title(title, y=0.8)
     ax5.set_ylabel('$M_{\mathrm{i}}/M_{\mathrm{planet}}$ [kg]')
     ax5.set_xlabel(xlabel)
     ax5.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
