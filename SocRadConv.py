@@ -40,7 +40,7 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
 
     #---Set up pressure array (a global)----
     atm.ps      = runtime_helpfile.iloc[-1]["P_surf"]*1e3 # bar->mbar
-    pstart      = .995*atm.ps
+    pstart      = atm.ps#*.995
     rat         = (atm.ptop/pstart)**(1./atm.nlev)
     logLevels   = [pstart*rat**i for i in range(atm.nlev+1)]
     logLevels.reverse()

@@ -34,8 +34,8 @@ SPIDER_options = {
     'dtmacro_init':          1,       # init loop: delta time per macrostep [yr]
     'dtmacro':               50000,   # delta time per macrostep to advance by, in years
     'heat_flux':             1.0E4,   # init heat flux, re-calculated during runtime [W/m^2]
-    'H2O_ppm':               50,      # init loop: H2O mass relative to mantle [ppm wt]
-    'CO2_ppm':               100,     # [ppm wt]
+    'H2O_ppm':               100,     # init loop: H2O mass relative to mantle [ppm wt]
+    'CO2_ppm':               1,       # [ppm wt]
     'H2_ppm':                0,       # [ppm wt]
     'CH4_ppm':               0,       # [ppm wt]
     'CO_ppm':                0,       # [ppm wt]
@@ -136,7 +136,7 @@ while time_current < time_target:
     loop_counter["atm"]   = 0
 
     # Reset settings until starting conditions equilibrated
-    while loop_counter["init"] < init_loops:
+    if loop_counter["init"] < init_loops:
         loop_counter["init"]  += 1
         time_current          = time_start
 
