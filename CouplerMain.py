@@ -28,8 +28,8 @@ SPIDER_options = {
     'tsurf_poststep_change': 100.0,   # maximum absolute surface temperature change in Kelvin
     'R_solid_planet':        6371000, # planet radius / m
     'planet_coresize':       0.55,    # fractional radius of core-mantle boundary
-    'start_condition':       1,       # 1: Fresh start | 2: Restart from 'restart_file'
-    'restart_filename':      0,       # Restart manually, [yr]+".json"
+    'start_condition':       1,       # 1: Fresh start | 2: Restart from 'restart_filename'
+    'restart_filename':      "",      # Restart manually, [yr]+".json"
     'nstepsmacro_init':      0,       # init loop: number of timesteps
     'dtmacro_init':          1,       # init loop: delta time per macrostep [yr]
     'dtmacro':               50000,   # delta time per macrostep to advance by, in years
@@ -55,11 +55,9 @@ SPIDER_options = {
     }
 
 # Total runtime
-time_current          = 0.           # yr
+time_start            = 0.           # yr
+time_current          = time_start   # yr
 time_target           = 1.0e+6       # yr
-
-# Resart file if start_condition == 2
-restart_file = ""
 
 # Define runtime helpfile names and generate dataframes
 runtime_helpfile_name = "runtime_helpfile.csv"
@@ -72,95 +70,47 @@ time_offset           = 100.         # Myr, start of magma ocean after star form
 # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
 loop_counter = { "total": 0, "init": 0, "atm": 0 }
 
-# Equilibration loops for init and atmosphere loops
-init_loops = 2
+# Equilibration loops for init and atmosphere sub-loops
+init_loops = 3
 atm_loops  = 2
 
-# If restart skip init loop
+# Start conditions and help files depending on restart option
+if SPIDER_options["start_condition"] == 1: 
+        coupler_utils.CleanOutputDir( output_dir )
+        runtime_helpfile    = []
+        atm_chemistry       = []
 if SPIDER_options["start_condition"] == 2:
-    loop_counter["total"] += 1
-    loop_counter["init"]  += 1
-    loop_counter["atm"]   += 1
+    # If restart skip init loop
+    loop_counter["total"] += init_loops
+    loop_counter["init"]  += init_loops
+
+    # Restart file name: automatic last file or specific one
+    SPIDER_options["restart_filename"] = str(natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1])
+    # SPIDER_options["restart_filename"] = "X.json"
 
 # Inform about start of runtime
 print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-print("::::::::::::: START INIT LOOP |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+print(":::::::::::: START COUPLER RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-
-### TO DO LIST ###
-# - Feed atmospheric profile to SOCRATES instead of surface abundances
-# - In "ModifiedHenrysLaw" function, take mass conservation from atm chemistry --> calc mass of atmosphere from atm chemistry and insert into function. So far, mass conservation is calculated from former .json file, which may be inconsistent.
-# - Fix Psurf stuff.
-# - Use Height calculation of updated VULCAN versions instead of own function.
-# - Check if "Magma ocean volatile content" needs ot be altered in JSON
-
-if SPIDER_options["start_condition"] == 1:
-
-    # Delete old SPIDER output
-    coupler_utils.CleanOutputDir( output_dir )
-
-    # Generate help quantities
-    runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name)
-
-    # Init loop for coupled interior-atmosphere system to equilibrate starting conditions
-    while loop_counter["init"] < init_loops:
-
-        # Run SPIDER
-        SPIDER_options, restart_file = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name, restart_file )
-
-        # Update help quantities after each SPIDER run
-        runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name, runtime_helpfile)
-
-        # Init loop atmosphere: equilibrate atmosphere starting conditions
-        while loop_counter["atm"] < atm_loops:
-
-            # Run VULCAN
-            atm_chemistry = coupler_utils.RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, runtime_helpfile, SPIDER_options )
-
-            # Run SOCRATES
-            SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter )
-
-            # Plot conditions throughout run for on-the-fly analysis
-            coupler_utils.UpdatePlots( output_dir )
-
-            # Increase iteration counter
-            loop_counter["atm"] += 1
-
-        # / Init loop atmosphere
-        loop_counter["atm"] = 0
-        
-        # Output during runtime + find last file for SPIDER restart
-        coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum, loop_counter, output_dir, restart_file)
-
-        # Increase iteration counter
-        loop_counter["init"] += 1
-
-    # / Init loop interior-atmosphere
-
-    # Increase iteration counters   
-    loop_counter["total"] += 1
-
-    # Reset restart flag
-    SPIDER_options["start_condition"] = 2
-
-    # Inform about start of main loops
-    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-    print("::::::::::::: START MAIN LOOP |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
 # Interior-Atmosphere loop
 while time_current < time_target:
 
+    ############### INTERIOR SUB-LOOP
+
     # Run SPIDER
-    SPIDER_options, restart_file = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, runtime_helpfile_name, restart_file )
+    SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile )
 
-    # !! Apply HACK to JSON files until SOCRATES input option available
-    coupler_utils.ModifiedHenrysLaw( atm_chemistry, output_dir, restart_file )
+    # Apply HACK to JSON files until SOCRATES restart input volatile options available
+    if SPIDER_options["start_condition"] == 2:
+        coupler_utils.ModifiedHenrysLaw( atm_chemistry, output_dir, SPIDER_options["restart_filename"] )
 
-    # Update help quantities after each SPIDER run
-    runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name, runtime_helpfile)
+    # Update help quantities, input_flag: "Interior"
+    runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name, runtime_helpfile, "Interior", atm_chemistry)
 
-    # Atmosphere sub-loop
+    ############### / INTERIOR SUB-LOOP
+
+    ############### ATMOSPHERE SUB-LOOP
     while loop_counter["atm"] < atm_loops:
 
         # Run VULCAN
@@ -169,24 +119,45 @@ while time_current < time_target:
         # Run SOCRATES
         SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter )
 
-        # Increase iteration counter
-        loop_counter["atm"]  += 1
+        loop_counter["atm"] += 1
 
-    # / Loop Atmosphere
-    loop_counter["atm"] = 0
-
-    # Output during runtime + find last file for SPIDER restart
-    coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum, loop_counter, output_dir, restart_file)
+    # Update help quantities, input_flag: "Atmosphere"
+    runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name, runtime_helpfile, "Atmosphere", atm_chemistry)
+    ############### / ATMOSPHERE SUB-LOOP
+    
+    # Runtime info
+    coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options, stellar_toa_heating, solar_lum, loop_counter, output_dir)
 
     # Plot conditions throughout run for on-the-fly analysis
     coupler_utils.UpdatePlots( output_dir )
+    
+    # Adjust iteration counters   
+    loop_counter["total"] += 1
+    loop_counter["atm"]   = 0
 
-    # Increase iteration counters   
-    loop_counter["total"]   += 1
+    # Reset settings until starting conditions equilibrated
+    while loop_counter["init"] < init_loops:
+        loop_counter["init"]  += 1
+        time_current          = time_start
 
-    # / Interior-Atmosphere loop
+    # Reset restart flag once SPIDER was started w/ ~correct volatile chemistry + heat flux
+    # init loop 1: calc total volatile equilibrium chemistry
+    # init loop 2: calc partitioning, renew atmospheric chemistry, calc ~correct heat flux
+    # init loop 3: SPIDER start w/ ~correct volatile chemistry + heat flux
+    if loop_counter["total"] >= init_loops:
+        SPIDER_options["start_condition"] = 2
 
 # Save files from finished simulation
 coupler_utils.SaveOutput( output_dir )
 
-print("\n===> Run finished successfully!")
+print("\n===> COUPLER run finished successfully <===")
+
+
+### TO DO LIST ###
+# - Feed atmospheric profile to SOCRATES instead of surface abundances
+# - In "ModifiedHenrysLaw" function, take mass conservation from atm chemistry --> calc mass of atmosphere from atm chemistry and insert into function. So far, mass conservation is calculated from former .json file, which may be inconsistent.
+# - Fix Psurf stuff.
+# - Use Height calculation of updated VULCAN versions instead of own function.
+# - Check if "Magma ocean volatile content" needs ot be altered in JSON
+# - Read in total masses from VULCAN during UPDATEHELPFILE function during ATMOS update.
+
