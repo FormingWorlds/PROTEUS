@@ -560,8 +560,8 @@ def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, 
         temp_grid       = np.ones(len(pressure_grid))*runtime_helpfile.iloc[-1]["T_surf"]
 
         # Min/max P for VULCAN config file
-        P_b = np.max(pressure_grid)*1e6*1.001 # pressure at the bottom, (bar)->(dyne/cm^2)
-        P_t = np.min(pressure_grid)*1e6*1.001 # pressure at the top, (bar)->(dyne/cm^2)
+        P_b = np.max(pressure_grid)*1e6*0.9999 # pressure at the bottom, (bar)->(dyne/cm^2)
+        P_t = np.min(pressure_grid)*1e6*1.0001 # pressure at the top, (bar)->(dyne/cm^2)
         
         # Generate initial TP structure file
         out_a       = np.column_stack( ( temp_grid, pressure_grid ) ) # K, bar
@@ -591,8 +591,8 @@ def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, 
         # Min/max P for VULCAN config file
         atm_table = np.genfromtxt(output_dir+run_TP_file, names=['T', 'Pbar'], dtype=None, skip_header=0)
         pressure_grid, temp_grid = atm_table['Pbar']*1e6, atm_table['T'] # (bar)->(dyne/cm^2), K
-        P_b = np.max(pressure_grid)*1.001 # pressure at the bottom, (dyne/cm^2)
-        P_t = np.min(pressure_grid)*1.001 # pressure at the top, (dyne/cm^2)
+        P_b = np.max(pressure_grid)*0.9999 # pressure at the bottom, (dyne/cm^2)
+        P_t = np.min(pressure_grid)*1.0001 # pressure at the top, (dyne/cm^2)
 
         # Adjust copied file in output_dir
         for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
