@@ -101,9 +101,9 @@ while time_current < time_target:
     # Run SPIDER
     SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile )
 
-    # Apply HACK to JSON files until SOCRATES restart input volatile options available
-    if SPIDER_options["start_condition"] == 2:
-        coupler_utils.ModifiedHenrysLaw( atm_chemistry, output_dir, SPIDER_options["restart_filename"] )
+    # # Apply HACK to JSON files until SOCRATES restart input volatile options available
+    # if SPIDER_options["start_condition"] == 2:
+    #     coupler_utils.ModifiedHenrysLaw( atm_chemistry, output_dir, SPIDER_options["restart_filename"] )
 
     # Update help quantities, input_flag: "Interior"
     runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, runtime_helpfile_name, runtime_helpfile, "Interior", atm_chemistry)
