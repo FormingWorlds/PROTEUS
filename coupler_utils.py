@@ -383,6 +383,8 @@ def UpdateHelpfile(loop_counter, output_dir, file_name, runtime_helpfile, input_
             N_H_ratio = 1e-99
         if S_H_ratio == 0.: 
             S_H_ratio = 1e-99
+        if He_H_ratio == 0.: 
+            He_H_ratio = 1e-99
 
         # Atmospheric pressure from SPIDER output
         P_surf = H2O_atmos_pressure + CO2_atmos_pressure + H2_atmos_pressure + CH4_atmos_pressure + CO_atmos_kg + N2_atmos_pressure + O2_atmos_pressure + S_atmos_pressure + He_atmos_pressure
