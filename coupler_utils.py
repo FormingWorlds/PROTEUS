@@ -75,21 +75,23 @@ volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
 # Henry's law coefficients
 # Add to dataframe + save to disk
 volatile_distribution_coefficients = {
-    'H2O_henry':     5.0637663E-2,  # ppm/Pa
-    'H2O_henry_pow': 3.22290237,     
-    'CO2_henry':     1.95E-7, 
-    'CO2_henry_pow': 0.71396905, 
-    'H2_henry':      2.572E-6, 
+    'H2O_henry':     0.80863728,  # ppm/Pa, Lebrun+13: 6.8E-2
+    'H2O_henry_pow': 1.70894940,    # Lebrun+13: 1.4285714285714286
+    'CO2_henry':     0.000000001937,       # Lebrun+13: 4.4E-6
+    'CO2_henry_pow': 0.71396849,    # Lebrun+13: 1.0
+    'H2_henry':      0.00000257, 
     'H2_henry_pow':  1.0, 
-    'CH4_henry':     9.9E-8, 
+    'CH4_henry':     0.00000010, 
     'CH4_henry_pow': 1.0, 
-    'CO_henry':      1.6E-7, 
+    'CO_henry':      0.00000016, 
     'CO_henry_pow':  1.0, 
-    'N2_henry':      5.0E-7, 
-    'N2_henry_pow':  2.0, 
+    'N2_henry':      0.00007000, 
+    'N2_henry_pow':  1.8, 
+    'N2_henry_reduced':      74.15775114, 
+    'N2_henry_pow_reduced':  4.58195381, 
     'O2_henry':      0.001E-9, 
     'O2_henry_pow':  1.0, 
-    'S_henry':       0.001E-9, 
+    'S_henry':       0.005, 
     'S_henry_pow':   1.0, 
     'He_henry':      0.001E-9, 
     'He_henry_pow':  1.0,
@@ -112,9 +114,6 @@ volatile_distribution_coefficients = {
     'He_kdist':      0.0E-0,  
     'He_kabs':       0.00  
     }
-
-   
-
 
 # https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
 def make_output_dir( output_dir ):
@@ -191,13 +190,6 @@ def PrintCurrentState(time_current, runtime_helpfile, p_s, SPIDER_options, stell
 
 def UpdateHelpfile(loop_counter, output_dir, vulcan_dir, file_name, runtime_helpfile, input_flag, atm_chemistry, SPIDER_options):
 
-    # # If runtime_helpfle not existent, create it + write to disk
-    # if not os.path.isfile(output_dir+file_name):
-    #     runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'Heat_flux', 'P_surf', 'M_atm', 'Phi_global', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'H2O_liquid_kg', 'CO2_liquid_kg', 'H2_liquid_kg', 'CH4_liquid_kg', 'CO_liquid_kg', 'N2_liquid_kg', 'O2_liquid_kg', 'S_liquid_kg', 'He_liquid_kg', 'H2O_solid_kg', 'CO2_solid_kg', 'H2_solid_kg', 'CH4_solid_kg', 'CO_solid_kg', 'N2_solid_kg', 'O2_solid_kg', 'S_solid_kg', 'He_solid_kg', 'H2O_atm_kg', 'CO2_atm_kg', 'H2_atm_kg', 'CH4_atm_kg', 'CO_atm_kg', 'N2_atm_kg', 'O2_atm_kg', 'S_atm_kg', 'He_atm_kg', 'H2O_atm_bar', 'CO2_atm_bar', 'H2_atm_bar', 'CH4_atm_bar', 'CO_atm_bar', 'N2_atm_bar', 'O2_atm_bar', 'S_atm_bar', 'He_atm_bar', 
-    #         'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
-    #     runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ") 
-    #     time_current = 0
-
     # If runtime_helpfle not existent, create it + write to disk
     if not os.path.isfile(output_dir+file_name):
         runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'Heat_flux', 'P_surf', 'M_atm', 'Phi_global', 'M_core', 'M_mantle', 'M_mantle_liquid', 'M_mantle_solid', 'H_mol', 'O/H', 'C/H', 'N/H', 'S/H', 'He/H'])
@@ -208,7 +200,6 @@ def UpdateHelpfile(loop_counter, output_dir, vulcan_dir, file_name, runtime_help
         # Save SPIDER options file
         SPIDER_options_save = pd.DataFrame(SPIDER_options, index=[0])
         SPIDER_options_save.to_csv( output_dir+"spider_options.csv", index=False, sep=" ")
-
 
     # Data dict
     runtime_helpfile_new = {}
@@ -964,7 +955,7 @@ def RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir
 
     # Calculate OLR flux for a given surface temperature w/ SOCRATES
     ## TO DO: Adapt to read in atmospheric profile from VULCAN
-    heat_flux = str(SocRadConv.RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, atm_chemistry)) # W/m^2
+    heat_flux = SocRadConv.RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, atm_chemistry, loop_counter) # W/m^2
 
     # Save OLR flux to be fed to SPIDER
     with open(output_dir+"OLRFlux.dat", "a") as f:

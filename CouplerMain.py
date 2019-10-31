@@ -32,9 +32,9 @@ SPIDER_options = {
     'ic_interior_filename':        "",    # Restart manually, [yr]+".json"
     'nstepsmacro':                 1,     # number of timesteps, adjusted during runtime
     'dtmacro':                     50000, # delta time per macrostep to advance by [yr]
-    'heat_flux':                   1.0E4, # init heat flux, adjusted during runtime [W/m^2]
-    'H2O_initial_total_abundance': 50,    # init loop: H2O mass relative to mantle [ppm wt]
-    'CO2_initial_total_abundance': 50,    # init loop [ppm wt]
+    'heat_flux':                   1.0E6, # init heat flux, adjusted during runtime [W/m^2]
+    'H2O_initial_total_abundance': 197,    # init loop: H2O mass relative to mantle [ppm wt]
+    'CO2_initial_total_abundance': 160,    # init loop [ppm wt]
     'H2_initial_total_abundance':  0,     # init loop [ppm wt]
     'CH4_initial_total_abundance': 0,     # init loop [ppm wt]
     'CO_initial_total_abundance':  0,     # init loop [ppm wt]

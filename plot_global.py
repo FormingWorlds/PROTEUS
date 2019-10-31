@@ -97,59 +97,61 @@ def plot_global( output_dir ):
     keys_t = ( ('atmosphere','mass_liquid'),
                ('atmosphere','mass_solid'),
                ('atmosphere','mass_mantle'),
-               ('atmosphere','CO2','liquid_kg'),
-               ('atmosphere','CO2','solid_kg'),
-               ('atmosphere','CO2','initial_kg'),
-               ('atmosphere','CO2','atmosphere_kg'),
-               ('atmosphere','CO2','atmosphere_bar'),
-               ('atmosphere','H2O','liquid_kg'),
-               ('atmosphere','H2O','solid_kg'),
-               ('atmosphere','H2O','initial_kg'),
-               ('atmosphere','H2O','atmosphere_kg'),
-               ('atmosphere','H2O','atmosphere_bar'),
                ('atmosphere','temperature_surface'),
                ('atmosphere','emissivity'),
                ('rheological_front_phi','phi_global'),
                ('atmosphere','Fatm'),
                ('atmosphere','mass_core'),
-               ('atmosphere','pressure_surface'))
+               ('atmosphere','pressure_surface'),
+               ('atmosphere','H2O','liquid_kg'),
+               ('atmosphere','H2O','solid_kg'),
+               ('atmosphere','H2O','initial_kg'),
+               ('atmosphere','H2O','atmosphere_kg'),
+               ('atmosphere','H2O','atmosphere_bar'),
+               ('atmosphere','CO2','liquid_kg'),
+               ('atmosphere','CO2','solid_kg'),
+               ('atmosphere','CO2','initial_kg'),
+               ('atmosphere','CO2','atmosphere_kg'),
+               ('atmosphere','CO2','atmosphere_bar')
+               )
 
     data_a = su.get_dict_surface_values_for_times( keys_t, fig_o.time )
 
     # out_a = np.column_stack( (timeMyr_a,data_a[15,:],data_a[12,:]) )
     # np.savetxt( 'out.dat', out_a )
-    mass_liquid_a       = data_a[0,:]
-    mass_solid_a        = data_a[1,:]
-    mass_mantle_a       = data_a[2,:]
-    mass_mantle         = mass_mantle_a[0] # time independent
-    # compute total mass (kg) in each reservoir
-    CO2_liquid_kg_a     = data_a[3,:]
-    CO2_solid_kg_a      = data_a[4,:]
-    CO2_initial_kg_a    = data_a[5,:]
-    CO2_atmos_kg_a      = data_a[6,:]
-    CO2_atm_pressure    = data_a[7,:]
-    CO2_total_kg        = CO2_liquid_kg_a + CO2_solid_kg_a + CO2_atmos_kg_a
-    CO2_escape_kg_a     = CO2_total_kg - CO2_liquid_kg_a - CO2_solid_kg_a - CO2_atmos_kg_a
-    H2O_liquid_kg_a     = data_a[8,:]
-    H2O_solid_kg_a      = data_a[9,:]
-    H2O_initial_kg_a    = data_a[10,:]
-    H2O_atmos_kg_a      = data_a[11,:]
-    H2O_atm_pressure    = data_a[12,:]
-    H2O_total_kg        = H2O_liquid_kg_a + H2O_solid_kg_a + H2O_atmos_kg_a
-    H2O_escape_kg_a     = H2O_total_kg - H2O_liquid_kg_a - H2O_solid_kg_a - H2O_atmos_kg_a
-    T_surf              = data_a[13,:]
-    emissivity_a        = data_a[14,:]
-    phi_global          = data_a[15,:]
-    Fatm                = data_a[16,:]
-    mass_core           = data_a[17,:]
-    P_surf              = data_a[18,:]
+    mass_liquid         = data_a[0,:]
+    mass_solid          = data_a[1,:]
+    mass_mantle         = data_a[2,:]
+    T_surf              = data_a[3,:]
+    emissivity          = data_a[4,:]
+    phi_global          = data_a[5,:]
+    Fatm                = data_a[6,:]
+    mass_core           = data_a[7,:]
+    P_surf              = data_a[8,:]
+
+    H2O_liquid_kg       = data_a[9,:]
+    H2O_solid_kg        = data_a[10,:]
+    H2O_initial_kg      = data_a[11,:]
+    H2O_atm_kg          = data_a[12,:]
+    H2O_atm_pressure    = data_a[13,:]
+
+    CO2_liquid_kg       = data_a[14,:]
+    CO2_solid_kg        = data_a[15,:]
+    CO2_initial_kg      = data_a[16,:]
+    CO2_atm_kg          = data_a[17,:]
+    CO2_atm_pressure    = data_a[18,:]
+
+    H2O_interior_kg     = H2O_liquid_kg   + H2O_solid_kg
+    CO2_interior_kg     = CO2_liquid_kg   + CO2_solid_kg
+
+    H2O_total_kg        = H2O_interior_kg + H2O_atm_kg
+    CO2_total_kg        = CO2_interior_kg + CO2_atm_kg
+
+    vol_mass_atm        = H2O_atm_kg      + CO2_atm_kg
+    vol_mass_interior   = H2O_interior_kg + CO2_interior_kg
+    vol_mass_total      = H2O_total_kg    + CO2_total_kg
     
-    
-    vol_mass_atm        = H2O_atmos_kg_a + CO2_atmos_kg_a
-    vol_mass_interior   = H2O_liquid_kg_a + H2O_solid_kg_a + CO2_liquid_kg_a + CO2_solid_kg_a
-    vol_mass_total      = H2O_total_kg + CO2_total_kg
-    
-    planet_mass_total   = vol_mass_total + mass_mantle_a + mass_core
+    planet_mass_total   = vol_mass_total  + mass_mantle     + mass_core
 
     #xticks = [1E-5,1E-4,1E-3,1E-2,1E-1]#,1]
     #xticks = [1.0E-2, 1.0E-1, 1.0E0, 1.0E1, 1.0E2,1.0E3] #[1E-6,1E-4,1E-2,1E0,1E2,1E4,1E6]#,1]
@@ -240,10 +242,10 @@ def plot_global( output_dir ):
     # figure c
     ##########
     title = r'(c) Global mantle melt fraction'
-    ylabel = '$\phi_\mathrm{g}$'
+    ylabel = '$\phi_{\mathrm{mantle}}$'
     # trans = transforms.blended_transform_factory(
     #     ax2.transData, ax2.transAxes)
-    h1, = ax2.semilogx( fig_o.time, phi_global, color=black, linestyle='-', lw=lw, label=r'Melt, $\phi_g$')
+    h1, = ax2.semilogx( fig_o.time, phi_global, color=black, linestyle='-', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
     # h2, = ax2.semilogx( timeMyr_a, mass_liquid_a / mass_mantle, 'k--', label='melt' )
     fig_o.set_myaxes( ax2, title=title, xlabel=xlabel )#, xlabel=xlabel, xticks=xticks )
     ax2.set_ylabel(ylabel)
@@ -263,7 +265,7 @@ def plot_global( output_dir ):
     title = r'(d) Atmospheric volatile partial pressure'
     trans = transforms.blended_transform_factory(
         ax3.transData, ax3.transAxes)
-    ax3.semilogx( fig_o.time, P_surf, color="gray", linestyle='-', lw=lw, label=r'total')
+    ax3.semilogx( fig_o.time, P_surf, color="gray", linestyle='-', lw=lw, label=r'Total')
     ax3.semilogx( fig_o.time, H2O_atm_pressure, color=blue, linestyle='-', lw=lw, label=r'H$_2$O')
     ax3.semilogx( fig_o.time, CO2_atm_pressure, color=red, linestyle='-', lw=lw, label=r'CO$_2$')
     
@@ -285,9 +287,9 @@ def plot_global( output_dir ):
     # figure e
     ##########
     title = r'(e) Atmospheric volatile mass fraction'
-    ax4.semilogx( fig_o.time, vol_mass_atm/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'total')
-    ax4.semilogx( fig_o.time, H2O_atmos_kg_a/H2O_total_kg, lw=lw, color=blue, linestyle='-', label=r'H$_2$O')
-    ax4.semilogx( fig_o.time, CO2_atmos_kg_a/CO2_total_kg, lw=lw, color=red, linestyle='-', label=r'CO$_2$')
+    ax4.semilogx( fig_o.time, vol_mass_atm/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
+    ax4.semilogx( fig_o.time, H2O_atm_kg/H2O_total_kg, lw=lw, color=blue, linestyle='-', label=r'H$_2$O')
+    ax4.semilogx( fig_o.time, CO2_atm_kg/CO2_total_kg, lw=lw, color=red, linestyle='-', label=r'CO$_2$')
     fig_o.set_myaxes( ax4, title=title) #, xlabel=xlabel,xticks=xticks )
     # ax4.set_title(title, y=0.8)
     ax4.set_ylabel('$M_{\mathrm{atm}}^{\mathrm{i}}/M_{\mathrm{tot}}^{\mathrm{i}}$')
@@ -306,9 +308,9 @@ def plot_global( output_dir ):
     # figure f
     ##########
     title = r'(f) Interior volatile mass fraction'
-    ax5.semilogx( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'total')
-    ax5.semilogx( fig_o.time, (H2O_liquid_kg_a+H2O_solid_kg_a)/H2O_total_kg, lw=lw, color=blue, linestyle='-', label=r'H$_2$O' )
-    ax5.semilogx( fig_o.time, (CO2_liquid_kg_a+CO2_solid_kg_a)/CO2_total_kg, lw=lw, color=red, linestyle='-', label=r'CO$_2$' )
+    ax5.semilogx( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
+    ax5.semilogx( fig_o.time, H2O_interior_kg/H2O_total_kg, lw=lw, color=blue, linestyle='-', label=r'H$_2$O' )
+    ax5.semilogx( fig_o.time, CO2_interior_kg/CO2_total_kg, lw=lw, color=red, linestyle='-', label=r'CO$_2$' )
     fig_o.set_myaxes( ax5, title=title)
     # ax5.set_title(title, y=0.8)
     ax5.set_ylabel('$M_{\mathrm{int}}^{\mathrm{i}}/M_{\mathrm{tot}}^{\mathrm{i}}$')

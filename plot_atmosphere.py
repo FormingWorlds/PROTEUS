@@ -138,8 +138,8 @@ def plot_atmosphere( output_dir, times ):
             ax0.plot( temperature_atmosphere, z_profile, '-', color=color, label=label, lw=1.5)
 
             # Atmosphere T-P
-            pressure_atmosphere_bar = [ n/1000. for n in pressure_atmosphere]    # bar
-            ax1.semilogy( temperature_atmosphere, pressure_atmosphere_bar, '-', color=color, label=label, lw=1.5)
+            # pressure_atmosphere_bar = [ n/1000. for n in pressure_atmosphere]    # bar
+            ax1.semilogy( temperature_atmosphere, pressure_atmosphere, '-', color=color, label=label, lw=1.5)
 
             # # Atmospheric mixing ratios
             # h2o_kg = myjson_o.get_dict_values( ['atmosphere','H2O','atmosphere_kg'] )
@@ -159,9 +159,9 @@ def plot_atmosphere( output_dir, times ):
             ax2.plot( band_centres, spectral_flux, '-', color=color, label=label, lw=1.5)
 
             # Reset y-axis boundaries
-            if np.min(pressure_atmosphere_bar) > 0:
-                ymax_atm_pressure = np.max([ymax_atm_pressure, np.max(pressure_atmosphere_bar)])
-                ymin_atm_pressure = np.min([ymin_atm_pressure, np.min(pressure_atmosphere_bar)])
+            if np.min(pressure_atmosphere) > 0:
+                ymax_atm_pressure = np.max([ymax_atm_pressure, np.max(pressure_atmosphere)])
+                ymin_atm_pressure = np.min([ymin_atm_pressure, np.min(pressure_atmosphere)])
                 ymax_atm_z = np.max([ymax_atm_z, np.max(z_profile)])
                 ymin_atm_z = np.min([ymin_atm_z, np.min(z_profile)])
 
@@ -188,6 +188,7 @@ def plot_atmosphere( output_dir, times ):
     # fig_o.set_myaxes( ax1, xlabel='$T$ (K)', ylabel='$P_\mathrm{atm}$\n(bar)', xmin=xmin, xmax=xmax, xticks=xticks )
     ax1.set_xlabel("Temperature, $T$ (K)")
     ax1.set_ylabel("Pressure, $P_\mathrm{tot}$ (bar)")
+    ax1.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
     ax1.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
     # ax1.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
     # ax1.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
