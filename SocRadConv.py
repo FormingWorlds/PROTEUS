@@ -77,7 +77,6 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
     atm.mixing_ratios[5] = atm_chemistry.iloc[0]["N2"]  # N2
     atm.mixing_ratios[6] = atm_chemistry.iloc[0]["O2"]  # O2
 
-
     # Initialise previous OLR and TOA heating to zero
     PrevOLR = 0.
     PrevMaxHeat = 0.

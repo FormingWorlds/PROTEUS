@@ -228,24 +228,42 @@ def plot_current_mixing_ratio( output_dir, times ):
     # Plot settings
     lw=2
 
-    # for i in atm_chemistry["CO2"]:
-    #     print(i)
+    fig, ax1 = plt.subplots()
 
-    plt.plot(atm_chemistry["H2O"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"H$_2$O")
-    plt.plot(atm_chemistry["CO2"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"CO$_2$")
-    plt.plot(atm_chemistry["H2"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"H$_2$")
-    plt.plot(atm_chemistry["CO"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"CO")
-    plt.plot(atm_chemistry["N2"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"N$_2$")
-    plt.plot(atm_chemistry["O2"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"O$_2$")
-    plt.plot(atm_chemistry["CH4"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"CH$_4$")
-    plt.plot(atm_chemistry["He"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"He")
-    plt.xlabel("Volume mixing ratio (n$_{\mathrm{i}}$/n$_{\mathrm{tot}}$)")
-    plt.ylabel("Pressure, $P_{\mathrm{tot}}$ (bar)")
-    plt.xscale("log")
-    plt.yscale("log")
-    plt.legend(loc=6, fancybox=True, framealpha=0.9)
-    plt.xlim(1e-16, 1.)
-    plt.ylim(np.max(atm_chemistry["Pressure"]), np.min(atm_chemistry["Pressure"]))
+    ax1.plot(atm_chemistry["H2O"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"H$_2$O")
+    ax1.plot(atm_chemistry["CO2"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"CO$_2$")
+    ax1.plot(atm_chemistry["H2"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"H$_2$")
+    ax1.plot(atm_chemistry["CO"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"CO")
+    ax1.plot(atm_chemistry["N2"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"N$_2$")
+    ax1.plot(atm_chemistry["O2"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"O$_2$")
+    ax1.plot(atm_chemistry["CH4"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"CH$_4$")
+    ax1.plot(atm_chemistry["He"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"He")
+
+    ax1.set_xlabel("Volume mixing ratio (n$_{\mathrm{i}}$/n$_{\mathrm{tot}}$)")
+    ax1.set_ylabel("Pressure, $P_{\mathrm{tot}}$ (bar)")
+    ax1.set_xscale("log")
+    ax1.set_yscale("log")
+    ax1.legend(loc=6, fancybox=True, framealpha=0.9)
+    ax1.set_xlim(1e-16, 1.)
+
+    ax1.set_ylim(np.max(atm_chemistry["Pressure"]), np.min(atm_chemistry["Pressure"]))
+
+    # Temperature y-axis on the right
+    ax1b = ax1.twinx()
+    ax1b.plot( atm_chemistry["H2O"], atm_chemistry["Temp"], alpha=0.0)
+    ax1b.set_ylim(np.max(atm_chemistry["Temp"]), np.min(atm_chemistry["Temp"]))
+    if not np.min(atm_chemistry["Temp"]) == np.max(atm_chemistry["Temp"]):
+        ax1b.set_yticks(
+         [ 
+            int(np.max(atm_chemistry["Temp"])), 
+            int(np.min(atm_chemistry["Temp"])+0.75*(np.max(atm_chemistry["Temp"])-np.min(atm_chemistry["Temp"]))), 
+            int(np.min(atm_chemistry["Temp"])+0.5*(np.max(atm_chemistry["Temp"])-np.min(atm_chemistry["Temp"]))), 
+            int(np.min(atm_chemistry["Temp"])+0.25*(np.max(atm_chemistry["Temp"])-np.min(atm_chemistry["Temp"]))), 
+            int(np.min(atm_chemistry["Temp"]))
+         ])
+    ax1b.yaxis.tick_right()
+    ax1b.set_ylabel( 'Temperature, $T$ (K)' )
+
     plt.savefig(output_dir+"plot_atm_chemistry_"+str(time)+".pdf", bbox_inches = 'tight',
     pad_inches = 0.1)
     plt.close()

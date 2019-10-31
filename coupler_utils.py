@@ -69,6 +69,8 @@ molar_mass      = {
         "H2S" : 0.0341,                # kg mol−1 
     }
 
+volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
+
 
 # Henry's law coefficients
 # Add to dataframe + save to disk
@@ -203,6 +205,9 @@ def UpdateHelpfile(loop_counter, output_dir, vulcan_dir, file_name, runtime_help
         time_current = 0
         #, 'H2O_atm_bar', 'CO2_atm_bar', 'H2_atm_bar', 'CH4_atm_bar', 'CO_atm_bar', 'N2_atm_bar', 'O2_atm_bar', 'S_atm_bar', 'He_atm_bar'run
 
+        # Save SPIDER options file
+        SPIDER_options_save = pd.DataFrame(SPIDER_options, index=[0])
+        SPIDER_options_save.to_csv( output_dir+"spider_options.csv", index=False, sep=" ")
 
 
     # Data dict
@@ -246,23 +251,23 @@ def UpdateHelpfile(loop_counter, output_dir, vulcan_dir, file_name, runtime_help
     runtime_helpfile_new["M_atm"] = 0
 
     # For all considered volatiles
-    for vol in SPIDER_options["species"]:
+    for vol in volatile_species:
+        if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
+            keys_t = ( 
+                        # ('atmosphere',vol,'liquid_kg'),
+                        # ('atmosphere',vol,'solid_kg'),
+                        ('atmosphere',vol,'atmosphere_kg'),
+                        ('atmosphere',vol,'atmosphere_bar') 
+                     )
+            
+            data_a = su.get_dict_surface_values_for_specific_time( keys_t, sim_time )
 
-        keys_t = ( 
-                    # ('atmosphere',vol,'liquid_kg'),
-                    # ('atmosphere',vol,'solid_kg'),
-                    ('atmosphere',vol,'atmosphere_kg'),
-                    ('atmosphere',vol,'atmosphere_bar') 
-                 )
-        
-        data_a = su.get_dict_surface_values_for_specific_time( keys_t, sim_time )
+            # runtime_helpfile_new[vol+"_liquid_kg"] = data_a[0,:]
+            # runtime_helpfile_new[vol+"_solid_kg"]  = data_a[1,:]
+            runtime_helpfile_new[vol+"_atm_kg"]  = data_a[0,:]
+            runtime_helpfile_new[vol+"_atm_bar"] = data_a[1,:]
 
-        # runtime_helpfile_new[vol+"_liquid_kg"] = data_a[0,:]
-        # runtime_helpfile_new[vol+"_solid_kg"]  = data_a[1,:]
-        runtime_helpfile_new[vol+"_atm_kg"]  = data_a[0,:]
-        runtime_helpfile_new[vol+"_atm_bar"] = data_a[1,:]
-
-        runtime_helpfile_new["M_atm"] += runtime_helpfile_new[vol+"_atm_kg"]
+            runtime_helpfile_new["M_atm"] += runtime_helpfile_new[vol+"_atm_kg"]
 
     # # SPIDER keys from JSON file that are read in
     # keys_t = ( ('atmosphere','mass_liquid'),
@@ -506,10 +511,15 @@ def UpdateHelpfile(loop_counter, output_dir, vulcan_dir, file_name, runtime_help
     if input_flag == "Atmosphere":
 
         # Update heat flux from latest SOCRATES output
-        Fatm_table                        = np.genfromtxt(output_dir+"OLRFlux.dat", names=['Time', 'Fatm'], dtype=None, skip_header=0)
-        time_list, Fatm_list              = Fatm_table['Time'], Fatm_table['Fatm']
-        Fatm_newest                       = Fatm_list[-1]
-        runtime_helpfile_new["Heat_flux"] = Fatm_newest
+        runtime_helpfile_new["Heat_flux"] = SPIDER_options["heat_flux"]
+
+        # Fatm_table                        = np.genfromtxt(output_dir+"OLRFlux.dat", names=['Time', 'Fatm'], dtype=None, skip_header=0)
+        # time_list, Fatm_list  = list(Fatm_table['Time']), list(Fatm_table['Fatm'])
+        # Fatm_newest    = Fatm_list[-1]
+        # if loop_counter["init"] >= 1: 
+        #     Fatm_newest    = Fatm_list[-1]
+        # else: Fatm_newest                 = Fatm_list
+        # runtime_helpfile_new["Heat_flux"] = Fatm_table['Fatm'][-1]
 
 
     # # Calculate element X/H ratios for ATMOS/VULCAN input
@@ -561,23 +571,23 @@ def UpdateHelpfile(loop_counter, output_dir, vulcan_dir, file_name, runtime_help
     He_mol         = 0.
 
     # Else
-    if "H2O" in SPIDER_options["species"]:
+    if SPIDER_options["H2O_initial_total_abundance"] > 0.:
         H2O_mol        = runtime_helpfile_new["H2O_atm_kg"] / H2O_mol_mass  # mol
-    if "CO2" in SPIDER_options["species"]:
+    if SPIDER_options["CO2_initial_total_abundance"] > 0.:
         CO2_mol        = runtime_helpfile_new["CO2_atm_kg"] / CO2_mol_mass  # mol
-    if "H2" in SPIDER_options["species"]:
+    if SPIDER_options["H2_initial_total_abundance"] > 0.:
         H2_mol         = runtime_helpfile_new["H2_atm_kg"]  / H2_mol_mass   # mol
-    if "CH4" in SPIDER_options["species"]:
+    if SPIDER_options["CH4_initial_total_abundance"] > 0.:
         CH4_mol        = runtime_helpfile_new["CH4_atm_kg"] / CH4_mol_mass  # mol
-    if "CO" in SPIDER_options["species"]:
+    if SPIDER_options["CO_initial_total_abundance"] > 0.:
         CO_mol         = runtime_helpfile_new["CO_atm_kg"]  / CO_mol_mass   # mol
-    if "N2" in SPIDER_options["species"]:
+    if SPIDER_options["N2_initial_total_abundance"] > 0.:
         N2_mol         = runtime_helpfile_new["N2_atm_kg"]  / N2_mol_mass   # mol
-    if "O2" in SPIDER_options["species"]:
+    if SPIDER_options["O2_initial_total_abundance"] > 0.:
         O2_mol         = runtime_helpfile_new["O2_atm_kg"]  / O2_mol_mass   # mol
-    if "S" in SPIDER_options["species"]:
+    if SPIDER_options["S_initial_total_abundance"] > 0.:
         S_mol          = runtime_helpfile_new["S_atm_kg"]   / S_mol_mass    # mol
-    if "He" in SPIDER_options["species"]:
+    if SPIDER_options["He_initial_total_abundance"] > 0.:
         He_mol         = runtime_helpfile_new["He_atm_kg"]  / He_mol_mass   # mol
 
     # # Calculate element X/H ratios for ATMOS/VULCAN input
@@ -712,6 +722,11 @@ def UpdateHelpfile(loop_counter, output_dir, vulcan_dir, file_name, runtime_help
     runtime_helpfile = runtime_helpfile.append(runtime_helpfile_new) 
     runtime_helpfile.to_csv( output_dir+file_name, index=False, sep=" ")
 
+    # Save SPIDER_options to disk
+    SPIDER_options_save = pd.read_csv(output_dir+"spider_options.csv", sep=" ")
+    SPIDER_options_save = SPIDER_options_save.append(SPIDER_options, ignore_index=True) 
+    SPIDER_options_save.to_csv( output_dir+"spider_options.csv", index=False, sep=" ")
+
     # Advance time_current in main loop
     time_current = runtime_helpfile.iloc[-1]["Time"]
 
@@ -722,7 +737,7 @@ def PrintSeparator():
     pass
 
 def PrintHalfSeparator():
-    print("--------------------------------------------")
+    print("-----------------------------------------------")
     pass
 
 # Generate/adapt VULCAN input files
@@ -961,18 +976,12 @@ def RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir
 def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, atm_chemistry ):
 
     # # Define which volatiles to track in SPIDER
-    volatile_species = str(SPIDER_options["species"][0])
-    for vol in SPIDER_options["species"][1:]: 
-        volatile_species = volatile_species + "," + vol
-    # volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
-  
-    # Read in partial pressures from 2nd loop onwards
-    if loop_counter["init"] >= 1:
-
-        SPIDER_options["IC_ATMOSPHERE"] = 3
-
-        # for vol in volatile_species:
-        #     SPIDER_options[vol+"_initial_total_abundance"] = 1e6*runtime_helpfile.iloc[-1][vol+"_atm_kg"]/runtime_helpfile.iloc[-1]["M_mantle_liquid"] # ppm
+    species_call = ""
+    for vol in volatile_species: 
+        if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
+            species_call = species_call + "," + vol
+    # Remove "," in front
+    species_call = species_call[1:]
 
     # Recalculate time stepping
     if SPIDER_options["IC_INTERIOR"] == 2:      
@@ -996,40 +1005,43 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
                         "-dtmacro",               str(dtmacro), 
                         "-radius",                str(SPIDER_options["R_solid_planet"]), 
                         "-coresize",              str(SPIDER_options["planet_coresize"]),
-                        "-volatile_names",        str(volatile_species)
+                        "-volatile_names",        str(species_call)
                     ]
 
     # Define distribution coefficients
-    for vol in SPIDER_options["species"]:
-        call_sequence.extend(["-"+vol+"_henry", str(volatile_distribution_coefficients[vol+"_henry"])])
-        call_sequence.extend(["-"+vol+"_henry_pow", str(volatile_distribution_coefficients[vol+"_henry_pow"])])
-        call_sequence.extend(["-"+vol+"_kdist", str(volatile_distribution_coefficients[vol+"_kdist"])])
-        call_sequence.extend(["-"+vol+"_kabs", str(volatile_distribution_coefficients[vol+"_kabs"])])
+    for vol in volatile_species:
+        if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
+            call_sequence.extend(["-"+vol+"_henry", str(volatile_distribution_coefficients[vol+"_henry"])])
+            call_sequence.extend(["-"+vol+"_henry_pow", str(volatile_distribution_coefficients[vol+"_henry_pow"])])
+            call_sequence.extend(["-"+vol+"_kdist", str(volatile_distribution_coefficients[vol+"_kdist"])])
+            call_sequence.extend(["-"+vol+"_kabs", str(volatile_distribution_coefficients[vol+"_kabs"])])
 
     # Very first timestep
     if loop_counter["init"] == 0:
         # Volatile specific options: initial abundance [ppm]
-        for vol in SPIDER_options["species"]:
-            call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
+        for vol in volatile_species:
+            if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
+                call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
 
-    # After very first timestep, starting w/ 2nd init loop
-    if loop_counter["init"] >= 1:
+    # # After very first timestep, starting w/ 2nd init loop
+    # if loop_counter["init"] >= 1:
 
-        # Loop over all species considered
-        for vol in SPIDER_options["species"]:
+    #     # Loop over all species considered
+    #     for vol in SPIDER_options["species"]:
 
-            # Data from SPIDER itself
-            keys = (('atmosphere',vol,'atmosphere_bar'))
-            data_a = su.get_dict_surface_values_for_specific_time( keys, sim_time )
-            partial_pressure = data_a[0,:]*1e5 # Pa
-            call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(partial_pressure)])
+    #         # Data from SPIDER itself
+    #         keys_t = (('atmosphere',vol,'atmosphere_bar'),('atmosphere',vol,'atmosphere_kg'))
+    #         sim_time = su.get_all_output_times(output_dir)[-1]  # yr
+    #         data_a = su.get_dict_surface_values_for_specific_time( keys_t, sim_time )
+    #         partial_pressure = data_a[0,:]*1e5 # Pa
+    #         call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(partial_pressure)])
 
             # # Load partial pressures from VULCAN
             # partial_pressure = atm_chemistry.iloc[0][vol]*runtime_helpfile.iloc[-1]["P_surf"]*1e5 # Pa
             # call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(partial_pressure)]) 
             
 
-            
+
             # SPIDER_options[vol+"_initial_atmos_pressure"] = runtime_helpfile.iloc[-1][vol+"_atm_p"]*1e5 # Pa
             # call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(SPIDER_options[vol+"_initial_atmos_pressure"])])
 
@@ -1042,9 +1054,9 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
                         ])
 
         # Volatile specific options: partial pressure [Pa], post step setting
-        for vol in SPIDER_options["species"]:
-            
-            call_sequence.extend(["-"+vol+"_poststep_change", str(SPIDER_options[vol+"_poststep_change"])])
+        for vol in volatile_species:
+            if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
+                call_sequence.extend(["-"+vol+"_poststep_change", str(SPIDER_options[vol+"_poststep_change"])])
 
     # Runtime info
     PrintSeparator()
@@ -1087,8 +1099,9 @@ def UpdatePlots( output_dir ):
         plot_times.append(output_times[-1])     # last snapshot
     print("snapshots:", plot_times)
 
-    # # Globale properties for all timesteps
-    # plot_global.plot_global(output_dir)   
+    # Global properties for all timesteps
+    if len(output_times) > 1:
+        plot_global.plot_global(output_dir)   
 
     # Specific timesteps for paper plots
     plot_interior.plot_interior(plot_times)     
@@ -1106,7 +1119,7 @@ def SaveOutput( output_dir ):
     # Copy old files to separate folder
     save_dir = make_output_dir( output_dir ) #
     print("===> Copy files to separate dir for this run to:", save_dir)
-    shutil.copy(output_dir+"spider_input.opts", save_dir+"spider_input.opts")
+    # shutil.copy(output_dir+"spider_input.opts", save_dir+"spider_input.opts")
     for file in natsorted(glob.glob(output_dir+"*.*")):
         shutil.copy(file, save_dir+os.path.basename(file))
         print(os.path.basename(file), end =" ")

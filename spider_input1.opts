@@ -1,7 +1,7 @@
 # time stepping
 
 # number of macro steps
--nstepsmacro 1
+-nstepsmacro 20
 # was 2000, but only need one million years for a reasonable
 # test of output
 
@@ -26,8 +26,8 @@
 # initial condition
 # [1] is set dS/dr to constant everywhere
 # [2] is restart from file
--IC_INTERIOR 1
-#-ic_interior_filename 500000.json
+-initial_condition 1
+-ic_filename 500000.json
 
 # all units are SI unless indicated otherwise
 
@@ -48,7 +48,7 @@
 -CONDUCTION 1 # conduction
 -CONVECTION 1 # convection
 -MIXING 1 # mixing (latent heat transport)
--SEPARATION 0 # gravitational separation of solid and melt phase
+-SEPARATION 1 # gravitational separation of solid and melt phase
 -HRADIO 0 # radioactive heating
 -HTIDAL 0 # tidal heating (TODO: not currently implemented)
 
@@ -82,7 +82,7 @@
 #     lid from forming at the surface
 # [3] is conventional as [1] above, but additionally allows you to
 #      specify a mid-mantle interface
--mixing_length 2
+-mixing_length 1
 #-mixing_length_layer_radius 0.0 # non-dimensional radius
 
 # physical parameters
@@ -106,8 +106,8 @@
 # eddy diffusivity
 # if negative, this value is adopted (units m^2/s)
 # if positive, this value is used to scale the internally calculated eddy diffusivity
--eddy_diffusivity_thermal 1.0 
--eddy_diffusivity_chemical 1.0 
+-eddy_diffusivity_thermal 1.0
+-eddy_diffusivity_chemical 1.0
 
 # material properties
 -cond_sol 4.0 # conductivity of solid
@@ -129,7 +129,7 @@
 # [2] heat flux (prescribe value using core_bc_value)
 # [3] entropy
 -CORE_BC 1
--core_bc_value 0.0 
+-core_bc_value 0.0
 
 # core parameters for CORE_BC=1
 -coresize 0.55 # fractional radius of core-mantle boundary
@@ -157,7 +157,13 @@
 -PARAM_UTBL 0 # flag to turn on parameterisation
 -param_utbl_const 1.0E-7 # value of parameterisation
 
--IC_ATMOSPHERE 1
+# track time-dependence of volatile content in atmosphere and magma ocean
+# can be done passively or self-consistently
+# with SURFACE_BC=3 above (where the volatile content feeds back into determining
+# the emissivity of the atmosphere)
+# [0] off
+# [1] on
+-SOLVE_FOR_VOLATILES 1
 
 # below is for SURFACE_BC=3, see Abe and Matsui (1986) and Elkins-Tanton (2008)
 # for the grey-body atmosphere formulation.  The expressions for the partial
@@ -167,29 +173,73 @@
 -P0 101325.0 # Pa (= 1 atm)
 
 # Define the volatiles
--volatile_names CO2,H2O
-
-# parameters relating to CO2 volatile
-#-CO2_initial 0.0 # ppm
-#-CO2_initial 1000.0 # ppm, Elkins-Tanton (2008) case 1 
--CO2_initial_total_abundance 100.0 # ppm, Elkins-Tanton (2008) case 2 
-#-CO2_initial 6000.0 # ppm, Elkins-Tanton (2008) case 3
--CO2_kdist 5.0E-4 # distribution coefficient between solid and melt (non-dimensional)
--CO2_kabs 0.05 # absorption (m^2/kg)
--CO2_henry 4.4E-6 # ppm/Pa (Lebrun et al., 2013)
--CO2_henry_pow 1.0 # power for Henry's law (Lebrun et al., 2013)
--CO2_molar_mass 0.04401 # kg/mol
+-volatile_names H2O,CO2,H2,N2,CH4,CO,O2,He,S
 
 # parameters relating to H2O volatile
-#-H2O_initial 0.0 # ppm
-#-H2O_initial 5000.0 # ppm, Elkins-Tanton (2008) case 1
--H2O_initial_total_abundance 500.0 # ppm, Elkins-Tanton (2008) case 2
-#-H2O_initial 0.0 # ppm, Elkins-Tanton (2008) case 3
--H2O_kdist 1.0E-4 # distribution coefficients are given in supplementary material of ET08
--H2O_kabs 0.01 # absorption (m^2/kg)
--H2O_henry 6.8E-2 # ppm/Pa (Lebrun et al., 2013)
--H2O_henry_pow 1.4285714285714286 # Power for Henry's law (1.0/0.7) (Lebrun et al., 2013)
+-H2O_henry 5.0637663E-2 # ppm/Pa, alpha (own fit)
+-H2O_henry_pow 3.22290237 # beta (own fit)
 -H2O_molar_mass 0.01801528 # kg/mol
+
+# parameters relating to CO2 volatile
+-CO2_henry 1.95E-7 # ppm/Pa, alpha (own fit)
+-CO2_henry_pow 0.71396905 # beta (own fit)
+-CO2_molar_mass 0.04401 # kg/mol
+
+## parameters relating to H2 volatile
+#-H2_initial 0.0             # ppm
+#-H2_henry 2.572E-6          # ppm/Pa, alpha (own fit)
+#-H2_henry_pow 1.0           # non-dim., beta (own fit)
+#-H2_molar_mass 0.00201588   # kg/mol
+#
+## parameters relating to N2 volatile
+#-N2_henry 5.0E-7            # ppm/Pa, alpha (own fit)
+#-N2_henry_pow 2.0           # non-dim., beta (own fit)
+#-N2_molar_mass 0.028014     # kg/mol
+#
+## parameters relating to CH4 volatile
+#-CH4_henry 9.9E-8           # ppm/Pa, alpha (own fit)
+#-CH4_henry_pow 1.0          # non-dim., beta (own fit)
+#-CH4_molar_mass 0.01604     # kg/mol
+#
+## parameters relating to CO volatile
+#-CO_henry 1.6E-7            # ppm/Pa, alpha (own fit)
+#-CO_henry_pow 1.0           # non-dim., beta (own fit)
+#-CO_molar_mass 0.02801      # kg/mol
+#
+## parameters relating to O2 volatile
+#-O2_henry 0.001E-9          # no partitioning, ppm/Pa, alpha (own fit)
+#-O2_henry_pow 1.0           # non-dim., beta (own fit)
+#-O2_molar_mass 0.031999     # kg/mol
+#
+## parameters relating to S volatile
+#-S_henry 0.001E-9           # no partitioning, ppm/Pa, alpha (own fit)
+#-S_henry_pow 1.0            # non-dim., beta (own fit)
+#-S_molar_mass 0.03206       # kg/mol
+#
+## parameters relating to He volatile
+#-He_henry 0.001E-9          # no partitioning, ppm/Pa, alpha (own fit)
+#-He_henry_pow 1.0           # non-dim., beta (own fit)
+#-He_molar_mass 0.0040026    # kg/mol
+
+# Absorption coefficients for additional volatiles
+-H2O_kdist 1.0E-4 # distribution coefficients are given in supplementary material of ET08
+-H2O_kabs 0.01    # absorption (m^2/kg)
+-CO2_kdist 5.0E-4 # distribution coefficient between solid and melt (non-dimensional)
+-CO2_kabs 0.05    # absorption (m^2/kg)
+#-H2_kdist 0.0E-0  # solid-melt distribution coefficient (non-dim.)
+#-H2_kabs 0.00     # absorption (m^2/kg)
+#-N2_kdist 0.0E-0  # solid-melt distribution coefficient (non-dim.)
+#-N2_kabs 0.00     # absorption (m^2/kg)
+#-CH4_kdist 0.0E-0 # solid-melt distribution coefficient (non-dim.)
+#-CH4_kabs 0.00    # absorption (m^2/kg)
+#-CO_kdist 0.0E-0  # solid-melt distribution coefficient (non-dim.)
+#-CO_kabs 0.00     # absorption (m^2/kg)
+#-O2_kdist 0.0E-0  # solid-melt distribution coefficient (non-dim.)
+#-O2_kabs 0.00     # absorption (m^2/kg)
+#-S_kdist 0.0E-0   # solid-melt distribution coefficient (non-dim.)
+#-S_kabs 0.00      # absorption (m^2/kg)
+#-He_kdist 0.0E-0  # solid-melt distribution coefficient (non-dim.)
+#-He_kabs 0.00     # absorption (m^2/kg)
 
 # internal heat sources
 # Al26 (extinct at present day)
@@ -208,7 +258,7 @@
 
 # Fe60 (extinct at present day)
 -fe60_t0 0.0 # years
--fe60_abundance 0.0 
+-fe60_abundance 0.0
 -fe_concentration 0.0 # ppm
 -fe60_heat_production 3.6579E-2 # W/kg (Ruedas, 2017)
 -fe60_half_life 2.62E6 # years (Ruedas, 2017)
@@ -226,6 +276,7 @@
 -u_concentration 0.031 # ppm (Turcotte & Schubert, 2014, p. 170)
 -u235_heat_production 5.68402E-4 # W/kg (Ruedas, 2017)
 -u235_half_life 704E6 # years (Ruedas, 2017)
+
 # U238
 -u238_t0 4.55E9 # years
 -u238_abundance 0.9927955 # (238U/U) Ruedas (2017)

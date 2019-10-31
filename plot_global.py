@@ -88,11 +88,11 @@ def plot_global( output_dir ):
     ax4 = fig_o.ax[1][1]
     ax5 = fig_o.ax[2][1]
 
-    runtime_helpfile = pd.read_csv(output_dir+"runtime_helpfile.csv", sep=" ")
-    print(runtime_helpfile)
+    # runtime_helpfile = pd.read_csv(output_dir+"runtime_helpfile.csv", sep=" ")
+    # print(runtime_helpfile)
 
     fig_o.time = su.get_all_output_times()
-    timeMyr_a = fig_o.time #* 1.0E-6 # Myrs
+    print("Times", fig_o.time)
 
     keys_t = ( ('atmosphere','mass_liquid'),
                ('atmosphere','mass_solid'),
@@ -111,18 +111,17 @@ def plot_global( output_dir ):
                ('atmosphere','emissivity'),
                ('rheological_front_phi','phi_global'),
                ('atmosphere','Fatm'),
-               ('atmosphere','mass_core'))
+               ('atmosphere','mass_core'),
+               ('atmosphere','pressure_surface'))
 
     data_a = su.get_dict_surface_values_for_times( keys_t, fig_o.time )
 
     # out_a = np.column_stack( (timeMyr_a,data_a[15,:],data_a[12,:]) )
     # np.savetxt( 'out.dat', out_a )
-
     mass_liquid_a       = data_a[0,:]
     mass_solid_a        = data_a[1,:]
     mass_mantle_a       = data_a[2,:]
     mass_mantle         = mass_mantle_a[0] # time independent
-
     # compute total mass (kg) in each reservoir
     CO2_liquid_kg_a     = data_a[3,:]
     CO2_solid_kg_a      = data_a[4,:]
@@ -131,7 +130,6 @@ def plot_global( output_dir ):
     CO2_atm_pressure    = data_a[7,:]
     CO2_total_kg        = CO2_liquid_kg_a + CO2_solid_kg_a + CO2_atmos_kg_a
     CO2_escape_kg_a     = CO2_total_kg - CO2_liquid_kg_a - CO2_solid_kg_a - CO2_atmos_kg_a
-
     H2O_liquid_kg_a     = data_a[8,:]
     H2O_solid_kg_a      = data_a[9,:]
     H2O_initial_kg_a    = data_a[10,:]
@@ -139,16 +137,18 @@ def plot_global( output_dir ):
     H2O_atm_pressure    = data_a[12,:]
     H2O_total_kg        = H2O_liquid_kg_a + H2O_solid_kg_a + H2O_atmos_kg_a
     H2O_escape_kg_a     = H2O_total_kg - H2O_liquid_kg_a - H2O_solid_kg_a - H2O_atmos_kg_a
-
-    temperature_surface_a = data_a[13,:]
+    T_surf              = data_a[13,:]
     emissivity_a        = data_a[14,:]
     phi_global          = data_a[15,:]
     Fatm                = data_a[16,:]
-
     mass_core           = data_a[17,:]
-
+    P_surf              = data_a[18,:]
+    
+    
+    vol_mass_atm        = H2O_atmos_kg_a + CO2_atmos_kg_a
+    vol_mass_interior   = H2O_liquid_kg_a + H2O_solid_kg_a + CO2_liquid_kg_a + CO2_solid_kg_a
     vol_mass_total      = H2O_total_kg + CO2_total_kg
-
+    
     planet_mass_total   = vol_mass_total + mass_mantle_a + mass_core
 
     #xticks = [1E-5,1E-4,1E-3,1E-2,1E-1]#,1]
@@ -188,20 +188,26 @@ def plot_global( output_dir ):
     #        out = timeMyr_a[index]
     #    phi_time_l.append( out )
 
+    xcoord_l = -0.10
+    ycoord_l = 0.5
+    xcoord_r = 1.09
+    ycoord_r = 0.5
+
     ##########
     # figure a
     ##########
     title = r'(a) Heat flux to space'
-    ylabel = '$F_\mathrm{atm}$\n$(W/m^2)$'
-    yticks = (1.0E2,1.0E3,1.0E4,1.0E5,1.0E6,1.0E7)
-    h1, = ax0.loglog( runtime_helpfile["Time"], runtime_helpfile["Heat_flux"],'k', lw=lw )
-    fig_o.set_myaxes( ax0, title=title, ylabel=ylabel, yticks=yticks)#, xlabel=xlabel, xticks=xticks )
+    ylabel = '$F_\mathrm{atm}$ (W/m$^2$)'
+    # yticks = (1.0E2,1.0E3,1.0E4,1.0E5,1.0E6,1.0E7)
+    h1, = ax0.loglog( fig_o.time, Fatm,'k', lw=lw )
+    fig_o.set_myaxes( ax0, title=title)#, yticks=yticks, xlabel=xlabel, xticks=xticks )
     # ax0.yaxis.tick_right()
     # ax0.yaxis.set_label_position("right")
+    ax0.set_ylabel(ylabel)
     ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax0.set_xlim( *xlim )
-    ax0.yaxis.set_label_coords(-0.13,0.5)
+    ax0.yaxis.set_label_coords(xcoord_l,ycoord_l)
     handles, labels = ax0.get_legend_handles_labels()
     ax0.legend(handles, labels, loc='upper right', ncol=1, frameon=0, fontsize=fs_legend)
 
@@ -209,20 +215,25 @@ def plot_global( output_dir ):
     # figure b
     ##########
     title = r'(b) Surface temperature'
-    ylabel = '$T_\mathrm{s}$\n$(K)$'
-    yticks = [200, 500, 1000, 1500, 2000, 2500, 3000]
-    h1, = ax1.semilogx( runtime_helpfile["Time"], runtime_helpfile["T_surf"], 'k-', lw=lw, label=r'Surface temp, $T_s$' )
+    ylabel = '$T_\mathrm{surf}$ (K)'
+    if np.max(fig_o.time) >= 1e3: 
+        ymin = np.min(T_surf)
+        ymax = np.max(T_surf)
+    else: 
+        ymin = 200
+        ymax = 3000
+    yticks = [ymin, ymin+0.2*(ymax-ymin), ymin+0.4*(ymax-ymin), ymin+0.6*(ymax-ymin), ymin+0.8*(ymax-ymin), ymax]
+    h1, = ax1.semilogx( fig_o.time, T_surf, 'k-', lw=lw, label=r'Surface temp, $T_s$' )
     #ax2b = ax2.twinx()
     #h2, = ax2b.loglog( timeMyr_a, emissivity_a, 'k--', label=r'Emissivity, $\epsilon$' )
-    fig_o.set_myaxes( ax1, title=title, ylabel=ylabel, yticks=yticks)#, xlabel=xlabel )
+    fig_o.set_myaxes( ax1, title=title, yticks=yticks)#, xlabel=xlabel )
+    ax1.set_ylabel(ylabel)
     ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax1.set_xlim( *xlim )
-    ax1.yaxis.set_label_coords(-0.13,0.5)
-    #ax1.set_ylim( 1050, 1850 )
-    #ax1.set_xlim( 1E-5 , 1 )
-    ax1.set_ylim(200,np.max(yticks))
+    ax1.yaxis.set_label_coords(xcoord_l,ycoord_l)
+    ax1.set_ylim(ymin,ymax)
     # ax1.set_title('(a) Surface temperature', fontname='Arial', fontsize=fs_title)
 
     ##########
@@ -230,101 +241,88 @@ def plot_global( output_dir ):
     ##########
     title = r'(c) Global mantle melt fraction'
     ylabel = '$\phi_\mathrm{g}$'
-    trans = transforms.blended_transform_factory(
-        ax2.transData, ax2.transAxes)
-    h1, = ax2.semilogx( runtime_helpfile["Time"], runtime_helpfile["Phi_global"], color=black, linestyle='-', lw=lw, label=r'Melt, $\phi_g$')
+    # trans = transforms.blended_transform_factory(
+    #     ax2.transData, ax2.transAxes)
+    h1, = ax2.semilogx( fig_o.time, phi_global, color=black, linestyle='-', lw=lw, label=r'Melt, $\phi_g$')
     # h2, = ax2.semilogx( timeMyr_a, mass_liquid_a / mass_mantle, 'k--', label='melt' )
-    fig_o.set_myaxes( ax2, title=title, xlabel=xlabel, ylabel=ylabel )#, xlabel=xlabel, xticks=xticks )
+    fig_o.set_myaxes( ax2, title=title, xlabel=xlabel )#, xlabel=xlabel, xticks=xticks )
+    ax2.set_ylabel(ylabel)
     ax2.set_xlim( *xlim )
     ax2.set_ylim( 0, 1 )
-    # ax0.annotate(title, xy=title_xy, xycoords=title_xycoords, ha=title_ha, va=title_va, fontsize=title_fs)
-    ax2.yaxis.set_label_coords(-0.13,0.5)
+    ax2.set_ylabel(ylabel)
+    ax2.yaxis.set_label_coords(xcoord_l,ycoord_l)
     # handles, labels = ax2.get_legend_handles_labels()
     # ax2.legend(handles, labels, loc='center left', ncol=1, frameon=0)
+
+    # Set up species dependent plots
 
     ##########
     # figure d
     ##########
     # if 1:
     title = r'(d) Atmospheric volatile partial pressure'
-    ylabel = '$p_{\mathrm{vol}}$\n$(\mathrm{bar})$'
     trans = transforms.blended_transform_factory(
         ax3.transData, ax3.transAxes)
-    #for cc, cont in enumerate(phi_cont_l):
-    #    ax0.axvline( phi_time_l[cc], ymin=0.05, ymax=0.7, color='0.25', linestyle=':' )
-    #    label = cont #int(cont*100) # as percent
-    #    ax0.text( phi_time_l[cc], 0.40, '{:2d}'.format(label), va='bottom', ha='center', rotation=90, bbox=dict(facecolor='white'), transform=trans )
-    #ax0.text( 0.1, 0.9, '$\phi (\%)$', ha='center', va='bottom', transform=ax0.transAxes )
-    h1, = ax3.semilogx( runtime_helpfile["Time"], runtime_helpfile["H2O_atm_p"], color=red, linestyle='-', lw=lw, label=r'H$_2$O')
-    h2, = ax3.semilogx( runtime_helpfile["Time"], runtime_helpfile["CO2_atm_p"], color=blue, linestyle='-', lw=lw, label=r'CO$_2$')
-    fig_o.set_myaxes( ax3, title=title, ylabel=ylabel )#, xlabel=xlabel, xticks=xticks )
+    ax3.semilogx( fig_o.time, P_surf, color="gray", linestyle='-', lw=lw, label=r'total')
+    ax3.semilogx( fig_o.time, H2O_atm_pressure, color=blue, linestyle='-', lw=lw, label=r'H$_2$O')
+    ax3.semilogx( fig_o.time, CO2_atm_pressure, color=red, linestyle='-', lw=lw, label=r'CO$_2$')
+    
+    fig_o.set_myaxes( ax3, title=title)#, xlabel=xlabel, xticks=xticks )
+    # ax3.set_title(title, y=0.8)
+    ax3.set_ylabel('$p^{\mathrm{i}}$ (bar)')
     ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax3.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax3.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax3.set_xlim( *xlim )
-    ax3.set_ylim( 0, 350 )
+    # ax3.set_ylim( 0, 350 )
     ax3.yaxis.tick_right()
     ax3.yaxis.set_label_position("right")
-    ax3.yaxis.set_label_coords(1.12,0.5)
+    ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
     handles, labels = ax3.get_legend_handles_labels()
-    ax3.legend(handles, labels, loc='center left', ncol=1, frameon=0, fontsize=fs_legend)
+    ax3.legend(handles, labels, loc='center left', ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend)
 
     ##########
     # figure e
     ##########
     title = r'(e) Atmospheric volatile mass fraction'
-    h1, = ax4.semilogx( runtime_helpfile["Time"], runtime_helpfile["H2O_atm_kg"] / runtime_helpfile["M_atm"], lw=lw, color=blue, linestyle='-', label=r'H$_2$O')
-    h2, = ax4.semilogx( runtime_helpfile["Time"], runtime_helpfile["CO2_atm_kg"] / runtime_helpfile["M_atm"], lw=lw, color=red, linestyle='-', label=r'CO$_2$' )
-    # h1, = ax4.semilogx( runtime_helpfile["Time"], H2O_atmos_kg_a / H2O_total_kg, lw=lw, color=blue, linestyle='-', label=r'H$_2$O')
-    # h2, = ax4.semilogx( runtime_helpfile["Time"], CO2_atmos_kg_a / CO2_total_kg, lw=lw, color=red, linestyle='-', label=r'CO$_2$' )
-    fig_o.set_myaxes( ax4, title=title, ylabel='$M_\mathrm{i}/M_\mathrm{tot}$') #, xlabel=xlabel,xticks=xticks )
+    ax4.semilogx( fig_o.time, vol_mass_atm/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'total')
+    ax4.semilogx( fig_o.time, H2O_atmos_kg_a/H2O_total_kg, lw=lw, color=blue, linestyle='-', label=r'H$_2$O')
+    ax4.semilogx( fig_o.time, CO2_atmos_kg_a/CO2_total_kg, lw=lw, color=red, linestyle='-', label=r'CO$_2$')
+    fig_o.set_myaxes( ax4, title=title) #, xlabel=xlabel,xticks=xticks )
+    # ax4.set_title(title, y=0.8)
+    ax4.set_ylabel('$M_{\mathrm{atm}}^{\mathrm{i}}/M_{\mathrm{tot}}^{\mathrm{i}}$')
     ax4.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax4.yaxis.tick_right()
     ax4.yaxis.set_label_position("right")
-    ax4.yaxis.set_label_coords(1.12,0.5)
+    ax4.yaxis.set_label_coords(xcoord_r,ycoord_r)
     ax4.set_xlim( *xlim )
     ax4.set_ylim( 0, 1 )
     handles, labels = ax4.get_legend_handles_labels()
-    ax4.legend(handles, labels, loc='center left', ncol=1, frameon=0, fontsize=fs_legend)
+    ax4.legend(handles, labels, loc='center left', ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend)
 
     ##########
     # figure f
     ##########
-    title = r'(f) Total planet volatile mass'
-    H2O_total_kg   = runtime_helpfile["H2O_liquid_kg"] + runtime_helpfile["H2O_solid_kg"] + runtime_helpfile["H2O_atm_kg"] 
-    CO2_total_kg   = runtime_helpfile["CO2_liquid_kg"] + runtime_helpfile["CO2_solid_kg"] + runtime_helpfile["CO2_atm_kg"]
-    H2_total_kg   = runtime_helpfile["H2_liquid_kg"] + runtime_helpfile["H2_solid_kg"] + runtime_helpfile["H2_atm_kg"]
-    CO_total_kg   = runtime_helpfile["CO_liquid_kg"] + runtime_helpfile["CO_solid_kg"] + runtime_helpfile["CO_atm_kg"]
-    N2_total_kg   = runtime_helpfile["N2_liquid_kg"] + runtime_helpfile["N2_solid_kg"] + runtime_helpfile["N2_atm_kg"]
-    O2_total_kg   = runtime_helpfile["O2_liquid_kg"] + runtime_helpfile["O2_solid_kg"] + runtime_helpfile["O2_atm_kg"]
-    CH4_total_kg   = runtime_helpfile["CH4_liquid_kg"] + runtime_helpfile["CH4_solid_kg"] + runtime_helpfile["CH4_atm_kg"]
-    He_total_kg   = runtime_helpfile["He_liquid_kg"] + runtime_helpfile["He_solid_kg"] + runtime_helpfile["He_atm_kg"]
-    S_total_kg   = runtime_helpfile["S_liquid_kg"] + runtime_helpfile["S_solid_kg"] + runtime_helpfile["S_atm_kg"]
-    M_planet_total = runtime_helpfile["M_mantle"] + runtime_helpfile["M_core"]+ runtime_helpfile["M_atm"]
-    M_vol_total    = H2O_total_kg + CO2_total_kg + H2_total_kg + CO_total_kg + N2_total_kg + O2_total_kg + CH4_total_kg + He_total_kg + S_total_kg
-    
-    #h5, = ax1.semilogx( timeMyr_a, mass_liquid_a / mass_mantle, 'k--', label='melt' )
-    h1, = ax5.loglog( runtime_helpfile["Time"], H2O_total_kg / M_planet_total, lw=lw, color=blue, linestyle='-', label=r'H$_2$O' )
-    h2, = ax5.loglog( runtime_helpfile["Time"], CO2_total_kg / M_planet_total, lw=lw, color=red, linestyle='-', label=r'CO$_2$' )
-    h3, = ax5.loglog( runtime_helpfile["Time"], M_vol_total / M_planet_total, lw=lw, color="gray", linestyle='-', label=r'$M_{\mathrm{vol,tot}}$' )
-    # h3, = ax5.loglog( timeMyr_a, vol_mass_total / planet_mass_total, lw=lw, color="gray", linestyle='-', label=r'$M_{\mathrm{vol,tot}}$' )
-    
-    # fig_o.set_myaxes( ax5, title=title, ylabel='$M_{\mathrm{i}}/M_{\mathrm{planet}}$ [kg]', xlabel=xlabel)#,xticks=xticks )
-    ax5.set_title(title, y=0.8)
-    ax5.set_ylabel('$M_{\mathrm{i}}/M_{\mathrm{planet}}$ [kg]')
+    title = r'(f) Interior volatile mass fraction'
+    ax5.semilogx( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'total')
+    ax5.semilogx( fig_o.time, (H2O_liquid_kg_a+H2O_solid_kg_a)/H2O_total_kg, lw=lw, color=blue, linestyle='-', label=r'H$_2$O' )
+    ax5.semilogx( fig_o.time, (CO2_liquid_kg_a+CO2_solid_kg_a)/CO2_total_kg, lw=lw, color=red, linestyle='-', label=r'CO$_2$' )
+    fig_o.set_myaxes( ax5, title=title)
+    # ax5.set_title(title, y=0.8)
+    ax5.set_ylabel('$M_{\mathrm{int}}^{\mathrm{i}}/M_{\mathrm{tot}}^{\mathrm{i}}$')
     ax5.set_xlabel(xlabel)
     ax5.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax5.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax5.set_xlim( *xlim )
-    # ax5.set_ylim( 0, 1 )
+    ax5.set_ylim( 0, 1 )
     ax5.yaxis.tick_right()
-    ax5.yaxis.set_label_coords(1.12,0.5)
+    ax5.yaxis.set_label_coords(xcoord_r,ycoord_r)
     ax5.yaxis.set_label_position("right")
     handles, labels = ax5.get_legend_handles_labels()
-    ax5.legend(handles, labels, loc='center left', ncol=1, frameon=0, fontsize=fs_legend)
+    ax5.legend(handles, labels, loc='center left', ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend)
 
 
     fig_o.savefig(6)

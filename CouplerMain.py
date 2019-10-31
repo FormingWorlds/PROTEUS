@@ -33,15 +33,15 @@ SPIDER_options = {
     'nstepsmacro':                 1,     # number of timesteps, adjusted during runtime
     'dtmacro':                     50000, # delta time per macrostep to advance by [yr]
     'heat_flux':                   1.0E4, # init heat flux, adjusted during runtime [W/m^2]
-    'H2O_initial_total_abundance': 100,   # init loop: H2O mass relative to mantle [ppm wt]
-    'CO2_initial_total_abundance': 1,     # init loop [ppm wt]
-    'H2_initial_total_abundance':  1,     # init loop [ppm wt]
-    'CH4_initial_total_abundance': 1,     # init loop [ppm wt]
-    'CO_initial_total_abundance':  1,     # init loop [ppm wt]
-    'N2_initial_total_abundance':  1,     # init loop [ppm wt]
-    'O2_initial_total_abundance':  1,     # init loop [ppm wt]
-    'S_initial_total_abundance':   1,     # init loop [ppm wt]
-    'He_initial_total_abundance':  1,     # init loop [ppm wt]
+    'H2O_initial_total_abundance': 50,    # init loop: H2O mass relative to mantle [ppm wt]
+    'CO2_initial_total_abundance': 50,    # init loop [ppm wt]
+    'H2_initial_total_abundance':  0,     # init loop [ppm wt]
+    'CH4_initial_total_abundance': 0,     # init loop [ppm wt]
+    'CO_initial_total_abundance':  0,     # init loop [ppm wt]
+    'N2_initial_total_abundance':  0,     # init loop [ppm wt]
+    'O2_initial_total_abundance':  0,     # init loop [ppm wt]
+    'S_initial_total_abundance':   0,     # init loop [ppm wt]
+    'He_initial_total_abundance':  0,     # init loop [ppm wt]
     'H2O_poststep_change':         0.05,  # fractional H2O melt phase change event trigger
     'CO2_poststep_change':         0.05,  # CO2 melt phase trigger
     'H2_poststep_change':          0.00,  # fraction
@@ -60,9 +60,7 @@ SPIDER_options = {
     'O2_initial_atmos_pressure':   0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
     'S_initial_atmos_pressure':    0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
     'He_initial_atmos_pressure':   0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
-    'species':                     [ "H2O", "CO2" ]
     }
-# volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
 # Total runtime
 time_start            = 0.           # yr
 time_current          = time_start   # yr
@@ -77,7 +75,7 @@ mean_distance         = 1.0          # AU, star-planet distance
 time_offset           = 100.         # Myr, start of magma ocean after star formation
 
 # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
-loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 2 }
+loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 2, "atm_loops": 1 }
 
 # # Equilibration loops for init and atmosphere sub-loops
 # init_loops = 3
