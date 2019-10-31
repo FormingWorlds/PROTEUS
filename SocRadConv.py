@@ -96,16 +96,16 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
 
         if i % 5 == 0:
             print("Iteration", i, end =", ")
-            if 1==2:
-                plt.figure(figsize=(7,4))
-                plt.semilogy(atm.temp,atm.p)
-                plt.gca().invert_yaxis()
-                plt.ylabel('Pressure [mb]')
-                plt.xlabel('Temperature [K]')
-                plt.gca().xaxis.label.set_color('white')
-                plt.tick_params(axis='x', colors='white')
-                plt.gca().yaxis.label.set_color('white')
-                plt.tick_params(axis='y', colors='white')
+            # if 1==2:
+            #     plt.figure(figsize=(7,4))
+            #     plt.semilogy(atm.temp,atm.p)
+            #     plt.gca().invert_yaxis()
+            #     plt.ylabel('Pressure [mb]')
+            #     plt.xlabel('Temperature [K]')
+            #     plt.gca().xaxis.label.set_color('white')
+            #     plt.tick_params(axis='x', colors='white')
+            #     plt.gca().yaxis.label.set_color('white')
+            #     plt.tick_params(axis='y', colors='white')
                 # plt.show()
             #print("OLR " + str(atm.LW_flux_up[-1]))
             #print("OLR change " + str(atm.LW_flux_up[-1]-PrevOLR))
@@ -170,11 +170,13 @@ def dryAdj(atm):
     for i in range(len(T)-1):
         T1,p1 = T[i],p[i]
         T2,p2 = T[i+1],p[i+1]
+        # Adiabat slope
         pfact = (p1/p2)**atm.Rcp
+        # If slope is shallower than adiabat (unstable), adjust it to adiabat
         if T1 < T2*pfact:
-            Tbar = .5*(T1+T2) #Equal layer masses
-                              #Not quite compatible with how
-                              #heating is computed from flux
+            Tbar = .5*(T1+T2) # Equal layer masses
+                              # Not quite compatible with how
+                              # heating is computed from flux
             T2 = 2.*Tbar/(1.+pfact)
             T1 = T2*pfact
             atm.temp[i] = T1
@@ -185,9 +187,9 @@ def dryAdj(atm):
         T2,p2 = T[i+1],p[i+1]
         pfact = (p1/p2)**atm.Rcp
         if T1 < T2*pfact:
-            Tbar = .5*(T1+T2) #Equal layer masses
-                              #Not quite compatible with how
-                              #heating is computed from flux
+            Tbar = .5*(T1+T2) # Equal layer masses
+                              # Not quite compatible with how
+                              # heating is computed from flux
             T2 = 2.*Tbar/(1.+pfact)
             T1 = T2*pfact
             atm.temp[i] = T1
