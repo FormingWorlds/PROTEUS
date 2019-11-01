@@ -33,9 +33,9 @@ SPIDER_options = {
     'nstepsmacro':                 1,     # number of timesteps, adjusted during runtime
     'dtmacro':                     50000, # delta time per macrostep to advance by [yr]
     'heat_flux':                   1.0E6, # init heat flux, adjusted during runtime [W/m^2]
-    'H2O_initial_total_abundance': 197,    # init loop: H2O mass relative to mantle [ppm wt]
-    'CO2_initial_total_abundance': 160,    # init loop [ppm wt]
-    'H2_initial_total_abundance':  0,     # init loop [ppm wt]
+    'H2O_initial_total_abundance': 0,    # init loop: H2O mass relative to mantle [ppm wt]
+    'CO2_initial_total_abundance': 0,    # init loop [ppm wt]
+    'H2_initial_total_abundance':  100,     # init loop [ppm wt]
     'CH4_initial_total_abundance': 0,     # init loop [ppm wt]
     'CO_initial_total_abundance':  0,     # init loop [ppm wt]
     'N2_initial_total_abundance':  0,     # init loop [ppm wt]
@@ -152,10 +152,8 @@ print("\n===> COUPLER run finished successfully <===")
 
 
 ### TO DO LIST ###
-# - Feed atmospheric profile to SOCRATES instead of surface abundances
-# - In "ModifiedHenrysLaw" function, take mass conservation from atm chemistry --> calc mass of atmosphere from atm chemistry and insert into function. So far, mass conservation is calculated from former .json file, which may be inconsistent.
-# - Fix Psurf stuff.
-# - Use Height calculation of updated VULCAN versions instead of own function.
-# - Check if "Magma ocean volatile content" needs ot be altered in JSON
-# - Read in total masses from VULCAN during UPDATEHELPFILE function during ATMOS update.
+# - Feed atmospheric profile to SOCRATES instead of just surface abundances
+# - Feed p_i back to SPIDER
+# - Use Height calculation of updated VULCAN versions instead of own function
+# - Compare total masses from VULCAN during UPDATEHELPFILE function during ATMOS update
 

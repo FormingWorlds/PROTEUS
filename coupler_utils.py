@@ -74,11 +74,15 @@ volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
 
 # Henry's law coefficients
 # Add to dataframe + save to disk
-volatile_distribution_coefficients = {
-    'H2O_henry':     0.80863728,  # ppm/Pa, Lebrun+13: 6.8E-2
-    'H2O_henry_pow': 1.70894940,    # Lebrun+13: 1.4285714285714286
-    'CO2_henry':     0.000000001937,       # Lebrun+13: 4.4E-6
-    'CO2_henry_pow': 0.71396849,    # Lebrun+13: 1.0
+volatile_distribution_coefficients = {          # X_henry -> ppm/Pa
+    'H2O_henry':     8.086e-01,                
+    'H2O_henry_pow': 1.709e+00,                
+    # 'CO2_henry':     1.937e-09,            
+    # 'CO2_henry_pow': 7.140e-01,                
+    # 'H2O_henry':     6.800e-02,                   # Lebrun+13
+    # 'H2O_henry_pow': 1.4285714285714286,          # Lebrun+13
+    'CO2_henry':     4.4E-6,                      # Lebrun+13
+    'CO2_henry_pow': 1.0,                         # Lebrun+13
     'H2_henry':      0.00000257, 
     'H2_henry_pow':  1.0, 
     'CH4_henry':     0.00000010, 
@@ -95,8 +99,8 @@ volatile_distribution_coefficients = {
     'S_henry_pow':   1.0, 
     'He_henry':      0.001E-9, 
     'He_henry_pow':  1.0,
-    'H2O_kdist':     1.0E-4,  # distribution coefficients
-    'H2O_kabs':      0.01,    # absorption (m^2/kg)
+    'H2O_kdist':     1.0E-4,                    # distribution coefficients
+    'H2O_kabs':      0.01,                      # absorption (m^2/kg)
     'CO2_kdist':     5.0E-4, 
     'CO2_kabs':      0.05,    
     'H2_kdist':      0.0E-0,  
@@ -112,19 +116,9 @@ volatile_distribution_coefficients = {
     'S_kdist':       0.0E-0,   
     'S_kabs':        0.00,      
     'He_kdist':      0.0E-0,  
-    'He_kabs':       0.00  
+    'He_kabs':       0.00
     }
 
-# https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
-def make_output_dir( output_dir ):
-    save_dir = output_dir+"save/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
-    try:
-        os.makedirs(output_dir)
-    except OSError as e:
-        if e.errno != errno.EEXIST:
-            raise  # This was not a "directory exist" error..
-
-    return save_dir
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
 def latex_float(f):
@@ -966,13 +960,12 @@ def RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir
 
 def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, atm_chemistry ):
 
-    # # Define which volatiles to track in SPIDER
+    # Define which volatiles to track in SPIDER
     species_call = ""
     for vol in volatile_species: 
         if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
             species_call = species_call + "," + vol
-    # Remove "," in front
-    species_call = species_call[1:]
+    species_call = species_call[1:] # Remove "," in front
 
     # Recalculate time stepping
     if SPIDER_options["IC_INTERIOR"] == 2:      
@@ -983,7 +976,7 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
     else:
         dtmacro     = 0
 
-    ### Define SPIDER call sequence 
+    ### SPIDER base call sequence 
     call_sequence = [   
                         "spider", 
                         "-options_file",          "spider_input.opts", 
@@ -999,20 +992,24 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
                         "-volatile_names",        str(species_call)
                     ]
 
-    # Define distribution coefficients
+    ### Conditional additions to call sequence
+
+    # Very first timestep: feed volatile abundances
+    if loop_counter["init"] == 0:
+        # Volatile specific options: initial abundance [ppm]
+        for vol in volatile_species:
+            if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
+                call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
+
+    # Define distribution coefficients for volatiles > 0
     for vol in volatile_species:
         if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
             call_sequence.extend(["-"+vol+"_henry", str(volatile_distribution_coefficients[vol+"_henry"])])
             call_sequence.extend(["-"+vol+"_henry_pow", str(volatile_distribution_coefficients[vol+"_henry_pow"])])
             call_sequence.extend(["-"+vol+"_kdist", str(volatile_distribution_coefficients[vol+"_kdist"])])
             call_sequence.extend(["-"+vol+"_kabs", str(volatile_distribution_coefficients[vol+"_kabs"])])
+            call_sequence.extend(["-"+vol+"_molar_mass", str(molar_mass[vol])])
 
-    # Very first timestep
-    if loop_counter["init"] == 0:
-        # Volatile specific options: initial abundance [ppm]
-        for vol in volatile_species:
-            if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
-                call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
 
     # # After very first timestep, starting w/ 2nd init loop
     # if loop_counter["init"] >= 1:
@@ -1104,6 +1101,19 @@ def UpdatePlots( output_dir ):
 
     # Close all figures
     plt.close()
+
+# https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
+# https://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
+def make_output_dir( output_dir ):
+    save_dir = output_dir+"save/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
+    try:
+       os.makedirs(save_dir)
+    except OSError as exc:  # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(save_dir):
+            pass
+        else:
+            raise
+    return save_dir
 
 def SaveOutput( output_dir ):
 
