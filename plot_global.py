@@ -10,6 +10,7 @@ import matplotlib.ticker as ticker
 import argparse
 import matplotlib
 import pandas as pd
+import mmap
 # import seaborn as sns
 # # https://seaborn.pydata.org/tutorial/aesthetics.html
 # sns.set_style("white")
@@ -49,6 +50,53 @@ qred_light   = "#eb9194"
 qturq_light  = "#57ccda"
 qmagenta_light = "#c29fb2"
 qyellow_light = "#f1ca70"
+
+# color_cycle2 = [ "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c", "#7f7f7f", "#bcbd22", "#17becf" ]
+
+vol_colors = {
+    "black_1" : "#000000",
+    "black_2" : "#323232",
+    "black_3" : "#7f7f7f",
+    "H2O_1"   : "#8db4cb",
+    "H2O_2"   : "#4283A9",
+    "H2O_3"   : "#274e65",
+    "CO2_1"   : "#a0d2cb",
+    "CO2_2"   : "#62B4A9",
+    "CO2_3"   : "#3a6c65",
+    "H2_1"    : "#eab597",
+    "H2_2"    : "#DD8452",
+    "H2_3"    : "#844f31",
+    "CH4_1"   : "#eb9194",
+    "CH4_2"   : "#E6767A",
+    "CH4_3"   : "#b85e61",
+    "CO_1"    : "#57ccda",
+    "CO_2"    : "#2EC0D1",
+    "CO_3"    : "#2499a7",
+    "N2_1"    : "#c29fb2",
+    "N2_2"    : "#9A607F",
+    "N2_3"    : "#4d303f",  
+    "S_1"     : "#f1ca70",
+    "S_2"     : "#EBB434",
+    "S_3"     : "#a47d24",    
+    "O2_1"    : "#beae9f",
+    "O2_2"    : "#937860",
+    "O2_3"    : "#584839",
+    "He_1"    : "#acbbbf",
+    "He_2"    : "#768E95",
+    "He_3"    : "#465559"
+}
+
+vol_latex = {
+    "H2O": r"H$_2$O",
+    "CO2": r"CO$_2$",
+    "H2": r"H$_2$",
+    "CH4": r"CH$_4$",
+    "CO": r"CO",
+    "O2": r"O$_2$",
+    "N2": r"N$_2$",
+    "S": r"S",
+    "He": r"S"
+}
 
 # Plot settings
 lw       = 1.5
@@ -103,7 +151,6 @@ def plot_global( output_dir ):
                ('atmosphere','emissivity'),
                ('rheological_front_phi','phi_global'),
                ('atmosphere','Fatm'),
-               ('atmosphere','mass_core'),
                ('atmosphere','pressure_surface')
                )
     data_a = su.get_dict_surface_values_for_times( keys_t, fig_o.time )
@@ -113,9 +160,9 @@ def plot_global( output_dir ):
     mass_core           = data_a[3,:]
     T_surf              = data_a[4,:]
     emissivity          = data_a[5,:]
-    phi_global          = data_a[7,:]
-    Fatm                = data_a[8,:]
-    P_surf              = data_a[9,:]
+    phi_global          = data_a[6,:]
+    Fatm                = data_a[7,:]
+    P_surf              = data_a[8,:]
 
     # ########## Volatile species-specific data
     # vol_times = []
@@ -249,7 +296,7 @@ def plot_global( output_dir ):
         ymin = 200
         ymax = 3000
     yticks = [ymin, ymin+0.2*(ymax-ymin), ymin+0.4*(ymax-ymin), ymin+0.6*(ymax-ymin), ymin+0.8*(ymax-ymin), ymax]
-    h1, = ax1.semilogx( fig_o.time, T_surf, 'k-', lw=lw, label=r'Surface temp, $T_s$' )
+    h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=vol_colors["black_2"], label=r'Surface temp, $T_s$' )
     #ax2b = ax2.twinx()
     #h2, = ax2b.loglog( timeMyr_a, emissivity_a, 'k--', label=r'Emissivity, $\epsilon$' )
     fig_o.set_myaxes( ax1, title=title, yticks=yticks)#, xlabel=xlabel )
@@ -267,21 +314,14 @@ def plot_global( output_dir ):
     ##########
     title = r'(c) Global mantle melt fraction'
     ylabel = '$\phi_{\mathrm{mantle}}$'
-    # trans = transforms.blended_transform_factory(
-    #     ax2.transData, ax2.transAxes)
-    h1, = ax2.semilogx( fig_o.time, phi_global, color=black, linestyle='-', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
+    ax2.semilogx( fig_o.time, phi_global, color=vol_colors["black_2"], linestyle='-', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
     # h2, = ax2.semilogx( timeMyr_a, mass_liquid_a / mass_mantle, 'k--', label='melt' )
     fig_o.set_myaxes( ax2, title=title, xlabel=xlabel )#, xlabel=xlabel, xticks=xticks )
     ax2.set_ylabel(ylabel)
     ax2.set_xlim( *xlim )
-    ax2.set_ylim( 0, 1 )
+    ax2.set_ylim( 0, 1. )
     ax2.set_ylabel(ylabel)
     ax2.yaxis.set_label_coords(xcoord_l,ycoord_l)
-    # handles, labels = ax2.get_legend_handles_labels()
-    # ax2.legend(handles, labels, loc='center left', ncol=1, frameon=0)
-
-    ########## Volatile species-specific plots
-    vol_times = []
 
     ### Plot axes setup
     ##########
@@ -297,8 +337,14 @@ def plot_global( output_dir ):
     ##########
     title_ax5 = r'(f) Interior volatile mass fraction'
 
+    ########## Volatile species-specific plots
+    
     # Check for times when volatile is present in data dumps
     for vol in volatile_species:
+
+        vol_times = []
+
+        print(vol+":", end=" ")
 
         # For all times
         for sim_time in fig_o.time:
@@ -306,12 +352,16 @@ def plot_global( output_dir ):
             # Define file name
             json_file = "./output/"+str(int(sim_time))+".json"
 
-            print(vol, sim_time, json_file)
+            # For string check
+            vol_str = '"'+vol+'"'
 
-            # Find the times with the volatile in the JSON file
-            with open(json_file) as f:
-                if vol in f.read(json_file):
-
+            # # Find the times with the volatile in the JSON file
+            # # https://stackoverflow.com/questions/4940032/how-to-search-for-a-string-in-text-files
+            with open(json_file, 'rb', 0) as file, \
+                mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as s:
+                # if s.find(vol.encode()) != -1:
+                if s.find(vol_str.encode()) != -1:
+                    print(sim_time, end=" ")
                     keys_t = ( ('atmosphere', vol, 'liquid_kg'),
                                ('atmosphere', vol, 'solid_kg'),
                                ('atmosphere', vol, 'initial_kg'),
@@ -321,35 +371,38 @@ def plot_global( output_dir ):
 
                     vol_times.append(sim_time)
 
+        print()
+
         # # Find the times the volatile is *not* present
         # np.setdiff1d(fig_o.time,vol_times)
 
-        # Get the data for these files
-        data_vol = su.get_dict_surface_values_for_times( keys_t, vol_times )
-        vol_liquid_kg       = data_vol[0,:]
-        vol_solid_kg        = data_vol[1,:]
-        vol_initial_kg      = data_vol[2,:]
-        vol_atm_kg          = data_vol[3,:]
-        vol_atm_pressure    = data_vol[4,:]
-        vol_interior        = vol_liquid_kg   + vol_solid_kg
-        vol_total_kg        = vol_interior_kg + vol_atm_kg
+        # Only for volatiles that are present at some point 
+        if vol_times:
 
-        # ##########
-        # # figure d
-        # ##########
-        ax3.semilogx( fig_o.time, P_surf, color="gray", linestyle='-', lw=lw, label=r'Total')
-        ax3.semilogx( vol_times, vol_atm_pressure, color=blue, linestyle='-', lw=lw, label=vol)
-        # ##########
-        # # figure e
-        # ##########
-        # ax4.semilogx( fig_o.time, vol_mass_atm/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
-        ax4.semilogx( vol_times, H2O_atm_kg/vol_total_kg, lw=lw, color=blue, linestyle='-', label=rvol)
+            # Get the data for these files
+            data_vol = su.get_dict_surface_values_for_times( keys_t, vol_times )
+            vol_liquid_kg       = data_vol[0,:]
+            vol_solid_kg        = data_vol[1,:]
+            vol_initial_kg      = data_vol[2,:]
+            vol_atm_kg          = data_vol[3,:]
+            vol_atm_pressure    = data_vol[4,:]
+            vol_interior_kg     = vol_liquid_kg   + vol_solid_kg
+            vol_total_kg        = vol_interior_kg + vol_atm_kg
 
-        # ##########
-        # # figure f
-        # ##########
-        # ax5.semilogx( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
-        ax5.semilogx( vol_times, vol_interior/vol_total_kg, lw=lw, color=blue, linestyle='-', label=vol )
+            ##########
+            # figure d
+            ##########
+            ax3.semilogx( fig_o.time, P_surf, color=vol_colors["black_2"], linestyle='-', lw=lw, label=r'Total')
+            ax3.semilogx( vol_times, vol_atm_pressure, color=vol_colors[vol+"_2"], linestyle='-', lw=lw, label=vol_latex[vol])
+            ##########
+            # figure e
+            ##########
+            ax4.semilogx( vol_times, vol_atm_kg/vol_total_kg, lw=lw, color=vol_colors[vol+"_2"], linestyle='-', label=vol_latex[vol])
+            ##########
+            # figure f
+            ##########
+            # ax5.semilogx( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
+            ax5.semilogx( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=vol_colors[vol+"_2"], linestyle='-', label=vol_latex[vol] )
 
     ##########
     # figure d
@@ -371,8 +424,8 @@ def plot_global( output_dir ):
     # figure e
     ##########
     fig_o.set_myaxes( ax4, title=title_ax4) #, xlabel=xlabel,xticks=xticks )
-    ax4.set_title(title, y=0.8)
-    ax4.set_ylabel('$M_{\mathrm{atm}}^{\mathrm{i}}/M_{\mathrm{tot}}^{\mathrm{i}}$')
+    # ax4.set_title(title, y=0.8)
+    ax4.set_ylabel('$M_{\mathrm{atm}}^{\mathrm{i}}/M^{\mathrm{i}}$')
     ax4.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
@@ -388,7 +441,7 @@ def plot_global( output_dir ):
     ##########
     fig_o.set_myaxes( ax5, title=title_ax5)
     # ax5.set_title(title, y=0.8)
-    ax5.set_ylabel('$M_{\mathrm{int}}^{\mathrm{i}}/M_{\mathrm{tot}}^{\mathrm{i}}$')
+    ax5.set_ylabel('$M_{\mathrm{int}}^{\mathrm{i}}/M^{\mathrm{i}}$')
     ax5.set_xlabel(xlabel)
     ax5.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax5.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
