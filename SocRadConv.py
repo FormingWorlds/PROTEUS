@@ -5,7 +5,7 @@ Socrates radiative-convective model
 '''
 
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import matplotlib
 import SocRadModel
 from atmosphere_column import atmos
@@ -18,15 +18,15 @@ import pandas as pd
 # font = fm.FontProperties(family = 'Helvetica', fname = '/Users/tim/Dropbox/work/matplotlib_fonts/Helvetica/Helvetica.ttf')
 
 def surf_Planck_nu(atm):
-    h = 6.63e-34
-    c = 3.0e8
-    kb = 1.38e-23
-    B = np.zeros(len(atm.band_centres))
-    c1 = 1.191042e-5
-    c2 = 1.4387752
+    h   = 6.63e-34
+    c   = 3.0e8
+    kb  = 1.38e-23
+    B   = np.zeros(len(atm.band_centres))
+    c1  = 1.191042e-5
+    c2  = 1.4387752
     for i in range(len(atm.band_centres)):
-        nu = atm.band_centres[i]
-        B[i] = (c1*nu**3 / (np.exp(c2*nu/atm.ts)-1))
+        nu      = atm.band_centres[i]
+        B[i]    = (c1*nu**3 / (np.exp(c2*nu/atm.ts)-1))
 
     B = B * atm.band_widths/1000.0
     return B
@@ -198,26 +198,26 @@ def dryAdj(atm):
 
 #Define function to do time integration for n steps
 def steps(atm, stellar_toa_heating):
-    atm = SocRadModel.radCompSoc(atm, stellar_toa_heating)
-    dT = atm.total_heating*atm.dt
+    atm     = SocRadModel.radCompSoc(atm, stellar_toa_heating)
+    dT      = atm.total_heating*atm.dt
     #Limit the temperature change per step
-    dT = np.where(dT>5.,5.,dT)
-    dT = np.where(dT<-5.,-5.,dT)
+    dT      = np.where(dT>5.,5.,dT)
+    dT      = np.where(dT<-5.,-5.,dT)
     #Midpoint method time stepping
     #changed call to r.  Also modified to hold Tg fixed
-    atm = SocRadModel.radCompSoc(atm, stellar_toa_heating)
-    dT = atm.total_heating*atm.dt
+    atm     = SocRadModel.radCompSoc(atm, stellar_toa_heating)
+    dT      = atm.total_heating*atm.dt
     #Limit the temperature change per step
-    dT = np.where(dT>5.,5.,dT)
-    dT = np.where(dT<-5.,-5.,dT)
+    dT      = np.where(dT>5.,5.,dT)
+    dT      = np.where(dT<-5.,-5.,dT)
     atm.temp += dT
     #
     dTmax = max(abs(dT)) #To keep track of convergence
 
-    #   Do the surface balance
+    # Do the surface balance
     kturb = .1
     atm.temp[-1] += -atm.dt*kturb*(atm.temp[-1] - atm.ts)
-    #Dry adjustment step
+    # Dry adjustment step
     for iadj in range(10):
         dryAdj(atm)
     Tad = atm.temp[-1]*(atm.p/atm.p[-1])**atm.Rcp

@@ -90,7 +90,7 @@ volatile_distribution_coefficients = {          # X_henry -> ppm/Pa
     'CO_henry':      0.00000016, 
     'CO_henry_pow':  1.0, 
     'N2_henry':      0.00007000, 
-    'N2_henry_pow':  1.8, 
+    'N2_henry_pow':  1.8,
     'N2_henry_reduced':      74.15775114, 
     'N2_henry_pow_reduced':  4.58195381, 
     'O2_henry':      0.001E-9, 
@@ -994,54 +994,41 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
 
     ### Conditional additions to call sequence
 
-    # Very first timestep: feed volatile abundances
-    if loop_counter["init"] == 0:
-        # Volatile specific options: initial abundance [ppm]
-        for vol in volatile_species:
-            if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
-                call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
-
-    # Define distribution coefficients for volatiles > 0
+    # Define distribution coefficients and total mass/surface pressure for volatiles > 0
     for vol in volatile_species:
         if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
+
+            # Very first timestep: feed volatile initial abundance [ppm]
+            if loop_counter["init"] == 0:
+                    call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
+
+            # After very first timestep, starting w/ 2nd init loop
+            if loop_counter["init"] >= 1:
+
+                ## KLUDGE: Read in the same abundances every time -> no feedback from ATMOS
+                call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
+                # # TO DO: MAKE THIS WORK
+                # # Load partial pressures from VULCAN
+                # volume_mixing_ratio     = atm_chemistry.iloc[0][vol]
+                # surface_pressure_total  = atm_chemistry.iloc[0]["Pressure"]*1e5 # bar -> Pa
+                # partial_pressure_vol    = surface_pressure_total*volume_mixing_ratio
+                # SPIDER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
+                # call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(SPIDER_options[vol+"_initial_atmos_pressure"])])
+
             call_sequence.extend(["-"+vol+"_henry", str(volatile_distribution_coefficients[vol+"_henry"])])
             call_sequence.extend(["-"+vol+"_henry_pow", str(volatile_distribution_coefficients[vol+"_henry_pow"])])
             call_sequence.extend(["-"+vol+"_kdist", str(volatile_distribution_coefficients[vol+"_kdist"])])
             call_sequence.extend(["-"+vol+"_kabs", str(volatile_distribution_coefficients[vol+"_kabs"])])
             call_sequence.extend(["-"+vol+"_molar_mass", str(molar_mass[vol])])
 
-
-    # # After very first timestep, starting w/ 2nd init loop
-    # if loop_counter["init"] >= 1:
-
-    #     # Loop over all species considered
-    #     for vol in SPIDER_options["species"]:
-
-    #         # Data from SPIDER itself
-    #         keys_t = (('atmosphere',vol,'atmosphere_bar'),('atmosphere',vol,'atmosphere_kg'))
-    #         sim_time = su.get_all_output_times(output_dir)[-1]  # yr
-    #         data_a = su.get_dict_surface_values_for_specific_time( keys_t, sim_time )
-    #         partial_pressure = data_a[0,:]*1e5 # Pa
-    #         call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(partial_pressure)])
-
-            # # Load partial pressures from VULCAN
-            # partial_pressure = atm_chemistry.iloc[0][vol]*runtime_helpfile.iloc[-1]["P_surf"]*1e5 # Pa
-            # call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(partial_pressure)]) 
-            
-
-
-            # SPIDER_options[vol+"_initial_atmos_pressure"] = runtime_helpfile.iloc[-1][vol+"_atm_p"]*1e5 # Pa
-            # call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(SPIDER_options[vol+"_initial_atmos_pressure"])])
-
-    # With start if the main loop
+    # With start of the main loop only:
+    # Volatile specific options: post step settings, restart filename
     if SPIDER_options["IC_INTERIOR"] == 2:
         call_sequence.extend([ 
-                        "-activate_poststep", 
-                        "-activate_rollback",
-                        "-ic_interior_filename",  str(output_dir+SPIDER_options["ic_interior_filename"]),
-                        ])
-
-        # Volatile specific options: partial pressure [Pa], post step setting
+                                "-ic_interior_filename",  str(output_dir+SPIDER_options["ic_interior_filename"]),
+                                "-activate_poststep", 
+                                "-activate_rollback"
+                             ])
         for vol in volatile_species:
             if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
                 call_sequence.extend(["-"+vol+"_poststep_change", str(SPIDER_options[vol+"_poststep_change"])])
@@ -1087,9 +1074,9 @@ def UpdatePlots( output_dir ):
         plot_times.append(output_times[-1])     # last snapshot
     print("snapshots:", plot_times)
 
-    # Global properties for all timesteps
-    if len(output_times) > 1:
-        plot_global.plot_global(output_dir)   
+    # # Global properties for all timesteps
+    # if len(output_times) > 1:
+    #     plot_global.plot_global(output_dir)   
 
     # Specific timesteps for paper plots
     plot_interior.plot_interior(plot_times)     
