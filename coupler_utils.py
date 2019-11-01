@@ -22,6 +22,7 @@ import plot_global
 import plot_stacked
 import plot_atmosphere
 from atmosphere_column import atmos
+import argparse
 
 ### Constants ###
 
@@ -118,7 +119,6 @@ volatile_distribution_coefficients = {          # X_henry -> ppm/Pa
     'He_kdist':      0.0E-0,  
     'He_kabs':       0.00
     }
-
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
 def latex_float(f):

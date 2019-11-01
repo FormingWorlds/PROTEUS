@@ -15,6 +15,16 @@ import mmap
 # # https://seaborn.pydata.org/tutorial/aesthetics.html
 # sns.set_style("white")
 
+# Output dir, optional argument: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
+parser = argparse.ArgumentParser(description='Define file output directory.')
+parser.add_argument('--dir', default="output/", help='Provide path to output directory.' )
+
+# # Specify varying volatile abundances: $ python plot_atmosphere.py -H2 0,10
+# parser = argparse.ArgumentParser(description='COUPLER optional command line arguments')
+# parser.add_argument('--dir', default="output/", help='Provide path to output directory.' )
+# parser.add_argument('-H2O', type=float, help='H2O initial abundance (ppm wt)')
+# # args = parser.parse_args()
+
 # Define Crameri colormaps (+ recursive)
 from matplotlib.colors import LinearSegmentedColormap
 for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
@@ -107,10 +117,6 @@ width = 12.00 #* 3.0/2.0
 height = 8.0 #/ 2.0
 
 volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
-
-# Output dir, optional argument: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
-parser = argparse.ArgumentParser(description='Define file output directory.')
-parser.add_argument('--dir', default="output", help='Provide path to output directory.' )
 
 #====================================================================
 def plot_global( output_dir ):

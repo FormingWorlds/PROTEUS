@@ -7,6 +7,7 @@ import numpy as np
 import SocRadConv
 import SocRadModel
 import subprocess
+import argparse
 import glob
 import sys, os, shutil
 import math
@@ -20,6 +21,13 @@ import pandas as pd
 coupler_dir = os.getcwd()+"/"
 output_dir  = os.getcwd()+"/output/"
 vulcan_dir  = os.getcwd()+"/vulcan_spider/"
+
+# Handle optional command line arguments for volatiles
+parser = argparse.ArgumentParser(description='COUPLER optional command line arguments')
+parser.add_argument('-dir', default="output/", help='Provide path to output directory.' )
+parser.add_argument('-H2O', type=float, help='H2O initial abundance (ppm wt).')
+parser.add_argument('-CO2', type=float, help='CO2 initial abundance (ppm wt).')
+parser.add_argument('-H2', type=float, help='H2 initial abundance (ppm wt).')
 
 # SPIDER settings
 SPIDER_options = {
@@ -100,56 +108,75 @@ print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 print(":::::::::::: START COUPLER RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
-# Interior-Atmosphere loop
-while time_current < time_target:
+#====================================================================
+def main():
 
-    ############### INTERIOR SUB-LOOP
+    # Parse optional argument from console
+    args = parser.parse_args()
+    if args.H2O:
+        print("Set H2O abundance from terminal input:", args.H2O)
+        SPIDER_options["H2O_initial_total_abundance"] = float(args.H2O)
+    if args.CO2:
+        print("Set CO2 abundance from terminal input:", args.CO2)
+        SPIDER_options["CO2_initial_total_abundance"] = float(args.CO2)
+    if args.H2:
+        print("Set H2 abundance from terminal input:", args.H2)
+        SPIDER_options["H2_initial_total_abundance"] = float(args.H2)
 
-    # Run SPIDER
-    SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, atm_chemistry )
+    # Interior-Atmosphere loop
+    while time_current < time_target:
 
-    # Update help quantities, input_flag: "Interior"
-    runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, vulcan_dir, runtime_helpfile_name, runtime_helpfile, "Interior", atm_chemistry, SPIDER_options)
+        ############### INTERIOR SUB-LOOP
 
-    ############### / INTERIOR SUB-LOOP
+        # Run SPIDER
+        SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, atm_chemistry )
 
-    ############### ATMOSPHERE SUB-LOOP
-    while loop_counter["atm"] < loop_counter["atm_loops"]:
+        # Update help quantities, input_flag: "Interior"
+        runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, vulcan_dir, runtime_helpfile_name, runtime_helpfile, "Interior", atm_chemistry, SPIDER_options)
 
-        # Run VULCAN
-        atm_chemistry = coupler_utils.RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, runtime_helpfile, SPIDER_options )
+        ############### / INTERIOR SUB-LOOP
 
-        # Run SOCRATES
-        SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter )
+        ############### ATMOSPHERE SUB-LOOP
+        while loop_counter["atm"] < loop_counter["atm_loops"]:
 
-        loop_counter["atm"] += 1
+            # Run VULCAN
+            atm_chemistry = coupler_utils.RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, runtime_helpfile, SPIDER_options )
 
-    # Update help quantities, input_flag: "Atmosphere"
-    runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, vulcan_dir, runtime_helpfile_name, runtime_helpfile, "Atmosphere", atm_chemistry, SPIDER_options)
-    ############### / ATMOSPHERE SUB-LOOP
-    
-    # Runtime info
-    coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options, stellar_toa_heating, solar_lum, loop_counter, output_dir)
+            # Run SOCRATES
+            SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter )
 
-    # Plot conditions throughout run for on-the-fly analysis
-    coupler_utils.UpdatePlots( output_dir )
-    
-    # Adjust iteration counters + total time 
-    loop_counter["atm"]         = 0
-    loop_counter["total"]       += 1
-    if loop_counter["init"] < loop_counter["init_loops"]:
-        loop_counter["init"]    += 1
-        time_current            = time_start
+            loop_counter["atm"] += 1
 
-    # Reset restart flag once SPIDER was started w/ ~correct volatile chemistry + heat flux
-    if loop_counter["total"] >= loop_counter["init_loops"]:
-        SPIDER_options["IC_INTERIOR"] = 2
+        # Update help quantities, input_flag: "Atmosphere"
+        runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, vulcan_dir, runtime_helpfile_name, runtime_helpfile, "Atmosphere", atm_chemistry, SPIDER_options)
+        ############### / ATMOSPHERE SUB-LOOP
+        
+        # Runtime info
+        coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options, stellar_toa_heating, solar_lum, loop_counter, output_dir)
 
-# Save files from finished simulation
-coupler_utils.SaveOutput( output_dir )
+        # Plot conditions throughout run for on-the-fly analysis
+        coupler_utils.UpdatePlots( output_dir )
+        
+        # Adjust iteration counters + total time 
+        loop_counter["atm"]         = 0
+        loop_counter["total"]       += 1
+        if loop_counter["init"] < loop_counter["init_loops"]:
+            loop_counter["init"]    += 1
+            time_current            = time_start
 
-print("\n===> COUPLER run finished successfully <===")
+        # Reset restart flag once SPIDER was started w/ ~correct volatile chemistry + heat flux
+        if loop_counter["total"] >= loop_counter["init_loops"]:
+            SPIDER_options["IC_INTERIOR"] = 2
 
+    # Save files from finished simulation
+    coupler_utils.SaveOutput( output_dir )
+
+    print("\n===> COUPLER run finished successfully <===")
+
+#====================================================================
+if __name__ == "__main__":
+
+    main()
 
 ### TO DO LIST ###
 # - Feed atmospheric profile to SOCRATES instead of just surface abundances
