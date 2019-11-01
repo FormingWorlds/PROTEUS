@@ -1074,9 +1074,9 @@ def UpdatePlots( output_dir ):
         plot_times.append(output_times[-1])     # last snapshot
     print("snapshots:", plot_times)
 
-    # # Global properties for all timesteps
-    # if len(output_times) > 1:
-    #     plot_global.plot_global(output_dir)   
+    # Global properties for all timesteps
+    if len(output_times) > 1:
+        plot_global.plot_global(output_dir)   
 
     # Specific timesteps for paper plots
     plot_interior.plot_interior(plot_times)     

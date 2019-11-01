@@ -467,10 +467,14 @@ def plot_global( output_dir ):
 def main():
 
     # Read optional argument from console to provide output dir
-    output_dir = parser.parse_args().dir
+    output_dir_read = parser.parse_args().dir
 
-    plot_global( output_dir="output/")
+    # output_dir_read = os.getcwd()+"/output/save/2019-11-01_11-16-35/"
+    # print(output_dir_read)
+
+    # plot_global( output_dir="output/")
     # plt.show()
+    plot_global( output_dir=output_dir_read)
 
 #====================================================================
 
