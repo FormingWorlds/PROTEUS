@@ -206,11 +206,12 @@ def plot_atmosphere( output_dir, times ):
 
     #####  Spectral OLR
     fig_o.set_myaxes( ax2, xlabel='Wavenumber (cm$^{-1}$)', ylabel='Spectral flux' )
-    ax2.set_xlim( left=0, right=10000 )
+    
     ax2.set_ylabel( 'Spectral flux density (Jy)', rotation=90)
     # ax2.yaxis.set_label_position("right")
     # ax2.yaxis.tick_right()
-    # ax2.set_ylim( bottom=0 )
+    ax2.set_xlim( left=0, right=10000 )
+    ax2.set_ylim( bottom=0 ) #, top=10
     ax2.yaxis.set_label_coords(title_xcoord,title_ycoord)
 
     # Legend
@@ -224,7 +225,7 @@ def plot_current_mixing_ratio( output_dir, times ):
     time = str(times)
 
     # Read atmospheric chemistry
-    atm_chemistry       = pd.read_csv(output_dir+time+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True)
+    atm_chemistry       = pd.read_csv(output_dir+time+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True) # skipfooter=1
 
     # Plot settings
     lw=2
