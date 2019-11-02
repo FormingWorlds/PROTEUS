@@ -82,52 +82,24 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
     PrevMaxHeat = 0.
     PrevTemp = 0.*atm.temp[:]
 
+    # Define break conditions
+    deltaOLR = 10   # W/m^2
+    deltaT   = 10   # K
+
     #---------------------------------------------------------
     #--------------Initializations Done-----------------------
     #--------------Now do the time stepping-------------------
     #---------------------------------------------------------
     matplotlib.rc('axes',edgecolor='k')
-    for i in range(0,100):
+    for i in range(0,300):
 
         atm = steps(atm, stellar_toa_heating)
 
         #hack!
         # atm.temp[0] = atm.temp[1]
 
-        if i % 5 == 0:
+        if i % 10 == 0:
             print("Iteration", i, end =", ")
-            # if 1==2:
-            #     plt.figure(figsize=(7,4))
-            #     plt.semilogy(atm.temp,atm.p)
-            #     plt.gca().invert_yaxis()
-            #     plt.ylabel('Pressure [mb]')
-            #     plt.xlabel('Temperature [K]')
-            #     plt.gca().xaxis.label.set_color('white')
-            #     plt.tick_params(axis='x', colors='white')
-            #     plt.gca().yaxis.label.set_color('white')
-            #     plt.tick_params(axis='y', colors='white')
-                # plt.show()
-            #print("OLR " + str(atm.LW_flux_up[-1]))
-            #print("OLR change " + str(atm.LW_flux_up[-1]-PrevOLR))
-            # print("Max heating " + str(np.max(atm.total_heating)))
-            #print("Max dT " + str(abs(np.max(atm.temp-PrevTemp[:]))))
-            
-#             # Plot on the fly
-#             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15,7))
-#             ax1.semilogy(atm.temp,atm.p)
-#             ax1.invert_yaxis()
-#             ax1.set_xlabel('Temperature [K]')
-#             ax1.set_ylabel('Pressure [mb]')
-#             ax2.plot(atm.band_centres,atm.LW_spectral_flux_up[:,0]/atm.band_widths,'k')
-# #            ax2.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths,'k--')
-#             ax2.set_xlim([0,8*atm.ts])
-#             ax2.set_ylabel('Spectral Flux')
-#             ax2.set_xlabel('Wavenumber')
-#             ax2.set_title('Spectral OLR')
-#             # plt.show()
-#             plt.savefig(output_dir+'/TP_profile_'+str(round(time_current))+'.png', bbox_inches="tight")
-#             plt.close(fig)
-
             print("OLR = " + str(PrevOLR)+" W/m^2,", "Max heating = " + str(np.max(atm.total_heating)))
 
         # Reduce timestep if heating not converging
@@ -135,23 +107,15 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
             #print("reducing timestep")
             atm.dt  = atm.dt*0.99
 
-
-        if abs(atm.LW_flux_up[-1]-PrevOLR) < 0.1 and abs(np.max(atm.temp-PrevTemp[:])) < 0.5:
-           print("break")
+        # Sensitivity break conditions
+        if abs(atm.LW_flux_up[-1]-PrevOLR) < deltaOLR and abs(np.max(atm.temp-PrevTemp[:])) < deltaT:
+           print("-> break: deltaOLR =", abs(atm.LW_flux_up[-1]-PrevOLR), "deltaT =", abs(np.max(atm.temp-PrevTemp[:])))
            #print(PrevTemp[:]-atm.temp)
            break    # break here
 
         PrevOLR = atm.LW_flux_up[0]
         PrevMaxHeat = abs(np.max(atm.total_heating))
         PrevTemp[:] = atm.temp[:]
-
-    # # plot equilibrium temperature profile
-    # plt.figure()
-    # plt.semilogy(atm.temp,atm.p)
-    # plt.gca().invert_yaxis()
-    # plt.ylabel('Pressure [mb]')
-    # plt.xlabel('Temperature [K]')
-    # plt.savefig(output_dir+'/T_profile_'+str(round(time_current))+'.pdf', bbox_inches="tight")
 
     # Write TP and spectral flux profiles for later plotting
     out_a = np.column_stack( ( atm.temp, atm.p*1.e-3 ) ) # K, mbar->bar
