@@ -82,10 +82,6 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
     PrevMaxHeat = 0.
     PrevTemp = 0.*atm.temp[:]
 
-    # Define break conditions
-    deltaOLR = 10   # W/m^2
-    deltaT   = 10   # K
-
     #---------------------------------------------------------
     #--------------Initializations Done-----------------------
     #--------------Now do the time stepping-------------------
@@ -107,9 +103,10 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
             #print("reducing timestep")
             atm.dt  = atm.dt*0.99
 
-        # Sensitivity break conditions
-        if abs(atm.LW_flux_up[-1]-PrevOLR) < deltaOLR and abs(np.max(atm.temp-PrevTemp[:])) < deltaT:
-           print("-> break: deltaOLR =", abs(atm.LW_flux_up[-1]-PrevOLR), "deltaT =", abs(np.max(atm.temp-PrevTemp[:])))
+        # Sensitivity break condition
+        if (abs(atm.LW_flux_up[0]-PrevOLR) < (0.1*(5.67e-8*atm.ts**4)**0.5)) and i > 5 :
+        # if abs(atm.LW_flux_up[-1]-PrevOLR) < deltaOLR and abs(np.max(atm.temp-PrevTemp[:])) < deltaT:
+           print("-> break: deltaOLR =", abs(atm.LW_flux_up[0]-PrevOLR), "deltaT =", abs(np.max(atm.temp-PrevTemp[:])))
            #print(PrevTemp[:]-atm.temp)
            break    # break here
 
