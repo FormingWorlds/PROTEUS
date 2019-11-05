@@ -4,8 +4,8 @@
 
 import numpy as np
 
-surface_pressure 	= 1e3 	# Surface pressure in mbar
-top_pressure 		= 1e-3 	# mbar
+surface_pressure 	= 1e5 	# Surface pressure in Pa
+top_pressure 		= 1e-3 	# Pa
 n_vertical_levels 	= 100
 timestep 			= 0.5
 n_absorbing_species = 7
@@ -16,8 +16,8 @@ class atmos:
 	Atmosphere class
 	'''
 	def __init__(self):
-		self.ps 			= surface_pressure 		# Surface pressure in mbar
-		self.ptop 			= top_pressure 			# Top pressure in mbar
+		self.ps 			= surface_pressure 		# Surface pressure in Pa
+		self.ptop 			= top_pressure 			# Top pressure in Pa
 		self.nlev 			= n_vertical_levels 	# Number of vertical levels
 		self.p 				= np.ones(self.nlev)
 		self.pl 			= np.ones(self.nlev+1)

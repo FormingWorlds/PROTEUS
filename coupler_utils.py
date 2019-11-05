@@ -741,7 +741,7 @@ def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, 
 
         # Generate init TP structure
         atm             = atmos()
-        atm.ps          = runtime_helpfile.iloc[-1]["P_surf"]*1e3 # mbar
+        atm.ps          = runtime_helpfile.iloc[-1]["P_surf"]*1e5 # bar->Pa
         pstart          = atm.ps#*.995
         rat             = (atm.ptop/pstart)**(1./atm.nlev)
         logLevels       = [pstart*rat**i for i in range(atm.nlev+1)]
@@ -749,7 +749,7 @@ def UpdateVulcanInputFiles( time_current, loop_counter, vulcan_dir, output_dir, 
         levels          = [atm.ptop+i*(pstart-atm.ptop)/(atm.nlev-1) for i in range(atm.nlev+1)]
         atm.pl          = np.array(logLevels)
         atm.p           = (atm.pl[1:] + atm.pl[:-1]) / 2
-        pressure_grid   = atm.p*1e-3 # bar
+        pressure_grid   = atm.p*1e-5 # Pa->bar
         temp_grid       = np.ones(len(pressure_grid))*runtime_helpfile.iloc[-1]["T_surf"]
 
         # Min/max P for VULCAN config file

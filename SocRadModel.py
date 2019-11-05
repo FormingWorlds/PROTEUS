@@ -23,24 +23,24 @@ def radCompSoc(atm, stellar_toa_heating):
 
     # Write temperature, pressure, and mixing ratios
 
-    templ_list = np.interp(atm.pl[:],atm.p[:],atm.temp[:])
-    temp_list =  (templ_list[1:] + templ_list[:-1]) / 2
-    pres_list = 100.0*atm.p[:]
-    presl_list = 100.0*atm.pl[:]
+    templ_list  = np.interp(atm.pl[:],atm.p[:],atm.temp[:])
+    temp_list   = (templ_list[1:] + templ_list[:-1]) / 2
+    pres_list   = atm.p[:]
+    presl_list  = atm.pl[:]
 
     # H2O mixing ratio profile
-    q_mr_list = atm.mixing_ratios[0]
+    q_mr_list   = atm.mixing_ratios[0]
     # CO2 mixing ratio profile
     co2_mr_list = atm.mixing_ratios[1]
     # H2 mixing ratio profile
-    h2_mr_list = 0.1*np.ones(len(atm.mixing_ratios[1]))
+    h2_mr_list  = atm.mixing_ratios[2]
 
     # Write single values
-    t_surf = atm.ts
-    p_surf = 100.0*atm.p[-1]
+    t_surf      = atm.ts
+    p_surf      = atm.p[-1]
     solar_zenith_angle = 0.0
     # solar_toa = 0.0 #zero stellar heating for now
-    solar_toa = stellar_toa_heating
+    solar_toa   = stellar_toa_heating
 
     # Write values to netcdf
     nctools.ncout_surf('profile.surf',0,0,1,0.1)
@@ -59,11 +59,15 @@ def radCompSoc(atm, stellar_toa_heating):
     basename = 'profile'
     s = " "
 
+    # # seq4 = ("Cl_run_cdf -B", basename,"-s "+path_to_socrates+"/data/spectra/ga7/sp_sw_ga7 -R 1 6 -ch 6 -S -g 2 -C 5")
+    # seq4 = ("Cl_run_cdf -B", basename,"-s spectral-files/gen_sp_spider_h2cia_3000K_300/sp_spider -R 1 300 -ch 300 -S -g 2 -C 5 -u")
+    # seq5 = ("fmove", basename,"currentsw")
+    # seq6 = ("Cl_run_cdf -B", basename,"-s spectral-files/gen_sp_spider_h2cia_3000K_300/sp_spider -R 1 300 -ch 300 -I -g 2 -C 5 -u")
+    # seq7 = ("fmove", basename,"currentlw")
 
-    # seq4 = ("Cl_run_cdf -B", basename,"-s "+path_to_socrates+"/data/spectra/ga7/sp_sw_ga7 -R 1 6 -ch 6 -S -g 2 -C 5")
-    seq4 = ("Cl_run_cdf -B", basename,"-s spectral-files/gen_sp_spider_h2cia_3000K_300/sp_spider -R 1 300 -ch 300 -S -g 2 -C 5 -u")
+    seq4 = ("Cl_run_cdf -B", basename,"-s spectral-files/gen_sp_spider_h2+h2o+co2_3000K_300/sp_spider -R 1 300 -ch 300 -S -g 2 -C 5 -u")
     seq5 = ("fmove", basename,"currentsw")
-    seq6 = ("Cl_run_cdf -B", basename,"-s spectral-files/gen_sp_spider_h2cia_3000K_300/sp_spider -R 1 300 -ch 300 -I -g 2 -C 5 -u")
+    seq6 = ("Cl_run_cdf -B", basename,"-s spectral-files/gen_sp_spider_h2+h2o+co2_3000K_300/sp_spider -R 1 300 -ch 300 -I -g 2 -C 5 -u")
     seq7 = ("fmove", basename,"currentlw")
 
 

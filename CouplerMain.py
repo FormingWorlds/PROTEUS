@@ -36,7 +36,7 @@ def main():
     # SPIDER settings
     SPIDER_options = {
         'SURFACE_BC':                  4,     # 4: constant heat flux boundary condition
-        'tsurf_poststep_change':       50.0, # maximum absolute surface temperature change [K]
+        'tsurf_poststep_change':       100.0, # maximum absolute surface temperature change [K]
         'R_solid_planet':              6371000, # planet radius [m]
         'planet_coresize':             0.55,  # fractional radius of core-mantle boundary
         'IC_INTERIOR':                 1,     # 1: Fresh start | 2: Restart from file

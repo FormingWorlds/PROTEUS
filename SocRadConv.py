@@ -39,7 +39,7 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
     atm = atmos()
 
     #---Set up pressure array (a global)----
-    atm.ps      = runtime_helpfile.iloc[-1]["P_surf"]*1e3 # bar->mbar
+    atm.ps      = runtime_helpfile.iloc[-1]["P_surf"]*1e5 # bar->Pa
     pstart      = atm.ps#*.995
     rat         = (atm.ptop/pstart)**(1./atm.nlev)
     logLevels   = [pstart*rat**i for i in range(atm.nlev+1)]
@@ -118,7 +118,7 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
         PrevTemp[:] = atm.temp[:]
 
     # Write TP and spectral flux profiles for later plotting
-    out_a = np.column_stack( ( atm.temp, atm.p*1.e-3 ) ) # K, mbar->bar
+    out_a = np.column_stack( ( atm.temp, atm.p*1e-5 ) ) # K, Pa->bar
     np.savetxt( output_dir+str(int(time_current))+"_atm_TP_profile.dat", out_a )
     out_a = np.column_stack( ( atm.band_centres, atm.LW_spectral_flux_up[:,0]/atm.band_widths ) )
     np.savetxt( output_dir+str(int(time_current))+"_atm_spectral_flux.dat", out_a )
