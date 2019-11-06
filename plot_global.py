@@ -170,115 +170,36 @@ def plot_global( output_dir ):
     Fatm                = data_a[7,:]
     P_surf              = data_a[8,:]
 
-    # ########## Volatile species-specific data
-    # vol_times = []
 
-    # # Check for times when volatile is present in data dumps
-    # for vol in volatile_species:
-
-    #     # For all times
-    #     for sim_time in fig_o.time:
-
-    #             # Find the times with the volatile in the JSON file
-    #             with open('example.txt') as f:
-    #                 if vol in f.read(output_dir+sim_time+".json"):
-
-    #                     keys_t = ( ('atmosphere', vol, 'liquid_kg'),
-    #                                ('atmosphere', vol, 'solid_kg'),
-    #                                ('atmosphere', vol, 'initial_kg'),
-    #                                ('atmosphere', vol, 'atmosphere_kg'),
-    #                                ('atmosphere', vol, 'atmosphere_bar')
-    #                                )
-
-    #                     vol_times.append(sim_time)
-
-    #     # # Find the times the volatile is *not* present
-    #     # np.setdiff1d(fig_o.time,vol_times)
-
-    #     # Get the data for these files
-    #     data_vol = su.get_dict_surface_values_for_times( keys_t, vol_times )
-    #     vol_liquid_kg       = data_vol[0,:]
-    #     vol_solid_kg        = data_vol[1,:]
-    #     vol_initial_kg      = data_vol[2,:]
-    #     vol_atm_kg          = data_vol[3,:]
-    #     vol_atm_pressure    = data_vol[4,:]
-    #     vol_interior        = vol_liquid_kg   + vol_solid_kg
-    #     vol_total_kg        = vol_interior_kg + vol_atm_kg
-
-
-    # H2O_liquid_kg       = data_a[9,:]
-    # H2O_solid_kg        = data_a[10,:]
-    # H2O_initial_kg      = data_a[11,:]
-    # H2O_atm_kg          = data_a[12,:]
-    # H2O_atm_pressure    = data_a[13,:]
-
-    # CO2_liquid_kg       = data_a[14,:]
-    # CO2_solid_kg        = data_a[15,:]
-    # CO2_initial_kg      = data_a[16,:]
-    # CO2_atm_kg          = data_a[17,:]
-    # CO2_atm_pressure    = data_a[18,:]
-
-    # H2O_interior_kg     = H2O_liquid_kg   + H2O_solid_kg
-    # CO2_interior_kg     = CO2_liquid_kg   + CO2_solid_kg
-
-    # H2O_total_kg        = H2O_interior_kg + H2O_atm_kg
-    # CO2_total_kg        = CO2_interior_kg + CO2_atm_kg
-
-    # vol_mass_atm        = H2O_atm_kg      + CO2_atm_kg
-    # vol_mass_interior   = H2O_interior_kg + CO2_interior_kg
-    # vol_mass_total      = H2O_total_kg    + CO2_total_kg
-    
-    # planet_mass_total   = vol_mass_total  + mass_mantle     + mass_core
-
-    #xticks = [1E-5,1E-4,1E-3,1E-2,1E-1]#,1]
-    #xticks = [1.0E-2, 1.0E-1, 1.0E0, 1.0E1, 1.0E2,1.0E3] #[1E-6,1E-4,1E-2,1E0,1E2,1E4,1E6]#,1]
-    #xticks = (1E-6,1E-5,1E-4,1E-3,1E-2,1E-1,1E0)
     xlabel = 'Time (yr)'
-    #xlim = (1.0E-2, 4550)
     xlim = (1e1,1e7)
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)
     black = 'black'
 
-    # fig_o.set_colors(cmap=vik_r)
-    # volatiles = [ "H2O", "CO2", "H2", "CO", "N2", "O2", "CH4", "He", "S" ]
-    # color_H2O = fig_o.get_color( 0 )
-    # color_CO2 = fig_o.get_color( 1 )
-    # color_H2  = fig_o.get_color( 2 )
-    # color_CO  = fig_o.get_color( 3 )
-    # color_N2  = fig_o.get_color( 4 )
-    # color_O2  = fig_o.get_color( 5 )
-    # color_CH4 = fig_o.get_color( 6 )
-    # color_He  = fig_o.get_color( 7 )
-    # color_S   = fig_o.get_color( 8 )
-
-    # to plot melt fraction contours on figure (a)
-    # compute time at which desired melt fraction is reached
-    #phi_a = mass_liquid_a / mass_mantle
-    #phi_cont_l = [0.75, 0.5,0.25,0.1,0.01]
-    #phi_time_l = [] # contains the times for each contour
-    #for cont in phi_cont_l:
-    #    time_temp_l = su.find_xx_for_yy( timeMyr_a, phi_global, cont )
-    #    index = su.get_first_non_zero_index( time_temp_l )
-    #    if index is None:
-    #        out = 0.0
-    #    else:
-    #        out = timeMyr_a[index]
-    #    phi_time_l.append( out )
-
     xcoord_l = -0.10
     ycoord_l = 0.5
     xcoord_r = 1.09
     ycoord_r = 0.5
+
+    rolling_mean = 0
 
     ##########
     # figure a
     ##########
     title = r'(a) Heat flux to space'
     ylabel = '$F_\mathrm{atm}$ (W/m$^2$)'
-    # yticks = (1.0E2,1.0E3,1.0E4,1.0E5,1.0E6,1.0E7)
-    h1, = ax0.loglog( fig_o.time, Fatm,'k', lw=lw )
+    
+    if rolling_mean == 1:
+        ax0.loglog( fig_o.time[:10], Fatm[:10], 'k', lw=lw, alpha=1.0 )
+        nsteps = 6
+        Fatm_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
+        Time_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
+        ax0.loglog( Time_rolling, Fatm_rolling,'k', lw=lw )
+    else:
+        ax0.loglog( fig_o.time, Fatm, 'k', lw=lw, alpha=1.0 )
+        
     fig_o.set_myaxes( ax0, title=title)#, yticks=yticks, xlabel=xlabel, xticks=xticks )
     # ax0.yaxis.tick_right()
     # ax0.yaxis.set_label_position("right")
@@ -334,6 +255,8 @@ def plot_global( output_dir ):
     # figure d
     ##########
     title_ax3 = r'(d) Atmospheric volatile partial pressure'
+    # Total pressure
+    ax3.semilogx( fig_o.time, P_surf, color=vol_colors["black_2"], linestyle='-', lw=lw, label=r'Total')
     ##########
     # figure e
     ##########
@@ -398,7 +321,6 @@ def plot_global( output_dir ):
             ##########
             # figure d
             ##########
-            ax3.semilogx( fig_o.time, P_surf, color=vol_colors["black_2"], linestyle='-', lw=lw, label=r'Total')
             ax3.semilogx( vol_times, vol_atm_pressure, color=vol_colors[vol+"_2"], linestyle='-', lw=lw, label=vol_latex[vol])
             ##########
             # figure e
