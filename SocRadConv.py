@@ -11,12 +11,6 @@ import SocRadModel
 from atmosphere_column import atmos
 import pandas as pd
 
-
-# # Font settings
-# import matplotlib.pylab as pylab
-# import matplotlib.font_manager as fm
-# font = fm.FontProperties(family = 'Helvetica', fname = '/Users/tim/Dropbox/work/matplotlib_fonts/Helvetica/Helvetica.ttf')
-
 def surf_Planck_nu(atm):
     h   = 6.63e-34
     c   = 3.0e8
@@ -48,39 +42,28 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
     atm.pl      = np.array(logLevels)
     atm.p       = (atm.pl[1:] + atm.pl[:-1]) / 2
 
-    # print("Pressure calc:")
-    # print("Pressure (VULCAN):", atm_chemistry["Pressure"])
-    # print("Surface pressure:", p_s)
-    # print(atm.p)
-
-
     #==============Now do the calculation====================================
 
     atm.ts          = runtime_helpfile.iloc[-1]["T_surf"]
     atm.Rcp         = 2./7.
-    atm.temp        = atm.ts*(atm.p/atm.p[-1])**atm.Rcp  #Initialize on an adiabat
+    atm.temp        = atm.ts*(atm.p/atm.p[-1])**atm.Rcp  # Initialize on an adiabat
     atm.temp        = np.where(atm.temp<atm.ts/2.,atm.ts/2.,atm.temp)
-    # atm.n_species = 2
     atm.n_species   = 7
 
-    # # Water vapour
-    # atm.mixing_ratios[0] = 1.e-5
-    # # CO2
-    # atm.mixing_ratios[1] = 1.e-5
-
-    ## TO DO: change the currently CONSTANT mixing ratios to varying with height?
-    atm.mixing_ratios[0] = atm_chemistry.iloc[0]["H2O"] # H2O
-    atm.mixing_ratios[1] = atm_chemistry.iloc[0]["CO2"] # CO2
-    atm.mixing_ratios[2] = atm_chemistry.iloc[0]["H2"]  # H2
-    atm.mixing_ratios[3] = atm_chemistry.iloc[0]["CH4"] # CH4
-    atm.mixing_ratios[4] = atm_chemistry.iloc[0]["CO"]  # CO
-    atm.mixing_ratios[5] = atm_chemistry.iloc[0]["N2"]  # N2
-    atm.mixing_ratios[6] = atm_chemistry.iloc[0]["O2"]  # O2
+    # Feed mixing ratios
+    atm_chemistry = atm_chemistry.reindex(index=atm_chemistry.index[::-1])
+    atm.mixing_ratios[0] = atm_chemistry["H2O"]    # H2O
+    atm.mixing_ratios[1] = atm_chemistry["CO2"]    # CO2
+    atm.mixing_ratios[2] = atm_chemistry["H2"]     # H2
+    atm.mixing_ratios[3] = atm_chemistry["CH4"]    # CH4
+    atm.mixing_ratios[4] = atm_chemistry["CO"]     # CO
+    atm.mixing_ratios[5] = atm_chemistry["N2"]     # N2
+    atm.mixing_ratios[6] = atm_chemistry["O2"]     # O2
 
     # Initialise previous OLR and TOA heating to zero
-    PrevOLR = 0.
+    PrevOLR     = 0.
     PrevMaxHeat = 0.
-    PrevTemp = 0.*atm.temp[:]
+    PrevTemp    = 0.*atm.temp[:]
 
     #---------------------------------------------------------
     #--------------Initializations Done-----------------------
@@ -126,13 +109,16 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
 def dryAdj(atm):
     T = atm.temp
     p = atm.p
-    #Rcp is a global
-    #Downward pass
+    
+    # Rcp is a global
+    # Downward pass
     for i in range(len(T)-1):
         T1,p1 = T[i],p[i]
         T2,p2 = T[i+1],p[i+1]
+        
         # Adiabat slope
         pfact = (p1/p2)**atm.Rcp
+        
         # If slope is shallower than adiabat (unstable), adjust it to adiabat
         if T1 < T2*pfact:
             Tbar = .5*(T1+T2) # Equal layer masses
@@ -142,7 +128,8 @@ def dryAdj(atm):
             T1 = T2*pfact
             atm.temp[i] = T1
             atm.temp[i+1] = T2
-    #Upward pass
+    
+    # Upward pass
     for i in range(len(T)-2,-1,-1):
         T1,p1 = T[i],p[i]
         T2,p2 = T[i+1],p[i+1]
@@ -156,35 +143,39 @@ def dryAdj(atm):
             atm.temp[i] = T1
             atm.temp[i+1] = T2
 
-
-#Define function to do time integration for n steps
+# Define function to do time integration for n steps
 def steps(atm, stellar_toa_heating):
     atm     = SocRadModel.radCompSoc(atm, stellar_toa_heating)
     dT      = atm.total_heating*atm.dt
-    #Limit the temperature change per step
+    
+    # Limit the temperature change per step
     dT      = np.where(dT>5.,5.,dT)
     dT      = np.where(dT<-5.,-5.,dT)
-    #Midpoint method time stepping
-    #changed call to r.  Also modified to hold Tg fixed
+    
+    # Midpoint method time stepping
+    # changed call to r.  Also modified to hold Tg fixed
     atm     = SocRadModel.radCompSoc(atm, stellar_toa_heating)
     dT      = atm.total_heating*atm.dt
-    #Limit the temperature change per step
+    
+    # Limit the temperature change per step
     dT      = np.where(dT>5.,5.,dT)
     dT      = np.where(dT<-5.,-5.,dT)
     atm.temp += dT
-    #
-    dTmax = max(abs(dT)) #To keep track of convergence
+    dTmax   = max(abs(dT)) #To keep track of convergence
 
     # Do the surface balance
-    kturb = .1
+    kturb   = .1
     atm.temp[-1] += -atm.dt*kturb*(atm.temp[-1] - atm.ts)
+    
     # Dry adjustment step
     for iadj in range(10):
         dryAdj(atm)
     Tad = atm.temp[-1]*(atm.p/atm.p[-1])**atm.Rcp
-    #** Temporary kludge to keep stratosphere from getting too cold
+    
+    # ** Temporary kludge to keep stratosphere from getting too cold
     atm.temp = np.where(atm.temp<50.,50.,atm.temp)  #**KLUDGE
-    #
-    #Dummies for separate LW and stellar. **FIX THIS**
+
+    # Dummies for separate LW and stellar. **FIX THIS**
     fluxStellar = fluxLW = heatStellar = heatLW = np.zeros(atm.nlev)
+    
     return atm

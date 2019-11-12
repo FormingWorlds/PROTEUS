@@ -25,9 +25,11 @@ vulcan_dir  = os.getcwd()+"/vulcan_spider/"
 # Handle optional command line arguments for volatiles
 parser = argparse.ArgumentParser(description='COUPLER optional command line arguments')
 parser.add_argument('-dir', default="output/", help='Provide path to output directory.' )
-parser.add_argument('-H2O', type=float, help='H2O initial abundance (ppm wt).')
-parser.add_argument('-CO2', type=float, help='CO2 initial abundance (ppm wt).')
-parser.add_argument('-H2', type=float, help='H2 initial abundance (ppm wt).')
+parser.add_argument('-H2O_ppm', type=float, help='H2O initial abundance (ppm wt).')
+parser.add_argument('-CO2_ppm', type=float, help='CO2 initial abundance (ppm wt).')
+parser.add_argument('-H2_ppm', type=float, help='H2 initial abundance (ppm wt).')
+parser.add_argument('-CO_ppm', type=float, help='CO initial abundance (ppm wt).')
+parser.add_argument('-N2_ppm', type=float, help='N2 initial abundance (ppm wt).')
 args = parser.parse_args()
 
 #====================================================================
@@ -104,15 +106,21 @@ def main():
         # SPIDER_options["ic_interior_filename"] = "X.json"
 
     # Parse optional argument from console
-    if args.H2O:
-        print("Set H2O abundance from terminal input:", args.H2O)
-        SPIDER_options["H2O_initial_total_abundance"] = float(args.H2O)
-    if args.CO2:
-        print("Set CO2 abundance from terminal input:", args.CO2)
-        SPIDER_options["CO2_initial_total_abundance"] = float(args.CO2)
-    if args.H2:
-        print("Set H2 abundance from terminal input:", args.H2)
-        SPIDER_options["H2_initial_total_abundance"] = float(args.H2)
+    if args.H2O_ppm:
+        print("Set H2O_ppm from command line:", args.H2O_ppm)
+        SPIDER_options["H2O_initial_total_abundance"] = float(args.H2O_ppm)
+    if args.CO2_ppm:
+        print("Set CO2_ppm from command line:", args.CO2_ppm)
+        SPIDER_options["CO2_initial_total_abundance"] = float(args.CO2_ppm)
+    if args.H2_ppm:
+        print("Set H2_ppm from command line:", args.H2_ppm)
+        SPIDER_options["H2_initial_total_abundance"] = float(args.H2_ppm)
+    if args.CO_ppm:
+        print("Set CO_ppm from command line:", args.CO_ppm)
+        SPIDER_options["CO_initial_total_abundance"] = float(args.CO_ppm)
+    if args.N2_ppm:
+        print("Set N2_ppm from command line:", args.N2_ppm)
+        SPIDER_options["N2_initial_total_abundance"] = float(args.N2_ppm)
 
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")

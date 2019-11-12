@@ -1,0 +1,2215 @@
+===============================
+Fitting in band:     1
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        1900
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.139856E-08
+Trial fit contains     1 terms Error =  3.73974E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:     2
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.508885E-07
+Trial fit contains     1 terms Error =  2.25585E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:     3
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.122185E-06
+Trial fit contains     1 terms Error =  3.49550E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:     4
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.109269E-06
+Trial fit contains     1 terms Error =  3.30558E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:     5
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.556338E-07
+Trial fit contains     1 terms Error =  2.35868E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:     6
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.180226E-07
+Trial fit contains     1 terms Error =  1.34248E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:     7
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.347376E-08
+Trial fit contains     1 terms Error =  5.89386E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:     8
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.290195E-09
+Trial fit contains     1 terms Error =  1.70351E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:     9
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.284893E-11
+Trial fit contains     1 terms Error =  1.68788E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    10
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.415357E-12
+Trial fit contains     1 terms Error =  6.44482E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    11
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.888707E-11
+Trial fit contains     1 terms Error =  2.98112E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    12
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.617694E-11
+Trial fit contains     1 terms Error =  2.48535E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    13
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.162749E-13
+Trial fit contains     1 terms Error =  1.27573E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    14
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.293485E-10
+Trial fit contains     1 terms Error =  5.41743E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    15
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.815500E-09
+Trial fit contains     1 terms Error =  2.85570E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    16
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.343438E-08
+Trial fit contains     1 terms Error =  5.86036E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    17
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.994421E-08
+Trial fit contains     1 terms Error =  9.97206E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    18
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.304513E-08
+Trial fit contains     1 terms Error =  5.51827E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    19
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.372184E-10
+Trial fit contains     1 terms Error =  6.10069E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    20
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.523621E-13
+Trial fit contains     1 terms Error =  2.28828E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    21
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.193992E-12
+Trial fit contains     1 terms Error =  4.40445E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    22
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.208511E-10
+Trial fit contains     1 terms Error =  4.56630E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    23
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.230352E-08
+Trial fit contains     1 terms Error =  4.79950E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    24
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.243597E-07
+Trial fit contains     1 terms Error =  1.56076E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    25
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.895089E-07
+Trial fit contains     1 terms Error =  2.99180E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    26
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.163503E-06
+Trial fit contains     1 terms Error =  4.04355E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    27
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.168271E-06
+Trial fit contains     1 terms Error =  4.10208E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    28
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.875609E-07
+Trial fit contains     1 terms Error =  2.95907E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    29
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.789218E-07
+Trial fit contains     1 terms Error =  2.80930E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    30
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.957324E-09
+Trial fit contains     1 terms Error =  3.09407E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    31
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.348458E-08
+Trial fit contains     1 terms Error =  5.90303E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    32
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.598485E-08
+Trial fit contains     1 terms Error =  7.73618E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    33
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.225217E-07
+Trial fit contains     1 terms Error =  1.50072E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    34
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.311911E-07
+Trial fit contains     1 terms Error =  1.76610E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    35
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.240286E-07
+Trial fit contains     1 terms Error =  1.55011E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    36
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.100624E-07
+Trial fit contains     1 terms Error =  1.00312E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    37
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.156429E-08
+Trial fit contains     1 terms Error =  3.95511E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    38
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.141908E-10
+Trial fit contains     1 terms Error =  3.76707E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    39
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.512532E-11
+Trial fit contains     1 terms Error =  2.26392E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    40
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.593486E-09
+Trial fit contains     1 terms Error =  2.43616E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    41
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.192054E-09
+Trial fit contains     1 terms Error =  1.38583E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    42
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.458431E-08
+Trial fit contains     1 terms Error =  6.77075E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    43
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.325432E-08
+Trial fit contains     1 terms Error =  5.70467E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    44
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.741995E-08
+Trial fit contains     1 terms Error =  8.61391E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    45
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.458885E-08
+Trial fit contains     1 terms Error =  6.77410E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    46
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.493234E-09
+Trial fit contains     1 terms Error =  2.22089E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    47
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.735620E-12
+Trial fit contains     1 terms Error =  8.57683E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    48
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.152443E-08
+Trial fit contains     1 terms Error =  3.90439E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    49
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.115547E-07
+Trial fit contains     1 terms Error =  1.07493E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    50
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.164914E-07
+Trial fit contains     1 terms Error =  1.28419E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    51
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.250161E-07
+Trial fit contains     1 terms Error =  1.58165E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    52
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.228425E-08
+Trial fit contains     1 terms Error =  4.77938E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    53
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.600003E-08
+Trial fit contains     1 terms Error =  7.74599E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    54
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.754660E-08
+Trial fit contains     1 terms Error =  8.68712E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    55
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.326312E-07
+Trial fit contains     1 terms Error =  1.80641E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    56
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.565378E-07
+Trial fit contains     1 terms Error =  2.37777E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    57
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.582837E-07
+Trial fit contains     1 terms Error =  2.41420E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    58
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.412220E-07
+Trial fit contains     1 terms Error =  2.03032E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    59
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.200986E-07
+Trial fit contains     1 terms Error =  1.41769E-04
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    60
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.709811E-08
+Trial fit contains     1 terms Error =  8.42503E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    61
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.252723E-08
+Trial fit contains     1 terms Error =  5.02715E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    62
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.434197E-09
+Trial fit contains     1 terms Error =  2.08374E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    63
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.211974E-08
+Trial fit contains     1 terms Error =  4.60407E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    64
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.374163E-08
+Trial fit contains     1 terms Error =  6.11689E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    65
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.362956E-08
+Trial fit contains     1 terms Error =  6.02459E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    66
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.255078E-08
+Trial fit contains     1 terms Error =  5.05052E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    67
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.110942E-08
+Trial fit contains     1 terms Error =  3.33080E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    68
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.295797E-09
+Trial fit contains     1 terms Error =  1.71988E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    69
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.394831E-10
+Trial fit contains     1 terms Error =  6.28356E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    70
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.198987E-11
+Trial fit contains     1 terms Error =  1.41063E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    71
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.129974E-12
+Trial fit contains     1 terms Error =  3.60519E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    72
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.130520E-11
+Trial fit contains     1 terms Error =  1.14246E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    73
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.614324E-10
+Trial fit contains     1 terms Error =  7.83788E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    74
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.846503E-10
+Trial fit contains     1 terms Error =  9.20056E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    75
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.158779E-09
+Trial fit contains     1 terms Error =  1.26008E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    76
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.139074E-09
+Trial fit contains     1 terms Error =  1.17930E-05
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    77
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.774592E-10
+Trial fit contains     1 terms Error =  8.80109E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    78
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.352468E-10
+Trial fit contains     1 terms Error =  5.93690E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    79
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.152157E-10
+Trial fit contains     1 terms Error =  3.90073E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    80
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.682433E-11
+Trial fit contains     1 terms Error =  2.61234E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    81
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.253098E-11
+Trial fit contains     1 terms Error =  1.59091E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    82
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.116448E-11
+Trial fit contains     1 terms Error =  1.07911E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    83
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.640023E-12
+Trial fit contains     1 terms Error =  8.00014E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    84
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.419885E-12
+Trial fit contains     1 terms Error =  6.47985E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    85
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.308651E-12
+Trial fit contains     1 terms Error =  5.55564E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    86
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.197304E-12
+Trial fit contains     1 terms Error =  4.44189E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    87
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.111593E-12
+Trial fit contains     1 terms Error =  3.34056E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    88
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.587774E-13
+Trial fit contains     1 terms Error =  2.42440E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    89
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.296625E-13
+Trial fit contains     1 terms Error =  1.72228E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    90
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.144213E-13
+Trial fit contains     1 terms Error =  1.20089E-07
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    91
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.656476E-14
+Trial fit contains     1 terms Error =  8.10232E-08
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    92
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.289928E-14
+Trial fit contains     1 terms Error =  5.38449E-08
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    93
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.117421E-14
+Trial fit contains     1 terms Error =  3.42668E-08
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    94
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.432448E-15
+Trial fit contains     1 terms Error =  2.07954E-08
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    95
+Calculation of CIA at  2.000E+02 K
+Calculation of CIA at  5.000E+02 K
+Calculation of CIA at  1.000E+03 K
+Calculation of CIA at  1.500E+03 K
+Calculation of CIA at  2.000E+03 K
+Calculation of CIA at  3.000E+03 K
+Calculation of CIA at  4.000E+03 K
+ pstart, pend:            1        2000
+
+Trial fits with increasing numbers of terms.
+
+-------------------------------------------------------
+-------------------------------------------------------
+ k-term, g-interval, error:   1  1.000000  0.359306E-11
+Trial fit contains     1 terms Error =  1.89554E-06
+Fit to tolerance has been obtained.
+ Number of k-terms in band:            1
+===============================
+Fitting in band:    96
+===============================
+Fitting in band:    97
+===============================
+Fitting in band:    98
+===============================
+Fitting in band:    99
+===============================
+Fitting in band:   100
+===============================
+Fitting in band:   101
+===============================
+Fitting in band:   102
+===============================
+Fitting in band:   103
+===============================
+Fitting in band:   104
+===============================
+Fitting in band:   105
+===============================
+Fitting in band:   106
+===============================
+Fitting in band:   107
+===============================
+Fitting in band:   108
+===============================
+Fitting in band:   109
+===============================
+Fitting in band:   110
+===============================
+Fitting in band:   111
+===============================
+Fitting in band:   112
+===============================
+Fitting in band:   113
+===============================
+Fitting in band:   114
+===============================
+Fitting in band:   115
+===============================
+Fitting in band:   116
+===============================
+Fitting in band:   117
+===============================
+Fitting in band:   118
+===============================
+Fitting in band:   119
+===============================
+Fitting in band:   120
+===============================
+Fitting in band:   121
+===============================
+Fitting in band:   122
+===============================
+Fitting in band:   123
+===============================
+Fitting in band:   124
+===============================
+Fitting in band:   125
+===============================
+Fitting in band:   126
+===============================
+Fitting in band:   127
+===============================
+Fitting in band:   128
+===============================
+Fitting in band:   129
+===============================
+Fitting in band:   130
+===============================
+Fitting in band:   131
+===============================
+Fitting in band:   132
+===============================
+Fitting in band:   133
+===============================
+Fitting in band:   134
+===============================
+Fitting in band:   135
+===============================
+Fitting in band:   136
+===============================
+Fitting in band:   137
+===============================
+Fitting in band:   138
+===============================
+Fitting in band:   139
+===============================
+Fitting in band:   140
+===============================
+Fitting in band:   141
+===============================
+Fitting in band:   142
+===============================
+Fitting in band:   143
+===============================
+Fitting in band:   144
+===============================
+Fitting in band:   145
+===============================
+Fitting in band:   146
+===============================
+Fitting in band:   147
+===============================
+Fitting in band:   148
+===============================
+Fitting in band:   149
+===============================
+Fitting in band:   150
+===============================
+Fitting in band:   151
+===============================
+Fitting in band:   152
+===============================
+Fitting in band:   153
+===============================
+Fitting in band:   154
+===============================
+Fitting in band:   155
+===============================
+Fitting in band:   156
+===============================
+Fitting in band:   157
+===============================
+Fitting in band:   158
+===============================
+Fitting in band:   159
+===============================
+Fitting in band:   160
+===============================
+Fitting in band:   161
+===============================
+Fitting in band:   162
+===============================
+Fitting in band:   163
+===============================
+Fitting in band:   164
+===============================
+Fitting in band:   165
+===============================
+Fitting in band:   166
+===============================
+Fitting in band:   167
+===============================
+Fitting in band:   168
+===============================
+Fitting in band:   169
+===============================
+Fitting in band:   170
+===============================
+Fitting in band:   171
+===============================
+Fitting in band:   172
+===============================
+Fitting in band:   173
+===============================
+Fitting in band:   174
+===============================
+Fitting in band:   175
+===============================
+Fitting in band:   176
+===============================
+Fitting in band:   177
+===============================
+Fitting in band:   178
+===============================
+Fitting in band:   179
+===============================
+Fitting in band:   180
+===============================
+Fitting in band:   181
+===============================
+Fitting in band:   182
+===============================
+Fitting in band:   183
+===============================
+Fitting in band:   184
+===============================
+Fitting in band:   185
+===============================
+Fitting in band:   186
+===============================
+Fitting in band:   187
+===============================
+Fitting in band:   188
+===============================
+Fitting in band:   189
+===============================
+Fitting in band:   190
+===============================
+Fitting in band:   191
+===============================
+Fitting in band:   192
+===============================
+Fitting in band:   193
+===============================
+Fitting in band:   194
+===============================
+Fitting in band:   195
+===============================
+Fitting in band:   196
+===============================
+Fitting in band:   197
+===============================
+Fitting in band:   198
+===============================
+Fitting in band:   199
+===============================
+Fitting in band:   200
+===============================
+Fitting in band:   201
+===============================
+Fitting in band:   202
+===============================
+Fitting in band:   203
+===============================
+Fitting in band:   204
+===============================
+Fitting in band:   205
+===============================
+Fitting in band:   206
+===============================
+Fitting in band:   207
+===============================
+Fitting in band:   208
+===============================
+Fitting in band:   209
+===============================
+Fitting in band:   210
+===============================
+Fitting in band:   211
+===============================
+Fitting in band:   212
+===============================
+Fitting in band:   213
+===============================
+Fitting in band:   214
+===============================
+Fitting in band:   215
+===============================
+Fitting in band:   216
+===============================
+Fitting in band:   217
+===============================
+Fitting in band:   218
+===============================
+Fitting in band:   219
+===============================
+Fitting in band:   220
+===============================
+Fitting in band:   221
+===============================
+Fitting in band:   222
+===============================
+Fitting in band:   223
+===============================
+Fitting in band:   224
+===============================
+Fitting in band:   225
+===============================
+Fitting in band:   226
+===============================
+Fitting in band:   227
+===============================
+Fitting in band:   228
+===============================
+Fitting in band:   229
+===============================
+Fitting in band:   230
+===============================
+Fitting in band:   231
+===============================
+Fitting in band:   232
+===============================
+Fitting in band:   233
+===============================
+Fitting in band:   234
+===============================
+Fitting in band:   235
+===============================
+Fitting in band:   236
+===============================
+Fitting in band:   237
+===============================
+Fitting in band:   238
+===============================
+Fitting in band:   239
+===============================
+Fitting in band:   240
+===============================
+Fitting in band:   241
+===============================
+Fitting in band:   242
+===============================
+Fitting in band:   243
+===============================
+Fitting in band:   244
+===============================
+Fitting in band:   245
+===============================
+Fitting in band:   246
+===============================
+Fitting in band:   247
+===============================
+Fitting in band:   248
+===============================
+Fitting in band:   249
+===============================
+Fitting in band:   250
+===============================
+Fitting in band:   251
+===============================
+Fitting in band:   252
+===============================
+Fitting in band:   253
+===============================
+Fitting in band:   254
+===============================
+Fitting in band:   255
+===============================
+Fitting in band:   256
+===============================
+Fitting in band:   257
+===============================
+Fitting in band:   258
+===============================
+Fitting in band:   259
+===============================
+Fitting in band:   260
+===============================
+Fitting in band:   261
+===============================
+Fitting in band:   262
+===============================
+Fitting in band:   263
+===============================
+Fitting in band:   264
+===============================
+Fitting in band:   265
+===============================
+Fitting in band:   266
+===============================
+Fitting in band:   267
+===============================
+Fitting in band:   268
+===============================
+Fitting in band:   269
+===============================
+Fitting in band:   270
+===============================
+Fitting in band:   271
+===============================
+Fitting in band:   272
+===============================
+Fitting in band:   273
+===============================
+Fitting in band:   274
+===============================
+Fitting in band:   275
+===============================
+Fitting in band:   276
+===============================
+Fitting in band:   277
+===============================
+Fitting in band:   278
+===============================
+Fitting in band:   279
+===============================
+Fitting in band:   280
+===============================
+Fitting in band:   281
+===============================
+Fitting in band:   282
+===============================
+Fitting in band:   283
+===============================
+Fitting in band:   284
+===============================
+Fitting in band:   285
+===============================
+Fitting in band:   286
+===============================
+Fitting in band:   287
+===============================
+Fitting in band:   288
+===============================
+Fitting in band:   289
+===============================
+Fitting in band:   290
+===============================
+Fitting in band:   291
+===============================
+Fitting in band:   292
+===============================
+Fitting in band:   293
+===============================
+Fitting in band:   294
+===============================
+Fitting in band:   295
+===============================
+Fitting in band:   296
+===============================
+Fitting in band:   297
+===============================
+Fitting in band:   298
+===============================
+Fitting in band:   299
+===============================
+Fitting in band:   300
