@@ -181,7 +181,7 @@ def main():
         while loop_counter["atm"] < loop_counter["atm_loops"]:
 
             # Run VULCAN
-            atm_chemistry = coupler_utils.RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, runtime_helpfile, SPIDER_options )
+            atm_chemistry, SPIDER_options = coupler_utils.RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, runtime_helpfile, SPIDER_options )
 
             # Run SOCRATES
             SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter )

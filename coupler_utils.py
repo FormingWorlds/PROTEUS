@@ -238,6 +238,17 @@ def UpdateHelpfile(loop_counter, output_dir, vulcan_dir, file_name, runtime_help
     # For all considered volatiles
     for vol in volatile_species:
         if SPIDER_options[vol+"_initial_total_abundance"] > 0. or SPIDER_options[vol+"_initial_atmos_pressure"] > 0.:
+
+            # Check if key present
+            print(output_dir+file_name)
+            with open(output_dir+file_name) as f:
+                data = json.load(f)
+
+            if vol in data:
+                print("yes")
+            else:
+                print("no")
+
             keys_t = ( 
                         # ('atmosphere',vol,'liquid_kg'),
                         # ('atmosphere',vol,'solid_kg'),
@@ -585,7 +596,14 @@ def RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, 
     atm_chemistry = pd.read_csv(output_dir+volume_mixing_ratios_name, skiprows=1, delim_whitespace=True)
     print(atm_chemistry.iloc[:, 0:5])
 
-    return atm_chemistry
+    # Update SPIDER restart options w/ surface partial pressures
+    for vol in volatile_species:
+        volume_mixing_ratio     = atm_chemistry.iloc[0][vol]
+        surface_pressure_total  = atm_chemistry.iloc[0]["Pressure"]*1e5 # bar -> Pa
+        partial_pressure_vol    = surface_pressure_total*volume_mixing_ratio
+        SPIDER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
+
+    return atm_chemistry, SPIDER_options
 
 def RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter ):
 
@@ -651,7 +669,7 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
 
             # Very first timestep: feed volatile initial abundance [ppm]
             if loop_counter["init"] == 0:
-                    call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
+                call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
 
             # After very first timestep, starting w/ 2nd init loop
             if loop_counter["init"] >= 1:
@@ -661,10 +679,10 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
 
                 # TO DO: MAKE THIS WORK! :-)
                 # Load partial pressures from VULCAN
-                volume_mixing_ratio     = atm_chemistry.iloc[0][vol]
-                surface_pressure_total  = atm_chemistry.iloc[0]["Pressure"]*1e5 # bar -> Pa
-                partial_pressure_vol    = surface_pressure_total*volume_mixing_ratio
-                SPIDER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
+                # volume_mixing_ratio     = atm_chemistry.iloc[0][vol]
+                # surface_pressure_total  = atm_chemistry.iloc[0]["Pressure"]*1e5 # bar -> Pa
+                # partial_pressure_vol    = surface_pressure_total*volume_mixing_ratio
+                # SPIDER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
                 call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(SPIDER_options[vol+"_initial_atmos_pressure"])])
 
             call_sequence.extend(["-"+vol+"_henry", str(volatile_distribution_coefficients[vol+"_henry"])])
