@@ -30,6 +30,15 @@ parser.add_argument('-CO2_ppm', type=float, help='CO2 initial abundance (ppm wt)
 parser.add_argument('-H2_ppm', type=float, help='H2 initial abundance (ppm wt).')
 parser.add_argument('-CO_ppm', type=float, help='CO initial abundance (ppm wt).')
 parser.add_argument('-N2_ppm', type=float, help='N2 initial abundance (ppm wt).')
+parser.add_argument('-CH4_ppm', type=float, help='CH4 initial abundance (ppm wt).')
+parser.add_argument('-O2_ppm', type=float, help='O2 initial abundance (ppm wt).')
+parser.add_argument('-H2O_bar', type=float, help='H2O initial abundance (bar).')
+parser.add_argument('-CO2_bar', type=float, help='CO2 initial abundance (bar).')
+parser.add_argument('-H2_bar', type=float, help='H2 initial abundance (bar).')
+parser.add_argument('-CO_bar', type=float, help='CO initial abundance (bar).')
+parser.add_argument('-N2_bar', type=float, help='N2 initial abundance (bar).')
+parser.add_argument('-CH4_bar', type=float, help='CH4 initial abundance (bar).')
+parser.add_argument('-O2_bar', type=float, help='O2 initial abundance (bar).')
 args = parser.parse_args()
 
 #====================================================================
@@ -58,13 +67,13 @@ def main():
         'He_initial_total_abundance':  0,     # init loop [ppm wt]
         'H2O_poststep_change':         0.05,  # fractional H2O melt phase change event trigger
         'CO2_poststep_change':         0.05,  # CO2 melt phase trigger
-        'H2_poststep_change':          0.00,  # fraction
-        'CH4_poststep_change':         0.00,  # fraction
-        'CO_poststep_change':          0.00,  # fraction
-        'N2_poststep_change':          0.00,  # fraction
-        'O2_poststep_change':          0.00,  # fraction
-        'S_poststep_change':           0.00,  # fraction
-        'He_poststep_change':          0.00,  # fraction
+        'H2_poststep_change':          0.05,  # fraction
+        'CH4_poststep_change':         0.05,  # fraction
+        'CO_poststep_change':          0.05,  # fraction
+        'N2_poststep_change':          0.05,  # fraction
+        'O2_poststep_change':          0.05,  # fraction
+        'S_poststep_change':           0.05,  # fraction
+        'He_poststep_change':          0.05,  # fraction
         'H2O_initial_atmos_pressure':  0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
         'CO2_initial_atmos_pressure':  0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
         'H2_initial_atmos_pressure':   0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
@@ -109,18 +118,45 @@ def main():
     if args.H2O_ppm:
         print("Set H2O_ppm from command line:", args.H2O_ppm)
         SPIDER_options["H2O_initial_total_abundance"] = float(args.H2O_ppm)
+    elif args.H2O_bar:
+        print("Set H2O_bar from command line:", args.H2O_bar)
+        SPIDER_options["H2O_initial_atmos_pressure"] = float(args.H2O_bar)
     if args.CO2_ppm:
         print("Set CO2_ppm from command line:", args.CO2_ppm)
         SPIDER_options["CO2_initial_total_abundance"] = float(args.CO2_ppm)
+    elif args.CO2_bar:
+        print("Set CO2_bar from command line:", args.CO2_bar)
+        SPIDER_options["CO2_initial_atmos_pressure"] = float(args.CO2_bar)
     if args.H2_ppm:
         print("Set H2_ppm from command line:", args.H2_ppm)
         SPIDER_options["H2_initial_total_abundance"] = float(args.H2_ppm)
+    elif args.H2_bar:
+        print("Set H2_bar from command line:", args.H2_bar)
+        SPIDER_options["H2_initial_atmos_pressure"] = float(args.H2_bar)
     if args.CO_ppm:
         print("Set CO_ppm from command line:", args.CO_ppm)
         SPIDER_options["CO_initial_total_abundance"] = float(args.CO_ppm)
+    elif args.CO_bar:
+        print("Set CO_bar from command line:", args.CO_bar)
+        SPIDER_options["CO_initial_atmos_pressure"] = float(args.CO_bar)
     if args.N2_ppm:
         print("Set N2_ppm from command line:", args.N2_ppm)
         SPIDER_options["N2_initial_total_abundance"] = float(args.N2_ppm)
+    elif args.N2_bar:
+        print("Set N2_bar from command line:", args.N2_bar)
+        SPIDER_options["N2_initial_atmos_pressure"] = float(args.N2_bar)
+    if args.CH4_ppm:
+        print("Set CH4_ppm from command line:", args.CH4_ppm)
+        SPIDER_options["CH4_initial_total_abundance"] = float(args.CH4_ppm)
+    elif args.CH4_bar:
+        print("Set CH4_bar from command line:", args.CH4_bar)
+        SPIDER_options["CH4_initial_atmos_pressure"] = float(args.CH4_bar)
+    if args.O2_ppm:
+        print("Set O2_ppm from command line:", args.O2_ppm)
+        SPIDER_options["O2_initial_total_abundance"] = float(args.O2_ppm)
+    elif args.O2_bar:
+        print("Set O2_bar from command line:", args.O2_bar)
+        SPIDER_options["O2_initial_atmos_pressure"] = float(args.O2_bar)
 
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")

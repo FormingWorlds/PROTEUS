@@ -342,7 +342,7 @@ def plot_global( output_dir ):
     ax3.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax3.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax3.set_xlim( *xlim )
-    # ax3.set_ylim( 0, 350 )
+    ax3.set_ylim( bottom=0 )
     ax3.yaxis.tick_right()
     ax3.yaxis.set_label_position("right")
     ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
@@ -353,7 +353,7 @@ def plot_global( output_dir ):
     ##########
     fig_o.set_myaxes( ax4, title=title_ax4) #, xlabel=xlabel,xticks=xticks )
     # ax4.set_title(title, y=0.8)
-    ax4.set_ylabel('$M_{\mathrm{atm}}^{\mathrm{i}}/M^{\mathrm{i}}$')
+    ax4.set_ylabel('$M_{\mathrm{atm}}^{\mathrm{i}}/M_{\mathrm{total}}^{\mathrm{i}}$')
     ax4.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
@@ -369,7 +369,7 @@ def plot_global( output_dir ):
     ##########
     fig_o.set_myaxes( ax5, title=title_ax5)
     # ax5.set_title(title, y=0.8)
-    ax5.set_ylabel('$M_{\mathrm{int}}^{\mathrm{i}}/M^{\mathrm{i}}$')
+    ax5.set_ylabel('$M_{\mathrm{int}}^{\mathrm{i}}/M_{\mathrm{total}}^{\mathrm{i}}$')
     ax5.set_xlabel(xlabel)
     ax5.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax5.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
