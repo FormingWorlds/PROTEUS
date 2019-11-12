@@ -254,7 +254,7 @@ def plot_global( output_dir ):
     ##########
     # figure d
     ##########
-    title_ax3 = r'(d) Atmospheric volatile partial pressure'
+    title_ax3 = r'(d) Surface volatile partial pressure'
     # Total pressure
     ax3.semilogx( fig_o.time, P_surf, color=vol_colors["black_2"], linestyle='-', lw=lw, label=r'Total')
     ##########

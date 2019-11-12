@@ -81,16 +81,14 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
             print("Iteration", i, end =", ")
             print("OLR = " + str(PrevOLR)+" W/m^2,", "Max heating = " + str(np.max(atm.total_heating)))
 
-        # Reduce timestep if heating not converging
+        # Reduce timestep if heating is not converging
         if abs(np.max(atm.temp-PrevTemp[:])) < 0.05 or abs(atm.temp[0]-atm.temp[1]) > 3.0:
-            #print("reducing timestep")
             atm.dt  = atm.dt*0.99
+            print("Not converging -> reduce timestep to dt =", atm.dt)
 
         # Sensitivity break condition
         if (abs(atm.LW_flux_up[0]-PrevOLR) < (0.1*(5.67e-8*atm.ts**4)**0.5)) and i > 5 :
-        # if abs(atm.LW_flux_up[-1]-PrevOLR) < deltaOLR and abs(np.max(atm.temp-PrevTemp[:])) < deltaT:
-           print("-> break: deltaOLR =", abs(atm.LW_flux_up[0]-PrevOLR), "deltaT =", abs(np.max(atm.temp-PrevTemp[:])))
-           #print(PrevTemp[:]-atm.temp)
+           print("Break -> deltaOLR =", abs(atm.LW_flux_up[0]-PrevOLR), ", deltaT =", abs(np.max(atm.temp-PrevTemp[:])))
            break    # break here
 
         PrevOLR = atm.LW_flux_up[0]
