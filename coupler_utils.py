@@ -237,7 +237,7 @@ def UpdateHelpfile(loop_counter, output_dir, vulcan_dir, file_name, runtime_help
 
     # For all considered volatiles
     for vol in volatile_species:
-        if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
+        if SPIDER_options[vol+"_initial_total_abundance"] > 0. or SPIDER_options[vol+"_initial_atmos_pressure"] > 0.:
             keys_t = ( 
                         # ('atmosphere',vol,'liquid_kg'),
                         # ('atmosphere',vol,'solid_kg'),
@@ -282,23 +282,23 @@ def UpdateHelpfile(loop_counter, output_dir, vulcan_dir, file_name, runtime_help
     He_mol         = 0.
 
     # Else
-    if SPIDER_options["H2O_initial_total_abundance"] > 0.:
+    if SPIDER_options["H2O_initial_total_abundance"] > 0. or SPIDER_options["H2O_initial_atmos_pressure"] > 0.:
         H2O_mol        = runtime_helpfile_new["H2O_atm_kg"] / H2O_mol_mass  # mol
-    if SPIDER_options["CO2_initial_total_abundance"] > 0.:
+    if SPIDER_options["CO2_initial_total_abundance"] > 0. or SPIDER_options["CO2_initial_atmos_pressure"] > 0.:
         CO2_mol        = runtime_helpfile_new["CO2_atm_kg"] / CO2_mol_mass  # mol
-    if SPIDER_options["H2_initial_total_abundance"] > 0.:
+    if SPIDER_options["H2_initial_total_abundance"] > 0. or SPIDER_options["H2_initial_atmos_pressure"] > 0.:
         H2_mol         = runtime_helpfile_new["H2_atm_kg"]  / H2_mol_mass   # mol
-    if SPIDER_options["CH4_initial_total_abundance"] > 0.:
+    if SPIDER_options["CH4_initial_total_abundance"] > 0. or SPIDER_options["CH4_initial_atmos_pressure"] > 0.:
         CH4_mol        = runtime_helpfile_new["CH4_atm_kg"] / CH4_mol_mass  # mol
-    if SPIDER_options["CO_initial_total_abundance"] > 0.:
+    if SPIDER_options["CO_initial_total_abundance"] > 0. or SPIDER_options["CO_initial_atmos_pressure"] > 0.:
         CO_mol         = runtime_helpfile_new["CO_atm_kg"]  / CO_mol_mass   # mol
-    if SPIDER_options["N2_initial_total_abundance"] > 0.:
+    if SPIDER_options["N2_initial_total_abundance"] > 0. or SPIDER_options["N2_initial_atmos_pressure"] > 0.:
         N2_mol         = runtime_helpfile_new["N2_atm_kg"]  / N2_mol_mass   # mol
-    if SPIDER_options["O2_initial_total_abundance"] > 0.:
+    if SPIDER_options["O2_initial_total_abundance"] > 0. or SPIDER_options["O2_initial_atmos_pressure"] > 0.:
         O2_mol         = runtime_helpfile_new["O2_atm_kg"]  / O2_mol_mass   # mol
-    if SPIDER_options["S_initial_total_abundance"] > 0.:
+    if SPIDER_options["S_initial_total_abundance"] > 0. or SPIDER_options["S_initial_atmos_pressure"] > 0.:
         S_mol          = runtime_helpfile_new["S_atm_kg"]   / S_mol_mass    # mol
-    if SPIDER_options["He_initial_total_abundance"] > 0.:
+    if SPIDER_options["He_initial_total_abundance"] > 0. or SPIDER_options["He_initial_atmos_pressure"] > 0.:
         He_mol         = runtime_helpfile_new["He_atm_kg"]  / He_mol_mass   # mol
   
     # Radiative species + S + He
@@ -647,7 +647,7 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
 
     # Define distribution coefficients and total mass/surface pressure for volatiles > 0
     for vol in volatile_species:
-        if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
+        if SPIDER_options[vol+"_initial_total_abundance"] > 0. or SPIDER_options[vol+"_initial_atmos_pressure"] > 0.:
 
             # Very first timestep: feed volatile initial abundance [ppm]
             if loop_counter["init"] == 0:
@@ -656,15 +656,16 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
             # After very first timestep, starting w/ 2nd init loop
             if loop_counter["init"] >= 1:
 
-                ## KLUDGE: Read in the same abundances every time -> no feedback from ATMOS
-                call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
-                # # TO DO: MAKE THIS WORK! :-)
-                # # Load partial pressures from VULCAN
-                # volume_mixing_ratio     = atm_chemistry.iloc[0][vol]
-                # surface_pressure_total  = atm_chemistry.iloc[0]["Pressure"]*1e5 # bar -> Pa
-                # partial_pressure_vol    = surface_pressure_total*volume_mixing_ratio
-                # SPIDER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
-                # call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(SPIDER_options[vol+"_initial_atmos_pressure"])])
+                # ## KLUDGE: Read in the same abundances every time -> no feedback from ATMOS
+                # call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
+
+                # TO DO: MAKE THIS WORK! :-)
+                # Load partial pressures from VULCAN
+                volume_mixing_ratio     = atm_chemistry.iloc[0][vol]
+                surface_pressure_total  = atm_chemistry.iloc[0]["Pressure"]*1e5 # bar -> Pa
+                partial_pressure_vol    = surface_pressure_total*volume_mixing_ratio
+                SPIDER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
+                call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(SPIDER_options[vol+"_initial_atmos_pressure"])])
 
             call_sequence.extend(["-"+vol+"_henry", str(volatile_distribution_coefficients[vol+"_henry"])])
             call_sequence.extend(["-"+vol+"_henry_pow", str(volatile_distribution_coefficients[vol+"_henry_pow"])])
@@ -682,7 +683,7 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
                                 "-activate_rollback"
                              ])
         for vol in volatile_species:
-            if SPIDER_options[vol+"_initial_total_abundance"] > 0.:
+            if SPIDER_options[vol+"_initial_total_abundance"] > 0. or SPIDER_options[vol+"_initial_atmos_pressure"] > 0.:
                 call_sequence.extend(["-"+vol+"_poststep_change", str(SPIDER_options[vol+"_poststep_change"])])
 
     # Runtime info
