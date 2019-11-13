@@ -98,7 +98,7 @@ def main():
     time_offset           = 100.         # Myr, start of magma ocean after star formation
 
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
-    loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 2, "atm_loops": 1 }
+    loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 4, "atm_loops": 2 }
 
     # Start conditions and help files depending on restart option
     if SPIDER_options["IC_INTERIOR"] == 1: 

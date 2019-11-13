@@ -253,6 +253,16 @@ def plot_atmosphere( output_dir, times ):
     fig_o.savefig(1)
     plt.close()
 
+# Title/time print settings
+title_fs   = 10
+title_xy   = (0.02, 0.01)
+title_x    = title_xy[0]
+title_y    = title_xy[1]
+title_xycoords = 'axes fraction'
+title_ha   = "left"
+title_va   = "bottom"
+title_font = 'Arial'
+
 def plot_current_mixing_ratio( output_dir, times ):
 
     time = str(times)
@@ -298,6 +308,8 @@ def plot_current_mixing_ratio( output_dir, times ):
          ])
     ax1b.yaxis.tick_right()
     ax1b.set_ylabel( 'Temperature, $T$ (K)' )
+
+    ax1.set_title("Time = "+coupler_utils.latex_float(float(time))+" yr", fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
 
 
     ax1.legend(loc=2, fancybox=True, framealpha=0.9)

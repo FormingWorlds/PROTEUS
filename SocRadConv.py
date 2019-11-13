@@ -6,7 +6,7 @@ Socrates radiative-convective model
 
 import numpy as np
 # import matplotlib.pyplot as plt
-import matplotlib
+# import matplotlib
 import SocRadModel
 from atmosphere_column import atmos
 import pandas as pd
@@ -69,8 +69,7 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
     #--------------Initializations Done-----------------------
     #--------------Now do the time stepping-------------------
     #---------------------------------------------------------
-    matplotlib.rc('axes',edgecolor='k')
-    for i in range(0,300):
+    for i in range(0,50):
 
         atm = steps(atm, stellar_toa_heating)
 
