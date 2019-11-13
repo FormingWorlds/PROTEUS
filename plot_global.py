@@ -70,27 +70,27 @@ vol_colors = {
     "H2O_1"   : "#8db4cb",
     "H2O_2"   : "#4283A9",
     "H2O_3"   : "#274e65",
-    "CO2_1"   : "#a0d2cb",
-    "CO2_2"   : "#62B4A9",
-    "CO2_3"   : "#3a6c65",
-    "H2_1"    : "#eab597",
-    "H2_2"    : "#DD8452",
-    "H2_3"    : "#844f31",
+    "CO2_1"   : "#811111",
+    "CO2_2"   : "#B91919",
+    "CO2_3"   : "#ce5e5e",
+    "H2_1"    : "#a0d2cb",
+    "H2_2"    : "#62B4A9",
+    "H2_3"    : "#3a6c65",
     "CH4_1"   : "#eb9194",
     "CH4_2"   : "#E6767A",
     "CH4_3"   : "#b85e61",
-    "CO_1"    : "#57ccda",
-    "CO_2"    : "#2EC0D1",
-    "CO_3"    : "#2499a7",
+    "CO_1"    : "#eab597",
+    "CO_2"    : "#DD8452",
+    "CO_3"    : "#844f31",
     "N2_1"    : "#c29fb2",
     "N2_2"    : "#9A607F",
     "N2_3"    : "#4d303f",  
     "S_1"     : "#f1ca70",
     "S_2"     : "#EBB434",
     "S_3"     : "#a47d24",    
-    "O2_1"    : "#beae9f",
-    "O2_2"    : "#937860",
-    "O2_3"    : "#584839",
+    "O2_1"    : "#57ccda",
+    "O2_2"    : "#2EC0D1",
+    "O2_3"    : "#2499a7",
     "He_1"    : "#acbbbf",
     "He_2"    : "#768E95",
     "He_3"    : "#465559"
@@ -124,14 +124,17 @@ def plot_global( output_dir ):
     logger.info( 'building atmosphere' )
 
     fig_o = su.FigureData( 3, 2, width, height, output_dir+'plot_global', units='yr' )
-    fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.3)
+    fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.1)
 
     # Subplot titles
-    title_fs = 8
-    title_xy=(0.98, 0.5)
-    title_xycoords='axes fraction'
-    title_ha="right"
-    title_va="center"
+    title_fs   = 10
+    title_xy   = (0.5, 0.75)
+    title_x    = title_xy[0]
+    title_y    = title_xy[1]
+    title_xycoords = 'axes fraction'
+    title_ha   = "center"
+    title_va   = "center"
+    title_font = 'Arial'
 
     fs_legend = 9
 
@@ -200,16 +203,18 @@ def plot_global( output_dir ):
     else:
         ax0.loglog( fig_o.time, Fatm, 'k', lw=lw, alpha=1.0 )
         
-    fig_o.set_myaxes( ax0, title=title)#, yticks=yticks, xlabel=xlabel, xticks=xticks )
+    fig_o.set_myaxes( ax0)#, title=title)#, yticks=yticks, xlabel=xlabel, xticks=xticks )
     # ax0.yaxis.tick_right()
     # ax0.yaxis.set_label_position("right")
     ax0.set_ylabel(ylabel)
     ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax0.set_xlim( *xlim )
+    ax0.set_xticklabels([])
     ax0.yaxis.set_label_coords(xcoord_l,ycoord_l)
     handles, labels = ax0.get_legend_handles_labels()
     ax0.legend(handles, labels, loc='upper right', ncol=1, frameon=0, fontsize=fs_legend)
+    ax0.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
 
     ##########
     # figure b
@@ -232,10 +237,10 @@ def plot_global( output_dir ):
     ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax1.set_xlim( *xlim )
+    ax1.set_xticklabels([])
     ax1.yaxis.set_label_coords(xcoord_l,ycoord_l)
     ax1.set_ylim(ymin,ymax)
-    # ax1.set_title('(a) Surface temperature', fontname='Arial', fontsize=fs_title)
-
+    ax1.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
     ##########
     # figure c
     ##########
@@ -243,12 +248,13 @@ def plot_global( output_dir ):
     ylabel = '$\phi_{\mathrm{mantle}}$'
     ax2.semilogx( fig_o.time, phi_global, color=vol_colors["black_2"], linestyle='-', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
     # h2, = ax2.semilogx( timeMyr_a, mass_liquid_a / mass_mantle, 'k--', label='melt' )
-    fig_o.set_myaxes( ax2, title=title, xlabel=xlabel )#, xlabel=xlabel, xticks=xticks )
+    fig_o.set_myaxes( ax2, xlabel=xlabel )#, xlabel=xlabel, xticks=xticks, title=title )
     ax2.set_ylabel(ylabel)
     ax2.set_xlim( *xlim )
-    ax2.set_ylim( 0, 1. )
+    # ax2.set_ylim( 0, 1. )
     ax2.set_ylabel(ylabel)
     ax2.yaxis.set_label_coords(xcoord_l,ycoord_l)
+    ax2.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
 
     ### Plot axes setup
     ##########
@@ -271,7 +277,8 @@ def plot_global( output_dir ):
     # Check for times when volatile is present in data dumps
     for vol in volatile_species:
 
-        vol_times = []
+        vol_times   = []
+        # M_atm_total = np.zeros(len(fig_o.time))
 
         print(vol+":", end=" ")
 
@@ -335,35 +342,50 @@ def plot_global( output_dir ):
     ##########
     # figure d
     ##########
-    fig_o.set_myaxes( ax3, title=title_ax3)#, xlabel=xlabel, xticks=xticks )
+    fig_o.set_myaxes( ax3)#, xlabel=xlabel, xticks=xticks, title=title_ax3 )
     # ax3.set_title(title, y=0.8)
     ax3.set_ylabel('$p^{\mathrm{i}}$ (bar)')
     ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax3.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax3.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax3.set_xlim( *xlim )
-    ax3.set_ylim( bottom=0 )
+    # ax3.set_ylim( bottom=0 )
+    # https://brohrer.github.io/matplotlib_ticks.html#tick_style
+    # ax3.tick_params(axis="x", direction="in", length=3, width=1)
+    # ax3.tick_params(axis="y", direction="in", length=10, width=1)
+    ax3.set_xticklabels([])
     ax3.yaxis.tick_right()
     ax3.yaxis.set_label_position("right")
     ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
     handles, labels = ax3.get_legend_handles_labels()
-    ax3.legend(handles, labels, loc='center left', ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend)
+    ax3.legend(handles, labels, ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
+    ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
     ##########
     # figure e
     ##########
-    fig_o.set_myaxes( ax4, title=title_ax4) #, xlabel=xlabel,xticks=xticks )
+    # Check atmospheric comparisons for mass conservation
+    runtime_helpfile = pd.read_csv(output_dir+"runtime_helpfile.csv", delim_whitespace=True)
+    ax4.semilogx( runtime_helpfile["Time"], runtime_helpfile["M_atm"]/runtime_helpfile.iloc[0]["M_atm"], lw=lw, color=vol_colors["black_2"], linestyle='-')
+    ax4.semilogx( runtime_helpfile["Time"], runtime_helpfile["H_mol_total"]/runtime_helpfile.iloc[0]["H_mol_total"], lw=lw, color=vol_colors["black_3"], linestyle='--')
+    ax4.semilogx( runtime_helpfile["Time"], runtime_helpfile["C/H_atm"]/runtime_helpfile.iloc[0]["C/H_atm"], lw=lw, color=vol_colors["black_1"], linestyle=':')
+
+    fig_o.set_myaxes( ax4) #, xlabel=xlabel,xticks=xticks, title=title_ax4 )
     # ax4.set_title(title, y=0.8)
     ax4.set_ylabel('$M_{\mathrm{atm}}^{\mathrm{i}}/M_{\mathrm{total}}^{\mathrm{i}}$')
     ax4.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax4.yaxis.tick_right()
+    ax4.set_xticklabels([])
     ax4.yaxis.set_label_position("right")
     ax4.yaxis.set_label_coords(xcoord_r,ycoord_r)
     ax4.set_xlim( *xlim )
-    ax4.set_ylim( 0, 1 )
+    # ax4.set_ylim( 0, 1 )
     handles, labels = ax4.get_legend_handles_labels()
-    ax4.legend(handles, labels, loc='center left', ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend)
+    # ax4.legend(handles, labels, ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
+    ax4.set_title(title_ax4, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
+
+
     ##########
     # figure f
     ##########
@@ -375,12 +397,14 @@ def plot_global( output_dir ):
     ax5.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax5.set_xlim( *xlim )
-    ax5.set_ylim( 0, 1 )
+    # ax5.set_ylim( 0, 1 )
     ax5.yaxis.tick_right()
     ax5.yaxis.set_label_coords(xcoord_r,ycoord_r)
     ax5.yaxis.set_label_position("right")
     handles, labels = ax5.get_legend_handles_labels()
-    ax5.legend(handles, labels, loc='center left', ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend)
+    # ax5.legend(handles, labels, ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
+    ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
+
 
     fig_o.savefig(6)
     plt.close()

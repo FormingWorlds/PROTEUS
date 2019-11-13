@@ -41,6 +41,39 @@ for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
 
 logger = su.get_my_logger(__name__)
 
+vol_colors = {
+    "black_1" : "#000000",
+    "black_2" : "#323232",
+    "black_3" : "#7f7f7f",
+    "H2O_1"   : "#8db4cb",
+    "H2O_2"   : "#4283A9",
+    "H2O_3"   : "#274e65",
+    "CO2_1"   : "#811111",
+    "CO2_2"   : "#B91919",
+    "CO2_3"   : "#ce5e5e",
+    "H2_1"    : "#a0d2cb",
+    "H2_2"    : "#62B4A9",
+    "H2_3"    : "#3a6c65",
+    "CH4_1"   : "#eb9194",
+    "CH4_2"   : "#E6767A",
+    "CH4_3"   : "#b85e61",
+    "CO_1"    : "#eab597",
+    "CO_2"    : "#DD8452",
+    "CO_3"    : "#844f31",
+    "N2_1"    : "#c29fb2",
+    "N2_2"    : "#9A607F",
+    "N2_3"    : "#4d303f",  
+    "S_1"     : "#f1ca70",
+    "S_2"     : "#EBB434",
+    "S_3"     : "#a47d24",    
+    "O2_1"    : "#57ccda",
+    "O2_2"    : "#2EC0D1",
+    "O2_3"    : "#2499a7",
+    "He_1"    : "#acbbbf",
+    "He_2"    : "#768E95",
+    "He_3"    : "#465559"
+}
+
 #====================================================================
 def plot_atmosphere( output_dir, times ):
 
@@ -215,7 +248,7 @@ def plot_atmosphere( output_dir, times ):
     ax2.yaxis.set_label_coords(title_xcoord,title_ycoord)
 
     # Legend
-    ax0.legend( fontsize=8, fancybox=True, framealpha=0.5 )
+    ax1.legend( fontsize=8, fancybox=True, framealpha=0.5 )
 
     fig_o.savefig(1)
     plt.close()
@@ -232,22 +265,22 @@ def plot_current_mixing_ratio( output_dir, times ):
 
     fig, ax1 = plt.subplots()
 
-    ax1.plot(atm_chemistry["H2O"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"H$_2$O")
-    ax1.plot(atm_chemistry["CO2"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"CO$_2$")
-    ax1.plot(atm_chemistry["H2"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"H$_2$")
-    ax1.plot(atm_chemistry["CO"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"CO")
-    ax1.plot(atm_chemistry["N2"], atm_chemistry["Pressure"], ls="-", lw=lw, label=r"N$_2$")
-    ax1.plot(atm_chemistry["O2"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"O$_2$")
-    ax1.plot(atm_chemistry["CH4"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"CH$_4$")
-    ax1.plot(atm_chemistry["He"], atm_chemistry["Pressure"], ls="--", lw=lw, label=r"He")
+    ax1.plot(atm_chemistry["H2"], atm_chemistry["Pressure"], color=vol_colors["H2_2"], ls="-", lw=lw, label=r"H$_2$")
+    ax1.plot(atm_chemistry["H2O"], atm_chemistry["Pressure"], color=vol_colors["H2O_2"], ls="-", lw=lw, label=r"H$_2$O")
 
-    ax1.set_xlabel("Volume mixing ratio (n$_{\mathrm{i}}$/n$_{\mathrm{tot}}$)")
+    ax1.plot(atm_chemistry["CO2"], atm_chemistry["Pressure"], color=vol_colors["CO2_2"], ls="-", lw=lw, label=r"CO$_2$")
+    ax1.plot(atm_chemistry["CO"], atm_chemistry["Pressure"], color=vol_colors["CO_2"], ls="-", lw=lw, label=r"CO")
+    ax1.plot(atm_chemistry["CH4"], atm_chemistry["Pressure"], color=vol_colors["CH4_2"], ls="--", lw=lw, label=r"CH$_4$")
+    ax1.plot(atm_chemistry["N2"], atm_chemistry["Pressure"], color=vol_colors["N2_2"], ls="-", lw=lw, label=r"N$_2$")
+    ax1.plot(atm_chemistry["O2"], atm_chemistry["Pressure"], color=vol_colors["O2_2"], ls="--", lw=lw, label=r"O$_2$")
+    ax1.plot(atm_chemistry["S"], atm_chemistry["Pressure"], color=vol_colors["S_2"], ls="--", lw=lw, label=r"S")
+    ax1.plot(atm_chemistry["He"], atm_chemistry["Pressure"], color=vol_colors["He_2"], ls="--", lw=lw, label=r"He")
+    
+    ax1.set_xlabel("Volume mixing ratio, log ($n^{\mathrm{i}}$/$n_{\mathrm{tot}}$)")
     ax1.set_ylabel("Pressure, $P_{\mathrm{tot}}$ (bar)")
     ax1.set_xscale("log")
     ax1.set_yscale("log")
-    ax1.legend(loc=6, fancybox=True, framealpha=0.9)
-    ax1.set_xlim(1e-16, 1.)
-
+    ax1.set_xlim(left=1e-16, right=2e+0)
     ax1.set_ylim(np.max(atm_chemistry["Pressure"]), np.min(atm_chemistry["Pressure"]))
 
     # Temperature y-axis on the right
@@ -265,6 +298,10 @@ def plot_current_mixing_ratio( output_dir, times ):
          ])
     ax1b.yaxis.tick_right()
     ax1b.set_ylabel( 'Temperature, $T$ (K)' )
+
+
+    ax1.legend(loc=2, fancybox=True, framealpha=0.9)
+    plt.xticks([1e-16, 1e-14, 1e-12, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1e0], ["-16", "-14", "-12", "-10", "-8", "-6", "-4", "-2", "0"])
 
     plt.savefig(output_dir+"plot_atm_chemistry_"+str(time)+".pdf", bbox_inches = 'tight',
     pad_inches = 0.1)

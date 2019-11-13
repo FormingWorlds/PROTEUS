@@ -102,13 +102,14 @@ def main():
 
     # Start conditions and help files depending on restart option
     if SPIDER_options["IC_INTERIOR"] == 1: 
-            coupler_utils.CleanOutputDir( output_dir )
-            runtime_helpfile    = []
-            atm_chemistry       = []
+        coupler_utils.CleanOutputDir( output_dir )
+        runtime_helpfile    = []
+        atm_chemistry       = []
+    # If restart skip init loop
     if SPIDER_options["IC_INTERIOR"] == 2:
-        # If restart skip init loop
         loop_counter["total"] += loop_counter["init_loops"]
         loop_counter["init"]  += loop_counter["init_loops"]
+        SPIDER_options["IC_ATMOSPHERE"] = 3
 
         # Restart file name: automatic last file or specific one
         SPIDER_options["ic_interior_filename"] = str(natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1])
@@ -197,6 +198,10 @@ def main():
 
         # Plot conditions throughout run for on-the-fly analysis
         coupler_utils.UpdatePlots( output_dir )
+
+        # After very first timestep, starting w/ 2nd init loop: read in partial pressures
+        if loop_counter["init"] >= 1:
+            SPIDER_options["IC_ATMOSPHERE"] = 3
         
         # Adjust iteration counters + total time 
         loop_counter["atm"]         = 0
