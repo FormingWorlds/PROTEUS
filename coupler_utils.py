@@ -107,14 +107,14 @@ volatile_distribution_coefficients = {               # X_henry -> ppm/Pa
     'S_henry_pow':           1.0, 
     'He_henry':              0.001E-9, 
     'He_henry_pow':          1.0,
-    # 'H2O_kdist':             1.0E-4,                 # distribution coefficients
-    # 'H2O_kabs':              0.01,                   # absorption (m^2/kg)
-    'H2O_kdist':             0.0E-0,
-    'H2O_kabs':              0.00,
-    # 'CO2_kdist':             5.0E-4, 
-    # 'CO2_kabs':              0.05,
-    'CO2_kdist':             0.0E-0,  
-    'CO2_kabs':              0.00,
+    'H2O_kdist':             1.0E-4,                 # distribution coefficients
+    'H2O_kabs':              0.01,                   # absorption (m^2/kg)
+    # 'H2O_kdist':             0.0E-0,
+    # 'H2O_kabs':              0.00,
+    'CO2_kdist':             5.0E-4, 
+    'CO2_kabs':              0.05,
+    # 'CO2_kdist':             0.0E-0,  
+    # 'CO2_kabs':              0.00,
     'H2_kdist':              0.0E-0,  
     'H2_kabs':               0.00,     
     'N2_kdist':              0.0E-0,  
@@ -657,17 +657,17 @@ def RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, 
     atm_chemistry = pd.read_csv(output_dir+volume_mixing_ratios_name, skiprows=1, delim_whitespace=True)
     print(atm_chemistry.iloc[:, 0:5])
 
-    # Update SPIDER restart options w/ surface partial pressures
-    for vol in volatile_species:
+    # # Update SPIDER restart options w/ surface partial pressures
+    # for vol in volatile_species:
         
-        # Calculate partial pressure from VULCAN output
-        volume_mixing_ratio     = atm_chemistry.iloc[0][vol]
-        surface_pressure_total  = atm_chemistry.iloc[0]["Pressure"]*1e5 # bar -> Pa
-        partial_pressure_vol    = surface_pressure_total*volume_mixing_ratio
+    #     # Calculate partial pressure from VULCAN output
+    #     volume_mixing_ratio     = atm_chemistry.iloc[0][vol]
+    #     surface_pressure_total  = atm_chemistry.iloc[0]["Pressure"]*1e5 # bar -> Pa
+    #     partial_pressure_vol    = surface_pressure_total*volume_mixing_ratio
 
-        # Only for major atmospheric species
-        if partial_pressure_vol > 1.: # Pa
-            SPIDER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
+    #     # Only for major atmospheric species
+    #     if partial_pressure_vol > 1.: # Pa
+    #         SPIDER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
 
     return atm_chemistry, SPIDER_options
 
@@ -734,19 +734,19 @@ def RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_count
         if SPIDER_options[vol+"_initial_total_abundance"] > 0. or SPIDER_options[vol+"_initial_atmos_pressure"] > 0.:
 
             # Very first timestep: feed volatile initial abundance [ppm]
-            # if loop_counter["init"] == 0:
-            if SPIDER_options["IC_ATMOSPHERE"] == 1:
+            if loop_counter["init"] == 0:
+            # if SPIDER_options["IC_ATMOSPHERE"] == 1:
                 call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
 
             # After very first timestep, starting w/ 2nd init loop
-            # if loop_counter["init"] >= 1:
-            if SPIDER_options["IC_ATMOSPHERE"] == 3:
+            if loop_counter["init"] >= 1:
+            # if SPIDER_options["IC_ATMOSPHERE"] == 3:
 
-                # Load partial pressures from VULCAN
-                call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(SPIDER_options[vol+"_initial_atmos_pressure"])])
+                # # Load partial pressures from VULCAN
+                # call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(SPIDER_options[vol+"_initial_atmos_pressure"])])
 
-                # ## KLUDGE: Read in the same abundances every time -> no feedback from ATMOS
-                # call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
+                ## KLUDGE: Read in the same abundances every time -> no feedback from ATMOS
+                call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
 
 
             call_sequence.extend(["-"+vol+"_henry", str(volatile_distribution_coefficients[vol+"_henry"])])

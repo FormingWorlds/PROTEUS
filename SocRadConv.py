@@ -69,7 +69,7 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
     #--------------Initializations Done-----------------------
     #--------------Now do the time stepping-------------------
     #---------------------------------------------------------
-    for i in range(0,50):
+    for i in range(0,300):
 
         atm = steps(atm, stellar_toa_heating)
 

@@ -98,7 +98,7 @@ def main():
     time_offset           = 100.         # Myr, start of magma ocean after star formation
 
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
-    loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 4, "atm_loops": 2 }
+    loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 2, "atm_loops": 1 }
 
     # Start conditions and help files depending on restart option
     if SPIDER_options["IC_INTERIOR"] == 1: 
@@ -199,9 +199,9 @@ def main():
         # Plot conditions throughout run for on-the-fly analysis
         coupler_utils.UpdatePlots( output_dir )
 
-        # After very first timestep, starting w/ 2nd init loop: read in partial pressures
-        if loop_counter["init"] >= 1:
-            SPIDER_options["IC_ATMOSPHERE"] = 3
+        # # After very first timestep, starting w/ 2nd init loop: read in partial pressures
+        # if loop_counter["init"] >= 1:
+        #     SPIDER_options["IC_ATMOSPHERE"] = 3
         
         # Adjust iteration counters + total time 
         loop_counter["atm"]         = 0
