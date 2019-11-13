@@ -361,31 +361,26 @@ def UpdateHelpfile(loop_counter, output_dir, vulcan_dir, file_name, runtime_help
         for element in element_list:
             runtime_helpfile_new[element+"_mol_total"] = runtime_helpfile_new[element+"_mol_atm"] + runtime_helpfile_new[element+"_mol_solid"] + runtime_helpfile_new[element+"_mol_liquid"]
 
-        ## Ensure mass conservation related to chemistry/partitioning disequilibrium
-        # If total number of atoms has decreased, add atoms to atmosphere bucket
-        if loop_counter["init"] >= 1:
-            for element in element_list:
+            ## Ensure mass conservation related to chemistry/partitioning disequilibrium
+            # If total number of atoms has decreased, add atoms to atmosphere bucket
+            if loop_counter["init"] >= 1:
+                # Check for changes
                 dN = runtime_helpfile.iloc[-1][element+"_mol_total"] - runtime_helpfile_new[element+"_mol_total"]
-                if dN > 0.:
-                    runtime_helpfile_new[element+"_mol_atm"] += dN
+                # if dN > 0.:
+                # Add it to atmosphere reservoir
+                runtime_helpfile_new[element+"_mol_atm"] += dN
+                # Correct total mol number
+                runtime_helpfile_new[element+"_mol_total"] = runtime_helpfile.iloc[-1][element+"_mol_total"]
 
         # Avoid division by 0
         min_val     = 1e-99
         runtime_helpfile_new["H_mol_atm"] = np.max([runtime_helpfile_new["H_mol_atm"], min_val])
 
-        # Relative to H
-        O_H_ratio_atm  = runtime_helpfile_new["O_mol_atm"]  / runtime_helpfile_new["H_mol_atm"]
-        C_H_ratio_atm  = runtime_helpfile_new["C_mol_atm"]  / runtime_helpfile_new["H_mol_atm"]
-        N_H_ratio_atm  = runtime_helpfile_new["N_mol_atm"]  / runtime_helpfile_new["H_mol_atm"]
-        S_H_ratio_atm  = runtime_helpfile_new["S_mol_atm"]  / runtime_helpfile_new["H_mol_atm"]
-        He_H_ratio_atm = runtime_helpfile_new["He_mol_atm"] / runtime_helpfile_new["H_mol_atm"]
+        # Calculate X/H ratios
+        for element in [ "O", "C", "N", "S", "He" ]:
+            XH_ratio_atm = runtime_helpfile_new[element+"_mol_atm"]  / runtime_helpfile_new["H_mol_atm"]
+            runtime_helpfile_new[element+"/H_atm"] = np.max([XH_ratio_atm, min_val])
 
-        # Counter VULCAN bug with zero abundances
-        runtime_helpfile_new["O/H_atm"]   = np.max([O_H_ratio_atm, min_val])
-        runtime_helpfile_new["C/H_atm"]   = np.max([C_H_ratio_atm, min_val])
-        runtime_helpfile_new["N/H_atm"]   = np.max([N_H_ratio_atm, min_val])
-        runtime_helpfile_new["S/H_atm"]   = np.max([S_H_ratio_atm, min_val])
-        runtime_helpfile_new["He/H_atm"]  = np.max([He_H_ratio_atm, min_val])
 
     # For "Atmosphere" sub-loop (VULCAN+SOCRATES) update heat flux from SOCRATES
     elif input_flag == "Atmosphere":
