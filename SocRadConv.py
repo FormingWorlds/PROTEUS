@@ -25,7 +25,7 @@ def surf_Planck_nu(atm):
     B = B * atm.band_widths/1000.0
     return B
 
-def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, atm_chemistry, loop_counter):
+def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, atm_chemistry, loop_counter, SPIDER_options):
     #--------------------Set radmodel options-------------------
     #---Instantiate the radiation model---
 
@@ -51,14 +51,23 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
     atm.n_species   = 7
 
     # Feed mixing ratios
-    atm_chemistry = atm_chemistry.reindex(index=atm_chemistry.index[::-1])
-    atm.mixing_ratios[0] = atm_chemistry["H2O"]    # H2O
-    atm.mixing_ratios[1] = atm_chemistry["CO2"]    # CO2
-    atm.mixing_ratios[2] = atm_chemistry["H2"]     # H2
-    atm.mixing_ratios[3] = atm_chemistry["CH4"]    # CH4
-    atm.mixing_ratios[4] = atm_chemistry["CO"]     # CO
-    atm.mixing_ratios[5] = atm_chemistry["N2"]     # N2
-    atm.mixing_ratios[6] = atm_chemistry["O2"]     # O2
+    if SPIDER_options["use_vulcan"] == 1 or SPIDER_options["use_vulcan"] == 2:
+        atm_chemistry = atm_chemistry.reindex(index=atm_chemistry.index[::-1])
+        atm.mixing_ratios[0] = atm_chemistry["H2O"]    # H2O
+        atm.mixing_ratios[1] = atm_chemistry["CO2"]    # CO2
+        atm.mixing_ratios[2] = atm_chemistry["H2"]     # H2
+        atm.mixing_ratios[3] = atm_chemistry["CH4"]    # CH4
+        atm.mixing_ratios[4] = atm_chemistry["CO"]     # CO
+        atm.mixing_ratios[5] = atm_chemistry["N2"]     # N2
+        atm.mixing_ratios[6] = atm_chemistry["O2"]     # O2
+    else: # Constant mixing ratios from SPIDER
+        atm.mixing_ratios[0] = runtime_helpfile.iloc[-1]["H2O_mr"]    # H2O
+        atm.mixing_ratios[1] = runtime_helpfile.iloc[-1]["CO2_mr"]    # CO2
+        atm.mixing_ratios[2] = runtime_helpfile.iloc[-1]["H2_mr"]     # H2
+        atm.mixing_ratios[3] = runtime_helpfile.iloc[-1]["CH4_mr"]    # CH4
+        atm.mixing_ratios[4] = runtime_helpfile.iloc[-1]["CO_mr"]     # CO
+        atm.mixing_ratios[5] = runtime_helpfile.iloc[-1]["N2_mr"]     # N2
+        atm.mixing_ratios[6] = runtime_helpfile.iloc[-1]["O2_mr"]     # O2
 
     # Initialise previous OLR and TOA heating to zero
     PrevOLR     = 0.

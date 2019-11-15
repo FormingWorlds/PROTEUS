@@ -253,7 +253,8 @@ def plot_atmosphere( output_dir, times ):
     fig_o.savefig(1)
     plt.close()
 
-# Title/time print settings
+# Plot settings
+lw=2
 title_fs   = 10
 title_xy   = (0.02, 0.01)
 title_x    = title_xy[0]
@@ -263,17 +264,23 @@ title_ha   = "left"
 title_va   = "bottom"
 title_font = 'Arial'
 
-def plot_current_mixing_ratio( output_dir, times ):
+volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
+
+def plot_current_mixing_ratio( output_dir, times, vulcan_setting ):
+
+    fig, ax1 = plt.subplots()
 
     time = str(times)
 
     # Read atmospheric chemistry
     atm_chemistry       = pd.read_csv(output_dir+time+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True) # skipfooter=1
 
-    # Plot settings
-    lw=2
+    if vulcan_setting == 0 or vulcan_setting == 1:
+        runtime_helpfile = pd.read_csv(output_dir+"runtime_helpfile.csv", delim_whitespace=True)
 
-    fig, ax1 = plt.subplots()
+        for vol in volatile_species:
+            if runtime_helpfile.iloc[-1][vol+"_mr"] > 0.:
+                ax1.axvline(x=runtime_helpfile.iloc[-1][vol+"_mr"], linewidth=lw+0.5, color=vol_colors[vol+"_2"], ls=":")
 
     ax1.plot(atm_chemistry["H2"], atm_chemistry["Pressure"], color=vol_colors["H2_2"], ls="-", lw=lw, label=r"H$_2$")
     ax1.plot(atm_chemistry["H2O"], atm_chemistry["Pressure"], color=vol_colors["H2O_2"], ls="-", lw=lw, label=r"H$_2$O")
@@ -342,7 +349,7 @@ def main():
         print("Snapshots:", plot_list)
 
     # Plot only last snapshot
-    plot_current_mixing_ratio( output_dir="output/", times=plot_list[-1] )
+    plot_current_mixing_ratio( output_dir="output/", times=plot_list[-1], vulcan_setting=0 )
 
     # Plot fixed set from above
     plot_atmosphere( output_dir="output/", times=plot_list )

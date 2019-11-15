@@ -47,7 +47,7 @@ def main():
     # SPIDER settings
     SPIDER_options = {
         'SURFACE_BC':                  4,     # 4: constant heat flux boundary condition
-        'tsurf_poststep_change':       100.0, # maximum absolute surface temperature change [K]
+        'tsurf_poststep_change':       10.0, # maximum absolute surface temperature change [K]
         'R_solid_planet':              6371000, # planet radius [m]
         'planet_coresize':             0.55,  # fractional radius of core-mantle boundary
         'IC_INTERIOR':                 1,     # 1: Fresh start | 2: Restart from file
@@ -65,15 +65,15 @@ def main():
         'O2_initial_total_abundance':  0,     # init loop [ppm wt]
         'S_initial_total_abundance':   0,     # init loop [ppm wt]
         'He_initial_total_abundance':  0,     # init loop [ppm wt]
-        'H2O_poststep_change':         0.05,  # fractional H2O melt phase change event trigger
-        'CO2_poststep_change':         0.05,  # CO2 melt phase trigger
-        'H2_poststep_change':          0.05,  # fraction
-        'CH4_poststep_change':         0.05,  # fraction
-        'CO_poststep_change':          0.05,  # fraction
-        'N2_poststep_change':          0.05,  # fraction
-        'O2_poststep_change':          0.05,  # fraction
-        'S_poststep_change':           0.05,  # fraction
-        'He_poststep_change':          0.05,  # fraction
+        'H2O_poststep_change':         0.01,  # fractional H2O melt phase change event trigger
+        'CO2_poststep_change':         0.01,  # CO2 melt phase trigger
+        'H2_poststep_change':          0.01,  # fraction
+        'CH4_poststep_change':         0.01,  # fraction
+        'CO_poststep_change':          0.01,  # fraction
+        'N2_poststep_change':          0.01,  # fraction
+        'O2_poststep_change':          0.01,  # fraction
+        'S_poststep_change':           0.01,  # fraction
+        'He_poststep_change':          0.01,  # fraction
         'H2O_initial_atmos_pressure':  0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
         'CO2_initial_atmos_pressure':  0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
         'H2_initial_atmos_pressure':   0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
@@ -83,6 +83,7 @@ def main():
         'O2_initial_atmos_pressure':   0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
         'S_initial_atmos_pressure':    0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
         'He_initial_atmos_pressure':   0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
+        'use_vulcan':                  0,     # 0: none 1: VULCAN->SOCRATES & 2: V->SOC+SPI
         }
     # Total runtime
     time_start            = 0.           # yr
@@ -98,13 +99,12 @@ def main():
     time_offset           = 100.         # Myr, start of magma ocean after star formation
 
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
-    loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 2, "atm_loops": 1 }
+    loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 1 }
 
     # Start conditions and help files depending on restart option
     if SPIDER_options["IC_INTERIOR"] == 1: 
         coupler_utils.CleanOutputDir( output_dir )
         runtime_helpfile    = []
-        atm_chemistry       = []
     # If restart skip init loop
     if SPIDER_options["IC_INTERIOR"] == 2:
         loop_counter["total"] += loop_counter["init_loops"]
@@ -114,6 +114,9 @@ def main():
         # Restart file name: automatic last file or specific one
         SPIDER_options["ic_interior_filename"] = str(natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1])
         # SPIDER_options["ic_interior_filename"] = "X.json"
+
+    # Instantiate atmospheric chemistry for all use_vulcan cases
+    atm_chemistry       = []
 
     # Parse optional argument from console
     if args.H2O_ppm:
@@ -171,33 +174,33 @@ def main():
         ############### INTERIOR SUB-LOOP
 
         # Run SPIDER
-        SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile, atm_chemistry )
+        SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile )
 
         # Update help quantities, input_flag: "Interior"
-        runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, vulcan_dir, runtime_helpfile_name, runtime_helpfile, "Interior", atm_chemistry, SPIDER_options)
+        runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, vulcan_dir, runtime_helpfile_name, runtime_helpfile, "Interior", SPIDER_options)
 
         ############### / INTERIOR SUB-LOOP
 
         ############### ATMOSPHERE SUB-LOOP
         while loop_counter["atm"] < loop_counter["atm_loops"]:
 
-            # Run VULCAN
+            # Run VULCAN, depending on setting
             atm_chemistry, SPIDER_options = coupler_utils.RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, runtime_helpfile, SPIDER_options )
 
             # Run SOCRATES
-            SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter )
+            SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter, SPIDER_options )
 
             loop_counter["atm"] += 1
 
         # Update help quantities, input_flag: "Atmosphere"
-        runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, vulcan_dir, runtime_helpfile_name, runtime_helpfile, "Atmosphere", atm_chemistry, SPIDER_options)
+        runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, vulcan_dir, runtime_helpfile_name, runtime_helpfile, "Atmosphere", SPIDER_options)
         ############### / ATMOSPHERE SUB-LOOP
         
         # Runtime info
-        coupler_utils.PrintCurrentState(time_current, runtime_helpfile, atm_chemistry.iloc[0]["Pressure"], SPIDER_options, stellar_toa_heating, solar_lum, loop_counter, output_dir)
+        coupler_utils.PrintCurrentState(time_current, runtime_helpfile, SPIDER_options, stellar_toa_heating, solar_lum, loop_counter, output_dir)
 
         # Plot conditions throughout run for on-the-fly analysis
-        coupler_utils.UpdatePlots( output_dir )
+        coupler_utils.UpdatePlots( output_dir, SPIDER_options["use_vulcan"] )
 
         # # After very first timestep, starting w/ 2nd init loop: read in partial pressures
         # if loop_counter["init"] >= 1:
