@@ -243,7 +243,7 @@ def plot_atmosphere( output_dir, times ):
     ax2.set_ylabel( 'Spectral flux density (Jy)', rotation=90)
     # ax2.yaxis.set_label_position("right")
     # ax2.yaxis.tick_right()
-    ax2.set_xlim( left=0, right=10000 )
+    ax2.set_xlim( left=0, right=20000 )
     ax2.set_ylim( bottom=0 ) #, top=10
     ax2.yaxis.set_label_coords(title_xcoord,title_ycoord)
 

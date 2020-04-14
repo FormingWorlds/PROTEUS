@@ -47,7 +47,7 @@ def main():
     # SPIDER settings
     SPIDER_options = {
         'SURFACE_BC':                  4,     # 4: constant heat flux boundary condition
-        'tsurf_poststep_change':       10.0, # maximum absolute surface temperature change [K]
+        'tsurf_poststep_change':       50.0, # maximum absolute surface temperature change [K]
         'R_solid_planet':              6371000, # planet radius [m]
         'planet_coresize':             0.55,  # fractional radius of core-mantle boundary
         'IC_INTERIOR':                 1,     # 1: Fresh start | 2: Restart from file
@@ -65,15 +65,15 @@ def main():
         'O2_initial_total_abundance':  0,     # init loop [ppm wt]
         'S_initial_total_abundance':   0,     # init loop [ppm wt]
         'He_initial_total_abundance':  0,     # init loop [ppm wt]
-        'H2O_poststep_change':         0.01,  # fractional H2O melt phase change event trigger
-        'CO2_poststep_change':         0.01,  # CO2 melt phase trigger
-        'H2_poststep_change':          0.01,  # fraction
-        'CH4_poststep_change':         0.01,  # fraction
-        'CO_poststep_change':          0.01,  # fraction
-        'N2_poststep_change':          0.01,  # fraction
-        'O2_poststep_change':          0.01,  # fraction
-        'S_poststep_change':           0.01,  # fraction
-        'He_poststep_change':          0.01,  # fraction
+        'H2O_poststep_change':         0.05,  # fractional H2O melt phase change event trigger
+        'CO2_poststep_change':         0.05,  # CO2 melt phase trigger
+        'H2_poststep_change':          0.05,  # fraction
+        'CH4_poststep_change':         0.05,  # fraction
+        'CO_poststep_change':          0.05,  # fraction
+        'N2_poststep_change':          0.05,  # fraction
+        'O2_poststep_change':          0.05,  # fraction
+        'S_poststep_change':           0.05,  # fraction
+        'He_poststep_change':          0.05,  # fraction
         'H2O_initial_atmos_pressure':  0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
         'CO2_initial_atmos_pressure':  0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
         'H2_initial_atmos_pressure':   0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
@@ -96,7 +96,7 @@ def main():
     # Planetary and magma ocean start configuration
     star_mass             = 1.0          # M_sol options: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4
     mean_distance         = 1.0          # AU, star-planet distance
-    time_offset           = 100.         # Myr, start of magma ocean after star formation
+    time_offset           = 1e+8         # yr, start of magma ocean after star formation
 
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
     loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 1 }

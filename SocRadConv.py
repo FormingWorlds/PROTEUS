@@ -44,7 +44,7 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
 
     #==============Now do the calculation====================================
 
-    atm.ts          = runtime_helpfile.iloc[-1]["T_surf"]
+    atm.ts          = runtime_helpfile.iloc[-1]["T_surf"]   
     atm.Rcp         = 2./7.
     atm.temp        = atm.ts*(atm.p/atm.p[-1])**atm.Rcp  # Initialize on an adiabat
     atm.temp        = np.where(atm.temp<atm.ts/2.,atm.ts/2.,atm.temp)
@@ -99,7 +99,7 @@ def RadConvEqm(output_dir, time_current, runtime_helpfile, stellar_toa_heating, 
            print("Break -> deltaOLR =", abs(atm.LW_flux_up[0]-PrevOLR), ", deltaT =", abs(np.max(atm.temp-PrevTemp[:])))
            break    # break here
 
-        PrevOLR = atm.LW_flux_up[0]
+        PrevOLR     = atm.LW_flux_up[0]
         PrevMaxHeat = abs(np.max(atm.total_heating))
         PrevTemp[:] = atm.temp[:]
 
@@ -116,7 +116,7 @@ def dryAdj(atm):
     T = atm.temp
     p = atm.p
     
-    # Rcp is a global
+    # Rcp is global
     # Downward pass
     for i in range(len(T)-1):
         T1,p1 = T[i],p[i]
@@ -125,7 +125,7 @@ def dryAdj(atm):
         # Adiabat slope
         pfact = (p1/p2)**atm.Rcp
         
-        # If slope is shallower than adiabat (unstable), adjust it to adiabat
+        # If slope is shallower than adiabat (unstable), adjust to adiabat
         if T1 < T2*pfact:
             Tbar = .5*(T1+T2) # Equal layer masses
                               # Not quite compatible with how

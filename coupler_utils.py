@@ -146,6 +146,7 @@ def InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_dist
     luminosity_df = pd.read_csv("luminosity_tracks/Lum_m"+str(star_mass)+".txt")
 
     time_current    = time_current/1e+6         # Myr
+    time_offset     = time_offset/1e+6          # Myr
     ages            = luminosity_df["age"]*1e+3 # Myr
     luminosities    = luminosity_df["lum"]      # L_sol
 
