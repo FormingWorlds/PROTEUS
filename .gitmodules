@@ -1,3 +1,6 @@
 [submodule "vulcan_spider"]
 	path = vulcan_spider
 	url = https://github.com/shami-EEG/VULCAN-SPIDER.git
+[submodule "atm_rad_conv"]
+	path = atm_rad_conv
+	url = https://github.com/OxfordPlanetaryClimate/soc-rad-conv
