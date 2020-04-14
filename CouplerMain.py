@@ -2,25 +2,30 @@
 Coupler Main file – SPIDER-SOCRATES-VULCAN
 """
 
+import importlib.util
 import numpy as np
-# import GGRadConv
-import SocRadConv
-import SocRadModel
 import subprocess
 import argparse
 import glob
 import sys, os, shutil
 import math
 from natsort import natsorted #https://pypi.python.org/pypi/natsort
-import coupler_utils
-import spider_coupler_utils as su
 from datetime import datetime
 import pandas as pd
 
-# Define specific directories
+# Coupler-specific modules and paths
 coupler_dir = os.getcwd()+"/"
 output_dir  = os.getcwd()+"/output/"
 vulcan_dir  = os.getcwd()+"/vulcan_spider/"
+radconv_dir = os.getcwd()+"/atm_rad_conv/"
+sys.path.append(radconv_dir)
+sys.path.append(vulcan_dir)
+
+# Coupler-specific modules
+import SocRadConv
+import SocRadModel
+import utils_coupler as utils
+import utils_spider as su
 
 # Handle optional command line arguments for volatiles
 parser = argparse.ArgumentParser(description='COUPLER optional command line arguments')
@@ -85,6 +90,7 @@ def main():
         'He_initial_atmos_pressure':   0.0,   # restart w/ p_i from VULCAN/SPIDER [Pa]
         'use_vulcan':                  0,     # 0: none 1: VULCAN->SOCRATES & 2: V->SOC+SPI
         }
+    
     # Total runtime
     time_start            = 0.           # yr
     time_current          = time_start   # yr
@@ -103,7 +109,7 @@ def main():
 
     # Start conditions and help files depending on restart option
     if SPIDER_options["IC_INTERIOR"] == 1: 
-        coupler_utils.CleanOutputDir( output_dir )
+        utils.CleanOutputDir( output_dir )
         runtime_helpfile    = []
     # If restart skip init loop
     if SPIDER_options["IC_INTERIOR"] == 2:
@@ -174,10 +180,10 @@ def main():
         ############### INTERIOR SUB-LOOP
 
         # Run SPIDER
-        SPIDER_options = coupler_utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile )
+        SPIDER_options = utils.RunSPIDER( time_current, time_target, output_dir, SPIDER_options, loop_counter, runtime_helpfile )
 
         # Update help quantities, input_flag: "Interior"
-        runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, vulcan_dir, runtime_helpfile_name, runtime_helpfile, "Interior", SPIDER_options)
+        runtime_helpfile, time_current = utils.UpdateHelpfile(loop_counter, output_dir, vulcan_dir, runtime_helpfile_name, runtime_helpfile, "Interior", SPIDER_options)
 
         ############### / INTERIOR SUB-LOOP
 
@@ -185,22 +191,22 @@ def main():
         while loop_counter["atm"] < loop_counter["atm_loops"]:
 
             # Run VULCAN, depending on setting
-            atm_chemistry, SPIDER_options = coupler_utils.RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, runtime_helpfile, SPIDER_options )
+            atm_chemistry, SPIDER_options = utils.RunVULCAN( time_current, loop_counter, vulcan_dir, coupler_dir, output_dir, runtime_helpfile, SPIDER_options )
 
             # Run SOCRATES
-            SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = coupler_utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter, SPIDER_options )
+            SPIDER_options["heat_flux"], stellar_toa_heating, solar_lum = utils.RunSOCRATES( time_current, time_offset, star_mass, mean_distance, output_dir, runtime_helpfile, atm_chemistry, loop_counter, SPIDER_options )
 
             loop_counter["atm"] += 1
 
         # Update help quantities, input_flag: "Atmosphere"
-        runtime_helpfile, time_current = coupler_utils.UpdateHelpfile(loop_counter, output_dir, vulcan_dir, runtime_helpfile_name, runtime_helpfile, "Atmosphere", SPIDER_options)
+        runtime_helpfile, time_current = utils.UpdateHelpfile(loop_counter, output_dir, vulcan_dir, runtime_helpfile_name, runtime_helpfile, "Atmosphere", SPIDER_options)
         ############### / ATMOSPHERE SUB-LOOP
         
         # Runtime info
-        coupler_utils.PrintCurrentState(time_current, runtime_helpfile, SPIDER_options, stellar_toa_heating, solar_lum, loop_counter, output_dir)
+        utils.PrintCurrentState(time_current, runtime_helpfile, SPIDER_options, stellar_toa_heating, solar_lum, loop_counter, output_dir)
 
         # Plot conditions throughout run for on-the-fly analysis
-        coupler_utils.UpdatePlots( output_dir, SPIDER_options["use_vulcan"] )
+        utils.UpdatePlots( output_dir, SPIDER_options["use_vulcan"] )
 
         # # After very first timestep, starting w/ 2nd init loop: read in partial pressures
         # if loop_counter["init"] >= 1:
@@ -218,7 +224,7 @@ def main():
             SPIDER_options["IC_INTERIOR"] = 2
 
     # Save files from finished simulation
-    coupler_utils.SaveOutput( output_dir )
+    utils.SaveOutput( output_dir )
 
     print("\n===> COUPLER run finished successfully <===")
 

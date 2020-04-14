@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 import pandas as pd
 from scipy import interpolate
-import spider_coupler_utils as su
+import utils_spider as su
 import pandas as pd
 import json
 import subprocess
