@@ -174,8 +174,8 @@ def PrintCurrentState(time_current, runtime_helpfile, SPIDER_options, toa_heatin
     print("Time [Myr]:", str(float(time_current)/1e6))
     print("T_s [K]:", runtime_helpfile.iloc[-1]["T_surf"])
     print("Helpfile properties:")
-    print(runtime_helpfile[["Time", "Input", "M_atm", "M_atm_kgmol", "H_mol_atm", "H_mol_solid", "H_mol_liquid", "H_mol_total", "O_mol_total", "O/H_atm", "P_surf"]])
-    print(runtime_helpfile.tail(1))
+    # print(runtime_helpfile[["Time", "Input", "M_atm", "M_atm_kgmol", "H_mol_atm", "H_mol_solid", "H_mol_liquid", "H_mol_total", "O_mol_total", "O/H_atm", "P_surf"]])
+    print(runtime_helpfile.tail(2))
     print("P_surf [bar]:", runtime_helpfile.iloc[-1]["P_surf"], " ")
     print("TOA heating [W/m^2]:", toa_heating)
     print("MO heat flux [W/m^2]:", SPIDER_options["heat_flux"])
@@ -718,8 +718,11 @@ def RunSOCRATES( atm, time_current, time_offset, star_mass, mean_distance, dirs,
     print("SOCRATES run, loop ", loop_counter, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     PrintSeparator()
 
-    # Calculate OLR flux for a given surface temperature w/ SOCRATES
-    SPIDER_options["heat_flux"] = atm_rad_conv.SocRadConv.RadConvEqm(dirs, time_current, time_offset, atm, loop_counter, SPIDER_options, standalone=False, cp_dry=False) # W/m^2
+    # Calculate temperature structure and heat flux w/ SOCRATES
+    atm = atm_rad_conv.SocRadConv.RadConvEqm(dirs, time_current, time_offset, atm, loop_counter, SPIDER_options, standalone=False, cp_dry=False) # W/m^2
+    
+    # MO heat flux from topmost atmosphere node; do not allow heating
+    SPIDER_options["heat_flux"] = np.max( [ 0., atm.net_flux[0] ] )
 
     # Clean up run directory
     PrintSeparator()
@@ -863,12 +866,12 @@ def UpdatePlots( output_dir, use_vulcan=0 ):
         plot_global.plot_global(output_dir)   
 
     # Specific timesteps for paper plots
-    plot_interior.plot_interior(plot_times)     
-    plot_atmosphere.plot_atmosphere(output_dir, plot_times)
-    plot_stacked.plot_stacked(output_dir, plot_times)
+    plot.plot_interior.plot_interior(plot_times)     
+    plot.plot_atmosphere.plot_atmosphere(output_dir, plot_times)
+    plot.plot_stacked.plot_stacked(output_dir, plot_times)
     
     # One plot per timestep for video files
-    plot_atmosphere.plot_current_mixing_ratio(output_dir, plot_times[-1], use_vulcan) 
+    plot.plot_atmosphere.plot_current_mixing_ratio(output_dir, plot_times[-1], use_vulcan) 
 
     # Close all figures
     plt.close()
