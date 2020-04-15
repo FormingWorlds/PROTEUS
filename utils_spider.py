@@ -18,7 +18,7 @@ bigG = 6.67408E-11 # m^3 / kg / s^2
 # TODO: this is the current model, but could be different depending
 # on what the user is doing
 # FIXME: below will break for other users
-lookupdir = '/Users/dan/Programs/spider-dev/lookup_data/1TPa-dK09-elec-free/'
+lookupdir = '/Users/tim/bitbucket/SPIDER-DEV/lookup_data/1TPa-dK09-elec-free/'
 # melting curves
 liquidus_file = os.path.join( lookupdir, 'melting_curves/final/liquidus.dat')
 solidus_file = os.path.join( lookupdir, 'melting_curves/final/solidus.dat')

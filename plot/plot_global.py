@@ -31,7 +31,7 @@ for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
            'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
            'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
            'tokyo', 'turku', 'vik' ]:
-    file = os.path.join("plotting_tools/ScientificColourMaps5/", name + '.txt')
+    file = os.path.join("plot/ScientificColourMaps5/", name + '.txt')
     cm_data = np.loadtxt(file)
     vars()[name] = LinearSegmentedColormap.from_list(name, cm_data)
     vars()[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])

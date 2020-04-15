@@ -35,12 +35,12 @@
 # - these are used to non-dimensionalise (scale) the numerical problem
 #   and do not represent the physical quantities that are actually
 #   used (physical parameters are listed below)
--radius0 6371000.0 # Earth radius
+-radius0 63710000.0 # Earth radius
 -entropy0 2993.025100070677 # overturn of liquidus in Stixrude et al. (2009)
 -temperature0 4033.6070755893948 # overturn of liquidus in Stixrude et al. (2009)
--density0 4613.109568155063 # overturn of liquidus in Stixrude et al. (2009)
+-density0 1.0E-1 #4613.109568155063 # overturn of liquidus in Stixrude et al. (2009)
 # volatile0 is only used if SOLVE_FOR_VOLATILES=1 or SURFACE_BC=3
--volatile0 1.0E2
+-volatile0 1.0E-6
 
 # energy fluxes and sources to include
 # [0] is off
@@ -176,7 +176,7 @@
 #-CO2_initial 6000.0 # ppm, Elkins-Tanton (2008) case 3
 -CO2_kdist 5.0E-4 # distribution coefficient between solid and melt (non-dimensional)
 -CO2_kabs 0.05 # absorption (m^2/kg)
--CO2_henry 4.4E-6 # ppm/Pa (Lebrun et al., 2013)
+-CO2_henry 0.0 #4.4E-6 # ppm/Pa (Lebrun et al., 2013)
 -CO2_henry_pow 1.0 # power for Henry's law (Lebrun et al., 2013)
 -CO2_molar_mass 0.04401 # kg/mol
 
@@ -187,7 +187,7 @@
 #-H2O_initial 0.0 # ppm, Elkins-Tanton (2008) case 3
 -H2O_kdist 1.0E-4 # distribution coefficients are given in supplementary material of ET08
 -H2O_kabs 0.01 # absorption (m^2/kg)
--H2O_henry 6.8E-2 # ppm/Pa (Lebrun et al., 2013)
+-H2O_henry 0.0 #6.8E-2 # ppm/Pa (Lebrun et al., 2013)
 -H2O_henry_pow 1.4285714285714286 # Power for Henry's law (1.0/0.7) (Lebrun et al., 2013)
 -H2O_molar_mass 0.01801528 # kg/mol
 
