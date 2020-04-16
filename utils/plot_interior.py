@@ -1,43 +1,20 @@
 #!/usr/bin/env python
 
-import spider_coupler_utils as su
-import coupler_utils
-import argparse
-import logging
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mtick
-import numpy as np
-import os
-import sys
-import glob
-# from natsort import natsorted #https://pypi.python.org/pypi/natsort
-from decimal import Decimal
-import matplotlib.ticker as ticker
-
-# Define Crameri colormaps (+ recursive)
-from matplotlib.colors import LinearSegmentedColormap
-for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
-           'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
-           'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
-           'tokyo', 'turku', 'vik' ]:
-    file = os.path.join("plot/ScientificColourMaps5/", name + '.txt')
-    cm_data = np.loadtxt(file)
-    vars()[name] = LinearSegmentedColormap.from_list(name, cm_data)
-    vars()[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
-
-logger = su.get_my_logger(__name__)
+# Import utils- and plot-specific modules
+from utils.modules_utils import *
+from utils.modules_coupler import *
 
 #====================================================================
-def plot_interior( times ):
+def plot_interior( output_dir, times ):
 
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width
 
-    logger.info( 'building mantle_evolution' )
+    # logger.info( 'building mantle_evolution' )
 
     width = 12.00 #* 3.0/2.0
     height = 6.0
-    fig_o = su.FigureData( 1, 4, width, height, 'output/'+'plot_interior', units='kyr' ) #, times
+    fig_o = su.FigureData( 1, 4, width, height, output_dir+'/'+'plot_interior', units='kyr' ) #, times
     fig_o.fig.subplots_adjust(wspace=0.15,hspace=0.2)
     fig_o.time = times
 
@@ -49,7 +26,7 @@ def plot_interior( times ):
     time = fig_o.time[0] # first timestep since liquidus and solidus
                          # are time-independent
 
-    myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
+    myjson_o = su.MyJSON( output_dir+'/{}.json'.format(time) )
 
     # print(myjson_o.data_d)
     # TIMEYRS = myjson_o.data_d['nstep']
@@ -81,7 +58,7 @@ def plot_interior( times ):
     for nn, time in enumerate( fig_o.time ):
 
         # read json
-        myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
+        myjson_o = su.MyJSON( output_dir+'/{}.json'.format(time) )
 
         color = fig_o.get_color( nn )
 
@@ -91,7 +68,7 @@ def plot_interior( times ):
 
         # label = fig_o.get_legend_label( time )
         # label = "{:.1e}".format(Decimal(time))+" yr"
-        label = coupler_utils.latex_float(time)+" yr"
+        label = cu.latex_float(time)+" yr"
 
         # temperature
         yy = myjson_o.get_dict_values(['data','temp_b'])
@@ -187,46 +164,20 @@ def plot_interior( times ):
 #====================================================================
 def main():
 
-    # output_list = [os.path.basename(x) for x in natsorted(glob.glob("output/"+"*.json"))]
-    # output_list = [ int(x[0:-5]) for x in output_list ]
-    # print(output_list)
-    # plot_list = [ output_list[0], output_list[int(round(len(output_list)*(1./5.)))], output_list[int(round(len(output_list)*(2./5.)))], output_list[int(round(len(output_list)*(3./5.)))], output_list[int(round(len(output_list)*(4./5.)))], output_list[-1] ]yticks
+    # Read optional argument from console to provide output dir
+    output_dir_read = parser.parse_args().dir
 
-    output_list = su.get_all_output_times()
-    # plot_list = str(output_list[0])+","+str(output_list[int(round(len(output_list)*(1./5.)))])+","+str( output_list[int(round(len(output_list)*(2./5.)))])+","+str(output_list[int(round(len(output_list)*(3./5.)))])+","+str(output_list[int(round(len(output_list)*(4./5.)))])+","+str(output_list[-1])
+    output_list = su.get_all_output_times(output_dir_read)
+
     if len(output_list) <= 8:
         plot_list = output_list
     else:
         plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
     print("snapshots:", plot_list)
 
-    # arguments (run with -h to summarize)
-    # parser = argparse.ArgumentParser(description='SPIDER plotting script')
-    # parser.add_argument('-t', '--times', type=str, help='Comma-separated (no spaces) list of times');
-    # parser.add_argument('-f3', '--fig3', help='Plot figure 3', action="store_true")
-    # args = parser.parse_args()
-    #
-    # print(args.times)
-
-    # # if nothing specified, choose a default set
-    # if not args.fig3:
-    #     args.fig3 = True;
-    #
-    # if args.fig3 :
-    #     if not args.times:
-    #         logger.critical( 'You must specify times in a comma-separated list (no spaces) using -t' )
-    #         sys.exit(0)
-
-    # # reproduce staple figures in Bower et al. (2018)
-    # # i.e., figs 3,4,5,6,7,8
-    # if args.fig3 :
-    #     solid_evolution_fig3( times=args.times )
-
     # output_dir = parser.parse_args().dir
 
-    plot_interior( times=plot_list )
-
-    # plt.show()
+    plot_interior( output_dir=output_dir_read, times=plot_list )
 
 #====================================================================
 

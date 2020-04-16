@@ -1,34 +1,37 @@
-# General python packages
-import errno
-import sys, os, shutil
-from datetime import datetime
+# # General python packages
+# import errno
+# import sys, os, shutil
+# from datetime import datetime
+# # from natsort import natsorted #https://pypi.python.org/pypi/natsort
+# import numpy as np
+# import matplotlib.pyplot as plt
+# from matplotlib.colors import LinearSegmentedColormap
+# import pandas as pd
+# from scipy import interpolate
+# import pandas as pd
+# import json
+# import subprocess
+# import fileinput # https://kaijento.github.io/2017/05/28/python-replacing-lines-in-file/
 # from natsort import natsorted #https://pypi.python.org/pypi/natsort
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
-import pandas as pd
-from scipy import interpolate
-import pandas as pd
-import json
-import subprocess
-import fileinput # https://kaijento.github.io/2017/05/28/python-replacing-lines-in-file/
-from natsort import natsorted #https://pypi.python.org/pypi/natsort
-import glob
-import math
+# import glob
+# import math
+# import pickle as pkl
+# import argparse
 
-from atmosphere_column import atmos
-import argparse
+# # Coupler-specific modules
+# import atm_rad_conv.SocRadConv
+# import atm_rad_conv.SocRadModel
+# import atm_rad_conv.GeneralAdiabat
+# from atm_rad_conv.atmosphere_column import atmos
 
-# Coupler-specific modules
-import atm_rad_conv.SocRadConv
-import atm_rad_conv.SocRadModel
-import atm_rad_conv.GeneralAdiabat
-from atm_rad_conv.atmosphere_column import atmos
-import utils_spider as su
-import plot.plot_interior
-import plot.plot_global
-import plot.plot_stacked
-import plot.plot_atmosphere
+# import utils_spider as su
+# import plot.plot_interior
+# import plot.plot_global
+# import plot.plot_stacked
+# import plot.plot_atmosphere
+
+# Import utils-specific modules
+from utils.modules_utils import *
 
 ### Constants ###
 
@@ -164,7 +167,7 @@ def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
 
     return z_profile
 
-def PrintCurrentState(time_current, runtime_helpfile, SPIDER_options, toa_heating, loop_counter, dirs):
+def PrintCurrentState(time_current, runtime_helpfile, SPIDER_options, atm, loop_counter, dirs):
 
     # Print final statement
     print("---------------------------------------------------------")
@@ -177,26 +180,33 @@ def PrintCurrentState(time_current, runtime_helpfile, SPIDER_options, toa_heatin
     # print(runtime_helpfile[["Time", "Input", "M_atm", "M_atm_kgmol", "H_mol_atm", "H_mol_solid", "H_mol_liquid", "H_mol_total", "O_mol_total", "O/H_atm", "P_surf"]])
     print(runtime_helpfile.tail(2))
     print("P_surf [bar]:", runtime_helpfile.iloc[-1]["P_surf"], " ")
-    print("TOA heating [W/m^2]:", toa_heating)
+    print("TOA heating [W/m^2]:", atm.toa_heating)
     print("MO heat flux [W/m^2]:", SPIDER_options["heat_flux"])
     print("Last file name:", SPIDER_options["ic_interior_filename"])
     print("---------------------------------------------------------")
 
-def UpdateHelpfile(loop_counter, dirs, file_name, runtime_helpfile, input_flag, SPIDER_options):
+    # Save atm object to disk
+    with open(dirs["output"]+"/"+str(int(time_current))+"_atm.pkl", "wb") as atm_file: pkl.dump(atm, atm_file)
+
+def UpdateHelpfile(loop_counter, dirs, runtime_helpfile, input_flag, SPIDER_options):
+
+    runtime_helpfile_name = "/runtime_helpfile.csv"
 
     # If runtime_helpfle not existent, create it + write to disk
-    if not os.path.isfile(dirs["output"]+file_name):
+    if not os.path.isfile(dirs["output"]+runtime_helpfile_name):
         runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'Heat_flux', 'P_surf', 'M_atm', 'M_atm_kgmol', 'Phi_global', 'M_mantle', 'M_core', 'M_mantle_liquid', 'M_mantle_solid', 'H_mol_atm', 'H_mol_solid', 'H_mol_liquid', 'H_mol_total', 'O_mol_total', 'C_mol_total', 'N_mol_total', 'S_mol_total', 'He_mol_total', 'O/H_atm', 'C/H_atm', 'N/H_atm', 'S/H_atm', 'He/H_atm', 'H2O_mr', 'CO2_mr', 'H2_mr', 'CO_mr', 'CH4_mr', 'N2_mr', 'O2_mr', 'S_mr', 'He_mr'])
-        runtime_helpfile.to_csv( dirs["output"]+file_name, index=False, sep=" ") 
+        runtime_helpfile.to_csv( dirs["output"]+runtime_helpfile_name, index=False, sep=" ") 
         time_current = 0
         #, 'H2O_atm_bar', 'CO2_atm_bar', 'H2_atm_bar', 'CH4_atm_bar', 'CO_atm_bar', 'N2_atm_bar', 'O2_atm_bar', 'S_atm_bar', 'He_atm_bar'run
 
         # Save SPIDER options file
         SPIDER_options_save = pd.DataFrame(SPIDER_options, index=[0])
-        SPIDER_options_save.to_csv( dirs["output"]+"spider_options.csv", index=False, sep=" ")
+        SPIDER_options_save.to_csv( dirs["output"]+"/spider_options.csv", index=False, sep=" ")
 
     # Data dict
     runtime_helpfile_new = {}
+
+    print(runtime_helpfile)
 
     # For "Interior" sub-loop (SPIDER)
     if input_flag == "Interior":
@@ -216,7 +226,7 @@ def UpdateHelpfile(loop_counter, dirs, file_name, runtime_helpfile, input_flag, 
                    ('atmosphere','pressure_surface'),
                    )
 
-        data_a = su.get_dict_surface_values_for_specific_time( keys_t, sim_time )
+        data_a = su.get_dict_surface_values_for_specific_time( keys_t, sim_time, indir=dirs["output"] )
 
         # Fill the new dict
         runtime_helpfile_new["Time"]  = sim_time
@@ -253,7 +263,7 @@ def UpdateHelpfile(loop_counter, dirs, file_name, runtime_helpfile, input_flag, 
                             ('atmosphere',vol,'mixing_ratio')  
                          )
                 
-                data_a = su.get_dict_surface_values_for_specific_time( keys_t, sim_time )
+                data_a = su.get_dict_surface_values_for_specific_time( keys_t, sim_time, indir=dirs["output"] )
 
                 runtime_helpfile_new[vol+"_liquid_kg"]  = data_a[0,:]
                 runtime_helpfile_new[vol+"_solid_kg"]   = data_a[1,:]
@@ -316,26 +326,6 @@ def UpdateHelpfile(loop_counter, dirs, file_name, runtime_helpfile, input_flag, 
                                                     + runtime_helpfile_new["N_mol_"+res]  * molar_mass["N"] \
                                                     + runtime_helpfile_new["S_mol_"+res]  * molar_mass["S"] \
                                                     + runtime_helpfile_new["He_mol_"+res] * molar_mass["He"]
-
-        # # Total number of mols per element
-        # for element in element_list:
-        #     # if loop_counter["init"] == 0:
-        #     #     runtime_helpfile_new[element+"_mol_total"] = runtime_helpfile_new[element+"_mol_atm"] + runtime_helpfile_new[element+"_mol_solid"] + runtime_helpfile_new[element+"_mol_liquid"]
-        #     # ## Ensure mass conservation related to chemistry/partitioning disequilibrium
-        #     # # If total number of atoms has decreased, add atoms to atmosphere bucket
-        #     # else:
-        #         # # Check for changes
-        #         # dN = runtime_helpfile.iloc[-1][element+"_mol_total"] - runtime_helpfile_new[element+"_mol_total"]
-        #         # if dN > 0.:
-        #         # # Add it to atmosphere reservoir
-        #         # runtime_helpfile_new[element+"_mol_atm"] += dN
-        #         # Correct total mol number
-        #         # runtime_helpfile_new[element+"_mol_total"]  = runtime_helpfile.iloc[-1][element+"_mol_total"]
-
-        #     runtime_helpfile_new["test_"+element+"_mol_atm"] = runtime_helpfile_new[element+"_mol_total"]    \
-        #                                                - runtime_helpfile_new[element+"_mol_solid"]  \
-        #                                                - runtime_helpfile_new[element+"_mol_liquid"]
-        #     print("test_"+element+"_mol_atm", runtime_helpfile_new["test_"+element+"_mol_atm"])
 
         # Avoid division by 0
         min_val     = 1e-99
@@ -440,12 +430,14 @@ def UpdateHelpfile(loop_counter, dirs, file_name, runtime_helpfile, input_flag, 
         'He_mr':            runtime_helpfile_new["He_mr"],
         }, index=[0])
     runtime_helpfile = runtime_helpfile.append(runtime_helpfile_new) 
-    runtime_helpfile.to_csv( dirs["output"]+file_name, index=False, sep=" ")
+    print(runtime_helpfile)
+    print(dirs["output"]+runtime_helpfile_name)
+    runtime_helpfile.to_csv( dirs["output"]+runtime_helpfile_name, index=False, sep=" ")
 
     # Save SPIDER_options to disk
-    SPIDER_options_save = pd.read_csv(dirs["output"]+"spider_options.csv", sep=" ")
+    SPIDER_options_save = pd.read_csv(dirs["output"]+"/spider_options.csv", sep=" ")
     SPIDER_options_save = SPIDER_options_save.append(SPIDER_options, ignore_index=True) 
-    SPIDER_options_save.to_csv( dirs["output"]+"spider_options.csv", index=False, sep=" ")
+    SPIDER_options_save.to_csv( dirs["output"]+"/spider_options.csv", index=False, sep=" ")
 
     # Advance time_current in main loop
     time_current = runtime_helpfile.iloc[-1]["Time"]
@@ -759,6 +751,7 @@ def RunSPIDER( time_current, time_target, dirs, SPIDER_options, loop_counter, ru
     call_sequence = [   
                         "spider", 
                         "-options_file",          "spider_input.opts", 
+                        "-outputDirectory",       dirs["output"],
                         "-IC_INTERIOR",           str(SPIDER_options["IC_INTERIOR"]),
                         "-IC_ATMOSPHERE",         str(SPIDER_options["IC_ATMOSPHERE"]),
                         "-SURFACE_BC",            str(SPIDER_options["SURFACE_BC"]), 
@@ -824,26 +817,31 @@ def RunSPIDER( time_current, time_target, dirs, SPIDER_options, loop_counter, ru
     subprocess.call(call_sequence)
 
     # Update restart filename for next SPIDER run
-    SPIDER_options["ic_interior_filename"] = natsorted([os.path.basename(x) for x in glob.glob(dirs["output"]+"*.json")])[-1]
+    SPIDER_options["ic_interior_filename"] = natsorted([os.path.basename(x) for x in glob.glob(dirs["output"]+"/*.json")])[-1]
 
-    # Clean up run directory
-    print("Remove SPIDER auxiliary files:")
-    for file in natsorted(glob.glob(dirs["coupler"]+"/mylog.log")):
-        os.remove(file)
-        print(os.path.basename(file), end =" ")
-    print("==> Done.")
-    PrintSeparator()
+    # # Clean up run directory
+    # print("Remove SPIDER auxiliary files:")
+    # for file in natsorted(glob.glob(dirs["coupler"]+"/mylog.log")):
+    #     os.remove(file)
+    #     print(os.path.basename(file), end =" ")
+    # print("==> Done.")
+    # PrintSeparator()
 
     return SPIDER_options
 
 def CleanOutputDir( output_dir ):
 
+    types = ("*.json", "*.log", "*.csv", "*.pkl") 
+    files_to_delete = []
+    for files in types:
+        files_to_delete.extend(glob.glob(output_dir+"/"+files))
+
     PrintSeparator()
-    print("Remove old output files:", end =" ")
-    for file in natsorted(glob.glob(output_dir+"*.*")):
+    print("Remove old output files:")
+    for file in natsorted(files_to_delete):
         os.remove(file)
         print(os.path.basename(file), end =" ")
-    print("==> Done.")
+    print("\n==> Done.")
 
 # Plot conditions throughout run for on-the-fly analysis
 def UpdatePlots( output_dir, use_vulcan=0 ):
@@ -851,7 +849,7 @@ def UpdatePlots( output_dir, use_vulcan=0 ):
     PrintSeparator()
     print("Plot current evolution")
     PrintSeparator()
-    output_times = su.get_all_output_times()
+    output_times = su.get_all_output_times( output_dir )
     if len(output_times) <= 8:
         plot_times = output_times
     else:
@@ -863,15 +861,15 @@ def UpdatePlots( output_dir, use_vulcan=0 ):
 
     # Global properties for all timesteps
     if len(output_times) > 1:
-        plot_global.plot_global(output_dir)   
+        plot_global(output_dir)   
 
     # Specific timesteps for paper plots
-    plot.plot_interior.plot_interior(plot_times)     
-    plot.plot_atmosphere.plot_atmosphere(output_dir, plot_times)
-    plot.plot_stacked.plot_stacked(output_dir, plot_times)
+    plot_interior(output_dir, plot_times)     
+    plot_atmosphere(output_dir, plot_times)
+    plot_stacked(output_dir, plot_times)
     
-    # One plot per timestep for video files
-    plot.plot_atmosphere.plot_current_mixing_ratio(output_dir, plot_times[-1], use_vulcan) 
+    # # One plot per timestep for video files
+    # utils.plot_atmosphere.plot_current_mixing_ratio(output_dir, plot_times[-1], use_vulcan) 
 
     # Close all figures
     plt.close()

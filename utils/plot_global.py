@@ -1,23 +1,26 @@
 #!/usr/bin/env python
 
-import logging
-import spider_coupler_utils as su
-import matplotlib.transforms as transforms
-import matplotlib.pyplot as plt
-import numpy as np
-import os
-import matplotlib.ticker as ticker
-import argparse
-import matplotlib
-import pandas as pd
-import mmap
+# Import utils- and plot-specific modules
+from utils.modules_plot import *
+
+# import logging
+# import spider_coupler_utils as su
+# import matplotlib.transforms as transforms
+# import matplotlib.pyplot as plt
+# import numpy as np
+# import os
+# import matplotlib.ticker as ticker
+# import argparse
+# import matplotlib
+# import pandas as pd
+# import mmap
 # import seaborn as sns
 # # https://seaborn.pydata.org/tutorial/aesthetics.html
 # sns.set_style("white")
 
-# Output dir, optional argument: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
-parser = argparse.ArgumentParser(description='Define file output directory.')
-parser.add_argument('--dir', default="output/", help='Provide path to output directory.' )
+# # Output dir, optional argument: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
+# parser = argparse.ArgumentParser(description='Define file output directory.')
+# parser.add_argument('--dir', default="output/", help='Provide path to output directory.' )
 
 # # Specify varying volatile abundances: $ python plot_atmosphere.py -H2 0,10
 # parser = argparse.ArgumentParser(description='COUPLER optional command line arguments')
@@ -25,18 +28,18 @@ parser.add_argument('--dir', default="output/", help='Provide path to output dir
 # parser.add_argument('-H2O', type=float, help='H2O initial abundance (ppm wt)')
 # # args = parser.parse_args()
 
-# Define Crameri colormaps (+ recursive)
-from matplotlib.colors import LinearSegmentedColormap
-for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
-           'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
-           'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
-           'tokyo', 'turku', 'vik' ]:
-    file = os.path.join("plot/ScientificColourMaps5/", name + '.txt')
-    cm_data = np.loadtxt(file)
-    vars()[name] = LinearSegmentedColormap.from_list(name, cm_data)
-    vars()[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
+# # Define Crameri colormaps (+ recursive)
+# from matplotlib.colors import LinearSegmentedColormap
+# for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
+#            'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
+#            'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
+#            'tokyo', 'turku', 'vik' ]:
+#     file = os.path.join("plot/ScientificColourMaps5/", name + '.txt')
+#     cm_data = np.loadtxt(file)
+#     vars()[name] = LinearSegmentedColormap.from_list(name, cm_data)
+#     vars()[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
 
-logger = su.get_my_logger(__name__)
+# logger = su.get_my_logger(__name__)
 
 # Color definitions, https://chrisalbon.com/python/seaborn_color_palettes.html
 qgray       = "#768E95"
@@ -121,9 +124,9 @@ volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
 #====================================================================
 def plot_global( output_dir ):
 
-    logger.info( 'building atmosphere' )
+    # logger.info( 'building atmosphere' )
 
-    fig_o = su.FigureData( 3, 2, width, height, output_dir+'plot_global', units='yr' )
+    fig_o = su.FigureData( 3, 2, width, height, output_dir+'/plot_global', units='yr' )
     fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.1)
 
     # Subplot titles
@@ -148,7 +151,7 @@ def plot_global( output_dir ):
     # runtime_helpfile = pd.read_csv(output_dir+"runtime_helpfile.csv", sep=" ")
     # print(runtime_helpfile)
 
-    fig_o.time = su.get_all_output_times()
+    fig_o.time = su.get_all_output_times(output_dir)
     print("Times", fig_o.time)
 
     ########## Global properties
@@ -162,7 +165,7 @@ def plot_global( output_dir ):
                ('atmosphere','Fatm'),
                ('atmosphere','pressure_surface')
                )
-    data_a = su.get_dict_surface_values_for_times( keys_t, fig_o.time )
+    data_a = su.get_dict_surface_values_for_times( keys_t, fig_o.time, output_dir )
     mass_liquid         = data_a[0,:]
     mass_solid          = data_a[1,:]
     mass_mantle         = data_a[2,:]
@@ -286,7 +289,7 @@ def plot_global( output_dir ):
         for sim_time in fig_o.time:
 
             # Define file name
-            json_file = "./output/"+str(int(sim_time))+".json"
+            json_file = output_dir+"/"+str(int(sim_time))+".json"
 
             # For string check
             vol_str = '"'+vol+'"'
@@ -316,7 +319,7 @@ def plot_global( output_dir ):
         if vol_times:
 
             # Get the data for these files
-            data_vol = su.get_dict_surface_values_for_times( keys_t, vol_times )
+            data_vol = su.get_dict_surface_values_for_times( keys_t, vol_times, output_dir )
             vol_liquid_kg       = data_vol[0,:]
             vol_solid_kg        = data_vol[1,:]
             vol_initial_kg      = data_vol[2,:]
@@ -364,7 +367,7 @@ def plot_global( output_dir ):
     # figure e
     ##########
     # Check atmospheric comparisons for mass conservation
-    runtime_helpfile = pd.read_csv(output_dir+"runtime_helpfile.csv", delim_whitespace=True)
+    runtime_helpfile = pd.read_csv(output_dir+"/"+"runtime_helpfile.csv", delim_whitespace=True)
     ax4.semilogx( runtime_helpfile["Time"], runtime_helpfile["M_atm"]/runtime_helpfile.iloc[0]["M_atm"], lw=lw, color=vol_colors["black_2"], linestyle='-')
     # ax4.semilogx( runtime_helpfile.loc[runtime_helpfile['Input'] == "Interior"]["Time"], runtime_helpfile.loc[runtime_helpfile['Input'] == "Interior"]["H_mol_total"]/runtime_helpfile.iloc[0]["H_mol_total"], lw=lw, color=vol_colors["black_3"], linestyle='--')
     # ax4.semilogx( runtime_helpfile.loc[runtime_helpfile['Input'] == "Atmosphere"]["Time"], runtime_helpfile.loc[runtime_helpfile['Input'] == "Atmosphere"]["C/H_atm"]/runtime_helpfile.iloc[0]["C/H_atm"], lw=lw, color=vol_colors["black_1"], linestyle=':')

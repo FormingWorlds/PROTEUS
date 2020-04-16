@@ -1,59 +1,44 @@
+#!/usr/bin/env python
+
 """
 Coupler Main file – SPIDER-SOCRATES-VULCAN
 """
 
-import importlib.util
-import numpy as np
-import subprocess
-import argparse
-import glob
-import sys, os, shutil
-import math
-from natsort import natsorted #https://pypi.python.org/pypi/natsort
-from datetime import datetime
-import pandas as pd
+# import importlib.util
+# import numpy as np
+# import subprocess
+# import argparse
+# import glob
+# import sys, os, shutil
+# import math
+# from natsort import natsorted #https://pypi.python.org/pypi/natsort
+# from datetime import datetime
+# import pandas as pd
+# import pathlib
 
-# Coupler-specific modules and paths
-coupler_dir = os.getcwd()
-output_dir  = coupler_dir+"/output/"
-vulcan_dir  = coupler_dir+"/vulcan_spider/"
-radconv_dir = coupler_dir+"/atm_rad_conv/"
+# # Coupler-specific paths
+# coupler_dir = str(pathlib.Path(__file__).parent.absolute())
+# output_dir  = str(pathlib.Path().absolute())
+# vulcan_dir  = coupler_dir+"/vulcan_spider/"
+# radconv_dir = coupler_dir+"/atm_rad_conv/"
+# if output_dir == coupler_dir: output_dir  = output_dir+"/output/"
 
-# Add to path
-sys.path.append(radconv_dir)
-sys.path.append(vulcan_dir)
+# # Add to path
+# sys.path.append(radconv_dir)
+# sys.path.append(vulcan_dir)
 
 # Coupler-specific modules
-import SocRadConv
-import SocRadModel
-from atmosphere_column import atmos
-import utils_coupler as utils
-import utils_spider as su
+# import SocRadConv
+# import SocRadModel
+# from atmosphere_column import atmos
+# import utils_coupler as utils
+# import utils_spider as su
 
-# Handle optional command line arguments for volatiles
-parser = argparse.ArgumentParser(description='COUPLER optional command line arguments')
-parser.add_argument('-dir', default="output/", help='Provide path to output directory.' )
-parser.add_argument('-H2O_ppm', type=float, help='H2O initial abundance (ppm wt).')
-parser.add_argument('-CO2_ppm', type=float, help='CO2 initial abundance (ppm wt).')
-parser.add_argument('-H2_ppm', type=float, help='H2 initial abundance (ppm wt).')
-parser.add_argument('-CO_ppm', type=float, help='CO initial abundance (ppm wt).')
-parser.add_argument('-N2_ppm', type=float, help='N2 initial abundance (ppm wt).')
-parser.add_argument('-CH4_ppm', type=float, help='CH4 initial abundance (ppm wt).')
-parser.add_argument('-O2_ppm', type=float, help='O2 initial abundance (ppm wt).')
-parser.add_argument('-H2O_bar', type=float, help='H2O initial abundance (bar).')
-parser.add_argument('-CO2_bar', type=float, help='CO2 initial abundance (bar).')
-parser.add_argument('-H2_bar', type=float, help='H2 initial abundance (bar).')
-parser.add_argument('-CO_bar', type=float, help='CO initial abundance (bar).')
-parser.add_argument('-N2_bar', type=float, help='N2 initial abundance (bar).')
-parser.add_argument('-CH4_bar', type=float, help='CH4 initial abundance (bar).')
-parser.add_argument('-O2_bar', type=float, help='O2 initial abundance (bar).')
-args = parser.parse_args()
+# Import standard and coupler-specific modules: 
+from utils.modules_coupler import *
 
 # Volatile list tracked in radiative-convective model
 vol_list = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
-
-# Project main directories
-dirs = { "rad_conv": radconv_dir, "output": output_dir, "vulcan": vulcan_dir, "coupler": coupler_dir}
 
 #====================================================================
 def main():
@@ -108,15 +93,12 @@ def main():
     time_offset           = 1e+8         # yr, start of magma ocean after star formation
     time_current          = time_start   # yr
 
-    # Define runtime helpfile names and generate dataframes
-    runtime_helpfile_name = "runtime_helpfile.csv"
-
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
     loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 1 }
 
     # Start conditions and help files depending on restart option
     if SPIDER_options["IC_INTERIOR"] == 1: 
-        utils.CleanOutputDir( output_dir )
+        cu.CleanOutputDir( output_dir )
         runtime_helpfile    = []
     # If restart skip init loop
     if SPIDER_options["IC_INTERIOR"] == 2:
@@ -185,10 +167,10 @@ def main():
         ############### INTERIOR SUB-LOOP
 
         # Run SPIDER
-        SPIDER_options = utils.RunSPIDER( time_current, time_target, dirs, SPIDER_options, loop_counter, runtime_helpfile )
+        SPIDER_options = cu.RunSPIDER( time_current, time_target, dirs, SPIDER_options, loop_counter, runtime_helpfile )
 
         # Update help quantities, input_flag: "Interior"
-        runtime_helpfile, time_current = utils.UpdateHelpfile(loop_counter, dirs, runtime_helpfile_name, runtime_helpfile, "Interior", SPIDER_options)
+        runtime_helpfile, time_current = cu.UpdateHelpfile(loop_counter, dirs, runtime_helpfile, "Interior", SPIDER_options)
 
         ############### / INTERIOR SUB-LOOP
 
@@ -196,28 +178,28 @@ def main():
 
         # Generate atmosphere object
         if loop_counter["total"] == 0 and loop_counter["init"] == 0:
-            atm = utils.StructAtm( time_current, loop_counter, dirs, runtime_helpfile )
+            atm = cu.StructAtm( time_current, loop_counter, dirs, runtime_helpfile )
 
         while loop_counter["atm"] < loop_counter["atm_loops"]:
 
             # Run VULCAN: update atmosphere mixing ratios
-            atm = utils.RunAtmChemistry( atm, time_current, loop_counter, dirs, runtime_helpfile, SPIDER_options )
+            atm = cu.RunAtmChemistry( atm, time_current, loop_counter, dirs, runtime_helpfile, SPIDER_options )
 
             # Run SOCRATES: update TOA heating and MO heat flux
-            atm, SPIDER_options = utils.RunSOCRATES( atm, time_current, time_offset, star_mass, mean_distance, dirs, runtime_helpfile, loop_counter, SPIDER_options )
+            atm, SPIDER_options = cu.RunSOCRATES( atm, time_current, time_offset, star_mass, mean_distance, dirs, runtime_helpfile, loop_counter, SPIDER_options )
 
             loop_counter["atm"] += 1
 
         # Update help quantities, input_flag: "Atmosphere"
-        runtime_helpfile, time_current = utils.UpdateHelpfile(loop_counter, dirs, runtime_helpfile_name, runtime_helpfile, "Atmosphere", SPIDER_options)
+        runtime_helpfile, time_current = cu.UpdateHelpfile(loop_counter, dirs,  runtime_helpfile, "Atmosphere", SPIDER_options)
 
         ############### / ATMOSPHERE SUB-LOOP
         
-        # Runtime info
-        utils.PrintCurrentState(time_current, runtime_helpfile, SPIDER_options, atm.toa_heating, loop_counter, dirs)
+        # Print and save info
+        cu.PrintCurrentState(time_current, runtime_helpfile, SPIDER_options, atm, loop_counter, dirs)
 
         # Plot conditions throughout run for on-the-fly analysis
-        utils.UpdatePlots( dirs, SPIDER_options["use_vulcan"] )
+        cu.UpdatePlots( output_dir, SPIDER_options["use_vulcan"] )
 
         # # After very first timestep, starting w/ 2nd init loop: read in partial pressures
         # if loop_counter["init"] >= 1:
@@ -235,7 +217,7 @@ def main():
             SPIDER_options["IC_INTERIOR"] = 2
 
     # Save files from finished simulation
-    utils.SaveOutput( output_dir )
+    cu.SaveOutput( output_dir )
 
     print("\n===> COUPLER run finished successfully <===")
 

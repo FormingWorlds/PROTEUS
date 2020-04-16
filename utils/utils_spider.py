@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+# Import utils-specific modules
+from utils.modules_utils import *
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick

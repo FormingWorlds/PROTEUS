@@ -1,20 +1,23 @@
 #!/usr/bin/env python
 
-import spider_coupler_utils as su
-import coupler_utils
-import argparse
-import logging
-import matplotlib
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import numpy as np
-import os
-import sys
-import glob
-# from natsort import natsorted #https://pypi.python.org/pypi/natsort
-from decimal import Decimal
-import matplotlib.ticker as ticker
-import pandas as pd
+# Import utils- and plot-specific modules
+from utils.modules_plot import *
+
+# import spider_coupler_utils as su
+# import coupler_utils
+# import argparse
+# import logging
+# import matplotlib
+# import matplotlib.pyplot as plt
+# import matplotlib.ticker as ticker
+# import numpy as np
+# import os
+# import sys
+# import glob
+# # from natsort import natsorted #https://pypi.python.org/pypi/natsort
+# from decimal import Decimal
+# import matplotlib.ticker as ticker
+# import pandas as pd
 
 # Font settings
 # https://stackoverflow.com/questions/2537868/sans-serif-math-with-latex-in-matplotlib
@@ -28,18 +31,18 @@ import pandas as pd
 # matplotlib.rcParams['pdf.use14corefonts'] = True
 # matplotlib.rcParams['text.usetex'] = True
 
-# Define Crameri colormaps (+ recursive)
-from matplotlib.colors import LinearSegmentedColormap
-for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
-           'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
-           'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
-           'tokyo', 'turku', 'vik' ]:
-    file = os.path.join("plot/ScientificColourMaps5/", name + '.txt')
-    cm_data = np.loadtxt(file)
-    vars()[name] = LinearSegmentedColormap.from_list(name, cm_data)
-    vars()[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
+# # Define Crameri colormaps (+ recursive)
+# from matplotlib.colors import LinearSegmentedColormap
+# for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
+#            'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
+#            'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
+#            'tokyo', 'turku', 'vik' ]:
+#     file = os.path.join("plot/ScientificColourMaps5/", name + '.txt')
+#     cm_data = np.loadtxt(file)
+#     vars()[name] = LinearSegmentedColormap.from_list(name, cm_data)
+#     vars()[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
 
-logger = su.get_my_logger(__name__)
+# logger = su.get_my_logger(__name__)
 
 #====================================================================
 def plot_stacked( output_dir, times ):
@@ -47,11 +50,11 @@ def plot_stacked( output_dir, times ):
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width
 
-    logger.info( 'building stacked interior atmosphere' )
+    # logger.info( 'building stacked interior atmosphere' )
 
     width = 5.00 #* 3.0/2.0
     height = 10.0
-    fig_o = su.FigureData( 2, 1, width, height, 'output/'+'plot_stacked', units='kyr' ) #, times
+    fig_o = su.FigureData( 2, 1, width, height, output_dir+'/'+'plot_stacked', units='kyr' ) #, times
     fig_o.fig.subplots_adjust(wspace=0.0,hspace=0.05)
     fig_o.time = times
 
@@ -63,7 +66,7 @@ def plot_stacked( output_dir, times ):
     time = fig_o.time[0] # first timestep since liquidus and solidus
                          # are time-independent
 
-    myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
+    myjson_o = su.MyJSON( output_dir+'/{}.json'.format(time) )
 
     pressure_interior = myjson_o.get_dict_values(['data','pressure_b'])
     # pressure_interior = myjson_o.get_dict_values_internal(['data','pressure_b'])
@@ -98,13 +101,13 @@ def plot_stacked( output_dir, times ):
 
     for nn, time in enumerate( fig_o.time ):
 
-        if os.path.exists('output/'+str(int(time))+"_atm_TP_profile.dat"):
+        if os.path.exists(output_dir+'/'+str(int(time))+"_atm_TP_profile.dat"):
 
             # Read atmospheric chemistry
             atm_chemistry = pd.read_csv(output_dir+str(time)+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True)
 
             # Read atmosphere properties
-            atm_TP_profile  = np.loadtxt('output/'+str(int(time))+"_atm_TP_profile.dat")
+            atm_TP_profile  = np.loadtxt(output_dir+'/'+str(int(time))+"_atm_TP_profile.dat")
 
             temperature_atmosphere  = []
             pressure_atmosphere     = []
@@ -113,7 +116,7 @@ def plot_stacked( output_dir, times ):
                 pressure_atmosphere.append(atm_TP_profile[i][1])
 
             # read json
-            myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
+            myjson_o = su.MyJSON( output_dir+'/{}.json'.format(time) )
 
             color = fig_o.get_color( nn )
             # use melt fraction to determine mixed region
@@ -121,13 +124,13 @@ def plot_stacked( output_dir, times ):
             # MIX = myjson_o.get_mixed_phase_boolean_array( 'basic_internal' )
             # MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
-            label = coupler_utils.latex_float(time)+" yr"
+            label = cu.latex_float(time)+" yr"
 
             # Pressure-height conversion for y-axis
             
            # Atmosphere T-Z
             pressure_atmosphere_Pa = [ n*100. for n in pressure_atmosphere]     # Pa
-            z_profile = coupler_utils.AtmosphericHeight(temperature_atmosphere, pressure_atmosphere_Pa, planet_mass, r_planet) # m
+            z_profile = cu.AtmosphericHeight(temperature_atmosphere, pressure_atmosphere_Pa, planet_mass, r_planet) # m
             z_profile = z_profile*1e-3 # km
             ax0.plot( temperature_atmosphere, z_profile, '-', color=color, label=label, lw=1.5)
 
@@ -250,7 +253,10 @@ def plot_stacked( output_dir, times ):
 #====================================================================
 def main():
 
-    output_list = su.get_all_output_times()
+    # Read optional argument from console to provide output dir
+    output_dir_read = parser.parse_args().dir
+
+    output_list = su.get_all_output_times(output_dir_read)
 
     if len(output_list) <= 8:
         plot_list = output_list
@@ -258,7 +264,7 @@ def main():
         plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
     print("snapshots:", plot_list)
 
-    plot_stacked( output_dir="output/", times=plot_list )
+    plot_stacked( output_dir=output_dir_read, times=plot_list )
 
 #====================================================================
 
