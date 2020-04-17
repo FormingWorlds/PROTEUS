@@ -55,7 +55,7 @@ def main():
         'nstepsmacro':                 1,     # number of timesteps, adjusted during runtime
         'dtmacro':                     50000, # delta time per macrostep to advance by [yr]
         'heat_flux':                   1.0E4, # init heat flux, adjusted during runtime [W/m^2]
-        'H2O_initial_total_abundance': 100,     # init loop: H2O mass relative to mantle [ppm wt]
+        'H2O_initial_total_abundance': 100,   # init loop: H2O mass relative to mantle [ppm wt]
         'CO2_initial_total_abundance': 0,     # init loop [ppm wt]
         'H2_initial_total_abundance':  0,     # init loop [ppm wt]
         'CH4_initial_total_abundance': 0,     # init loop [ppm wt]
@@ -86,19 +86,22 @@ def main():
         }
     
     # Planetary and magma ocean start configuration
-    star_mass             = 1.0          # M_sun, [ 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4 ]
-    mean_distance         = 1.0          # AU, star-planet distance
-    time_start            = 0.           # yr
-    time_target           = 1e+7         # yr
-    time_offset           = 1e+8         # yr, start of magma ocean after star formation
-    time_current          = time_start   # yr
+    star_mass     = 1.0                      # M_sun, [ 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4 ]
+    mean_distance = 1.0                      # AU, star-planet distance
+    time_offset   = 1e+8                     # yr, start of magma ocean after star formation
+    time_dict     = { 
+                      "planet": 0.,          # yr, time since MO start
+                      "target": 1e+7,        # yr, target time for MO evolution
+                      "offset": time_offset, # yr, time since star formation
+                      "star":   time_offset, # yr, time since star formation
+                    }
 
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
     loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 1 }
 
     # Start conditions and help files depending on restart option
     if SPIDER_options["IC_INTERIOR"] == 1: 
-        cu.CleanOutputDir( output_dir )
+        cu.CleanOutputDir( dirs["output"] )
         runtime_helpfile    = []
     # If restart skip init loop
     if SPIDER_options["IC_INTERIOR"] == 2:
@@ -108,7 +111,7 @@ def main():
 
         # Restart file name: automatic last file or specific one
         if SPIDER_options["ic_interior_filename"] == "":
-            SPIDER_options["ic_interior_filename"] = str(natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1])
+            SPIDER_options["ic_interior_filename"] = str(natsorted([os.path.basename(x) for x in glob.glob(dirs["output"]+"/"+"*.json")])[-1])
         # SPIDER_options["ic_interior_filename"] = "X.json"
 
     # Parse optional argument from console
@@ -162,44 +165,44 @@ def main():
 
     
     # Interior-Atmosphere loop
-    while time_current < time_target:
+    while time_dict["planet"] < time_dict["target"]:
 
         ############### INTERIOR SUB-LOOP
 
         # Run SPIDER
-        SPIDER_options = cu.RunSPIDER( time_current, time_target, dirs, SPIDER_options, loop_counter, runtime_helpfile )
+        SPIDER_options = cu.RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile )
 
         # Update help quantities, input_flag: "Interior"
-        runtime_helpfile, time_current = cu.UpdateHelpfile(loop_counter, dirs, runtime_helpfile, "Interior", SPIDER_options)
+        runtime_helpfile, time_dict = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", SPIDER_options)
 
         ############### / INTERIOR SUB-LOOP
 
         ############### ATMOSPHERE SUB-LOOP
 
-        # Generate atmosphere object
-        if loop_counter["total"] == 0 and loop_counter["init"] == 0:
-            atm = cu.StructAtm( time_current, loop_counter, dirs, runtime_helpfile )
+        # Initialize atmosphere structure
+        # if loop_counter["total"] == 0 and loop_counter["init"] == 0:
+        atm = cu.StructAtm( time_dict, loop_counter, dirs, runtime_helpfile )
 
         while loop_counter["atm"] < loop_counter["atm_loops"]:
 
-            # Run VULCAN: update atmosphere mixing ratios
-            atm = cu.RunAtmChemistry( atm, time_current, loop_counter, dirs, runtime_helpfile, SPIDER_options )
+            # Run VULCAN (settings-dependent): update atmosphere mixing ratios
+            atm = cu.RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, SPIDER_options )
 
             # Run SOCRATES: update TOA heating and MO heat flux
-            atm, SPIDER_options = cu.RunSOCRATES( atm, time_current, time_offset, star_mass, mean_distance, dirs, runtime_helpfile, loop_counter, SPIDER_options )
+            atm, SPIDER_options = cu.RunSOCRATES( atm, time_dict, star_mass, mean_distance, dirs, runtime_helpfile, loop_counter, SPIDER_options )
 
             loop_counter["atm"] += 1
 
         # Update help quantities, input_flag: "Atmosphere"
-        runtime_helpfile, time_current = cu.UpdateHelpfile(loop_counter, dirs,  runtime_helpfile, "Atmosphere", SPIDER_options)
+        runtime_helpfile, time_dict = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", SPIDER_options)
 
         ############### / ATMOSPHERE SUB-LOOP
         
-        # Print and save info
-        cu.PrintCurrentState(time_current, runtime_helpfile, SPIDER_options, atm, loop_counter, dirs)
+        # Print info, save atm to file, update plots
+        cu.PrintCurrentState(time_dict, runtime_helpfile, SPIDER_options, atm, loop_counter, dirs)
 
-        # Plot conditions throughout run for on-the-fly analysis
-        cu.UpdatePlots( output_dir, SPIDER_options["use_vulcan"] )
+        # # Plot conditions throughout run for on-the-fly analysis
+        # cu.UpdatePlots( output_dir, SPIDER_options["use_vulcan"] )
 
         # # After very first timestep, starting w/ 2nd init loop: read in partial pressures
         # if loop_counter["init"] >= 1:
@@ -210,14 +213,14 @@ def main():
         loop_counter["total"]       += 1
         if loop_counter["init"] < loop_counter["init_loops"]:
             loop_counter["init"]    += 1
-            time_current            = time_start
+            time_dict["planet"]     = 0.
 
         # Reset restart flag once SPIDER was started w/ ~correct volatile chemistry + heat flux
         if loop_counter["total"] >= loop_counter["init_loops"]:
             SPIDER_options["IC_INTERIOR"] = 2
 
     # Save files from finished simulation
-    cu.SaveOutput( output_dir )
+    cu.SaveOutput( dirs["output"] )
 
     print("\n===> COUPLER run finished successfully <===")
 

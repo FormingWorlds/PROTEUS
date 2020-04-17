@@ -340,6 +340,8 @@ def main():
     # Usage: $ python plot_atmosphere.py -t 0,718259
     parser = argparse.ArgumentParser(description='COUPLER plotting script')
     parser.add_argument('-t', '--times', type=str, help='Comma-separated (no spaces) list of times');
+
+    
     args = parser.parse_args()
 
     if args.times:

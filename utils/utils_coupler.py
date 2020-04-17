@@ -167,14 +167,14 @@ def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
 
     return z_profile
 
-def PrintCurrentState(time_current, runtime_helpfile, SPIDER_options, atm, loop_counter, dirs):
+def PrintCurrentState(time_dict, runtime_helpfile, SPIDER_options, atm, loop_counter, dirs):
 
     # Print final statement
     print("---------------------------------------------------------")
     print("==> RUNTIME INFO <==")
     print(datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     print("LOOP:", loop_counter)
-    print("Time [Myr]:", str(float(time_current)/1e6))
+    print("Time [Myr]:", str(float(time_dict["planet"])/1e6))
     print("T_s [K]:", runtime_helpfile.iloc[-1]["T_surf"])
     print("Helpfile properties:")
     # print(runtime_helpfile[["Time", "Input", "M_atm", "M_atm_kgmol", "H_mol_atm", "H_mol_solid", "H_mol_liquid", "H_mol_total", "O_mol_total", "O/H_atm", "P_surf"]])
@@ -186,22 +186,26 @@ def PrintCurrentState(time_current, runtime_helpfile, SPIDER_options, atm, loop_
     print("---------------------------------------------------------")
 
     # Save atm object to disk
-    with open(dirs["output"]+"/"+str(int(time_current))+"_atm.pkl", "wb") as atm_file: pkl.dump(atm, atm_file)
+    with open(dirs["output"]+"/"+str(int(time_dict["planet"]))+"_atm.pkl", "wb") as atm_file: pkl.dump(atm, atm_file)
 
-def UpdateHelpfile(loop_counter, dirs, runtime_helpfile, input_flag, SPIDER_options):
+    # Plot conditions throughout run for on-the-fly analysis
+    cu.UpdatePlots( dirs["output"], SPIDER_options["use_vulcan"] )
+
+def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, SPIDER_options):
 
     runtime_helpfile_name = "/runtime_helpfile.csv"
+    spider_options_name   = "spider_options.csv"
 
     # If runtime_helpfle not existent, create it + write to disk
-    if not os.path.isfile(dirs["output"]+runtime_helpfile_name):
+    if not os.path.isfile(dirs["output"]+"/"+runtime_helpfile_name):
         runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'Heat_flux', 'P_surf', 'M_atm', 'M_atm_kgmol', 'Phi_global', 'M_mantle', 'M_core', 'M_mantle_liquid', 'M_mantle_solid', 'H_mol_atm', 'H_mol_solid', 'H_mol_liquid', 'H_mol_total', 'O_mol_total', 'C_mol_total', 'N_mol_total', 'S_mol_total', 'He_mol_total', 'O/H_atm', 'C/H_atm', 'N/H_atm', 'S/H_atm', 'He/H_atm', 'H2O_mr', 'CO2_mr', 'H2_mr', 'CO_mr', 'CH4_mr', 'N2_mr', 'O2_mr', 'S_mr', 'He_mr'])
-        runtime_helpfile.to_csv( dirs["output"]+runtime_helpfile_name, index=False, sep=" ") 
-        time_current = 0
+        runtime_helpfile.to_csv( dirs["output"]+"/"+runtime_helpfile_name, index=False, sep=" ") 
+        time_dict["planet"] = 0
         #, 'H2O_atm_bar', 'CO2_atm_bar', 'H2_atm_bar', 'CH4_atm_bar', 'CO_atm_bar', 'N2_atm_bar', 'O2_atm_bar', 'S_atm_bar', 'He_atm_bar'run
 
         # Save SPIDER options file
         SPIDER_options_save = pd.DataFrame(SPIDER_options, index=[0])
-        SPIDER_options_save.to_csv( dirs["output"]+"/spider_options.csv", index=False, sep=" ")
+        SPIDER_options_save.to_csv( dirs["output"]+"/"+spider_options_name, index=False, sep=" ")
 
     # Data dict
     runtime_helpfile_new = {}
@@ -431,18 +435,19 @@ def UpdateHelpfile(loop_counter, dirs, runtime_helpfile, input_flag, SPIDER_opti
         }, index=[0])
     runtime_helpfile = runtime_helpfile.append(runtime_helpfile_new) 
     print(runtime_helpfile)
-    print(dirs["output"]+runtime_helpfile_name)
+    print(dirs["output"]+"/"+runtime_helpfile_name)
     runtime_helpfile.to_csv( dirs["output"]+runtime_helpfile_name, index=False, sep=" ")
 
     # Save SPIDER_options to disk
-    SPIDER_options_save = pd.read_csv(dirs["output"]+"/spider_options.csv", sep=" ")
+    SPIDER_options_save = pd.read_csv(dirs["output"]+"/"+spider_options_name, sep=" ")
     SPIDER_options_save = SPIDER_options_save.append(SPIDER_options, ignore_index=True) 
-    SPIDER_options_save.to_csv( dirs["output"]+"/spider_options.csv", index=False, sep=" ")
+    SPIDER_options_save.to_csv( dirs["output"]+"/"+spider_options_name, index=False, sep=" ")
 
     # Advance time_current in main loop
-    time_current = runtime_helpfile.iloc[-1]["Time"]
+    time_dict["planet"] = runtime_helpfile.iloc[-1]["Time"]
+    time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
 
-    return runtime_helpfile, time_current
+    return runtime_helpfile, time_dict
 
 def PrintSeparator():
     print("-------------------------------------------------------------------------------------------------------------")
@@ -453,25 +458,25 @@ def PrintHalfSeparator():
     pass
 
 # Generate/adapt atmosphere chemistry/radiation input files
-def StructAtm( time_current, loop_counter, dirs, runtime_helpfile ):
+def StructAtm( time_dict, loop_counter, dirs, runtime_helpfile ):
 
-    # Initialize atmosphere structure at very first instance
-    if loop_counter["init"] == 0 and loop_counter["atm"] == 0:
+    # Initialize atmosphere structure
+    # if loop_counter["init"] == 0 and loop_counter["atm"] == 0:
 
-        # Volatile molar concentrations: must sum to ~1 !
-        vol_list = { 
-                      "H2O" : runtime_helpfile.iloc[-1]["H2O_mr"], 
-                      "CO2" : runtime_helpfile.iloc[-1]["CO2_mr"],
-                      "H2"  : runtime_helpfile.iloc[-1]["H2_mr"], 
-                      "N2"  : runtime_helpfile.iloc[-1]["N2_mr"],  
-                      "CH4" : runtime_helpfile.iloc[-1]["CH4_mr"], 
-                      "O2"  : runtime_helpfile.iloc[-1]["O2_mr"], 
-                      "CO"  : runtime_helpfile.iloc[-1]["CO_mr"], 
-                      "He"  : 0.,
-                      "NH3" : 0., 
-                    }
+    # Volatile molar concentrations: must sum to ~1 !
+    vol_list = { 
+                  "H2O" : runtime_helpfile.iloc[-1]["H2O_mr"], 
+                  "CO2" : runtime_helpfile.iloc[-1]["CO2_mr"],
+                  "H2"  : runtime_helpfile.iloc[-1]["H2_mr"], 
+                  "N2"  : runtime_helpfile.iloc[-1]["N2_mr"],  
+                  "CH4" : runtime_helpfile.iloc[-1]["CH4_mr"], 
+                  "O2"  : runtime_helpfile.iloc[-1]["O2_mr"], 
+                  "CO"  : runtime_helpfile.iloc[-1]["CO_mr"], 
+                  "He"  : 0.,
+                  "NH3" : 0., 
+                }
 
-        atm = atmos(runtime_helpfile.iloc[-1]["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, vol_list)
+    atm = atmos(runtime_helpfile.iloc[-1]["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, vol_list)
         
 
     # if SPIDER_options["use_vulcan"] != 0:
@@ -661,7 +666,7 @@ def StructAtm( time_current, loop_counter, dirs, runtime_helpfile ):
 #         json.dump(data, f, indent=4)
 
 # run VULCAN/atmosphere chemistry
-def RunAtmChemistry( atm, time_current, loop_counter, dirs, runtime_helpfile, SPIDER_options ):
+def RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, SPIDER_options ):
 
     # # Generate/adapt atm structure
     # atm = StructAtm( time_current, loop_counter, vulcan_dir, output_dir, runtime_helpfile )
@@ -683,7 +688,7 @@ def RunAtmChemistry( atm, time_current, loop_counter, dirs, runtime_helpfile, SP
         # shutil.copy(vulcan_dir+'output/vulcan_EQ.txt', output_dir+str(int(time_current))+"_atm_chemistry.dat")
 
         # Read in data from VULCAN output
-        atm_chemistry = pd.read_csv(dirs["output"]+volume_mixing_ratios_name, skiprows=1, delim_whitespace=True)
+        atm_chemistry = pd.read_csv(dirs["output"]+"/"+volume_mixing_ratios_name, skiprows=1, delim_whitespace=True)
         print(atm_chemistry.iloc[:, 0:5])
 
         # # Update SPIDER restart options w/ surface partial pressures
@@ -700,10 +705,10 @@ def RunAtmChemistry( atm, time_current, loop_counter, dirs, runtime_helpfile, SP
 
     return atm
 
-def RunSOCRATES( atm, time_current, time_offset, star_mass, mean_distance, dirs, runtime_helpfile, loop_counter, SPIDER_options ):
+def RunSOCRATES( atm, time_dict, star_mass, mean_distance, dirs, runtime_helpfile, loop_counter, SPIDER_options ):
 
     # Interpolate TOA heating from Baraffe models and distance from star
-    atm.toa_heating = atm_rad_conv.SocRadConv.InterpolateStellarLuminosity(star_mass, time_current, time_offset, mean_distance, atm.albedo_pl)
+    atm.toa_heating = atm_rad_conv.SocRadConv.InterpolateStellarLuminosity(star_mass, time_dict, mean_distance, atm.albedo_pl)
 
     # Runtime info
     PrintSeparator()
@@ -711,7 +716,7 @@ def RunSOCRATES( atm, time_current, time_offset, star_mass, mean_distance, dirs,
     PrintSeparator()
 
     # Calculate temperature structure and heat flux w/ SOCRATES
-    atm = atm_rad_conv.SocRadConv.RadConvEqm(dirs, time_current, time_offset, atm, loop_counter, SPIDER_options, standalone=False, cp_dry=False) # W/m^2
+    atm = atm_rad_conv.SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, SPIDER_options, standalone=False, cp_dry=False) # W/m^2
     
     # MO heat flux from topmost atmosphere node; do not allow heating
     SPIDER_options["heat_flux"] = np.max( [ 0., atm.net_flux[0] ] )
@@ -719,17 +724,17 @@ def RunSOCRATES( atm, time_current, time_offset, star_mass, mean_distance, dirs,
     # Clean up run directory
     PrintSeparator()
     print("Remove SOCRATES auxiliary files:")
-    for file in natsorted(glob.glob(dirs["coupler"]+"/current??.????")):
+    for file in natsorted(glob.glob(dirs["output"]+"/current??.????")):
         os.remove(file)
         print(os.path.basename(file), end =" ")
-    for file in natsorted(glob.glob(dirs["coupler"]+"/profile.*")):
+    for file in natsorted(glob.glob(dirs["output"]+"/profile.*")):
         os.remove(file)
         print(os.path.basename(file), end =" ")
     print("==> Done.")
 
     return atm, SPIDER_options
 
-def RunSPIDER( time_current, time_target, dirs, SPIDER_options, loop_counter, runtime_helpfile ):
+def RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile ):
 
     # Define which volatiles to track in SPIDER
     species_call = ""
@@ -741,7 +746,7 @@ def RunSPIDER( time_current, time_target, dirs, SPIDER_options, loop_counter, ru
     # Recalculate time stepping
     if SPIDER_options["IC_INTERIOR"] == 2:      
         dtmacro     = SPIDER_options["dtmacro"]
-        dtime       = time_target - time_current
+        dtime       = time_dict["target"] - time_dict["planet"]
         SPIDER_options["nstepsmacro"] =  math.ceil( dtime / float(SPIDER_options["dtmacro"]) )
     # For init loop and start from beginning
     else:
@@ -797,7 +802,7 @@ def RunSPIDER( time_current, time_target, dirs, SPIDER_options, loop_counter, ru
     if SPIDER_options["IC_INTERIOR"] == 2:
         call_sequence.extend([ 
                                 "-ic_interior_filename", 
-                                str(dirs["output"]+SPIDER_options["ic_interior_filename"]),
+                                str(dirs["output"]+"/"+SPIDER_options["ic_interior_filename"]),
                                 "-activate_poststep", 
                                 "-activate_rollback"
                              ])
@@ -831,7 +836,7 @@ def RunSPIDER( time_current, time_target, dirs, SPIDER_options, loop_counter, ru
 
 def CleanOutputDir( output_dir ):
 
-    types = ("*.json", "*.log", "*.csv", "*.pkl") 
+    types = ("*.json", "*.log", "*.csv", "*.pkl", "current??.????", "profile.*") 
     files_to_delete = []
     for files in types:
         files_to_delete.extend(glob.glob(output_dir+"/"+files))
@@ -877,7 +882,7 @@ def UpdatePlots( output_dir, use_vulcan=0 ):
 # https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
 # https://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
 def make_output_dir( output_dir ):
-    save_dir = output_dir+"save/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
+    save_dir = output_dir+"/"+"save/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
     try:
        os.makedirs(save_dir)
     except OSError as exc:  # Python >2.5
@@ -893,7 +898,7 @@ def SaveOutput( output_dir ):
     save_dir = make_output_dir( output_dir ) #
     print("===> Copy files to separate dir for this run to:", save_dir)
     # shutil.copy(output_dir+"spider_input.opts", save_dir+"spider_input.opts")
-    for file in natsorted(glob.glob(output_dir+"*.*")):
+    for file in natsorted(glob.glob(output_dir+"/"+"*.*")):
         shutil.copy(file, save_dir+os.path.basename(file))
         print(os.path.basename(file), end =" ")
 
