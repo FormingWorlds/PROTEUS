@@ -16,6 +16,9 @@ def plot_stacked( output_dir, times ):
     fig_o.fig.subplots_adjust(wspace=0.0,hspace=0.05)
     fig_o.time = times
 
+    sns.set_style("ticks")
+    sns.despine()
+
     ax0 = fig_o.ax[0]
     ax1 = fig_o.ax[1]
     # ax2 = fig_o.ax[2]
@@ -57,19 +60,14 @@ def plot_stacked( output_dir, times ):
 
     for nn, time in enumerate( fig_o.time ):
 
-        if os.path.exists(output_dir+'/'+str(int(time))+"_atm_TP_profile.dat"):
+        atm_file = output_dir+"/"+str(int(time))+"_atm.pkl"
 
-            # # Read atmospheric chemistry
-            # atm_chemistry = pd.read_csv(output_dir+str(time)+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True)
+        if os.path.exists(atm_file):
 
-            # Read atmosphere properties
-            atm_TP_profile  = np.loadtxt(output_dir+'/'+str(int(time))+"_atm_TP_profile.dat")
-
-            temperature_atmosphere  = []
-            pressure_atmosphere     = []
-            for i in range(0, len(atm_TP_profile)):
-                temperature_atmosphere.append(atm_TP_profile[i][0])
-                pressure_atmosphere.append(atm_TP_profile[i][1])
+            # Read pickle file
+            atm_file_stream = open(atm_file,'rb')
+            atm = pkl.load(atm_file_stream)
+            atm_file_stream.close()
 
             # read json
             myjson_o = su.MyJSON( output_dir+'/{}.json'.format(time) )
@@ -83,14 +81,11 @@ def plot_stacked( output_dir, times ):
             label = cu.latex_float(time)+" yr"
 
             # Pressure-height conversion for y-axis
-            
-           # Atmosphere T-Z
-            pressure_atmosphere_Pa = [ n*100. for n in pressure_atmosphere]     # Pa
-            z_profile = cu.AtmosphericHeight(temperature_atmosphere, pressure_atmosphere_Pa, planet_mass, r_planet) # m
+            z_profile = cu.AtmosphericHeight(atm.tmp, atm.p, planet_mass, r_planet) # m
             z_profile = z_profile*1e-3 # km
-            ax0.plot( temperature_atmosphere, z_profile, '-', color=color, label=label, lw=1.5)
+            ax0.plot( atm.tmp, z_profile, '-', color=color, label=label, lw=1.5)
 
-            # # Atmospphere T-P
+            # # Atmosphere T-P
             # ax0.semilogy( temperature_atmosphere, pressure_atmosphere, '-', color=color, label=label, lw=1.5)
 
             # interior
@@ -104,9 +99,9 @@ def plot_stacked( output_dir, times ):
             # connecting_line_P = [ pressure_atmosphere[-1], pressure_atmosphere[-1]*1.1 ]
             # ax0.semilogy( connecting_line_T, connecting_line_P, ':', color=color, lw=1.5)
 
-            if np.min(pressure_atmosphere) > 0:
-                ymax_atm_pressure = np.max([ymax_atm_pressure, np.max(pressure_atmosphere)])
-                ymin_atm_pressure = np.min([ymin_atm_pressure, np.min(pressure_atmosphere)])
+            if np.min(atm.p) > 0:
+                ymax_atm_pressure = np.max([ymax_atm_pressure, np.max(atm.p)])
+                ymin_atm_pressure = np.min([ymin_atm_pressure, np.min(atm.p)])
                 ymax_atm_z = np.max([ymax_atm_z, np.max(z_profile)])
                 ymin_atm_z = np.min([ymin_atm_z, np.min(z_profile)])
 
@@ -114,9 +109,9 @@ def plot_stacked( output_dir, times ):
 
             print(time)
 
-    xticks = [50, 1000, 2000, 3000, 4000, 5000]
-    xmin = 50
-    xmax = 5000
+    xmin         = 100
+    xmax         = 5000
+    xticks       = [ xmin, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, xmax ]
     title_xcoord = -0.11
     title_ycoord = 0.5
 
@@ -126,16 +121,17 @@ def plot_stacked( output_dir, times ):
     ##### Atmosphere part
 
     # ax0.set_xlabel("Temperature, $T$ (K)")
-    ax0.set_ylabel("Height, $z_\mathrm{atm}$ (km)")
+    ax0.set_ylabel("Atmosphere height, $z_\mathrm{atm}$ (km)")
     ax0.set_xlim( left=xmin, right=xmax )
     ax0.set_ylim( top=ymax_atm_z, bottom=ymin_atm_z )
     # ax0.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
     ax0.set_yticks([round(ymin_atm_z,1), round(0.2*ymax_atm_z,1), round(0.4*ymax_atm_z,1), round(0.6*ymax_atm_z,1), round(0.8*ymax_atm_z,1), round(ymax_atm_z,1)])
     # ax0.set_yticklabels(["", str(round(0.25*ymax_atm_z,1)), str(round(0.5*ymax_atm_z,1)), str(round(0.75*ymax_atm_z,1)), str(round(ymax_atm_z,1))])
     ax0.yaxis.set_label_coords(title_xcoord,title_ycoord)
-    ax0.xaxis.tick_top()
+    # ax0.xaxis.tick_top()
+    ax0.set_xticks(xticks)
     ax0.set_xticklabels([])
-    ax0.tick_params(direction='in')
+    # ax0.tick_params(direction='in')
 
     # # Y-axis settings
     # fig_o.set_myaxes( ax0, ylabel='$P_\mathrm{atm}$\n(mbar)', xmin=xmin, xmax=xmax, xticks=xticks )
@@ -159,6 +155,8 @@ def plot_stacked( output_dir, times ):
     # ax0b.set_ylabel( '$P_\mathrm{atm}$\n(bar)', rotation=0 )
     # ax0b.yaxis.set_label_coords(1.15,0.55)
 
+    # sns.despine(top=False, bottom=True)
+
     # Legend
     ax0.legend( fontsize=8, fancybox=True, framealpha=0.5 )
 
@@ -169,7 +167,7 @@ def plot_stacked( output_dir, times ):
     ax1.invert_yaxis()
     # ax1.set_ylabel( '$P_\mathrm{mantle}$ (GPa)' ) # , rotation=0
     # ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
-    ax1.yaxis.tick_right()
+    # ax1.yaxis.tick_right()
     # Do not show pressure labels for this plot
     ax1.set_yticklabels([])
     ax1.set_yticks([])
@@ -185,9 +183,11 @@ def plot_stacked( output_dir, times ):
     ax1b.set_yticks([0, int(0.2*xx_depth[-1]), int(0.4*xx_depth[-1]), int(0.6*xx_depth[-1]), int(0.8*xx_depth[-1]), int(xx_depth[-1])])
     ax1b.invert_yaxis()
     ax1b.yaxis.tick_left()
-    ax1b.tick_params(direction='in')
-    ax1.set_ylabel( 'Depth, $d_\mathrm{mantle}$ (km)' )
+    # ax1b.tick_params(direction='in')
+    ax1.set_ylabel( 'Mantle depth, $d_\mathrm{mantle}$ (km)' )
     ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
+
+    sns.despine()
 
     # # Pressure-height conversion for y-axis
     # ax0b = ax0.twinx()

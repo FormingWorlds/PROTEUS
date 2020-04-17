@@ -71,30 +71,10 @@ def plot_atmosphere( output_dir, times ):
 
         if os.path.exists(atm_file):
 
-            # Read atmosphere properties
-            # atm_TP_profile      = np.loadtxt(output_dir+"/"+str(int(time))+"_atm_TP_profile.dat")
-            # atm_spectral_flux   = np.loadtxt(output_dir+"/"+str(int(time))+"_atm_spectral_flux.dat")
-
             # Read pickle file
             atm_file_stream = open(atm_file,'rb')
             atm = pkl.load(atm_file_stream)
             atm_file_stream.close()
-
-            # # Read atmospheric chemistry
-            # atm_chemistry       = pd.read_csv(output_dir+"runtime_helpfile.csv")
-
-            # temperature_atmosphere  = []
-            # pressure_atmosphere     = []
-            # band_centres            = []
-            # spectral_flux           = []
-            # for i in range(0, len(atm_TP_profile)):
-            #     temperature_atmosphere.append(atm_TP_profile[i][0])
-            #     pressure_atmosphere.append(atm_TP_profile[i][1])
-            # for i in range(0, len(atm_spectral_flux)):
-            #     band_centres.append(atm_spectral_flux[i][0])
-            #     spectral_flux.append(atm_spectral_flux[i][1])
-
-                # print(time, atm_spectral_flux[i])
 
             # read json
             myjson_o = su.MyJSON( output_dir+"/"+'{}.json'.format(time) )
@@ -106,13 +86,11 @@ def plot_atmosphere( output_dir, times ):
             label = cu.latex_float(time)+" yr"
             
             # Atmosphere T-Z
-            # pressure_atmosphere_Pa = [ n for n in pressure_atmosphere]     # Pa
             z_profile = cu.AtmosphericHeight(atm.tmp, atm.p, planet_mass, r_planet) # m
             z_profile = z_profile*1e-3 # km
             ax0.plot( atm.tmp, z_profile, '-', color=color, label=label, lw=1.5)
 
             # Atmosphere T-P
-            # pressure_atmosphere_bar = [ n/1000. for n in pressure_atmosphere]    # bar
             ax1.semilogy( atm.tmp, atm.p/1e5, '-', color=color, label=label, lw=1.5)
 
             # Spectral flux density per wavenumber
@@ -294,8 +272,6 @@ def main():
         else:
             plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
         print("Snapshots:", plot_list)
-
-
 
     # # Plot only last snapshot
     # plot_current_mixing_ratio( output_dir=output_dir, times=plot_list[-1], vulcan_setting=0 )
