@@ -29,10 +29,6 @@ from natsort import natsorted # https://pypi.python.org/pypi/natsort
 from decimal import Decimal
 
 # Import coupler-specific package modules
-# import utils.plot_atmosphere
-# import utils.plot_global
-# import utils.plot_stacked
-# import utils.plot_interior
 import utils.utils_coupler as cu
 import utils.utils_spider as su
 

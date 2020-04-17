@@ -1,56 +1,14 @@
 #!/usr/bin/env python
 
 # Import utils- and plot-specific modules
-from utils.modules_plot import *
-
-# import spider_coupler_utils as su
-# import coupler_utils
-# import argparse
-# import logging
-# import matplotlib
-# import matplotlib.pyplot as plt
-# import matplotlib.ticker as ticker
-# import numpy as np
-# import os
-# import sys
-# import glob
-# # from natsort import natsorted #https://pypi.python.org/pypi/natsort
-# from decimal import Decimal
-# import matplotlib.ticker as ticker
-# import pandas as pd
-
-# Font settings
-# https://stackoverflow.com/questions/2537868/sans-serif-math-with-latex-in-matplotlib
-# https://olgabotvinnik.com/blog/how-to-set-helvetica-as-the-default-sans-serif-font-in/
-# matplotlib.rcParams['text.usetex'] = True
-# matplotlib.rcParams['font.sans-serif'] = "Helvetica"
-# matplotlib.rcParams['font.family'] = "sans-serif"
-# params = {'text.usetex': False, 'mathtext.fontset': 'stixsans'}
-# matplotlib.rcParams.update(params)
-# matplotlib.rcParams['ps.useafm'] = True
-# matplotlib.rcParams['pdf.use14corefonts'] = True
-# matplotlib.rcParams['text.usetex'] = True
-
-# # Define Crameri colormaps (+ recursive)
-# from matplotlib.colors import LinearSegmentedColormap
-# for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
-#            'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
-#            'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
-#            'tokyo', 'turku', 'vik' ]:
-#     file = os.path.join("plot/ScientificColourMaps5/", name + '.txt')
-#     cm_data = np.loadtxt(file)
-#     vars()[name] = LinearSegmentedColormap.from_list(name, cm_data)
-#     vars()[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
-
-# logger = su.get_my_logger(__name__)
+from modules_utils import *
+from modules_plot import *
 
 #====================================================================
 def plot_stacked( output_dir, times ):
 
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width
-
-    # logger.info( 'building stacked interior atmosphere' )
 
     width = 5.00 #* 3.0/2.0
     height = 10.0
@@ -83,9 +41,7 @@ def plot_stacked( output_dir, times ):
     xx_depth_s = xx_radius_s[0] - xx_radius_s
     r_planet = np.max(xx_radius*1e3) # m
 
-
     handle_l = [] # handles for legend
-
 
     fig_o.set_colors(cmap=vik_r) # "magma_r"
 
@@ -103,8 +59,8 @@ def plot_stacked( output_dir, times ):
 
         if os.path.exists(output_dir+'/'+str(int(time))+"_atm_TP_profile.dat"):
 
-            # Read atmospheric chemistry
-            atm_chemistry = pd.read_csv(output_dir+str(time)+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True)
+            # # Read atmospheric chemistry
+            # atm_chemistry = pd.read_csv(output_dir+str(time)+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True)
 
             # Read atmosphere properties
             atm_TP_profile  = np.loadtxt(output_dir+'/'+str(int(time))+"_atm_TP_profile.dat")
@@ -253,18 +209,47 @@ def plot_stacked( output_dir, times ):
 #====================================================================
 def main():
 
-    # Read optional argument from console to provide output dir
-    output_dir_read = parser.parse_args().dir
+    # Optional command line arguments for running from the terminal
+    # Usage: $ python plot_atmosphere.py -t 0,718259
+    parser = argparse.ArgumentParser(description='COUPLER plotting script')
+    parser.add_argument('-odir', '--output_dir', type=str, help='Full path to output directory');
+    parser.add_argument('-t', '--times', type=str, help='Comma-separated (no spaces) list of times');
+    args = parser.parse_args()
 
-    output_list = su.get_all_output_times(output_dir_read)
-
-    if len(output_list) <= 8:
-        plot_list = output_list
+    # Define output directory for plots
+    if args.output_dir:
+        output_dir = args.output_dir
+        print("Output directory:", output_dir)
+        
     else:
-        plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
-    print("snapshots:", plot_list)
+        output_dir = os.getcwd()
+        print("Output directory:", output_dir)
 
-    plot_stacked( output_dir=output_dir_read, times=plot_list )
+    # Define which times are plotted
+    if args.times:
+        plot_list = [ int(time) for time in args.times.split(',') ]
+        print("Snapshots:", plot_list)
+    else:
+        output_list = su.get_all_output_times(output_dir)
+
+        if len(output_list) <= 8:
+            plot_list = output_list
+        else:
+            plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
+        print("Snapshots:", plot_list)
+
+    # # Read optional argument from console to provide output dir
+    # output_dir_read = parser.parse_args().dir
+
+    # output_list = su.get_all_output_times(output_dir_read)
+
+    # if len(output_list) <= 8:
+    #     plot_list = output_list
+    # else:
+    #     plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
+    # print("snapshots:", plot_list)
+
+    plot_stacked( output_dir=output_dir, times=plot_list )
 
 #====================================================================
 
