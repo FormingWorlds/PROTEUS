@@ -1,6 +1,8 @@
 # Import utils-specific modules
 from utils.modules_utils import *
 
+from atm_rad_conv.SocRadConv import surf_Planck_nu
+
 # Define Crameri colormaps (+ recursive)
 from matplotlib.colors import LinearSegmentedColormap
 

@@ -32,10 +32,15 @@ from decimal import Decimal
 import utils.utils_coupler as cu
 import utils.utils_spider as su
 
-from utils.cpl_atmosphere import *
-from utils.cpl_global import *
-from utils.cpl_stacked import *
-from utils.cpl_interior import *
+import utils.cpl_atmosphere
+import utils.cpl_global
+import utils.cpl_stacked
+import utils.cpl_interior
+
+# from utils.cpl_atmosphere import *
+# from utils.cpl_global import *
+# from utils.cpl_stacked import *
+# from utils.cpl_interior import *
 
 import atm_rad_conv.SocRadConv
 import atm_rad_conv.SocRadModel

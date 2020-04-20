@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
 # Import utils- and plot-specific modules
-from modules_utils import *
-from modules_plot import *
+from utils.modules_plot import *
 
 #====================================================================
 def plot_stacked( output_dir, times ):

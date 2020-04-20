@@ -4,37 +4,6 @@
 Coupler Main file – SPIDER-SOCRATES-VULCAN
 """
 
-# import importlib.util
-# import numpy as np
-# import subprocess
-# import argparse
-# import glob
-# import sys, os, shutil
-# import math
-# from natsort import natsorted #https://pypi.python.org/pypi/natsort
-# from datetime import datetime
-# import pandas as pd
-# import pathlib
-
-# # Coupler-specific paths
-# coupler_dir = str(pathlib.Path(__file__).parent.absolute())
-# output_dir  = str(pathlib.Path().absolute())
-# vulcan_dir  = coupler_dir+"/vulcan_spider/"
-# radconv_dir = coupler_dir+"/atm_rad_conv/"
-# if output_dir == coupler_dir: output_dir  = output_dir+"/output/"
-
-# # Add to path
-# sys.path.append(radconv_dir)
-# sys.path.append(vulcan_dir)
-
-# Coupler-specific modules
-# import SocRadConv
-# import SocRadModel
-# from atmosphere_column import atmos
-# import utils_coupler as utils
-# import utils_spider as su
-
-# Import standard and coupler-specific modules: 
 from utils.modules_coupler import *
 
 # Volatile list tracked in radiative-convective model

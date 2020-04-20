@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
 # Import utils- and plot-specific modules
-from utils.modules_utils import *
-from utils.modules_coupler import *
+from utils.modules_plot import *
 
 #====================================================================
 def plot_interior( output_dir, times ):

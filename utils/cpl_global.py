@@ -3,44 +3,6 @@
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
 
-# import logging
-# import spider_coupler_utils as su
-# import matplotlib.transforms as transforms
-# import matplotlib.pyplot as plt
-# import numpy as np
-# import os
-# import matplotlib.ticker as ticker
-# import argparse
-# import matplotlib
-# import pandas as pd
-# import mmap
-# import seaborn as sns
-# # https://seaborn.pydata.org/tutorial/aesthetics.html
-# sns.set_style("white")
-
-# # Output dir, optional argument: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
-# parser = argparse.ArgumentParser(description='Define file output directory.')
-# parser.add_argument('--dir', default="output/", help='Provide path to output directory.' )
-
-# # Specify varying volatile abundances: $ python plot_atmosphere.py -H2 0,10
-# parser = argparse.ArgumentParser(description='COUPLER optional command line arguments')
-# parser.add_argument('--dir', default="output/", help='Provide path to output directory.' )
-# parser.add_argument('-H2O', type=float, help='H2O initial abundance (ppm wt)')
-# # args = parser.parse_args()
-
-# # Define Crameri colormaps (+ recursive)
-# from matplotlib.colors import LinearSegmentedColormap
-# for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
-#            'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
-#            'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
-#            'tokyo', 'turku', 'vik' ]:
-#     file = os.path.join("plot/ScientificColourMaps5/", name + '.txt')
-#     cm_data = np.loadtxt(file)
-#     vars()[name] = LinearSegmentedColormap.from_list(name, cm_data)
-#     vars()[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
-
-# logger = su.get_my_logger(__name__)
-
 # Color definitions, https://chrisalbon.com/python/seaborn_color_palettes.html
 qgray       = "#768E95"
 qblue       = "#4283A9" # http://www.color-hex.com/color/4283a9

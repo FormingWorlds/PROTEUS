@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
 # Import utils- and plot-specific modules
-from modules_utils import *
-from modules_plot import *
+from utils.modules_plot import *
 
 #====================================================================
 def plot_atmosphere( output_dir, times ):
@@ -99,7 +98,7 @@ def plot_atmosphere( output_dir, times ):
             ymax_sp_flux = np.max( [ ymax_sp_flux, np.max(atm.net_spectral_flux[:,0]/atm.band_widths)] )
 
             # Blackbody curves
-            ax2.plot(atm.band_centres,atm_rad_conv.SocRadConv.surf_Planck_nu(atm)/atm.band_widths, color=color, ls='--', lw=1.0, alpha=0.5, label=str(round(atm.ts))+' K blackbody')
+            ax2.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths, color=color, ls='--', lw=1.0, alpha=0.5, label=str(round(atm.ts))+' K blackbody')
 
             # Reset y-axis boundaries
             if np.min(atm.p) > 0:
@@ -282,5 +281,9 @@ def main():
 #====================================================================
 
 if __name__ == "__main__":
+
+    # Import utils- and plot-specific modules
+    from modules_utils import *
+    from modules_plot import *
 
     main()
