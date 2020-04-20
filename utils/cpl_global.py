@@ -3,105 +3,32 @@
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
 
-# Color definitions, https://chrisalbon.com/python/seaborn_color_palettes.html
-qgray       = "#768E95"
-qblue       = "#4283A9" # http://www.color-hex.com/color/4283a9
-qgreen      = "#62B4A9" # http://www.color-hex.com/color/62b4a9
-qred        = "#E6767A"
-qturq       = "#2EC0D1"
-qmagenta    = "#9A607F"
-qyellow     = "#EBB434"
-qgray_dark  = "#465559"
-qblue_dark  = "#274e65"
-qgreen_dark = "#3a6c65"
-qred_dark   = "#b85e61"
-qturq_dark  = "#2499a7"
-qmagenta_dark = "#4d303f"
-qyellow_dark  = "#a47d24"
-qgray_light  = "#acbbbf"
-qblue_light  = "#8db4cb"
-qgreen_light = "#a0d2cb"
-qred_light   = "#eb9194"
-qturq_light  = "#57ccda"
-qmagenta_light = "#c29fb2"
-qyellow_light = "#f1ca70"
-
-# color_cycle2 = [ "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c", "#7f7f7f", "#bcbd22", "#17becf" ]
-
-vol_colors = {
-    "black_1" : "#000000",
-    "black_2" : "#323232",
-    "black_3" : "#7f7f7f",
-    "H2O_1"   : "#8db4cb",
-    "H2O_2"   : "#4283A9",
-    "H2O_3"   : "#274e65",
-    "CO2_1"   : "#811111",
-    "CO2_2"   : "#B91919",
-    "CO2_3"   : "#ce5e5e",
-    "H2_1"    : "#a0d2cb",
-    "H2_2"    : "#62B4A9",
-    "H2_3"    : "#3a6c65",
-    "CH4_1"   : "#eb9194",
-    "CH4_2"   : "#E6767A",
-    "CH4_3"   : "#b85e61",
-    "CO_1"    : "#eab597",
-    "CO_2"    : "#DD8452",
-    "CO_3"    : "#844f31",
-    "N2_1"    : "#c29fb2",
-    "N2_2"    : "#9A607F",
-    "N2_3"    : "#4d303f",  
-    "S_1"     : "#f1ca70",
-    "S_2"     : "#EBB434",
-    "S_3"     : "#a47d24",    
-    "O2_1"    : "#57ccda",
-    "O2_2"    : "#2EC0D1",
-    "O2_3"    : "#2499a7",
-    "He_1"    : "#acbbbf",
-    "He_2"    : "#768E95",
-    "He_3"    : "#465559"
-}
-
-vol_latex = {
-    "H2O": r"H$_2$O",
-    "CO2": r"CO$_2$",
-    "H2": r"H$_2$",
-    "CH4": r"CH$_4$",
-    "CO": r"CO",
-    "O2": r"O$_2$",
-    "N2": r"N$_2$",
-    "S": r"S",
-    "He": r"S"
-}
-
-# Plot settings
-lw       = 1.5
-fscale   = 1.1
-fsize    = 18
-fs_title = 18
-width = 12.00 #* 3.0/2.0
-height = 8.0 #/ 2.0
-
-volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
-
 #====================================================================
 def plot_global( output_dir ):
 
-    # logger.info( 'building atmosphere' )
-
-    fig_o = su.FigureData( 3, 2, width, height, output_dir+'/plot_global', units='yr' )
-    fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.1)
-
+    # Plot settings
+    lw         = 1.5
+    fscale     = 1.1
+    fsize      = 18
+    fs_title   = 18
+    fs_legend  = 11
+    width      = 12.00 #* 3.0/2.0
+    height     = 8.0 #/ 2.0
     # Subplot titles
-    title_fs   = 10
-    title_xy   = (0.5, 0.75)
+    title_fs   = 12
+    title_xy   = (0.02, 0.02)
     title_x    = title_xy[0]
     title_y    = title_xy[1]
     title_xycoords = 'axes fraction'
-    title_ha   = "center"
-    title_va   = "center"
+    title_ha   = "left"
+    title_va   = "bottom"
     title_font = 'Arial'
+    txt_alpha  = 0.5
+    txt_pad    = 0.1
+    label_fs   = 11
 
-    fs_legend = 9
+    fig_o = su.FigureData( 3, 2, width, height, output_dir+'/plot_global', units='yr' )
+    fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.1)
 
     ax0 = fig_o.ax[0][0]
     ax1 = fig_o.ax[1][0]
@@ -125,7 +52,8 @@ def plot_global( output_dir ):
                ('atmosphere','emissivity'),
                ('rheological_front_phi','phi_global'),
                ('atmosphere','Fatm'),
-               ('atmosphere','pressure_surface')
+               ('atmosphere','pressure_surface'),
+               ('rheological_front_dynamic','depth')
                )
     data_a = su.get_dict_surface_values_for_times( keys_t, fig_o.time, output_dir )
     mass_liquid         = data_a[0,:]
@@ -137,9 +65,10 @@ def plot_global( output_dir ):
     phi_global          = data_a[6,:]
     Fatm                = data_a[7,:]
     P_surf              = data_a[8,:]
+    rheol_front         = data_a[9,:]
 
 
-    xlabel = 'Time (yr)'
+    xlabel = r'Time, $t$ (yr)'
     xlim = (1e1,1e7)
 
     red = (0.5,0.1,0.1)
@@ -151,27 +80,24 @@ def plot_global( output_dir ):
     xcoord_r = 1.09
     ycoord_r = 0.5
 
-    rolling_mean = 0
+    rolling_mean = 1
+    nsteps       = 4
 
     ##########
     # figure a
     ##########
-    title = r'(a) Heat flux to space'
-    ylabel = '$F_\mathrm{atm}$ (W/m$^2$)'
-    
+    title = r'(a) Heat flux to space'  
     if rolling_mean == 1:
-        ax0.loglog( fig_o.time[:10], Fatm[:10], 'k', lw=lw, alpha=1.0 )
-        nsteps = 6
+        ax0.loglog( fig_o.time[:nsteps+4], Fatm[:nsteps+4], qgray_dark, lw=lw, alpha=1.0 )
+        
         Fatm_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
         Time_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
-        ax0.loglog( Time_rolling, Fatm_rolling,'k', lw=lw )
+        ax0.loglog( Time_rolling, Fatm_rolling, qgray_dark, lw=lw )
     else:
-        ax0.loglog( fig_o.time, Fatm, 'k', lw=lw, alpha=1.0 )
+        ax0.loglog( fig_o.time, Fatm, qgray_dark, lw=lw, alpha=1.0 )
         
-    fig_o.set_myaxes( ax0)#, title=title)#, yticks=yticks, xlabel=xlabel, xticks=xticks )
-    # ax0.yaxis.tick_right()
-    # ax0.yaxis.set_label_position("right")
-    ax0.set_ylabel(ylabel)
+    fig_o.set_myaxes(ax0)
+    ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)
     ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax0.set_xlim( *xlim )
@@ -179,47 +105,51 @@ def plot_global( output_dir ):
     ax0.yaxis.set_label_coords(xcoord_l,ycoord_l)
     handles, labels = ax0.get_legend_handles_labels()
     ax0.legend(handles, labels, loc='upper right', ncol=1, frameon=0, fontsize=fs_legend)
-    ax0.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
+    ax0.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
     ##########
     # figure b
     ##########
     title = r'(b) Surface temperature'
-    ylabel = '$T_\mathrm{surf}$ (K)'
     if np.max(fig_o.time) >= 1e3: 
-        ymin = np.min(T_surf)
+        ymin = np.min(T_surf)*0.9
         ymax = np.max(T_surf)
     else: 
         ymin = 200
         ymax = 3000
     yticks = [ymin, ymin+0.2*(ymax-ymin), ymin+0.4*(ymax-ymin), ymin+0.6*(ymax-ymin), ymin+0.8*(ymax-ymin), ymax]
-    h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=vol_colors["black_2"], label=r'Surface temp, $T_s$' )
-    #ax2b = ax2.twinx()
-    #h2, = ax2b.loglog( timeMyr_a, emissivity_a, 'k--', label=r'Emissivity, $\epsilon$' )
-    fig_o.set_myaxes( ax1, title=title, yticks=yticks)#, xlabel=xlabel )
-    ax1.set_ylabel(ylabel)
+    h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$' )
+    fig_o.set_myaxes( ax1, title=title, yticks=yticks)
+    ax1.set_ylabel(r'$T_\mathrm{s}$ (K)', fontsize=label_fs)
     ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax1.set_xlim( *xlim )
     ax1.set_xticklabels([])
     ax1.yaxis.set_label_coords(xcoord_l,ycoord_l)
-    ax1.set_ylim(ymin,ymax)
-    ax1.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
+    ax1.set_ylim(ymin, ymax)
+    ax1.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
+
     ##########
     # figure c
     ##########
-    title = r'(c) Global mantle melt fraction'
-    ylabel = '$\phi_{\mathrm{mantle}}$'
-    ax2.semilogx( fig_o.time, phi_global, color=vol_colors["black_2"], linestyle='-', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
-    # h2, = ax2.semilogx( timeMyr_a, mass_liquid_a / mass_mantle, 'k--', label='melt' )
-    fig_o.set_myaxes( ax2, xlabel=xlabel )#, xlabel=xlabel, xticks=xticks, title=title )
-    ax2.set_ylabel(ylabel)
+
+    # Plot rheological front depth
+    ax2.semilogx( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
+    
+    # Mante melt + solid fraction
+    ax2.semilogx( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
+    ax2.semilogx( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
+
     ax2.set_xlim( *xlim )
-    # ax2.set_ylim( 0, 1. )
-    ax2.set_ylabel(ylabel)
+    ax2.set_xlabel(xlabel, fontsize=label_fs)
+    ax2.set_ylabel(r'Mantle fraction', fontsize=label_fs)
     ax2.yaxis.set_label_coords(xcoord_l,ycoord_l)
-    ax2.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
+    handles, labels = ax2.get_legend_handles_labels()
+    ax2.legend(handles, labels, ncol=1, loc=6, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
+
+    title = r'(c) Mantle evolution'
+    ax2.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
     ### Plot axes setup
     ##########
@@ -227,11 +157,11 @@ def plot_global( output_dir ):
     ##########
     title_ax3 = r'(d) Surface volatile partial pressure'
     # Total pressure
-    ax3.semilogx( fig_o.time, P_surf, color=vol_colors["black_2"], linestyle='-', lw=lw, label=r'Total')
+    ax3.semilogx( fig_o.time, P_surf, color=qgray_dark, linestyle='-', lw=lw, label=r'Total')
     ##########
     # figure e
     ##########
-    title_ax4 = r'(e) Atmospheric volatile mass fraction'
+    title_ax4 = r'(e) Atmosphere volatile mass fraction'
     ##########
     # figure f
     ##########
@@ -307,9 +237,8 @@ def plot_global( output_dir ):
     ##########
     # figure d
     ##########
-    fig_o.set_myaxes( ax3)#, xlabel=xlabel, xticks=xticks, title=title_ax3 )
-    # ax3.set_title(title, y=0.8)
-    ax3.set_ylabel('$p^{\mathrm{i}}$ (bar)')
+    fig_o.set_myaxes( ax3)
+    ax3.set_ylabel('$p^{\mathrm{i}}$ (bar)', fontsize=label_fs)
     ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax3.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax3.xaxis.set_minor_formatter(ticker.NullFormatter())
@@ -323,21 +252,20 @@ def plot_global( output_dir ):
     ax3.yaxis.set_label_position("right")
     ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
     handles, labels = ax3.get_legend_handles_labels()
-    ax3.legend(handles, labels, ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
-    ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
+    ax3.legend(handles, labels, ncol=2, loc=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
+    ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
     ##########
     # figure e
     ##########
-    # Check atmospheric comparisons for mass conservation
-    runtime_helpfile = pd.read_csv(output_dir+"/"+"runtime_helpfile.csv", delim_whitespace=True)
-    ax4.semilogx( runtime_helpfile["Time"], runtime_helpfile["M_atm"]/runtime_helpfile.iloc[0]["M_atm"], lw=lw, color=vol_colors["black_2"], linestyle='-')
+    # # Check atmospheric comparisons for mass conservation
+    # runtime_helpfile = pd.read_csv(output_dir+"/"+"runtime_helpfile.csv", delim_whitespace=True)
+    # ax4.semilogx( runtime_helpfile["Time"], runtime_helpfile["M_atm"]/runtime_helpfile.iloc[0]["M_atm"], lw=lw, color=vol_colors["black_2"], linestyle='-')
     # ax4.semilogx( runtime_helpfile.loc[runtime_helpfile['Input'] == "Interior"]["Time"], runtime_helpfile.loc[runtime_helpfile['Input'] == "Interior"]["H_mol_total"]/runtime_helpfile.iloc[0]["H_mol_total"], lw=lw, color=vol_colors["black_3"], linestyle='--')
     # ax4.semilogx( runtime_helpfile.loc[runtime_helpfile['Input'] == "Atmosphere"]["Time"], runtime_helpfile.loc[runtime_helpfile['Input'] == "Atmosphere"]["C/H_atm"]/runtime_helpfile.iloc[0]["C/H_atm"], lw=lw, color=vol_colors["black_1"], linestyle=':')
-    print(runtime_helpfile[["Time", "Input", "M_atm", "M_atm_kgmol", "H_mol_atm", "H_mol_solid", "H_mol_liquid", "H_mol_total", "O_mol_total", "O/H_atm"]])
+    # print(runtime_helpfile[["Time", "Input", "M_atm", "M_atm_kgmol", "H_mol_atm", "H_mol_solid", "H_mol_liquid", "H_mol_total", "O_mol_total", "O/H_atm"]])
 
-    fig_o.set_myaxes( ax4) #, xlabel=xlabel,xticks=xticks, title=title_ax4 )
-    # ax4.set_title(title, y=0.8)
-    ax4.set_ylabel('$M_{\mathrm{atm}}^{\mathrm{i}}/M_{\mathrm{total}}^{\mathrm{i}}$')
+    fig_o.set_myaxes( ax4)
+    ax4.set_ylabel(r'$X_{\mathrm{atm}}^{\mathrm{i}}/X_{\mathrm{tot}}^{\mathrm{i}}$', fontsize=label_fs)
     ax4.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
@@ -349,16 +277,13 @@ def plot_global( output_dir ):
     # ax4.set_ylim( 0, 1 )
     handles, labels = ax4.get_legend_handles_labels()
     # ax4.legend(handles, labels, ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
-    ax4.set_title(title_ax4, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
+    ax4.set_title(title_ax4, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
 
     ##########
     # figure f
     ##########
     fig_o.set_myaxes( ax5, title=title_ax5)
-    # ax5.set_title(title, y=0.8)
-    ax5.set_ylabel('$M_{\mathrm{int}}^{\mathrm{i}}/M_{\mathrm{total}}^{\mathrm{i}}$')
-    ax5.set_xlabel(xlabel)
     ax5.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax5.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
@@ -368,8 +293,9 @@ def plot_global( output_dir ):
     ax5.yaxis.set_label_coords(xcoord_r,ycoord_r)
     ax5.yaxis.set_label_position("right")
     handles, labels = ax5.get_legend_handles_labels()
-    # ax5.legend(handles, labels, ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
-    ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
+    ax5.set_xlabel(xlabel, fontsize=label_fs)
+    ax5.set_ylabel(r'$X_{\mathrm{mantle}}^{\mathrm{i}}/X_{\mathrm{tot}}^{\mathrm{i}}$', fontsize=label_fs)
+    ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
 
     fig_o.savefig(6)
@@ -378,15 +304,34 @@ def plot_global( output_dir ):
 #====================================================================
 def main():
 
-    # Read optional argument from console to provide output dir
-    output_dir_read = parser.parse_args().dir
+    # Optional command line arguments for running from the terminal
+    # Usage: $ python plot_atmosphere.py -t 0,718259
+    parser = argparse.ArgumentParser(description='COUPLER plotting script')
+    parser.add_argument('-odir', '--output_dir', type=str, help='Full path to output directory');
+    parser.add_argument('-t', '--times', type=str, help='Comma-separated (no spaces) list of times');
+    args = parser.parse_args()
 
-    # output_dir_read = os.getcwd()+"/output/save/2019-11-01_11-16-35/"
-    # print(output_dir_read)
+    # Define output directory for plots
+    if args.output_dir:
+        output_dir = args.output_dir
+    else:
+        output_dir = os.getcwd()
 
-    # plot_global( output_dir="output/")
-    # plt.show()
-    plot_global( output_dir=output_dir_read)
+    print("Output directory:", output_dir)
+
+    # Define which times are plotted
+    if args.times:
+        plot_list = [ int(time) for time in args.times.split(',') ]
+    else:
+        output_list = su.get_all_output_times(output_dir)
+
+        if len(output_list) <= 8:
+            plot_list = output_list
+        else:
+            plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
+    print("Snapshots:", plot_list)
+
+    plot_global(output_dir=output_dir)
 
 #====================================================================
 
