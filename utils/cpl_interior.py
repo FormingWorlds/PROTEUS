@@ -163,23 +163,45 @@ def plot_interior( output_dir, times ):
 #====================================================================
 def main():
 
-    # Read optional argument from console to provide output dir
-    output_dir_read = parser.parse_args().dir
+    # Optional command line arguments for running from the terminal
+    # Usage: $ python plot_atmosphere.py -t 0,718259
+    parser = argparse.ArgumentParser(description='COUPLER plotting script')
+    parser.add_argument('-odir', '--output_dir', type=str, help='Full path to output directory');
+    parser.add_argument('-t', '--times', type=str, help='Comma-separated (no spaces) list of times');
+    args = parser.parse_args()
 
-    output_list = su.get_all_output_times(output_dir_read)
-
-    if len(output_list) <= 8:
-        plot_list = output_list
+    # Define output directory for plots
+    if args.output_dir:
+        output_dir = args.output_dir
+        print("Output directory:", output_dir)
+        
     else:
-        plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
-    print("snapshots:", plot_list)
+        output_dir = os.getcwd()
+        print("Output directory:", output_dir)
 
-    # output_dir = parser.parse_args().dir
+    # Define which times are plotted
+    if args.times:
+        plot_list = [ int(time) for time in args.times.split(',') ]
+        print("Snapshots:", plot_list)
+    else:
+        output_list = su.get_all_output_times(output_dir)
 
-    plot_interior( output_dir=output_dir_read, times=plot_list )
+        if len(output_list) <= 8:
+            plot_list = output_list
+        else:
+            plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
+        print("Snapshots:", plot_list)
+
+    plot_interior( output_dir=output_dir, times=plot_list )
 
 #====================================================================
 
 if __name__ == "__main__":
+
+    # Import utils- and plot-specific modules
+    from modules_utils import *
+    from modules_plot import *
+    import utils_coupler as cu
+    import utils_spider as su
 
     main()
