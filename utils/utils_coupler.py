@@ -716,7 +716,7 @@ def RunSOCRATES( atm, time_dict, star_mass, mean_distance, dirs, runtime_helpfil
     PrintSeparator()
 
     # Calculate temperature structure and heat flux w/ SOCRATES
-    atm = atm_rad_conv.SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, SPIDER_options, standalone=False, cp_dry=False) # W/m^2
+    atm_dry, atm = atm_rad_conv.SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, SPIDER_options, standalone=False, cp_dry=False, trpp=True) # W/m^2
     
     # MO heat flux from topmost atmosphere node; do not allow heating
     SPIDER_options["heat_flux"] = np.max( [ 0., atm.net_flux[0] ] )
