@@ -42,10 +42,11 @@ coupler_dir = str(pathlib.Path(__file__).parent.absolute())+"/.."
 output_dir  = str(pathlib.Path().absolute())
 vulcan_dir  = coupler_dir+"/vulcan_spider/"
 radconv_dir = coupler_dir+"/atm_rad_conv/"
-if output_dir == coupler_dir: output_dir  = output_dir+"/output/"
+spider_dir  = coupler_dir+"/spider-dev/"
+if output_dir == coupler_dir: output_dir  = coupler_dir+"/output/"
 
 # Project main directories
-dirs = { "rad_conv": radconv_dir, "output": output_dir, "vulcan": vulcan_dir, "coupler": coupler_dir}
+dirs = { "output": output_dir, "coupler": coupler_dir, "rad_conv": radconv_dir, "vulcan": vulcan_dir, "spider": spider_dir}
 
 # Output dir, optional argument: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
 parser = argparse.ArgumentParser(description='Define file output directory.')

@@ -736,6 +736,12 @@ def RunSOCRATES( atm, time_dict, star_mass, mean_distance, dirs, runtime_helpfil
 
 def RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile ):
 
+    # Check if input file present in current dir, if not copy from SPIDER repo
+    spider_options_file = dirs["output"]+"/bu_input.opts"
+    if not os.path.isfile(spider_options_file):
+        spider_options_file_vanilla = dirs["spider"]+"/examples/lichtenberg_2019/socrates_p/bu_input.opts"
+        shutil.copy(spider_options_file_vanilla, spider_options_file)
+
     # Define which volatiles to track in SPIDER
     species_call = ""
     for vol in volatile_species: 
@@ -755,7 +761,7 @@ def RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile )
     ### SPIDER base call sequence 
     call_sequence = [   
                         "spider", 
-                        "-options_file",          "spider_input.opts", 
+                        "-options_file",          spider_options_file, 
                         "-outputDirectory",       dirs["output"],
                         "-IC_INTERIOR",           str(SPIDER_options["IC_INTERIOR"]),
                         "-IC_ATMOSPHERE",         str(SPIDER_options["IC_ATMOSPHERE"]),
@@ -836,7 +842,7 @@ def RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile )
 
 def CleanOutputDir( output_dir ):
 
-    types = ("*.json", "*.log", "*.csv", "*.pkl", "current??.????", "profile.*") 
+    types = ("*.json", "*.log", "*.csv", "*.pkl", "current??.????", "profile.*", "*.opts", "*.pdf", "*.png", "radiation_code.lock") 
     files_to_delete = []
     for files in types:
         files_to_delete.extend(glob.glob(output_dir+"/"+files))
