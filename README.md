@@ -49,9 +49,7 @@ http://bit.ly/2LvB1FR
 
 ## INSTALLATION
 
-1. Ensure that submodules are up to date
 
-        git submodule update --init --recursive
 
 1. Install SPIDER, making sure that the `spider` executable's location is in `$PATH`
 
@@ -69,10 +67,17 @@ http://bit.ly/2LvB1FR
         * make sure you use a Python 3 environment, possibly need to reinstall all typical packages, see e.g., here: http://bit.ly/2HowQaA
     * Relaunch terminal window, or source bash_profile, to reset environment
     * Make sure your local git installation has access to all repositories and the respecitve submodules
+        * 
 
 1. Clone COUPLER:
 
-        git clone --recurse-submodules git@github.com:OxfordPlanetaryClimate/couple-interior-atmosphere.git
+        git clone --recursive --depth 1 git@github.com:OxfordPlanetaryClimate/couple-interior-atmosphere.git coupler
+
+1. Ensure that submodules are up to date
+
+        git submodule update --init --recursive
+
+        --depth 1
 
 1. Compile SOCRATES:
     - Overwrite Mk_cmd in /socrates/socrates_main/make/:
