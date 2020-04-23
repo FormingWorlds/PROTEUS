@@ -760,7 +760,7 @@ def RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile )
 
     ### SPIDER base call sequence 
     call_sequence = [   
-                        "spider", 
+                        dirs["spider"]+"/spider", 
                         "-options_file",          spider_options_file, 
                         "-outputDirectory",       dirs["output"],
                         "-IC_INTERIOR",           str(SPIDER_options["IC_INTERIOR"]),
@@ -888,7 +888,7 @@ def UpdatePlots( output_dir, use_vulcan=0 ):
 # https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
 # https://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
 def make_output_dir( output_dir ):
-    save_dir = output_dir+"/"+"save/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
+    save_dir = output_dir+"/"+"output_save/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
     try:
        os.makedirs(save_dir)
     except OSError as exc:  # Python >2.5
