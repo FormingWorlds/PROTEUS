@@ -17,6 +17,9 @@ current*
 profile*
 radiation_code.lock
 
+# Old files
+old/
+
 # misc
 ######
 *_lbl.nc
