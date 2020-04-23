@@ -53,9 +53,7 @@ http://bit.ly/2LvB1FR
 
 1. Install SPIDER, making sure that the `spider` executable's location is in `$PATH`
 
-1. Get access to SOCRATES: https://code.metoffice.gov.uk/trac/home
-    * For website access talk to MH
-    * Download the latest version, unzip to /socrates/socrates_main/
+
 
 1. Install dependencies:
     * Make sure you have the FORTRAN version of netCDF installed:
@@ -67,7 +65,14 @@ http://bit.ly/2LvB1FR
         * make sure you use a Python 3 environment, possibly need to reinstall all typical packages, see e.g., here: http://bit.ly/2HowQaA
     * Relaunch terminal window, or source bash_profile, to reset environment
     * Make sure your local git installation has access to all repositories and the respecitve submodules
-        * 
+
+1. Get access to all necessary repositories
+    1. SOCRATES: 
+        https://code.metoffice.gov.uk/trac/home
+        * For website access talk to MH
+        * Download the latest version, unzip to /socrates/socrates_main/
+
+    * Make sure your local git installation has access to all repositories and the respecitve submodules
 
 1. Clone COUPLER:
 
@@ -77,7 +82,6 @@ http://bit.ly/2LvB1FR
 
         git submodule update --init --recursive
 
-        --depth 1
 
 1. Compile SOCRATES:
     - Overwrite Mk_cmd in /socrates/socrates_main/make/:
