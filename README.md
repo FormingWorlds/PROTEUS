@@ -68,6 +68,11 @@ http://bit.ly/2LvB1FR
         * e.g. for MacPorts with Python 3.7, $ sudo port install py37-netcdf py37-natsort
         * make sure you use a Python 3 environment, possibly need to reinstall all typical packages, see e.g., here: http://bit.ly/2HowQaA
     * Relaunch terminal window, or source bash_profile, to reset environment
+    * Make sure your local git installation has access to all repositories and the respecitve submodules
+
+1. Clone COUPLER:
+
+        git clone --recurse-submodules git@github.com:OxfordPlanetaryClimate/couple-interior-atmosphere.git
 
 1. Compile SOCRATES:
     - Overwrite Mk_cmd in /socrates/socrates_main/make/:
