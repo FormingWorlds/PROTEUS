@@ -8,7 +8,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
-import os, sys, glob, shutil
+import os, sys, glob, shutil, re
 import matplotlib.ticker as ticker
 import pandas as pd
 import matplotlib.transforms as transforms
@@ -25,7 +25,7 @@ import pickle as pkl
 
 from datetime import datetime
 from scipy import interpolate
-from natsort import natsorted # https://pypi.python.org/pypi/natsort
+# from natsort import natsorted # https://pypi.python.org/pypi/natsort
 from decimal import Decimal
 
 # Import coupler-specific package modules
