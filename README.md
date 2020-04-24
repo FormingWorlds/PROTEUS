@@ -42,14 +42,35 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
 ## Access & installation instructions
 
 1. Install dependencies
-    * Make sure you have the FORTRAN version of netCDF installed:
-        * e.g. with Homebrew, $ brew install netcdf
-        * e.g. for MacPorts with GCC 8, $ sudo port install netcdf-fortran +gcc8
-    * Same for netCDF python:
-        * e.g. with Anaconda, $ conda install netcdf4 natsort
-        * e.g. for MacPorts with Python 3.7, $ sudo port install py37-netcdf py37-natsort
-        * make sure you use a Python 3 environment, possibly need to reinstall all typical packages, see e.g., here: http://bit.ly/2HowQaA
-    * Relaunch terminal window, or source bash_profile, to reset environment
+    
+    * Make sure you use a Python 3 environment, possibly need to reinstall all typical packages, see e.g., here: http://bit.ly/2HowQaA
+    
+    * Required packages:
+        
+        * FORTRAN:
+        
+            - netCDF
+                
+                e.g. with Homebrew
+                    
+                    brew install netcdf
+            
+                e.g. with MacPorts using GCC 8
+                    
+                    sudo port install netcdf-fortran +gcc8
+    
+        * Python:
+
+            - netcdf4
+
+                e.g. with Anaconda
+
+                    conda install netcdf4 natsort
+
+                e.g. with MacPorts (and Python 3.7 in this case)
+
+                    sudo port install py37-netcdf py37-natsort
+    
     * Make sure your local git installation has access to all repositories and the respecitve submodules
 
     *(Optional)* Update your local git installation's repository access
@@ -67,28 +88,32 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
 
             https://bitbucket.org/account/settings/ssh-keys/
 
+    * Relaunch terminal window, or source .bash_profile, to reset environment
+
+            source ~/.bash_profile
+
 1. Get access to all necessary codes, repositories, & submodules
     - Atmosphere-interior **COUPLER** (*this repository*) 
         
         * URL: https://github.com/OxfordPlanetaryClimate/couple-interior-atmosphere
 
-    - Radiative-convective scheme *rad_conv* 
+    - Radiative-convective scheme: **RAD_CONV** 
 
         * URL: https://github.com/OxfordPlanetaryClimate/soc-rad-conv
         * Contact: TL, MH, RB
 
-    - **SOCRATES** 
+    - Radiation transport: **SOCRATES** 
 
         * URL: https://code.metoffice.gov.uk/trac/socrates
         * Contact: MH, TL
         * Download the latest version, e.g. *socrates_2002.tar.xz*
 
-    - **SPIDER** 
+    - Interior dynamics: **SPIDER** 
 
         * URL: https://bitbucket.org/djbower/spider-dev/
         * Contact: DJB, PS
 
-    - **VULCAN** (COUPLER-compatible version) 
+    - Atmospheric chemistry: **VULCAN** (COUPLER-compatible version) 
 
         * URL: https://github.com/shami-EEG/VULCAN-SPIDER
         * Contact: SMT, TL
@@ -146,6 +171,10 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
                 export PYTHONPATH=$COUPLER_DIR/atm_rad_conv:$PYTHONPATH
             
                 source /PATH_TO_COUPLER/rad_trans/socrates_main/set_rad_env
+
+        * Relaunch terminal window, or source .bash_profile, to reset environment
+
+                source ~/.bash_profile
 
 1. Run COUPLER (in any directory) using:
 
