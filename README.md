@@ -71,9 +71,8 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
 
                     sudo port install py37-netcdf py37-natsort
     
-    * Make sure your local git installation has access to all repositories and the respecitve submodules
-
-    *(Optional)* Update your local git installation's repository access
+    * *Optional:* Update your local git installation's repository access:
+        
         * Register your public SSH key with Github & Bitbucket. E.g, generate key with:
 
                 ssh-keygen -t rsa
@@ -83,10 +82,9 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
                 cat ~/.ssh/id_rsa.pub
 
         * Now add "New SSH key" in the settings at:
-
-            https://github.com/settings/keys
-
-            https://bitbucket.org/account/settings/ssh-keys/
+        
+        https://github.com/settings/keys & 
+        https://bitbucket.org/account/settings/ssh-keys/
 
     * Relaunch terminal window, or source .bash_profile, to reset environment
 
@@ -118,7 +116,7 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
         * URL: https://github.com/shami-EEG/VULCAN-SPIDER
         * Contact: SMT, TL
 
-1. Install codes & modules in order
+1. Build compiled codes & modules in order
 
     1. COUPLER + submodules (*atm_rad_conv, spider-dev, vulcan_spider*)
 
@@ -128,27 +126,49 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
 
             git submodule update --init --recursive
 
-    1. Copy SOCRATES' files to the corresponding subdirectory, e.g.:
+    1. SOCRATES / rad_conv submodule
 
-            cp -r PATH_TO_UNZIPPED_socrates_2002 PATH_TO_COUPLER/atm_rad_conv/rad_trans/socrates_code/
+        * Copy SOCRATES' files to the corresponding subdirectory, e.g.:
 
-    1. Overwrite */make/Mk_cmd* with the right setup for your machine:
+                cp -r PATH_TO_UNZIPPED_socrates_2002 PATH_TO_COUPLER/atm_rad_conv/rad_trans/socrates_code/
+
+        * Overwrite */make/Mk_cmd* with the right setup for your machine:
         
-            cp -rf PATH_TO_COUPLER/atm_rad_conv/rad_trans/Mk_cmd_MAC PATH_TO_COUPLER/atm_rad_conv/rad_trans/socrates_code/make/Mk_cmd
+                cp -rf PATH_TO_COUPLER/atm_rad_conv/rad_trans/Mk_cmd_MAC PATH_TO_COUPLER/atm_rad_conv/rad_trans/socrates_code/make/Mk_cmd
 
-        * Options: *Mk_cmd_MAC*, *Mk_cmd_AOPP_CLUSTER*
+            * Options: *Mk_cmd_MAC*, *Mk_cmd_AOPP_CLUSTER*
         
-        * If you installed your dependencies above with *MacPorts*, change *usr* to *opt* in this file, to find the correct netCDF module.
+            * If you installed your dependencies above with *MacPorts*, change *usr* to *opt* in this file, to find the correct netCDF module.
     
-    1. Build SOCRATES & set its environment
+        * Build SOCRATES & set its environment
             
-            cd PATH_TO_COUPLER/atm_rad_conv/rad_trans/socrates_code
+                cd PATH_TO_COUPLER/atm_rad_conv/rad_trans/socrates_code
             
-            ./build_code
+                ./build_code
 
-            source /PATH_TO_COUPLER/atm_rad_conv/rad_trans/socrates_code/set_rad_env
+                source /PATH_TO_COUPLER/atm_rad_conv/rad_trans/socrates_code/set_rad_env
 
         * Ignore the *-bash: ulimit...* error and learn to live with it :)
+
+    1. SPIDER submodule
+
+        * Follow the spider-dev README for up-to-date installation instructions
+
+        * Register the PETSC settings in your .bash_profile
+
+                export PETSC_DIR=/Users/tim/bitbucket/petsc-quad-direct
+            
+                export PETSC_ARCH=arch-darwin-c-opt
+
+        * If you want this to be your primary SPIDER installation, register its directory to .bash_profile via adding the following
+
+                SPIDER_DIR=$COUPLER_DIR/spider-dev
+
+                export PATH=$SPIDER_DIR:$PATH
+
+                export PATH=$SPIDER_DIR/py3:$PATH
+
+                export PYTHONPATH=$SPIDER_DIR/py3:$PYTHONPATH
 
     1. Register all executables and environment calls in your PATH, i.e., add to .bash_profile/.bashrc the following:
 
