@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # https://realpython.com/python-modules-packages/#the-module-search-path
 # https://docs.python.org/3/tutorial/modules.html
 
