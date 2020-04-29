@@ -73,7 +73,32 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
 
         * AOPP cluster:
 
-                module load intel-compilers netcdf/netcdf-c-4.7.3 netcdf/netcdf-fortran-4.5.2 openmpi/4.0.1-intel
+            * Load the following modules to run the Coupler:
+
+                    module load intel-compilers netcdf/netcdf-c-4.7.3 netcdf/netcdf-fortran-4.5.2 openmpi/4.0.1-intel
+
+            * Install and source a virtual Python 3 environment by following the instructions at: https://wiki-thphys.physics.ox.ac.uk/Python (requires Oxford Physics VPN)
+
+            * **Important**
+
+            pushd /local/home/$USER
+python3 -m venv --system-site-packages py368ve
+# alter the VE's name if more than one is required
+cd py368ve
+source bin/activate
+popd
+python3 -m pip install --upgrade pip setuptools wheel
+
+            * Register it in your .bash_profile (e.g.):
+
+                    source /PATH/py368ve/bin/activate
+
+            * Manually install the following packages (in your VE):
+
+                    python3 -m pip install --upgrade natsort
+
+                    python3 -m pip install --upgrade seaborn
+                    python3 -m pip install --upgrade matplotlib numpy pandas scipy
     
     * *Optional:* Update your local git installation's repository access:
         
@@ -213,3 +238,7 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
         CouplerMain.py
     
     Examine plots produced in *./output/*
+
+1. Update COUPLER recursively (when needed):
+
+        git submodule update --recursive --remote
