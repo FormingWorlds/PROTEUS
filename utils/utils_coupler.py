@@ -103,7 +103,7 @@ def PrintCurrentState(time_dict, runtime_helpfile, SPIDER_options, atm, loop_cou
     with open(dirs["output"]+"/"+str(int(time_dict["planet"]))+"_atm.pkl", "wb") as atm_file: pkl.dump(atm, atm_file)
 
     # Plot conditions throughout run for on-the-fly analysis
-    cu.UpdatePlots( dirs["output"], SPIDER_options["use_vulcan"] )
+    #UpdatePlots( dirs["output"], SPIDER_options["use_vulcan"] )
 
 def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, SPIDER_options):
 

@@ -82,10 +82,10 @@ def plot_atmosphere( output_dir, times ):
             # use melt fraction to determine mixed region
             MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' )
 
-            label = cu.latex_float(time)+" yr"
+            label = latex_float(time)+" yr"
             
             # Atmosphere T-Z
-            z_profile = cu.AtmosphericHeight(atm.tmp, atm.p, planet_mass, r_planet) # m
+            z_profile = AtmosphericHeight(atm.tmp, atm.p, planet_mass, r_planet) # m
             z_profile = z_profile*1e-3 # km
             ax0.plot( atm.tmp, z_profile, '-', color=color, label=label, lw=1.5)
 
@@ -229,7 +229,7 @@ def plot_current_mixing_ratio( output_dir, times, vulcan_setting ):
     ax1b.yaxis.tick_right()
     ax1b.set_ylabel( 'Temperature, $T$ (K)' )
 
-    ax1.set_title("Time = "+cu.latex_float(float(time))+" yr", fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
+    ax1.set_title("Time = "+latex_float(float(time))+" yr", fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
 
 
     ax1.legend(loc=2, fancybox=True, framealpha=0.9)

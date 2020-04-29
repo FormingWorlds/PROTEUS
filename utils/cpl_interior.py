@@ -67,7 +67,7 @@ def plot_interior( output_dir, times ):
 
         # label = fig_o.get_legend_label( time )
         # label = "{:.1e}".format(Decimal(time))+" yr"
-        label = cu.latex_float(time)+" yr"
+        label = latex_float(time)+" yr"
 
         # temperature
         yy = myjson_o.get_dict_values(['data','temp_b'])

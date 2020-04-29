@@ -77,10 +77,10 @@ def plot_stacked( output_dir, times ):
             # MIX = myjson_o.get_mixed_phase_boolean_array( 'basic_internal' )
             # MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
-            label = cu.latex_float(time)+" yr"
+            label = latex_float(time)+" yr"
 
             # Pressure-height conversion for y-axis
-            z_profile = cu.AtmosphericHeight(atm.tmp, atm.p, planet_mass, r_planet) # m
+            z_profile = AtmosphericHeight(atm.tmp, atm.p, planet_mass, r_planet) # m
             z_profile = z_profile*1e-3 # km
             ax0.plot( atm.tmp, z_profile, '-', color=color, label=label, lw=1.5)
 

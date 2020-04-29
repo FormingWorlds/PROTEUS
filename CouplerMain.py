@@ -170,8 +170,8 @@ def main():
         # Print info, save atm to file, update plots
         cu.PrintCurrentState(time_dict, runtime_helpfile, SPIDER_options, atm, loop_counter, dirs)
 
-        # # Plot conditions throughout run for on-the-fly analysis
-        # cu.UpdatePlots( output_dir, SPIDER_options["use_vulcan"] )
+        # Plot conditions throughout run for on-the-fly analysis
+        cu.UpdatePlots( dirs["output"], SPIDER_options["use_vulcan"] )
 
         # # After very first timestep, starting w/ 2nd init loop: read in partial pressures
         # if loop_counter["init"] >= 1:

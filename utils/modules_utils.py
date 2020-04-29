@@ -31,7 +31,7 @@ from scipy import interpolate
 from decimal import Decimal
 
 # Import coupler-specific package modules
-import utils.utils_coupler as cu
+#import utils.utils_coupler as cu
 import utils.utils_spider as su
 
 import utils.cpl_atmosphere
