@@ -18,8 +18,8 @@ def plot_atmosphere( output_dir, times ):
     fig_o.fig.subplots_adjust(wspace=0.07,hspace=0.2)
     fig_o.time = times
 
-    sns.set_style("ticks")
-    sns.despine()
+    # sns.set_style("ticks")
+    # sns.despine()
 
     ax0 = fig_o.ax[0]#[0]
     ax1 = fig_o.ax[1]#[0]

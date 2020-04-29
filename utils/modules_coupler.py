@@ -15,7 +15,7 @@ import matplotlib.ticker as ticker
 import pandas as pd
 import matplotlib.transforms as transforms
 import mmap
-import seaborn as sns
+# import seaborn as sns
 import pathlib
 import errno
 import json

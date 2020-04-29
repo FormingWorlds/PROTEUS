@@ -15,8 +15,8 @@ def plot_stacked( output_dir, times ):
     fig_o.fig.subplots_adjust(wspace=0.0,hspace=0.05)
     fig_o.time = times
 
-    sns.set_style("ticks")
-    sns.despine()
+    # sns.set_style("ticks")
+    # sns.despine()
 
     ax0 = fig_o.ax[0]
     ax1 = fig_o.ax[1]
@@ -186,7 +186,7 @@ def plot_stacked( output_dir, times ):
     ax1.set_ylabel( 'Mantle depth, $d_\mathrm{mantle}$ (km)' )
     ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
 
-    sns.despine()
+    # sns.despine()
 
     # # Pressure-height conversion for y-axis
     # ax0b = ax0.twinx()
