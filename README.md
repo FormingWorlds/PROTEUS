@@ -75,30 +75,27 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
 
             * Load the following modules to run the Coupler:
 
-                    module load intel-compilers netcdf/netcdf-c-4.7.3 netcdf/netcdf-fortran-4.5.2 openmpi/4.0.1-intel
+                    module load intel-compilers/2012 netcdf/3.6.3 openmpi/1.6.5__intel2012
 
-            * Install and source a virtual Python 3 environment by following the instructions at: https://wiki-thphys.physics.ox.ac.uk/Python (requires Oxford Physics VPN)
+            * Create a virtual Python 3 environment
 
-            * **Important**
+                    mkdir temporary-conda-directory
+                    cd temporary-conda-directory
+                    bash
+                    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+                    bash Miniconda3-latest-Linux-x86_64.sh
+                    conda create -n cs-env python=3.6.6
+                    conda activate cs-env
+                    conda install -c conda-forge f90nml
 
-            pushd /local/home/$USER
-python3 -m venv --system-site-packages py368ve
-# alter the VE's name if more than one is required
-cd py368ve
-source bin/activate
-popd
-python3 -m pip install --upgrade pip setuptools wheel
+            * Install the required packages
 
-            * Register it in your .bash_profile (e.g.):
+                    conda install matplotlib numpy pandas scipy seaborn natsort
 
-                    source /PATH/py368ve/bin/activate
+            * Register them in your .bash_profile
 
-            * Manually install the following packages (in your VE):
-
-                    python3 -m pip install --upgrade natsort
-
-                    python3 -m pip install --upgrade seaborn
-                    python3 -m pip install --upgrade matplotlib numpy pandas scipy
+                    module load intel-compilers intel-compilers/2012 netcdf/3.6.3 openmpi/1.6.5__intel2012
+                    conda activate cs-env
     
     * *Optional:* Update your local git installation's repository access:
         
