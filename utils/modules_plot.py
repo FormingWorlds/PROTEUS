@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # Import utils-specific modules
 from utils.modules_utils import *
 
@@ -86,3 +88,31 @@ vol_latex = {
 }
 
 volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
+
+
+# https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
+def latex_float(f):
+    float_str = "{0:.2g}".format(f)
+    if "e" in float_str:
+        base, exponent = float_str.split("e")
+        return r"${0} \times 10^{{{1}}}$".format(base, int(exponent))
+    else:
+        return float_str
+
+def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
+
+    z_profile       = np.zeros(len(P_profile))
+    P_s             = np.max(P_profile)
+    grav_s          = su.gravity( m_planet, r_planet )
+
+    for n in range(0, len(z_profile)):
+
+        T_mean_below    = np.mean(T_profile[n:])
+        P_z             = P_profile[n]
+        z_profile[n]    = - R_gas * T_mean_below * np.log(P_z/P_s) / grav_s
+
+    return z_profile
+
+
+# Constants
+R_gas           = 8.31446261815324      # J K−1 mol−1

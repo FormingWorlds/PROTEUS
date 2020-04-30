@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # https://realpython.com/python-modules-packages/#the-module-search-path
 # https://docs.python.org/3/tutorial/modules.html
 
@@ -13,7 +15,7 @@ import matplotlib.ticker as ticker
 import pandas as pd
 import matplotlib.transforms as transforms
 import mmap
-import seaborn as sns
+# import seaborn as sns
 import pathlib
 import errno
 import json
@@ -29,7 +31,7 @@ from scipy import interpolate
 from decimal import Decimal
 
 # Import coupler-specific package modules
-import utils.utils_coupler as cu
+#import utils.utils_coupler as cu
 import utils.utils_spider as su
 
 import utils.cpl_atmosphere

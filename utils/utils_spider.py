@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Import utils-specific modules
 from utils.modules_utils import *

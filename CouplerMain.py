@@ -24,8 +24,8 @@ def main():
         'nstepsmacro':                 1,     # number of timesteps, adjusted during runtime
         'dtmacro':                     50000, # delta time per macrostep to advance by [yr]
         'heat_flux':                   1.0E4, # init heat flux, adjusted during runtime [W/m^2]
-        'H2O_initial_total_abundance': 100,   # init loop: H2O mass relative to mantle [ppm wt]
-        'CO2_initial_total_abundance': 0,     # init loop [ppm wt]
+        'H2O_initial_total_abundance': 0,     # init loop: H2O mass relative to mantle [ppm wt]
+        'CO2_initial_total_abundance': 100,   # init loop [ppm wt]
         'H2_initial_total_abundance':  0,     # init loop [ppm wt]
         'CH4_initial_total_abundance': 0,     # init loop [ppm wt]
         'CO_initial_total_abundance':  0,     # init loop [ppm wt]
@@ -170,8 +170,8 @@ def main():
         # Print info, save atm to file, update plots
         cu.PrintCurrentState(time_dict, runtime_helpfile, SPIDER_options, atm, loop_counter, dirs)
 
-        # # Plot conditions throughout run for on-the-fly analysis
-        # cu.UpdatePlots( output_dir, SPIDER_options["use_vulcan"] )
+        # Plot conditions throughout run for on-the-fly analysis
+        cu.UpdatePlots( dirs["output"], SPIDER_options["use_vulcan"] )
 
         # # After very first timestep, starting w/ 2nd init loop: read in partial pressures
         # if loop_counter["init"] >= 1:

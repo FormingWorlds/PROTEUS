@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
@@ -15,8 +15,8 @@ def plot_stacked( output_dir, times ):
     fig_o.fig.subplots_adjust(wspace=0.0,hspace=0.05)
     fig_o.time = times
 
-    sns.set_style("ticks")
-    sns.despine()
+    # sns.set_style("ticks")
+    # sns.despine()
 
     ax0 = fig_o.ax[0]
     ax1 = fig_o.ax[1]
@@ -77,10 +77,10 @@ def plot_stacked( output_dir, times ):
             # MIX = myjson_o.get_mixed_phase_boolean_array( 'basic_internal' )
             # MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
-            label = cu.latex_float(time)+" yr"
+            label = latex_float(time)+" yr"
 
             # Pressure-height conversion for y-axis
-            z_profile = cu.AtmosphericHeight(atm.tmp, atm.p, planet_mass, r_planet) # m
+            z_profile = AtmosphericHeight(atm.tmp, atm.p, planet_mass, r_planet) # m
             z_profile = z_profile*1e-3 # km
             ax0.plot( atm.tmp, z_profile, '-', color=color, label=label, lw=1.5)
 
@@ -186,7 +186,7 @@ def plot_stacked( output_dir, times ):
     ax1.set_ylabel( 'Mantle depth, $d_\mathrm{mantle}$ (km)' )
     ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
 
-    sns.despine()
+    # sns.despine()
 
     # # Pressure-height conversion for y-axis
     # ax0b = ax0.twinx()

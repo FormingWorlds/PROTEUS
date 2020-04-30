@@ -47,7 +47,7 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
     
     * Required packages:
         
-        * FORTRAN:
+        * FORTRAN, local:
         
             - netCDF
                 
@@ -59,7 +59,7 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
                     
                     sudo port install netcdf-fortran +gcc8
     
-        * Python:
+        * Python, local:
 
             - netcdf4
 
@@ -70,6 +70,32 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
                 e.g. with MacPorts (and Python 3.7 in this case)
 
                     sudo port install py37-netcdf py37-natsort
+
+        * AOPP cluster:
+
+            * Load the following modules to run the Coupler:
+
+                    module load intel-compilers/2012 netcdf/3.6.3 openmpi/1.6.5__intel2012
+
+            * Create a virtual Python 3 environment
+
+                    mkdir temporary-conda-directory
+                    cd temporary-conda-directory
+                    bash
+                    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+                    bash Miniconda3-latest-Linux-x86_64.sh
+                    conda create -n cs-env python=3.6.6
+                    conda activate cs-env
+                    conda install -c conda-forge f90nml
+
+            * Install the required packages
+
+                    conda install matplotlib numpy pandas scipy seaborn natsort
+
+            * Register them in your .bash_profile
+
+                    module load intel-compilers intel-compilers/2012 netcdf/3.6.3 openmpi/1.6.5__intel2012
+                    conda activate cs-env
     
     * *Optional:* Update your local git installation's repository access:
         
@@ -120,7 +146,7 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
 
     1. COUPLER + submodules (*atm_rad_conv, spider-dev, vulcan_spider*)
 
-            git clone --recursive --depth 1 git@github.com:OxfordPlanetaryClimate/couple-interior-atmosphere.git PATH_TO_COUPLER
+            git clone --recursive git@github.com:OxfordPlanetaryClimate/couple-interior-atmosphere.git PATH_TO_COUPLER
 
     1. Ensure that submodules are up to date
 
@@ -154,11 +180,19 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
 
         * Follow the spider-dev README for up-to-date installation instructions
 
-        * Register the PETSC settings in your .bash_profile
+        * Register the PETSC settings in your .bash_profile (you'll get the correct locations during installation of the hacked PETSC version), may look like this:
 
-                export PETSC_DIR=/Users/tim/bitbucket/petsc-quad-direct
+            * Local:
+
+                    export PETSC_DIR=/Users/tim/bitbucket/petsc-quad-direct
             
-                export PETSC_ARCH=arch-darwin-c-opt
+                    export PETSC_ARCH=arch-darwin-c-opt
+
+            * AOPP cluster:
+
+                    export PETSC_DIR=/home/lichtenberg/codes/petsc-double-direct
+                
+                    export PETSC_ARCH=arch-linux2-c-opt
 
         * If you want this to be your primary SPIDER installation, register its directory to .bash_profile via adding the following
 
@@ -170,7 +204,7 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
 
                 export PYTHONPATH=$SPIDER_DIR/py3:$PYTHONPATH
 
-    1. Register all executables and environment calls in your PATH, i.e., add to .bash_profile/.bashrc the following:
+    1. Register the COUPLER in your PATH, i.e., add to .bash_profile/.bashrc the following:
 
         * Mandatory:
 
@@ -201,3 +235,7 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
         CouplerMain.py
     
     Examine plots produced in *./output/*
+
+1. Update COUPLER recursively (when needed):
+
+        git submodule update --recursive --remote
