@@ -38,7 +38,6 @@ def main():
     print(":::::::::::: START COUPLER RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
-    
     # Interior-Atmosphere loop
     while time_dict["planet"] < time_dict["target"]:
 
