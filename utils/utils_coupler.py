@@ -81,7 +81,7 @@ def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
 
     return z_profile
 
-def PrintCurrentState(time_dict, runtime_helpfile, SPIDER_options, atm, loop_counter, dirs):
+def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs):
 
     # Print final statement
     print("---------------------------------------------------------")
@@ -95,20 +95,20 @@ def PrintCurrentState(time_dict, runtime_helpfile, SPIDER_options, atm, loop_cou
     print(runtime_helpfile.tail(2))
     print("P_surf [bar]:", runtime_helpfile.iloc[-1]["P_surf"], " ")
     print("TOA heating [W/m^2]:", atm.toa_heating)
-    print("MO heat flux [W/m^2]:", SPIDER_options["heat_flux"])
-    print("Last file name:", SPIDER_options["ic_interior_filename"])
+    print("MO heat flux [W/m^2]:", COUPLER_options["heat_flux"])
+    print("Last file name:", COUPLER_options["ic_interior_filename"])
     print("---------------------------------------------------------")
 
     # Save atm object to disk
     with open(dirs["output"]+"/"+str(int(time_dict["planet"]))+"_atm.pkl", "wb") as atm_file: pkl.dump(atm, atm_file)
 
     # Plot conditions throughout run for on-the-fly analysis
-    #UpdatePlots( dirs["output"], SPIDER_options["use_vulcan"] )
+    #UpdatePlots( dirs["output"], COUPLER_options["use_vulcan"] )
 
-def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, SPIDER_options):
+def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options):
 
     runtime_helpfile_name = "/runtime_helpfile.csv"
-    spider_options_name   = "spider_options.csv"
+    COUPLER_options_name   = "COUPLER_options.csv"
 
     # If runtime_helpfle not existent, create it + write to disk
     if not os.path.isfile(dirs["output"]+"/"+runtime_helpfile_name):
@@ -118,8 +118,8 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         #, 'H2O_atm_bar', 'CO2_atm_bar', 'H2_atm_bar', 'CH4_atm_bar', 'CO_atm_bar', 'N2_atm_bar', 'O2_atm_bar', 'S_atm_bar', 'He_atm_bar'run
 
         # Save SPIDER options file
-        SPIDER_options_save = pd.DataFrame(SPIDER_options, index=[0])
-        SPIDER_options_save.to_csv( dirs["output"]+"/"+spider_options_name, index=False, sep=" ")
+        COUPLER_options_save = pd.DataFrame(COUPLER_options, index=[0])
+        COUPLER_options_save.to_csv( dirs["output"]+"/"+COUPLER_options_name, index=False, sep=" ")
 
     # Data dict
     runtime_helpfile_new = {}
@@ -171,7 +171,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
             # Instantiate empty
             runtime_helpfile_new[vol+"_mr"]     = 0.
 
-            if SPIDER_options[vol+"_initial_total_abundance"] > 0. or SPIDER_options[vol+"_initial_atmos_pressure"] > 0.:
+            if COUPLER_options[vol+"_initial_total_abundance"] > 0. or COUPLER_options[vol+"_initial_atmos_pressure"] > 0.:
 
                 keys_t = ( 
                             ('atmosphere',vol,'liquid_kg'),
@@ -204,10 +204,10 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
             runtime_helpfile_new[vol+"_mol_solid"]  = 0.
             runtime_helpfile_new[vol+"_mol_liquid"] = 0.
             runtime_helpfile_new[vol+"_mol_total"]  = 0.
-            # runtime_helpfile_new[vol+"_mol_total"]  = 1e-6*SPIDER_options[vol+"_initial_total_abundance"]*runtime_helpfile_new["M_mantle"] / molar_mass[vol]
+            # runtime_helpfile_new[vol+"_mol_total"]  = 1e-6*COUPLER_options[vol+"_initial_total_abundance"]*runtime_helpfile_new["M_mantle"] / molar_mass[vol]
             
             # Only for the ones tracked in SPIDER
-            if SPIDER_options[vol+"_initial_total_abundance"] > 0. or SPIDER_options[vol+"_initial_atmos_pressure"] > 0.:
+            if COUPLER_options[vol+"_initial_total_abundance"] > 0. or COUPLER_options[vol+"_initial_atmos_pressure"] > 0.:
                 runtime_helpfile_new[vol+"_mol_atm"]    = runtime_helpfile_new[vol+"_atm_kg"] / molar_mass[vol]
                 runtime_helpfile_new[vol+"_mol_solid"]  = runtime_helpfile_new[vol+"_solid_kg"] / molar_mass[vol]
                 runtime_helpfile_new[vol+"_mol_liquid"] = runtime_helpfile_new[vol+"_liquid_kg"] / molar_mass[vol]
@@ -270,7 +270,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["Input"]           = input_flag   
 
         # Update heat flux from latest SOCRATES output
-        runtime_helpfile_new["Heat_flux"]       = SPIDER_options["heat_flux"]
+        runtime_helpfile_new["Heat_flux"]       = COUPLER_options["heat_flux"]
 
         # Other info from latest SPIDER run (X/H ratios stay fixed w/o loss)
         runtime_helpfile_new["Time"]            = runtime_helpfile.iloc[-1]["Time"]       
@@ -352,10 +352,10 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
     print(dirs["output"]+"/"+runtime_helpfile_name)
     runtime_helpfile.to_csv( dirs["output"]+runtime_helpfile_name, index=False, sep=" ")
 
-    # Save SPIDER_options to disk
-    SPIDER_options_save = pd.read_csv(dirs["output"]+"/"+spider_options_name, sep=" ")
-    SPIDER_options_save = SPIDER_options_save.append(SPIDER_options, ignore_index=True) 
-    SPIDER_options_save.to_csv( dirs["output"]+"/"+spider_options_name, index=False, sep=" ")
+    # Save COUPLER_options to disk
+    COUPLER_options_save = pd.read_csv(dirs["output"]+"/"+COUPLER_options_name, sep=" ")
+    COUPLER_options_save = COUPLER_options_save.append(COUPLER_options, ignore_index=True) 
+    COUPLER_options_save.to_csv( dirs["output"]+"/"+COUPLER_options_name, index=False, sep=" ")
 
     # Advance time_current in main loop
     time_dict["planet"] = runtime_helpfile.iloc[-1]["Time"]
@@ -393,7 +393,7 @@ def StructAtm( time_dict, loop_counter, dirs, runtime_helpfile ):
     atm = atmos(runtime_helpfile.iloc[-1]["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, vol_list)
         
 
-    # if SPIDER_options["use_vulcan"] != 0:
+    # if COUPLER_options["use_vulcan"] != 0:
                 
 
         # with open(output_dir+'vulcan_XH_ratios.dat', 'w') as file:
@@ -580,13 +580,13 @@ def StructAtm( time_dict, loop_counter, dirs, runtime_helpfile ):
 #         json.dump(data, f, indent=4)
 
 # run VULCAN/atmosphere chemistry
-def RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, SPIDER_options ):
+def RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
     # # Generate/adapt atm structure
     # atm = StructAtm( time_current, loop_counter, vulcan_dir, output_dir, runtime_helpfile )
-    # # volume_mixing_ratios_name, mass_mixing_ratios_name = AtmStruct( time_current, loop_counter, vulcan_dir, output_dir, runtime_helpfile, SPIDER_options["R_solid_planet"] )
+    # # volume_mixing_ratios_name, mass_mixing_ratios_name = AtmStruct( time_current, loop_counter, vulcan_dir, output_dir, runtime_helpfile, COUPLER_options["R_solid_planet"] )
 
-    if SPIDER_options["use_vulcan"] != 0:
+    if COUPLER_options["use_vulcan"] != 0:
 
         # Runtime info
         PrintSeparator()
@@ -615,14 +615,14 @@ def RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, SPIDE
 
         #     # Only for major atmospheric species
         #     if partial_pressure_vol > 1.: # Pa
-        #         SPIDER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
+        #         COUPLER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
 
     return atm
 
-def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, SPIDER_options ):
+def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options ):
 
     # Interpolate TOA heating from Baraffe models and distance from star
-    atm.toa_heating = atm_rad_conv.SocRadConv.InterpolateStellarLuminosity(SPIDER_options["star_mass"], time_dict, SPIDER_options["mean_distance"], atm.albedo_pl)
+    atm.toa_heating = atm_rad_conv.SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], atm.albedo_pl)
 
     # Runtime info
     PrintSeparator()
@@ -630,10 +630,10 @@ def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, SPIDER_op
     PrintSeparator()
 
     # Calculate temperature structure and heat flux w/ SOCRATES
-    atm_dry, atm = atm_rad_conv.SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, SPIDER_options, standalone=False, cp_dry=False, trpp=True) # W/m^2
+    atm_dry, atm = atm_rad_conv.SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, COUPLER_options, standalone=False, cp_dry=False, trpp=True) # W/m^2
     
     # MO heat flux from topmost atmosphere node; do not allow heating
-    SPIDER_options["heat_flux"] = np.max( [ 0., atm.net_flux[0] ] )
+    COUPLER_options["heat_flux"] = np.max( [ 0., atm.net_flux[0] ] )
 
     # Clean up run directory
     PrintSeparator()
@@ -648,28 +648,28 @@ def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, SPIDER_op
         print(os.path.basename(file), end =" ")
     print("==> Done.")
 
-    return atm, SPIDER_options
+    return atm, COUPLER_options
 
-def RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile ):
+def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
 
     # Check if input file present in current dir, if not copy from SPIDER repo
-    spider_options_file = dirs["output"]+"/bu_input.opts"
-    if not os.path.isfile(spider_options_file):
-        spider_options_file_vanilla = dirs["spider"]+"/examples/lichtenberg_2019/socrates_p/bu_input.opts"
-        shutil.copy(spider_options_file_vanilla, spider_options_file)
+    COUPLER_options_file = dirs["output"]+"/bu_input.opts"
+    if not os.path.isfile(COUPLER_options_file):
+        COUPLER_options_file_vanilla = dirs["spider"]+"/examples/lichtenberg_2019/socrates_p/bu_input.opts"
+        shutil.copy(COUPLER_options_file_vanilla, COUPLER_options_file)
 
     # Define which volatiles to track in SPIDER
     species_call = ""
     for vol in volatile_species: 
-        if SPIDER_options[vol+"_initial_total_abundance"] > 0. or SPIDER_options[vol+"_initial_atmos_pressure"] > 0.:
+        if COUPLER_options[vol+"_initial_total_abundance"] > 0. or COUPLER_options[vol+"_initial_atmos_pressure"] > 0.:
             species_call = species_call + "," + vol
     species_call = species_call[1:] # Remove "," in front
 
     # Recalculate time stepping
-    if SPIDER_options["IC_INTERIOR"] == 2:      
-        dtmacro     = SPIDER_options["dtmacro"]
+    if COUPLER_options["IC_INTERIOR"] == 2:      
+        dtmacro     = COUPLER_options["dtmacro"]
         dtime       = time_dict["target"] - time_dict["planet"]
-        SPIDER_options["nstepsmacro"] =  math.ceil( dtime / float(SPIDER_options["dtmacro"]) )
+        COUPLER_options["nstepsmacro"] =  math.ceil( dtime / float(COUPLER_options["dtmacro"]) )
     # For init loop and start from beginning
     else:
         dtmacro     = 0
@@ -677,17 +677,17 @@ def RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile )
     ### SPIDER base call sequence 
     call_sequence = [   
                         dirs["spider"]+"/spider", 
-                        "-options_file",          spider_options_file, 
+                        "-options_file",          COUPLER_options_file, 
                         "-outputDirectory",       dirs["output"],
-                        "-IC_INTERIOR",           str(SPIDER_options["IC_INTERIOR"]),
-                        "-IC_ATMOSPHERE",         str(SPIDER_options["IC_ATMOSPHERE"]),
-                        "-SURFACE_BC",            str(SPIDER_options["SURFACE_BC"]), 
-                        "-surface_bc_value",      str(SPIDER_options["heat_flux"]), 
-                        "-tsurf_poststep_change", str(SPIDER_options["tsurf_poststep_change"]),
-                        "-nstepsmacro",           str(SPIDER_options["nstepsmacro"]), 
+                        "-IC_INTERIOR",           str(COUPLER_options["IC_INTERIOR"]),
+                        "-IC_ATMOSPHERE",         str(COUPLER_options["IC_ATMOSPHERE"]),
+                        "-SURFACE_BC",            str(COUPLER_options["SURFACE_BC"]), 
+                        "-surface_bc_value",      str(COUPLER_options["heat_flux"]), 
+                        "-tsurf_poststep_change", str(COUPLER_options["tsurf_poststep_change"]),
+                        "-nstepsmacro",           str(COUPLER_options["nstepsmacro"]), 
                         "-dtmacro",               str(dtmacro), 
-                        "-radius",                str(SPIDER_options["R_solid_planet"]), 
-                        "-coresize",              str(SPIDER_options["planet_coresize"]),
+                        "-radius",                str(COUPLER_options["R_solid_planet"]), 
+                        "-coresize",              str(COUPLER_options["planet_coresize"]),
                         "-volatile_names",        str(species_call)
                     ]
 
@@ -695,24 +695,24 @@ def RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile )
 
     # Define distribution coefficients and total mass/surface pressure for volatiles > 0
     for vol in volatile_species:
-        if SPIDER_options[vol+"_initial_total_abundance"] > 0. or SPIDER_options[vol+"_initial_atmos_pressure"] > 0.:
+        if COUPLER_options[vol+"_initial_total_abundance"] > 0. or COUPLER_options[vol+"_initial_atmos_pressure"] > 0.:
 
             # # Very first timestep: feed volatile initial abundance [ppm]
             # if loop_counter["init"] == 0:
             
-            # if SPIDER_options["IC_ATMOSPHERE"] == 1:
-            call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
+            # if COUPLER_options["IC_ATMOSPHERE"] == 1:
+            call_sequence.extend(["-"+vol+"_initial_total_abundance", str(COUPLER_options[vol+"_initial_total_abundance"])])
 
             # # After very first timestep, starting w/ 2nd init loop
             # if loop_counter["init"] >= 1:
-            # # if SPIDER_options["IC_ATMOSPHERE"] == 3:
+            # # if COUPLER_options["IC_ATMOSPHERE"] == 3:
 
             #     # # Load partial pressures from VULCAN
-            #     # call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(SPIDER_options[vol+"_initial_atmos_pressure"])])
+            #     # call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(COUPLER_options[vol+"_initial_atmos_pressure"])])
 
             # ## KLUDGE: Read in the same abundances every time -> no feedback from ATMOS
-            # if SPIDER_options["use_vulcan"] == 0 or SPIDER_options["use_vulcan"] == 1:
-            #     call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
+            # if COUPLER_options["use_vulcan"] == 0 or COUPLER_options["use_vulcan"] == 1:
+            #     call_sequence.extend(["-"+vol+"_initial_total_abundance", str(COUPLER_options[vol+"_initial_total_abundance"])])
 
             call_sequence.extend(["-"+vol+"_henry", str(volatile_distribution_coefficients[vol+"_henry"])])
             call_sequence.extend(["-"+vol+"_henry_pow", str(volatile_distribution_coefficients[vol+"_henry_pow"])])
@@ -722,16 +722,16 @@ def RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile )
 
     # With start of the main loop only:
     # Volatile specific options: post step settings, restart filename
-    if SPIDER_options["IC_INTERIOR"] == 2:
+    if COUPLER_options["IC_INTERIOR"] == 2:
         call_sequence.extend([ 
                                 "-ic_interior_filename", 
-                                str(dirs["output"]+"/"+SPIDER_options["ic_interior_filename"]),
+                                str(dirs["output"]+"/"+COUPLER_options["ic_interior_filename"]),
                                 "-activate_poststep", 
                                 "-activate_rollback"
                              ])
         for vol in volatile_species:
-            if SPIDER_options[vol+"_initial_total_abundance"] > 0. or SPIDER_options[vol+"_initial_atmos_pressure"] > 0.:
-                call_sequence.extend(["-"+vol+"_poststep_change", str(SPIDER_options[vol+"_poststep_change"])])
+            if COUPLER_options[vol+"_initial_total_abundance"] > 0. or COUPLER_options[vol+"_initial_atmos_pressure"] > 0.:
+                call_sequence.extend(["-"+vol+"_poststep_change", str(COUPLER_options[vol+"_poststep_change"])])
 
     # Runtime info
     PrintSeparator()
@@ -745,10 +745,10 @@ def RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile )
     subprocess.call(call_sequence)
 
     # Update restart filename for next SPIDER run
-    # SPIDER_options["ic_interior_filename"] = natsorted([os.path.basename(x) for x in glob.glob(dirs["output"]+"/*.json")])[-1]
-    SPIDER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"/*.json")])[-1]
+    # COUPLER_options["ic_interior_filename"] = natsorted([os.path.basename(x) for x in glob.glob(dirs["output"]+"/*.json")])[-1]
+    COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"/*.json")])[-1]
 
-    return SPIDER_options
+    return COUPLER_options
 
 # String sorting not based on natsorted package
 def natural_sort(l): 
@@ -836,7 +836,7 @@ def SaveOutput( output_dir ):
 def ReadInitFile( dirs, init_file_passed ):
 
     # Read in input file as dictionary
-    SPIDER_options  = {}
+    COUPLER_options  = {}
     time_dict       = {}
     print("Read in init file:", end=" ")
 
@@ -876,13 +876,13 @@ def ReadInitFile( dirs, init_file_passed ):
                 if not line.startswith("time_"):
 
                     # Some parameters are int
-                    if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", "nstepsmacro", "use_vulcan" ]:
+                    if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", "nstepsmacro", "use_vulcan", "ic_interior_filename" ]:
                         val = int(val)
                     # Most are float
                     else:
                         val = float(val)
 
-                    SPIDER_options[key] = val
+                    COUPLER_options[key] = val
 
 
                 # Time options
@@ -897,5 +897,5 @@ def ReadInitFile( dirs, init_file_passed ):
                         if line.startswith("star"):
                             time_dict["offset"] = float(val.strip())
 
-    return SPIDER_options, time_dict
+    return COUPLER_options, time_dict
 

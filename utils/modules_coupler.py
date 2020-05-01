@@ -86,43 +86,43 @@ args = parser.parse_args()
 # Parse optional argument from console
 if args.H2O_ppm:
     print("Set H2O_ppm from command line:", args.H2O_ppm)
-    SPIDER_options["H2O_initial_total_abundance"] = float(args.H2O_ppm)
+    COUPLER_options["H2O_initial_total_abundance"] = float(args.H2O_ppm)
 elif args.H2O_bar:
     print("Set H2O_bar from command line:", args.H2O_bar)
-    SPIDER_options["H2O_initial_atmos_pressure"] = float(args.H2O_bar)
+    COUPLER_options["H2O_initial_atmos_pressure"] = float(args.H2O_bar)
 if args.CO2_ppm:
     print("Set CO2_ppm from command line:", args.CO2_ppm)
-    SPIDER_options["CO2_initial_total_abundance"] = float(args.CO2_ppm)
+    COUPLER_options["CO2_initial_total_abundance"] = float(args.CO2_ppm)
 elif args.CO2_bar:
     print("Set CO2_bar from command line:", args.CO2_bar)
-    SPIDER_options["CO2_initial_atmos_pressure"] = float(args.CO2_bar)
+    COUPLER_options["CO2_initial_atmos_pressure"] = float(args.CO2_bar)
 if args.H2_ppm:
     print("Set H2_ppm from command line:", args.H2_ppm)
-    SPIDER_options["H2_initial_total_abundance"] = float(args.H2_ppm)
+    COUPLER_options["H2_initial_total_abundance"] = float(args.H2_ppm)
 elif args.H2_bar:
     print("Set H2_bar from command line:", args.H2_bar)
-    SPIDER_options["H2_initial_atmos_pressure"] = float(args.H2_bar)
+    COUPLER_options["H2_initial_atmos_pressure"] = float(args.H2_bar)
 if args.CO_ppm:
     print("Set CO_ppm from command line:", args.CO_ppm)
-    SPIDER_options["CO_initial_total_abundance"] = float(args.CO_ppm)
+    COUPLER_options["CO_initial_total_abundance"] = float(args.CO_ppm)
 elif args.CO_bar:
     print("Set CO_bar from command line:", args.CO_bar)
-    SPIDER_options["CO_initial_atmos_pressure"] = float(args.CO_bar)
+    COUPLER_options["CO_initial_atmos_pressure"] = float(args.CO_bar)
 if args.N2_ppm:
     print("Set N2_ppm from command line:", args.N2_ppm)
-    SPIDER_options["N2_initial_total_abundance"] = float(args.N2_ppm)
+    COUPLER_options["N2_initial_total_abundance"] = float(args.N2_ppm)
 elif args.N2_bar:
     print("Set N2_bar from command line:", args.N2_bar)
-    SPIDER_options["N2_initial_atmos_pressure"] = float(args.N2_bar)
+    COUPLER_options["N2_initial_atmos_pressure"] = float(args.N2_bar)
 if args.CH4_ppm:
     print("Set CH4_ppm from command line:", args.CH4_ppm)
-    SPIDER_options["CH4_initial_total_abundance"] = float(args.CH4_ppm)
+    COUPLER_options["CH4_initial_total_abundance"] = float(args.CH4_ppm)
 elif args.CH4_bar:
     print("Set CH4_bar from command line:", args.CH4_bar)
-    SPIDER_options["CH4_initial_atmos_pressure"] = float(args.CH4_bar)
+    COUPLER_options["CH4_initial_atmos_pressure"] = float(args.CH4_bar)
 if args.O2_ppm:
     print("Set O2_ppm from command line:", args.O2_ppm)
-    SPIDER_options["O2_initial_total_abundance"] = float(args.O2_ppm)
+    COUPLER_options["O2_initial_total_abundance"] = float(args.O2_ppm)
 elif args.O2_bar:
     print("Set O2_bar from command line:", args.O2_bar)
-    SPIDER_options["O2_initial_atmos_pressure"] = float(args.O2_bar)
+    COUPLER_options["O2_initial_atmos_pressure"] = float(args.O2_bar)
