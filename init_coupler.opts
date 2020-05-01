@@ -1,0 +1,85 @@
+########## COUPLER init file
+
+##### General planetary and magma ocean configuration
+
+star_mass                   = 1.0  # M_sun: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4         
+mean_distance               = 1.0  # AU, star-planet distance
+
+time_star                   = 1e+8 # yr, time since star formation
+time_planet                 = 0.   # yr, time since MO start
+time_target                 = 1e+7 # yr, target time for MO evolution
+
+
+##### SPIDER-specific settings
+
+# Restart seting: 1: Fresh start | 2: Restart from file
+IC_INTERIOR                 = 1   
+
+# Atmosphere setting: 1: Fresh start | 3: read in partial pressures
+IC_ATMOSPHERE               = 1
+
+# Upper boundary condition: 4: constant heat flux boundary condition
+SURFACE_BC                  = 4  
+
+# Maximum absolute surface temperature change [K]
+tsurf_poststep_change       = 50.0  
+
+# Planet radius [m]
+R_solid_planet              = 6371000
+
+# Fractional core radius
+planet_coresize             = 0.55
+
+# Restart filename if restart manually, int(yr)+".json"
+ic_interior_filename        = 0
+
+# Number of timesteps, adjusted during runtime
+nstepsmacro                 = 1
+
+# Delta time per macrostep to advance by [yr]
+dtmacro                     = 50000
+
+# Init heat flux, adjusted during runtime [W/m^2]
+heat_flux                   = 1.0E4
+
+# Volatile species mass relative to mantle [ppm wt]
+H2O_initial_total_abundance = 0
+CO2_initial_total_abundance = 0
+H2_initial_total_abundance  = 50
+CH4_initial_total_abundance = 0
+CO_initial_total_abundance  = 0
+N2_initial_total_abundance  = 0
+O2_initial_total_abundance  = 0
+S_initial_total_abundance   = 0 
+He_initial_total_abundance  = 0
+
+# Fractional species melt phase change event trigger [wt]
+H2O_poststep_change         = 0.05  
+CO2_poststep_change         = 0.05
+H2_poststep_change          = 0.05
+CH4_poststep_change         = 0.05
+CO_poststep_change          = 0.05 
+N2_poststep_change          = 0.05
+O2_poststep_change          = 0.05
+S_poststep_change           = 0.05
+He_poststep_change          = 0.05 
+
+# Optional: restart partial pressure [Pa]
+H2O_initial_atmos_pressure  = 0.0  
+CO2_initial_atmos_pressure  = 0.0
+H2_initial_atmos_pressure   = 0.0
+CH4_initial_atmos_pressure  = 0.0
+CO_initial_atmos_pressure   = 0.0
+N2_initial_atmos_pressure   = 0.0
+O2_initial_atmos_pressure   = 0.0
+S_initial_atmos_pressure    = 0.0 
+He_initial_atmos_pressure   = 0.0
+
+# Atmosphere chemistry switch: 
+# 0: none 1: VULCAN->SOCRATES & 2: V->SOC+SPI
+use_vulcan                  = 0
+
+
+
+
+

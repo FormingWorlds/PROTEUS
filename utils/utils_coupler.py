@@ -6,14 +6,14 @@ from utils.modules_utils import *
 # Henry's law coefficients
 # Add to dataframe + save to disk
 volatile_distribution_coefficients = {               # X_henry -> ppm/Pa
-    # 'H2O_henry':             8.086e-01,                
-    # 'H2O_henry_pow':         1.709e+00,       
-    'H2O_henry':           6.800e-02,              # Lebrun+13
-    'H2O_henry_pow':       1.4285714285714286,     # Lebrun+13         
-    # 'CO2_henry':           1.937e-09,            
-    # 'CO2_henry_pow':       7.140e-01,                
-    'CO2_henry':             4.4E-6,                 # Lebrun+13
-    'CO2_henry_pow':         1.0,                    # Lebrun+13
+    'H2O_henry':             8.086e-01,                
+    'H2O_henry_pow':         1.709e+00,       
+    # 'H2O_henry':           6.800e-02,              # Lebrun+13
+    # 'H2O_henry_pow':       1.4285714285714286,     # Lebrun+13         
+    'CO2_henry':             1.937e-09,            
+    'CO2_henry_pow':         7.140e-01,                
+    # 'CO2_henry':             4.4E-6,                 # Lebrun+13
+    # 'CO2_henry_pow':         1.0,                    # Lebrun+13
     'H2_henry':              0.00000257, 
     'H2_henry_pow':          1.0, 
     'CH4_henry':             0.00000010, 
@@ -619,10 +619,10 @@ def RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, SPIDE
 
     return atm
 
-def RunSOCRATES( atm, time_dict, star_mass, mean_distance, dirs, runtime_helpfile, loop_counter, SPIDER_options ):
+def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, SPIDER_options ):
 
     # Interpolate TOA heating from Baraffe models and distance from star
-    atm.toa_heating = atm_rad_conv.SocRadConv.InterpolateStellarLuminosity(star_mass, time_dict, mean_distance, atm.albedo_pl)
+    atm.toa_heating = atm_rad_conv.SocRadConv.InterpolateStellarLuminosity(SPIDER_options["star_mass"], time_dict, SPIDER_options["mean_distance"], atm.albedo_pl)
 
     # Runtime info
     PrintSeparator()
@@ -691,16 +691,17 @@ def RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile )
                         "-volatile_names",        str(species_call)
                     ]
 
-    ### Conditional additions to call sequence
+    ## Conditional additions to call sequence
 
     # Define distribution coefficients and total mass/surface pressure for volatiles > 0
     for vol in volatile_species:
         if SPIDER_options[vol+"_initial_total_abundance"] > 0. or SPIDER_options[vol+"_initial_atmos_pressure"] > 0.:
 
-            # Very first timestep: feed volatile initial abundance [ppm]
-            if loop_counter["init"] == 0:
+            # # Very first timestep: feed volatile initial abundance [ppm]
+            # if loop_counter["init"] == 0:
+            
             # if SPIDER_options["IC_ATMOSPHERE"] == 1:
-                call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
+            call_sequence.extend(["-"+vol+"_initial_total_abundance", str(SPIDER_options[vol+"_initial_total_abundance"])])
 
             # # After very first timestep, starting w/ 2nd init loop
             # if loop_counter["init"] >= 1:
@@ -749,7 +750,7 @@ def RunSPIDER( time_dict, dirs, SPIDER_options, loop_counter, runtime_helpfile )
 
     return SPIDER_options
 
-# Sting sorting not based on natsorted package
+# String sorting not based on natsorted package
 def natural_sort(l): 
     convert = lambda text: int(text) if text.isdigit() else text.lower() 
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
@@ -830,4 +831,71 @@ def SaveOutput( output_dir ):
     for file in natural_sort(glob.glob(output_dir+"/"+"*.*")):
         shutil.copy(file, save_dir+os.path.basename(file))
         print(os.path.basename(file), end =" ")
+
+
+def ReadInitFile( dirs, init_file_passed ):
+
+    # Read in input file as dictionary
+    SPIDER_options  = {}
+    time_dict       = {}
+    print("Read in init file:", end=" ")
+
+    # Output directory
+    if os.path.isfile(init_file_passed):
+        init_file = init_file_passed
+    # Coupler directory
+    else: 
+        init_file = dirs["coupler"]+"/init_coupler.opts"
+
+    print(init_file)   
+    print("Settings:")
+
+    # Open file and fill dict
+    with open(init_file) as f:
+        
+        # Filter blank lines
+        lines = list(filter(None, (line.rstrip() for line in f)))
+        
+        for line in lines:
+            
+            # Skip comments
+            if not line.startswith("#"):
+                
+                # Skipe inline comments
+                line = line.split("#")[0]
+                line = line.split(",")[0]
+
+                print(line)
+
+                # Assign key and value
+                (key, val) = line.split("=")
+                key = key.strip()
+                val = val.strip()
+                
+                # Standard options
+                if not line.startswith("time_"):
+
+                    # Some parameters are int
+                    if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", "nstepsmacro", "use_vulcan" ]:
+                        val = int(val)
+                    # Most are float
+                    else:
+                        val = float(val)
+
+                    SPIDER_options[key] = val
+
+
+                # Time options
+                elif line.startswith("time_"):
+
+                        line = line.split("_")[1]
+
+                        (key, val) = line.split("=")
+                    
+                        time_dict[str(key.strip())] = float(val.strip())
+
+                        if line.startswith("star"):
+                            time_dict["offset"] = float(val.strip())
+
+    return SPIDER_options, time_dict
 
