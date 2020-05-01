@@ -846,6 +846,7 @@ def ReadInitFile( dirs, init_file_passed ):
     # Coupler directory
     else: 
         init_file = dirs["coupler"]+"/init_coupler.opts"
+        shutil.copy(dirs["coupler"]+"/init_coupler.opts", init_file_passed)
 
     print(init_file)   
     print("Settings:")

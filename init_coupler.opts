@@ -43,7 +43,7 @@ dtmacro                     = 50000
 heat_flux                   = 1.0E4
 
 # Volatile species mass relative to mantle [ppm wt]
-H2O_initial_total_abundance = 100
+H2O_initial_total_abundance = 500   # > 350
 CO2_initial_total_abundance = 0
 H2_initial_total_abundance  = 0
 CH4_initial_total_abundance = 0
