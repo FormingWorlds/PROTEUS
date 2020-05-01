@@ -8,12 +8,12 @@ from utils.modules_utils import *
 volatile_distribution_coefficients = {               # X_henry -> ppm/Pa
     'H2O_henry':             8.086e-01,                
     'H2O_henry_pow':         1.709e+00,       
-    # 'H2O_henry':           6.800e-02,              # Lebrun+13
-    # 'H2O_henry_pow':       1.4285714285714286,     # Lebrun+13         
     'CO2_henry':             1.937e-09,            
     'CO2_henry_pow':         7.140e-01,                
-    # 'CO2_henry':             4.4E-6,                 # Lebrun+13
-    # 'CO2_henry_pow':         1.0,                    # Lebrun+13
+    # 'H2O_henry':           6.800e-02,              # Lebrun+13
+    # 'H2O_henry_pow':       1.4285714285714286,     # Lebrun+13         
+    # 'CO2_henry':           4.4E-6,                 # Lebrun+13
+    # 'CO2_henry_pow':       1.0,                    # Lebrun+13
     'H2_henry':              0.00000257, 
     'H2_henry_pow':          1.0, 
     'CH4_henry':             0.00000010, 
@@ -653,10 +653,10 @@ def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_o
 def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
 
     # Check if input file present in current dir, if not copy from SPIDER repo
-    COUPLER_options_file = dirs["output"]+"/bu_input.opts"
-    if not os.path.isfile(COUPLER_options_file):
-        COUPLER_options_file_vanilla = dirs["spider"]+"/examples/lichtenberg_2019/socrates_p/bu_input.opts"
-        shutil.copy(COUPLER_options_file_vanilla, COUPLER_options_file)
+    SPIDER_options_file = dirs["output"]+"/bu_input.opts"
+    if not os.path.isfile(SPIDER_options_file):
+        SPIDER_options_file_vanilla = dirs["spider"]+"/examples/lichtenberg_2019/socrates_p/bu_input.opts"
+        shutil.copy(SPIDER_options_file_vanilla, SPIDER_options_file)
 
     # Define which volatiles to track in SPIDER
     species_call = ""
@@ -677,7 +677,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     ### SPIDER base call sequence 
     call_sequence = [   
                         dirs["spider"]+"/spider", 
-                        "-options_file",          COUPLER_options_file, 
+                        "-options_file",          SPIDER_options_file, 
                         "-outputDirectory",       dirs["output"],
                         "-IC_INTERIOR",           str(COUPLER_options["IC_INTERIOR"]),
                         "-IC_ATMOSPHERE",         str(COUPLER_options["IC_ATMOSPHERE"]),
@@ -758,7 +758,7 @@ def natural_sort(l):
 
 def CleanOutputDir( output_dir ):
 
-    types = ("*.json", "*.log", "*.csv", "*.pkl", "current??.????", "profile.*", "*.opts", "*.pdf", "*.png", "radiation_code.lock") 
+    types = ("*.json", "*.log", "*.csv", "*.pkl", "current??.????", "profile.*", "*.pdf", "*.png", "radiation_code.lock") 
     files_to_delete = []
     for files in types:
         files_to_delete.extend(glob.glob(output_dir+"/"+files))
