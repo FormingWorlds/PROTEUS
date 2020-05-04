@@ -684,8 +684,15 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         # Limit Atm-Int switch
         dtime       = np.min([ dtime_max, dtswitch ])
 
-
         COUPLER_options["nstepsmacro"] =  math.ceil( dtime / dtmacro )
+
+        # Earliest 100 yr, fine time resolution
+        if time_dict["planet"] < 100:
+            COUPLER_options["nstepsmacro"] = 1
+            dtmacro = 30
+        if time_dict["planet"] < 10:
+            COUPLER_options["nstepsmacro"] = 1
+            dtmacro = 5
 
     # For init loop
     else:
@@ -751,24 +758,25 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 call_sequence.extend(["-"+vol+"_poststep_change", str(COUPLER_options[vol+"_poststep_change"])])
 
     # Check for convergence, if not converging, adjust tolerances iteratively
-    if runtime_helpfile["Time"].iloc[-1] == runtime_helpfile["Time"].iloc[-10]:
-        if "solver_tolerance" not in COUPLER_options:
-            COUPLER_options["solver_tolerance"] = 1.0e-10
-        COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
-        COUPLER_options["adjust_tolerance"] = 1
-        print(">>>>> ADJUST TOLERANCES:", COUPLER_options["solver_tolerance"])
+    if len(runtime_helpfile) > 10:
+        if runtime_helpfile["Time"].iloc[-1] == runtime_helpfile["Time"].iloc[-10]:
+            if "solver_tolerance" not in COUPLER_options:
+                COUPLER_options["solver_tolerance"] = 1.0e-10
+            COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
+            COUPLER_options["adjust_tolerance"] = 1
+            print(">>>>> ADJUST TOLERANCES:", COUPLER_options["solver_tolerance"])
 
-    # If tolerance was adjusted, restart SPIDER w/ new tolerances
-    if "adjust_tolerance" in COUPLER_options:
-        print(">>>>> >>>>> RESTART W/ ADJUSTED TOLERANCES")
-        call_sequence.extend(["-ts_sundials_atol", str(COUPLER_options["solver_tolerance"])])
-        call_sequence.extend(["-ts_sundials_rtol", str(COUPLER_options["solver_tolerance"])])
-        call_sequence.extend(["-atmosts_snes_atol", str(COUPLER_options["solver_tolerance"])])
-        call_sequence.extend(["-atmosts_snes_rtol", str(COUPLER_options["solver_tolerance"])])
-        call_sequence.extend(["-atmosts_ksp_atol", str(COUPLER_options["solver_tolerance"])])
-        call_sequence.extend(["-atmosts_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
-        call_sequence.extend(["-atmosic_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
-        call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
+        # If tolerance was adjusted, restart SPIDER w/ new tolerances
+        if "adjust_tolerance" in COUPLER_options:
+            print(">>>>> >>>>> RESTART W/ ADJUSTED TOLERANCES")
+            call_sequence.extend(["-ts_sundials_atol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-ts_sundials_rtol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-atmosts_snes_atol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-atmosts_snes_rtol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-atmosts_ksp_atol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-atmosts_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-atmosic_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
 
     # Runtime info
     PrintSeparator()

@@ -26,6 +26,7 @@ def plot_global( host_dir, sub_dirs ):
     txt_alpha  = 0.5
     txt_pad    = 0.1
     label_fs   = 11
+    color_strength = 5
 
     fig_o = su.FigureData( 3, 2, width, height, host_dir+'/plot_global', units='yr' )
     fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.1)
@@ -88,7 +89,7 @@ def plot_global( host_dir, sub_dirs ):
         ycoord_r = 0.5
 
         rolling_mean = 0
-        nsteps       = 4
+        nsteps       = 10
 
         # Replace NaNs
         for idx, val in enumerate(T_surf):
@@ -104,15 +105,15 @@ def plot_global( host_dir, sub_dirs ):
         ##########
         title = r'(a) Heat flux to space'  
         if rolling_mean == 1:
-            ax0.loglog( fig_o.time[:nsteps+4], Fatm[:nsteps+4], vol_colors[sub_dir+"_2"], lw=lw, alpha=1.0 )
+            ax0.loglog( fig_o.time[:nsteps+4], Fatm[:nsteps+4], vol_colors[sub_dir][color_strength], lw=lw, alpha=1.0 )
             
             Fatm_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
             Time_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
-            ax0.loglog( Time_rolling, Fatm_rolling, vol_colors[sub_dir+"_2"], lw=lw, label=vol_latex[sub_dir] )
+            ax0.loglog( Time_rolling, Fatm_rolling, color=vol_colors[sub_dir][color_strength], lw=lw, label=vol_latex[sub_dir] )
         else:
-            ax0.loglog( fig_o.time, Fatm, vol_colors[sub_dir+"_2"], lw=lw, alpha=1.0, label=vol_latex[sub_dir] )
+            ax0.loglog( fig_o.time, Fatm, color=vol_colors[sub_dir][color_strength], lw=lw, alpha=1.0, label=vol_latex[sub_dir] )
             
-        fig_o.set_myaxes(ax0)
+        # fig_o.set_myaxes(ax0)
         ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)
         ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
         ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
@@ -120,7 +121,7 @@ def plot_global( host_dir, sub_dirs ):
         ax0.set_xticklabels([])
         ax0.yaxis.set_label_coords(xcoord_l,ycoord_l)
         handles, labels = ax0.get_legend_handles_labels()
-        ax0.legend(handles, labels, loc='upper right', fontsize=fs_legend, ncol=2)
+        # ax0.legend(handles, labels, loc='upper right', fontsize=fs_legend, ncol=2)
         ax0.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
         ##########
@@ -128,7 +129,7 @@ def plot_global( host_dir, sub_dirs ):
         ##########
         # T_surf = T_surf[np.logical_not(np.isnan(T_surf))]
         title = r'(b) Surface temperature'
-        h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=vol_colors[sub_dir+"_2"], label=r'Surface temp, $T_s$' )
+        h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=vol_colors[sub_dir][color_strength], label=r'Surface temp, $T_s$' )
         # fig_o.set_myaxes( ax1, title=title, yticks=yticks)
         ax1.set_ylabel(r'$T_\mathrm{s}$ (K)', fontsize=label_fs)
         ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
@@ -148,7 +149,7 @@ def plot_global( host_dir, sub_dirs ):
         # ax2.semilogx( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
         
         # Mante melt + solid fraction
-        ax2.semilogx( fig_o.time, phi_global, color=vol_colors[sub_dir+"_2"], linestyle='-', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
+        ax2.semilogx( fig_o.time, phi_global, color=vol_colors[sub_dir][color_strength], linestyle='-', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
 
         # ax2.semilogx( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
 
@@ -239,22 +240,22 @@ def plot_global( host_dir, sub_dirs ):
                 ##########
                 # figure d
                 ##########
-                ax3.semilogx( vol_times, vol_atm_pressure, color=vol_colors[vol+"_2"], linestyle='-', lw=lw, label=vol_latex[vol])
+                ax3.semilogx( vol_times, vol_atm_pressure, color=vol_colors[vol][color_strength], linestyle='-', lw=lw, label=vol_latex[vol])
                 ##########
                 # figure e
                 ##########
-                ax4.semilogx( vol_times, vol_atm_kg/vol_total_kg, lw=lw, color=vol_colors[vol+"_2"], linestyle='-', label=vol_latex[vol])
+                ax4.semilogx( vol_times, vol_atm_kg/vol_total_kg, lw=lw, color=vol_colors[vol][color_strength], linestyle='-', label=vol_latex[vol])
                 ##########
                 # figure f
                 ##########
                 # ax5.semilogx( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
-                ax5.semilogx( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=vol_colors[vol+"_2"], linestyle='-', label=vol_latex[vol] )
+                ax5.semilogx( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=vol_colors[vol][color_strength], linestyle='-', label=vol_latex[vol] )
 
         ##########
         # figure d
         ##########
         fig_o.set_myaxes( ax3)
-        ax3.set_ylabel('$p^{\mathrm{i}}$ (bar)', fontsize=label_fs)
+        ax3.set_ylabel('$p^{\mathrm{i}}_{\mathrm{s}}$ (bar)', fontsize=label_fs)
         ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
         ax3.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
         ax3.xaxis.set_minor_formatter(ticker.NullFormatter())
@@ -269,7 +270,7 @@ def plot_global( host_dir, sub_dirs ):
         ax3.yaxis.set_label_position("right")
         ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
         handles, labels = ax3.get_legend_handles_labels()
-        # ax3.legend(handles, labels, ncol=2, loc=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
+        ax3.legend(handles, labels, ncol=2, loc=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
         ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
         ##########
         # figure e
@@ -335,7 +336,7 @@ def main():
 
     # Define specific one
     output_dir  = "/Users/tim/runs/coupler_tests/200501/"
-    sub_dirs    = [ "H2O", "CO2", "H2", "N2", "CO", "O2", "CH4" ] 
+    sub_dirs    = [ "H2", "H2O", "CO2", "CH4", "CO", "N2", "O2" ] 
 
     print("Host directory:", output_dir)
 

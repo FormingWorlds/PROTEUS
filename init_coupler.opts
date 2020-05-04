@@ -42,7 +42,7 @@ nstepsmacro                 = 1
 dtmacro                     = 50000
 
 # Maximum time interval to switch between interior and atmosphere [yr]
-dtswitch                    = 1000000
+dtswitch                    = 100000
 
 # Init heat flux, adjusted during runtime [W/m^2]
 heat_flux                   = 1.0E4

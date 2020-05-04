@@ -44,16 +44,18 @@ qyellow_light = "#f1ca70"
 
 from matplotlib import cm
 
+# https://matplotlib.org/tutorials/colors/colormaps.html
+
 no_colors   = 9
 vol_colors  = {
     "H2O"            : cm.get_cmap('PuBu', no_colors)(range(no_colors)),
     "CO2"            : cm.get_cmap("Reds", no_colors)(range(no_colors)),
     "H2"             : cm.get_cmap("Greens", no_colors)(range(no_colors)),
     "N2"             : cm.get_cmap("Purples", no_colors)(range(no_colors)),
-    "O2"             : cm.get_cmap("summer", no_colors)(range(no_colors)),
+    "O2"             : cm.get_cmap("Wistia", no_colors+2)(range(no_colors+2)),
     "CH4"            : cm.get_cmap("RdPu", no_colors)(range(no_colors)),
-    "CO"             : cm.get_cmap("PuBuGn", no_colors)(range(no_colors)),
-    "S"              : cm.get_cmap("YlOrRd", no_colors)(range(no_colors)),
+    "CO"             : cm.get_cmap("pink_r", no_colors)(range(no_colors)),
+    "S"              : cm.get_cmap("YlOrBr", no_colors)(range(no_colors)),
     "He"             : cm.get_cmap("Greys", no_colors)(range(no_colors)),
     "NH3"            : cm.get_cmap("cool", no_colors)(range(no_colors)),
     "mixtures"       : cm.get_cmap("Set3", 9)(range(no_colors)),
