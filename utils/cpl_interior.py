@@ -69,6 +69,8 @@ def plot_interior( output_dir, times ):
         # label = "{:.1e}".format(Decimal(time))+" yr"
         label = latex_float(time)+" yr"
 
+        print(time, )
+
         # temperature
         yy = myjson_o.get_dict_values(['data','temp_b'])
         ax0.plot( yy, xx_pres, '--', color=color, lw=1.5 )

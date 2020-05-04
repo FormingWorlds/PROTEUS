@@ -87,23 +87,30 @@ def plot_global( host_dir, sub_dirs ):
         xcoord_r = 1.11
         ycoord_r = 0.5
 
-        rolling_mean = 1
+        rolling_mean = 0
         nsteps       = 4
+
+        # Replace NaNs
+        for idx, val in enumerate(T_surf):
+            # print(idx, val)
+            if np.isnan(val):
+                json_file_time = su.MyJSON( output_dir+'/{}.json'.format(fig_o.time[idx]) )
+                int_tmp   = json_file_time.get_dict_values(['data','temp_b'])
+                print("T_surf:", idx, val, "-->", round(int_tmp[0],3), "K")
+                T_surf[idx] = int_tmp[0]
 
         ##########
         # figure a
         ##########
         title = r'(a) Heat flux to space'  
-        # if rolling_mean == 1:
-        #     ax0.loglog( fig_o.time[:nsteps+4], Fatm[:nsteps+4], vol_colors[sub_dir+"_2"], lw=lw, alpha=1.0 )
+        if rolling_mean == 1:
+            ax0.loglog( fig_o.time[:nsteps+4], Fatm[:nsteps+4], vol_colors[sub_dir+"_2"], lw=lw, alpha=1.0 )
             
-        #     Fatm_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
-        #     Time_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
-        #     ax0.loglog( Time_rolling, Fatm_rolling, vol_colors[sub_dir+"_2"], lw=lw )
-        # else:
-        #     ax0.loglog( fig_o.time, Fatm, vol_colors[sub_dir+"_2"], lw=lw, alpha=1.0 )
-
-        ax0.loglog( fig_o.time, Fatm, vol_colors[sub_dir+"_2"], lw=lw, alpha=1.0, label=vol_latex[sub_dir] )
+            Fatm_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
+            Time_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
+            ax0.loglog( Time_rolling, Fatm_rolling, vol_colors[sub_dir+"_2"], lw=lw, label=vol_latex[sub_dir] )
+        else:
+            ax0.loglog( fig_o.time, Fatm, vol_colors[sub_dir+"_2"], lw=lw, alpha=1.0, label=vol_latex[sub_dir] )
             
         fig_o.set_myaxes(ax0)
         ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)
@@ -113,7 +120,7 @@ def plot_global( host_dir, sub_dirs ):
         ax0.set_xticklabels([])
         ax0.yaxis.set_label_coords(xcoord_l,ycoord_l)
         handles, labels = ax0.get_legend_handles_labels()
-        ax0.legend(handles, labels, loc='upper right', ncol=1, frameon=0, fontsize=fs_legend)
+        ax0.legend(handles, labels, loc='upper right', fontsize=fs_legend, ncol=2)
         ax0.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
         ##########
@@ -328,7 +335,7 @@ def main():
 
     # Define specific one
     output_dir  = "/Users/tim/runs/coupler_tests/200501/"
-    sub_dirs    = [ "CO", "CO2", "H2" ] 
+    sub_dirs    = [ "H2O", "CO2", "H2", "N2", "CO", "O2", "CH4" ] 
 
     print("Host directory:", output_dir)
 

@@ -80,8 +80,18 @@ def plot_global( output_dir ):
     xcoord_r = 1.09
     ycoord_r = 0.5
 
-    rolling_mean = 1
+    rolling_mean = 0
     nsteps       = 4
+
+    # Replace NaNs
+    for idx, val in enumerate(T_surf):
+        # print(idx, val)
+        if np.isnan(val):
+            json_file_time = su.MyJSON( output_dir+'/{}.json'.format(fig_o.time[idx]) )
+            int_tmp   = json_file_time.get_dict_values(['data','temp_b'])
+            print("T_surf:", idx, val, "-->", round(int_tmp[0],3), "K")
+            T_surf[idx] = int_tmp[0]
+            
 
     ##########
     # figure a
@@ -95,7 +105,7 @@ def plot_global( output_dir ):
         ax0.loglog( Time_rolling, Fatm_rolling, qgray_dark, lw=lw )
     else:
         ax0.loglog( fig_o.time, Fatm, qgray_dark, lw=lw, alpha=1.0 )
-        
+      
     fig_o.set_myaxes(ax0)
     ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)
     ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
@@ -107,6 +117,7 @@ def plot_global( output_dir ):
     ax0.legend(handles, labels, loc='upper right', ncol=1, frameon=0, fontsize=fs_legend)
     ax0.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
+    # print(T_surf)
     ##########
     # figure b
     ##########
@@ -119,7 +130,7 @@ def plot_global( output_dir ):
         ymax = 3000
     yticks = [ymin, ymin+0.2*(ymax-ymin), ymin+0.4*(ymax-ymin), ymin+0.6*(ymax-ymin), ymin+0.8*(ymax-ymin), ymax]
     h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$' )
-    fig_o.set_myaxes( ax1, title=title, yticks=yticks)
+    # fig_o.set_myaxes( ax1, title=title, yticks=yticks)
     ax1.set_ylabel(r'$T_\mathrm{s}$ (K)', fontsize=label_fs)
     ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))

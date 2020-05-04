@@ -107,8 +107,8 @@ def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_co
 
 def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options):
 
-    runtime_helpfile_name = "/runtime_helpfile.csv"
-    COUPLER_options_name   = "COUPLER_options.csv"
+    runtime_helpfile_name = "runtime_helpfile.csv"
+    COUPLER_options_name  = "COUPLER_options.csv"
 
     # If runtime_helpfle not existent, create it + write to disk
     if not os.path.isfile(dirs["output"]+"/"+runtime_helpfile_name):
@@ -161,6 +161,13 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["Phi_global"]      = data_a[5,:]  # global melt fraction
         runtime_helpfile_new["Heat_flux"]       = data_a[6,:]
         runtime_helpfile_new["P_surf"]          = data_a[7,:]  # total surface pressure
+
+        # Check and replace NaNs
+        if np.isnan(runtime_helpfile_new["T_surf"]):
+            json_file_time = su.MyJSON( dirs["output"]+'/{}.json'.format(sim_time) )
+            int_tmp   = json_file_time.get_dict_values(['data','temp_b'])
+            print("Replace T_surf NaN:", runtime_helpfile_new["T_surf"], "-->", int_tmp[0], "K")
+            runtime_helpfile_new["T_surf"] = int_tmp[0]
 
         # Total atmospheric mass
         runtime_helpfile_new["M_atm"] = 0
@@ -350,7 +357,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
     runtime_helpfile = runtime_helpfile.append(runtime_helpfile_new) 
     print(runtime_helpfile)
     print(dirs["output"]+"/"+runtime_helpfile_name)
-    runtime_helpfile.to_csv( dirs["output"]+runtime_helpfile_name, index=False, sep=" ")
+    runtime_helpfile.to_csv( dirs["output"]+"/"+runtime_helpfile_name, index=False, sep=" ")
 
     # Save COUPLER_options to disk
     COUPLER_options_save = pd.read_csv(dirs["output"]+"/"+COUPLER_options_name, sep=" ")
@@ -655,7 +662,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     # Check if input file present in current dir, if not copy from SPIDER repo
     SPIDER_options_file = dirs["output"]+"/bu_input.opts"
     if not os.path.isfile(SPIDER_options_file):
-        SPIDER_options_file_vanilla = dirs["spider"]+"/examples/lichtenberg_2019/socrates_p/bu_input.opts"
+        SPIDER_options_file_vanilla = dirs["spider"]+"/examples/lichtenberg_2019/bu_input_standard.opts"
         shutil.copy(SPIDER_options_file_vanilla, SPIDER_options_file)
 
     # Define which volatiles to track in SPIDER
@@ -666,11 +673,21 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     species_call = species_call[1:] # Remove "," in front
 
     # Recalculate time stepping
-    if COUPLER_options["IC_INTERIOR"] == 2:      
-        dtmacro     = COUPLER_options["dtmacro"]
-        dtime       = time_dict["target"] - time_dict["planet"]
-        COUPLER_options["nstepsmacro"] =  math.ceil( dtime / float(COUPLER_options["dtmacro"]) )
-    # For init loop and start from beginning
+    if COUPLER_options["IC_INTERIOR"] == 2:  
+
+        dtmacro     = float(COUPLER_options["dtmacro"])
+        dtswitch    = float(COUPLER_options["dtswitch"])
+
+        # Runtime left
+        dtime_max   = time_dict["target"] - time_dict["planet"]
+
+        # Limit Atm-Int switch
+        dtime       = np.min([ dtime_max, dtswitch ])
+
+
+        COUPLER_options["nstepsmacro"] =  math.ceil( dtime / dtmacro )
+
+    # For init loop
     else:
         dtmacro     = 0
 
@@ -732,6 +749,26 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         for vol in volatile_species:
             if COUPLER_options[vol+"_initial_total_abundance"] > 0. or COUPLER_options[vol+"_initial_atmos_pressure"] > 0.:
                 call_sequence.extend(["-"+vol+"_poststep_change", str(COUPLER_options[vol+"_poststep_change"])])
+
+    # Check for convergence, if not converging, adjust tolerances iteratively
+    if runtime_helpfile["Time"].iloc[-1] == runtime_helpfile["Time"].iloc[-10]:
+        if "solver_tolerance" not in COUPLER_options:
+            COUPLER_options["solver_tolerance"] = 1.0e-10
+        COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
+        COUPLER_options["adjust_tolerance"] = 1
+        print(">>>>> ADJUST TOLERANCES:", COUPLER_options["solver_tolerance"])
+
+    # If tolerance was adjusted, restart SPIDER w/ new tolerances
+    if "adjust_tolerance" in COUPLER_options:
+        print(">>>>> >>>>> RESTART W/ ADJUSTED TOLERANCES")
+        call_sequence.extend(["-ts_sundials_atol", str(COUPLER_options["solver_tolerance"])])
+        call_sequence.extend(["-ts_sundials_rtol", str(COUPLER_options["solver_tolerance"])])
+        call_sequence.extend(["-atmosts_snes_atol", str(COUPLER_options["solver_tolerance"])])
+        call_sequence.extend(["-atmosts_snes_rtol", str(COUPLER_options["solver_tolerance"])])
+        call_sequence.extend(["-atmosts_ksp_atol", str(COUPLER_options["solver_tolerance"])])
+        call_sequence.extend(["-atmosts_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
+        call_sequence.extend(["-atmosic_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
+        call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
 
     # Runtime info
     PrintSeparator()

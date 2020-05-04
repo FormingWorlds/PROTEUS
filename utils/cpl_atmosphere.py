@@ -89,6 +89,8 @@ def plot_atmosphere( output_dir, times ):
             z_profile = z_profile*1e-3 # km
             ax0.plot( atm.tmp, z_profile, '-', color=color, label=label, lw=1.5)
 
+            # print(time,atm.tmp, atm.p)
+
             # Atmosphere T-P
             ax1.semilogy( atm.tmp, atm.p/1e5, '-', color=color, label=label, lw=1.5)
 

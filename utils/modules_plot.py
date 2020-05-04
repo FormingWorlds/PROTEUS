@@ -42,6 +42,8 @@ qyellow_light = "#f1ca70"
 
 # color_cycle2 = [ "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c", "#7f7f7f", "#bcbd22", "#17becf" ]
 
+from matplotlib import cm
+
 no_colors   = 9
 vol_colors  = {
     "H2O"            : cm.get_cmap('PuBu', no_colors)(range(no_colors)),
@@ -98,7 +100,7 @@ vol_colors  = {
     "O2_3"           : "#2499a7",
     "He_1"           : "#acbbbf",
     "He_2"           : "#768E95",
-    "He_3"           : "#465559"
+    "He_3"           : "#465559",
     "qgray"          : "#768E95",
     "qgray2"         : "#888888",
     "qblue"          : "#4283A9", # http://www.color-hex.com/color/4283a9

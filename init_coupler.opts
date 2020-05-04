@@ -9,7 +9,6 @@ time_star                   = 1e+8 # yr, time since star formation
 time_planet                 = 0.   # yr, time since MO start
 time_target                 = 1e+7 # yr, target time for MO evolution
 
-
 ##### SPIDER-specific settings
 
 # Restart seting: 1: Fresh start | 2: Restart from file
@@ -21,8 +20,11 @@ IC_ATMOSPHERE               = 1
 # Upper boundary condition: 4: constant heat flux boundary condition
 SURFACE_BC                  = 4  
 
+# Standard tolerance for solvers
+solver_tolerance            = 1.0e-10
+
 # Maximum absolute surface temperature change [K]
-tsurf_poststep_change       = 50.0  
+tsurf_poststep_change       = 30.0  
 
 # Planet radius [m]
 R_solid_planet              = 6371000
@@ -38,6 +40,9 @@ nstepsmacro                 = 1
 
 # Delta time per macrostep to advance by [yr]
 dtmacro                     = 50000
+
+# Maximum time interval to switch between interior and atmosphere [yr]
+dtswitch                    = 1000000
 
 # Init heat flux, adjusted during runtime [W/m^2]
 heat_flux                   = 1.0E4

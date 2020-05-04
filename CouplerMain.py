@@ -27,11 +27,13 @@ def main():
     if COUPLER_options["IC_INTERIOR"] == 2:
         loop_counter["total"] += loop_counter["init_loops"]
         loop_counter["init"]  += loop_counter["init_loops"]
-        COUPLER_options["IC_ATMOSPHERE"] = 3
+        # COUPLER_options["IC_ATMOSPHERE"] = 3
+
+        runtime_helpfile = pd.read_csv(dirs["output"]+"/"+"runtime_helpfile.csv", index_col=False, header=0, sep=" ")
 
         # Restart file name if not specified otherwise: last file output
         if COUPLER_options["ic_interior_filename"] == 0:
-            COUPLER_options["ic_interior_filename"] = str(natsorted([os.path.basename(x) for x in glob.glob(dirs["output"]+"/"+"*.json")])[-1])
+            COUPLER_options["ic_interior_filename"] = str(cu.natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"/"+"*.json")])[-1])
 
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
