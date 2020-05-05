@@ -12,7 +12,7 @@ def plot_stacked( output_dir, times ):
     width = 5.00 #* 3.0/2.0
     height = 10.0
     fig_o = su.FigureData( 2, 1, width, height, output_dir+'/'+'plot_stacked', units='kyr' ) #, times
-    fig_o.fig.subplots_adjust(wspace=0.0,hspace=0.05)
+    fig_o.fig.subplots_adjust(wspace=0.0,hspace=0.0)
     fig_o.time = times
 
     # sns.set_style("ticks")
@@ -186,7 +186,11 @@ def plot_stacked( output_dir, times ):
     ax1.set_ylabel( 'Mantle depth, $d_\mathrm{mantle}$ (km)' )
     ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
 
-    # sns.despine()
+    try:
+        sns.set_style("ticks")
+        sns.despine()
+    except:
+        print("No seaborn.")
 
     # # Pressure-height conversion for y-axis
     # ax0b = ax0.twinx()
@@ -229,7 +233,7 @@ def main():
         plot_list = [ int(time) for time in args.times.split(',') ]
         print("Snapshots:", plot_list)
     else:
-        output_list = su.get_all_output_times(output_dir)
+        output_list = su.get_all_output_pkl_times(output_dir)
 
         if len(output_list) <= 8:
             plot_list = output_list

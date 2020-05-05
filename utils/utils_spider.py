@@ -537,6 +537,34 @@ def get_all_output_times( odir='output' ):
     return time_a
 
 #====================================================================
+def get_all_output_pkl_times( odir='output' ):
+
+    '''get all times (in Myrs) from the pkl files located in the
+       output directory'''
+
+    # locate times to process based on files located in odir/
+    file_l = [f for f in os.listdir(odir) if os.path.isfile(os.path.join(odir,f))]
+    if not file_l:
+        logger.critical('output directory contains no PKL files')
+        sys.exit(0)
+
+    time_l = [fname for fname in file_l]
+    time_l = list(filter(lambda a: a.endswith('pkl'), time_l))
+
+    # print(time_l)
+
+    # Filter and split files
+    time_l = [ file for file in time_l if not file.startswith("orig_")]
+    time_l = [ time.split('.pkl')[0] for time in time_l ]
+    time_l = [ int(time.split('_atm')[0]) for time in time_l ]
+    
+    # ascending order
+    time_l = sorted( time_l, key=int)
+    time_a = np.array( time_l )
+
+    return time_a
+
+#====================================================================
 def find_xx_for_yy( xx, yy, yywant ):
 
     a = yy - yywant

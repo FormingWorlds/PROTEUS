@@ -44,6 +44,11 @@ qyellow_light = "#f1ca70"
 
 from matplotlib import cm
 
+try:
+    import seaborn as sns
+except:
+    print("Seaborn package not installed.")
+
 # https://matplotlib.org/tutorials/colors/colormaps.html
 
 no_colors   = 9
@@ -52,6 +57,7 @@ vol_colors  = {
     "CO2"            : cm.get_cmap("Reds", no_colors)(range(no_colors)),
     "H2"             : cm.get_cmap("Greens", no_colors)(range(no_colors)),
     "N2"             : cm.get_cmap("Purples", no_colors)(range(no_colors)),
+    "N2_reduced"     : cm.get_cmap("Purples", no_colors*2)(range(no_colors*2)),
     "O2"             : cm.get_cmap("Wistia", no_colors+2)(range(no_colors+2)),
     "CH4"            : cm.get_cmap("RdPu", no_colors)(range(no_colors)),
     "CO"             : cm.get_cmap("pink_r", no_colors)(range(no_colors)),
@@ -136,6 +142,7 @@ vol_latex = {
     "CH4"     : r"CH$_4$",
     "CO"      : r"CO",
     "N2"      : r"N$_2$",
+    "N2_reduced" : r"N$_2$ reduced",
     "S"       : r"S",
     "O2"      : r"O$_2$",
     "He"      : r"He",

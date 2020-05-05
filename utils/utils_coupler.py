@@ -659,11 +659,13 @@ def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_o
 
 def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
 
-    # Check if input file present in current dir, if not copy from SPIDER repo
+    # Check if input file present in current dir, if not copy standard from SPIDER repo
     SPIDER_options_file = dirs["output"]+"/init_spider.opts"
     if not os.path.isfile(SPIDER_options_file):
         SPIDER_options_file_vanilla = dirs["spider"]+"/examples/lichtenberg_2019/bu_input_standard.opts"
-        shutil.copy(SPIDER_options_file_vanilla, SPIDER_options_file)
+        if not os.path.isfile(SPIDER_options_file):
+            shutil.copy(SPIDER_options_file_vanilla, dirs["output"]+"/init_spider_standard.opts")
+        SPIDER_options_file = SPIDER_options_file_vanilla
 
     # Define which volatiles to track in SPIDER
     species_call = ""
@@ -738,6 +740,11 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             # if COUPLER_options["use_vulcan"] == 0 or COUPLER_options["use_vulcan"] == 1:
             #     call_sequence.extend(["-"+vol+"_initial_total_abundance", str(COUPLER_options[vol+"_initial_total_abundance"])])
 
+            # Exception for N2 case: reduced vs. oxidized
+            if vol == "N2" and COUPLER_options["N2_partitioning"] == 1:
+                volatile_distribution_coefficients["N2_henry"] = volatile_distribution_coefficients["N2_henry_reduced"]
+                volatile_distribution_coefficients["N2_henry_pow"] = volatile_distribution_coefficients["N2_henry_pow_reduced"]
+
             call_sequence.extend(["-"+vol+"_henry", str(volatile_distribution_coefficients[vol+"_henry"])])
             call_sequence.extend(["-"+vol+"_henry_pow", str(volatile_distribution_coefficients[vol+"_henry_pow"])])
             call_sequence.extend(["-"+vol+"_kdist", str(volatile_distribution_coefficients[vol+"_kdist"])])
@@ -756,6 +763,19 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         for vol in volatile_species:
             if COUPLER_options[vol+"_initial_total_abundance"] > 0. or COUPLER_options[vol+"_initial_atmos_pressure"] > 0.:
                 call_sequence.extend(["-"+vol+"_poststep_change", str(COUPLER_options[vol+"_poststep_change"])])
+
+    # Gravitational separation of solid and melt phase, 0: off | 1: on
+    if COUPLER_options["SEPARATION"] == 1:
+        call_sequence.extend(["-SEPARATION", str(1)])
+
+    # Mixing length parameterization: 1: variable | 2: constant
+    if COUPLER_options["mixing_length"] == 1:
+        call_sequence.extend(["-mixing_length", str(1)])
+
+    # Ultra-thin thermal boundary layer at top, 0: off | 1: on
+    if COUPLER_options["PARAM_UTBL"] == 1:
+        call_sequence.extend(["-PARAM_UTBL", str(1)])
+        call_sequence.extend(["-param_utbl_const", str(COUPLER_options["param_utbl_const"])])
 
     # Check for convergence, if not converging, adjust tolerances iteratively
     if len(runtime_helpfile) > 10:

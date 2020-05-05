@@ -9,9 +9,12 @@ time_star                   = 1e+8 # yr, time since star formation
 time_planet                 = 0.   # yr, time since MO start
 time_target                 = 1e+7 # yr, target time for MO evolution
 
-##### Other settings
+##### COUPLER-specific settings
 
 plot_onthefly               = 0
+
+# N2 partition coefficients, 0: oxidized | 1: reduced
+N2_partitioning             = 1
 
 ##### SPIDER-specific settings
 
@@ -23,6 +26,16 @@ IC_ATMOSPHERE               = 1
 
 # Upper boundary condition: 4: constant heat flux boundary condition
 SURFACE_BC                  = 4  
+
+# Gravitational separation of solid and melt phase, 0: off | 1: on
+SEPARATION                  = 0
+
+# Mixing length parameterization: 1: variable | 2: constant
+mixing_length               = 2
+
+# Ultra-thin thermal boundary layer at top, 0: off | 1: on
+PARAM_UTBL                  = 0               # on/off flag
+param_utbl_const            = 1.0E-7          # value if on
 
 # Standard tolerance for solvers
 solver_tolerance            = 1.0e-10
