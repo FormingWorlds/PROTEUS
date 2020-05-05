@@ -11,9 +11,8 @@ FPS=24
 ML=60
 
 # Loop through simulation branches
-# Earth_H2O_1bar Earth_CO2_1bar Earth_H2_1bar Earth_CH4_1bar
-# Earth_H2O_260bar Earth_CO2_260bar Earth_H2_260bar Earth_CH4_260bar
-for BATCH in H2; do
+# H2 H2O
+for BATCH in CH4 CO2 CO N2; do
 
     # Absolute directory of where images are stored
     # IMAGE_DIR=${IMAGE_DIR_BASE}/${BATCH}/${MOVIE_NAME}

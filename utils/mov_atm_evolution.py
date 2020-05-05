@@ -226,7 +226,7 @@ def main():
             ############################################################
 
             # Temperature vs. pressure
-            adiabat_label = r'Timestepped'
+            adiabat_label = r'Adiabat'
             ax3.semilogy(atm_moist.tmp,atm_moist.p, color=ga.vol_colors["qgray_dark"], lw=ls_moist, ls="-", label=adiabat_label)
 
             # Print active species
