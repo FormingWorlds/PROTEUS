@@ -35,6 +35,8 @@ def main():
         if COUPLER_options["ic_interior_filename"] == 0:
             COUPLER_options["ic_interior_filename"] = str(cu.natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"/"+"*.json")])[-1])
 
+        COUPLER_options["heat_flux"] = runtime_helpfile["Heat_flux"].iloc[-1]
+
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     print(":::::::::::: START COUPLER RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
@@ -78,7 +80,7 @@ def main():
         cu.PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs)
 
         # Plot conditions throughout run for on-the-fly analysis
-        cu.UpdatePlots( dirs["output"], COUPLER_options["use_vulcan"] )
+        cu.UpdatePlots( dirs["output"], COUPLER_options, time_dict )
 
         # # After very first timestep, starting w/ 2nd init loop: read in partial pressures
         # if loop_counter["init"] >= 1:
@@ -97,6 +99,9 @@ def main():
 
     # Save files from finished simulation
     cu.SaveOutput( dirs["output"] )
+
+    # Plot conditions at the end
+    cu.UpdatePlots( dirs["output"], COUPLER_options, time_dict )
 
     print("\n===> COUPLER run finished successfully <===")
 

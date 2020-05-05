@@ -660,7 +660,7 @@ def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_o
 def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
 
     # Check if input file present in current dir, if not copy from SPIDER repo
-    SPIDER_options_file = dirs["output"]+"/bu_input.opts"
+    SPIDER_options_file = dirs["output"]+"/init_spider.opts"
     if not os.path.isfile(SPIDER_options_file):
         SPIDER_options_file_vanilla = dirs["spider"]+"/examples/lichtenberg_2019/bu_input_standard.opts"
         shutil.copy(SPIDER_options_file_vanilla, SPIDER_options_file)
@@ -689,10 +689,10 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         # Earliest 100 yr, fine time resolution
         if time_dict["planet"] < 100:
             COUPLER_options["nstepsmacro"] = 1
-            dtmacro = 30
+            dtmacro = 10
         if time_dict["planet"] < 10:
             COUPLER_options["nstepsmacro"] = 1
-            dtmacro = 5
+            dtmacro = 2
 
     # For init loop
     else:
@@ -823,35 +823,37 @@ def CleanOutputDir( output_dir ):
     # print("\n==> Done.")
 
 # Plot conditions throughout run for on-the-fly analysis
-def UpdatePlots( output_dir, use_vulcan=0 ):
+def UpdatePlots( output_dir, COUPLER_options, time_dict ):
 
-    PrintSeparator()
-    print("Plot current evolution")
-    PrintSeparator()
-    output_times = su.get_all_output_times( output_dir )
-    if len(output_times) <= 8:
-        plot_times = output_times
-    else:
-        plot_times = [ output_times[0]]         # first snapshot
-        for i in [ 2, 15, 22, 30, 45, 66 ]:     # distinct timestamps
-            plot_times.append(output_times[int(round(len(output_times)*(i/100.)))])
-        plot_times.append(output_times[-1])     # last snapshot
-    print("snapshots:", plot_times)
+    if COUPLER_options["plot_onthefly"] == 1 or time_dict["planet"] > time_dict["target"]:
 
-    # Global properties for all timesteps
-    if len(output_times) > 1:
-        utils.cpl_global.plot_global(output_dir)   
+        PrintSeparator()
+        print("Plot current evolution")
+        PrintSeparator()
+        output_times = su.get_all_output_times( output_dir )
+        if len(output_times) <= 8:
+            plot_times = output_times
+        else:
+            plot_times = [ output_times[0]]         # first snapshot
+            for i in [ 2, 15, 22, 30, 45, 66 ]:     # distinct timestamps
+                plot_times.append(output_times[int(round(len(output_times)*(i/100.)))])
+            plot_times.append(output_times[-1])     # last snapshot
+        print("snapshots:", plot_times)
 
-    # Specific timesteps for paper plots
-    utils.cpl_interior.plot_interior(output_dir, plot_times)     
-    utils.cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
-    utils.cpl_stacked.plot_stacked(output_dir, plot_times)
-    
-    # # One plot per timestep for video files
-    # utils.plot_atmosphere.plot_current_mixing_ratio(output_dir, plot_times[-1], use_vulcan) 
+        # Global properties for all timesteps
+        if len(output_times) > 1:
+            utils.cpl_global.plot_global(output_dir)   
 
-    # Close all figures
-    plt.close()
+        # Specific timesteps for paper plots
+        utils.cpl_interior.plot_interior(output_dir, plot_times)     
+        utils.cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
+        utils.cpl_stacked.plot_stacked(output_dir, plot_times)
+        
+        # # One plot per timestep for video files
+        # utils.plot_atmosphere.plot_current_mixing_ratio(output_dir, plot_times[-1], use_vulcan) 
+
+        # Close all figures
+        plt.close()
 
 # https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
 # https://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python

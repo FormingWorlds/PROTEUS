@@ -9,6 +9,10 @@ time_star                   = 1e+8 # yr, time since star formation
 time_planet                 = 0.   # yr, time since MO start
 time_target                 = 1e+7 # yr, target time for MO evolution
 
+##### Other settings
+
+plot_onthefly               = 0
+
 ##### SPIDER-specific settings
 
 # Restart seting: 1: Fresh start | 2: Restart from file
@@ -42,13 +46,13 @@ nstepsmacro                 = 1
 dtmacro                     = 50000
 
 # Maximum time interval to switch between interior and atmosphere [yr]
-dtswitch                    = 100000
+dtswitch                    = 500000
 
 # Init heat flux, adjusted during runtime [W/m^2]
 heat_flux                   = 1.0E4
 
 # Volatile species mass relative to mantle [ppm wt]
-H2O_initial_total_abundance = 500   # > 350
+H2O_initial_total_abundance = 315   # > 350
 CO2_initial_total_abundance = 0
 H2_initial_total_abundance  = 0
 CH4_initial_total_abundance = 0

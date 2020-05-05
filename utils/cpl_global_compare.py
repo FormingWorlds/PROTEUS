@@ -89,7 +89,7 @@ def plot_global( host_dir, sub_dirs ):
         ycoord_r = 0.5
 
         rolling_mean = 0
-        nsteps       = 10
+        nsteps       = 15
 
         # Replace NaNs
         for idx, val in enumerate(T_surf):
@@ -105,7 +105,8 @@ def plot_global( host_dir, sub_dirs ):
         ##########
         title = r'(a) Heat flux to space'  
         if rolling_mean == 1:
-            ax0.loglog( fig_o.time[:nsteps+4], Fatm[:nsteps+4], vol_colors[sub_dir][color_strength], lw=lw, alpha=1.0 )
+            
+            # ax0.loglog( fig_o.time[:nsteps+4], Fatm[:nsteps+4], vol_colors[sub_dir][color_strength], lw=lw, alpha=1.0 )
             
             Fatm_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
             Time_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
