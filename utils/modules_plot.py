@@ -206,17 +206,28 @@ def latex_float(f):
     else:
         return float_str
 
-def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
+def AtmosphericHeight(atm, m_planet, r_planet):
 
-    z_profile       = np.zeros(len(P_profile))
-    P_s             = np.max(P_profile)
+    z_profile       = np.zeros(len(atm.p))
+    P_s             = np.max(atm.p)
     grav_s          = su.gravity( m_planet, r_planet )
+
+    # print(np.max(T_profile), np.min(T_profile))
 
     for n in range(0, len(z_profile)):
 
-        T_mean_below    = np.mean(T_profile[n:])
-        P_z             = P_profile[n]
-        z_profile[n]    = - R_gas * T_mean_below * np.log(P_z/P_s) / grav_s
+        mean_molar_mass = 0
+
+        for vol in atm.vol_list.keys():
+            mean_molar_mass += molar_mass[vol]*atm.mr_gas[vol][n]
+
+        # print(n, atm.p[n], mean_molar_mass)
+
+        T_mean_below    = np.mean(atm.tmp[n:])
+        P_z             = atm.p[n]
+        # print(T_mean_below, P_z)
+
+        z_profile[n] = - R_gas * T_mean_below * np.log(P_z/P_s) / ( mean_molar_mass * grav_s )
 
     return z_profile
 

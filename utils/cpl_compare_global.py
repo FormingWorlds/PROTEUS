@@ -336,8 +336,8 @@ def main():
         output_dir = os.getcwd()
 
     # Define specific one
-    output_dir  = "/Users/tim/runs/coupler_tests/200501/"
-    sub_dirs    = [ "H2", "H2O", "CO2", "CH4", "CO", "N2", "O2" ] 
+    output_dir  = "/Users/tim/runs/coupler_tests/set_260bar/"
+    sub_dirs    = [ "N2_reduced", "H2", "H2O", "CO2", "CH4", "CO", "O2", "N2" ]
 
     print("Host directory:", output_dir)
 

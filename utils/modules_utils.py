@@ -99,6 +99,7 @@ molar_mass      = {
           "N"   : 0.014007,             # kg mol−1 
           "S"   : 0.03206,              # kg mol−1 
           "He"  : 0.0040026,            # kg mol−1 
+          "NH3" : 0.017031,             # kg mol−1 
         }
 
 volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]

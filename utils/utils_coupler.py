@@ -63,24 +63,6 @@ def latex_float(f):
     else:
         return float_str
 
-def AtmosphericHeight(T_profile, P_profile, m_planet, r_planet):
-
-    z_profile       = np.zeros(len(P_profile))
-    P_s             = np.max(P_profile)
-    grav_s          = su.gravity( m_planet, r_planet )
-
-    # print(np.max(T_profile), np.min(T_profile))
-
-    for n in range(0, len(z_profile)):
-
-        T_mean_below    = np.mean(T_profile[n:])
-        P_z             = P_profile[n]
-        # print(T_mean_below, P_z)
-
-        z_profile[n] = - R_gas * T_mean_below * np.log(P_z/P_s) / grav_s
-
-    return z_profile
-
 def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs):
 
     # Print final statement
@@ -709,13 +691,20 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                         "-IC_ATMOSPHERE",         str(COUPLER_options["IC_ATMOSPHERE"]),
                         "-SURFACE_BC",            str(COUPLER_options["SURFACE_BC"]), 
                         "-surface_bc_value",      str(COUPLER_options["heat_flux"]), 
-                        "-tsurf_poststep_change", str(COUPLER_options["tsurf_poststep_change"]),
                         "-nstepsmacro",           str(COUPLER_options["nstepsmacro"]), 
                         "-dtmacro",               str(dtmacro), 
                         "-radius",                str(COUPLER_options["R_solid_planet"]), 
                         "-coresize",              str(COUPLER_options["planet_coresize"]),
                         "-volatile_names",        str(species_call)
                     ]
+
+    
+    # Min of fractional and absolute Ts poststep change
+    if time_dict["planet"] > 0:
+        dTs_frac = float(COUPLER_options["Ts_poststep_change_frac"]) * float(runtime_helpfile["T_surf"].iloc[-1])
+        COUPLER_options["tsurf_poststep_change"] = np.min([ float(COUPLER_options["tsurf_poststep_change"]), float(dTs_frac) ])
+
+    call_sequence.extend(["-tsurf_poststep_change", str(COUPLER_options["tsurf_poststep_change"])])
 
     ## Conditional additions to call sequence
 

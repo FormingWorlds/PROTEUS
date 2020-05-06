@@ -60,7 +60,7 @@ def main():
     img_dpi = 250
 
     ##### Define subdir name list to plot
-    batch_name_list = [ "H2O", "CO2", "CH4", "CO", "N2", "O2", "H2" ]
+    batch_name_list = [ "CO2", "CH4", "CO", "N2", "O2", "H2", "H2O" ]
 
     # Loop over settings in chain execution
     for batch_name in batch_name_list:
