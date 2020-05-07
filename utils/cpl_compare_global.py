@@ -3,6 +3,8 @@
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
 
+
+
 #====================================================================
 def plot_global( host_dir, sub_dirs ):
 
@@ -67,7 +69,8 @@ def plot_global( host_dir, sub_dirs ):
                    ('rheological_front_phi','phi_global'),
                    ('atmosphere','Fatm'),
                    ('atmosphere','pressure_surface'),
-                   ('rheological_front_dynamic','depth')
+                   ('rheological_front_dynamic','depth'),
+                   ('rheological_front_dynamic','mesh_index')
                    )
         data_a = su.get_dict_surface_values_for_times( keys_t, fig_o.time, output_dir )
         mass_liquid         = data_a[0,:]
@@ -80,6 +83,7 @@ def plot_global( host_dir, sub_dirs ):
         Fatm                = data_a[7,:]
         P_surf              = data_a[8,:]
         rheol_front         = data_a[9,:]
+        rheol_front_idx     = data_a[10,:]
 
 
         xlabel = r'Time, $t$ (yr)'
@@ -162,15 +166,30 @@ def plot_global( host_dir, sub_dirs ):
         # figure c
         ##########
 
-        # # Plot rheological front depth
-        # ax2.semilogx( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
-        
+        # Rheological front
+        # ax2.semilogx( fig_o.time, 1-rheol_front/np.max(rheol_front), ls=":", lw=lw, color=vol_colors[sub_dir][color_strength], zorder=1, alpha=0.5)
+        RF_half_depth, RF_half_depth_idx = find_nearest(rheol_front, 0.5)
+        RF_half_depth_time   = fig_o.time[RF_half_depth_idx]
+        Phi_global_intersect = phi_global[RF_half_depth_idx]
+        print("RF:", RF_half_depth_idx, RF_half_depth, RF_half_depth_time, Phi_global_intersect)
+
+        ax2.arrow(RF_half_depth_time, 0, 0, Phi_global_intersect, head_width=0, head_length=0, fc=vol_colors[sub_dir][color_strength], ec=vol_colors[sub_dir][color_strength], lw=1.0, alpha=0.5, ls="--") # , transform=ax0.transAxes
+
+        if sub_dir == sub_dirs[0]:
+            legend_handles_ax2 = []
+            rf_label = "Rheological front\nat mid-mantle"
+            l2, = ax2.plot( 0, 0, lw=1.0, color=qgray, label=rf_label, ls="--")
+            legend_handles_ax2.append(l2)
+            legend_ax2 = ax2.legend(handles=legend_handles_ax2, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3)
+            ax2.add_artist(legend_ax2)
+
         # Mante melt + solid fraction
         ax2.semilogx( fig_o.time, phi_global, color=vol_colors[sub_dir][color_strength], linestyle='-', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
 
         # ax2.semilogx( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
 
         ax2.set_xlim( *xlim )
+        ax2.set_ylim( bottom=0 )
         ax2.set_xlabel(xlabel, fontsize=label_fs)
         ax2.set_ylabel(r'$\phi_{\mathrm{mantle}}$ (wt)', fontsize=label_fs)
         ax2.yaxis.set_label_coords(xcoord_l,ycoord_l)
@@ -182,6 +201,21 @@ def plot_global( host_dir, sub_dirs ):
 
         title = r'(c) Mantle melt fraction'
         ax2.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
+
+
+        # # Rheological front
+        # ax4.semilogx( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light)
+        # ax4.set_xlim( *xlim )
+        # ax4.set_xlabel(xlabel, fontsize=label_fs)
+        # ax4.set_ylabel(r'Mantle fraction', fontsize=label_fs)
+        # ax4.yaxis.set_label_coords(xcoord_l,ycoord_l)
+        # handles, labels = ax2.get_legend_handles_labels()
+        # ax4.legend(handles, labels, ncol=1, loc=6, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
+
+        # title = r'(e) Rheological front'
+        # ax4.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
+
+
 
         ### Plot axes setup
         ##########
@@ -257,7 +291,7 @@ def plot_global( host_dir, sub_dirs ):
                 ##########
                 # figure d
                 ##########
-                ax3.semilogx( vol_times, vol_atm_pressure, color=vol_colors[vol][color_strength], linestyle='-', lw=lw, label=vol_latex[vol])
+                ax3.semilogx( vol_times, vol_atm_pressure, color=vol_colors[vol][color_strength], linestyle='-', lw=lw, label=vol_latex[sub_dir])
                 ##########
                 # figure e
                 ##########

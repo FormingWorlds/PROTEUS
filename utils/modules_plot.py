@@ -234,3 +234,8 @@ def AtmosphericHeight(atm, m_planet, r_planet):
 
 # Constants
 R_gas           = 8.31446261815324      # J K−1 mol−1
+
+def find_nearest(array, value):
+    array   = np.asarray(array)
+    idx     = (np.abs(array - value)).argmin()
+    return array[idx], idx
