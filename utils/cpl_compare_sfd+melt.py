@@ -3,10 +3,12 @@
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
 
+import matplotlib.gridspec as gridspec
+
 def find_nearest(array, value):
     array   = np.asarray(array)
     idx     = (np.abs(array - value)).argmin()
-    return array[idx], idx
+    return array[idx]
 
 #====================================================================
 def plot_atmosphere( output_dir, sub_dirs, output_times ):
@@ -15,19 +17,35 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
     # http://tex.stackexchange.com/questions/39383/determine-text-width
     # logger.info( 'building stacked interior atmosphere' )
 
-    width   = 6.00 #* 3.0/2.0
-    height  = 12.0
-    fig_o   = su.FigureData( 2, 1, width, height, output_dir+'/compare_stacked', units='kyr' )
-    fig_o.fig.subplots_adjust(wspace=0.15, hspace=0.0)
+    width   = 12.00 #* 3.0/2.0
+    height  = 6.0
+    
+    # fig_o   = su.FigureData( 1, 3, width, height, output_dir+'/compare_sfd+melt', units='kyr' )
+    # fig_o.fig.subplots_adjust(wspace=0.15, hspace=0.0)
+
+    
+
+    # ax0 = fig_o.ax[0]#[0]
+    # ax1 = fig_o.ax[1]#[1]
+    # ax2 = fig_o.ax[2]#[0]
+    # # ax3 = fig_o.ax[1][1]
+
+    # Define figure with gridspec
+    # https://matplotlib.org/3.2.1/tutorials/intermediate/gridspec.html
+    fig = plt.figure(tight_layout=True, constrained_layout=False, figsize=[width, height])
+
+    gs = fig.add_gridspec(nrows=2, ncols=3, wspace=0.03, hspace=0.2, left=0.05, right=0.98, top=0.98, bottom=0.08)
+
+
+    ax0 = fig.add_subplot(gs[0, :])
+    ax1 = fig.add_subplot(gs[1, 0])
+    ax2 = fig.add_subplot(gs[1, 1])
+    ax3 = fig.add_subplot(gs[1, 2])
 
     # sns.set_style("ticks")
     # sns.despine()
 
-    ax0 = fig_o.ax[0]#[0]
-    ax1 = fig_o.ax[1]#[1]
-    # ax2 = fig_o.ax[1][0]
-    # ax3 = fig_o.ax[1][1]
-
+    
     handle_l = [] # handles for legend
 
     ymax_atm_pressure   = 0
@@ -35,8 +53,8 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
     ymax_atm_z          = 0
     ymin_atm_z          = 0
     ymax_sp_flux        = 0
-    xmin                = 100
-    xmax                = 3000
+    xmin                = 0
+    xmax                = 0.1
 
     fs_legend   = 11
     fs_label    = 11
@@ -50,13 +68,14 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
 
     for subdir in sub_dirs:
 
-        # if subdir in [ "H2O", "H2", "CO2", "CH4", "N2" ]:
-        # if output_times
-        #     lw = 2.0
-        #     ls = "-"
-        # if subdir in [ "O2", "CO" ]:
-        #     lw = 1.5
-        #     ls = "--"
+        if subdir in [ "H2" ]:
+            output_times = [ 1.3e+6 ]
+        if subdir in [ "H2O", "CH4" ]:
+            output_times = [ 1.3e+4 ]
+        if subdir in [ "CO2" ]:
+            output_times = [ 8e+3 ]
+        if subdir in [ "N2", "O2", "CO", "N2_reduced" ]:
+            output_times = [ 5e+2 ]
 
         data_dir = output_dir+"/"+subdir
 
@@ -89,21 +108,21 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
         for nn, output_time in enumerate( output_times ):
 
             if nn == 0:
-                lw = 2.0
+                lw = 1.5
                 ls = "-"
             if nn == 1:
-                lw = 2.0
+                lw = 1.5
                 ls = "--"
             if nn == 3:
-                lw = 2.0
+                lw = 1.5
                 ls = ":"
 
             print(subdir, output_time)
 
             # Find data_time closest to output_time wanted
-            time, time_idx = find_nearest(data_times, output_time)
+            time = find_nearest(data_times, output_time)
 
-            label = vol_latex[subdir]#+", "+latex_float(time)+" yr"
+            label = vol_latex[subdir]+", "+latex_float(time)+" yr"
 
             atm_file = data_dir+"/"+str(int(time))+"_atm.pkl"
 
@@ -112,14 +131,8 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
             atm = pkl.load(atm_file_stream)
             atm_file_stream.close()
 
-            # # read json
-            # myjson_o = su.MyJSON( data_dir+"/"+'{}.json'.format(time) )
-
             # color = fig_o.get_color( nn )
             color   = vol_colors[subdir][color_idx]
-
-            # # use melt fraction to determine mixed region
-            # MIX     = myjson_o.get_mixed_phase_boolean_array( 'basic' )
           
             # Atmosphere T-Z
             z_profile = AtmosphericHeight(atm, planet_mass, r_planet) # m
@@ -128,70 +141,42 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
             # Connect interior and atmosphere lines
             atm.tmp[-1] = atm.ts
 
-            # Find pressure level closest to 1 Pa
-            prs_cut, prs_cut_idx = find_nearest(atm.p, 1)
-
-            # print(prs_cut, prs_cut_idx)
-
-            l1, = ax0.plot( atm.tmp[prs_cut_idx:], z_profile[prs_cut_idx:], lw=lw, color=color, label=label, ls=ls)
+            # Spectral flux density per wavenumber
+            l1, = ax0.plot( atm.band_centres, atm.net_spectral_flux[:,0]/atm.band_widths, '-', color=color, label=label, lw=1.5)
+            ymax_sp_flux = np.max( [ ymax_sp_flux, np.max(atm.net_spectral_flux[:,0]/atm.band_widths)] )
+            # Blackbody curves
+            ax0.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths, color=color, ls='--', lw=1.0, alpha=0.5, label=str(round(atm.ts))+' K blackbody')
 
             # Fill color and P_surf legends
-            if nn == 0:
-                legend_ax0_1_handles.append(l1)
+            # if nn == 0:
+            legend_ax0_1_handles.append(l1)
 
             if subdir == sub_dirs[0]:
-                if output_time == 1e+2: 
-                    time_label = "100 yr"
-                elif output_time == 5e+2: 
-                    time_label = "500 yr"
-                elif output_time == 1e+7: 
-                    time_label = "10 Myr"
-                else: 
-                    time_label = latex_float(output_time)+" yr"
-                l2, = ax0.plot( 0, 0, lw=lw, color=qgray, label=time_label, ls=ls)
+                l2, = ax0.plot( 0, 0, lw=lw, color=qgray, label=latex_float(time)+" yr", ls=ls)
                 legend_ax0_2_handles.append(l2)
 
-            # print(time,atm.tmp, atm.p)
-
-            # # Atmosphere T-P
-            # ax1.semilogy( atm.tmp, atm.p/1e5, '-', color=color, label=label, lw=1.5)
-
-            # # Spectral flux density per wavenumber
-            # ax2.plot( atm.band_centres, atm.net_spectral_flux[:,0]/atm.band_widths, '-', color=color, label=label, lw=1.5)
-            # ymax_sp_flux = np.max( [ ymax_sp_flux, np.max(atm.net_spectral_flux[:,0]/atm.band_widths)] )
-            # # Blackbody curves
-            # ax2.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths, color=color, ls='--', lw=1.0, alpha=0.5, label=str(round(atm.ts))+' K blackbody')
-
-
-            ## INTERIOR
+            ### INTERIOR
 
             myjson_o = su.MyJSON( data_dir+"/"+'{}.json'.format(time) )
 
-            # T-P mantle
-            mantle_prs  = myjson_o.get_dict_values(['data','pressure_b'])*1.0E-9 # GPa
-            mantle_tmp  = myjson_o.get_dict_values(['data','temp_b'])
+            # Melt fraction
+            mantle_prs = myjson_o.get_dict_values(['data','pressure_b'])*1.0E-9
+            mantle_phi = myjson_o.get_dict_values(['data','phi_b'])
+            ax1.plot( mantle_phi, mantle_prs, ls=ls, lw=lw, color=color )
 
-            ax1.plot( mantle_tmp, mantle_prs, ls=ls, lw=lw, color=color )
+            # Temperature
+            mantle_tmp = myjson_o.get_dict_values(['data','temp_b'])
+            ax2.plot( mantle_tmp, mantle_prs, ls=ls, lw=lw, color=color )
 
-            # print(np.max(atm.ts), np.min(mantle_tmp))
-
-            # Get rheological front parameters
-            rf_idx = int(myjson_o.get_dict_values(['rheological_front_dynamic', 'mesh_index']))
-            rf_depth = round(myjson_o.get_dict_values(['rheological_front_dynamic','depth']))/1e+3 # km
-            rf_prs = round(myjson_o.get_dict_values(['rheological_front_dynamic','pressure']))/1e+9 # GPa
-            print("RF:", rf_idx, rf_depth, rf_prs )
-
-            # Reset y-axis boundaries
-            if np.min(atm.p) > 0:
-                ymax_atm_pressure = np.max([ymax_atm_pressure, np.max(atm.p/1e5)])
-                ymin_atm_pressure = np.min([ymin_atm_pressure, np.min(atm.p/1e5)])
-                ymax_atm_z = np.max([ymax_atm_z, np.max(z_profile)])
-                ymin_atm_z = np.min([ymin_atm_z, np.min(z_profile)])
-
-
+            # Viscosity
+            visc_const  = 1 # this is used for the arcsinh scaling
+            visc_fmt    = su.MyFuncFormatter( visc_const )
+            mantle_visc = myjson_o.get_dict_values(['data','visc_b'], visc_fmt)
+            ax3.plot( mantle_visc, mantle_prs, ls=ls, lw=lw, color=color )
+            
             # Reset x-axis boundaries
-            xmin = np.min([ xmin, np.min(atm.tmp) ])
-            xmax = np.max([ xmax, np.max(mantle_tmp) ])
+            xmin = np.min([ xmin, np.min(mantle_phi) ])
+            xmax = np.max([ xmax, np.max(mantle_phi) ])
 
             # color_idx   += 3
 
@@ -199,14 +184,19 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
     xx_pres = myjson_o.get_dict_values(['data','pressure_b'])*1.0E-9
     yy_liqt = myjson_o.get_dict_values(['data','liquidus_temp_b'])
     yy_solt = myjson_o.get_dict_values(['data','solidus_temp_b'])
-    ax1.fill_betweenx( xx_pres, yy_liqt, yy_solt, facecolor=qmagenta_light, alpha=0.3, linewidth=0 )
+    ax2.fill_betweenx( xx_pres, yy_liqt, yy_solt, facecolor=qmagenta_light, alpha=0.3, linewidth=0 )
+    # ax1.fill_betweenx( mantle_tmp, yy_liq, yy_sol, facecolor='grey', alpha=0.35, linewidth=0 )
+    # yy_liqt = myjson_o.get_dict_values_internal(['data','liquidus_temp_b'])
+    # yy_solt = myjson_o.get_dict_values_internal(['data','solidus_temp_b'])
+    # ax1.fill_between( xx_pres, yy_liqt, yy_solt, facecolor='grey', alpha=0.35, linewidth=0 )
 
     # ax1.fill_between(mantle_tmp, 1000, y2)
 
     ### Figure settings
     
     # xmin    = 0
-    xticks  = [xmin, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, xmax]
+    xticks  = np.linspace(xmin, xmax, 10)
+    xticks  = [ round(x,2) for x in xticks ]
     title_xcoord = -0.09
     title_ycoord = 0.5
 
@@ -215,21 +205,13 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
     # ax0.set_xlabel("Temperature, $T$ (K)")
     ax0.set_ylabel("Atmosphere height, $z_\mathrm{atm}$ (km)", fontsize=fs_label)
     # ax0.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
-    ax0.yaxis.set_label_coords(title_xcoord,title_ycoord)
-    # ax0.tick_params(direction='in')
-    # ax0.set_xticklabels([])
-    # ax0.xaxis.tick_top()
-    # ax0.tick_params(direction='in')
-    ax0.set_xlim( xmin, xmax )
-    ax0.set_xticks(xticks)
-    ax0.set_xticklabels([])
-    ax0.set_yscale("symlog", linthreshy=50)
-    ax0.set_ylim( 0, ymax_atm_z )
-    yticks = [ 10, 20, 30, 40, 50, 100, 200, 300, 500, 1000, 2000, 3000, ymax_atm_z]
-    ax0.set_yticks( yticks )
-    ax0.set_yticklabels( [ str(int(i)) for i in yticks ] )
+    # ax0.yaxis.set_label_coords(title_xcoord,title_ycoord)
+    ax0.set_xlabel( r'Wavenumber (cm$^{-1}$)', fontsize=fs_label )
+    ax0.set_ylabel( r'Spectral flux density (W m$^{-2}$ cm$^{-1}$)', fontsize=fs_label)
+    ax0.set_xlim( left=0, right=20000 )
+    ax0.set_ylim( bottom=0, top=ymax_sp_flux ) # bottom=0, 
+    ax0.set_yscale("symlog", linthreshy=1)
     
-
     # #####  T-P
     # # fig_o.set_myaxes( ax1, xlabel='$T$ (K)', ylabel='$P_\mathrm{atm}$\n(bar)', xmin=xmin, xmax=xmax, xticks=xticks )
     # ax1.set_xlabel("Temperature, $T$ (K)")
@@ -243,41 +225,51 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
     # ax1.invert_yaxis()
 
     ax1.set_ylim([0, int(mantle_prs[-1])])
-    ax1.set_yticks([])
-    ax1.set_yticklabels([])
+    # ax1.set_yticks([])
+    # ax1.set_yticklabels([])
     ax1.set_xlim( xmin, xmax )
     ax1.set_xticks(xticks)
     # ax2.yaxis.set_label_coords(-0.25,0.5)
-    ax1.set_xlabel( r'Temperature, $T$ (K)', fontsize=fs_label )
+    ax1.set_xlabel( r'Mantle melt fraction, $\phi$ (wt)', fontsize=fs_label )
     ax1.invert_yaxis()
+    ax1.set_ylabel( 'Mantle pressure, $P_\mathrm{mantle}$ (GPa)', fontsize=fs_label )
+
+    # ax1b = ax1.twinx()
+    # ax1b.plot( mantle_phi, xx_depth, alpha=0.0)
+    # ax1b.set_xlim( right=xmax, left=xmin )
+    # ax1b.set_xticks(xticks)
+    # ax1b.set_ylim(top=xx_depth[-1], bottom=xx_depth[0])
+    # # ax1b.set_yticks([0, int(0.2*xx_depth[-1]), int(0.4*xx_depth[-1]), int(0.6*xx_depth[-1]), int(0.8*xx_depth[-1]), int(xx_depth[-1])])
+    # ax1b.invert_yaxis()
+    # ax1b.yaxis.tick_left()
+    # ax1.set_ylabel( 'Mantle depth, $d_\mathrm{mantle}$ (km)', fontsize=fs_label )
+    # ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
+    # ax1.set_yscale("symlog", linthreshy=10)
 
 
-    ax1b = ax1.twinx()
-    ax1b.plot( mantle_tmp, xx_depth, alpha=0.0)
-    ax1b.set_xlim( right=xmax, left=xmin )
-    ax1b.set_xticks(xticks)
-    ax1b.set_ylim(top=xx_depth[-1], bottom=xx_depth[0])
-    # ax1b.set_yticks([0, int(0.2*xx_depth[-1]), int(0.4*xx_depth[-1]), int(0.6*xx_depth[-1]), int(0.8*xx_depth[-1]), int(xx_depth[-1])])
-    yticks = [ 0, 250, 500, 1000, 1500, 2000, 2500, xx_depth[-1] ]
-    ax1b.set_yticks( yticks )
-    ax1b.set_yticklabels( [ str(int(i)) for i in yticks ] )
-    ax1b.invert_yaxis()
-    ax1b.yaxis.tick_left()
-    ax1.set_ylabel( 'Mantle depth, $d_\mathrm{mantle}$ (km)', fontsize=fs_label )
-    ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
-    # ax1.set_yscale("symlog", linthreshy=20)
-    
+    # ax2.set_ylim([0, int(mantle_prs[-1])])
+    # ax2.set_yticks([])
+    # ax2.set_yticklabels([])
+    # ax2.set_xlim( xmin, xmax )
+    # ax2.set_xticks(xticks)
+    ax2.set_xlabel( r'Mantle temperature, $T$ (K)', fontsize=fs_label )
+    ax2.invert_yaxis()
+    # ax2b = ax1.twinx()
+    # ax2b.plot( mantle_tmp, xx_depth, alpha=0.0)
+    # ax2b.set_xlim( right=xmax, left=xmin )
+    # ax2b.set_xticks(xticks)
+    # ax2b.set_ylim(top=xx_depth[-1], bottom=xx_depth[0])
+    # yticks = [ 0, 250, 500, 1000, 1500, 2000, 2500, xx_depth[-1] ]
+    # ax2b.set_yticks( yticks )
+    # ax2b.set_yticklabels( [ str(int(i)) for i in yticks ] )
+    # ax2b.invert_yaxis()
+    # ax2b.yaxis.tick_left()
+    # ax2.set_ylabel( 'Mantle depth, $d_\mathrm{mantle}$ (km)', fontsize=fs_label )
+    # ax2.yaxis.set_label_coords(title_xcoord,title_ycoord)
+    # # ax1.set_yscale("symlog", linthreshy=20)
 
-
-    ax1.text(0.05, 0.05, 'Pure solid', color=qblue_dark, rotation=0, ha="left", va="bottom", fontsize=fs_label, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-    ax1.text(0.6, 0.55, 'Mush', color=qmagenta_dark, rotation=0, ha="right", va="top", fontsize=fs_label, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-    ax1.arrow(0.6, 0.55, 0.07, 0.03, head_width=0.0, head_length=0.0, fc=qmagenta_dark, ec=qmagenta_dark, transform=ax1.transAxes)
-    ax1.text(0.95, 0.94, 'Pure melt', color=qred_dark, rotation=0, ha="right", va="top", fontsize=fs_label, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-
-    ax0.arrow(3000, 30, 0.0, 18, head_width=50, head_length=1.5, fc=qgray_light, ec=qgray_light, lw=1.0, alpha=0.7) # , transform=ax0.transAxes
-    ax0.arrow(3000, 52, 0.0, 80, head_width=50, head_length=11, fc=qgray_light, ec=qgray_light, lw=1.0, alpha=0.7) # , transform=ax0.transAxes
-    ax0.text(3050, 40, 'linear', color=qgray_light, rotation=0, ha="left", va="center", fontsize=fs_label-1, alpha=0.99, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round')) # , transform=ax0.transAxes
-    ax0.text(3050, 80, 'log\nscale', color=qgray_light, rotation=0, ha="left", va="center", fontsize=fs_label-1, alpha=0.99, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round')) # , transform=ax0.transAxes
+    ax3.set_xlabel( r'Mantle viscosity, $\eta$ (Pa s)', fontsize=fs_label )
+    ax3.invert_yaxis()
 
 
     # # title = '(b) Melt fraction'
@@ -315,12 +307,14 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
     # Legend(s)
     legend_ax0_1 = ax0.legend(handles=legend_ax0_1_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title="Volatiles")
     ax0.add_artist(legend_ax0_1)
-    legend_ax0_2 = ax0.legend(handles=legend_ax0_2_handles, loc=4, ncol=1, fontsize=fs_legend, framealpha=0.3, title="Times")
-    ax0.add_artist(legend_ax0_2)
+    # legend_ax0_2 = ax0.legend(handles=legend_ax0_2_handles, loc=4, ncol=1, fontsize=fs_legend, framealpha=0.3, title="Times")
+    # ax0.add_artist(legend_ax0_2)
+
     # ax0.legend( fancybox=True, framealpha=0.5, ncol=1, fontsize=fs_legend)
     # ax2.legend( fontsize=8, fancybox=True, framealpha=0.5 )
+    plt.savefig(output_dir+'/compare_sfd+melt.pdf', tight_layout=True)
 
-    fig_o.savefig(1)
+    # fig_o.savefig(1)
     plt.close()
 
 #====================================================================
@@ -353,7 +347,7 @@ def main():
     sub_dirs    = [ "H2", "CH4", "H2O", "CO2", "N2", "CO", "O2" ] #, "CO", "O2"
 
     # Times at which to plot
-    output_times = [ 5e+2, 1e+7 ]
+    output_times = [ 1e+6 ]
 
     output_dir  = "/Users/tim/runs/coupler_tests/set_260bar"
     print("Host directory:", output_dir)

@@ -12,7 +12,7 @@ ML=60
 
 # Loop through simulation branches
 # H2 H2O
-for BATCH in CH4 CO2 CO N2; do
+for BATCH in H2O H2 CH4 CO2 CO N2 O2; do
 
     # Absolute directory of where images are stored
     # IMAGE_DIR=${IMAGE_DIR_BASE}/${BATCH}/${MOVIE_NAME}

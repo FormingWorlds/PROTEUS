@@ -7,7 +7,6 @@ from utils.modules_plot import *
 def plot_global( host_dir, sub_dirs ):
 
     # Plot settings
-    lw         = 1.5
     fscale     = 1.1
     fsize      = 18
     fs_title   = 18
@@ -26,9 +25,9 @@ def plot_global( host_dir, sub_dirs ):
     txt_alpha  = 0.5
     txt_pad    = 0.1
     label_fs   = 11
-    color_strength = 5
+    
 
-    fig_o = su.FigureData( 3, 2, width, height, host_dir+'/plot_global', units='yr' )
+    fig_o = su.FigureData( 3, 2, width, height, host_dir+'/compare_global', units='yr' )
     fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.1)
 
     ax0 = fig_o.ax[0][0]
@@ -40,6 +39,13 @@ def plot_global( host_dir, sub_dirs ):
 
     # Loop over all subdirectories
     for sub_dir in sub_dirs:
+
+        if sub_dir == "N2_reduced":
+            color_strength = 3
+            lw             = 1.0
+        else:
+            color_strength = 6
+            lw             = 1.5
 
         output_dir = host_dir+sub_dir
         print(output_dir)
@@ -121,9 +127,16 @@ def plot_global( host_dir, sub_dirs ):
         ax0.set_xlim( *xlim )
         ax0.set_xticklabels([])
         ax0.yaxis.set_label_coords(xcoord_l,ycoord_l)
-        handles, labels = ax0.get_legend_handles_labels()
+        # handles, labels = ax0.get_legend_handles_labels()
         # ax0.legend(handles, labels, loc='upper right', fontsize=fs_legend, ncol=2)
         ax0.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
+        ax0.set_ylim(1e+0, 1e+7)
+        yticks = [ 1e+0, 1e+1, 1e+2, 1e+3, 1e+4, 1e+5, 1e+6, 1e+7 ]
+        ax0.set_yticks( yticks )
+        # ax0.set_yticklabels( [ str(int(i)) for i in yticks ] )
+
+        # # # SHOW LEGEND
+        # ax0.legend(ncol=2, loc=6, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend)
 
         ##########
         # figure b
@@ -140,6 +153,9 @@ def plot_global( host_dir, sub_dirs ):
         ax1.set_xticklabels([])
         ax1.yaxis.set_label_coords(xcoord_l,ycoord_l)
         ax1.set_ylim(200, 3000)
+        yticks = [ 200, 500, 1000, 1500, 2000, 2500, 3000]
+        ax1.set_yticks( yticks )
+        ax1.set_yticklabels( [ str(int(i)) for i in yticks ] )
         ax1.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
         ##########
@@ -171,7 +187,7 @@ def plot_global( host_dir, sub_dirs ):
         ##########
         # figure d
         ##########
-        title_ax3 = r'(d) Surface volatile partial pressure'
+        title_ax3 = r'(d) Surface volatile pressure equivalent'
         # Total pressure
         # ax3.semilogx( fig_o.time, P_surf, color=qgray_dark, linestyle='-', lw=lw, label=r'Total')
         ##########
@@ -271,7 +287,8 @@ def plot_global( host_dir, sub_dirs ):
         ax3.yaxis.set_label_position("right")
         ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
         handles, labels = ax3.get_legend_handles_labels()
-        ax3.legend(handles, labels, ncol=2, loc=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
+        # ax3.legend(handles, labels, ncol=2, loc=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
+        ax3.legend(ncol=2, loc=6, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend)
         ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
         ##########
         # figure e
@@ -337,7 +354,7 @@ def main():
 
     # Define specific one
     output_dir  = "/Users/tim/runs/coupler_tests/set_260bar/"
-    sub_dirs    = [ "N2_reduced", "H2", "H2O", "CO2", "CH4", "CO", "O2", "N2" ]
+    sub_dirs    = [ "H2", "H2O", "CO2", "CH4", "CO", "O2", "N2", "N2_reduced" ]
 
     print("Host directory:", output_dir)
 
