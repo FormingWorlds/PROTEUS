@@ -85,7 +85,7 @@ def plot_atmosphere( output_dir, times ):
             label = latex_float(time)+" yr"
             
             # Atmosphere T-Z
-            z_profile = AtmosphericHeight(atm.tmp, atm.p, planet_mass, r_planet) # m
+            z_profile = AtmosphericHeight(atm, planet_mass, r_planet) # m
             z_profile = z_profile*1e-3 # km
             ax0.plot( atm.tmp, z_profile, '-', color=color, label=label, lw=1.5)
 

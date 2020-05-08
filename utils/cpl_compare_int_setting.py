@@ -34,7 +34,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
     # https://matplotlib.org/3.2.1/tutorials/intermediate/gridspec.html
     fig = plt.figure(tight_layout=True, constrained_layout=False, figsize=[width, height])
 
-    gs = fig.add_gridspec(nrows=2, ncols=4, wspace=0.1, hspace=0.2, left=0.05, right=0.98, top=0.98, bottom=0.08)
+    gs = fig.add_gridspec(nrows=2, ncols=4, wspace=0.1, hspace=0.25, left=0.055, right=0.98, top=0.98, bottom=0.08)
 
 
     ax0 = fig.add_subplot(gs[0, 0:2])
@@ -63,15 +63,19 @@ def plot_atmosphere( output_dir, sub_dirs ):
     fs_label    = 11
 
     # Initiate legends
-    legend_ax0_1_handles = []
-    legend_ax0_2_handles = []
+    legend_ax0_handles = []
+    legend_ax0b_handles = []
+
+
+    # Show wavelenght or wavenumber
+    print_wavelength = True
 
     # # Load runtime helpfile
     # runtime_helpfile = pd.read_csv(output_dir+"runtime_helpfile.csv")
 
     for subdir in sub_dirs:
 
-        settings = [ "", "_mix", "_sep", "_utbl", "_sep_mix_utbl" ]
+        settings = [ "", "_mix", "_sep", "_utbl" ]
 
         color_idx   = 5
 
@@ -92,6 +96,19 @@ def plot_atmosphere( output_dir, sub_dirs ):
             if nn == 4:
                 lw = 1.5
                 ls = (0, (2, 1))
+
+            if setting == "":
+                setting_name = "(a) Fiducial case"
+            if setting == "_mix":
+                setting_name = r"(b) Variable $\mathcal{L}$"
+            if setting == "_sep":
+                setting_name = r"(c) Solid–melt sep."
+            if setting == "_utbl":
+                setting_name = r"(d) Boundary layer"
+            if setting == "_sep_mix":
+                setting_name = r"Variable $\mathcal{L}$"+"\n"+"+ solid–melt sep."
+            if setting == "_sep_mix_utbl":
+                setting_name = r"Variable $\mathcal{L}$"+"\n"+"+ solid–melt sep."+"\n"+"+ UTBL"
 
             data_dir = output_dir+"/"+subdir+setting
 
@@ -127,11 +144,14 @@ def plot_atmosphere( output_dir, sub_dirs ):
             # FIND SPECIFIC TIMESTAMP
 
             # Find critical parameter
-            RF_depth_crit = 0.1
+            RF_depth_crit = 0.01
             # print(rheol_front/np.max(rheol_front))
             RF_depth_crit_num, RF_depth_crit_idx = find_nearest(rheol_front/np.max(rheol_front), RF_depth_crit)
             RF_depth_crit_time   = data_times[RF_depth_crit_idx]
-            # phi_global_intersect = phi_global[RF_half_depth_idx]
+            
+            # RF_half_depth, RF_half_depth_idx = find_nearest(rheol_front, 0.5)
+            # RF_half_depth_time   = data_times[RF_half_depth_idx]
+            # Phi_global_intersect = phi_global[RF_half_depth_idx]
             # print("RF:", RF_half_depth_idx, RF_half_depth, RF_half_depth_time, Phi_global_intersect)
 
             phi_crit = 0.2
@@ -144,7 +164,8 @@ def plot_atmosphere( output_dir, sub_dirs ):
             Fatm_crit_time = data_times[Fatm_crit_idx]
 
             # Define output time based on which criterion
-            output_time =  Fatm_crit_time
+            if setting == "":
+                output_time =  RF_depth_crit_time
 
             # print(RF_depth_crit_time)
 
@@ -166,7 +187,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
 
             print(subdir, setting, output_time)
 
-            label = vol_latex[subdir]+" "+setting+", "+latex_float(time)+" yr"
+            label = setting_name
 
             atm_file = data_dir+"/"+str(int(time))+"_atm.pkl"
 
@@ -178,28 +199,16 @@ def plot_atmosphere( output_dir, sub_dirs ):
             # color = fig_o.get_color( nn )
             color   = vol_colors[subdir][color_idx]
           
-            # Atmosphere T-Z
-            z_profile = AtmosphericHeight(atm, planet_mass, r_planet) # m
-            z_profile = z_profile*1e-3 # km
+            # # Atmosphere T-Z
+            # z_profile = AtmosphericHeight(atm, planet_mass, r_planet) # m
+            # z_profile = z_profile*1e-3 # km
 
-            # Connect interior and atmosphere lines
-            atm.tmp[-1] = atm.ts
-
-            # Spectral flux density per wavenumber
-            l1, = ax0.plot( atm.band_centres, atm.net_spectral_flux[:,0]/atm.band_widths, ls=ls, color=color, label=label, lw=lw)
-            ymax_sp_flux = np.max( [ ymax_sp_flux, np.max(atm.net_spectral_flux[:,0]/atm.band_widths)] )
+            # # Connect interior and atmosphere lines
+            # atm.tmp[-1] = atm.ts
             
-            # # Blackbody curves
-            # ax0.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths, color=color, ls='--', lw=1.0, alpha=0.5, label=str(round(atm.ts))+' K blackbody')
+            
 
-            # Fill color and P_surf legends
-            # if nn == 0:
-            legend_ax0_1_handles.append(l1)
-
-            if subdir == sub_dirs[0]:
-                l2, = ax0.plot( 0, 0, lw=lw, color=qgray, label=latex_float(time)+" yr", ls=ls)
-                legend_ax0_2_handles.append(l2)
-
+            
             ### INTERIOR
 
             myjson_o = su.MyJSON( data_dir+"/"+'{}.json'.format(time) )
@@ -207,16 +216,66 @@ def plot_atmosphere( output_dir, sub_dirs ):
             # Melt fraction
             mantle_prs = myjson_o.get_dict_values(['data','pressure_b'])*1.0E-9
             mantle_phi = myjson_o.get_dict_values(['data','phi_b'])
-            ax1.plot( mantle_phi, mantle_prs, ls=ls, lw=lw, color=color )
+            
 
             # Temperature
             mantle_tmp = myjson_o.get_dict_values(['data','temp_b'])
-            ax2.plot( mantle_tmp, mantle_prs, ls=ls, lw=lw, color=color )
+
+
+            # Plots
+            if subdir == sub_dirs[0]:
+
+                output_time_print_a = output_time
+                
+                if print_wavelength == True:
+                    # Wavelength / microns
+                    wavelength_micron  = [ 1e+4/i for i in atm.band_centres ]
+                    flux_micron = [ 1e+4*i for i in atm.net_spectral_flux[:,0]/atm.band_widths ]
+                    l1, = ax0.plot( wavelength_micron, flux_micron, ls=ls, color=color, label=label, lw=lw)
+                else:               
+                    l1, = ax0.plot( atm.band_centres, atm.net_spectral_flux[:,0]/atm.band_widths, ls=ls, color=color, label=label, lw=lw)
+
+                    # Blackbody curves
+                    ax0.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths, color=color, ls=ls, lw=0.5, alpha=0.5, label=str(round(atm.ts))+' K blackbody')
+
+                
+                ymax_sp_flux = np.max( [ ymax_sp_flux, np.max(atm.net_spectral_flux[:,0]/atm.band_widths)] )
+                ax1.plot( mantle_phi, mantle_prs, ls=ls, lw=lw, color=color )
+                ax2.plot( mantle_tmp, mantle_prs, ls=ls, lw=lw, color=color )
+                legend_ax0_handles.append(l1)
+            if subdir == sub_dirs[1]:
+
+                output_time_print_b = output_time
+
+                if print_wavelength == True:
+                    # Wavelength / microns
+                    wavelength_micron  = [ 1e+4/i for i in atm.band_centres ]
+                    flux_micron = [ 1e+4*i for i in atm.net_spectral_flux[:,0]/atm.band_widths ]
+                    l1, = ax0b.plot( wavelength_micron, flux_micron, ls=ls, color=color, label=label, lw=lw)
+                else:               
+                    l1, = ax0b.plot( atm.band_centres, atm.net_spectral_flux[:,0]/atm.band_widths, ls=ls, color=color, label=label, lw=lw)
+                    # Blackbody curves
+                    ax0b.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths, color=color, ls=ls, lw=0.5, alpha=0.5, label=str(round(atm.ts))+' K blackbody')
+
+                ymax_sp_flux = np.max( [ ymax_sp_flux, np.max(atm.net_spectral_flux[:,0]/atm.band_widths)] )
+                ax1b.plot( mantle_phi, mantle_prs, ls=ls, lw=lw, color=color )
+                ax2b.plot( mantle_tmp, mantle_prs, ls=ls, lw=lw, color=color )
+                legend_ax0b_handles.append(l1)
 
             # # Viscosity
             # mantle_visc = myjson_o.get_dict_values(['data','visc_b'])
             # # print(mantle_visc)
             # ax3.plot( mantle_visc, mantle_prs, ls=ls, lw=lw, color=color )
+
+
+            # Fill color and P_surf legends
+            # if nn == 0:
+            
+
+            # if subdir == sub_dirs[0]:
+            #     l2, = ax0.plot( 0, 0, lw=lw, color=qgray, label=latex_float(time)+" yr", ls=ls)
+            #     legend_ax0_2_handles.append(l2)
+
             
             # Reset x-axis boundaries
             xmin = np.min([ xmin, np.min(mantle_phi) ])
@@ -229,6 +288,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
     yy_liqt = myjson_o.get_dict_values(['data','liquidus_temp_b'])
     yy_solt = myjson_o.get_dict_values(['data','solidus_temp_b'])
     ax2.fill_betweenx( xx_pres, yy_liqt, yy_solt, facecolor=qmagenta_light, alpha=0.3, linewidth=0 )
+    ax2b.fill_betweenx( xx_pres, yy_liqt, yy_solt, facecolor=qmagenta_light, alpha=0.3, linewidth=0 )
 
     ### Figure settings
     
@@ -238,43 +298,91 @@ def plot_atmosphere( output_dir, sub_dirs ):
     title_xcoord = -0.09
     title_ycoord = 0.5
 
-    #####  T-Z
-    # fig_o.set_myaxes( ax0, xlabel='$T$ (K)', ylabel='$z_\mathrm{atm}$\n(km)', xmin=xmin, xmax=xmax, ymin=0, ymax=ymax_atm_z, xticks=xticks )
-    # ax0.set_xlabel("Temperature, $T$ (K)")
-    ax0.set_ylabel("Atmosphere height, $z_\mathrm{atm}$ (km)", fontsize=fs_label)
-    # ax0.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
-    # ax0.yaxis.set_label_coords(title_xcoord,title_ycoord)
-    ax0.set_xlabel( r'Wavenumber (cm$^{-1}$)', fontsize=fs_label )
-    ax0.set_ylabel( r'Spectral flux density (W m$^{-2}$ cm$^{-1}$)', fontsize=fs_label)
-    ax0.set_xlim( left=0, right=7500 )
-    ax0.set_ylim( bottom=0, top=ymax_sp_flux ) # bottom=0, 
-    ax0.set_yscale("symlog", linthreshy=0.1)
+    linthreshy_mantle   = 3
+    linthreshy_atm      = 100
+
+    yticks_mantle = [ 0, 1, 2, 3, 10, 30, 70, np.max(mantle_prs) ]
+    xticks_melt = [ 0, 0.2, 0.4, 0.6, 0.8, 1 ]
+    xticks_tmp = [ 1000, 2000, 3000, 4000 ]
+
+    if print_wavelength == True:
+        ax0.set_ylabel(r'Spectral flux density (W m$^{-2}$ $\mu$m$^{-1}$)', fontsize=fs_label)
+        ax0.set_xlabel(r'Wavelength $\lambda$ ($\mu$m)', fontsize=fs_label)
+        ax0.set_xscale("log")
+        ax0.set_yscale("log") 
+        # ax0.set_yscale("symlog")
+        # ax0.set_xlim(left=0.1, right=100)
+        ax0.set_ylim(bottom=1e+2)
+        # ax0.set_yticks([1e-10, 1e-5, 1e0, 1e5])
+        # ax0.set_xticks([0.1, 0.3, 1, 3, 10, 30, 100])
+        # ax0.set_xticklabels(["0.1", "0.3", "1", "3", "10", "30", "100"])
+    else:
+        ax0.set_ylabel( r'Spectral flux density (W m$^{-2}$ cm$^{-1}$)', fontsize=fs_label)
+        ax0.set_xlabel( r'Wavenumber (cm$^{-1}$)', fontsize=fs_label )
+        # ax0.set_xlim( left=0, right=7500 )
+        # ax0.set_ylim( bottom=0 ) # bottom=0, , top=ymax_sp_flux
+        # ax0.set_yscale("symlog", linthreshy=linthreshy_atm)
+        ax0.set_yscale("log")
 
     ax1.set_ylim([0, int(mantle_prs[-1])])
-    # ax1.set_yticks([])
-    # ax1.set_yticklabels([])
-    ax1.set_xlim( xmin, xmax )
-    ax1.set_xticks(xticks)
-    # ax2.yaxis.set_label_coords(-0.25,0.5)
+    ax1.set_xlim( np.min(xticks_melt), np.max(xticks_melt) )
+    ax1.set_xticks(xticks_melt)
     ax1.set_xlabel( r'Mantle melt fraction, $\phi$ (wt)', fontsize=fs_label )
     ax1.invert_yaxis()
     ax1.set_ylabel( 'Mantle pressure, $P_\mathrm{mantle}$ (GPa)', fontsize=fs_label )
-    ax1.set_yscale("symlog", linthreshy=10)
+    ax1.set_yscale("symlog", linthreshy=linthreshy_mantle)
+    ax1.set_yticks(yticks_mantle)
+    ax1.set_yticklabels([ str(int(round(y,0))) for y in yticks_mantle])
 
     ax2.set_ylim([0, int(mantle_prs[-1])])
-    # ax2.set_yticks([])
     ax2.set_yticklabels([])
-    # ax2.set_xlim( xmin, xmax )
-    # ax2.set_xticks(xticks)
+    ax2.set_xlim( np.min(xticks_tmp)-500, np.max(xticks_tmp)+500 )
+    ax2.set_xticks(xticks_tmp)
     ax2.set_xlabel( r'Mantle temperature, $T$ (K)', fontsize=fs_label )
     ax2.invert_yaxis()
-    ax2.set_yscale("symlog", linthreshy=10)
+    ax2.set_yscale("symlog", linthreshy=linthreshy_mantle)
+    ax2.set_yticks(yticks_mantle)
+    ax2.set_yticklabels([])
+    
+    if print_wavelength == True:
+        ax0b.set_xlabel(r'Wavelength $\lambda$ ($\mu$m)', fontsize=fs_label)
+        ax0b.set_xscale("log")
+        ax0b.set_yscale("log") 
+        # ax0b.set_yscale("symlog")
+        # ax0b.set_xlim(left=0.1, right=100)
+        ax0b.set_ylim(bottom=5e+1)
+        # ax0b.set_yticks([1e-10, 1e-5, 1e0, 1e5])
+        # ax0b.set_xticks([0.1, 0.3, 1, 3, 10, 30, 100])
+        # ax0b.set_xticklabels(["0.1", "0.3", "1", "3", "10", "30", "100"])
+    else:
+        # ax0b.set_ylabel( r'Spectral flux density (W m$^{-2}$ cm$^{-1}$)', fontsize=fs_label)
+        ax0b.set_xlabel( r'Wavenumber (cm$^{-1}$)', fontsize=fs_label )
+        # ax0b.set_xlim( left=0, right=7500 )
+        # ax0b.set_ylim( bottom=0 ) #, top=ymax_sp_flux
+        # ax0b.set_yscale("symlog", linthreshy=linthreshy_atm)
+        ax0b.set_yscale("log")
 
-    # ax3.set_xscale("log")
-    # ax3.set_ylim([0, int(mantle_prs[-1])])
-    # ax3.set_yticklabels([])
-    # ax3.set_xlabel( r'Mantle viscosity, $\eta$ (Pa s)', fontsize=fs_label )
-    # ax3.invert_yaxis()
+    ax1b.set_ylim([0, int(mantle_prs[-1])])
+    # ax1b.set_yticks([])
+    # ax1b.yaxis.tick_right()
+    ax1b.set_xlim( np.min(xticks_melt), np.max(xticks_melt) )
+    ax1b.set_xticks(xticks_melt)
+    ax1b.set_xlabel( r'Mantle melt fraction, $\phi$ (wt)', fontsize=fs_label )
+    ax1b.invert_yaxis()
+    ax1b.set_yscale("symlog", linthreshy=linthreshy_mantle)
+    ax1b.set_yticks(yticks_mantle)
+    ax1b.set_yticklabels([])
+
+    ax2b.set_ylim([0, int(mantle_prs[-1])])
+    # ax2b.yaxis.tick_right()
+    # ax2b.yaxis.set_label_position("right")
+    ax2b.set_xlim( np.min(xticks_tmp)-500, np.max(xticks_tmp)+500 )
+    ax2b.set_xticks(xticks_tmp)
+    ax2b.set_xlabel( r'Mantle temperature, $T$ (K)', fontsize=fs_label )
+    ax2b.invert_yaxis()
+    ax2b.set_yscale("symlog", linthreshy=linthreshy_mantle)
+    ax2b.set_yticks(yticks_mantle)
+    ax2b.set_yticklabels([])
 
     try:
         sns.set_style("ticks")
@@ -283,10 +391,24 @@ def plot_atmosphere( output_dir, sub_dirs ):
         print("No seaborn.")
 
     # Legend(s)
-    legend_ax0_1 = ax0.legend(handles=legend_ax0_1_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title="Volatile, time")
-    ax0.add_artist(legend_ax0_1)
-    # legend_ax0_2 = ax0.legend(handles=legend_ax0_2_handles, loc=4, ncol=1, fontsize=fs_legend, framealpha=0.3, title="Times")
-    # ax0.add_artist(legend_ax0_2)
+    legend_ax0 = ax0.legend(handles=legend_ax0_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"H$_\mathrm{2}$O"+", $t = $"+latex_float(output_time_print_a)+" yr")
+    ax0.add_artist(legend_ax0)
+    
+    # for text in legend_ax0.get_texts():
+    #     text.set_color("red")
+
+    legend_ax0b = ax0b.legend(handles=legend_ax0b_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"H$_\mathrm{2}$"+", $t = $"+latex_float(output_time_print_b)+" yr")
+    ax0b.add_artist(legend_ax0b)
+
+    ax2.text(0.6, 0.28, 'Mush', color=qmagenta_light, rotation=0, ha="left", va="top", fontsize=fs_label, transform=ax2.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax2b.text(0.6, 0.28, 'Mush', color=qmagenta_light, rotation=0, ha="left", va="top", fontsize=fs_label, transform=ax2b.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    
+    ax0.text(0.02, 0.015, 'A1', color="k", rotation=0, ha="left", va="bottom", fontsize=fs_label+3, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax1.text(0.02, 0.015, 'A2', color="k", rotation=0, ha="left", va="bottom", fontsize=fs_label+3, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax2.text(0.02, 0.015, 'A3', color="k", rotation=0, ha="left", va="bottom", fontsize=fs_label+3, transform=ax2.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax0b.text(0.02, 0.015, 'B1', color="k", rotation=0, ha="left", va="bottom", fontsize=fs_label+3, transform=ax0b.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax1b.text(0.02, 0.015, 'B2', color="k", rotation=0, ha="left", va="bottom", fontsize=fs_label+3, transform=ax1b.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax2b.text(0.02, 0.015, 'B3', color="k", rotation=0, ha="left", va="bottom", fontsize=fs_label+3, transform=ax2b.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
 
     # ax0.legend( fancybox=True, framealpha=0.5, ncol=1, fontsize=fs_legend)
     # ax2.legend( fontsize=8, fancybox=True, framealpha=0.5 )
@@ -322,7 +444,7 @@ def main():
     #     data_times = su.get_all_output_times(output_dir)
     #     print("Snapshots:", output_times)
 
-    vols    = [ "H2O" ] #, "CO", "O2"
+    vols    = [ "H2O", "H2" ] #, "CO", "O2"
 
     output_dir  = "/Users/tim/runs/coupler_tests/set_260bar"
     print("Host directory:", output_dir)

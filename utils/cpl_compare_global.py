@@ -168,16 +168,17 @@ def plot_global( host_dir, sub_dirs ):
 
         # Rheological front
         # ax2.semilogx( fig_o.time, 1-rheol_front/np.max(rheol_front), ls=":", lw=lw, color=vol_colors[sub_dir][color_strength], zorder=1, alpha=0.5)
-        RF_half_depth, RF_half_depth_idx = find_nearest(rheol_front, 0.5)
-        RF_half_depth_time   = fig_o.time[RF_half_depth_idx]
-        Phi_global_intersect = phi_global[RF_half_depth_idx]
-        print("RF:", RF_half_depth_idx, RF_half_depth, RF_half_depth_time, Phi_global_intersect)
+        RF_depth_crit = 0.01 # normalized
+        RF_depth_crit_num, RF_depth_crit_idx = find_nearest(rheol_front/np.max(rheol_front), RF_depth_crit)
+        RF_depth_crit_time   = fig_o.time[RF_depth_crit_idx]
+        Phi_global_intersect = phi_global[RF_depth_crit_idx]
+        print("RF:", RF_depth_crit_idx, RF_depth_crit_num, RF_depth_crit_time, Phi_global_intersect)
 
-        ax2.arrow(RF_half_depth_time, 0, 0, Phi_global_intersect, head_width=0, head_length=0, fc=vol_colors[sub_dir][color_strength], ec=vol_colors[sub_dir][color_strength], lw=1.0, alpha=0.5, ls="--") # , transform=ax0.transAxes
+        ax2.arrow(RF_depth_crit_time, 0, 0, Phi_global_intersect, head_width=0, head_length=0, fc=vol_colors[sub_dir][color_strength], ec=vol_colors[sub_dir][color_strength], lw=1.0, alpha=0.5, ls="--") # , transform=ax0.transAxes
 
         if sub_dir == sub_dirs[0]:
             legend_handles_ax2 = []
-            rf_label = "Rheological front\nat mid-mantle"
+            rf_label = "Rheological front\nreaches surface"
             l2, = ax2.plot( 0, 0, lw=1.0, color=qgray, label=rf_label, ls="--")
             legend_handles_ax2.append(l2)
             legend_ax2 = ax2.legend(handles=legend_handles_ax2, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3)
