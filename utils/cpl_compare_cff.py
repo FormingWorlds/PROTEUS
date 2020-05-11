@@ -19,7 +19,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
     # logger.info( 'building stacked interior atmosphere' )
 
     width   = 12.00 #* 3.0/2.0
-    height  = 6.0
+    height  = 5.0
     
     # fig_o   = su.FigureData( 1, 3, width, height, output_dir+'/compare_sfd+melt', units='kyr' )
     # fig_o.fig.subplots_adjust(wspace=0.15, hspace=0.0)
@@ -208,7 +208,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
             l1, = ax0.semilogy(atm.cff, atm.p/np.max(atm.p), ls=ls, lw=lw, color=color, label=label_a)
             legend_ax0_handles.append(l1)
             
-            wavelength_bands = [ 2.16, 10.47 ] # microns
+            wavelength_bands = [ 3, 10.5 ] # microns
 
             for w_idx, wavelength in enumerate(wavelength_bands):
 
@@ -241,7 +241,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
 
                 wavenumber = (1./wavelength)*1e+4 # cm
 
-                label_b = vol_latex[subdir]+", "+str(round(wavelength, 2))+", "+band_name
+                label_b = vol_latex[subdir]+", "+str(round(wavelength, 1))#+", "+band_name
 
                 channel, channel_idx = find_nearest(atm.band_centres, wavenumber )
 
@@ -252,13 +252,12 @@ def plot_atmosphere( output_dir, sub_dirs ):
                 l2, = ax1.semilogy(atm.cff_i[channel_idx,:], atm.p/np.max(atm.p), ls=ls, lw=lw, color=color, label=label_b)
                 legend_ax1_handles.append(l2)
 
-
             # print(atm.cff)
-            print(np.shape(atm.cff), np.shape(atm.LW_flux_up))
-            print(np.sum(atm.cff), atm.LW_flux_up[0])
+            # print(np.shape(atm.cff), np.shape(atm.LW_flux_up))
+            print("CFFs: ", np.sum(atm.cff), np.sum( atm.cff_i[:,:] ), atm.LW_flux_up[0])
             cff_sum = np.sum( atm.cff_i[:,:] * atm.LW_flux_up_i[:,0][:,None], axis=0)
             cff_sum = cff_sum / np.trapz(cff_sum, atm.p/np.max(atm.p), axis=0)
-            print(np.sum(cff_sum), atm.LW_flux_up[0])
+            # print(np.sum(cff_sum), atm.LW_flux_up[0])
 
     ax0.set_xlabel( r'Contribution function summed (how to normalize units?)', fontsize=fs_label )
     ax0.invert_yaxis()
@@ -277,13 +276,13 @@ def plot_atmosphere( output_dir, sub_dirs ):
         print("No seaborn.")
 
     # # Legend(s)
-    legend_ax0 = ax0.legend(handles=legend_ax0_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"Volatiles, time $t$")
+    legend_ax0 = ax0.legend(handles=legend_ax0_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"Species, time $t$")
     ax0.add_artist(legend_ax0)
     
     # for text in legend_ax0.get_texts():
     #     text.set_color("red")
 
-    legend_ax1 = ax1.legend(handles=legend_ax1_handles, loc=1, ncol=2, fontsize=fs_legend, framealpha=0.3, title=r"Volatile, wavelength $\lambda_\mathrm{c}$ ($\mu$m), band" )
+    legend_ax1 = ax1.legend(handles=legend_ax1_handles, loc=1, ncol=2, fontsize=fs_legend, framealpha=0.3, title=r"Species, wavelength $\lambda_\mathrm{c}$ ($\mu$m)" )
     ax1.add_artist(legend_ax1)
 
     # ax2.text(0.6, 0.28, 'Mush', color=qmagenta_light, rotation=0, ha="left", va="top", fontsize=fs_label, transform=ax2.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))

@@ -64,6 +64,7 @@ vol_colors  = {
     "S"              : cm.get_cmap("YlOrBr", no_colors)(range(no_colors)),
     "He"             : cm.get_cmap("Greys", no_colors)(range(no_colors)),
     "NH3"            : cm.get_cmap("cool", no_colors)(range(no_colors)),
+    "greys"          : cm.get_cmap("Greys", no_colors)(range(no_colors)),
     "mixtures"       : cm.get_cmap("Set3", 9)(range(no_colors)),
     "H2O-CO2"        : cm.get_cmap("Set3", 9)(range(no_colors))[1],
     "CO2-H2O"        : cm.get_cmap("Set3", 9)(range(no_colors))[1],
@@ -193,6 +194,25 @@ vol_latex = {
     "O2-N2"  : r"O$_2$–N$_2$",
     "O2-O2"  : r"O$_2$–O$_2$",
 }
+
+molar_mass      = {
+          "H2O" : 0.01801528,           # kg mol−1
+          "CO2" : 0.04401,              # kg mol−1
+          "H2"  : 0.00201588,           # kg mol−1
+          "CH4" : 0.01604,              # kg mol−1
+          "CO"  : 0.02801,              # kg mol−1
+          "N2"  : 0.028014,             # kg mol−1
+          "O2"  : 0.031999,             # kg mol−1
+          "SO2" : 0.064066,             # kg mol−1
+          "H2S" : 0.0341,               # kg mol−1 
+          "H"   : 0.001008,             # kg mol−1 
+          "C"   : 0.012011,             # kg mol−1 
+          "O"   : 0.015999,             # kg mol−1 
+          "N"   : 0.014007,             # kg mol−1 
+          "S"   : 0.03206,              # kg mol−1 
+          "He"  : 0.0040026,            # kg mol−1 
+          "NH3" : 0.017031,             # kg mol−1 
+        }
 
 volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
 
