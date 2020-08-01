@@ -66,6 +66,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
     # Initiate legends
     legend_ax0_handles = []
     legend_ax1_handles = []
+    legend_ax1_dummy_handles = []
 
     # Show wavelenght or wavenumber
     print_wavelength = True
@@ -87,10 +88,10 @@ def plot_atmosphere( output_dir, sub_dirs ):
             ls = "--"
         if ni == 2:
             lw = 1.5
-            ls = "-."
+            ls = ":"
         if ni == 3:
             lw = 1.5
-            ls = ":"
+            ls = "-."
         if ni == 4:
             lw = 1.5
             ls = (0, (2, 1))
@@ -167,12 +168,34 @@ def plot_atmosphere( output_dir, sub_dirs ):
 
             # Define output time based on which criterion
             if setting == "":
+                
                 output_time =  RF_depth_crit_time
 
-            # print(RF_depth_crit_time)
+            #     output_time =  RF_depth_crit_num
+
+            # # print(RF_depth_crit_time)
+
+            # if setting == "fix_time":
+
+            #     if subdir == "H2":
+            #         output_time = 1e+5
+            #     if subdir == "H2O":
+            #         ax = ax1
+            #     if subdir == "CO2":
+            #         ax = ax2
+            #     if subdir == "CH4":
+            #         ax = ax3
+            #     if subdir == "O2":
+            #         ax = 1e+3
+            #     if subdir == "CO":
+            #         ax = 1e+3
+            #     if subdir == "N2":
+            #         ax = 1e+3
 
             # # Fix output time
             # output_time = 1e+5
+
+
 
             # Find data_time closest to output_time wanted
             atm_data_times = su.get_all_output_pkl_times(data_dir)
@@ -205,10 +228,13 @@ def plot_atmosphere( output_dir, sub_dirs ):
             dirs = {"output": output_dir, "rad_conv": os.getcwd()+"/../atm_rad_conv"}
             atm = atm_rad_conv.SocRadModel.radCompSoc(atm, dirs, recalc=False, calc_cf=True)
             
-            l1, = ax0.semilogy(atm.cff, atm.p/np.max(atm.p), ls=ls, lw=lw, color=color, label=label_a)
+            # l1, = ax0.semilogy(atm.cff/np.sum(atm.cff), atm.p/np.max(atm.p), ls=ls, lw=lw, color=color, label=label_a)
+            l1, = ax0.semilogy(atm.cff/np.sum(atm.cff), atm.p/np.max(atm.p), ls=ls, lw=lw, color=color, label=label_a)
             legend_ax0_handles.append(l1)
+
+            # print(np.max(atm.p))
             
-            wavelength_bands = [ 3, 10.5 ] # microns
+            wavelength_bands = [ 2, 6, 10 ] # microns
 
             for w_idx, wavelength in enumerate(wavelength_bands):
 
@@ -220,28 +246,28 @@ def plot_atmosphere( output_dir, sub_dirs ):
                     ls = "--"
                 if w_idx == 2:
                     lw = 1.5
-                    ls = "-."
+                    ls = ":"
                 if w_idx == 3:
                     lw = 1.5
-                    ls = ":"
+                    ls = "-."
                 if w_idx == 4:
                     lw = 1.5
                     ls = (0, (2, 1))
 
                 if wavelength == 1.65:
                     band_name = r"$H$"
-                elif wavelength == 2.16:
+                elif wavelength == 2:
                     band_name = r"$K$"
                 elif wavelength == 3.55:
                     band_name = r"$L$"
-                elif wavelength == 10.47:
+                elif wavelength == 10:
                     band_name = r"$N$"
                 else:
                     band_name = "?"
 
                 wavenumber = (1./wavelength)*1e+4 # cm
 
-                label_b = vol_latex[subdir]+", "+str(round(wavelength, 1))#+", "+band_name
+                label_b = vol_latex[subdir]+", "+str(round(wavelength, 1))+" $\mu$m"#+band_name
 
                 channel, channel_idx = find_nearest(atm.band_centres, wavenumber )
 
@@ -249,25 +275,30 @@ def plot_atmosphere( output_dir, sub_dirs ):
 
                 print(wavenumber, w_idx, wavelength, channel, channel_idx)
 
-                l2, = ax1.semilogy(atm.cff_i[channel_idx,:], atm.p/np.max(atm.p), ls=ls, lw=lw, color=color, label=label_b)
+                l2, = ax1.semilogy(atm.cff_i[channel_idx,:]/np.sum(atm.cff_i[channel_idx,:]), atm.p/np.max(atm.p), ls=ls, lw=lw, color=color, label=label_b) # 
                 legend_ax1_handles.append(l2)
+
+                print(subdir, sub_dirs[0])
+                if subdir == sub_dirs[0]:
+                    dummy, = ax1.semilogy([0], [0], ls=ls, lw=lw, color="k", label=str(round(wavelength, 1))+" $\mu$m") 
+                    legend_ax1_dummy_handles.append(dummy)
 
             # print(atm.cff)
             # print(np.shape(atm.cff), np.shape(atm.LW_flux_up))
-            print("CFFs: ", np.sum(atm.cff), np.sum( atm.cff_i[:,:] ), atm.LW_flux_up[0])
+            print("CFFs: ", np.sum(atm.cff), np.sum( atm.cff_i[:,:] ), atm.LW_flux_up[0], atm.net_flux[0])
             cff_sum = np.sum( atm.cff_i[:,:] * atm.LW_flux_up_i[:,0][:,None], axis=0)
             cff_sum = cff_sum / np.trapz(cff_sum, atm.p/np.max(atm.p), axis=0)
             # print(np.sum(cff_sum), atm.LW_flux_up[0])
 
-    ax0.set_xlabel( r'Contribution function summed (how to normalize units?)', fontsize=fs_label )
+    ax0.set_xlabel( r'Total flux contribution (non-dim.)', fontsize=fs_label )
     ax0.invert_yaxis()
-    ax0.set_ylabel( 'Atmospheric pressure, $P/P_\mathrm{s}$ (non-dim.)', fontsize=fs_label )
-    ax0.set_ylim(bottom=1, top=1e-5)
+    ax0.set_ylabel( 'Atmospheric pressure, $P/P_{\mathrm{surf}}$ (non-dim.)', fontsize=fs_label )
+    ax0.set_ylim(bottom=1, top=1e-5) # , top=1e-5
 
-    ax1.set_xlabel( r'Contribution function per band (how to normalize units?)', fontsize=fs_label )
+    ax1.set_xlabel( r'Band flux contribution (non-dim.)', fontsize=fs_label )
     ax1.invert_yaxis()
-    ax1.set_yticklabels([])
-    ax1.set_ylim(bottom=1, top=1e-5)
+    # ax1.set_yticklabels([])
+    ax1.set_ylim(bottom=1, top=1e-5) # , top=1e-5
     
     try:
         sns.set_style("ticks")
@@ -276,20 +307,25 @@ def plot_atmosphere( output_dir, sub_dirs ):
         print("No seaborn.")
 
     # # Legend(s)
-    legend_ax0 = ax0.legend(handles=legend_ax0_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"Species, time $t$")
+    legend_ax0 = ax0.legend(handles=legend_ax0_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"Volatile species, time $t$")
     ax0.add_artist(legend_ax0)
     
-    # for text in legend_ax0.get_texts():
-    #     text.set_color("red")
+    # # Detailed legend
+    # legend_ax1 = ax1.legend(handles=legend_ax1_handles, loc=[0.47, 0.1], ncol=2, fontsize=fs_legend, framealpha=0.3, title=r"Volatile species, wavelength $\lambda_\mathrm{c}$" )
+    # ax1.add_artist(legend_ax1)
 
-    legend_ax1 = ax1.legend(handles=legend_ax1_handles, loc=1, ncol=2, fontsize=fs_legend, framealpha=0.3, title=r"Species, wavelength $\lambda_\mathrm{c}$ ($\mu$m)" )
-    ax1.add_artist(legend_ax1)
+    # Only wavelengths legend
+    legend_dummy = ax1.legend(handles=legend_ax1_dummy_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"Wavelength $\lambda_\mathrm{c}$" )
+    ax1.add_artist(legend_dummy)
 
     # ax2.text(0.6, 0.28, 'Mush', color=qmagenta_light, rotation=0, ha="left", va="top", fontsize=fs_label, transform=ax2.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
     # ax2b.text(0.6, 0.28, 'Mush', color=qmagenta_light, rotation=0, ha="left", va="top", fontsize=fs_label, transform=ax2b.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
     
     ax0.text(0.98, 0.015, 'A', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_label+3, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
     ax1.text(0.98, 0.015, 'B', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_label+3, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+
+    # ax0.set_xscale("log")
+    # ax1.set_xscale("log")
 
     # ax0.legend( fancybox=True, framealpha=0.5, ncol=1, fontsize=fs_legend)
     # ax2.legend( fontsize=8, fancybox=True, framealpha=0.5 )
@@ -325,7 +361,8 @@ def main():
     #     data_times = su.get_all_output_times(output_dir)
     #     print("Snapshots:", output_times)
 
-    vols    = [ "H2", "H2O", "CO2", "CH4", "O2", "N2", "CO" ] 
+    # vols    = [ "H2" ]
+    vols    = [ "H2", "H2O", "CO2", "CH4", "O2", "N2", "CO" ]
 
     output_dir  = "/Users/tim/runs/coupler_tests/set_260bar"
     print("Host directory:", output_dir)

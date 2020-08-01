@@ -16,7 +16,7 @@ def plot_global( output_dir ):
     height     = 8.0 #/ 2.0
     # Subplot titles
     title_fs   = 12
-    title_xy   = (0.02, 0.02)
+    title_xy   = (0.07, 0.02)
     title_x    = title_xy[0]
     title_y    = title_xy[1]
     title_xycoords = 'axes fraction'
@@ -37,10 +37,21 @@ def plot_global( output_dir ):
     ax4 = fig_o.ax[1][1]
     ax5 = fig_o.ax[2][1]
 
+    title_xNumbering = 0.02
+    title_yNumbering = 0.05
+    fsplus = 5
+    ax0.text(title_xNumbering, title_yNumbering, 'A', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax1.text(title_xNumbering, title_yNumbering, 'B', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax2.text(title_xNumbering, title_yNumbering, 'C', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax2.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax3.text(title_xNumbering, title_yNumbering, 'D', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax3.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax4.text(title_xNumbering, title_yNumbering, 'E', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax4.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax5.text(title_xNumbering, title_yNumbering, 'F', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax5.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+
     # runtime_helpfile = pd.read_csv(output_dir+"runtime_helpfile.csv", sep=" ")
     # print(runtime_helpfile)
 
     fig_o.time = su.get_all_output_times(output_dir)
+    print("output_dir", output_dir)
     print("Times", fig_o.time)
 
     ########## Global properties
@@ -96,7 +107,7 @@ def plot_global( output_dir ):
     ##########
     # figure a
     ##########
-    title = r'(a) Heat flux to space'  
+    title = r'Heat flux to space'  
     if rolling_mean == 1:
         ax0.loglog( fig_o.time[:nsteps+4], Fatm[:nsteps+4], qgray_dark, lw=lw, alpha=1.0 )
         
@@ -121,7 +132,7 @@ def plot_global( output_dir ):
     ##########
     # figure b
     ##########
-    title = r'(b) Surface temperature'
+    title = r'Surface temperature'
     if np.max(fig_o.time) >= 1e3: 
         ymin = np.min(T_surf)*0.9
         ymax = np.max(T_surf)
@@ -159,24 +170,24 @@ def plot_global( output_dir ):
     handles, labels = ax2.get_legend_handles_labels()
     ax2.legend(handles, labels, ncol=1, loc=6, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
 
-    title = r'(c) Mantle evolution'
+    title = r'Mantle evolution'
     ax2.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
     ### Plot axes setup
     ##########
     # figure d
     ##########
-    title_ax3 = r'(d) Surface volatile partial pressure'
+    title_ax3 = r'Surface volatile partial pressure'
     # Total pressure
     ax3.semilogx( fig_o.time, P_surf, color=qgray_dark, linestyle='-', lw=lw, label=r'Total')
     ##########
     # figure e
     ##########
-    title_ax4 = r'(e) Atmosphere volatile mass fraction'
+    title_ax4 = r'Atmosphere volatile mass fraction'
     ##########
     # figure f
     ##########
-    title_ax5 = r'(f) Interior volatile mass fraction'
+    title_ax5 = r'Interior volatile mass fraction'
 
     ########## Volatile species-specific plots
     

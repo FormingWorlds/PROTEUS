@@ -312,6 +312,11 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
     except:
         print("No seaborn.")
 
+
+    ax0.text(0.02, 0.985, 'A', color="k", rotation=0, ha="left", va="top", fontsize=fs_label+4, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.1, pad=0.2, boxstyle='round'))
+    ax1.text(0.02, 0.985, 'B', color="k", rotation=0, ha="left", va="top", fontsize=fs_label+4, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.1, pad=0.2, boxstyle='round'))
+
+
     # Legend(s)
     legend_ax0_1 = ax0.legend(handles=legend_ax0_1_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title="Volatiles")
     ax0.add_artist(legend_ax0_1)

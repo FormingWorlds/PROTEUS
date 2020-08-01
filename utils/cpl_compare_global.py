@@ -17,7 +17,7 @@ def plot_global( host_dir, sub_dirs ):
     height     = 8.0 #/ 2.0
     # Subplot titles
     title_fs   = 12
-    title_xy   = (0.02, 0.02)
+    title_xy   = (0.07, 0.02)
     title_x    = title_xy[0]
     title_y    = title_xy[1]
     title_xycoords = 'axes fraction'
@@ -27,7 +27,6 @@ def plot_global( host_dir, sub_dirs ):
     txt_alpha  = 0.5
     txt_pad    = 0.1
     label_fs   = 11
-    
 
     fig_o = su.FigureData( 3, 2, width, height, host_dir+'/compare_global', units='yr' )
     fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.1)
@@ -38,6 +37,16 @@ def plot_global( host_dir, sub_dirs ):
     ax3 = fig_o.ax[0][1]
     ax4 = fig_o.ax[1][1]
     ax5 = fig_o.ax[2][1]
+
+    title_xNumbering = 0.02
+    title_yNumbering = 0.05
+    fsplus = 5
+    ax0.text(title_xNumbering, title_yNumbering, 'A', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax1.text(title_xNumbering, title_yNumbering, 'B', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax2.text(title_xNumbering, title_yNumbering, 'C', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax2.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax3.text(title_xNumbering, title_yNumbering, 'D', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax3.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax4.text(title_xNumbering, title_yNumbering, 'E', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax4.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax5.text(title_xNumbering, title_yNumbering, 'F', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax5.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
 
     # Loop over all subdirectories
     for sub_dir in sub_dirs:
@@ -113,7 +122,7 @@ def plot_global( host_dir, sub_dirs ):
         ##########
         # figure a
         ##########
-        title = r'(a) Heat flux to space'  
+        title = r'Heat flux to space'  
         if rolling_mean == 1:
             
             # ax0.loglog( fig_o.time[:nsteps+4], Fatm[:nsteps+4], vol_colors[sub_dir][color_strength], lw=lw, alpha=1.0 )
@@ -146,7 +155,7 @@ def plot_global( host_dir, sub_dirs ):
         # figure b
         ##########
         # T_surf = T_surf[np.logical_not(np.isnan(T_surf))]
-        title = r'(b) Surface temperature'
+        title = r'Surface temperature'
         h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=vol_colors[sub_dir][color_strength], label=r'Surface temp, $T_s$' )
         # fig_o.set_myaxes( ax1, title=title, yticks=yticks)
         ax1.set_ylabel(r'$T_\mathrm{s}$ (K)', fontsize=label_fs)
@@ -200,7 +209,7 @@ def plot_global( host_dir, sub_dirs ):
         ax2.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
         ax2.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
 
-        title = r'(c) Mantle melt fraction'
+        title = r'Mantle melt fraction'
         ax2.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
 
@@ -222,17 +231,17 @@ def plot_global( host_dir, sub_dirs ):
         ##########
         # figure d
         ##########
-        title_ax3 = r'(d) Surface volatile pressure equivalent'
+        title_ax3 = r'Surface volatile pressure equivalent'
         # Total pressure
         # ax3.semilogx( fig_o.time, P_surf, color=qgray_dark, linestyle='-', lw=lw, label=r'Total')
         ##########
         # figure e
         ##########
-        title_ax4 = r'(e) Atmosphere volatile mass fraction'
+        title_ax4 = r'Atmosphere volatile mass fraction'
         ##########
         # figure f
         ##########
-        title_ax5 = r'(f) Interior volatile mass fraction'
+        title_ax5 = r'Interior volatile mass fraction'
 
         ########## Volatile species-specific plots
         
