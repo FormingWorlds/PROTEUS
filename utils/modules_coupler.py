@@ -45,6 +45,7 @@ output_dir  = str(pathlib.Path().absolute())
 vulcan_dir  = coupler_dir+"/vulcan_spider/"
 radconv_dir = coupler_dir+"/atm_rad_conv/"
 spider_dir  = coupler_dir+"/spider-dev/"
+utils_dir   = coupler_dir+"/utils/"
 
 # If COUPLER executed from main repository dir, put output in subdirectory
 if output_dir == coupler_dir: 
@@ -56,7 +57,7 @@ if output_dir == coupler_dir:
     #     print("--> Create data directory:", dirs["output"])
 
 # Project main directories
-dirs = { "output": output_dir, "coupler": coupler_dir, "rad_conv": radconv_dir, "vulcan": vulcan_dir, "spider": spider_dir}
+dirs = { "output": output_dir, "coupler": coupler_dir, "rad_conv": radconv_dir, "vulcan": vulcan_dir, "spider": spider_dir, "utils": utils_dir}
 
 # # Output dir, 
 # parser = argparse.ArgumentParser(description='Define file output directory.')

@@ -98,13 +98,13 @@ def plot_atmosphere( output_dir, sub_dirs ):
                 ls = (0, (2, 1))
 
             if setting == "":
-                setting_name = "(a) Fiducial case"
+                setting_name = r"(i) Fiducial case"
             if setting == "_mix":
-                setting_name = r"(b) Variable $\mathcal{L}$"
+                setting_name = r"(ii) Variable $\mathcal{L}_{\mathrm{m}}$(z)"
             if setting == "_sep":
-                setting_name = r"(c) Solid–melt sep."
+                setting_name = r"(iii) Solid–melt sep."
             if setting == "_utbl":
-                setting_name = r"(d) Boundary layer"
+                setting_name = r"(iv) Boundary skin"
             if setting == "_sep_mix":
                 setting_name = r"Variable $\mathcal{L}$"+"\n"+"+ solid–melt sep."
             if setting == "_sep_mix_utbl":

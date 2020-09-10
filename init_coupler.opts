@@ -11,14 +11,14 @@ time_target                 = 1e+7 # yr, target time for MO evolution
 
 ##### COUPLER-specific settings
 
-plot_onthefly               = 0
+plot_onthefly               = 1
 
 # N2 partition coefficients, 0: oxidized | 1: reduced
 N2_partitioning             = 1
 
 ##### SPIDER-specific settings
 
-# Restart seting: 1: Fresh start | 2: Restart from file
+# Restart setting: 1: Fresh start | 2: Restart from file
 IC_INTERIOR                 = 1   
 
 # Atmosphere setting: 1: Fresh start | 3: read in partial pressures
@@ -42,6 +42,9 @@ solver_tolerance            = 1.0e-10
 
 # Maximum absolute surface temperature change [K]
 tsurf_poststep_change       = 30.0  
+
+# Maximum fractional surface temperature change [fraction]
+tsurf_poststep_change_frac  = 0.10  
 
 # Planet radius [m]
 R_solid_planet              = 6371000

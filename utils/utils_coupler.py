@@ -643,10 +643,12 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # Check if input file present in current dir, if not copy standard from SPIDER repo
     SPIDER_options_file = dirs["output"]+"/init_spider.opts"
+
+    # Standard spider .opts file
+    SPIDER_options_file_vanilla = dirs["utils"]+"/init_spider.opts"
+
     if not os.path.isfile(SPIDER_options_file):
-        SPIDER_options_file_vanilla = dirs["spider"]+"/examples/lichtenberg_2019/bu_input_standard.opts"
-        if not os.path.isfile(SPIDER_options_file):
-            shutil.copy(SPIDER_options_file_vanilla, dirs["output"]+"/init_spider_standard.opts")
+        shutil.copy(SPIDER_options_file_vanilla, dirs["output"]+"/init_spider_standard.opts")
         SPIDER_options_file = SPIDER_options_file_vanilla
 
     # Define which volatiles to track in SPIDER
@@ -701,7 +703,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     
     # Min of fractional and absolute Ts poststep change
     if time_dict["planet"] > 0:
-        dTs_frac = float(COUPLER_options["Ts_poststep_change_frac"]) * float(runtime_helpfile["T_surf"].iloc[-1])
+        dTs_frac = float(COUPLER_options["tsurf_poststep_change_frac"]) * float(runtime_helpfile["T_surf"].iloc[-1])
         COUPLER_options["tsurf_poststep_change"] = np.min([ float(COUPLER_options["tsurf_poststep_change"]), float(dTs_frac) ])
 
     call_sequence.extend(["-tsurf_poststep_change", str(COUPLER_options["tsurf_poststep_change"])])
@@ -918,7 +920,7 @@ def ReadInitFile( dirs, init_file_passed ):
             # Skip comments
             if not line.startswith("#"):
                 
-                # Skipe inline comments
+                # Skip inline comments
                 line = line.split("#")[0]
                 line = line.split(",")[0]
 
