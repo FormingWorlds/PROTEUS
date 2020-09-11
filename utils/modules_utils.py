@@ -29,6 +29,7 @@ from datetime import datetime
 from scipy import interpolate
 # from natsort import natsorted # https://pypi.python.org/pypi/natsort
 from decimal import Decimal
+from scipy.integrate import solve_ivp
 
 # Import coupler-specific package modules
 #import utils.utils_coupler as cu

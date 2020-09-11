@@ -255,40 +255,41 @@
 # Al26 (extinct at present day)
 -al26_t0 0.0 # time in years (post-formation) when the isotopic abundance and elemental concentration is defined
 -al26_abundance 0.0 # fractional isotopic abundance at t0 (Al26/Al)
--al_concentration 0.0 # ppm, concentration of Al at t0
+-al26_concentration 0.0 # ppm, concentration of Al at t0
 -al26_heat_production 0.3583 # W/kg (Ruedas, 2017)
 -al26_half_life 0.717E6 # years (Ruedas, 2017)
 
 # K40
 -k40_t0 4.55E9 # years
 -k40_abundance 1.1668E-4 # (40K/K) Ruedas (2017)
--k_concentration 310 # ppm (Turcotte & Schubert, 2014, p. 170)
+-k40_concentration 310 # ppm (Turcotte & Schubert, 2014, p. 170)
 -k40_heat_production 2.8761E-5 # W/kg (Ruedas, 2017)
 -k40_half_life 1248E6 # years (Ruedas, 2017)
 
 # Fe60 (extinct at present day)
 -fe60_t0 0.0 # years
 -fe60_abundance 0.0 
--fe_concentration 0.0 # ppm
+-fe60_concentration 0.0 # ppm
 -fe60_heat_production 3.6579E-2 # W/kg (Ruedas, 2017)
 -fe60_half_life 2.62E6 # years (Ruedas, 2017)
 
 # Th232
 -th232_t0 4.55E9 # years
 -th232_abundance 1.0 # (232Th/Th) Ruedas (2017)
--th_concentration 0.124 # ppm (Turcotte & Schubert, 2014, p. 170)
+-th232_concentration 0.124 # ppm (Turcotte & Schubert, 2014, p. 170)
 -th232_heat_production 2.6368E-5 # W/kg (Ruedas, 2017)
 -th232_half_life 14000E6 # years (Ruedas, 2017)
 
 # U235
 -u235_t0 4.55E9 # years
 -u235_abundance 0.0072045 # (235U/U) Ruedas (2017)
--u_concentration 0.031 # ppm (Turcotte & Schubert, 2014, p. 170)
+-u235_concentration 0.031 # ppm (Turcotte & Schubert, 2014, p. 170)
 -u235_heat_production 5.68402E-4 # W/kg (Ruedas, 2017)
 -u235_half_life 704E6 # years (Ruedas, 2017)
 
 # U238
 -u238_t0 4.55E9 # years
 -u238_abundance 0.9927955 # (238U/U) Ruedas (2017)
+-u238_concentration 0.031;
 -u238_heat_production 9.4946E-5 # W/kg (Ruedas, 2017)
 -u238_half_life 4468E6 # years (Ruedas, 2017)
