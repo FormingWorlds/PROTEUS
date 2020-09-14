@@ -16,6 +16,9 @@ plot_onthefly               = 1
 # N2 partition coefficients, 0: oxidized | 1: reduced
 N2_partitioning             = 1
 
+# Shallow mixed ocean layer as Ts interface, 0: off | 1: on
+shallow_layer               = 0
+
 ##### SPIDER-specific settings
 
 # Restart setting: 1: Fresh start | 2: Restart from file
@@ -103,8 +106,4 @@ He_initial_atmos_pressure   = 0.0
 # Atmosphere chemistry switch: 
 # 0: none 1: VULCAN->SOCRATES & 2: V->SOC+SPI
 use_vulcan                  = 0
-
-
-
-
 

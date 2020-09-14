@@ -54,6 +54,11 @@ def plot_global( output_dir ):
     print("output_dir", output_dir)
     print("Times", fig_o.time)
 
+    # Read in runtime helpfile and separate in atmosphere and interior params
+    df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=" ")
+    df_int = df.loc[df['Input']=='Interior']
+    df_atm = df.loc[df['Input']=='Atmosphere']
+
     ########## Global properties
     keys_t = ( ('atmosphere','mass_liquid'),
                ('atmosphere','mass_solid'),
@@ -108,20 +113,25 @@ def plot_global( output_dir ):
     # figure a
     ##########
     title = r'Heat flux to space'  
+    # Use helpfile information
+    time = df_atm["Time"].tolist()
+    Fatm = df_atm["Heat_flux"].tolist()
     if rolling_mean == 1:
-        ax0.loglog( fig_o.time[:nsteps+4], Fatm[:nsteps+4], qgray_dark, lw=lw, alpha=1.0 )
+        ax0.loglog( time[:nsteps+4], Fatm[:nsteps+4], qgray_dark, lw=lw, alpha=1.0 )
         
         Fatm_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
-        Time_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
+        Time_rolling = np.convolve(time, np.ones((nsteps,))/nsteps, mode='valid')
         ax0.loglog( Time_rolling, Fatm_rolling, qgray_dark, lw=lw )
     else:
-        ax0.loglog( fig_o.time, Fatm, qgray_dark, lw=lw, alpha=1.0 )
+        ax0.loglog( time, Fatm, qgray_dark, lw=lw, alpha=1.0 )
       
-    fig_o.set_myaxes(ax0)
+    # fig_o.set_myaxes(ax0)
     ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)
     ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax0.set_xlim( *xlim )
+    # ax0.set_ylim(top=np.amax(df_atm["Heat_flux"])*1.1, bottom=np.amin(df_atm["Heat_flux"])*0.9)
+    ax0.set_yscale('symlog')
     ax0.set_xticklabels([])
     ax0.yaxis.set_label_coords(xcoord_l,ycoord_l)
     handles, labels = ax0.get_legend_handles_labels()
@@ -133,14 +143,16 @@ def plot_global( output_dir ):
     # figure b
     ##########
     title = r'Surface temperature'
+    # h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$' )
+    h1, = ax1.semilogx(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$') # , color="blue"
+    # h2, = ax1.semilogx(df_int["Time"], df_int["T_surf"], color="red", label="Interior")
     if np.max(fig_o.time) >= 1e3: 
-        ymin = np.min(T_surf)*0.9
-        ymax = np.max(T_surf)
+        ymin = np.min(df_atm["T_surf"])*0.9
+        ymax = np.max(df_atm["T_surf"])*1.1
     else: 
         ymin = 200
         ymax = 3000
     yticks = [ymin, ymin+0.2*(ymax-ymin), ymin+0.4*(ymax-ymin), ymin+0.6*(ymax-ymin), ymin+0.8*(ymax-ymin), ymax]
-    h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$' )
     # fig_o.set_myaxes( ax1, title=title, yticks=yticks)
     ax1.set_ylabel(r'$T_\mathrm{s}$ (K)', fontsize=label_fs)
     ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
