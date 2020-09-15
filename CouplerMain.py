@@ -19,7 +19,7 @@ def main():
     COUPLER_options, time_dict = cu.ReadInitFile( dirs, args.init_file )
 
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
-    loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 1 }
+    loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 10 }
 
     # Parse console arguments
     COUPLER_options = assign_parse_arguments(args, COUPLER_options)
@@ -60,7 +60,7 @@ def main():
         COUPLER_options = cu.RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile )
 
         # Update help quantities, input_flag: "Interior"
-        runtime_helpfile, time_dict, F_eps = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
+        runtime_helpfile, time_dict, F_eff = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
 
         ############### / INTERIOR SUB-LOOP
 
@@ -70,7 +70,7 @@ def main():
         # if loop_counter["total"] == 0 and loop_counter["init"] == 0:
         # atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
-        while abs(F_eps) > COUPLER_options["F_eps"] and loop_counter["atm"] < loop_counter["atm_loops"]:
+        while F_eff > COUPLER_options["F_eps"] and loop_counter["atm"] < loop_counter["atm_loops"]:
 
             # Initialize atmosphere structure
             atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
@@ -82,7 +82,7 @@ def main():
             atm, COUPLER_options = cu.RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options )
 
             # Update help quantities, input_flag: "Atmosphere"
-            runtime_helpfile, time_dict, F_eps = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
+            runtime_helpfile, time_dict, F_eff = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
 
             loop_counter["atm"] += 1
 

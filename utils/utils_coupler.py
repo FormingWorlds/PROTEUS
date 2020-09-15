@@ -353,17 +353,18 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
     time_dict["planet"] = runtime_helpfile.iloc[-1]["Time"]
     time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
 
-    # Last heat fluxes
+    # Effective heat flux, positive = net loss
     if loop_counter["atm"] >= 1 and COUPLER_options["flux_convergence"] == 1:
         F_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']["Heat_flux"].tolist()[-1]
         F_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']["Heat_flux"].tolist()[-1]
-        F_eps = F_atm-F_int
+
+        F_eff = F_atm-F_int
     # elif loop_counter["atm"] >= 1 and COUPLER_options["shallow_layer"] == 1:
     #     F_eps = 0.
     else:
-        F_eps = 9e+99
+        F_eff = 9e+99
 
-    return runtime_helpfile, time_dict, F_eps
+    return runtime_helpfile, time_dict, F_eff
 
 def PrintSeparator():
     print("-------------------------------------------------------------------------------------------------------------")
@@ -408,10 +409,14 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
         run_previous = runtime_helpfile.loc[runtime_helpfile['Time'] != t_curr]
         F_atm = run_previous.loc[run_previous['Input']=='Atmosphere']["Heat_flux"].tolist()[-1]
 
+        # First best guess: current T_surf from atmosphere as before
+        if COUPLER_options["flux_convergence"] == 1 or COUPLER_options["shallow_layer"] == 1:
+            Ts_curr = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']["T_surf"].tolist()[-1]
+
         # Switch between SPIDER and shallow mixed ocean layer as interface T_surf BC
         # If heat flux transition occurs, switch to ocean layer to compute T_surf
         # If atmospheric heat flux is larger than can be sustained by lithosphere
-        if abs(F_atm-F_int) > COUPLER_options["F_eps"] or COUPLER_options["shallow_layer"] == 1:
+        if (abs(F_atm-F_int) > COUPLER_options["F_eps"] and COUPLER_options["shallow_layer"] == 1) and COUPLER_options["flux_convergence"] == 0:
 
             PrintSeparator()
             print(">>>>>>>>>> Interior and atmosphere decoupled <<<<<<<<<<<")
@@ -432,9 +437,6 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
                 # Once shallow layer used once, switch it on forever
                 COUPLER_options["shallow_layer"] = 1
-
-                # # Current T_surf always from atmosphere
-                # Ts_curr = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']["T_surf"].tolist()[-1]
 
                 # Last T_surf and time from atmosphere/mixed layer vs. interior, K
                 Ts_last_atm = run_previous.loc[run_previous['Input']=='Atmosphere']["T_surf"].tolist()[-1]
@@ -474,9 +476,13 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
             else:
                 print("SHALLOW MIXED OCEAN LAYER equilibrated, skip")
 
+        # Atmosphere properties from current time
         F_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']["Heat_flux"].tolist()[-1]
 
-        if F_int < 0.9*F_atm and COUPLER_options["flux_convergence"] == 1:
+        # Effective flux, positive = net loss
+        F_eff  = F_atm - F_int
+
+        if (F_eff > COUPLER_options["F_eps"]) and (COUPLER_options["flux_convergence"] == 1):
 
             PrintSeparator()
             print(">>>>>>>>>> Interior and atmosphere decoupled <<<<<<<<<<<")
@@ -492,6 +498,7 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
             print("Ts_last_atm:", Ts_last_atm, "Ts_curr:", Ts_curr, "(K)")
             PrintSeparator()
 
+        
 
     COUPLER_options["T_surf"] = Ts_curr
 
