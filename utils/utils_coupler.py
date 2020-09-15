@@ -420,53 +420,59 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
             # # Apply shallow layer only once per timestamp
             # if not runtime_helpfile["Time"].iloc[-1] == runtime_helpfile["Time"].iloc[-6]:
 
-            print("APPLY SHALLOW MIXED OCEAN LAYER")
-        
-            print("F_atm:", F_atm, "F_int:", F_int, "F_eps:", COUPLER_options["F_eps"], "(W m-2)")
+            # Effective flux
+            # F_eff  = - F_atm + F_int 
+            F_eff  = - F_atm
 
-            # Once shallow layer used once, switch it on forever
-            COUPLER_options["shallow_layer"] = 1
+            print("F_atm:", F_atm, "F_int:", F_int, "F_eff:", F_eff, "F_eps:", COUPLER_options["F_eps"], "(W m-2)")
 
-            # # Current T_surf always from atmosphere
-            # Ts_curr = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']["T_surf"].tolist()[-1]
+            if abs(F_eff) > COUPLER_options["F_eps"]:
 
-            # Last T_surf and time from atmosphere/mixed layer vs. interior, K
-            Ts_last_atm = run_previous.loc[run_previous['Input']=='Atmosphere']["T_surf"].tolist()[-1]
-            t_last_atm = run_previous.loc[run_previous['Input']=='Atmosphere']["Time"].tolist()[-1]
+                print("APPLY SHALLOW MIXED OCEAN LAYER")
 
-            # Maximum temperature change allowed for shallow layer, K
-            dT_abs  = 30.
-            dT_frac = 0.10
-            dT_max = np.amin([dT_abs, dT_frac*Ts_last_atm])
+                # Once shallow layer used once, switch it on forever
+                COUPLER_options["shallow_layer"] = 1
 
-            print("dT_max (K):", dT_max, "dT_abs", dT_abs, "dT_frac", dT_frac*Ts_last_atm)
-            print("Ts_last(atm):", Ts_last_atm, "dT_max:", dT_max, "t_last(atm):", t_last_atm, "t_curr(int):", t_curr)
+                # # Current T_surf always from atmosphere
+                # Ts_curr = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']["T_surf"].tolist()[-1]
 
-            
-            Ts_curr, dtswitch = shallow_mixed_ocean_layer(F_atm, F_int, Ts_last_atm, dT_max, t_curr, t_last_atm)
+                # Last T_surf and time from atmosphere/mixed layer vs. interior, K
+                Ts_last_atm = run_previous.loc[run_previous['Input']=='Atmosphere']["T_surf"].tolist()[-1]
+                t_last_atm = run_previous.loc[run_previous['Input']=='Atmosphere']["Time"].tolist()[-1]
 
-            # Adjust COUPLER options for SPIDER
-            COUPLER_options["dtswitch"] = dtswitch
-            COUPLER_options["dtmacro"]  = round(dtswitch/2.)
+                # Maximum temperature change allowed for shallow layer, K
+                dT_abs  = 30.
+                dT_frac = 0.10
+                dT_max = np.amin([dT_abs, dT_frac*Ts_last_atm])
 
-            # If time cannot advance because of too restrictive dTs, relax it
-            t_last_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']["Time"].tolist()[-2]
-            if t_last_int == t_curr:
-                COUPLER_options["tsurf_poststep_change"] *= 1.5
-                COUPLER_options["tsurf_poststep_change_frac"] *= 1.5
-            # Slowly limit again if time advances smoothly
-            if t_last_int != t_curr:
-                COUPLER_options["tsurf_poststep_change"] *= 0.9
-                COUPLER_options["tsurf_poststep_change_frac"] *= 0.9
+                print("dT_max (K):", dT_max, "dT_abs", dT_abs, "dT_frac", dT_frac*Ts_last_atm)
+                print("Ts_last(atm):", Ts_last_atm, "dT_max:", dT_max, "t_last(atm):", t_last_atm, "t_curr(int):", t_curr)
 
-            print("Ts_curr:", Ts_curr, "dtswitch:", dtswitch)
+                
+                Ts_curr, dtswitch = shallow_mixed_ocean_layer(F_atm, F_int, Ts_last_atm, dT_max, t_curr, t_last_atm)
 
-            print("CURRENT COUPLER_options:")
-            print(COUPLER_options["dtswitch"], COUPLER_options["dtmacro"], COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
-            PrintSeparator()
+                # Adjust COUPLER options for SPIDER
+                COUPLER_options["dtswitch"] = dtswitch
+                COUPLER_options["dtmacro"]  = round(dtswitch/2.)
 
-            # else:
-            #     print("SHALLOW MIXED OCEAN LAYER already applied, skip")
+                # # If time cannot advance because of too restrictive dTs, relax it
+                # t_last_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']["Time"].tolist()[-2]
+                # if t_last_int == t_curr:
+                #     COUPLER_options["tsurf_poststep_change"] *= 1.5
+                #     COUPLER_options["tsurf_poststep_change_frac"] *= 1.5
+                # # Slowly limit again if time advances smoothly
+                # if t_last_int != t_curr and COUPLER_options["tsurf_poststep_change"] > 50:
+                #     COUPLER_options["tsurf_poststep_change"] *= 0.9
+                #     COUPLER_options["tsurf_poststep_change_frac"] *= 0.9
+
+                print("Ts_curr:", Ts_curr, "dtswitch:", dtswitch)
+
+                print("CURRENT COUPLER_options:")
+                print(COUPLER_options["dtswitch"], COUPLER_options["dtmacro"], COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
+                PrintSeparator()
+
+            else:
+                print("SHALLOW MIXED OCEAN LAYER equilibrated, skip")
 
         F_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']["Heat_flux"].tolist()[-1]
 
@@ -889,13 +895,25 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # Check for convergence, if not converging, adjust tolerances iteratively
     if len(runtime_helpfile) > 10:
-        if runtime_helpfile["Time"].iloc[-1] == runtime_helpfile["Time"].iloc[-10]:
+
+        # First, relax too restrictive dTs
+        if runtime_helpfile["Time"].iloc[-1] == runtime_helpfile["Time"].iloc[-3]:
+            COUPLER_options["tsurf_poststep_change"] += 50
+            COUPLER_options["tsurf_poststep_change_frac"] *= 1.1
+            print(">>> Raise dT poststep_changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
+        # Slowly limit again if time advances smoothly
+        if (runtime_helpfile["Time"].iloc[-1] != runtime_helpfile["Time"].iloc[-3]) and COUPLER_options["tsurf_poststep_change"] > 50:
+            COUPLER_options["tsurf_poststep_change"] *= 0.9
+            COUPLER_options["tsurf_poststep_change_frac"] *= 0.9
+            print(">>> Lower dT poststep changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
+
+        if runtime_helpfile["Time"].iloc[-1] == runtime_helpfile["Time"].iloc[-7]:
             if "solver_tolerance" not in COUPLER_options:
                 COUPLER_options["solver_tolerance"] = 1.0e-10
             if COUPLER_options["solver_tolerance"] < 1.0e-5:
                 COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
             COUPLER_options["adjust_tolerance"] = 1
-            print(">>>>> ADJUST TOLERANCES:", COUPLER_options["solver_tolerance"])
+            print(">>> ADJUST TOLERANCES:", COUPLER_options["solver_tolerance"])
 
         # If tolerance was adjusted, restart SPIDER w/ new tolerances
         if "adjust_tolerance" in COUPLER_options:
@@ -1087,13 +1105,24 @@ def shallow_mixed_ocean_layer(F_atm, F_int, Ts_last, dT_max, t_curr, t_last):
     rho_layer   = 3000          # kg m-3
     depth_layer = 1000          # m
 
+    # Effective flux
+    # F_eff  = - F_atm + F_int 
+    F_eff  = - F_atm
+    dT_sgn = np.sign(F_eff) #F_atm-F_int
+
     def shallow_mixed_ocean_evolution(t, y): 
 
         # Specific heat of mixed ocean layer
         mu      = c_p_layer * rho_layer * depth_layer # J K-1 m-2
 
+        # # RHS of ODE
+        # RHS     = ( F_int - F_atm ) / mu
+
+        # # RHS of ODE
+        # RHS     = - F_atm / mu
+
         # RHS of ODE
-        RHS     = ( F_int - F_atm ) / mu
+        RHS     = F_eff / mu
 
         return RHS
 
@@ -1126,11 +1155,10 @@ def shallow_mixed_ocean_layer(F_atm, F_int, Ts_last, dT_max, t_curr, t_last):
     ### Next, calculate new dtswitch to stay within dT_max limit
 
     # Surface temperature constraints, K
-    dT_max      = np.sign(F_atm-F_int)*dT_max
-    Ts_next     = Ts_curr-dT_max
+    Ts_next     = Ts_curr+(dT_sgn*dT_max)
     print("t_last:", t_last/yr, "Ts_last:", Ts_last)
     print("t_curr:", t_curr/yr, "Ts_curr:", Ts_curr)
-    # print("t_next:", "?", "Ts_next:", Ts_next)
+    print("t_next:", "?", "Ts_next:", Ts_next)
 
     # End time interval of integration
     t_end       = 1e+6*yr
@@ -1139,8 +1167,8 @@ def shallow_mixed_ocean_layer(F_atm, F_int, Ts_last, dT_max, t_curr, t_last):
 
     sol_next = solve_ivp(shallow_mixed_ocean_evolution, [0, t_end], [Ts_curr], events=dT_threshold)
 
-    # print("sol_next.t (t/yr)", sol_next.t/yr)
-    # print("sol_next.y (T_s/K)", sol_next.y[0])
+    print("sol_next.t (t/yr)", sol_next.t/yr)
+    print("sol_next.y (T_s/K)", sol_next.y[0])
     # print("sol.t_events", sol_next.t_events[0][0]/yr)
 
     # Minimal maximum time interval to switch between interior and atmosphere [yr]
