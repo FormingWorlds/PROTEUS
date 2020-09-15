@@ -19,6 +19,12 @@ N2_partitioning             = 1
 # Shallow mixed ocean layer as Ts interface, 0: off | 1: on
 shallow_layer               = 0
 
+# Flux convergence scheme, 0: off | 1: on
+flux_convergence            = 0
+
+# Flux deviation threshold for surface fix, W m-2
+F_eps                       = 10
+
 ##### SPIDER-specific settings
 
 # Restart setting: 1: Fresh start | 2: Restart from file

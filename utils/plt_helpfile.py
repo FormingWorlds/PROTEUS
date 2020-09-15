@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-dat_dir = "/Users/tim/runs/coupler_tests/200911/1113/"
+dat_dir = "/Users/tim/runs/coupler_tests/200914/1531/"
 
 df = pd.read_csv(dat_dir+"runtime_helpfile.csv", sep=" ")
 

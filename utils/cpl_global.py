@@ -115,7 +115,7 @@ def plot_global( output_dir ):
     title = r'Heat flux to space'  
     # Use helpfile information
     time = df_atm["Time"].tolist()
-    Fatm = df_atm["Heat_flux"].tolist()
+    Fatm1 = df_atm["Heat_flux"].tolist()
     if rolling_mean == 1:
         ax0.loglog( time[:nsteps+4], Fatm[:nsteps+4], qgray_dark, lw=lw, alpha=1.0 )
         
@@ -123,7 +123,8 @@ def plot_global( output_dir ):
         Time_rolling = np.convolve(time, np.ones((nsteps,))/nsteps, mode='valid')
         ax0.loglog( Time_rolling, Fatm_rolling, qgray_dark, lw=lw )
     else:
-        ax0.loglog( time, Fatm, qgray_dark, lw=lw, alpha=1.0 )
+        ax0.loglog( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
+        ax0.loglog( time, Fatm1, qgray_dark, lw=lw, alpha=1.0 )
       
     # fig_o.set_myaxes(ax0)
     ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)
@@ -145,7 +146,7 @@ def plot_global( output_dir ):
     title = r'Surface temperature'
     # h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$' )
     h1, = ax1.semilogx(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$') # , color="blue"
-    # h2, = ax1.semilogx(df_int["Time"], df_int["T_surf"], color="red", label="Interior")
+    h2, = ax1.semilogx(df_int["Time"], df_int["T_surf"], color="red", label="Interior")
     if np.max(fig_o.time) >= 1e3: 
         ymin = np.min(df_atm["T_surf"])*0.9
         ymax = np.max(df_atm["T_surf"])*1.1

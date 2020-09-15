@@ -60,7 +60,7 @@ def main():
         COUPLER_options = cu.RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile )
 
         # Update help quantities, input_flag: "Interior"
-        runtime_helpfile, time_dict = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
+        runtime_helpfile, time_dict, F_eps = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
 
         ############### / INTERIOR SUB-LOOP
 
@@ -68,9 +68,12 @@ def main():
 
         # Initialize atmosphere structure
         # if loop_counter["total"] == 0 and loop_counter["init"] == 0:
-        atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
+        # atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
-        while loop_counter["atm"] < loop_counter["atm_loops"]:
+        while abs(F_eps) > COUPLER_options["F_eps"] and loop_counter["atm"] < loop_counter["atm_loops"]:
+
+            # Initialize atmosphere structure
+            atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
             # Run VULCAN (settings-dependent): update atmosphere mixing ratios
             atm = cu.RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options )
@@ -78,10 +81,16 @@ def main():
             # Run SOCRATES: update TOA heating and MO heat flux
             atm, COUPLER_options = cu.RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options )
 
+            # Update help quantities, input_flag: "Atmosphere"
+            runtime_helpfile, time_dict, F_eps = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
+
             loop_counter["atm"] += 1
 
-        # Update help quantities, input_flag: "Atmosphere"
-        runtime_helpfile, time_dict = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
+            # if runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']["T_surf"].iloc[-1] == runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']["T_surf"].iloc[-2]:
+            #     break
+
+        # # Update help quantities, input_flag: "Atmosphere"
+        # runtime_helpfile, time_dict = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
 
         ############### / ATMOSPHERE SUB-LOOP
         
