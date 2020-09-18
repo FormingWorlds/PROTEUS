@@ -85,7 +85,7 @@ def plot_global( output_dir ):
 
 
     xlabel = r'Time, $t$ (yr)'
-    xlim = (1e1,1e7)
+    xlim = (5e1,1e7)
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)
@@ -96,8 +96,8 @@ def plot_global( output_dir ):
     xcoord_r = 1.09
     ycoord_r = 0.5
 
-    rolling_mean = 0
-    nsteps       = 4
+    rolling_mean = 1
+    nsteps       = 10
 
     # Replace NaNs
     for idx, val in enumerate(T_surf):
@@ -114,17 +114,20 @@ def plot_global( output_dir ):
     ##########
     title = r'Heat flux to space'  
     # Use helpfile information
-    time = df_atm["Time"].tolist()
-    Fatm1 = df_atm["Heat_flux"].tolist()
+    # time = df_atm["Time"].tolist()
+    # Fatm1 = df_atm["Heat_flux"].tolist()
     if rolling_mean == 1:
-        ax0.loglog( time[:nsteps+4], Fatm[:nsteps+4], qgray_dark, lw=lw, alpha=1.0 )
+        # ax0.loglog( time[:nsteps+4], Fatm[:nsteps+4], qgray_dark, lw=lw, alpha=1.0 )
         
-        Fatm_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
-        Time_rolling = np.convolve(time, np.ones((nsteps,))/nsteps, mode='valid')
-        ax0.loglog( Time_rolling, Fatm_rolling, qgray_dark, lw=lw )
+        Fatm_int_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
+        Time_int_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
+        Fatm_atm_rolling = np.convolve(df_atm["Heat_flux"], np.ones((nsteps,))/nsteps, mode='valid')
+        Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
+        ax0.plot( Time_int_rolling, Fatm_int_rolling, color="red", lw=lw )
+        ax0.plot( Time_atm_rolling, Fatm_atm_rolling, color=qgray_dark, lw=lw )
     else:
-        ax0.loglog( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
-        ax0.loglog( time, Fatm1, qgray_dark, lw=lw, alpha=1.0 )
+        ax0.plot( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
+        ax0.plot( df_atm["Time"], df_atm["Heat_flux"], qgray_dark, lw=lw, alpha=1.0 )
       
     # fig_o.set_myaxes(ax0)
     ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)
@@ -133,6 +136,7 @@ def plot_global( output_dir ):
     ax0.set_xlim( *xlim )
     # ax0.set_ylim(top=np.amax(df_atm["Heat_flux"])*1.1, bottom=np.amin(df_atm["Heat_flux"])*0.9)
     ax0.set_yscale('symlog')
+    ax0.set_xscale('symlog')
     ax0.set_xticklabels([])
     ax0.yaxis.set_label_coords(xcoord_l,ycoord_l)
     handles, labels = ax0.get_legend_handles_labels()
@@ -144,9 +148,19 @@ def plot_global( output_dir ):
     # figure b
     ##########
     title = r'Surface temperature'
-    # h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$' )
-    h1, = ax1.semilogx(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$') # , color="blue"
-    h2, = ax1.semilogx(df_int["Time"], df_int["T_surf"], color="red", label="Interior")
+    if rolling_mean == 1:
+        Time_int_rolling = np.convolve(df_int["Time"], np.ones((nsteps,))/nsteps, mode='valid')
+        Ts_int_rolling = np.convolve(df_int["T_surf"], np.ones((nsteps,))/nsteps, mode='valid')
+        Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
+        Ts_atm_rolling = np.convolve(df_atm["T_surf"], np.ones((nsteps,))/nsteps, mode='valid')
+        
+        h2, = ax1.plot(Time_int_rolling, Ts_int_rolling, color="red", label="Interior")
+        h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$') # , color="blue"
+    else:
+        h2, = ax1.plot(df_int["Time"], df_int["T_surf"], color="red", label="Interior")
+        h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$') # , color="blue"
+        
+
     if np.max(fig_o.time) >= 1e3: 
         ymin = np.min(df_atm["T_surf"])*0.9
         ymax = np.max(df_atm["T_surf"])*1.1
@@ -156,9 +170,10 @@ def plot_global( output_dir ):
     yticks = [ymin, ymin+0.2*(ymax-ymin), ymin+0.4*(ymax-ymin), ymin+0.6*(ymax-ymin), ymin+0.8*(ymax-ymin), ymax]
     # fig_o.set_myaxes( ax1, title=title, yticks=yticks)
     ax1.set_ylabel(r'$T_\mathrm{s}$ (K)', fontsize=label_fs)
-    ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-    ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-    ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
+    # ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
+    # ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
+    # ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
+    ax1.set_xscale("symlog", linthreshx=10) # , linthresh=100
     ax1.set_xlim( *xlim )
     ax1.set_xticklabels([])
     ax1.yaxis.set_label_coords(xcoord_l,ycoord_l)
@@ -170,12 +185,13 @@ def plot_global( output_dir ):
     ##########
 
     # Plot rheological front depth
-    ax2.semilogx( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
+    ax2.plot( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
     
     # Mante melt + solid fraction
-    ax2.semilogx( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
-    ax2.semilogx( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
+    ax2.plot( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
+    ax2.plot( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
 
+    ax2.set_xscale("symlog", linthreshx=10)
     ax2.set_xlim( *xlim )
     ax2.set_xlabel(xlabel, fontsize=label_fs)
     ax2.set_ylabel(r'Mantle fraction', fontsize=label_fs)
@@ -192,7 +208,7 @@ def plot_global( output_dir ):
     ##########
     title_ax3 = r'Surface volatile partial pressure'
     # Total pressure
-    ax3.semilogx( fig_o.time, P_surf, color=qgray_dark, linestyle='-', lw=lw, label=r'Total')
+    ax3.plot( fig_o.time, P_surf, color=qgray_dark, linestyle='-', lw=lw, label=r'Total')
     ##########
     # figure e
     ##########
@@ -258,16 +274,16 @@ def plot_global( output_dir ):
             ##########
             # figure d
             ##########
-            ax3.semilogx( vol_times, vol_atm_pressure, color=vol_colors[vol+"_2"], linestyle='-', lw=lw, label=vol_latex[vol])
+            ax3.plot( vol_times, vol_atm_pressure, color=vol_colors[vol+"_2"], linestyle='-', lw=lw, label=vol_latex[vol])
             ##########
             # figure e
             ##########
-            ax4.semilogx( vol_times, vol_atm_kg/vol_total_kg, lw=lw, color=vol_colors[vol+"_2"], linestyle='-', label=vol_latex[vol])
+            ax4.plot( vol_times, vol_atm_kg/vol_total_kg, lw=lw, color=vol_colors[vol+"_2"], linestyle='-', label=vol_latex[vol])
             ##########
             # figure f
             ##########
-            # ax5.semilogx( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
-            ax5.semilogx( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=vol_colors[vol+"_2"], linestyle='-', label=vol_latex[vol] )
+            # ax5.plot( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
+            ax5.plot( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=vol_colors[vol+"_2"], linestyle='-', label=vol_latex[vol] )
 
     ##########
     # figure d
@@ -282,6 +298,7 @@ def plot_global( output_dir ):
     # https://brohrer.github.io/matplotlib_ticks.html#tick_style
     # ax3.tick_params(axis="x", direction="in", length=3, width=1)
     # ax3.tick_params(axis="y", direction="in", length=10, width=1)
+    ax3.set_xscale("symlog", linthreshx=10)
     ax3.set_xticklabels([])
     ax3.yaxis.tick_right()
     ax3.yaxis.set_label_position("right")
@@ -305,6 +322,7 @@ def plot_global( output_dir ):
     ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax4.yaxis.tick_right()
+    ax4.set_xscale("symlog", linthreshx=10)
     ax4.set_xticklabels([])
     ax4.yaxis.set_label_position("right")
     ax4.yaxis.set_label_coords(xcoord_r,ycoord_r)
@@ -323,6 +341,7 @@ def plot_global( output_dir ):
     ax5.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax5.set_xlim( *xlim )
+    ax5.set_xscale("symlog", linthreshx=10)
     # ax5.set_ylim( 0, 1 )
     ax5.yaxis.tick_right()
     ax5.yaxis.set_label_coords(xcoord_r,ycoord_r)
