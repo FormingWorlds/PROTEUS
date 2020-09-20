@@ -2,16 +2,16 @@
 
 ##### General planetary and magma ocean configuration
 
-star_mass                   = 1.0  # M_sun: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4         
-mean_distance               = 1.0  # AU, star-planet distance
+star_mass                   = 1.0    # M_sun: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4         
+mean_distance               = 1.0    # AU, star-planet distance
 
-time_star                   = 1e+8 # yr, time since star formation
-time_planet                 = 0.   # yr, time since MO start
-time_target                 = 1e+7 # yr, target time for MO evolution
+time_star                   = 100e+6 # yr, time since star formation
+time_planet                 = 0.     # yr, time since MO start
+time_target                 = 10e+6  # yr, target time for MO evolution
 
 ##### COUPLER-specific settings
 
-plot_onthefly               = 1
+plot_onthefly               = 0
 
 # N2 partition coefficients, 0: oxidized | 1: reduced
 N2_partitioning             = 1
@@ -19,11 +19,11 @@ N2_partitioning             = 1
 # Shallow mixed ocean layer as Ts interface, 0: off | 1: on
 shallow_layer               = 0
 
-# Flux convergence scheme, 0: off | 1: on
-flux_convergence            = 0
-
-# Flux deviation threshold for surface fix, W m-2
-F_eps                       = 10
+# Flux convergence scheme and tolerances for surface equilibration
+flux_convergence            = 1         # 0: off | 1: on
+F_eps                       = 1.0       # W m-2
+RF_crit                     = 0.01      # depth fraction
+dTs_atm                     = 30        # K
 
 ##### SPIDER-specific settings
 
@@ -68,13 +68,13 @@ ic_interior_filename        = 0
 nstepsmacro                 = 1
 
 # Delta time per macrostep to advance by [yr]
-dtmacro                     = 50000
+dtmacro                     = 5000
 
 # Maximum time interval to switch between interior and atmosphere [yr]
-dtswitch                    = 500000
+dtswitch                    = 50000
 
-# Init heat flux, adjusted during runtime [W/m^2]
-heat_flux                   = 1.0E4
+# Atmosphere heat flux start guess, adjusted during runtime [W/m^2]
+F_atm                       = 1.0E4
 
 # Volatile species mass relative to mantle [ppm wt]
 H2O_initial_total_abundance = 315   # > 350

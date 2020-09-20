@@ -126,7 +126,7 @@
 # this option prevents runaway cooling of the surface by restricting
 # the surface cooling rate to that of the lid (top surface).  But a
 # consequence is that the surface temperature then becomes meaningless
--VISCOUS_MANTLE_COOLING_RATE
+#-VISCOUS_MANTLE_COOLING_RATE
 
 # radius of the planet
 -radius 6371000.0 # Earth radius
@@ -210,12 +210,12 @@
 
 # alternatively, can restart from atmospheric partial pressure
 #-H2_initial_atmos_pressure 1000000.0
--H2_initial_total_abundance 100.0
--H2_henry 2.572e-06
--H2_henry_pow 1.0
--H2_kdist 0.0
--H2_kabs 0.0
--H2_molar_mass 0.00201588
+#-H2_initial_total_abundance 100.0
+#-H2_henry 2.572e-06
+#-H2_henry_pow 1.0
+#-H2_kdist 0.0
+#-H2_kabs 0.0
+#-H2_molar_mass 0.00201588
 
 # parameters relating to CO2 volatile
 #-CO2_initial 0.0 # ppm
@@ -243,7 +243,8 @@
 -activate_poststep
 -activate_rollback
 -tsurf_poststep_change 50.0
--H2_poststep_change 0.05
+
+#-H2_poststep_change 0.05
 
 # internal heat sources
 
@@ -253,11 +254,11 @@
 -radionuclide_names k40,th232,u235,u238
 
 # Al26 (extinct at present day)
--al26_t0 0.0 # time in years (post-formation) when the isotopic abundance and elemental concentration is defined
--al26_abundance 0.0 # fractional isotopic abundance at t0 (Al26/Al)
--al26_concentration 0.0 # ppm, concentration of Al at t0
--al26_heat_production 0.3583 # W/kg (Ruedas, 2017)
--al26_half_life 0.717E6 # years (Ruedas, 2017)
+#-al26_t0 0.0 # time in years (post-formation) when abundance and concentration is defined
+#-al26_abundance 0.0 # fractional isotopic abundance at t0 (Al26/Al)
+#-al26_concentration 0.0 # ppm, concentration of Al at t0
+#-al26_heat_production 0.3583 # W/kg (Ruedas, 2017)
+#-al26_half_life 0.717E6 # years (Ruedas, 2017)
 
 # K40
 -k40_t0 4.55E9 # years
@@ -267,11 +268,11 @@
 -k40_half_life 1248E6 # years (Ruedas, 2017)
 
 # Fe60 (extinct at present day)
--fe60_t0 0.0 # years
--fe60_abundance 0.0 
--fe60_concentration 0.0 # ppm
--fe60_heat_production 3.6579E-2 # W/kg (Ruedas, 2017)
--fe60_half_life 2.62E6 # years (Ruedas, 2017)
+#-fe60_t0 0.0 # years
+#-fe60_abundance 0.0 
+#-fe60_concentration 0.0 # ppm
+#-fe60_heat_production 3.6579E-2 # W/kg (Ruedas, 2017)
+#-fe60_half_life 2.62E6 # years (Ruedas, 2017)
 
 # Th232
 -th232_t0 4.55E9 # years

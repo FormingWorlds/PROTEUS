@@ -96,8 +96,8 @@ def plot_global( output_dir ):
     xcoord_r = 1.09
     ycoord_r = 0.5
 
-    rolling_mean = 1
-    nsteps       = 10
+    rolling_mean = 0
+    nsteps       = 5
 
     # Replace NaNs
     for idx, val in enumerate(T_surf):
@@ -121,13 +121,13 @@ def plot_global( output_dir ):
         
         Fatm_int_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
         Time_int_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
-        Fatm_atm_rolling = np.convolve(df_atm["Heat_flux"], np.ones((nsteps,))/nsteps, mode='valid')
+        Fatm_atm_rolling = np.convolve(df_atm["F_atm"], np.ones((nsteps,))/nsteps, mode='valid')
         Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
         ax0.plot( Time_int_rolling, Fatm_int_rolling, color="red", lw=lw )
         ax0.plot( Time_atm_rolling, Fatm_atm_rolling, color=qgray_dark, lw=lw )
     else:
         ax0.plot( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
-        ax0.plot( df_atm["Time"], df_atm["Heat_flux"], qgray_dark, lw=lw, alpha=1.0 )
+        ax0.plot( df_atm["Time"], df_atm["F_atm"], qgray_dark, lw=lw, alpha=1.0 )
       
     # fig_o.set_myaxes(ax0)
     ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)

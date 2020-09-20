@@ -33,18 +33,20 @@ def main():
     if COUPLER_options["IC_INTERIOR"] == 2:
         loop_counter["total"] += loop_counter["init_loops"]
         loop_counter["init"]  += loop_counter["init_loops"]
-        # COUPLER_options["IC_ATMOSPHERE"] = 3
 
-        runtime_helpfile = pd.read_csv(dirs["output"]+"/"+"runtime_helpfile.csv", index_col=False, header=0, sep=" ")
-
-        # # Restart file name specified with command line
-        # if args.rf:
-        #     COUPLER_options["ic_interior_filename"] = str(args.rf)+".json"
-        # Restart file name not specified: use last file output # args.r or 
+        # Restart file name if not specified: use last file output
         if (COUPLER_options["IC_INTERIOR"] == 2 and COUPLER_options["ic_interior_filename"] == 0):
             COUPLER_options["ic_interior_filename"] = str(cu.natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"/"+"*.json")])[-1])
 
-        COUPLER_options["heat_flux"] = runtime_helpfile["Heat_flux"].iloc[-1]
+        # Clean all overtimes from present helpfile
+        runtime_helpfile = pd.read_csv(dirs["output"]+"/"+"runtime_helpfile.csv", index_col=False, header=0, sep=" ")
+        t_curr = COUPLER_options["ic_interior_filename"][:-5]
+        print("Clean helpfile from overtimes >", t_curr, "yr")
+        runtime_helpfile = runtime_helpfile.loc[runtime_helpfile["Time"] <= int(t_curr)]
+
+        COUPLER_options["F_int"] = runtime_helpfile.iloc[-1]["F_int"]
+        COUPLER_options["F_atm"] = runtime_helpfile.iloc[-1]["F_atm"]
+        COUPLER_options["F_net"] = runtime_helpfile.iloc[-1]["F_net"]
 
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
@@ -60,7 +62,7 @@ def main():
         COUPLER_options = cu.RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile )
 
         # Update help quantities, input_flag: "Interior"
-        runtime_helpfile, time_dict, F_eff = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
+        runtime_helpfile, time_dict, COUPLER_options = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
 
         ############### / INTERIOR SUB-LOOP
 
@@ -70,7 +72,7 @@ def main():
         # if loop_counter["total"] == 0 and loop_counter["init"] == 0:
         # atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
-        while F_eff > COUPLER_options["F_eps"] and loop_counter["atm"] < loop_counter["atm_loops"]:
+        while abs(COUPLER_options["F_net"]) > COUPLER_options["F_eps"] and loop_counter["atm"] < loop_counter["atm_loops"]:
 
             # Initialize atmosphere structure
             atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
@@ -82,12 +84,10 @@ def main():
             atm, COUPLER_options = cu.RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options )
 
             # Update help quantities, input_flag: "Atmosphere"
-            runtime_helpfile, time_dict, F_eff = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
+            runtime_helpfile, time_dict, COUPLER_options = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
 
             loop_counter["atm"] += 1
 
-            # if runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']["T_surf"].iloc[-1] == runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']["T_surf"].iloc[-2]:
-            #     break
 
         # # Update help quantities, input_flag: "Atmosphere"
         # runtime_helpfile, time_dict = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
