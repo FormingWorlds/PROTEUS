@@ -2,12 +2,12 @@
 
 ##### General planetary and magma ocean configuration
 
-star_mass                   = 1.0    # M_sun: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4         
-mean_distance               = 1.0    # AU, star-planet distance
+star_mass                   = 1.0       # M_sun: 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4         
+mean_distance               = 1.0       # AU, star-planet distance
 
-time_star                   = 100e+6 # yr, time since star formation
-time_planet                 = 0.     # yr, time since MO start
-time_target                 = 10e+6  # yr, target time for MO evolution
+time_star                   = 100e+6    # yr, time since star formation
+time_planet                 = 0.        # yr, time since MO start
+time_target                 = 100e+6    # yr, target time for MO evolution
 
 ##### COUPLER-specific settings
 
@@ -20,15 +20,20 @@ N2_partitioning             = 1
 shallow_layer               = 0
 
 # Flux convergence scheme and tolerances for surface equilibration
-flux_convergence            = 1         # 0: off | 1: on
+flux_convergence            = 1         # 0: off | 1: on | 2: restart
 F_eps                       = 1.0       # W m-2
+F_diff                      = 0.1       # flux fraction
 RF_crit                     = 0.01      # depth fraction
 dTs_atm                     = 30        # K
+
+# Break at phi_crit solidification, 0: off | 1: on
+phi_crit                    = 0.005     # melt fraction
+solid_stop                  = 1
 
 ##### SPIDER-specific settings
 
 # Restart setting: 1: Fresh start | 2: Restart from file
-IC_INTERIOR                 = 1   
+IC_INTERIOR                 = 1
 
 # Atmosphere setting: 1: Fresh start | 3: read in partial pressures
 IC_ATMOSPHERE               = 1
@@ -53,7 +58,7 @@ solver_tolerance            = 1.0e-10
 tsurf_poststep_change       = 30.0  
 
 # Maximum fractional surface temperature change [fraction]
-tsurf_poststep_change_frac  = 0.10  
+tsurf_poststep_change_frac  = 0.05  
 
 # Planet radius [m]
 R_solid_planet              = 6371000
@@ -68,10 +73,10 @@ ic_interior_filename        = 0
 nstepsmacro                 = 1
 
 # Delta time per macrostep to advance by [yr]
-dtmacro                     = 5000
+dtmacro                     = 10000
 
 # Maximum time interval to switch between interior and atmosphere [yr]
-dtswitch                    = 50000
+dtswitch                    = 100000
 
 # Atmosphere heat flux start guess, adjusted during runtime [W/m^2]
 F_atm                       = 1.0E4

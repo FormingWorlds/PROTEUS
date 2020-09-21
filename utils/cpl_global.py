@@ -47,9 +47,6 @@ def plot_global( output_dir ):
     ax4.text(title_xNumbering, title_yNumbering, 'E', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax4.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
     ax5.text(title_xNumbering, title_yNumbering, 'F', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax5.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
 
-    # runtime_helpfile = pd.read_csv(output_dir+"runtime_helpfile.csv", sep=" ")
-    # print(runtime_helpfile)
-
     fig_o.time = su.get_all_output_times(output_dir)
     print("output_dir", output_dir)
     print("Times", fig_o.time)
@@ -58,6 +55,11 @@ def plot_global( output_dir ):
     df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=" ")
     df_int = df.loc[df['Input']=='Interior']
     df_atm = df.loc[df['Input']=='Atmosphere']
+    # Remove duplicate atm entries for one timestep
+    for idx, row in df_atm.iterrows():
+        # print(row["Time"])
+        if len(df_atm.loc[df_atm["Time"] == int(row["Time"])]) > 1:
+            df_atm = df_atm.drop(idx)
 
     ########## Global properties
     keys_t = ( ('atmosphere','mass_liquid'),
@@ -119,14 +121,15 @@ def plot_global( output_dir ):
     if rolling_mean == 1:
         # ax0.loglog( time[:nsteps+4], Fatm[:nsteps+4], qgray_dark, lw=lw, alpha=1.0 )
         
-        Fatm_int_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
-        Time_int_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
+        # Fatm_int_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
+        # Time_int_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
         Fatm_atm_rolling = np.convolve(df_atm["F_atm"], np.ones((nsteps,))/nsteps, mode='valid')
         Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
         ax0.plot( Time_int_rolling, Fatm_int_rolling, color="red", lw=lw )
         ax0.plot( Time_atm_rolling, Fatm_atm_rolling, color=qgray_dark, lw=lw )
     else:
-        ax0.plot( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
+        # ax0.plot( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
+        ax0.plot( df_int["Time"], df_int["F_int"], qred, lw=lw, alpha=1.0 )
         ax0.plot( df_atm["Time"], df_atm["F_atm"], qgray_dark, lw=lw, alpha=1.0 )
       
     # fig_o.set_myaxes(ax0)
@@ -154,14 +157,13 @@ def plot_global( output_dir ):
         Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
         Ts_atm_rolling = np.convolve(df_atm["T_surf"], np.ones((nsteps,))/nsteps, mode='valid')
         
-        h2, = ax1.plot(Time_int_rolling, Ts_int_rolling, color="red", label="Interior")
+        h2, = ax1.plot(Time_int_rolling, Ts_int_rolling, color=qred, label="Interior")
         h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$') # , color="blue"
     else:
-        h2, = ax1.plot(df_int["Time"], df_int["T_surf"], color="red", label="Interior")
+        h2, = ax1.plot(df_int["Time"], df_int["T_surf"], color=qred, label="Interior")
         h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$') # , color="blue"
         
-
-    if np.max(fig_o.time) >= 1e3: 
+    if np.max(df_atm["Time"]) >= 1e3: 
         ymin = np.min(df_atm["T_surf"])*0.9
         ymax = np.max(df_atm["T_surf"])*1.1
     else: 
@@ -184,20 +186,20 @@ def plot_global( output_dir ):
     # figure c
     ##########
 
-    # Plot rheological front depth
-    ax2.plot( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
-    
-    # Mante melt + solid fraction
-    ax2.plot( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
-    ax2.plot( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
+    # Plot rheological front depth, mante melt + solid fraction
+    ax2.plot( df_int["Time"], df_int["RF_depth"], ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
+    ax2.plot( df_int["Time"], df_int["Phi_global"], color=qgray_dark, linestyle=':', lw=lw, label=r'Melt fraction, $\phi_{\mathrm{mantle}}$')
+    # ax2.plot( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
+    # ax2.plot( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
+    # ax2.plot( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
 
     ax2.set_xscale("symlog", linthreshx=10)
     ax2.set_xlim( *xlim )
     ax2.set_xlabel(xlabel, fontsize=label_fs)
-    ax2.set_ylabel(r'Mantle fraction', fontsize=label_fs)
+    ax2.set_ylabel(r'Planet fraction', fontsize=label_fs)
     ax2.yaxis.set_label_coords(xcoord_l,ycoord_l)
     handles, labels = ax2.get_legend_handles_labels()
-    ax2.legend(handles, labels, ncol=1, loc=6, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
+    ax2.legend(handles, labels, ncol=1, loc=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
 
     title = r'Mantle evolution'
     ax2.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
@@ -208,7 +210,7 @@ def plot_global( output_dir ):
     ##########
     title_ax3 = r'Surface volatile partial pressure'
     # Total pressure
-    ax3.plot( fig_o.time, P_surf, color=qgray_dark, linestyle='-', lw=lw, label=r'Total')
+    ax3.plot( df_int["Time"], df_int["P_surf"], color=qgray_dark, linestyle='-', lw=lw, label=r'Total')
     ##########
     # figure e
     ##########

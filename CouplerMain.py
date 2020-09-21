@@ -68,11 +68,7 @@ def main():
 
         ############### ATMOSPHERE SUB-LOOP
 
-        # Initialize atmosphere structure
-        # if loop_counter["total"] == 0 and loop_counter["init"] == 0:
-        # atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
-
-        while abs(COUPLER_options["F_net"]) > COUPLER_options["F_eps"] and loop_counter["atm"] < loop_counter["atm_loops"]:
+        while loop_counter["atm"] == 0 or (loop_counter["atm"] < loop_counter["atm_loops"] and abs(COUPLER_options["F_net"]) > COUPLER_options["F_eps"]):
 
             # Initialize atmosphere structure
             atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
@@ -88,10 +84,6 @@ def main():
 
             loop_counter["atm"] += 1
 
-
-        # # Update help quantities, input_flag: "Atmosphere"
-        # runtime_helpfile, time_dict = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
-
         ############### / ATMOSPHERE SUB-LOOP
         
         # Print info, save atm to file, update plots
@@ -99,10 +91,6 @@ def main():
 
         # Plot conditions throughout run for on-the-fly analysis
         cu.UpdatePlots( dirs["output"], COUPLER_options, time_dict )
-
-        # # After very first timestep, starting w/ 2nd init loop: read in partial pressures
-        # if loop_counter["init"] >= 1:
-        #     COUPLER_options["IC_ATMOSPHERE"] = 3
         
         # Adjust iteration counters + total time 
         loop_counter["atm"]         = 0
@@ -115,13 +103,18 @@ def main():
         if loop_counter["total"] >= loop_counter["init_loops"]:
             COUPLER_options["IC_INTERIOR"] = 2
 
+        # Stop simulation when planet is completely solidified
+        if COUPLER_options["solid_stop"] == 1 and runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]:
+            print("\n===> Planet solidified! <===\n")
+            break
+
     # Save files from finished simulation
     cu.SaveOutput( dirs["output"] )
 
     # Plot conditions at the end
     cu.UpdatePlots( dirs["output"], COUPLER_options, time_dict )
 
-    print("\n===> COUPLER run finished successfully <===")
+    print("\n\n===> COUPLER run finished successfully <===")
 
 #====================================================================
 main()
