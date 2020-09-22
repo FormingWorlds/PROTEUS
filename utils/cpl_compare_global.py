@@ -14,7 +14,7 @@ def plot_global( host_dir, sub_dirs ):
     fs_title   = 18
     fs_legend  = 11
     width      = 12.00 #* 3.0/2.0
-    height     = 8.0 #/ 2.0
+    height     = 10.0 #/ 2.0
     # Subplot titles
     title_fs   = 12
     title_xy   = (0.07, 0.02)
@@ -27,6 +27,7 @@ def plot_global( host_dir, sub_dirs ):
     txt_alpha  = 0.5
     txt_pad    = 0.1
     label_fs   = 11
+    zorder_txt = 100
 
     fig_o = su.FigureData( 3, 2, width, height, host_dir+'/compare_global', units='yr' )
     fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.1)
@@ -53,10 +54,12 @@ def plot_global( host_dir, sub_dirs ):
 
         if sub_dir == "N2_reduced":
             color_strength = 3
-            lw             = 1.0
+            lw             = 1.5
+            ls             = "--"
         else:
             color_strength = 6
             lw             = 1.5
+            ls             = "-"
 
         output_dir = host_dir+sub_dir
         print(output_dir)
@@ -66,7 +69,17 @@ def plot_global( host_dir, sub_dirs ):
         print("---------------------------------------------------------------")
         print(sub_dir, "times:", len(fig_o.time), ",", np.min(fig_o.time)/1e+6, "–", np.max(fig_o.time)/1e+6, "Myr")
         print("---------------------------------------------------------------")
+
+        # Read in runtime helpfile and separate in atmosphere and interior params
+        df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=" ")
+        df_int = df.loc[df['Input']=='Interior']
+        df_atm = df.loc[df['Input']=='Atmosphere']
         
+        # Remove duplicate atm entries for one timestep
+        for idx, row in df_atm.iterrows():
+            # print(row["Time"])
+            if len(df_atm.loc[df_atm["Time"] == int(row["Time"])]) > 1:
+                df_atm = df_atm.drop(idx)
 
         ########## Global properties
         keys_t = ( ('atmosphere','mass_liquid'),
@@ -96,7 +109,7 @@ def plot_global( host_dir, sub_dirs ):
 
 
         xlabel = r'Time, $t$ (yr)'
-        xlim = (1e1,1e7)
+        xlim = (5e1,1e7)
 
         red = (0.5,0.1,0.1)
         blue = (0.1,0.1,0.5)
@@ -107,8 +120,7 @@ def plot_global( host_dir, sub_dirs ):
         xcoord_r = 1.11
         ycoord_r = 0.5
 
-        rolling_mean = 0
-        nsteps       = 15
+        nsteps       = 10
 
         # Replace NaNs
         for idx, val in enumerate(T_surf):
@@ -123,15 +135,20 @@ def plot_global( host_dir, sub_dirs ):
         # figure a
         ##########
         title = r'Heat flux to space'  
-        if rolling_mean == 1:
+        if nsteps > 1:
             
-            # ax0.loglog( fig_o.time[:nsteps+4], Fatm[:nsteps+4], vol_colors[sub_dir][color_strength], lw=lw, alpha=1.0 )
-            
-            Fatm_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
-            Time_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
-            ax0.loglog( Time_rolling, Fatm_rolling, color=vol_colors[sub_dir][color_strength], lw=lw, label=vol_latex[sub_dir] )
+            # Fatm_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
+            # Time_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
+            # ax0.loglog( Time_rolling, Fatm_rolling, color=vol_colors[sub_dir][color_strength], lw=lw, label=vol_latex[sub_dir] )
+
+            Fatm_atm_rolling = np.convolve(df_atm["F_atm"], np.ones((nsteps,))/nsteps, mode='valid')
+            Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
+            ax0.loglog( Time_atm_rolling, Fatm_atm_rolling, color=vol_colors[sub_dir][color_strength], lw=lw, ls=ls, label=vol_latex[sub_dir], zorder=vol_zorder[sub_dir] )
+
         else:
-            ax0.loglog( fig_o.time, Fatm, color=vol_colors[sub_dir][color_strength], lw=lw, alpha=1.0, label=vol_latex[sub_dir] )
+            # ax0.loglog( fig_o.time, Fatm, color=vol_colors[sub_dir][color_strength], lw=lw, alpha=1.0, label=vol_latex[sub_dir] )
+            # ax0.plot( df_int["Time"], df_int["F_int"], qred, lw=lw, alpha=1.0 )
+            ax0.loglog( df_atm["Time"], df_atm["F_atm"], color=vol_colors[sub_dir][color_strength], lw=lw, ls=ls, alpha=1.0, label=vol_latex[sub_dir], zorder=vol_zorder[sub_dir] )
             
         # fig_o.set_myaxes(ax0)
         ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)
@@ -142,23 +159,37 @@ def plot_global( host_dir, sub_dirs ):
         ax0.yaxis.set_label_coords(xcoord_l,ycoord_l)
         # handles, labels = ax0.get_legend_handles_labels()
         # ax0.legend(handles, labels, loc='upper right', fontsize=fs_legend, ncol=2)
-        ax0.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
-        ax0.set_ylim(1e+0, 1e+7)
+        ax0.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad), zorder=zorder_txt)
+        ax0.set_ylim(8e-1, 1e+7)
+        # ax0.set_yscale("symlog", linthreshy=1e-2)
+        # ax0.set_ylim(top=1e+7)
         yticks = [ 1e+0, 1e+1, 1e+2, 1e+3, 1e+4, 1e+5, 1e+6, 1e+7 ]
         ax0.set_yticks( yticks )
         # ax0.set_yticklabels( [ str(int(i)) for i in yticks ] )
 
         # # # SHOW LEGEND
-        # ax0.legend(ncol=2, loc=6, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend)
+        ax0.legend(ncol=2, loc=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend)
 
         ##########
         # figure b
         ##########
         # T_surf = T_surf[np.logical_not(np.isnan(T_surf))]
         title = r'Surface temperature'
-        h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=vol_colors[sub_dir][color_strength], label=r'Surface temp, $T_s$' )
+        # h1, = ax1.semilogx( fig_o.time, T_surf, ls="-", lw=lw, color=vol_colors[sub_dir][color_strength], label=r'Surface temp, $T_s$' )
         # fig_o.set_myaxes( ax1, title=title, yticks=yticks)
-        ax1.set_ylabel(r'$T_\mathrm{s}$ (K)', fontsize=label_fs)
+        if nsteps > 1:
+            Time_int_rolling = np.convolve(df_int["Time"], np.ones((nsteps,))/nsteps, mode='valid')
+            Ts_int_rolling = np.convolve(df_int["T_surf"], np.ones((nsteps,))/nsteps, mode='valid')
+            Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
+            Ts_atm_rolling = np.convolve(df_atm["T_surf"], np.ones((nsteps,))/nsteps, mode='valid')
+            
+            # h2, = ax1.plot(Time_int_rolling, Ts_int_rolling, color=qred, label="Interior")
+            h1, = ax1.semilogx(Time_atm_rolling, Ts_atm_rolling, ls=ls, lw=lw, color=vol_colors[sub_dir][color_strength], label=vol_latex[sub_dir], zorder=vol_zorder[sub_dir]) # , color="blue"
+        else:
+            # h2, = ax1.plot(df_int["Time"], df_int["T_surf"], color=qred, label="Interior")
+            h1, = ax1.semilogx(df_atm["Time"], df_atm["T_surf"], ls=ls, lw=lw, color=vol_colors[sub_dir][color_strength], label=vol_latex[sub_dir], zorder=vol_zorder[sub_dir]) # , color="blue"
+
+        ax1.set_ylabel(r'$T_\mathrm{surf}$ (K)', fontsize=label_fs)
         ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
         ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
         ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
@@ -169,7 +200,7 @@ def plot_global( host_dir, sub_dirs ):
         yticks = [ 200, 500, 1000, 1500, 2000, 2500, 3000]
         ax1.set_yticks( yticks )
         ax1.set_yticklabels( [ str(int(i)) for i in yticks ] )
-        ax1.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
+        ax1.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad), zorder=zorder_txt)
 
         ##########
         # figure c
@@ -183,23 +214,23 @@ def plot_global( host_dir, sub_dirs ):
         Phi_global_intersect = phi_global[RF_depth_crit_idx]
         print("RF:", RF_depth_crit_idx, RF_depth_crit_num, RF_depth_crit_time, Phi_global_intersect)
 
-        ax2.arrow(RF_depth_crit_time, 0, 0, Phi_global_intersect, head_width=0, head_length=0, fc=vol_colors[sub_dir][color_strength], ec=vol_colors[sub_dir][color_strength], lw=1.0, alpha=0.5, ls="--") # , transform=ax0.transAxes
+        ax2.arrow(RF_depth_crit_time, 0, 0, Phi_global_intersect, head_width=0, head_length=0, fc=vol_colors[sub_dir][color_strength], ec=vol_colors[sub_dir][color_strength], lw=1.2, alpha=0.5, ls=":") # , transform=ax0.transAxes
 
         if sub_dir == sub_dirs[0]:
             legend_handles_ax2 = []
             rf_label = "Rheological front\nreaches surface"
-            l2, = ax2.plot( 0, 0, lw=1.0, color=qgray, label=rf_label, ls="--")
+            l2, = ax2.plot( 0, 0, lw=1.2, color=qgray, label=rf_label, ls=":")
             legend_handles_ax2.append(l2)
             legend_ax2 = ax2.legend(handles=legend_handles_ax2, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3)
             ax2.add_artist(legend_ax2)
 
         # Mante melt + solid fraction
-        ax2.semilogx( fig_o.time, phi_global, color=vol_colors[sub_dir][color_strength], linestyle='-', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
+        ax2.semilogx( fig_o.time, phi_global, color=vol_colors[sub_dir][color_strength], ls=ls, lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$', zorder=vol_zorder[sub_dir])
 
         # ax2.semilogx( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
 
         ax2.set_xlim( *xlim )
-        ax2.set_ylim( bottom=0 )
+        ax2.set_ylim( bottom=0, top=1.01 )
         ax2.set_xlabel(xlabel, fontsize=label_fs)
         ax2.set_ylabel(r'$\phi_{\mathrm{mantle}}$ (wt)', fontsize=label_fs)
         ax2.yaxis.set_label_coords(xcoord_l,ycoord_l)
@@ -210,7 +241,7 @@ def plot_global( host_dir, sub_dirs ):
         ax2.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
 
         title = r'Mantle melt fraction'
-        ax2.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
+        ax2.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad), zorder=zorder_txt)
 
 
         # # Rheological front
@@ -301,16 +332,16 @@ def plot_global( host_dir, sub_dirs ):
                 ##########
                 # figure d
                 ##########
-                ax3.semilogx( vol_times, vol_atm_pressure, color=vol_colors[vol][color_strength], linestyle='-', lw=lw, label=vol_latex[sub_dir])
+                ax3.semilogx( vol_times, vol_atm_pressure, color=vol_colors[vol][color_strength], ls=ls, lw=lw, label=vol_latex[sub_dir], zorder=vol_zorder[sub_dir])
                 ##########
                 # figure e
                 ##########
-                ax4.semilogx( vol_times, vol_atm_kg/vol_total_kg, lw=lw, color=vol_colors[vol][color_strength], linestyle='-', label=vol_latex[vol])
+                ax4.semilogx( vol_times, vol_atm_kg/vol_total_kg, lw=lw, color=vol_colors[vol][color_strength], ls=ls, label=vol_latex[vol], zorder=vol_zorder[sub_dir])
                 ##########
                 # figure f
                 ##########
                 # ax5.semilogx( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
-                ax5.semilogx( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=vol_colors[vol][color_strength], linestyle='-', label=vol_latex[vol] )
+                ax5.semilogx( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=vol_colors[vol][color_strength], ls=ls, label=vol_latex[vol], zorder=vol_zorder[sub_dir] )
 
         ##########
         # figure d
@@ -331,9 +362,11 @@ def plot_global( host_dir, sub_dirs ):
         ax3.yaxis.set_label_position("right")
         ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
         handles, labels = ax3.get_legend_handles_labels()
+        # ax3.set_yscale("symlog", linthreshy=1e1)
+        # ax3.set_ylim(top=280)
         # ax3.legend(handles, labels, ncol=2, loc=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
-        ax3.legend(ncol=2, loc=6, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend)
-        ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
+        # ax3.legend(ncol=2, loc=6, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend)
+        ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad), zorder=zorder_txt)
         ##########
         # figure e
         ##########
@@ -354,10 +387,12 @@ def plot_global( host_dir, sub_dirs ):
         ax4.yaxis.set_label_position("right")
         ax4.yaxis.set_label_coords(xcoord_r,ycoord_r)
         ax4.set_xlim( *xlim )
+        # ax4.set_yscale("symlog", linthreshy=1e-1)
+        # ax4.set_ylim(top=1.01)
         # ax4.set_ylim( 0, 1 )
         handles, labels = ax4.get_legend_handles_labels()
         # ax4.legend(handles, labels, ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
-        ax4.set_title(title_ax4, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
+        ax4.set_title(title_ax4, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad), zorder=zorder_txt)
 
 
         ##########
@@ -374,8 +409,10 @@ def plot_global( host_dir, sub_dirs ):
         ax5.yaxis.set_label_position("right")
         handles, labels = ax5.get_legend_handles_labels()
         ax5.set_xlabel(xlabel, fontsize=label_fs)
+        # ax5.set_yscale("symlog", linthreshy=1e-1)
+        # ax5.set_ylim(top=1.01)
         ax5.set_ylabel(r'$X_{\mathrm{mantle}}^{\mathrm{i}}/X_{\mathrm{tot}}^{\mathrm{i}}$', fontsize=label_fs)
-        ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
+        ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad), zorder=zorder_txt)
 
 
     fig_o.savefig(6)
@@ -397,8 +434,12 @@ def main():
         output_dir = os.getcwd()
 
     # Define specific one
-    output_dir  = "/Users/tim/runs/coupler_tests/set_260bar/"
+    output_dir  = "/Users/tim/runs/coupler_tests/set2_260bar/"
+    
+    # Define volatiles considered
     sub_dirs    = [ "H2", "H2O", "CO2", "CH4", "CO", "O2", "N2", "N2_reduced" ]
+    # sub_dirs    = [ "CH4" ] 
+    # sub_dirs    = [ "H2O", "O2" ] 
 
     print("Host directory:", output_dir)
 

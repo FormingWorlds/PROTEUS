@@ -367,7 +367,7 @@ def main():
     # Times at which to plot
     output_times = [ 1e+6 ]
 
-    output_dir  = "/Users/tim/runs/coupler_tests/set_260bar"
+    output_dir  = "/Users/tim/runs/coupler_tests/set2_260bar"
     print("Host directory:", output_dir)
 
     # Plot fixed set from above

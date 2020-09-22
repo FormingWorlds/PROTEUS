@@ -52,6 +52,21 @@ except:
 # https://matplotlib.org/tutorials/colors/colormaps.html
 
 no_colors   = 9
+
+vol_zorder  = {
+    "H2O"            : 11,
+    "CO2"            : 10,
+    "H2"             : 9,
+    "CH4"            : 8,
+    "N2"             : 7,
+    "N2_reduced"     : 7,
+    "O2"             : 5,
+    "CO"             : 4,
+    "S"              : 3,
+    "He"             : 2,
+    "NH3"            : 1,
+}
+
 vol_colors  = {
     "H2O"            : cm.get_cmap('PuBu', no_colors)(range(no_colors)),
     "CO2"            : cm.get_cmap("Reds", no_colors)(range(no_colors)),

@@ -71,6 +71,9 @@ def plot_atmosphere( output_dir, sub_dirs ):
     # Show wavelenght or wavenumber
     print_wavelength = True
 
+    # Define smoothing length
+    nsmooth = 1
+
     # # Load runtime helpfile
     # runtime_helpfile = pd.read_csv(output_dir+"runtime_helpfile.csv")
 
@@ -212,7 +215,10 @@ def plot_atmosphere( output_dir, sub_dirs ):
 
             print(subdir, setting, output_time)
 
+            # Label with time
             label_a = vol_latex[subdir]+", "+latex_float(output_time)+" yr"
+            # Label w/o time
+            label_a = vol_latex[subdir]
 
             atm_file = data_dir+"/"+str(int(time))+"_atm.pkl"
 
@@ -224,12 +230,20 @@ def plot_atmosphere( output_dir, sub_dirs ):
             # color = fig_o.get_color( nn )
             color   = vol_colors[subdir][color_idx]
           
-               
-            dirs = {"output": output_dir, "rad_conv": os.getcwd()+"/../atm_rad_conv"}
+            dirs = {"output": output_dir, "rad_conv": "/Users/tim/bitbucket/pcd_couple-interior-atmosphere/atm_rad_conv"}
             atm = atm_rad_conv.SocRadModel.radCompSoc(atm, dirs, recalc=False, calc_cf=True)
+
+            # CFF total
+            cff_tot = atm.cff/np.sum(atm.cff)
+            prs     = atm.p/np.max(atm.p)
+
+            # If smoothing
+            if nsmooth > 1:
+                cff_tot = np.convolve(cff_tot, np.ones((nsmooth,))/nsmooth, mode='valid')
+                prs     = np.convolve(prs, np.ones((nsmooth,))/nsmooth, mode='valid')
             
             # l1, = ax0.semilogy(atm.cff/np.sum(atm.cff), atm.p/np.max(atm.p), ls=ls, lw=lw, color=color, label=label_a)
-            l1, = ax0.semilogy(atm.cff/np.sum(atm.cff), atm.p/np.max(atm.p), ls=ls, lw=lw, color=color, label=label_a)
+            l1, = ax0.semilogy(cff_tot, prs, ls=ls, lw=lw, color=color, label=label_a)
             legend_ax0_handles.append(l1)
 
             # print(np.max(atm.p))
@@ -271,14 +285,22 @@ def plot_atmosphere( output_dir, sub_dirs ):
 
                 channel, channel_idx = find_nearest(atm.band_centres, wavenumber )
 
-                # print(atm.band_centres)
-
                 print(wavenumber, w_idx, wavelength, channel, channel_idx)
+                print(subdir, sub_dirs[0])
 
-                l2, = ax1.semilogy(atm.cff_i[channel_idx,:]/np.sum(atm.cff_i[channel_idx,:]), atm.p/np.max(atm.p), ls=ls, lw=lw, color=color, label=label_b) # 
+                # CFF per band
+                cff_band = atm.cff_i[channel_idx,:]/np.sum(atm.cff_i[channel_idx,:])
+                prs     = atm.p/np.max(atm.p)
+
+                # If smoothing
+                if nsmooth > 1:
+                    cff_band = np.convolve(cff_band, np.ones((nsmooth,))/nsmooth, mode='valid')
+                    prs     = np.convolve(prs, np.ones((nsmooth,))/nsmooth, mode='valid')
+
+                l2, = ax1.semilogy(cff_band, prs, ls=ls, lw=lw, color=color, label=label_b) # 
                 legend_ax1_handles.append(l2)
 
-                print(subdir, sub_dirs[0])
+                # Dummy legend
                 if subdir == sub_dirs[0]:
                     dummy, = ax1.semilogy([0], [0], ls=ls, lw=lw, color="k", label=str(round(wavelength, 1))+" $\mu$m") 
                     legend_ax1_dummy_handles.append(dummy)
@@ -288,14 +310,14 @@ def plot_atmosphere( output_dir, sub_dirs ):
             print("CFFs: ", np.sum(atm.cff), np.sum( atm.cff_i[:,:] ), atm.LW_flux_up[0], atm.net_flux[0])
             cff_sum = np.sum( atm.cff_i[:,:] * atm.LW_flux_up_i[:,0][:,None], axis=0)
             cff_sum = cff_sum / np.trapz(cff_sum, atm.p/np.max(atm.p), axis=0)
-            # print(np.sum(cff_sum), atm.LW_flux_up[0])
+            print(np.sum(cff_sum), atm.LW_flux_up[0])
 
     ax0.set_xlabel( r'Total flux contribution (non-dim.)', fontsize=fs_label )
     ax0.invert_yaxis()
     ax0.set_ylabel( 'Atmospheric pressure, $P/P_{\mathrm{surf}}$ (non-dim.)', fontsize=fs_label )
     ax0.set_ylim(bottom=1, top=1e-5) # , top=1e-5
 
-    ax1.set_xlabel( r'Band flux contribution (non-dim.)', fontsize=fs_label )
+    ax1.set_xlabel( r'Flux contribution per band (non-dim.)', fontsize=fs_label )
     ax1.invert_yaxis()
     # ax1.set_yticklabels([])
     ax1.set_ylim(bottom=1, top=1e-5) # , top=1e-5
@@ -307,7 +329,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
         print("No seaborn.")
 
     # # Legend(s)
-    legend_ax0 = ax0.legend(handles=legend_ax0_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"Volatile species, time $t$")
+    legend_ax0 = ax0.legend(handles=legend_ax0_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"Volatile") # , time $t$"
     ax0.add_artist(legend_ax0)
     
     # # Detailed legend
@@ -321,8 +343,8 @@ def plot_atmosphere( output_dir, sub_dirs ):
     # ax2.text(0.6, 0.28, 'Mush', color=qmagenta_light, rotation=0, ha="left", va="top", fontsize=fs_label, transform=ax2.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
     # ax2b.text(0.6, 0.28, 'Mush', color=qmagenta_light, rotation=0, ha="left", va="top", fontsize=fs_label, transform=ax2b.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
     
-    ax0.text(0.98, 0.015, 'A', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_label+3, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-    ax1.text(0.98, 0.015, 'B', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_label+3, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax0.text(0.98, 0.015, 'A', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_label+4, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax1.text(0.98, 0.015, 'B', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_label+4, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
 
     # ax0.set_xscale("log")
     # ax1.set_xscale("log")
@@ -364,7 +386,7 @@ def main():
     # vols    = [ "H2" ]
     vols    = [ "H2", "H2O", "CO2", "CH4", "O2", "N2", "CO" ]
 
-    output_dir  = "/Users/tim/runs/coupler_tests/set_260bar"
+    output_dir  = "/Users/tim/runs/coupler_tests/set2_260bar"
     print("Host directory:", output_dir)
 
     # Plot fixed set from above

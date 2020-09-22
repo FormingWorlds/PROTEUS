@@ -161,7 +161,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
             ax.set_xlabel( 'Wavenumber (cm$^{-1}$)', fontsize=fs_label)
 
         # Individual legends
-        ax.legend(handles=legend_ax_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title="$T_\mathrm{s}$ (K)")
+        ax.legend(handles=legend_ax_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title="$T_\mathrm{surf}$ (K)")
         #vol_latex[subdir]+", "+
         ax.text(0.02, 0.985, vol_latex[subdir], color=vol_colors[subdir][5], rotation=0, ha="left", va="top", fontsize=fs_label+3, transform=ax.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
 
@@ -172,7 +172,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
     ax7.set_xticklabels([])
 
     ax0.text(0.32, 0.35, 'Blackbody', color=qgray_dark, rotation=0, ha="right", va="top", fontsize=fs_label, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-    ax0.arrow(0.32, 0.35, 0.07, 0.03, head_width=0.0, head_length=0.0, fc=qgray_dark, ec=qgray_dark, transform=ax0.transAxes)
+    ax0.arrow(0.32, 0.35, 0.06, 0.03, head_width=0.0, head_length=0.0, fc=qgray_dark, ec=qgray_dark, transform=ax0.transAxes, ls="--", lw=0.5)
 
     # # Legend(s)
     # legend_ax0 = ax0.legend(handles=legend_ax0_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"H$_\mathrm{2}$O"+", $t = $"+latex_float(output_time_print_a)+" yr")
@@ -181,7 +181,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
     # # for text in legend_ax0.get_texts():
     # #     text.set_color("red")
 
-    legend_ax7 = ax7.legend(handles=legend_ax7_handles, loc="center", ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"Times")
+    legend_ax7 = ax7.legend(handles=legend_ax7_handles, loc="center", ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"Time (yr)")
     ax7.add_artist(legend_ax7)
 
     # ax2.text(0.6, 0.28, 'Mush', color=qmagenta_light, rotation=0, ha="left", va="top", fontsize=fs_label, transform=ax2.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
@@ -228,9 +228,10 @@ def main():
     #     data_times = su.get_all_output_times(output_dir)
     #     print("Snapshots:", output_times)
 
-    vols    = [ "H2", "H2O", "CO2", "CH4", "O2", "N2", "CO" ] #, "CO", "O2"
+    vols    = [ "H2", "H2O", "CO2", "CH4" ]
+    vols    = [ "H2", "H2O", "CO2", "CH4", "O2", "N2", "CO" ]
 
-    output_dir  = "/Users/tim/runs/coupler_tests/set_260bar"
+    output_dir  = "/Users/tim/runs/coupler_tests/set2_260bar"
     print("Host directory:", output_dir)
 
     # Plot fixed set from above

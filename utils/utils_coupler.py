@@ -765,8 +765,8 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     SPIDER_options_file_vanilla = dirs["utils"]+"/init_spider.opts"
 
     if not os.path.isfile(SPIDER_options_file):
-        shutil.copy(SPIDER_options_file_vanilla, dirs["output"]+"/init_spider_standard.opts")
-        SPIDER_options_file = SPIDER_options_file_vanilla
+        shutil.copy(SPIDER_options_file_vanilla, dirs["output"]+"/init_spider.opts")
+        # SPIDER_options_file = SPIDER_options_file_vanilla
 
     # Define which volatiles to track in SPIDER
     species_call = ""

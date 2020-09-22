@@ -140,15 +140,15 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
                 legend_ax0_1_handles.append(l1)
 
             if subdir == sub_dirs[0]:
-                if output_time == 1e+2: 
-                    time_label = "100 yr"
-                elif output_time == 5e+2: 
-                    time_label = "500 yr"
+                if output_time == 5e+2: 
+                    time_label = "100"
+                # elif output_time == 5e+2: 
+                #     time_label = "500"
                 elif output_time == 1e+7: 
-                    time_label = "10 Myr"
+                    time_label = "10"
                 else: 
-                    time_label = latex_float(output_time)+" yr"
-                l2, = ax0.plot( 0, 0, lw=lw, color=qgray, label=time_label, ls=ls)
+                    time_label = latex_float(output_time)#+" yr"
+                l2, = ax0.plot( 0, 0, lw=lw, color=qgray_dark, label=time_label, ls=ls)
                 legend_ax0_2_handles.append(l2)
 
             # print(time,atm.tmp, atm.p)
@@ -269,10 +269,15 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
     
 
 
-    ax1.text(0.05, 0.05, 'Pure solid', color=qblue_dark, rotation=0, ha="left", va="bottom", fontsize=fs_label, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-    ax1.text(0.6, 0.55, 'Mush', color=qmagenta_dark, rotation=0, ha="right", va="top", fontsize=fs_label, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-    ax1.arrow(0.6, 0.55, 0.07, 0.03, head_width=0.0, head_length=0.0, fc=qmagenta_dark, ec=qmagenta_dark, transform=ax1.transAxes)
-    ax1.text(0.95, 0.94, 'Pure melt', color=qred_dark, rotation=0, ha="right", va="top", fontsize=fs_label, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    
+    ax1.text(0.55, 0.48, '100%\nsolid', color=qblue_dark, rotation=0, ha="center", va="center", fontsize=fs_label, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    # ax1.arrow(0.6, 0.35, 0.07, 0.03, head_width=0.0, head_length=0.0, fc=qblue_dark, ec=qmagenta_dark, transform=ax1.transAxes, zorder=30)
+    
+    ax1.text(0.72, 0.48, 'Mixed phase', color=qmagenta_dark, rotation=-62, ha="center", va="center", fontsize=fs_label-1.5, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    # ax1.arrow(0.6, 0.55, 0.07, 0.0, head_width=0.0, head_length=0.0, fc=qmagenta_dark, ec=qmagenta_dark, transform=ax1.transAxes, zorder=30)
+    
+    ax1.text(0.95, 0.48, '100%\nmelt', color=qred_dark, rotation=0, ha="center", va="center", fontsize=fs_label, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    # ax1.arrow(0.6, 0.55, 0.07, 0.03, head_width=0.0, head_length=0.0, fc=qmagenta_dark, ec=qmagenta_dark, transform=ax1.transAxes, zorder=30)
 
     ax0.arrow(3000, 30, 0.0, 18, head_width=50, head_length=1.5, fc=qgray_light, ec=qgray_light, lw=1.0, alpha=0.7) # , transform=ax0.transAxes
     ax0.arrow(3000, 52, 0.0, 80, head_width=50, head_length=11, fc=qgray_light, ec=qgray_light, lw=1.0, alpha=0.7) # , transform=ax0.transAxes
@@ -313,15 +318,15 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
         print("No seaborn.")
 
 
-    ax0.text(0.02, 0.985, 'A', color="k", rotation=0, ha="left", va="top", fontsize=fs_label+4, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.1, pad=0.2, boxstyle='round'))
-    ax1.text(0.02, 0.985, 'B', color="k", rotation=0, ha="left", va="top", fontsize=fs_label+4, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.1, pad=0.2, boxstyle='round'))
+    ax0.text(0.02, 0.985, 'A', color="k", rotation=0, ha="left", va="top", fontsize=fs_label+5, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.1, pad=0.2, boxstyle='round'))
+    ax1.text(0.02, 0.985, 'B', color="k", rotation=0, ha="left", va="top", fontsize=fs_label+5, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.1, pad=0.2, boxstyle='round'))
 
 
     # Legend(s)
     legend_ax0_1 = ax0.legend(handles=legend_ax0_1_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title="Volatiles")
     ax0.add_artist(legend_ax0_1)
-    legend_ax0_2 = ax0.legend(handles=legend_ax0_2_handles, loc=4, ncol=1, fontsize=fs_legend, framealpha=0.3, title="Times")
-    ax0.add_artist(legend_ax0_2)
+    legend_ax0_2 = ax1.legend(handles=legend_ax0_2_handles, loc=3, ncol=1, fontsize=fs_legend, framealpha=0.3, title="Time (yr)")
+    ax1.add_artist(legend_ax0_2)
     # ax0.legend( fancybox=True, framealpha=0.5, ncol=1, fontsize=fs_legend)
     # ax2.legend( fontsize=8, fancybox=True, framealpha=0.5 )
 
@@ -358,9 +363,9 @@ def main():
     sub_dirs    = [ "H2", "CH4", "H2O", "CO2", "N2", "CO", "O2" ] #, "CO", "O2"
 
     # Times at which to plot
-    output_times = [ 5e+2, 1e+7 ]
+    output_times = [ 1e+2, 1e+6 ]
 
-    output_dir  = "/Users/tim/runs/coupler_tests/set_260bar"
+    output_dir  = "/Users/tim/runs/coupler_tests/set2_260bar"
     print("Host directory:", output_dir)
 
     # Plot fixed set from above

@@ -446,7 +446,7 @@ def main():
 
     vols    = [ "H2O", "H2" ] #, "CO", "O2"
 
-    output_dir  = "/Users/tim/runs/coupler_tests/set_260bar"
+    output_dir  = "/Users/tim/runs/coupler_tests/set2_260bar"
     print("Host directory:", output_dir)
 
     # Plot fixed set from above

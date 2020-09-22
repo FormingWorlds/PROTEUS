@@ -87,7 +87,7 @@ def plot_global( output_dir ):
 
 
     xlabel = r'Time, $t$ (yr)'
-    xlim = (5e1,1e7)
+    xlim = (5e1,1e8)
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)
@@ -98,7 +98,7 @@ def plot_global( output_dir ):
     xcoord_r = 1.09
     ycoord_r = 0.5
 
-    rolling_mean = 0
+    rolling_mean = 1
     nsteps       = 5
 
     # Replace NaNs
@@ -121,8 +121,8 @@ def plot_global( output_dir ):
     if rolling_mean == 1:
         # ax0.loglog( time[:nsteps+4], Fatm[:nsteps+4], qgray_dark, lw=lw, alpha=1.0 )
         
-        # Fatm_int_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
-        # Time_int_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
+        Fatm_int_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
+        Time_int_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
         Fatm_atm_rolling = np.convolve(df_atm["F_atm"], np.ones((nsteps,))/nsteps, mode='valid')
         Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
         ax0.plot( Time_int_rolling, Fatm_int_rolling, color="red", lw=lw )
@@ -158,10 +158,10 @@ def plot_global( output_dir ):
         Ts_atm_rolling = np.convolve(df_atm["T_surf"], np.ones((nsteps,))/nsteps, mode='valid')
         
         h2, = ax1.plot(Time_int_rolling, Ts_int_rolling, color=qred, label="Interior")
-        h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$') # , color="blue"
+        h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_\mathrm{surf}$') # , color="blue"
     else:
         h2, = ax1.plot(df_int["Time"], df_int["T_surf"], color=qred, label="Interior")
-        h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_s$') # , color="blue"
+        h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_\mathrm{surf}$') # , color="blue"
         
     if np.max(df_atm["Time"]) >= 1e3: 
         ymin = np.min(df_atm["T_surf"])*0.9
