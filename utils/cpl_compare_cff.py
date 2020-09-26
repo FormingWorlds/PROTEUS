@@ -6,10 +6,10 @@ from utils.modules_utils import *
 
 import matplotlib.gridspec as gridspec
 
-def find_nearest(array, value):
-    array   = np.asarray(array)
-    idx     = (np.abs(array - value)).argmin()
-    return array[idx]
+# def find_nearest(array, value):
+#     array   = np.asarray(array)
+#     idx     = (np.abs(array - value)).argmin()
+#     return array[idx]
 
 #====================================================================
 def plot_atmosphere( output_dir, sub_dirs ):
@@ -35,7 +35,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
     # https://matplotlib.org/3.2.1/tutorials/intermediate/gridspec.html
     fig = plt.figure(tight_layout=True, constrained_layout=False, figsize=[width, height])
 
-    gs = fig.add_gridspec(nrows=1, ncols=2, wspace=0.1, hspace=0.25, left=0.055, right=0.98, top=0.98, bottom=0.08)
+    gs = fig.add_gridspec(nrows=1, ncols=2, wspace=0.1, hspace=0.25, left=0.055, right=0.98, top=0.98, bottom=0.09)
 
 
     ax0 = fig.add_subplot(gs[0, 0])
@@ -215,10 +215,6 @@ def plot_atmosphere( output_dir, sub_dirs ):
 
             print(subdir, setting, output_time)
 
-            # Label with time
-            label_a = vol_latex[subdir]+", "+latex_float(output_time)+" yr"
-            # Label w/o time
-            label_a = vol_latex[subdir]
 
             atm_file = data_dir+"/"+str(int(time))+"_atm.pkl"
 
@@ -233,23 +229,68 @@ def plot_atmosphere( output_dir, sub_dirs ):
             dirs = {"output": output_dir, "rad_conv": "/Users/tim/bitbucket/pcd_couple-interior-atmosphere/atm_rad_conv"}
             atm = atm_rad_conv.SocRadModel.radCompSoc(atm, dirs, recalc=False, calc_cf=True)
 
-            # CFF total
+            # Total CFF, normalized
             cff_tot = atm.cff/np.sum(atm.cff)
             prs     = atm.p/np.max(atm.p)
+
+            # Annotate height and pressure of CFF peak
+            # For H2 cut out lowermost peak
+            cut_idx = len(atm.p)
+            if subdir =="H2": cut_idx = -10
+            z_profile = AtmosphericHeight(atm, planet_mass, r_planet)*1e-3 # km
+            cff_max, cff_max_idx = find_nearest(cff_tot[:cut_idx], np.max(cff_tot[:cut_idx]))
+            print("HEIGHT_max, PRS, TMP:", cff_max, cff_max_idx, z_profile[cff_max_idx], "km", atm.p[cff_max_idx]/1e+5, "bar", atm.tmp[cff_max_idx], "K")
+
+            
+            # print "max" or "weighted"
+            output_label = "weighted"
+
+            # print(np.average(z_profile, weights=cff_tot))
+
+            # Weighted by CFF
+            if output_label == "weighted":
+                time_print  = latex_float(output_time)
+                z_print     = round(np.average(z_profile, weights=cff_tot))
+                prs_print   = round(np.average(atm.p/1e+5, weights=cff_tot),1)
+                tmp_print   = round(np.average(atm.tmp, weights=cff_tot))
+            # At max
+            if output_label == "max":
+                time_print  = latex_float(output_time)
+                z_print     = round(z_profile[cff_max_idx])
+                prs_print   = round(atm.p[cff_max_idx]/1e+5,1)
+                tmp_print   = round(atm.tmp[cff_max_idx])
+
+
+            # Label with time
+            label_a = vol_latex[subdir]+", "+latex_float(output_time)+" yr"
+            # Label w/o time
+            label_a = vol_latex[subdir]
+            # Label with time, height, pressure and temperature
+            label_a = vol_latex[subdir]+": "+str(time_print)+" yr, "+str(z_print)+" km, "+str(prs_print)+" bar, "+str(tmp_print)+" K"
+            # Label with time, height, pressure
+            label_a = vol_latex[subdir]+": "+str(z_print)+" km, "+str(prs_print)+" bar"
+
+            # Plot a line at the max location
+            print(cff_tot[cff_max_idx], prs[cff_max_idx], prs[cff_max_idx])
+            if output_label == "max":
+                ax0.plot([cff_tot[cff_max_idx], cff_tot[cff_max_idx]], [3e-5, prs[cff_max_idx]], ls="--", lw=lw/2., color=color, alpha=0.8)
+            if output_label == "weighted":
+                ax0.plot([0.081, 1], [prs_print/np.max(atm.p/1e+5), prs_print/np.max(atm.p/1e+5)], ls="--", lw=lw/2., color=color, alpha=0.8)
+
+            # Adjust x-axis right
+            xmax = np.amax([np.max(cff_tot), xmax])
 
             # If smoothing
             if nsmooth > 1:
                 cff_tot = np.convolve(cff_tot, np.ones((nsmooth,))/nsmooth, mode='valid')
                 prs     = np.convolve(prs, np.ones((nsmooth,))/nsmooth, mode='valid')
-            
+
+            # PLOT THE CFF
             # l1, = ax0.semilogy(atm.cff/np.sum(atm.cff), atm.p/np.max(atm.p), ls=ls, lw=lw, color=color, label=label_a)
             l1, = ax0.semilogy(cff_tot, prs, ls=ls, lw=lw, color=color, label=label_a)
             legend_ax0_handles.append(l1)
-
-            # print(np.max(atm.p))
             
             wavelength_bands = [ 2, 6, 10 ] # microns
-
             for w_idx, wavelength in enumerate(wavelength_bands):
 
                 if w_idx == 0:
@@ -312,12 +353,13 @@ def plot_atmosphere( output_dir, sub_dirs ):
             cff_sum = cff_sum / np.trapz(cff_sum, atm.p/np.max(atm.p), axis=0)
             print(np.sum(cff_sum), atm.LW_flux_up[0])
 
-    ax0.set_xlabel( r'Total flux contribution (non-dim.)', fontsize=fs_label )
+    ax0.set_xlabel( r'Normalized flux contribution, $\mathcal{CF}_\mathrm{F}$ (non-dim.)', fontsize=fs_label )
     ax0.invert_yaxis()
     ax0.set_ylabel( 'Atmospheric pressure, $P/P_{\mathrm{surf}}$ (non-dim.)', fontsize=fs_label )
     ax0.set_ylim(bottom=1, top=1e-5) # , top=1e-5
+    ax0.set_xlim(left=0, right=xmax)
 
-    ax1.set_xlabel( r'Flux contribution per band (non-dim.)', fontsize=fs_label )
+    ax1.set_xlabel( r'Normalized flux contribution per band, $\mathcal{CF}_\mathrm{F}^{\nu}$ (non-dim.)', fontsize=fs_label )
     ax1.invert_yaxis()
     # ax1.set_yticklabels([])
     ax1.set_ylim(bottom=1, top=1e-5) # , top=1e-5
@@ -329,7 +371,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
         print("No seaborn.")
 
     # # Legend(s)
-    legend_ax0 = ax0.legend(handles=legend_ax0_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"Volatile") # , time $t$"
+    legend_ax0 = ax0.legend(handles=legend_ax0_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.99, title=r"Volatile: $z$, $p$ weighted by $\mathcal{CF}_\mathrm{F}$") # , time $t$"
     ax0.add_artist(legend_ax0)
     
     # # Detailed legend
@@ -337,7 +379,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
     # ax1.add_artist(legend_ax1)
 
     # Only wavelengths legend
-    legend_dummy = ax1.legend(handles=legend_ax1_dummy_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"Wavelength $\lambda_\mathrm{c}$" )
+    legend_dummy = ax1.legend(handles=legend_ax1_dummy_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"Wavelength $\lambda$" )
     ax1.add_artist(legend_dummy)
 
     # ax2.text(0.6, 0.28, 'Mush', color=qmagenta_light, rotation=0, ha="left", va="top", fontsize=fs_label, transform=ax2.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
@@ -346,8 +388,11 @@ def plot_atmosphere( output_dir, sub_dirs ):
     ax0.text(0.98, 0.015, 'A', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_label+4, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
     ax1.text(0.98, 0.015, 'B', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_label+4, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
 
-    # ax0.set_xscale("log")
-    # ax1.set_xscale("log")
+    ax0.text(0.995, 0.31, r'$\mathcal{CF}_\mathrm{F}$-weighted'+'\npressure level', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_legend, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+
+    # ax1.invert_xaxis()
+    # ax1.yaxis.tick_right()
+    # sns.despine(left=True, right=False)
 
     # ax0.legend( fancybox=True, framealpha=0.5, ncol=1, fontsize=fs_legend)
     # ax2.legend( fontsize=8, fancybox=True, framealpha=0.5 )
@@ -383,8 +428,8 @@ def main():
     #     data_times = su.get_all_output_times(output_dir)
     #     print("Snapshots:", output_times)
 
-    # vols    = [ "H2" ]
     vols    = [ "H2", "H2O", "CO2", "CH4", "O2", "N2", "CO" ]
+    # vols    = [ "CH4" ]
 
     output_dir  = "/Users/tim/runs/coupler_tests/set2_260bar"
     print("Host directory:", output_dir)

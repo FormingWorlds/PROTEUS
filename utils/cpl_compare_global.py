@@ -347,7 +347,7 @@ def plot_global( host_dir, sub_dirs ):
         # figure d
         ##########
         fig_o.set_myaxes( ax3)
-        ax3.set_ylabel('$p^{\mathrm{i}}_{\mathrm{s}}$ (bar)', fontsize=label_fs)
+        ax3.set_ylabel('$p^{\mathrm{i}}_{\mathrm{surf}}$ (bar)', fontsize=label_fs)
         ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
         ax3.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
         ax3.xaxis.set_minor_formatter(ticker.NullFormatter())
