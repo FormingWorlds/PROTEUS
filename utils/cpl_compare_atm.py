@@ -154,7 +154,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
         # ax.set_yscale("symlog", linthreshy=ymax_sp_flux/100.)
 
         if ax == ax0:
-            ax.set_ylabel( 'Spectral flux density (W m$^{-2}$ cm$^{-1}$)', fontsize=fs_label)
+            ax.set_ylabel( 'Spectral flux density (W m$^{-2}$ cm)', fontsize=fs_label)
             ax.yaxis.set_label_coords(-0.18, -0.12)
 
         if ax == ax5:

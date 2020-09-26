@@ -388,7 +388,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
     ax0.text(0.98, 0.015, 'A', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_label+4, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
     ax1.text(0.98, 0.015, 'B', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_label+4, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
 
-    ax0.text(0.995, 0.31, r'$\mathcal{CF}_\mathrm{F}$-weighted'+'\npressure level', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_legend, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    ax0.text(0.995, 0.31, r'$\mathcal{CF}_\mathrm{F}$–weighted'+'\n'+'photosphere', color="k", rotation=0, ha="right", va="bottom", fontsize=fs_legend, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
 
     # ax1.invert_xaxis()
     # ax1.yaxis.tick_right()
