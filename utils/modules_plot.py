@@ -251,7 +251,7 @@ def AtmosphericHeight(atm, m_planet, r_planet):
     atm.p   = atm.p[::-1]
     atm.tmp = atm.tmp[::-1]
     for vol in atm.vol_list.keys():
-        atm.mr_gas[vol] = atm.mr_gas[vol][::-1]
+        atm.x_gas[vol] = atm.x_gas[vol][::-1]
 
     # print(atm.p)
 
@@ -265,7 +265,7 @@ def AtmosphericHeight(atm, m_planet, r_planet):
         # Mean molar mass depending on mixing ratio
         mean_molar_mass = 0
         for vol in atm.vol_list.keys():
-            mean_molar_mass += molar_mass[vol]*atm.mr_gas[vol][n]
+            mean_molar_mass += molar_mass[vol]*atm.x_gas[vol][n]
 
         # Temperature below present height
         T_mean_below    = np.mean(atm.tmp[n:])
@@ -283,7 +283,7 @@ def AtmosphericHeight(atm, m_planet, r_planet):
     atm.p   = atm.p[::-1]
     atm.tmp = atm.tmp[::-1]
     for vol in atm.vol_list.keys():
-        atm.mr_gas[vol] = atm.mr_gas[vol][::-1]
+        atm.x_gas[vol] = atm.x_gas[vol][::-1]
     z_profile = z_profile[::-1]
 
     return z_profile
