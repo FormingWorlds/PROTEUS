@@ -789,7 +789,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         # Current step
         json_file   = su.MyJSON( dirs["output"]+'/{}.json'.format(int(time_dict["planet"])) )
         step        = json_file.get_dict(['step'])
-        print("ABC", time_dict["planet"], json_file, step)
 
         dtmacro     = float(COUPLER_options["dtmacro"])
         dtswitch    = float(COUPLER_options["dtswitch"])
@@ -833,8 +832,8 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         net_loss = np.amax([abs(COUPLER_options["F_atm"]), COUPLER_options["F_eps"]])
         print("Prevent interior oscillations during last-stage freeze-out: F_atm =", COUPLER_options["F_atm"], "->", net_loss)
 
-    net_loss = np.amin([net_loss, 1e4])
-    print("------>>>> HERE", net_loss, 1e4)
+    # net_loss = np.amin([net_loss, 1e4])
+    # print("------>>>> HERE", net_loss, 1e4)
 
     ### SPIDER base call sequence 
     call_sequence = [   
