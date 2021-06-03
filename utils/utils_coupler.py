@@ -321,7 +321,15 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
             COUPLER_options["F_net"] = -COUPLER_options["F_eps"]
             print("Early MO phase and RF is deep in mantle. RF_depth = ", runtime_helpfile.iloc[-1]["RF_depth"])
         if loop_counter["init"] >= loop_counter["init_loops"]:
-            Ts_last         = run_atm_last.iloc[-1]["T_surf"]
+            
+            if loop_counter["init"] == loop_counter["init_loops"]:
+                Ts_last         = runtime_helpfile.iloc[-1]["T_surf"]
+
+            else:
+                Ts_last         = run_atm_last.iloc[-1]["T_surf"]
+
+            print("here", Ts_last)
+
             # IF T_surf change too high
             if abs(Ts_last-COUPLER_options["T_surf"]) >= COUPLER_options["dTs_atm"]: 
                 COUPLER_options["F_net"] = -COUPLER_options["F_eps"]   
@@ -818,6 +826,9 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     if len(runtime_helpfile) > 100 and runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]:
         net_loss = np.amax([abs(COUPLER_options["F_atm"]), COUPLER_options["F_eps"]])
         print("Prevent interior oscillations during last-stage freeze-out: F_atm =", COUPLER_options["F_atm"], "->", net_loss)
+
+    net_loss = np.amin([net_loss, 1e4])
+    print("------>>>> HERE", net_loss, 1e4)
 
     ### SPIDER base call sequence 
     call_sequence = [   
