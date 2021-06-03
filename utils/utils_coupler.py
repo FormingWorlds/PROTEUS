@@ -786,8 +786,24 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     # Recalculate time stepping
     if COUPLER_options["IC_INTERIOR"] == 2:  
 
+        # Current step
+        json_file   = su.MyJSON( dirs["output"]+'/{}.json'.format(int(time_dict["planet"])) )
+        step        = json_file.get_dict(['step'])
+        print("ABC", time_dict["planet"], json_file, step)
+
         dtmacro     = float(COUPLER_options["dtmacro"])
         dtswitch    = float(COUPLER_options["dtswitch"])
+
+        # Time resolution adjustment in the beginning
+        if time_dict["planet"] < 1000:
+            dtmacro = 10
+            dtswitch = 50
+        if time_dict["planet"] < 100:
+            dtmacro = 2
+            dtswitch = 5
+        if time_dict["planet"] < 10:
+            dtmacro = 1
+            dtswitch = 1
 
         # Runtime left
         dtime_max   = time_dict["target"] - time_dict["planet"]
@@ -795,18 +811,8 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         # Limit Atm-Int switch
         dtime       = np.min([ dtime_max, dtswitch ])
 
-        COUPLER_options["nstepsmacro"] =  math.ceil( dtime / dtmacro )
-
-        # Earliest 100 yr, fine time resolution
-        if time_dict["planet"] < 1000:
-            COUPLER_options["nstepsmacro"] = 1
-            dtmacro = 50
-        if time_dict["planet"] < 100:
-            COUPLER_options["nstepsmacro"] = 1
-            dtmacro = 5
-        if time_dict["planet"] < 10:
-            COUPLER_options["nstepsmacro"] = 1
-            dtmacro = 1
+        # Number of total steps until currently desired switch/end time
+        COUPLER_options["nstepsmacro"] =  step + math.ceil( dtime / dtmacro )
 
         PrintSeparator()
         PrintSeparator()
