@@ -39,6 +39,7 @@ import utils.utils_spider as su
 import atm_rad_conv.SocRadConv
 import atm_rad_conv.SocRadModel
 import atm_rad_conv.GeneralAdiabat
+import atm_rad_conv.RayleighSpectrum
 from atm_rad_conv.atmosphere_column import atmos
 
 # Coupler-specific paths

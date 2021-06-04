@@ -293,22 +293,6 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["T_surf"]          = COUPLER_options["T_surf"] 
         runtime_helpfile_new["F_atm"]           = COUPLER_options["F_atm"]
 
-        # # Smooth and filter F_int to remove outliers during RF transition
-        # if loop_counter["init"] >= loop_counter["init_loops"]:
-        #     run_int_smooth = run_int.loc[(run_int['RF_depth'] >= COUPLER_options["RF_crit"]) | (run_int['RF_depth'] == 0.0)]
-        #     len_smooth = np.min([len(run_int_smooth), 10])
-        #     # Filter out by Z-score: https://towardsdatascience.com/ways-to-detect-and-remove-the-outliers-404d16608dba
-        #     F_int_smooth = run_int_smooth.iloc[-len_smooth:]["F_int"]
-        #     zscore       = np.abs(stats.zscore(F_int_smooth))
-        #     print("Smoothed F_int:", F_int_smooth.tolist())
-        #     print("zscore:", zscore)
-        #     F_int_filtered = F_int_smooth[zscore < 1]
-        #     print("F_int_filtered (z<2):", F_int_filtered.tolist())
-        #     print(F_int_filtered.iloc[-3:].tolist(), end= " ")
-        #     COUPLER_options["F_int"] = np.mean(F_int_filtered.iloc[-3:])
-        #     print("-> F_int_mean(-3):", COUPLER_options["F_int"])
-        #     COUPLER_options["F_net"] = COUPLER_options["F_atm"] - COUPLER_options["F_int"]
-        # else:
         COUPLER_options["F_int"] = run_int.iloc[-1]["F_int"]
         COUPLER_options["F_net"] = COUPLER_options["F_atm"] - COUPLER_options["F_int"]
 
@@ -327,8 +311,6 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
             else:
                 Ts_last         = run_atm_last.iloc[-1]["T_surf"]
-
-            print("here", Ts_last)
 
             # IF T_surf change too high
             if abs(Ts_last-COUPLER_options["T_surf"]) >= COUPLER_options["dTs_atm"]: 
@@ -602,97 +584,6 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
     return atm, COUPLER_options
 
-# # Calulcate partial pressures from 
-# def ModifiedHenrysLaw( atm_chemistry, output_dir, file_name ):
-
-#     PrintSeparator()
-#     print("HACK –– apply partitioning directly on JSON files")
-#     PrintSeparator()
-
-#     # Total pressure
-#     P_surf = atm_chemistry.iloc[0]["Pressure"]*1e5 # Pa
-
-#     # Open the .json data
-#     with open(output_dir+file_name) as f:
-#         data = json.load(f)
-
-#     # Move unaltered JSON --> .txt
-#     shutil.move(output_dir+file_name, output_dir+file_name[:-5]+".txt")
-
-#     mantle_melt_kg = float(data["atmosphere"]["mass_liquid"]["values"][0])*float(data["atmosphere"]["mass_liquid"]["scaling"])
-#     print("M_mantle_liquid: ", mantle_melt_kg, "kg")
-#     PrintHalfSeparator()
-
-#     # Loop over all radiative species considered
-#     for volatile in volatile_species:
-
-#         # Dalton's law for partial pressures
-#         p_vol       = float(atm_chemistry.iloc[0][volatile])*P_surf # Pa
-
-#         # Modified Henry's law for obtaining melt abundances
-#         henry_alpha = volatile_distribution_coefficients[volatile+"_alpha"]
-#         henry_beta  = volatile_distribution_coefficients[volatile+"_beta"]
-
-#         # Find melt abundance
-#         X_vol_ppm   = henry_alpha * (p_vol**(1/henry_beta)) # ppm wt
-#         X_vol_kg    = X_vol_ppm*1e-6*mantle_melt_kg       # kg
-
-#         # Read in former scaled values
-#         liquid_ppm_scaled     = float(data["atmosphere"][volatile]["liquid_ppm"]["values"][0])
-#         liquid_kg_scaled      = float(data["atmosphere"][volatile]["liquid_kg"]["values"][0])
-#         atmosphere_kg_scaled  = float(data["atmosphere"][volatile]["atmosphere_kg"]["values"][0])
-#         atmosphere_bar_scaled = float(data["atmosphere"][volatile]["atmosphere_bar"]["values"][0])
-
-#         # Read in scalings
-#         liquid_ppm_scaling     = float(data["atmosphere"][volatile]["liquid_ppm"]["scaling"])
-#         liquid_kg_scaling      = float(data["atmosphere"][volatile]["liquid_kg"]["scaling"])
-#         atmosphere_kg_scaling  = float(data["atmosphere"][volatile]["atmosphere_kg"]["scaling"])
-#         atmosphere_bar_scaling = float(data["atmosphere"][volatile]["atmosphere_bar"]["scaling"])
-
-#         # Calculate former physical values
-#         liquid_ppm     = liquid_ppm_scaled*liquid_ppm_scaling
-#         liquid_kg      = liquid_kg_scaled*liquid_kg_scaling
-#         atmosphere_kg  = atmosphere_kg_scaled*atmosphere_kg_scaling
-#         atmosphere_bar = atmosphere_bar_scaled*atmosphere_bar_scaling
-
-#         # Calculate new physical values, ensure mass conservation
-#         liquid_ppm_new      = X_vol_ppm
-#         liquid_kg_new       = X_vol_kg
-#         atmosphere_kg_new   = (liquid_kg+atmosphere_kg)-liquid_kg_new
-#         atmosphere_bar_new  = p_vol
-
-#         # Calculate new scaled values
-#         liquid_ppm_new_scaled      = liquid_ppm_new/liquid_ppm_scaling
-#         liquid_kg_new_scaled       = liquid_kg_new/liquid_kg_scaling
-#         atmosphere_kg_new_scaled   = atmosphere_kg_new/atmosphere_kg_scaling
-#         atmosphere_bar_new_scaled  = atmosphere_bar_new/atmosphere_bar_scaling
-
-#         # Print the changes
-#         print(volatile, "liquid_ppm (scaled): ", liquid_ppm, "->", liquid_ppm_new, 
-#             "(", liquid_ppm_scaled, "->", liquid_ppm_new_scaled, ") ppm wt")
-#         print(volatile, "liquid_kg (scaled): ", liquid_kg, "->", liquid_kg_new, 
-#             "(", liquid_kg_scaled, "->", liquid_kg_new_scaled, ") kg")
-#         print(volatile, "atmosphere_kg (scaled): ", atmosphere_kg, "->", atmosphere_kg_new, 
-#             "(", atmosphere_kg_scaled, "->", atmosphere_kg_new_scaled, ") kg")
-#         print(volatile, "atmosphere_bar (scaled): ", atmosphere_bar, "->", atmosphere_bar_new, 
-#             "(", atmosphere_bar_scaled, "->", atmosphere_bar_new_scaled, ") bar")
-
-#         # Replace old with recalculated values
-#         data["atmosphere"][volatile]["liquid_ppm"]["values"]    = [str(liquid_ppm_new_scaled)]
-#         data["atmosphere"][volatile]["liquid_kg"]["values"]     = [str(liquid_kg_new_scaled)]
-#         data["atmosphere"][volatile]["atmosphere_kg"]["values"] = [str(atmosphere_kg_new_scaled)]
-#         data["atmosphere"][volatile]["atmosphere_bar"]["values"] = [str(atmosphere_bar_new_scaled)]
-#         # print(data["atmosphere"][volatile])
-#         PrintHalfSeparator()
-
-#         ## THERE IS ANOTHER ENTRY IN JSON:
-#         ## "Magma ocean volatile content"
-#         ## ---> CHECK IF THAT ALSO NEEDS TO BE REPLACED
-
-#     # Save the changed JSON file for read-in by SPIDER
-#     with open(output_dir+file_name, 'w') as f:
-#         json.dump(data, f, indent=4)
-
 # run VULCAN/atmosphere chemistry
 def RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
@@ -744,7 +635,7 @@ def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_o
     PrintSeparator()
 
     # Calculate temperature structure and heat flux w/ SOCRATES
-    atm_dry, atm = atm_rad_conv.SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, COUPLER_options, standalone=False, cp_dry=False, trpp=True) # W/m^2
+    atm_dry, atm = atm_rad_conv.SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, COUPLER_options, standalone=False, cp_dry=False, trpp=True, rscatter=True) # W/m^2
     
     # Atmosphere net flux from topmost atmosphere node; do not allow heating
     COUPLER_options["F_atm"] = np.max( [ 0., atm.net_flux[0] ] )
