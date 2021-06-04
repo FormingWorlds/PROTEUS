@@ -627,7 +627,7 @@ def RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPL
 def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options ):
 
     # Interpolate TOA heating from Baraffe models and distance from star
-    atm.toa_heating = atm_rad_conv.SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], atm.albedo_pl)
+    atm.toa_heating = atm_rad_conv.SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], atm.albedo_pl, COUPLER_options["Sfrac"])
 
     # Runtime info
     PrintSeparator()
