@@ -832,10 +832,11 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         if run_int["Time"].iloc[-1] == run_int["Time"].iloc[-7]:
             if "solver_tolerance" not in COUPLER_options:
                 COUPLER_options["solver_tolerance"] = 1.0e-10
-            if COUPLER_options["solver_tolerance"] < 1.0e-5:
+            if COUPLER_options["solver_tolerance"] < 1.0e-2:
                 COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
+                print(">>> ADJUST tolerances:", COUPLER_options["solver_tolerance"])
             COUPLER_options["adjust_tolerance"] = 1
-            print(">>> ADJUST TOLERANCES:", COUPLER_options["solver_tolerance"])
+            print(">>> CURRENT TOLERANCES:", COUPLER_options["solver_tolerance"])
 
         # If tolerance was adjusted, restart SPIDER w/ new tolerances
         if "adjust_tolerance" in COUPLER_options:

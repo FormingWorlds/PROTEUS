@@ -5,6 +5,8 @@ from utils.modules_utils import *
 
 from atm_rad_conv.SocRadConv import surf_Planck_nu
 
+from natsort import natsorted # https://pypi.python.org/pypi/natsort
+
 # Define Crameri colormaps (+ recursive)
 from matplotlib.colors import LinearSegmentedColormap
 
