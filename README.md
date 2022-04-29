@@ -134,7 +134,7 @@ Read-only: https://www.overleaf.com/read/fwqkyfcrfftb
 
     - Interior dynamics: **SPIDER** 
 
-        * URL: https://bitbucket.org/djbower/spider-dev/
+        * URL: https://github.com/djbower/spider
         * Contact: DJB, PS
 
     - Atmospheric chemistry: **VULCAN** (COUPLER-compatible version) 
