@@ -1,9 +1,9 @@
-[submodule "vulcan_spider"]
-	path = vulcan_spider
-	url = git@github.com:shami-EEG/VULCAN-SPIDER.git
-[submodule "atm_rad_conv"]
-	path = atm_rad_conv
-	url = git@github.com:OxfordPlanetaryClimate/soc-rad-conv
-[submodule "spider-dev"]
-	path = spider-dev
-	url = git@bitbucket.org:djbower/spider-dev
+[submodule "VULCAN"]
+	path = VULCAN
+	url = git@github.com:exoclime/VULCAN.git
+[submodule "AEOLUS"]
+	path = AEOLUS
+	url = git@github.com:FormingWorlds/AEOLUS.git
+[submodule "SPIDER"]
+	path = SPIDER
+	url = git@github.com:djbower/spider.git
