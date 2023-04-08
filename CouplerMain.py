@@ -108,8 +108,8 @@ def main():
             print("\n===> Planet solidified! <===\n")
             break
 
-    # Save files from finished simulation
-    cu.SaveOutput( dirs["output"] )
+    # Save files from finished simulation in extra folder
+    # cu.SaveOutput( dirs["output"] )
 
     # Plot conditions at the end
     cu.UpdatePlots( dirs["output"], COUPLER_options, time_dict )
