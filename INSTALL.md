@@ -15,6 +15,7 @@
             
     * Install FORTRAN NetCDF library via the most appropriate method for you
         * `brew install netcdf`
+        * `brew install netcdf-fortran`
         OR
         * `sudo port install netcdf-fortran +gcc8`
         OR 
@@ -71,43 +72,44 @@
         * `cd AEOLUS/rad_trans/socrates_code/`
         * `tar --strip-components 1 -xvf PATH_TO_ARCHIVE -C ./`
 
-    4. Overwrite `/make/Mk_cmd` with the right setup for your machine
-        * `cp -rf ../Mk_cmd_MAC make/Mk_cmd`
-        Options are: *Mk_cmd_MAC_INTEL*, *Mk_cmd_MAC_APPLESILICON*, *Mk_cmd_AOPP_CLUSTER*
+    4. Overwrite the `Mk_cmd` file with the right setup for your machine
+        * `cp -rf ../Mk_cmd_SYSTEM make/Mk_cmd`
+        Options are: *Mk_cmd_MAC_INTEL*, *Mk_cmd_MAC_APPLESILICON*, *Mk_cmd_AOPP_CLUSTER*.
+        The command `nf-config` might be helpful if none of these options work for you.
 
-    5. Setup SOCRATES
+    5. Setup SOCRATES 
         * `./build_code`
-        * `cd sbin`
-        * `sed -i 's/ksh/bash/g' *`
-        * `cd ../../../../`
+        * `type ksh >/dev/null 2>&1 || { sed -i 's/ksh/bash/g' sbin/* }`
+        * `cd ../../../`
 
     6. Setup VULCAN
         * `cd VULCAN/fastchem_vulcan`
+        * On MacOS you will need to edit `make.globaloptions` to reflect a GNU-compatible `g++` executable, not the Apple one
         * `make`
         * `cd ../../`
+
+    7. Install SciATH
+        * `git clone https://github.com/sciath/sciath -b dev`
         
-    7. Setup PETSc
+    8. Setup PETSc
         * `git clone https://gitlab.com/petsc/petsc -b main petsc-double`
         * `cd petsc-double`
-        * `git checkout 63b725033a15f75ded7183cf5f88ec748e60783b`
+        <!-- * `git checkout 63b725033a15f75ded7183cf5f88ec748e60783b` -->
         * `./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --with-cc=gcc --download-sundials2 --download-mpich --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"`
-        * Make note of the value of `PETSC_ARCH`.
-        * Run the `make all` command provided at the end of the configure step
-        * Run the `make check` command provided at the end of the `make all` step
+        * Make note of the value of `PETSC_ARCH` printed to stdout.
+        * Run the exact `make all` command provided at the end of the configure step
+        * Run the exact `make check` command provided at the end of the `make all` step
         * `cd ../`
 
-    8. Setup environment variables
-        * Edit the variable `PETSC_ARCH` in the file `prepare_env.sh` to reflect value provided by PETSc
-        * `source prepare_env.sh`
-
-    9. Install SciATH
-        * `git clone https://github.com/sciath/sciath -b dev`
+    9. Setup environment variables
+        * Edit the variable `PETSC_ARCH` in the file `PROTEUS.env` to reflect value provided by PETSc
+        * `source PROTEUS.env`
 
     10. Setup SPIDER
         * `cd SPIDER`
         * `git pull origin main`
         * `make clean`
         * `make -j`
-        * `make test`
+        * `make test`, accepting all default values when prompted
         * `cd ../`
 #### Done!

@@ -18,7 +18,6 @@ old/
 Tprofile.pdf
 .DS_Store
 __pycache__/
-socrates/socrates_main
 output/*
 mylog.log
 atmosphere.pdf
@@ -28,8 +27,6 @@ out.dat
 atm_chemistry.pdf
 .vscode
 init_spider.opts
-VULCAN/*
-AEOLUS/*
 petsc-double
 sciath
 
