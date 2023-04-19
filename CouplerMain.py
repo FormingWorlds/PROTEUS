@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-COUPLER Main file – SPIDER-SOCRATES(-VULCAN)
+PROTEUS Main file
 """
 
 from utils.modules_coupler import *
@@ -68,7 +68,7 @@ def main():
 
         ############### ATMOSPHERE SUB-LOOP
 
-        while loop_counter["atm"] == 0 or (loop_counter["atm"] < loop_counter["atm_loops"] and abs(COUPLER_options["F_net"]) > COUPLER_options["F_eps"]):
+        while (loop_counter["atm"] == 0) or (loop_counter["atm"] < loop_counter["atm_loops"] and abs(COUPLER_options["F_net"]) > COUPLER_options["F_eps"]):
 
             # Initialize atmosphere structure
             atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
@@ -114,7 +114,7 @@ def main():
     # Plot conditions at the end
     cu.UpdatePlots( dirs["output"], COUPLER_options, time_dict )
 
-    print("\n\n===> COUPLER run finished successfully <===")
+    print("\n\n===> PROTEUS run finished successfully <===")
 
 #====================================================================
 main()

@@ -41,15 +41,10 @@ import utils.cpl_global
 import utils.cpl_stacked
 import utils.cpl_interior
 
-# from utils.cpl_atmosphere import *
-# from utils.cpl_global import *
-# from utils.cpl_stacked import *
-# from utils.cpl_interior import *
-
-import atm_rad_conv.SocRadConv
-import atm_rad_conv.SocRadModel
-import atm_rad_conv.GeneralAdiabat
-from atm_rad_conv.atmosphere_column import atmos
+import SocRadConv
+import SocRadModel
+import GeneralAdiabat
+from atmosphere_column import atmos
 
 ### Constants ###
 

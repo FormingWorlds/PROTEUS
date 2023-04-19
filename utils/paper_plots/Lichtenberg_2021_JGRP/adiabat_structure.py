@@ -72,7 +72,7 @@ sns.despine()
 
 dirs =  {
            "output":   os.getcwd()+"/", 
-           "rad_conv": "/Users/tim/bitbucket/pcd_couple-interior-atmosphere/atm_rad_conv"
+           "rad_conv": "/Users/tim/bitbucket/pcd_couple-interior-atmosphere/AEOLUS"
         }
 
 # Loop through volatiles, options: "H2O", "CO2", "H2", "N2", "CH4", "CO", "O2"

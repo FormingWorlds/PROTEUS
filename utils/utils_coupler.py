@@ -627,7 +627,7 @@ def RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPL
 def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options ):
 
     # Interpolate TOA heating from Baraffe models and distance from star
-    atm.toa_heating = atm_rad_conv.SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], atm.albedo_pl, COUPLER_options["Sfrac"])
+    atm.toa_heating = SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], atm.albedo_pl, COUPLER_options["Sfrac"])
 
     # Runtime info
     PrintSeparator()
@@ -635,7 +635,7 @@ def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_o
     PrintSeparator()
 
     # Calculate temperature structure and heat flux w/ SOCRATES
-    atm_dry, atm = atm_rad_conv.SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, COUPLER_options, standalone=False, cp_dry=False, trpp=True, rscatter=True) # W/m^2
+    atm_dry, atm = SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, COUPLER_options, standalone=False, cp_dry=False, trpp=True, rscatter=True) # W/m^2
     
     # Atmosphere net flux from topmost atmosphere node; do not allow heating
     COUPLER_options["F_atm"] = np.max( [ 0., atm.net_flux[0] ] )
@@ -661,7 +661,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     SPIDER_options_file = dirs["output"]+"/init_spider.opts"
 
     # Standard spider .opts file
-    SPIDER_options_file_vanilla = dirs["utils"]+"/init_spider.opts"
+    SPIDER_options_file_vanilla = dirs["utils"]+"/init_spider_vanilla.opts"
 
     if not os.path.isfile(SPIDER_options_file):
         shutil.copy(SPIDER_options_file_vanilla, dirs["output"]+"/init_spider.opts")

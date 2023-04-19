@@ -36,35 +36,35 @@ from scipy import stats
 import utils.utils_coupler as cu
 import utils.utils_spider as su
 
-import atm_rad_conv.SocRadConv
-import atm_rad_conv.SocRadModel
-import atm_rad_conv.GeneralAdiabat
-import atm_rad_conv.RayleighSpectrum
-from atm_rad_conv.atmosphere_column import atmos
+import SocRadConv
+import SocRadModel
+import GeneralAdiabat
+import RayleighSpectrum
+from   atmosphere_column import atmos
 
 # Coupler-specific paths
-coupler_dir = str(pathlib.Path(__file__).parent.absolute())+"/.."
-output_dir  = str(pathlib.Path().absolute())
-vulcan_dir  = coupler_dir+"/vulcan_spider/"
-radconv_dir = coupler_dir+"/atm_rad_conv/"
-spider_dir  = coupler_dir+"/spider-dev/"
+coupler_dir = os.getenv('COUPLER_DIR')
+output_dir  = coupler_dir+"/output/"
+vulcan_dir  = coupler_dir+"/VULCAN/"
+radconv_dir = coupler_dir+"/AEOLUS/"
+spider_dir  = coupler_dir+"/SPIDER/"
 utils_dir   = coupler_dir+"/utils/"
 
-# If COUPLER executed from main repository dir, put output in subdirectory
-if output_dir == coupler_dir: 
-    output_dir  = coupler_dir+"/output/"
-    
-    # # Check if output directory exists, otherwise create
-    # if not os.path.exists(dirs["output"]):
-    #     os.makedirs(dirs["output"])
-    #     print("--> Create data directory:", dirs["output"])
+print("coupler_dir = %s"%coupler_dir)
 
-# Project main directories
-dirs = { "output": output_dir, "coupler": coupler_dir, "rad_conv": radconv_dir, "vulcan": vulcan_dir, "spider": spider_dir, "utils": utils_dir}
+dirs = {"output": output_dir, 
+        "coupler": coupler_dir, 
+        "rad_conv": radconv_dir, 
+        "vulcan": vulcan_dir, 
+        "spider": spider_dir, 
+        "utils": utils_dir
+        }
 
-# # Output dir, 
-# parser = argparse.ArgumentParser(description='Define file output directory.')
-# parser.add_argument('--dir', default="output/", help='Provide path to output directory.' )
+# Check if output directory exists, otherwise create
+if not os.path.exists(dirs["output"]):
+    os.makedirs(dirs["output"])
+    print("--> Create output directory:", dirs["output"])
+
 
 # Handle optional command line arguments for volatiles
 # Optional arguments: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05

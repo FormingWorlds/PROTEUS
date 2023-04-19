@@ -226,8 +226,8 @@ def plot_atmosphere( output_dir, sub_dirs ):
             # color = fig_o.get_color( nn )
             color   = vol_colors[subdir][color_idx]
           
-            dirs = {"output": output_dir, "rad_conv": "/Users/tim/bitbucket/pcd_couple-interior-atmosphere/atm_rad_conv"}
-            atm = atm_rad_conv.SocRadModel.radCompSoc(atm, dirs, recalc=False, calc_cf=True)
+            dirs = {"output": output_dir, "rad_conv": "/Users/tim/bitbucket/pcd_couple-interior-atmosphere/AEOLUS"}
+            atm = SocRadModel.radCompSoc(atm, dirs, recalc=False, calc_cf=True)
 
             # Total CFF, normalized
             cff_tot = atm.cff/np.sum(atm.cff)

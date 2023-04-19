@@ -46,7 +46,7 @@ done
 
 # Errors and solutions
 # [image2 demuxer @ 0x7faac200aa00] Error setting option framerate to value 0.
-# /Users/tim/bitbucket/pcd_couple-interior-atmosphere/atm_rad_conv/output/mov_figs/trpp_H2O/*.png: Invalid argument
+# /Users/tim/bitbucket/pcd_couple-interior-atmosphere/AEOLUS/output/mov_figs/trpp_H2O/*.png: Invalid argument
 # --> https://superuser.com/questions/602950/problems-with-frame-rate-on-video-conversion-using-ffmpeg-with-libx264
 
 # Lossless video: https://trac.ffmpeg.org/wiki/Encode/H.264
