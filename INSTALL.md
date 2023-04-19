@@ -10,15 +10,15 @@
             https://docs.conda.io/en/latest/miniconda.html#id36
 
         * Create a conda environment for PROTEUS
-            `conda create -n proteus python=3.10.9`
+            `conda create -n proteus python=3.10.9`    
             `conda activate proteus`
             
     * Install FORTRAN NetCDF library via the most appropriate method for you
-        * `brew install netcdf`
-        * `brew install netcdf-fortran`
-        OR
-        * `sudo port install netcdf-fortran +gcc8`
-        OR 
+        * `brew install netcdf`    
+        * `brew install netcdf-fortran`     
+        OR    
+        * `sudo port install netcdf-fortran +gcc8`    
+        OR     
         * `sudo apt install libnetcdff-dev`
     
     * Install Python libraries:
@@ -59,7 +59,7 @@
         * URL: https://github.com/sciath/sciath
         * Contact: PS
 
-3. Setup codes and modules in the following order (ignore their individual README files)
+3. Setup codes and modules in the following order (**ignore the instructions provided in their own repositories**)
 
     1. Download PROTEUS + submodules (*AEOLUS, SPIDER, VULCAN*)
         * `git clone --recursive git@github.com:FormingWorlds/PROTEUS.git`
@@ -71,15 +71,16 @@
     3. Extract SOCRATES archive to the correct location
         * `cd AEOLUS/rad_trans/socrates_code/`
         * `tar --strip-components 1 -xvf PATH_TO_ARCHIVE -C ./`
+        * `cp -f ../build_code_modified build_code`
 
     4. Overwrite the `Mk_cmd` file with the right setup for your machine
-        * `cp -rf ../Mk_cmd_SYSTEM make/Mk_cmd`
-        Options are: *Mk_cmd_MAC_INTEL*, *Mk_cmd_MAC_APPLESILICON*, *Mk_cmd_AOPP_CLUSTER*.
+        * `cp -rf ../Mk_cmd_SYSTEM make/Mk_cmd`    
+        Options are: *Mk_cmd_MAC_INTEL*, *Mk_cmd_MAC_APPLESILICON*, *Mk_cmd_AOPP_CLUSTER*.    
         The command `nf-config` might be helpful if none of these options work for you.
 
     5. Setup SOCRATES 
         * `./build_code`
-        * `type ksh >/dev/null 2>&1 || { sed -i 's/ksh/bash/g' sbin/* }`
+        * `type ksh >/dev/null 2>&1 ||  sed -i 's/ksh/bash/g' sbin/* `
         * `cd ../../../`
 
     6. Setup VULCAN
@@ -94,7 +95,7 @@
     8. Setup PETSc
         * `git clone https://gitlab.com/petsc/petsc -b main petsc-double`
         * `cd petsc-double`
-        <!-- * `git checkout 63b725033a15f75ded7183cf5f88ec748e60783b` -->
+        * `git checkout 63b725033a15f75ded7183cf5f88ec748e60783b`
         * `./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --with-cc=gcc --download-sundials2 --download-mpich --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"`
         * Make note of the value of `PETSC_ARCH` printed to stdout.
         * Run the exact `make all` command provided at the end of the configure step
@@ -112,4 +113,5 @@
         * `make -j`
         * `make test`, accepting all default values when prompted
         * `cd ../`
-#### Done!
+
+**Done!**

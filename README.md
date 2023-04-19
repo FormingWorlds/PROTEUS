@@ -1,15 +1,14 @@
 ## PROTEUS (ATMOSPHERE–INTERIOR COUPLER)
 
-License == ??
-
 ### Contributors (abbreviations & email addresses):
 * TL - Tim Lichtenberg (tim.lichtenberg@rug.nl)
 * MH - Mark Hammond (mark.hammond@physics.ox.ac.uk)
 * DJB - Dan J. Bower (daniel.bower@csh.unibe.ch)
 * PS – Patrick Sanan (patrick.sanan@erdw.ethz.ch)
-* RTP - Ray T. Pierrehumbert (raymond.pierrehumbert@physics.ox.ac.uk)
+* RTP - Ray Pierrehumbert (raymond.pierrehumbert@physics.ox.ac.uk)
 * RB – Ryan Boukrouche (ryan.boukrouche@astro.su.se)
 * SMT - Shang-Min Tsai (shangmin.tsai@ucr.edu)
+* HN - Harrison Nicholls (harrison.nicholls@physics.ox.ac.uk)
 
 ### Repository structure
 * `CouplerMain.py`  – Main PROTEUS Python script
@@ -25,13 +24,12 @@ License == ??
 See INSTALL.md for steps.
 
 ### Run instructions
-Only attempt to run PROTEUS after you have followed all of the instructions in INSTALL.md
-If using a fresh shell, it is necessary to perform the following steps:
+Only attempt to run PROTEUS after you have followed all of the instructions in INSTALL.md    
+If using a fresh shell, it is necessary to perform the following steps:     
 1. `conda activate proteus`
-2. `source prepare_env.sh`
-Then you can run the code by running:
-`python CouplerMain.py`
-Plots are produced in `output/`
+2. `source PROTEUS.env`
+Then you can run the code by running: `python CouplerMain.py`      
+Plots are produced in `output/`      
 
 ### Updating the code
 Run `git submodule update --recursive --remote`
