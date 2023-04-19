@@ -33,7 +33,7 @@ from scipy.integrate import solve_ivp
 from scipy import stats
 
 # Import coupler-specific package modules
-#import utils.utils_coupler as cu
+#import utils_coupler as cu
 import utils.utils_spider as su
 
 import utils.cpl_atmosphere
@@ -42,9 +42,7 @@ import utils.cpl_stacked
 import utils.cpl_interior
 
 import SocRadConv
-import SocRadModel
-import GeneralAdiabat
-from atmosphere_column import atmos
+from AEOLUS.utils.atmosphere_column import atmos
 
 ### Constants ###
 

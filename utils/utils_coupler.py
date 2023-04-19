@@ -914,15 +914,15 @@ def UpdatePlots( output_dir, COUPLER_options, time_dict ):
 
         # Global properties for all timesteps
         if len(output_times) > 1:
-            utils.cpl_global.plot_global(output_dir)   
+            cpl_global.plot_global(output_dir)   
 
         # Specific timesteps for paper plots
-        utils.cpl_interior.plot_interior(output_dir, plot_times)     
-        utils.cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
-        utils.cpl_stacked.plot_stacked(output_dir, plot_times)
+        cpl_interior.plot_interior(output_dir, plot_times)     
+        cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
+        cpl_stacked.plot_stacked(output_dir, plot_times)
         
         # # One plot per timestep for video files
-        # utils.plot_atmosphere.plot_current_mixing_ratio(output_dir, plot_times[-1], use_vulcan) 
+        # plot_atmosphere.plot_current_mixing_ratio(output_dir, plot_times[-1], use_vulcan) 
 
         # Close all figures
         plt.close()

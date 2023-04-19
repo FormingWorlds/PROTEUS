@@ -3,7 +3,7 @@
 # Import utils-specific modules
 from utils.modules_utils import *
 
-from SocRadConv import surf_Planck_nu
+from AEOLUS.SocRadConv import surf_Planck_nu
 
 from natsort import natsorted # https://pypi.python.org/pypi/natsort
 

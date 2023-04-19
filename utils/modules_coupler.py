@@ -36,11 +36,7 @@ from scipy import stats
 import utils.utils_coupler as cu
 import utils.utils_spider as su
 
-import SocRadConv
-import SocRadModel
-import GeneralAdiabat
-import RayleighSpectrum
-from   atmosphere_column import atmos
+import AEOLUS.SocRadConv as SocRadConv
 
 # Coupler-specific paths
 coupler_dir = os.getenv('COUPLER_DIR')

@@ -196,7 +196,7 @@ def plot_stacked( output_dir, times ):
     # ax0b = ax0.twinx()
     # r_planet = np.max(xx_radius*1e3) # m
     # ### CAREFUL: HARDCODED TO M_EARTH !!!
-    # z_profile = coupler_utils.AtmosphericHeight(temperature_atmosphere, pressure_atmosphere, 5.972E24, r_planet)
+    # z_profile = coupler_AtmosphericHeight(temperature_atmosphere, pressure_atmosphere, 5.972E24, r_planet)
     # z_profile = z_profile*1e-3 # km
     # ax0b.plot( temperature_atmosphere, z_profile, alpha=0.0)
     # ax0b.set_xlim( right=xmax, left=xmin )
@@ -259,8 +259,8 @@ def main():
 if __name__ == "__main__":
 
     # Import utils- and plot-specific modules
-    from modules_utils import *
-    from modules_plot import *
+    from utils.modules_utils import *
+    from utils.modules_plot import *
     import utils_coupler as cu
     import utils_spider as su
 

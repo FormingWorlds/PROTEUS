@@ -201,8 +201,8 @@ def main():
 if __name__ == "__main__":
 
     # Import utils- and plot-specific modules
-    from modules_utils import *
-    from modules_plot import *
+    from utils.modules_utils import *
+    from utils.modules_plot import *
     import utils_coupler as cu
     import utils_spider as su
 

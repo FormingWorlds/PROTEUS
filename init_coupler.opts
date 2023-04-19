@@ -119,5 +119,5 @@ He_initial_atmos_pressure   = 0.0
 
 # Atmosphere chemistry switch: 
 # 0: none 1: VULCAN->SOCRATES & 2: V->SOC+SPI
-use_vulcan                  = 0
+use_vulcan                  = 2
 

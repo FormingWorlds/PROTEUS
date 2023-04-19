@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 
 import numpy as np
-import math, phys, os, glob, re
-import GeneralAdiabat as ga # Moist adiabat with multiple condensibles
+import math,  os, glob, re
 import matplotlib.pyplot as plt
-import matplotlib
-import SocRadModel
-from atmosphere_column import atmos
 import pandas as pd
 from scipy import interpolate
 # import seaborn as sns
 import copy
-import SocRadConv
 # from natsort import natsorted # https://pypi.python.org/pypi/natsort
 import pickle as pkl
 import matplotlib.transforms as mtransforms # https://matplotlib.org/examples/pylab_examples/fancybox_demo.html
 from matplotlib.patches import FancyBboxPatch
 from random import seed
 from random import randint
+
+import AEOLUS.SocRadConv as SocRadConv
+from AEOLUS.utils.atmosphere_column import atmos
+import AEOLUS.utils.phys as phys
+import AEOLUS.utils.GeneralAdiabat as ga # Moist adiabat with multiple condensibles
 
 from utils.modules_plot import *
 
@@ -440,8 +440,8 @@ def main():
 if __name__ == "__main__":
 
     # Import utils- and plot-specific modules
-    from modules_utils import *
-    from modules_plot import *
+    from utils.modules_utils import *
+    from utils.modules_plot import *
     import utils_coupler as cu
     import utils_spider as su
 
