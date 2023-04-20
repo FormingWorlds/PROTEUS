@@ -17,3 +17,4 @@
 [submodule "petsc-double"]
 	path = petsc-double
 	url = https://gitlab.com/petsc/petsc.git
+	branch = main
