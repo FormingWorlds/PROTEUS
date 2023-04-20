@@ -61,7 +61,7 @@
 
 3. Setup codes and modules in the following order (**ignore the instructions provided in their own repositories**)
 
-    1. Download PROTEUS + submodules (*AEOLUS, SPIDER, VULCAN*)
+    1. Download PROTEUS + submodules (*AEOLUS, SPIDER, VULCAN, PETSc, SciATH*)
         * `git clone --recursive git@github.com:FormingWorlds/PROTEUS.git`
 
     2. Enter into PROTEUS folder and ensure that submodules are up to date
@@ -90,7 +90,7 @@
         * `cd ../../`
         
     7. Setup PETSc
-        * `cd petsc-double`
+        * `cd petsc`
         * `./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"`
         * Make note of the value of `PETSC_ARCH` printed to stdout.
         * Run the exact `make all` command provided at the end of the configure step
@@ -103,7 +103,6 @@
 
     9. Setup SPIDER
         * `cd SPIDER`
-        * `git pull origin main`
         * `make clean`
         * `make -j`
         * `make test`, accepting all default values when prompted
