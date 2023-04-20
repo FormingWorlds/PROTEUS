@@ -10,3 +10,10 @@
 	path = SPIDER
 	url = git@github.com:djbower/spider.git
 	branch = main
+[submodule "sciath"]
+	path = sciath
+	url = https://github.com/sciath/sciath.git
+	branch = main
+[submodule "petsc-double"]
+	path = petsc-double
+	url = https://gitlab.com/petsc/petsc.git

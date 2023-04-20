@@ -28,6 +28,6 @@ out.dat
 atm_chemistry.pdf
 .vscode
 init_spider.opts
-petsc-double
-sciath
+petsc-double/*
+sciath/*
 
