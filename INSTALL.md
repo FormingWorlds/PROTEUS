@@ -88,25 +88,20 @@
         * On MacOS you will need to edit `make.globaloptions` to reflect a GNU-compatible `g++` executable, not the Apple one
         * `make`
         * `cd ../../`
-
-    7. Install SciATH
-        * `git clone https://github.com/sciath/sciath -b dev`
         
-    8. Setup PETSc
-        * `git clone https://gitlab.com/petsc/petsc -b main petsc-double`
+    7. Setup PETSc
         * `cd petsc-double`
-        * `git checkout 63b725033a15f75ded7183cf5f88ec748e60783b`
-        * `./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --with-cc=gcc --download-sundials2 --download-mpich --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"`
+        * `./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"`
         * Make note of the value of `PETSC_ARCH` printed to stdout.
         * Run the exact `make all` command provided at the end of the configure step
         * Run the exact `make check` command provided at the end of the `make all` step
         * `cd ../`
 
-    9. Setup environment variables
+    8. Setup environment variables
         * Edit the variable `PETSC_ARCH` in the file `PROTEUS.env` to reflect value provided by PETSc
         * `source PROTEUS.env`
 
-    10. Setup SPIDER
+    9. Setup SPIDER
         * `cd SPIDER`
         * `git pull origin main`
         * `make clean`
