@@ -175,7 +175,7 @@ def plot_global( output_dir ):
     # ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     # ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     # ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
-    ax1.set_xscale("symlog", linthreshx=10) # , linthresh=100
+    ax1.set_xscale("symlog", linthresh=10) # , linthresh=100
     ax1.set_xlim( *xlim )
     ax1.set_xticklabels([])
     ax1.yaxis.set_label_coords(xcoord_l,ycoord_l)
@@ -193,7 +193,7 @@ def plot_global( output_dir ):
     # ax2.plot( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
     # ax2.plot( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
 
-    ax2.set_xscale("symlog", linthreshx=10)
+    ax2.set_xscale("symlog", linthresh=10)
     ax2.set_xlim( *xlim )
     ax2.set_xlabel(xlabel, fontsize=label_fs)
     ax2.set_ylabel(r'Planet fraction', fontsize=label_fs)
@@ -300,7 +300,7 @@ def plot_global( output_dir ):
     # https://brohrer.github.io/matplotlib_ticks.html#tick_style
     # ax3.tick_params(axis="x", direction="in", length=3, width=1)
     # ax3.tick_params(axis="y", direction="in", length=10, width=1)
-    ax3.set_xscale("symlog", linthreshx=10)
+    ax3.set_xscale("symlog", linthresh=10)
     ax3.set_xticklabels([])
     ax3.yaxis.tick_right()
     ax3.yaxis.set_label_position("right")
@@ -324,7 +324,7 @@ def plot_global( output_dir ):
     ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax4.yaxis.tick_right()
-    ax4.set_xscale("symlog", linthreshx=10)
+    ax4.set_xscale("symlog", linthresh=10)
     ax4.set_xticklabels([])
     ax4.yaxis.set_label_position("right")
     ax4.yaxis.set_label_coords(xcoord_r,ycoord_r)
@@ -343,7 +343,7 @@ def plot_global( output_dir ):
     ax5.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax5.set_xlim( *xlim )
-    ax5.set_xscale("symlog", linthreshx=10)
+    ax5.set_xscale("symlog", linthresh=10)
     # ax5.set_ylim( 0, 1 )
     ax5.yaxis.tick_right()
     ax5.yaxis.set_label_coords(xcoord_r,ycoord_r)

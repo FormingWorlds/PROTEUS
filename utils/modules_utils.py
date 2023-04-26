@@ -6,7 +6,10 @@
 # Standard packages
 import argparse
 import logging
+
 import matplotlib
+matplotlib.use('Agg')
+
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
