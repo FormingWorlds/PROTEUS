@@ -14,7 +14,7 @@ time_target                 = 4.567e+9  # yr, target time for MO evolution
 # Effective flux relative to time (allows to simply scale flux relative to present day)
 Sfrac 						= 1.0
 
-plot_onthefly               = 0
+plot_onthefly               = 1
 
 # N2 partition coefficients, 0: oxidized | 1: reduced
 N2_partitioning             = 1

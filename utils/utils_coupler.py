@@ -3,6 +3,11 @@
 # Import utils-specific modules
 from utils.modules_utils import *
 
+import utils.cpl_atmosphere as cpl_atmosphere
+import utils.cpl_global as cpl_global
+import utils.cpl_stacked as cpl_stacked
+import utils.cpl_interior as cpl_interior
+
 # Henry's law coefficients
 # Add to dataframe + save to disk
 volatile_distribution_coefficients = {               # X_henry -> ppm/Pa
@@ -635,7 +640,7 @@ def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_o
     PrintSeparator()
 
     # Calculate temperature structure and heat flux w/ SOCRATES
-    atm_dry, atm = SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, COUPLER_options, standalone=False, cp_dry=False, trpp=True, rscatter=True) # W/m^2
+    atm_dry, atm = SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, COUPLER_options, standalone=False, cp_dry=False, trpp=True, rscatter=True,calc_cf=False) # W/m^2
     
     # Atmosphere net flux from topmost atmosphere node; do not allow heating
     COUPLER_options["F_atm"] = np.max( [ 0., atm.net_flux[0] ] )
@@ -657,15 +662,12 @@ def RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_o
 
 def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
 
-    # Check if input file present in current dir, if not copy standard from SPIDER repo
+    # Check if input file is present. If not, copy standard file
     SPIDER_options_file = dirs["output"]+"/init_spider.opts"
-
-    # Standard spider .opts file
     SPIDER_options_file_vanilla = dirs["utils"]+"/init_spider_vanilla.opts"
 
     if not os.path.isfile(SPIDER_options_file):
         shutil.copy(SPIDER_options_file_vanilla, dirs["output"]+"/init_spider.opts")
-        # SPIDER_options_file = SPIDER_options_file_vanilla
 
     # Define which volatiles to track in SPIDER
     species_call = ""
@@ -723,26 +725,23 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         net_loss = np.amax([abs(COUPLER_options["F_atm"]), COUPLER_options["F_eps"]])
         print("Prevent interior oscillations during last-stage freeze-out: F_atm =", COUPLER_options["F_atm"], "->", net_loss)
 
-    # net_loss = np.amin([net_loss, 1e4])
-    # print("------>>>> HERE", net_loss, 1e4)
 
     ### SPIDER base call sequence 
     call_sequence = [   
                         dirs["spider"]+"/spider", 
                         "-options_file",          SPIDER_options_file, 
                         "-outputDirectory",       dirs["output"],
-                        "-IC_INTERIOR",           str(COUPLER_options["IC_INTERIOR"]),
-                        "-IC_ATMOSPHERE",         str(COUPLER_options["IC_ATMOSPHERE"]),
+                        # "-IC_INTERIOR",           str(COUPLER_options["IC_INTERIOR"]),
+                        # "-IC_ATMOSPHERE",         str(COUPLER_options["IC_ATMOSPHERE"]),
                         "-SURFACE_BC",            str(COUPLER_options["SURFACE_BC"]), 
                         "-surface_bc_value",      str(net_loss), 
-                        "-nstepsmacro",           str(COUPLER_options["nstepsmacro"]), 
-                        "-dtmacro",               str(dtmacro), 
+                        # "-nstepsmacro",           str(COUPLER_options["nstepsmacro"]), 
+                        # "-dtmacro",               str(dtmacro), 
                         "-radius",                str(COUPLER_options["R_solid_planet"]), 
                         "-coresize",              str(COUPLER_options["planet_coresize"]),
                         "-volatile_names",        str(species_call)
                     ]
 
-    
     # Min of fractional and absolute Ts poststep change
     if time_dict["planet"] > 0:
         dTs_frac = float(COUPLER_options["tsurf_poststep_change_frac"]) * float(runtime_helpfile["T_surf"].iloc[-1])
@@ -757,20 +756,20 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     for vol in volatile_species:
         if COUPLER_options[vol+"_initial_total_abundance"] > 0. or COUPLER_options[vol+"_initial_atmos_pressure"] > 0.:
 
-            # # Very first timestep: feed volatile initial abundance [ppm]
-            # if loop_counter["init"] == 0:
+            # Very first timestep: feed volatile initial abundance [ppm]
+            if loop_counter["init"] == 0:
             
-            # if COUPLER_options["IC_ATMOSPHERE"] == 1:
-            call_sequence.extend(["-"+vol+"_initial_total_abundance", str(COUPLER_options[vol+"_initial_total_abundance"])])
+                if COUPLER_options["IC_ATMOSPHERE"] == 1:
+                    call_sequence.extend(["-"+vol+"_initial_total_abundance", str(COUPLER_options[vol+"_initial_total_abundance"])])
 
-            # # After very first timestep, starting w/ 2nd init loop
-            # if loop_counter["init"] >= 1:
-            # # if COUPLER_options["IC_ATMOSPHERE"] == 3:
+            # After very first timestep, starting w/ 2nd init loop
+            if loop_counter["init"] >= 1:
+                if COUPLER_options["IC_ATMOSPHERE"] == 3:
 
-            #     # # Load partial pressures from VULCAN
-            #     # call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(COUPLER_options[vol+"_initial_atmos_pressure"])])
+                    # # Load partial pressures from VULCAN
+                    call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(COUPLER_options[vol+"_initial_atmos_pressure"])])
 
-            # ## KLUDGE: Read in the same abundances every time -> no feedback from ATMOS
+            ## KLUDGE: Read in the same abundances every time -> no feedback from ATMOS
             # if COUPLER_options["use_vulcan"] == 0 or COUPLER_options["use_vulcan"] == 1:
             #     call_sequence.extend(["-"+vol+"_initial_total_abundance", str(COUPLER_options[vol+"_initial_total_abundance"])])
 
@@ -852,9 +851,10 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # Runtime info
     PrintSeparator()
-    print("SPIDER run, loop ", loop_counter, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'), "| flags:")
+    print("Running SPIDER... (loop counter = ", loop_counter, ")")
+    print("   Flags:")
     for flag in call_sequence:
-        print(flag, end =" ")
+        print("   ",flag)
     print()
     PrintSeparator()
 
@@ -873,26 +873,12 @@ def natural_sort(l):
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
     return sorted(l, key = alphanum_key)
 
-def CleanOutputDir( output_dir ):
+def CleanOutputDir(dir):
 
-    types = ("*.json", "*.log", "*.csv", "*.pkl", "current??.????", "profile.*", "*.pdf", "*.png", "radiation_code.lock") 
-    files_to_delete = []
-    for files in types:
-        files_to_delete.extend(glob.glob(output_dir+"/"+files))
+    if os.path.exists(dir):
+        shutil.rmtree(dir)
+    os.makedirs(dir)
 
-    PrintSeparator()
-    print("Remove old output files:")
-
-    for file in natural_sort(files_to_delete): 
-        os.remove(file)
-        print(os.path.basename(file), end=" ")
-    print("\n==> Done.")
-
-    # print("SORT W/ NATSORT:")
-    # for file in natsorted(files_to_delete):
-    #     os.remove(file)
-    #     print(os.path.basename(file), end =" ")
-    # print("\n==> Done.")
 
 # Plot conditions throughout run for on-the-fly analysis
 def UpdatePlots( output_dir, COUPLER_options, time_dict ):

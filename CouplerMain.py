@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 
 """
 PROTEUS Main file
@@ -7,10 +6,13 @@ PROTEUS Main file
 from utils.modules_coupler import *
 
 # Volatile list tracked in radiative-convective model
-vol_list = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
+# vol_list = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
+vol_lost = ["H2O"]
 
 #====================================================================
 def main():
+
+    print("===> Start PROTEUS <===")
 
     # Parse console arguments
     args = parse_console_arguments()
@@ -57,6 +59,7 @@ def main():
     while time_dict["planet"] < time_dict["target"]:
 
         ############### INTERIOR SUB-LOOP
+        print("Start interior")
 
         # Run SPIDER
         COUPLER_options = cu.RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile )
@@ -64,17 +67,19 @@ def main():
         # Update help quantities, input_flag: "Interior"
         runtime_helpfile, time_dict, COUPLER_options = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
 
+        print("End interior")
         ############### / INTERIOR SUB-LOOP
 
         ############### ATMOSPHERE SUB-LOOP
 
+        print("Start atmosphere")
         while (loop_counter["atm"] == 0) or (loop_counter["atm"] < loop_counter["atm_loops"] and abs(COUPLER_options["F_net"]) > COUPLER_options["F_eps"]):
 
             # Initialize atmosphere structure
             atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
             # Run VULCAN (settings-dependent): update atmosphere mixing ratios
-            atm = cu.RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options )
+            # atm = cu.RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
             # Run SOCRATES: update TOA heating and MO heat flux
             atm, COUPLER_options = cu.RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options )
@@ -85,6 +90,7 @@ def main():
             loop_counter["atm"] += 1
 
         ############### / ATMOSPHERE SUB-LOOP
+        print("End atmosphere")
         
         # Print info, save atm to file, update plots
         cu.PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs)

@@ -6,7 +6,11 @@
 # by an external script
 
 # time stepping
+
+# number of macro steps
 -nstepsmacro 10
+
+# macro step size in years
 -dtmacro 1000
 
 # tolerances
@@ -14,10 +18,12 @@
 -ts_sundials_rtol 1.0e-10
 
 # mesh
+# number of basic nodes
+#-n 500
 # reduced mesh size for simple testing
--n 50
+-n 100
 
-# -MASS_COORDINATES
+-MASS_COORDINATES
 
 -activate_poststep
 -activate_rollback
@@ -42,6 +48,7 @@
 -CONVECTION 1 # convection
 -MIXING 1 # mixing (latent heat transport)
 -SEPARATION 1 # gravitational separation of solid and melt phase
+-HTIDAL 0 # tidal heating (not currently implemented)
 
 # output directory
 -outputDirectory output
@@ -74,7 +81,7 @@
 -IC_INTERIOR 1
 #-ic_interior_filename output/dSdr_b_aug_0.m
 -ic_adiabat_entropy 2600.0
--ic_dsdr -4.6978890285209187e-07 # initial dS/dr everywhere
+-ic_dsdr -1.0E-5
 # set surface and core entropy (-1 is a flag to ignore, positive values are used)
 -ic_surface_entropy -1
 -ic_core_entropy -1
@@ -137,7 +144,8 @@
 # [3] self-consistent volatile evolution (Bower et al., 2019, Bower et al., 2021)
 # [4] heat flux (prescribe value using surface_bc_value)
 # [5] entropy
--SURFACE_BC 4
+-SURFACE_BC 3
+-surface_bc_value 0.0
 
 # if SURFACE_BC=1 or 2, the following constant emissivity is used
 -emissivity0 1.0
@@ -156,7 +164,15 @@
 -P0 101325.0 # Pa (= 1 atm)
 
 # Define the volatiles
--volatile_names H2O
+-volatile_names H2O,H2,CO2,CO
+
+-CO2_SOLUBILITY 3
+-CO2_initial_atmos_pressure 1.8412864823803783E5
+-CO2_kdist 0.0
+-CO2_kabs 1E-4
+-CO2_henry 0.0
+-CO2_henry_pow 1.0
+-CO2_molar_mass 0.04401 # kg/mol
 
 -H2O_SOLUBILITY 1
 -H2O_initial_atmos_pressure 3.3703436080366105E5
@@ -166,6 +182,22 @@
 -H2O_henry_pow 2.0
 -H2O_molar_mass 0.01801528 # kg/mol
 
+-CO_SOLUBILITY 1
+-CO_initial_atmos_pressure 15.555831058257253E5
+-CO_kdist 0.0
+-CO_kabs 1.0E-5
+-CO_henry 0.0
+-CO_henry_pow 1.0
+-CO_molar_mass 0.02801 # kg/mol
+
+-H2_SOLUBILITY 1
+-H2_initial_atmos_pressure 4.27087847230405E5
+-H2_kdist 0.0
+-H2_kabs 5.0E-5 # absorption (m^2/kg)
+-H2_henry 0.0
+-H2_henry_pow 1.0
+-H2_molar_mass 0.00201588 # kg/mol
+
 # IW buffer
 -OXYGEN_FUGACITY 7
 
@@ -173,5 +205,5 @@
 # Sossi et al., 2020
 -OXYGEN_FUGACITY_offset 0.5
 
-# -reaction_water_JANAF
-# -reaction_carbondioxide_JANAF
+-reaction_water_JANAF
+-reaction_carbondioxide_JANAF

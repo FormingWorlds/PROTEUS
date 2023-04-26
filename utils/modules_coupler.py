@@ -23,6 +23,7 @@ import subprocess
 import fileinput # https://kaijento.github.io/2017/05/28/python-replacing-lines-in-file/
 import math
 import importlib.util
+import yaml
 import pickle as pkl
 
 from datetime import datetime
@@ -45,8 +46,6 @@ vulcan_dir  = coupler_dir+"/VULCAN/"
 radconv_dir = coupler_dir+"/AEOLUS/"
 spider_dir  = coupler_dir+"/SPIDER/"
 utils_dir   = coupler_dir+"/utils/"
-
-print("coupler_dir = %s"%coupler_dir)
 
 dirs = {"output": output_dir, 
         "coupler": coupler_dir, 
