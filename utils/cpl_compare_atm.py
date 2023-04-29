@@ -36,8 +36,6 @@ def plot_atmosphere( output_dir, sub_dirs ):
 
     gs = fig.add_gridspec(nrows=2, ncols=4, wspace=0.2, hspace=0.2, left=0.055, right=0.98, top=0.98, bottom=0.08)
 
-    sns.set_style("ticks")
-    sns.despine()
 
     ax0 = fig.add_subplot(gs[0, 0])
     ax1 = fig.add_subplot(gs[0, 1])
@@ -47,7 +45,6 @@ def plot_atmosphere( output_dir, sub_dirs ):
     ax5 = fig.add_subplot(gs[1, 1])
     ax6 = fig.add_subplot(gs[1, 2])
 
-    sns.set_style("ticks", { 'xtick.bottom': False, 'xtick.top': False, 'ytick.left': False, 'ytick.right': False,})
     ax7 = fig.add_subplot(gs[1, 3])
 
 

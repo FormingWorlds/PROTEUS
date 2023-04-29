@@ -7,8 +7,8 @@
 import argparse
 import logging
 
-import matplotlib
-matplotlib.use('Agg')
+import matplotlib as mpl
+mpl.use('Agg')
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
@@ -44,10 +44,12 @@ import utils.cpl_global
 import utils.cpl_stacked
 import utils.cpl_interior
 
-import SocRadConv
+from AEOLUS import SocRadConv as SocRadConv
 from AEOLUS.utils.atmosphere_column import atmos
 
 ### Constants ###
+
+debug = False
 
 # Astronomical constants
 L_sun           = 3.828e+26             # W, IAU definition

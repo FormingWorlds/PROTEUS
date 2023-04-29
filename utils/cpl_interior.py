@@ -2,6 +2,9 @@
 
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
+from utils.utils_spider import MyJSON
+from utils.modules_plot import MyFuncFormatter
+
 
 #====================================================================
 def plot_interior( output_dir, times ):
@@ -13,7 +16,7 @@ def plot_interior( output_dir, times ):
 
     width = 12.00 #* 3.0/2.0
     height = 6.0
-    fig_o = su.FigureData( 1, 4, width, height, output_dir+'/'+'plot_interior', units='kyr' ) #, times
+    fig_o = FigureData( 1, 4, width, height, output_dir+'/'+'plot_interior', units='kyr' ) #, times
     fig_o.fig.subplots_adjust(wspace=0.15,hspace=0.2)
     fig_o.time = times
 
@@ -25,7 +28,7 @@ def plot_interior( output_dir, times ):
     time = fig_o.time[0] # first timestep since liquidus and solidus
                          # are time-independent
 
-    myjson_o = su.MyJSON( output_dir+'/{}.json'.format(time) )
+    myjson_o = MyJSON( output_dir+'/{}.json'.format(time) )
 
     # print(myjson_o.data_d)
     # TIMEYRS = myjson_o.data_d['nstep']
@@ -52,14 +55,14 @@ def plot_interior( output_dir, times ):
 
     handle_l = [] # handles for legend
 
-    fig_o.set_colors(cmap=vik_r) # "magma_r"
+    fig_o.set_cmap(sci_colormaps['vik_r']) # "magma_r"
 
     for nn, time in enumerate( fig_o.time ):
 
         # read json
-        myjson_o = su.MyJSON( output_dir+'/{}.json'.format(time) )
+        myjson_o = MyJSON( output_dir+'/{}.json'.format(time) )
 
-        color = fig_o.get_color( nn )
+        color = fig_o.get_color( 1.0*nn/len(fig_o.time) )
 
         # use melt fraction to determine mixed region
         MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' ) # basic_internal
@@ -68,8 +71,6 @@ def plot_interior( output_dir, times ):
         # label = fig_o.get_legend_label( time )
         # label = "{:.1e}".format(Decimal(time))+" yr"
         label = latex_float(time)+" yr"
-
-        print(time, )
 
         # temperature
         yy = myjson_o.get_dict_values(['data','temp_b'])
@@ -82,7 +83,7 @@ def plot_interior( output_dir, times ):
 
         # viscosity
         visc_const = 1 # this is used for the arcsinh scaling
-        visc_fmt = su.MyFuncFormatter( visc_const )
+        visc_fmt = MyFuncFormatter( visc_const )
         yy = myjson_o.get_dict_values(['data','visc_b'], visc_fmt)
         ax2.plot( yy, xx_pres, '-', color=color, lw=1.5 )
 
@@ -97,8 +98,6 @@ def plot_interior( output_dir, times ):
 
         # legend
         handle_l.append( handle )
-
-        print(time)
 
     yticks = [0,20,40,60,80,100,120,int(xx_pres_s[-1])]
     ymax = int(xx_pres_s[-1])

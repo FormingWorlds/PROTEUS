@@ -2,6 +2,8 @@
 
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
+from utils.utils_spider import MyJSON
+
 
 #====================================================================
 def plot_stacked( output_dir, times ):
@@ -11,7 +13,7 @@ def plot_stacked( output_dir, times ):
 
     width = 5.00 #* 3.0/2.0
     height = 10.0
-    fig_o = su.FigureData( 2, 1, width, height, output_dir+'/'+'plot_stacked', units='kyr' ) #, times
+    fig_o = FigureData( 2, 1, width, height, output_dir+'/'+'plot_stacked', units='kyr' ) #, times
     fig_o.fig.subplots_adjust(wspace=0.0,hspace=0.0)
     fig_o.time = times
 
@@ -26,7 +28,7 @@ def plot_stacked( output_dir, times ):
     time = fig_o.time[0] # first timestep since liquidus and solidus
                          # are time-independent
 
-    myjson_o = su.MyJSON( output_dir+'/{}.json'.format(time) )
+    myjson_o = MyJSON( output_dir+'/{}.json'.format(time) )
 
     pressure_interior = myjson_o.get_dict_values(['data','pressure_b'])
     # pressure_interior = myjson_o.get_dict_values_internal(['data','pressure_b'])
@@ -45,7 +47,7 @@ def plot_stacked( output_dir, times ):
 
     handle_l = [] # handles for legend
 
-    fig_o.set_colors(cmap=vik_r) # "magma_r"
+    fig_o.set_cmap(sci_colormaps['vik_r']) # "magma_r"
 
     ymax_atm_pressure = 0
     ymin_atm_pressure = 1000
@@ -69,9 +71,9 @@ def plot_stacked( output_dir, times ):
             atm_file_stream.close()
 
             # read json
-            myjson_o = su.MyJSON( output_dir+'/{}.json'.format(time) )
+            myjson_o = MyJSON( output_dir+'/{}.json'.format(time) )
 
-            color = fig_o.get_color( nn )
+            color = fig_o.get_color( 1.0*nn/len(fig_o.time) )
             # use melt fraction to determine mixed region
             MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' )
             # MIX = myjson_o.get_mixed_phase_boolean_array( 'basic_internal' )
@@ -105,8 +107,6 @@ def plot_stacked( output_dir, times ):
                 ymin_atm_z = np.min([ymin_atm_z, np.min(z_profile)])
 
             # ymax_atm = pressure_atmosphere[-1]*1.1
-
-            print(time)
 
     xmin         = 100
     xmax         = 5000
@@ -185,12 +185,6 @@ def plot_stacked( output_dir, times ):
     # ax1b.tick_params(direction='in')
     ax1.set_ylabel( 'Mantle depth, $d_\mathrm{mantle}$ (km)' )
     ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
-
-    try:
-        sns.set_style("ticks")
-        sns.despine()
-    except:
-        print("No seaborn.")
 
     # # Pressure-height conversion for y-axis
     # ax0b = ax0.twinx()

@@ -2,6 +2,7 @@
 
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
+from utils.modules_plot import MyFuncFormatter
 
 import matplotlib.gridspec as gridspec
 
@@ -105,7 +106,7 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
         # Find solidus and liquidus lines
         # Use first timestep since liquidus and solidus are time-independent
         time        = data_times[0]                    
-        myjson_o    = su.MyJSON( data_dir+'/{}.json'.format(time) )
+        myjson_o    = MyJSON( data_dir+'/{}.json'.format(time) )
         xx_pres     = myjson_o.get_dict_values(['data','pressure_b'])*1.0E-9
         xx_pres_s   = myjson_o.get_dict_values(['data','pressure_s'])*1.0E-9
         xx_radius   = myjson_o.get_dict_values(['data','radius_b'])*1.0E-3
@@ -173,7 +174,7 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
 
             ### INTERIOR
 
-            myjson_o = su.MyJSON( data_dir+"/"+'{}.json'.format(time) )
+            myjson_o = MyJSON( data_dir+"/"+'{}.json'.format(time) )
 
             # Melt fraction
             mantle_prs = myjson_o.get_dict_values(['data','pressure_b'])*1.0E-9
@@ -186,7 +187,7 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
 
             # Viscosity
             visc_const  = 1 # this is used for the arcsinh scaling
-            visc_fmt    = su.MyFuncFormatter( visc_const )
+            visc_fmt    = MyFuncFormatter( visc_const )
             mantle_visc = myjson_o.get_dict_values(['data','visc_b'], visc_fmt)
             ax3.plot( mantle_visc, mantle_prs, ls=ls, lw=lw, color=color )
             
@@ -315,12 +316,6 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
     # ax2.set_xlim( left=0, right=20000 )
     # ax2.set_ylim( bottom=0, top=ymax_sp_flux )
     # ax2.yaxis.set_label_coords(title_xcoord,title_ycoord)
-
-    try:
-        sns.set_style("ticks")
-        sns.despine()
-    except:
-        print("No seaborn.")
 
     # Legend(s)
     legend_ax0_1 = ax0.legend(handles=legend_ax0_1_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title="Volatiles")

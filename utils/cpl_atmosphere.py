@@ -2,6 +2,8 @@
 
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
+from utils.utils_spider import MyJSON
+
 
 #====================================================================
 def plot_atmosphere( output_dir, times ):
@@ -13,7 +15,7 @@ def plot_atmosphere( output_dir, times ):
 
     width = 6.00 #* 3.0/2.0
     height = 12.0
-    fig_o = su.FigureData( 3, 1, width, height, output_dir+'/plot_atmosphere', units='kyr' ) #, times
+    fig_o = FigureData( 3, 1, width, height, output_dir+'/plot_atmosphere', units='kyr' ) #, times
     # fig1 = plt.figure()
     fig_o.fig.subplots_adjust(wspace=0.07,hspace=0.2)
     fig_o.time = times
@@ -29,7 +31,7 @@ def plot_atmosphere( output_dir, times ):
     time = fig_o.time[0] # first timestep since liquidus and solidus
                          # are time-independent
 
-    myjson_o = su.MyJSON( output_dir+'/{}.json'.format(time) )
+    myjson_o = MyJSON( output_dir+'/{}.json'.format(time) )
 
     pressure_interior = myjson_o.get_dict_values(['data','pressure_b'])
     # pressure_interior = myjson_o.get_dict_values_internal(['data','pressure_b'])
@@ -48,7 +50,7 @@ def plot_atmosphere( output_dir, times ):
 
     handle_l = [] # handles for legend
 
-    fig_o.set_colors(cmap="viridis_r") # "magma_r"
+    fig_o.set_cmap(sci_colormaps["vik_r"])
 
     ymax_atm_pressure = 0
     ymin_atm_pressure = 1000
@@ -76,9 +78,9 @@ def plot_atmosphere( output_dir, times ):
             atm_file_stream.close()
 
             # read json
-            myjson_o = su.MyJSON( output_dir+"/"+'{}.json'.format(time) )
+            myjson_o = MyJSON( output_dir+"/"+'{}.json'.format(time) )
 
-            color = fig_o.get_color( nn )
+            color = fig_o.get_color( 1.0*nn/len(fig_o.time) )
             # use melt fraction to determine mixed region
             MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' )
 
@@ -192,17 +194,7 @@ def plot_current_mixing_ratio( output_dir, times, vulcan_setting ):
 
         for vol in volatile_species:
             if runtime_helpfile.iloc[-1][vol+"_mr"] > 0.:
-                ax1.axvline(x=runtime_helpfile.iloc[-1][vol+"_mr"], linewidth=lw+0.5, color=vol_colors[vol+"_2"], ls=":")
-
-    # ax1.plot(atm_chemistry["H2"], atm_chemistry["Pressure"], color=vol_colors["H2_2"], ls="-", lw=lw, label=r"H$_2$")
-    # ax1.plot(atm_chemistry["H2O"], atm_chemistry["Pressure"], color=vol_colors["H2O_2"], ls="-", lw=lw, label=r"H$_2$O")
-    # ax1.plot(atm_chemistry["CO2"], atm_chemistry["Pressure"], color=vol_colors["CO2_2"], ls="-", lw=lw, label=r"CO$_2$")
-    # ax1.plot(atm_chemistry["CO"], atm_chemistry["Pressure"], color=vol_colors["CO_2"], ls="-", lw=lw, label=r"CO")
-    # ax1.plot(atm_chemistry["CH4"], atm_chemistry["Pressure"], color=vol_colors["CH4_2"], ls="--", lw=lw, label=r"CH$_4$")
-    # ax1.plot(atm_chemistry["N2"], atm_chemistry["Pressure"], color=vol_colors["N2_2"], ls="-", lw=lw, label=r"N$_2$")
-    # ax1.plot(atm_chemistry["O2"], atm_chemistry["Pressure"], color=vol_colors["O2_2"], ls="--", lw=lw, label=r"O$_2$")
-    # ax1.plot(atm_chemistry["S"], atm_chemistry["Pressure"], color=vol_colors["S_2"], ls="--", lw=lw, label=r"S")
-    # ax1.plot(atm_chemistry["He"], atm_chemistry["Pressure"], color=vol_colors["He_2"], ls="--", lw=lw, label=r"He")
+                ax1.axvline(x=runtime_helpfile.iloc[-1][vol+"_mr"], linewidth=lw+0.5, color=dict_colors[vol+"_2"], ls=":")
 
     atm_file = open(filename,'rb')
     new_dict = pickle.load(infile)

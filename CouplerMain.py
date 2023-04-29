@@ -5,12 +5,10 @@ PROTEUS Main file
 
 from utils.modules_coupler import *
 
-# Volatile list tracked in radiative-convective model
-# vol_list = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
-vol_lost = ["H2O"]
 
 #====================================================================
 def main():
+
 
     print("===> Start PROTEUS <===")
 
@@ -22,9 +20,6 @@ def main():
 
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
     loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 10 }
-
-    # Parse console arguments
-    COUPLER_options = assign_parse_arguments(args, COUPLER_options)
 
     # Start conditions and help files depending on restart option
     if COUPLER_options["IC_INTERIOR"] == 1: 
@@ -55,6 +50,7 @@ def main():
     print(":::::::::::: START COUPLER RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
+
     # Interior-Atmosphere loop
     while time_dict["planet"] < time_dict["target"]:
 
@@ -78,11 +74,11 @@ def main():
             # Initialize atmosphere structure
             atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
-            # Run VULCAN (settings-dependent): update atmosphere mixing ratios
-            # atm = cu.RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options )
-
             # Run SOCRATES: update TOA heating and MO heat flux
-            atm, COUPLER_options = cu.RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options )
+            atm, COUPLER_options = cu.RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options )
+
+            # Run VULCAN (settings-dependent): update atmosphere mixing ratios
+            atm = cu.RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
             # Update help quantities, input_flag: "Atmosphere"
             runtime_helpfile, time_dict, COUPLER_options = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)

@@ -2,6 +2,8 @@
 
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
+from utils.utils_spider import MyJSON
+
 
 def find_nearest(array, value):
     array   = np.asarray(array)
@@ -17,7 +19,7 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
 
     width   = 6.00 #* 3.0/2.0
     height  = 12.0
-    fig_o   = su.FigureData( 2, 1, width, height, output_dir+'/compare_stacked', units='kyr' )
+    fig_o   = FigureData( 2, 1, width, height, output_dir+'/compare_stacked', units='kyr' )
     fig_o.fig.subplots_adjust(wspace=0.15, hspace=0.0)
 
     # sns.set_style("ticks")
@@ -70,7 +72,7 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
         # Find solidus and liquidus lines
         # Use first timestep since liquidus and solidus are time-independent
         time        = data_times[0]                    
-        myjson_o    = su.MyJSON( data_dir+'/{}.json'.format(time) )
+        myjson_o    = MyJSON( data_dir+'/{}.json'.format(time) )
         xx_pres     = myjson_o.get_dict_values(['data','pressure_b'])*1.0E-9
         xx_pres_s   = myjson_o.get_dict_values(['data','pressure_s'])*1.0E-9
         xx_radius   = myjson_o.get_dict_values(['data','radius_b'])*1.0E-3
@@ -113,10 +115,9 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
             atm_file_stream.close()
 
             # # read json
-            # myjson_o = su.MyJSON( data_dir+"/"+'{}.json'.format(time) )
 
             # color = fig_o.get_color( nn )
-            color   = vol_colors[subdir][color_idx]
+            color   = dict_colors[subdir][color_idx]
 
             # # use melt fraction to determine mixed region
             # MIX     = myjson_o.get_mixed_phase_boolean_array( 'basic' )
@@ -149,12 +150,12 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
                     time_label = "10"
                 else: 
                     time_label = latex_float(output_time)#+" yr"
-                l2, = ax0.plot( 0, 0, lw=lw, color=qgray_dark, label=time_label, ls=ls)
+                l2, = ax0.plot( 0, 0, lw=lw, color=dict_colors["qgray_dark"], label=time_label, ls=ls)
                 legend_ax0_2_handles.append(l2)
 
             ## INTERIOR
 
-            myjson_o = su.MyJSON( data_dir+"/"+'{}.json'.format(time) )
+            myjson_o = MyJSON( data_dir+"/"+'{}.json'.format(time) )
 
             # T-P mantle
             mantle_prs  = myjson_o.get_dict_values(['data','pressure_b'])*1.0E-9 # GPa
@@ -259,12 +260,6 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
     ax0.arrow(3000, 52, 0.0, 80, head_width=50, head_length=11, fc=qgray_light, ec=qgray_light, lw=1.0, alpha=0.7) # , transform=ax0.transAxes
     ax0.text(3050, 40, 'linear\nscale', color=qgray_light, rotation=0, ha="left", va="center", fontsize=fs_label-1, alpha=0.99, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round')) # , transform=ax0.transAxes
     ax0.text(3050, 80, 'log\nscale', color=qgray_light, rotation=0, ha="left", va="center", fontsize=fs_label-1, alpha=0.99, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round')) # , transform=ax0.transAxes
-
-    try:
-        sns.set_style("ticks")
-        sns.despine()
-    except:
-        print("No seaborn.")
 
 
     ax0.text(0.02, 0.985, 'A', color="k", rotation=0, ha="left", va="top", fontsize=fs_label+5, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.1, pad=0.2, boxstyle='round'))
