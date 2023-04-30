@@ -46,10 +46,11 @@ import utils.cpl_interior
 
 from AEOLUS import SocRadConv as SocRadConv
 from AEOLUS.utils.atmosphere_column import atmos
+from AEOLUS.utils import phys as phys
 
 ### Constants ###
 
-debug = False
+debug = True
 
 # Astronomical constants
 L_sun           = 3.828e+26             # W, IAU definition
@@ -102,6 +103,8 @@ molar_mass      = {
           "NH3" : 0.017031,             # kg mol−1 
         }
 
-volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
-element_list     = [ "H", "O", "C", "N", "S", "He" ] 
+# volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
+# element_list     = [ "H", "O", "C", "N", "S", "He" ] 
 
+volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2"]
+element_list     = [ "H", "O", "C", "N" ] 

@@ -1,16 +1,7 @@
-# Example input file from a case in Bower et al. (2021)
-# 3 Earth oceans of H
-# C/H = 0.1 wt %
-# Note that initial volatile pressures are known to adhere to
-# the equilibrium chemistry constraints since they were pre-computed
-# by an external script
+# Default spider options file for use with PROTEUS
 
 # time stepping
-
-# number of macro steps
 -nstepsmacro 10
-
-# macro step size in years
 -dtmacro 1000
 
 # tolerances
@@ -18,12 +9,9 @@
 -ts_sundials_rtol 1.0e-10
 
 # mesh
-# number of basic nodes
-#-n 500
-# reduced mesh size for simple testing
--n 100
+-n 60
 
--MASS_COORDINATES
+# -MASS_COORDINATES
 
 -activate_poststep
 -activate_rollback
@@ -48,7 +36,6 @@
 -CONVECTION 1 # convection
 -MIXING 1 # mixing (latent heat transport)
 -SEPARATION 1 # gravitational separation of solid and melt phase
--HTIDAL 0 # tidal heating (not currently implemented)
 
 # output directory
 -outputDirectory output
@@ -81,7 +68,7 @@
 -IC_INTERIOR 1
 #-ic_interior_filename output/dSdr_b_aug_0.m
 -ic_adiabat_entropy 2600.0
--ic_dsdr -1.0E-5
+-ic_dsdr -4.6978890285209187e-07 # initial dS/dr everywhere
 # set surface and core entropy (-1 is a flag to ignore, positive values are used)
 -ic_surface_entropy -1
 -ic_core_entropy -1
@@ -100,14 +87,10 @@
 
 # physical parameters
 
-# radius of the planet
--radius 6371000.0 # Earth radius
-
 # static pressure profile derived from Adams-Williamson equation of state
 # these parameters are from fitting PREM in the lower mantle (for Earth)
 -adams_williamson_rhos 4078.95095544 # surface density
 -adams_williamson_beta 1.1115348931000002e-07 # beta parameter
--gravity -10.0 # gravity
 
 # eddy diffusivity
 # if negative, this value is adopted (units m^2/s)
@@ -131,10 +114,8 @@
 # [2] heat flux (prescribe value using core_bc_value)
 # [3] entropy
 -CORE_BC 1
--core_bc_value 0.0
 
 # core parameters for CORE_BC=1
--coresize 0.55 # fractional radius of core-mantle boundary
 -rho_core 10738.332568062382 # core density
 -cp_core 880.0 # core heat capacity
 
@@ -144,13 +125,8 @@
 # [3] self-consistent volatile evolution (Bower et al., 2019, Bower et al., 2021)
 # [4] heat flux (prescribe value using surface_bc_value)
 # [5] entropy
--SURFACE_BC 3
--surface_bc_value 0.0
+-SURFACE_BC 4
 
-# if SURFACE_BC=1 or 2, the following constant emissivity is used
--emissivity0 1.0
-# equilibrium temperature of the planet
--teqm 273.0
 # parameterise the upper thermal boundary layer, where
 # dT = param_utbl_const * [Surface temperature]**3.0
 # this is useful for high melt fraction dynamics where the ultra-thin thermal boundary layer
@@ -164,39 +140,15 @@
 -P0 101325.0 # Pa (= 1 atm)
 
 # Define the volatiles
--volatile_names H2O,H2,CO2,CO
+# -volatile_names H2O
 
--CO2_SOLUBILITY 3
--CO2_initial_atmos_pressure 1.8412864823803783E5
--CO2_kdist 0.0
--CO2_kabs 1E-4
--CO2_henry 0.0
--CO2_henry_pow 1.0
--CO2_molar_mass 0.04401 # kg/mol
-
--H2O_SOLUBILITY 1
--H2O_initial_atmos_pressure 3.3703436080366105E5
--H2O_kdist 0.0
--H2O_kabs 0.01
--H2O_henry 1.6886562705299146
--H2O_henry_pow 2.0
--H2O_molar_mass 0.01801528 # kg/mol
-
--CO_SOLUBILITY 1
--CO_initial_atmos_pressure 15.555831058257253E5
--CO_kdist 0.0
--CO_kabs 1.0E-5
--CO_henry 0.0
--CO_henry_pow 1.0
--CO_molar_mass 0.02801 # kg/mol
-
--H2_SOLUBILITY 1
--H2_initial_atmos_pressure 4.27087847230405E5
--H2_kdist 0.0
--H2_kabs 5.0E-5 # absorption (m^2/kg)
--H2_henry 0.0
--H2_henry_pow 1.0
--H2_molar_mass 0.00201588 # kg/mol
+# -H2O_SOLUBILITY 1
+# -H2O_initial_atmos_pressure 3.3703436080366105E5
+# -H2O_kdist 0.0
+# -H2O_kabs 0.01
+# -H2O_henry 1.6886562705299146
+# -H2O_henry_pow 2.0
+# -H2O_molar_mass 0.01801528 # kg/mol
 
 # IW buffer
 -OXYGEN_FUGACITY 7
@@ -205,5 +157,41 @@
 # Sossi et al., 2020
 -OXYGEN_FUGACITY_offset 0.5
 
--reaction_water_JANAF
--reaction_carbondioxide_JANAF
+# -reaction_water_JANAF
+# -reaction_carbondioxide_JANAF
+
+
+# internal heat sources
+
+# line below controls if radiogenic heating is included
+# must uncomment, and have at least one radionuclide
+# options: al26,k40,fe60,th232,u235,u238
+-radionuclide_names k40,th232,u235,u238
+
+# K40
+-k40_t0 4.55E9 # years
+-k40_abundance 1.1668E-4 # (40K/K) Ruedas (2017)
+-k40_concentration 310 # ppm (Turcotte & Schubert, 2014, p. 170)
+-k40_heat_production 2.8761E-5 # W/kg (Ruedas, 2017)
+-k40_half_life 1248E6 # years (Ruedas, 2017)
+
+# Th232
+-th232_t0 4.55E9 # years
+-th232_abundance 1.0 # (232Th/Th) Ruedas (2017)
+-th232_concentration 0.124 # ppm (Turcotte & Schubert, 2014, p. 170)
+-th232_heat_production 2.6368E-5 # W/kg (Ruedas, 2017)
+-th232_half_life 14000E6 # years (Ruedas, 2017)
+
+# U235
+-u235_t0 4.55E9 # years
+-u235_abundance 0.0072045 # (235U/U) Ruedas (2017)
+-u235_concentration 0.031 # ppm (Turcotte & Schubert, 2014, p. 170)
+-u235_heat_production 5.68402E-4 # W/kg (Ruedas, 2017)
+-u235_half_life 704E6 # years (Ruedas, 2017)
+
+# U238
+-u238_t0 4.55E9 # years
+-u238_abundance 0.9927955 # (238U/U) Ruedas (2017)
+-u238_concentration 0.031
+-u238_heat_production 9.4946E-5 # W/kg (Ruedas, 2017)
+-u238_half_life 4468E6 # years (Ruedas, 2017)

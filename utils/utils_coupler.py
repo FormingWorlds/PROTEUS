@@ -104,7 +104,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         time_dict["planet"] = 0
         #, 'H2O_atm_bar', 'CO2_atm_bar', 'H2_atm_bar', 'CH4_atm_bar', 'CO_atm_bar', 'N2_atm_bar', 'O2_atm_bar', 'S_atm_bar', 'He_atm_bar'run
 
-        # Save SPIDER options file
+        # Save coupler options to file
         COUPLER_options_save = pd.DataFrame(COUPLER_options, index=[0])
         COUPLER_options_save.to_csv( dirs["output"]+"/"+COUPLER_options_name, index=False, sep=" ")
 
@@ -149,7 +149,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["Phi_global"]      = float(data_a[5])  # global melt fraction
         runtime_helpfile_new["F_int"]           = float(data_a[6])  # Heat flux from interior
         runtime_helpfile_new["P_surf"]          = float(data_a[7])  # total surface pressure
-        runtime_helpfile_new["RF_depth"]        = float(data_a[8])/COUPLER_options["R_solid_planet"]  # depth of rheological front
+        runtime_helpfile_new["RF_depth"]        = float(data_a[8])/COUPLER_options["radius"]  # depth of rheological front
 
         # Manually calculate heat flux at near-surface from energy gradient
         json_file   = su.MyJSON( dirs["output"]+'/{}.json'.format(sim_time) )
@@ -225,39 +225,39 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["M_atm_kgmol"] = 0.
 
         # Number of mols per element and reservoir
-        for res in [ "total", "solid", "liquid", "atm" ]: # , "atm"
+        for res in [ "total", "solid", "liquid", "atm" ]: 
             runtime_helpfile_new["H_mol_"+res]  = runtime_helpfile_new["H2O_mol_"+res] * 2. \
                                                 + runtime_helpfile_new["H2_mol_"+res]  * 2. \
                                                 + runtime_helpfile_new["CH4_mol_"+res] * 4. 
-            runtime_helpfile_new["O_mol_"+res]  = runtime_helpfile_new["H2O_mol_"+res] * 1. \
-                                                + runtime_helpfile_new["CO2_mol_"+res] * 2. \
-                                                + runtime_helpfile_new["CO_mol_"+res]  * 1. \
-                                                + runtime_helpfile_new["O2_mol_"+res]  * 2.
-            runtime_helpfile_new["C_mol_"+res]  = runtime_helpfile_new["CO2_mol_"+res] * 1. \
-                                                + runtime_helpfile_new["CH4_mol_"+res] * 1. \
-                                                + runtime_helpfile_new["CO_mol_"+res]  * 1.
-            runtime_helpfile_new["N_mol_"+res]  = runtime_helpfile_new["N2_mol_"+res]  * 2.
-            runtime_helpfile_new["S_mol_"+res]  = runtime_helpfile_new["S_mol_"+res]   * 1.
-            runtime_helpfile_new["He_mol_"+res] = runtime_helpfile_new["He_mol_"+res]  * 1.
+            if ('O' in element_list):
+                runtime_helpfile_new["O_mol_"+res]  = runtime_helpfile_new["H2O_mol_"+res] * 1. \
+                                                    + runtime_helpfile_new["CO2_mol_"+res] * 2. \
+                                                    + runtime_helpfile_new["CO_mol_"+res]  * 1. \
+                                                    + runtime_helpfile_new["O2_mol_"+res]  * 2.
+            if ('C' in element_list):
+                runtime_helpfile_new["C_mol_"+res]  = runtime_helpfile_new["CO2_mol_"+res] * 1. \
+                                                    + runtime_helpfile_new["CH4_mol_"+res] * 1. \
+                                                    + runtime_helpfile_new["CO_mol_"+res]  * 1.
+            if ('N' in element_list):
+                runtime_helpfile_new["N_mol_"+res]  = runtime_helpfile_new["N2_mol_"+res]  * 2.
+            if ('S' in element_list):
+                runtime_helpfile_new["S_mol_"+res]  = runtime_helpfile_new["S_mol_"+res]   * 1.
+            if ('He' in element_list):
+                runtime_helpfile_new["He_mol_"+res] = runtime_helpfile_new["He_mol_"+res]  * 1.
 
             if res == "atm":
-                # for element in element_list:
-                #     Dmol = runtime_helpfile_new[element+"_mol_total"] - runtime_helpfile_new[element+"_mol_solid"] - runtime_helpfile_new[element+"_mol_liquid"]
-                #     if Dmol > 0.:
-                #         runtime_helpfile_new[element+"_mol_atm"] = Dmol
-                runtime_helpfile_new["M_atm_kgmol"] = runtime_helpfile_new["H_mol_"+res]  * molar_mass["H"] \
-                                                    + runtime_helpfile_new["O_mol_"+res]  * molar_mass["O"] \
-                                                    + runtime_helpfile_new["C_mol_"+res]  * molar_mass["C"] \
-                                                    + runtime_helpfile_new["N_mol_"+res]  * molar_mass["N"] \
-                                                    + runtime_helpfile_new["S_mol_"+res]  * molar_mass["S"] \
-                                                    + runtime_helpfile_new["He_mol_"+res] * molar_mass["He"]
+                runtime_helpfile_new["M_atm_kgmol"] = 0.0
+                for elem in element_list:
+                    runtime_helpfile_new["M_atm_kgmol"] += runtime_helpfile_new[elem+"_mol_"+res] * molar_mass[elem]
 
         # Avoid division by 0
         min_val     = 1e-99
-        runtime_helpfile_new["H_mol_atm"] = np.max([runtime_helpfile_new["H_mol_atm"], min_val])
+        for elem in element_list:
+            runtime_helpfile_new[elem+"_mol_atm"] = np.max([runtime_helpfile_new[elem+"_mol_atm"], min_val])
+            break
 
         # Calculate X/H ratios
-        for element in [ "O", "C", "N", "S", "He" ]:
+        for element in [n for n in element_list if n != 'H']:
             runtime_helpfile_new[element+"/H_atm"] = runtime_helpfile_new[element+"_mol_atm"]  / runtime_helpfile_new["H_mol_atm"]
             runtime_helpfile_new[element+"/H_atm"] = np.max([runtime_helpfile_new[element+"/H_atm"], min_val])
 
@@ -327,77 +327,80 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["F_net"]           = COUPLER_options["F_net"]
 
         # Other info from latest iteration run (X/H ratios stay fixed w/o loss)
-        # FIXME:VULCAN
         runtime_helpfile_new["P_surf"]          = runtime_helpfile.iloc[-1]["P_surf"]         
         runtime_helpfile_new["M_atm"]           = runtime_helpfile.iloc[-1]["M_atm"]
         runtime_helpfile_new["M_atm_kgmol"]     = runtime_helpfile.iloc[-1]["M_atm_kgmol"]
-        runtime_helpfile_new["H_mol_atm"]       = runtime_helpfile.iloc[-1]["H_mol_atm"]
-        runtime_helpfile_new["H_mol_solid"]     = runtime_helpfile.iloc[-1]["H_mol_solid"]
-        runtime_helpfile_new["H_mol_liquid"]    = runtime_helpfile.iloc[-1]["H_mol_liquid"] 
-        runtime_helpfile_new["H_mol_total"]     = runtime_helpfile.iloc[-1]["H_mol_total"] 
-        runtime_helpfile_new["O_mol_total"]     = runtime_helpfile.iloc[-1]["O_mol_total"]
-        runtime_helpfile_new["C_mol_total"]     = runtime_helpfile.iloc[-1]["C_mol_total"]   
-        runtime_helpfile_new["N_mol_total"]     = runtime_helpfile.iloc[-1]["N_mol_total"]   
-        runtime_helpfile_new["S_mol_total"]     = runtime_helpfile.iloc[-1]["S_mol_total"]   
-        runtime_helpfile_new["He_mol_total"]    = runtime_helpfile.iloc[-1]["He_mol_total"]
-        runtime_helpfile_new["O/H_atm"]         = runtime_helpfile.iloc[-1]["O/H_atm"]
-        runtime_helpfile_new["C/H_atm"]         = runtime_helpfile.iloc[-1]["C/H_atm"]
-        runtime_helpfile_new["N/H_atm"]         = runtime_helpfile.iloc[-1]["N/H_atm"]
-        runtime_helpfile_new["S/H_atm"]         = runtime_helpfile.iloc[-1]["S/H_atm"]
-        runtime_helpfile_new["He/H_atm"]        = runtime_helpfile.iloc[-1]["He/H_atm"]
-        runtime_helpfile_new["H2O_mr"]          = runtime_helpfile.iloc[-1]["H2O_mr"]
-        runtime_helpfile_new["CO2_mr"]          = runtime_helpfile.iloc[-1]["CO2_mr"]
-        runtime_helpfile_new["H2_mr"]           = runtime_helpfile.iloc[-1]["H2_mr"]
-        runtime_helpfile_new["CO_mr"]           = runtime_helpfile.iloc[-1]["CO_mr"]
-        runtime_helpfile_new["CH4_mr"]          = runtime_helpfile.iloc[-1]["CH4_mr"]
-        runtime_helpfile_new["N2_mr"]           = runtime_helpfile.iloc[-1]["N2_mr"]
-        runtime_helpfile_new["O2_mr"]           = runtime_helpfile.iloc[-1]["O2_mr"]
-        runtime_helpfile_new["S_mr"]            = runtime_helpfile.iloc[-1]["S_mr"]
-        runtime_helpfile_new["He_mr"]           = runtime_helpfile.iloc[-1]["He_mr"]    
-    
-    ## / Read in data
+        for res in [ "total", "solid", "liquid", "atm" ]: 
+            for elem in element_list:
+                runtime_helpfile_new[elem+"_mol_"+res]       = runtime_helpfile.iloc[-1][elem+"_mol_"+res]
+        # runtime_helpfile_new["H_mol_atm"]       = runtime_helpfile.iloc[-1]["H_mol_atm"]
+        # runtime_helpfile_new["H_mol_solid"]     = runtime_helpfile.iloc[-1]["H_mol_solid"]
+        # runtime_helpfile_new["H_mol_liquid"]    = runtime_helpfile.iloc[-1]["H_mol_liquid"] 
+        # runtime_helpfile_new["H_mol_total"]     = runtime_helpfile.iloc[-1]["H_mol_total"] 
+        # runtime_helpfile_new["O_mol_total"]     = runtime_helpfile.iloc[-1]["O_mol_total"]
+        # runtime_helpfile_new["C_mol_total"]     = runtime_helpfile.iloc[-1]["C_mol_total"]   
+        # runtime_helpfile_new["N_mol_total"]     = runtime_helpfile.iloc[-1]["N_mol_total"]   
+        # runtime_helpfile_new["S_mol_total"]     = runtime_helpfile.iloc[-1]["S_mol_total"]   
+        # runtime_helpfile_new["He_mol_total"]    = runtime_helpfile.iloc[-1]["He_mol_total"]
+        for elem in [n for n in element_list if n != 'H']:
+            runtime_helpfile_new[elem+"/H_atm"]         = runtime_helpfile.iloc[-1][elem+"/H_atm"]
 
+        for vol in volatile_species:
+            runtime_helpfile_new[vol+"_mr"]          = runtime_helpfile.iloc[-1][vol+"_mr"]
+        # runtime_helpfile_new["H2O_mr"]          = runtime_helpfile.iloc[-1]["H2O_mr"]
+        # runtime_helpfile_new["CO2_mr"]          = runtime_helpfile.iloc[-1]["CO2_mr"]
+        # runtime_helpfile_new["H2_mr"]           = runtime_helpfile.iloc[-1]["H2_mr"]
+        # runtime_helpfile_new["CO_mr"]           = runtime_helpfile.iloc[-1]["CO_mr"]
+        # runtime_helpfile_new["CH4_mr"]          = runtime_helpfile.iloc[-1]["CH4_mr"]
+        # runtime_helpfile_new["N2_mr"]           = runtime_helpfile.iloc[-1]["N2_mr"]
+        # runtime_helpfile_new["O2_mr"]           = runtime_helpfile.iloc[-1]["O2_mr"]
+        # runtime_helpfile_new["S_mr"]            = runtime_helpfile.iloc[-1]["S_mr"]
+        # runtime_helpfile_new["He_mr"]           = runtime_helpfile.iloc[-1]["He_mr"]    
+    
     # Add all parameters to dataframe + update file on disk
-    runtime_helpfile_new = pd.DataFrame({
-        'Time':             runtime_helpfile_new["Time"],
-        'Input':            runtime_helpfile_new["Input"],
-        'T_surf':           runtime_helpfile_new["T_surf"],
-        'F_int':            runtime_helpfile_new["F_int"],
-        'F_atm':            runtime_helpfile_new["F_atm"],
-        'F_net':            runtime_helpfile_new["F_net"],
-        'P_surf':           runtime_helpfile_new["P_surf"],
-        'M_atm':            runtime_helpfile_new["M_atm"],
-        'M_atm_kgmol':      runtime_helpfile_new["M_atm_kgmol"],
-        'Phi_global':       runtime_helpfile_new["Phi_global"],
-        'RF_depth':         runtime_helpfile_new["RF_depth"],
-        'M_mantle':         runtime_helpfile_new["M_mantle"],
-        'M_core':           runtime_helpfile_new["M_core"],
-        'M_mantle_liquid':  runtime_helpfile_new["M_mantle_liquid"],
-        'M_mantle_solid':   runtime_helpfile_new["M_mantle_solid"],
-        'H_mol_atm':        runtime_helpfile_new["H_mol_atm"],
-        'H_mol_solid':      runtime_helpfile_new["H_mol_solid"],
-        'H_mol_liquid':     runtime_helpfile_new["H_mol_liquid"],
-        'H_mol_total':      runtime_helpfile_new["H_mol_total"],
-        'O_mol_total':      runtime_helpfile_new["O_mol_total"],
-        'C_mol_total':      runtime_helpfile_new["C_mol_total"],
-        'N_mol_total':      runtime_helpfile_new["N_mol_total"],
-        'S_mol_total':      runtime_helpfile_new["S_mol_total"],
-        'He_mol_total':     runtime_helpfile_new["He_mol_total"],
-        'O/H_atm':          runtime_helpfile_new["O/H_atm"],
-        'C/H_atm':          runtime_helpfile_new["C/H_atm"],
-        'N/H_atm':          runtime_helpfile_new["N/H_atm"],
-        'S/H_atm':          runtime_helpfile_new["S/H_atm"],
-        'He/H_atm':         runtime_helpfile_new["He/H_atm"],
-        'H2O_mr':           runtime_helpfile_new["H2O_mr"],
-        'CO2_mr':           runtime_helpfile_new["CO2_mr"],
-        'H2_mr':            runtime_helpfile_new["H2_mr"],
-        'CO_mr':            runtime_helpfile_new["CO_mr"],
-        'CH4_mr':           runtime_helpfile_new["CH4_mr"],
-        'N2_mr':            runtime_helpfile_new["N2_mr"],
-        'O2_mr':            runtime_helpfile_new["O2_mr"],
-        'S_mr':             runtime_helpfile_new["S_mr"],
-        'He_mr':            runtime_helpfile_new["He_mr"],
-        }, index=[0])
+    # runtime_helpfile_new = pd.DataFrame({
+    #     'Time':             runtime_helpfile_new["Time"],
+    #     'Input':            runtime_helpfile_new["Input"],
+    #     'T_surf':           runtime_helpfile_new["T_surf"],
+    #     'F_int':            runtime_helpfile_new["F_int"],
+    #     'F_atm':            runtime_helpfile_new["F_atm"],
+    #     'F_net':            runtime_helpfile_new["F_net"],
+    #     'P_surf':           runtime_helpfile_new["P_surf"],
+    #     'M_atm':            runtime_helpfile_new["M_atm"],
+    #     'M_atm_kgmol':      runtime_helpfile_new["M_atm_kgmol"],
+    #     'Phi_global':       runtime_helpfile_new["Phi_global"],
+    #     'RF_depth':         runtime_helpfile_new["RF_depth"],
+    #     'M_mantle':         runtime_helpfile_new["M_mantle"],
+    #     'M_core':           runtime_helpfile_new["M_core"],
+    #     'M_mantle_liquid':  runtime_helpfile_new["M_mantle_liquid"],
+    #     'M_mantle_solid':   runtime_helpfile_new["M_mantle_solid"],
+    #     'H_mol_atm':        runtime_helpfile_new["H_mol_atm"],
+    #     'H_mol_solid':      runtime_helpfile_new["H_mol_solid"],
+    #     'H_mol_liquid':     runtime_helpfile_new["H_mol_liquid"],
+    #     'H_mol_total':      runtime_helpfile_new["H_mol_total"],
+    #     'O_mol_total':      runtime_helpfile_new["O_mol_total"],
+    #     'C_mol_total':      runtime_helpfile_new["C_mol_total"],
+    #     'N_mol_total':      runtime_helpfile_new["N_mol_total"],
+    #     'S_mol_total':      runtime_helpfile_new["S_mol_total"],
+    #     'He_mol_total':     runtime_helpfile_new["He_mol_total"],
+    #     'O/H_atm':          runtime_helpfile_new["O/H_atm"],
+    #     'C/H_atm':          runtime_helpfile_new["C/H_atm"],
+    #     'N/H_atm':          runtime_helpfile_new["N/H_atm"],
+    #     'S/H_atm':          runtime_helpfile_new["S/H_atm"],
+    #     'He/H_atm':         runtime_helpfile_new["He/H_atm"],
+    #     'H2O_mr':           runtime_helpfile_new["H2O_mr"],
+    #     'CO2_mr':           runtime_helpfile_new["CO2_mr"],
+    #     'H2_mr':            runtime_helpfile_new["H2_mr"],
+    #     'CO_mr':            runtime_helpfile_new["CO_mr"],
+    #     'CH4_mr':           runtime_helpfile_new["CH4_mr"],
+    #     'N2_mr':            runtime_helpfile_new["N2_mr"],
+    #     'O2_mr':            runtime_helpfile_new["O2_mr"],
+    #     'S_mr':             runtime_helpfile_new["S_mr"],
+    #     'He_mr':            runtime_helpfile_new["He_mr"],
+    #     }, index=[0])
+
+    runtime_helpfile_new = pd.DataFrame(runtime_helpfile_new,index=[0])
+
     
 
     # runtime_helpfile = runtime_helpfile.append(runtime_helpfile_new) 
@@ -425,6 +428,10 @@ def PrintSeparator():
 def PrintHalfSeparator():
     print("--------------------------------------------------")
     pass
+
+# Calculate eqm temperature given stellar flux and bond albedo
+def calc_eqm_temperature(I_0, A_B):
+    return (I_0 * (1.0 - A_B) / (4.0 * phys.sigma))**(1.0/4.0)
 
 # Generate/adapt atmosphere chemistry/radiation input files
 def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
@@ -493,155 +500,161 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
         # Standard surface temperature from last entry
         COUPLER_options["T_surf"] = runtime_helpfile.iloc[-1]["T_surf"]
 
+    # Create atmosphere object and set parameters
     atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, vol_list)
+
+    atm.planet_radius   = COUPLER_options["radius"]
+    atm.grav_s 		    = COUPLER_options["gravity"]
+    atm.grav_z[0]       = atm.grav_s
+    atm.planet_mass     = COUPLER_options["gravity"] * atm.planet_radius * atm.planet_radius / phys.G
+
+    atm.ptop            = COUPLER_options["P_top"]*1e5
+
+    atm.zenith_angle    = COUPLER_options["zenith_angle"]
+    atm.albedo_pl       = COUPLER_options["albedo_pl"]
+    atm.albedo_s        = COUPLER_options["albedo_s"]
         
-
-    # if COUPLER_options["use_vulcan"] == 1:
-                
-        # with open(output_dir+'vulcan_XH_ratios.dat', 'w') as file:
-        #     file.write('time             O                C                N                S                He\n')
-        # with open(output_dir+'vulcan_XH_ratios.dat', 'a') as file:
-        #     file.write('0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00 0.0000000000e+00\n')
-
-        # # Change surface gravity in VULCAN init file
-        # M_solid_planet = runtime_helpfile.iloc[-1]["M_core"] + runtime_helpfile.iloc[-1]["M_mantle"]
-        # grav_s         = su.gravity( M_solid_planet, float(R_solid_planet) ) * 100. # cm s^-2
-
-        # # Generate init TP structure
-        # atm             = atmos()
-        # atm.ps          = runtime_helpfile.iloc[-1]["P_surf"]*1e5 # bar->Pa
-        # pstart          = atm.ps#*.995
-        # rat             = (atm.ptop/pstart)**(1./atm.nlev)
-        # logLevels       = [pstart*rat**i for i in range(atm.nlev+1)]
-        # logLevels.reverse()
-        # levels          = [atm.ptop+i*(pstart-atm.ptop)/(atm.nlev-1) for i in range(atm.nlev+1)]
-        # atm.pl          = np.array(logLevels)
-        # atm.p           = (atm.pl[1:] + atm.pl[:-1]) / 2
-        # pressure_grid   = atm.p*1e-5 # Pa->bar
-        # temp_grid       = np.ones(len(pressure_grid))*runtime_helpfile.iloc[-1]["T_surf"]
-
-        # # # Min/max P for VULCAN config file
-        # # P_b = np.max(pressure_grid)*1e6*0.9999 # pressure at the bottom, (bar)->(dyne/cm^2)
-        # # P_t = np.min(pressure_grid)*1e6*1.0001 # pressure at the top, (bar)->(dyne/cm^2)
-        
-        # # # Generate initial TP structure file
-        # # out_a       = np.column_stack( ( temp_grid, pressure_grid ) ) # K, bar
-        # # init_TP     = str(int(time_current))+"_atm_TP_profile_init.dat"
-        # # np.savetxt( output_dir+init_TP, out_a )
-
-        # # # Adjust copied file in output_dir
-        # # for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
-        # #     if line.strip().startswith('g = '):
-        # #         line = "g = "+str(grav_s)+' # surface gravity (cm/s^2)\n'
-        # #     if line.strip().startswith('spider_file = '):
-        # #         line = "spider_file = '"+str(output_dir)+"vulcan_XH_ratios.dat'\n"
-        # #     if line.strip().startswith('atm_file = '):
-        # #         line = "atm_file = '"+str(output_dir)+str(init_TP)+"'\n"
-        # #     if line.strip().startswith('P_b = '):
-        # #         line = "P_b = "+str(P_b)+" # pressure at the bottom (dyne/cm^2)\n"
-        # #     if line.strip().startswith('P_t = '):
-        # #         line = "P_t = "+str(P_t)+" # pressure at the top (dyne/cm^2)\n"
-        # #     sys.stdout.write(line)
-           
-
-    # # After first loop use updated TP profiles from SOCRATES
-    # else:
-    #     # Modify the SOCRATES TP structure input
-    #     run_TP_file = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*_atm_TP_profile.dat")])[-1]
-        
-    #     # Min/max P for VULCAN config file
-    #     atm_table = np.genfromtxt(output_dir+run_TP_file, names=['T', 'Pbar'], dtype=None, skip_header=0)
-    #     pressure_grid, temp_grid = atm_table['Pbar']*1e6, atm_table['T'] # (bar)->(dyne/cm^2), K
-    #     P_b = np.max(pressure_grid)*0.9999 # pressure at the bottom, (dyne/cm^2)
-    #     P_t = np.min(pressure_grid)*1.0001 # pressure at the top, (dyne/cm^2)
-
-    #     # Adjust copied file in output_dir
-    #     for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
-    #         if line.strip().startswith('atm_file = '):
-    #             line = "atm_file = '"+str(output_dir)+str(run_TP_file)+"'\n"
-    #         if line.strip().startswith('P_b = '):
-    #             line = "P_b = "+str(P_b)+" # pressure at the bottom (dyne/cm^2)\n"
-    #         if line.strip().startswith('P_t = '):
-    #             line = "P_t = "+str(P_t)+" # pressure at the top (dyne/cm^2)\n"
-    #         sys.stdout.write(line)
-
-    # # Write elemental X/H ratios
-    # with open(output_dir+'vulcan_XH_ratios.dat', 'a') as file:
-    #     file.write(str('{:.10e}'.format(time_current))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["O/H_atm"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["C/H_atm"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["N/H_atm"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["S/H_atm"]))+" "+str('{:.10e}'.format(runtime_helpfile.iloc[-1]["He/H_atm"]))+"\n")
-
-    # # Last .json file -> print time
-    # last_file = natsorted([os.path.basename(x) for x in glob.glob(output_dir+"*.json")])[-1]
-    # time_print = last_file[:-5]
-
-    # # Update VULCAN output file names
-    # volume_mixing_ratios = str(time_print)+"_atm_chemistry_volume.dat"
-    # mass_mixing_ratios   = str(time_print)+"_atm_chemistry_mass.dat"
-    # for line in fileinput.input(vulcan_dir+'vulcan_cfg.py', inplace=True):
-    #     if line.strip().startswith('EQ_outfile = '):
-    #         line = "EQ_outfile = '"+str(output_dir)+str(volume_mixing_ratios)+"'"+' # volume mixing ratio\n'
-    #     if line.strip().startswith('mass_outfile = '):
-    #         line = "mass_outfile = '"+str(output_dir)+str(mass_mixing_ratios)+"'"+' # mass mixing ratio\n'
-    #     sys.stdout.write(line)
-
-    # # Save modified temporary config file to compare versions
-    # shutil.copy(vulcan_dir+'vulcan_cfg.py', output_dir+str(time_print)+'_vulcan_cfg.py')
-
-    # return volume_mixing_ratios, mass_mixing_ratios
 
     return atm, COUPLER_options
 
 # run VULCAN/atmosphere chemistry
 def RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
-    # # Generate/adapt atm structure
-    # atm = StructAtm( time_current, loop_counter, vulcan_dir, output_dir, runtime_helpfile )
-    # # volume_mixing_ratios_name, mass_mixing_ratios_name = AtmStruct( time_current, loop_counter, vulcan_dir, output_dir, runtime_helpfile, COUPLER_options["R_solid_planet"] )
+    # Runtime info
+    PrintSeparator()
+    print("VULCAN run... (loop =", loop_counter, ")")
+    PrintSeparator()
 
-    if COUPLER_options["use_vulcan"] == 1:
+    vul_cfg = dirs["vulcan"]+"vulcan_cfg.py"
 
-        # Runtime info
-        PrintSeparator()
-        print("VULCAN run... (loop =", loop_counter, ")")
-        PrintSeparator()
+    # Copy template file
+    if os.path.exists(vul_cfg):
+        os.remove(vul_cfg)
+    shutil.copyfile(dirs["utils"]+"init_vulcan_cfg.py",vul_cfg)
 
-        # Switch to VULCAN directory; run VULCAN, switch back to main directory
-        os.chdir(dirs["vulcan"])
-        subprocess.run(["python", "vulcan.py", "-n"], shell=False, check=True)
-        os.chdir(dirs["coupler"])
+    hf_recent = runtime_helpfile.iloc[-1]
 
-        # # Copy VULCAN dumps to output folder
-        # shutil.copy(vulcan_dir+'output/vulcan_EQ.txt', output_dir+str(int(time_current))+"_atm_chemistry.dat")
+    # Write missing parameters to cfg file
+    with open(vul_cfg, 'a') as vcf:
 
-        # Read in data from VULCAN output
-        atm_chemistry = pd.read_csv(dirs["output"]+"/"+volume_mixing_ratios_name, skiprows=1, delim_whitespace=True)
-        print(atm_chemistry.iloc[:, 0:5])
+        vcf.write("# < PROTEUS INSERT > \n")
 
-        # # Update SPIDER restart options w/ surface partial pressures
-        # for vol in volatile_species:
+        # System/planet parameters
+        vcf.write("Rp = %1.5e \n"           % (atm.planet_radius*100.0))        # Radius [cm]
+        vcf.write("gs = %g \n"              % (atm.grav_s*100.0))               # Surface gravity [cm/s^2]
+        vcf.write("sl_angle = %g \n"        % (atm.zenith_angle*3.141/180.0))   # Solar zenith angle [rad]
+        vcf.write("orbit_radius = %1.5e \n" % COUPLER_options["mean_distance"]) # Semi major axis [AU]
+        vcf.write("r_star = %1.5e \n"       % COUPLER_options["star_radius"])   # Star's radius [R_sun]
+
+        # Set background gas based on gas with highest mixing ratio from list of options
+        bg_gas = np.array([ 'H2', 'N2', 'O2', 'CO2' ])
+        bg_val = np.array([ hf_recent["%s_mr"%gas] for gas in bg_gas ])  # Get values
+        bg_mask = np.argsort(bg_val)  # Get sorting mask
+        bg_val = bg_val[bg_mask]   # Sort gas values
+        bg_gas = bg_gas[bg_mask]   # Sort gas names
+        if (bg_val[-1] < 2.0*bg_val[-2]) or (bg_val[-1] < 0.5):
+            print("Warning: Background gas '%s' is not significantly abundant!"%bg_gas[-1])
+            print("         Mixing ratio of '%s' is %g" % (bg_gas[-1],bg_val[-1]))
+            print("         Mixing ratio of '%s' is %g" % (bg_gas[-2],bg_val[-2]))
+        vcf.write("atm_base = '%s' \n"      % str(bg_gas[-1]))
+
+        # Pressure grid limits
+        vcf.write("P_b = %1.5e \n"          % (float(hf_recent["P_surf"])*1.0e6))        # pressure at the bottom (dyne/cm^2)
+        vcf.write("P_t = %1.5e \n"          % (float(COUPLER_options["P_top"])*1.0e6))   # pressure at the top (dyne/cm^2)
+
+        # Plotting behaviour
+        vcf.write("use_live_plot  = %s \n"  % str(bool(COUPLER_options["plot_onthefly"] == 1)))
+
+        # Contribution to rayleigh scattering in VULCAN (for SW rad trans for photochemistry)
+        # (Disabled for now)
+
+        # Bottom boundary mixing ratios are fixed according to SPIDER (??)
+        # fix_bb_mr = "{"
+        # for v in volatile_species:
+        #     fix_bb_mr += " '%s' : %1.5e ," % (v,hf_recent["%s_mr"%v])
+        # fix_bb_mr = fix_bb_mr[:-1]+" }"
+        # vcf.write("use_fix_sp_bot = %s \n"   % str(fix_bb_mr))
+
+        # Has NOT run atmosphere before
+        if (loop_counter["atm"] == 0):
+
+            # PT profile
+            vcf.write("atm_type = 'isothermal' \n")
+            vcf.write("Tiso = %g \n"        % float(COUPLER_options["T_eqm"]))
+
+            # Abundances
+            vcf.write("ini_mix = 'const_mix' \n")  # other options: 'EQ', 'table', 'vulcan_ini'
+            const_mix = "{"
+            for v in volatile_species:
+                const_mix += " '%s' : %1.5e ," % (v,hf_recent["%s_mr"%v])
+            const_mix = const_mix[:-1]+" }"
+            vcf.write("const_mix = %s \n"   % str(const_mix))
+
+        # Has run atmosphere before
+        # else:
+
+            # PT Profile
+            # vcf.write("atm_type = 'file' \n")
+            # vcf.write("atm_file = 'output/PROTEUS_PT_input.txt' \n")
+            # ! WRITE PT PROFILE
+
+            # Abundances
+            # vcf.write("ini_mix = 'vulcan_ini' \n")
+            # vcf.write("vul_ini = 'output/PROTEUS_MX_input.vul' \n")
+            # ! WRITE ABUNDANCES HERE
             
-        #     # Calculate partial pressure from VULCAN output
-        #     volume_mixing_ratio     = atm_chemistry.iloc[0][vol]
-        #     surface_pressure_total  = atm_chemistry.iloc[0]["Pressure"]*1e5 # bar -> Pa
-        #     partial_pressure_vol    = surface_pressure_total*volume_mixing_ratio
 
-        #     # Only for major atmospheric species
-        #     if partial_pressure_vol > 1.: # Pa
-        #         COUPLER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
+        vcf.write("# </ PROTEUS INSERT > \n")
+        vcf.write(" ")
+
+
+    # Switch to VULCAN directory, run VULCAN, switch back to main directory
+    vulcan_run_cmd = "python vulcan.py"  
+    if (loop_counter["atm"] > 0):      # If not first run, skip building chem_funcs
+        vulcan_run_cmd += " -n"
+
+    if debug:
+        vulcan_print = sys.stdout
+    else:
+        vulcan_print = open(dirs["output"]+"vulcan_recent.log",'w')
+
+    os.chdir(dirs["vulcan"])
+    subprocess.run([vulcan_run_cmd], shell=True, check=True, stdout=vulcan_print)
+    os.chdir(dirs["coupler"])
+
+    if not debug:
+        vulcan_print.close()
+
+    # Copy VULCAN dumps to output folder
+    shutil.copyfile(dirs["vulcan"]+'output/MX_output.vul', dirs["output"]+str(int(time_dict["planet"]))+"_atm_chemistry.dat")
+
+    # Read in data from VULCAN output
+    # atm_chemistry = pd.read_csv(dirs["output"]+"/"+volume_mixing_ratios_name, skiprows=1, delim_whitespace=True)
+    # print(atm_chemistry.iloc[:, 0:5])
+
+    # # Update SPIDER restart options w/ surface partial pressures
+    # for vol in volatile_species:
+        
+    #     # Calculate partial pressure from VULCAN output
+    #     volume_mixing_ratio     = atm_chemistry.iloc[0][vol]
+    #     surface_pressure_total  = atm_chemistry.iloc[0]["Pressure"]*1e5 # bar -> Pa
+    #     partial_pressure_vol    = surface_pressure_total*volume_mixing_ratio
+
+    #     # Only for major atmospheric species
+    #     if partial_pressure_vol > 1.: # Pa
+    #         COUPLER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
 
     return atm
 
 def RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options ):
 
-    # Interpolate TOA heating from Baraffe models and distance from star
-    atm.toa_heating = SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], atm.albedo_pl, COUPLER_options["Sfrac"])
-
     # Runtime info
     PrintSeparator()
-    print("SOCRATES run, loop ", loop_counter, "|", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print("SOCRATES run... (loop =", loop_counter, ")")
     PrintSeparator()
 
     # Calculate temperature structure and heat flux w/ SOCRATES
-    atm_dry, atm = SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, COUPLER_options, standalone=False, cp_dry=False, trpp=True, rscatter=True,calc_cf=False) # W/m^2
+    _, atm = SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, COUPLER_options, standalone=False, cp_dry=False, trpp=True, rscatter=True,calc_cf=False) # W/m^2
     
     # Atmosphere net flux from topmost atmosphere node; do not allow heating
     COUPLER_options["F_atm"] = np.max( [ 0., atm.net_flux[0] ] )
@@ -649,11 +662,9 @@ def RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_opt
     # Clean up run directory
     PrintSeparator()
     print("Remove SOCRATES auxiliary files:", end =" ")
-    # for file in natsorted(glob.glob(dirs["output"]+"/current??.????")):
     for file in natural_sort(glob.glob(dirs["output"]+"/current??.????")):
         os.remove(file)
         print(os.path.basename(file), end =" ")
-    # for file in natsorted(glob.glob(dirs["output"]+"/profile.*")):
     for file in natural_sort(glob.glob(dirs["output"]+"/profile.*")):
         os.remove(file)
         print(os.path.basename(file), end =" ")
@@ -735,9 +746,11 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                         # "-IC_ATMOSPHERE",         str(COUPLER_options["IC_ATMOSPHERE"]),
                         "-SURFACE_BC",            str(COUPLER_options["SURFACE_BC"]), 
                         "-surface_bc_value",      str(net_loss), 
+                        "-teqm",                  str(COUPLER_options["T_eqm"]), 
                         "-nstepsmacro",           str(COUPLER_options["nstepsmacro"]), 
                         "-dtmacro",               str(dtmacro), 
-                        "-radius",                str(COUPLER_options["R_solid_planet"]), 
+                        "-radius",                str(COUPLER_options["radius"]), 
+                        "-gravity",               "-"+str(COUPLER_options["gravity"]), 
                         "-coresize",              str(COUPLER_options["planet_coresize"]),
                         "-volatile_names",        str(species_call)
                     ]
@@ -773,7 +786,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             call_sequence.extend(["-"+vol+"_kdist", str(volatile_distribution_coefficients[vol+"_kdist"])])
             call_sequence.extend(["-"+vol+"_kabs", str(volatile_distribution_coefficients[vol+"_kabs"])])
             call_sequence.extend(["-"+vol+"_molar_mass", str(molar_mass[vol])])
-            call_sequence.extend(["-"+vol+"SOLUBILITY 1"])
+            call_sequence.extend(["-"+vol+"_SOLUBILITY 1"])
 
     # With start of the main loop only:
     # Volatile specific options: post step settings, restart filename
@@ -850,10 +863,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         print()
 
     call_string = " ".join(call_sequence)
-
-    # Call SPIDER
-    # subprocess.call(call_sequence)
-
 
     # Run SPIDER
     if debug:
@@ -953,8 +962,8 @@ def ReadInitFile( dirs, init_file_passed ):
         init_file = init_file_passed
     # Coupler directory
     else: 
-        init_file = dirs["coupler"]+"/init_coupler.opts"
-        shutil.copy(dirs["coupler"]+"/init_coupler.opts", init_file_passed)
+        init_file = dirs["coupler"]+"/init_coupler.cfg"
+        shutil.copy(dirs["coupler"]+"/init_coupler.cfg", init_file_passed)
 
     print(init_file)   
     print("Settings:")
@@ -985,7 +994,7 @@ def ReadInitFile( dirs, init_file_passed ):
                 if not line.startswith("time_"):
 
                     # Some parameters are int
-                    if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", "nstepsmacro", "use_vulcan", "ic_interior_filename" ]:
+                    if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", "nstepsmacro", "use_vulcan", "ic_interior_filename", "plot_onthefly"]:
                         val = int(val)
                     # Most are float
                     else:

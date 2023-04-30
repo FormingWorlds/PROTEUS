@@ -17,7 +17,7 @@ old/
 *.png
 Tprofile.pdf
 .DS_Store
-__pycache__/
+__pycache__
 output/*
 !output/.gitkeep
 mylog.log
@@ -27,8 +27,4 @@ surfaceT.dat
 out.dat
 atm_chemistry.pdf
 .vscode
-init_spider.opts
-petsc-double/*
-sciath/*
-example_runs
 

@@ -17,7 +17,6 @@ import logging, os, sys, json
 
 #====================================================================
 # constants
-bigG = 6.67408E-11 # m^3 / kg / s^2
 
 # lookup data directories
 # TODO: this is the current model, but could be different depending
@@ -377,9 +376,9 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
 
 #====================================================================
 def gravity( m, r ):
-
-    g = bigG*m/r**2
+    g = phys.G*m/r**2
     return g
+
 
 #====================================================================
 def get_deriv_static_structure( z, r, *args ):

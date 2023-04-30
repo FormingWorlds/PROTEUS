@@ -4,11 +4,10 @@ PROTEUS Main file
 """
 
 from utils.modules_coupler import *
-
+from utils.modules_utils import *
 
 #====================================================================
 def main():
-
 
     print("===> Start PROTEUS <===")
 
@@ -45,6 +44,12 @@ def main():
         COUPLER_options["F_atm"] = runtime_helpfile.iloc[-1]["F_atm"]
         COUPLER_options["F_net"] = runtime_helpfile.iloc[-1]["F_net"]
 
+    # Check that the current configuration is reasonable
+    if not ('H' in element_list):
+        print("Error: The element list must include hydrogen!")
+        print("       Currently the element list includes: ",element_list)
+        exit(1)
+
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     print(":::::::::::: START COUPLER RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
@@ -53,6 +58,10 @@ def main():
 
     # Interior-Atmosphere loop
     while time_dict["planet"] < time_dict["target"]:
+
+        # Calculate stellar luminosity and planetary eqm temperature
+        S_0, _ = SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], COUPLER_options["albedo_pl"], COUPLER_options["Sfrac"])
+        COUPLER_options["T_eqm"] = cu.calc_eqm_temperature(S_0*COUPLER_options["Sfrac"],  COUPLER_options["albedo_pl"])
 
         ############### INTERIOR SUB-LOOP
         print("Start interior")
@@ -74,11 +83,13 @@ def main():
             # Initialize atmosphere structure
             atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
+            # Run VULCAN (settings-dependent): update atmosphere mixing ratios
+            if (COUPLER_options["use_vulcan"] == 1):
+                atm = cu.RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options )
+
             # Run SOCRATES: update TOA heating and MO heat flux
             atm, COUPLER_options = cu.RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options )
-
-            # Run VULCAN (settings-dependent): update atmosphere mixing ratios
-            atm = cu.RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options )
+             
 
             # Update help quantities, input_flag: "Atmosphere"
             runtime_helpfile, time_dict, COUPLER_options = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)

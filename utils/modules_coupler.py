@@ -66,7 +66,7 @@ if not os.path.exists(dirs["output"]):
 def parse_console_arguments():
     
     parser = argparse.ArgumentParser(description='COUPLER optional command line arguments')
-    parser.add_argument('-init_file', type=str, default=dirs["output"]+"/init_coupler.opts", help='Specify init filename')
+    parser.add_argument('-init_file', type=str, default=dirs["output"]+"/init_coupler.cfg", help='Specify init filename')
     parser.add_argument('-restart_file', type=str, default="0", help='Restart from specific .json file in folder. Specify only the number of the file.')
     parser.add_argument('-dir', default=dirs["output"], help='Provide path to output directory.' )
     parser.add_argument('-H2O_ppm', type=float, help='H2O initial abundance (ppm wt).')
