@@ -15,7 +15,7 @@ def plot_atmosphere( output_dir, times ):
 
     width = 6.00 #* 3.0/2.0
     height = 12.0
-    fig_o = FigureData( 3, 1, width, height, output_dir+'/plot_atmosphere', units='kyr' ) #, times
+    fig_o = FigureData( 3, 1, width, height, output_dir+'/plot_atmosphere', units='kyr', times=times ) 
     # fig1 = plt.figure()
     fig_o.fig.subplots_adjust(wspace=0.07,hspace=0.2)
     fig_o.time = times

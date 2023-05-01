@@ -102,8 +102,8 @@ molar_mass      = {
           "NH3" : 0.017031,             # kg mol−1 
         }
 
-# volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
-# element_list     = [ "H", "O", "C", "N", "S", "He" ] 
+volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
+element_list     = [ "H", "O", "C", "N", "S", "He" ] 
 
-volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2"]
-element_list     = [ "H", "O", "C", "N" ] 
+# volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2"]
+# element_list     = [ "H", "O", "C", "N" ] 

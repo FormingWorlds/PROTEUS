@@ -15,8 +15,6 @@ from scipy.optimize import newton
 import numpy as np
 import logging, os, sys, json
 
-from logging import logger
-
 from AEOLUS.utils import phys as phys
 
 #====================================================================
@@ -56,8 +54,8 @@ class MyJSON( object ):
         try:
             json_data  = open( self.filename )
         except FileNotFoundError:
-            logger.critical('cannot find file: %s', self.filename )
-            logger.critical('please specify times for which data exists')
+            print('cannot find file: %s', self.filename )
+            print('please specify times for which data exists')
             sys.exit(1)
         self.data_d = json.load( json_data )
         json_data.close()
@@ -69,7 +67,7 @@ class MyJSON( object ):
             dict_d = recursive_get( self.data_d, keys )
             return dict_d
         except NameError:
-            logger.critical('dictionary for %s does not exist', keys )
+            print('dictionary for %s does not exist', keys )
             sys.exit(1)
 
     # was get_field_units
@@ -226,7 +224,7 @@ def get_all_output_times( odir='output' ):
     # locate times to process based on files located in odir/
     file_l = [f for f in os.listdir(odir) if os.path.isfile(os.path.join(odir,f))]
     if not file_l:
-        logger.critical('output directory contains no files')
+        print('output directory contains no files')
         sys.exit(0)
 
     time_l = [fname for fname in file_l]
@@ -252,7 +250,7 @@ def get_all_output_pkl_times( odir='output' ):
     # locate times to process based on files located in odir/
     file_l = [f for f in os.listdir(odir) if os.path.isfile(os.path.join(odir,f))]
     if not file_l:
-        logger.critical('output directory contains no PKL files')
+        print('output directory contains no PKL files')
         sys.exit(0)
 
     time_l = [fname for fname in file_l]
@@ -400,7 +398,7 @@ def get_deriv_static_structure( z, r, *args ):
     # derivatives
     dpdr = -rho*g
     dmdr = 4*np.pi*r**2*rho
-    dgdr = 4*np.pi*bigG*rho - 2*bigG*m/r**3
+    dgdr = 4*np.pi*phys.G*rho - 2*phys.G*m/r**3
 
     return [dpdr,dmdr,dgdr]
 

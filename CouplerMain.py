@@ -19,13 +19,7 @@ def main():
 
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
     loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 10 }
-
-    # Start conditions and help files depending on restart option
-    if COUPLER_options["IC_INTERIOR"] == 1: 
-        cu.CleanOutputDir( dirs["output"] )
-        cu.CleanOutputDir( dirs["vulcan"]+"/output/" )
-        runtime_helpfile    = []
-  
+    
     # If restart skip init loop # args.r or args.rf or 
     if COUPLER_options["IC_INTERIOR"] == 2:
         loop_counter["total"] += loop_counter["init_loops"]
@@ -45,11 +39,30 @@ def main():
         COUPLER_options["F_atm"] = runtime_helpfile.iloc[-1]["F_atm"]
         COUPLER_options["F_net"] = runtime_helpfile.iloc[-1]["F_net"]
 
+    # Start conditions and help files depending on restart option
+    else:
+        cu.CleanOutputDir( dirs["output"] )
+        cu.CleanOutputDir( dirs["vulcan"]+"/output/" )
+        runtime_helpfile    = []
+
+        # Work out which volatiles are involved
+        for vol in volatile_species:
+            match COUPLER_options["IC_ATMOSPHERE"]:
+                case 3:
+                    key = vol+"_initial_atmos_pressure"
+                case 1:
+                    key = vol+"_initial_total_abundance"
+            if (key in COUPLER_options):
+                COUPLER_options[vol+"_included"] = (COUPLER_options[key]>0.0)
+                continue
+
     # Check that the current configuration is reasonable
     if not ('H' in element_list):
         print("Error: The element list must include hydrogen!")
         print("       Currently the element list includes: ",element_list)
         exit(1)
+
+    
 
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")

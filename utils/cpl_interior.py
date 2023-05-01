@@ -74,12 +74,13 @@ def plot_interior( output_dir, times ):
 
         # temperature
         yy = myjson_o.get_dict_values(['data','temp_b'])
-        ax0.plot( yy, xx_pres, '--', color=color, lw=1.5 )
-        handle, = ax0.plot( yy*MIX, xx_pres*MIX, '-', color=color, lw=1.5, label=label )
+        # ax0.plot( yy, xx_pres, '--', color=color, lw=1.5 )
+        handle, = ax0.plot( yy*MIX, xx_pres*MIX, color=color, lw=1.5, label=label )
 
         # melt fraction
         yy = myjson_o.get_dict_values(['data','phi_b'])
         ax1.plot( yy, xx_pres, '-', color=color, lw=1.5 )
+        # ax1.fill_betweenx( yy, xx_pres, color=color , alpha=0.4)
 
         # viscosity
         visc_const = 1 # this is used for the arcsinh scaling

@@ -65,7 +65,7 @@
 # initial condition
 # [1] is set dS/dr to constant everywhere
 # [2] is restart from file
--IC_INTERIOR 1
+# -IC_INTERIOR 1
 #-ic_interior_filename output/dSdr_b_aug_0.m
 -ic_adiabat_entropy 2600.0
 -ic_dsdr -4.6978890285209187e-07 # initial dS/dr everywhere
@@ -139,27 +139,12 @@
 # atmosphere reference pressure (Pa)
 -P0 101325.0 # Pa (= 1 atm)
 
-# Define the volatiles
-# -volatile_names H2O
-
-# -H2O_SOLUBILITY 1
-# -H2O_initial_atmos_pressure 3.3703436080366105E5
-# -H2O_kdist 0.0
-# -H2O_kabs 0.01
-# -H2O_henry 1.6886562705299146
-# -H2O_henry_pow 2.0
-# -H2O_molar_mass 0.01801528 # kg/mol
-
 # IW buffer
 -OXYGEN_FUGACITY 7
 
 # note that an offset of 0.5 is also the default, following
 # Sossi et al., 2020
 -OXYGEN_FUGACITY_offset 0.5
-
-# -reaction_water_JANAF
-# -reaction_carbondioxide_JANAF
-
 
 # internal heat sources
 
