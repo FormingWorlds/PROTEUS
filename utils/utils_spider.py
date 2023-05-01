@@ -15,6 +15,10 @@ from scipy.optimize import newton
 import numpy as np
 import logging, os, sys, json
 
+from logging import logger
+
+from AEOLUS.utils import phys as phys
+
 #====================================================================
 # constants
 

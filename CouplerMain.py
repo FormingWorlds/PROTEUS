@@ -23,6 +23,7 @@ def main():
     # Start conditions and help files depending on restart option
     if COUPLER_options["IC_INTERIOR"] == 1: 
         cu.CleanOutputDir( dirs["output"] )
+        cu.CleanOutputDir( dirs["vulcan"]+"/output/" )
         runtime_helpfile    = []
   
     # If restart skip init loop # args.r or args.rf or 
@@ -83,13 +84,12 @@ def main():
             # Initialize atmosphere structure
             atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
-            # Run VULCAN (settings-dependent): update atmosphere mixing ratios
-            if (COUPLER_options["use_vulcan"] == 1):
-                atm = cu.RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options )
-
             # Run SOCRATES: update TOA heating and MO heat flux
             atm, COUPLER_options = cu.RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options )
              
+            # Run VULCAN (settings-dependent): update atmosphere mixing ratios
+            if (COUPLER_options["use_vulcan"] == 1):
+                atm = cu.RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options)
 
             # Update help quantities, input_flag: "Atmosphere"
             runtime_helpfile, time_dict, COUPLER_options = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
