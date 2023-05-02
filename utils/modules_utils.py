@@ -6,7 +6,10 @@
 # Standard packages
 import argparse
 import logging
-import matplotlib
+
+import matplotlib as mpl
+mpl.use('Agg')
+
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
@@ -15,7 +18,6 @@ import matplotlib.ticker as ticker
 import pandas as pd
 import matplotlib.transforms as transforms
 import mmap
-# import seaborn as sns
 import pathlib
 import errno
 import json
@@ -41,10 +43,13 @@ import utils.cpl_global
 import utils.cpl_stacked
 import utils.cpl_interior
 
-import SocRadConv
+from AEOLUS import SocRadConv as SocRadConv
 from AEOLUS.utils.atmosphere_column import atmos
+from AEOLUS.utils import phys as phys
 
 ### Constants ###
+
+debug = True
 
 # Astronomical constants
 L_sun           = 3.828e+26             # W, IAU definition
@@ -100,3 +105,5 @@ molar_mass      = {
 volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
 element_list     = [ "H", "O", "C", "N", "S", "He" ] 
 
+# volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2"]
+# element_list     = [ "H", "O", "C", "N" ] 

@@ -29,7 +29,7 @@ def plot_global( host_dir, sub_dirs ):
     label_fs   = 11
     zorder_txt = 100
 
-    fig_o = su.FigureData( 3, 2, width, height, host_dir+'/compare_global', units='yr' )
+    fig_o = FigureData( 3, 2, width, height, host_dir+'/compare_global', units='yr' )
     fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.1)
 
     ax0 = fig_o.ax[0][0]
@@ -126,7 +126,7 @@ def plot_global( host_dir, sub_dirs ):
         for idx, val in enumerate(T_surf):
             # print(idx, val)
             if np.isnan(val):
-                json_file_time = su.MyJSON( output_dir+'/{}.json'.format(fig_o.time[idx]) )
+                json_file_time = MyJSON( output_dir+'/{}.json'.format(fig_o.time[idx]) )
                 int_tmp   = json_file_time.get_dict_values(['data','temp_b'])
                 print("T_surf:", idx, val, "-->", round(int_tmp[0],3), "K")
                 T_surf[idx] = int_tmp[0]

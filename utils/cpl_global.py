@@ -2,6 +2,7 @@
 
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
+from utils.utils_spider import MyJSON
 
 #====================================================================
 def plot_global( output_dir ):
@@ -27,7 +28,7 @@ def plot_global( output_dir ):
     txt_pad    = 0.1
     label_fs   = 11
 
-    fig_o = su.FigureData( 3, 2, width, height, output_dir+'/plot_global', units='yr' )
+    fig_o = FigureData( 3, 2, width, height, output_dir+'/plot_global', units='yr' )
     fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.1)
 
     ax0 = fig_o.ax[0][0]
@@ -48,8 +49,6 @@ def plot_global( output_dir ):
     ax5.text(title_xNumbering, title_yNumbering, 'F', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax5.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
 
     fig_o.time = su.get_all_output_times(output_dir)
-    print("output_dir", output_dir)
-    print("Times", fig_o.time)
 
     # Read in runtime helpfile and separate in atmosphere and interior params
     df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=" ")
@@ -87,7 +86,7 @@ def plot_global( output_dir ):
 
 
     xlabel = r'Time, $t$ (yr)'
-    xlim = (5e1,1e8)
+    xlim = (1e1,1e8)
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)
@@ -98,14 +97,14 @@ def plot_global( output_dir ):
     xcoord_r = 1.09
     ycoord_r = 0.5
 
-    rolling_mean = 1
+    rolling_mean = 0
     nsteps       = 5
 
     # Replace NaNs
     for idx, val in enumerate(T_surf):
         # print(idx, val)
         if np.isnan(val):
-            json_file_time = su.MyJSON( output_dir+'/{}.json'.format(fig_o.time[idx]) )
+            json_file_time = MyJSON( output_dir+'/{}.json'.format(fig_o.time[idx]) )
             int_tmp   = json_file_time.get_dict_values(['data','temp_b'])
             print("T_surf:", idx, val, "-->", round(int_tmp[0],3), "K")
             T_surf[idx] = int_tmp[0]
@@ -125,12 +124,12 @@ def plot_global( output_dir ):
         Time_int_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
         Fatm_atm_rolling = np.convolve(df_atm["F_atm"], np.ones((nsteps,))/nsteps, mode='valid')
         Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
-        ax0.plot( Time_int_rolling, Fatm_int_rolling, color="red", lw=lw )
-        ax0.plot( Time_atm_rolling, Fatm_atm_rolling, color=qgray_dark, lw=lw )
+        ax0.plot( Time_int_rolling, Fatm_int_rolling, color=dict_colors["qred"], lw=lw )
+        ax0.plot( Time_atm_rolling, Fatm_atm_rolling, color=dict_colors["qgray"], lw=lw )
     else:
         # ax0.plot( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
-        ax0.plot( df_int["Time"], df_int["F_int"], qred, lw=lw, alpha=1.0 )
-        ax0.plot( df_atm["Time"], df_atm["F_atm"], qgray_dark, lw=lw, alpha=1.0 )
+        ax0.plot( df_int["Time"], df_int["F_int"], color=dict_colors["qred"], lw=lw, alpha=1.0 )
+        ax0.plot( df_atm["Time"], df_atm["F_atm"], color=dict_colors["qgray"], lw=lw, alpha=1.0 )
       
     # fig_o.set_myaxes(ax0)
     ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)
@@ -157,11 +156,11 @@ def plot_global( output_dir ):
         Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
         Ts_atm_rolling = np.convolve(df_atm["T_surf"], np.ones((nsteps,))/nsteps, mode='valid')
         
-        h2, = ax1.plot(Time_int_rolling, Ts_int_rolling, color=qred, label="Interior")
-        h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_\mathrm{surf}$') # , color="blue"
+        h2, = ax1.plot(Time_int_rolling, Ts_int_rolling,                color=dict_colors["qred"], label="Interior")
+        h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-", lw=lw, color=dict_colors["qgray"], label=r'Surface temp, $T_\mathrm{surf}$') # , color="blue"
     else:
-        h2, = ax1.plot(df_int["Time"], df_int["T_surf"], color=qred, label="Interior")
-        h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=qgray_dark, label=r'Surface temp, $T_\mathrm{surf}$') # , color="blue"
+        h2, = ax1.plot(df_int["Time"], df_int["T_surf"],                color=dict_colors["qred"], label="Interior")
+        h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=dict_colors["qgray"], label=r'Surface temp, $T_\mathrm{surf}$') # , color="blue"
         
     if np.max(df_atm["Time"]) >= 1e3: 
         ymin = np.min(df_atm["T_surf"])*0.9
@@ -175,7 +174,7 @@ def plot_global( output_dir ):
     # ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     # ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     # ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
-    ax1.set_xscale("symlog", linthreshx=10) # , linthresh=100
+    ax1.set_xscale("symlog", linthresh=10) # , linthresh=100
     ax1.set_xlim( *xlim )
     ax1.set_xticklabels([])
     ax1.yaxis.set_label_coords(xcoord_l,ycoord_l)
@@ -187,13 +186,13 @@ def plot_global( output_dir ):
     ##########
 
     # Plot rheological front depth, mante melt + solid fraction
-    ax2.plot( df_int["Time"], df_int["RF_depth"], ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
-    ax2.plot( df_int["Time"], df_int["Phi_global"], color=qgray_dark, linestyle=':', lw=lw, label=r'Melt fraction, $\phi_{\mathrm{mantle}}$')
+    ax2.plot( df_int["Time"], df_int["RF_depth"], ls="-", lw=lw, color=dict_colors["qgray"], label=r'Rheol. front, $d_{\mathrm{front}}$')
+    ax2.plot( df_int["Time"], df_int["Phi_global"], color=dict_colors["qblue"], linestyle=':', lw=lw, label=r'Melt fraction, $\phi_{\mathrm{mantle}}$')
     # ax2.plot( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
     # ax2.plot( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
     # ax2.plot( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
 
-    ax2.set_xscale("symlog", linthreshx=10)
+    ax2.set_xscale("symlog", linthresh=10)
     ax2.set_xlim( *xlim )
     ax2.set_xlabel(xlabel, fontsize=label_fs)
     ax2.set_ylabel(r'Planet fraction', fontsize=label_fs)
@@ -210,7 +209,7 @@ def plot_global( output_dir ):
     ##########
     title_ax3 = r'Surface volatile partial pressure'
     # Total pressure
-    ax3.plot( df_int["Time"], df_int["P_surf"], color=qgray_dark, linestyle='-', lw=lw, label=r'Total')
+    ax3.plot( df_int["Time"], df_int["P_surf"], color='black', linestyle='-', lw=lw, label=r'Total')
     ##########
     # figure e
     ##########
@@ -228,8 +227,6 @@ def plot_global( output_dir ):
         vol_times   = []
         # M_atm_total = np.zeros(len(fig_o.time))
 
-        print(vol+":", end=" ")
-
         # For all times
         for sim_time in fig_o.time:
 
@@ -245,7 +242,6 @@ def plot_global( output_dir ):
                 mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as s:
                 # if s.find(vol.encode()) != -1:
                 if s.find(vol_str.encode()) != -1:
-                    print(sim_time, end=" ")
                     keys_t = ( ('atmosphere', vol, 'liquid_kg'),
                                ('atmosphere', vol, 'solid_kg'),
                                ('atmosphere', vol, 'initial_kg'),
@@ -254,8 +250,6 @@ def plot_global( output_dir ):
                                )
 
                     vol_times.append(sim_time)
-
-        print()
 
         # # Find the times the volatile is *not* present
         # np.setdiff1d(fig_o.time,vol_times)
@@ -276,16 +270,16 @@ def plot_global( output_dir ):
             ##########
             # figure d
             ##########
-            ax3.plot( vol_times, vol_atm_pressure, color=vol_colors[vol+"_2"], linestyle='-', lw=lw, label=vol_latex[vol])
+            ax3.plot( vol_times, vol_atm_pressure, color=dict_colors[vol+"_2"], linestyle='-', lw=lw, label=vol_latex[vol])
             ##########
             # figure e
             ##########
-            ax4.plot( vol_times, vol_atm_kg/vol_total_kg, lw=lw, color=vol_colors[vol+"_2"], linestyle='-', label=vol_latex[vol])
+            ax4.plot( vol_times, vol_atm_kg/vol_total_kg, lw=lw, color=dict_colors[vol+"_2"], linestyle='-', label=vol_latex[vol])
             ##########
             # figure f
             ##########
             # ax5.plot( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
-            ax5.plot( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=vol_colors[vol+"_2"], linestyle='-', label=vol_latex[vol] )
+            ax5.plot( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=dict_colors[vol+"_2"], linestyle='-', label=vol_latex[vol] )
 
     ##########
     # figure d
@@ -300,13 +294,13 @@ def plot_global( output_dir ):
     # https://brohrer.github.io/matplotlib_ticks.html#tick_style
     # ax3.tick_params(axis="x", direction="in", length=3, width=1)
     # ax3.tick_params(axis="y", direction="in", length=10, width=1)
-    ax3.set_xscale("symlog", linthreshx=10)
+    ax3.set_xscale("symlog", linthresh=10)
     ax3.set_xticklabels([])
     ax3.yaxis.tick_right()
     ax3.yaxis.set_label_position("right")
     ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
     handles, labels = ax3.get_legend_handles_labels()
-    ax3.legend(handles, labels, ncol=2, loc=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
+    ax3.legend(handles, labels, ncol=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend, loc='lower right') 
     ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
     ##########
     # figure e
@@ -324,7 +318,7 @@ def plot_global( output_dir ):
     ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax4.yaxis.tick_right()
-    ax4.set_xscale("symlog", linthreshx=10)
+    ax4.set_xscale("symlog", linthresh=10)
     ax4.set_xticklabels([])
     ax4.yaxis.set_label_position("right")
     ax4.yaxis.set_label_coords(xcoord_r,ycoord_r)
@@ -343,7 +337,7 @@ def plot_global( output_dir ):
     ax5.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax5.set_xlim( *xlim )
-    ax5.set_xscale("symlog", linthreshx=10)
+    ax5.set_xscale("symlog", linthresh=10)
     # ax5.set_ylim( 0, 1 )
     ax5.yaxis.tick_right()
     ax5.yaxis.set_label_coords(xcoord_r,ycoord_r)

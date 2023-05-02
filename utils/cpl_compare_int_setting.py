@@ -2,6 +2,8 @@
 
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
+from utils.utils_spider import MyJSON
+
 
 import matplotlib.gridspec as gridspec
 
@@ -178,7 +180,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
             time, time_idx = find_nearest(atm_data_times, output_time)
 
             # Find planet mass and radius
-            myjson_o  = su.MyJSON( data_dir+'/{}.json'.format(data_times[0]) )
+            myjson_o  = MyJSON( data_dir+'/{}.json'.format(data_times[0]) )
             xx_radius = myjson_o.get_dict_values(['data','radius_b'])*1.0E-3
             r_planet  = np.max(xx_radius*1e3) # m
             core_mass   = myjson_o.get_dict_values(['atmosphere','mass_core'])
@@ -211,7 +213,7 @@ def plot_atmosphere( output_dir, sub_dirs ):
             
             ### INTERIOR
 
-            myjson_o = su.MyJSON( data_dir+"/"+'{}.json'.format(time) )
+            myjson_o = MyJSON( data_dir+"/"+'{}.json'.format(time) )
 
             # Melt fraction
             mantle_prs = myjson_o.get_dict_values(['data','pressure_b'])*1.0E-9
@@ -383,12 +385,6 @@ def plot_atmosphere( output_dir, sub_dirs ):
     ax2b.set_yscale("symlog", linthreshy=linthreshy_mantle)
     ax2b.set_yticks(yticks_mantle)
     ax2b.set_yticklabels([])
-
-    try:
-        sns.set_style("ticks")
-        sns.despine()
-    except:
-        print("No seaborn.")
 
     # Legend(s)
     legend_ax0 = ax0.legend(handles=legend_ax0_handles, loc=1, ncol=1, fontsize=fs_legend, framealpha=0.3, title=r"H$_\mathrm{2}$O"+", $t = $"+latex_float(output_time_print_a)+" yr")

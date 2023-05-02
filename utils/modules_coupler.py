@@ -23,6 +23,7 @@ import subprocess
 import fileinput # https://kaijento.github.io/2017/05/28/python-replacing-lines-in-file/
 import math
 import importlib.util
+import yaml
 import pickle as pkl
 
 from datetime import datetime
@@ -46,8 +47,6 @@ radconv_dir = coupler_dir+"/AEOLUS/"
 spider_dir  = coupler_dir+"/SPIDER/"
 utils_dir   = coupler_dir+"/utils/"
 
-print("coupler_dir = %s"%coupler_dir)
-
 dirs = {"output": output_dir, 
         "coupler": coupler_dir, 
         "rad_conv": radconv_dir, 
@@ -67,7 +66,7 @@ if not os.path.exists(dirs["output"]):
 def parse_console_arguments():
     
     parser = argparse.ArgumentParser(description='COUPLER optional command line arguments')
-    parser.add_argument('-init_file', type=str, default=dirs["output"]+"/init_coupler.opts", help='Specify init filename')
+    parser.add_argument('-init_file', type=str, default=dirs["output"]+"/init_coupler.cfg", help='Specify init filename')
     parser.add_argument('-restart_file', type=str, default="0", help='Restart from specific .json file in folder. Specify only the number of the file.')
     parser.add_argument('-dir', default=dirs["output"], help='Provide path to output directory.' )
     parser.add_argument('-H2O_ppm', type=float, help='H2O initial abundance (ppm wt).')
@@ -90,50 +89,4 @@ def parse_console_arguments():
 
     return args
 
-def assign_parse_arguments(args, COUPLER_options):
 
-    # Parse optional argument from console
-    if args.H2O_ppm:
-        print("Set H2O_ppm from command line:", args.H2O_ppm)
-        COUPLER_options["H2O_initial_total_abundance"] = float(args.H2O_ppm)
-    elif args.H2O_bar:
-        print("Set H2O_bar from command line:", args.H2O_bar)
-        COUPLER_options["H2O_initial_atmos_pressure"] = float(args.H2O_bar)
-    if args.CO2_ppm:
-        print("Set CO2_ppm from command line:", args.CO2_ppm)
-        COUPLER_options["CO2_initial_total_abundance"] = float(args.CO2_ppm)
-    elif args.CO2_bar:
-        print("Set CO2_bar from command line:", args.CO2_bar)
-        COUPLER_options["CO2_initial_atmos_pressure"] = float(args.CO2_bar)
-    if args.H2_ppm:
-        print("Set H2_ppm from command line:", args.H2_ppm)
-        COUPLER_options["H2_initial_total_abundance"] = float(args.H2_ppm)
-    elif args.H2_bar:
-        print("Set H2_bar from command line:", args.H2_bar)
-        COUPLER_options["H2_initial_atmos_pressure"] = float(args.H2_bar)
-    if args.CO_ppm:
-        print("Set CO_ppm from command line:", args.CO_ppm)
-        COUPLER_options["CO_initial_total_abundance"] = float(args.CO_ppm)
-    elif args.CO_bar:
-        print("Set CO_bar from command line:", args.CO_bar)
-        COUPLER_options["CO_initial_atmos_pressure"] = float(args.CO_bar)
-    if args.N2_ppm:
-        print("Set N2_ppm from command line:", args.N2_ppm)
-        COUPLER_options["N2_initial_total_abundance"] = float(args.N2_ppm)
-    elif args.N2_bar:
-        print("Set N2_bar from command line:", args.N2_bar)
-        COUPLER_options["N2_initial_atmos_pressure"] = float(args.N2_bar)
-    if args.CH4_ppm:
-        print("Set CH4_ppm from command line:", args.CH4_ppm)
-        COUPLER_options["CH4_initial_total_abundance"] = float(args.CH4_ppm)
-    elif args.CH4_bar:
-        print("Set CH4_bar from command line:", args.CH4_bar)
-        COUPLER_options["CH4_initial_atmos_pressure"] = float(args.CH4_bar)
-    if args.O2_ppm:
-        print("Set O2_ppm from command line:", args.O2_ppm)
-        COUPLER_options["O2_initial_total_abundance"] = float(args.O2_ppm)
-    elif args.O2_bar:
-        print("Set O2_bar from command line:", args.O2_bar)
-        COUPLER_options["O2_initial_atmos_pressure"] = float(args.O2_bar)
-
-    return COUPLER_options

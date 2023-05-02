@@ -1,16 +1,15 @@
-#!/usr/bin/env python3
 
 """
 PROTEUS Main file
 """
 
 from utils.modules_coupler import *
-
-# Volatile list tracked in radiative-convective model
-vol_list = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
+from utils.modules_utils import *
 
 #====================================================================
 def main():
+
+    print("===> Start PROTEUS <===")
 
     # Parse console arguments
     args = parse_console_arguments()
@@ -20,15 +19,7 @@ def main():
 
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
     loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 10 }
-
-    # Parse console arguments
-    COUPLER_options = assign_parse_arguments(args, COUPLER_options)
-
-    # Start conditions and help files depending on restart option
-    if COUPLER_options["IC_INTERIOR"] == 1: 
-        cu.CleanOutputDir( dirs["output"] )
-        runtime_helpfile    = []
-  
+    
     # If restart skip init loop # args.r or args.rf or 
     if COUPLER_options["IC_INTERIOR"] == 2:
         loop_counter["total"] += loop_counter["init_loops"]
@@ -48,15 +39,46 @@ def main():
         COUPLER_options["F_atm"] = runtime_helpfile.iloc[-1]["F_atm"]
         COUPLER_options["F_net"] = runtime_helpfile.iloc[-1]["F_net"]
 
+    # Start conditions and help files depending on restart option
+    else:
+        cu.CleanOutputDir( dirs["output"] )
+        cu.CleanOutputDir( dirs["vulcan"]+"/output/" )
+        runtime_helpfile    = []
+
+        # Work out which volatiles are involved
+        for vol in volatile_species:
+            match COUPLER_options["IC_ATMOSPHERE"]:
+                case 3:
+                    key = vol+"_initial_atmos_pressure"
+                case 1:
+                    key = vol+"_initial_total_abundance"
+            if (key in COUPLER_options):
+                COUPLER_options[vol+"_included"] = (COUPLER_options[key]>0.0)
+                continue
+
+    # Check that the current configuration is reasonable
+    if not ('H' in element_list):
+        print("Error: The element list must include hydrogen!")
+        print("       Currently the element list includes: ",element_list)
+        exit(1)
+
+    
+
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     print(":::::::::::: START COUPLER RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
+
     # Interior-Atmosphere loop
     while time_dict["planet"] < time_dict["target"]:
 
+        # Calculate stellar luminosity and planetary eqm temperature
+        S_0, _ = SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], COUPLER_options["albedo_pl"], COUPLER_options["Sfrac"])
+        COUPLER_options["T_eqm"] = cu.calc_eqm_temperature(S_0*COUPLER_options["Sfrac"],  COUPLER_options["albedo_pl"])
+
         ############### INTERIOR SUB-LOOP
+        print("Start interior")
 
         # Run SPIDER
         COUPLER_options = cu.RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile )
@@ -64,20 +86,23 @@ def main():
         # Update help quantities, input_flag: "Interior"
         runtime_helpfile, time_dict, COUPLER_options = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
 
+        print("End interior")
         ############### / INTERIOR SUB-LOOP
 
         ############### ATMOSPHERE SUB-LOOP
 
+        print("Start atmosphere")
         while (loop_counter["atm"] == 0) or (loop_counter["atm"] < loop_counter["atm_loops"] and abs(COUPLER_options["F_net"]) > COUPLER_options["F_eps"]):
 
             # Initialize atmosphere structure
             atm, COUPLER_options = cu.StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
-            # Run VULCAN (settings-dependent): update atmosphere mixing ratios
-            atm = cu.RunAtmChemistry( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options )
-
             # Run SOCRATES: update TOA heating and MO heat flux
-            atm, COUPLER_options = cu.RunSOCRATES( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options )
+            atm, COUPLER_options = cu.RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options )
+             
+            # Run VULCAN (settings-dependent): update atmosphere mixing ratios
+            if (COUPLER_options["use_vulcan"] == 1):
+                atm = cu.RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options)
 
             # Update help quantities, input_flag: "Atmosphere"
             runtime_helpfile, time_dict, COUPLER_options = cu.UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
@@ -85,6 +110,7 @@ def main():
             loop_counter["atm"] += 1
 
         ############### / ATMOSPHERE SUB-LOOP
+        print("End atmosphere")
         
         # Print info, save atm to file, update plots
         cu.PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs)

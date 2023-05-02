@@ -22,7 +22,7 @@
         * `sudo apt install libnetcdff-dev`
     
     * Install Python libraries:
-        * `conda install netcdf4 matplotlib numpy pandas scipy seaborn natsort`
+        * `conda install netcdf4 matplotlib numpy pandas scipy sympy natsort`
         * `conda install -c conda-forge f90nml`
 
     * *Optionally* register your public SSH key with Github:

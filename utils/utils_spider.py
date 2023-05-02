@@ -3,6 +3,8 @@
 # Import utils-specific modules
 from utils.modules_utils import *
 
+from utils.modules_plot import *
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
@@ -13,9 +15,10 @@ from scipy.optimize import newton
 import numpy as np
 import logging, os, sys, json
 
+from AEOLUS.utils import phys as phys
+
 #====================================================================
 # constants
-bigG = 6.67408E-11 # m^3 / kg / s^2
 
 # lookup data directories
 # TODO: this is the current model, but could be different depending
@@ -36,72 +39,6 @@ density_solid_file = os.path.join( lookupdir, 'density_solid.dat' )
 # CLASSES
 #===================================================================
 
-#===================================================================
-class MyFuncFormatter( object ):
-
-    '''the default function formatter from
-       matplotlib.ticker.FuncFormatter(func) only accepts two
-       arguments, which is not enough to scale an arcsinh function.
-       But by creating our own class here we can attach the scaling
-       to the object which can then be accessed in __call__'''
-
-    def __init__( self, arcsinh_scale ):
-        self.const = arcsinh_scale
-
-    def ascale( self, xx ):
-        '''map input to log-like values (scaled arcsinh)'''
-        yy = np.arcsinh( xx*self.const )
-        return yy
-
-    def _invascale( self, yy ):
-        '''map input from log-like values (inverse transform)'''
-        xx = np.sinh(yy) / self.const
-        return xx
-
-    def _sci_notation( self, num, decimal_digits=1, precision=None, exponent=None):
-        """
-        Returns a string representation of the scientific
-        notation of the given number formatted for use with
-        LaTeX or Mathtext, with specified number of significant
-        decimal digits and precision (number of decimal digits
-        to show). The exponent to be used can also be specified
-        explicitly.
-        """
-
-        # plotting zero is useful to emphasize that we are plotting both
-        # positive and negative values, e.g. for the heat fluxes
-        if num==0:
-            fmt = r"$0$"
-            return fmt
-
-        if not exponent:
-            exponent = abs(num)
-            exponent = np.log10( exponent )
-            exponent = np.floor( exponent )
-            exponent = int( exponent )
-
-        coeff = round(num / float(10**exponent), decimal_digits)
-        # sometimes, probably due to floating point precision? the coeff
-        # is not less than ten.  Correct for that here
-        if np.abs(coeff) >= 10.0:
-            coeff /= 10.0
-            exponent += 1
-        if not precision:
-            precision = decimal_digits
-
-        if coeff < 0.0:
-            fmt = r"$-10^{{{0}}}$".format(exponent)
-            #fmt= r"${{{0}}}$".format(exponent)
-        else:
-            fmt = r"$10^{{{0}}}$".format(exponent)
-
-        return fmt
-        #return r"${0:.{2}f}\cdot10^{{{1:d}}}$".format(coeff, exponent, precision)
-
-    def __call__( self, x, pos ):
-        y = self._invascale( x )
-        fmt = self._sci_notation( y, 0 )
-        return fmt
 
 #===================================================================
 class MyJSON( object ):
@@ -117,8 +54,8 @@ class MyJSON( object ):
         try:
             json_data  = open( self.filename )
         except FileNotFoundError:
-            logger.critical('cannot find file: %s', self.filename )
-            logger.critical('please specify times for which data exists')
+            print('cannot find file: %s', self.filename )
+            print('please specify times for which data exists')
             sys.exit(1)
         self.data_d = json.load( json_data )
         json_data.close()
@@ -130,7 +67,7 @@ class MyJSON( object ):
             dict_d = recursive_get( self.data_d, keys )
             return dict_d
         except NameError:
-            logger.critical('dictionary for %s does not exist', keys )
+            print('dictionary for %s does not exist', keys )
             sys.exit(1)
 
     # was get_field_units
@@ -213,238 +150,6 @@ class MyJSON( object ):
         return atm_interp1d
 
 
-#===================================================================
-class FigureData( object ):
-
-    def __init__( self, nrows, ncols, width, height, outname='fig',
-        times=None, units='kyr' ):
-        dd = {}
-        self.data_d = dd
-        if times:
-            dd['time_l'] = times
-            self.process_time_list()
-        if units:
-            dd['time_units'] = units
-            dd['time_decimal_places'] = 2 # hard-coded
-        dd['outname'] = outname
-        self.set_properties( nrows, ncols, width, height )
-
-    def get_color( self, num ):
-        dd = self.data_d
-        return dd['colors_l'][num]
-
-    def get_legend_label( self, time ):
-        dd = self.data_d
-        units = dd['time_units']
-        dp = dd['time_decimal_places']
-        age = float(time)
-        if units == 'yr':
-            age = round( age, 0 )
-            label = '%d'
-        elif units == 'kyr':
-            age /= 1.0E3
-            label = '%0.1f'
-        elif units == 'Myr':
-            age /= 1.0E6
-            label = '%0.2f'
-        elif units == 'Byr' or units == 'Gyr':
-            age /= 1.0E9
-            label = '%0.2f'
-        #label = '%0.{}e'.format( dp )
-        #label = '%0.{}f'.format( dp )
-        label = label % age
-        return label
-
-    def process_time_list( self ):
-        dd = self.data_d
-        time_l = dd['time_l']
-        try:
-            time_l = [int(time_l)]
-        except ValueError:
-            time_l = [int(time) for time in time_l.split(',')]
-        self.time = time_l
-
-    def make_figure( self ):
-        dd = self.data_d
-        nrows = dd['nrows']
-        ncols = dd['ncols']
-        fig, ax = plt.subplots( nrows, ncols )
-        fig.subplots_adjust(wspace=0.3,hspace=0.3)
-        fig.set_size_inches( dd['width'], dd['height'] )
-        self.fig = fig
-        self.ax = ax
-
-    def savefig( self, num ):
-        dd = self.data_d
-        if dd['outname']:
-            outname = dd['outname'] + '.pdf'
-        else:
-            outname = 'fig{}.pdf'.format( num)
-        self.fig.savefig(outname, transparent=True, bbox_inches='tight',
-            pad_inches=0.05, dpi=dd['dpi'])
-
-    def set_colors( self, num=8, cmap='bkr8' ):
-        dd = self.data_d
-        # color scheme from Tim.  Nice reds and blues
-        colors_l = ['#2364A4',
-                   '#1695F9',
-                   '#95D5FD',
-                   '#8B0000',
-                   '#CD5C5C',
-                   '#FA141B',
-                   '#FFA07A']
-        # color scheme 'bkr8' for light background from Crameri
-        # see f_Colours.m at http://www.fabiocrameri.ch/visualisation.php
-        # this is actually very similar (same?) as Tim's scheme above
-        # used in Bower et al. (2018)
-        if cmap=='bkr8' and num==3:
-            colors_l = [(0.0,0.0,0.3),
-                        #(0.1,0.1,0.5),
-                        #(0.2,0.2,0.7),
-                        (0.4,0.4,0.8),
-                        #(0.8,0.4,0.4),
-                        #(0.7,0.2,0.2),
-                        (0.5,0.1,0.1)]#,
-                        #(0.3,0.0,0.0)]
-            colors_l.reverse()
-        elif cmap=='bkr8' and num==5:
-            colors_l = [(0.0,0.0,0.3),
-                        #(0.1,0.1,0.5),
-                        (0.2,0.2,0.7),
-                        #(0.4,0.4,0.8),
-                        (0.8,0.4,0.4),
-                        #(0.7,0.2,0.2),
-                        (0.5,0.1,0.1),
-                        (0.3,0.0,0.0)]
-            colors_l.reverse()
-        elif cmap=='bkr8' and num==6:
-            colors_l = [(0.0,0.0,0.3),
-                        (0.1,0.1,0.5),
-                        (0.2,0.2,0.7),
-                        #(0.4,0.4,0.8),
-                        #(0.8,0.4,0.4),
-                        (0.7,0.2,0.2),
-                        (0.5,0.1,0.1),
-                        (0.3,0.0,0.0)]
-            colors_l.reverse()
-        elif cmap=='bkr8' and num==8:
-            colors_l = [(0.0,0.0,0.3),
-                        (0.1,0.1,0.5),
-                        (0.2,0.2,0.7),
-                        (0.4,0.4,0.8),
-                        (0.8,0.4,0.4),
-                        (0.7,0.2,0.2),
-                        (0.5,0.1,0.1),
-                        (0.3,0.0,0.0)]
-            colors_l.reverse()
-        else:
-            try:
-                cmap = plt.get_cmap( cmap )
-            except ValueError:
-                cmap = plt.get_cmap('viridis_r')
-            colors_l = [cmap(i) for i in np.linspace(0, 1, num)]
-        dd['colors_l'] = colors_l
-
-    def set_properties( self, nrows, ncols, width, height ):
-        dd = self.data_d
-        dd['nrows'] = nrows
-        dd['ncols'] = ncols
-        dd['width'] = width # inches
-        dd['height'] = height # inches
-        # TODO: breaks for MacOSX, since I don't think Mac comes
-        # with serif font.  But whatever it decides to switch to
-        # also looks OK and LaTeX-like.
-        font_d = {'family' : 'sans-serif',
-                  #'style': 'normal',
-                  #'weight' : 'bold'
-                  'serif': ['Arial'],
-                  'sans-serif': ['Arial'],
-                  'size'   : '10'}
-        mpl.rc('font', **font_d)
-        # Do NOT use TeX font for labels etc.
-        plt.rc('text', usetex=False)
-        dd['dpi'] = 300
-        dd['extension'] = 'png'
-        dd['fontsize_legend'] = 8
-        dd['fontsize_title'] = 10
-        dd['fontsize_xlabel'] = 10
-        dd['fontsize_ylabel'] = 10
-        try:
-            self.set_colors( len(self.time) )
-        except AttributeError:
-            self.set_colors( num=8 )
-        self.make_figure()
-
-    def set_myaxes( self, ax, title='', xlabel='', xticks='',
-        ylabel='', yticks='', yrotation='', fmt='', xfmt='', xmin='', xmax='', ymin='', ymax='' ):
-        if title:
-            self.set_mytitle( ax, title )
-        if xlabel:
-            self.set_myxlabel( ax, xlabel )
-        if xticks:
-            self.set_myxticks( ax, xticks, xmin, xmax, xfmt )
-        if ylabel:
-            self.set_myylabel( ax, ylabel, yrotation )
-        if yticks:
-            self.set_myyticks( ax, yticks, ymin, ymax, fmt )
-
-    def set_mylegend( self, ax, handles, loc=4, ncol=1, TITLE=None, **kwargs ):
-        dd = self.data_d
-        fontsize = self.data_d['fontsize_legend']
-        # FIXME
-        if not TITLE:
-            legend = ax.legend(handles=handles, loc=loc, ncol=ncol, fontsize=fontsize, **kwargs )
-            #units = dd['time_units']
-            #title = r'Time ({0})'.format( units )
-        else:
-            title = TITLE
-            legend = ax.legend(title=title, handles=handles, loc=loc,
-                ncol=ncol, fontsize=fontsize, **kwargs)
-        plt.setp(legend.get_title(),fontsize=fontsize)
-
-    def set_mytitle( self, ax, title ):
-        dd = self.data_d
-        fontsize = dd['fontsize_title']
-        title = r'{}'.format( title )
-        ax.set_title( title, fontsize=fontsize )
-
-    def set_myxlabel( self, ax, label ):
-        dd = self.data_d
-        fontsize = dd['fontsize_xlabel']
-        label = r'{}'.format( label )
-        ax.set_xlabel( label, fontsize=fontsize )
-
-    def set_myylabel( self, ax, label, yrotation ):
-        dd = self.data_d
-        fontsize = dd['fontsize_ylabel']
-        if not yrotation:
-            yrotation = 'horizontal'
-        label = r'{}'.format( label )
-        ax.set_ylabel( label, fontsize=fontsize, rotation=yrotation )
-
-    def set_myxticks( self, ax, xticks, xmin, xmax, fmt ):
-        dd = self.data_d
-        if fmt:
-            xticks = fmt.ascale( np.array(xticks) )
-            ax.xaxis.set_major_formatter(
-                mpl.ticker.FuncFormatter(fmt))
-        ax.set_xticks( xticks)
-        # set x limits to match extent of ticks
-        if not xmax: xmax=xticks[-1]
-        if not xmin: xmin=xticks[0]
-        ax.set_xlim( xmin, xmax )
-
-    def set_myyticks( self, ax, yticks, ymin, ymax, fmt ):
-        dd = self.data_d
-        if fmt:
-            yticks = fmt.ascale( np.array(yticks) )
-            ax.yaxis.set_major_formatter(
-                mpl.ticker.FuncFormatter(fmt))
-        ax.set_yticks( yticks)
-        # set y limits to match extent of ticks
-        if not ymax: ymax=yticks[-1]
-        if not ymin: ymin=yticks[0]
-        ax.set_ylim( ymin, ymax )
 
 #====================================================================
 
@@ -519,7 +224,7 @@ def get_all_output_times( odir='output' ):
     # locate times to process based on files located in odir/
     file_l = [f for f in os.listdir(odir) if os.path.isfile(os.path.join(odir,f))]
     if not file_l:
-        logger.critical('output directory contains no files')
+        print('output directory contains no files')
         sys.exit(0)
 
     time_l = [fname for fname in file_l]
@@ -545,13 +250,11 @@ def get_all_output_pkl_times( odir='output' ):
     # locate times to process based on files located in odir/
     file_l = [f for f in os.listdir(odir) if os.path.isfile(os.path.join(odir,f))]
     if not file_l:
-        logger.critical('output directory contains no PKL files')
+        print('output directory contains no PKL files')
         sys.exit(0)
 
     time_l = [fname for fname in file_l]
     time_l = list(filter(lambda a: a.endswith('pkl'), time_l))
-
-    # print(time_l)
 
     # Filter and split files
     time_l = [ file for file in time_l if not file.startswith("orig_")]
@@ -666,49 +369,18 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
 
     filename = os.path.join( indir, '{}.json'.format(time) )
     myjson_o = MyJSON( filename )
-    keydata_l = []
     for key in keys_t:
-        values_a = myjson_o.get_dict_values( key )
-        try:
-            value = values_a[0]
-        except TypeError:
-            value = values_a
-        keydata_l.append( value )
-    data_l.append( keydata_l )
+        value = myjson_o.get_dict_values( key )
+        data_l.append( value )
 
-    data_a = np.array( data_l )
 
-    # rows data, cols time
-    data_a = data_a.transpose()
-
-    return data_a
-
-#====================================================================
-def get_my_logger( name ):
-
-    '''setup logger configuration and handles'''
-
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
-    fh = logging.FileHandler('mylog.log')
-    fh.setLevel(logging.DEBUG)
-    # create console handler with a higher log level
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.ERROR)
-    # create formatter and add it to the handlers
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    fh.setFormatter(formatter)
-    ch.setFormatter(formatter)
-    # add the handlers to the logger
-    logger.addHandler(fh)
-    logger.addHandler(ch)
-    return logger
+    return np.array(data_l)
 
 #====================================================================
 def gravity( m, r ):
-
-    g = bigG*m/r**2
+    g = phys.G*m/r**2
     return g
+
 
 #====================================================================
 def get_deriv_static_structure( z, r, *args ):
@@ -726,7 +398,7 @@ def get_deriv_static_structure( z, r, *args ):
     # derivatives
     dpdr = -rho*g
     dmdr = 4*np.pi*r**2*rho
-    dgdr = 4*np.pi*bigG*rho - 2*bigG*m/r**3
+    dgdr = 4*np.pi*phys.G*rho - 2*phys.G*m/r**3
 
     return [dpdr,dmdr,dgdr]
 
@@ -867,5 +539,3 @@ def plot_static_structure( radius, rho_interp1d ):
     plt.show()
 
 #====================================================================
-
-logger = get_my_logger(__name__)
