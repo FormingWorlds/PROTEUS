@@ -346,9 +346,14 @@ class FigureData( object ):
         times=[], units='kyr' ):
         dd = {}
         self.data_d = dd
+
+        if (type(times) == float) or (type(times) == int):
+            times = np.array([times])
+
         if len(times) > 0:
             dd['time_l'] = times
-            self.process_time_list()
+            # self.process_time_list()
+
         if units:
             dd['time_units'] = units
             dd['time_decimal_places'] = 2 # hard-coded
@@ -386,10 +391,7 @@ class FigureData( object ):
     def process_time_list( self ):
         dd = self.data_d
         time_l = dd['time_l']
-        try:
-            time_l = [int(time_l)]
-        except ValueError:
-            time_l = [int(time) for time in time_l.split(',')]
+        time_l = [int(time) for time in time_l.split(',')]
         self.time = time_l
 
     def make_figure( self ):
@@ -422,15 +424,19 @@ class FigureData( object ):
         dd['height'] = height # inches
 
         # Set main font properties
-        font_d = {'size':10}
-        fonts  = fm.findSystemFonts(fontpaths=None, fontext='ttf')
+        font_d = {
+            'size': 10.0,
+            'family': ['Arial','sans-serif']
+            }
+
+        # fonts  = fm.findSystemFonts(fontpaths=None, fontext='ttf')
         # Has arial?
-        for f in fonts:
-            if 'Arial' in f:
-                font_d["family":'sans-serif']
-                font_d['serif': ['Arial']]
-                font_d['serif': ['Arial']]
-                break
+        # for f in fonts:
+        #     if 'Arial' in f:
+        #         font_d["family"]        = 'sans-serif'
+        #         font_d['serif']         = ['Arial']
+        #         font_d['sans-serif']    = ['Arial']
+        #         break
         mpl.rc('font', **font_d)
 
         # Do NOT use TeX font for labels etc.
