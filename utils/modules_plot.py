@@ -10,6 +10,7 @@ from natsort import natsorted # https://pypi.python.org/pypi/natsort
 
 # Define Crameri colormaps (+ recursive)
 from matplotlib.colors import LinearSegmentedColormap
+import matplotlib.font_manager as fm
 
 sci_colormaps = {}
 for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
@@ -345,7 +346,7 @@ class FigureData( object ):
         times=None, units='kyr' ):
         dd = {}
         self.data_d = dd
-        if times:
+        if not (times == None):
             dd['time_l'] = times
             self.process_time_list()
         if units:
@@ -419,18 +420,23 @@ class FigureData( object ):
         dd['ncols'] = ncols
         dd['width'] = width # inches
         dd['height'] = height # inches
-        # TODO: breaks for MacOSX, since I don't think Mac comes
-        # with serif font.  But whatever it decides to switch to
-        # also looks OK and LaTeX-like.
-        font_d = {'family' : 'sans-serif',
-                  #'style': 'normal',
-                  #'weight' : 'bold'
-                  'serif': ['Arial'],
-                  'sans-serif': ['Arial'],
-                  'size'   : '10'}
+
+        # Set main font properties
+        font_d = {'size':10}
+        fonts  = fm.findSystemFonts(fontpaths=None, fontext='ttf')
+        # Has arial?
+        for f in fonts:
+            if 'Arial' in f:
+                font_d["family":'sans-serif']
+                font_d['serif': ['Arial']]
+                font_d['serif': ['Arial']]
+                break
         mpl.rc('font', **font_d)
+
         # Do NOT use TeX font for labels etc.
         plt.rc('text', usetex=False)
+
+        # Other params
         dd['dpi'] = 300
         dd['extension'] = 'png'
         dd['fontsize_legend'] = 8
