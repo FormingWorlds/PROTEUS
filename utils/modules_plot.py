@@ -391,7 +391,10 @@ class FigureData( object ):
     def process_time_list( self ):
         dd = self.data_d
         time_l = dd['time_l']
-        time_l = [int(time) for time in time_l.split(',')]
+        try:
+            time_l = [int(time_l)]
+        except ValueError:
+            time_l = [int(time) for time in time_l.split(',')]
         self.time = time_l
 
     def make_figure( self ):
