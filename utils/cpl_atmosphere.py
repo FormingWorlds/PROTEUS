@@ -178,8 +178,6 @@ title_ha   = "left"
 title_va   = "bottom"
 title_font = 'Arial'
 
-volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
-
 def plot_current_mixing_ratio( output_dir, times, vulcan_setting ):
 
     fig, ax1 = plt.subplots()

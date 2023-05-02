@@ -13,7 +13,7 @@ from scipy.interpolate import RectBivariateSpline, interp1d
 from scipy.integrate import odeint
 from scipy.optimize import newton
 import numpy as np
-import logging, os, sys, json
+import os, sys, json
 
 from AEOLUS.utils import phys as phys
 
