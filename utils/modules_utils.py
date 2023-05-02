@@ -10,6 +10,8 @@ import logging
 import matplotlib as mpl
 mpl.use('Agg')
 
+logging.getLogger('matplotlib.font_manager').disabled = True  # Disable font fallback logging
+
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
