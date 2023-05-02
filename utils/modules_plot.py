@@ -343,10 +343,10 @@ class MyFuncFormatter( object ):
 class FigureData( object ):
 
     def __init__( self, nrows, ncols, width, height, outname='fig',
-        times=None, units='kyr' ):
+        times=[], units='kyr' ):
         dd = {}
         self.data_d = dd
-        if not (times == None):
+        if len(times) > 0:
             dd['time_l'] = times
             self.process_time_list()
         if units:
