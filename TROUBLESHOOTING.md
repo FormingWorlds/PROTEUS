@@ -33,7 +33,9 @@ With the new Apple Silicon hardware, the option `-march=native` sometimes causes
 Most Linux distributions do not come with `ksh` installed, while MacOS seems to. If you get an error relating to `ksh` not being found, check that you did all of the installation steps. One step under 'Setup SOCRATES' involves replacing `ksh` with `bash` in all of the SOCRATES executables.
 
 ### MacOS: Python / netCDF error `Library not loaded: '@rpath/libcrypto.3.dylib'`
-Create a symlink in the local Python installation (here shown for `bash` terminal): `brew install openssl`.
+Create a symlink in the local Python installation (here shown for `bash` terminal). See https://pavcreations.com/dyld-library-not-loaded-libssl-1-1-dylib-fix-on-macos/
+
+`brew install openssl`.
 
 Follow the instructions at the end of the `openssl` installation:
 
