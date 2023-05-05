@@ -28,7 +28,7 @@ Have you sourced `PROTEUS.env`? If yes, check that the variables `PETSC_ARCH` an
 
 
 ### MacOS: The FastChem code distributed with VULCAN won't compile 
-With the new Apple Silicon hardware, the option `-march=native` sometimes causes issues. In order to avoid this, you need to make sure to use the GNU version of `g++`, not the Apple one. The Apple one located at `/usr/bin/gcc` is actually a wrapped around `clang`. I have found that using the Homebrew version located at `/opt/homebrew/bin/` works well. To fix this error, edit the file `make.globaloptions` in the FastChem directory to use `g++-12` instead of `g++`.
+With the new Apple Silicon hardware, the option `-march=native` sometimes causes issues. In order to avoid this, you need to make sure to use the GNU version of `g++`, not the Apple one. The Apple one located at `/usr/bin/gcc` is actually a wrapped around `clang`. I have found that using the Homebrew version located at `/opt/homebrew/bin/` works well. To fix this error, find out which gcc version homebrew installed (`ls /opt/homebrew/bin/gcc-*`), and edit the file `make.globaloptions` in the FastChem directory to use, e.g., `g++-12` or `g++-13` instead of `g++`.
 
 ### Linux: ksh not found when running SOCRATES
 Most Linux distributions do not come with `ksh` installed, while MacOS seems to. If you get an error relating to `ksh` not being found, check that you did all of the installation steps. One step under 'Setup SOCRATES' involves replacing `ksh` with `bash` in all of the SOCRATES executables.
