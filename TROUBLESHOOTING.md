@@ -51,3 +51,9 @@ Follow the instructions at the end of the `openssl` installation:
 
 ### MacOS: Python error `ModuleNotFoundError: No module named 'yaml'` despite `yaml` being installed via `conda`
 `python -m pip install pyyaml`
+
+### MacOS: If SOCRATES make routine complains about absent `ifort` compilers
+Install Intel compilers from https://www.intel.com/content/www/us/en/developer/tools/oneapi/toolkits.html.
+* First Intel® oneAPI Base Toolkit
+* Then Intel® oneAPI HPC Toolkit
+* Follow the instructions that are provided after the installation to set the locations of `ifort` in your environment
