@@ -3,6 +3,10 @@
 
 1. Install dependencies
 
+    * MacOS: Ensure installation of command line developer tools
+        * Open Xcode application and install
+        * Type `xcode-select --install`
+
     * Setup a conda environment
 
         * Install conda
