@@ -26,10 +26,26 @@ Firstly, check that you are in the correct directory when running `make` or `./c
 ### All: SPIDER can't find PETSc
 Have you sourced `PROTEUS.env`? If yes, check that the variables `PETSC_ARCH` and `PETSC_DIR` in that file are correct for your system.
 
-
 ### MacOS: The FastChem code distributed with VULCAN won't compile 
 With the new Apple Silicon hardware, the option `-march=native` sometimes causes issues. In order to avoid this, you need to make sure to use the GNU version of `g++`, not the Apple one. The Apple one located at `/usr/bin/gcc` is actually a wrapped around `clang`. I have found that using the Homebrew version located at `/opt/homebrew/bin/` works well. To fix this error, find out which gcc version homebrew installed (`ls /opt/homebrew/bin/gcc-*`), and edit the file `make.globaloptions` in the FastChem directory to use, e.g., `g++-12` or `g++-13` instead of `g++`.
 
 ### Linux: ksh not found when running SOCRATES
 Most Linux distributions do not come with `ksh` installed, while MacOS seems to. If you get an error relating to `ksh` not being found, check that you did all of the installation steps. One step under 'Setup SOCRATES' involves replacing `ksh` with `bash` in all of the SOCRATES executables.
 
+### MacOS: Python / netCDF error `Library not loaded: '@rpath/libcrypto.3.dylib'`
+Create a symlink in the local Python installation (here shown for `bash` terminal): `brew install openssl`.
+
+Follow the instructions at the end of the `openssl` installation:
+
+`echo 'export PATH="/usr/local/opt/openssl@3/bin:$PATH"' >> /Users/USERNAME/.bash_profile`
+
+`echo 'export LDFLAGS="-L/usr/local/opt/openssl@3/lib"' >>/Users/USERNAME/.bash_profile`  
+
+`echo 'export CPPFLAGS="-I/usr/local/opt/openssl@3/include"' >>/Users/USERNAME/.bash_profile` 
+
+`ln -s /usr/local/opt/openssl/lib/libcrypto.3.dylib /Users/USERNAME/opt/anaconda3/envs/proteus/lib/python3.10/site-packages/netCDF4/../../../`  
+
+`ln -s /usr/local/opt/openssl/lib/libssl.3.dylib /Users/USERNAME/opt/anaconda3/envs/proteus/lib/python3.10/site-packages/netCDF4/../../../` 
+
+### MacOS: Python error `ModuleNotFoundError: No module named 'yaml'` despite `yaml` being installed via `conda`
+`python -m pip install pyyaml`
