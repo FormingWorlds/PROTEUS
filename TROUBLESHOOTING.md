@@ -57,3 +57,18 @@ Install Intel compilers from https://www.intel.com/content/www/us/en/developer/t
 * First Intel® oneAPI Base Toolkit
 * Then Intel® oneAPI HPC Toolkit
 * Follow the instructions that are provided after the installation to set the locations of `ifort` in your environment
+
+### MacOS: One of the following errors during PETSC configuration or compilation steps
+`"This header is only meant to be used on x86 and x64 architecture"`
+`#error "This header is only meant to be used on x86 and x64 architecture"`
+* Delete all traces of Anaconda package manager from your system and switch to a different Python environment, for example brew/pip
+* Follow the steps at https://docs.anaconda.com/free/anaconda/install/uninstall/
+* Delete all Anaconda-related entries from your .bash_profile (Intel) or .zshrc (ARM)
+* Install Python via `brew`: 
+  * `brew install python`
+  * Update to the latest stable version: `brew upgrade python`
+  * Refresh your shell / `source ~/.zsrhrc` (ARM) / `source ~/.bash_profile` (Intel)
+  * Install all necessary packages: `pip install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort`
+  * Make the new Python version the system default:
+    * Intel: `export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"`
+    * ARM: `export PATH="/usr/local/opt/python/libexec/bin:$PATH"`
