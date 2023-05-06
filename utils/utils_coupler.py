@@ -407,8 +407,8 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
     # Save COUPLER_options to disk
     COUPLER_options_save = pd.read_csv(dirs["output"]+"/"+COUPLER_options_name, sep=" ")
-    COUPLER_options_save = COUPLER_options_save.append(COUPLER_options, ignore_index=True) 
-    # COUPLER_options_save = pd.concat([ COUPLER_options_save, COUPLER_options],ignore_index=True)
+    COUPLER_options_df = pd.DataFrame.from_dict([COUPLER_options])
+    COUPLER_options_save = pd.concat([ COUPLER_options_save, COUPLER_options_df],ignore_index=True)
     COUPLER_options_save.to_csv( dirs["output"]+"/"+COUPLER_options_name, index=False, sep=" ")
 
     # Advance time_current in main loop
