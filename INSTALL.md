@@ -3,15 +3,19 @@
 
 1. Install dependencies
 
+    * MacOS: Ensure installation of command line developer tools
+        * Open Xcode application and install
+        * Type `xcode-select --install`
+
     * Setup a conda environment
 
-        * Install conda
-            Download the appropriate Miniconda installer from their website
+        * Install conda:
+            * Download the appropriate Miniconda installer from their website
             https://docs.conda.io/en/latest/miniconda.html#id36
 
-        * Create a conda environment for PROTEUS
-            `conda create -n proteus python=3.10.9`    
-            `conda activate proteus`
+        * Create a conda environment for PROTEUS:
+            * `conda create -n proteus python=3.10.9`    
+            * `conda activate proteus`
             
     * Install FORTRAN NetCDF library via the most appropriate method for you
         * `brew install netcdf`    
