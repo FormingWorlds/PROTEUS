@@ -72,3 +72,7 @@ Install Intel compilers from https://www.intel.com/content/www/us/en/developer/t
   * Make the new Python version the system default:
     * Intel: `export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"`
     * ARM: `export PATH="/usr/local/opt/python/libexec/bin:$PATH"`
+
+### MacOS: `ModuleNotFoundError: No module named '_tkinter'`
+* Install `tkinter` package.
+* Using `brew`: `brew install python-tk`
