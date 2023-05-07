@@ -4,7 +4,7 @@
 from utils.modules_utils import *
 import utils.utils_spider as su
 
-from AEOLUS.SocRadConv import surf_Planck_nu
+from AEOLUS.modules.spectral_planck_surface import surf_Planck_nu
 
 from natsort import natsorted # https://pypi.python.org/pypi/natsort
 
