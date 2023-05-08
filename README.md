@@ -10,15 +10,22 @@
 * SMT - Shang-Min Tsai (shangmin.tsai@ucr.edu)
 * HN - Harrison Nicholls (harrison.nicholls@physics.ox.ac.uk)
 
+### Documentation (under construction):
+https://proteus-code.readthedocs.io/en/latest/
+
 ### Repository structure
 * `CouplerMain.py`  – Main PROTEUS Python script
 * `README.md`       – This file
-* `INSTALL.md`      - Installation instructions
+* `INSTALL.md`      – Installation instructions
 * `AEOLUS/`         – Submodule AEOLUS
 * `SPIDER/`         – Submodule SPIDER
 * `VULCAN/`         – Submodule VULCAN
 * `utils/`          – Utility python scripts
-* `output/`         - Output folder
+* `output/`         – Output folder
+* `docs/`			– Documentation source
+* `pyproject.toml`	– Documentation file
+* `lumache.py`		– Documentation file
+
 
 ### Installation instructions
 See INSTALL.md for steps.
