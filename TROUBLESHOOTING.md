@@ -76,3 +76,8 @@ Install Intel compilers from https://www.intel.com/content/www/us/en/developer/t
 ### MacOS: `ModuleNotFoundError: No module named '_tkinter'`
 * Install `tkinter` package.
 * Using `brew`: `brew install python-tk`
+
+### MacOS: In the terminal or SourceTree `Error: Permission denied (publickey)`
+Your ssh key is out of date, follow:
+* https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
+* https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account
