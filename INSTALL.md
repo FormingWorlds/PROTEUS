@@ -1,21 +1,15 @@
 
 ## Access & installation instructions
 
+* If any of these steps do not work or produce errors, check TROUBLESHOOTING.md
+
 1. Install dependencies
 
     * MacOS: Ensure installation of command line developer tools
         * Open Xcode application and install
         * Type `xcode-select --install`
 
-    * Setup a conda environment
-
-        * Install conda:
-            * Download the appropriate Miniconda installer from their website
-            https://docs.conda.io/en/latest/miniconda.html#id36
-
-        * Create a conda environment for PROTEUS:
-            * `conda create -n proteus python=3.10.9`    
-            * `conda activate proteus`
+    
             
     * Install FORTRAN NetCDF library via the most appropriate method for you
         * `brew install netcdf`    
@@ -25,9 +19,29 @@
         OR     
         * `sudo apt install libnetcdff-dev`
     
-    * Install Python libraries:
-        * `conda install netcdf4 matplotlib numpy pandas scipy sympy natsort`
-        * `conda install -c conda-forge f90nml`
+    * Setup a Python environment:
+        * Option A: Using the `Anaconda` package manager (careful, probably breaks on ARM machines/newer Macs)
+            * Install `conda`:
+                * Download the appropriate Miniconda installer from their website
+            https://docs.conda.io/en/latest/miniconda.html#id36
+                * Create a conda environment for PROTEUS:
+                * `conda create -n proteus python=3.10.9`    
+                * `conda activate proteus`
+            * `conda install netcdf4 matplotlib numpy pandas scipy sympy natsort`
+            * `conda install -c conda-forge f90nml`
+        * Option B: using the `brew` package manager (*recommended*)
+            * Delete all traces of Anaconda package manager from your system and switch to a different Python environment, for example brew/pip
+            * Follow the steps at https://docs.anaconda.com/free/anaconda/install/uninstall/
+            * Delete all Anaconda-related entries from your .bash_profile (Intel) or .zshrc (ARM)
+            * Install Python via `brew`: 
+                * `brew install python`
+                * Update to the latest stable version: `brew upgrade python`
+                * Install `tkinter`: `brew install python-tk@3.11`
+                * Refresh your shell / `source ~/.zsrhrc` (ARM) / `source ~/.bash_profile` (Intel)
+                * Install all necessary packages: `pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort`
+            * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step):
+                * ARM: `export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"`
+                * Intel: `export PATH="/usr/local/opt/python/libexec/bin:$PATH"`
 
     * *Optionally* register your public SSH key with Github:
         * Generate key with `ssh-keygen -t rsa`
@@ -72,7 +86,10 @@
         * `cd PROTEUS`
         * `git submodule update --init --recursive`
 
-    3. Extract SOCRATES archive to the correct location
+    3. Download and extract the SOCRATES archive to the correct location
+        * If you have access to the Met Office Science Repository Service (MOSRS), obtain the code from https://code.metoffice.gov.uk/trac/socrates
+        * Obtain the SOCRATES source code from: https://simplex.giss.nasa.gov/gcm/ROCKE-3D/ (Latest released version of SOCRATES code)
+        * PROTEUS is currently tested with SOCRATES 2211
         * `cd AEOLUS/rad_trans/socrates_code/`
         * `tar --strip-components 1 -xvf PATH_TO_ARCHIVE -C ./`
         * `cp -f ../build_code_modified build_code`
@@ -103,6 +120,7 @@
 
     8. Setup environment variables
         * Edit the variable `PETSC_ARCH` in the file `PROTEUS.env` to reflect value provided by PETSc
+        * If `python` has been installed via the`conda` route: `conda activate proteus`
         * `source PROTEUS.env`
 
     9. Setup SPIDER

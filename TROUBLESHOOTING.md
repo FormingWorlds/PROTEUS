@@ -60,18 +60,21 @@ Install Intel compilers from https://www.intel.com/content/www/us/en/developer/t
 
 ### MacOS: One of the following errors during PETSC configuration or compilation steps
 `"This header is only meant to be used on x86 and x64 architecture"`
+
 `#error "This header is only meant to be used on x86 and x64 architecture"`
+
 * Delete all traces of Anaconda package manager from your system and switch to a different Python environment, for example brew/pip
 * Follow the steps at https://docs.anaconda.com/free/anaconda/install/uninstall/
 * Delete all Anaconda-related entries from your .bash_profile (Intel) or .zshrc (ARM)
 * Install Python via `brew`: 
   * `brew install python`
   * Update to the latest stable version: `brew upgrade python`
+  * Install `tkinter`: `brew install python-tk@3.11`
   * Refresh your shell / `source ~/.zsrhrc` (ARM) / `source ~/.bash_profile` (Intel)
-  * Install all necessary packages: `pip install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort`
-  * Make the new Python version the system default:
-    * Intel: `export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"`
-    * ARM: `export PATH="/usr/local/opt/python/libexec/bin:$PATH"`
+  * Install all necessary packages: `pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort`
+  * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step):
+    * ARM: `export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"`
+    * Intel: `export PATH="/usr/local/opt/python/libexec/bin:$PATH"`
 
 ### MacOS: `ModuleNotFoundError: No module named '_tkinter'`
 * Install `tkinter` package.
@@ -81,3 +84,7 @@ Install Intel compilers from https://www.intel.com/content/www/us/en/developer/t
 Your ssh key is out of date, follow:
 * https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
 * https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account
+
+### MacOS: `clang (LLVM option parsing): Unknown command line argument '-x86-pad-for-align=false'.  Try: 'clang (LLVM option parsing) --help'` or 
+`clang (LLVM option parsing): Did you mean '--x86-slh-loads=false'?`
+*
