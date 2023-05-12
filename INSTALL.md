@@ -99,6 +99,7 @@
             * `cp -rf ../Mk_cmd_MAC_INTEL make/Mk_cmd`
             * `cp -rf ../Mk_cmd_MAC_APPLESILICON make/Mk_cmd`
             * `cp -rf ../Mk_cmd_AOPP_CLUSTER make/Mk_cmd`
+            
         The command `nf-config` might be helpful if none of these options work for you.
 
     5. Setup SOCRATES 
