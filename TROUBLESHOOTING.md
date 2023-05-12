@@ -85,6 +85,10 @@ Your ssh key is out of date, follow:
 * https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
 * https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account
 
-### MacOS: `clang (LLVM option parsing): Unknown command line argument '-x86-pad-for-align=false'.  Try: 'clang (LLVM option parsing) --help'` or 
+### MacOS: Error during SOCRATES compilation: `clang (LLVM option parsing): Unknown command line argument '-x86-pad-for-align=false'.  Try: 'clang (LLVM option parsing) --help'` or 
 `clang (LLVM option parsing): Did you mean '--x86-slh-loads=false'?`
-*
+* There is an issue with your compiler, either the standard Apple `clang` or `gcc` installed by `brew`
+* Follow the steps provided at: https://stackoverflow.com/questions/72428802/c-lang-llvm-option-parsing-unknown-command-line-argument-when-running-gfort
+  * sudo rm -rf /Library/Developer/CommandLineTools
+  * sudo xcode-select --install
+
