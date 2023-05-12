@@ -58,8 +58,9 @@
         * Contact: TL, MH, RB
 
     * Radiation transport: **SOCRATES** 
-        * URL: https://code.metoffice.gov.uk/trac/socrates
+        * Main development URL: https://code.metoffice.gov.uk/trac/socrates
         * Contact: james.manners@metoffice.gov.uk
+        * Obtain the SOCRATES source code from: https://simplex.giss.nasa.gov/gcm/ROCKE-3D/ (Latest released version of SOCRATES code)
         * Latest tested version: *socrates_2211.tar.xz*
 
     * Interior dynamics: **SPIDER** 
@@ -87,11 +88,9 @@
         * `git submodule update --init --recursive`
 
     3. Download and extract the SOCRATES archive to the correct location
-        * If you have access to the Met Office Science Repository Service (MOSRS), obtain the code from https://code.metoffice.gov.uk/trac/socrates
-        * Obtain the SOCRATES source code from: https://simplex.giss.nasa.gov/gcm/ROCKE-3D/ (Latest released version of SOCRATES code)
-        * PROTEUS is currently tested with SOCRATES 2211
         * `cd AEOLUS/rad_trans/socrates_code/`
-        * `tar --strip-components 1 -xvf PATH_TO_ARCHIVE -C ./`
+        * `curl -L -o ../socrates_2211.tar.xz https://www.dropbox.com/sh/ixefmrbg7c94jlj/AAChibnZU9PRi8pXdVxVbdj3a/socrates_2211.tar.xz?dl=1`
+        * `tar --strip-components 1 -xvf ../socrates_2211.tar.xz -C ./`
         * `cp -f ../build_code_modified build_code`
 
     4. Overwrite the `Mk_cmd` file with the right setup for your machine
