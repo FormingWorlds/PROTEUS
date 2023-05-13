@@ -1,10 +1,11 @@
 PROTEUS - An Adaptive Numerical Framework to Simulate Lava Exoplanets
 ===================================
 
-**PROTEUS** is a Python framework for cooks and food lovers
-that creates recipes mixing random ingredients.
-It pulls data from the `Open Food Facts database <https://world.openfoodfacts.org/>`_
-and offers a *simple* and *intuitive* API.
+.. image:: images/PROTEUS_white.png
+  :width: 400
+  :alt: PROTEUS logo
+
+**PROTEUS** is a Python framework that simulates the coupled evolution of the atmospheres and interiors of rocky planets.
 
 Check out the :doc:`usage` section for further information, including
 how to :ref:`installation` the project.
