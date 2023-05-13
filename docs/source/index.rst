@@ -1,5 +1,5 @@
-PROTEUS - An Adaptive Numerical Framework to Simulate Lava Exoplanets
-===================================
+PROTEUS Framework
+=================
 
 .. image:: images/PROTEUS_white.png
   :width: 400
@@ -7,17 +7,17 @@ PROTEUS - An Adaptive Numerical Framework to Simulate Lava Exoplanets
 
 **PROTEUS** is a Python framework that simulates the coupled evolution of the atmospheres and interiors of rocky planets.
 
-Check out the :doc:`usage` section for further information, including
-how to :ref:`installation` the project.
+Check out :doc:`installation` for downloading and compiling the code and the :doc:`usage` section for further information on how to run simulations.
 
 .. note::
 
-   This project is under active development.
+   The PROTEUS framework and this documentation are under active development.
 
 Contents
 --------
 
 .. toctree::
 
+   installation
    usage
    api
