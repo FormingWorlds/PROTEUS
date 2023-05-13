@@ -10,7 +10,7 @@
 * SMT - Shang-Min Tsai (shangmin.tsai@ucr.edu)
 * HN - Harrison Nicholls (harrison.nicholls@physics.ox.ac.uk)
 
-### Documentation (under construction):
+### Documentation:
 https://proteus-code.readthedocs.io/en/latest/
 
 ### Repository structure
