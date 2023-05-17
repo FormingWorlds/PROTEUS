@@ -432,19 +432,6 @@ def calc_eqm_temperature(I_0, A_B):
 # Generate/adapt atmosphere chemistry/radiation input files
 def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
-    # Volatile molar concentrations: must sum to ~1 !
-    vol_list = { 
-                  "H2O" : runtime_helpfile.iloc[-1]["H2O_mr"], 
-                  "CO2" : runtime_helpfile.iloc[-1]["CO2_mr"],
-                  "H2"  : runtime_helpfile.iloc[-1]["H2_mr"], 
-                  "N2"  : runtime_helpfile.iloc[-1]["N2_mr"],  
-                  "CH4" : runtime_helpfile.iloc[-1]["CH4_mr"], 
-                  "O2"  : runtime_helpfile.iloc[-1]["O2_mr"], 
-                  "CO"  : runtime_helpfile.iloc[-1]["CO_mr"], 
-                  "He"  : 0.,
-                  "NH3" : 0., 
-                }
-
     # In the beginning: standard surface temperature from last entry
     if loop_counter["total"] < loop_counter["init_loops"]:
         COUPLER_options["T_surf"] = runtime_helpfile.iloc[-1]["T_surf"]
@@ -497,14 +484,25 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
         COUPLER_options["T_surf"] = runtime_helpfile.iloc[-1]["T_surf"]
 
     # Create atmosphere object and set parameters
-    atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, vol_list)
+    pl_radius = COUPLER_options["radius"]
+    pl_mass = COUPLER_options["gravity"] * pl_radius * pl_radius / phys.G
 
-    atm.planet_radius   = COUPLER_options["radius"]
-    atm.grav_s 		    = COUPLER_options["gravity"]
-    atm.grav_z[0]       = atm.grav_s
-    atm.planet_mass     = COUPLER_options["gravity"] * atm.planet_radius * atm.planet_radius / phys.G
+    vol_list = { 
+                  "H2O" : runtime_helpfile.iloc[-1]["H2O_mr"], 
+                  "CO2" : runtime_helpfile.iloc[-1]["CO2_mr"],
+                  "H2"  : runtime_helpfile.iloc[-1]["H2_mr"], 
+                  "N2"  : runtime_helpfile.iloc[-1]["N2_mr"],  
+                  "CH4" : runtime_helpfile.iloc[-1]["CH4_mr"], 
+                  "O2"  : runtime_helpfile.iloc[-1]["O2_mr"], 
+                  "CO"  : runtime_helpfile.iloc[-1]["CO_mr"], 
+                  "He"  : 0.,
+                  "NH3" : 0., 
+                }
 
-    atm.ptop            = COUPLER_options["P_top"]*1e5
+    atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, 
+                COUPLER_options["P_top"]*1e5, pl_radius, pl_mass,
+                vol_mixing=vol_list
+                )
 
     atm.zenith_angle    = COUPLER_options["zenith_angle"]
     atm.albedo_pl       = COUPLER_options["albedo_pl"]
@@ -702,8 +700,8 @@ def RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_opt
         vul_data = pkl.load(vof)
         
     print(vul_data)
-    # print(atm_chemistry.iloc[:, 0:5])
 
+    # < LEGACY CODE >
     # # Update SPIDER restart options w/ surface partial pressures
     # for vol in volatile_species:
         
@@ -715,6 +713,7 @@ def RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_opt
     #     # Only for major atmospheric species
     #     if partial_pressure_vol > 1.: # Pa
     #         COUPLER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
+    # </ LEGACY CODE >
 
     return atm
 
@@ -726,7 +725,7 @@ def RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_opt
     PrintSeparator()
 
     # Calculate temperature structure and heat flux w/ SOCRATES
-    _, atm = SocRadConv.RadConvEqm(dirs, time_dict, atm, loop_counter, COUPLER_options, standalone=False, cp_dry=False, trpp=True, rscatter=True,calc_cf=False) # W/m^2
+    _, atm = SocRadConv.RadConvEqm(dirs, time_dict, atm, standalone=False, cp_dry=False, trppD=True, rscatter=True,calc_cf=False) # W/m^2
     
     # Atmosphere net flux from topmost atmosphere node; do not allow heating
     COUPLER_options["F_atm"] = np.max( [ 0., atm.net_flux[0] ] )
