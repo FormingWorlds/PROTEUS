@@ -9,8 +9,6 @@
         * Open Xcode application and install
         * Type `xcode-select --install`
 
-    
-            
     * Install FORTRAN NetCDF library via the most appropriate method for you
         * `brew install netcdf`    
         * `brew install netcdf-fortran`     
@@ -78,6 +76,10 @@
         * URL: https://github.com/sciath/sciath
         * Contact: PS
 
+    * Stellar XUV evolution code: **Mors**
+        * URL: https://github.com/ColinPhilipJohnstone/Mors
+        * Contact: colinjohnstone@gmail.com
+
 3. Setup codes and modules in the following order (**ignore the instructions provided in their own repositories**)
 
     1. Download PROTEUS + submodules (*AEOLUS, SPIDER, VULCAN, PETSc, SciATH*)
@@ -112,8 +114,14 @@
         * On MacOS you will need to edit `make.globaloptions` to reflect a GNU-compatible `g++` executable, not the Apple one
         * `make`
         * `cd ../../`
+
+    7. Setup Mors
+        * `cd Mors`
+        * `pip install .`
+        * `wget -c http://www.astro.yale.edu/demarque/fs255_grid.tar.gz -O - | tar -xz`
+        * 
         
-    7. Setup PETSc
+    8. Setup PETSc
         * `cd petsc`
         * `./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"`
         * Make note of the value of `PETSC_ARCH` printed to stdout.
@@ -121,12 +129,12 @@
         * Run the exact `make check` command provided at the end of the `make all` step
         * `cd ../`
 
-    8. Setup environment variables
+    9. Setup environment variables
         * Edit the variable `PETSC_ARCH` in the file `PROTEUS.env` to reflect value provided by PETSc
         * If `python` has been installed via the`conda` route: `conda activate proteus`
         * `source PROTEUS.env`
 
-    9. Setup SPIDER
+    10. Setup SPIDER
         * `cd SPIDER`
         * `make clean`
         * `make -j`
