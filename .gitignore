@@ -19,6 +19,7 @@ Tprofile.pdf
 .DS_Store
 __pycache__
 output/*
+offline
 !output/.gitkeep
 mylog.log
 atmosphere.pdf
