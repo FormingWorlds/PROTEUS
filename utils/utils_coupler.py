@@ -838,6 +838,12 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     for vol in volatile_species:
         if COUPLER_options[vol+"_included"]:
 
+            # Set atmospheric pressure based on helpfile output
+            if loop_counter["total"] > loop_counter["init_loops"]:
+                key = vol+"_initial_atmos_pressure"
+                val = float(runtime_helpfile[vol+"_mr"].iloc[-1]) * float(runtime_helpfile["P_surf"].iloc[-1]) * 1.0e5   # convert bar to Pa
+                COUPLER_options[key] = val
+
             # Load volatiles
             if COUPLER_options["IC_ATMOSPHERE"] == 1:
                 call_sequence.extend(["-"+vol+"_initial_total_abundance", str(COUPLER_options[vol+"_initial_total_abundance"])])
