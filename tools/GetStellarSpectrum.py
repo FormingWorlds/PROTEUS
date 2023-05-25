@@ -99,7 +99,7 @@ def DownloadModernSpectrum(name, distance, radius):
                 wl = w * 0.1  # Convert å to nm
                 fl = float(spec['FLUX'][n])*10.0 * (distance / r_star )**2  # Convert units and scale flux
 
-                new_str += "%1.3e\t %1.5e \n" % (wl,fl)
+                new_str += "%1.3e\t%1.5e \n" % (wl,fl)
 
             with open(plaintext_spectrum, 'w') as f:
                 f.write(new_str)
@@ -113,7 +113,7 @@ def DownloadModernSpectrum(name, distance, radius):
                         wl = float(li[0]) * 1.0e3  # Convert um to nm
                         fl = float(li[1]) * 1.0e4  * (distance / r_star )**2  # Convert units and scale flux 
 
-                        new_str += "%1.3e\t %1.5e \n" % (wl,fl)
+                        new_str += "%1.3e\t%1.5e \n" % (wl,fl)
                         
             with open(plaintext_spectrum, 'w') as f: 
                 f.write(new_str)   

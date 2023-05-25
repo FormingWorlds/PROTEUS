@@ -59,6 +59,15 @@ volatile_distribution_coefficients = {               # X_henry -> ppm/Pa
     'He_kabs':               0.00
     }
 
+# Spectral bands for stellar fluxes, in nm
+star_bands = {
+    "xr" : [1.e-3 , 10.0],  # X-ray, defined by mors
+    "e1" : [10.0  , 32.0],  # EUV1,  defined by mors
+    "e2" : [32.0  , 92.0],  # EUV2,  defined by mors
+    "uv" : [92.0  , 400.0], # UV,    defined by me
+    'bo' : [1.e-3 , 1.e9]   # bolo,  defined by me
+}
+
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
 def latex_float(f):
     float_str = "{0:.2g}".format(f)
@@ -1069,6 +1078,9 @@ def ReadInitFile( dirs, init_file_passed ):
                     # Some parameters are int
                     if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", "nstepsmacro", "use_vulcan", "ic_interior_filename", "plot_onthefly"]:
                         val = int(val)
+                    # Some are str
+                    elif key in [ 'star_spectrum' ]:
+                        val = str(val)
                     # Most are float
                     else:
                         val = float(val)
@@ -1137,21 +1149,51 @@ def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
     return Ts_curr
 
 
-def CalculateModernFband(COUPLER_options):
-    """Calculates the fluxes in each Mors band, for the modern spectrum.
+def CalculateModernFband(dirs: dict, COUPLER_options: dict):
+    """Calculates the integrated fluxes in each stellar band for the modern spectrum.
 
     Parameters
     ----------
+        dirs : dict
+            Directories dictionary
         COUPLER_options : dict
             Dictionary of coupler options variables
 
     Returns
     ----------
         COUPLER_options : dict
-            Dictionary of coupler options variables, now containing modern F_band values
+            Dictionary of coupler options variables, now containing integrated fluxes
     """
 
-    
+    # Open spectral file
+    spec_file = dirs["coupler"]+"/"+COUPLER_options["star_spectrum"]
+    if os.path.isfile(spec_file):
+        spec_data = np.loadtxt(spec_file, skiprows=2,delimiter='\t').T
+        spec_wl = spec_data[0]
+        spec_fl = spec_data[1]
+    else:
+        raise Exception("Cannot find stellar spectrum!")
+
+    # Integrate fluxes across wl, for each band
+    for band in star_bands.keys():
+
+        wl_min = star_bands[band][0]
+        i_min = (np.abs(spec_wl - wl_min)).argmin()
+
+        wl_max = star_bands[band][1]
+        i_max = (np.abs(spec_wl - wl_max)).argmin()
+
+        band_wl = spec_wl[i_min:i_max]
+        band_fl = spec_fl[i_min:i_max]
+
+        fl_integ = np.trapz(band_fl,band_wl)
+
+        COUPLER_options["flux_modern_integ_"+band] = fl_integ
+        
+        if debug:
+            print(band,i_min,i_max,fl_integ)
+
+    return COUPLER_options
 
          
 def ScalebackSpectrum(COUPLER_options):

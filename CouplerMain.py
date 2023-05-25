@@ -63,6 +63,9 @@ def main():
         exit(1)
 
     
+    # Calculate band-integrated fluxes for modern stellar spectrum
+    COUPLER_options = cu.CalculateModernFband(dirs, COUPLER_options)
+    
 
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
