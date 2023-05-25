@@ -28,6 +28,7 @@ surfaceT.dat
 out.dat
 atm_chemistry.pdf
 .vscode
+spec_*.txt
 
 
 # From Read the Docs

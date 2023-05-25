@@ -1136,3 +1136,43 @@ def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
 
     return Ts_curr
 
+
+def CalculateModernFband(COUPLER_options):
+    """Calculates the fluxes in each Mors band, for the modern spectrum.
+
+    Parameters
+    ----------
+        COUPLER_options : dict
+            Dictionary of coupler options variables
+
+    Returns
+    ----------
+        COUPLER_options : dict
+            Dictionary of coupler options variables, now containing modern F_band values
+    """
+
+    
+
+         
+def ScalebackSpectrum(COUPLER_options):
+    """Scale the spectrum of a star backwards in time.    
+
+    Uses the Mors evolution model to scale back the spectrum. Uses the modern 
+    spectrum to set the base shape, scaling it such that the
+    luminosity in each band fits with that predicted by the evolution models.
+
+    Parameters
+    ----------
+        COUPLER_options : dict
+            Dictionary of coupler options variables
+
+    Returns
+    ----------
+        historical_filename : str
+            Location where HISTORICAL spectrum has been saved as a plain-text file
+    """
+
+
+    
+
+

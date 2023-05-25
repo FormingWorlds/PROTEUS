@@ -28,6 +28,9 @@ import fileinput # https://kaijento.github.io/2017/05/28/python-replacing-lines-
 import math
 import importlib.util
 import pickle as pkl
+import requests
+from astropy.io import fits
+from astropy.table import Table
 
 from datetime import datetime
 from scipy import interpolate

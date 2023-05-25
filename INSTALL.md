@@ -25,7 +25,7 @@
                 * Create a conda environment for PROTEUS:
                 * `conda create -n proteus python=3.10.9`    
                 * `conda activate proteus`
-            * `conda install netcdf4 matplotlib numpy pandas scipy sympy natsort`
+            * `conda install netcdf4 matplotlib numpy pandas scipy sympy natsort certifi`
             * `conda install -c conda-forge f90nml`
         * Option B: using the `brew` package manager (*recommended*)
             * Delete all traces of Anaconda package manager from your system and switch to a different Python environment, for example brew/pip
