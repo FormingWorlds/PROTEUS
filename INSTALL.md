@@ -25,7 +25,7 @@
                 * Create a conda environment for PROTEUS:
                 * `conda create -n proteus python=3.10.9`    
                 * `conda activate proteus`
-            * `conda install netcdf4 matplotlib numpy pandas scipy sympy natsort certifi`
+            * `conda install netcdf4 matplotlib numpy pandas scipy sympy certifi`
             * `conda install -c conda-forge f90nml`
         * Option B: using the `brew` package manager (*recommended*)
             * Delete all traces of Anaconda package manager from your system and switch to a different Python environment, for example brew/pip
@@ -36,7 +36,7 @@
                 * Update to the latest stable version: `brew upgrade python`
                 * Install `tkinter`: `brew install python-tk@3.11`
                 * Refresh your shell / `source ~/.zsrhrc` (ARM) / `source ~/.bash_profile` (Intel)
-                * Install all necessary packages: `pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort`
+                * Install all necessary packages: `pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy`
             * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step):
                 * ARM: `export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"`
                 * Intel: `export PATH="/usr/local/opt/python/libexec/bin:$PATH"`

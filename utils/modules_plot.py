@@ -6,7 +6,7 @@ import utils.utils_spider as su
 
 from AEOLUS.modules.spectral_planck_surface import surf_Planck_nu
 
-from natsort import natsorted # https://pypi.python.org/pypi/natsort
+# from natsort import natsorted # https://pypi.python.org/pypi/natsort
 
 # Define Crameri colormaps (+ recursive)
 from matplotlib.colors import LinearSegmentedColormap

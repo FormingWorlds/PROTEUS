@@ -91,7 +91,12 @@ def DownloadModernSpectrum(name, distance):
                 wl = w * 0.1  # Convert å to nm
                 fl = float(spec['FLUX'][n])*10.0 * (distance / r_scale )**2  # Convert units and scale flux
 
-                new_str += "%1.7e\t%1.7e \n" % (wl,fl)
+                if (fl <= 0):
+                    print("\tWARNING: Flux value <= 0.0 at %1.3e nm! Taking absolute value." % wl)
+
+                fl_abs = abs(fl)
+
+                new_str += "%1.7e\t%1.7e \n" % (wl,fl_abs)
 
             with open(plaintext_spectrum, 'w') as f:
                 f.write(new_str)

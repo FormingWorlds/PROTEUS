@@ -71,7 +71,7 @@ Install Intel compilers from https://www.intel.com/content/www/us/en/developer/t
   * Update to the latest stable version: `brew upgrade python`
   * Install `tkinter`: `brew install python-tk@3.11`
   * Refresh your shell / `source ~/.zsrhrc` (ARM) / `source ~/.bash_profile` (Intel)
-  * Install all necessary packages: `pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort`
+  * Install all necessary packages: `pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy`
   * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step):
     * ARM: `export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"`
     * Intel: `export PATH="/usr/local/opt/python/libexec/bin:$PATH"`

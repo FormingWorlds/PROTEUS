@@ -64,8 +64,8 @@ star_bands = {
     "xr" : [1.e-3 , 10.0],  # X-ray,  defined by mors
     "e1" : [10.0  , 32.0],  # EUV1,   defined by mors
     "e2" : [32.0  , 92.0],  # EUV2,   defined by mors
-    "uv" : [92.0  , 400.0], # UV,     defined by me
-    "pl" : [400.0 , 1.e9],  # planck, defined by me
+    "uv" : [92.0  , 300.0], # UV,     defined by me
+    "pl" : [300.0 , 1.e9],  # planck, defined by me
     'bo' : [1.e-3 , 1.e9]   # bolo,   defined by me
 }
 
@@ -1218,6 +1218,39 @@ def ModernSpectrumLoad(dirs: dict, COUPLER_options: dict):
     
     return spec_wl, spec_fl
 
+def IntegratePlanckFunction(lam1, lam2, Teff):
+    """Calculates the integrated flux from the planck function
+
+    Returned value has units of [erg s-1 cm-2] and is scaled to 
+    the surface of the star. Uses Numpy's trapz() to integrate the spectrum.
+
+    Parameters
+    ----------
+        lam1 : float
+            Lower limit of wavelength [nm]
+        lam2 : float
+            Upper limit of wavelength [nm]
+        Teff : float
+            Effective temperature of the object
+
+    Returns
+    ----------
+        I_planck : float
+            Flux at stellar surface
+    """
+    hc_by_kT = phys.h * phys.c / (phys.k * Teff)
+    planck_func = lambda lam : 1.0/( (lam ** 5.0) * ( np.exp( hc_by_kT/ lam) - 1.0 ) ) 
+
+    planck_wl = np.linspace(lam1 * 1e-9, lam2 * 1e-9, 10000)
+    planck_fl = planck_func(planck_wl)
+    I_planck = np.trapz(planck_fl, planck_wl)  # Integrate planck function over wavelength
+
+    I_planck *= 2 * phys.h * phys.c * phys.c   # W m-2 sr-1, at stellar surface
+    I_planck *= np.pi # W m-2, integrate over solid angle
+    I_planck *= 1.0e3  # erg s-1 cm-2, convert units
+
+    return I_planck
+
 def ModernSpectrumFband(dirs: dict, COUPLER_options: dict):
     """Calculates the integrated fluxes in each stellar band for the modern spectrum.
 
@@ -1262,7 +1295,22 @@ def ModernSpectrumFband(dirs: dict, COUPLER_options: dict):
 
         COUPLER_options["Fband_modern_"+band] = fl_integ 
 
-        print('Band %s [%d,%d] = %g' % (band,i_min,i_max,fl_integ))
+        print('Band %s [%d,%d] = %g' % (band,wl_min,wl_max,fl_integ))
+
+    # 1 AU in cm
+    AU_cm = 1.496e+13
+
+    # Stellar radius (NOW) in cm
+    Rstar_cm = COUPLER_options['star_radius_modern'] * 6.957e+10
+
+    # Work out how much the planck function overestimates the integrated flux in the 'pl' by testing vs observed flux.
+    # This accounts for the fact that T_eff does not include spectral features when we use it to estimate flux, so it's
+    # less accurate in doing so compared to the bands which use the output of Mors. This factor is very close to unity.
+    fl_planck = IntegratePlanckFunction(star_bands['pl'][0], star_bands['pl'][1], COUPLER_options['star_temperature_modern'])
+    fl_planck *= (Rstar_cm / AU_cm) ** 2
+    COUPLER_options['observed_vs_planckian'] = COUPLER_options["Fband_modern_pl"] / fl_planck 
+
+    print("observed_vs_planckian =",COUPLER_options['observed_vs_planckian'])
 
     return COUPLER_options
 
@@ -1302,14 +1350,11 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
     Rstar = mors.Value(Mstar, tstar, 'Rstar') # radius in solar radii
     COUPLER_options['star_radius'] = Rstar
     Rstar_cm = Rstar * 6.957e+10  # radius in cm
+    print(Rstar_cm,"cm")
 
     # Get temperature from Mors
     Tstar = mors.Value(Mstar, tstar, 'Teff')
-
-    # Use Wien's law to get the temperature corresponding to the planckian region (FROM MODERN SPECTRUM!!)
-    # imax = np.argmax(spec_fl[2:-2])
-    # wl_max = spec_wl[imax] * 1.e-9
-    # Tstar = 2.897771955e-3 / wl_max   # https://physics.nist.gov/cgi-bin/cuu/Value?bwien
+    print(Tstar,"K")
     
     COUPLER_options['star_temperature'] = Tstar
 
@@ -1326,28 +1371,10 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
         'pl' : 0.0  # Calc below
     }   
 
-    # Find (total) bolometric flux
-    # Lstar = mors.Value(Mstar, tstar, 'Lbol') * 382.8e24 # Units of [W]
-    # F_band['bo'] = Lstar / ( 4. * np.pi * AU_cm * AU_cm ) * 1.e7 # Convert to [erg s-1 cm-2]
+    # Find flux in planckian region and correct for features
+    IPF = IntegratePlanckFunction(star_bands['pl'][0], star_bands['pl'][1], Tstar)
+    F_band['pl'] = sf * COUPLER_options['observed_vs_planckian'] * IPF
 
-    # Find flux in planckian region
-    hc_by_kT = phys.h * phys.c / (phys.k * Tstar)
-    planck_func = lambda lam : 1.0/( (lam ** 5.0) * ( np.exp( hc_by_kT/ lam) - 1.0 ) )  
-
-    planck_wl = np.linspace(star_bands['pl'][0] * 1e-9, star_bands['pl'][1] * 1e-9, 10000)
-    planck_fl = planck_func(planck_wl)
-    I_planck = np.trapz(planck_fl, planck_wl)  # Integrate planck function over wavelength
-
-    I_planck *= 2 * phys.h * phys.c * phys.c   # W m-2 sr-1, at stellar surface
-    I_planck *= 4 * np.pi # W m-2, integrate over solid angle
-    I_planck *= sf  # Scale to 1 AU
-    I_planck *= 1.0e3  # erg s-1 cm-2, convert units
-
-    F_band['pl'] = I_planck
-
-    # Find flux in UV region based on what's missing
-    # F_remainder = F_band['bo'] - F_band['xr'] - F_band['e1'] - F_band['e2'] - F_band['pl']
-    # F_band['uv'] = F_remainder
 
     # Get dimensionless ratios of past flux to modern flux
     # It's important that they have the same units
@@ -1355,7 +1382,6 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
     for band in ['xr','e1','e2','pl']:
         F_modern_band = COUPLER_options["Fband_modern_"+band]
         Q_band[band] = F_band[band] / F_modern_band
-    Q_band['uv'] = Q_band['e2']  # Assume that UV scales like EUV2 (Is this reasonable??)
 
     # Calculate historical spectrum...
     if len(spec_wl) != len(spec_fl):
@@ -1365,19 +1391,38 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
     print(Q_band)
 
     hspec_fl = np.zeros((len(spec_wl)))
+    
     # Loop over each wl bin
     for i in range(len(spec_wl)):
         wl = spec_wl[i]
         fl = spec_fl[i]
 
         # Work out which band we are in
-        for band in star_bands.keys():
+        for band in F_band.keys():
             if star_bands[band][0] <= wl <= star_bands[band][1]:
                 # Apply scale factor for this band
                 hspec_fl[i] = fl * Q_band[band]
                 break
 
+    # Calculate UV scale factor linearly per-bin, making sure that it's 
+    # continuous at both ends of its bandpass. These boundary conditions have
+    # to be true, so the assumption here is the linear scaling behaviour 
+    # across the UV regime. UV regime is defined by star_bands dictionary.
+    i_uv_wl_low = (np.abs(spec_wl - star_bands['uv'][0])).argmin()
+    uv_scale_low = hspec_fl[i_uv_wl_low] / spec_fl[i_uv_wl_low]
+
+    i_uv_wl_hgh = (np.abs(spec_wl - star_bands['uv'][1])).argmin()
+    uv_scale_hgh = hspec_fl[i_uv_wl_hgh] / spec_fl[i_uv_wl_hgh]
     
+    irange = i_uv_wl_hgh - i_uv_wl_low
+    for i in range(i_uv_wl_low,i_uv_wl_hgh+1,1):
+        wl = spec_wl[i]
+        fl = spec_fl[i]
+        if star_bands['uv'][0] <= wl <= star_bands['uv'][1]:  # Are we in the UV range?
+            uv_rel_dist = (i - i_uv_wl_low) / irange
+            uv_euv2_scale = uv_rel_dist * uv_scale_low + (1.0 - uv_rel_dist) * uv_scale_hgh
+            hspec_fl[i] = fl * uv_euv2_scale
+
     # Save historical spectrum
     X = np.array([spec_wl,hspec_fl]).T
     outname = dirs['output'] + "/%d.sflux" % time_dict['planet']

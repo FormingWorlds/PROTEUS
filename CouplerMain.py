@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 
 """
 PROTEUS Main file
@@ -78,10 +79,10 @@ def main():
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
     # Debug stellar flux evolution
-    # for t in np.logspace(6.1, 8.5, 10):
-    #     time_dict['star'] = t
-    #     time_dict['planet'] = t
-    #     cu.HistoricalSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
+    for t in np.logspace(6.01, 8.97, 12):
+        time_dict['star'] = t
+        time_dict['planet'] = t
+        cu.HistoricalSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
 
     # Interior-Atmosphere loop
     while time_dict["planet"] < time_dict["target"]:
