@@ -70,26 +70,35 @@ def main():
     # Store copy of modern spectrum in memory
     # This spectrum is scaled to 1 AU from the star
     StellarFlux_wl, StellarFlux_fl = cu.ModernSpectrumLoad(dirs, COUPLER_options)
-
-    # Calculate historical spectrum
-    # This is scaled to the stellar surface
-    cu.HistoricalSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
+    time_dict['sflux_prev'] = -1.0e99
 
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     print(":::::::::::: START COUPLER RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
+    # Debug stellar flux evolution
+    # for t in np.logspace(6.1, 8.5, 10):
+    #     time_dict['star'] = t
+    #     time_dict['planet'] = t
+    #     cu.HistoricalSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
 
     # Interior-Atmosphere loop
     while time_dict["planet"] < time_dict["target"]:
 
         # Calculate stellar luminosity and planetary eqm temperature
-        S_old, _ = SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], COUPLER_options["albedo_pl"], COUPLER_options["Sfrac"])
+        # S_old, _ = SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], COUPLER_options["albedo_pl"], COUPLER_options["Sfrac"])
         S_0, _ = cu.SolarConstant(time_dict, COUPLER_options)
 
-        print(S_old, S_0)
-        exit(0)
+        # Calculate historical spectrum
+        # This is scaled to the stellar surface
+        if ( abs( time_dict['planet'] - time_dict['sflux_prev'] ) > COUPLER_options['sflux_dt_update'] ):
+            print("Updating stellar surface spectrum")
+            cu.HistoricalSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
+            time_dict['sflux_prev'] = time_dict['planet'] 
+            exit(0)
+
+        # print(S_old, S_0)
         COUPLER_options["T_eqm"] = cu.calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
 
         ############### INTERIOR SUB-LOOP

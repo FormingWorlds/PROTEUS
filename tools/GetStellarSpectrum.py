@@ -65,6 +65,9 @@ def DownloadModernSpectrum(name, distance):
                 source = "https://archive.stsci.edu/missions/hlsp/muscles/%s/hlsp_muscles_multi_multi_%s_broadband_v22_adapt-const-res-sed.fits"%(star, star)
             resp = requests.get(source, verify=cert) # Download file
 
+            if (resp.status_code != 200):
+                print("\t WARNING: Request returned with status code '%d' (should be 200/OK)" % resp.status_code)
+
             with open(database_spectrum, "wb") as f:
                 f.write(resp.content) 
             
@@ -97,6 +100,10 @@ def DownloadModernSpectrum(name, distance):
             cert = False  # This is not good, but it will stay for now.
             source = "https://vpl.astro.washington.edu/spectra/stellar/%sum.txt" % star
             resp = requests.get(source, verify=cert) # Download file
+
+            if (resp.status_code != 200):
+                print("\t WARNING: Request returned with status code '%d' (should be 200/OK)" % resp.status_code)
+
             with open(database_spectrum, "wb") as f:
                 f.write(resp.content) 
 
