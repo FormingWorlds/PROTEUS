@@ -10,15 +10,27 @@ Step-by-step guide
 
     * MacOS: Ensure installation of command line developer tools
         * Open Xcode application and install
-        * Type `xcode-select --install`
+      
+      .. code-block:: console
+
+         $  xcode-select --install`
    
     * Install FORTRAN NetCDF library via the most appropriate method for you
-        * `brew install netcdf`    
-        * `brew install netcdf-fortran`     
-        OR    
-        * `sudo port install netcdf-fortran +gcc8`    
+
+      .. code-block:: console
+
+        $   brew install netcdf  
+        $   brew install netcdf-fortran    
+        
+      OR   
+
+      .. code-block:: console
+        
+        $   sudo port install netcdf-fortran +gcc8   
+        
         OR     
-        * `sudo apt install libnetcdff-dev`
+        
+        $   sudo apt install libnetcdff-dev
     
     * Setup a Python environment:
         * Option A: Using the `Anaconda` package manager (careful, probably breaks on ARM machines/newer Macs)
