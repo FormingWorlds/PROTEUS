@@ -64,12 +64,15 @@ def main():
 
     
     # Calculate band-integrated fluxes for modern stellar spectrum
+    # Scaled to 1 AU from the star
     COUPLER_options = cu.ModernSpectrumFband(dirs, COUPLER_options)
     
     # Store copy of modern spectrum in memory
+    # This spectrum is scaled to 1 AU from the star
     StellarFlux_wl, StellarFlux_fl = cu.ModernSpectrumLoad(dirs, COUPLER_options)
 
     # Calculate historical spectrum
+    # This is scaled to the stellar surface
     cu.HistoricalSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
 
     # Inform about start of runtime

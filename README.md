@@ -23,9 +23,10 @@ https://proteus-code.readthedocs.io
 * `VULCAN/`         – Submodule VULCAN
 * `utils/`          – Utility python scripts
 * `output/`         – Output folder
-* `docs/`			      – Documentation source
-* `pyproject.toml`	– Documentation file
-* `lumache.py`		  – Documentation file
+* `docs/`           – Documentation source
+* `tools/`          - Helpful tools for the user.
+* `pyproject.toml`  – Documentation file
+* `lumache.py`      – Documentation file
 
 
 ### Installation instructions

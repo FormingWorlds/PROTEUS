@@ -8,8 +8,10 @@ stars_online = {
     "vpl": ["sun", "hd128167", "hd114710", "hd206860", "hd22049"]
 }
 
-def DownloadModernSpectrum(name, distance, radius):
-    """Get a contemporary stellar spectrum.    
+def DownloadModernSpectrum(name, distance):
+    """Get a contemporary stellar spectrum
+    
+    Scaled to 1 AU from the star.
 
     Parameters
     ----------
@@ -17,24 +19,22 @@ def DownloadModernSpectrum(name, distance, radius):
             Name of star
         distance : float
             Distance to star [ly]
-        radius : float
-            Radius of star [R_sun]
-
     Returns
     ----------
         filename : str
             Location where modern spectrum has been saved as a plain-text file
     """
 
-    print("Attempting to obtain spectrum for parameters: [star = %s, distance = %1.2e ly, radius = %1.2e R_sun]" % (name, distance, radius))
+    print("Attempting to obtain spectrum for parameters: [star = %s, distance = %1.2e ly]" % (name, distance))
 
     import requests, certifi, os
     from astropy.io import fits
 
     # Convert stellar parameters
     distance = float(distance) * 9.46073047e17 # Convert ly -> cm
-    r_star   = float(radius) * 6.957e10 # Convert R_sun -> cm
     name     = str(name).strip().lower()
+
+    r_scale = 1.496e+13  # 1 AU in cm
 
     # Get database and name of star
     name = name.strip()
@@ -52,9 +52,9 @@ def DownloadModernSpectrum(name, distance, radius):
 
     # Convert data from database source format to plain text file
     plaintext_spectrum = "spec_%s.txt" % star
-    database_spectrum = "spec_%s.%s" % (star,database)
+    database_spectrum  = "spec_%s.%s" % (star,database)
     print("\tDownloading spectrum and writing file '%s'" % plaintext_spectrum)
-    new_str = '# Spectrum of %s from %s\n# WL(nm)\tFlux(ergs/cm**2/s/nm)\n' % (star,database)
+    new_str = '# Spectrum of %s (%s) at 1 AU\n# WL(nm)\tFlux(ergs/cm**2/s/nm)\n' % (star,database)
     match database:
         case 'muscles':
             cert = certifi.where()
@@ -86,7 +86,7 @@ def DownloadModernSpectrum(name, distance, radius):
 
             for n,w in enumerate(spec['WAVELENGTH']):
                 wl = w * 0.1  # Convert å to nm
-                fl = float(spec['FLUX'][n])*10.0 * (distance / r_star )**2  # Convert units and scale flux
+                fl = float(spec['FLUX'][n])*10.0 * (distance / r_scale )**2  # Convert units and scale flux
 
                 new_str += "%1.7e\t%1.7e \n" % (wl,fl)
 
@@ -106,7 +106,7 @@ def DownloadModernSpectrum(name, distance, radius):
                         li = line.split()
                         
                         wl = float(li[0]) * 1.0e3  # Convert um to nm
-                        fl = float(li[1]) * 1.0e4  * (distance / r_star )**2  # Convert units and scale flux 
+                        fl = float(li[1]) * 1.0e4  * (distance / r_scale )**2  # Convert units and scale flux 
 
                         new_str += "%1.7e\t%1.7e \n" % (wl,fl)
                         
@@ -123,7 +123,7 @@ def PrintHelp():
     print("""
 This script downloads and parses stellar spectra from online databases.
 
-Command pattern: GetStellarSpectrum.py [command] [param1] [param2] [param3]
+Run pattern: GetStellarSpectrum.py [command] [param1] [param2] 
 
 Commands:
     'help'
@@ -136,7 +136,6 @@ Commands:
         Downloads and converts spectrum for given star.
         'param1' : star name
         'param2' : distance from Earth in units of Ly
-        'param3' : radius of star in units of R_sun
             """)
 
 
@@ -158,8 +157,7 @@ if __name__ == "__main__":
         case "get":
             star = str(sys.argv[2])
             sdst = float(sys.argv[3])
-            srad = float(sys.argv[4])
-            DownloadModernSpectrum(star,sdst,srad)
+            DownloadModernSpectrum(star,sdst)
 
         case "help":
             PrintHelp()

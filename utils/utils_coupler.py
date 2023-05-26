@@ -1189,7 +1189,8 @@ def SolarConstant(time_dict: dict, COUPLER_options: dict):
 def ModernSpectrumLoad(dirs: dict, COUPLER_options: dict):
     """Load modern spectrum into memory.
 
-    Scaled to the surface of the star.
+    Scaled to 1 AU from the star. Generate these spectra using the python script
+    'GetStellarSpectrum.py' in the 'tools' directory.
 
     Parameters
     ----------
@@ -1262,7 +1263,7 @@ def ModernSpectrumFband(dirs: dict, COUPLER_options: dict):
 def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs : dict, COUPLER_options: dict):
     """Write historical spectrum to disk, for a time t.
 
-    Uses the Mors evolution model.
+    Uses the Mors evolution model. Spectrum scaled to 1 AU from the star.
 
     Parameters
     ----------
@@ -1271,7 +1272,7 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
         spec_wl : list
             Modern spectrum wavelength array [nm]
         spec_fl : list
-            Modern spectrum flux array [erg s-1 cm-2 nm-1]
+            Modern spectrum flux array at 1 AU [erg s-1 cm-2 nm-1]
         dirs : dict
             Directories dictionary
         COUPLER_options : dict
@@ -1286,8 +1287,11 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
     # Get historical flux in each band provided by Mors
     Mstar = COUPLER_options["star_mass"]
     pctle = COUPLER_options["star_rot_percentile"]
-    Rstar = COUPLER_options["star_radius"]
     tstar = time_dict["star"] * 1.e-6
+
+    # Rstar = COUPLER_options["star_radius"]
+    Rstar = mors.Value(Mstar, 1000.0, 'Rstar')
+
     Omega = mors.Percentile(Mstar=Mstar, percentile=pctle)
 
     Ldict = mors.Lxuv(Mstar=Mstar, Age=tstar, Omega=Omega)
@@ -1322,7 +1326,9 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
     # It's important that they have the same units
     Q_band = {}
     for band in F_band.keys():
-        Q_band[band] = F_band[band] / COUPLER_options["Fband_modern_"+band]
+        sf = 1.0 / 0.00465   # (1 AU/AU) / (1 Solar radius / AU)
+        F_modern_band = COUPLER_options["Fband_modern_"+band] * sf * sf  # Scale from 1 AU to surface of star
+        Q_band[band] = F_band[band] / F_modern_band
 
     # Calculate historical spectrum...
     if len(spec_wl) != len(spec_fl):
@@ -1343,7 +1349,7 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
     # Save historical spectrum
     X = np.array([spec_wl,hspec_fl]).T
     outname = dirs['output'] + "/%d.sflux" % time_dict['planet']
-    header = '# Historical stellar flux at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % tstar
+    header = '# Historical stellar surface flux at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % tstar
     np.savetxt(outname, X, header=header,comments='',fmt='%1.5e',delimiter='\t')
 
     return outname
