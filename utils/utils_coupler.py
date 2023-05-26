@@ -61,11 +61,12 @@ volatile_distribution_coefficients = {               # X_henry -> ppm/Pa
 
 # Spectral bands for stellar fluxes, in nm
 star_bands = {
-    "xr" : [1.e-3 , 10.0],  # X-ray, defined by mors
-    "e1" : [10.0  , 32.0],  # EUV1,  defined by mors
-    "e2" : [32.0  , 92.0],  # EUV2,  defined by mors
-    "uv" : [92.0  , 400.0], # UV,    defined by me
-    'bo' : [1.e-3 , 1.e9]   # bolo,  defined by me
+    "xr" : [1.e-3 , 10.0],  # X-ray,  defined by mors
+    "e1" : [10.0  , 32.0],  # EUV1,   defined by mors
+    "e2" : [32.0  , 92.0],  # EUV2,   defined by mors
+    "uv" : [92.0  , 500.0], # UV,     defined by me
+    "pl" : [500.0 , 1.e9],  # planck, defined by me
+    'bo' : [1.e-3 , 1.e9]   # bolo,   defined by me
 }
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
@@ -1149,8 +1150,77 @@ def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
     return Ts_curr
 
 
-def CalculateModernFband(dirs: dict, COUPLER_options: dict):
+def SolarConstant(time_dict: dict, COUPLER_options: dict):
+    """Calculates the bolometric flux of the star at a previous time t. 
+
+    Uses the Mors module, which reads stellar evolution tracks from 
+    Spada et al. (2013). Flux is scaled to the star-planet distance.
+
+    Parameters
+    ----------
+        time_dict : dict
+            Time dictionary, including star's age
+        COUPLER_options : dict
+            Dictionary of coupler options variables
+
+    Returns
+    ----------
+        flux : float
+            Flux at planet's orbital separation (solar constant) in W/m^2
+        heat : float
+            Heating rate at TOA in W/m^2
+
+    """ 
+
+    Mstar = COUPLER_options["star_mass"]
+    Tstar = time_dict['star'] * 1.e-6  # Convert from yr to Myr
+
+    Lstar = mors.Value(Mstar, Tstar, 'Lbol')  # Units of L_sun
+    Lstar *= 382.8e24 # Convert to W, https://nssdc.gsfc.nasa.gov/planetary/factsheet/sunfact.html
+
+    mean_distance = COUPLER_options["mean_distance"] * AU
+
+    flux = Lstar /  ( 4. * np.pi * mean_distance * mean_distance )
+    heat = flux * ( 1. - COUPLER_options["albedo_pl"] )
+
+    return flux, heat
+
+
+def ModernSpectrumLoad(dirs: dict, COUPLER_options: dict):
+    """Load modern spectrum into memory.
+
+    Scaled to the surface of the star.
+
+    Parameters
+    ----------
+        dirs : dict
+            Directories dictionary
+        COUPLER_options : dict
+            Dictionary of coupler options variables
+
+    Returns
+    ----------
+        spec_wl : np.array[float]
+            Wavelength [nm]
+        spec_fl : np.array[float]
+            Flux [erg s-1 cm-2 nm-1]
+    """
+
+    spec_file = dirs["coupler"]+"/"+COUPLER_options["star_spectrum"]
+    if os.path.isfile(spec_file):
+        spec_data = np.loadtxt(spec_file, skiprows=2,delimiter='\t').T
+        spec_wl = spec_data[0]
+        spec_fl = spec_data[1]
+    else:
+        raise Exception("Cannot find stellar spectrum!")
+    
+    return spec_wl, spec_fl
+
+def ModernSpectrumFband(dirs: dict, COUPLER_options: dict):
     """Calculates the integrated fluxes in each stellar band for the modern spectrum.
+
+    These integrated fluxes have units of [erg s-1 cm-2] and are scaled to 
+    the surface of the star. Uses Numpy's trapz() to integrate the spectrum.
 
     Parameters
     ----------
@@ -1165,14 +1235,8 @@ def CalculateModernFband(dirs: dict, COUPLER_options: dict):
             Dictionary of coupler options variables, now containing integrated fluxes
     """
 
-    # Open spectral file
-    spec_file = dirs["coupler"]+"/"+COUPLER_options["star_spectrum"]
-    if os.path.isfile(spec_file):
-        spec_data = np.loadtxt(spec_file, skiprows=2,delimiter='\t').T
-        spec_wl = spec_data[0]
-        spec_fl = spec_data[1]
-    else:
-        raise Exception("Cannot find stellar spectrum!")
+    # Load spectrum
+    spec_wl, spec_fl = ModernSpectrumLoad(dirs, COUPLER_options)
 
     # Integrate fluxes across wl, for each band
     for band in star_bands.keys():
@@ -1183,38 +1247,106 @@ def CalculateModernFband(dirs: dict, COUPLER_options: dict):
         wl_max = star_bands[band][1]
         i_max = (np.abs(spec_wl - wl_max)).argmin()
 
-        band_wl = spec_wl[i_min:i_max]
+        band_wl = spec_wl[i_min:i_max] 
         band_fl = spec_fl[i_min:i_max]
 
         fl_integ = np.trapz(band_fl,band_wl)
 
-        COUPLER_options["flux_modern_integ_"+band] = fl_integ
-        
+        COUPLER_options["Fband_modern_"+band] = fl_integ 
+
         if debug:
             print(band,i_min,i_max,fl_integ)
 
     return COUPLER_options
 
-         
-def ScalebackSpectrum(COUPLER_options):
-    """Scale the spectrum of a star backwards in time.    
+def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs : dict, COUPLER_options: dict):
+    """Write historical spectrum to disk, for a time t.
 
-    Uses the Mors evolution model to scale back the spectrum. Uses the modern 
-    spectrum to set the base shape, scaling it such that the
-    luminosity in each band fits with that predicted by the evolution models.
+    Uses the Mors evolution model.
 
     Parameters
     ----------
+        time_dict : dict
+            Time dictionary, including stellar age
+        spec_wl : list
+            Modern spectrum wavelength array [nm]
+        spec_fl : list
+            Modern spectrum flux array [erg s-1 cm-2 nm-1]
+        dirs : dict
+            Directories dictionary
         COUPLER_options : dict
             Dictionary of coupler options variables
 
     Returns
     ----------
-        historical_filename : str
-            Location where HISTORICAL spectrum has been saved as a plain-text file
+        historical_spectrum : str
+            Path to historical spectrum file written by this function.
     """
 
+    # Get historical flux in each band provided by Mors
+    Mstar = COUPLER_options["star_mass"]
+    pctle = COUPLER_options["star_rot_percentile"]
+    Rstar = COUPLER_options["star_radius"]
+    tstar = time_dict["star"] * 1.e-6
+    Omega = mors.Percentile(Mstar=Mstar, percentile=pctle)
 
+    Ldict = mors.Lxuv(Mstar=Mstar, Age=tstar, Omega=Omega)
+
+    # Fluxes defined at stellar surface [W/m^2]
+    F_band = {
+        'xr' : Ldict["Fx"],
+        'e1' : Ldict["Feuv1"],
+        'e2' : Ldict["Feuv2"],
+        'uv' : 0.0,  # Calc below
+        'pl' : 0.0,  # Calc below
+        'bo' : 0.0   # Sum of all of the above
+    }   
+
+    # Find (total) bolometric flux
+    Lstar = mors.Value(Mstar, tstar, 'Lbol')  # Units of L_sun
+    F_band['bo'] = Lstar * 382.8e24 / ( 4. * np.pi * Rstar*Rstar ) * 1.e3 # Convert to [erg s-1 cm-2]
+
+    # Find flux in planckian region
+    hc = phys.h * phys.c 
+    kT = phys.k * COUPLER_options["star_temperature"]
+    planck_func = lambda lam : 1.0/( (lam ** 5.0) * ( np.exp( hc/ (lam * kT)) - 1.0 ) )  
+
+    F_planck = romberg(planck_func, star_bands['pl'][0], star_bands['pl'][1])
+    F_band['pl'] = F_planck * 8.0 * np.pi * hc * phys.c  * 1.e3  # Convert to [erg s-1 cm-2]
+
+    # Find flux in UV region based on what's missing
+    F_remainder = np.sum([F_band[k] for k in F_band.keys()])
+    F_band['uv'] = F_remainder
+
+    # Get dimensionless ratios of past flux to modern flux
+    # It's important that they have the same units
+    Q_band = {}
+    for band in F_band.keys():
+        Q_band[band] = F_band[band] / COUPLER_options["Fband_modern_"+band]
+
+    # Calculate historical spectrum...
+    if len(spec_wl) != len(spec_fl):
+        raise Exception("Stellar spectrum wl and fl arrays are of different lengths!")
     
+    hspec_fl = np.zeros((len(spec_wl)))
+    # Loop over each wl bin
+    for i in range(len(spec_wl)):
+        wl = spec_wl[i]
+        fl = spec_fl[i]
+        # Work out which band we are in
+        for band in F_band.keys():
+            if star_bands[band][0] <= wl <= star_bands[band][1]:
+                # Apply scale factor for this band
+                hspec_fl[i] = fl * Q_band[band]
+                break
+    
+    # Save historical spectrum
+    X = np.array([spec_wl,hspec_fl]).T
+    outname = dirs['output'] + "/%d.sflux" % time_dict['planet']
+    header = '# Historical stellar flux at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % tstar
+    np.savetxt(outname, X, header=header,comments='',fmt='%1.5e',delimiter='\t')
+
+    return outname
 
 
+# End of file

@@ -11,9 +11,6 @@ stars_online = {
 def DownloadModernSpectrum(name, distance, radius):
     """Get a contemporary stellar spectrum.    
 
-    This is needed for running VULCAN. You can specify a particular star by 
-    name (by setting the name parameter)
-
     Parameters
     ----------
         name : str
@@ -47,38 +44,30 @@ def DownloadModernSpectrum(name, distance, radius):
         if name in stars_online[k]:
             star = name
             database = k
+            break 
     if (database == ''):
         raise Exception("Could not find star '%s' in stellar databases!" % name)
-
-    # Find data on online database
-    source = ''
-    match database:
-        case 'muscles':
-            source = "https://archive.stsci.edu/missions/hlsp/muscles/%s/hlsp_muscles_multi_multi_%s_broadband_v23_adapt-const-res-sed.fits"%(star, star)
-        case 'vpl':
-            source = "https://vpl.astro.washington.edu/spectra/stellar/%sum.txt" % star
-
-    print("\tFound star in database '%s'" % database)
-
-    print("\tObtaining HTTPS certificiate")
-    match database:
-        case 'muscles':
-            cert = certifi.where()
-        case 'vpl':
-            cert = False  # This is not good, but it will stay for now.
-
-    print("\tMaking request")
-    database_spectrum = "spec_%s.%s" % (star,database)
-    resp = requests.get(source, verify=cert) # Download file
-    with open(database_spectrum, "wb") as f:
-        f.write(resp.content) 
+    else:
+        print("\tFound star in '%s' database" % database)
 
     # Convert data from database source format to plain text file
     plaintext_spectrum = "spec_%s.txt" % star
-    print("\tWriting file '%s'" % plaintext_spectrum)
-    new_str = '# Spectrum of %s from %s\n# WL(nm)\t Flux(ergs/cm**2/s/nm)\n' % (star,database)
+    database_spectrum = "spec_%s.%s" % (star,database)
+    print("\tDownloading spectrum and writing file '%s'" % plaintext_spectrum)
+    new_str = '# Spectrum of %s from %s\n# WL(nm)\tFlux(ergs/cm**2/s/nm)\n' % (star,database)
     match database:
         case 'muscles':
+            cert = certifi.where()
+            source = "https://archive.stsci.edu/missions/hlsp/muscles/%s/hlsp_muscles_multi_multi_%s_broadband_v23_adapt-const-res-sed.fits"%(star, star)
+            resp = requests.get(source, verify=cert) # Download file
+            
+            if resp.status_code == 404:  # Try other possible option (v22 instead of v23)
+                source = "https://archive.stsci.edu/missions/hlsp/muscles/%s/hlsp_muscles_multi_multi_%s_broadband_v22_adapt-const-res-sed.fits"%(star, star)
+            resp = requests.get(source, verify=cert) # Download file
+
+            with open(database_spectrum, "wb") as f:
+                f.write(resp.content) 
+            
             # Epsilon Eridani is 10.475 light years away and with 0.735 solar radius
             # GJ876 is 15.2 light years away and has 0.3761 solar radius
             # GJ551 (proxima cen) is 4.246 light years away and has 0.1542 solar radius
@@ -99,12 +88,18 @@ def DownloadModernSpectrum(name, distance, radius):
                 wl = w * 0.1  # Convert å to nm
                 fl = float(spec['FLUX'][n])*10.0 * (distance / r_star )**2  # Convert units and scale flux
 
-                new_str += "%1.3e\t%1.5e \n" % (wl,fl)
+                new_str += "%1.7e\t%1.7e \n" % (wl,fl)
 
             with open(plaintext_spectrum, 'w') as f:
                 f.write(new_str)
 
         case 'vpl':
+            cert = False  # This is not good, but it will stay for now.
+            source = "https://vpl.astro.washington.edu/spectra/stellar/%sum.txt" % star
+            resp = requests.get(source, verify=cert) # Download file
+            with open(database_spectrum, "wb") as f:
+                f.write(resp.content) 
+
             with open(database_spectrum) as f:
                 for line in f.readlines():
                     if not line.startswith("#") and line.split():
@@ -113,12 +108,14 @@ def DownloadModernSpectrum(name, distance, radius):
                         wl = float(li[0]) * 1.0e3  # Convert um to nm
                         fl = float(li[1]) * 1.0e4  * (distance / r_star )**2  # Convert units and scale flux 
 
-                        new_str += "%1.3e\t%1.5e \n" % (wl,fl)
+                        new_str += "%1.7e\t%1.7e \n" % (wl,fl)
                         
             with open(plaintext_spectrum, 'w') as f: 
                 f.write(new_str)   
 
     os.remove(database_spectrum) 
+
+    print("\tDone!")
 
     return plaintext_spectrum
 
@@ -163,7 +160,6 @@ if __name__ == "__main__":
             sdst = float(sys.argv[3])
             srad = float(sys.argv[4])
             DownloadModernSpectrum(star,sdst,srad)
-            print("\tDone!")
 
         case "help":
             PrintHelp()

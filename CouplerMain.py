@@ -64,8 +64,13 @@ def main():
 
     
     # Calculate band-integrated fluxes for modern stellar spectrum
-    COUPLER_options = cu.CalculateModernFband(dirs, COUPLER_options)
+    COUPLER_options = cu.ModernSpectrumFband(dirs, COUPLER_options)
     
+    # Store copy of modern spectrum in memory
+    StellarFlux_wl, StellarFlux_fl = cu.ModernSpectrumLoad(dirs, COUPLER_options)
+
+    # Calculate historical spectrum
+    cu.HistoricalSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
 
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
@@ -77,8 +82,12 @@ def main():
     while time_dict["planet"] < time_dict["target"]:
 
         # Calculate stellar luminosity and planetary eqm temperature
-        S_0, _ = SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], COUPLER_options["albedo_pl"], COUPLER_options["Sfrac"])
-        COUPLER_options["T_eqm"] = cu.calc_eqm_temperature(S_0*COUPLER_options["Sfrac"],  COUPLER_options["albedo_pl"])
+        S_old, _ = SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], COUPLER_options["albedo_pl"], COUPLER_options["Sfrac"])
+        S_0, _ = cu.SolarConstant(time_dict, COUPLER_options)
+
+        print(S_old, S_0)
+        exit(0)
+        COUPLER_options["T_eqm"] = cu.calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
 
         ############### INTERIOR SUB-LOOP
         print("Start interior")

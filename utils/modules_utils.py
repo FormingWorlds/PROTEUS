@@ -32,11 +32,14 @@ import requests
 from astropy.io import fits
 from astropy.table import Table
 
+import Mors as mors
+
 from datetime import datetime
 from scipy import interpolate
 # from natsort import natsorted # https://pypi.python.org/pypi/natsort
 from decimal import Decimal
 from scipy.integrate import solve_ivp
+from scipy.integrate import romberg
 from scipy import stats
 
 # Import coupler-specific package modules
