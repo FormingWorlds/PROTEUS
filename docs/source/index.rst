@@ -20,4 +20,5 @@ Contents
 
    installation
    usage
+   contact
    api
