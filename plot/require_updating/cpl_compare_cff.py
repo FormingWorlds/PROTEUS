@@ -2,7 +2,7 @@
 
 # Import utils- and plot-specific modules
 from utils.modules_plot import *
-from utils.modules_utils import *
+from utils.modules_ext import *
 from utils.utils_spider import MyJSON
 
 import matplotlib.gridspec as gridspec
@@ -437,7 +437,7 @@ def main():
 if __name__ == "__main__":
 
     # Import utils- and plot-specific modules
-    from utils.modules_utils import *
+    from utils.modules_ext import *
     from utils.modules_plot import *
     import utils_coupler as cu
     import utils_spider as su

@@ -4,7 +4,6 @@
 from utils.modules_plot import *
 from utils.utils_spider import MyJSON
 
-
 def find_nearest(array, value):
     array   = np.asarray(array)
     idx     = (np.abs(array - value)).argmin()
@@ -19,7 +18,7 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
 
     width   = 6.00 #* 3.0/2.0
     height  = 12.0
-    fig_o   = FigureData( 2, 1, width, height, output_dir+'/compare_stacked', units='kyr' )
+    fig_o   = FigureData( 2, 1, width, height, output_dir+'/compare_stacked_prs', units='kyr' )
     fig_o.fig.subplots_adjust(wspace=0.15, hspace=0.0)
 
     # sns.set_style("ticks")
@@ -131,11 +130,10 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
 
             # Find pressure level closest to 1 Pa
             prs_cut, prs_cut_idx = find_nearest(atm.p, 1)
-            print("Pressure cut:", prs_cut, prs_cut_idx)
-            if np.amax(atm.p) < 1: prs_cut_idx = 0
 
-            # Plot height coordinates
-            l1, = ax0.plot( atm.tmp[prs_cut_idx:], z_profile[prs_cut_idx:], lw=lw, color=color, label=label, ls=ls)
+            # print(prs_cut, prs_cut_idx)
+
+            l1, = ax0.plot( atm.tmp[prs_cut_idx:], atm.p[prs_cut_idx:], lw=lw, color=color, label=label, ls=ls)
 
             # Fill color and P_surf legends
             if nn == 0:
@@ -150,8 +148,20 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
                     time_label = "10"
                 else: 
                     time_label = latex_float(output_time)#+" yr"
-                l2, = ax0.plot( 0, 0, lw=lw, color=dict_colors["qgray_dark"], label=time_label, ls=ls)
+                l2, = ax0.plot( 0, 0, lw=lw, color=qgray_dark, label=time_label, ls=ls)
                 legend_ax0_2_handles.append(l2)
+
+            # print(time,atm.tmp, atm.p)
+
+            # # Atmosphere T-P
+            # ax1.semilogy( atm.tmp, atm.p/1e5, '-', color=color, label=label, lw=1.5)
+
+            # # Spectral flux density per wavenumber
+            # ax2.plot( atm.band_centres, atm.net_spectral_flux[:,0]/atm.band_widths, '-', color=color, label=label, lw=1.5)
+            # ymax_sp_flux = np.max( [ ymax_sp_flux, np.max(atm.net_spectral_flux[:,0]/atm.band_widths)] )
+            # # Blackbody curves
+            # ax2.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths, color=color, ls='--', lw=1.0, alpha=0.5, label=str(round(atm.ts))+' K blackbody')
+
 
             ## INTERIOR
 
@@ -200,31 +210,39 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
     title_xcoord = -0.09
     title_ycoord = 0.5
 
-    #####  T-Z
-    ax0.set_ylabel("Atmosphere height, $z_\mathrm{atm}$ (km)", fontsize=fs_label)
-    ax0.yaxis.set_label_coords(title_xcoord,title_ycoord)
-    ax0.set_xlim( xmin, xmax )
-    ax0.set_xticks(xticks)
-    # ax0.invert_yaxis()
-    ax0.set_xticklabels([])
-    ax0.set_yscale("log")
-    ax0.set_yscale("symlog", linthreshy=50)
-    ax0.set_ylim( 0, ymax_atm_z )
-    yticks = [ 10, 20, 30, 40, 50, 100, 200, 300, 500, 1000, ymax_atm_z]
-    ax0.set_yticks( yticks )
-    ax0.set_yticklabels( [ str(int(i)) for i in yticks ] )
+    # #####  T-Z
+    # # fig_o.set_myaxes( ax0, xlabel='$T$ (K)', ylabel='$z_\mathrm{atm}$\n(km)', xmin=xmin, xmax=xmax, ymin=0, ymax=ymax_atm_z, xticks=xticks )
+    # # ax0.set_xlabel("Temperature, $T$ (K)")
+    # ax0.set_ylabel("Atmosphere height, $z_\mathrm{atm}$ (km)", fontsize=fs_label)
+    # # ax0.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
+    # ax0.yaxis.set_label_coords(title_xcoord,title_ycoord)
+    # ax0.set_xlim( xmin, xmax )
+    # ax0.set_xticks(xticks)
+    # ax0.set_xticklabels([])
+    # ax0.set_yscale("symlog", linthreshy=50)
+    # ax0.set_ylim( 0, ymax_atm_z )
+    # yticks = [ 10, 20, 30, 40, 50, 100, 200, 300, 500, 1000, 2000, 3000, ymax_atm_z]
+    # ax0.set_yticks( yticks )
+    # ax0.set_yticklabels( [ str(int(i)) for i in yticks ] )
     
+
     # #####  T-P
     # # fig_o.set_myaxes( ax1, xlabel='$T$ (K)', ylabel='$P_\mathrm{atm}$\n(bar)', xmin=xmin, xmax=xmax, xticks=xticks )
     # ax1.set_xlabel("Temperature, $T$ (K)")
-    # ax1.set_ylabel("Atmosphere pressure, $P$ (bar)")
+    ax0.set_ylabel("Atmosphere pressure, $P$ (bar)")
     # ax1.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
     # ax1.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
     # # ax1.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
     # # ax1.get_yaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
     # ax1.get_yaxis().get_major_formatter().labelOnlyBase = False
     # ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
-    # ax1.invert_yaxis()
+
+    ax0.set_xlim( xmin, xmax )
+    ax0.set_xticks(xticks)
+    # ax0.set_xticklabels([])
+    ax0.invert_yaxis()
+    ax0.set_yscale("log")
+    # ax0.set_ylim( bottom=260 )
 
     ax1.set_ylim([0, int(mantle_prs[-1])])
     ax1.set_yticks([])
@@ -249,17 +267,51 @@ def plot_atmosphere( output_dir, sub_dirs, output_times ):
     ax1b.yaxis.tick_left()
     ax1.set_ylabel( 'Mantle depth, $d_\mathrm{mantle}$ (km)', fontsize=fs_label )
     ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
-     
+    # ax1.set_yscale("symlog", linthreshy=20)
+    
+
+
+    
     ax1.text(0.55, 0.48, '100%\nsolid', color=qblue_dark, rotation=0, ha="center", va="center", fontsize=fs_label, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    # ax1.arrow(0.6, 0.35, 0.07, 0.03, head_width=0.0, head_length=0.0, fc=qblue_dark, ec=qmagenta_dark, transform=ax1.transAxes, zorder=30)
     
     ax1.text(0.72, 0.48, 'Mixed phase', color=qmagenta_dark, rotation=-62, ha="center", va="center", fontsize=fs_label-1.5, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    # ax1.arrow(0.6, 0.55, 0.07, 0.0, head_width=0.0, head_length=0.0, fc=qmagenta_dark, ec=qmagenta_dark, transform=ax1.transAxes, zorder=30)
     
     ax1.text(0.95, 0.48, '100%\nmelt', color=qred_dark, rotation=0, ha="center", va="center", fontsize=fs_label, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
+    # ax1.arrow(0.6, 0.55, 0.07, 0.03, head_width=0.0, head_length=0.0, fc=qmagenta_dark, ec=qmagenta_dark, transform=ax1.transAxes, zorder=30)
 
-    ax0.arrow(3000, 30, 0.0, 18, head_width=50, head_length=1.5, fc=qgray_light, ec=qgray_light, lw=1.0, alpha=0.7) # , transform=ax0.transAxes
-    ax0.arrow(3000, 52, 0.0, 80, head_width=50, head_length=11, fc=qgray_light, ec=qgray_light, lw=1.0, alpha=0.7) # , transform=ax0.transAxes
-    ax0.text(3050, 40, 'linear\nscale', color=qgray_light, rotation=0, ha="left", va="center", fontsize=fs_label-1, alpha=0.99, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round')) # , transform=ax0.transAxes
-    ax0.text(3050, 80, 'log\nscale', color=qgray_light, rotation=0, ha="left", va="center", fontsize=fs_label-1, alpha=0.99, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round')) # , transform=ax0.transAxes
+    # ax0.arrow(3000, 30, 0.0, 18, head_width=50, head_length=1.5, fc=qgray_light, ec=qgray_light, lw=1.0, alpha=0.7) # , transform=ax0.transAxes
+    # ax0.arrow(3000, 52, 0.0, 80, head_width=50, head_length=11, fc=qgray_light, ec=qgray_light, lw=1.0, alpha=0.7) # , transform=ax0.transAxes
+    # ax0.text(3050, 40, 'linear', color=qgray_light, rotation=0, ha="left", va="center", fontsize=fs_label-1, alpha=0.99, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round')) # , transform=ax0.transAxes
+    # ax0.text(3050, 80, 'log\nscale', color=qgray_light, rotation=0, ha="left", va="center", fontsize=fs_label-1, alpha=0.99, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round')) # , transform=ax0.transAxes
+
+
+    # # title = '(b) Melt fraction'
+    # # xticks = [0,0.2,0.4,0.6,0.8,1.0]
+    # # fig_o.set_myaxes( ax1, title=title, xlabel='$\phi$', xticks=xticks, ymax=ymax, yticks=yticks )
+    # # ax1.yaxis.set_label_coords(-0.075,0.475)
+    # ax3.set_xlim([0, 1])
+    # ax3.set_yticks([0,20,40,60,80,100,120,int(xx_pres_s[-1])])
+    # ax3.set_yticklabels([])
+    # ax3.invert_yaxis()
+
+    # #####  Volatile mixing ratios
+    # ax2.yaxis.set_label_position("right")
+    # ax2.yaxis.tick_right()
+    # ax2.set_xlim( left=0, right=1 )
+    # ax2.set_ylabel( "$z_\mathrm{atm}$\n(km)", rotation=0)
+    # ax2.yaxis.set_label_coords(1.10,0.5)
+    # ax2.set_xlabel( '$X_{H_2O}$ (mol$_i$/mol)')
+
+    # #####  Spectral OLR
+    # fig_o.set_myaxes( ax2, xlabel='Wavenumber (cm$^{-1}$)', ylabel='Spectral flux' )
+    # ax2.set_ylabel( 'Spectral flux density (W m$^{-2}$ cm$^{-1}$)', rotation=90)
+    # # ax2.yaxis.set_label_position("right")
+    # # ax2.yaxis.tick_right()
+    # ax2.set_xlim( left=0, right=20000 )
+    # ax2.set_ylim( bottom=0, top=ymax_sp_flux )
+    # ax2.yaxis.set_label_coords(title_xcoord,title_ycoord)
 
 
     ax0.text(0.02, 0.985, 'A', color="k", rotation=0, ha="left", va="top", fontsize=fs_label+5, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.1, pad=0.2, boxstyle='round'))
@@ -305,7 +357,7 @@ def main():
     #     print("Snapshots:", output_times)
 
     sub_dirs    = [ "H2", "CH4", "H2O", "CO2", "N2", "CO", "O2" ]
-    # sub_dirs    = [ "H2O" ]
+    # sub_dirs    = [ "CH4" ]
 
     # Times at which to plot
     output_times = [ 1e+2, 1e+6 ]
@@ -321,7 +373,7 @@ def main():
 if __name__ == "__main__":
 
     # Import utils- and plot-specific modules
-    from utils.modules_utils import *
+    from utils.modules_ext import *
     from utils.modules_plot import *
     import utils_coupler as cu
     import utils_spider as su

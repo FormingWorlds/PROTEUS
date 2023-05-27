@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
 # Import utils- and plot-specific modules
-from utils.modules_plot import *
-from utils.utils_spider import MyJSON
+from utils.modules_ext import *
+from utils.plot import *
+from utils.spider import MyJSON, get_all_output_times
 
+from AEOLUS.modules.spectral_planck_surface import surf_Planck_nu
 
 #====================================================================
 def plot_atmosphere( output_dir, times ):
@@ -164,8 +166,9 @@ def plot_atmosphere( output_dir, times ):
     ax1.legend( fontsize=8, fancybox=True, framealpha=0.5 )
     # ax2.legend( fontsize=8, fancybox=True, framealpha=0.5 )
 
-    fig_o.savefig(1)
     plt.close()
+    plt.ioff()
+    fig_o.savefig(1)
 
 # Plot settings
 lw=2
@@ -178,58 +181,58 @@ title_ha   = "left"
 title_va   = "bottom"
 title_font = 'Arial'
 
-def plot_current_mixing_ratio( output_dir, times, vulcan_setting ):
+# def plot_current_mixing_ratio( output_dir, times, vulcan_setting ):
 
-    fig, ax1 = plt.subplots()
+#     fig, ax1 = plt.subplots()
 
-    time = str(times)
+#     time = str(times)
 
-    # # Read atmospheric chemistry
-    # atm_chemistry       = pd.read_csv(output_dir+time+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True) # skipfooter=1
+#     # # Read atmospheric chemistry
+#     # atm_chemistry       = pd.read_csv(output_dir+time+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True) # skipfooter=1
 
-    if vulcan_setting == 0 or vulcan_setting == 1:
-        runtime_helpfile = pd.read_csv(output_dir+"/"+"runtime_helpfile.csv", delim_whitespace=True)
+#     if vulcan_setting == 0 or vulcan_setting == 1:
+#         runtime_helpfile = pd.read_csv(output_dir+"/"+"runtime_helpfile.csv", delim_whitespace=True)
 
-        for vol in volatile_species:
-            if runtime_helpfile.iloc[-1][vol+"_mr"] > 0.:
-                ax1.axvline(x=runtime_helpfile.iloc[-1][vol+"_mr"], linewidth=lw+0.5, color=dict_colors[vol+"_2"], ls=":")
+#         for vol in volatile_species:
+#             if runtime_helpfile.iloc[-1][vol+"_mr"] > 0.:
+#                 ax1.axvline(x=runtime_helpfile.iloc[-1][vol+"_mr"], linewidth=lw+0.5, color=dict_colors[vol+"_2"], ls=":")
 
-    atm_file = open(filename,'rb')
-    new_dict = pickle.load(infile)
-    infile.close()
+#     atm_file = open(filename,'rb')
+#     new_dict = pickle.load(infile)
+#     infile.close()
     
-    ax1.set_xlabel("Mole fraction, log ($n^{\mathrm{i}}$/$n_{\mathrm{tot}}$)")
-    ax1.set_ylabel("Pressure, $P_{\mathrm{tot}}$ (bar)")
-    ax1.set_xscale("log")
-    ax1.set_yscale("log")
-    ax1.set_xlim(left=1e-16, right=2e+0)
-    ax1.set_ylim(np.max(atm.p), np.min(atm.p))
+#     ax1.set_xlabel("Mole fraction, log ($n^{\mathrm{i}}$/$n_{\mathrm{tot}}$)")
+#     ax1.set_ylabel("Pressure, $P_{\mathrm{tot}}$ (bar)")
+#     ax1.set_xscale("log")
+#     ax1.set_yscale("log")
+#     ax1.set_xlim(left=1e-16, right=2e+0)
+#     ax1.set_ylim(np.max(atm.p), np.min(atm.p))
 
-    # Temperature y-axis on the right
-    ax1b = ax1.twinx()
-    ax1b.plot( atm_chemistry["H2O"], atm_chemistry["Temp"], alpha=0.0)
-    ax1b.set_ylim(np.max(atm_chemistry["Temp"]), np.min(atm_chemistry["Temp"]))
-    if not np.min(atm_chemistry["Temp"]) == np.max(atm_chemistry["Temp"]):
-        ax1b.set_yticks(
-         [ 
-            int(np.max(atm_chemistry["Temp"])), 
-            int(np.min(atm_chemistry["Temp"])+0.75*(np.max(atm_chemistry["Temp"])-np.min(atm_chemistry["Temp"]))), 
-            int(np.min(atm_chemistry["Temp"])+0.5*(np.max(atm_chemistry["Temp"])-np.min(atm_chemistry["Temp"]))), 
-            int(np.min(atm_chemistry["Temp"])+0.25*(np.max(atm_chemistry["Temp"])-np.min(atm_chemistry["Temp"]))), 
-            int(np.min(atm_chemistry["Temp"]))
-         ])
-    ax1b.yaxis.tick_right()
-    ax1b.set_ylabel( 'Temperature, $T$ (K)' )
+#     # Temperature y-axis on the right
+#     ax1b = ax1.twinx()
+#     ax1b.plot( atm_chemistry["H2O"], atm_chemistry["Temp"], alpha=0.0)
+#     ax1b.set_ylim(np.max(atm_chemistry["Temp"]), np.min(atm_chemistry["Temp"]))
+#     if not np.min(atm_chemistry["Temp"]) == np.max(atm_chemistry["Temp"]):
+#         ax1b.set_yticks(
+#          [ 
+#             int(np.max(atm_chemistry["Temp"])), 
+#             int(np.min(atm_chemistry["Temp"])+0.75*(np.max(atm_chemistry["Temp"])-np.min(atm_chemistry["Temp"]))), 
+#             int(np.min(atm_chemistry["Temp"])+0.5*(np.max(atm_chemistry["Temp"])-np.min(atm_chemistry["Temp"]))), 
+#             int(np.min(atm_chemistry["Temp"])+0.25*(np.max(atm_chemistry["Temp"])-np.min(atm_chemistry["Temp"]))), 
+#             int(np.min(atm_chemistry["Temp"]))
+#          ])
+#     ax1b.yaxis.tick_right()
+#     ax1b.set_ylabel( 'Temperature, $T$ (K)' )
 
-    ax1.set_title("Time = "+latex_float(float(time))+" yr", fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
+#     ax1.set_title("Time = "+latex_float(float(time))+" yr", fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
 
 
-    ax1.legend(loc=2, fancybox=True, framealpha=0.9)
-    plt.xticks([1e-16, 1e-14, 1e-12, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1e0], ["-16", "-14", "-12", "-10", "-8", "-6", "-4", "-2", "0"])
+#     ax1.legend(loc=2, fancybox=True, framealpha=0.9)
+#     plt.xticks([1e-16, 1e-14, 1e-12, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1e0], ["-16", "-14", "-12", "-10", "-8", "-6", "-4", "-2", "0"])
 
-    plt.savefig(output_dir+"plot_atm_chemistry_"+str(time)+".pdf", bbox_inches = 'tight',
-    pad_inches = 0.1)
-    plt.close()
+#     plt.savefig(output_dir+"plot_atm_chemistry_"+str(time)+".pdf", bbox_inches = 'tight',
+#     pad_inches = 0.1)
+#     plt.close()
 
 
 #====================================================================
@@ -248,7 +251,7 @@ def main():
         print("Output directory:", output_dir)
         
     else:
-        output_dir = os.getcwd()
+        output_dir = os.getcwd() + "/output/"
         print("Output directory:", output_dir)
 
     # Define which times are plotted
@@ -256,7 +259,7 @@ def main():
         plot_list = [ int(time) for time in args.times.split(',') ]
         print("Snapshots:", plot_list)
     else:
-        output_list = su.get_all_output_times(output_dir)
+        output_list = get_all_output_times(output_dir)
 
         if len(output_list) <= 8:
             plot_list = output_list
@@ -273,11 +276,5 @@ def main():
 #====================================================================
 
 if __name__ == "__main__":
-
-    # Import utils- and plot-specific modules
-    from utils.modules_utils import *
-    from utils.modules_plot import *
-    import utils_coupler as cu
-    import utils_spider as su
 
     main()

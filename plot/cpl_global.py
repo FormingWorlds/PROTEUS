@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
 # Import utils- and plot-specific modules
-from utils.modules_plot import *
-from utils.utils_spider import MyJSON
+from utils.modules_ext import *
+from utils.plot import *
+from utils.spider import *
 
 #====================================================================
 def plot_global( output_dir ):
@@ -48,10 +49,10 @@ def plot_global( output_dir ):
     ax4.text(title_xNumbering, title_yNumbering, 'E', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax4.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
     ax5.text(title_xNumbering, title_yNumbering, 'F', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax5.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
 
-    fig_o.time = su.get_all_output_times(output_dir)
+    fig_o.time = get_all_output_times(output_dir)
 
     # Read in runtime helpfile and separate in atmosphere and interior params
-    df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=" ")
+    df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep="\t")
     df_int = df.loc[df['Input']=='Interior']
     df_atm = df.loc[df['Input']=='Atmosphere']
     # Remove duplicate atm entries for one timestep
@@ -72,7 +73,7 @@ def plot_global( output_dir ):
                ('atmosphere','pressure_surface'),
                ('rheological_front_dynamic','depth')
                )
-    data_a = su.get_dict_surface_values_for_times( keys_t, fig_o.time, output_dir )
+    data_a = get_dict_surface_values_for_times( keys_t, fig_o.time, output_dir )
     mass_liquid         = data_a[0,:]
     mass_solid          = data_a[1,:]
     mass_mantle         = data_a[2,:]
@@ -258,7 +259,7 @@ def plot_global( output_dir ):
         if vol_times:
 
             # Get the data for these files
-            data_vol = su.get_dict_surface_values_for_times( keys_t, vol_times, output_dir )
+            data_vol = get_dict_surface_values_for_times( keys_t, vol_times, output_dir )
             vol_liquid_kg       = data_vol[0,:]
             vol_solid_kg        = data_vol[1,:]
             vol_initial_kg      = data_vol[2,:]
@@ -347,9 +348,9 @@ def plot_global( output_dir ):
     ax5.set_ylabel(r'$X_{\mathrm{mantle}}^{\mathrm{i}}/X_{\mathrm{tot}}^{\mathrm{i}}$', fontsize=label_fs)
     ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
-
-    fig_o.savefig(6)
     plt.close()
+    plt.ioff()
+    fig_o.savefig(6)
 
 #====================================================================
 def main():
@@ -365,7 +366,7 @@ def main():
     if args.output_dir:
         output_dir = args.output_dir
     else:
-        output_dir = os.getcwd()
+        output_dir = os.getcwd() + "/output/"
 
     print("Output directory:", output_dir)
 
@@ -373,7 +374,7 @@ def main():
     if args.times:
         plot_list = [ int(time) for time in args.times.split(',') ]
     else:
-        output_list = su.get_all_output_times(output_dir)
+        output_list = get_all_output_times(output_dir)
 
         if len(output_list) <= 8:
             plot_list = output_list
@@ -386,11 +387,5 @@ def main():
 #====================================================================
 
 if __name__ == "__main__":
-
-    # Import utils- and plot-specific modules
-    from utils.modules_utils import *
-    from utils.modules_plot import *
-    import utils_coupler as cu
-    import utils_spider as su
 
     main()

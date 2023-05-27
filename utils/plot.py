@@ -1,16 +1,9 @@
-#!/usr/bin/env python3
+# Variables and functions to help with plotting functions
+# These do not do the plotting themselves
 
-# Import utils-specific modules
-from utils.modules_utils import *
-import utils.utils_spider as su
-
-from AEOLUS.modules.spectral_planck_surface import surf_Planck_nu
-
-# from natsort import natsorted # https://pypi.python.org/pypi/natsort
-
-# Define Crameri colormaps (+ recursive)
-from matplotlib.colors import LinearSegmentedColormap
-import matplotlib.font_manager as fm
+from utils.modules_ext import *
+from utils.constants import *
+from utils.coupler import *
 
 sci_colormaps = {}
 for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
@@ -22,7 +15,6 @@ for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
     sci_colormaps[name]      = LinearSegmentedColormap.from_list(name, cm_data)
     sci_colormaps[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
 
-from matplotlib import cm
 
 # https://matplotlib.org/tutorials/colors/colormaps.html
 
@@ -206,6 +198,8 @@ molar_mass      = {
 
 volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
 
+
+
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
 def latex_float(f):
     float_str = "{0:.2g}".format(f)
@@ -219,7 +213,7 @@ def AtmosphericHeight(atm, m_planet, r_planet):
 
     z_profile       = np.zeros(len(atm.p))
     P_s             = np.max(atm.p)
-    grav_s          = su.gravity( m_planet, r_planet )
+    grav_s          = gravity( m_planet, r_planet )
 
     # Reverse arrays to go from high to low pressure
     atm.p   = atm.p[::-1]
@@ -262,9 +256,6 @@ def AtmosphericHeight(atm, m_planet, r_planet):
 
     return z_profile
 
-
-# Constants
-R_gas           = 8.31446261815324      # J K−1 mol−1
 
 def find_nearest(array, value):
     array   = np.asarray(array)
@@ -346,6 +337,8 @@ class FigureData( object ):
         times=[], units='kyr' ):
         dd = {}
         self.data_d = dd
+
+        mpl.use('Agg')  # Prevent plots popping up (it's very annoying)
 
         if (type(times) == float) or (type(times) == int):
             times = np.array([times])
@@ -524,4 +517,6 @@ class FigureData( object ):
         if not ymax: ymax=yticks[-1]
         if not ymin: ymin=yticks[0]
         ax.set_ylim( ymin, ymax )
+
+
 
