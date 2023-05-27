@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
-# Plots stellar flux from `output/` versus time (colorbar)
+# Plots stellar flux from `output/` for a set of wavelength bins
 
 from utils.modules_ext import *
 from utils.constants import *
+from utils.plot import find_nearest
 from utils.helper import natural_sort
 
-star_cmap = plt.get_cmap('gnuplot2_r')
+star_cmap = plt.get_cmap('rainbow')
 
 # Planck function value at stellar surface
 # lam in nm
@@ -22,22 +23,21 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux(output_dir, wl_max = 1300.0, surface=False):
-    """Plots stellar flux vs time for all wavelengths
+def plot_sflux_cross(output_dir, wl_targets, surface=False):
+    """Plots stellar flux vs time, for a set of wavelengths.
 
     Note that this function will plot the flux from EVERY file it finds.
-    Saves plot as 'cpl_sflux.pdf' in  the output directory.
+    Saves plot as 'cpl_sflux_cross.pdf' in  the output directory.
 
     Parameters
     ----------
         output_dir : str
             Directory for both reading from and saving to.
+        wl_targets : list
+            List of wavelengths to plot [nm]
 
-        wl_max : float
-            Upper limit of wavelength axis [nm]
         surface : bool
             Use fluxes at surface? If not, will use fluxes at 1 AU.
-
 
     """ 
 
@@ -78,62 +78,53 @@ def plot_sflux(output_dir, wl_max = 1300.0, surface=False):
     flux_t = np.array(flux_t)
 
     # Create figure
-    N = len(time_t)
-
     fig,ax = plt.subplots(1,1)
 
     # Colorbar
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes('right', size='3%', pad=0.05)
-
-    vmin = max(time_t[0],1.0)
-    vmax = time_t[-1]
-    norm = mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
-    sm = plt.cm.ScalarMappable(cmap=star_cmap, norm=norm)
-    sm.set_array([])
-    cbar = fig.colorbar(sm, cax=cax, orientation='vertical') 
-    cbar.set_label("Time [Myr]") 
-
     ax.set_yscale("log")
     ax.set_ylabel("Flux [erg s-1 cm-2 nm-1]")
-    ax.set_xlabel("Wavelength [nm]")
-    ax.set_xlim([0,max(1.0,wl_max)])
 
+    ax.set_xscale("log")
+    ax.set_xlabel("Time [Myr]")
     if surface:
         ax.set_title("Stellar flux (surface) scaled by F_band with age")
     else:
         ax.set_title("Stellar flux (1 AU) scaled by F_band with age")
 
+    # Find indices for wavelength bins
+    wl_iarr = []
+    wl_varr = []
+    for w in wl_targets:
+        wl_v, wl_i = find_nearest(wave,w)
+        wl_iarr.append(wl_i)
+        wl_varr.append(wl_v)
+    N = len(wl_iarr)
+
     # Plot spectra
     for i in range(N):
-        c =  sm.to_rgba(time_t[i])
-        ax.plot(wave_t[i],flux_t[i],color=c,alpha=0.6,lw=0.8)
 
-    ymax = np.percentile(flux_t,99.5)
-    ymin = np.percentile(flux_t,00.5)
-    ax.set_ylim([ymin,ymax])
+        fl = flux_t.T[wl_iarr[i]]
+        c = star_cmap(1.0*i/N)
+        lbl = '%g' % wl_varr[i]
 
-    # Calculate planck function
-    # Tstar = 3274.3578960897644
-    # Rstar_cm = 36292459156.77782
-    # AU_cm = 1.496e+13 
-    # sf = Rstar_cm / AU_cm
-    # planck_fl = [] 
-    # for w in wave_t[4]:
-    #     planck_fl.append(planck_function(w,Tstar) * sf * sf) 
-    # ax.plot(wave_t[4],planck_fl,color='green',lw=1.5)
+        ax.plot(time_t,fl,color='black',lw=1.3)
+        ax.plot(time_t,fl,color=c      ,lw=1.0,label=lbl)
+
+    fig.legend(title="Wavelength [nm]", loc='center right')
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_sflux.pdf")
+    fig.savefig(output_dir+"/plot_sflux_cross.pdf")
 
 
 # Run directly
 if __name__ == '__main__':
 
-    print("Plotting stellar flux over time (colorbar)...")
+    print("Plotting stellar flux over time (bins)...")
 
-    plot_sflux(dirs['output'])
+    wl_bins = [0.5, 10.0, 50.0, 100.0, 200.0, 350.0, 500.0, 1000.0]
+
+    plot_sflux_cross(dirs['output'], wl_bins, surface=False)
 
     print("Done!")
 

@@ -9,7 +9,9 @@ debug = True
 
 # Astronomical constants
 L_sun           = 3.828e+26             # W, IAU definition
+R_sun_cm        = 6.957e+10             # cm
 AU              = 1.495978707e+11       # m
+AU_cm           = AU * 100.0            # cm
 R_gas           = 8.31446261815324      # J K−1 mol−1
 M_earth         = 5.972E24              # kg
 R_core_earth    = 3485000.0             # m
@@ -60,9 +62,6 @@ molar_mass      = {
 
 volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
 element_list     = [ "H", "O", "C", "N", "S", "He" ] 
-
-# volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2"]
-# element_list     = [ "H", "O", "C", "N" ] 
 
 # Henry's law coefficients
 # Add to dataframe + save to disk

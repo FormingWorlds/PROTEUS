@@ -5,7 +5,8 @@ import sys
 
 stars_online = {
     "muscles": ["gj1132", "gj1214", "gj15a", "gj163", "gj176", "gj436", "gj551", "gj581", "gj649", "gj667c", "gj674", "gj676a", "gj699", "gj729", "gj832", "gj832_synth", "gj849", "gj876", "hd40307", "hd85512", "hd97658", "l-980-5", "lhs-2686", "trappist-1", "v-eps-eri"],
-    "vpl": ["sun", "hd128167", "hd114710", "hd206860", "hd22049"]
+    "vpl": ["hd128167", "hd114710", "hd206860", "hd22049"],
+    "nrel": ["sun"]
 }
 
 def DownloadModernSpectrum(name, distance):
@@ -27,6 +28,7 @@ def DownloadModernSpectrum(name, distance):
 
     print("Attempting to obtain spectrum for parameters: [star = %s, distance = %1.2e ly]" % (name, distance))
 
+    # Import required libraries
     import requests, certifi, os
     from astropy.io import fits
 
@@ -121,6 +123,35 @@ def DownloadModernSpectrum(name, distance):
                         fl = float(li[1]) * 1.0e4  * (distance / r_scale )**2  # Convert units and scale flux 
 
                         new_str += "%1.7e\t%1.7e \n" % (wl,fl)
+                        
+            with open(plaintext_spectrum, 'w') as f: 
+                f.write(new_str)  
+        
+        case 'nrel':
+            cert = certifi.where()
+            source = "https://www.nrel.gov/grid/solar-resource/assets/data/newguey2003.txt"  # Set to Sun only.
+            resp = requests.get(source, verify=cert) # Download file
+
+            if (resp.status_code != 200):
+                print("\t WARNING: Request returned with status code '%d' (should be 200/OK)" % resp.status_code)
+
+            with open(database_spectrum, "wb") as f:
+                f.write(resp.content) 
+
+            i = -1
+            with open(database_spectrum) as f:
+                for line in f.readlines():
+                    i += 1
+                    if (i < 9): 
+                        continue  # Skip header
+
+                    li = line.split()
+                    
+                    wl = float(li[0]) # Already in nm
+                    fl = float(li[1]) * 1.0e3 # Convert [W m-2 nm-1] -> [erg s-1 cm-2 nm-1], already at 1 AU
+
+                    new_str += "%1.7e\t%1.7e \n" % (wl,fl)
+                    
                         
             with open(plaintext_spectrum, 'w') as f: 
                 f.write(new_str)   

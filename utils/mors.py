@@ -9,8 +9,8 @@ star_bands = {
     "xr" : [1.e-3 , 10.0],  # X-ray,  defined by mors
     "e1" : [10.0  , 32.0],  # EUV1,   defined by mors
     "e2" : [32.0  , 92.0],  # EUV2,   defined by mors
-    "uv" : [92.0  , 300.0], # UV,     defined by me
-    "pl" : [300.0 , 1.e9],  # planck, defined by me
+    "uv" : [92.0  , 200.0], # UV,     defined by me
+    "pl" : [200.0 , 1.e9],  # planck, defined by me
     'bo' : [1.e-3 , 1.e9]   # bolo,   defined by me
 }
 
@@ -40,7 +40,7 @@ def SolarConstant(time_dict: dict, COUPLER_options: dict):
     Tstar = time_dict['star'] * 1.e-6  # Convert from yr to Myr
 
     Lstar = mors.Value(Mstar, Tstar, 'Lbol')  # Units of L_sun
-    Lstar *= 382.8e24 # Convert to W, https://nssdc.gsfc.nasa.gov/planetary/factsheet/sunfact.html
+    Lstar *= L_sun # Convert to W
 
     mean_distance = COUPLER_options["mean_distance"] * AU
 
@@ -161,11 +161,8 @@ def ModernSpectrumFband(dirs: dict, COUPLER_options: dict):
 
         print('Band %s [%d,%d] = %g' % (band,wl_min,wl_max,fl_integ))
 
-    # 1 AU in cm
-    AU_cm = 1.496e+13
-
     # Stellar radius (NOW) in cm
-    Rstar_cm = COUPLER_options['star_radius_modern'] * 6.957e+10
+    Rstar_cm = COUPLER_options['star_radius_modern'] * R_sun_cm
 
     # Work out how much the planck function overestimates the integrated flux in the 'pl' by testing vs observed flux.
     # This accounts for the fact that T_eff does not include spectral features when we use it to estimate flux, so it's
@@ -202,24 +199,34 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
             Path to historical spectrum file written by this function.
     """
 
-    # 1 AU in cm
-    AU_cm = 1.496e+13
-
-    # Get historical flux in each band provided by Mors
-    Mstar = COUPLER_options["star_mass"]
+    # Get rotation rate sample percentile
     pctle = COUPLER_options["star_rot_percentile"]
+    pctle = min(max(0.01,pctle),99.99)
+    
+    # Get time and check that it is in range
     tstar = time_dict["star"] * 1.e-6
+    if (tstar < 0.117):
+        print("WARNING: Star age too low! Clipping to 0.117 Myr")
+        tstar = 0.117
+    if (tstar > 11058.0):
+        print("WARNING: Star age too high! Clipping to 11058 Myr")
+        tstar = 11058.0
 
-    # Rstar = COUPLER_options["star_radius"]
+    # Get mass and check that it is in range
+    Mstar = COUPLER_options["star_mass"]
+    if (Mstar < 0.1):
+        print("WARNING: Star mass too low! Clipping to 0.1 M_sun")
+        Mstar = 0.1
+    if (Mstar > 1.25):
+        print("WARNING: Star mass too high! Clipping to 1.25 M_sun")
+        Mstar = 1.25
+
     Rstar = mors.Value(Mstar, tstar, 'Rstar') # radius in solar radii
     COUPLER_options['star_radius'] = Rstar
-    Rstar_cm = Rstar * 6.957e+10  # radius in cm
-    print(Rstar_cm,"cm")
+    Rstar_cm = Rstar * R_sun_cm  # radius in cm
 
     # Get temperature from Mors
     Tstar = mors.Value(Mstar, tstar, 'Teff')
-    print(Tstar,"K")
-    
     COUPLER_options['star_temperature'] = Tstar
 
     Omega = mors.Percentile(Mstar=Mstar, percentile=pctle)
@@ -239,7 +246,6 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
     IPF = IntegratePlanckFunction(star_bands['pl'][0], star_bands['pl'][1], Tstar)
     F_band['pl'] = sf * COUPLER_options['observed_vs_planckian'] * IPF
 
-
     # Get dimensionless ratios of past flux to modern flux
     # It's important that they have the same units
     Q_band = {}
@@ -251,8 +257,9 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
     if len(spec_wl) != len(spec_fl):
         raise Exception("Stellar spectrum wl and fl arrays are of different lengths!")
     
-    print(F_band)
-    print(Q_band)
+    if debug:
+        print("F_band", F_band)
+        print("Q_band", Q_band)
 
     hspec_fl = np.zeros((len(spec_wl)))
     
@@ -287,11 +294,17 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
             uv_euv2_scale = uv_rel_dist * uv_scale_low + (1.0 - uv_rel_dist) * uv_scale_hgh
             hspec_fl[i] = fl * uv_euv2_scale
 
-    # Save historical spectrum
+    # Save historical spectrum at 1 AU
     X = np.array([spec_wl,hspec_fl]).T
     outname = dirs['output'] + "/%d.sflux" % time_dict['planet']
-    header = '# Historical stellar flux (1 AU) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % tstar
+    header = '# Stellar flux (1 AU) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % tstar
     np.savetxt(outname, X, header=header,comments='',fmt='%1.5e',delimiter='\t')
+
+    # Save historical spectrum at stellar surface
+    Y = np.array([spec_wl,hspec_fl / sf]).T
+    outname = dirs['output'] + "/%d.sfluxsurf" % time_dict['planet']
+    header = '# Stellar flux (surface) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % tstar
+    np.savetxt(outname, Y, header=header,comments='',fmt='%1.5e',delimiter='\t')
 
     return outname
 

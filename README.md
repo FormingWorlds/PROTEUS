@@ -15,16 +15,19 @@ https://proteus-code.readthedocs.io
 * HN - Harrison Nicholls (harrison.nicholls@physics.ox.ac.uk)
 
 ### Repository structure
-* `CouplerMain.py`  – Main PROTEUS Python script
+* `proteus.py`      – Main PROTEUS Python script
 * `README.md`       – This file
 * `INSTALL.md`      – Installation instructions
 * `AEOLUS/`         – Submodule AEOLUS
 * `SPIDER/`         – Submodule SPIDER
 * `VULCAN/`         – Submodule VULCAN
-* `utils/`          – Utility python scripts
+* `Mors/`           - Submodule Mors
+* `utils/`          – Scripts used for running PROTEUS and its submodules
+* `plot/`           - Plotting scripts
 * `output/`         – Output folder
+* `tools/`          - Helpful tools for the user
+* `init_coupler.cfg`- Configuration file
 * `docs/`           – Documentation source
-* `tools/`          - Helpful tools for the user.
 * `pyproject.toml`  – Documentation file
 * `lumache.py`      – Documentation file
 
@@ -37,7 +40,7 @@ Only attempt to run PROTEUS after you have followed all of the instructions in I
 If using a fresh shell, it is necessary to perform the following steps:     
 1. `conda activate proteus` (if installed with `conda`)
 2. `source PROTEUS.env`
-Then you can run the code by running: `python CouplerMain.py`      
+Then you can run the code by running: `python proteus.py`      
 Plots are produced in `output/`      
 
 ### Updating the code
