@@ -9,9 +9,23 @@ from utils.baraffe import *
 Myr = 1.0e6
 
 def run(tf: float):
-    # Read in COUPLER input file
-    COUPLER_options, time_dict = ReadInitFile( dirs, "init_coupler.cfg" )
+    # Read in PROTEUS config file
+    COUPLER_options, time_dict = ReadInitFile( "init_coupler.cfg" )
 
+    # Set directories
+    dirs = SetDirectories(COUPLER_options)
+
+    # Check if output directory exists, otherwise create
+    if not os.path.exists(dirs["output"]):
+        os.makedirs(dirs["output"])
+        print("Create output directory:", dirs["output"])
+
+    # If it does exist, empty the folder
+    else:
+        print("Empty output directory:", dirs["output"])
+        CleanOutputDir( dirs["output"] )
+
+    # Check which model we are using
     model = COUPLER_options['star_model']
 
     # Prep evolution data
@@ -59,15 +73,7 @@ if __name__ == "__main__":
     # Parameters
     t_final =       2000.0 * Myr     # Final time for evolution
 
-    # Check if output directory exists, otherwise create
-    if not os.path.exists(dirs["output"]):
-        os.makedirs(dirs["output"])
-        print("Create output directory:", dirs["output"])
-
-    # If it does exist, empty the folder
-    else:
-        print("Empty output directory:", dirs["output"])
-        CleanOutputDir( dirs["output"] )
+    
 
     print("NOTE: File convention differs with this script, compared to PROTEUS!")
     print("      Files of the format t.sflux* refer to a STAR AGE of t years.")

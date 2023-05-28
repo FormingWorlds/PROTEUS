@@ -115,18 +115,6 @@ volatile_distribution_coefficients = {               # X_henry -> ppm/Pa
     }
     
 
-# Coupler-specific paths
-coupler_dir = os.getenv('COUPLER_DIR')
-output_dir  = coupler_dir+"/output/"
-vulcan_dir  = coupler_dir+"/VULCAN/"
-radconv_dir = coupler_dir+"/AEOLUS/"
-spider_dir  = coupler_dir+"/SPIDER/"
-utils_dir   = coupler_dir+"/utils/"
+dirs = {}  # Modified by coupler.py: SetDirectories().
 
-dirs = {"output": output_dir, 
-        "coupler": coupler_dir, 
-        "rad_conv": radconv_dir, 
-        "vulcan": vulcan_dir, 
-        "spider": spider_dir, 
-        "utils": utils_dir
-        }
+# End of file

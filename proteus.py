@@ -13,6 +13,7 @@ from utils.vulcan import RunVULCAN
 from utils.aeolus import RunAEOLUS, StructAtm
 from utils.spider import RunSPIDER
 
+import utils.constants
 
 #====================================================================
 def main():
@@ -22,13 +23,17 @@ def main():
     # Parse console arguments
     args = parse_console_arguments()
 
+    # Read in COUPLER input file
+    COUPLER_options, time_dict = ReadInitFile( args.cfg_file )
+
+    # Set directories dictionary
+    utils.constants.dirs = SetDirectories(COUPLER_options)
+    from utils.constants import dirs
+
     # Check if output directory exists, otherwise create
     if not os.path.exists(dirs["output"]):
         os.makedirs(dirs["output"])
         print("--> Create output directory:", dirs["output"])
-
-    # Read in COUPLER input file
-    COUPLER_options, time_dict = ReadInitFile( dirs, args.init_file )
 
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
     loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 10 }

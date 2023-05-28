@@ -93,13 +93,13 @@ def BaraffeSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs : d
     X = np.array([spec_wl,hspec_fl]).T
     outname1 = dirs['output'] + "/%d.sflux" % time_dict['planet']
     header = '# MStellar flux (Baraffe, 1 AU) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % t
-    np.savetxt(outname1, X, header=header,comments='',fmt='%1.5e',delimiter='\t')
+    np.savetxt(outname1, X, header=header,comments='',fmt='%1.3e',delimiter='\t')
 
     # Save historical spectrum at stellar surface
     Y = np.array([spec_wl,hspec_fl / sf]).T
     outname2 = dirs['output'] + "/%d.sfluxsurf" % time_dict['planet']
     header = '# Stellar flux (Baraffe, surface) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % t
-    np.savetxt(outname2, Y, header=header,comments='',fmt='%1.5e',delimiter='\t')
+    np.savetxt(outname2, Y, header=header,comments='',fmt='%1.3e',delimiter='\t')
 
     return outname1, outname2
 

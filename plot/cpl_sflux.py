@@ -78,6 +78,8 @@ def plot_sflux(output_dir, wl_max = 1300.0, surface=False, t_starinit=0.0):
         
         # Parse data
         time = int(f.split('/')[-1].split('.')[0])
+        if time < 0: continue
+
         wave = X[0]
         flux = X[1]
 
@@ -117,7 +119,7 @@ def plot_sflux(output_dir, wl_max = 1300.0, surface=False, t_starinit=0.0):
     else:
         ax.set_title("Stellar flux (1 AU) versus time")
 
-    # Plot spectra
+    # Plot historical spectra
     for i in range(N):
         c =  sm.to_rgba(time_t[i])
         ax.plot(wave_t[i],flux_t[i],color=c,alpha=0.6,lw=0.8)
@@ -125,6 +127,11 @@ def plot_sflux(output_dir, wl_max = 1300.0, surface=False, t_starinit=0.0):
     ymax = np.percentile(flux_t,99.5)
     ymin = np.percentile(flux_t,00.5)
     ax.set_ylim([ymin,ymax])
+
+    # Plot current spectrum (use the copy made in the output directory)
+    if not surface:
+        X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
+        ax.plot(X[0],X[1],color='green',label='Modern',lw=2,alpha=0.8)
 
     # Calculate planck function
     # Tstar = 3274.3578960897644
@@ -145,6 +152,14 @@ def plot_sflux(output_dir, wl_max = 1300.0, surface=False, t_starinit=0.0):
 if __name__ == '__main__':
 
     print("Plotting stellar flux over time (colorbar)...")
+
+    from utils.coupler import ReadInitFile, SetDirectories
+
+    # Read in COUPLER input file
+    COUPLER_options, time_dict = ReadInitFile( 'init_coupler.cfg' )
+
+    # Set directories dictionary
+    dirs = SetDirectories(COUPLER_options)
 
     plot_sflux(dirs['output'])
 

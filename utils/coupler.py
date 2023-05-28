@@ -15,10 +15,9 @@ import plot.cpl_interior as cpl_interior
 # Optional arguments: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
 def parse_console_arguments():
     
-    parser = argparse.ArgumentParser(description='COUPLER optional command line arguments')
-    parser.add_argument('-init_file', type=str, default=dirs["output"]+"/init_coupler.cfg", help='Specify init filename')
+    parser = argparse.ArgumentParser(description='PROTEUS optional command line arguments')
+    parser.add_argument('-cfg_file', type=str, default="init_coupler.cfg", help='Specify cfg filename')
     parser.add_argument('-restart_file', type=str, default="0", help='Restart from specific .json file in folder. Specify only the number of the file.')
-    parser.add_argument('-dir', default=dirs["output"], help='Provide path to output directory.' )
     parser.add_argument('-H2O_ppm', type=float, help='H2O initial abundance (ppm wt).')
     parser.add_argument('-CO2_ppm', type=float, help='CO2 initial abundance (ppm wt).')
     parser.add_argument('-H2_ppm', type=float, help='H2 initial abundance (ppm wt).')
@@ -367,23 +366,20 @@ def SaveOutput( output_dir ):
         print(os.path.basename(file), end =" ")
 
 
-def ReadInitFile( dirs, init_file_passed ):
+def ReadInitFile( init_file_passed ):
 
     # Read in input file as dictionary
     COUPLER_options  = {}
     time_dict       = {}
     print("Read in init file:", end=" ")
 
-    # Output directory
     if os.path.isfile(init_file_passed):
         init_file = init_file_passed
-    # Coupler directory
     else: 
-        init_file = dirs["coupler"]+"/init_coupler.cfg"
-        shutil.copy(dirs["coupler"]+"/init_coupler.cfg", init_file_passed)
+        raise Exception("Init file provided is not a file or does not exist!")
 
     print(init_file)   
-    print("Settings:")
+    if debug: print("Settings:")
 
     # Open file and fill dict
     with open(init_file) as f:
@@ -400,7 +396,7 @@ def ReadInitFile( dirs, init_file_passed ):
                 line = line.split("#")[0]
                 line = line.split(",")[0]
 
-                print(line)
+                if debug: print(line)
 
                 # Assign key and value
                 (key, val) = line.split("=")
@@ -414,7 +410,7 @@ def ReadInitFile( dirs, init_file_passed ):
                     if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", "nstepsmacro", "use_vulcan", "ic_interior_filename", "plot_onthefly"]:
                         val = int(val)
                     # Some are str
-                    elif key in [ 'star_spectrum', 'star_btrack' ]:
+                    elif key in [ 'star_spectrum', 'star_btrack', 'dir_output' ]:
                         val = str(val)
                     # Most are float
                     else:
@@ -470,6 +466,22 @@ def UpdatePlots( output_dir, COUPLER_options, time_dict ):
 
         # Close all figures
         plt.close()
+
+def SetDirectories(COUPLER_options: dict):
+    # Set directories dictionary
+
+    coupler_dir = os.getenv('COUPLER_DIR')
+
+    dirs = {
+            "output": coupler_dir+"/"+COUPLER_options['dir_output']+"/", 
+            "coupler": coupler_dir, 
+            "rad_conv": coupler_dir+"/AEOLUS/", 
+            "vulcan": coupler_dir+"/VULCAN/", 
+            "spider": coupler_dir+"/SPIDER/", 
+            "utils": coupler_dir+"/utils/"
+            }
+    
+    return dirs
 
 
 # End of file

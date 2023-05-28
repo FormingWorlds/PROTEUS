@@ -51,7 +51,7 @@ def SolarConstant(time_dict: dict, COUPLER_options: dict):
 
 
 def ModernSpectrumLoad(dirs: dict, COUPLER_options: dict):
-    """Load modern spectrum into memory.
+    """Copy file and load modern spectrum into memory.
 
     Scaled to 1 AU from the star. Generate these spectra using the python script
     'GetStellarSpectrum.py' in the 'tools' directory.
@@ -73,7 +73,12 @@ def ModernSpectrumLoad(dirs: dict, COUPLER_options: dict):
 
     spec_file = dirs["coupler"]+"/"+COUPLER_options["star_spectrum"]
     if os.path.isfile(spec_file):
-        spec_data = np.loadtxt(spec_file, skiprows=2,delimiter='\t').T
+
+        # Copy modern spectrum file to output directory as -1.sflux.
+        copy_file = shutil.copyfile(spec_file,dirs['output']+'/-1.sflux') 
+
+        # Load file
+        spec_data = np.loadtxt(copy_file, skiprows=2,delimiter='\t').T
         spec_wl = spec_data[0]
         spec_fl = spec_data[1]
     else:
@@ -294,20 +299,19 @@ def MorsSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs : dict
         # if star_bands['uv'][0] <= wl <= star_bands['uv'][1]:  # Are we in the UV range?
         uv_rel_dist = (i - i_uv_wl_low) / irange
         uv_euv2_scale = (1.0 - uv_rel_dist) * uv_scale_low + uv_rel_dist * uv_scale_hgh
-        print(uv_rel_dist, uv_euv2_scale)
         hspec_fl[i] = fl * uv_euv2_scale
 
     # Save historical spectrum at 1 AU
     X = np.array([spec_wl,hspec_fl]).T
     outname1 = dirs['output'] + "/%d.sflux" % time_dict['planet']
     header = '# Stellar flux (1 AU) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % tstar
-    np.savetxt(outname1, X, header=header,comments='',fmt='%1.5e',delimiter='\t')
+    np.savetxt(outname1, X, header=header,comments='',fmt='%1.3e',delimiter='\t')
 
     # Save historical spectrum at stellar surface
     Y = np.array([spec_wl,hspec_fl / sf]).T
     outname2 = dirs['output'] + "/%d.sfluxsurf" % time_dict['planet']
     header = '# Stellar flux (surface) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % tstar
-    np.savetxt(outname2, Y, header=header,comments='',fmt='%1.5e',delimiter='\t')
+    np.savetxt(outname2, Y, header=header,comments='',fmt='%1.3e',delimiter='\t')
 
     return outname1, outname2
 
