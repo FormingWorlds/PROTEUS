@@ -8,6 +8,7 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.coupler import *
 from utils.mors import *
+from utils.baraffe import *
 from utils.vulcan import RunVULCAN
 from utils.aeolus import RunAEOLUS, StructAtm
 from utils.spider import RunSPIDER
@@ -76,7 +77,11 @@ def main():
 
     
     # Calculate band-integrated fluxes for modern stellar spectrum (1 AU)
-    COUPLER_options = ModernSpectrumFband(dirs, COUPLER_options)
+    match COUPLER_options['star_model']:
+        case 1:
+            COUPLER_options = ModernSpectrumFband(dirs, COUPLER_options)
+        case 2:
+            track = LoadBaraffeTrack(COUPLER_options)
     
     # Store copy of modern spectrum in memory (1 AU)
     StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
@@ -97,7 +102,11 @@ def main():
         # Calculate historical spectrum (1 AU)
         if ( abs( time_dict['planet'] - time_dict['sflux_prev'] ) > COUPLER_options['sflux_dt_update'] ):
             print("Updating stellar spectrum")
-            HistoricalSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
+            match COUPLER_options['star_model']:
+                case 1:
+                    MorsSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
+                case 2:
+                    BaraffeSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options, track)
             time_dict['sflux_prev'] = time_dict['planet'] 
 
         # print(S_old, S_0)

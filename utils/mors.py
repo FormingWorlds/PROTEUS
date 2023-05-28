@@ -175,7 +175,7 @@ def ModernSpectrumFband(dirs: dict, COUPLER_options: dict):
 
     return COUPLER_options
 
-def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs : dict, COUPLER_options: dict):
+def MorsSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs : dict, COUPLER_options: dict):
     """Write historical spectrum to disk, for a time t.
 
     Uses the Mors evolution model. Spectrum scaled to 1 AU from the star.
@@ -195,8 +195,10 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
 
     Returns
     ----------
-        historical_spectrum : str
-            Path to historical spectrum file written by this function.
+        outname1 : str
+            Path to historical spectrum file at 1 AU written by this function.
+        outname1 : str
+            Path to historical spectrum file at stellar surface written by this function.
     """
 
     # Get rotation rate sample percentile
@@ -244,7 +246,7 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
 
     # Find flux in planckian region and correct for features
     IPF = IntegratePlanckFunction(star_bands['pl'][0], star_bands['pl'][1], Tstar)
-    F_band['pl'] = sf * COUPLER_options['observed_vs_planckian'] * IPF
+    F_band['pl'] = sf * COUPLER_options['observed_vs_planckian'] * IPF   # Scale to 1 AU and correct for features
 
     # Get dimensionless ratios of past flux to modern flux
     # It's important that they have the same units
@@ -275,37 +277,38 @@ def HistoricalSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs 
                 hspec_fl[i] = fl * Q_band[band]
                 break
 
-    # Calculate UV scale factor linearly per-bin, making sure that it's 
-    # continuous at both ends of its bandpass. These boundary conditions have
+    # Calculate UV scale factor linearly per-bin, making sure that spectrum is
+    # continuous at both ends of the UV bandpass. These boundary conditions have
     # to be true, so the assumption here is the linear scaling behaviour 
     # across the UV regime. UV regime is defined by star_bands dictionary.
     i_uv_wl_low = (np.abs(spec_wl - star_bands['uv'][0])).argmin()
-    uv_scale_low = hspec_fl[i_uv_wl_low] / spec_fl[i_uv_wl_low]
+    uv_scale_low = hspec_fl[i_uv_wl_low-1] / spec_fl[i_uv_wl_low]
 
     i_uv_wl_hgh = (np.abs(spec_wl - star_bands['uv'][1])).argmin()
-    uv_scale_hgh = hspec_fl[i_uv_wl_hgh] / spec_fl[i_uv_wl_hgh]
+    uv_scale_hgh = hspec_fl[i_uv_wl_hgh+1] / spec_fl[i_uv_wl_hgh]
     
     irange = i_uv_wl_hgh - i_uv_wl_low
     for i in range(i_uv_wl_low,i_uv_wl_hgh+1,1):
         wl = spec_wl[i]
         fl = spec_fl[i]
-        if star_bands['uv'][0] <= wl <= star_bands['uv'][1]:  # Are we in the UV range?
-            uv_rel_dist = (i - i_uv_wl_low) / irange
-            uv_euv2_scale = uv_rel_dist * uv_scale_low + (1.0 - uv_rel_dist) * uv_scale_hgh
-            hspec_fl[i] = fl * uv_euv2_scale
+        # if star_bands['uv'][0] <= wl <= star_bands['uv'][1]:  # Are we in the UV range?
+        uv_rel_dist = (i - i_uv_wl_low) / irange
+        uv_euv2_scale = (1.0 - uv_rel_dist) * uv_scale_low + uv_rel_dist * uv_scale_hgh
+        print(uv_rel_dist, uv_euv2_scale)
+        hspec_fl[i] = fl * uv_euv2_scale
 
     # Save historical spectrum at 1 AU
     X = np.array([spec_wl,hspec_fl]).T
-    outname = dirs['output'] + "/%d.sflux" % time_dict['planet']
+    outname1 = dirs['output'] + "/%d.sflux" % time_dict['planet']
     header = '# Stellar flux (1 AU) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % tstar
-    np.savetxt(outname, X, header=header,comments='',fmt='%1.5e',delimiter='\t')
+    np.savetxt(outname1, X, header=header,comments='',fmt='%1.5e',delimiter='\t')
 
     # Save historical spectrum at stellar surface
     Y = np.array([spec_wl,hspec_fl / sf]).T
-    outname = dirs['output'] + "/%d.sfluxsurf" % time_dict['planet']
+    outname2 = dirs['output'] + "/%d.sfluxsurf" % time_dict['planet']
     header = '# Stellar flux (surface) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % tstar
-    np.savetxt(outname, Y, header=header,comments='',fmt='%1.5e',delimiter='\t')
+    np.savetxt(outname2, Y, header=header,comments='',fmt='%1.5e',delimiter='\t')
 
-    return outname
+    return outname1, outname2
 
 # End of file

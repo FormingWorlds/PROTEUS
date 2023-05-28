@@ -22,7 +22,7 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux(output_dir, wl_max = 1300.0, surface=False):
+def plot_sflux(output_dir, wl_max = 1300.0, surface=False, t_starinit=0.0):
     """Plots stellar flux vs time for all wavelengths
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -37,6 +37,8 @@ def plot_sflux(output_dir, wl_max = 1300.0, surface=False):
             Upper limit of wavelength axis [nm]
         surface : bool
             Use fluxes at surface? If not, will use fluxes at 1 AU.
+        t_starinit : float
+            Age of star (in Myr) when time = 0
 
 
     """ 
@@ -48,12 +50,23 @@ def plot_sflux(output_dir, wl_max = 1300.0, surface=False):
         suffix = 'sfluxsurf'
     else:
         suffix = 'sflux'
-    files = glob.glob(output_dir+"/*."+suffix)
-    files = natural_sort(files)
+    files_unsorted = glob.glob(output_dir+"/*."+suffix)
+    files = natural_sort(files_unsorted)
 
     if (len(files) == 0):
         print("No files found!")
         exit(1)
+
+    # Downsample data
+    if (len(files) > 200):
+        files = files[::2]
+    if (len(files) > 500):
+        files = files[::2]
+    if (len(files) > 1000):
+        files = files[::3]
+
+    if (len(files) != len(files_unsorted)):
+        print("Downsampled data over time")
 
     # Arrays for storing data over time
     time_t = []
@@ -69,7 +82,7 @@ def plot_sflux(output_dir, wl_max = 1300.0, surface=False):
         flux = X[1]
 
         # Save data
-        time_t.append(time * 1.e-6)
+        time_t.append(time * 1.e-6 + t_starinit)
         wave_t.append(wave)
         flux_t.append(flux)
 
@@ -100,9 +113,9 @@ def plot_sflux(output_dir, wl_max = 1300.0, surface=False):
     ax.set_xlim([0,max(1.0,wl_max)])
 
     if surface:
-        ax.set_title("Stellar flux (surface) scaled by F_band with age")
+        ax.set_title("Stellar flux (surface) versus time")
     else:
-        ax.set_title("Stellar flux (1 AU) scaled by F_band with age")
+        ax.set_title("Stellar flux (1 AU) versus time")
 
     # Plot spectra
     for i in range(N):

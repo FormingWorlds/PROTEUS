@@ -23,7 +23,7 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux_cross(output_dir, wl_targets, surface=False):
+def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
     """Plots stellar flux vs time, for a set of wavelengths.
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -38,6 +38,8 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False):
 
         surface : bool
             Use fluxes at surface? If not, will use fluxes at 1 AU.
+        t_starinit : float
+            Age of star (in Myr) when time = 0
 
     """ 
 
@@ -69,7 +71,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False):
         flux = X[1]
 
         # Save data
-        time_t.append(time * 1.e-6)
+        time_t.append(time * 1.e-6 + t_starinit)
         wave_t.append(wave)
         flux_t.append(flux)
 
@@ -87,9 +89,9 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False):
     ax.set_xscale("log")
     ax.set_xlabel("Time [Myr]")
     if surface:
-        ax.set_title("Stellar flux (surface) scaled by F_band with age")
+        ax.set_title("Stellar flux (surface) versus time")
     else:
-        ax.set_title("Stellar flux (1 AU) scaled by F_band with age")
+        ax.set_title("Stellar flux (1 AU) versus time")
 
     # Find indices for wavelength bins
     wl_iarr = []
@@ -105,12 +107,12 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False):
 
         fl = flux_t.T[wl_iarr[i]]
         c = star_cmap(1.0*i/N)
-        lbl = '%g' % wl_varr[i]
+        lbl = str(int(round(wl_varr[i])))
 
-        ax.plot(time_t,fl,color='black',lw=1.3)
-        ax.plot(time_t,fl,color=c      ,lw=1.0,label=lbl)
+        ax.plot(time_t,fl,color='black',lw=1.8)
+        ax.plot(time_t,fl,color=c      ,lw=1.1,label=lbl)
 
-    fig.legend(title="Wavelength [nm]", loc='center right')
+    fig.legend(title="$\lambda$ [nm]", loc='center right')
 
     plt.close()
     plt.ioff()

@@ -206,7 +206,7 @@ if __name__ == "__main__":
             PrintHelp()
 
         case _:
-            print("No command provided.")
+            print("Invalid command provided.")
             PrintHelp()
 
 # End of file

@@ -414,7 +414,7 @@ def ReadInitFile( dirs, init_file_passed ):
                     if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", "nstepsmacro", "use_vulcan", "ic_interior_filename", "plot_onthefly"]:
                         val = int(val)
                     # Some are str
-                    elif key in [ 'star_spectrum' ]:
+                    elif key in [ 'star_spectrum', 'star_btrack' ]:
                         val = str(val)
                     # Most are float
                     else:
