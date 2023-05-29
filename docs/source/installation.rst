@@ -109,7 +109,7 @@ Step-by-step guide
                     
                     .. code-block:: console
                         
-                        $   source ~/.zsrhrc`
+                        $   source ~/.zsrhrc
                     
                     * Intel:
                     
@@ -124,15 +124,15 @@ Step-by-step guide
                     
                     $   pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort
                 
-                * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step):
+                * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step), by adding the following to your:
                     
-                    * ARM:
+                    * `~/.zsrhrc` (ARM):
                     
                     .. code-block:: console
                         
                         $   export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"
                     
-                    * Intel: 
+                    * `~/.bash_profile` (Intel): 
                     
                     .. code-block:: console
                         
@@ -159,7 +159,7 @@ Step-by-step guide
                     
                     .. code-block:: console
                         
-                        $   source ~/.zsrhrc`
+                        $   source ~/.zsrhrc
                     
                     * Intel:
                     
@@ -169,91 +169,134 @@ Step-by-step guide
         
     * Register your public SSH key with Github:
         
-        1. https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys
+        1.  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys
         
-        2. https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
+        2.  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
         
-        3. https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account
+        3.  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account
         
-        4. https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection
+        4.  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection
 
-3. Setup codes and modules in the following order (**ignore the instructions provided in their own repositories**)
+3. Setup codes and modules in the following order (ignore the instructions provided in their own repositories)
 
-    1. Download PROTEUS + submodules (*AEOLUS, SPIDER, VULCAN, PETSc, SciATH*)
-        * `git clone --recursive git@github.com:FormingWorlds/PROTEUS.git`
+    1. Download PROTEUS + submodules
+        
+        .. code-block:: console
+                        
+            $   git clone --recursive git@github.com:FormingWorlds/PROTEUS.git
 
     2. Enter into PROTEUS folder and ensure that submodules are up to date
-        * `cd PROTEUS`
-        * `git submodule update --init --recursive`
+        
+        .. code-block:: console
 
-    3. Download and extract the SOCRATES archive to the correct location
-        * `cd AEOLUS/rad_trans/socrates_code/`
-        * `curl -L -o ../socrates_2211.tar.xz https://www.dropbox.com/sh/ixefmrbg7c94jlj/AAChibnZU9PRi8pXdVxVbdj3a/socrates_2211.tar.xz?dl=1`
-        * `tar --strip-components 1 -xvf ../socrates_2211.tar.xz -C ./`
-        * `cp -f ../build_code_modified build_code`
+            $   cd PROTEUS
+            $   git submodule update --init --recursive
+
+    3. Download and extract SOCRATES to the correct location
+        
+        .. code-block:: console
+
+            $   cd AEOLUS/rad_trans/socrates_code/
+            
+            $   curl -L -o ../socrates_2211.tar.xz https://www.dropbox.com/sh/ixefmrbg7c94jlj/AAChibnZU9PRi8pXdVxVbdj3a/socrates_2211.tar.xz?dl=1
+            
+            $   tar --strip-components 1 -xvf ../socrates_2211.tar.xz -C ./
+            
+            $   cp -f ../build_code_modified build_code
 
     4. Overwrite the `Mk_cmd` file with the right setup for your machine
-        * `cp -rf ../Mk_cmd_SYSTEM make/Mk_cmd`    
-        * Options are:
-            * `cp -rf ../Mk_cmd_MAC_INTEL make/Mk_cmd`
-            * `cp -rf ../Mk_cmd_MAC_APPLESILICON make/Mk_cmd`
-            * `cp -rf ../Mk_cmd_AOPP_CLUSTER make/Mk_cmd`
+        
+        .. code-block:: console
+
+            $   cp -rf ../Mk_cmd_SYSTEM make/Mk_cmd    
+        
+        * The available options are:
+
+        .. code-block:: console
+
+            $   cp -rf ../Mk_cmd_MAC_INTEL make/Mk_cmd`
+
+        OR
+
+        .. code-block:: console
+
+            $   cp -rf ../Mk_cmd_MAC_APPLESILICON make/Mk_cmd`
+
+        OR
+
+        .. code-block:: console
+
+            $   cp -rf ../Mk_cmd_AOPP_CLUSTER make/Mk_cmd`
             
         The command `nf-config` might be helpful if none of these options work for you.
 
-    5. Setup SOCRATES 
-        * `./build_code`
-        * `type ksh >/dev/null 2>&1 ||  sed -i 's/ksh/bash/g' sbin/* `
-        * `cd ../../../`
+    5. Setup SOCRATES
+
+        .. code-block:: console
+        
+            $   ./build_code
+            $   type ksh >/dev/null 2>&1 ||  sed -i 's/ksh/bash/g' sbin/*
+            $   cd ../../../
 
     6. Setup VULCAN
-        * `cd VULCAN/fastchem_vulcan`
-        * On MacOS you will need to edit `make.globaloptions` to reflect a GNU-compatible `g++` executable, not the Apple one
-        * `make`
-        * `cd ../../`
+
+        .. code-block:: console
+
+            $   cd VULCAN/fastchem_vulcan
+        
+        * On MacOS you will need to edit `make.globaloptions` to reflect a GNU-compatible `g++` executable, not the Apple one (see :doc:`troubleshooting` if the next step results in an error)
+            
+        .. code-block:: console
+
+            $   make
+            $   cd ../../
         
     7. Setup PETSc
-        * `cd petsc`
-        * `./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"`
+        
+        .. code-block:: console
+
+            $   cd petsc
+            $   ./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"
+        
         * Make note of the value of `PETSC_ARCH` printed to stdout.
+        
         * Run the exact `make all` command provided at the end of the configure step
+        
         * Run the exact `make check` command provided at the end of the `make all` step
-        * `cd ../`
+        
+        .. code-block:: console
+
+            $   cd ../
 
     8. Setup environment variables
+        
         * Edit the variable `PETSC_ARCH` in the file `PROTEUS.env` to reflect value provided by PETSc
-        * If `python` has been installed via the`conda` route: `conda activate proteus`
-        * `source PROTEUS.env`
+        
+        * **IF** `python` has been installed via the`conda` route: 
+
+            .. code-block:: console
+
+                $   conda activate proteus
+        
+        * Setup the PROTEUS environment
+
+            .. code-block:: console
+
+                $   source PROTEUS.env
+
+        * **IF** you want to be able to start PROTEUS immediately from a new shell every time, add ``source PROTEUS.env`` to your ``.zshrc`` (ARM) / ``.bash_profile`` (Intel)
 
     9. Setup SPIDER
-        * `cd SPIDER`
-        * `make clean`
-        * `make -j`
-        * `make test`, accepting all default values when prompted
-        * `cd ../`
+
+        .. code-block:: console
+
+            $   cd SPIDER
+            $   make clean
+            $   make -j
+            $   make test      # accept all default values when prompted
+            $   cd ../
 
 **Done!**
-
-.. code-block:: console
-
-   $ pip install lumache
-
-To retrieve a list of random ingredients,
-you can use the ``lumache.get_random_ingredients()`` function:
-
-.. autofunction:: lumache.get_random_ingredients
-
-The ``kind`` parameter should be either ``"meat"``, ``"fish"``,
-or ``"veggies"``. Otherwise, :py:func:`lumache.get_random_ingredients`
-will raise an exception.
-
-.. autoexception:: lumache.InvalidKindError
-
-For example:
-
->>> import lumache
->>> lumache.get_random_ingredients()
-['shells', 'gorgonzola', 'parsley']
 
 Troubleshooting
 ----------------
