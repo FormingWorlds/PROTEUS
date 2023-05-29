@@ -298,52 +298,58 @@ Step-by-step guide
 Troubleshooting
 ----------------
 
-This section includes troubleshooting advice for common errors. Each entry is labelled with the platform(s) typically affected.
+This section includes troubleshooting advice for common errors. Each entry is labelled with the platform(s) typically affected. If you encounter errors or other issue that you cannot solve via the standard step-by-step guide or the advice below contact the developers (see :doc:`contact`).
 
 * MacOS: PETSc tests error
 
-    Error when running the PETSc tests, looking like something along the lines of:
-    ``
-    Fatal error in PMPI_Init_thread: Other MPI error, error stack:
-    MPIR_Init_thread(467)..............:
-    MPID_Init(177).....................: channel initialization failed
-    MPIDI_CH3_Init(70).................:
-    MPID_nem_init(319).................:
-    MPID_nem_tcp_init(171).............:`
-    MPID_nem_tcp_get_business_card(418):
-    MPID_nem_tcp_init(377).............: gethostbyname failed, localhost (errno 3)
-    ``
+    * Error when running the PETSc tests, looking like something along the lines of:
+    
+    .. code-block:: console
+    
+        Fatal error in PMPI_Init_thread: Other MPI error, error stack:
+        MPIR_Init_thread(467)..............:
+        MPID_Init(177).....................: channel initialization failed
+        MPIDI_CH3_Init(70).................:
+        MPID_nem_init(319).................:
+        MPID_nem_tcp_init(171).............:`
+        MPID_nem_tcp_get_business_card(418):
+        MPID_nem_tcp_init(377).............: gethostbyname failed, localhost (errno 3)
+    
 
-    This is actually a network configuration issue. To fix it, you need to add the following to `/etc/hosts`:    
-    `127.0.0.1   computername.local`    
-    `127.0.0.1   computername`    
-    And then also enable Remote Login in your Sharing settings and add your user to the 'allowed access' list.
+    * This is actually a network configuration issue. To fix it, you need to add the following to ``/etc/hosts``:    
+
+    .. code-block:: console
+
+        127.0.0.1   computername.local  
+        127.0.0.1   computername
+
+    * And then also enable Remote Login in your Sharing settings and add your user to the 'allowed access' list.
 
 * All: PETSc complains about being in the wrong directory
 
-    Firstly, check that you are in the correct directory when running ``make`` or ``./configure``. If you are, then this could be caused by the environment variable ``PETSC_DIR`` remaining set after a previous PETSc installation. Run ``unset PETSC_DIR`` and try again.
+    * Firstly, check that you are in the correct directory when running ``make`` or ``./configure``. If you are, then this could be caused by the environment variable ``PETSC_DIR`` remaining set after a previous PETSc installation. Run ``unset PETSC_DIR`` and try again.
 
 * All: SPIDER can't find PETSc
 
-    Have you sourced ``PROTEUS.env``? If yes, check that the variables ``PETSC_ARCH`` and ``PETSC_DIR`` in that file are correct for your system.
+    * Have you sourced ``PROTEUS.env``? If yes, check that the variables ``PETSC_ARCH`` and ``PETSC_DIR`` in that file are correct for your system.
 
 * MacOS: The FastChem code distributed with VULCAN won't compile 
 
-    With the new Apple Silicon hardware (M1/M2), the option ``-march=native`` sometimes causes issues. In order to avoid this, you need to make sure to use the GNU version of ``g++``, not the Apple one. The Apple one located at ``/usr/bin/gcc`` is actually a wrapped around ``clang``. We found that using the Homebrew version located at ``/opt/homebrew/bin/`` works well. To fix this error, find out which ``gcc`` version homebrew installed (``ls /opt/homebrew/bin/gcc-*``), and edit the file ``make.globaloptions`` in the FastChem directory to use, e.g., ``g++-12`` or ``g++-13`` instead of ``g++``.
+    * With the new Apple Silicon hardware (M1/M2), the option ``-march=native`` sometimes causes issues. In order to avoid this, you need to make sure to use the GNU version of ``g++``, not the Apple one. The Apple one located at ``/usr/bin/gcc`` is actually a wrapped around ``clang``. We found that using the Homebrew version located at ``/opt/homebrew/bin/`` works well. To fix this error, find out which ``gcc`` version homebrew installed (``ls /opt/homebrew/bin/gcc-*``), and edit the file ``make.globaloptions`` in the FastChem directory to use, e.g., ``g++-12`` or ``g++-13`` instead of ``g++``.
 
 * Linux: ``ksh`` not found when running SOCRATES
 
-    Most Linux distributions do not come with ``ksh`` installed, while MacOS seems to. If you get an error relating to ``ksh`` not being found, check that you did all of the installation steps. One step under 'Setup SOCRATES' involves replacing ``ksh`` with ``bash`` in all of the SOCRATES executables.
+    * Most Linux distributions do not come with ``ksh`` installed, while MacOS seems to. If you get an error relating to ``ksh`` not being found, check that you did all of the installation steps. One step under 'Setup SOCRATES' involves replacing ``ksh`` with ``bash`` in all of the SOCRATES executables.
 
 * MacOS: Python / netCDF error ``Library not loaded: '@rpath/libcrypto.3.dylib'``
 
-    Create a symlink in the local Python installation (here shown for ``bash`` terminal). See https://pavcreations.com/dyld-library-not-loaded-libssl-1-1-dylib-fix-on-macos/
+    * Create a symlink in the local Python installation (here shown for ``bash`` terminal). See https://pavcreations.com/dyld-library-not-loaded-libssl-1-1-dylib-fix-on-macos/
 
     .. code-block:: console
 
         $   brew install openssl
 
-    Follow the instructions at the end of the ``openssl`` installation (replace ``USERNAME`` with your own system username):
+    * Follow the instructions at the end of the ``openssl`` installation (replace ``USERNAME`` with your own system username):
 
     .. code-block:: console
 
@@ -359,7 +365,7 @@ This section includes troubleshooting advice for common errors. Each entry is la
 
         $   python -m pip install pyyaml
 
-* MacOS: If SOCRATES make routine complains about missing ``ifort`` compilers
+* MacOS: If the `SOCRATES make` routine complains about missing ``ifort`` compilers
     
     * Install Intel compilers from https://www.intel.com/content/www/us/en/developer/tools/oneapi/toolkits.html
     * First Intel® oneAPI Base Toolkit
@@ -383,7 +389,7 @@ This section includes troubleshooting advice for common errors. Each entry is la
 
 * MacOS: In the terminal or SourceTree ``Error: Permission denied (publickey)``
     
-    Your ssh key is out of date, follow:
+    * Your ssh key is out of date, follow:
 
     1.  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys
     
@@ -393,16 +399,19 @@ This section includes troubleshooting advice for common errors. Each entry is la
     
     4.  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection
 
-* MacOS: Error during SOCRATES compilation: ``clang (LLVM option parsing): Unknown command line argument '-x86-pad-for-align=false'.  Try: 'clang (LLVM option parsing) --help'`` or 
+* MacOS: One of the following errors during the SOCRATES compilation: 
+
+``clang (LLVM option parsing): Unknown command line argument '-x86-pad-for-align=false'.  Try: 'clang (LLVM option parsing) --help'``
+
 ``clang (LLVM option parsing): Did you mean '--x86-slh-loads=false'?``
 
-    * There is an issue with your compiler, either the standard Apple ``clang`` or ``gcc`` installed by ``brew``
-    * Follow the steps provided at https://stackoverflow.com/questions/72428802/c-lang-llvm-option-parsing-unknown-command-line-argument-when-running-gfort
+        * There is an issue with your compiler, either the standard Apple ``clang`` or ``gcc`` installed by ``brew``
+        * Follow the steps provided at https://stackoverflow.com/questions/72428802/c-lang-llvm-option-parsing-unknown-command-line-argument-when-running-gfort
       
-      .. code-block:: console
+        .. code-block:: console
 
-        $   sudo rm -rf /Library/Developer/CommandLineTools
-        $   sudo xcode-select --install
+            $   sudo rm -rf /Library/Developer/CommandLineTools
+            $   sudo xcode-select --install
 
 
 
