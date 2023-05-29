@@ -20,7 +20,6 @@ https://proteus-code.readthedocs.io/en/latest/contact.html
 ### Repository structure
 * `CouplerMain.py`  – Main PROTEUS Python script
 * `README.md`       – This file
-* `INSTALL.md`      – Installation instructions
 * `AEOLUS/`         – Submodule AEOLUS
 * `SPIDER/`         – Submodule SPIDER
 * `VULCAN/`         – Submodule VULCAN
