@@ -1,4 +1,13 @@
 Contact
 =====
 
-These instructions will guide you through the typical installation process. The setup is written primarily for MacOS and has been tested on Linux. Depending on your system settings and installed libraries your procedure may differ, however. If one or more of the steps below do not work for you we encourage you to first check the :doc:`troubleshooting` section, which lists many of the issues previously encountered. If that does not help you further, please contact the developers (see Contact page).
+You can contact the developers or ask questions via a number of ways, and we encourage you to reach out!
+
+For questions relating to installation or troubleshooting, please open a `Q&A`discussion at https://github.com/orgs/FormingWorlds/discussions.
+
+If you believe you found a bug or would want to suggest a new feature within the PROTEUS framework, please do so at the respective `Issue` sites:
+https://github.com/FormingWorlds/PROTEUS/issues
+https://github.com/FormingWorlds/AEOLUS/issues
+
+For general enquiries please write an email to contact@formingworlds.space.
+

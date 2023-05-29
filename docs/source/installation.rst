@@ -1,7 +1,7 @@
 Installation
 =====
 
-These instructions will guide you through the typical installation process. The setup is written primarily for MacOS (ARM: M1/M2 Macs, or Intel processors) and has been tested on Linux. Depending on your system settings and installed libraries your procedure may differ, however. If one or more of the steps below do not work for you we encourage you to first check the **Troubleshooting** section, which lists many of the issues previously encountered. If that does not help you further, please contact the developers (see :doc:`contact`).
+These instructions will guide you through the typical installation process. The setup is written primarily for MacOS (ARM: M1/M2 Macs, or Intel processors) and has been tested on Linux. Depending on your system settings and installed libraries your procedure may differ, however. If one or more of the steps below do not work for you we encourage you to first check the :ref:`troubleshooting` section, which lists many of the issues previously encountered. If that does not help you further, please contact the developers (see :doc:`contact`).
 
 Software dependencies
 ----------------
