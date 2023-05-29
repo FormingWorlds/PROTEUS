@@ -4,15 +4,18 @@
 ### Documentation
 https://proteus-code.readthedocs.io
 
+### Contact
+https://proteus-code.readthedocs.io/en/latest/contact.html
+
 ### Contributors
-* TL - Tim Lichtenberg (tim.lichtenberg@rug.nl)
-* MH - Mark Hammond (mark.hammond@physics.ox.ac.uk)
-* DJB - Dan J. Bower (daniel.bower@csh.unibe.ch)
+* TL – Tim Lichtenberg (tim.lichtenberg@rug.nl)
+* MH – Mark Hammond (mark.hammond@physics.ox.ac.uk)
+* DJB – Dan J. Bower (daniel.bower@csh.unibe.ch)
 * PS – Patrick Sanan (patrick.sanan@gmail.com)
-* RTP - Raymond Pierrehumbert (raymond.pierrehumbert@physics.ox.ac.uk)
+* RTP – Raymond Pierrehumbert (raymond.pierrehumbert@physics.ox.ac.uk)
 * RB – Ryan Boukrouche (ryan.boukrouche@astro.su.se)
-* SMT - Shang-Min Tsai (shangmin.tsai@ucr.edu)
-* HN - Harrison Nicholls (harrison.nicholls@physics.ox.ac.uk)
+* SMT – Shang-Min Tsai (shangmin.tsai@ucr.edu)
+* HN – Harrison Nicholls (harrison.nicholls@physics.ox.ac.uk)
 
 ### Repository structure
 * `CouplerMain.py`  – Main PROTEUS Python script
@@ -23,22 +26,20 @@ https://proteus-code.readthedocs.io
 * `VULCAN/`         – Submodule VULCAN
 * `utils/`          – Utility python scripts
 * `output/`         – Output folder
-* `docs/`			      – Documentation source
+* `docs/`			– Documentation source
 * `pyproject.toml`	– Documentation file
-* `lumache.py`		  – Documentation file
 
 
 ### Installation instructions
-See INSTALL.md for steps.
+See https://proteus-code.readthedocs.io/en/latest/installation.html for steps and troubleshooting advice.
 
 ### Run instructions
-Only attempt to run PROTEUS after you have followed all of the instructions in INSTALL.md    
+Only attempt to run PROTEUS after you have followed all of the installation instructions.    
 If using a fresh shell, it is necessary to perform the following steps:     
 1. `conda activate proteus` (if installed with `conda`)
 2. `source PROTEUS.env`
 Then you can run the code by running: `python CouplerMain.py`      
-Plots are produced in `output/`      
+By default, plots are produced in `output/`      
 
 ### Updating the code
 Run `git submodule update --recursive --remote`
-

@@ -2,9 +2,9 @@
 
 # -- Project information
 
-project = 'Lumache'
-copyright = '2021, Graziella'
-author = 'Graziella'
+project = 'PROTEUS'
+copyright = '2023, Forming Worlds Lab'
+author = 'Forming Worlds'
 
 release = '0.1'
 version = '0.1.0'

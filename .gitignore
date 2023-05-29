@@ -8,13 +8,13 @@ current*
 profile*
 radiation_code.lock
 
-# Old files
+# Specific subfolders
 old/
+output/
 
 # misc
 ######
 *_lbl.nc
-*.png
 Tprofile.pdf
 .DS_Store
 __pycache__
