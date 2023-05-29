@@ -10,5 +10,5 @@ You can execute PROTEUS using:
 
       $  python CouplerMain.py
 
-Settings and variables are set in `init_coupler.cf`.
+Settings and variables are set in ``init_coupler.cfg``.
 
