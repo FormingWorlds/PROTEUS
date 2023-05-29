@@ -55,7 +55,7 @@ Step-by-step guide
 
          $  xcode-select --install`
    
-    * Install FORTRAN NetCDF library via the most appropriate method for you
+    * Install ``FORTRAN NetCDF`` library via the most appropriate method for you
 
       .. code-block:: console
 
@@ -78,15 +78,15 @@ Step-by-step guide
          
          * Option A (*recommended*): using the `brew` package manager
             
-            * The following steps assume `brew` (if not, follow: https://brew.sh/) is installed on your system.
+            * The following steps assume ``brew`` (if not, follow: https://brew.sh/) is installed on your system.
             
             * Delete all traces of a potential Anaconda package manager installation from your system. 
                 
                 * To do this, follow the steps at https://docs.anaconda.com/free/anaconda/install/uninstall/
                 
-                * Delete all Anaconda-related entries from your .bash_profile (Intel) or .zshrc (ARM)
+                * Delete all Anaconda-related entries from your ``~/.bash_profile`` (Intel) or ``~/.zshrc`` (ARM)
             
-            * Install Python via `brew`:
+            * Install Python via ``brew``:
                 
                 .. code-block:: console 
                     
@@ -98,7 +98,7 @@ Step-by-step guide
                     
                     $   brew upgrade python
                 
-                * Install `tkinter`: 
+                * Install ``tkinter``: 
                 
                 .. code-block:: console
                     
@@ -126,21 +126,21 @@ Step-by-step guide
                 
                 * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step), by adding the following to your:
                     
-                    * `~/.zsrhrc` (ARM):
+                    * ``~/.zsrhrc`` (ARM):
                     
                     .. code-block:: console
                         
                         $   export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"
                     
-                    * `~/.bash_profile` (Intel): 
+                    * ``~/.bash_profile`` (Intel): 
                     
                     .. code-block:: console
                         
                         $   export PATH="/usr/local/opt/python/libexec/bin:$PATH"
          
-         * Option B: Using the `Anaconda` package manager (be careful, this potentially breaks the PETSc installation on ARM)
+         * Option B: Using the ``anaconda`` package manager (be careful, this potentially breaks the PETSc installation on ARM)
             
-            * Install `conda`:
+            * Install ``conda``:
                 
                 * Download the appropriate Miniconda installer from https://docs.conda.io/en/latest/miniconda.html#id36
                 
@@ -197,14 +197,11 @@ Step-by-step guide
         .. code-block:: console
 
             $   cd AEOLUS/rad_trans/socrates_code/
-            
             $   curl -L -o ../socrates_2211.tar.xz https://www.dropbox.com/sh/ixefmrbg7c94jlj/AAChibnZU9PRi8pXdVxVbdj3a/socrates_2211.tar.xz?dl=1
-            
             $   tar --strip-components 1 -xvf ../socrates_2211.tar.xz -C ./
-            
             $   cp -f ../build_code_modified build_code
 
-    4. Overwrite the `Mk_cmd` file with the right setup for your machine
+    4. Overwrite the ``Mk_cmd`` file with the right setup for your machine
         
         .. code-block:: console
 
@@ -214,21 +211,21 @@ Step-by-step guide
 
         .. code-block:: console
 
-            $   cp -rf ../Mk_cmd_MAC_INTEL make/Mk_cmd`
+            $   cp -rf ../Mk_cmd_MAC_INTEL make/Mk_cmd
 
         OR
 
         .. code-block:: console
 
-            $   cp -rf ../Mk_cmd_MAC_APPLESILICON make/Mk_cmd`
+            $   cp -rf ../Mk_cmd_MAC_APPLESILICON make/Mk_cmd
 
         OR
 
         .. code-block:: console
 
-            $   cp -rf ../Mk_cmd_AOPP_CLUSTER make/Mk_cmd`
+            $   cp -rf ../Mk_cmd_AOPP_CLUSTER make/Mk_cmd
             
-        The command `nf-config` might be helpful if none of these options work for you.
+        The command ``nf-config`` might be helpful if none of these options work for you.
 
     5. Setup SOCRATES
 
@@ -244,7 +241,7 @@ Step-by-step guide
 
             $   cd VULCAN/fastchem_vulcan
         
-        * On MacOS you will need to edit `make.globaloptions` to reflect a GNU-compatible `g++` executable, not the Apple one (see :doc:`troubleshooting` if the next step results in an error)
+        * On MacOS you will need to edit ``make.globaloptions`` to reflect a GNU-compatible ``g++`` executable, not the Apple one (see :doc:`troubleshooting` if the next step results in an error)
             
         .. code-block:: console
 
@@ -258,11 +255,11 @@ Step-by-step guide
             $   cd petsc
             $   ./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"
         
-        * Make note of the value of `PETSC_ARCH` printed to stdout.
+        * Make note of the value of ``PETSC_ARCH`` printed to ``stdout``.
         
-        * Run the exact `make all` command provided at the end of the configure step
+        * Run the exact ``make all`` command provided at the end of the configure step
         
-        * Run the exact `make check` command provided at the end of the `make all` step
+        * Run the exact ``make check`` command provided at the end of the ``make all`` step
         
         .. code-block:: console
 
@@ -270,9 +267,9 @@ Step-by-step guide
 
     8. Setup environment variables
         
-        * Edit the variable `PETSC_ARCH` in the file `PROTEUS.env` to reflect value provided by PETSc
+        * Edit the variable ``PETSC_ARCH`` in the file ``PROTEUS.env`` to reflect value provided by PETSc
         
-        * **IF** `python` has been installed via the`conda` route: 
+        * Only **IF** ``python`` has been installed via the ``conda`` route: 
 
             .. code-block:: console
 
