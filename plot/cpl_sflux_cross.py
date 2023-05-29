@@ -90,9 +90,9 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
     ax.set_xscale("log")
     ax.set_xlabel("Time [Myr]")
     if surface:
-        ax.set_title("Stellar flux (surface) versus time")
+        ax.set_title("Surface flux versus time")
     else:
-        ax.set_title("Stellar flux (1 AU) versus time")
+        ax.set_title("1 AU flux versus time")
 
     vmin = max(time_t[0],1.0)
     vmax = time_t[-1]

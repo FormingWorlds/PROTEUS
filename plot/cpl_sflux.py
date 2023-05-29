@@ -119,9 +119,9 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False, t_starinit=0.0):
     ax.set_xlim([0.5,max(1.0,wl_max)])
 
     if surface:
-        ax.set_title("Stellar flux (surface) versus time")
+        ax.set_title("Surface flux versus wavelength")
     else:
-        ax.set_title("Stellar flux (1 AU) versus time")
+        ax.set_title("1 AU flux versus wavelength")
 
     # Plot historical spectra
     for i in range(N):

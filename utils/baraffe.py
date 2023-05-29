@@ -1,4 +1,6 @@
 # Function to evolve the stellar spectrum over time using Baraffe evolution tracks
+# You can download other tracks this file on their website: 
+# http://perso.ens-lyon.fr/isabelle.baraffe/BHAC15dir/BHAC15_tracks+structure
 
 from utils.modules_ext import *
 from utils.constants import *
@@ -84,7 +86,7 @@ def BaraffeSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs : d
 
     # Get luminosity scale factor
     Q_bol = Lstar / float(COUPLER_options['star_luminosity_modern'])
-    print(Q_bol)
+    if debug: print(Q_bol)
 
     # Calculate scaled spectrum
     hspec_fl = np.array(spec_fl) * Q_bol

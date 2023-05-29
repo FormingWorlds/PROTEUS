@@ -65,7 +65,7 @@ if __name__ == "__main__":
     print("Evolve stellar spectrum with Mors.\n")
     
     # Parameters
-    t_final =       9000.0 * Myr     # Final time for evolution
+    t_final =       2000.0 * Myr     # Final time for evolution
 
     print("NOTE: File convention differs with this script, compared to PROTEUS!")
     print("      Files of the format t.sflux* refer to a STAR AGE of t years.")

@@ -110,7 +110,7 @@ def IntegratePlanckFunction(lam1, lam2, Teff):
     hc_by_kT = phys.h * phys.c / (phys.k * Teff)
     planck_func = lambda lam : 1.0/( (lam ** 5.0) * ( np.exp( hc_by_kT/ lam) - 1.0 ) ) 
 
-    planck_wl = np.linspace(lam1 * 1e-9, lam2 * 1e-9, 10000)
+    planck_wl = np.linspace(lam1 * 1e-9, lam2 * 1e-9, 2000)
     planck_fl = planck_func(planck_wl)
     I_planck = np.trapz(planck_fl, planck_wl)  # Integrate planck function over wavelength
 
@@ -164,7 +164,7 @@ def ModernSpectrumFband(dirs: dict, COUPLER_options: dict):
 
         COUPLER_options["Fband_modern_"+band] = fl_integ 
 
-        print('Band %s [%d,%d] = %g' % (band,wl_min,wl_max,fl_integ))
+        print('F_%s [%d,%d] = %g' % (band,wl_min,wl_max,fl_integ))
 
     # Stellar radius (NOW) in cm
     Rstar_cm = COUPLER_options['star_radius_modern'] * R_sun_cm
