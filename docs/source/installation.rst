@@ -1,7 +1,36 @@
 Installation
 =====
 
-These instructions will guide you through the typical installation process. The setup is written primarily for MacOS and has been tested on Linux. Depending on your system settings and installed libraries your procedure may differ, however. If one or more of the steps below do not work for you we encourage you to first check the :doc:`troubleshooting` section, which lists many of the issues previously encountered. If that does not help you further, please contact the developers (see :doc:`contact`).
+These instructions will guide you through the typical installation process. The setup is written primarily for MacOS (ARM: M1/M2 Macs, or Intel processors) and has been tested on Linux. Depending on your system settings and installed libraries your procedure may differ, however. If one or more of the steps below do not work for you we encourage you to first check the :doc:`troubleshooting` section, which lists many of the issues previously encountered. If that does not help you further, please contact the developers (see :doc:`contact`).
+
+Software dependencies
+----------------
+
+Read access to the following repositories:
+
+    * Coupler framework: **PROTEUS**
+        * URL: https://github.com/FormingWorlds/PROTEUS
+
+    * Radiative-convective scheme: **AEOLUS** 
+        * URL: https://github.com/FormingWorlds/AEOLUS/
+
+    * Radiation transport: **SOCRATES** 
+        * Main development URL: https://code.metoffice.gov.uk/trac/socrates
+        * Contact: james.manners@metoffice.gov.uk
+        * Obtain the SOCRATES source code from: https://simplex.giss.nasa.gov/gcm/ROCKE-3D/ (Latest released version of SOCRATES code)
+        * Latest tested version: *socrates_2211.tar.xz*
+
+    * Interior dynamics: **SPIDER** 
+        * URL: https://github.com/djbower/spider
+
+    * Atmospheric chemistry: **VULCAN**
+        * URL: https://github.com/exoclime/VULCAN/
+
+    * Scientific computing library: **PETSc**
+        * URL: https://gitlab.com/petsc/petsc
+
+    * Scientific application test utility: **SciATH**
+        * URL: https://github.com/sciath/sciath
 
 Step-by-step guide
 ----------------
@@ -9,7 +38,7 @@ Step-by-step guide
 1. Install dependencies
 
     * MacOS: Ensure installation of command line developer tools
-        * Open Xcode application and install
+    * Open Xcode application and install
       
       .. code-block:: console
 
@@ -28,70 +57,69 @@ Step-by-step guide
         
         $   sudo port install netcdf-fortran +gcc8   
         
-      OR     
+      OR   
+
+      .. code-block:: console
         
         $   sudo apt install libnetcdff-dev
     
-    * Setup a Python environment:
+    * Set up a Python environment:
          
-         * Option A: using the `brew` package manager (*recommended*)
-            * The following steps assume `brew` (https://brew.sh/) is installed on your system.
-            * Delete all traces of a potential Anaconda package manager installation from your system. Follow the steps at https://docs.anaconda.com/free/anaconda/install/uninstall/
-            * Delete all Anaconda-related entries from your .bash_profile (Intel) or .zshrc (ARM)
-            * Install Python via `brew`: 
-                * `brew install python`
-                * Update to the latest stable version: `brew upgrade python`
-                * Install `tkinter`: `brew install python-tk@3.11`
-                * Refresh your shell / `source ~/.zsrhrc` (ARM) / `source ~/.bash_profile` (Intel)
-                * Install all necessary packages: `pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort`
-            * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step):
-                * ARM: `export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"`
-                * Intel: `export PATH="/usr/local/opt/python/libexec/bin:$PATH"`
+         * Option A (*recommended*): using the `brew` package manager
+            * The following steps assume `brew` (if not, follow: https://brew.sh/) is installed on your system.
+            * Delete all traces of a potential Anaconda package manager installation from your system. 
+                * To do this, follow the steps at https://docs.anaconda.com/free/anaconda/install/uninstall/
+                * Delete all Anaconda-related entries from your .bash_profile (Intel) or .zshrc (ARM)
+            * Install Python via `brew`:
+                .. code-block:: console 
+                    $   brew install python
+                * Update to the latest stable version:
+                .. code-block:: console
+                    $   brew upgrade python
+                * Install `tkinter`: 
+                .. code-block:: console
+                    $   brew install python-tk@3.11
+                * Refresh your shell:
+                    * ARM:
+                    .. code-block:: console
+                        $   source ~/.zsrhrc`
+                    * Intel:
+                    .. code-block:: console
+                        $   source ~/.bash_profile
+                * Install all other necessary packages: 
+                .. code-block:: console
+                    $   pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort
+                * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step):
+                    * ARM:
+                    .. code-block:: console
+                        $   export PATH="/opt/homebrew/opt/python/libexec/bin:$PATH"
+                    * Intel: 
+                    .. code-block:: console
+                        $   export PATH="/usr/local/opt/python/libexec/bin:$PATH"
          
-         * Option B: Using the `Anaconda` package manager (careful, this probably breaks on ARM machines/newer Macs)
+         * Option B: Using the `Anaconda` package manager (be careful, this potentially breaks the PETSc installation on ARM)
             * Install `conda`:
-                * Download the appropriate Miniconda installer from their website
-            https://docs.conda.io/en/latest/miniconda.html#id36
+                * Download the appropriate Miniconda installer from https://docs.conda.io/en/latest/miniconda.html#id36
                 * Create a conda environment for PROTEUS:
-                * `conda create -n proteus python=3.10.9`    
-                * `conda activate proteus`
-            * `conda install netcdf4 matplotlib numpy pandas scipy sympy natsort`
-            * `conda install -c conda-forge f90nml`
+                .. code-block:: console
+                    $   conda create -n proteus python=3.10.9   
+                    $   conda activate proteus
+                    $   conda install netcdf4 matplotlib numpy pandas scipy sympy natsort
+                    $   conda install -c conda-forge f90nml
+            * Refresh your shell:
+                    * ARM:
+                    .. code-block:: console
+                        $   source ~/.zsrhrc`
+                    * Intel:
+                    .. code-block:: console
+                        $   source ~/.bash_profile
         
-    * *Optionally* register your public SSH key with Github:
-        * Generate key with `ssh-keygen -t rsa`
-        * Copy to clipboard using `cat ~/.ssh/id_rsa.pub`
-        * Add "New SSH key" in the settings at https://github.com/settings/keys 
-
-2. Ensure that you have access to all of the following codes
-    * Atmosphere-interior coupler: **PROTEUS**
-        * URL: https://github.com/FormingWorlds/PROTEUS
-        * Contact: TL
-
-    * Radiative-convective scheme: **AEOLUS** 
-        * URL: https://github.com/FormingWorlds/AEOLUS/
-        * Contact: TL, MH, RB
-
-    * Radiation transport: **SOCRATES** 
-        * Main development URL: https://code.metoffice.gov.uk/trac/socrates
-        * Contact: james.manners@metoffice.gov.uk
-        * Obtain the SOCRATES source code from: https://simplex.giss.nasa.gov/gcm/ROCKE-3D/ (Latest released version of SOCRATES code)
-        * Latest tested version: *socrates_2211.tar.xz*
-
-    * Interior dynamics: **SPIDER** 
-        * URL: https://github.com/djbower/spider
-        * Contact: DJB, PS
-
-    * Atmospheric chemistry: **VULCAN**
-        * URL: https://github.com/exoclime/VULCAN/
-        * Contact: SMT, TL
-
-    * Scientific computing library: **PETSc**
-        * URL: https://gitlab.com/petsc/petsc
-
-    * Scientific application test utility: **SciATH**
-        * URL: https://github.com/sciath/sciath
-        * Contact: PS
+    * Register your public SSH key with Github:
+        * Follow the instructions on:
+        1. https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys
+        2. https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
+        3. https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account
+        4. https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection
 
 3. Setup codes and modules in the following order (**ignore the instructions provided in their own repositories**)
 
