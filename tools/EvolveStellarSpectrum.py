@@ -16,14 +16,7 @@ def run(tf: float):
     dirs = SetDirectories(COUPLER_options)
 
     # Check if output directory exists, otherwise create
-    if not os.path.exists(dirs["output"]):
-        os.makedirs(dirs["output"])
-        print("Create output directory:", dirs["output"])
-
-    # If it does exist, empty the folder
-    else:
-        print("Empty output directory:", dirs["output"])
-        CleanOutputDir( dirs["output"] )
+    CleanDir( dirs["output"] )
 
     # Check which model we are using
     model = COUPLER_options['star_model']
@@ -56,8 +49,6 @@ def run(tf: float):
     print("Running evolution code...")
     t = ti
     while t < tf:
-        time_dict["star"] += dt
-        time_dict["planet"] += dt
 
         match model:
             case 1:
@@ -65,15 +56,16 @@ def run(tf: float):
             case 2:
                 BaraffeSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options, track)
 
+        time_dict["star"] += dt
+        time_dict["planet"] += dt
+
         t += dt
 
 if __name__ == "__main__":
     print("Evolve stellar spectrum with Mors.\n")
     
     # Parameters
-    t_final =       2000.0 * Myr     # Final time for evolution
-
-    
+    t_final =       9000.0 * Myr     # Final time for evolution
 
     print("NOTE: File convention differs with this script, compared to PROTEUS!")
     print("      Files of the format t.sflux* refer to a STAR AGE of t years.")

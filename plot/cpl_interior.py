@@ -68,7 +68,6 @@ def plot_interior( output_dir, times ):
         MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
         # label = fig_o.get_legend_label( time )
-        # label = "{:.1e}".format(Decimal(time))+" yr"
         label = latex_float(time)+" yr"
 
         # temperature

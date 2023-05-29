@@ -72,6 +72,9 @@ def DownloadModernSpectrum(name, distance):
 
             with open(database_spectrum, "wb") as f:
                 f.write(resp.content) 
+
+            from astropy.io import fits
+            # from astropy.table import Table
             
             # Epsilon Eridani is 10.475 light years away and with 0.735 solar radius
             # GJ876 is 15.2 light years away and has 0.3761 solar radius
@@ -86,8 +89,6 @@ def DownloadModernSpectrum(name, distance):
             # WAVELENGTH0: left (blue) edge of the wavelength bin in Angstroms
             # WAVELENGTH1: right (red) edge of the wavelength bin in Angstroms
             # FLUX : average flux density in the wavelength bin in erg s-1 cm-2 Angstroms-1
-            # MUSCLES provides fluxes scaled to earth-star distance, but we need to scale it to the surface of the star.
-            # need to convert to ergs/cm**2/s/nm
 
             for n,w in enumerate(spec['WAVELENGTH']):
                 wl = w * 0.1  # Convert å to nm

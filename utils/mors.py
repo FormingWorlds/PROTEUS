@@ -9,9 +9,9 @@ star_bands = {
     "xr" : [1.e-3 , 10.0],  # X-ray,  defined by mors
     "e1" : [10.0  , 32.0],  # EUV1,   defined by mors
     "e2" : [32.0  , 92.0],  # EUV2,   defined by mors
-    "uv" : [92.0  , 200.0], # UV,     defined by me
-    "pl" : [200.0 , 1.e9],  # planck, defined by me
-    'bo' : [1.e-3 , 1.e9]   # bolo,   defined by me
+    "uv" : [92.0  , 400.0], # UV,     defined by me
+    "pl" : [400.0 , 1.e9],  # planck, defined by me
+    'bo' : [1.e-3 , 1.e9]   # bolo,   all wavelengths
 }
 
 def SolarConstant(time_dict: dict, COUPLER_options: dict):
@@ -294,12 +294,9 @@ def MorsSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs : dict
     
     irange = i_uv_wl_hgh - i_uv_wl_low
     for i in range(i_uv_wl_low,i_uv_wl_hgh+1,1):
-        wl = spec_wl[i]
-        fl = spec_fl[i]
-        # if star_bands['uv'][0] <= wl <= star_bands['uv'][1]:  # Are we in the UV range?
         uv_rel_dist = (i - i_uv_wl_low) / irange
         uv_euv2_scale = (1.0 - uv_rel_dist) * uv_scale_low + uv_rel_dist * uv_scale_hgh
-        hspec_fl[i] = fl * uv_euv2_scale
+        hspec_fl[i] = spec_fl[i] * uv_euv2_scale
 
     # Save historical spectrum at 1 AU
     X = np.array([spec_wl,hspec_fl]).T

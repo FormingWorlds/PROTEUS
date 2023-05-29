@@ -33,7 +33,6 @@ def main():
     # Check if output directory exists, otherwise create
     if not os.path.exists(dirs["output"]):
         os.makedirs(dirs["output"])
-        print("--> Create output directory:", dirs["output"])
 
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
     loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 10 }
@@ -59,9 +58,12 @@ def main():
 
     # Start conditions and help files depending on restart option
     else:
-        CleanOutputDir( dirs["output"] )
-        CleanOutputDir( dirs["vulcan"]+"/output/" )
+        CleanDir( dirs["output"] )
+        CleanDir( dirs["vulcan"]+"/output/" )
         runtime_helpfile    = []
+
+        # Copy config file to output directory, for future reference
+        shutil.copyfile( args.cfg_file, dirs["output"]+"/")
 
         # Work out which volatiles are involved
         for vol in volatile_species:
@@ -174,13 +176,11 @@ def main():
             print("\n===> Planet solidified! <===\n")
             break
 
-    # Save files from finished simulation in extra folder
-    # SaveOutput( dirs["output"] )
-
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options, time_dict )
 
     print("\n\n===> PROTEUS run finished successfully <===")
+    print("     "+datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
 #====================================================================
 if __name__ == '__main__':

@@ -29,20 +29,16 @@ from matplotlib import cm
 import matplotlib.transforms as transforms
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.font_manager as fm
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 
 # Data and science
 import numpy as np
 import pandas as pd
 import math
 import pickle as pkl
-from astropy.io import fits
-from astropy.table import Table
 from scipy.interpolate import RectBivariateSpline, interp1d
 from scipy import interpolate
-from decimal import Decimal
 from scipy.integrate import solve_ivp
-from scipy.integrate import fixed_quad
 from scipy.integrate import odeint
 from scipy.optimize import newton
 from scipy import stats

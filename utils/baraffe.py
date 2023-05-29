@@ -87,12 +87,12 @@ def BaraffeSpectrumWrite(time_dict: dict, spec_wl: list, spec_fl: list, dirs : d
     print(Q_bol)
 
     # Calculate scaled spectrum
-    hspec_fl = np.array(spec_wl) * Q_bol
+    hspec_fl = np.array(spec_fl) * Q_bol
 
     # Save historical spectrum at 1 AU
     X = np.array([spec_wl,hspec_fl]).T
     outname1 = dirs['output'] + "/%d.sflux" % time_dict['planet']
-    header = '# MStellar flux (Baraffe, 1 AU) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % t
+    header = '# Stellar flux (Baraffe, 1 AU) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % t
     np.savetxt(outname1, X, header=header,comments='',fmt='%1.3e',delimiter='\t')
 
     # Save historical spectrum at stellar surface

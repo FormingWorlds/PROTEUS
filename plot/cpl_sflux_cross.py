@@ -94,6 +94,10 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
     else:
         ax.set_title("Stellar flux (1 AU) versus time")
 
+    vmin = max(time_t[0],1.0)
+    vmax = time_t[-1]
+    ax.set_xlim([vmin,vmax])
+
     # Find indices for wavelength bins
     wl_iarr = []
     wl_varr = []
@@ -102,6 +106,10 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
         wl_iarr.append(wl_i)
         wl_varr.append(wl_v)
     N = len(wl_iarr)
+
+    # Load modern spectrum
+    if not surface:
+        X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
 
     # Plot spectra
     for i in range(N):
@@ -113,11 +121,16 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
         ax.plot(time_t,fl,color='black',lw=1.8)
         ax.plot(time_t,fl,color=c      ,lw=1.1,label=lbl)
 
-    fig.legend(title="$\lambda$ [nm]", loc='center right')
+        # Plot modern values
+        if not surface:
+            ax.scatter(time_t[-1],X[1][wl_iarr[i]],color='k',s=35, zorder=3)
+            ax.scatter(time_t[-1],X[1][wl_iarr[i]],color=c,s=29, zorder=4)
+
+    ax.legend(title="$\lambda$ [nm]", loc='center left',bbox_to_anchor=(1.02, 0.5))
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_sflux_cross.pdf")
+    fig.savefig(output_dir+"/plot_sflux_cross.pdf",  bbox_inches="tight")
 
 
 # Run directly
@@ -125,7 +138,15 @@ if __name__ == '__main__':
 
     print("Plotting stellar flux over time (bins)...")
 
-    wl_bins = [0.5, 10.0, 50.0, 100.0, 200.0, 350.0, 500.0, 1000.0]
+    wl_bins = [1.0, 10.0, 50.0, 100.0, 200.0, 350.0, 500.0, 1000.0, 2000.0]
+
+   
+    # Read in COUPLER input file
+    from utils.coupler import ReadInitFile, SetDirectories
+    COUPLER_options, time_dict = ReadInitFile( 'init_coupler.cfg' )
+
+    # Set directories dictionary
+    dirs = SetDirectories(COUPLER_options)
 
     plot_sflux_cross(dirs['output'], wl_bins, surface=False)
 

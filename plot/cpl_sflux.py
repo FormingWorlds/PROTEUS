@@ -6,7 +6,8 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import natural_sort
 
-star_cmap = plt.get_cmap('gnuplot2_r')
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 
 # Planck function value at stellar surface
 # lam in nm
@@ -22,7 +23,7 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux(output_dir, wl_max = 1300.0, surface=False, t_starinit=0.0):
+def plot_sflux(output_dir, wl_max = 6000.0, surface=False, t_starinit=0.0):
     """Plots stellar flux vs time for all wavelengths
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -44,6 +45,7 @@ def plot_sflux(output_dir, wl_max = 1300.0, surface=False, t_starinit=0.0):
     """ 
 
     mpl.use('Agg')
+    star_cmap = plt.get_cmap('gnuplot2_r')
 
     # Find and sort files
     if surface:
@@ -111,8 +113,10 @@ def plot_sflux(output_dir, wl_max = 1300.0, surface=False, t_starinit=0.0):
 
     ax.set_yscale("log")
     ax.set_ylabel("Flux [erg s-1 cm-2 nm-1]")
+
+    ax.set_xscale("log")
     ax.set_xlabel("Wavelength [nm]")
-    ax.set_xlim([0,max(1.0,wl_max)])
+    ax.set_xlim([0.5,max(1.0,wl_max)])
 
     if surface:
         ax.set_title("Stellar flux (surface) versus time")
@@ -122,16 +126,16 @@ def plot_sflux(output_dir, wl_max = 1300.0, surface=False, t_starinit=0.0):
     # Plot historical spectra
     for i in range(N):
         c =  sm.to_rgba(time_t[i])
-        ax.plot(wave_t[i],flux_t[i],color=c,alpha=0.6,lw=0.8)
+        ax.plot(wave_t[i],flux_t[i],color=c,lw=0.7,alpha=0.6)
 
-    ymax = np.percentile(flux_t,99.5)
-    ymin = np.percentile(flux_t,00.5)
-    ax.set_ylim([ymin,ymax])
+    # ymax = np.amax(flux_t)*1.1
+    # ymin = np.amin(flux_t)/1.1
+    # ax.set_ylim([ymin,ymax])
 
     # Plot current spectrum (use the copy made in the output directory)
     if not surface:
         X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
-        ax.plot(X[0],X[1],color='green',label='Modern',lw=2,alpha=0.8)
+        ax.plot(X[0],X[1],color='green',label='Modern',lw=0.7,alpha=0.9)
 
     # Calculate planck function
     # Tstar = 3274.3578960897644
