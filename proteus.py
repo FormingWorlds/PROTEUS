@@ -7,8 +7,7 @@ PROTEUS Main file
 from utils.modules_ext import *
 from utils.constants import *
 from utils.coupler import *
-from utils.mors import *
-from utils.baraffe import *
+from utils.stellar import *
 from utils.vulcan import RunVULCAN
 from utils.aeolus import RunAEOLUS, StructAtm
 from utils.spider import RunSPIDER
@@ -83,17 +82,17 @@ def main():
         exit(1)
 
     
-    # Calculate band-integrated fluxes for modern stellar spectrum (1 AU)
-    match COUPLER_options['star_model']:
-        case 1:
-            COUPLER_options = ModernSpectrumFband(dirs, COUPLER_options)
-        case 2:
-            track = LoadBaraffeTrack(COUPLER_options)
-    
     # Store copy of modern spectrum in memory (1 AU)
     StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
     time_dict['sflux_prev'] = -1.0e99
 
+    # Calculate band-integrated fluxes for modern stellar spectrum (1 AU)
+    match COUPLER_options['star_model']:
+        case 1:
+            COUPLER_options = MorsCalculateFband(dirs, COUPLER_options)
+        case 2:
+            track = BaraffeLoadtrack(COUPLER_options)
+    
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     print(":::::::::::: START COUPLER RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
@@ -111,12 +110,12 @@ def main():
             print("Updating stellar spectrum")
             match COUPLER_options['star_model']:
                 case 1:
-                    MorsSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
+                    fl,fls = MorsSpectrumCalc(time_dict['star'], StellarFlux_wl, StellarFlux_fl,COUPLER_options)
                 case 2:
-                    BaraffeSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options, track)
+                    fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl,COUPLER_options, track)
+            SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs)
             time_dict['sflux_prev'] = time_dict['planet'] 
 
-        # print(S_old, S_0)
         COUPLER_options["T_eqm"] = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
 
         ############### INTERIOR SUB-LOOP

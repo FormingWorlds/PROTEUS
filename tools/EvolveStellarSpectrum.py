@@ -3,8 +3,7 @@
 # Python script to test stellar evolution implementation in PROTEUS
 
 from utils.coupler import *
-from utils.mors import *
-from utils.baraffe import *
+from utils.stellar import *
 
 Myr = 1.0e6
 
@@ -21,17 +20,17 @@ def run(tf: float):
     # Check which model we are using
     model = COUPLER_options['star_model']
 
+    # Store copy of modern spectrum in memory (1 AU)
+    StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
+
     # Prep evolution data
     match model:
         case 1:
             # Calculate band-integrated fluxes for modern stellar spectrum (1 AU)
-            COUPLER_options = ModernSpectrumFband(dirs, COUPLER_options)
+            COUPLER_options = MorsCalculateFband(dirs, COUPLER_options)
         case 2:
             # Load track
-            track = LoadBaraffeTrack(COUPLER_options)
-    
-    # Store copy of modern spectrum in memory (1 AU)
-    StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
+            track = BaraffeLoadtrack(COUPLER_options)
 
     # Parameters
     ti = time_dict['star']  # Start time, yr
@@ -45,6 +44,9 @@ def run(tf: float):
     print("\t tf = %1.3e Myr" % (tf * 1.e-6))
     print("\t dt = %1.3e Myr" % (dt * 1.e-6))
 
+    # wl,fl,fls = MorsSpectrumCalc(COUPLER_options['star_age_modern']*1.e6, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
+    # err_fl = StellarFlux_fl - fl 
+
     # Calculate historical spectrum (1 AU) over time, saving it to files
     print("Running evolution code...")
     t = ti
@@ -52,9 +54,11 @@ def run(tf: float):
 
         match model:
             case 1:
-                MorsSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
+                fl,fls = MorsSpectrumCalc(time_dict['star'], StellarFlux_wl, StellarFlux_fl,COUPLER_options)
             case 2:
-                BaraffeSpectrumWrite(time_dict, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options, track)
+                fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl,COUPLER_options, track)
+
+        SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs)
 
         time_dict["star"] += dt
         time_dict["planet"] += dt
@@ -65,7 +69,7 @@ if __name__ == "__main__":
     print("Evolve stellar spectrum with Mors.\n")
     
     # Parameters
-    t_final =       2000.0 * Myr     # Final time for evolution
+    t_final =       700.0 * Myr     # Final time for evolution
 
     print("NOTE: File convention differs with this script, compared to PROTEUS!")
     print("      Files of the format t.sflux* refer to a STAR AGE of t years.")

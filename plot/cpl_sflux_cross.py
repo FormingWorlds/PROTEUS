@@ -123,8 +123,8 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
 
         # Plot modern values
         if not surface:
-            ax.scatter(time_t[-1],X[1][wl_iarr[i]],color='k',s=35, zorder=3)
-            ax.scatter(time_t[-1],X[1][wl_iarr[i]],color=c,s=29, zorder=4)
+            ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='>',color='k',s=35, zorder=3)
+            ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='>',color=c,  s=29, zorder=4)
 
     ax.legend(title="$\lambda$ [nm]", loc='center left',bbox_to_anchor=(1.02, 0.5))
 
