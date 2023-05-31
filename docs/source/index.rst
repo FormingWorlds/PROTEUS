@@ -1,22 +1,25 @@
-Welcome to Lumache's documentation!
-===================================
+PROTEUS Framework
+=================
 
-**Lumache** (/lu'make/) is a Python library for cooks and food lovers
-that creates recipes mixing random ingredients.
-It pulls data from the `Open Food Facts database <https://world.openfoodfacts.org/>`_
-and offers a *simple* and *intuitive* API.
+.. image:: images/PROTEUS_white.png
+  :width: 400
+  :alt: PROTEUS logo
 
-Check out the :doc:`usage` section for further information, including
-how to :ref:`installation` the project.
+**PROTEUS** is a Python framework that simulates the coupled evolution of the atmospheres and interiors of rocky planets.
+
+Check out :doc:`INSTALL` for downloading and compiling the code and the :doc:`usage` section for further information on how to run simulations.
 
 .. note::
 
-   This project is under active development.
+   The PROTEUS framework and this documentation are under active development.
 
 Contents
 --------
 
 .. toctree::
 
+   installation
+   INSTALL
    usage
+   contact
    api
