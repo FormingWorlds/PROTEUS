@@ -14,7 +14,7 @@ star_bands = {
     'bo' : [1.e-3 , 1.e9]   # bolo,   all wavelengths
 }
 
-def SolarConstant(time_dict: dict, COUPLER_options: dict):
+def MorsSolarConstant(time_dict: dict, COUPLER_options: dict):
     """Calculates the bolometric flux of the star at a previous time t. 
 
     Uses the Mors module, which reads stellar evolution tracks from 
@@ -37,14 +37,62 @@ def SolarConstant(time_dict: dict, COUPLER_options: dict):
     """ 
 
     Mstar = COUPLER_options["star_mass"]
-    Tstar = time_dict['star'] * 1.e-6  # Convert from yr to Myr
+    tstar = time_dict['star'] * 1.e-6  # Convert from yr to Myr
 
-    Lstar = mors.Value(Mstar, Tstar, 'Lbol')  # Units of L_sun
+    Lstar = mors.Value(Mstar, tstar, 'Lbol')  # Units of L_sun
     Lstar *= L_sun # Convert to W
 
     mean_distance = COUPLER_options["mean_distance"] * AU
 
     flux = Lstar /  ( 4. * np.pi * mean_distance * mean_distance )
+    heat = flux * ( 1. - COUPLER_options["albedo_pl"] )
+
+    return flux, heat
+
+def BaraffeSolarConstant(time_dict: dict, COUPLER_options: dict, track: dict):
+    """Calculates the bolometric flux of the star at a previous time t. 
+
+    Uses the Baraffe+15 tracks. Flux is scaled to the star-planet distance.
+
+    Parameters
+    ----------
+        time_dict : dict
+            Time dictionary, including star's age
+        COUPLER_options : dict
+            Dictionary of coupler options variables
+        track : dict
+            Baraffe evolution track
+
+    Returns
+    ----------
+        flux : float
+            Flux at planet's orbital separation (solar constant) in W/m^2
+        heat : float
+            Heating rate at TOA in W/m^2
+
+    """ 
+
+    tstar = time_dict['star'] * 1.e-6  # Convert from yr to Myr
+
+    # Get time and check that it is in range
+    tmin = track['t'][0]*1.e-6
+    if (tstar < tmin):
+        print("WARNING: Star age too low! Clipping to %.1g Myr" % int(tmin))
+        tstar = tmin
+    tmax = track['t'][-1]*1.e-6
+    if (tstar > tmax):
+        print("WARNING: Star age too high! Clipping to %.1g Myr" % int(tmax))
+        tstar = tmax
+
+    # Find closest row in track
+    iclose = (np.abs(track['t'] - tstar)).argmin()
+    
+    # Get data from track
+    Lstar = track['Lstar'][iclose]
+
+    mean_distance = COUPLER_options["mean_distance"] * AU
+
+    flux = Lstar /  ( 4. * np.pi * mean_distance * mean_distance ) # [W m-2]
     heat = flux * ( 1. - COUPLER_options["albedo_pl"] )
 
     return flux, heat
@@ -312,7 +360,7 @@ def MorsSpectrumCalc(time_star : float, spec_wl: list, spec_fl: list, COUPLER_op
 def BaraffeLoadtrack(COUPLER_options: dict):
     """Load baraffe track into memory
 
-    You can download other tracks this file on their website: 
+    You can download other tracks from this file on their website: 
     http://perso.ens-lyon.fr/isabelle.baraffe/BHAC15dir/BHAC15_tracks+structure
 
     Parameters

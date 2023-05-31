@@ -44,9 +44,6 @@ def run(tf: float):
     print("\t tf = %1.3e Myr" % (tf * 1.e-6))
     print("\t dt = %1.3e Myr" % (dt * 1.e-6))
 
-    # wl,fl,fls = MorsSpectrumCalc(COUPLER_options['star_age_modern']*1.e6, StellarFlux_wl, StellarFlux_fl,dirs,COUPLER_options)
-    # err_fl = StellarFlux_fl - fl 
-
     # Calculate historical spectrum (1 AU) over time, saving it to files
     print("Running evolution code...")
     t = ti
@@ -69,7 +66,7 @@ if __name__ == "__main__":
     print("Evolve stellar spectrum with Mors.\n")
     
     # Parameters
-    t_final =       700.0 * Myr     # Final time for evolution
+    t_final =       400.0 * Myr     # Final time for evolution
 
     print("NOTE: File convention differs with this script, compared to PROTEUS!")
     print("      Files of the format t.sflux* refer to a STAR AGE of t years.")

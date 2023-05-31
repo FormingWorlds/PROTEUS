@@ -62,7 +62,7 @@ def main():
         runtime_helpfile    = []
 
         # Copy config file to output directory, for future reference
-        shutil.copyfile( args.cfg_file, dirs["output"]+"/")
+        shutil.copyfile( args.cfg_file, dirs["output"]+"/init_coupler.cfg")
 
         # Work out which volatiles are involved
         for vol in volatile_species:
@@ -103,7 +103,11 @@ def main():
 
         # Calculate stellar luminosity and planetary eqm temperature
         # S_old, _ = SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], COUPLER_options["albedo_pl"], COUPLER_options["Sfrac"])
-        S_0, _ = SolarConstant(time_dict, COUPLER_options)
+        match COUPLER_options['star_model']:
+            case 1:
+                S_0, _ = MorsSolarConstant(time_dict, COUPLER_options)
+            case 2:
+                S_0, _ = BaraffeSolarConstant(time_dict, COUPLER_options, track)
 
         # Calculate historical spectrum (1 AU)
         if ( abs( time_dict['planet'] - time_dict['sflux_prev'] ) > COUPLER_options['sflux_dt_update'] ):
