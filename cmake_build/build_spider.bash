@@ -1,6 +1,7 @@
 #!/bin/bash
 
-arch=$(python -c 'import sys;print(sys.platform)')
-sed -i '' "s|export PETSC_ARCH=.*|export PETSC_ARCH=arch-${arch}-c-opt|" ../PROTEUS.env
+arch=$(uname -s | awk '{print tolower($0)}')
+sed -i.bak "s|export PETSC_ARCH=.*|export PETSC_ARCH=arch-${arch}-c-opt|" ../PROTEUS.env
+rm  ../PROTEUS.env.bak
 source ../PROTEUS.env
-cd SPIDER && make clean && make -j && yes | make test
+cd SPIDER && make clean && make -j && yes '' | make test

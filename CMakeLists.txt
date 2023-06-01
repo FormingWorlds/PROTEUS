@@ -3,27 +3,16 @@ PROJECT(proteus Fortran)
 
 include(FetchContent)
 
-#Find HDF5
-set(HDF5_ROOT /opt/homebrew)
-find_package(HDF5 COMPONENTS Fortran HL)
 SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 
 # Set fortran flags, change this if you want
 INCLUDE(${CMAKE_MODULE_PATH}/SetFortranFlags.cmake)
 
-# Find netcdf
-#INCLUDE(${CMAKE_MODULE_PATH}/FindNetCDF.cmake)
-
 set(NetCDF_ROOT /opt/homebrew)
 set (NETCDF_F90 "YES")
 find_package(NetCDF REQUIRED COMPONENTS Fortran)
 
-message('netcdf-lib' ${NETCDF_LIBRARIES_F90})
 get_filename_component(NETCDF_LIBDIR ${NETCDF_LIBRARIES_F90} DIRECTORY)
-
-include_directories(${NETCDF_INCLUDES} ${HDF5_INCLUDE_DIRS})
-add_definitions(${HDF5_DEFINITIONS})
-
 
 # There is an error in CMAKE with this flag for pgf90.  Unset it
 GET_FILENAME_COMPONENT(FCNAME ${CMAKE_Fortran_COMPILER} NAME)
@@ -35,7 +24,6 @@ set(SPIDER_ROOT ${CMAKE_SOURCE_DIR}/SPIDER)
 set(AEOLUS_ROOT ${CMAKE_SOURCE_DIR}/AEOLUS)
 set(VULCAN_ROOT ${CMAKE_SOURCE_DIR}/VULCAN)
 set(PETSC_ROOT ${CMAKE_SOURCE_DIR}/petsc)
-set(PETSC_LIB ${PETSC_ROOT}/build/lib)
 
 # Fetch SOCRATES
 FetchContent_Declare(
@@ -53,7 +41,7 @@ FetchContent_MakeAvailable(socrates)
 add_custom_target(proteus ALL)
 
 # PETSc
-execute_process(COMMAND python print_arch.py
+execute_process(COMMAND bash print_arch.bash
   OUTPUT_VARIABLE ARCH
 OUTPUT_STRIP_TRAILING_WHITESPACE)
 
@@ -66,19 +54,21 @@ add_custom_target(fastchem_vulcan
 add_custom_target(spider
   DEPENDS ${SPIDER_ROOT}/spider)
 # SOCRATES
-INCLUDE(${CMAKE_SOURCE_DIR}/build/soc_exes.cmake)
+INCLUDE(${CMAKE_SOURCE_DIR}/cmake_build/soc_exes.cmake)
+LIST(TRANSFORM soc_exes PREPEND ${AEOLUS_ROOT}/rad_trans/socrates_code/bin/)
+
 add_custom_target(socrates
 DEPENDS ${soc_exes})
 
 # Custom command to build petsc
 add_custom_command(OUTPUT ${PETSC_ROOT}/arch-${ARCH}-c-opt/lib/libpetsc${CMAKE_SHARED_LIBRARY_SUFFIX}
-  COMMAND bash ${CMAKE_SOURCE_DIR}/build/scrape_petsc_make.bash 
+  COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/scrape_petsc_make.bash 
   WORKING_DIRECTORY ${PETSC_ROOT}
   VERBATIM)
 
 # Custom command to build fastchem
 add_custom_command(OUTPUT ${VULCAN_ROOT}/fastchem_vulcan/fastchem
-  COMMAND  bash ${CMAKE_SOURCE_DIR}/build/fastchem_compiler.bash
+  COMMAND  bash ${CMAKE_SOURCE_DIR}/cmake_build/fastchem_compiler.bash
 )
 
 # Custom command to build spider
@@ -102,10 +92,9 @@ add_custom_command(OUTPUT ${soc_exes}
   COMMAND echo 'LIBSUFFIX = a' >> make/Mk_cmd
   COMMAND echo '.SUFFIXES: $(SUFFIXES) .f90' >> make/Mk_cmd
   COMMAND bash build_code
-  COMMAND type ksh >/dev/null 2>&1 ||  sed -i '' 's/ksh/bash/g' sbin/*
+  COMMAND type ksh >/dev/null 2>&1 ||  sed -i 's/ksh/bash/g' sbin/*
   WORKING_DIRECTORY ${AEOLUS_ROOT}/rad_trans/socrates_code)
 
 add_dependencies(proteus fastchem_vulcan spider socrates)
 add_dependencies(spider petsc)
 
-add_executable(test test.f90)
