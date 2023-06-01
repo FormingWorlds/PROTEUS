@@ -186,4 +186,10 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+#CMake files
+cmake_build/CMakeFiles
+cmake_build/Makefile
+cmake_build/_deps
+cmake_build/CMakeCache.txt
+
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
