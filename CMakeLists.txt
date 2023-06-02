@@ -71,7 +71,7 @@ add_custom_command(OUTPUT ${PETSC_ROOT}/arch-${ARCH}-c-opt/lib/libpetsc${CMAKE_S
   COMMAND echo "====================================================================="
   COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/petsc_build.bash
   WORKING_DIRECTORY ${PETSC_ROOT}
-  VERBATIM)
+  VERBATIM USES_TERMINAL)
 
 set(make_opts ${VULCAN_ROOT}/fastchem_vulcan/make.global_options)
 # Custom command to build fastchem
@@ -82,7 +82,7 @@ add_custom_command(OUTPUT ${VULCAN_ROOT}/fastchem_vulcan/fastchem
   COMMAND echo "====================================================================="
   COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/fastchem_build.bash
   WORKING_DIRECTORY ${VULCAN_ROOT}/fastchem_vulcan
-  VERBATIM
+  VERBATIM USES_TERMINAL
 )
 
 set(env_file ${CMAKE_SOURCE_DIR}/PROTEUS.env)
@@ -94,7 +94,7 @@ add_custom_command(OUTPUT ${SPIDER_ROOT}/spider
   COMMAND echo "====================================================================="
   COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/build_spider.bash
   WORKING_DIRECTORY ${SPIDER_ROOT}
-  VERBATIM
+  VERBATIM USES_TERMINAL
 )
 
 # Custom command to build SOCRATES
@@ -106,7 +106,7 @@ add_custom_command(OUTPUT ${soc_exes}
   COMMAND echo "====================================================================="
   COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/socrates_build.bash
   WORKING_DIRECTORY ${AEOLUS_ROOT}/rad_trans/socrates_code
-  VERBATIM
+  VERBATIM USES_TERMINAL
   )
 
 
