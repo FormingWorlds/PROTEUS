@@ -66,6 +66,9 @@ DEPENDS ${soc_exes})
 # Custom command to build petsc
 configure_file(${CMAKE_SOURCE_DIR}/cmake_build/petsc_build.bash.in ${CMAKE_SOURCE_DIR}/cmake_build/petsc_build.bash @ONLY)
 add_custom_command(OUTPUT ${PETSC_ROOT}/arch-${ARCH}-c-opt/lib/libpetsc${CMAKE_SHARED_LIBRARY_SUFFIX}
+  COMMAND echo "====================================================================="
+  COMMAND echo "Configuring + Building PETSC. Configure stage can be long. Check petsc/configure.log for status."
+  COMMAND echo "====================================================================="
   COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/petsc_build.bash
   WORKING_DIRECTORY ${PETSC_ROOT}
   VERBATIM)
@@ -74,6 +77,9 @@ set(make_opts ${VULCAN_ROOT}/fastchem_vulcan/make.global_options)
 # Custom command to build fastchem
 configure_file(${CMAKE_SOURCE_DIR}/cmake_build/fastchem_build.bash.in ${CMAKE_SOURCE_DIR}/cmake_build/fastchem_build.bash @ONLY)
 add_custom_command(OUTPUT ${VULCAN_ROOT}/fastchem_vulcan/fastchem
+  COMMAND echo "====================================================================="
+  COMMAND echo "Building VULCAN/fastchem"
+  COMMAND echo "====================================================================="
   COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/fastchem_build.bash
   WORKING_DIRECTORY ${VULCAN_ROOT}/fastchem_vulcan
   VERBATIM
@@ -83,6 +89,9 @@ set(env_file ${CMAKE_SOURCE_DIR}/PROTEUS.env)
 # Custom command to build spider
 configure_file(${CMAKE_SOURCE_DIR}/cmake_build/build_spider.bash.in ${CMAKE_SOURCE_DIR}/cmake_build/build_spider.bash @ONLY)
 add_custom_command(OUTPUT ${SPIDER_ROOT}/spider
+  COMMAND echo "====================================================================="
+  COMMAND echo "Building SPIDER"
+  COMMAND echo "====================================================================="
   COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/build_spider.bash
   WORKING_DIRECTORY ${SPIDER_ROOT}
   VERBATIM
@@ -92,6 +101,9 @@ add_custom_command(OUTPUT ${SPIDER_ROOT}/spider
 # Need to alter Mk_cmd file so it
 configure_file(${CMAKE_SOURCE_DIR}/cmake_build/socrates_build.bash.in ${CMAKE_SOURCE_DIR}/cmake_build/socrates_build.bash @ONLY)
 add_custom_command(OUTPUT ${soc_exes}
+  COMMAND echo "====================================================================="
+  COMMAND echo "Building SOCRATES"
+  COMMAND echo "====================================================================="
   COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/socrates_build.bash
   WORKING_DIRECTORY ${AEOLUS_ROOT}/rad_trans/socrates_code
   VERBATIM
@@ -103,4 +115,4 @@ COMMAND echo "Installation complete" > ${CMAKE_SOURCE_DIR}/cmake_build/proteus_p
 add_dependencies(proteus fastchem_vulcan spider socrates)
 add_dependencies(spider petsc)
 
-install(FILES ${CMAKE_SOURCE_DIR}/proteus_pkg.txt DESTINATION proteus)
+install(FILES ${CMAKE_SOURCE_DIR}/cmake_build/proteus_pkg.txt DESTINATION proteus)
