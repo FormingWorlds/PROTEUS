@@ -194,5 +194,6 @@ cmake_build/_deps
 cmake_build/CMakeCache.txt
 cmake_build/*.bash
 cmake_build/CMakeInstall.cmake
+cmake_build/proteus_pkg.txt
 
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks

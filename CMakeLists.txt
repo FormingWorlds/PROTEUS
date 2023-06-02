@@ -40,7 +40,7 @@ FetchContent_MakeAvailable(socrates)
 # Custom target for everything
 add_custom_target(proteus ALL
   DEPENDS
-proteus_pkg.txt)
+${CMAKE_SOURCE_DIR}/cmake_build/proteus_pkg.txt)
 
 
 execute_process(COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/print_arch.bash
@@ -98,8 +98,8 @@ add_custom_command(OUTPUT ${soc_exes}
   )
 
 
-add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/proteus_pkg.txt
-COMMAND echo "Installation complete" > ${CMAKE_SOURCE_DIR}/proteus_pkg.txt)
+add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/cmake_build/proteus_pkg.txt
+COMMAND echo "Installation complete" > ${CMAKE_SOURCE_DIR}/cmake_build/proteus_pkg.txt)
 add_dependencies(proteus fastchem_vulcan spider socrates)
 add_dependencies(spider petsc)
 
