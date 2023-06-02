@@ -1,0 +1,8 @@
+#!/bin/bash
+
+CMAKE_SOURCE_DIR=@CMAKE_SOURCE_DIR@
+arch=$(uname -s | awk '{print tolower($0)}')
+sed -i.bak "s|export PETSC_ARCH=.*|export PETSC_ARCH=arch-${arch}-c-opt|" ${CMAKE_SOURCE_DIR}/PROTEUS.env
+rm  ${CMAKE_SOURCE_DIR}/PROTEUS.env.bak
+source ${CMAKE_SOURCE_DIR}/PROTEUS.env
+cd ${CMAKE_SOURCE_DIR}/SPIDER && make clean && make -j && yes '' | make test

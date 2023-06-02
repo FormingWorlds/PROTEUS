@@ -61,6 +61,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+_skbuild/
 develop-eggs/
 dist/
 downloads/
@@ -191,5 +192,7 @@ cmake_build/CMakeFiles
 cmake_build/Makefile
 cmake_build/_deps
 cmake_build/CMakeCache.txt
+cmake_build/*.bash
+cmake_build/CMakeInstall.cmake
 
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks

@@ -38,13 +38,16 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(socrates)
   
 # Custom target for everything
-add_custom_target(proteus ALL)
+add_custom_target(proteus ALL
+  DEPENDS
+proteus_pkg.txt)
+
+
+execute_process(COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/print_arch.bash
+  OUTPUT_VARIABLE ARCH
+  OUTPUT_STRIP_TRAILING_WHITESPACE)
 
 # PETSc
-execute_process(COMMAND bash print_arch.bash
-  OUTPUT_VARIABLE ARCH
-OUTPUT_STRIP_TRAILING_WHITESPACE)
-
 add_custom_target(petsc
   DEPENDS ${PETSC_ROOT}/arch-${ARCH}-c-opt/lib/libpetsc${CMAKE_SHARED_LIBRARY_SUFFIX})
 # Vulcan Fastchem
@@ -61,40 +64,43 @@ add_custom_target(socrates
 DEPENDS ${soc_exes})
 
 # Custom command to build petsc
+configure_file(${CMAKE_SOURCE_DIR}/cmake_build/petsc_build.bash.in ${CMAKE_SOURCE_DIR}/cmake_build/petsc_build.bash @ONLY)
 add_custom_command(OUTPUT ${PETSC_ROOT}/arch-${ARCH}-c-opt/lib/libpetsc${CMAKE_SHARED_LIBRARY_SUFFIX}
-  COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/scrape_petsc_make.bash 
+  COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/petsc_build.bash
   WORKING_DIRECTORY ${PETSC_ROOT}
   VERBATIM)
 
+set(make_opts ${VULCAN_ROOT}/fastchem_vulcan/make.global_options)
 # Custom command to build fastchem
+configure_file(${CMAKE_SOURCE_DIR}/cmake_build/fastchem_build.bash.in ${CMAKE_SOURCE_DIR}/cmake_build/fastchem_build.bash @ONLY)
 add_custom_command(OUTPUT ${VULCAN_ROOT}/fastchem_vulcan/fastchem
-  COMMAND  bash ${CMAKE_SOURCE_DIR}/cmake_build/fastchem_compiler.bash
+  COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/fastchem_build.bash
+  WORKING_DIRECTORY ${VULCAN_ROOT}/fastchem_vulcan
+  VERBATIM
 )
 
+set(env_file ${CMAKE_SOURCE_DIR}/PROTEUS.env)
 # Custom command to build spider
+configure_file(${CMAKE_SOURCE_DIR}/cmake_build/build_spider.bash.in ${CMAKE_SOURCE_DIR}/cmake_build/build_spider.bash @ONLY)
 add_custom_command(OUTPUT ${SPIDER_ROOT}/spider
-  COMMAND pwd
-  COMMAND bash build_spider.bash
+  COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/build_spider.bash
+  WORKING_DIRECTORY ${SPIDER_ROOT}
+  VERBATIM
 )
 
-#Custom command to build SOCRATES
+# Custom command to build SOCRATES
 # Need to alter Mk_cmd file so it
-
+configure_file(${CMAKE_SOURCE_DIR}/cmake_build/socrates_build.bash.in ${CMAKE_SOURCE_DIR}/cmake_build/socrates_build.bash @ONLY)
 add_custom_command(OUTPUT ${soc_exes}
-  COMMAND echo ${CMAKE_Fortran_COMPILER} ${CMAKE_Fortran_FLAGS}
-  COMMAND echo "FORTCOMP = ${CMAKE_Fortran_COMPILER} -c -fcheck=all,no-recursion -fbacktrace -g -O" > make/Mk_cmd
-  COMMAND echo "LINK = ${CMAKE_Fortran_COMPILER} -fcheck=all,no-recursion -fbacktrace -g -O" >> make/Mk_cmd
-  COMMAND echo LIBLINK = ar rvu >> make/Mk_cmd
-  COMMAND echo "INCCDF_PATH = ${NETCDF_INCLUDES}" >> make/Mk_cmd
-  COMMAND echo "LIBCDF_PATH = ${NETCDF_LIBDIR}" >> make/Mk_cmd
-  COMMAND echo 'LIBCDF_NAME = netcdff' >> make/Mk_cmd
-  COMMAND echo 'OMPARG  = -fopenmp' >> make/Mk_cmd
-  COMMAND echo 'LIBSUFFIX = a' >> make/Mk_cmd
-  COMMAND echo '.SUFFIXES: $(SUFFIXES) .f90' >> make/Mk_cmd
-  COMMAND bash build_code
-  COMMAND type ksh >/dev/null 2>&1 ||  sed -i 's/ksh/bash/g' sbin/*
-  WORKING_DIRECTORY ${AEOLUS_ROOT}/rad_trans/socrates_code)
+  COMMAND bash ${CMAKE_SOURCE_DIR}/cmake_build/socrates_build.bash
+  WORKING_DIRECTORY ${AEOLUS_ROOT}/rad_trans/socrates_code
+  VERBATIM
+  )
 
+
+add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/proteus_pkg.txt
+COMMAND echo "Installation complete" > ${CMAKE_SOURCE_DIR}/proteus_pkg.txt)
 add_dependencies(proteus fastchem_vulcan spider socrates)
 add_dependencies(spider petsc)
 
+install(FILES ${CMAKE_SOURCE_DIR}/proteus_pkg.txt DESTINATION proteus)

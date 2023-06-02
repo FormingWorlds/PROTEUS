@@ -1,0 +1,21 @@
+#!/bin/bash
+
+AEOLUS_ROOT=@AEOLUS_ROOT@
+soc_root=${AEOLUS_ROOT}/rad_trans/socrates_code
+
+cat <<'EOF' > ${soc_root}/make/Mk_cmd
+FORTCOMP    = @CMAKE_Fortran_COMPILER@ -c -fcheck=all,no-recursion -fbacktrace -g -O 
+LINK        = @CMAKE_Fortran_COMPILER@ -fcheck=all,no-recursion -fbacktrace -g -O
+LIBLINK     = ar rvu
+INCCDF_PATH = @NETCDF_INCLUDES@
+LIBCDF_PATH = @NETCDF_LIBDIR@
+LIBCDF_NAME = netcdff
+OMPARG      = -fopenmp
+
+LIBSUFFIX   = a
+.SUFFIXES: $(SUFFIXES) .f90
+EOF
+
+cd ${soc_root} && bash build_code
+type ksh >/dev/null 2>&1 ||  sed -i.bak 's/ksh/bash/g' sbin/*
+
