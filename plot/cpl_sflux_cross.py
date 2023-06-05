@@ -2,11 +2,20 @@
 
 # Plots stellar flux from `output/` for a set of wavelength bins
 
+# import matplotlib as mpl
+
+# font = {'family' : 'Arial',
+#         'size'   : 11.5}
+
+# mpl.rc('font', **font)
+
 from utils.modules_ext import *
 from utils.constants import *
 from utils.plot import find_nearest
 from utils.helper import natural_sort
 from matplotlib.colors import LinearSegmentedColormap
+
+# fig_ratio = tuple(np.array([5,4])*0.9)
 
 cm_data = np.loadtxt("AEOLUS/plotting_tools/colormaps/bukavu.txt")
 star_cmap = LinearSegmentedColormap.from_list("sci_cmap", cm_data)
@@ -83,6 +92,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
     flux_t = np.array(flux_t)
 
     # Create figure
+    # fig,ax = plt.subplots(1,1,figsize=fig_ratio)
     fig,ax = plt.subplots(1,1)
 
     # Colorbar
@@ -118,7 +128,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
 
         fl = flux_t.T[wl_iarr[i]]
         c = star_cmap(1.0*i/N)
-        lbl = str(int(round(wl_varr[i])))
+        lbl = "%d"%math.ceil(wl_varr[i])
 
         ax.plot(time_t,fl,color='black',lw=3.0)
         ax.plot(time_t,fl,color=c      ,lw=2.2,label=lbl)
