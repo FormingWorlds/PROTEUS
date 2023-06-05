@@ -48,6 +48,7 @@ def run(tf: float):
     print("Running evolution code...")
     t = ti
     while t < tf:
+        print("Age = %1.2e yr, Progress = %3.1f%%" % (t,t/tf*100.0))
 
         match model:
             case 1:
@@ -66,7 +67,7 @@ if __name__ == "__main__":
     print("Evolve stellar spectrum with Mors.\n")
     
     # Parameters
-    t_final =       400.0 * Myr     # Final time for evolution
+    t_final =       1000.0 * Myr     # Final time for evolution
 
     print("NOTE: File convention differs with this script, compared to PROTEUS!")
     print("      Files of the format t.sflux* refer to a STAR AGE of t years.")

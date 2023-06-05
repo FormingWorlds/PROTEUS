@@ -6,8 +6,10 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.plot import find_nearest
 from utils.helper import natural_sort
+from matplotlib.colors import LinearSegmentedColormap
 
-star_cmap = plt.get_cmap('rainbow')
+cm_data = np.loadtxt("AEOLUS/plotting_tools/colormaps/bukavu.txt")
+star_cmap = LinearSegmentedColormap.from_list("sci_cmap", cm_data)
 
 # Planck function value at stellar surface
 # lam in nm
@@ -85,7 +87,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
 
     # Colorbar
     ax.set_yscale("log")
-    ax.set_ylabel("Flux [erg s-1 cm-2 nm-1]")
+    ax.set_ylabel("Flux [erg s$^{-1}$ cm$^{-2}$ nm$^{-1}$]")
 
     ax.set_xscale("log")
     ax.set_xlabel("Time [Myr]")
@@ -118,15 +120,17 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
         c = star_cmap(1.0*i/N)
         lbl = str(int(round(wl_varr[i])))
 
-        ax.plot(time_t,fl,color='black',lw=1.8)
-        ax.plot(time_t,fl,color=c      ,lw=1.1,label=lbl)
+        ax.plot(time_t,fl,color='black',lw=3.0)
+        ax.plot(time_t,fl,color=c      ,lw=2.2,label=lbl)
 
         # Plot modern values
         if not surface:
             ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='>',color='k',s=35, zorder=3)
             ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='>',color=c,  s=29, zorder=4)
 
-    ax.legend(title="$\lambda$ [nm]", loc='center left',bbox_to_anchor=(1.02, 0.5))
+    leg = ax.legend(title="$\lambda$ [nm]", loc='center left',bbox_to_anchor=(1.02, 0.5))
+    for legobj in leg.legendHandles:
+        legobj.set_linewidth(4.0)
 
     plt.close()
     plt.ioff()
