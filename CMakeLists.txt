@@ -1,5 +1,5 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.12)
-PROJECT(proteus Fortran)
+PROJECT(proteus Fortran C CXX)
 
 include(FetchContent)
 
@@ -25,6 +25,7 @@ set(AEOLUS_ROOT ${CMAKE_SOURCE_DIR}/AEOLUS)
 set(VULCAN_ROOT ${CMAKE_SOURCE_DIR}/VULCAN)
 set(PETSC_ROOT ${CMAKE_SOURCE_DIR}/petsc)
 
+message('CXX compiler' ${CMAKE_CXX_COMPILER})
 # Fetch SOCRATES
 FetchContent_Declare(
   socrates
