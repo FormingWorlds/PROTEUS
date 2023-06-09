@@ -3,6 +3,6 @@
 # Substitute instances of CC and CXX in fastchem make
 CMAKE_SOURCE_DIR=@CMAKE_SOURCE_DIR@
 make_opts="${CMAKE_SOURCE_DIR}/VULCAN/fastchem_vulcan/make.global_options"
-sed -i.bak "s|^\s*CXX .*|CXX                  = ${CXX}|;s|^\s*CC.*|CC                   = ${CXX}|;s|^\s*SHLIBLD.*|SHLIBLD              = ${CXX}|" ${make_opts}
+sed -i.bak "s|^\s*CXX .*|CXX                  = @CMAKE_CXX_COMPILER@|;s|^\s*CC.*|CC                   = @CMAKE_CXX_COMPILER@|;s|^\s*SHLIBLD.*|SHLIBLD              = @CMAKE_CXX_COMPILER@}|" ${make_opts}
 rm ${make_opts}.bak
 cd ${CMAKE_SOURCE_DIR}/VULCAN/fastchem_vulcan/ && make
