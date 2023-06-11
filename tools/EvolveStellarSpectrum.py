@@ -46,28 +46,32 @@ def run(tf: float):
 
     # Calculate historical spectrum (1 AU) over time, saving it to files
     print("Running evolution code...")
-    t = ti
-    while t < tf:
-        print("Age = %1.2e yr, Progress = %3.1f%%" % (t,t/tf*100.0))
+    t_prev = 0
+    for t in np.logspace(np.log10(ti),np.log10(tf),1000):
 
-        match model:
-            case 1:
-                fl,fls = MorsSpectrumCalc(time_dict['star'], StellarFlux_wl, StellarFlux_fl,COUPLER_options)
-            case 2:
-                fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl,COUPLER_options, track)
+        if (t-t_prev) >= dt:
 
-        SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs)
+            t_prev = t
 
-        time_dict["star"] += dt
-        time_dict["planet"] += dt
+            print("Age = %1.2e yr, Progress = %3.1f%%" % (t,t/tf*100.0))
 
-        t += dt
+            time_dict["star"] = t
+            time_dict["planet"] = t
+
+            match model:
+                case 1:
+                    fl,fls = MorsSpectrumCalc(time_dict['star'], StellarFlux_wl, StellarFlux_fl,COUPLER_options)
+                case 2:
+                    fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl,COUPLER_options, track)
+
+            SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs)
+
 
 if __name__ == "__main__":
     print("Evolve stellar spectrum with Mors.\n")
     
     # Parameters
-    t_final =       1000.0 * Myr     # Final time for evolution
+    t_final =       200.0 * Myr     # Final time for evolution
 
     print("NOTE: File convention differs with this script, compared to PROTEUS!")
     print("      Files of the format t.sflux* refer to a STAR AGE of t years.")

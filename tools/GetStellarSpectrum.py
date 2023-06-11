@@ -12,12 +12,13 @@ stars_online = {
 def DownloadModernSpectrum(name, distance):
     """Get a contemporary stellar spectrum
     
-    Scaled to 1 AU from the star.
+    Scaled to 1 AU from the star. Append "#lowres" to star name to use 
+    lower resolution spectrum, if that's what you want.
 
     Parameters
     ----------
         name : str
-            Name of star
+            Name of star (with '#lowres' if required)
         distance : float
             Distance to star [ly]
     Returns
@@ -26,7 +27,7 @@ def DownloadModernSpectrum(name, distance):
             Location where modern spectrum has been saved as a plain-text file
     """
 
-    print("Attempting to obtain spectrum for parameters: [star = %s, distance = %1.2e ly]" % (name, distance))
+    print("Attempting to obtain spectrum")
 
     # Import required libraries
     import requests, certifi, os
@@ -35,6 +36,18 @@ def DownloadModernSpectrum(name, distance):
     # Convert stellar parameters
     distance = float(distance) * 9.46073047e17 # Convert ly -> cm
     name     = str(name).strip().lower()
+
+    # Check if lowres
+    name_split = name.split("#")
+    if (len(name_split) == 1):
+        lowres = False 
+    elif (len(name_split) == 2) and (name_split[1] == "lowres"):
+        lowres = True 
+    else:
+        raise Exception("Invalid unable to parse star name '%s'!" % name)
+    name = name_split[0]
+
+    print("\tParameters: [star = %s, distance = %1.2e ly, lowres = %s]" % (name, distance,lowres))
 
     r_scale = 1.496e+13  # 1 AU in cm
 
@@ -56,15 +69,25 @@ def DownloadModernSpectrum(name, distance):
     plaintext_spectrum = "spec_%s.txt" % star
     database_spectrum  = "spec_%s.%s" % (star,database)
     print("\tDownloading spectrum and writing file '%s'" % plaintext_spectrum)
+
+    if (os.path.isfile(plaintext_spectrum)):
+        print("\t(Overwriting existing file)")
+
     new_str = '# Spectrum of %s (%s) at 1 AU\n# WL(nm)\tFlux(ergs/cm**2/s/nm)\n' % (star,database)
     match database:
         case 'muscles':
             cert = certifi.where()
-            source = "https://archive.stsci.edu/missions/hlsp/muscles/%s/hlsp_muscles_multi_multi_%s_broadband_v23_adapt-const-res-sed.fits"%(star, star)
+            if lowres:
+                source = "https://archive.stsci.edu/missions/hlsp/muscles/%s/hlsp_muscles_multi_multi_%s_broadband_v23_adapt-const-res-sed.fits"%(star, star)
+            else:
+                source = "https://archive.stsci.edu/missions/hlsp/muscles/%s/hlsp_muscles_multi_multi_%s_broadband_v23_adapt-var-res-sed.fits"%(star, star)
             resp = requests.get(source, verify=cert) # Download file
             
             if resp.status_code == 404:  # Try other possible option (v22 instead of v23)
-                source = "https://archive.stsci.edu/missions/hlsp/muscles/%s/hlsp_muscles_multi_multi_%s_broadband_v22_adapt-const-res-sed.fits"%(star, star)
+                if lowres:
+                    source = "https://archive.stsci.edu/missions/hlsp/muscles/%s/hlsp_muscles_multi_multi_%s_broadband_v22_adapt-const-res-sed.fits"%(star, star)
+                else:
+                    source = "https://archive.stsci.edu/missions/hlsp/muscles/%s/hlsp_muscles_multi_multi_%s_broadband_v22_adapt-var-res-sed.fits"%(star, star)
             resp = requests.get(source, verify=cert) # Download file
 
             if (resp.status_code != 200):
@@ -178,7 +201,7 @@ Commands:
         No parameters.
     'get'
         Downloads and converts spectrum for given star.
-        'param1' : star name
+        'param1' : star name (append '#lowres' to star name to avoid large files)
         'param2' : distance from Earth in units of Ly
             """)
 
