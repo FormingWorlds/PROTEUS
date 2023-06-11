@@ -18,3 +18,8 @@
 	path = petsc
 	url = https://gitlab.com/petsc/petsc.git
 	branch = release
+[submodule "Mors"]
+	path = Mors
+	url = https://github.com/ColinPhilipJohnstone/Mors
+	branch = master
+

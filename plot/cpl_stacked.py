@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
 # Import utils- and plot-specific modules
-from utils.modules_plot import *
-from utils.utils_spider import MyJSON
+from utils.modules_ext import *
+from utils.spider import *
+from utils.plot import *
 
 
 #====================================================================
@@ -200,8 +201,9 @@ def plot_stacked( output_dir, times ):
     # ax0b.yaxis.set_label_coords(1.15,0.55)
     # # ax0b.invert_yaxis()
 
-    fig_o.savefig(1)
     plt.close()
+    plt.ioff()
+    fig_o.savefig(1)
 
 #====================================================================
 def main():
@@ -219,7 +221,7 @@ def main():
         print("Output directory:", output_dir)
         
     else:
-        output_dir = os.getcwd()
+        output_dir = os.getcwd() + "/output/"
         print("Output directory:", output_dir)
 
     # Define which times are plotted
@@ -227,7 +229,7 @@ def main():
         plot_list = [ int(time) for time in args.times.split(',') ]
         print("Snapshots:", plot_list)
     else:
-        output_list = su.get_all_output_pkl_times(output_dir)
+        output_list = get_all_output_pkl_times(output_dir)
 
         if len(output_list) <= 8:
             plot_list = output_list
@@ -251,11 +253,5 @@ def main():
 #====================================================================
 
 if __name__ == "__main__":
-
-    # Import utils- and plot-specific modules
-    from utils.modules_utils import *
-    from utils.modules_plot import *
-    import utils_coupler as cu
-    import utils_spider as su
 
     main()

@@ -19,6 +19,7 @@ Tprofile.pdf
 .DS_Store
 __pycache__
 output/*
+offline
 !output/.gitkeep
 mylog.log
 atmosphere.pdf
@@ -27,6 +28,9 @@ surfaceT.dat
 out.dat
 atm_chemistry.pdf
 .vscode
+spec_*.txt
+Mors/fs255_grid
+screenlog.0
 
 
 # From Read the Docs

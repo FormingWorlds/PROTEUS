@@ -1,46 +1,13 @@
-#!/usr/bin/env python3
+# Function and classes used to run SPIDER
 
-# Import utils-specific modules
-from utils.modules_utils import *
-
-from utils.modules_plot import *
-
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mtick
-import matplotlib.transforms as transforms
-from scipy.interpolate import RectBivariateSpline, interp1d
-from scipy.integrate import odeint
-from scipy.optimize import newton
-import numpy as np
-import os, sys, json
-
-from AEOLUS.utils import phys as phys
-
-#====================================================================
-# constants
-
-# lookup data directories
-# TODO: this is the current model, but could be different depending
-# on what the user is doing
-# FIXME: below will break for other users
-lookupdir = '/Users/tim/bitbucket/SPIDER-DEV/lookup_data/1TPa-dK09-elec-free/'
-# melting curves
-liquidus_file = os.path.join( lookupdir, 'melting_curves/final/liquidus.dat')
-solidus_file = os.path.join( lookupdir, 'melting_curves/final/solidus.dat')
-# melt files
-temperature_melt_file = os.path.join( lookupdir, 'temperature_melt.dat' )
-density_melt_file = os.path.join( lookupdir, 'density_melt.dat' )
-# solid files
-temperature_solid_file = os.path.join( lookupdir, 'temperature_solid.dat' )
-density_solid_file = os.path.join( lookupdir, 'density_solid.dat' )
+from utils.modules_ext import *
+from utils.constants import *
+from utils.helper import *
 
 #===================================================================
 # CLASSES
 #===================================================================
 
-
-#===================================================================
 class MyJSON( object ):
 
     '''load and access json data'''
@@ -267,47 +234,7 @@ def get_all_output_pkl_times( odir='output' ):
 
     return time_a
 
-#====================================================================
-def find_xx_for_yy( xx, yy, yywant ):
 
-    a = yy - yywant
-
-    s = sign_change( a )
-
-    # for ease, just add zero at the beginning to enable us to
-    # have the same length array.  Could equally add to the end, or
-    # interpolate
-
-    s = np.insert(s,0,0)
-
-    result = xx * s
-
-    return result
-
-#====================================================================
-def get_first_non_zero_index( myList ):
-
-    # https://stackoverflow.com/questions/19502378/python-find-first-instance-of-non-zero-number-in-list
-
-    index = next((i for i, x in enumerate(myList) if x), None)
-
-    return index
-
-#====================================================================
-def sign_change( a ):
-
-    s = (np.diff(np.sign(a)) != 0)*1
-
-    return s
-
-#====================================================================
-def recursive_get(d, keys):
-
-    '''function to access nested dictionaries'''
-
-    if len(keys) == 1:
-        return d[keys[0]]
-    return recursive_get(d[keys[0]], keys[1:])
 
 #====================================================================
 def get_dict_values_for_times( keys, time_l, indir='output' ):
@@ -375,11 +302,6 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
 
 
     return np.array(data_l)
-
-#====================================================================
-def gravity( m, r ):
-    g = phys.G*m/r**2
-    return g
 
 
 #====================================================================
@@ -536,6 +458,215 @@ def plot_static_structure( radius, rho_interp1d ):
     fig.suptitle('Planetary radius= {} km'.format(radius_title))
     fig.savefig( "static_structure.pdf", bbox_inches="tight")
 
-    plt.show()
-
 #====================================================================
+
+def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
+
+    SPIDER_options_file = dirs["output"]+"/init_spider.opts"
+    SPIDER_options_file_orig = dirs["utils"]+"/init_spider.opts"
+
+    print("IC_INTERIOR =",COUPLER_options["IC_INTERIOR"])
+
+    # First run
+    if (loop_counter["init"] == 0):
+        if os.path.isfile(SPIDER_options_file):
+            os.remove(SPIDER_options_file)
+        shutil.copy(SPIDER_options_file_orig,SPIDER_options_file)
+
+    # Define which volatiles to track in SPIDER
+    species_call = ""
+    for vol in volatile_species: 
+        if COUPLER_options[vol+"_included"]:
+            species_call = species_call + "," + vol
+    species_call = species_call[1:] # Remove "," in front
+
+    # Recalculate time stepping
+    if COUPLER_options["IC_INTERIOR"] == 2:  
+
+        # Current step
+        json_file   = MyJSON( dirs["output"]+'/{}.json'.format(int(time_dict["planet"])) )
+        step        = json_file.get_dict(['step'])
+
+        dtmacro     = float(COUPLER_options["dtmacro"])
+        dtswitch    = float(COUPLER_options["dtswitch"])
+
+        # Time resolution adjustment in the beginning
+        if time_dict["planet"] < 1000:
+            dtmacro = 10
+            dtswitch = 50
+        if time_dict["planet"] < 100:
+            dtmacro = 2
+            dtswitch = 5
+        if time_dict["planet"] < 10:
+            dtmacro = 1
+            dtswitch = 1
+
+        # Runtime left
+        dtime_max   = time_dict["target"] - time_dict["planet"]
+
+        # Limit Atm-Int switch
+        dtime       = np.min([ dtime_max, dtswitch ])
+
+        # Number of total steps until currently desired switch/end time
+        COUPLER_options["nstepsmacro"] =  step + math.ceil( dtime / dtmacro )
+
+        print("TIME OPTIONS IN RUNSPIDER:")
+        print(dtmacro, dtswitch, dtime_max, dtime, COUPLER_options["nstepsmacro"])
+
+
+    # For init loop
+    else:
+        dtmacro     = 0
+
+    # Prevent interior oscillations during last-stage freeze-out
+    net_loss = COUPLER_options["F_atm"]
+    if len(runtime_helpfile) > 100 and runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]:
+        net_loss = np.amax([abs(COUPLER_options["F_atm"]), COUPLER_options["F_eps"]])
+        if debug:
+            print("Prevent interior oscillations during last-stage freeze-out: F_atm =", COUPLER_options["F_atm"], "->", net_loss)
+
+    ### SPIDER base call sequence 
+    call_sequence = [   
+                        dirs["spider"]+"/spider", 
+                        "-options_file",          SPIDER_options_file, 
+                        "-outputDirectory",       dirs["output"],
+                        "-IC_INTERIOR",           str(COUPLER_options["IC_INTERIOR"]),
+                        "-IC_ATMOSPHERE",         str(COUPLER_options["IC_ATMOSPHERE"]),
+                        "-SURFACE_BC",            str(COUPLER_options["SURFACE_BC"]), 
+                        "-surface_bc_value",      str(net_loss), 
+                        "-teqm",                  str(COUPLER_options["T_eqm"]), 
+                        "-nstepsmacro",           str(COUPLER_options["nstepsmacro"]), 
+                        "-dtmacro",               str(dtmacro), 
+                        "-radius",                str(COUPLER_options["radius"]), 
+                        "-gravity",               "-"+str(COUPLER_options["gravity"]), 
+                        "-coresize",              str(COUPLER_options["planet_coresize"]),
+                        "-volatile_names",        str(species_call)
+                    ]
+
+    # Min of fractional and absolute Ts poststep change
+    if time_dict["planet"] > 0:
+        dTs_frac = float(COUPLER_options["tsurf_poststep_change_frac"]) * float(runtime_helpfile["T_surf"].iloc[-1])
+        dT_int_max = np.min([ float(COUPLER_options["tsurf_poststep_change"]), float(dTs_frac) ])
+        call_sequence.extend(["-tsurf_poststep_change", str(dT_int_max)])
+    else:
+        call_sequence.extend(["-tsurf_poststep_change", str(COUPLER_options["tsurf_poststep_change"])])
+
+    # Define distribution coefficients and total mass/surface pressure for volatiles > 0
+    for vol in volatile_species:
+        if COUPLER_options[vol+"_included"]:
+
+            # Set atmospheric pressure based on helpfile output
+            if loop_counter["total"] > loop_counter["init_loops"]:
+                key = vol+"_initial_atmos_pressure"
+                val = float(runtime_helpfile[vol+"_mr"].iloc[-1]) * float(runtime_helpfile["P_surf"].iloc[-1]) * 1.0e5   # convert bar to Pa
+                COUPLER_options[key] = val
+
+            # Load volatiles
+            if COUPLER_options["IC_ATMOSPHERE"] == 1:
+                call_sequence.extend(["-"+vol+"_initial_total_abundance", str(COUPLER_options[vol+"_initial_total_abundance"])])
+            elif COUPLER_options["IC_ATMOSPHERE"] == 3:
+                call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(COUPLER_options[vol+"_initial_atmos_pressure"])])
+
+            # Exception for N2 case: reduced vs. oxidized
+            if vol == "N2" and COUPLER_options["N2_partitioning"] == 1:
+                volatile_distribution_coefficients["N2_henry"] = volatile_distribution_coefficients["N2_henry_reduced"]
+                volatile_distribution_coefficients["N2_henry_pow"] = volatile_distribution_coefficients["N2_henry_pow_reduced"]
+
+            call_sequence.extend(["-"+vol+"_henry", str(volatile_distribution_coefficients[vol+"_henry"])])
+            call_sequence.extend(["-"+vol+"_henry_pow", str(volatile_distribution_coefficients[vol+"_henry_pow"])])
+            call_sequence.extend(["-"+vol+"_kdist", str(volatile_distribution_coefficients[vol+"_kdist"])])
+            call_sequence.extend(["-"+vol+"_kabs", str(volatile_distribution_coefficients[vol+"_kabs"])])
+            call_sequence.extend(["-"+vol+"_molar_mass", str(molar_mass[vol])])
+            call_sequence.extend(["-"+vol+"_SOLUBILITY 1"])
+
+    # With start of the main loop only:
+    # Volatile specific options: post step settings, restart filename
+    if COUPLER_options["IC_INTERIOR"] == 2:
+        call_sequence.extend([ 
+                                "-ic_interior_filename", 
+                                str(dirs["output"]+"/"+COUPLER_options["ic_interior_filename"]),
+                                "-activate_poststep", 
+                                "-activate_rollback"
+                             ])
+        for vol in volatile_species:
+            if COUPLER_options[vol+"_included"]:
+                call_sequence.extend(["-"+vol+"_poststep_change", str(COUPLER_options[vol+"_poststep_change"])])
+
+    # Gravitational separation of solid and melt phase, 0: off | 1: on
+    if COUPLER_options["SEPARATION"] == 1:
+        call_sequence.extend(["-SEPARATION", str(1)])
+
+    # Mixing length parameterization: 1: variable | 2: constant
+    if COUPLER_options["mixing_length"] == 1:
+        call_sequence.extend(["-mixing_length", str(1)])
+
+    # Ultra-thin thermal boundary layer at top, 0: off | 1: on
+    if COUPLER_options["PARAM_UTBL"] == 1:
+        call_sequence.extend(["-PARAM_UTBL", str(1)])
+        call_sequence.extend(["-param_utbl_const", str(COUPLER_options["param_utbl_const"])])
+
+    # Check for convergence, if not converging, adjust tolerances iteratively
+    if len(runtime_helpfile) > 30 and loop_counter["total"] > loop_counter["init_loops"] :
+
+        # Check convergence for interior cycles
+        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
+
+        # First, relax too restrictive dTs
+        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[-3]:
+            if COUPLER_options["tsurf_poststep_change"] <= 300:
+                COUPLER_options["tsurf_poststep_change"] += 10
+                print(">>> Raise dT poststep_changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
+            else:
+                print(">> dTs_int too high! >>", COUPLER_options["tsurf_poststep_change"], "K")
+        # Slowly limit again if time advances smoothly
+        if (run_int["Time"].iloc[-1] != run_int["Time"].iloc[-3]) and COUPLER_options["tsurf_poststep_change"] > 30:
+            COUPLER_options["tsurf_poststep_change"] -= 10
+            print(">>> Lower tsurf_poststep_change poststep changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
+
+        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[-7]:
+            if "solver_tolerance" not in COUPLER_options:
+                COUPLER_options["solver_tolerance"] = 1.0e-10
+            if COUPLER_options["solver_tolerance"] < 1.0e-2:
+                COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
+                print(">>> ADJUST tolerances:", COUPLER_options["solver_tolerance"])
+            COUPLER_options["adjust_tolerance"] = 1
+            print(">>> CURRENT TOLERANCES:", COUPLER_options["solver_tolerance"])
+
+        # If tolerance was adjusted, restart SPIDER w/ new tolerances
+        if "adjust_tolerance" in COUPLER_options:
+            print(">>>>> >>>>> RESTART W/ ADJUSTED TOLERANCES")
+            call_sequence.extend(["-ts_sundials_atol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-ts_sundials_rtol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-atmosts_snes_atol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-atmosts_snes_rtol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-atmosts_ksp_atol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-atmosts_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-atmosic_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
+            call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
+
+    # Runtime info
+    PrintSeparator()
+    print("Running SPIDER... (loop counter = ", loop_counter, ")")
+    if debug:
+        print("   Flags:")
+        for flag in call_sequence:
+            print("   ",flag)
+        print()
+
+    call_string = " ".join(call_sequence)
+
+    # Run SPIDER
+    if debug:
+        spider_print = sys.stdout
+    else:
+        spider_print = open(dirs["output"]+"spider_recent.log",'w')
+
+    subprocess.run([call_string],shell=True,check=True,stdout=spider_print)
+
+    if not debug:
+        spider_print.close()
+
+    # Update restart filename for next SPIDER run
+    COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"/*.json")])[-1]
+
+    return COUPLER_options

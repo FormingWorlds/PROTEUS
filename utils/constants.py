@@ -1,61 +1,17 @@
-#!/usr/bin/env python3
+# Physical, numerical, etc constants
 
-# https://realpython.com/python-modules-packages/#the-module-search-path
-# https://docs.python.org/3/tutorial/modules.html
-
-# Standard packages
-import argparse
-import logging
-
-import matplotlib as mpl
-mpl.use('Agg')
-
-logging.getLogger('matplotlib.font_manager').disabled = True  # Disable font fallback logging
-
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mtick
-import numpy as np
-import os, sys, glob, shutil, re
-import matplotlib.ticker as ticker
-import pandas as pd
-import matplotlib.transforms as transforms
-import mmap
-import pathlib
-import errno
-import json
-import subprocess
-import fileinput # https://kaijento.github.io/2017/05/28/python-replacing-lines-in-file/
-import math
-import importlib.util
-import pickle as pkl
-
-from datetime import datetime
-from scipy import interpolate
-# from natsort import natsorted # https://pypi.python.org/pypi/natsort
-from decimal import Decimal
-from scipy.integrate import solve_ivp
-from scipy import stats
-
-# Import coupler-specific package modules
-#import utils_coupler as cu
-import utils.utils_spider as su
-
-import utils.cpl_atmosphere
-import utils.cpl_global
-import utils.cpl_stacked
-import utils.cpl_interior
-
-from AEOLUS import SocRadConv as SocRadConv
-from AEOLUS.utils.atmosphere_column import atmos
-from AEOLUS.utils import phys as phys
+# Avoid importing from utils.*
+import os
+import AEOLUS.utils.phys as phys
 
 ### Constants ###
-
 debug = True
 
 # Astronomical constants
 L_sun           = 3.828e+26             # W, IAU definition
+R_sun_cm        = 6.957e+10             # cm
 AU              = 1.495978707e+11       # m
+AU_cm           = AU * 100.0            # cm
 R_gas           = 8.31446261815324      # J K−1 mol−1
 M_earth         = 5.972E24              # kg
 R_core_earth    = 3485000.0             # m
@@ -107,5 +63,58 @@ molar_mass      = {
 volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
 element_list     = [ "H", "O", "C", "N", "S", "He" ] 
 
-# volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2"]
-# element_list     = [ "H", "O", "C", "N" ] 
+# Henry's law coefficients
+# Add to dataframe + save to disk
+volatile_distribution_coefficients = {               # X_henry -> ppm/Pa
+    # 'H2O_henry':           6.800e-02,              # Lebrun+13
+    # 'H2O_henry_pow':       1.4285714285714286,     # Lebrun+13         
+    # 'CO2_henry':           4.4E-6,                 # Lebrun+13
+    # 'CO2_henry_pow':       1.0,                    # Lebrun+13
+    'H2O_henry':             1.033e+00,                
+    'H2O_henry_pow':         1.747e+00,       
+    'CO2_henry':             1.937e-09,            
+    'CO2_henry_pow':         7.140e-01,                
+    'H2_henry':              2.572e-06, 
+    'H2_henry_pow':          1.0, 
+    'CH4_henry':             9.937e-08, 
+    'CH4_henry_pow':         1.0, 
+    'CO_henry':              1.600e-07, 
+    'CO_henry_pow':          1.0, 
+    'N2_henry':              7.000e-05, 
+    'N2_henry_pow':          1.8,
+    'N2_henry_reduced':      7.416e+01,
+    'N2_henry_pow_reduced':  4.582e+00,
+    'O2_henry':              0.001E-10, 
+    'O2_henry_pow':          1.0, 
+    'S_henry':               5.000e-03, 
+    'S_henry_pow':           1.0, 
+    'He_henry':              0.001E-9, 
+    'He_henry_pow':          1.0,
+    # 'H2O_kdist':             1.0E-4,                 # distribution coefficients
+    # 'H2O_kabs':              0.01,                   # absorption (m^2/kg)
+    # 'CO2_kdist':             5.0E-4, 
+    # 'CO2_kabs':              0.05,
+    'H2O_kdist':             0.0E-0,
+    'H2O_kabs':              0.00,
+    'CO2_kdist':             0.0E-0,  
+    'CO2_kabs':              0.00,
+    'H2_kdist':              0.0E-0,  
+    'H2_kabs':               0.00,     
+    'N2_kdist':              0.0E-0,  
+    'N2_kabs':               0.00,     
+    'CH4_kdist':             0.0E-0, 
+    'CH4_kabs':              0.00,    
+    'CO_kdist':              0.0E-0,  
+    'CO_kabs':               0.00,     
+    'O2_kdist':              0.0E-0,  
+    'O2_kabs':               0.00,     
+    'S_kdist':               0.0E-0,   
+    'S_kabs':                0.00,      
+    'He_kdist':              0.0E-0,  
+    'He_kabs':               0.00
+    }
+    
+
+dirs = {}  # Modified by coupler.py: SetDirectories().
+
+# End of file

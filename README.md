@@ -18,12 +18,14 @@ https://proteus-code.readthedocs.io/en/latest/contact.html
 * HN – Harrison Nicholls (harrison.nicholls@physics.ox.ac.uk)
 
 ### Repository structure
-* `CouplerMain.py`  – Main PROTEUS Python script
+* `proteus.py`      – Main PROTEUS Python script
 * `README.md`       – This file
 * `AEOLUS/`         – Submodule AEOLUS
 * `SPIDER/`         – Submodule SPIDER
 * `VULCAN/`         – Submodule VULCAN
-* `utils/`          – Utility python scripts
+* `Mors/`           - Submodule Mors
+* `utils/`          – Scripts used for running PROTEUS and its submodules
+* `plot/`           - Plotting scripts
 * `output/`         – Output folder
 * `docs/`			– Documentation source
 * `pyproject.toml`	– Documentation file

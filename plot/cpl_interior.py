@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
 # Import utils- and plot-specific modules
-from utils.modules_plot import *
-from utils.utils_spider import MyJSON
-from utils.modules_plot import MyFuncFormatter
-
+from utils.modules_ext import *
+from utils.plot import *
+from utils.spider import *
 
 #====================================================================
 def plot_interior( output_dir, times ):
@@ -69,7 +68,6 @@ def plot_interior( output_dir, times ):
         MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
         # label = fig_o.get_legend_label( time )
-        # label = "{:.1e}".format(Decimal(time))+" yr"
         label = latex_float(time)+" yr"
 
         # temperature
@@ -159,8 +157,9 @@ def plot_interior( output_dir, times ):
     #     # fraction contours
     #     ax0.text(110, 2275, r'$\phi=0.2$', fontsize=6 )
 
-    fig_o.savefig(1)
     plt.close()
+    plt.ioff()
+    fig_o.savefig(1)
 
 #====================================================================
 def main():
@@ -178,7 +177,7 @@ def main():
         print("Output directory:", output_dir)
         
     else:
-        output_dir = os.getcwd()
+        output_dir = os.getcwd() + "/output/"
         print("Output directory:", output_dir)
 
     # Define which times are plotted
@@ -186,7 +185,7 @@ def main():
         plot_list = [ int(time) for time in args.times.split(',') ]
         print("Snapshots:", plot_list)
     else:
-        output_list = su.get_all_output_times(output_dir)
+        output_list = get_all_output_times(output_dir)
 
         if len(output_list) <= 8:
             plot_list = output_list
@@ -199,11 +198,5 @@ def main():
 #====================================================================
 
 if __name__ == "__main__":
-
-    # Import utils- and plot-specific modules
-    from utils.modules_utils import *
-    from utils.modules_plot import *
-    import utils_coupler as cu
-    import utils_spider as su
 
     main()
