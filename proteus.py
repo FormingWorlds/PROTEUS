@@ -23,7 +23,7 @@ def main():
     args = parse_console_arguments()
 
     # Read in COUPLER input file
-    COUPLER_options, time_dict = ReadInitFile( args.cfg_file )
+    COUPLER_options, time_dict = ReadInitFile( args.cfg_file , verbose=True )
 
     # Set directories dictionary
     utils.constants.dirs = SetDirectories(COUPLER_options)

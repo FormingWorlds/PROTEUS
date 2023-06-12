@@ -11,23 +11,12 @@ use_lowT_limit_rates = False
 gibbs_text = 'thermo/gibbs_text.txt' # (all the nasa9 files must be placed in the folder: thermo/NASA9/)
 cross_folder = 'thermo/photo_cross/'
 com_file = 'thermo/all_compose.txt'
-sflux_file = 'atm/stellar_flux/Gueymard_solar.txt' # This is the flux density at the stellar surface
 top_BC_flux_file = 'atm/' # the file for the top boundary conditions
 bot_BC_flux_file = 'atm/' # the file for the lower boundary conditions
 # output:
 output_dir = 'output/'
 plot_dir = 'plot/'
 movie_dir = 'plot/movie/'
-out_name =  'PROTEUS_MX_output.txt' # output file name
-
-# ====== Setting up the elemental abundance ======
-use_solar = True # True: using the solar abundance from Table 10. K.Lodders 2009; False: using the customized elemental abundance. 
-# customized elemental abundance (only read when use_solar = False)
-# O_H = 6.0618E-4 *(0.85) #*(0.793)  
-# C_H = 2.7761E-4  
-# N_H = 8.1853E-5
-# S_H = 1.3183E-5
-# He_H = 0.09692
 
 # ====== Setting up photochemistry ======
 use_photo = True
@@ -62,8 +51,7 @@ const_Kzz = 1.E10 # (cm^2/s) Only reads when use_Kzz = True and Kzz_prof = 'cons
 const_vz = 0 # (cm/s) Only reads when use_vz = True and vz_prof = 'const'
 
 f_diurnal = 0.5 # to account for the diurnal average of solar flux (i.e. 0.5 for Earth; 1 for tidally-locked planets) 
-atm_type = 'file'
-atm_file = 'output/PROTEUS_PT_input.txt'
+
 
 # frequency for updating dz and dzi due to change of mu
 update_frq = 50 
@@ -92,7 +80,7 @@ conv_step = 500
 ode_solver = 'Ros2' # case sensitive
 use_print_prog = True
 use_print_delta = False
-print_prog_num = 50  # print the progress every x steps 
+print_prog_num = 100  # print the progress every x steps 
 dttry = 1.E-10
 trun_min = 1e2
 runtime = 1.E22
@@ -102,7 +90,7 @@ dt_var_max = 2.
 dt_var_min = 0.5
 count_min = 120
 count_max = int(3E4)
-atol = 5.E-2 # Try decreasing this if the solutions are not stable
+atol = 1.E-2 # Try decreasing this if the solutions are not stable
 mtol = 1.E-22
 mtol_conv = 1.E-16
 pos_cut = 0
@@ -115,13 +103,13 @@ flux_cri = 0.1
 flux_atol = 1. # the tol for actinc flux (# photons cm-2 s-1 nm-1)
 
 # ====== Setting up numerical parameters for Ros2 ODE solver ====== 
-rtol = 1.5              # relative tolerence for adjusting the stepsize 
+rtol = 0.8              # relative tolerence for adjusting the stepsize 
 
 # ====== Setting up for ouwtput and plotting ======
-plot_TP = True
+plot_TP = False
 use_live_flux = False
 use_plot_end = True
-use_plot_evo = False
+use_plot_evo = True
 use_save_movie = False
 use_flux_movie = False
 plot_height = False
@@ -129,12 +117,19 @@ use_PIL = True
 live_plot_frq = 50
 save_movie_rate = live_plot_frq
 y_time_freq = 1  #  storing data for every 'y_time_freq' step
-
 # output:
 output_humanread = False
 use_shark = False
 save_evolution = False   # save the evolution of chemistry (y_time and t_time) for every save_evo_frq step
-save_evo_frq = 10
+save_evo_frq = 50
 
-# ========== PARAMETERS BELOW ARE INSERTED BY PROTEUS AT RUNTIME ===========
+use_live_plot  = False 
+scat_sp = [] 
+diff_esc = [] 
+atom_list  = ['H', 'O', 'C','N']
+network  = 'thermo/NCHO_full_photo_network.txt' 
+plot_spec = ['H2','H','H2O','OH','CH4','HCN','N2','NH3'] 
+ini_mix = 'const_mix' 
+atm_type = 'file'
 
+# ========== PARAMETERS BELOW ARE INSERTED BY OFFLINE_CHEMISTRY AT RUNTIME ===========

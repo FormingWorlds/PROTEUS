@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+
+# Plot evolution of mixing ratios over time, for a single species, versus pressure
+
+# Import things
+import matplotlib as mpl
+mpl.use("Agg")
+from utils.plot import *
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+
+def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=False):
+    """Plot evolution of a single component according to offline VULCAN output
+    
+    Reads-in the data from output_dir for a single species. Can also
+    include AEOLUS/SPIDER mixing ratios as dashed lines, which were used to 
+    initialise each VULCAN run.
+
+    Parameters
+    ----------
+        output_dir : str
+            Output directory that was specified in the PROTEUS cfg file
+        sp : list
+            Which species to plot? (e.g. H2O)
+        tmin : float
+            Initial year to include [yr]
+        tmax : float 
+            Final yeat to include [yr]
+        plot_init_mx : bool
+            Include initial mixing ratios for each VULCAN run in plot?
+    """
+
+    mpl.use("Agg")
+
+    ls = glob.glob(output_dir+"/offchem/*/output.vul")
+    years = [int(f.split("/")[-2]) for f in ls]
+    years_data = [offchem_read_year(output_dir,y) for y in years]
+
+    if len(years) == 0:
+        raise Exception('No VULCAN output files found')
+
+    lw = 2
+    alpha = 0.7
+
+    fig, (ax0,ax1) = plt.subplots(1,2,sharey=True,figsize=(8,4))
+
+    ax0.set_ylabel("Pressure [bar]")
+    ax0.invert_yaxis()
+    ax0.set_yscale("log")
+    ax0.set_xlabel("Temperature [K]")
+    ax0.set_title("Evolution of $T(p)$")
+
+    ax1.set_title("Evolution of "+sp)
+    ax1.set_xlabel("Mixing ratio")
+    ax1.set_xscale("log")
+
+    divider = make_axes_locatable(ax1)
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+
+    if (tmin > 0):
+        cb_vmin = tmin
+    else:
+        cb_vmin = max(years_data[0]["year"],1.0)
+        
+    
+    if (tmax > 0):
+        cb_vmax = tmax
+    else:
+        cb_vmax = years_data[-1]["year"]
+        
+
+    norm = mpl.colors.LogNorm(vmin=cb_vmin, vmax=cb_vmax)
+    sm = plt.cm.ScalarMappable(cmap=plt.get_cmap('gnuplot2_r'), norm=norm)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, cax=cax, orientation='vertical')  #, ticks=np.linspace(0,2,N), boundaries=np.arange(-0.05,2.1,.1))
+    cbar.set_label("Time [yr]") 
+    
+    min_mix = 5e-1
+    
+    for i, yd in enumerate(years_data):
+
+        if (tmin > -1) and (yd["year"] < tmin):
+            continue 
+        
+        if (tmax > -1) and (yd["year"] > tmax):
+            continue 
+
+        color = sm.to_rgba(yd["year"])
+
+        p = yd["pressure"]
+
+        # Temperature profile
+        ax0.plot(yd["temperature"],p,color=color,lw=lw,alpha=alpha,label="%1.2e"%yd["year"])
+
+        # Mixing ratios
+        key = str("mx_"+sp)
+        ax1.plot(yd[key],p,label=sp,color=color,lw=lw,alpha=alpha)
+
+        min_mix = min(min_mix,np.amin(yd[key]))
+
+        if plot_init_mx:
+            key = str("ae_"+sp)
+            if key in yd.keys():
+                ax1.plot(np.ones((len(p),)) * yd[key],p,linestyle='--',lw=lw*0.5,color=color)
+            
+    ax1.set_xlim([min_mix,1])
+
+    fig.tight_layout()
+    fig.savefig(output_dir+"plot_offchem_species_%s.pdf"%sp)
+    plt.close('all')
+    
+
+
+# If executed directly
+if __name__ == '__main__':
+    print("Plotting offline chemistry (species vs pressure)...")
+
+    # Read in COUPLER input file
+    from utils.coupler import ReadInitFile, SetDirectories
+    COUPLER_options, time_dict = ReadInitFile( 'init_coupler.cfg' )
+
+    # Species to make plots for
+    species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4","HCN", "NH3", "N2", "NO"]
+
+    # Set directories dictionary
+    dirs = SetDirectories(COUPLER_options)
+
+    # Call plotting function
+    for s in species:
+        print("Species = %s" % s)
+        plot_offchem_species(dirs["output"],s,tmin=1e3)
+
+    print("Done!")

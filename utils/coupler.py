@@ -366,7 +366,7 @@ def SaveOutput( output_dir ):
         print(os.path.basename(file), end =" ")
 
 
-def ReadInitFile( init_file_passed ):
+def ReadInitFile( init_file_passed , verbose=False):
 
     # Read in input file as dictionary
     COUPLER_options  = {}
@@ -379,7 +379,7 @@ def ReadInitFile( init_file_passed ):
         raise Exception("Init file provided is not a file or does not exist!")
 
     print(init_file)   
-    if debug: print("Settings:")
+    if verbose: print("Settings:")
 
     # Open file and fill dict
     with open(init_file) as f:
@@ -396,7 +396,7 @@ def ReadInitFile( init_file_passed ):
                 line = line.split("#")[0]
                 line = line.split(",")[0]
 
-                if debug: print(line)
+                if verbose: print(line)
 
                 # Assign key and value
                 (key, val) = line.split("=")
