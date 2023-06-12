@@ -81,8 +81,6 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
     plt.close(fig)
     
     
-
-
 # If executed directly
 if __name__ == '__main__':
     print("Plotting offline chemistry for each year (mixing ratios vs pressure)...")

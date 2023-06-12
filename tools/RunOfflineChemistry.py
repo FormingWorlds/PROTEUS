@@ -77,30 +77,38 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict) -> bool:
         # Bottom boundary condition
         fix_bb_mr = "{"
         for v in volatile_species:
-            this_mx = max(float(v_mx[v]),mixing_ratio_floor)
+
+            this_mx = max(float(v_mx[v]),mixing_ratio_floor)  # Mixing ratio floor to prevent issues with VULCAN
+
             if (this_mx > 1e-1):
                 fix_bb_mr += " '%s' : %1.5e ," % (v,this_mx)
+
         fix_bb_mr = fix_bb_mr[:-1]+" }"
         vcf.write("use_fix_sp_bot = %s \n" % str(fix_bb_mr))
 
         # Initial constant mixing ratios
+        bkgrnd_s = "H2"
+        bkgrnd_v = -1
         const_mix = "{"
         for v in volatile_species:
-            this_mx = max(float(v_mx[v]),mixing_ratio_floor)      # Mixing ratio floor to prevent issues with VULCAN
+
+            this_mx = max(float(v_mx[v]),mixing_ratio_floor)     
             const_mix += " '%s' : %1.5e ," % (v,this_mx)
+
+            if (this_mx > bkgrnd_v) and (v in ["N2","H2","CO2","H2O","O2"]): # Work out which of these are viable background gases
+                bkgrnd_s = v
+            
         const_mix = const_mix[:-1]+" }"
         vcf.write("const_mix = %s \n" % str(const_mix))
+
+        # Background component of atmosphere
+        vcf.write("atm_base = '%s' \n" % bkgrnd_s)
 
         # PT profile
         vcf.write("atm_file = 'output/%d_offchem_%d_PT.txt' \n"%(now,year))
 
-        # Background componen of atmosphere
-        # TODO - CODE BELOW IS TEMPORARY
-        vcf.write("atm_base = 'H2' \n")
-
-        # Stellar spectrum
-        # TODO - CODE BELOW IS TEMPORARY
-        vcf.write("sflux_file = 'atm/stellar_flux/Gueymard_solar.txt' \n")
+        # Stellar flux (at surface of star)
+        vcf.write("sflux_file = 'output/%d_offchem_%d_SF.txt' \n"%(now,year))
 
         # Stellar radius
         # TODO - CODE BELOW IS TEMPORARY
@@ -113,8 +121,14 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict) -> bool:
         vcf.write("orbit_radius = %1.6e \n" %   float(COUPLER_options["mean_distance"]))
 
     
-    # Copy this config file to results dir for posterity
+    # Also copy config file to results dir for posterity
     shutil.copyfile(dirs["vulcan"]+"vulcan_cfg.py",this_results+"vulcan_cfg.py")
+
+    # Copy a reasonable stellar flux file to the location where VULCAN will read it
+    ls = glob.glob(dirs["output"]+"*.sfluxsurf")
+    years = [int(f.split("/")[-1].split(".")[0]) for f in ls]
+    year_near = years[find_nearest_idx(years,year)]
+    shutil.copyfile(dirs["output"]+"%d.sfluxsurf"%year_near,dirs["vulcan"]+"output/%d_offchem_%d_SF.txt"%(now,year))
 
     # Write PT profile
     vul_PT = np.array(
@@ -148,7 +162,7 @@ if __name__ == '__main__':
     print("Started main process")
 
     # Parameters
-    samples =   30                  # How many samples to use from /output/
+    samples =   35                  # How many samples to use from /output/
     cfgfile =   "init_coupler.cfg"  # Config file used for PROTEUS
 
     # Read in PROTEUS config file
@@ -186,9 +200,10 @@ if __name__ == '__main__':
     )
 
     # Log info to user
-    logging.info("Date: " +str(datetime.now().strftime("%Y-%m-%d")))
+    time_start = datetime.now()
+    logging.info("Date: " +str(time_start.strftime("%Y-%m-%d")))
 
-    now = int(str(datetime.now().strftime("%H%M%S")))
+    now = int(str(time_start.strftime("%H%M%S")))
     logging.info("Time: %d"%now)
 
     logging.info(" ")
@@ -290,6 +305,8 @@ if __name__ == '__main__':
 
         time.sleep(20.0)  # Wait a while before checking again
 
-    logging.info("All processes finished at: "+str(datetime.now().strftime("%H%M%S")))
+    time_end = datetime.now()
+    logging.info("All processes finished at: "+str(time_end.strftime("%H%M%S")))
+    logging.info("Total runtime: %f minutes "%((time_end-time_start).total_seconds()/60.0))
 
     logging.info("Done!")
