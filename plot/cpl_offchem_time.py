@@ -7,7 +7,7 @@ import matplotlib as mpl
 from utils.plot import *
 
 
-def plot_offchem_time(output_dir, species, plot_init_mx=False):
+def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1):
     """Plot evolution of chemistry according to offline VULCAN output
     
     Reads-in the data from output_dir for a set of provided species. Can also
@@ -22,6 +22,8 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False):
             List of species to plot
         plot_init_mx : bool
             Include initial mixing ratios for each VULCAN run in plot?
+        tmin : float
+            Initial plotting time (-1 for start of data)
     """
 
     mpl.use("Agg")
@@ -78,9 +80,13 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False):
 
 
     ax.legend(loc="lower left",ncol=6)
-    ax.set_ylim([1e-12,1.5])
+    ax.set_ylim([1e-10,1.5])
 
-    ax.set_xlim([max(times[0],1.0),times[-1]*1.2])
+    if tmin == -1:
+        vmin = times[0]
+    else:
+        vmin = tmin
+    ax.set_xlim([max(vmin,1.0),times[-1]*1.2])
 
     ax.axvline(x=times[-1],color='black',lw=0.7)
 
@@ -104,7 +110,7 @@ if __name__ == '__main__':
     dirs = SetDirectories(COUPLER_options)
 
     # Call plotting function
-    plot_offchem_time(dirs["output"],species)
+    plot_offchem_time(dirs["output"],species,tmin=1e3)
 
     print("Done!")
 

@@ -76,7 +76,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False, t_starinit=0.0):
     flux_t = []
     for f in files:
         # Load data
-        X = np.loadtxt(f,skiprows=2,delimiter='\t').T
+        X = np.loadtxt(f,skiprows=1,delimiter='\t').T
         
         # Parse data
         time = int(f.split('/')[-1].split('.')[0])

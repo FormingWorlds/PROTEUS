@@ -74,7 +74,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
     flux_t = []
     for f in files:
         # Load data
-        X = np.loadtxt(f,skiprows=2,delimiter='\t').T
+        X = np.loadtxt(f,skiprows=1,delimiter='\t').T
         
         # Parse data
         time = int(f.split('/')[-1].split('.')[0])
@@ -83,7 +83,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
         flux = X[1]
 
         # Save data
-        time_t.append(time * 1.e-6 + t_starinit)
+        time_t.append(time + t_starinit * 1.e6)
         wave_t.append(wave)
         flux_t.append(flux)
 
@@ -100,7 +100,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
     ax.set_ylabel("Flux [erg s$^{-1}$ cm$^{-2}$ nm$^{-1}$]")
 
     ax.set_xscale("log")
-    ax.set_xlabel("Time [Myr]")
+    ax.set_xlabel("Time [yr]")
     if surface:
         ax.set_title("Surface flux versus time")
     else:

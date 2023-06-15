@@ -9,8 +9,8 @@ star_bands = {
     "xr" : [1.e-3 , 10.0],  # X-ray,  defined by mors
     "e1" : [10.0  , 32.0],  # EUV1,   defined by mors
     "e2" : [32.0  , 92.0],  # EUV2,   defined by mors
-    "uv" : [92.0  , 400.0], # UV,     defined by me
-    "pl" : [400.0 , 1.e9],  # planck, defined by me
+    "uv" : [92.0  , 364.5], # UV,     defined by me
+    "pl" : [364.5 , 1.e9],  # planck, defined by me
     'bo' : [1.e-3 , 1.e9]   # bolo,   all wavelengths
 }
 
@@ -396,7 +396,7 @@ def BaraffeLoadtrack(COUPLER_options: dict):
     return track
 
 def BaraffeSpectrumCalc(time_star: float, spec_fl: list, COUPLER_options: dict, track: dict):
-    """Write historical spectrum to disk, for a time t.
+    """Determine historical spectrum at time_star, using the baraffe tracks
 
     Uses a Baraffe evolution track. Calculates the spectrum both at 1 AU and 
     at the surface of the star.
@@ -475,13 +475,13 @@ def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, dirs):
 
     X = np.array([wl,sflux]).T
     outname1 = dirs['output'] + "/%d.sflux" % time_dict['planet']
-    header = '# Stellar flux (1 AU) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % tstar
-    np.savetxt(outname1, X, header=header,comments='',fmt='%1.3e',delimiter='\t')
+    header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (1 AU) at t_star = %d Myr ' % tstar
+    np.savetxt(outname1, X, header=header,comments='',fmt='%1.4e',delimiter='\t')
 
     Y = np.array([wl,sfluxsurf]).T
     outname2 = dirs['output'] + "/%d.sfluxsurf" % time_dict['planet']
-    header = '# Stellar flux (surface) at t_star = %d Myr \n# WL(nm)\t Flux(ergs/cm**2/s/nm)' % tstar
-    np.savetxt(outname2, Y, header=header,comments='',fmt='%1.3e',delimiter='\t')
+    header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (surface) at t_star = %d Myr ' % tstar
+    np.savetxt(outname2, Y, header=header,comments='',fmt='%1.4e',delimiter='\t')
 
 
 # End of file

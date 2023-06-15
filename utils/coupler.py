@@ -78,7 +78,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
     # If runtime_helpfle not existent, create it + write to disk
     if not os.path.isfile(dirs["output"]+"/"+runtime_helpfile_name):
-        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'T_surf', 'F_int', 'F_atm', 'F_net', 'P_surf', 'M_atm', 'M_atm_kgmol', 'Phi_global', 'RF_depth', 'M_mantle', 'M_core', 'M_mantle_liquid', 'M_mantle_solid', 'H_mol_atm', 'H_mol_solid', 'H_mol_liquid', 'H_mol_total', 'O_mol_total', 'C_mol_total', 'N_mol_total', 'S_mol_total', 'He_mol_total', 'O/H_atm', 'C/H_atm', 'N/H_atm', 'S/H_atm', 'He/H_atm', 'H2O_mr', 'CO2_mr', 'H2_mr', 'CO_mr', 'CH4_mr', 'N2_mr', 'O2_mr', 'S_mr', 'He_mr'])
+        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'R_star', 'T_surf', 'F_int', 'F_atm', 'F_net', 'P_surf', 'M_atm', 'M_atm_kgmol', 'Phi_global', 'RF_depth', 'M_mantle', 'M_core', 'M_mantle_liquid', 'M_mantle_solid', 'H_mol_atm', 'H_mol_solid', 'H_mol_liquid', 'H_mol_total', 'O_mol_total', 'C_mol_total', 'N_mol_total', 'S_mol_total', 'He_mol_total', 'O/H_atm', 'C/H_atm', 'N/H_atm', 'S/H_atm', 'He/H_atm', 'H2O_mr', 'CO2_mr', 'H2_mr', 'CO_mr', 'CH4_mr', 'N2_mr', 'O2_mr', 'S_mr', 'He_mr'])
         runtime_helpfile.to_csv( dirs["output"]+"/"+runtime_helpfile_name, index=False, sep="\t") 
         time_dict["planet"] = 0
         #, 'H2O_atm_bar', 'CO2_atm_bar', 'H2_atm_bar', 'CH4_atm_bar', 'CO_atm_bar', 'N2_atm_bar', 'O2_atm_bar', 'S_atm_bar', 'He_atm_bar'run
@@ -116,6 +116,12 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         # Fill the new dict
         runtime_helpfile_new["Time"]  = sim_time
         runtime_helpfile_new["Input"] = input_flag
+
+        # Stellar radius
+        if "star_radius" in COUPLER_options.keys():
+            runtime_helpfile_new["R_star"] = COUPLER_options["star_radius"]
+        else:
+            runtime_helpfile_new["R_star"] = COUPLER_options["star_radius_modern"] # Just in case?
 
         # Mass properties
         runtime_helpfile_new["M_mantle_liquid"] = float(data_a[0])
@@ -261,6 +267,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
         # Infos from latest interior loop
         run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
+        runtime_helpfile_new["R_star"]          = run_int.iloc[-1]["R_star"]
         runtime_helpfile_new["Phi_global"]      = run_int.iloc[-1]["Phi_global"]
         runtime_helpfile_new["RF_depth"]        = run_int.iloc[-1]["RF_depth"]     
         runtime_helpfile_new["M_mantle"]        = run_int.iloc[-1]["M_mantle"]       
@@ -407,7 +414,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                 if not line.startswith("time_"):
 
                     # Some parameters are int
-                    if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", "nstepsmacro", "use_vulcan", "ic_interior_filename", "plot_onthefly"]:
+                    if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", "nstepsmacro", "use_vulcan", "ic_interior_filename", "plot_onthefly","stellar_heating"]:
                         val = int(val)
                     # Some are str
                     elif key in [ 'star_spectrum', 'star_btrack', 'dir_output' ]:
@@ -473,7 +480,7 @@ def SetDirectories(COUPLER_options: dict):
     coupler_dir = os.getenv('COUPLER_DIR')
 
     dirs = {
-            "output": coupler_dir+"/"+COUPLER_options['dir_output']+"/", 
+            "output": coupler_dir+"/output/"+COUPLER_options['dir_output']+"/", 
             "coupler": coupler_dir, 
             "rad_conv": coupler_dir+"/AEOLUS/", 
             "vulcan": coupler_dir+"/VULCAN/", 

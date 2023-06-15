@@ -14,6 +14,8 @@ from utils.spider import RunSPIDER
 
 import utils.constants
 
+from AEOLUS.modules.stellar_luminosity import InterpolateStellarLuminosity
+
 #====================================================================
 def main():
 
@@ -83,8 +85,9 @@ def main():
 
     
     # Store copy of modern spectrum in memory (1 AU)
-    StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
-    time_dict['sflux_prev'] = -1.0e99
+    if COUPLER_options["star_model"]>0:
+        StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
+        time_dict['sflux_prev'] = -1.0e99
 
     # Calculate band-integrated fluxes for modern stellar spectrum (1 AU)
     match COUPLER_options['star_model']:
@@ -101,16 +104,23 @@ def main():
     # Interior-Atmosphere loop
     while time_dict["planet"] < time_dict["target"]:
 
-        # Calculate stellar luminosity and planetary eqm temperature
-        # S_old, _ = SocRadConv.InterpolateStellarLuminosity(COUPLER_options["star_mass"], time_dict, COUPLER_options["mean_distance"], COUPLER_options["albedo_pl"], COUPLER_options["Sfrac"])
         match COUPLER_options['star_model']:
+            case 0:
+                S_0, toa_heating = InterpolateStellarLuminosity(time_dict, COUPLER_options)
             case 1:
-                S_0, _ = MorsSolarConstant(time_dict, COUPLER_options)
+                S_0, toa_heating = MorsSolarConstant(time_dict, COUPLER_options)
             case 2:
-                S_0, _ = BaraffeSolarConstant(time_dict, COUPLER_options, track)
+                S_0, toa_heating = BaraffeSolarConstant(time_dict, COUPLER_options, track)
+
+        # Include SW radiation from star in heating rate calculations?
+        if (COUPLER_options["stellar_heating"] > 0):
+            COUPLER_options["TOA_heating"] = toa_heating
+        else:
+            COUPLER_options["TOA_heating"] = 0.0
 
         # Calculate historical spectrum (1 AU)
-        if ( abs( time_dict['planet'] - time_dict['sflux_prev'] ) > COUPLER_options['sflux_dt_update'] ):
+        if (COUPLER_options['star_model'] > 0) and \
+           ( abs( time_dict['planet'] - time_dict['sflux_prev'] ) > COUPLER_options['sflux_dt_update'] ):
             print("Updating stellar spectrum")
             match COUPLER_options['star_model']:
                 case 1:

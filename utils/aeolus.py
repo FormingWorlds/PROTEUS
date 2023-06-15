@@ -131,6 +131,7 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
     atm.zenith_angle    = COUPLER_options["zenith_angle"]
     atm.albedo_pl       = COUPLER_options["albedo_pl"]
     atm.albedo_s        = COUPLER_options["albedo_s"]
+    atm.toa_heating     = COUPLER_options["TOA_heating"]
         
 
     return atm, COUPLER_options
@@ -143,21 +144,28 @@ def RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_opt
     print("SOCRATES run... (loop =", loop_counter, ")")
     PrintSeparator()
 
+    # Change directory so that SOCRATES files don't get littered
+    cwd = os.getcwd()
+    os.chdir(dirs["output"])
+
     # Calculate temperature structure and heat flux w/ SOCRATES
     _, atm = RadConvEqm(dirs, time_dict, atm, standalone=False, cp_dry=False, trppD=True, rscatter=True,calc_cf=False) # W/m^2
+
+    # Go back to previous directory
+    os.chdir(cwd)
     
     # Atmosphere net flux from topmost atmosphere node; do not allow heating
     COUPLER_options["F_atm"] = np.max( [ 0., atm.net_flux[0] ] )
 
     # Clean up run directory
     PrintSeparator()
-    print("Remove SOCRATES auxiliary files:", end =" ")
-    for file in natural_sort(glob.glob(dirs["output"]+"/current??.????")):
+    # print("Remove SOCRATES auxiliary files:", end =" ")
+    for file in glob.glob(dirs["output"]+"/current??.????"):
         os.remove(file)
-        print(os.path.basename(file), end =" ")
-    for file in natural_sort(glob.glob(dirs["output"]+"/profile.*")):
+        # print(os.path.basename(file), end =" ")
+    for file in glob.glob(dirs["output"]+"/profile.*"):
         os.remove(file)
-        print(os.path.basename(file), end =" ")
-    print(">>> Done.")
+        # print(os.path.basename(file), end =" ")
+    # print(">>> Done.")
 
     return atm, COUPLER_options

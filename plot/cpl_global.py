@@ -87,7 +87,7 @@ def plot_global( output_dir ):
 
 
     xlabel = r'Time, $t$ (yr)'
-    xlim = (1e1,1e8)
+    xlim = (1e1,1e7)
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)
@@ -300,6 +300,7 @@ def plot_global( output_dir ):
     ax3.yaxis.tick_right()
     ax3.yaxis.set_label_position("right")
     ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
+    ax3.set_yscale("log")
     handles, labels = ax3.get_legend_handles_labels()
     ax3.legend(handles, labels, ncol=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend, loc='upper left') 
     ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
@@ -369,18 +370,6 @@ def main():
         output_dir = os.getcwd() + "/output/"
 
     print("Output directory:", output_dir)
-
-    # Define which times are plotted
-    if args.times:
-        plot_list = [ int(time) for time in args.times.split(',') ]
-    else:
-        output_list = get_all_output_times(output_dir)
-
-        if len(output_list) <= 8:
-            plot_list = output_list
-        else:
-            plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
-    print("Snapshots:", plot_list)
 
     plot_global(output_dir=output_dir)
 

@@ -23,9 +23,9 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
         sp : list
             Which species to plot? (e.g. H2O)
         tmin : float
-            Initial year to include [yr]
+            Initial year to include (-1 for start of  data)
         tmax : float 
-            Final yeat to include [yr]
+            Final year to include (-1 for end of data)
         plot_init_mx : bool
             Include initial mixing ratios for each VULCAN run in plot?
     """

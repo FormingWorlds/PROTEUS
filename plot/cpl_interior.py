@@ -78,7 +78,7 @@ def plot_interior( output_dir, times ):
         # melt fraction
         yy = myjson_o.get_dict_values(['data','phi_b'])
         ax1.plot( yy, xx_pres, '-', color=color, lw=1.5 )
-        ax1.fill_betweenx( yy, xx_pres, color=color , alpha=0.4)
+        # ax1.fill_betweenx( yy, xx_pres, color=color , alpha=0.4)
 
         # viscosity
         visc_const = 1 # this is used for the arcsinh scaling

@@ -11,6 +11,7 @@ import os, glob, shutil, subprocess, time, pathlib
 from datetime import datetime
 import numpy.random as nrand
 import logging
+import pandas as pd
 
 # Import PROTEUS stuff
 from utils.coupler import *
@@ -22,7 +23,7 @@ def find_nearest_idx(array, value):
     idx = (np.abs(array - value)).argmin()
     return int(idx)
 
-def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict) -> bool:
+def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_df:pd.DataFrame) -> bool:
     """Run VULCAN once for a given PROTEUS output year
     
     Runs VULCAN in a screen instance, so that lots processes may still be
@@ -39,6 +40,8 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict) -> bool:
             Is this the first time that VULCAN is run for this configuration?
         COUPLER_options : dict
             PROTEUS options dictionary read from cfg file
+        helpfile_df : DataFrame
+            Helpfile contents loaded as a Pandas DataFrame object
     Returns
     ----------
         success : bool
@@ -64,6 +67,9 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict) -> bool:
         v_mx    = atm.vol_list      # Mixing ratios
         
         volatile_species = v_mx.keys()
+
+    # Read helpfile to get data for this year
+    helpfile_thisyear = helpfile_df.loc[helpfile_df['Time'] == year].iloc[0]
 
     # Write specifics to config file
     with open(dirs["vulcan"]+"vulcan_cfg.py",'a') as vcf:
@@ -111,8 +117,7 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict) -> bool:
         vcf.write("sflux_file = 'output/%d_offchem_%d_SF.txt' \n"%(now,year))
 
         # Stellar radius
-        # TODO - CODE BELOW IS TEMPORARY
-        vcf.write("r_star = %1.6e \n" %         float(COUPLER_options["star_radius_modern"]))
+        vcf.write("r_star = %1.6e \n" %         float(helpfile_thisyear["R_star"]))
 
         # Other planet parameters
         vcf.write("Rp = %1.6e \n" %             float(COUPLER_options["radius"]*100.0))
@@ -162,7 +167,7 @@ if __name__ == '__main__':
     print("Started main process")
 
     # Parameters
-    samples =   35                  # How many samples to use from /output/
+    samples =   40                  # How many samples to use from /output/
     cfgfile =   "init_coupler.cfg"  # Config file used for PROTEUS
 
     # Read in PROTEUS config file
@@ -171,9 +176,6 @@ if __name__ == '__main__':
     # Set directories
     dirs = SetDirectories(COUPLER_options)
     offchem_dir = dirs["output"]+"offchem/"
-
-    # Copy cfg file for posterity
-    shutil.copyfile(cfgfile, offchem_dir+cfgfile)
 
     # Delete old files
     if os.path.exists(offchem_dir):
@@ -184,6 +186,9 @@ if __name__ == '__main__':
             raise Exception("Could not clear directory for new run")
     else:
         raise Exception("Could not make directory '%s'" % offchem_dir)
+
+    # Copy cfg file for posterity
+    shutil.copyfile(cfgfile, offchem_dir+cfgfile)
 
     # Set up logging
     logfile = offchem_dir+"parent.log"
@@ -211,6 +216,9 @@ if __name__ == '__main__':
     logging.info("To kill all of them, run `pkill -f %d_offchem_`" % now)
     logging.info("Take care to avoid orphaned instances using `screen -ls`")
     logging.info(" ")
+
+    # Read helpfile
+    helpfile_df = pd.read_csv(dirs["output"]+"runtime_helpfile.csv",sep='\t')
 
     # Find out which years we have both SPIDER and AEOLUS data for
     evolution_json = glob.glob(dirs["output"]+"*.json")
@@ -248,7 +256,7 @@ if __name__ == '__main__':
     # Draw other runs randomly from a distribution. This is set-up to sample
     # the end of the run more densely than the start, because the evolution at 
     # the start isn't so interesting compared to the end.
-    sample_itermax = 100*samples
+    sample_itermax = 1000*samples
     sample_iter = 0
     while (len(years) < samples): 
 
@@ -256,7 +264,7 @@ if __name__ == '__main__':
         if sample_iter > sample_itermax:
             raise Exception("Maximum iterations reached in selecting sample years!")
 
-        sample = np.abs(nrand.laplace(loc=ylast,scale=ylast*100.0))
+        sample = np.abs(nrand.laplace(loc=ylast,scale=ylast*70.0))
         if (sample <= yfirst) or (sample >= ylast):
             continue  # Try again
 
@@ -272,8 +280,8 @@ if __name__ == '__main__':
 
     # Start processes
     logging.info(" ")
-    logging.info("Starting %d processses..." % samples)
-    for i,y in enumerate(years):
+    logging.info("Starting %d processses..." % samples)  # Run them in reverse order; later ones are more likely to fail
+    for i,y in enumerate(years[::-1]):
         if (i == 0):
             time.sleep(3.0)   # Wait 5 seconds for first process to allow for cancelling
         elif (i == 1):
@@ -282,7 +290,7 @@ if __name__ == '__main__':
            time.sleep(45.0)  # Wait before starting next process to allow VULCAN to initialise
 
         logging.info("\t %03d idx : %08d yrs" % (i,y))
-        this_success = run_once(y, now,bool(i==0),COUPLER_options)
+        this_success = run_once(y, now,bool(i==0),COUPLER_options,helpfile_df)
         if not this_success:  logging.info("\t    WARNING: could not dispatch this ^ VULCAN instance!")
         
 
