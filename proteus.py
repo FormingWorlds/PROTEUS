@@ -15,6 +15,7 @@ from utils.spider import RunSPIDER
 import utils.constants
 
 from AEOLUS.modules.stellar_luminosity import InterpolateStellarLuminosity
+from AEOLUS.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 
 #====================================================================
 def main():
@@ -101,9 +102,12 @@ def main():
     print(":::::::::::: START COUPLER RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
-    # Interior-Atmosphere loop
+    # Main loop
     while time_dict["planet"] < time_dict["target"]:
 
+
+        ############### STELLAR FLUX MANAGEMENT
+        print("Start stellar")
         match COUPLER_options['star_model']:
             case 0:
                 S_0, toa_heating = InterpolateStellarLuminosity(time_dict, COUPLER_options)
@@ -118,19 +122,36 @@ def main():
         else:
             COUPLER_options["TOA_heating"] = 0.0
 
-        # Calculate historical spectrum (1 AU)
+        # Calculate a new (historical) stellar spectrum 
         if (COUPLER_options['star_model'] > 0) and \
            ( abs( time_dict['planet'] - time_dict['sflux_prev'] ) > COUPLER_options['sflux_dt_update'] ):
-            print("Updating stellar spectrum")
-            match COUPLER_options['star_model']:
+            
+            print("Updating stellar spectrum") 
+            match COUPLER_options['star_model']:   # Calculate arrays at 1 AU
                 case 1:
                     fl,fls = MorsSpectrumCalc(time_dict['star'], StellarFlux_wl, StellarFlux_fl,COUPLER_options)
                 case 2:
                     fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl,COUPLER_options, track)
+
+            # Write 1 AU and surface spectra to disk
             SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs)
+
+            # Generate a new SOCRATES spectral file containing this new spectrum
+            star_spec_src = dirs["output"]+"socrates_star.txt"
+            PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
+            InsertStellarSpectrum(
+                                    dirs["rad_conv"]+"/spectral_files/sp_b318_HITRAN_a16/sp_b318_HITRAN_a16_no_spectrum",
+                                    star_spec_src,
+                                    dirs["output"]+"runtime_spectral_file"
+                                )
+
             time_dict['sflux_prev'] = time_dict['planet'] 
 
         COUPLER_options["T_eqm"] = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
+        print("End stellar")
+        ############### / STELLAR FLUX MANAGEMENT
+
+
 
         ############### INTERIOR SUB-LOOP
         print("Start interior")
@@ -144,8 +165,10 @@ def main():
         print("End interior")
         ############### / INTERIOR SUB-LOOP
 
-        ############### ATMOSPHERE SUB-LOOP
 
+
+
+        ############### ATMOSPHERE SUB-LOOP
         print("Start atmosphere")
         while (loop_counter["atm"] == 0) or (loop_counter["atm"] < loop_counter["atm_loops"] and abs(COUPLER_options["F_net"]) > COUPLER_options["F_eps"]):
 
@@ -164,9 +187,12 @@ def main():
 
             loop_counter["atm"] += 1
 
-        ############### / ATMOSPHERE SUB-LOOP
         print("End atmosphere")
+        ############### / ATMOSPHERE SUB-LOOP
         
+
+
+        ############### LOOP ITERATION MANAGEMENT
         # Print info, save atm to file, update plots
         PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs)
 
@@ -188,6 +214,8 @@ def main():
         if COUPLER_options["solid_stop"] == 1 and runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]:
             print("\n===> Planet solidified! <===\n")
             break
+
+        ############### / LOOP ITERATION MANAGEMENT
 
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options, time_dict )

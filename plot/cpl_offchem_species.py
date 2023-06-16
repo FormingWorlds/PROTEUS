@@ -120,7 +120,7 @@ if __name__ == '__main__':
     COUPLER_options, time_dict = ReadInitFile( 'init_coupler.cfg' )
 
     # Species to make plots for
-    species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4","HCN", "NH3", "N2", "NO"]
+    species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4","HCN", "NH3", "N2", "NO", "O3"]
 
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
@@ -128,6 +128,6 @@ if __name__ == '__main__':
     # Call plotting function
     for s in species:
         print("Species = %s" % s)
-        plot_offchem_species(dirs["output"],s,tmin=1e3)
+        plot_offchem_species(dirs["output"],s)
 
     print("Done!")

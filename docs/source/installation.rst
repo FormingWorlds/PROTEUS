@@ -197,8 +197,7 @@ Step-by-step guide
         .. code-block:: console
 
             $   cd AEOLUS/rad_trans/socrates_code/
-            $   curl -L -o ../socrates_2211.tar.xz https://www.dropbox.com/sh/ixefmrbg7c94jlj/AAChibnZU9PRi8pXdVxVbdj3a/socrates_2211.tar.xz?dl=1
-            $   tar --strip-components 1 -xvf ../socrates_2211.tar.xz -C ./
+            $   tar --strip-components 1 -xvf ../socrates_2306_trunk_r1403.tar.xz -C ./
             $   cp -f ../build_code_modified build_code
 
     4. Overwrite the ``Mk_cmd`` file with the right setup for your machine
@@ -316,7 +315,7 @@ This section includes troubleshooting advice for common errors. Each entry is la
         MPID_nem_tcp_init(377).............: gethostbyname failed, localhost (errno 3)
     
 
-    * This is actually a network configuration issue. To fix it, you need to add the following to ``/etc/hosts``:    
+    * This is actually a network configuration issue. To fix it, you need to add the following to ``/etc/hosts``, where`computername` is your hostname:    
 
     .. code-block:: console
 
@@ -335,7 +334,7 @@ This section includes troubleshooting advice for common errors. Each entry is la
 
 * MacOS: The FastChem code distributed with VULCAN won't compile 
 
-    * With the new Apple Silicon hardware (M1/M2), the option ``-march=native`` sometimes causes issues. In order to avoid this, you need to make sure to use the GNU version of ``g++``, not the Apple one. The Apple one located at ``/usr/bin/gcc`` is actually a wrapped around ``clang``. We found that using the Homebrew version located at ``/opt/homebrew/bin/`` works well. To fix this error, find out which ``gcc`` version homebrew installed (``ls /opt/homebrew/bin/gcc-*``), and edit the file ``make.globaloptions`` in the FastChem directory to use, e.g., ``g++-12`` or ``g++-13`` instead of ``g++``.
+    * With the new Apple Silicon hardware (M1/M2), the option ``-march=native`` sometimes causes issues. In order to avoid this, you need to make sure to use the GNU version of ``g++``, not the Apple one. The Apple one located at ``/usr/bin/gcc`` is actually a wrapped around ``clang``. We found that using the Homebrew version located at ``/opt/homebrew/bin/`` works well. To fix this error, find out which ``gcc`` version homebrew installed (``ls /opt/homebrew/bin/gcc-*``), and edit the file ``make.globaloptions`` in the FastChem directory to use, e.g. ``g++-12`` or ``g++-13`` instead of ``g++``.
 
 * Linux: ``ksh`` not found when running SOCRATES
 

@@ -63,7 +63,7 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1):
             times.append(yd["year"])
 
             clean_mx = np.nan_to_num(yd["mx_"+sp])
-            mean_mx = np.mean(clean_mx)
+            mean_mx = np.mean(clean_mx)              # Need to think about a better way of doing this
             mx_vul.append(float(mean_mx))
 
         ax.plot(times,mx_vul,color='black',lw=lw+0.4)
@@ -73,7 +73,7 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1):
             if str("ae_"+sp) in years_data[0].keys():
                 for yd in years_data:
                     clean_mx = np.nan_to_num(yd["ae_"+sp])
-                    mean_mx = np.mean(clean_mx)
+                    mean_mx = np.mean(clean_mx)   
                     mx_aeo.append(float(mean_mx))
 
                 ax.plot(times,mx_aeo,color=color,linestyle='--',lw=lw)
@@ -110,7 +110,7 @@ if __name__ == '__main__':
     dirs = SetDirectories(COUPLER_options)
 
     # Call plotting function
-    plot_offchem_time(dirs["output"],species,tmin=1e3)
+    plot_offchem_time(dirs["output"],species)
 
     print("Done!")
 

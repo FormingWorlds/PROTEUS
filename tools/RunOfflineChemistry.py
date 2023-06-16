@@ -264,7 +264,7 @@ if __name__ == '__main__':
         if sample_iter > sample_itermax:
             raise Exception("Maximum iterations reached in selecting sample years!")
 
-        sample = np.abs(nrand.laplace(loc=ylast,scale=ylast*70.0))
+        sample = np.abs(nrand.laplace(loc=ylast,scale=ylast*100.0))
         if (sample <= yfirst) or (sample >= ylast):
             continue  # Try again
 
