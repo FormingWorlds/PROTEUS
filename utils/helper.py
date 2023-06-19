@@ -26,6 +26,12 @@ def gravity( m, r ):
     g = phys.G*m/r**2
     return g
 
+def find_nearest(array, value):
+    array   = np.asarray(array)
+    idx     = (np.abs(array - value)).argmin()
+    return array[idx], idx
+
+
 #====================================================================
 def find_xx_for_yy( xx, yy, yywant ):
 

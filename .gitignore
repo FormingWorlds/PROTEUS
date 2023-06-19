@@ -6,11 +6,13 @@
 #############
 current*
 profile*
+runtime_spectral_file*
+socrates_star.txt
 radiation_code.lock
 
 # Specific subfolders
 old/
-output/
+output/*
 
 # misc
 ######
@@ -18,7 +20,6 @@ output/
 Tprofile.pdf
 .DS_Store
 __pycache__
-output/*
 offline
 !output/.gitkeep
 mylog.log
@@ -28,7 +29,6 @@ surfaceT.dat
 out.dat
 atm_chemistry.pdf
 .vscode
-spec_*.txt
 Mors/fs255_grid
 screenlog.0
 

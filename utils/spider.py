@@ -21,7 +21,7 @@ class MyJSON( object ):
         try:
             json_data  = open( self.filename )
         except FileNotFoundError:
-            print('cannot find file: %s', self.filename )
+            print('cannot find file: %s' % self.filename )
             print('please specify times for which data exists')
             sys.exit(1)
         self.data_d = json.load( json_data )
@@ -591,14 +591,18 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         for vol in volatile_species:
             if COUPLER_options[vol+"_included"]:
                 call_sequence.extend(["-"+vol+"_poststep_change", str(COUPLER_options[vol+"_poststep_change"])])
+    else:
+        call_sequence.extend([
+                                "-ic_adiabat_entropy", str(COUPLER_options["ic_adiabat_entropy"]),
+                                "-ic_dsdr", str(COUPLER_options["ic_dsdr"]) # initial dS/dr everywhere"
+                            ])
 
     # Gravitational separation of solid and melt phase, 0: off | 1: on
     if COUPLER_options["SEPARATION"] == 1:
         call_sequence.extend(["-SEPARATION", str(1)])
 
     # Mixing length parameterization: 1: variable | 2: constant
-    if COUPLER_options["mixing_length"] == 1:
-        call_sequence.extend(["-mixing_length", str(1)])
+    call_sequence.extend(["-mixing_length", str(COUPLER_options["mixing_length"])])
 
     # Ultra-thin thermal boundary layer at top, 0: off | 1: on
     if COUPLER_options["PARAM_UTBL"] == 1:

@@ -414,7 +414,10 @@ def ReadInitFile( init_file_passed , verbose=False):
                 if not line.startswith("time_"):
 
                     # Some parameters are int
-                    if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", "nstepsmacro", "use_vulcan", "ic_interior_filename", "plot_onthefly","stellar_heating"]:
+                    if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", 
+                               "nstepsmacro", "use_vulcan", "ic_interior_filename", 
+                               "plot_onthefly", "stellar_heating", "mixing_length",
+                               "atmosphere_chem_type"]:
                         val = int(val)
                     # Some are str
                     elif key in [ 'star_spectrum', 'star_btrack', 'dir_output' ]:
@@ -444,20 +447,28 @@ def ReadInitFile( init_file_passed , verbose=False):
 # Plot conditions throughout run for on-the-fly analysis
 def UpdatePlots( output_dir, COUPLER_options, time_dict ):
 
-    if COUPLER_options["plot_onthefly"] == 1 or time_dict["planet"] > time_dict["target"]:
+    if (COUPLER_options["plot_onthefly"] == 1) or (time_dict["planet"] > time_dict["target"]):
 
         PrintSeparator()
         print("Updating plots...")
         PrintSeparator()
         output_times = get_all_output_times( output_dir )
-        if len(output_times) <= 8:
+
+        num_snapshots = 10
+
+        if len(output_times) < num_snapshots:
             plot_times = output_times
         else:
-            plot_times = [ output_times[0]]         # first snapshot
-            for i in np.logspace(-1,0,10,base=10):     # distinct timestamps
-                j = int(math.floor( (len(output_times)-1)*(i)))
-                plot_times.append(output_times[j])
-        print("snapshots:", plot_times)
+            plot_times = []
+            tmin = max(1,np.amin(output_times))
+            tmax = max(tmin+1, np.amax(output_times))
+            samps = np.logspace(np.log10(tmin),np.log10(tmax),num_snapshots)
+            for s in samps:
+                v,_ = find_nearest(output_times,s)
+                v = int(v)
+                if v not in plot_times:
+                    plot_times.append(v)
+            print("Snapshots to plot:", plot_times)
 
         # Global properties for all timesteps
         if len(output_times) > 1:
@@ -467,9 +478,6 @@ def UpdatePlots( output_dir, COUPLER_options, time_dict ):
         cpl_interior.plot_interior(output_dir, plot_times)     
         cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
         cpl_stacked.plot_stacked(output_dir, plot_times)
-        
-        # # One plot per timestep for video files
-        # plot_atmosphere.plot_current_mixing_ratio(output_dir, plot_times[-1], use_vulcan) 
 
         # Close all figures
         plt.close()
@@ -481,6 +489,7 @@ def SetDirectories(COUPLER_options: dict):
 
     dirs = {
             "output": coupler_dir+"/output/"+COUPLER_options['dir_output']+"/", 
+            "input": coupler_dir+"/intput/",
             "coupler": coupler_dir, 
             "rad_conv": coupler_dir+"/AEOLUS/", 
             "vulcan": coupler_dir+"/VULCAN/", 

@@ -84,11 +84,9 @@ def main():
         print("       Currently the element list includes: ",element_list)
         exit(1)
 
-    
     # Store copy of modern spectrum in memory (1 AU)
-    if COUPLER_options["star_model"]>0:
-        StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
-        time_dict['sflux_prev'] = -1.0e99
+    StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
+    time_dict['sflux_prev'] = -1.0e99
 
     # Calculate band-integrated fluxes for modern stellar spectrum (1 AU)
     match COUPLER_options['star_model']:
@@ -96,6 +94,16 @@ def main():
             COUPLER_options = MorsCalculateFband(dirs, COUPLER_options)
         case 2:
             track = BaraffeLoadtrack(COUPLER_options)
+
+    # Spectrum for SOCRATES
+    star_spec_src = dirs["output"]+"socrates_star.txt"
+    if COUPLER_options["star_model"] == 0:  # Will not be updated during the loop, so just need to write an initial one
+        PrepareStellarSpectrum(StellarFlux_wl,StellarFlux_fl,star_spec_src)
+        InsertStellarSpectrum(
+                                dirs["rad_conv"]+"/spectral_files/sp_b318_HITRAN_a16/sp_b318_HITRAN_a16_no_spectrum",
+                                star_spec_src,
+                                dirs["output"]+"runtime_spectral_file"
+                            )
     
     # Inform about start of runtime
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
@@ -133,11 +141,11 @@ def main():
                 case 2:
                     fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl,COUPLER_options, track)
 
-            # Write 1 AU and surface spectra to disk
-            SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs)
+            # Write stellar spectra to disk
+            writessurf = (COUPLER_options["atmosphere_chem_type"] > 0)
+            SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs,write_surf=writessurf)
 
             # Generate a new SOCRATES spectral file containing this new spectrum
-            star_spec_src = dirs["output"]+"socrates_star.txt"
             PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
             InsertStellarSpectrum(
                                     dirs["rad_conv"]+"/spectral_files/sp_b318_HITRAN_a16/sp_b318_HITRAN_a16_no_spectrum",
@@ -179,7 +187,7 @@ def main():
             atm, COUPLER_options = RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options )
              
             # Run VULCAN (settings-dependent): update atmosphere mixing ratios
-            if (COUPLER_options["use_vulcan"] == 1):
+            if (COUPLER_options["atmosphere_chem_type"] == 2):
                 atm = RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options)
 
             # Update help quantities, input_flag: "Atmosphere"

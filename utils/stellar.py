@@ -36,9 +36,16 @@ def MorsSolarConstant(time_dict: dict, COUPLER_options: dict):
 
     """ 
 
-    Mstar = COUPLER_options["star_mass"]
     tstar = time_dict['star'] * 1.e-6  # Convert from yr to Myr
 
+    Mstar = COUPLER_options["star_mass"]
+    if (Mstar < 0.1):
+        print("WARNING: Star mass too low! Clipping to 0.1 M_sun")
+        Mstar = 0.1
+    if (Mstar > 1.25):
+        print("WARNING: Star mass too high! Clipping to 1.25 M_sun")
+        Mstar = 1.25
+    
     Lstar = mors.Value(Mstar, tstar, 'Lbol')  # Units of L_sun
     Lstar *= L_sun # Convert to W
 
@@ -135,10 +142,12 @@ def ModernSpectrumLoad(dirs: dict, COUPLER_options: dict):
 
     binwidth_wl = spec_wl[1:] - spec_wl[0:-1]
 
-    print("Modern spectrum statistics:")
-    print("\t Flux \n\t\t (min, max) = (%1.2e, %1.2e) erg s-1 cm-2 nm-1" % (np.amin(spec_fl),np.amax(spec_fl)))
-    print("\t Wavelength \n\t\t (min, max) = (%1.2e, %1.2e) nm" % (np.amin(spec_wl),np.amax(spec_wl)))
-    print("\t Bin width \n\t\t (min, median, max) = (%1.2e, %1.2e, %1.2e) nm" % (np.amin(binwidth_wl),np.median(binwidth_wl),np.amax(binwidth_wl)))
+    if debug:
+        print("Modern spectrum statistics:")
+        print("\t Flux \n\t\t (min, max) = (%1.2e, %1.2e) erg s-1 cm-2 nm-1" % (np.amin(spec_fl),np.amax(spec_fl)))
+        print("\t Wavelength \n\t\t (min, max) = (%1.2e, %1.2e) nm" % (np.amin(spec_wl),np.amax(spec_wl)))
+        print("\t Bin width \n\t\t (min, median, max) = (%1.2e, %1.2e, %1.2e) nm" % (np.amin(binwidth_wl),np.median(binwidth_wl),np.amax(binwidth_wl)))
+        
     
     return spec_wl, spec_fl
 
@@ -453,7 +462,7 @@ def BaraffeSpectrumCalc(time_star: float, spec_fl: list, COUPLER_options: dict, 
 
     return hspec_fl, hspec_fl_surf
 
-def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, dirs):
+def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, dirs, write_surf=True, write_1AU=True):
     """Write historical spectrum to files.
 
     Parameters
@@ -473,15 +482,17 @@ def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, dirs):
 
     tstar = time_dict['star'] * 1.0e-6  # yr -> Myr
 
-    X = np.array([wl,sflux]).T
-    outname1 = dirs['output'] + "/%d.sflux" % time_dict['planet']
-    header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (1 AU) at t_star = %d Myr ' % tstar
-    np.savetxt(outname1, X, header=header,comments='',fmt='%1.4e',delimiter='\t')
+    if write_1AU:
+        X = np.array([wl,sflux]).T
+        outname1 = dirs['output'] + "/%d.sflux" % time_dict['planet']
+        header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (1 AU) at t_star = %d Myr ' % tstar
+        np.savetxt(outname1, X, header=header,comments='',fmt='%1.4e',delimiter='\t')
 
-    Y = np.array([wl,sfluxsurf]).T
-    outname2 = dirs['output'] + "/%d.sfluxsurf" % time_dict['planet']
-    header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (surface) at t_star = %d Myr ' % tstar
-    np.savetxt(outname2, Y, header=header,comments='',fmt='%1.4e',delimiter='\t')
+    if write_surf:
+        Y = np.array([wl,sfluxsurf]).T
+        outname2 = dirs['output'] + "/%d.sfluxsurf" % time_dict['planet']
+        header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (surface) at t_star = %d Myr ' % tstar
+        np.savetxt(outname2, Y, header=header,comments='',fmt='%1.4e',delimiter='\t')
 
 
 # End of file

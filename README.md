@@ -26,7 +26,8 @@ https://proteus-code.readthedocs.io/en/latest/contact.html
 * `Mors/`           - Submodule Mors
 * `utils/`          – Scripts used for running PROTEUS and its submodules
 * `plot/`           - Plotting scripts
-* `output/`         – Output folder
+* `output/`         – Output folder (e.g. planet evolution results, plots)
+* `input/`          - Input folder (e.g. stellar spectra, example configs)
 * `docs/`			– Documentation source
 * `pyproject.toml`	– Documentation file
 
