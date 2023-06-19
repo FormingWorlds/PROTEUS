@@ -21,10 +21,8 @@ Read access to the following repositories:
         * Main development URL: https://code.metoffice.gov.uk/trac/socrates
         
         * Contact: james.manners@metoffice.gov.uk
-        
-        * Obtain the SOCRATES source code from: https://simplex.giss.nasa.gov/gcm/ROCKE-3D/ (Latest released version of SOCRATES code)
-        
-        * Latest tested version: *socrates_2211.tar.xz*
+                
+        * Latest tested version: *socrates_2306_trunk_r1403.tar.xz*
 
     * Interior dynamics: **SPIDER** 
         
