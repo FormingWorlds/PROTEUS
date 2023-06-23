@@ -9,7 +9,7 @@ from utils.spider import *
 def plot_global( output_dir ):
 
     # Plot settings
-    lw         = 1.5
+    lw         = 2.0
     fscale     = 1.1
     fsize      = 18
     fs_title   = 18
@@ -87,7 +87,7 @@ def plot_global( output_dir ):
 
 
     xlabel = r'Time, $t$ (yr)'
-    xlim = (1e1,1e7)
+    xlim = (1e1,max(1e7,np.amax(df_int["Time"])))
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)
@@ -114,7 +114,7 @@ def plot_global( output_dir ):
     ##########
     # figure a
     ##########
-    title = r'Heat flux to space'  
+    title = r'Net heat flux to space'  
     # Use helpfile information
     # time = df_atm["Time"].tolist()
     # Fatm1 = df_atm["Heat_flux"].tolist()
@@ -137,7 +137,7 @@ def plot_global( output_dir ):
     ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax0.set_xlim( *xlim )
-    # ax0.set_ylim(top=np.amax(df_atm["Heat_flux"])*1.1, bottom=np.amin(df_atm["Heat_flux"])*0.9)
+    ax0.set_ylim(top=np.amax(df_atm["F_atm"])*1.1, bottom=-100)
     ax0.set_yscale('symlog')
     ax0.set_xscale('symlog')
     ax0.set_xticklabels([])
@@ -194,12 +194,14 @@ def plot_global( output_dir ):
     # ax2.plot( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
 
     ax2.set_xscale("symlog", linthresh=10)
+    ax2.set_ylim([-0.1,1.1])
+    ax2.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
     ax2.set_xlim( *xlim )
     ax2.set_xlabel(xlabel, fontsize=label_fs)
     ax2.set_ylabel(r'Planet fraction', fontsize=label_fs)
     ax2.yaxis.set_label_coords(xcoord_l,ycoord_l)
     handles, labels = ax2.get_legend_handles_labels()
-    ax2.legend(handles, labels, ncol=1, loc=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
+    ax2.legend(handles, labels, ncol=1, loc='center left', frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
 
     title = r'Mantle evolution'
     ax2.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
@@ -324,6 +326,8 @@ def plot_global( output_dir ):
     ax4.set_xticklabels([])
     ax4.yaxis.set_label_position("right")
     ax4.yaxis.set_label_coords(xcoord_r,ycoord_r)
+    ax4.set_ylim([-0.1,1.1])
+    ax4.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
     ax4.set_xlim( *xlim )
     # ax4.set_ylim( 0, 1 )
     handles, labels = ax4.get_legend_handles_labels()
@@ -340,7 +344,8 @@ def plot_global( output_dir ):
     ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax5.set_xlim( *xlim )
     ax5.set_xscale("symlog", linthresh=10)
-    # ax5.set_ylim( 0, 1 )
+    ax5.set_ylim([-0.1,1.1])
+    ax5.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
     ax5.yaxis.tick_right()
     ax5.yaxis.set_label_coords(xcoord_r,ycoord_r)
     ax5.yaxis.set_label_position("right")
@@ -360,7 +365,6 @@ def main():
     # Usage: $ python plot_atmosphere.py -t 0,718259
     parser = argparse.ArgumentParser(description='COUPLER plotting script')
     parser.add_argument('-odir', '--output_dir', type=str, help='Full path to output directory');
-    parser.add_argument('-t', '--times', type=str, help='Comma-separated (no spaces) list of times');
     args = parser.parse_args()
 
     # Define output directory for plots

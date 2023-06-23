@@ -205,7 +205,8 @@ def main():
         PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs)
 
         # Plot conditions throughout run for on-the-fly analysis
-        UpdatePlots( dirs["output"], COUPLER_options, time_dict )
+        if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0):
+            UpdatePlots( dirs["output"] )
         
         # Adjust iteration counters + total time 
         loop_counter["atm"]         = 0
@@ -226,7 +227,7 @@ def main():
         ############### / LOOP ITERATION MANAGEMENT
 
     # Plot conditions at the end
-    UpdatePlots( dirs["output"], COUPLER_options, time_dict )
+    UpdatePlots( dirs["output"] )
 
     print("\n\n===> PROTEUS run finished successfully <===")
     print("     "+datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))

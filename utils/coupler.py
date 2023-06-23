@@ -445,42 +445,40 @@ def ReadInitFile( init_file_passed , verbose=False):
 
 
 # Plot conditions throughout run for on-the-fly analysis
-def UpdatePlots( output_dir, COUPLER_options, time_dict ):
+def UpdatePlots( output_dir ):
 
-    if (COUPLER_options["plot_onthefly"] == 1) or (time_dict["planet"] > time_dict["target"]):
+    PrintSeparator()
+    print("Updating plots...")
+    PrintSeparator()
+    output_times = get_all_output_times( output_dir )
 
-        PrintSeparator()
-        print("Updating plots...")
-        PrintSeparator()
-        output_times = get_all_output_times( output_dir )
+    num_snapshots = 10
 
-        num_snapshots = 10
+    if len(output_times) < num_snapshots:
+        plot_times = output_times
+    else:
+        plot_times = []
+        tmin = max(1,np.amin(output_times))
+        tmax = max(tmin+1, np.amax(output_times))
+        samps = np.logspace(np.log10(tmin),np.log10(tmax),num_snapshots)
+        for s in samps:
+            v,_ = find_nearest(output_times,s)
+            v = int(v)
+            if v not in plot_times:
+                plot_times.append(v)
+        print("Snapshots to plot:", plot_times)
 
-        if len(output_times) < num_snapshots:
-            plot_times = output_times
-        else:
-            plot_times = []
-            tmin = max(1,np.amin(output_times))
-            tmax = max(tmin+1, np.amax(output_times))
-            samps = np.logspace(np.log10(tmin),np.log10(tmax),num_snapshots)
-            for s in samps:
-                v,_ = find_nearest(output_times,s)
-                v = int(v)
-                if v not in plot_times:
-                    plot_times.append(v)
-            print("Snapshots to plot:", plot_times)
+    # Global properties for all timesteps
+    if len(output_times) > 1:
+        cpl_global.plot_global(output_dir)   
 
-        # Global properties for all timesteps
-        if len(output_times) > 1:
-            cpl_global.plot_global(output_dir)   
+    # Specific timesteps for paper plots
+    cpl_interior.plot_interior(output_dir, plot_times)     
+    cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
+    cpl_stacked.plot_stacked(output_dir, plot_times)
 
-        # Specific timesteps for paper plots
-        cpl_interior.plot_interior(output_dir, plot_times)     
-        cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
-        cpl_stacked.plot_stacked(output_dir, plot_times)
-
-        # Close all figures
-        plt.close()
+    # Close all figures
+    plt.close()
 
 def SetDirectories(COUPLER_options: dict):
     # Set directories dictionary

@@ -11,10 +11,15 @@ import os, glob, shutil, subprocess, time, pathlib
 from datetime import datetime
 import numpy.random as nrand
 import logging
+import multiprocessing as mp
 import pandas as pd
 
 # Import PROTEUS stuff
 from utils.coupler import *
+from utils.plot import offchem_read_year
+from plot.cpl_offchem_species import *
+from plot.cpl_offchem_time import *
+from plot.cpl_offchem_year import *
 
 # ------------------------------------------------------------------------------------------------
 
@@ -45,18 +50,21 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
     Returns
     ----------
         success : bool
-            Did everything run okay?
+            Did everything dispatch okay?
     """
 
-    success = True
+    success = True                  # Flag for if dispatch worked
+    mixing_ratio_floor = 1e-10      # Minimum mixing ratio (at all)
+    mixing_ratio_fixed = 8e-2       # Species with mixing ratio greater than this value have fixed abundances at the surface
 
-    mixing_ratio_floor = 1e-10
 
     # Copy template config file
     shutil.copyfile(dirs["utils"]+"/vulcan_offline_template.py",dirs["vulcan"]+"vulcan_cfg.py")
 
     # Make results folder for this run
     this_results = dirs["output"]+"offchem/%d/"%year
+    if os.path.exists(this_results):
+        raise Exception("Offline chemistry already running for this year!")
     os.makedirs(this_results)
 
     # Read atm object
@@ -86,7 +94,7 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
 
             this_mx = max(float(v_mx[v]),mixing_ratio_floor)  # Mixing ratio floor to prevent issues with VULCAN
 
-            if (this_mx > 1e-1):
+            if (this_mx > mixing_ratio_fixed):
                 fix_bb_mr += " '%s' : %1.5e ," % (v,this_mx)
 
         fix_bb_mr = fix_bb_mr[:-1]+" }"
@@ -103,6 +111,7 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
 
             if (this_mx > bkgrnd_v) and (v in ["N2","H2","CO2","H2O","O2"]): # Work out which of these are viable background gases
                 bkgrnd_s = v
+                bkgrnd_v = this_mx
             
         const_mix = const_mix[:-1]+" }"
         vcf.write("const_mix = %s \n" % str(const_mix))
@@ -156,7 +165,7 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
     os.chdir(dirs["coupler"])
 
     # Kill these screens with the command below (from: https://stackoverflow.com/a/8987063)
-    # Run: `pkill -f [datetime]_offchem_`
+    # Run: `pkill -f [identifier]_offchem_`
 
     return success
 
@@ -167,8 +176,11 @@ if __name__ == '__main__':
     print("Started main process")
 
     # Parameters
-    samples =   40                  # How many samples to use from /output/
-    cfgfile =   "init_coupler.cfg"  # Config file used for PROTEUS
+    samples =   50                  # How many samples to use from /output/
+    threads =   20                  # How many threads to use
+    cfgfile =   "output/earth/init_coupler.cfg"  # Config file used for PROTEUS
+    mkfuncs =   False               # Compile reaction functions again?
+    swidth =    140.0               # Characteristic sampling width
 
     # Read in PROTEUS config file
     COUPLER_options, time_dict = ReadInitFile( cfgfile )
@@ -188,7 +200,7 @@ if __name__ == '__main__':
         raise Exception("Could not make directory '%s'" % offchem_dir)
 
     # Copy cfg file for posterity
-    shutil.copyfile(cfgfile, offchem_dir+cfgfile)
+    shutil.copy2(cfgfile, offchem_dir)
 
     # Set up logging
     logfile = offchem_dir+"parent.log"
@@ -214,7 +226,7 @@ if __name__ == '__main__':
     logging.info(" ")
     logging.info("This program will generate several screen sessions")
     logging.info("To kill all of them, run `pkill -f %d_offchem_`" % now)
-    logging.info("Take care to avoid orphaned instances using `screen -ls`")
+    logging.info("Take care to avoid orphaned instances by using `screen -ls`")
     logging.info(" ")
 
     # Read helpfile
@@ -241,8 +253,10 @@ if __name__ == '__main__':
         raise Exception("Too few samples requested! (Less than zero)") 
     if samples > len(years_all):
         raise Exception("Too many samples requested! (Duplicates expected)") 
-    if samples > 60:
-        raise Exception("Too many samples requested! (Child process count is capped)") 
+    if threads < 1:
+        raise Exception("Too few threads requested! (Less than one)")
+    if threads > 40:
+        raise Exception("Too many threads requested! (Count is capped at 40)")
     
     logging.info("Choosing sample years...")
     years = [ ]
@@ -256,7 +270,7 @@ if __name__ == '__main__':
     # Draw other runs randomly from a distribution. This is set-up to sample
     # the end of the run more densely than the start, because the evolution at 
     # the start isn't so interesting compared to the end.
-    sample_itermax = 1000*samples
+    sample_itermax = 5000*samples
     sample_iter = 0
     while (len(years) < samples): 
 
@@ -264,7 +278,7 @@ if __name__ == '__main__':
         if sample_iter > sample_itermax:
             raise Exception("Maximum iterations reached in selecting sample years!")
 
-        sample = np.abs(nrand.laplace(loc=ylast,scale=ylast*100.0))
+        sample = np.abs(nrand.laplace(loc=ylast,scale=ylast*swidth))
         if (sample <= yfirst) or (sample >= ylast):
             continue  # Try again
 
@@ -276,45 +290,139 @@ if __name__ == '__main__':
         years.append(ynear)
 
     years = sorted(set(years))  # Ensure that there are no duplicates and sort ascending
+    samples = len(years)
     logging.info("Years selected: " +str(years))
 
     # Start processes
     logging.info(" ")
-    logging.info("Starting %d processses..." % samples)  # Run them in reverse order; later ones are more likely to fail
-    for i,y in enumerate(years[::-1]):
-        if (i == 0):
-            time.sleep(3.0)   # Wait 5 seconds for first process to allow for cancelling
-        elif (i == 1):
-            time.sleep(60.0)  # Wait for chem_funs.py to finish making the network py file
-        else:
-           time.sleep(45.0)  # Wait before starting next process to allow VULCAN to initialise
+    logging.info("Starting process manager (for %d procs) in..." % (samples))
+    for w in range(5,0,-1):
+        logging.info("\t %d seconds" % w)
+        time.sleep(1.0)
 
-        logging.info("\t %03d idx : %08d yrs" % (i,y))
-        this_success = run_once(y, now,bool(i==0),COUPLER_options,helpfile_df)
-        if not this_success:  logging.info("\t    WARNING: could not dispatch this ^ VULCAN instance!")
-        
+    # Track statuses
+    # 0: queued
+    # 1: running
+    # 2: done
+    # 3: done (no output)
+    status = np.zeros((samples))
+    done = False                # All done?
 
-    logging.info("Completed VULCAN processes...")
-    running = [1]
-    while len(running) > 0:
-        running = []
+    # Dispatch and track processes
+    runtime_itermax = int(1e6)  # Max iters
+    runtime_iter = 0            # Current iters
+    runtime_sleep = 15          # Sleep per iter
+    while (not done) and (runtime_iter < runtime_itermax):
+
+        # Sleep if not first
+        if runtime_iter > 0:
+            time.sleep(runtime_sleep)  # Wait a while before checking again
+
+        # Update iter counter
+        runtime_iter += 1
+
+        # Update statuses
         screen_ls = subprocess.run(['screen','-ls'], stdout=subprocess.PIPE)
         screen_out = str(screen_ls.stdout.decode("utf-8"))
-        for y in years:
-            if str("offchem_%dx"%y) in screen_out:
-                running.append(y)
-        logging.info("\t %03d / %03d" % (len(years)-len(running),len(years)))
+        count_threads = 0
+        for i in range(samples):
+            y = years[i]
+            running = bool(str("%d_offchem_%dx"%(now,y)) in screen_out)
+            
+            if running:
+                count_threads += 1
+            
+            # Currently tagged as running, but check if done
+            if (not running) and (status[i] == 1):
+                to_copy = dirs["vulcan"]+"/output/%d_offchem_%d.vul" % (now,y)
+                if os.path.exists(to_copy):
+                    status[i] = 2
+                    shutil.copyfile(to_copy, dirs["output"]+"/offchem/%d/output.vul"%y)
+                else:
+                    status[i] = 3
+                    logging.info("WARNING: Output file missing for year = %d" % y)
 
-        # Copy output files
-        for y in years:
-            to_copy = dirs["vulcan"]+"/output/%d_offchem_%d.vul" % (now,y)
-            if os.path.exists(to_copy):
-                shutil.copyfile(to_copy, dirs["output"]+"/offchem/%d/output.vul"%y)
+        # How many are queued?
+        count_queued = np.count_nonzero(status == 0)
 
-        time.sleep(20.0)  # Wait a while before checking again
+        # How many are running?
+        count_current = np.count_nonzero(status == 1)
+
+        # Check how many have finished/exited
+        count_completed = np.count_nonzero(status > 1)
+
+        # Check how many have been dispatched so far
+        count_dispatched = np.count_nonzero(status > 0)
+
+        # Print status
+        logging.info("Status: %d queued (%.1f%%), %d running (%.1f%%), %d completed (%.1f%%), %d threads active" % (
+                    count_queued, 100.0*count_queued/samples,
+                    count_current, 100.0*count_current/samples,
+                    count_completed, 100.0*count_completed/samples,
+                    count_threads)
+                    )
+
+        # If there's space, dispatch a queued process
+        if count_current < threads:
+
+            # Find a queued process
+            y = -1
+            for i in range(samples):
+                if status[i]==0:
+                    y = years[i]
+                    break
+            
+            # Did we find one?
+            if (y > -1):
+                
+                # Wait for chem_funs.py to finish making the network py file
+                if mkfuncs and (count_dispatched == 1):
+                    time.sleep(60.0)  
+
+                # Run new process
+                logging.info("Dispatching job %03d: %08d yrs..." % (i,y))
+                fr = bool( (count_dispatched == 0) and mkfuncs)
+                this_success = run_once(years[i], now, fr,COUPLER_options,helpfile_df)
+                status[i] = 1
+                if this_success:
+                    logging.info("\t (succeeded)")
+                else:
+                    logging.info("\t (failed)")
+
+
+        # Check if all are done
+        done = (status > 1).all()
+        
+    # Check if exited early
+    if not done:
+        logging.info("WARNING: Master process loop terminated early!")
+        logging.info("         This could be because it timed-out or an error occurred.")
 
     time_end = datetime.now()
     logging.info("All processes finished at: "+str(time_end.strftime("%H%M%S")))
-    logging.info("Total runtime: %f minutes "%((time_end-time_start).total_seconds()/60.0))
+    logging.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
+    # Plot
+    logging.info("Plotting results...")
+
+    species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
+    logging.info("\t timeline")
+    plot_offchem_time(dirs["output"],species)
+
+    ls = glob.glob(dirs["output"]+"offchem/*/output.vul")
+    years = [int(f.split("/")[-2]) for f in ls]
+    years_data = [offchem_read_year(dirs["output"],y) for y in years]
+
+    if len(years) == 0:
+        raise Exception('In attempting to make plots, no VULCAN output files were found')
+
+    for yd in years_data:
+        logging.info("\t year = %d" % yd["year"])
+        plot_offchem_year(dirs["output"],yd,species,plot_init_mx=True)
+
+    for s in species:
+        print("\t species = %s" % s)
+        plot_offchem_species(dirs["output"],s)
+
+    # Done
     logging.info("Done!")

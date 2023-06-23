@@ -89,7 +89,7 @@ dt_max = runtime*1e-5
 dt_var_max = 2.
 dt_var_min = 0.5
 count_min = 120
-count_max = int(3E4)
+count_max = int(1E5)
 atol = 1.E-2 # Try decreasing this if the solutions are not stable
 mtol = 1.E-22
 mtol_conv = 1.E-16
@@ -103,7 +103,7 @@ flux_cri = 0.1
 flux_atol = 1. # the tol for actinc flux (# photons cm-2 s-1 nm-1)
 
 # ====== Setting up numerical parameters for Ros2 ODE solver ====== 
-rtol = 0.6              # relative tolerence for adjusting the stepsize 
+rtol = 0.8              # relative tolerence for adjusting the stepsize 
 
 # ====== Setting up for ouwtput and plotting ======
 plot_TP = False
