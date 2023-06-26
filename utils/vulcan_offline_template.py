@@ -129,7 +129,6 @@ diff_esc = []
 atom_list  = ['H', 'O', 'C','N']
 network  = 'thermo/NCHO_full_photo_network.txt' 
 plot_spec = ['H2','H','H2O','OH','CH4','HCN','N2','NH3'] 
-ini_mix = 'const_mix' 
 atm_type = 'file'
 
 # ========== PARAMETERS BELOW ARE INSERTED BY OFFLINE_CHEMISTRY AT RUNTIME ===========

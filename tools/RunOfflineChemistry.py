@@ -28,10 +28,10 @@ def find_nearest_idx(array, value):
     idx = (np.abs(array - value)).argmin()
     return int(idx)
 
-def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_df:pd.DataFrame) -> bool:
+def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_df:pd.DataFrame, ini_method:int) -> bool:
     """Run VULCAN once for a given PROTEUS output year
     
-    Runs VULCAN in a screen instance, so that lots processes may still be
+    Runs VULCAN in a screen instance so that lots processes may still be
     managed individually. Does not copy final output to PROTEUS folder, but 
     leaves it in VULCAN/output for the master thread to copy later on.
 
@@ -47,6 +47,8 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
             PROTEUS options dictionary read from cfg file
         helpfile_df : DataFrame
             Helpfile contents loaded as a Pandas DataFrame object
+        ini_method : int
+            Method used to set abundances (0: const_mix homogeneous, 1: eqm chemistry with derived metallicities)
     Returns
     ----------
         success : bool
@@ -54,9 +56,8 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
     """
 
     success = True                  # Flag for if dispatch worked
-    mixing_ratio_floor = 1e-10      # Minimum mixing ratio (at all)
-    mixing_ratio_fixed = 8e-2       # Species with mixing ratio greater than this value have fixed abundances at the surface
-
+    mixing_ratio_floor = 1e-30      # Minimum mixing ratio (at all)
+    mixing_ratio_fixed = 1e-0       # Species with mixing ratio greater than this value have fixed abundances at the surface
 
     # Copy template config file
     shutil.copyfile(dirs["utils"]+"/vulcan_offline_template.py",dirs["vulcan"]+"vulcan_cfg.py")
@@ -88,8 +89,42 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
         vcf.write("P_b = %1.5e \n" % float(p_bot * 10.0))  # pressure at the bottom (dyne/cm^2)
         vcf.write("P_t = %1.5e \n" % float(p_top * 10.0))  # pressure at the top (dyne/cm^2)
 
+        # Set initial abundances using selected method
+        # Constant mixing ratios
+        if ini_method == 0: 
+            const_mix = "{"
+            for v in volatile_species:
+                this_mx = max(float(v_mx[v]),mixing_ratio_floor)     
+                const_mix += " '%s' : %1.5e ," % (v,this_mx)
+            const_mix = const_mix[:-1]+" }"
+            vcf.write("const_mix = %s \n" % str(const_mix))
+            vcf.write("ini_mix = 'const_mix' \n")
+
+        # Eqm chemistry
+        elif (ini_method == 1):
+
+            # Work out metallicities
+            tot = {}
+            for e in element_list:
+                tot[e] = 0
+            for v in volatile_species:
+                this_mx = max(float(v_mx[v]),mixing_ratio_floor)    
+                elems = mol_to_ele(v)
+                for e in elems.keys():
+                    tot[e] += (elems[e]*this_mx)
+            for e in tot.keys():
+                per = tot[e]/tot['H']
+                vcf.write("%s_H = %1.8e \n" % (e,per))
+
+            vcf.write("fastchem_met_scale = 1e-60 \n")  # Try to remove elements not set by method above
+            vcf.write("use_solar = False \n")
+            vcf.write("ini_mix = 'EQ' \n")
+            vcf.write("use_solar = False \n")
+        else:
+            raise Exception("ini_method = %d is invalid!" % ini_method)
+
         # Bottom boundary condition
-        fix_bb_mr = "{"
+        fix_bb_mr = "{ "
         for v in volatile_species:
 
             this_mx = max(float(v_mx[v]),mixing_ratio_floor)  # Mixing ratio floor to prevent issues with VULCAN
@@ -100,23 +135,15 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
         fix_bb_mr = fix_bb_mr[:-1]+" }"
         vcf.write("use_fix_sp_bot = %s \n" % str(fix_bb_mr))
 
-        # Initial constant mixing ratios
+        # Background component of atmosphere
         bkgrnd_s = "H2"
         bkgrnd_v = -1
-        const_mix = "{"
         for v in volatile_species:
-
-            this_mx = max(float(v_mx[v]),mixing_ratio_floor)     
-            const_mix += " '%s' : %1.5e ," % (v,this_mx)
-
-            if (this_mx > bkgrnd_v) and (v in ["N2","H2","CO2","H2O","O2"]): # Work out which of these are viable background gases
+            this_mx = float(v_mx[v])
+            if (this_mx > bkgrnd_v) and (v in ["N2","H2","CO2","O2"]): # Compare against list of viable background gases
                 bkgrnd_s = v
                 bkgrnd_v = this_mx
-            
-        const_mix = const_mix[:-1]+" }"
-        vcf.write("const_mix = %s \n" % str(const_mix))
 
-        # Background component of atmosphere
         vcf.write("atm_base = '%s' \n" % bkgrnd_s)
 
         # PT profile
@@ -164,23 +191,30 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
     subprocess.run([vulcan_run], shell=True, check=True)
     os.chdir(dirs["coupler"])
 
-    # Kill these screens with the command below (from: https://stackoverflow.com/a/8987063)
-    # Run: `pkill -f [identifier]_offchem_`
-
     return success
 
 
 # ------------------------------------------------------------------------------------------------
 
+# Handle exceptions with logging library, so that they are written to the log file
+# https://stackoverflow.com/a/16993115
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+    else:
+        logging.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+
 if __name__ == '__main__':
     print("Started main process")
 
     # Parameters
-    samples =   50                  # How many samples to use from /output/
-    threads =   20                  # How many threads to use
-    cfgfile =   "output/earth/init_coupler.cfg"  # Config file used for PROTEUS
-    mkfuncs =   False               # Compile reaction functions again?
-    swidth =    140.0               # Characteristic sampling width
+    samples =       50                  # How many samples to use from /output/
+    threads =       20                  # How many threads to use
+    cfgfile =       "output/trap1b/init_coupler.cfg"  # Config file used for PROTEUS
+    mkfuncs =       False               # Compile reaction functions again?
+    swidth =        400.0               # Characteristic sampling width
+    runtime_sleep = 20                  # Sleep seconds per iter
+    ini_method = 1
 
     # Read in PROTEUS config file
     COUPLER_options, time_dict = ReadInitFile( cfgfile )
@@ -215,6 +249,7 @@ if __name__ == '__main__':
         logging.StreamHandler()
         ]
     )
+    sys.excepthook = handle_exception
 
     # Log info to user
     time_start = datetime.now()
@@ -225,7 +260,7 @@ if __name__ == '__main__':
 
     logging.info(" ")
     logging.info("This program will generate several screen sessions")
-    logging.info("To kill all of them, run `pkill -f %d_offchem_`" % now)
+    logging.info("To kill all of them, run `pkill -f %d_offchem_`" % now)   # (from: https://stackoverflow.com/a/8987063)
     logging.info("Take care to avoid orphaned instances by using `screen -ls`")
     logging.info(" ")
 
@@ -270,7 +305,7 @@ if __name__ == '__main__':
     # Draw other runs randomly from a distribution. This is set-up to sample
     # the end of the run more densely than the start, because the evolution at 
     # the start isn't so interesting compared to the end.
-    sample_itermax = 5000*samples
+    sample_itermax = 10000*samples
     sample_iter = 0
     while (len(years) < samples): 
 
@@ -278,7 +313,7 @@ if __name__ == '__main__':
         if sample_iter > sample_itermax:
             raise Exception("Maximum iterations reached in selecting sample years!")
 
-        sample = np.abs(nrand.laplace(loc=ylast,scale=ylast*swidth))
+        sample = np.abs(nrand.laplace(loc=ylast,scale=float(ylast*swidth)))
         if (sample <= yfirst) or (sample >= ylast):
             continue  # Try again
 
@@ -295,7 +330,7 @@ if __name__ == '__main__':
 
     # Start processes
     logging.info(" ")
-    logging.info("Starting process manager (for %d procs) in..." % (samples))
+    logging.info("Starting process manager (%d samples, %d threads) in..." % (samples,threads))
     for w in range(5,0,-1):
         logging.info("\t %d seconds" % w)
         time.sleep(1.0)
@@ -311,7 +346,6 @@ if __name__ == '__main__':
     # Dispatch and track processes
     runtime_itermax = int(1e6)  # Max iters
     runtime_iter = 0            # Current iters
-    runtime_sleep = 15          # Sleep per iter
     while (not done) and (runtime_iter < runtime_itermax):
 
         # Sleep if not first
@@ -337,7 +371,9 @@ if __name__ == '__main__':
                 to_copy = dirs["vulcan"]+"/output/%d_offchem_%d.vul" % (now,y)
                 if os.path.exists(to_copy):
                     status[i] = 2
-                    shutil.copyfile(to_copy, dirs["output"]+"/offchem/%d/output.vul"%y)
+                    shutil.copyfile(to_copy, dirs["output"]+"/offchem/%d/output.vul"%y) # Copy output
+                    for f in glob.glob(dirs["vulcan"]+"output/%d_offchem_%d*"%(now,y)):  # Tidy VULCAN output folder
+                        os.remove(f)
                 else:
                     status[i] = 3
                     logging.info("WARNING: Output file missing for year = %d" % y)
@@ -382,7 +418,7 @@ if __name__ == '__main__':
                 # Run new process
                 logging.info("Dispatching job %03d: %08d yrs..." % (i,y))
                 fr = bool( (count_dispatched == 0) and mkfuncs)
-                this_success = run_once(years[i], now, fr,COUPLER_options,helpfile_df)
+                this_success = run_once(years[i], now, fr,COUPLER_options,helpfile_df,ini_method)
                 status[i] = 1
                 if this_success:
                     logging.info("\t (succeeded)")
@@ -399,30 +435,32 @@ if __name__ == '__main__':
         logging.info("         This could be because it timed-out or an error occurred.")
 
     time_end = datetime.now()
-    logging.info("All processes finished at: "+str(time_end.strftime("%H%M%S")))
+    logging.info("All processes finished at: "+str(time_end.strftime("%Y-%m-%d %H%M%S")))
     logging.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
     # Plot
     logging.info("Plotting results...")
 
+    plot_aeolus = bool(ini_method == 0)
+
     species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
     logging.info("\t timeline")
-    plot_offchem_time(dirs["output"],species)
+    plot_offchem_time(dirs["output"],species,plot_init_mx=plot_aeolus,tmin=1e3)
 
     ls = glob.glob(dirs["output"]+"offchem/*/output.vul")
     years = [int(f.split("/")[-2]) for f in ls]
-    years_data = [offchem_read_year(dirs["output"],y) for y in years]
+    years_data = [offchem_read_year(dirs["output"],y,read_const=plot_aeolus) for y in years]
 
     if len(years) == 0:
         raise Exception('In attempting to make plots, no VULCAN output files were found')
 
     for yd in years_data:
         logging.info("\t year = %d" % yd["year"])
-        plot_offchem_year(dirs["output"],yd,species,plot_init_mx=True)
+        plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_aeolus)
 
     for s in species:
         print("\t species = %s" % s)
-        plot_offchem_species(dirs["output"],s)
+        plot_offchem_species(dirs["output"],s,plot_init_mx=plot_aeolus,tmin=1e3)
 
     # Done
     logging.info("Done!")

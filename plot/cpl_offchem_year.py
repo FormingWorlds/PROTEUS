@@ -85,9 +85,18 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
 if __name__ == '__main__':
     print("Plotting offline chemistry for each year (mixing ratios vs pressure)...")
 
+    if len(sys.argv) == 2:
+        cfg = sys.argv[1]
+    else:
+        cfg = 'init_coupler.cfg' 
+
+
+    plot_aeolus = False
+
+
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options, time_dict = ReadInitFile( 'init_coupler.cfg' )
+    COUPLER_options, time_dict = ReadInitFile( cfg )
 
     # Species to make plots for
     species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4","HCN", "NH3", "N2", "NO"]
@@ -98,7 +107,7 @@ if __name__ == '__main__':
     # Load data
     ls = glob.glob(dirs["output"]+"offchem/*/output.vul")
     years = [int(f.split("/")[-2]) for f in ls]
-    years_data = [offchem_read_year(dirs["output"],y) for y in years]
+    years_data = [offchem_read_year(dirs["output"],y,read_const=plot_aeolus) for y in years]
 
     if len(years) == 0:
         raise Exception('No VULCAN output files found')
@@ -106,6 +115,6 @@ if __name__ == '__main__':
     # Call plotting function
     for yd in years_data:
         print("Year = %d" % yd["year"])
-        plot_offchem_year(dirs["output"],yd,species,plot_init_mx=True)
+        plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_aeolus)
 
     print("Done!")

@@ -11,14 +11,13 @@
 
 from utils.modules_ext import *
 from utils.constants import *
-from utils.plot import find_nearest
+from utils.plot import *
 from utils.helper import natural_sort
 from matplotlib.colors import LinearSegmentedColormap
 
 # fig_ratio = tuple(np.array([5,4])*0.9)
 
-cm_data = np.loadtxt("AEOLUS/plotting_tools/colormaps/bukavu.txt")
-star_cmap = LinearSegmentedColormap.from_list("sci_cmap", cm_data)
+star_cmap = sci_colormaps['batlowK_r']
 
 # Planck function value at stellar surface
 # lam in nm
@@ -128,7 +127,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
 
         fl = flux_t.T[wl_iarr[i]]
         c = star_cmap(1.0*i/N)
-        lbl = "%d"%math.ceil(wl_varr[i])
+        lbl = "%d"%max(1,round(wl_varr[i]))
 
         ax.plot(time_t,fl,color='black',lw=3.0)
         ax.plot(time_t,fl,color=c      ,lw=2.2,label=lbl)
@@ -154,10 +153,15 @@ if __name__ == '__main__':
 
     wl_bins = [1.0, 10.0, 50.0, 100.0, 200.0, 350.0, 500.0, 1000.0, 2000.0]
 
+    if len(sys.argv) == 2:
+        cfg = sys.argv[1]
+    else:
+        cfg = 'init_coupler.cfg' 
+
    
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options, time_dict = ReadInitFile( 'init_coupler.cfg' )
+    COUPLER_options, time_dict = ReadInitFile( cfg )
 
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)

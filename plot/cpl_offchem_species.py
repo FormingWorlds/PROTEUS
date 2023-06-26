@@ -34,7 +34,7 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
 
     ls = glob.glob(output_dir+"/offchem/*/output.vul")
     years = [int(f.split("/")[-2]) for f in ls]
-    years_data = [offchem_read_year(output_dir,y) for y in years]
+    years_data = [offchem_read_year(output_dir,y,read_const=plot_init_mx) for y in years]
 
     if len(years) == 0:
         raise Exception('No VULCAN output files found')
@@ -70,7 +70,7 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
         
 
     norm = mpl.colors.LogNorm(vmin=cb_vmin, vmax=cb_vmax)
-    sm = plt.cm.ScalarMappable(cmap=plt.get_cmap('gnuplot2_r'), norm=norm)
+    sm = plt.cm.ScalarMappable(cmap=sci_colormaps['batlowK_r'], norm=norm)
     sm.set_array([])
     cbar = fig.colorbar(sm, cax=cax, orientation='vertical')  #, ticks=np.linspace(0,2,N), boundaries=np.arange(-0.05,2.1,.1))
     cbar.set_label("Time [yr]") 
@@ -115,9 +115,15 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
 if __name__ == '__main__':
     print("Plotting offline chemistry (species vs pressure)...")
 
+    if len(sys.argv) == 2:
+        cfg = sys.argv[1]
+    else:
+        cfg = 'init_coupler.cfg' 
+
+
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options, time_dict = ReadInitFile( 'init_coupler.cfg' )
+    COUPLER_options, time_dict = ReadInitFile( cfg )
 
     # Species to make plots for
     species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4","HCN", "NH3", "N2", "NO", "O3"]
@@ -128,6 +134,6 @@ if __name__ == '__main__':
     # Call plotting function
     for s in species:
         print("Species = %s" % s)
-        plot_offchem_species(dirs["output"],s)
+        plot_offchem_species(dirs["output"],s,tmin=1e3)
 
     print("Done!")

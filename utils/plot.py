@@ -6,12 +6,9 @@ from utils.constants import *
 from utils.coupler import *
 
 sci_colormaps = {}
-for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
-           'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
-           'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
-           'tokyo', 'turku', 'vik' ]:
-    file = os.path.join(str(pathlib.Path(__file__).parent.absolute())+"/../AEOLUS/plotting_tools/colormaps/", name + '.txt')
-    cm_data = np.loadtxt(file)
+for g in glob.glob(str(pathlib.Path(__file__).parent.absolute())+"/../AEOLUS/plotting_tools/colormaps/*.txt"):
+    cm_data = np.loadtxt(g)
+    name = g.split('/')[-1].split('.')[0]
     sci_colormaps[name]      = LinearSegmentedColormap.from_list(name, cm_data)
     sci_colormaps[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
 
@@ -531,8 +528,8 @@ class FigureData( object ):
 
 
 
-# Function to read PT profile and VULCAN output file and AEOLUS mixing ratios
-def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0):
+# Function to read PT profile and VULCAN output file and AEOLUS mixing ratios (if read_const=True)
+def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0, read_const=False):
 
     year_data = {}  # Dictionary of mixing ratios, pressure, temperature
 
@@ -555,21 +552,22 @@ def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0):
     year_data["temperature"] =  np.array(vul_atm["Tco"])
 
     # Read AEOLUS mixing ratios which were used to initialise VULCAN
-    vol_data_str = None
-    with open(output_dir+"offchem/%d/vulcan_cfg.py" % year_int, "r") as f:
-        lines = f.read().splitlines()
-        for ln in lines:
-            if "const_mix" in ln:
-                vol_data_str = ln.split("=")[1].replace("'",'"')
+    if read_const:
+        vol_data_str = None
+        with open(output_dir+"offchem/%d/vulcan_cfg.py" % year_int, "r") as f:
+            lines = f.read().splitlines()
+            for ln in lines:
+                if "const_mix" in ln:
+                    vol_data_str = ln.split("=")[1].replace("'",'"')
 
-    if vol_data_str == None:
-        raise Exception("Could not parse vulcan cfg file!")
-    
-    vol_data = json.loads(vol_data_str)
-    for vol in vol_data:
-        ae_mx = float(vol_data[vol])
-        if ae_mx > 1e-12:
-            year_data["ae_"+vol] = ae_mx
+        if vol_data_str == None:
+            raise Exception("Could not parse vulcan cfg file!")
+        
+        vol_data = json.loads(vol_data_str)
+        for vol in vol_data:
+            ae_mx = float(vol_data[vol])
+            if ae_mx > 1e-12:
+                year_data["ae_"+vol] = ae_mx
 
     return year_data
 

@@ -5,6 +5,7 @@
 # Import things
 import matplotlib as mpl
 from utils.plot import *
+import sys
 
 
 def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1):
@@ -30,7 +31,7 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1):
 
     ls = glob.glob(output_dir+"/offchem/*/output.vul")
     years = [int(f.split("/")[-2]) for f in ls]
-    years_data = [offchem_read_year(output_dir,y) for y in years]
+    years_data = [offchem_read_year(output_dir,y,read_const=plot_init_mx) for y in years]
 
     if len(years) == 0:
         raise Exception('No VULCAN output files found')
@@ -99,9 +100,14 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1):
 if __name__ == '__main__':
     print("Plotting offline chemistry (mixing ratios vs time)...")
 
+    if len(sys.argv) == 2:
+        cfg = sys.argv[1]
+    else:
+        cfg = 'init_coupler.cfg' 
+
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options, time_dict = ReadInitFile( 'init_coupler.cfg' )
+    COUPLER_options, time_dict = ReadInitFile( cfg )
 
     # Species to plot
     species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
@@ -110,7 +116,7 @@ if __name__ == '__main__':
     dirs = SetDirectories(COUPLER_options)
 
     # Call plotting function
-    plot_offchem_time(dirs["output"],species)
+    plot_offchem_time(dirs["output"],species,tmin=1e3)
 
     print("Done!")
 

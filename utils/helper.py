@@ -31,6 +31,18 @@ def find_nearest(array, value):
     idx     = (np.abs(array - value)).argmin()
     return array[idx], idx
 
+# Return the number of each element within a given molecule, as a dictionary
+def mol_to_ele(mol:str):
+    decomp = re.findall(r'([A-Z][a-z]?)(\d*)', mol)   # https://codereview.stackexchange.com/a/232664
+    elems = {}
+    for ev in decomp:
+        if ev[1] == '':
+            val = 1
+        else:
+            val = int(ev[1])
+        elems[str(ev[0])] = val
+    return elems
+
 
 #====================================================================
 def find_xx_for_yy( xx, yy, yywant ):
