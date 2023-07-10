@@ -3,7 +3,8 @@
 
 from utils.modules_ext import *
 from utils.constants import *
-from utils.coupler import *
+from utils.helper import *
+# from utils.coupler import *
 
 sci_colormaps = {}
 for g in glob.glob(str(pathlib.Path(__file__).parent.absolute())+"/../AEOLUS/plotting_tools/colormaps/*.txt"):

@@ -39,7 +39,7 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
     if len(years) == 0:
         raise Exception('No VULCAN output files found')
 
-    lw = 2
+    lw = 1.3
     alpha = 0.7
 
     fig, (ax0,ax1) = plt.subplots(1,2,sharey=True,figsize=(8,4))
@@ -126,7 +126,9 @@ if __name__ == '__main__':
     COUPLER_options, time_dict = ReadInitFile( cfg )
 
     # Species to make plots for
-    species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4","HCN", "NH3", "N2", "NO", "O3"]
+    species = ["H2", "H2O", "H", "OH", "O3", "O2"
+               "CO2", "CO", "CH4", "C2H2",
+               "HCN", "NH3", "NH2", "N2", "NO"]
 
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)

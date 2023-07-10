@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 
-# Plots stellar flux from `output/` for a set of wavelength bins
-
-# import matplotlib as mpl
-
-# font = {'family' : 'Arial',
-#         'size'   : 11.5}
-
-# mpl.rc('font', **font)
+# Plots stellar flux from output directory for a set of wavelength bins
 
 from utils.modules_ext import *
 from utils.constants import *
@@ -15,9 +8,7 @@ from utils.plot import *
 from utils.helper import natural_sort
 from matplotlib.colors import LinearSegmentedColormap
 
-# fig_ratio = tuple(np.array([5,4])*0.9)
-
-star_cmap = sci_colormaps['batlowK_r']
+star_cmap = sci_colormaps['oleron']
 
 # Planck function value at stellar surface
 # lam in nm
@@ -33,7 +24,7 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
+def plot_sflux_cross(output_dir, wl_targets, surface=False):
     """Plots stellar flux vs time, for a set of wavelengths.
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -45,12 +36,8 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
             Directory for both reading from and saving to.
         wl_targets : list
             List of wavelengths to plot [nm]
-
         surface : bool
             Use fluxes at surface? If not, will use fluxes at 1 AU.
-        t_starinit : float
-            Age of star (in Myr) when time = 0
-
     """ 
 
     mpl.use('Agg')
@@ -82,7 +69,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
         flux = X[1]
 
         # Save data
-        time_t.append(time + t_starinit * 1.e6)
+        time_t.append(time)
         wave_t.append(wave)
         flux_t.append(flux)
 
@@ -91,10 +78,8 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
     flux_t = np.array(flux_t)
 
     # Create figure
-    # fig,ax = plt.subplots(1,1,figsize=fig_ratio)
     fig,ax = plt.subplots(1,1)
 
-    # Colorbar
     ax.set_yscale("log")
     ax.set_ylabel("Flux [erg s$^{-1}$ cm$^{-2}$ nm$^{-1}$]")
 
@@ -129,13 +114,13 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
         c = star_cmap(1.0*i/N)
         lbl = "%d"%max(1,round(wl_varr[i]))
 
-        ax.plot(time_t,fl,color='black',lw=3.0)
-        ax.plot(time_t,fl,color=c      ,lw=2.2,label=lbl)
+        ax.plot(time_t,fl,color='black',lw=3.5)
+        ax.plot(time_t,fl,color=c      ,lw=2.8,label=lbl)
 
         # Plot modern values
         if not surface:
-            ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='>',color='k',s=35, zorder=3)
-            ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='>',color=c,  s=29, zorder=4)
+            ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='o',color='k',s=40, zorder=3)
+            ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='o',color=c,  s=34, zorder=4)
 
     leg = ax.legend(title="$\lambda$ [nm]", loc='center left',bbox_to_anchor=(1.02, 0.5))
     for legobj in leg.legendHandles:
@@ -151,7 +136,7 @@ if __name__ == '__main__':
 
     print("Plotting stellar flux over time (bins)...")
 
-    wl_bins = [1.0, 10.0, 50.0, 100.0, 200.0, 350.0, 500.0, 1000.0, 2000.0]
+    wl_bins = [1.0, 12.0, 50.0, 100.0, 200.0, 400.0, 500.0, 2000.0]
 
     if len(sys.argv) == 2:
         cfg = sys.argv[1]

@@ -23,7 +23,7 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux(output_dir, wl_max = 6000.0, surface=False, t_starinit=0.0):
+def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
     """Plots stellar flux vs time for all wavelengths
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -38,9 +38,6 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False, t_starinit=0.0):
             Upper limit of wavelength axis [nm]
         surface : bool
             Use fluxes at surface? If not, will use fluxes at 1 AU.
-        t_starinit : float
-            Age of star (in Myr) when time = 0
-
 
     """ 
 
@@ -86,7 +83,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False, t_starinit=0.0):
         flux = X[1]
 
         # Save data
-        time_t.append(time * 1.e-6 + t_starinit)
+        time_t.append(time * 1.e-6)
         wave_t.append(wave)
         flux_t.append(flux)
 
@@ -157,10 +154,15 @@ if __name__ == '__main__':
 
     print("Plotting stellar flux over time (colorbar)...")
 
+    if len(sys.argv) == 2:
+        cfg = sys.argv[1]
+    else:
+        cfg = 'init_coupler.cfg' 
+
     from utils.coupler import ReadInitFile, SetDirectories
 
     # Read in COUPLER input file
-    COUPLER_options, time_dict = ReadInitFile( 'init_coupler.cfg' )
+    COUPLER_options, time_dict = ReadInitFile( cfg )
 
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)

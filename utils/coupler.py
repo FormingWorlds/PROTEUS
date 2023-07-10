@@ -10,6 +10,8 @@ import plot.cpl_atmosphere as cpl_atmosphere
 import plot.cpl_global as cpl_global
 import plot.cpl_stacked as cpl_stacked
 import plot.cpl_interior as cpl_interior
+import plot.cpl_sflux as cpl_sflux
+import plot.cpl_sflux_cross as cpl_sflux_cross
 
 # Handle optional command line arguments for volatiles
 # Optional arguments: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
@@ -444,8 +446,19 @@ def ReadInitFile( init_file_passed , verbose=False):
     return COUPLER_options, time_dict
 
 
-# Plot conditions throughout run for on-the-fly analysis
-def UpdatePlots( output_dir ):
+#
+def UpdatePlots( output_dir, end=False ):
+    """Update plots during runtime for analysis
+    
+    Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
+
+    Parameters
+    ----------
+        output_dir : str
+            Output directory containing simulation information
+        end : bool
+            Is this function being called at the end of the simulation?
+    """
 
     PrintSeparator()
     print("Updating plots...")
@@ -476,6 +489,11 @@ def UpdatePlots( output_dir ):
     cpl_interior.plot_interior(output_dir, plot_times)     
     cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
     cpl_stacked.plot_stacked(output_dir, plot_times)
+
+    # Include stellar evolution?
+    if end:
+        cpl_sflux.plot_sflux(output_dir)
+        cpl_sflux_cross.plot_sflux_cross(output_dir)
 
     # Close all figures
     plt.close()

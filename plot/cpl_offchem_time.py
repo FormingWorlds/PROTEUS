@@ -5,15 +5,17 @@
 # Import things
 import matplotlib as mpl
 from utils.plot import *
+from utils.helper import find_nearest
 import sys
 
 
-def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1):
-    """Plot evolution of chemistry according to offline VULCAN output
+def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=None):
+    """Plot evolution of chemistry according to offline VULCAN output.
     
     Reads-in the data from output_dir for a set of provided species. Can also
     include AEOLUS/SPIDER mixing ratios as dashed lines, which were used to 
-    initialise each VULCAN run.
+    initialise each VULCAN run. Mixing ratios are averaged over the provided 
+    pressure range.
 
     Parameters
     ----------
@@ -21,6 +23,8 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1):
             Output directory that was specified in the PROTEUS cfg file
         species : list
             List of species to plot
+        prange : list(2) or float
+            Minimum and maximum pressures (bar) to average over. If None, then whole column is used. If float, then single layer is used.
         plot_init_mx : bool
             Include initial mixing ratios for each VULCAN run in plot?
         tmin : float
@@ -43,9 +47,23 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1):
     ax.set_ylabel("Mean mixing ratio")
     ax.set_yscale("log")
     ax.set_xlabel("Time")
-    ax.set_title("Evolution of mean mixing ratio over time")
     ax.set_xlabel("Time [yr]")
     ax.set_xscale("log")
+    title_str = "Mixing ratio versus time "
+
+    prange_mode = -1
+    if prange == None:
+        prange_mode = 0
+        title_str += "(whole column)"
+    elif type(prange) == float:
+        prange_mode = 1
+        title_str += str("(p ≈ %1.1e bar)" % prange)
+    elif len(prange) == 2:
+        prange_mode = 2
+        title_str += str("(p ≈ [%1.1e,%1.1e] bar)" % (prange[0],prange[1]))
+    else:
+        raise Exception("Error parsing value for parameter 'prange': " + str(prange))
+
 
     for i,sp in enumerate(species):
 
@@ -60,11 +78,29 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1):
         mx_vul =    []
         mx_aeo =    []
 
+
         for yd in years_data:
             times.append(yd["year"])
 
             clean_mx = np.nan_to_num(yd["mx_"+sp])
-            mean_mx = np.mean(clean_mx)              # Need to think about a better way of doing this
+
+            # Crop to pressure range
+            if prange_mode == 0:
+                mean_mx = np.mean(clean_mx)
+            elif prange_mode == 1:
+                _,vi = find_nearest(yd["pressure"],prange)
+                mean_mx = clean_mx[vi]
+            elif prange_mode == 2:
+                vmin,vimin = find_nearest(yd["pressure"],prange[0])
+                vmax,vimax = find_nearest(yd["pressure"],prange[1])
+                if vimin == vimax:
+                    raise Exception("Upper and lower bound of 'prange' are too close!")
+                if vmin > vmax:
+                    vimin,vimax = vimax,vimin
+                    vmin,vmax = vmax,vmin
+                mean_mx = np.mean(clean_mx[vimin:vimax])
+
+            mean_mx = np.mean(clean_mx)           
             mx_vul.append(float(mean_mx))
 
         ax.plot(times,mx_vul,color='black',lw=lw+0.4)
@@ -79,7 +115,9 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1):
 
                 ax.plot(times,mx_aeo,color=color,linestyle='--',lw=lw)
 
+    title_str += str(", %d samples" % len(years_data))
 
+    ax.set_title(title_str)
     ax.legend(loc="lower left",ncol=6)
     ax.set_ylim([1e-10,1.5])
 
@@ -116,7 +154,8 @@ if __name__ == '__main__':
     dirs = SetDirectories(COUPLER_options)
 
     # Call plotting function
-    plot_offchem_time(dirs["output"],species,tmin=1e3)
+    prange = 1e-3
+    plot_offchem_time(dirs["output"],species,tmin=1e3,prange=prange)
 
     print("Done!")
 

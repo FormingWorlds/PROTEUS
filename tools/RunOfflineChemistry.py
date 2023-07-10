@@ -56,7 +56,7 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
     """
 
     success = True                  # Flag for if dispatch worked
-    mixing_ratio_floor = 1e-30      # Minimum mixing ratio (at all)
+    mixing_ratio_floor = 1e-50      # Minimum mixing ratio (at all)
     mixing_ratio_fixed = 1e-0       # Species with mixing ratio greater than this value have fixed abundances at the surface
 
     # Copy template config file
@@ -194,8 +194,6 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
     return success
 
 
-# ------------------------------------------------------------------------------------------------
-
 # Handle exceptions with logging library, so that they are written to the log file
 # https://stackoverflow.com/a/16993115
 def handle_exception(exc_type, exc_value, exc_traceback):
@@ -204,17 +202,19 @@ def handle_exception(exc_type, exc_value, exc_traceback):
     else:
         logging.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
 
+
 if __name__ == '__main__':
     print("Started main process")
 
     # Parameters
-    samples =       50                  # How many samples to use from /output/
-    threads =       20                  # How many threads to use
     cfgfile =       "output/trap1b/init_coupler.cfg"  # Config file used for PROTEUS
+    samples =       -1                  # How many samples to use from /output/ (set to -1 if all are requested)
+    threads =       45                  # How many threads to use
     mkfuncs =       False               # Compile reaction functions again?
-    swidth =        400.0               # Characteristic sampling width
-    runtime_sleep = 20                  # Sleep seconds per iter
-    ini_method = 1
+    s_width =       1e5                 # Width of sampling distribution [yr]
+    s_centre =      3e4                 # Centre of sampling distribution [yr]
+    runtime_sleep = 30                  # Sleep seconds per iter
+    ini_method =    1                   # Method used to init VULCAN abundances
 
     # Read in PROTEUS config file
     COUPLER_options, time_dict = ReadInitFile( cfgfile )
@@ -283,6 +283,10 @@ if __name__ == '__main__':
         if y in pkl_years: 
             years_all.append(y)
 
+    # All requested
+    if samples == -1:
+        samples = len(years_all)
+
     # Select samples...
     if samples < 1:
         raise Exception("Too few samples requested! (Less than zero)") 
@@ -290,10 +294,10 @@ if __name__ == '__main__':
         raise Exception("Too many samples requested! (Duplicates expected)") 
     if threads < 1:
         raise Exception("Too few threads requested! (Less than one)")
-    if threads > 40:
+    if threads > 62:
         raise Exception("Too many threads requested! (Count is capped at 40)")
     
-    logging.info("Choosing sample years...")
+    logging.info("Choosing sample years... (May take a while in some cases)")
     years = [ ]
     yfirst = years_all[0]
     ylast = years_all[-1]
@@ -302,27 +306,35 @@ if __name__ == '__main__':
     if samples >= 2:
         years.append(ylast) # Include last run
 
-    # Draw other runs randomly from a distribution. This is set-up to sample
-    # the end of the run more densely than the start, because the evolution at 
-    # the start isn't so interesting compared to the end.
-    sample_itermax = 10000*samples
-    sample_iter = 0
-    while (len(years) < samples): 
+    # Draw samples
+    if len(years_all) == samples:
+        # If number of samples = number of data points, don't need to use sampling method
+        years = years_all
+    else:
+        # Otherwise:
+        # Draw other runs randomly from a distribution. This is set-up to sample
+        # the end of the run more densely than the start, because the evolution at 
+        # the start isn't so interesting compared to the end.
+        sample_itermax = 30000*samples
+        sample_iter = 0
+        while (len(years) < samples): 
 
-        sample_iter += 1
-        if sample_iter > sample_itermax:
-            raise Exception("Maximum iterations reached in selecting sample years!")
+            sample_iter += 1
+            if sample_iter > sample_itermax:
+                raise Exception("Maximum iterations reached in selecting sample years!")
 
-        sample = np.abs(nrand.laplace(loc=ylast,scale=float(ylast*swidth)))
-        if (sample <= yfirst) or (sample >= ylast):
-            continue  # Try again
+            # sample = np.abs(nrand.laplace(loc=ylast,scale=float(ylast*swidth)))
+            sample = nrand.gumbel(loc=s_centre,scale=s_width)
+            if (sample <= yfirst) or (sample >= ylast):
+                continue  # Try again
 
-        inear = find_nearest_idx(years_all,sample)
-        ynear = years_all[inear]
-        if ynear in years:
-            continue  # Try again
-        
-        years.append(ynear)
+            inear = find_nearest_idx(years_all,sample)
+            ynear = years_all[inear]
+            if ynear in years:
+                continue  # Try again
+            
+            years.append(ynear)
+
 
     years = sorted(set(years))  # Ensure that there are no duplicates and sort ascending
     samples = len(years)
@@ -443,7 +455,7 @@ if __name__ == '__main__':
 
     plot_aeolus = bool(ini_method == 0)
 
-    species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
+    species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO","C2H6","CH3OH"]
     logging.info("\t timeline")
     plot_offchem_time(dirs["output"],species,plot_init_mx=plot_aeolus,tmin=1e3)
 
