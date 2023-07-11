@@ -228,12 +228,12 @@ def MorsCalculateFband(dirs: dict, COUPLER_options: dict):
 
     # Predict modern spectrum based on this and recalculate Fband values to correct for integration error. Without 
     # this, the integration calculates values for F_band in the XUV regime to be ~200x too small compared to what Mors 
-    # predicts. Since we have to assume that Mors is right (otherwise why even use it?) we have to assume that the 
-    # difference is a result of error integrating the observed spectrum error. This can be tested by calculating the 
+    # predicts. Since we assume that Mors is accurate (otherwise why even use it?) we have to assume that the 
+    # difference is a result of error integrating the observed spectrum error. This can be validated by calculating the 
     # bolometric luminosity by integrating the observed spectrum, and comparing it to the known luminosity.
     predict_fl,_ = MorsSpectrumCalc(COUPLER_options['star_age_modern'], spec_wl, spec_fl,COUPLER_options)
 
-    print("Modern spectrum F_band values:")
+    # print("Modern spectrum F_band values:")
     for band in star_bands.keys():
 
         wl_min = star_bands[band][0]
@@ -249,7 +249,7 @@ def MorsCalculateFband(dirs: dict, COUPLER_options: dict):
 
         COUPLER_options["Fband_modern_"+band] = fl_integ
 
-        print('F_%s [%d,%d] = %g' % (band,wl_min,wl_max,fl_integ))
+        # print('F_%s [%d,%d] = %g' % (band,wl_min,wl_max,fl_integ))
 
     return COUPLER_options
 

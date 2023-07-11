@@ -26,7 +26,7 @@ def main():
     args = parse_console_arguments()
 
     # Read in COUPLER input file
-    COUPLER_options, time_dict = ReadInitFile( args.cfg_file , verbose=True )
+    COUPLER_options, time_dict = ReadInitFile( args.cfg_file , verbose=False )
 
     # Set directories dictionary
     utils.constants.dirs = SetDirectories(COUPLER_options)
@@ -67,22 +67,27 @@ def main():
         # Copy config file to output directory, for future reference
         shutil.copyfile( args.cfg_file, dirs["output"]+"/init_coupler.cfg")
 
-        # Work out which volatiles are involved
-        for vol in volatile_species:
-            match COUPLER_options["IC_ATMOSPHERE"]:
-                case 3:
-                    key = vol+"_initial_atmos_pressure"
-                case 1:
-                    key = vol+"_initial_total_abundance"
-            if (key in COUPLER_options):
-                COUPLER_options[vol+"_included"] = (COUPLER_options[key]>0.0)
-                continue
+        # Solve for initial partial pressures of volatiles
+        if (COUPLER_options['initial_pp_method'] == 1):
+            solvepp_dict = solvepp_doit(COUPLER_options)
+            for s in volatile_species:
+                if s in solvepp_vols:
+                    COUPLER_options[s+"_included"] = 1
+                    COUPLER_options[s+"_initial_atmos_pressure"] = solvepp_dict[s]
+                else:
+                    COUPLER_options[s+"_included"] = 0
 
-    # Check that the current configuration is reasonable
-    if not ('H' in element_list):
-        print("Error: The element list must include hydrogen!")
-        print("       Currently the element list includes: ",element_list)
-        exit(1)
+        # Use prescribed partial pressures
+        else:
+            for vol in volatile_species:
+                key = vol+"_initial_atmos_pressure"
+                if (key in COUPLER_options):
+                    COUPLER_options[vol+"_included"] = 0
+                    if (COUPLER_options[key] > 0.0):
+                        COUPLER_options[vol+"_included"] = 1
+                    
+
+
 
     # Store copy of modern spectrum in memory (1 AU)
     StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)

@@ -5,7 +5,7 @@ import os
 import AEOLUS.utils.phys as phys
 
 ### Constants ###
-debug = True
+debug = False
 
 # Astronomical constants
 L_sun           = 3.828e+26             # W, IAU definition

@@ -56,7 +56,7 @@ def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_co
     print("==> RUNTIME INFO <==")
     print(datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     print("LOOP:", loop_counter)
-    print("Time [Myr]:", str(float(time_dict["planet"])/1e6))
+    print("Time [Myr]: %1.1e"%(float(time_dict["planet"])/1e6))
     print("T_s [K]:", runtime_helpfile.iloc[-1]["T_surf"])
     print("Phi_global:", runtime_helpfile.iloc[-1]["Phi_global"])
     print("Helpfile properties:")
@@ -166,7 +166,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
             # Instantiate empty
             runtime_helpfile_new[vol+"_mr"]     = 0.
 
-            if COUPLER_options[vol+"_included"]:
+            if COUPLER_options[vol+"_included"] == 1:
 
                 keys_t = ( 
                             ('atmosphere',vol,'liquid_kg'),
@@ -201,7 +201,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
             runtime_helpfile_new[vol+"_mol_total"]  = 0.
             
             # Only for the ones tracked in SPIDER
-            if COUPLER_options[vol+"_included"]:
+            if COUPLER_options[vol+"_included"] == 1:
                 runtime_helpfile_new[vol+"_mol_atm"]    = runtime_helpfile_new[vol+"_atm_kg"] / molar_mass[vol]
                 runtime_helpfile_new[vol+"_mol_solid"]  = runtime_helpfile_new[vol+"_solid_kg"] / molar_mass[vol]
                 runtime_helpfile_new[vol+"_mol_liquid"] = runtime_helpfile_new[vol+"_liquid_kg"] / molar_mass[vol]
@@ -416,10 +416,10 @@ def ReadInitFile( init_file_passed , verbose=False):
                 if not line.startswith("time_"):
 
                     # Some parameters are int
-                    if key in [ "IC_INTERIOR", "IC_ATMOSPHERE", "SURFACE_BC", 
+                    if key in [ "IC_INTERIOR", "SURFACE_BC", 
                                "nstepsmacro", "use_vulcan", "ic_interior_filename", 
                                "plot_onthefly", "stellar_heating", "mixing_length",
-                               "atmosphere_chem_type"]:
+                               "atmosphere_chem_type", "initial_pp_method"]:
                         val = int(val)
                     # Some are str
                     elif key in [ 'star_spectrum', 'star_btrack', 'dir_output' ]:
@@ -465,7 +465,7 @@ def UpdatePlots( output_dir, end=False ):
     PrintSeparator()
     output_times = get_all_output_times( output_dir )
 
-    num_snapshots = 10
+    num_snapshots = 5
 
     if len(output_times) < num_snapshots:
         plot_times = output_times
@@ -479,7 +479,7 @@ def UpdatePlots( output_dir, end=False ):
             v = int(v)
             if v not in plot_times:
                 plot_times.append(v)
-        print("Snapshots to plot:", plot_times)
+    print("Snapshots to plot:", plot_times)
 
     # Global properties for all timesteps
     if len(output_times) > 1:

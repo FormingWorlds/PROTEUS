@@ -118,11 +118,395 @@ class MyJSON( object ):
 
 
 
-#====================================================================
+# Solve partial pressures functions
+# Written by Dan Bower
+# See the related issue on the PROTEUS GitHub page:-
+# https://github.com/FormingWorlds/PROTEUS/issues/42
+# Paper to cite:-
+# https://www.sciencedirect.com/science/article/pii/S0012821X22005301
 
+# Solve for the equilibrium chemistry of a magma ocean atmosphere
+# for a given set of solubility and redox relations
+
+#====================================================================
+class OxygenFugacity:
+    """log10 oxygen fugacity as a function of temperature"""
+
+    def __init__(self, model='oneill'):
+        self.callmodel = getattr(self, model)
+
+    def __call__(self, T, fO2_shift=0):
+        '''Return log10 fO2'''
+        return self.callmodel(T) + fO2_shift
+
+    def fischer(self, T):
+        '''Fischer et al. (2011) IW'''
+        return 6.94059 -28.1808*1E3/T
+
+    def oneill(self, T): 
+        '''O'Neill and Eggin (2002) IW'''
+        return 2*(-244118+115.559*T-8.474*T*np.log(T))/(np.log(10)*8.31441*T)
+
+#====================================================================
+class ModifiedKeq:
+    """Modified equilibrium constant (includes fO2)"""
+
+    def __init__(self, Keq_model, fO2_model='oneill'):
+        self.fO2 = OxygenFugacity(fO2_model)
+        self.callmodel = getattr(self, Keq_model)
+
+    def __call__(self, T, fO2_shift=0):
+        fO2 = self.fO2(T, fO2_shift)
+        Keq, fO2_stoich = self.callmodel(T)
+        Geq = 10**(Keq-fO2_stoich*fO2)
+        return Geq
+
+    def schaefer_CH4(self, T): 
+        '''Schaefer log10Keq for CO2 + 2H2 = CH4 + fO2'''
+        # second argument returns stoichiometry of O2
+        return (-16276/T - 5.4738, 1)
+
+    def schaefer_C(self, T): 
+        '''Schaefer log10Keq for CO2 = CO + 0.5 fO2'''
+        return (-14787/T + 4.5472, 0.5) 
+
+    def schaefer_H(self, T): 
+        '''Schaefer log10Keq for H2O = H2 + 0.5 fO2'''
+        return (-12794/T + 2.7768, 0.5) 
+
+    def janaf_C(self, T): 
+        '''JANAF log10Keq, 1500 < K < 3000 for CO2 = CO + 0.5 fO2'''
+        return (-14467.511400133637/T + 4.348135473316284, 0.5) 
+
+    def janaf_H(self, T): 
+        '''JANAF log10Keq, 1500 < K < 3000 for H2O = H2 + 0.5 fO2'''
+        return (-13152.477779978302/T + 3.038586383273608, 0.5) 
+
+#====================================================================
+class Solubility:
+    """Solubility base class.  All p in bar"""
+
+    def __init__(self, composition):
+        self.callmodel = getattr(self, composition)
+
+    def power_law(self, p, const, exponent):
+        return const*p**exponent
+
+    def __call__(self, p, *args):
+        '''Dissolved concentration in ppmw in the melt'''
+        return self.callmodel(p, *args)
+
+#====================================================================
+class SolubilityH2O(Solubility):
+    """H2O solubility models"""
+
+    # below default gives the default model used
+    def __init__(self, composition='peridotite'):
+        super().__init__(composition)
+
+    def anorthite_diopside(self, p):
+        '''Newcombe et al. (2017)'''
+        return self.power_law(p, 727, 0.5)
+
+    def peridotite(self, p):
+        '''Sossi et al. (2022)'''
+        return self.power_law(p, 524, 0.5)
+
+    def basalt_dixon(self, p):
+        '''Dixon et al. (1995) refit by Paolo Sossi'''
+        return self.power_law(p, 965, 0.5)
+
+    def basalt_wilson(self, p):
+        '''Hamilton (1964) and Wilson and Head (1981)'''
+        return self.power_law(p, 215, 0.7)
+
+    def lunar_glass(self, p):
+        '''Newcombe et al. (2017)'''
+        return self.power_law(p, 683, 0.5)
+
+#====================================================================
+class SolubilityCO2(Solubility):
+    """CO2 solubility models"""
+
+    def __init__(self, composition='basalt_dixon'):
+        super().__init__(composition)
+
+    def basalt_dixon(self, p, temp):
+        '''Dixon et al. (1995)'''
+        ppmw = (3.8E-7)*p*np.exp(-23*(p-1)/(83.15*temp))
+        ppmw = 1.0E4*(4400*ppmw) / (36.6-44*ppmw)
+        return ppmw
+
+#====================================================================
+class SolubilityN2(Solubility):
+    """N2 solubility models"""
+
+    def __init__(self, composition='libourel'):
+        super().__init__(composition)
+
+    def libourel(self, p):
+        '''Libourel et al. (2003)'''
+        ppmw = self.power_law(p, 0.0611, 1.0)
+        return ppmw
+    
 #====================================================================
 # FUNCTIONS
 #====================================================================
+
+#====================================================================
+def solvepp_get_partial_pressures(pin, fO2_shift, global_d):
+    """Partial pressure of all considered species"""
+
+    # we only need to know pH2O, pCO2, and pN2, since reduced species
+    # can be directly determined from equilibrium chemistry
+
+    pH2O, pCO2, pN2 = pin
+
+    # return results in dict, to be explicit about which pressure
+    # corresponds to which volatile
+    p_d = {}
+    p_d['H2O'] = pH2O
+    p_d['CO2'] = pCO2
+    p_d['N2'] = pN2
+
+    # pH2 from equilibrium chemistry
+    gamma = ModifiedKeq('janaf_H')
+    gamma = gamma(global_d['temperature'], fO2_shift)
+    p_d['H2'] = gamma*pH2O
+
+    # pCO from equilibrium chemistry
+    gamma = ModifiedKeq('janaf_C')
+    gamma = gamma(global_d['temperature'], fO2_shift)
+    p_d['CO'] = gamma*pCO2
+
+    if global_d['is_CH4'] is True:
+        gamma = ModifiedKeq('schaefer_CH4')
+        gamma = gamma(global_d['temperature'], fO2_shift)
+        p_d['CH4'] = gamma*pCO2*p_d['H2']**2.0
+    else:
+        p_d['CH4'] = 0
+
+    return p_d
+
+#====================================================================
+def solvepp_get_total_pressure(pin, fO2_shift, global_d):
+    """Sum partial pressures to get total pressure"""
+
+    p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
+    ptot = sum(p_d.values())
+
+    return ptot
+
+#====================================================================
+def solvepp_atmosphere_mass(pin, fO2_shift, global_d):
+    """Atmospheric mass of volatiles and totals for H, C, and N"""
+
+    p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
+    mu_atm = solvepp_atmosphere_mean_molar_mass(pin, fO2_shift, global_d)
+
+    mass_atm_d = {}
+    for key, value in p_d.items():
+        # 1.0E5 because pressures are in bar
+        mass_atm_d[key] = value*1.0E5/global_d['little_g']
+        mass_atm_d[key] *= 4.0*np.pi*global_d['planetary_radius']**2.0
+        mass_atm_d[key] *= molar_mass[key]/mu_atm
+
+    # total mass of H
+    mass_atm_d['H'] = mass_atm_d['H2'] / molar_mass['H2']
+    mass_atm_d['H'] += mass_atm_d['H2O'] / molar_mass['H2O']
+    # note factor 2 below to account for stoichiometry
+    mass_atm_d['H'] += mass_atm_d['CH4'] * 2 / molar_mass['CH4']
+    # below converts moles of H2 to mass of H
+    mass_atm_d['H'] *= molar_mass['H2']
+
+    # total mass of C
+    mass_atm_d['C'] = mass_atm_d['CO'] / molar_mass['CO']
+    mass_atm_d['C'] += mass_atm_d['CO2'] / molar_mass['CO2']
+    mass_atm_d['C'] += mass_atm_d['CH4'] / molar_mass['CH4']
+    # below converts moles of C to mass of C
+    mass_atm_d['C'] *= molar_mass['C']
+
+    # total mass of N
+    mass_atm_d['N'] = mass_atm_d['N2']
+
+    return mass_atm_d
+
+#====================================================================
+def solvepp_atmosphere_mean_molar_mass(pin, fO2_shift, global_d):
+    """Mean molar mass of the atmosphere"""
+
+    p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
+    ptot = solvepp_get_total_pressure(pin, fO2_shift, global_d)
+
+    mu_atm = 0
+    for key, value in p_d.items():
+        mu_atm += molar_mass[key]*value
+    mu_atm /= ptot
+
+    return mu_atm
+
+#====================================================================
+def solvepp_dissolved_mass(pin, fO2_shift, global_d):
+    """Volatile masses in the (molten) mantle"""
+
+    mass_int_d = {}
+
+    p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
+
+    prefactor = 1E-6*global_d['mantle_mass']*global_d['mantle_melt_fraction']
+
+    # H2O
+    sol_H2O = SolubilityH2O() # gets the default solubility model
+    ppmw_H2O = sol_H2O(p_d['H2O'])
+    mass_int_d['H2O'] = prefactor*ppmw_H2O
+
+    # CO2
+    sol_CO2 = SolubilityCO2() # gets the default solubility model
+    ppmw_CO2 = sol_CO2(p_d['CO2'], global_d['temperature'])
+    mass_int_d['CO2'] = prefactor*ppmw_CO2
+
+    # N2
+    sol_N2 = SolubilityN2() # gets the default solubility model
+    ppmw_N2 = sol_N2(p_d['N2'])
+    mass_int_d['N2'] = prefactor*ppmw_N2
+
+    # now get totals of H, C, N
+    mass_int_d['H'] = mass_int_d['H2O']*(molar_mass['H2']/molar_mass['H2O'])
+    mass_int_d['C'] = mass_int_d['CO2']*(molar_mass['C']/molar_mass['CO2'])
+    mass_int_d['N'] = mass_int_d['N2']
+
+    return mass_int_d
+
+#====================================================================
+def solvepp_func(pin, fO2_shift, global_d, mass_target_d):
+    """Function to compute the residual of the mass balance"""
+
+    # pin has three pressures in bar expressed as a tuple
+    pH2O, pCO2, pN2 = pin
+
+    # get atmospheric masses
+    mass_atm_d = solvepp_atmosphere_mass(pin, fO2_shift, global_d)
+
+    # get (molten) mantle masses
+    mass_int_d = solvepp_dissolved_mass(pin, fO2_shift, global_d)
+
+    # compute residuals
+    res_l = []
+    for vol in ['H','C','N']:
+        # absolute residual
+        res = mass_atm_d[vol] + mass_int_d[vol] - mass_target_d[vol]
+        # if target is not zero, compute relative residual
+        # otherwise, zero target is already solved with zero pressures
+        if mass_target_d[vol]:
+            res /= mass_target_d[vol]
+        res_l.append(res)
+
+    return res_l
+
+#====================================================================
+def solvepp_get_initial_pressures(target_d):
+    """Get initial guesses of partial pressures"""
+
+    # all bar
+    pH2O = 1*np.random.random_sample() # H2O less soluble than CO2
+    pCO2 = 10*np.random.random_sample() # just a guess
+    pN2 = 10*np.random.random_sample()
+
+    if target_d['H'] == 0:
+        pH2O = 0
+    if target_d['C'] == 0:
+        pCO2 = 0
+    if target_d['N'] == 0:
+        pN2 = 0
+
+    return pH2O, pCO2, pN2
+
+#====================================================================
+def solvepp_equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitrogen):
+    """Calculate equilibrium chemistry of the atmosphere"""
+
+    H_kg = N_ocean_moles * global_d['ocean_moles'] * molar_mass['H2']
+    C_kg = CH_ratio * H_kg
+    N_kg = Nitrogen * 1.0E-6 * global_d['mantle_mass']
+    target_d = {'H': H_kg, 'C': C_kg, 'N': N_kg}
+
+    count = 0
+    ier = 0
+    # could in principle result in an infinite loop, if randomising
+    # the ic never finds the physical solution (but in practice,
+    # this doesn't seem to happen)
+    while ier != 1:
+        x0 = solvepp_get_initial_pressures(target_d)
+        sol, info, ier, msg = fsolve(solvepp_func, x0, args=(fO2_shift, 
+            global_d, target_d), full_output=True)
+        count += 1
+        # sometimes, a solution exists with negative pressures, which
+        # is clearly non-physical.  Here, assert we must have positive
+        # pressures.
+        if any(sol<0):
+            # if any negative pressures, report ier!=1
+            ier = 0
+
+    logging.info(f'Randomised initial conditions= {count}')
+
+    p_d = solvepp_get_partial_pressures(sol, fO2_shift, global_d)
+    # get residuals for output
+    res_l = solvepp_func(sol, fO2_shift, global_d, target_d)
+
+    # for convenience, add inputs to same dict
+    p_d['N_ocean_moles'] = N_ocean_moles
+    p_d['CH_ratio'] = CH_ratio
+    p_d['fO2_shift'] = fO2_shift
+    # for debugging/checking, add success initial condition
+    # that resulted in a converged solution with positive pressures
+    p_d['pH2O_0'] = x0[0]
+    p_d['pCO2_0'] = x0[1]
+    p_d['pN2_0'] = x0[2]
+    # also for debugging/checking, report residuals
+    p_d['res_H'] = res_l[0]
+    p_d['res_C'] = res_l[1]
+    p_d['res_N'] = res_l[2]
+
+    return p_d
+
+solvepp_vols = ['H2O', 'CO2', 'N2', 'H2', 'CO', 'CH4']
+
+#====================================================================
+def solvepp_doit(COUPLER_options):
+
+    print("Solving for eqm partial pressures at surface")
+
+    # Dictionary for passing parameters around
+    global_d = {}
+
+    # Don't change these
+    global_d['mantle_melt_fraction'] =  1.0 # fraction of mantle that is molten
+    global_d['ocean_moles'] =           7.68894973907177e+22 # moles of H2 (or H2O) in one present-day Earth ocean
+    global_d['is_CH4'] =                True # include CH4
+
+    # THESE NEEDS TO BE UPDATED APPROPRIATELY
+    global_d['mantle_mass'] =           4.208261222595111e+24 # kg
+    global_d['temperature'] =           2000.0 # K
+
+    # These are set by the proteus configuration file
+    global_d['planetary_radius'] =  COUPLER_options['radius']
+    global_d['little_g'] =          COUPLER_options['gravity']
+    N_ocean_moles =                 COUPLER_options['hydrogen_earth_oceans']
+    CH_ratio =                      COUPLER_options['CH_ratio']
+    fO2_shift =                     COUPLER_options['fO2_shift_IW']
+    Nitrogen =                      COUPLER_options['nitrogen_ppmw']
+
+    # Solve for partial pressures
+    p_d = solvepp_equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitrogen)
+
+    partial_pressures = {}
+    for s in solvepp_vols:
+        print("   p_%s = %f bar" % (s,p_d[s]))
+        partial_pressures[s] = p_d[s] * 1.0e5 # Convert from bar to Pa
+
+    return partial_pressures
+
+
 
 #====================================================================
 def get_column_data_from_SPIDER_lookup_file( infile ):
@@ -476,7 +860,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     # Define which volatiles to track in SPIDER
     species_call = ""
     for vol in volatile_species: 
-        if COUPLER_options[vol+"_included"]:
+        if COUPLER_options[vol+"_included"] == 1:
             species_call = species_call + "," + vol
     species_call = species_call[1:] # Remove "," in front
 
@@ -510,8 +894,9 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         # Number of total steps until currently desired switch/end time
         COUPLER_options["nstepsmacro"] =  step + math.ceil( dtime / dtmacro )
 
-        print("TIME OPTIONS IN RUNSPIDER:")
-        print(dtmacro, dtswitch, dtime_max, dtime, COUPLER_options["nstepsmacro"])
+        if debug:
+            print("TIME OPTIONS IN RUNSPIDER:")
+            print(dtmacro, dtswitch, dtime_max, dtime, COUPLER_options["nstepsmacro"])
 
 
     # For init loop
@@ -531,7 +916,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                         "-options_file",          SPIDER_options_file, 
                         "-outputDirectory",       dirs["output"],
                         "-IC_INTERIOR",           str(COUPLER_options["IC_INTERIOR"]),
-                        "-IC_ATMOSPHERE",         str(COUPLER_options["IC_ATMOSPHERE"]),
+                        "-OXYGEN_FUGACITY_offset",str(COUPLER_options["fO2_shift_IW"]),
                         "-SURFACE_BC",            str(COUPLER_options["SURFACE_BC"]), 
                         "-surface_bc_value",      str(net_loss), 
                         "-teqm",                  str(COUPLER_options["T_eqm"]), 
@@ -553,19 +938,16 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # Define distribution coefficients and total mass/surface pressure for volatiles > 0
     for vol in volatile_species:
-        if COUPLER_options[vol+"_included"]:
+        if COUPLER_options[vol+"_included"] == 1:
 
-            # Set atmospheric pressure based on helpfile output
+            # Set atmospheric pressure based on helpfile output, if required
             if loop_counter["total"] > loop_counter["init_loops"]:
                 key = vol+"_initial_atmos_pressure"
                 val = float(runtime_helpfile[vol+"_mr"].iloc[-1]) * float(runtime_helpfile["P_surf"].iloc[-1]) * 1.0e5   # convert bar to Pa
                 COUPLER_options[key] = val
 
             # Load volatiles
-            if COUPLER_options["IC_ATMOSPHERE"] == 1:
-                call_sequence.extend(["-"+vol+"_initial_total_abundance", str(COUPLER_options[vol+"_initial_total_abundance"])])
-            elif COUPLER_options["IC_ATMOSPHERE"] == 3:
-                call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(COUPLER_options[vol+"_initial_atmos_pressure"])])
+            call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(COUPLER_options[vol+"_initial_atmos_pressure"])])
 
             # Exception for N2 case: reduced vs. oxidized
             if vol == "N2" and COUPLER_options["N2_partitioning"] == 1:
@@ -589,7 +971,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                                 "-activate_rollback"
                              ])
         for vol in volatile_species:
-            if COUPLER_options[vol+"_included"]:
+            if COUPLER_options[vol+"_included"] == 1:
                 call_sequence.extend(["-"+vol+"_poststep_change", str(COUPLER_options[vol+"_poststep_change"])])
     else:
         call_sequence.extend([

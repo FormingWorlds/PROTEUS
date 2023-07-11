@@ -41,6 +41,7 @@ from scipy import interpolate
 from scipy.integrate import solve_ivp
 from scipy.integrate import odeint
 from scipy.optimize import newton
+from scipy.optimize import fsolve
 from scipy import stats
 
 

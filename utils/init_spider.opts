@@ -140,7 +140,7 @@
 
 # note that an offset of 0.5 is also the default, following
 # Sossi et al., 2020
--OXYGEN_FUGACITY_offset 0.5
+# -OXYGEN_FUGACITY_offset 0.5
 
 # internal heat sources
 
