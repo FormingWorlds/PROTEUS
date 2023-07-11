@@ -244,8 +244,17 @@ Step-by-step guide
 
             $   make
             $   cd ../../
+
+    7. Setup Mors
+
+        .. code-block:: console
+
+            $   cd Mors 
+            $   wget http://www.astro.yale.edu/demarque/fs255_grid.tar.gz
+            $   tar -xvf fs255_grid.tar.gz
+            $   cd ../
         
-    7. Setup PETSc
+    8. Setup PETSc
         
         .. code-block:: console
 
@@ -262,7 +271,7 @@ Step-by-step guide
 
             $   cd ../
 
-    8. Setup environment variables
+    9. Setup environment variables
         
         * Edit the variable ``PETSC_ARCH`` in the file ``PROTEUS.env`` to reflect the value provided by PETSc in the previous step
         
@@ -280,7 +289,7 @@ Step-by-step guide
 
         * **IF** you want to be able to start PROTEUS immediately from a new shell every time, add ``source PROTEUS.env`` (and potentially ``conda activate proteus``) to your ``.zshrc`` (ARM) / ``.bash_profile`` (Intel)
 
-    9. Setup SPIDER
+    10. Setup SPIDER
 
         .. code-block:: console
 
