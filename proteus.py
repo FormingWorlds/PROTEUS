@@ -20,7 +20,9 @@ from AEOLUS.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpe
 #====================================================================
 def main():
 
-    print("===> Start PROTEUS <===")
+    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    print(":::::::::::: START PROTEUS RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
     # Parse console arguments
     args = parse_console_arguments()
@@ -68,12 +70,20 @@ def main():
         shutil.copyfile( args.cfg_file, dirs["output"]+"/init_coupler.cfg")
 
         # Solve for initial partial pressures of volatiles
+        # Using parameterised method
         if (COUPLER_options['initial_pp_method'] == 1):
             solvepp_dict = solvepp_doit(COUPLER_options)
             for s in volatile_species:
-                if s in solvepp_vols:
+                # Volatile calculated by solvepp
+                if s in solvepp_dict.keys():
                     COUPLER_options[s+"_included"] = 1
                     COUPLER_options[s+"_initial_atmos_pressure"] = solvepp_dict[s]
+
+                # Volatile is prescribed
+                elif ( str(s+"_initial_atmos_pressure") in COUPLER_options.keys()):
+                    COUPLER_options[s+"_included"] = 1
+
+                # Otherwise, volatile is neglected
                 else:
                     COUPLER_options[s+"_included"] = 0
 
@@ -82,12 +92,11 @@ def main():
             for vol in volatile_species:
                 key = vol+"_initial_atmos_pressure"
                 if (key in COUPLER_options):
-                    COUPLER_options[vol+"_included"] = 0
                     if (COUPLER_options[key] > 0.0):
                         COUPLER_options[vol+"_included"] = 1
+                    else:
+                        COUPLER_options[vol+"_included"] = 0
                     
-
-
 
     # Store copy of modern spectrum in memory (1 AU)
     StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
@@ -105,22 +114,20 @@ def main():
     if COUPLER_options["star_model"] == 0:  # Will not be updated during the loop, so just need to write an initial one
         PrepareStellarSpectrum(StellarFlux_wl,StellarFlux_fl,star_spec_src)
         InsertStellarSpectrum(
-                                dirs["rad_conv"]+"/spectral_files/sp_b318_HITRAN_a16/sp_b318_HITRAN_a16_no_spectrum",
+                                # dirs["rad_conv"]+"/spectral_files/sp_b318_HITRAN_a16/sp_b318_HITRAN_a16_no_spectrum",
+                                dirs["rad_conv"]+"/spectral_files/Mallard/sp_b318_HITRAN_a8",
                                 star_spec_src,
                                 dirs["output"]+"runtime_spectral_file"
                             )
     
-    # Inform about start of runtime
-    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-    print(":::::::::::: START COUPLER RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-
     # Main loop
     while time_dict["planet"] < time_dict["target"]:
 
+        PrintSeparator()
+        print("Loop counters:", loop_counter)
 
         ############### STELLAR FLUX MANAGEMENT
-        print("Start stellar")
+        print("Stellar flux management...")
         match COUPLER_options['star_model']:
             case 0:
                 S_0, toa_heating = InterpolateStellarLuminosity(time_dict, COUPLER_options)
@@ -147,27 +154,31 @@ def main():
                     fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl,COUPLER_options, track)
 
             # Write stellar spectra to disk
+            print("Writing spectrum to disk")
             writessurf = (COUPLER_options["atmosphere_chem_type"] > 0)
             SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs,write_surf=writessurf)
 
             # Generate a new SOCRATES spectral file containing this new spectrum
+            print("Inserting spectrum into SOCRATES spectral file")
             PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
             InsertStellarSpectrum(
-                                    dirs["rad_conv"]+"/spectral_files/sp_b318_HITRAN_a16/sp_b318_HITRAN_a16_no_spectrum",
+                                    # dirs["rad_conv"]+"/spectral_files/sp_b318_HITRAN_a16/sp_b318_HITRAN_a16_no_spectrum",
+                                    dirs["rad_conv"]+"/spectral_files/Mallard/sp_b318_HITRAN_a8",
                                     star_spec_src,
                                     dirs["output"]+"runtime_spectral_file"
                                 )
 
             time_dict['sflux_prev'] = time_dict['planet'] 
 
+        else:
+            print("New spectrum not required at this time")
+
         COUPLER_options["T_eqm"] = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
-        print("End stellar")
         ############### / STELLAR FLUX MANAGEMENT
 
 
 
         ############### INTERIOR SUB-LOOP
-        print("Start interior")
 
         # Run SPIDER
         COUPLER_options = RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile )
@@ -175,14 +186,29 @@ def main():
         # Update help quantities, input_flag: "Interior"
         runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
 
-        print("End interior")
+        # During init loop: update initial guesses for partial pressure and mantle mass
+        if (loop_counter["init"] < loop_counter["init_loops"]) and (COUPLER_options['initial_pp_method'] == 1):
+
+            # Store new guesses based on last init iteration
+            run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
+            COUPLER_options["mantle_mass_guess"] =  run_int.iloc[-1]["M_mantle"]
+            COUPLER_options["T_surf_guess"] =       run_int.iloc[-1]["T_surf"]
+
+            # Solve for partial pressures again
+            solvepp_dict = solvepp_doit(COUPLER_options)
+
+            # Store results
+            for s in volatile_species:
+                if s in solvepp_dict.keys():
+                    COUPLER_options[s+"_initial_atmos_pressure"] = solvepp_dict[s]
+
+
         ############### / INTERIOR SUB-LOOP
 
 
 
 
         ############### ATMOSPHERE SUB-LOOP
-        print("Start atmosphere")
         while (loop_counter["atm"] == 0) or (loop_counter["atm"] < loop_counter["atm_loops"] and abs(COUPLER_options["F_net"]) > COUPLER_options["F_eps"]):
 
             # Initialize atmosphere structure
@@ -200,7 +226,6 @@ def main():
 
             loop_counter["atm"] += 1
 
-        print("End atmosphere")
         ############### / ATMOSPHERE SUB-LOOP
         
 

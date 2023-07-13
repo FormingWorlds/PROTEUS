@@ -8,6 +8,8 @@ from utils.spider import *
 #====================================================================
 def plot_global( output_dir ):
 
+    print("Plot global")
+
     # Plot settings
     lw         = 2.0
     fscale     = 1.1

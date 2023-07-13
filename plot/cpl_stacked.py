@@ -9,6 +9,8 @@ from utils.plot import *
 #====================================================================
 def plot_stacked( output_dir, times ):
 
+    print("Plot stacked")
+
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width
 
@@ -48,7 +50,7 @@ def plot_stacked( output_dir, times ):
 
     handle_l = [] # handles for legend
 
-    fig_o.set_cmap(sci_colormaps['vik_r']) # "magma_r"
+    fig_o.set_cmap(sci_colormaps['batlow_r']) # "magma_r"
 
     ymax_atm_pressure = 0
     ymin_atm_pressure = 1000

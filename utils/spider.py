@@ -381,9 +381,6 @@ def solvepp_dissolved_mass(pin, fO2_shift, global_d):
 def solvepp_func(pin, fO2_shift, global_d, mass_target_d):
     """Function to compute the residual of the mass balance"""
 
-    # pin has three pressures in bar expressed as a tuple
-    pH2O, pCO2, pN2 = pin
-
     # get atmospheric masses
     mass_atm_d = solvepp_atmosphere_mass(pin, fO2_shift, global_d)
 
@@ -469,14 +466,16 @@ def solvepp_equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d,
 
     return p_d
 
-solvepp_vols = ['H2O', 'CO2', 'N2', 'H2', 'CO', 'CH4']
 
 #====================================================================
 def solvepp_doit(COUPLER_options):
 
     print("Solving for eqm partial pressures at surface")
 
-    # Dictionary for passing parameters around
+    # Volatiles that are solved-for using this eqm calculation
+    solvepp_vols = ['H2O', 'CO2', 'N2', 'H2', 'CO', 'CH4']
+
+    # Dictionary for passing parameters around for the partial pressure calculations
     global_d = {}
 
     # Don't change these
@@ -484,11 +483,13 @@ def solvepp_doit(COUPLER_options):
     global_d['ocean_moles'] =           7.68894973907177e+22 # moles of H2 (or H2O) in one present-day Earth ocean
     global_d['is_CH4'] =                True # include CH4
 
-    # THESE NEEDS TO BE UPDATED APPROPRIATELY
-    global_d['mantle_mass'] =           4.208261222595111e+24 # kg
-    global_d['temperature'] =           2000.0 # K
+    # These require initial guesses
+    # global_d['mantle_mass'] =           4.208261222595111e+24 # kg
+    # global_d['temperature'] =           2000.0 # K
+    global_d['mantle_mass'] =       COUPLER_options['mantle_mass_guess'] # kg
+    global_d['temperature'] =       COUPLER_options['T_surf_guess'] # K
 
-    # These are set by the proteus configuration file
+    # These are defined by the proteus configuration file
     global_d['planetary_radius'] =  COUPLER_options['radius']
     global_d['little_g'] =          COUPLER_options['gravity']
     N_ocean_moles =                 COUPLER_options['hydrogen_earth_oceans']
@@ -849,8 +850,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     SPIDER_options_file = dirs["output"]+"/init_spider.opts"
     SPIDER_options_file_orig = dirs["utils"]+"/init_spider.opts"
 
-    print("IC_INTERIOR =",COUPLER_options["IC_INTERIOR"])
-
     # First run
     if (loop_counter["init"] == 0):
         if os.path.isfile(SPIDER_options_file):
@@ -1031,13 +1030,14 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
 
     # Runtime info
-    PrintSeparator()
-    print("Running SPIDER... (loop counter = ", loop_counter, ")")
+    PrintHalfSeparator()
+    print("Running SPIDER...")
+    print("IC_INTERIOR =",COUPLER_options["IC_INTERIOR"])
     if debug:
-        print("   Flags:")
+        flags = ""
         for flag in call_sequence:
-            print("   ",flag)
-        print()
+            flags += " " + flag
+        print("SPIDER call sequence: '%s'" % flags)
 
     call_string = " ".join(call_sequence)
 

@@ -52,12 +52,12 @@ def latex_float(f):
 def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs):
 
     # Print final statement
-    print("---------------------------------------------------------")
-    print("==> RUNTIME INFO <==")
+    PrintHalfSeparator()
+    print("Runtime info...")
     print(datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-    print("LOOP:", loop_counter)
+    print("Loop counters:", loop_counter)
     print("Time [Myr]: %1.1e"%(float(time_dict["planet"])/1e6))
-    print("T_s [K]:", runtime_helpfile.iloc[-1]["T_surf"])
+    print("T_surf [K]:", runtime_helpfile.iloc[-1]["T_surf"])
     print("Phi_global:", runtime_helpfile.iloc[-1]["Phi_global"])
     print("Helpfile properties:")
     print(runtime_helpfile.tail(10))
@@ -67,7 +67,6 @@ def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_co
     print("F_atm [W/m^2]:", COUPLER_options["F_atm"])
     print("F_net [W/m^2]:", COUPLER_options["F_net"])
     print("Last file name:", COUPLER_options["ic_interior_filename"])
-    print("---------------------------------------------------------")
 
     # Save atm object to disk
     with open(dirs["output"]+"/"+str(int(time_dict["planet"]))+"_atm.pkl", "wb") as atm_file: pkl.dump(atm, atm_file)
@@ -418,7 +417,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                     # Some parameters are int
                     if key in [ "IC_INTERIOR", "SURFACE_BC", 
                                "nstepsmacro", "use_vulcan", "ic_interior_filename", 
-                               "plot_onthefly", "stellar_heating", "mixing_length",
+                               "plot_iterfreq", "stellar_heating", "mixing_length",
                                "atmosphere_chem_type", "initial_pp_method"]:
                         val = int(val)
                     # Some are str
@@ -447,7 +446,7 @@ def ReadInitFile( init_file_passed , verbose=False):
 
 
 #
-def UpdatePlots( output_dir, end=False ):
+def UpdatePlots( output_dir, end=False, num_snapshots=8):
     """Update plots during runtime for analysis
     
     Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
@@ -460,12 +459,10 @@ def UpdatePlots( output_dir, end=False ):
             Is this function being called at the end of the simulation?
     """
 
-    PrintSeparator()
+    PrintHalfSeparator()
     print("Updating plots...")
-    PrintSeparator()
     output_times = get_all_output_times( output_dir )
 
-    num_snapshots = 5
 
     if len(output_times) < num_snapshots:
         plot_times = output_times

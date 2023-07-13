@@ -66,7 +66,7 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
     and COUPLER_options["F_net"] > COUPLER_options["F_diff"]*COUPLER_options["F_int"]) \
     or  COUPLER_options["flux_convergence"] == 2:
 
-        PrintSeparator()
+        PrintHalfSeparator()
         print(">>>>>>>>>> Flux convergence scheme <<<<<<<<<<<")
 
         COUPLER_options["flux_convergence"] = 2
@@ -100,7 +100,7 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
             print("dTs_atm (K):", COUPLER_options["dTs_atm"], "t_previous_atm:", t_previous_atm, "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm:", Ts_last_atm, "t_curr:", t_curr, "Ts_curr:", COUPLER_options["T_surf"])
 
-        PrintSeparator()
+        PrintHalfSeparator()
 
     # Use Ts_int
     else:
@@ -140,9 +140,8 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 def RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options ):
 
     # Runtime info
-    PrintSeparator()
-    print("SOCRATES run... (loop =", loop_counter, ")")
-    PrintSeparator()
+    PrintHalfSeparator()
+    print("Running AEOLUS...")
 
     # Change directory so that SOCRATES files don't get littered
     cwd = os.getcwd()
@@ -158,14 +157,9 @@ def RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_opt
     COUPLER_options["F_atm"] = np.max( [ 0., atm.net_flux[0] ] )
 
     # Clean up run directory
-    PrintSeparator()
-    # print("Remove SOCRATES auxiliary files:", end =" ")
     for file in glob.glob(dirs["output"]+"/current??.????"):
         os.remove(file)
-        # print(os.path.basename(file), end =" ")
     for file in glob.glob(dirs["output"]+"/profile.*"):
         os.remove(file)
-        # print(os.path.basename(file), end =" ")
-    # print(">>> Done.")
 
     return atm, COUPLER_options

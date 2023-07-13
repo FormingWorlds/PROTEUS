@@ -135,7 +135,7 @@
 # atmosphere reference pressure (Pa)
 -P0 101325.0 # Pa (= 1 atm)
 
-# IW buffer
+# fO2 buffer chosen to define fO2 alongside the offset parameter (7: Iron-Wustite)
 -OXYGEN_FUGACITY 7
 
 # note that an offset of 0.5 is also the default, following
