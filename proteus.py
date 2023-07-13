@@ -72,31 +72,58 @@ def main():
         # Solve for initial partial pressures of volatiles
         # Using parameterised method
         if (COUPLER_options['initial_pp_method'] == 1):
-            solvepp_dict = solvepp_doit(COUPLER_options)
-            for s in volatile_species:
-                # Volatile calculated by solvepp
-                if s in solvepp_dict.keys():
-                    COUPLER_options[s+"_included"] = 1
-                    COUPLER_options[s+"_initial_atmos_pressure"] = solvepp_dict[s]
 
-                # Volatile is prescribed
-                elif ( str(s+"_initial_atmos_pressure") in COUPLER_options.keys()):
-                    COUPLER_options[s+"_included"] = 1
+            solvepp_dict = solvepp_doit(COUPLER_options)
+
+            for s in volatile_species:
+                key_pp = str(s+"_initial_atmos_pressure")
+                key_in = str(s+"_included")
+
+                # This volatile calculated by solvepp
+                if s in solvepp_dict:
+                    COUPLER_options[key_in] = 1
+                    COUPLER_options[key_pp] = solvepp_dict[s]
+
+                # Volatile is included but is not parameterised and no pressure provided
+                elif ( key_in in COUPLER_options):
+                    if (COUPLER_options[key_in] == 1) and ( key_pp not in COUPLER_options):
+                        COUPLER_options[key_pp] = 0.0
 
                 # Otherwise, volatile is neglected
                 else:
-                    COUPLER_options[s+"_included"] = 0
+                    COUPLER_options[key_in] = 0
+                    COUPLER_options[key_pp] = 0.0
 
         # Use prescribed partial pressures
         else:
-            for vol in volatile_species:
-                key = vol+"_initial_atmos_pressure"
-                if (key in COUPLER_options):
-                    if (COUPLER_options[key] > 0.0):
-                        COUPLER_options[vol+"_included"] = 1
-                    else:
-                        COUPLER_options[vol+"_included"] = 0
-                    
+            for s in volatile_species:
+                key_pp = str(s+"_initial_atmos_pressure")
+                key_in = str(s+"_included")
+
+                # Volatile is included but no pressure provided
+                if (key_in in COUPLER_options):
+                    if ( key_pp not in COUPLER_options):
+                        COUPLER_options[key_pp] = 0.0
+                
+                # Volatile neglected
+                else:
+                    COUPLER_options[key_in] = 0
+                    COUPLER_options[key_pp] = 0.0
+
+
+    # Check that all partial pressures are positive
+    inc_vols = []
+    for s in volatile_species:
+        key_pp = str(s+"_initial_atmos_pressure")
+        key_in = str(s+"_included")
+        if (COUPLER_options[key_in] == 1):
+            if (COUPLER_options[key_pp] < 0.0):
+                print("ERROR: Partial pressures must be positive or zero!")
+                exit(1)
+            inc_vols.append(s)
+    print("Included volatiles:",inc_vols)
+
+    # Handle stellar spectrum...
 
     # Store copy of modern spectrum in memory (1 AU)
     StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
