@@ -21,10 +21,8 @@ Read access to the following repositories:
         * Main development URL: https://code.metoffice.gov.uk/trac/socrates
         
         * Contact: james.manners@metoffice.gov.uk
-        
-        * Obtain the SOCRATES source code from: https://simplex.giss.nasa.gov/gcm/ROCKE-3D/ (Latest released version of SOCRATES code)
-        
-        * Latest tested version: *socrates_2211.tar.xz*
+                
+        * Latest tested version: *socrates_2306_trunk_r1403.tar.xz*
 
     * Interior dynamics: **SPIDER** 
         
@@ -197,8 +195,7 @@ Step-by-step guide
         .. code-block:: console
 
             $   cd AEOLUS/rad_trans/socrates_code/
-            $   curl -L -o ../socrates_2211.tar.xz https://www.dropbox.com/sh/ixefmrbg7c94jlj/AAChibnZU9PRi8pXdVxVbdj3a/socrates_2211.tar.xz?dl=1
-            $   tar --strip-components 1 -xvf ../socrates_2211.tar.xz -C ./
+            $   tar --strip-components 1 -xvf ../socrates_2306_trunk_r1403.tar.xz -C ./
             $   cp -f ../build_code_modified build_code
 
     4. Overwrite the ``Mk_cmd`` file with the right setup for your machine
@@ -247,8 +244,17 @@ Step-by-step guide
 
             $   make
             $   cd ../../
+
+    7. Setup Mors
+
+        .. code-block:: console
+
+            $   cd Mors 
+            $   wget http://www.astro.yale.edu/demarque/fs255_grid.tar.gz
+            $   tar -xvf fs255_grid.tar.gz
+            $   cd ../
         
-    7. Setup PETSc
+    8. Setup PETSc
         
         .. code-block:: console
 
@@ -265,7 +271,7 @@ Step-by-step guide
 
             $   cd ../
 
-    8. Setup environment variables
+    9. Setup environment variables
         
         * Edit the variable ``PETSC_ARCH`` in the file ``PROTEUS.env`` to reflect the value provided by PETSc in the previous step
         
@@ -283,7 +289,7 @@ Step-by-step guide
 
         * **IF** you want to be able to start PROTEUS immediately from a new shell every time, add ``source PROTEUS.env`` (and potentially ``conda activate proteus``) to your ``.zshrc`` (ARM) / ``.bash_profile`` (Intel)
 
-    9. Setup SPIDER
+    10. Setup SPIDER
 
         .. code-block:: console
 
@@ -316,7 +322,7 @@ This section includes troubleshooting advice for common errors. Each entry is la
         MPID_nem_tcp_init(377).............: gethostbyname failed, localhost (errno 3)
     
 
-    * This is actually a network configuration issue. To fix it, you need to add the following to ``/etc/hosts``:    
+    * This is actually a network configuration issue. To fix it, you need to add the following to ``/etc/hosts``, where`computername` is your hostname:    
 
     .. code-block:: console
 
@@ -335,7 +341,7 @@ This section includes troubleshooting advice for common errors. Each entry is la
 
 * MacOS: The FastChem code distributed with VULCAN won't compile 
 
-    * With the new Apple Silicon hardware (M1/M2), the option ``-march=native`` sometimes causes issues. In order to avoid this, you need to make sure to use the GNU version of ``g++``, not the Apple one. The Apple one located at ``/usr/bin/gcc`` is actually a wrapped around ``clang``. We found that using the Homebrew version located at ``/opt/homebrew/bin/`` works well. To fix this error, find out which ``gcc`` version homebrew installed (``ls /opt/homebrew/bin/gcc-*``), and edit the file ``make.globaloptions`` in the FastChem directory to use, e.g., ``g++-12`` or ``g++-13`` instead of ``g++``.
+    * With the new Apple Silicon hardware (M1/M2), the option ``-march=native`` sometimes causes issues. In order to avoid this, you need to make sure to use the GNU version of ``g++``, not the Apple one. The Apple one located at ``/usr/bin/gcc`` is actually a wrapped around ``clang``. We found that using the Homebrew version located at ``/opt/homebrew/bin/`` works well. To fix this error, find out which ``gcc`` version homebrew installed (``ls /opt/homebrew/bin/gcc-*``), and edit the file ``make.globaloptions`` in the FastChem directory to use, e.g. ``g++-12`` or ``g++-13`` instead of ``g++``.
 
 * Linux: ``ksh`` not found when running SOCRATES
 
