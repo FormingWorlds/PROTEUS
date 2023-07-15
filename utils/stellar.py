@@ -2,6 +2,7 @@
 
 from utils.modules_ext import *
 from utils.constants import *
+from utils.helper import find_nearest
 import Mors as mors
 
 # Spectral bands for stellar fluxes, in nm
@@ -9,8 +10,8 @@ star_bands = {
     "xr" : [1.e-3 , 10.0],  # X-ray,  defined by mors
     "e1" : [10.0  , 32.0],  # EUV1,   defined by mors
     "e2" : [32.0  , 92.0],  # EUV2,   defined by mors
-    "uv" : [92.0  , 364.5], # UV,     defined by me
-    "pl" : [364.5 , 1.e9],  # planck, defined by me
+    "uv" : [92.0  , 300.0], # UV,     defined by Harrison
+    "pl" : [300.0 , 1.e9],  # planck, defined by Harrison
     'bo' : [1.e-3 , 1.e9]   # bolo,   all wavelengths
 }
 
@@ -184,6 +185,8 @@ def IntegratePlanckFunction(lam1, lam2, Teff):
 
     return I_planck
 
+
+
 def MorsCalculateFband(dirs: dict, COUPLER_options: dict):
     """Calculates the integrated fluxes in each stellar band for the modern spectrum.
 
@@ -252,6 +255,120 @@ def MorsCalculateFband(dirs: dict, COUPLER_options: dict):
         # print('F_%s [%d,%d] = %g' % (band,wl_min,wl_max,fl_integ))
 
     return COUPLER_options
+
+
+
+def MorsSolveUV(dirs: dict, COUPLER_options: dict, spec_wl: list, spec_fl: list, uv_try = [100.0,400.0], iters = 5, eps = 0.1):
+    """Solve for best wavelength to use for UV-PL band edge.
+
+    The value used for the UV-PL band edge is not well constrained. This
+    function solves for the wavelength at this band edge by using a bisection
+    search to optimise the accuracy of the flux at the Lyman-alpha wavelength.
+
+    Parameters
+    ----------
+        dirs : dict
+            Directories dictionary
+        COUPLER_options : dict
+            Dictionary of coupler options variables
+        spec_wl : list
+            Modern spectrum wavelength array [nm]
+        spec_fl : list
+            Modern spectrum flux array at 1 AU [erg s-1 cm-2 nm-1]
+
+        uv_try : list
+            List of the initial search boundaries
+        iters : int
+            Maximum number of bisection iterations to perform
+        eps : float
+            Relative percentage error for break condition (eps = absolute error in flux / target flux * 100)
+
+    Returns
+    ----------
+        uvpl_best : float
+            Optimal wavelength for the UV-PL boundary
+    """
+
+    print("Solving for optimal UV-PL band edge using bisection search...")
+
+    # Check inputs
+    if uv_try[0] < 100.0:
+        print("ERROR: Cannot perform bisection search below 100 nm ")
+        exit(1)
+    if uv_try[1] <= uv_try[0]:
+        print("ERROR: Cannot perform bisection search on invalid range ", uv_try)
+        exit(1)
+
+    # Make copy of options dict
+    COPY_options = COUPLER_options
+
+    # Variables
+    opt_wl    = 121.567                             # Lyman-alpha
+    opt_time  = COPY_options["star_age_modern"]     # Time to optimise at
+    sol_wl    = -1                                  # Optimal solution
+    sol_fl    = -1                                  # Optimal solution
+
+    # Use modern spectrum to get value to optimise for
+    modern_wl, modern_fl = ModernSpectrumLoad(dirs, COPY_options)
+    _, i_opt = find_nearest(modern_wl,opt_wl)
+    fl_opt = modern_fl[i_opt]
+
+    # Bisection loop
+    for i in range(iters):
+
+        # Calculate low case
+        star_bands["uv"][1] = uv_try[0]
+        star_bands["pl"][0] = uv_try[0]
+        COPY_options = MorsCalculateFband(dirs, COPY_options)
+        fl_low_arr,_ = MorsSpectrumCalc(opt_time, modern_wl, modern_fl, COPY_options)
+        fl_low_val = fl_low_arr[i_opt]
+        fl_low_err = abs(fl_low_val-fl_opt)
+        
+        # Calculate high case
+        star_bands["uv"][1] = uv_try[1]
+        star_bands["pl"][0] = uv_try[1]
+        COPY_options = MorsCalculateFband(dirs, COPY_options)
+        fl_hgh_arr,_ = MorsSpectrumCalc(opt_time, modern_wl, modern_fl, COPY_options)
+        fl_hgh_val = fl_hgh_arr[i_opt]
+        fl_hgh_err = abs(fl_hgh_val-fl_opt)
+
+        # Compare low and high cases
+        # Low is best
+        if (fl_low_err < fl_hgh_err):
+            uv_try = [ uv_try[0], (uv_try[0]+uv_try[1])/2.0 ]
+            sol_wl = uv_try[0]
+            sol_fl = fl_low_val
+            fl_bst_err = fl_low_err
+
+        # High is best
+        elif (fl_hgh_err < fl_low_err):
+            uv_try = [ (uv_try[0]+uv_try[1])/2.0, uv_try[1] ]
+            sol_wl = uv_try[1]
+            sol_fl = fl_hgh_val
+            fl_bst_err = fl_hgh_err
+
+        # Somehow they are equally good choices
+        else:
+            print("ERROR: Bisection search cannot decide on new search boundary")
+            exit(1)
+
+        # Check break condition
+        rel_err = fl_bst_err/fl_opt*100.0
+        print("    iter %d, rel. err = %.5e pct"  % (i,rel_err))
+        if ( rel_err < eps ):
+            break
+
+    # Store final case
+    star_bands["uv"][1] = sol_wl
+    star_bands["pl"][0] = sol_wl
+    
+    print("   Complete")
+    print("   Target flux: %1.2e erg s-1 cm-2 nm-1" % fl_opt)
+    print("   Solved flux: %1.2e erg s-1 cm-2 nm-1" % sol_fl)
+    print("   Optimal wavelength is %.2f nm"   % sol_wl)
+
+    return sol_wl
+
 
 def MorsSpectrumCalc(time_star : float, spec_wl: list, spec_fl: list, COUPLER_options: dict):
     """Calculate historical spectrum for a time 'time_star'.
@@ -352,7 +469,6 @@ def MorsSpectrumCalc(time_star : float, spec_wl: list, spec_fl: list, COUPLER_op
                 # Apply scale factor for this band
                 hspec_fl[i] = fl * Q_band[band]
                 break
-
     # Calculate UV scale factor linearly per-bin, making sure that spectrum is
     # continuous at both ends of the UV bandpass. These boundary conditions have
     # to be true, so the assumption here is the linear scaling behaviour 
@@ -368,7 +484,14 @@ def MorsSpectrumCalc(time_star : float, spec_wl: list, spec_fl: list, COUPLER_op
         uv_rel_dist = (i - i_uv_wl_low) / irange
         uv_euv2_scale = (1.0 - uv_rel_dist) * uv_scale_low + uv_rel_dist * uv_scale_hgh
         hspec_fl[i] = spec_fl[i] * uv_euv2_scale
+
     
+    # Smooth over any zeros that happen to be left
+    for i in range(1,len(hspec_fl)-1):
+        if (hspec_fl[i] == 0):
+            hspec_fl[i] = 0.5 * (hspec_fl[i-1] + hspec_fl[i+1])
+    
+    # Scale to surface
     hspec_fl_surf = hspec_fl / sf
 
     return hspec_fl, hspec_fl_surf
@@ -376,7 +499,7 @@ def MorsSpectrumCalc(time_star : float, spec_wl: list, spec_fl: list, COUPLER_op
 def BaraffeLoadtrack(COUPLER_options: dict):
     """Load baraffe track into memory
 
-    You can download other tracks from this file on their website: 
+    You can get other tracks from this file on their website: 
     http://perso.ens-lyon.fr/isabelle.baraffe/BHAC15dir/BHAC15_tracks+structure
 
     Parameters
@@ -485,13 +608,13 @@ def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, dirs, write_surf=True, write_
     if write_1AU:
         X = np.array([wl,sflux]).T
         outname1 = dirs['output'] + "/%d.sflux" % time_dict['planet']
-        header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (1 AU) at t_star = %d Myr ' % tstar
+        header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (1 AU) at t_star = %.3f Myr ' % round(tstar,3)
         np.savetxt(outname1, X, header=header,comments='',fmt='%1.4e',delimiter='\t')
 
     if write_surf:
         Y = np.array([wl,sfluxsurf]).T
         outname2 = dirs['output'] + "/%d.sfluxsurf" % time_dict['planet']
-        header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (surface) at t_star = %d Myr ' % tstar
+        header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (surface) at t_star = %.3f Myr ' % round(tstar,3)
         np.savetxt(outname2, Y, header=header,comments='',fmt='%1.4e',delimiter='\t')
 
 

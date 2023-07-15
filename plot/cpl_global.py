@@ -89,7 +89,9 @@ def plot_global( output_dir ):
 
 
     xlabel = r'Time, $t$ (yr)'
-    xlim = (1e1,max(1e7,np.amax(df_int["Time"])))
+
+    xmax = max(1.0e7,np.amax(df_int["Time"]))
+    xlim = (1.0e1,10 ** np.ceil(np.log10(xmax)))
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)
@@ -214,7 +216,7 @@ def plot_global( output_dir ):
     ##########
     title_ax3 = r'Surface volatile partial pressure'
     # Total pressure
-    ax3.plot( df_int["Time"], df_int["P_surf"], color='black', linestyle='-', lw=lw, label=r'Total')
+    ax3.plot( df_int["Time"], df_int["P_surf"], color='black', linestyle='-', lw=lw*1.5, label=r'Total')
     ##########
     # figure e
     ##########
@@ -305,8 +307,6 @@ def plot_global( output_dir ):
     ax3.yaxis.set_label_position("right")
     ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
     ax3.set_yscale("log")
-    handles, labels = ax3.get_legend_handles_labels()
-    ax3.legend(handles, labels, ncol=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend, loc='upper left') 
     ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
     ##########
     # figure e
@@ -354,6 +354,7 @@ def plot_global( output_dir ):
     handles, labels = ax5.get_legend_handles_labels()
     ax5.set_xlabel(xlabel, fontsize=label_fs)
     ax5.set_ylabel(r'$X_{\mathrm{mantle}}^{\mathrm{i}}/X_{\mathrm{tot}}^{\mathrm{i}}$', fontsize=label_fs)
+    ax5.legend(handles, labels, ncol=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend, loc='upper left') 
     ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
     plt.close()

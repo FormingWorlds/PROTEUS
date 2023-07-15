@@ -26,10 +26,27 @@ def gravity( m, r ):
     g = phys.G*m/r**2
     return g
 
-def find_nearest(array, value):
+def find_nearest(array, target):
+    """Find the element of an array that has a value closest to the target
+
+    Parameters
+    ----------
+        array : list
+            Array to search
+        target : float
+            Value to approximate
+
+    Returns
+    ----------
+        close : float
+            Element of array that is closest to target
+        idx : int
+            Index of closest element of array
+    """
     array   = np.asarray(array)
-    idx     = (np.abs(array - value)).argmin()
-    return array[idx], idx
+    idx     = (np.abs(array - target)).argmin()
+    close   = array[idx]
+    return close, idx
 
 # Return the number of each element within a given molecule, as a dictionary
 def mol_to_ele(mol:str):

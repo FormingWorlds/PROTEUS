@@ -69,9 +69,21 @@ def main():
         # Copy config file to output directory, for future reference
         shutil.copyfile( args.cfg_file, dirs["output"]+"/init_coupler.cfg")
 
-        # Solve for initial partial pressures of volatiles
-        # Using parameterised method
-        if (COUPLER_options['initial_pp_method'] == 1):
+        # Zero-out all volatiles, and ensure that they are all tracked
+        for s in volatile_species:
+            key_pp = str(s+"_initial_atmos_pressure")
+            COUPLER_options[key_pp] = 0.0
+
+            key_in = str(s+"_included")
+            if (key_in in COUPLER_options):
+                COUPLER_options[key_in] = int(COUPLER_options[key_in])
+            else:
+                COUPLER_options[key_in] = 0
+
+
+        # Solve for initial partial pressures of volatiles, using parameterised method
+        solvepp_dict = {"dummy_item"}
+        if (COUPLER_options['solvepp_enabled'] == 1):
 
             solvepp_dict = solvepp_doit(COUPLER_options)
 
@@ -84,32 +96,19 @@ def main():
                     COUPLER_options[key_in] = 1
                     COUPLER_options[key_pp] = solvepp_dict[s]
 
-                # Volatile is included but is not parameterised and no pressure provided
-                elif ( key_in in COUPLER_options):
-                    if (COUPLER_options[key_in] == 1) and ( key_pp not in COUPLER_options):
-                        COUPLER_options[key_pp] = 0.0
+        # Prepare to use prescribed additional partial pressures
+        for s in volatile_species:
+            key_pp = str(s+"_initial_atmos_pressure")
+            key_ab = str(s+"_add_bars")
+            key_in = str(s+"_included")
 
-                # Otherwise, volatile is neglected
-                else:
-                    COUPLER_options[key_in] = 0
-                    COUPLER_options[key_pp] = 0.0
+            # Ensure that additional bars are recorded, even if zero
+            if (key_ab not in COUPLER_options):
+                COUPLER_options[key_ab] = 0.0
 
-        # Use prescribed partial pressures
-        else:
-            for s in volatile_species:
-                key_pp = str(s+"_initial_atmos_pressure")
-                key_in = str(s+"_included")
-
-                # Volatile is included but no pressure provided
-                if (key_in in COUPLER_options):
-                    if ( key_pp not in COUPLER_options):
-                        COUPLER_options[key_pp] = 0.0
-                
-                # Volatile neglected
-                else:
-                    COUPLER_options[key_in] = 0
-                    COUPLER_options[key_pp] = 0.0
-
+            # Inject additional bars now, if solvepp is disabled or doesn't handle this volatile
+            if (COUPLER_options[key_in] == 1) and ( (COUPLER_options["solvepp_enabled"] == 0) or (s not in solvepp_dict)):
+                    COUPLER_options[key_pp] = float(COUPLER_options[key_ab] * 1.0e5)  # Convert bar -> Pa
 
     # Check that all partial pressures are positive
     inc_vols = []
@@ -117,8 +116,9 @@ def main():
         key_pp = str(s+"_initial_atmos_pressure")
         key_in = str(s+"_included")
         if (COUPLER_options[key_in] == 1):
-            if (COUPLER_options[key_pp] < 0.0):
+            if (COUPLER_options[key_pp] <= 0.0):
                 print("ERROR: Partial pressures must be positive or zero!")
+                print("       Consider assigning volatile '%s' a very small positive value" % s)
                 exit(1)
             inc_vols.append(s)
     print("Included volatiles:",inc_vols)
@@ -146,6 +146,7 @@ def main():
                                 star_spec_src,
                                 dirs["output"]+"runtime_spectral_file"
                             )
+        os.remove(star_spec_src)
     
     # Main loop
     while time_dict["planet"] < time_dict["target"]:
@@ -169,6 +170,8 @@ def main():
         else:
             COUPLER_options["TOA_heating"] = 0.0
 
+        COUPLER_options["T_eqm"] = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
+
         # Calculate a new (historical) stellar spectrum 
         if (COUPLER_options['star_model'] > 0) and \
            ( abs( time_dict['planet'] - time_dict['sflux_prev'] ) > COUPLER_options['sflux_dt_update'] ):
@@ -189,18 +192,18 @@ def main():
             print("Inserting spectrum into SOCRATES spectral file")
             PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
             InsertStellarSpectrum(
-                                    # dirs["rad_conv"]+"/spectral_files/sp_b318_HITRAN_a16/sp_b318_HITRAN_a16_no_spectrum",
-                                    dirs["rad_conv"]+"/spectral_files/Mallard/sp_b318_HITRAN_a8",
+                                    dirs["rad_conv"]+"/spectral_files/sp_b318_HITRAN_a16/sp_b318_HITRAN_a16_no_spectrum",
+                                    # dirs["rad_conv"]+"/spectral_files/Mallard/sp_b318_HITRAN_a8",
                                     star_spec_src,
                                     dirs["output"]+"runtime_spectral_file"
                                 )
+            os.remove(star_spec_src)
 
             time_dict['sflux_prev'] = time_dict['planet'] 
 
         else:
             print("New spectrum not required at this time")
 
-        COUPLER_options["T_eqm"] = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
         ############### / STELLAR FLUX MANAGEMENT
 
 
@@ -213,22 +216,36 @@ def main():
         # Update help quantities, input_flag: "Interior"
         runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
 
-        # During init loop: update initial guesses for partial pressure and mantle mass
-        if (loop_counter["init"] < loop_counter["init_loops"]) and (COUPLER_options['initial_pp_method'] == 1):
+        # Update initial guesses for partial pressure and mantle mass
+        if (COUPLER_options['solvepp_enabled'] == 1):
 
-            # Store new guesses based on last init iteration
-            run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
-            COUPLER_options["mantle_mass_guess"] =  run_int.iloc[-1]["M_mantle"]
-            COUPLER_options["T_surf_guess"] =       run_int.iloc[-1]["T_surf"]
+            # Before injecting additional atmosphere
+            if (loop_counter["init"] < loop_counter["init_loops"]):
 
-            # Solve for partial pressures again
-            solvepp_dict = solvepp_doit(COUPLER_options)
+                # Store new guesses based on last init iteration
+                run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
+                COUPLER_options["mantle_mass_guess"] =      run_int.iloc[-1]["M_mantle"]
+                COUPLER_options["T_surf_guess"] =           run_int.iloc[-1]["T_surf"]
+                COUPLER_options["melt_fraction_guess"] =    run_int.iloc[-1]["Phi_global"]
 
-            # Store results
-            for s in volatile_species:
-                if s in solvepp_dict.keys():
-                    COUPLER_options[s+"_initial_atmos_pressure"] = solvepp_dict[s]
+                # Solve for partial pressures again
+                solvepp_dict = solvepp_doit(COUPLER_options)
 
+                # Store results
+                for s in volatile_species:
+                    if s in solvepp_dict.keys():
+                        COUPLER_options[s+"_initial_atmos_pressure"] = solvepp_dict[s]
+
+            # Penultimate init loop: inject additional atmosphere
+            if (loop_counter["init"] == max(0,loop_counter["init_loops"]-1)):
+                print("Including additional volatile bars in addition to solvepp result")
+                for s in volatile_species:
+                    key_pp = str(s+"_initial_atmos_pressure")
+                    key_ab = str(s+"_add_bars")
+                    key_in = str(s+"_included")
+                    if (COUPLER_options[key_in] == 1):
+                        COUPLER_options[key_pp] += float(COUPLER_options[key_ab] * 1.0e5)  # Convert bar -> Pa
+                    
 
         ############### / INTERIOR SUB-LOOP
 

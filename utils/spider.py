@@ -469,8 +469,24 @@ def solvepp_equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d,
 
 #====================================================================
 def solvepp_doit(COUPLER_options):
+    """Solves for initial surface partial pressures assuming melt-vapour eqm
 
-    print("Solving for eqm partial pressures at surface")
+    Requires an initial guess to be made for some parameters, as provided in
+    the dictionary COUPLER_options. 
+
+    Parameters
+    ----------
+        COUPLER_options : dict
+            Dictionary of coupler options variables
+
+    Returns
+    ----------
+        partial_pressures : dict
+            Dictionary of volatile partial pressures [Pa]
+    """
+
+
+    print("Solving for equilibrium partial pressures at surface")
 
     # Volatiles that are solved-for using this eqm calculation
     solvepp_vols = ['H2O', 'CO2', 'N2', 'H2', 'CO', 'CH4']
@@ -478,16 +494,14 @@ def solvepp_doit(COUPLER_options):
     # Dictionary for passing parameters around for the partial pressure calculations
     global_d = {}
 
-    # Don't change these
-    global_d['mantle_melt_fraction'] =  1.0 # fraction of mantle that is molten
+    # These do not require guesses
     global_d['ocean_moles'] =           7.68894973907177e+22 # moles of H2 (or H2O) in one present-day Earth ocean
-    global_d['is_CH4'] =                True # include CH4
+    global_d['is_CH4'] =                bool(COUPLER_options['CH4_included'] > 0)
 
     # These require initial guesses
-    # global_d['mantle_mass'] =           4.208261222595111e+24 # kg
-    # global_d['temperature'] =           2000.0 # K
-    global_d['mantle_mass'] =       COUPLER_options['mantle_mass_guess'] # kg
-    global_d['temperature'] =       COUPLER_options['T_surf_guess'] # K
+    global_d['mantle_melt_fraction'] =  COUPLER_options['melt_fraction_guess'] 
+    global_d['mantle_mass'] =           COUPLER_options['mantle_mass_guess'] # kg
+    global_d['temperature'] =           COUPLER_options['T_surf_guess'] # K
 
     # These are defined by the proteus configuration file
     global_d['planetary_radius'] =  COUPLER_options['radius']
@@ -502,7 +516,7 @@ def solvepp_doit(COUPLER_options):
 
     partial_pressures = {}
     for s in solvepp_vols:
-        print("   p_%s = %f bar" % (s,p_d[s]))
+        print("    solvepp: p_%s = %f bar" % (s,p_d[s]))
         partial_pressures[s] = p_d[s] * 1.0e5 # Convert from bar to Pa
 
     return partial_pressures
@@ -1054,5 +1068,12 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # Update restart filename for next SPIDER run
     COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"/*.json")])[-1]
+
+    print("Surface volatile partial pressures:")
+    for s in volatile_species:
+        key_pp = str(s+"_initial_atmos_pressure")
+        key_in = str(s+"_included")
+        if (key_pp in COUPLER_options) and (COUPLER_options[key_in] == 1):
+            print("    p_%s = %.3f bar" % (s,COUPLER_options[key_pp]/1.0e5))
 
     return COUPLER_options

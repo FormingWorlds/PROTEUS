@@ -47,6 +47,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False):
         suffix = 'sfluxsurf'
     else:
         suffix = 'sflux'
+
     files = glob.glob(output_dir+"/*."+suffix)
     files = natural_sort(files)
 
@@ -136,7 +137,7 @@ if __name__ == '__main__':
 
     print("Plotting stellar flux over time (bins)...")
 
-    wl_bins = [1.0, 12.0, 50.0, 100.0, 200.0, 400.0, 500.0, 2000.0]
+    wl_bins = [1.0, 12.0, 50.0, 121.0, 200.0, 400.0, 500.0, 2000.0]
 
     if len(sys.argv) == 2:
         cfg = sys.argv[1]

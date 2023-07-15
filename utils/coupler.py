@@ -59,14 +59,15 @@ def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_co
     print("Time [Myr]: %1.1e"%(float(time_dict["planet"])/1e6))
     print("T_surf [K]:", runtime_helpfile.iloc[-1]["T_surf"])
     print("Phi_global:", runtime_helpfile.iloc[-1]["Phi_global"])
-    print("Helpfile properties:")
-    print(runtime_helpfile.tail(10))
     print("P_surf [bar]:", runtime_helpfile.iloc[-1]["P_surf"], " ")
     print("TOA heating [W/m^2]:", atm.toa_heating)
     print("F_int [W/m^2]:", COUPLER_options["F_int"])
     print("F_atm [W/m^2]:", COUPLER_options["F_atm"])
     print("F_net [W/m^2]:", COUPLER_options["F_net"])
     print("Last file name:", COUPLER_options["ic_interior_filename"])
+
+    print("Helpfile properties:")
+    print(runtime_helpfile.tail(6))
 
     # Save atm object to disk
     with open(dirs["output"]+"/"+str(int(time_dict["planet"]))+"_atm.pkl", "wb") as atm_file: pkl.dump(atm, atm_file)
@@ -253,12 +254,15 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         if loop_counter["total"] >= loop_counter["init_loops"]:
             run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']
             COUPLER_options["F_atm"] = run_atm["F_atm"].iloc[-1]
+            COUPLER_options["F_olr"] = run_atm["F_olr"].iloc[-1]
         else:
             COUPLER_options["F_atm"]      = 0.
+            COUPLER_options["F_olr"]      = 0.
         
         COUPLER_options["F_net"]      = COUPLER_options["F_atm"]-COUPLER_options["F_int"]
-        runtime_helpfile_new["F_atm"] = COUPLER_options["F_atm"]
         runtime_helpfile_new["F_net"] = COUPLER_options["F_net"]
+        runtime_helpfile_new["F_atm"] = COUPLER_options["F_atm"]
+        runtime_helpfile_new["F_olr"] = COUPLER_options["F_olr"]
 
     # For "Atmosphere" sub-loop (VULCAN+SOCRATES) update heat flux from SOCRATES
     elif input_flag == "Atmosphere":
@@ -312,6 +316,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
         # Write F_net to next file
         runtime_helpfile_new["F_net"]           = COUPLER_options["F_net"]
+        runtime_helpfile_new["F_olr"]           = COUPLER_options["F_olr"]
 
         # Other info from latest iteration run (X/H ratios stay fixed w/o loss)
         runtime_helpfile_new["P_surf"]          = runtime_helpfile.iloc[-1]["P_surf"]         
@@ -418,11 +423,13 @@ def ReadInitFile( init_file_passed , verbose=False):
                     if key in [ "IC_INTERIOR", "SURFACE_BC", 
                                "nstepsmacro", "use_vulcan", "ic_interior_filename", 
                                "plot_iterfreq", "stellar_heating", "mixing_length",
-                               "atmosphere_chem_type", "initial_pp_method"]:
+                               "atmosphere_chem_type", "solvepp_enabled"]:
                         val = int(val)
+
                     # Some are str
                     elif key in [ 'star_spectrum', 'star_btrack', 'dir_output' ]:
                         val = str(val)
+                        
                     # Most are float
                     else:
                         val = float(val)
@@ -441,6 +448,9 @@ def ReadInitFile( init_file_passed , verbose=False):
 
                         if line.startswith("star"):
                             time_dict["offset"] = float(val.strip())
+
+    # Calculate gravity from mass and radius
+    COUPLER_options["gravity"] =  phys.G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
 
     return COUPLER_options, time_dict
 

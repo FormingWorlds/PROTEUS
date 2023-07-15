@@ -109,8 +109,8 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
     # Create atmosphere object and set parameters
     pl_radius = COUPLER_options["radius"]
-    pl_mass = COUPLER_options["gravity"] * pl_radius * pl_radius / phys.G
-
+    pl_mass = COUPLER_options["mass"]
+    
     vol_list = { 
                   "H2O" : runtime_helpfile.iloc[-1]["H2O_mr"], 
                   "CO2" : runtime_helpfile.iloc[-1]["CO2_mr"],
@@ -153,13 +153,19 @@ def RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_opt
     # Go back to previous directory
     os.chdir(cwd)
     
-    # Atmosphere net flux from topmost atmosphere node; do not allow heating
+    # Atmosphere fluxes from topmost atmosphere node; do not allow heating
     COUPLER_options["F_atm"] = np.max( [ 0., atm.net_flux[0] ] )
+    COUPLER_options["F_olr"] = atm.LW_flux_up[0]
 
     # Clean up run directory
     for file in glob.glob(dirs["output"]+"/current??.????"):
         os.remove(file)
     for file in glob.glob(dirs["output"]+"/profile.*"):
         os.remove(file)
+
+    # Print flux info
+    flux_net = round(COUPLER_options["F_atm"], 3)
+    flux_olr = round(COUPLER_options["F_olr"], 3)
+    print("SOCRATES fluxes (net, OLR):", str(flux_net), str(flux_olr), "W/m^2")
 
     return atm, COUPLER_options
