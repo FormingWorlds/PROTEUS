@@ -405,6 +405,15 @@ This section includes troubleshooting advice for common errors. Each entry is la
     
     4.  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection
 
+
+* MacOS: An error during the SOCRATES compilation: 
+   `` ld: unsupported tapi file type '!tapi-tbd' in YAML file '/Library/Developer/CommandLineTools/SDKs/MacOSX13.sdk/usr/lib/libSystem.tbd' for architecture arm64``
+
+      * There is an issue with your ``ld``, potentially caused by an existing installation of ``anaconda``
+      * Delete all traces of ``anaconda`` by following the steps at https://docs.anaconda.com/free/anaconda/install/uninstall/
+      * Install ``python`` via ``brew`` (see above in the main installation instructions)
+
+
 * MacOS: One of the following errors during the SOCRATES compilation: 
 
 ``clang (LLVM option parsing): Unknown command line argument '-x86-pad-for-align=false'.  Try: 'clang (LLVM option parsing) --help'``
@@ -418,6 +427,8 @@ This section includes troubleshooting advice for common errors. Each entry is la
 
             $   sudo rm -rf /Library/Developer/CommandLineTools
             $   sudo xcode-select --install
+
+
 
 
 
