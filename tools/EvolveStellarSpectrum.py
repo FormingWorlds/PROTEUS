@@ -69,7 +69,7 @@ def evolve(cfg_file: str, tf: float):
                 case 2:
                     fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl,COUPLER_options, track)
 
-            SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs)
+            SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs['output'])
 
 
 if __name__ == "__main__":

@@ -586,9 +586,11 @@ def get_all_output_times( odir='output' ):
 
     '''get all times (in Myrs) from the json files located in the
        output directory'''
+    
+    odir = odir+'/data/'
 
     # locate times to process based on files located in odir/
-    file_l = [f for f in os.listdir(odir) if os.path.isfile(os.path.join(odir,f))]
+    file_l = [f for f in os.listdir(odir) if os.path.isfile(odir+f)]
     if not file_l:
         print('output directory contains no files')
         sys.exit(0)
@@ -613,8 +615,10 @@ def get_all_output_pkl_times( odir='output' ):
     '''get all times (in Myrs) from the pkl files located in the
        output directory'''
 
+    odir = odir+'/data/'
+
     # locate times to process based on files located in odir/
-    file_l = [f for f in os.listdir(odir) if os.path.isfile(os.path.join(odir,f))]
+    file_l = [f for f in os.listdir(odir) if os.path.isfile(odir+f)]
     if not file_l:
         print('output directory contains no PKL files')
         sys.exit(0)
@@ -641,7 +645,7 @@ def get_dict_values_for_times( keys, time_l, indir='output' ):
     data_l = []
 
     for time in time_l:
-        filename = os.path.join( indir, '{}.json'.format(time) )
+        filename = indir + '/data/{}.json'.format(time)
         myjson_o = MyJSON( filename )
         values_a = myjson_o.get_dict_values( keys )
         data_l.append( values_a )
@@ -664,7 +668,7 @@ def get_dict_surface_values_for_times( keys_t, time_l, indir='output'):
     data_l = []
 
     for time in time_l:
-        filename = os.path.join( indir, '{}.json'.format(time) )
+        filename = indir + '/data/{}.json'.format(time)
         myjson_o = MyJSON( filename )
         keydata_l = []
         for key in keys_t:
@@ -693,7 +697,7 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
 
     data_l = []
 
-    filename = os.path.join( indir, '{}.json'.format(time) )
+    filename = indir + '/data/{}.json'.format(time)
     myjson_o = MyJSON( filename )
     for key in keys_t:
         value = myjson_o.get_dict_values( key )
@@ -881,20 +885,23 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     if COUPLER_options["IC_INTERIOR"] == 2:  
 
         # Current step
-        json_file   = MyJSON( dirs["output"]+'/{}.json'.format(int(time_dict["planet"])) )
+        json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(time_dict["planet"])) )
         step        = json_file.get_dict(['step'])
 
         dtmacro     = float(COUPLER_options["dtmacro"])
         dtswitch    = float(COUPLER_options["dtswitch"])
 
         # Time resolution adjustment in the beginning
-        if time_dict["planet"] < 1000:
+        if time_dict["planet"] < 1.0e4:
+            dtmacro = 25
+            dtswitch = 100
+        if time_dict["planet"] < 1.0e3:
             dtmacro = 10
             dtswitch = 50
-        if time_dict["planet"] < 100:
+        if time_dict["planet"] < 1.0e2:
             dtmacro = 2
             dtswitch = 5
-        if time_dict["planet"] < 10:
+        if time_dict["planet"] < 1.0e1:
             dtmacro = 1
             dtswitch = 1
 
@@ -927,7 +934,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     call_sequence = [   
                         dirs["spider"]+"/spider", 
                         "-options_file",          SPIDER_options_file, 
-                        "-outputDirectory",       dirs["output"],
+                        "-outputDirectory",       dirs["output"]+'data/',
                         "-IC_INTERIOR",           str(COUPLER_options["IC_INTERIOR"]),
                         "-OXYGEN_FUGACITY_offset",str(COUPLER_options["fO2_shift_IW"]),
                         "-SURFACE_BC",            str(COUPLER_options["SURFACE_BC"]), 
@@ -979,7 +986,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     if COUPLER_options["IC_INTERIOR"] == 2:
         call_sequence.extend([ 
                                 "-ic_interior_filename", 
-                                str(dirs["output"]+"/"+COUPLER_options["ic_interior_filename"]),
+                                str(dirs["output"]+"data/"+COUPLER_options["ic_interior_filename"]),
                                 "-activate_poststep", 
                                 "-activate_rollback"
                              ])
@@ -1067,7 +1074,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         spider_print.close()
 
     # Update restart filename for next SPIDER run
-    COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"/*.json")])[-1]
+    COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
 
     print("Surface volatile partial pressures:")
     for s in volatile_species:

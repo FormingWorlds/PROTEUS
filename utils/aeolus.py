@@ -123,9 +123,19 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
                   "NH3" : 0., 
                 }
 
+    match COUPLER_options["tropopause"]:
+        case 0:
+            trppT = 0
+        case 1:
+            trppT = COUPLER_options["T_skin"]
+        case 2:
+            trppT = None
+            
     atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, 
                 COUPLER_options["P_top"]*1e5, pl_radius, pl_mass,
-                vol_mixing=vol_list
+                vol_mixing=vol_list, 
+                minT = COUPLER_options["min_temperature"],
+                trppT=trppT
                 )
 
     atm.zenith_angle    = COUPLER_options["zenith_angle"]
@@ -137,7 +147,7 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
     return atm, COUPLER_options
 
 
-def RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options ):
+def RunAEOLUS( atm, time_dict, dirs, COUPLER_options ):
 
     # Runtime info
     PrintHalfSeparator()
@@ -148,7 +158,9 @@ def RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_opt
     os.chdir(dirs["output"])
 
     # Calculate temperature structure and heat flux w/ SOCRATES
-    _, atm = RadConvEqm(dirs, time_dict, atm, standalone=False, cp_dry=False, trppD=True, rscatter=True,calc_cf=False) # W/m^2
+    trppD = bool(COUPLER_options["tropopause"] == 2 )
+    _, atm = RadConvEqm(dirs, time_dict, atm, 
+                        standalone=False, cp_dry=False, trppD=trppD, rscatter=True, calc_cf=False) # W/m^2
 
     # Go back to previous directory
     os.chdir(cwd)

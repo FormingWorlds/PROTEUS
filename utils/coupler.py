@@ -20,21 +20,6 @@ def parse_console_arguments():
     parser = argparse.ArgumentParser(description='PROTEUS optional command line arguments')
     parser.add_argument('-cfg_file', type=str, default="init_coupler.cfg", help='Specify cfg filename')
     parser.add_argument('-restart_file', type=str, default="0", help='Restart from specific .json file in folder. Specify only the number of the file.')
-    parser.add_argument('-H2O_ppm', type=float, help='H2O initial abundance (ppm wt).')
-    parser.add_argument('-CO2_ppm', type=float, help='CO2 initial abundance (ppm wt).')
-    parser.add_argument('-H2_ppm', type=float, help='H2 initial abundance (ppm wt).')
-    parser.add_argument('-CO_ppm', type=float, help='CO initial abundance (ppm wt).')
-    parser.add_argument('-N2_ppm', type=float, help='N2 initial abundance (ppm wt).')
-    parser.add_argument('-CH4_ppm', type=float, help='CH4 initial abundance (ppm wt).')
-    parser.add_argument('-O2_ppm', type=float, help='O2 initial abundance (ppm wt).')
-    parser.add_argument('-H2O_bar', type=float, help='H2O initial abundance (bar).')
-    parser.add_argument('-CO2_bar', type=float, help='CO2 initial abundance (bar).')
-    parser.add_argument('-H2_bar', type=float, help='H2 initial abundance (bar).')
-    parser.add_argument('-CO_bar', type=float, help='CO initial abundance (bar).')
-    parser.add_argument('-N2_bar', type=float, help='N2 initial abundance (bar).')
-    parser.add_argument('-CH4_bar', type=float, help='CH4 initial abundance (bar).')
-    parser.add_argument('-O2_bar', type=float, help='O2 initial abundance (bar).')
-    # parser.add_argument('-rf', '--restart_file', type=str, help='Restart from specific .json file in folder. Specify only the number of the file.')
     parser.add_argument('-r', '--restart', action='store_true', help='Restart from last file in folder.')
     args = parser.parse_args()
 
@@ -70,7 +55,8 @@ def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_co
     print(runtime_helpfile.tail(6))
 
     # Save atm object to disk
-    with open(dirs["output"]+"/"+str(int(time_dict["planet"]))+"_atm.pkl", "wb") as atm_file: pkl.dump(atm, atm_file)
+    with open(dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.pkl", "wb") as atm_file: 
+        pkl.dump(atm, atm_file)
 
 
 def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options):
@@ -80,7 +66,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
     # If runtime_helpfle not existent, create it + write to disk
     if not os.path.isfile(dirs["output"]+"/"+runtime_helpfile_name):
-        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'R_star', 'T_surf', 'F_int', 'F_atm', 'F_net', 'P_surf', 'M_atm', 'M_atm_kgmol', 'Phi_global', 'RF_depth', 'M_mantle', 'M_core', 'M_mantle_liquid', 'M_mantle_solid', 'H_mol_atm', 'H_mol_solid', 'H_mol_liquid', 'H_mol_total', 'O_mol_total', 'C_mol_total', 'N_mol_total', 'S_mol_total', 'He_mol_total', 'O/H_atm', 'C/H_atm', 'N/H_atm', 'S/H_atm', 'He/H_atm', 'H2O_mr', 'CO2_mr', 'H2_mr', 'CO_mr', 'CH4_mr', 'N2_mr', 'O2_mr', 'S_mr', 'He_mr'])
+        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'R_star', 'T_surf', 'F_int', 'F_atm', 'F_net', 'F_olr', 'P_surf', 'M_atm', 'M_atm_kgmol', 'Phi_global', 'RF_depth', 'M_mantle', 'M_core', 'M_mantle_liquid', 'M_mantle_solid', 'H_mol_atm', 'H_mol_solid', 'H_mol_liquid', 'H_mol_total', 'O_mol_total', 'C_mol_total', 'N_mol_total', 'S_mol_total', 'He_mol_total', 'O/H_atm', 'C/H_atm', 'N/H_atm', 'S/H_atm', 'He/H_atm', 'H2O_mr', 'CO2_mr', 'H2_mr', 'CO_mr', 'CH4_mr', 'N2_mr', 'O2_mr', 'S_mr', 'He_mr'])
         runtime_helpfile.to_csv( dirs["output"]+"/"+runtime_helpfile_name, index=False, sep="\t") 
         time_dict["planet"] = 0
         #, 'H2O_atm_bar', 'CO2_atm_bar', 'H2_atm_bar', 'CH4_atm_bar', 'CO_atm_bar', 'N2_atm_bar', 'O2_atm_bar', 'S_atm_bar', 'He_atm_bar'run
@@ -139,7 +125,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["RF_depth"]        = float(data_a[8])/COUPLER_options["radius"]  # depth of rheological front
 
         # Manually calculate heat flux at near-surface from energy gradient
-        json_file   = MyJSON( dirs["output"]+'/{}.json'.format(sim_time) )
+        json_file   = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
         Etot        = json_file.get_dict_values(['data','Etot_b'])
         rad         = json_file.get_dict_values(['data','radius_b'])
         area        = json_file.get_dict_values(['data','area_b'])
@@ -152,7 +138,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
         # Check and replace NaNs
         if np.isnan(runtime_helpfile_new["T_surf"]):
-            json_file_time = MyJSON( dirs["output"]+'/{}.json'.format(sim_time) )
+            json_file_time = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
             int_tmp   = json_file_time.get_dict_values(['data','temp_b'])
             print("Replace T_surf NaN:", runtime_helpfile_new["T_surf"], "-->", int_tmp[0], "K")
             runtime_helpfile_new["T_surf"] = int_tmp[0]
@@ -186,6 +172,12 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
                 # Total mass of atmosphere
                 runtime_helpfile_new["M_atm"] += runtime_helpfile_new[vol+"_atm_kg"]
+            else:
+                runtime_helpfile_new[vol+"_liquid_kg"]  = 0.0
+                runtime_helpfile_new[vol+"_solid_kg"]   = 0.0
+                runtime_helpfile_new[vol+"_atm_kg"]     = 0.0
+                runtime_helpfile_new[vol+"_atm_bar"]    = 0.0
+                runtime_helpfile_new[vol+"_mr"]         = 0.0
                 # print(vol, runtime_helpfile_new[vol+"_atm_kg"])
 
         ## Derive X/H ratios for atmosphere from interior outgassing
@@ -327,14 +319,17 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
                 runtime_helpfile_new[elem+"_mol_"+res]       = runtime_helpfile.iloc[-1][elem+"_mol_"+res]
         for elem in [n for n in element_list if n != 'H']:
             runtime_helpfile_new[elem+"/H_atm"]         = runtime_helpfile.iloc[-1][elem+"/H_atm"]
-
         for vol in volatile_species:
             runtime_helpfile_new[vol+"_mr"]          = runtime_helpfile.iloc[-1][vol+"_mr"]
+        
+        for vol in volatile_species:
+            for suffix in ["_liquid_kg", "_solid_kg", "_atm_kg", "_atm_bar", "_mr"]:
+                key = vol+suffix
+                runtime_helpfile_new[key] = runtime_helpfile.iloc[-1][key] 
 
     runtime_helpfile_new = pd.DataFrame(runtime_helpfile_new,index=[0])
     runtime_helpfile = pd.concat([runtime_helpfile, runtime_helpfile_new])
 
-    print(dirs["output"]+"/"+runtime_helpfile_name)
     runtime_helpfile.to_csv( dirs["output"]+"/"+runtime_helpfile_name, index=False, sep="\t")
 
     # Save COUPLER_options to disk
@@ -352,32 +347,6 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 # Calculate eqm temperature given stellar flux and bond albedo
 def calc_eqm_temperature(I_0, A_B):
     return (I_0 * (1.0 - A_B) / (4.0 * phys.sigma))**(1.0/4.0)
-
-
-# https://stackoverflow.com/questions/14115254/creating-a-folder-with-timestamp
-# https://stackoverflow.com/questions/600268/mkdir-p-functionality-in-python
-def make_output_dir( output_dir ):
-    save_dir = output_dir+"/"+"output_save/"+datetime.now().strftime('%Y-%m-%d_%H-%M-%S')+"/"
-    try:
-       os.makedirs(save_dir)
-    except OSError as exc:  # Python >2.5
-        if exc.errno == errno.EEXIST and os.path.isdir(save_dir):
-            pass
-        else:
-            raise
-    return save_dir
-
-def SaveOutput( output_dir ):
-
-    # Copy old files to separate folder
-    save_dir = make_output_dir( output_dir ) #
-    print("===> Copy files to separate dir for this run to:", save_dir)
-    # shutil.copy(output_dir+"spider_input.opts", save_dir+"spider_input.opts")
-    # for file in natsorted(glob.glob(output_dir+"/"+"*.*")):
-    for file in natural_sort(glob.glob(output_dir+"/"+"*.*")):
-        shutil.copy(file, save_dir+os.path.basename(file))
-        print(os.path.basename(file), end =" ")
-
 
 def ReadInitFile( init_file_passed , verbose=False):
 
@@ -421,13 +390,15 @@ def ReadInitFile( init_file_passed , verbose=False):
 
                     # Some parameters are int
                     if key in [ "IC_INTERIOR", "SURFACE_BC", 
-                               "nstepsmacro", "use_vulcan", "ic_interior_filename", 
-                               "plot_iterfreq", "stellar_heating", "mixing_length",
-                               "atmosphere_chem_type", "solvepp_enabled"]:
+                                "nstepsmacro", "use_vulcan", "ic_interior_filename", 
+                                "plot_iterfreq", "stellar_heating", "mixing_length",
+                                "atmosphere_chem_type", "solvepp_enabled",
+                                "tropopause"]:
                         val = int(val)
 
                     # Some are str
-                    elif key in [ 'star_spectrum', 'star_btrack', 'dir_output' ]:
+                    elif key in [ 'star_spectrum', 'star_btrack', 'dir_output', 
+                                  'spectral_file' ]:
                         val = str(val)
                         
                     # Most are float
@@ -456,7 +427,7 @@ def ReadInitFile( init_file_passed , verbose=False):
 
 
 #
-def UpdatePlots( output_dir, end=False, num_snapshots=8):
+def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=8):
     """Update plots during runtime for analysis
     
     Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
@@ -490,7 +461,7 @@ def UpdatePlots( output_dir, end=False, num_snapshots=8):
 
     # Global properties for all timesteps
     if len(output_times) > 1:
-        cpl_global.plot_global(output_dir)   
+        cpl_global.plot_global(output_dir, COUPLER_options)   
 
     # Specific timesteps for paper plots
     cpl_interior.plot_interior(output_dir, plot_times)     

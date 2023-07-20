@@ -20,9 +20,7 @@ output/*
 Tprofile.pdf
 .DS_Store
 __pycache__
-offline
 !output/.gitkeep
-mylog.log
 atmosphere.pdf
 volatiles_out.dat
 surfaceT.dat

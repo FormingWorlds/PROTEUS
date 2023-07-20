@@ -48,7 +48,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False):
     else:
         suffix = 'sflux'
 
-    files = glob.glob(output_dir+"/*."+suffix)
+    files = glob.glob(output_dir+"/data/*."+suffix)
     files = natural_sort(files)
 
     if (len(files) == 0):

@@ -35,7 +35,7 @@ def plot_atmosphere( output_dir, times ):
     time = fig_o.time[0] # first timestep since liquidus and solidus
                          # are time-independent
 
-    myjson_o = MyJSON( output_dir+'/{}.json'.format(time) )
+    myjson_o = MyJSON( output_dir+'/data/{}.json'.format(time) )
 
     pressure_interior = myjson_o.get_dict_values(['data','pressure_b'])
     # pressure_interior = myjson_o.get_dict_values_internal(['data','pressure_b'])
@@ -72,7 +72,7 @@ def plot_atmosphere( output_dir, times ):
 
     for nn, time in enumerate( fig_o.time ):
 
-        atm_file = output_dir+"/"+str(int(time))+"_atm.pkl"
+        atm_file = output_dir+"/data/"+str(int(time))+"_atm.pkl"
 
         if os.path.exists(atm_file):
 
@@ -82,7 +82,7 @@ def plot_atmosphere( output_dir, times ):
             atm_file_stream.close()
 
             # read json
-            myjson_o = MyJSON( output_dir+"/"+'{}.json'.format(time) )
+            myjson_o = MyJSON( output_dir+"/data/"+'{}.json'.format(time) )
 
             color = fig_o.get_color( 1.0*nn/len(fig_o.time) )
             # use melt fraction to determine mixed region

@@ -69,7 +69,7 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
     os.makedirs(this_results)
 
     # Read atm object
-    with open(dirs["output"]+"%d_atm.pkl"%year,'rb') as atm_handle:
+    with open(dirs["output"]+"/data/%d_atm.pkl"%year,'rb') as atm_handle:
         atm = pkl.load(atm_handle)
         p_bot   = atm.pl[-1]        # Pressure
         p_top   = atm.pl[0]         # Pressure
@@ -166,12 +166,16 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
     shutil.copyfile(dirs["vulcan"]+"vulcan_cfg.py",this_results+"vulcan_cfg.py")
 
     # Copy a reasonable stellar flux file to the location where VULCAN will read it
-    ls = glob.glob(dirs["output"]+"*.sfluxsurf")
+    ls = glob.glob(dirs["output"]+"/data/*.sfluxsurf")
     years = [int(f.split("/")[-1].split(".")[0]) for f in ls]
     year_near = years[find_nearest_idx(years,year)]
-    shutil.copyfile(dirs["output"]+"%d.sfluxsurf"%year_near,dirs["vulcan"]+"output/%d_offchem_%d_SF.txt"%(now,year))
+    shutil.copyfile(dirs["output"]+"/data/%d.sfluxsurf"%year_near,dirs["vulcan"]+"output/%d_offchem_%d_SF.txt"%(now,year))
 
     # Write PT profile
+    minT = 120.0
+    atm.tmpl = np.clip(atm.tmpl,minT,None)
+    if np.any(np.array(atm.tmpl) < minT):
+        print("WARNING: Temperature is unreasonably low (< %f)!" % minT)
     vul_PT = np.array(
         [np.array(atm.pl)  [::-1] * 10.0,
          np.array(atm.tmpl)[::-1]
@@ -207,12 +211,12 @@ if __name__ == '__main__':
     print("Started main process")
 
     # Parameters
-    cfgfile =       "output/trap1b/init_coupler.cfg"  # Config file used for PROTEUS
-    samples =       -1                  # How many samples to use from /output/ (set to -1 if all are requested)
-    threads =       45                  # How many threads to use
-    mkfuncs =       False               # Compile reaction functions again?
-    s_width =       1e5                 # Width of sampling distribution [yr]
-    s_centre =      3e4                 # Centre of sampling distribution [yr]
+    cfgfile =       "output/trap1b_bhac/init_coupler.cfg"  # Config file used for PROTEUS
+    samples =       5                  # How many samples to use from output dir (set to -1 if all are requested)
+    threads =       5                  # How many threads to use
+    mkfuncs =       True                # Compile reaction functions again?
+    s_width =       3e6                 # Width of sampling distribution [yr]
+    s_centre =      2e6                 # Centre of sampling distribution [yr]
     runtime_sleep = 30                  # Sleep seconds per iter
     ini_method =    1                   # Method used to init VULCAN abundances
 
@@ -268,12 +272,12 @@ if __name__ == '__main__':
     helpfile_df = pd.read_csv(dirs["output"]+"runtime_helpfile.csv",sep='\t')
 
     # Find out which years we have both SPIDER and AEOLUS data for
-    evolution_json = glob.glob(dirs["output"]+"*.json")
+    evolution_json = glob.glob(dirs["output"]+"/data/*.json")
     json_years = np.array([int(f.split("/")[-1].split(".")[0]) for f in evolution_json])
     json_years = np.sort(json_years)
     logging.info("Number of json files: %d"%len(json_years))
 
-    evolution_pkl = glob.glob(dirs["output"]+"*_atm.pkl")
+    evolution_pkl = glob.glob(dirs["output"]+"/data/*_atm.pkl")
     pkl_years = np.array([int(f.split("/")[-1].split("_atm.")[0]) for f in evolution_pkl])
     pkl_years = np.sort(pkl_years)
     logging.info("Number of pkl files: %d"%len(pkl_years))

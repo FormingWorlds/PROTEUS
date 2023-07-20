@@ -34,21 +34,24 @@ def main():
     utils.constants.dirs = SetDirectories(COUPLER_options)
     from utils.constants import dirs
 
-    # Check if output directory exists, otherwise create
-    if not os.path.exists(dirs["output"]):
-        os.makedirs(dirs["output"])
 
     # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
     loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 10 }
     
     # If restart skip init loop # args.r or args.rf or 
     if COUPLER_options["IC_INTERIOR"] == 2:
+
+        # Check if output directory actually exists
+        if (not os.path.exists(dirs["output"])) or (not os.path.exists(dirs["output"]+'/data/')):
+            print("ERROR: Cannot resume run because directory doesn't exist!")
+            exit(1)
+
         loop_counter["total"] += loop_counter["init_loops"]
         loop_counter["init"]  += loop_counter["init_loops"]
 
         # Restart file name if not specified: use last file output
         if (COUPLER_options["IC_INTERIOR"] == 2 and COUPLER_options["ic_interior_filename"] == 0):
-            COUPLER_options["ic_interior_filename"] = str(natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"/"+"*.json")])[-1])
+            COUPLER_options["ic_interior_filename"] = str(natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"/data/*.json")])[-1])
 
         # Clean all overtimes from present helpfile
         runtime_helpfile = pd.read_csv(dirs["output"]+"/"+"runtime_helpfile.csv", index_col=False, header=0, sep="\t")
@@ -63,6 +66,7 @@ def main():
     # Start conditions and help files depending on restart option
     else:
         CleanDir( dirs["output"] )
+        CleanDir( dirs['output']+'/data/')
         CleanDir( dirs["vulcan"]+"/output/" )
         runtime_helpfile    = []
 
@@ -93,8 +97,12 @@ def main():
 
                 # This volatile calculated by solvepp
                 if s in solvepp_dict:
-                    COUPLER_options[key_in] = 1
-                    COUPLER_options[key_pp] = solvepp_dict[s]
+                    if solvepp_dict[s] > 1e-1:
+                        COUPLER_options[key_in] = 1
+                        COUPLER_options[key_pp] = solvepp_dict[s]
+                    else:
+                        COUPLER_options[key_in] = 0
+                        COUPLER_options[key_pp] = 0.0
 
         # Prepare to use prescribed additional partial pressures
         for s in volatile_species:
@@ -116,12 +124,26 @@ def main():
         key_pp = str(s+"_initial_atmos_pressure")
         key_in = str(s+"_included")
         if (COUPLER_options[key_in] == 1):
-            if (COUPLER_options[key_pp] <= 0.0):
-                print("ERROR: Partial pressures must be positive or zero!")
-                print("       Consider assigning volatile '%s' a very small positive value" % s)
-                exit(1)
             inc_vols.append(s)
+
+            # Check positive
+            if (COUPLER_options[key_pp] <= 0.0):
+                print("ERROR: Partial pressures of included volatiles must be positive!")
+                print("       Consider assigning volatile '%s' a small positive value" % s)
+                exit(1)
+
+            # Ensure numerically reasonable
+            if (COUPLER_options[key_pp] <= 1e-3):
+                COUPLER_options[key_pp] = 1e-3
+            
+
     print("Included volatiles:",inc_vols)
+
+    # Check that spectral file exists
+    spectral_file_nostar = dirs["rad_conv"]+"/"+COUPLER_options["spectral_file"]
+    if not os.path.exists(spectral_file_nostar):
+        print("ERROR: Spectral file does not exist at '%s'!" % spectral_file_nostar)
+        exit(1)
 
     # Handle stellar spectrum...
 
@@ -132,6 +154,7 @@ def main():
     # Calculate band-integrated fluxes for modern stellar spectrum (1 AU)
     match COUPLER_options['star_model']:
         case 1:
+            MorsSolveUV(dirs,COUPLER_options,StellarFlux_wl,StellarFlux_fl)  # Solve for UV-PL band interface
             COUPLER_options = MorsCalculateFband(dirs, COUPLER_options)
         case 2:
             track = BaraffeLoadtrack(COUPLER_options)
@@ -141,8 +164,7 @@ def main():
     if COUPLER_options["star_model"] == 0:  # Will not be updated during the loop, so just need to write an initial one
         PrepareStellarSpectrum(StellarFlux_wl,StellarFlux_fl,star_spec_src)
         InsertStellarSpectrum(
-                                # dirs["rad_conv"]+"/spectral_files/sp_b318_HITRAN_a16/sp_b318_HITRAN_a16_no_spectrum",
-                                dirs["rad_conv"]+"/spectral_files/Mallard/sp_b318_HITRAN_a8",
+                                spectral_file_nostar,
                                 star_spec_src,
                                 dirs["output"]+"runtime_spectral_file"
                             )
@@ -170,7 +192,8 @@ def main():
         else:
             COUPLER_options["TOA_heating"] = 0.0
 
-        COUPLER_options["T_eqm"] = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
+        COUPLER_options["T_eqm"]  = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
+        COUPLER_options["T_skin"] = COUPLER_options["T_eqm"] * (0.5**0.25)
 
         # Calculate a new (historical) stellar spectrum 
         if (COUPLER_options['star_model'] > 0) and \
@@ -186,14 +209,13 @@ def main():
             # Write stellar spectra to disk
             print("Writing spectrum to disk")
             writessurf = (COUPLER_options["atmosphere_chem_type"] > 0)
-            SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs,write_surf=writessurf)
+            SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs['output']+'/data/',write_surf=writessurf)
 
             # Generate a new SOCRATES spectral file containing this new spectrum
-            print("Inserting spectrum into SOCRATES spectral file")
+            print("Inserting star into SOCRATES spectral file")
             PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
             InsertStellarSpectrum(
-                                    dirs["rad_conv"]+"/spectral_files/sp_b318_HITRAN_a16/sp_b318_HITRAN_a16_no_spectrum",
-                                    # dirs["rad_conv"]+"/spectral_files/Mallard/sp_b318_HITRAN_a8",
+                                    spectral_file_nostar,
                                     star_spec_src,
                                     dirs["output"]+"runtime_spectral_file"
                                 )
@@ -233,7 +255,7 @@ def main():
 
                 # Store results
                 for s in volatile_species:
-                    if s in solvepp_dict.keys():
+                    if (s in solvepp_dict.keys()) and (COUPLER_options[s+"_included"] == 1):
                         COUPLER_options[s+"_initial_atmos_pressure"] = solvepp_dict[s]
 
             # Penultimate init loop: inject additional atmosphere
@@ -259,7 +281,7 @@ def main():
             atm, COUPLER_options = StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
             # Run SOCRATES: update TOA heating and MO heat flux
-            atm, COUPLER_options = RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options )
+            atm, COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options )
              
             # Run VULCAN (settings-dependent): update atmosphere mixing ratios
             if (COUPLER_options["atmosphere_chem_type"] == 2):
@@ -280,7 +302,7 @@ def main():
 
         # Plot conditions throughout run for on-the-fly analysis
         if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0):
-            UpdatePlots( dirs["output"] )
+            UpdatePlots( dirs["output"], COUPLER_options )
         
         # Adjust iteration counters + total time 
         loop_counter["atm"]         = 0
@@ -301,7 +323,7 @@ def main():
         ############### / LOOP ITERATION MANAGEMENT
 
     # Plot conditions at the end
-    UpdatePlots( dirs["output"] )
+    UpdatePlots( dirs["output"], COUPLER_options )
 
     print("\n\n===> PROTEUS run finished successfully <===")
     print("     "+datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))

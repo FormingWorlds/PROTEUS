@@ -80,16 +80,16 @@ def BaraffeSolarConstant(time_dict: dict, COUPLER_options: dict, track: dict):
 
     """ 
 
-    tstar = time_dict['star'] * 1.e-6  # Convert from yr to Myr
+    tstar = time_dict['star']
 
     # Get time and check that it is in range
-    tmin = track['t'][0]*1.e-6
+    tmin = track['t'][0]
     if (tstar < tmin):
-        print("WARNING: Star age too low! Clipping to %.1g Myr" % int(tmin))
+        print("WARNING: Star age too low! Clipping to %.1g Myr" % int(tmin*1.e-6))
         tstar = tmin
-    tmax = track['t'][-1]*1.e-6
+    tmax = track['t'][-1]
     if (tstar > tmax):
-        print("WARNING: Star age too high! Clipping to %.1g Myr" % int(tmax))
+        print("WARNING: Star age too high! Clipping to %.1g Myr" % int(tmax*1.e-6))
         tstar = tmax
 
     # Find closest row in track
@@ -98,9 +98,10 @@ def BaraffeSolarConstant(time_dict: dict, COUPLER_options: dict, track: dict):
     # Get data from track
     Lstar = track['Lstar'][iclose]
 
+    Lstar *= L_sun
     mean_distance = COUPLER_options["mean_distance"] * AU
 
-    flux = Lstar /  ( 4. * np.pi * mean_distance * mean_distance ) # [W m-2]
+    flux = Lstar /  ( 4. * np.pi * mean_distance * mean_distance )
     heat = flux * ( 1. - COUPLER_options["albedo_pl"] )
 
     return flux, heat
@@ -365,7 +366,7 @@ def MorsSolveUV(dirs: dict, COUPLER_options: dict, spec_wl: list, spec_fl: list,
     print("   Complete")
     print("   Target flux: %1.2e erg s-1 cm-2 nm-1" % fl_opt)
     print("   Solved flux: %1.2e erg s-1 cm-2 nm-1" % sol_fl)
-    print("   Optimal wavelength is %.2f nm"   % sol_wl)
+    print("   Optimal wavelength for band edge is %.2f nm"   % sol_wl)
 
     return sol_wl
 
@@ -567,7 +568,6 @@ def BaraffeSpectrumCalc(time_star: float, spec_fl: list, COUPLER_options: dict, 
     iclose = (np.abs(track['t'] - time_star)).argmin()
     
     # Get data from track
-    t =         track['t'][iclose] * 1.e-6
     Rstar_cm =  track['Rstar'][iclose] * R_sun_cm
     Lstar =     track['Lstar'][iclose]
 
@@ -585,7 +585,7 @@ def BaraffeSpectrumCalc(time_star: float, spec_fl: list, COUPLER_options: dict, 
 
     return hspec_fl, hspec_fl_surf
 
-def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, dirs, write_surf=True, write_1AU=True):
+def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, folder, write_surf=True, write_1AU=True):
     """Write historical spectrum to files.
 
     Parameters
@@ -598,8 +598,8 @@ def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, dirs, write_surf=True, write_
             Numpy array flux at 1 AU
         sfluxsurf : np.array(float)
             Numpy array of flux at stellar surface
-        dirs : dict
-            Directories dictionary
+        folder : float
+            Path to folder where file is to be written
 
     """
 
@@ -607,13 +607,13 @@ def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, dirs, write_surf=True, write_
 
     if write_1AU:
         X = np.array([wl,sflux]).T
-        outname1 = dirs['output'] + "/%d.sflux" % time_dict['planet']
+        outname1 = folder + "/%d.sflux" % time_dict['planet']
         header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (1 AU) at t_star = %.3f Myr ' % round(tstar,3)
         np.savetxt(outname1, X, header=header,comments='',fmt='%1.4e',delimiter='\t')
 
     if write_surf:
         Y = np.array([wl,sfluxsurf]).T
-        outname2 = dirs['output'] + "/%d.sfluxsurf" % time_dict['planet']
+        outname2 = folder + "/%d.sfluxsurf" % time_dict['planet']
         header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (surface) at t_star = %.3f Myr ' % round(tstar,3)
         np.savetxt(outname2, Y, header=header,comments='',fmt='%1.4e',delimiter='\t')
 

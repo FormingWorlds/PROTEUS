@@ -29,7 +29,7 @@ def plot_interior( output_dir, times ):
     time = fig_o.time[0] # first timestep since liquidus and solidus
                          # are time-independent
 
-    myjson_o = MyJSON( output_dir+'/{}.json'.format(time) )
+    myjson_o = MyJSON( output_dir+'/data/{}.json'.format(time) )
 
     # print(myjson_o.data_d)
     # TIMEYRS = myjson_o.data_d['nstep']
@@ -61,7 +61,7 @@ def plot_interior( output_dir, times ):
     for nn, time in enumerate( fig_o.time ):
 
         # read json
-        myjson_o = MyJSON( output_dir+'/{}.json'.format(time) )
+        myjson_o = MyJSON( output_dir+'/data/{}.json'.format(time) )
 
         color = fig_o.get_color( 1.0*nn/len(fig_o.time) )
 

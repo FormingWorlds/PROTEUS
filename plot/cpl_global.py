@@ -6,7 +6,7 @@ from utils.plot import *
 from utils.spider import *
 
 #====================================================================
-def plot_global( output_dir ):
+def plot_global( output_dir , COUPLER_options):
 
     print("Plot global")
 
@@ -106,13 +106,16 @@ def plot_global( output_dir ):
     nsteps       = 5
 
     # Replace NaNs
-    for idx, val in enumerate(T_surf):
+    # for idx, val in enumerate(T_surf):
         # print(idx, val)
-        if np.isnan(val):
-            json_file_time = MyJSON( output_dir+'/{}.json'.format(fig_o.time[idx]) )
-            int_tmp   = json_file_time.get_dict_values(['data','temp_b'])
-            print("T_surf:", idx, val, "-->", round(int_tmp[0],3), "K")
-            T_surf[idx] = int_tmp[0]
+        # if np.isnan(val):
+            # json_file_time = MyJSON( output_dir+'/{}.json'.format(fig_o.time[idx]) )
+            # int_tmp   = json_file_time.get_dict_values(['data','temp_b'])
+            # print("T_surf:", idx, val, "-->", round(int_tmp[0],3), "K")
+            # T_surf[idx] = int_tmp[0]
+    for idx in range(1,len(T_surf)-1):
+        if np.isnan(T_surf[idx]) or (T_surf[idx] <= 0.0):
+            T_surf[idx] = 0.5*(T_surf[idx-1]+T_surf[idx+1])
             
 
     ##########
@@ -191,8 +194,10 @@ def plot_global( output_dir ):
     ##########
 
     # Plot rheological front depth, mante melt + solid fraction
-    ax2.plot( df_int["Time"], df_int["RF_depth"], ls="-", lw=lw, color=dict_colors["qgray"], label=r'Rheol. front, $d_{\mathrm{front}}$')
+    ax2.axhline( y=COUPLER_options["planet_coresize"], lw=lw, color=dict_colors["qmagenta_dark"], label=r'C-M boundary, $r_{\mathrm{core}}$ ' )
+    ax2.plot( df_int["Time"], 1.0-df_int["RF_depth"], ls="dashed", lw=lw, color=dict_colors["qgray"], label=r'Rheol. front, $d_{\mathrm{front}}$')
     ax2.plot( df_int["Time"], df_int["Phi_global"], color=dict_colors["qblue"], linestyle=':', lw=lw, label=r'Melt fraction, $\phi_{\mathrm{mantle}}$')
+
     # ax2.plot( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
     # ax2.plot( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
     # ax2.plot( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
@@ -238,7 +243,7 @@ def plot_global( output_dir ):
         for sim_time in fig_o.time:
 
             # Define file name
-            json_file = output_dir+"/"+str(int(sim_time))+".json"
+            json_file = output_dir+"/data/"+str(int(sim_time))+".json"
 
             # For string check
             vol_str = '"'+vol+'"'
@@ -308,6 +313,9 @@ def plot_global( output_dir ):
     ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
     ax3.set_yscale("log")
     ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
+
+    cur_ybot, cur_ytop = ax3.get_ylim()
+    ax3.set_ylim(max(cur_ybot, 1e-1), cur_ytop)
     ##########
     # figure e
     ##########
@@ -357,31 +365,24 @@ def plot_global( output_dir ):
     ax5.legend(handles, labels, ncol=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend, loc='upper left') 
     ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
-    plt.close()
-    plt.ioff()
+    # plt.close()
+    # plt.ioff()
     fig_o.savefig(6)
-
-#====================================================================
-def main():
-
-    # Optional command line arguments for running from the terminal
-    # Usage: $ python plot_atmosphere.py -t 0,718259
-    parser = argparse.ArgumentParser(description='COUPLER plotting script')
-    parser.add_argument('-odir', '--output_dir', type=str, help='Full path to output directory');
-    args = parser.parse_args()
-
-    # Define output directory for plots
-    if args.output_dir:
-        output_dir = args.output_dir
-    else:
-        output_dir = os.getcwd() + "/output/"
-
-    print("Output directory:", output_dir)
-
-    plot_global(output_dir=output_dir)
 
 #====================================================================
 
 if __name__ == "__main__":
 
-    main()
+    if len(sys.argv) == 2:
+        cfg = sys.argv[1]
+    else:
+        cfg = 'init_coupler.cfg' 
+
+    # Read in COUPLER input file
+    from utils.coupler import ReadInitFile, SetDirectories
+    COUPLER_options, time_dict = ReadInitFile( cfg )
+
+    # Set directories dictionary
+    dirs = SetDirectories(COUPLER_options)
+
+    plot_global(dirs['output'],COUPLER_options)

@@ -49,7 +49,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
         suffix = 'sfluxsurf'
     else:
         suffix = 'sflux'
-    files_unsorted = glob.glob(output_dir+"/*."+suffix)
+    files_unsorted = glob.glob(output_dir+"/data/*."+suffix)
     files = natural_sort(files_unsorted)
 
     if (len(files) == 0):

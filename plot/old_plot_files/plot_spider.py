@@ -29,7 +29,7 @@ def spiderplot_fig1( times ):
     time = fig_o.time[0] # first timestep since liquidus and solidus
                          # are time-independent
 
-    myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
+    myjson_o = su.MyJSON( 'output/data/{}.json'.format(time) )
 
     try:
         TIMEYRS = myjson_o.data_d['nstep']
@@ -82,7 +82,7 @@ def spiderplot_fig1( times ):
 
     for nn, time in enumerate( fig_o.time ):
         # read json
-        myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
+        myjson_o = su.MyJSON( 'output/data/{}.json'.format(time) )
 
         color = fig_o.get_color( nn )
         # use melt fraction to determine mixed region
@@ -188,7 +188,7 @@ def spiderplot_fig2( times ):
         #    continue
 
         # read json
-        myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
+        myjson_o = su.MyJSON( 'output/data/{}.json'.format(time) )
 
         color = fig_o.get_color( nn )
         # use melt fraction to determine mixed region
@@ -278,7 +278,7 @@ def spiderplot_fig3( times ):
         #    continue
 
         # read json
-        myjson_o = su.MyJSON( 'output/{}.json'.format(time) )
+        myjson_o = su.MyJSON( 'output/data/{}.json'.format(time) )
 
         color = fig_o.get_color( nn )
         # use melt fraction to determine mixed region
