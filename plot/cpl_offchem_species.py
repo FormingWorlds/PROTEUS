@@ -23,7 +23,7 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
         sp : list
             Which species to plot? (e.g. H2O)
         tmin : float
-            Initial year to include (-1 for start of  data)
+            Initial year to include (-1 for start of data)
         tmax : float 
             Final year to include (-1 for end of data)
         plot_init_mx : bool
@@ -60,13 +60,13 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
     if (tmin > 0):
         cb_vmin = tmin
     else:
-        cb_vmin = max(years_data[0]["year"],1.0)
+        cb_vmin = max(years_data[1]["year"],1.0)
         
     
     if (tmax > 0):
         cb_vmax = tmax
     else:
-        cb_vmax = years_data[-1]["year"]
+        cb_vmax = max(years_data[-1]["year"],2.0)
         
 
     norm = mpl.colors.LogNorm(vmin=cb_vmin, vmax=cb_vmax)
@@ -84,8 +84,11 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
         
         if (tmax > -1) and (yd["year"] > tmax):
             continue 
-
-        color = sm.to_rgba(yd["year"])
+        
+        if (tmin == -1) and (i == 0):
+            color = 'blue'
+        else:
+            color = sm.to_rgba(yd["year"])
 
         p = yd["pressure"]
 
@@ -101,7 +104,8 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
         if plot_init_mx:
             key = str("ae_"+sp)
             if key in yd.keys():
-                ax1.plot(np.ones((len(p),)) * yd[key],p,linestyle='--',lw=lw*0.5,color=color)
+                ax1.scatter(yd[key],p[-1], s=50,color=color)
+                # ax1.plot(np.ones((len(p),)) * yd[key],p,linestyle='--',lw=lw*0.5,color=color)
             
     ax1.set_xlim([min_mix,1])
 
@@ -126,7 +130,7 @@ if __name__ == '__main__':
     COUPLER_options, time_dict = ReadInitFile( cfg )
 
     # Species to make plots for
-    species = ["H2", "H2O", "H", "OH", "O3", "O2"
+    species = ["H2", "H2O", "H", "OH", "O3", "O2",
                "CO2", "CO", "CH4", "C2H2",
                "HCN", "NH3", "NH2", "N2", "NO"]
 
@@ -136,6 +140,6 @@ if __name__ == '__main__':
     # Call plotting function
     for s in species:
         print("Species = %s" % s)
-        plot_offchem_species(dirs["output"],s,tmin=1e3)
+        plot_offchem_species(dirs["output"],s,tmin=-1)
 
     print("Done!")

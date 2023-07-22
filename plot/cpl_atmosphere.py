@@ -54,7 +54,7 @@ def plot_atmosphere( output_dir, times ):
 
     handle_l = [] # handles for legend
 
-    fig_o.set_cmap(sci_colormaps["batlow_r"])
+    fig_o.set_cmap(sci_colormaps["batlowK_r"])
 
     ymax_atm_pressure = 0
     ymin_atm_pressure = 1000

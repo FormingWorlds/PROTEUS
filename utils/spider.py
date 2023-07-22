@@ -863,7 +863,12 @@ def plot_static_structure( radius, rho_interp1d ):
 
 #====================================================================
 
+
 def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
+
+    PrintHalfSeparator()
+    print("Running SPIDER...")
+    print("IC_INTERIOR =",COUPLER_options["IC_INTERIOR"])
 
     SPIDER_options_file = dirs["output"]+"/init_spider.opts"
     SPIDER_options_file_orig = dirs["utils"]+"/init_spider.opts"
@@ -888,40 +893,101 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(time_dict["planet"])) )
         step        = json_file.get_dict(['step'])
 
-        dtmacro     = float(COUPLER_options["dtmacro"])
-        dtswitch    = float(COUPLER_options["dtswitch"])
-
-        # Time resolution adjustment in the beginning
-        if time_dict["planet"] < 1.0e4:
-            dtmacro = 25
-            dtswitch = 100
-        if time_dict["planet"] < 1.0e3:
-            dtmacro = 10
-            dtswitch = 50
-        if time_dict["planet"] < 1.0e2:
-            dtmacro = 2
-            dtswitch = 5
-        if time_dict["planet"] < 1.0e1:
+        # Time stepping adjustment
+        if time_dict["planet"] < 3.0:
+            # First few years, use static time-step
             dtmacro = 1
             dtswitch = 1
+            nsteps = 1
+            print("Time-stepping intent: static")
+        else:
+            # Dynamic time-step calculation
+            F_clip = 1.e-9
 
-        # Runtime left
-        dtime_max   = time_dict["target"] - time_dict["planet"]
+            run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
+            run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']
 
-        # Limit Atm-Int switch
-        dtime       = np.min([ dtime_max, dtswitch ])
+            # Get time-step length from last iter
+            dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+
+            
+            F_int_3 = max(run_int.iloc[-3]["F_int"],F_clip)
+            F_int_2 = max(run_int.iloc[-2]["F_int"],F_clip)
+            F_int_1 = max(run_int.iloc[-1]["F_int"],F_clip)
+            F_int_23 = abs((F_int_2 - F_int_3)/F_int_3)  # Relative change from [-3] to [-2] steps
+            F_int_12 = abs((F_int_1 - F_int_2)/F_int_2)  # Relative change from [-2] to [-1] steps
+
+            F_atm_3 = max(run_int.iloc[-3]["F_atm"],F_clip)
+            F_atm_2 = max(run_atm.iloc[-2]["F_atm"],F_clip)
+            F_atm_1 = max(run_atm.iloc[-1]["F_atm"],F_clip)
+            F_atm_23 = abs((F_atm_2 - F_atm_3)/F_atm_3)  # Relative change from [-3] to [-2] steps
+            F_atm_12 = abs((F_atm_1 - F_atm_2)/F_atm_2)  # Relative change from [-2] to [-1] steps
+
+            F_acc_max = max( F_int_12-F_int_23, F_atm_12-F_atm_23 ) * 100.0  # Maximum accel. (in relative terms)
+
+            if F_acc_max > 20.0:
+                # Slow down!!
+                print("Time-stepping intent: slow down!!")
+                dtswitch = 0.05 * dtprev
+
+            elif F_acc_max > 5.0:
+                # Slow down
+                print("Time-stepping intent: slow down")
+                dtswitch = 0.50 * dtprev
+
+            elif F_acc_max > 0.1:
+                # Steady (speed up a little bit to promote evolution)
+                print("Time-stepping intent: steady")
+                dtswitch = 1.01 * dtprev
+
+            elif F_acc_max > -10.0:
+                # Speed up
+                print("Time-stepping intent: speed up")
+                dtswitch = 1.5 * dtprev
+
+            else:
+                # Speed up!!
+                print("Time-stepping intent: speed up!!")
+                dtswitch = 2.5 * dtprev
+
+            # Prevent step size from getting too small
+            dtswitch = max(dtswitch, time_dict["planet"]*0.005)
+            dtswitch = max(dtswitch, 2.0e1)
+
+            # Prevent step size from getting too large
+            dtswitch = min(dtswitch, float(time_dict["target"] - time_dict["planet"]))
+            dtswitch = min(dtswitch, 2.0e6 )
+
+            # Calculate number of macro steps for SPIDER to perform within
+            # this time-step of PROTEUS, which sets the number of json files.
+            nsteps = 4
+            dtmacro = math.ceil(dtswitch / nsteps)   # Ensures that dtswitch is divisible by nsteps
+            dtswitch = nsteps * dtmacro
+
+            print("New time-step is %1.2e years" % dtswitch)
 
         # Number of total steps until currently desired switch/end time
-        COUPLER_options["nstepsmacro"] =  step + math.ceil( dtime / dtmacro )
+        nstepsmacro =  step + nsteps
 
         if debug:
-            print("TIME OPTIONS IN RUNSPIDER:")
-            print(dtmacro, dtswitch, dtime_max, dtime, COUPLER_options["nstepsmacro"])
-
+            print("TIME OPTIONS IN RUNSPIDER:", dtmacro, dtswitch, nstepsmacro)
 
     # For init loop
     else:
+        nstepsmacro = 1
         dtmacro     = 0
+        dtswitch    = 0
+
+    # Store time-step (for next iteration)
+    COUPLER_options["dtswitch"] = dtswitch
+    COUPLER_options["dtmacro"] = dtmacro
+
+    print("Surface volatile partial pressures:")
+    for s in volatile_species:
+        key_pp = str(s+"_initial_atmos_pressure")
+        key_in = str(s+"_included")
+        if (key_pp in COUPLER_options) and (COUPLER_options[key_in] == 1):
+            print("    p_%s = %.3f bar" % (s,COUPLER_options[key_pp]/1.0e5))
 
     # Prevent interior oscillations during last-stage freeze-out
     net_loss = COUPLER_options["F_atm"]
@@ -936,11 +1002,11 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                         "-options_file",          SPIDER_options_file, 
                         "-outputDirectory",       dirs["output"]+'data/',
                         "-IC_INTERIOR",           str(COUPLER_options["IC_INTERIOR"]),
-                        "-OXYGEN_FUGACITY_offset",str(COUPLER_options["fO2_shift_IW"]),
+                        "-OXYGEN_FUGACITY_offset",str(COUPLER_options["fO2_shift_IW"]),  # Relative to the specified buffer
                         "-SURFACE_BC",            str(COUPLER_options["SURFACE_BC"]), 
                         "-surface_bc_value",      str(net_loss), 
                         "-teqm",                  str(COUPLER_options["T_eqm"]), 
-                        "-nstepsmacro",           str(COUPLER_options["nstepsmacro"]), 
+                        "-nstepsmacro",           str(nstepsmacro), 
                         "-dtmacro",               str(dtmacro), 
                         "-radius",                str(COUPLER_options["radius"]), 
                         "-gravity",               "-"+str(COUPLER_options["gravity"]), 
@@ -1051,9 +1117,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
 
     # Runtime info
-    PrintHalfSeparator()
-    print("Running SPIDER...")
-    print("IC_INTERIOR =",COUPLER_options["IC_INTERIOR"])
     if debug:
         flags = ""
         for flag in call_sequence:
@@ -1075,12 +1138,5 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # Update restart filename for next SPIDER run
     COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
-
-    print("Surface volatile partial pressures:")
-    for s in volatile_species:
-        key_pp = str(s+"_initial_atmos_pressure")
-        key_in = str(s+"_included")
-        if (key_pp in COUPLER_options) and (COUPLER_options[key_in] == 1):
-            print("    p_%s = %.3f bar" % (s,COUPLER_options[key_pp]/1.0e5))
 
     return COUPLER_options

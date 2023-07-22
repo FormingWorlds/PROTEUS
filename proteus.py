@@ -189,11 +189,13 @@ def main():
         # Include SW radiation from star in heating rate calculations?
         if (COUPLER_options["stellar_heating"] > 0):
             COUPLER_options["TOA_heating"] = toa_heating
+            COUPLER_options["T_eqm"]  = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
         else:
+            print("Stellar heating is disabled")
             COUPLER_options["TOA_heating"] = 0.0
-
-        COUPLER_options["T_eqm"]  = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
+            COUPLER_options["T_eqm"]  = 0.0
         COUPLER_options["T_skin"] = COUPLER_options["T_eqm"] * (0.5**0.25)
+
 
         # Calculate a new (historical) stellar spectrum 
         if (COUPLER_options['star_model'] > 0) and \

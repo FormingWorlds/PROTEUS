@@ -91,7 +91,7 @@ def plot_global( output_dir , COUPLER_options):
     xlabel = r'Time, $t$ (yr)'
 
     xmax = max(1.0e7,np.amax(df_int["Time"]))
-    xlim = (1.0e1,10 ** np.ceil(np.log10(xmax)))
+    xlim = (1.0e1,10 ** np.ceil(np.log10(xmax*1.1)))
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)
@@ -144,7 +144,9 @@ def plot_global( output_dir , COUPLER_options):
     ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax0.set_xlim( *xlim )
-    ax0.set_ylim(top=np.amax(df_atm["F_atm"])*1.1, bottom=-100)
+    ymax = max(np.amax(df_atm["F_atm"])*1.1, 1.0e1)
+    ymin = min(np.amin(df_atm["F_atm"]), -1.0e1)
+    ax0.set_ylim(top=ymax, bottom=ymin)
     ax0.set_yscale('symlog')
     ax0.set_xscale('symlog')
     ax0.set_xticklabels([])
@@ -170,12 +172,12 @@ def plot_global( output_dir , COUPLER_options):
         h2, = ax1.plot(df_int["Time"], df_int["T_surf"],                color=dict_colors["qred"], label="Interior")
         h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=dict_colors["qgray"], label=r'Surface temp, $T_\mathrm{surf}$') # , color="blue"
         
-    if np.max(df_atm["Time"]) >= 1e3: 
-        ymin = np.min(df_atm["T_surf"])*0.9
-        ymax = np.max(df_atm["T_surf"])*1.1
-    else: 
-        ymin = 200
-        ymax = 3000
+    # if np.max(df_atm["Time"]) >= 1e3: 
+    #     ymin = np.min(df_atm["T_surf"])*0.9
+    #     ymax = np.max(df_atm["T_surf"])*1.1
+    # else: 
+    ymin = 200
+    ymax = 3000
     yticks = [ymin, ymin+0.2*(ymax-ymin), ymin+0.4*(ymax-ymin), ymin+0.6*(ymax-ymin), ymin+0.8*(ymax-ymin), ymax]
     # fig_o.set_myaxes( ax1, title=title, yticks=yticks)
     ax1.set_ylabel(r'$T_\mathrm{s}$ (K)', fontsize=label_fs)
@@ -194,8 +196,8 @@ def plot_global( output_dir , COUPLER_options):
     ##########
 
     # Plot rheological front depth, mante melt + solid fraction
-    ax2.axhline( y=COUPLER_options["planet_coresize"], lw=lw, color=dict_colors["qmagenta_dark"], label=r'C-M boundary, $r_{\mathrm{core}}$ ' )
-    ax2.plot( df_int["Time"], 1.0-df_int["RF_depth"], ls="dashed", lw=lw, color=dict_colors["qgray"], label=r'Rheol. front, $d_{\mathrm{front}}$')
+    ax2.axhline( y=COUPLER_options["planet_coresize"], ls='dashed', lw=lw*1.5, color=dict_colors["qmagenta_dark"], label=r'C-M boundary, $r_{\mathrm{core}}$ ' )
+    ax2.plot( df_int["Time"], 1.0-df_int["RF_depth"], ls="solid", lw=lw, color=dict_colors["qgray"], label=r'Rheol. front, $d_{\mathrm{front}}$')
     ax2.plot( df_int["Time"], df_int["Phi_global"], color=dict_colors["qblue"], linestyle=':', lw=lw, label=r'Melt fraction, $\phi_{\mathrm{mantle}}$')
 
     # ax2.plot( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
@@ -203,7 +205,7 @@ def plot_global( output_dir , COUPLER_options):
     # ax2.plot( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
 
     ax2.set_xscale("symlog", linthresh=10)
-    ax2.set_ylim([-0.1,1.1])
+    ax2.set_ylim([0,1])
     ax2.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
     ax2.set_xlim( *xlim )
     ax2.set_xlabel(xlabel, fontsize=label_fs)
@@ -336,7 +338,7 @@ def plot_global( output_dir , COUPLER_options):
     ax4.set_xticklabels([])
     ax4.yaxis.set_label_position("right")
     ax4.yaxis.set_label_coords(xcoord_r,ycoord_r)
-    ax4.set_ylim([-0.1,1.1])
+    ax4.set_ylim([0,1])
     ax4.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
     ax4.set_xlim( *xlim )
     # ax4.set_ylim( 0, 1 )
@@ -354,7 +356,7 @@ def plot_global( output_dir , COUPLER_options):
     ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax5.set_xlim( *xlim )
     ax5.set_xscale("symlog", linthresh=10)
-    ax5.set_ylim([-0.1,1.1])
+    ax5.set_ylim([0,1])
     ax5.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
     ax5.yaxis.tick_right()
     ax5.yaxis.set_label_coords(xcoord_r,ycoord_r)

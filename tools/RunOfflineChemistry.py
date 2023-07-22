@@ -89,33 +89,31 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
         vcf.write("P_b = %1.5e \n" % float(p_bot * 10.0))  # pressure at the bottom (dyne/cm^2)
         vcf.write("P_t = %1.5e \n" % float(p_top * 10.0))  # pressure at the top (dyne/cm^2)
 
-        # Set initial abundances using selected method
         # Constant mixing ratios
+        const_mix = "{"
+        for v in volatile_species:
+            this_mx = max(float(v_mx[v]),mixing_ratio_floor)     
+            const_mix += " '%s' : %1.5e ," % (v,this_mx)
+        const_mix = const_mix[:-1]+" }"
+        vcf.write("const_mix = %s \n" % str(const_mix))
+
+        # Work out metallicities
+        tot = {}
+        for e in element_list:
+            tot[e] = 0
+        for v in volatile_species:
+            this_mx = max(float(v_mx[v]),mixing_ratio_floor)    
+            elems = mol_to_ele(v)
+            for e in elems.keys():
+                tot[e] += (elems[e]*this_mx)
+        for e in tot.keys():
+            per = tot[e]/tot['H']
+            vcf.write("%s_H = %1.8e \n" % (e,per))
+
+        # Set initial abundances using selected method
         if ini_method == 0: 
-            const_mix = "{"
-            for v in volatile_species:
-                this_mx = max(float(v_mx[v]),mixing_ratio_floor)     
-                const_mix += " '%s' : %1.5e ," % (v,this_mx)
-            const_mix = const_mix[:-1]+" }"
-            vcf.write("const_mix = %s \n" % str(const_mix))
             vcf.write("ini_mix = 'const_mix' \n")
-
-        # Eqm chemistry
         elif (ini_method == 1):
-
-            # Work out metallicities
-            tot = {}
-            for e in element_list:
-                tot[e] = 0
-            for v in volatile_species:
-                this_mx = max(float(v_mx[v]),mixing_ratio_floor)    
-                elems = mol_to_ele(v)
-                for e in elems.keys():
-                    tot[e] += (elems[e]*this_mx)
-            for e in tot.keys():
-                per = tot[e]/tot['H']
-                vcf.write("%s_H = %1.8e \n" % (e,per))
-
             vcf.write("fastchem_met_scale = 1e-60 \n")  # Try to remove elements not set by method above
             vcf.write("use_solar = False \n")
             vcf.write("ini_mix = 'EQ' \n")
@@ -210,15 +208,21 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 if __name__ == '__main__':
     print("Started main process")
 
+
+    # ----------------------------------------
+
     # Parameters
-    cfgfile =       "output/trap1b_bhac/init_coupler.cfg"  # Config file used for PROTEUS
-    samples =       5                  # How many samples to use from output dir (set to -1 if all are requested)
-    threads =       5                  # How many threads to use
+    cfgfile =       "output/trap1b_bhac_nostar/init_coupler.cfg"  # Config file used for PROTEUS
+    samples =       20                  # How many samples to use from output dir (set to -1 if all are requested)
+    threads =       20                  # How many threads to use
     mkfuncs =       True                # Compile reaction functions again?
-    s_width =       3e6                 # Width of sampling distribution [yr]
-    s_centre =      2e6                 # Centre of sampling distribution [yr]
+    s_width =       2e6                 # Width of sampling distribution [yr]
+    s_centre =      1e6                 # Centre of sampling distribution [yr]
     runtime_sleep = 30                  # Sleep seconds per iter
-    ini_method =    1                   # Method used to init VULCAN abundances
+    ini_method =    1                   # Method used to init VULCAN abundances  (0: const_mix, 1: eqm)
+
+    # ----------------------------------------
+
 
     # Read in PROTEUS config file
     COUPLER_options, time_dict = ReadInitFile( cfgfile )
@@ -303,7 +307,7 @@ if __name__ == '__main__':
     
     logging.info("Choosing sample years... (May take a while in some cases)")
     years = [ ]
-    yfirst = years_all[0]
+    yfirst = years_all[1]
     ylast = years_all[-1]
     if samples >= 1:
         years.append(yfirst) # Include first run
@@ -457,11 +461,12 @@ if __name__ == '__main__':
     # Plot
     logging.info("Plotting results...")
 
-    plot_aeolus = bool(ini_method == 0)
+    # plot_aeolus = bool(ini_method == 0)
+    plot_aeolus = True
 
-    species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO","C2H6","CH3OH"]
+    species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
     logging.info("\t timeline")
-    plot_offchem_time(dirs["output"],species,plot_init_mx=plot_aeolus,tmin=1e3)
+    plot_offchem_time(dirs["output"],species,plot_init_mx=plot_aeolus,tmin=1e4)
 
     ls = glob.glob(dirs["output"]+"offchem/*/output.vul")
     years = [int(f.split("/")[-2]) for f in ls]
@@ -470,13 +475,13 @@ if __name__ == '__main__':
     if len(years) == 0:
         raise Exception('In attempting to make plots, no VULCAN output files were found')
 
-    for yd in years_data:
-        logging.info("\t year = %d" % yd["year"])
-        plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_aeolus)
+    # for yd in years_data:
+    #     logging.info("\t year = %d" % yd["year"])
+    #     plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_aeolus)
 
     for s in species:
         print("\t species = %s" % s)
-        plot_offchem_species(dirs["output"],s,plot_init_mx=plot_aeolus,tmin=1e3)
+        plot_offchem_species(dirs["output"],s,plot_init_mx=plot_aeolus)
 
     # Done
     logging.info("Done!")
