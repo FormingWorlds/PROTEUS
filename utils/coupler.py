@@ -52,7 +52,7 @@ def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_co
     print("Last file name:", COUPLER_options["ic_interior_filename"])
 
     print("Helpfile properties:")
-    print(runtime_helpfile.tail(6))
+    print(runtime_helpfile.tail(4))
 
     # Save atm object to disk
     with open(dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.pkl", "wb") as atm_file: 
@@ -131,9 +131,12 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         area        = json_file.get_dict_values(['data','area_b'])
         E0          = Etot[1] - (Etot[2]-Etot[1]) * (rad[2]-rad[1]) / (rad[1]-rad[0])
         F_int2      = E0/area[0]
-        print(">>>>>>> F_int2:", F_int2, "F_int:", runtime_helpfile_new["F_int"] )
+
+        F_int = runtime_helpfile_new["F_int"]
+        print(">>>>>>> F_int2:", F_int2, "F_int:", F_int )
+
         # Limit F_int to positive values
-        runtime_helpfile_new["F_int"] = np.amax([F_int2, 0.])
+        runtime_helpfile_new["F_int"] = np.amax([F_int, 0.])
 
 
         # Check and replace NaNs
@@ -285,10 +288,12 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         t_curr          = run_int.iloc[-1]["Time"]
         run_atm         = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']
         run_atm_last    = run_atm.loc[run_atm['Time'] != t_curr]
+
         # IF in early MO phase and RF is deep in mantle
         if runtime_helpfile_new["RF_depth"] >= COUPLER_options["RF_crit"]:
             COUPLER_options["F_net"] = -COUPLER_options["F_eps"]
             print("Early MO phase and RF is deep in mantle. RF_depth = ", runtime_helpfile.iloc[-1]["RF_depth"])
+
         if loop_counter["init"] >= loop_counter["init_loops"]:
             
             if loop_counter["init"] == loop_counter["init_loops"]:
@@ -301,10 +306,11 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
             if abs(Ts_last-COUPLER_options["T_surf"]) >= COUPLER_options["dTs_atm"]: 
                 COUPLER_options["F_net"] = -COUPLER_options["F_eps"]   
                 print("T_surf change too high. dT =", Ts_last-COUPLER_options["T_surf"])
+                
             # OR IF negligible change in F_atm in the last two entries
-            if round(COUPLER_options["F_atm"],2) == round(run_atm.iloc[-1]["F_atm"],2):
-                COUPLER_options["F_net"] = -COUPLER_options["F_eps"]
-                print("Negligible change in F_atm in the last two entries. F_atm(curr/-1) = ", round(COUPLER_options["F_atm"],2), round(run_atm.iloc[-1]["F_atm"],2))
+            # if round(COUPLER_options["F_atm"],2) == round(run_atm.iloc[-1]["F_atm"],2):
+            #     COUPLER_options["F_net"] = -COUPLER_options["F_eps"]
+            #     print("Negligible change in F_atm in the last two entries. F_atm(curr/-1) = ", round(COUPLER_options["F_atm"],2), round(run_atm.iloc[-1]["F_atm"],2))
 
         # Write F_net to next file
         runtime_helpfile_new["F_net"]           = COUPLER_options["F_net"]
@@ -389,11 +395,11 @@ def ReadInitFile( init_file_passed , verbose=False):
                 if not line.startswith("time_"):
 
                     # Some parameters are int
-                    if key in [ "IC_INTERIOR", "SURFACE_BC", 
-                                "nstepsmacro", "use_vulcan", "ic_interior_filename", 
+                    if key in [ "IC_INTERIOR", 
+                                "use_vulcan", "ic_interior_filename", 
                                 "plot_iterfreq", "stellar_heating", "mixing_length",
                                 "atmosphere_chem_type", "solvepp_enabled",
-                                "tropopause"]:
+                                "tropopause", "dt_dynamic"]:
                         val = int(val)
 
                     # Some are str

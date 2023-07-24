@@ -29,6 +29,7 @@ atm_chemistry.pdf
 .vscode
 Mors/fs255_grid
 screenlog.0
+tools/analyse.py
 
 
 # From Read the Docs

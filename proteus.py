@@ -240,6 +240,10 @@ def main():
         # Update help quantities, input_flag: "Interior"
         runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
 
+        # Sanity check output
+        if (runtime_helpfile.iloc[-1]["T_surf"] < COUPLER_options["min_temperature"]):
+            print("WARNING: Surface temperature is very low!")
+
         # Update initial guesses for partial pressure and mantle mass
         if (COUPLER_options['solvepp_enabled'] == 1):
 
@@ -292,6 +296,7 @@ def main():
             # Update help quantities, input_flag: "Atmosphere"
             runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
 
+            # Iterate
             loop_counter["atm"] += 1
 
         ############### / ATMOSPHERE SUB-LOOP

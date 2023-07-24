@@ -893,6 +893,10 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(time_dict["planet"])) )
         step        = json_file.get_dict(['step'])
 
+        # Previous steps
+        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
+        run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']
+
         # Time stepping adjustment
         if time_dict["planet"] < 3.0:
             # First few years, use static time-step
@@ -900,63 +904,66 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             dtswitch = 1
             nsteps = 1
             print("Time-stepping intent: static")
+
         else:
-            # Dynamic time-step calculation
-            F_clip = 1.e-9
+            if (COUPLER_options["dt_method"] == 0):
+                # Proportional time-step calculation
+                print("Time-stepping intent: proportional")
+                dtswitch = time_dict["planet"] / 100.0
 
-            run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
-            run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']
+            elif (COUPLER_options["dt_method"] == 1):
+                # Dynamic time-step calculation
+                F_clip = 1.e-20
 
-            # Get time-step length from last iter
-            dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                # Get time-step length from last iter
+                dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                
+                F_int_3 = max(run_int.iloc[-3]["F_int"],F_clip)
+                F_int_2 = max(run_int.iloc[-2]["F_int"],F_clip)
+                F_int_1 = max(run_int.iloc[-1]["F_int"],F_clip)
+                F_int_23 = abs((F_int_2 - F_int_3)/F_int_3)  # Relative change from [-3] to [-2] steps
+                F_int_12 = abs((F_int_1 - F_int_2)/F_int_2)  # Relative change from [-2] to [-1] steps
 
-            
-            F_int_3 = max(run_int.iloc[-3]["F_int"],F_clip)
-            F_int_2 = max(run_int.iloc[-2]["F_int"],F_clip)
-            F_int_1 = max(run_int.iloc[-1]["F_int"],F_clip)
-            F_int_23 = abs((F_int_2 - F_int_3)/F_int_3)  # Relative change from [-3] to [-2] steps
-            F_int_12 = abs((F_int_1 - F_int_2)/F_int_2)  # Relative change from [-2] to [-1] steps
+                F_atm_3 = max(run_int.iloc[-3]["F_atm"],F_clip)
+                F_atm_2 = max(run_atm.iloc[-2]["F_atm"],F_clip)
+                F_atm_1 = max(run_atm.iloc[-1]["F_atm"],F_clip)
+                F_atm_23 = abs((F_atm_2 - F_atm_3)/F_atm_3)  # Relative change from [-3] to [-2] steps
+                F_atm_12 = abs((F_atm_1 - F_atm_2)/F_atm_2)  # Relative change from [-2] to [-1] steps
 
-            F_atm_3 = max(run_int.iloc[-3]["F_atm"],F_clip)
-            F_atm_2 = max(run_atm.iloc[-2]["F_atm"],F_clip)
-            F_atm_1 = max(run_atm.iloc[-1]["F_atm"],F_clip)
-            F_atm_23 = abs((F_atm_2 - F_atm_3)/F_atm_3)  # Relative change from [-3] to [-2] steps
-            F_atm_12 = abs((F_atm_1 - F_atm_2)/F_atm_2)  # Relative change from [-2] to [-1] steps
+                F_acc_max = max( F_int_12-F_int_23, F_atm_12-F_atm_23 ) * 100.0  # Maximum accel. (in relative terms)
 
-            F_acc_max = max( F_int_12-F_int_23, F_atm_12-F_atm_23 ) * 100.0  # Maximum accel. (in relative terms)
+                if F_acc_max > 25.0:
+                    # Slow down!!
+                    print("Time-stepping intent: slow down!!")
+                    dtswitch = 0.10 * dtprev
 
-            if F_acc_max > 20.0:
-                # Slow down!!
-                print("Time-stepping intent: slow down!!")
-                dtswitch = 0.05 * dtprev
+                elif F_acc_max > 5.0:
+                    # Slow down
+                    print("Time-stepping intent: slow down")
+                    dtswitch = 0.90 * dtprev
 
-            elif F_acc_max > 5.0:
-                # Slow down
-                print("Time-stepping intent: slow down")
-                dtswitch = 0.50 * dtprev
+                elif F_acc_max > 0.1:
+                    # Steady (speed up a little bit to promote evolution)
+                    print("Time-stepping intent: steady")
+                    dtswitch = 1.01 * dtprev
 
-            elif F_acc_max > 0.1:
-                # Steady (speed up a little bit to promote evolution)
-                print("Time-stepping intent: steady")
-                dtswitch = 1.01 * dtprev
+                elif F_acc_max > -15.0:
+                    # Speed up
+                    print("Time-stepping intent: speed up")
+                    dtswitch = 1.10 * dtprev
 
-            elif F_acc_max > -10.0:
-                # Speed up
-                print("Time-stepping intent: speed up")
-                dtswitch = 1.5 * dtprev
-
-            else:
-                # Speed up!!
-                print("Time-stepping intent: speed up!!")
-                dtswitch = 2.5 * dtprev
+                else:
+                    # Speed up!!
+                    print("Time-stepping intent: speed up!!")
+                    dtswitch = 2.00 * dtprev
 
             # Prevent step size from getting too small
             dtswitch = max(dtswitch, time_dict["planet"]*0.005)
-            dtswitch = max(dtswitch, 2.0e1)
+            dtswitch = max(dtswitch, 4.0e1)
 
             # Prevent step size from getting too large
             dtswitch = min(dtswitch, float(time_dict["target"] - time_dict["planet"]))
-            dtswitch = min(dtswitch, 2.0e6 )
+            dtswitch = min(dtswitch, 5.0e6 )
 
             # Calculate number of macro steps for SPIDER to perform within
             # this time-step of PROTEUS, which sets the number of json files.
@@ -967,7 +974,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             print("New time-step is %1.2e years" % dtswitch)
 
         # Number of total steps until currently desired switch/end time
-        nstepsmacro =  step + nsteps
+        nstepsmacro = step + nsteps
 
         if debug:
             print("TIME OPTIONS IN RUNSPIDER:", dtmacro, dtswitch, nstepsmacro)
@@ -991,7 +998,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # Prevent interior oscillations during last-stage freeze-out
     net_loss = COUPLER_options["F_atm"]
-    if len(runtime_helpfile) > 100 and runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]:
+    if len(runtime_helpfile) > 10 and runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]:
         net_loss = np.amax([abs(COUPLER_options["F_atm"]), COUPLER_options["F_eps"]])
         if debug:
             print("Prevent interior oscillations during last-stage freeze-out: F_atm =", COUPLER_options["F_atm"], "->", net_loss)
@@ -1003,7 +1010,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                         "-outputDirectory",       dirs["output"]+'data/',
                         "-IC_INTERIOR",           str(COUPLER_options["IC_INTERIOR"]),
                         "-OXYGEN_FUGACITY_offset",str(COUPLER_options["fO2_shift_IW"]),  # Relative to the specified buffer
-                        "-SURFACE_BC",            str(COUPLER_options["SURFACE_BC"]), 
                         "-surface_bc_value",      str(net_loss), 
                         "-teqm",                  str(COUPLER_options["T_eqm"]), 
                         "-nstepsmacro",           str(nstepsmacro), 
@@ -1090,6 +1096,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 print(">>> Raise dT poststep_changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
             else:
                 print(">> dTs_int too high! >>", COUPLER_options["tsurf_poststep_change"], "K")
+                
         # Slowly limit again if time advances smoothly
         if (run_int["Time"].iloc[-1] != run_int["Time"].iloc[-3]) and COUPLER_options["tsurf_poststep_change"] > 30:
             COUPLER_options["tsurf_poststep_change"] -= 10

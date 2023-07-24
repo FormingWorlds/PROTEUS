@@ -53,6 +53,14 @@ def plot_global( output_dir , COUPLER_options):
 
     fig_o.time = get_all_output_times(output_dir)
 
+    # Downsample times if there are lots of them
+    # if len(fig_o.time > 700):
+    #     times_new = fig_o.time[1:-2:2]
+    # times_new = list(times_new)
+    # times_new.insert(0,fig_o.time[0])
+    # times_new.append(fig_o.time[-1])
+    # fig_o.time = np.array(times_new)
+
     # Read in runtime helpfile and separate in atmosphere and interior params
     df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep="\t")
     df_int = df.loc[df['Input']=='Interior']
@@ -106,13 +114,6 @@ def plot_global( output_dir , COUPLER_options):
     nsteps       = 5
 
     # Replace NaNs
-    # for idx, val in enumerate(T_surf):
-        # print(idx, val)
-        # if np.isnan(val):
-            # json_file_time = MyJSON( output_dir+'/{}.json'.format(fig_o.time[idx]) )
-            # int_tmp   = json_file_time.get_dict_values(['data','temp_b'])
-            # print("T_surf:", idx, val, "-->", round(int_tmp[0],3), "K")
-            # T_surf[idx] = int_tmp[0]
     for idx in range(1,len(T_surf)-1):
         if np.isnan(T_surf[idx]) or (T_surf[idx] <= 0.0):
             T_surf[idx] = 0.5*(T_surf[idx-1]+T_surf[idx+1])
@@ -138,6 +139,8 @@ def plot_global( output_dir , COUPLER_options):
         # ax0.plot( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
         ax0.plot( df_int["Time"], df_int["F_int"], color=dict_colors["qred"], lw=lw, alpha=1.0 )
         ax0.plot( df_atm["Time"], df_atm["F_atm"], color=dict_colors["qgray"], lw=lw, alpha=1.0 )
+
+    ax0.axhline(y=0, color='black', lw=0.8)
       
     # fig_o.set_myaxes(ax0)
     ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)

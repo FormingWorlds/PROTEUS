@@ -11,13 +11,23 @@ def PrintHalfSeparator():
     print("--------------------------------------------------")
     pass
 
-# String sorting not based on natsorted package
+# String sorting inspired by natsorted
 def natural_sort(l): 
     convert = lambda text: int(text) if text.isdigit() else text.lower() 
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
     return sorted(l, key = alphanum_key)
 
 def CleanDir(dir):
+    """Clean a directory.
+
+    Deletes a given directory and its contents, then creates it as empty.
+
+    Parameters
+    ----------
+        dir : string
+            Path to directory
+
+    """
     if os.path.exists(dir):
         shutil.rmtree(dir)
     os.makedirs(dir)
