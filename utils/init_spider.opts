@@ -1,15 +1,11 @@
 # Default spider options file for use with PROTEUS
 
-# time stepping
--nstepsmacro 10
--dtmacro 1000
-
 # tolerances
 -ts_sundials_atol 1.0e-10
 -ts_sundials_rtol 1.0e-10
 
 # mesh
--n 100
+-n 150
 
 # -MASS_COORDINATES
 

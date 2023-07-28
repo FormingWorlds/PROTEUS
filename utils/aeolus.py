@@ -130,6 +130,9 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
             trppT = COUPLER_options["T_skin"]
         case 2:
             trppT = None
+        case _:
+            print("ERROR: Invalid tropopause option '%d'" % COUPLER_options["tropopause"])
+            exit(1)
             
     atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, 
                 COUPLER_options["P_top"]*1e5, pl_radius, pl_mass,
@@ -159,15 +162,10 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options ):
 
     # Calculate temperature structure and heat flux w/ SOCRATES
     trppD = bool(COUPLER_options["tropopause"] == 2 )
-    _, atm = RadConvEqm(dirs, time_dict, atm, 
-                        standalone=False, cp_dry=False, trppD=trppD, rscatter=True, calc_cf=False) # W/m^2
+    _, atm = RadConvEqm(dirs, time_dict, atm, standalone=False, cp_dry=False, trppD=trppD, rscatter=True, calc_cf=False)
 
     # Go back to previous directory
     os.chdir(cwd)
-    
-    # Atmosphere fluxes from topmost atmosphere node; do not allow heating
-    COUPLER_options["F_atm"] = np.max( [ 0., atm.net_flux[0] ] )
-    COUPLER_options["F_olr"] = atm.LW_flux_up[0]
 
     # Clean up run directory
     for file in glob.glob(dirs["output"]+"/current??.????"):
@@ -176,8 +174,33 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options ):
         os.remove(file)
 
     # Print flux info
-    flux_net = round(COUPLER_options["F_atm"], 3)
-    flux_olr = round(COUPLER_options["F_olr"], 3)
-    print("SOCRATES fluxes (net, OLR):", str(flux_net), str(flux_olr), "W/m^2")
+    print("SOCRATES fluxes (net upward, OLR): %.3f, %.3f W/m^2" % (  atm.net_flux[0] , atm.LW_flux_up[0]))
+    
+    # Atmosphere fluxes from topmost atmosphere node
+    F_atm_old = COUPLER_options["F_atm"]
+    if (COUPLER_options["require_cooling"] == 1):
+        F_atm_new = max( 0.0 , atm.net_flux[0] )
+    else:
+        F_atm_new = atm.net_flux[0]
+    
+    # Prevent fluxes from increasing.
+    if (F_atm_new < COUPLER_options["F_crit"]) and (time_dict["planet"] > 3) and (COUPLER_options["require_cooling"] == 1):
+        COUPLER_options["F_atm"] = min(F_atm_old, F_atm_new)
+    else:
+        COUPLER_options["F_atm"] = F_atm_new
+
+    # Cap relative change in F_atm for each iteration
+    if (F_atm_new < COUPLER_options["F_crit"]) and (COUPLER_options["limit_flux_change"] > 0):
+        
+        F_atm_lim = min(F_atm_new, (1+COUPLER_options["limit_flux_change"]) * F_atm_old)
+        F_atm_lim = max(F_atm_lim, (1-COUPLER_options["limit_flux_change"]) * F_atm_old)
+        F_atm_lim = max( 0.0 , F_atm_lim )
+        
+        if (F_atm_lim != F_atm_new):
+            print("Change in F_atm limited in this step!")
+            print("    %g  ->  %g" % (F_atm_new, F_atm_lim))
+            COUPLER_options["F_atm"] = F_atm_lim
+    
+    COUPLER_options["F_olr"] = atm.LW_flux_up[0]
 
     return atm, COUPLER_options

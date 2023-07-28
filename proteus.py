@@ -5,14 +5,16 @@ PROTEUS Main file
 """
 
 from utils.modules_ext import *
+import utils.constants
+
 from utils.constants import *
 from utils.coupler import *
-from utils.stellar import *
+from utils.stellar_common import *
+from utils.stellar_mors import *
+from utils.stellar_baraffe import *
 from utils.vulcan import RunVULCAN
 from utils.aeolus import RunAEOLUS, StructAtm
 from utils.spider import RunSPIDER
-
-import utils.constants
 
 from AEOLUS.modules.stellar_luminosity import InterpolateStellarLuminosity
 from AEOLUS.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
@@ -34,9 +36,17 @@ def main():
     utils.constants.dirs = SetDirectories(COUPLER_options)
     from utils.constants import dirs
 
+    print("Output directory: '%s'" % dirs["output"])
 
-    # Count Interior (SPIDER) <-> Atmosphere (SOCRATES+VULCAN) iterations
-    loop_counter = { "total": 0, "init": 0, "atm": 0, "init_loops": 3, "atm_loops": 10 }
+    # Count iterations
+    loop_counter = { "total": 0,            # Total number of itersperformed
+                     "init": 0,             # Number of init iters performed
+                     "atm": 0,              # Number of atmosphere sub-iters performed
+                     "eqm": -1,             # Number of eqm iters performed
+                     "init_loops": 3,       # Target number of init iters
+                     "atm_loops":  10,      # Maximum number of atmosphere sub-iters
+                     "eqm_loops":  3        # Target number of eqm iters
+                    }
     
     # If restart skip init loop # args.r or args.rf or 
     if COUPLER_options["IC_INTERIOR"] == 2:
@@ -149,27 +159,24 @@ def main():
 
     # Store copy of modern spectrum in memory (1 AU)
     StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
-    time_dict['sflux_prev'] = -1.0e99
+    time_dict['sspec_prev'] = -1.0e9
+    time_dict['sinst_prev'] = -1.0e9
 
-    # Calculate band-integrated fluxes for modern stellar spectrum (1 AU)
+    # Prepare stellar models
     match COUPLER_options['star_model']:
+        case 0:
+            COUPLER_options["star_radius"] = COUPLER_options["star_radius_modern"]  # Legacy stellar model doesn't update this
         case 1:
             MorsSolveUV(dirs,COUPLER_options,StellarFlux_wl,StellarFlux_fl)  # Solve for UV-PL band interface
             COUPLER_options = MorsCalculateFband(dirs, COUPLER_options)
         case 2:
             track = BaraffeLoadtrack(COUPLER_options)
-
-    # Spectrum for SOCRATES
-    star_spec_src = dirs["output"]+"socrates_star.txt"
-    if COUPLER_options["star_model"] == 0:  # Will not be updated during the loop, so just need to write an initial one
-        PrepareStellarSpectrum(StellarFlux_wl,StellarFlux_fl,star_spec_src)
-        InsertStellarSpectrum(
-                                spectral_file_nostar,
-                                star_spec_src,
-                                dirs["output"]+"runtime_spectral_file"
-                            )
-        os.remove(star_spec_src)
+        case _:
+            print("ERROR: Invalid stellar model '%d'" % COUPLER_options['star_model'])
+            exit(1)
+        
     
+
     # Main loop
     while time_dict["planet"] < time_dict["target"]:
 
@@ -178,35 +185,78 @@ def main():
 
         ############### STELLAR FLUX MANAGEMENT
         print("Stellar flux management...")
-        match COUPLER_options['star_model']:
-            case 0:
-                S_0, toa_heating = InterpolateStellarLuminosity(time_dict, COUPLER_options)
-            case 1:
-                S_0, toa_heating = MorsSolarConstant(time_dict, COUPLER_options)
-            case 2:
-                S_0, toa_heating = BaraffeSolarConstant(time_dict, COUPLER_options, track)
+        
+        # Calculate new instellation and radius
+        if (abs( time_dict['planet'] - time_dict['sinst_prev'] ) > COUPLER_options['sinst_dt_update']) \
+            or (loop_counter["total"] == 0):
+            
+            time_dict['sinst_prev'] = time_dict['planet'] 
 
-        # Include SW radiation from star in heating rate calculations?
-        if (COUPLER_options["stellar_heating"] > 0):
-            COUPLER_options["TOA_heating"] = toa_heating
-            COUPLER_options["T_eqm"]  = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
-        else:
-            print("Stellar heating is disabled")
-            COUPLER_options["TOA_heating"] = 0.0
-            COUPLER_options["T_eqm"]  = 0.0
-        COUPLER_options["T_skin"] = COUPLER_options["T_eqm"] * (0.5**0.25)
+            if (COUPLER_options["stellar_heating"] > 0) and (loop_counter["eqm"] == -1):
+                print("Updating instellation and radius")
 
+                match COUPLER_options['star_model']:
+                    case 0:
+                        S_0, toa_heating = InterpolateStellarLuminosity(time_dict, COUPLER_options)
+                    case 1:
+                        COUPLER_options["star_radius"] = MorsStellarRadius(time_dict, COUPLER_options)
+                        S_0, toa_heating = MorsSolarConstant(time_dict, COUPLER_options)
+                    case 2:
+                        COUPLER_options["star_radius"] = BaraffeStellarRadius(time_dict, COUPLER_options, track)
+                        S_0, toa_heating = BaraffeSolarConstant(time_dict, COUPLER_options, track)
+
+                # Calculate new eqm temperature
+                T_eqm_new = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
+                
+                # Get old eqm temperature
+                if (loop_counter["total"] > 0):
+                    T_eqm_prev = COUPLER_options["T_eqm"]
+                else:
+                    T_eqm_prev = 0.0
+                
+            else:
+                print("Stellar heating is disabled")
+                toa_heating = 0.0
+                T_eqm_new   = 0.0
+                T_eqm_prev  = 0.0
+
+            COUPLER_options["TOA_heating"]  = toa_heating
+            COUPLER_options["T_eqm"]        = T_eqm_new
+            COUPLER_options["T_skin"]       = T_eqm_new * (0.5**0.25) # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
+
+            print("T_eqm change: %.3f K (to 3dp)" % abs(T_eqm_new - T_eqm_prev))
+
+            # Check if instellation changed (do eqm iters?)
+            if (loop_counter["total"] > loop_counter["init_loops"]) \
+                and ( abs(T_eqm_new - T_eqm_prev) > 0.01 ) \
+                and ( COUPLER_options["require_eqm_loops"] == 1 ) \
+                and ( COUPLER_options["F_atm"] < COUPLER_options["F_crit"] ):
+
+                # Already doing eqm iters?
+                if (loop_counter["eqm"] > 0):
+                    print("WARNING: Instellation updated while already adjusting to previous change!")
+                    print("         This shouldn't be able to happen.")
+                
+                # Start new eqm iters if past init stage
+                else:
+                    print("Beginning eqm loops to respond to change in instellation")
+                    run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+                    COUPLER_options["restore_dt_value"] = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                    loop_counter["eqm"] = 0       
 
         # Calculate a new (historical) stellar spectrum 
-        if (COUPLER_options['star_model'] > 0) and \
-           ( abs( time_dict['planet'] - time_dict['sflux_prev'] ) > COUPLER_options['sflux_dt_update'] ):
+        if (COUPLER_options['star_model'] > 0  \
+            and ( abs( time_dict['planet'] - time_dict['sspec_prev'] ) > COUPLER_options['sspec_dt_update'] ) \
+            or (loop_counter["total"] == 0) ):
             
+            time_dict['sspec_prev'] = time_dict['planet'] 
+
             print("Updating stellar spectrum") 
-            match COUPLER_options['star_model']:   # Calculate arrays at 1 AU
+            match COUPLER_options['star_model']: 
                 case 1:
-                    fl,fls = MorsSpectrumCalc(time_dict['star'], StellarFlux_wl, StellarFlux_fl,COUPLER_options)
+                    fl,fls = MorsSpectrumCalc(time_dict['star'], StellarFlux_wl, StellarFlux_fl, COUPLER_options)
                 case 2:
-                    fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl,COUPLER_options, track)
+                    fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl, COUPLER_options, track)
 
             # Write stellar spectra to disk
             print("Writing spectrum to disk")
@@ -215,6 +265,7 @@ def main():
 
             # Generate a new SOCRATES spectral file containing this new spectrum
             print("Inserting star into SOCRATES spectral file")
+            star_spec_src = dirs["output"]+"socrates_star.txt"
             PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
             InsertStellarSpectrum(
                                     spectral_file_nostar,
@@ -222,8 +273,6 @@ def main():
                                     dirs["output"]+"runtime_spectral_file"
                                 )
             os.remove(star_spec_src)
-
-            time_dict['sflux_prev'] = time_dict['planet'] 
 
         else:
             print("New spectrum not required at this time")
@@ -243,6 +292,8 @@ def main():
         # Sanity check output
         if (runtime_helpfile.iloc[-1]["T_surf"] < COUPLER_options["min_temperature"]):
             print("WARNING: Surface temperature is very low!")
+        if (runtime_helpfile.iloc[-1]["T_surf"] > 5000.0):
+            print("WARNING: Surface temperature is very high!")
 
         # Update initial guesses for partial pressure and mantle mass
         if (COUPLER_options['solvepp_enabled'] == 1):
@@ -304,28 +355,47 @@ def main():
 
 
         ############### LOOP ITERATION MANAGEMENT
+
+        # Advance current time in main loop
+        time_dict["planet"] = runtime_helpfile.iloc[-1]["Time"]
+        time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
+
         # Print info, save atm to file, update plots
         PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs)
 
-        # Plot conditions throughout run for on-the-fly analysis
-        if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0):
-            UpdatePlots( dirs["output"], COUPLER_options )
-        
-        # Adjust iteration counters + total time 
-        loop_counter["atm"]         = 0
-        loop_counter["total"]       += 1
-        if loop_counter["init"] < loop_counter["init_loops"]:
+        # Update eqm loop counter
+        if (loop_counter["eqm"] > -1): # Next eqm iter
+            loop_counter["eqm"]     += 1
+        if (loop_counter["eqm"] >= loop_counter["eqm_loops"]): # Done with init iters
+            loop_counter["eqm"]     = -1  # -1 indicates that we are not to do any more eqm loops for now
+
+        # Update init loop counter
+        if loop_counter["init"] < loop_counter["init_loops"]: # Next init iter
             loop_counter["init"]    += 1
             time_dict["planet"]     = 0.
-
-        # Reset restart flag once SPIDER was started w/ ~correct volatile chemistry + heat flux
-        if loop_counter["total"] >= loop_counter["init_loops"]:
+        if loop_counter["total"] >= loop_counter["init_loops"]: # Reset restart flag once SPIDER was started w/ ~correct volatile chemistry + heat flux
             COUPLER_options["IC_INTERIOR"] = 2
 
+        # Adjust total iteration counters
+        loop_counter["atm"]         = 0
+        loop_counter["total"]       += 1
+
+
         # Stop simulation when planet is completely solidified
-        if COUPLER_options["solid_stop"] == 1 and runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]:
+        if (COUPLER_options["solid_stop"] == 1) \
+            and (runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]) \
+            and (loop_counter["eqm"] == -1):
+
             print("\n===> Planet solidified! <===\n")
             break
+        
+        # Otherwise, make plots if required and go to next iteration
+        elif (COUPLER_options["plot_iterfreq"] > 0) \
+            and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0) \
+            and (loop_counter["eqm"] == -1):
+
+            UpdatePlots( dirs["output"], COUPLER_options )
+
 
         ############### / LOOP ITERATION MANAGEMENT
 

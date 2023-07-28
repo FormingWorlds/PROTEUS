@@ -63,8 +63,8 @@ def plot_global( output_dir , COUPLER_options):
 
     # Read in runtime helpfile and separate in atmosphere and interior params
     df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep="\t")
-    df_int = df.loc[df['Input']=='Interior']
-    df_atm = df.loc[df['Input']=='Atmosphere']
+    df_int = df.loc[df['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+    df_atm = df.loc[df['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
     # Remove duplicate atm entries for one timestep
     for idx, row in df_atm.iterrows():
         # print(row["Time"])
@@ -98,8 +98,8 @@ def plot_global( output_dir , COUPLER_options):
 
     xlabel = r'Time, $t$ (yr)'
 
-    xmax = max(1.0e7,np.amax(df_int["Time"]))
-    xlim = (1.0e1,10 ** np.ceil(np.log10(xmax*1.1)))
+    xmax = max(1.0e6,np.amax(df_int["Time"]))
+    xlim = (1.0e1,10 ** math.ceil(math.log10(xmax*1.1)))
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)
@@ -137,7 +137,7 @@ def plot_global( output_dir , COUPLER_options):
         ax0.plot( Time_atm_rolling, Fatm_atm_rolling, color=dict_colors["qgray"], lw=lw )
     else:
         # ax0.plot( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
-        ax0.plot( df_int["Time"], df_int["F_int"], color=dict_colors["qred"], lw=lw, alpha=1.0 )
+        ax0.plot( df_atm["Time"], df_atm["F_int"], color=dict_colors["qred"], lw=lw, alpha=1.0 )
         ax0.plot( df_atm["Time"], df_atm["F_atm"], color=dict_colors["qgray"], lw=lw, alpha=1.0 )
 
     ax0.axhline(y=0, color='black', lw=0.8)

@@ -3,7 +3,9 @@
 # Python script to test stellar evolution implementation in PROTEUS
 
 from utils.coupler import *
-from utils.stellar import *
+from utils.stellar_mors import *
+from utils.stellar_baraffe import *
+from utils.stellar_common import *
 
 Myr = 1.0e6
 
@@ -38,7 +40,7 @@ def evolve(cfg_file: str, tf: float):
 
     # Parameters
     ti = time_dict['star']  # Start time, yr
-    dt = COUPLER_options['sflux_dt_update']
+    dt = COUPLER_options['sspec_dt_update']
 
     # Print info
     print("")

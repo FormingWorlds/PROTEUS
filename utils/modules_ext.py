@@ -36,7 +36,7 @@ import numpy as np
 import pandas as pd
 import math
 import pickle as pkl
-from scipy.interpolate import RectBivariateSpline, interp1d
+from scipy.interpolate import RectBivariateSpline, interp1d, PchipInterpolator
 from scipy import interpolate
 from scipy.integrate import solve_ivp
 from scipy.integrate import odeint
