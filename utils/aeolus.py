@@ -176,36 +176,29 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # Print flux info
     print("SOCRATES fluxes (net upward, OLR): %.3f, %.3f W/m^2" % (  atm.net_flux[0] , atm.LW_flux_up[0]))
     
-    # F_atm_old = COUPLER_options["F_atm"]
     F_atm_new = atm.net_flux[0]
 
-    # Require that the net flux must be upward
-    if (COUPLER_options["require_cooling"] == 1):
-        F_atm_new = max( 0.0 , F_atm_new )
-    
-    # Prevent fluxes from increasing
+    # Iteration flux change limiters
     if (time_dict["planet"] > 3):
 
         run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
         F_atm_old = run_atm.loc[run_atm['Time'] != time_dict["planet"]].iloc[-1]["F_atm"]
 
-        if (F_atm_old < COUPLER_options["F_crit"]) and (COUPLER_options["require_cooling"] == 1):
-            F_atm_new = min(F_atm_old, F_atm_new)
-        else:
-            F_atm_new = F_atm_new
-
-        # Cap relative change in F_atm for each iteration
-        if (F_atm_old < COUPLER_options["F_crit"]) and (COUPLER_options["limit_flux_change"] > 0):
-
-            rel_max = abs(COUPLER_options["limit_flux_change"])/100.0
+        if (F_atm_old < COUPLER_options["F_crit"]):
+            rel_max = abs(COUPLER_options["limit_pos_flux_change"])/100.0
             F_atm_new = min(F_atm_new, (1+rel_max) * F_atm_old)
-            F_atm_new = max(F_atm_new, (1-rel_max) * F_atm_old)
-            F_atm_new = max( 0.0 , F_atm_new )
 
-        # Print if a limit was applied
-        if (F_atm_new != atm.net_flux[0] ):
-            print("Change in F_atm [W m-2] limited in this step!")
-            print("    %g  ->  %g" % (atm.net_flux[0] , F_atm_new))
+            rel_max = abs(COUPLER_options["limit_neg_flux_change"])/100.0
+            F_atm_new = max(F_atm_new, (1-rel_max) * F_atm_old)
+
+    # Require that the net flux must be upward
+    if (COUPLER_options["prevent_warming"] == 1):
+        F_atm_new = max( 0.0 , F_atm_new )
+
+    # Print if a limit was applied
+    if (F_atm_new != atm.net_flux[0] ):
+        print("Change in F_atm [W m-2] limited in this step!")
+        print("    %g  ->  %g" % (atm.net_flux[0] , F_atm_new))
             
     COUPLER_options["F_atm"] = F_atm_new
     COUPLER_options["F_olr"] = atm.LW_flux_up[0]

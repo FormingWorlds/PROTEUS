@@ -903,7 +903,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             dtmacro = 1
             dtswitch = 1
             nsteps = 1
-            COUPLER_options["restore_dt_value"] = 0.1
             print("Time-stepping intent: static")
 
         else:
@@ -917,7 +916,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 F_clip = 1.e-4
 
                 # Get time-step length from last iter
-                # if (COUPLER_options["restore_dt_value"] < 10.0):
                 dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
                 
                 F_int_3  = max(run_int.iloc[-3]["F_int"],F_clip)
@@ -958,13 +956,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                     # Speed up!!
                     print("Time-stepping intent: speed up!!")
                     dtswitch = 2.00 * dtprev
-
-                COUPLER_options["restore_dt_value"] = 0.1  # small value
-
-                # else:
-                #     print("Time-stepping intent: recover after eqm iterations")
-                #     dtswitch = COUPLER_options["restore_dt_value"]  # Recover from eqm iterations
-                #     COUPLER_options["restore_dt_value"] = 0.1 
 
             # Step-size floor
             dtswitch = max(dtswitch, time_dict["planet"]*0.001)         # Relative

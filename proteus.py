@@ -236,7 +236,6 @@ def main():
 
                 print("Beginning eqm loops to respond to change in instellation")
                 run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
-                COUPLER_options["restore_dt_value"] = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
                 loop_counter["eqm"] = 0       
 
         # Calculate a new (historical) stellar spectrum 
