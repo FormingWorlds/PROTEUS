@@ -78,6 +78,7 @@ def main():
         CleanDir( dirs["output"] )
         CleanDir( dirs['output']+'/data/')
         CleanDir( dirs["vulcan"]+"/output/" )
+        
         runtime_helpfile    = []
 
         # Copy config file to output directory, for future reference
@@ -192,7 +193,7 @@ def main():
             
             time_dict['sinst_prev'] = time_dict['planet'] 
 
-            if (COUPLER_options["stellar_heating"] > 0) and (loop_counter["eqm"] == -1):
+            if (COUPLER_options["stellar_heating"] > 0):
                 print("Updating instellation and radius")
 
                 match COUPLER_options['star_model']:
@@ -230,19 +231,13 @@ def main():
             if (loop_counter["total"] > loop_counter["init_loops"]) \
                 and ( abs(T_eqm_new - T_eqm_prev) > 0.01 ) \
                 and ( COUPLER_options["require_eqm_loops"] == 1 ) \
-                and ( COUPLER_options["F_atm"] < COUPLER_options["F_crit"] ):
+                and ( COUPLER_options["F_atm"] < COUPLER_options["F_crit"] ) \
+                and ( loop_counter["eqm"] == -1 ):
 
-                # Already doing eqm iters?
-                if (loop_counter["eqm"] > 0):
-                    print("WARNING: Instellation updated while already adjusting to previous change!")
-                    print("         This shouldn't be able to happen.")
-                
-                # Start new eqm iters if past init stage
-                else:
-                    print("Beginning eqm loops to respond to change in instellation")
-                    run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
-                    COUPLER_options["restore_dt_value"] = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
-                    loop_counter["eqm"] = 0       
+                print("Beginning eqm loops to respond to change in instellation")
+                run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+                COUPLER_options["restore_dt_value"] = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                loop_counter["eqm"] = 0       
 
         # Calculate a new (historical) stellar spectrum 
         if (COUPLER_options['star_model'] > 0  \
@@ -289,12 +284,6 @@ def main():
         # Update help quantities, input_flag: "Interior"
         runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
 
-        # Sanity check output
-        if (runtime_helpfile.iloc[-1]["T_surf"] < COUPLER_options["min_temperature"]):
-            print("WARNING: Surface temperature is very low!")
-        if (runtime_helpfile.iloc[-1]["T_surf"] > 5000.0):
-            print("WARNING: Surface temperature is very high!")
-
         # Update initial guesses for partial pressure and mantle mass
         if (COUPLER_options['solvepp_enabled'] == 1):
 
@@ -338,7 +327,7 @@ def main():
             atm, COUPLER_options = StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
             # Run SOCRATES: update TOA heating and MO heat flux
-            atm, COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options )
+            atm, COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile )
              
             # Run VULCAN (settings-dependent): update atmosphere mixing ratios
             if (COUPLER_options["atmosphere_chem_type"] == 2):

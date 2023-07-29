@@ -910,7 +910,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             if (COUPLER_options["dt_method"] == 0):
                 # Proportional time-step calculation
                 print("Time-stepping intent: proportional")
-                dtswitch = time_dict["planet"] / 5.0
+                dtswitch = time_dict["planet"] / 10.0
 
             elif (COUPLER_options["dt_method"] == 1):
                 # Dynamic time-step calculation
@@ -944,15 +944,15 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                     print("Time-stepping intent: slow down")
                     dtswitch = 0.90 * dtprev
 
-                elif F_acc_max > 0.20:
+                elif F_acc_max > 0.1:
                     # Steady (speed up a little bit to promote evolution)
                     print("Time-stepping intent: steady")
                     dtswitch = 1.02 * dtprev
 
-                elif F_acc_max > -9.0:
+                elif F_acc_max > -12.0:
                     # Speed up
                     print("Time-stepping intent: speed up")
-                    dtswitch = 1.20 * dtprev
+                    dtswitch = 1.15 * dtprev
 
                 else:
                     # Speed up!!
@@ -976,7 +976,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
             # Calculate number of macro steps for SPIDER to perform within
             # this time-step of PROTEUS, which sets the number of json files.
-            nsteps = 5
+            nsteps = 4
             dtmacro = math.ceil(dtswitch / nsteps)   # Ensures that dtswitch is divisible by nsteps
             dtswitch = nsteps * dtmacro
 
