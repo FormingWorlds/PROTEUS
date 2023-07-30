@@ -160,8 +160,8 @@ def main():
 
     # Store copy of modern spectrum in memory (1 AU)
     StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
-    time_dict['sspec_prev'] = -1.0e9
-    time_dict['sinst_prev'] = -1.0e9
+    time_dict['sspec_prev'] = -math.inf
+    time_dict['sinst_prev'] = -math.inf
 
     # Prepare stellar models
     match COUPLER_options['star_model']:
@@ -320,6 +320,7 @@ def main():
 
 
         ############### ATMOSPHERE SUB-LOOP
+        dT_heat_max = np.inf
         while (loop_counter["atm"] == 0) or (loop_counter["atm"] < loop_counter["atm_loops"] and abs(COUPLER_options["F_net"]) > COUPLER_options["F_eps"]):
 
             # Initialize atmosphere structure

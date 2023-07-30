@@ -174,11 +174,16 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         os.remove(file)
 
     # Print flux info
-    print("SOCRATES fluxes (net upward, OLR): %.3f, %.3f W/m^2" % (  atm.net_flux[0] , atm.LW_flux_up[0]))
+    print("SOCRATES fluxes (net@surf, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
     
-    F_atm_new = atm.net_flux[0]
+    # New flux from SOCRATES
+    if (COUPLER_options["F_atm_bc"] == 0):
+        F_atm_new = atm.net_flux[0]  
+    else:
+        F_atm_new = atm.net_flux[-1]  
 
-    # Iteration flux change limiters
+    # Flux change limiters
+    F_atm_lim = F_atm_new
     if (time_dict["planet"] > 3):
 
         run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
@@ -186,21 +191,58 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
         if (F_atm_old < COUPLER_options["F_crit"]):
             rel_max = abs(COUPLER_options["limit_pos_flux_change"])/100.0
-            F_atm_new = min(F_atm_new, (1+rel_max) * F_atm_old)
+            F_atm_lim = min(F_atm_lim, (1+rel_max) * F_atm_old)
 
             rel_max = abs(COUPLER_options["limit_neg_flux_change"])/100.0
-            F_atm_new = max(F_atm_new, (1-rel_max) * F_atm_old)
+            F_atm_lim = max(F_atm_lim, (1-rel_max) * F_atm_old)
 
     # Require that the net flux must be upward
     if (COUPLER_options["prevent_warming"] == 1):
-        F_atm_new = max( 0.0 , F_atm_new )
+        F_atm_lim = max( 0.0 , F_atm_lim )
 
     # Print if a limit was applied
-    if (F_atm_new != atm.net_flux[0] ):
+    if (F_atm_lim != F_atm_new ):
         print("Change in F_atm [W m-2] limited in this step!")
-        print("    %g  ->  %g" % (atm.net_flux[0] , F_atm_new))
+        print("    %g  ->  %g" % (F_atm_new , F_atm_lim))
             
-    COUPLER_options["F_atm"] = F_atm_new
+    COUPLER_options["F_atm"] = F_atm_lim
     COUPLER_options["F_olr"] = atm.LW_flux_up[0]
 
     return atm, COUPLER_options
+
+
+
+def IterateHeating( atm, dt):
+
+    print("Heating atmosphere")
+    print("    dt = %f days" % dt)
+
+    T_old_c = atm.tmp
+    T_old_l = atm.tmpl
+
+    heat = atm.net_heating
+
+    T_new_c = T_old_c
+    n = len(heat)
+    for i in range(n):
+        T_new_c[i] += heat[i] * dt
+
+    T_new_l = T_old_l
+    for i in range(1,n+1):
+        if (i < n):
+            hr = (heat[i]+heat[i-1]) * 0.5
+        else:
+            hr = heat[i-i]
+        T_new_l[i] += hr * dt
+
+    atm.tmp = T_new_c
+    atm.tmpl = T_new_l
+
+    max_dT = np.amax(T_new_c-T_old_c)
+    max_dT = max(max_dT,np.amax(T_new_c-T_old_c))
+    print("    max_dT = %g K" % max_dT)
+
+    return atm
+
+        
+

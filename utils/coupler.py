@@ -393,7 +393,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                     if key in [ "IC_INTERIOR", "ic_interior_filename", 
                                 "plot_iterfreq", "stellar_heating", "mixing_length",
                                 "atmosphere_chem_type", "solvepp_enabled",
-                                "tropopause", 
+                                "tropopause", "F_atm_bc", 
                                 "dt_dynamic", "require_eqm_loops", "prevent_warming"]:
                         val = int(val)
 

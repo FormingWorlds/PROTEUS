@@ -175,12 +175,8 @@ def plot_global( output_dir , COUPLER_options):
         h2, = ax1.plot(df_int["Time"], df_int["T_surf"],                color=dict_colors["qred"], label="Interior")
         h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=dict_colors["qgray"], label=r'Surface temp, $T_\mathrm{surf}$') # , color="blue"
         
-    # if np.max(df_atm["Time"]) >= 1e3: 
-    #     ymin = np.min(df_atm["T_surf"])*0.9
-    #     ymax = np.max(df_atm["T_surf"])*1.1
-    # else: 
-    ymin = 200
-    ymax = 3000
+    ymin = 500
+    ymax = 3500
     yticks = [ymin, ymin+0.2*(ymax-ymin), ymin+0.4*(ymax-ymin), ymin+0.6*(ymax-ymin), ymin+0.8*(ymax-ymin), ymax]
     # fig_o.set_myaxes( ax1, title=title, yticks=yticks)
     ax1.set_ylabel(r'$T_\mathrm{s}$ (K)', fontsize=label_fs)

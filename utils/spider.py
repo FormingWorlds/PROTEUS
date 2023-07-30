@@ -909,7 +909,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             if (COUPLER_options["dt_method"] == 0):
                 # Proportional time-step calculation
                 print("Time-stepping intent: proportional")
-                dtswitch = time_dict["planet"] / 10.0
+                dtswitch = time_dict["planet"] / 30.0
 
             elif (COUPLER_options["dt_method"] == 1):
                 # Dynamic time-step calculation
@@ -950,12 +950,21 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 elif F_acc_max > -12.0:
                     # Speed up
                     print("Time-stepping intent: speed up")
-                    dtswitch = 1.15 * dtprev
+                    dtswitch = 1.5 * dtprev
 
                 else:
                     # Speed up!!
                     print("Time-stepping intent: speed up!!")
                     dtswitch = 2.00 * dtprev
+
+            elif (COUPLER_options["dt_method"] == 2):
+                # Always use the maximum time-step, which can be adjusted in the cfg file
+                print("Time-stepping intent: maximum")
+                dtswitch = COUPLER_options["dt_maximum"]
+
+            else:
+                print("ERROR: Invalid time-stepping method '%d'" % COUPLER_options["dt_method"])
+                exit(1)
 
             # Step-size floor
             dtswitch = max(dtswitch, time_dict["planet"]*0.001)         # Relative
