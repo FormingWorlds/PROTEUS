@@ -211,38 +211,33 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     return atm, COUPLER_options
 
 
+from scipy.signal import savgol_filter
 
-def IterateHeating( atm, dt):
+def IterateHeating( atm, COUPLER_options, dt):
 
-    print("Heating atmosphere")
-    print("    dt = %f days" % dt)
+    # Store old temperatures
+    T_old_c = np.array(atm.tmp)
+    T_old_l = np.array(atm.tmpl)
 
-    T_old_c = atm.tmp
-    T_old_l = atm.tmpl
+    heat = np.array(atm.net_heating)
+    heat[-1] = 0 # Don't heat the surface
 
-    heat = atm.net_heating
+    # Apply heating to cell-centre array
+    T_new_c = T_old_c + dt * heat
 
-    T_new_c = T_old_c
-    n = len(heat)
-    for i in range(n):
-        T_new_c[i] += heat[i] * dt
+    # Smooth new temperature structure to damp numerics
+    T_new_c = savgol_filter(T_new_c, 10, 2)
+    T_new_c[-1] = T_old_c[-1] 
 
-    T_new_l = T_old_l
-    for i in range(1,n+1):
-        if (i < n):
-            hr = (heat[i]+heat[i-1]) * 0.5
-        else:
-            hr = heat[i-i]
-        T_new_l[i] += hr * dt
+    # Interpolate to get new cell-edge array
+    interp = PchipInterpolator(atm.p, T_new_c, extrapolate=True)
+    T_new_l = interp(atm.pl)
+    T_new_l[-1] = T_old_l[-1]  # Don't heat the surface
 
-    atm.tmp = T_new_c
-    atm.tmpl = T_new_l
-
-    max_dT = np.amax(T_new_c-T_old_c)
-    max_dT = max(max_dT,np.amax(T_new_c-T_old_c))
-    print("    max_dT = %g K" % max_dT)
+    # Store new temperatures
+    atm.tmp  = np.clip(T_new_c, COUPLER_options["min_temperature"], COUPLER_options["max_temperature"])
+    atm.tmpl = np.clip(T_new_l, COUPLER_options["min_temperature"], COUPLER_options["max_temperature"])
 
     return atm
-
         
 

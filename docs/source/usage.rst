@@ -20,7 +20,7 @@ You can also run PROTEUS using:
    
 Which runs PROTEUS using the config file ``[cfgfile]`` inside a Screen session 
 with the name ``[alias]``. This allows multiple instances of the model to be
-dispatched easily.
+dispatched easily, while preventing runs from having clashing names.
 
   
 Configuration file

@@ -13,8 +13,13 @@ from utils.stellar_common import *
 from utils.stellar_mors import *
 from utils.stellar_baraffe import *
 from utils.vulcan import RunVULCAN
-from utils.aeolus import RunAEOLUS, StructAtm
+from utils.aeolus import RunAEOLUS, StructAtm, IterateHeating
 from utils.spider import RunSPIDER
+
+from plot.cpl_fluxes import *
+from plot.cpl_heatingrates import *
+
+from AEOLUS.utils.SocRadModel import radCompSoc
 
 from AEOLUS.modules.stellar_luminosity import InterpolateStellarLuminosity
 from AEOLUS.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
@@ -44,7 +49,7 @@ def main():
                      "atm": 0,              # Number of atmosphere sub-iters performed
                      "eqm": -1,             # Number of eqm iters performed
                      "init_loops": 3,       # Target number of init iters
-                     "atm_loops":  10,      # Maximum number of atmosphere sub-iters
+                     "atm_loops":  15,      # Maximum number of atmosphere sub-iters
                      "eqm_loops":  3        # Target number of eqm iters
                     }
     
@@ -320,18 +325,56 @@ def main():
 
 
         ############### ATMOSPHERE SUB-LOOP
-        dT_heat_max = np.inf
-        while (loop_counter["atm"] == 0) or (loop_counter["atm"] < loop_counter["atm_loops"] and abs(COUPLER_options["F_net"]) > COUPLER_options["F_eps"]):
+        dTdt       = np.inf
+        dTdt_eps   = 10.0
+        atm_dt     = 1.e-4  # Initial dt [days]
+        dT_target  = 190.0  # Target maximum dT per step
+        do_heating = True
+        while (loop_counter["atm"] == 0) or ((loop_counter["atm"] < loop_counter["atm_loops"]) and (abs(dTdt) > dTdt_eps)):
 
             # Initialize atmosphere structure
-            atm, COUPLER_options = StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
+            if (loop_counter["atm"] == 0):
+                atm, COUPLER_options = StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
-            # Run SOCRATES: update TOA heating and MO heat flux
-            atm, COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile )
+                # Run AEOLUS: use the general adiabat to create a PT profile, then calculate fluxes
+                atm, COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile )
+
+            else:
+                # Run SOCRATES to get the fluxes for the current PT profile
+                atm = radCompSoc(atm, dirs, recalc=False, calc_cf=False, rscatter=True)
+                COUPLER_options["F_atm"] = atm.net_flux[-1]
+                COUPLER_options["F_olr"] = atm.LW_flux_up[0]
              
             # Run VULCAN (settings-dependent): update atmosphere mixing ratios
             if (COUPLER_options["atmosphere_chem_type"] == 2):
                 atm = RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options)
+
+            # Step PT profile forwards using SOCRATES heating rates
+            if do_heating:
+                
+                if (loop_counter["atm"] < loop_counter["atm_loops"]-1):
+                    old_tmp = atm.tmp
+                    
+                    print("Heating atmosphere")
+                    print("    atm_iter = %d" % loop_counter["atm"])
+                    print("    dt       = %f days" % atm_dt)
+
+                    atm = IterateHeating(atm, COUPLER_options, atm_dt)
+
+                    dT = np.abs(atm.tmp - old_tmp)
+                    dT_heat_max = np.amax(dT)
+                    dTdt = dT_heat_max / atm_dt
+                    print("    dTmax_dt = %.3e K/day" % dTdt)
+                    print("    dTmax    = %.3e K" % dT_heat_max)
+
+                    atm_dt = dT_target / dTdt   # Calculate new atm time-step
+
+                else:
+                    # cpl_fluxes(dirs['output'], atm)
+                    cpl_heatingrates(dirs['output'], atm)
+
+            else:
+                dTdt = 0.0  # Don't do another atm loop if
 
             # Update help quantities, input_flag: "Atmosphere"
             runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
