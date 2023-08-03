@@ -95,7 +95,7 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
                 vmax,vimax = find_nearest(yd["pressure"],prange[1])
                 if vimin == vimax:
                     raise Exception("Upper and lower bound of 'prange' are too close!")
-                if vmin > vmax:
+                if vimin > vimax:
                     vimin,vimax = vimax,vimin
                     vmin,vmax = vmax,vmin
                 mean_mx = np.mean(clean_mx[vimin:vimax])
@@ -103,8 +103,8 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
             mean_mx = np.mean(clean_mx)           
             mx_vul.append(float(mean_mx))
 
-        ax.plot(times,mx_vul,color='black',lw=lw+0.4)
-        ax.plot(times,mx_vul,color=color,label=sp,lw=lw)
+        ax.plot(times,mx_vul,color='black',lw=lw+0.4,zorder=3)
+        ax.plot(times,mx_vul,color=color,label=sp,lw=lw,zorder=4)
 
         if plot_init_mx:
             if str("ae_"+sp) in years_data[0].keys():
@@ -113,7 +113,7 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
                     mean_mx = np.mean(clean_mx)   
                     mx_aeo.append(float(mean_mx))
 
-                ax.plot(times,mx_aeo,color=color,linestyle='--',lw=lw)
+                ax.plot(times,mx_aeo,color=color,linestyle='--',lw=lw,zorder=2)
 
     title_str += str(", %d samples" % len(years_data))
 
@@ -127,7 +127,7 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
         vmin = tmin
     ax.set_xlim([max(vmin,1.0),times[-1]*1.2])
 
-    ax.axvline(x=times[-1],color='black',lw=0.7)
+    ax.axvline(x=times[-1],color='black',lw=0.7,zorder=1)
 
     fig.tight_layout()
     fig.savefig(output_dir+"/plot_offchem_time.pdf")
@@ -154,7 +154,7 @@ if __name__ == '__main__':
     dirs = SetDirectories(COUPLER_options)
 
     # Call plotting function
-    prange = 1e-3
+    prange = [1e0,1e-4]
     plot_offchem_time(dirs["output"],species,tmin=1e3,prange=prange)
 
     print("Done!")

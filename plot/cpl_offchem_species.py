@@ -104,8 +104,8 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
         if plot_init_mx:
             key = str("ae_"+sp)
             if key in yd.keys():
-                ax1.scatter(yd[key],p[-1], s=50,color=color)
-                # ax1.plot(np.ones((len(p),)) * yd[key],p,linestyle='--',lw=lw*0.5,color=color)
+                ax1.scatter(yd[key],p[0], s=40,color='grey')
+                ax1.scatter(yd[key],p[0], s=20,color=color)
             
     ax1.set_xlim([min_mix,1])
 
@@ -124,6 +124,8 @@ if __name__ == '__main__':
     else:
         cfg = 'init_coupler.cfg' 
 
+    plot_aeolus_result = True
+
 
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
@@ -140,6 +142,6 @@ if __name__ == '__main__':
     # Call plotting function
     for s in species:
         print("Species = %s" % s)
-        plot_offchem_species(dirs["output"],s,tmin=-1)
+        plot_offchem_species(dirs["output"],s,tmin=-1, plot_init_mx=plot_aeolus_result)
 
     print("Done!")
