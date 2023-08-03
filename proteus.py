@@ -12,14 +12,11 @@ from utils.coupler import *
 from utils.stellar_common import *
 from utils.stellar_mors import *
 from utils.stellar_baraffe import *
-from utils.vulcan import RunVULCAN
-from utils.aeolus import RunAEOLUS, StructAtm, IterateHeating
+from utils.aeolus import RunAEOLUS, StructAtm #, IterateHeating, CalcAtmFluxes, GetHeating
 from utils.spider import RunSPIDER
 
 from plot.cpl_fluxes import *
 from plot.cpl_heatingrates import *
-
-from AEOLUS.utils.SocRadModel import radCompSoc
 
 from AEOLUS.modules.stellar_luminosity import InterpolateStellarLuminosity
 from AEOLUS.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
@@ -49,7 +46,7 @@ def main():
                      "atm": 0,              # Number of atmosphere sub-iters performed
                      "eqm": -1,             # Number of eqm iters performed
                      "init_loops": 3,       # Target number of init iters
-                     "atm_loops":  15,      # Maximum number of atmosphere sub-iters
+                     "atm_loops":  200,      # Maximum number of atmosphere sub-iters
                      "eqm_loops":  3        # Target number of eqm iters
                     }
     
@@ -145,7 +142,8 @@ def main():
             # Check positive
             if (COUPLER_options[key_pp] <= 0.0):
                 print("ERROR: Partial pressures of included volatiles must be positive!")
-                print("       Consider assigning volatile '%s' a small positive value" % s)
+                print("       Consider assigning volatile '%s' a small positive value." % s)
+                print("       Check that solvepp_enabled has the intended setting.")
                 exit(1)
 
             # Ensure numerically reasonable
@@ -259,7 +257,7 @@ def main():
 
             # Write stellar spectra to disk
             print("Writing spectrum to disk")
-            writessurf = (COUPLER_options["atmosphere_chem_type"] > 0)
+            writessurf = bool(COUPLER_options["atmosphere_chem_type"] > 0)
             SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs['output']+'/data/',write_surf=writessurf)
 
             # Generate a new SOCRATES spectral file containing this new spectrum
@@ -318,63 +316,37 @@ def main():
                     if (COUPLER_options[key_in] == 1):
                         COUPLER_options[key_pp] += float(COUPLER_options[key_ab] * 1.0e5)  # Convert bar -> Pa
                     
-
         ############### / INTERIOR SUB-LOOP
 
 
 
-
         ############### ATMOSPHERE SUB-LOOP
-        dTdt       = np.inf
-        dTdt_eps   = 10.0
-        atm_dt     = 1.e-4  # Initial dt [days]
-        dT_target  = 190.0  # Target maximum dT per step
-        do_heating = True
-        while (loop_counter["atm"] == 0) or ((loop_counter["atm"] < loop_counter["atm_loops"]) and (abs(dTdt) > dTdt_eps)):
+        atm_dt     = 1.e-5  # Initial dt [days]
+        atm_dF_1   = np.inf # Absolute change in F_atm this iter
+        atm_dF_2   = np.inf # Absolute change in F_atm last iter
+        eps_dF     = 10.0  # Convergence criterion for atm loops
+        while (loop_counter["atm"] == 0) \
+              or ( (COUPLER_options["radiative_heating"] == 1) and (loop_counter["atm"] < loop_counter["atm_loops"]) and (max(atm_dF_2,atm_dF_1) > eps_dF)):
 
             # Initialize atmosphere structure
-            if (loop_counter["atm"] == 0):
+            if (loop_counter["atm"] == 0) or (loop_counter["total"] <= 2):
                 atm, COUPLER_options = StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
                 # Run AEOLUS: use the general adiabat to create a PT profile, then calculate fluxes
                 atm, COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile )
+                pt_aeolus = np.array([ atm.p , atm.tmp])
 
-            else:
-                # Run SOCRATES to get the fluxes for the current PT profile
-                atm = radCompSoc(atm, dirs, recalc=False, calc_cf=False, rscatter=True)
-                COUPLER_options["F_atm"] = atm.net_flux[-1]
-                COUPLER_options["F_olr"] = atm.LW_flux_up[0]
-             
-            # Run VULCAN (settings-dependent): update atmosphere mixing ratios
-            if (COUPLER_options["atmosphere_chem_type"] == 2):
-                atm = RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options)
-
+            
             # Step PT profile forwards using SOCRATES heating rates
-            if do_heating:
-                
-                if (loop_counter["atm"] < loop_counter["atm_loops"]-1):
-                    old_tmp = atm.tmp
-                    
-                    print("Heating atmosphere")
-                    print("    atm_iter = %d" % loop_counter["atm"])
-                    print("    dt       = %f days" % atm_dt)
+            if (COUPLER_options["radiative_heating"] == 1) and (loop_counter["total"] > 2):
 
-                    atm = IterateHeating(atm, COUPLER_options, atm_dt)
-
-                    dT = np.abs(atm.tmp - old_tmp)
-                    dT_heat_max = np.amax(dT)
-                    dTdt = dT_heat_max / atm_dt
-                    print("    dTmax_dt = %.3e K/day" % dTdt)
-                    print("    dTmax    = %.3e K" % dT_heat_max)
-
-                    atm_dt = dT_target / dTdt   # Calculate new atm time-step
-
-                else:
-                    # cpl_fluxes(dirs['output'], atm)
-                    cpl_heatingrates(dirs['output'], atm)
+                # Radiative heating iteration here
+                # Not yet merged into master.
+                print("WARNING: Radiative heating disabled for now.")
 
             else:
-                dTdt = 0.0  # Don't do another atm loop if
+                # Don't do another atm loop if not doing radiative heating
+                atm_dF_2 = atm_dF_1 = 0.0  
 
             # Update help quantities, input_flag: "Atmosphere"
             runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
@@ -398,7 +370,7 @@ def main():
         # Update eqm loop counter
         if (loop_counter["eqm"] > -1): # Next eqm iter
             loop_counter["eqm"]     += 1
-        if (loop_counter["eqm"] >= loop_counter["eqm_loops"]): # Done with init iters
+        if (loop_counter["eqm"] >= loop_counter["eqm_loops"]): 
             loop_counter["eqm"]     = -1  # -1 indicates that we are not to do any more eqm loops for now
 
         # Update init loop counter

@@ -65,11 +65,14 @@ def plot_global( output_dir , COUPLER_options):
     df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep="\t")
     df_int = df.loc[df['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
     df_atm = df.loc[df['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
+
     # Remove duplicate atm entries for one timestep
     for idx, row in df_atm.iterrows():
-        # print(row["Time"])
         if len(df_atm.loc[df_atm["Time"] == int(row["Time"])]) > 1:
             df_atm = df_atm.drop(idx)
+    for idx, row in df_int.iterrows():
+        if len(df_int.loc[df_int["Time"] == int(row["Time"])]) > 1:
+            df_int = df_int.drop(idx)
 
     ########## Global properties
     keys_t = ( ('atmosphere','mass_liquid'),

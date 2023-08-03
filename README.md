@@ -16,7 +16,7 @@ https://proteus-code.readthedocs.io/en/latest/contact.html
 * RB – Ryan Boukrouche (ryan.boukrouche@astro.su.se)
 * SMT – Shang-Min Tsai (shangmin.tsai@ucr.edu)
 * HN – Harrison Nicholls (harrison.nicholls@physics.ox.ac.uk)
-* HI - Hamish Innes (hamish.innes@physics.ox.ac.uk)
+* HII - Hamish Innes (hamish.innes@physics.ox.ac.uk)
 
 ### Repository structure
 * `proteus.py`      – Main PROTEUS Python script
@@ -30,6 +30,7 @@ https://proteus-code.readthedocs.io/en/latest/contact.html
 * `output/`         – Output folder (e.g. planet evolution results, plots)
 * `input/`          - Input folder (e.g. stellar spectra, example configs)
 * `docs/`			– Documentation source
+* `examples/`       - Example model results
 * `pyproject.toml`	– Documentation file
 
 
@@ -40,9 +41,9 @@ See https://proteus-code.readthedocs.io/en/latest/installation.html for steps an
 Only attempt to run PROTEUS after you have followed all of the installation instructions.    
 If using a fresh shell, it is necessary to perform the following steps:     
 1. `conda activate proteus` (if installed with `conda`)
-2. `source PROTEUS.env`
-Then you can run the code by running: `python proteus.py`      
-Results are produced in folders within `output/`      
+2. `source PROTEUS.env`    
+Then you can start the model by running: `python proteus.py`.      
+Results are produced in folders within `output/`.      
 
 ### Updating the code
 Run `git submodule update --recursive --remote`

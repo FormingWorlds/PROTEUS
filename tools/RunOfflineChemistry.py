@@ -28,7 +28,7 @@ def find_nearest_idx(array, value):
     idx = (np.abs(array - value)).argmin()
     return int(idx)
 
-def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_df:pd.DataFrame, ini_method:int) -> bool:
+def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict, helpfile_df:pd.DataFrame, ini_method:int) -> bool:
     """Run VULCAN once for a given PROTEUS output year
     
     Runs VULCAN in a screen instance so that lots processes may still be
@@ -43,6 +43,8 @@ def run_once(year:int, now:int, first_run:bool, COUPLER_options:dict, helpfile_d
             Time at which this run was started (format: HHMMSS)
         first_run : bool
             Is this the first time that VULCAN is run for this configuration?
+        dirs : dict
+            Dictionary of useful directories
         COUPLER_options : dict
             PROTEUS options dictionary read from cfg file
         helpfile_df : DataFrame
@@ -205,27 +207,55 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         logging.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
 
 
-if __name__ == '__main__':
+def parent(cfgfile, samples, threads, s_width, s_centre, 
+           mkfuncs=True, runtime_sleep=30, ini_method=1, mkplots=True):
+    """Parent process for handing offline chemistry.
+
+    Reads configuration from cfgfile, finds the files, takes samples, and dispatches 
+    each sample as required. Allows processes to be run in-parallel inside 
+    screen sessions. Multiple instances of this script should not be run at 
+    the same time because of inflexibilities in VULCAN.
+    
+    Tries to take useful samples across the simulation time by using a 
+    distribution with a peak and width, which allows regions of interest to be 
+    better resolved. You might need to play with s_width and s_centre in order
+    to sample the part of the planet's evolution that you're interested in.
+
+    Parameters
+    ----------
+        cfgfile : str
+            Path to config file used for PROTEUS as stored in the output 
+            subdirectory for a completed run.
+        samples : int
+            Number of samples to use from output dir (set to -1 if all are 
+            requested, but beware of long runtimes in this case).
+        threads : int
+            Maximum number of threads to use when running offline chemistry.
+        s_width : float
+            Width of sampling function [years]
+        s_centre : float
+            Centre of sampling function [years]
+
+        mkfuncs : bool
+            Compile VULCAN reaction functions from network on first run?
+        runtime_sleep : float
+            Wall clock time to sleep between dispatches of VULCAN [seconds]
+        ini_method : int
+            Method to use to intialise abundances in VULCAN.
+            0: constant mixing ratios based on SPIDER's outgassing products,
+            1: calculate elemental abundances and run FastChem eqm chemistry.
+        mkplots : bool
+            Make plots at end?
+        
+
+    """
+
     print("Started main process")
 
-
-    # ----------------------------------------
-
-    # Parameters
-    cfgfile =       "output/trap1b_bhac_nostar/init_coupler.cfg"  # Config file used for PROTEUS
-    samples =       20                  # How many samples to use from output dir (set to -1 if all are requested)
-    threads =       20                  # How many threads to use
-    mkfuncs =       True                # Compile reaction functions again?
-    s_width =       2e6                 # Width of sampling distribution [yr]
-    s_centre =      1e6                 # Centre of sampling distribution [yr]
-    runtime_sleep = 30                  # Sleep seconds per iter
-    ini_method =    1                   # Method used to init VULCAN abundances  (0: const_mix, 1: eqm)
-
-    # ----------------------------------------
-
+    args = locals()
 
     # Read in PROTEUS config file
-    COUPLER_options, time_dict = ReadInitFile( cfgfile )
+    COUPLER_options, _ = ReadInitFile( cfgfile )
 
     # Set directories
     dirs = SetDirectories(COUPLER_options)
@@ -267,6 +297,9 @@ if __name__ == '__main__':
     logging.info("Time: %d"%now)
 
     logging.info(" ")
+    logging.info("Arguments: %s" % str(args))
+
+    logging.info(" ")
     logging.info("This program will generate several screen sessions")
     logging.info("To kill all of them, run `pkill -f %d_offchem_`" % now)   # (from: https://stackoverflow.com/a/8987063)
     logging.info("Take care to avoid orphaned instances by using `screen -ls`")
@@ -295,24 +328,22 @@ if __name__ == '__main__':
     if samples == -1:
         samples = len(years_all)
 
-    # Select samples...
+    threads = min(threads, samples)
+    max_threads = 60
     if samples < 1:
         raise Exception("Too few samples requested! (Less than zero)") 
     if samples > len(years_all):
         raise Exception("Too many samples requested! (Duplicates expected)") 
     if threads < 1:
         raise Exception("Too few threads requested! (Less than one)")
-    if threads > 62:
-        raise Exception("Too many threads requested! (Count is capped at 40)")
+    if threads > max_threads:
+        raise Exception("Too many threads requested! (More than %d)" % max_threads)
     
+    # Select samples...
     logging.info("Choosing sample years... (May take a while in some cases)")
     years = [ ]
     yfirst = years_all[1]
     ylast = years_all[-1]
-    if samples >= 1:
-        years.append(yfirst) # Include first run
-    if samples >= 2:
-        years.append(ylast) # Include last run
 
     # Draw samples
     if len(years_all) == samples:
@@ -323,6 +354,12 @@ if __name__ == '__main__':
         # Draw other runs randomly from a distribution. This is set-up to sample
         # the end of the run more densely than the start, because the evolution at 
         # the start isn't so interesting compared to the end.
+
+        if samples >= 1:
+            years.append(yfirst) # Include first run
+        if samples >= 2:
+            years.append(ylast) # Include last run
+
         sample_itermax = 30000*samples
         sample_iter = 0
         while (len(years) < samples): 
@@ -389,11 +426,10 @@ if __name__ == '__main__':
             # Currently tagged as running, but check if done
             if (not running) and (status[i] == 1):
                 to_copy = dirs["vulcan"]+"/output/%d_offchem_%d.vul" % (now,y)
-                if os.path.exists(to_copy):
+                if os.path.exists(to_copy): # Is done?
                     status[i] = 2
                     shutil.copyfile(to_copy, dirs["output"]+"/offchem/%d/output.vul"%y) # Copy output
-                    for f in glob.glob(dirs["vulcan"]+"output/%d_offchem_%d*"%(now,y)):  # Tidy VULCAN output folder
-                        os.remove(f)
+
                 else:
                     status[i] = 3
                     logging.info("WARNING: Output file missing for year = %d" % y)
@@ -431,17 +467,17 @@ if __name__ == '__main__':
             # Did we find one?
             if (y > -1):
                 
-                # Wait for chem_funs.py to finish making the network py file
+                # Wait for VULCAN to finish making the network py file
                 if mkfuncs and (count_dispatched == 1):
                     time.sleep(60.0)  
 
                 # Run new process
                 logging.info("Dispatching job %03d: %08d yrs..." % (i,y))
                 fr = bool( (count_dispatched == 0) and mkfuncs)
-                this_success = run_once(years[i], now, fr,COUPLER_options,helpfile_df,ini_method)
+                this_success = run_once(years[i], now, fr, dirs, COUPLER_options, helpfile_df, ini_method)
                 status[i] = 1
                 if this_success:
-                    logging.info("\t (succeeded)")
+                    logging.info("\t (dispatched)")
                 else:
                     logging.info("\t (failed)")
 
@@ -454,34 +490,59 @@ if __name__ == '__main__':
         logging.info("WARNING: Master process loop terminated early!")
         logging.info("         This could be because it timed-out or an error occurred.")
 
+    # Tidy VULCAN output folder
+    for f in glob.glob(dirs["vulcan"]+"output/%d_offchem_*"%now): 
+        os.remove(f)
+
     time_end = datetime.now()
     logging.info("All processes finished at: "+str(time_end.strftime("%Y-%m-%d %H%M%S")))
     logging.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
     # Plot
-    logging.info("Plotting results...")
+    if mkplots:
+        logging.info("Plotting results...")
 
-    # plot_aeolus = bool(ini_method == 0)
-    plot_aeolus = True
+        # plot_aeolus = bool(ini_method == 0)
+        plot_aeolus = True
 
-    species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
-    logging.info("\t timeline")
-    plot_offchem_time(dirs["output"],species,plot_init_mx=plot_aeolus,tmin=1e4)
+        species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
+        logging.info("\t timeline")
+        plot_offchem_time(dirs["output"],species,plot_init_mx=plot_aeolus,tmin=1e4)
 
-    ls = glob.glob(dirs["output"]+"offchem/*/output.vul")
-    years = [int(f.split("/")[-2]) for f in ls]
-    years_data = [offchem_read_year(dirs["output"],y,read_const=plot_aeolus) for y in years]
+        ls = glob.glob(dirs["output"]+"offchem/*/output.vul")
+        years = [int(f.split("/")[-2]) for f in ls]
+        years_data = [offchem_read_year(dirs["output"],y,read_const=plot_aeolus) for y in years]
 
-    if len(years) == 0:
-        raise Exception('In attempting to make plots, no VULCAN output files were found')
+        if len(years) > 0:
+            for yd in years_data:
+                logging.info("\t year = %d" % yd["year"])
+                plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_aeolus)
+        else:
+            logging.error('In attempting to make plots, no VULCAN output files were found')
 
-    # for yd in years_data:
-    #     logging.info("\t year = %d" % yd["year"])
-    #     plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_aeolus)
-
-    for s in species:
-        print("\t species = %s" % s)
-        plot_offchem_species(dirs["output"],s,plot_init_mx=plot_aeolus)
+        for s in species:
+            print("\t species = %s" % s)
+            plot_offchem_species(dirs["output"],s,plot_init_mx=plot_aeolus)
 
     # Done
-    logging.info("Done!")
+    logging.info("Done running offline chemistry!")
+
+
+# If run directly
+if __name__ == '__main__':
+
+    # Parameters
+    cfgfile =       "output/example_trappist1b_IW+0/init_coupler.cfg"  # Config file used for PROTEUS
+    samples =       40                  # How many samples to use from output dir (set to -1 if all are requested)
+    threads =       40                  # How many threads to use
+    mkfuncs =       False               # Compile reaction functions again?
+    mkplots =       True                # make plots?
+    s_width =       9e7                 # Width of sampling distribution [yr]
+    s_centre =      9e5                 # Centre of sampling distribution [yr]
+    runtime_sleep = 30                  # Sleep seconds per iter (required for VULCAN warm up periods to pass)
+    ini_method =    1                   # Method used to init VULCAN abundances  (0: const_mix, 1: eqm)
+
+    # Do it
+    parent(cfgfile, samples, threads, s_width, s_centre, 
+           mkfuncs=mkfuncs, runtime_sleep=runtime_sleep, ini_method=ini_method, mkplots=mkplots)
+    

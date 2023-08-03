@@ -1093,13 +1093,17 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         call_sequence.extend(["-param_utbl_const", str(COUPLER_options["param_utbl_const"])])
 
     # Check for convergence, if not converging, adjust tolerances iteratively
-    if len(runtime_helpfile) > 200 and loop_counter["total"] > loop_counter["init_loops"] :
+    if (loop_counter["total"] > loop_counter["init_loops"]) and (len(runtime_helpfile) > 50):
 
         # Check convergence for interior cycles
         run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
 
+        ref_idx = -3
+        if len(run_int["Time"]) < abs(ref_idx)-1:
+            ref_idx = 0
+
         # First, relax too restrictive dTs
-        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[-3]:
+        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
             if COUPLER_options["tsurf_poststep_change"] <= 300:
                 COUPLER_options["tsurf_poststep_change"] += 10
                 print(">>> Raise dT poststep_changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
@@ -1107,11 +1111,11 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 print(">> dTs_int too high! >>", COUPLER_options["tsurf_poststep_change"], "K")
                 
         # Slowly limit again if time advances smoothly
-        if (run_int["Time"].iloc[-1] != run_int["Time"].iloc[-3]) and COUPLER_options["tsurf_poststep_change"] > 30:
+        if (run_int["Time"].iloc[-1] != run_int["Time"].iloc[ref_idx]) and COUPLER_options["tsurf_poststep_change"] > 30:
             COUPLER_options["tsurf_poststep_change"] -= 10
             print(">>> Lower tsurf_poststep_change poststep changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
 
-        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[-5]:
+        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
             if "solver_tolerance" not in COUPLER_options:
                 COUPLER_options["solver_tolerance"] = 1.0e-10
             if COUPLER_options["solver_tolerance"] < 1.0e-2:

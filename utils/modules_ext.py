@@ -15,6 +15,8 @@ import subprocess
 import fileinput
 import os, sys, glob, shutil, re
 from datetime import datetime
+import copy
+
 
 # Plotting
 import matplotlib as mpl
@@ -38,10 +40,9 @@ import math
 import pickle as pkl
 from scipy.interpolate import RectBivariateSpline, interp1d, PchipInterpolator
 from scipy import interpolate
-from scipy.integrate import solve_ivp
-from scipy.integrate import odeint
-from scipy.optimize import newton
-from scipy.optimize import fsolve
+from scipy.integrate import solve_ivp, odeint
+from scipy.optimize import newton, fsolve, curve_fit
+from scipy.signal import savgol_filter
 from scipy import stats
 
 

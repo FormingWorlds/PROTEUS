@@ -130,7 +130,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         F_int2      = E0/area[0]
 
         F_int = runtime_helpfile_new["F_int"]
-        print(">>>>>>> F_int2:", F_int2, "F_int:", F_int )
+        print(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, F_int) )
 
         # Limit F_int to positive values
         runtime_helpfile_new["F_int"] = np.amax([F_int, 0.])
@@ -392,8 +392,8 @@ def ReadInitFile( init_file_passed , verbose=False):
                     # Some parameters are int
                     if key in [ "IC_INTERIOR", "ic_interior_filename", 
                                 "plot_iterfreq", "stellar_heating", "mixing_length",
-                                "atmosphere_chem_type", "solvepp_enabled",
-                                "tropopause", "F_atm_bc", 
+                                "atmosphere_chem_type", "solvepp_enabled", "insert_rscatter",
+                                "tropopause", "F_atm_bc", "radiative_heating",
                                 "dt_dynamic", "require_eqm_loops", "prevent_warming"]:
                         val = int(val)
 
@@ -492,7 +492,7 @@ def SetDirectories(COUPLER_options: dict):
 
     dirs = {
             "output": coupler_dir+"/output/"+COUPLER_options['dir_output']+"/", 
-            "input": coupler_dir+"/intput/",
+            "input": coupler_dir+"/input/",
             "coupler": coupler_dir, 
             "rad_conv": coupler_dir+"/AEOLUS/", 
             "vulcan": coupler_dir+"/VULCAN/", 

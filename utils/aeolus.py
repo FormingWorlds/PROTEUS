@@ -5,6 +5,7 @@ from utils.modules_ext import *
 from utils.helper import *
 from AEOLUS.utils.atmosphere_column import atmos
 from AEOLUS.modules.radcoupler import RadConvEqm
+from AEOLUS.utils.SocRadModel import radCompSoc
 
 def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
 
@@ -149,20 +150,39 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
     return atm, COUPLER_options
 
+def CallRadConvEqm(atm, dirs, time_dict, COUPLER_options):
+    """Call RadConvEqm util from AEOLUS.
+    
+    Calculates the temperature structure of an atmosphere using the Graham+21
+    general adiabat and sets an isothermal stratosphere if required. Runs 
+    SOCRATES to calculate the fluxes and heating rates.
 
-def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
+    Parameters
+    ----------
+        atm : atmos
+            Atmosphere object
+        dirs : dict
+            Dictionary containing paths to directories
+        time_dict : dict
+            Dictionary containing simulation time variables
+        COUPLER_options : dict
+            Configuration options and other variables
 
-    # Runtime info
-    PrintHalfSeparator()
-    print("Running AEOLUS...")
+    Returns
+    ----------
+        atm : atmos
+            Updated atmos object
+
+    """
 
     # Change directory so that SOCRATES files don't get littered
     cwd = os.getcwd()
     os.chdir(dirs["output"])
 
-    # Calculate temperature structure and heat flux w/ SOCRATES
+    # Calculate temperature structure w/ General Adiabat 
     trppD = bool(COUPLER_options["tropopause"] == 2 )
-    _, atm = RadConvEqm(dirs, time_dict, atm, standalone=False, cp_dry=False, trppD=trppD, rscatter=True, calc_cf=False)
+    rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
+    _, atm = RadConvEqm(dirs, time_dict, atm, standalone=False, cp_dry=False, trppD=trppD, rscatter=rscatter, calc_cf=False)
 
     # Go back to previous directory
     os.chdir(cwd)
@@ -175,7 +195,86 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
     # Print flux info
     print("SOCRATES fluxes (net@surf, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
+
+    return atm
+
+def CalcAtmFluxes(atm, dirs, COUPLER_options):
+    """Call RadCompSoc utility from AEOLUS
     
+    Calculates the fluxes and heating rates within an atmosphere object using
+    SOCRATES. Does not modify the PT profile or composition.
+
+    Parameters
+    ----------
+        atm : atmos
+            Atmosphere object
+        dirs : dict
+            Dictionary containing paths to directories
+        COUPLER_options : dict
+            Configuration options and other variables
+
+    Returns
+    ----------
+        atm : atmos
+            Updated atmos object containing new fluxes and heating rates.
+
+    """
+
+    # Change directory so that SOCRATES files don't get littered
+    cwd = os.getcwd()
+    os.chdir(dirs["output"])
+
+    # Calculate fluxes and heating rates
+    rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
+    atm = radCompSoc(atm, dirs, recalc=False, calc_cf=False, rscatter=rscatter)
+
+    # Go back to previous directory
+    os.chdir(cwd)
+
+    # Clean up run directory
+    for file in glob.glob(dirs["output"]+"/current??.????"):
+        os.remove(file)
+    for file in glob.glob(dirs["output"]+"/profile.*"):
+        os.remove(file)
+
+    return atm
+
+
+def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
+    """Run AEOLUS.
+    
+    Calculates the temperature structure of the atmosphere and the fluxes, etc.
+    Stores the new flux boundary condition to be provided to SPIDER. Limits flux
+    change if required.
+
+    Parameters
+    ----------
+        atm : atmos
+            Atmosphere object
+        time_dict : dict
+            Dictionary containing simulation time variables
+        dirs : dict
+            Dictionary containing paths to directories
+        COUPLER_options : dict
+            Configuration options and other variables
+        runtime_helpfile : pd.DataFrame
+            Dataframe containing simulation variables (now and historic)
+
+    Returns
+    ----------
+        atm : atmos
+            Updated atmos object
+        COUPLER_options : dict
+            Updated configuration options and other variables
+
+    """
+
+    # Runtime info
+    PrintHalfSeparator()
+    print("Running AEOLUS...")
+
+    atm = CallRadConvEqm(atm, dirs, time_dict, COUPLER_options)
+
     # New flux from SOCRATES
     if (COUPLER_options["F_atm_bc"] == 0):
         F_atm_new = atm.net_flux[0]  
@@ -209,35 +308,4 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     COUPLER_options["F_olr"] = atm.LW_flux_up[0]
 
     return atm, COUPLER_options
-
-
-from scipy.signal import savgol_filter
-
-def IterateHeating( atm, COUPLER_options, dt):
-
-    # Store old temperatures
-    T_old_c = np.array(atm.tmp)
-    T_old_l = np.array(atm.tmpl)
-
-    heat = np.array(atm.net_heating)
-    heat[-1] = 0 # Don't heat the surface
-
-    # Apply heating to cell-centre array
-    T_new_c = T_old_c + dt * heat
-
-    # Smooth new temperature structure to damp numerics
-    T_new_c = savgol_filter(T_new_c, 10, 2)
-    T_new_c[-1] = T_old_c[-1] 
-
-    # Interpolate to get new cell-edge array
-    interp = PchipInterpolator(atm.p, T_new_c, extrapolate=True)
-    T_new_l = interp(atm.pl)
-    T_new_l[-1] = T_old_l[-1]  # Don't heat the surface
-
-    # Store new temperatures
-    atm.tmp  = np.clip(T_new_c, COUPLER_options["min_temperature"], COUPLER_options["max_temperature"])
-    atm.tmpl = np.clip(T_new_l, COUPLER_options["min_temperature"], COUPLER_options["max_temperature"])
-
-    return atm
-        
 

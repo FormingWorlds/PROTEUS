@@ -2,8 +2,6 @@
 # Configuration file of VULCAN used as template in PROTEUS
 # ============================================================================= 
 
-# ====== Setting up the elements included in the network ======
-use_lowT_limit_rates = False
 
 # ====== Setting up paths and filenames for the input and output files  ======
 # input:
@@ -50,7 +48,7 @@ vz_prof = 'const'  # Options: 'const' or 'file'
 const_Kzz = 1.E10 # (cm^2/s) Only reads when use_Kzz = True and Kzz_prof = 'const'
 const_vz = 0 # (cm/s) Only reads when use_vz = True and vz_prof = 'const'
 
-f_diurnal = 0.5 # to account for the diurnal average of solar flux (i.e. 0.5 for Earth; 1 for tidally-locked planets) 
+f_diurnal = 1.0 # to account for the diurnal average of solar flux (i.e. 0.5 for Earth; 1 for tidally-locked planets) 
 
 
 # frequency for updating dz and dzi due to change of mu
@@ -80,7 +78,7 @@ conv_step = 500
 ode_solver = 'Ros2' # case sensitive
 use_print_prog = True
 use_print_delta = False
-print_prog_num = 100  # print the progress every x steps 
+print_prog_num = 200  # print the progress every x steps 
 dttry = 1.E-10
 trun_min = 1e2
 runtime = 1.E22
@@ -90,8 +88,7 @@ dt_var_max = 2.
 dt_var_min = 0.5
 count_min = 120
 count_max = int(1E5)
-atol = 1.E-2 # Try decreasing this if the solutions are not stable
-mtol = 1.E-22
+
 mtol_conv = 1.E-16
 pos_cut = 0
 nega_cut = -1.
@@ -103,7 +100,9 @@ flux_cri = 0.1
 flux_atol = 1. # the tol for actinc flux (# photons cm-2 s-1 nm-1)
 
 # ====== Setting up numerical parameters for Ros2 ODE solver ====== 
-rtol = 0.8              # relative tolerence for adjusting the stepsize 
+atol = 7.E-3             # Try decreasing this if the solutions are not stable
+mtol = 1.E-22
+rtol = 0.4              # relative tolerence for adjusting the stepsize 
 
 # ====== Setting up for ouwtput and plotting ======
 plot_TP = False
