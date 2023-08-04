@@ -113,19 +113,23 @@ def DownloadModernSpectrum(name, distance):
             # WAVELENGTH1: right (red) edge of the wavelength bin in Angstroms
             # FLUX : average flux density in the wavelength bin in erg s-1 cm-2 Angstroms-1
 
+            negaflux = False
+
             for n,w in enumerate(spec['WAVELENGTH']):
                 wl = w * 0.1  # Convert å to nm
                 fl = float(spec['FLUX'][n])*10.0 * (distance / r_scale )**2  # Convert units and scale flux
 
-                if (fl <= 0):
-                    print("\tWARNING: Flux value <= 0.0 at %1.3e nm! Taking absolute value." % wl)
+                negaflux = negaflux or (fl <= 0)
 
-                fl_abs = abs(fl)
+                fl_abs = max(0.0,fl)
 
                 new_str += "%1.7e\t%1.7e \n" % (wl,fl_abs)
 
             with open(plaintext_spectrum, 'w') as f:
                 f.write(new_str)
+
+            if negaflux:
+                print("\t WARNING: The stellar spectrum contained flux value(s) <= 0.0 ! These were set to zero." % wl)
 
         case 'vpl':
             cert = False  # This is not good, but it will stay for now.

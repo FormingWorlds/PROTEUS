@@ -8,9 +8,8 @@ from utils.helper import *
 def RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
     # Runtime info
-    PrintSeparator()
+    PrintHalfSeparator()
     print("VULCAN run... (loop =", loop_counter, ")")
-    PrintSeparator()
 
     # Copy template file
     vul_cfg = dirs["vulcan"]+"vulcan_cfg.py"                    # Template configuration file for VULCAN
@@ -55,7 +54,7 @@ def RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_opt
         vcf.write("P_t = %1.5e \n"          % float(COUPLER_options["P_top"]*1.0e6))   # pressure at the top (dyne/cm^2)
 
         # Plotting behaviour
-        vcf.write("use_live_plot  = %s \n"  % str(bool(COUPLER_options["plot_onthefly"] == 1)))
+        vcf.write("use_live_plot  = %s \n"  % str(bool(COUPLER_options["plot_iterfreq"] > 0)))
 
         # Make copy of element_list as a set, since it'll be used a lot in the code below
         set_elem_list = set(element_list)  

@@ -1,24 +1,14 @@
 #!/usr/bin/env python3
 
-# Plots stellar flux from `output/` for a set of wavelength bins
-
-# import matplotlib as mpl
-
-# font = {'family' : 'Arial',
-#         'size'   : 11.5}
-
-# mpl.rc('font', **font)
+# Plots stellar flux from output directory for a set of wavelength bins
 
 from utils.modules_ext import *
 from utils.constants import *
-from utils.plot import find_nearest
+from utils.plot import *
 from utils.helper import natural_sort
 from matplotlib.colors import LinearSegmentedColormap
 
-# fig_ratio = tuple(np.array([5,4])*0.9)
-
-cm_data = np.loadtxt("AEOLUS/plotting_tools/colormaps/bukavu.txt")
-star_cmap = LinearSegmentedColormap.from_list("sci_cmap", cm_data)
+star_cmap = sci_colormaps['oleron']
 
 # Planck function value at stellar surface
 # lam in nm
@@ -34,7 +24,7 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
+def plot_sflux_cross(output_dir, wl_targets, surface=False):
     """Plots stellar flux vs time, for a set of wavelengths.
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -46,12 +36,8 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
             Directory for both reading from and saving to.
         wl_targets : list
             List of wavelengths to plot [nm]
-
         surface : bool
             Use fluxes at surface? If not, will use fluxes at 1 AU.
-        t_starinit : float
-            Age of star (in Myr) when time = 0
-
     """ 
 
     mpl.use('Agg')
@@ -61,7 +47,8 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
         suffix = 'sfluxsurf'
     else:
         suffix = 'sflux'
-    files = glob.glob(output_dir+"/*."+suffix)
+
+    files = glob.glob(output_dir+"/data/*."+suffix)
     files = natural_sort(files)
 
     if (len(files) == 0):
@@ -74,7 +61,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
     flux_t = []
     for f in files:
         # Load data
-        X = np.loadtxt(f,skiprows=2,delimiter='\t').T
+        X = np.loadtxt(f,skiprows=1,delimiter='\t').T
         
         # Parse data
         time = int(f.split('/')[-1].split('.')[0])
@@ -83,7 +70,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
         flux = X[1]
 
         # Save data
-        time_t.append(time * 1.e-6 + t_starinit)
+        time_t.append(time)
         wave_t.append(wave)
         flux_t.append(flux)
 
@@ -92,15 +79,13 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
     flux_t = np.array(flux_t)
 
     # Create figure
-    # fig,ax = plt.subplots(1,1,figsize=fig_ratio)
     fig,ax = plt.subplots(1,1)
 
-    # Colorbar
     ax.set_yscale("log")
     ax.set_ylabel("Flux [erg s$^{-1}$ cm$^{-2}$ nm$^{-1}$]")
 
     ax.set_xscale("log")
-    ax.set_xlabel("Time [Myr]")
+    ax.set_xlabel("Time [yr]")
     if surface:
         ax.set_title("Surface flux versus time")
     else:
@@ -128,15 +113,15 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False, t_starinit=0.0):
 
         fl = flux_t.T[wl_iarr[i]]
         c = star_cmap(1.0*i/N)
-        lbl = "%d"%math.ceil(wl_varr[i])
+        lbl = "%d"%max(1,round(wl_varr[i]))
 
-        ax.plot(time_t,fl,color='black',lw=3.0)
-        ax.plot(time_t,fl,color=c      ,lw=2.2,label=lbl)
+        ax.plot(time_t,fl,color='black',lw=3.5)
+        ax.plot(time_t,fl,color=c      ,lw=2.8,label=lbl)
 
         # Plot modern values
         if not surface:
-            ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='>',color='k',s=35, zorder=3)
-            ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='>',color=c,  s=29, zorder=4)
+            ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='o',color='k',s=40, zorder=3)
+            ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='o',color=c,  s=34, zorder=4)
 
     leg = ax.legend(title="$\lambda$ [nm]", loc='center left',bbox_to_anchor=(1.02, 0.5))
     for legobj in leg.legendHandles:
@@ -152,12 +137,17 @@ if __name__ == '__main__':
 
     print("Plotting stellar flux over time (bins)...")
 
-    wl_bins = [1.0, 10.0, 50.0, 100.0, 200.0, 350.0, 500.0, 1000.0, 2000.0]
+    wl_bins = [1.0, 12.0, 50.0, 121.0, 200.0, 400.0, 500.0, 2000.0]
+
+    if len(sys.argv) == 2:
+        cfg = sys.argv[1]
+    else:
+        cfg = 'init_coupler.cfg' 
 
    
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options, time_dict = ReadInitFile( 'init_coupler.cfg' )
+    COUPLER_options, time_dict = ReadInitFile( cfg )
 
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)

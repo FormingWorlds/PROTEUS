@@ -1,15 +1,11 @@
 # Default spider options file for use with PROTEUS
 
-# time stepping
--nstepsmacro 10
--dtmacro 1000
-
 # tolerances
 -ts_sundials_atol 1.0e-10
 -ts_sundials_rtol 1.0e-10
 
 # mesh
--n 80
+-n 150
 
 # -MASS_COORDINATES
 
@@ -36,9 +32,6 @@
 -CONVECTION 1 # convection
 -MIXING 1 # mixing (latent heat transport)
 -SEPARATION 1 # gravitational separation of solid and melt phase
-
-# output directory
--outputDirectory output
 
 -phase_names melt,solid
 
@@ -67,8 +60,8 @@
 # [2] is restart from file
 # -IC_INTERIOR 1
 #-ic_interior_filename output/dSdr_b_aug_0.m
--ic_adiabat_entropy 2600.0
--ic_dsdr -4.6978890285209187e-07 # initial dS/dr everywhere
+# -ic_adiabat_entropy 2600.0
+# -ic_dsdr -4.6978890285209187e-07 # initial dS/dr everywhere
 # set surface and core entropy (-1 is a flag to ignore, positive values are used)
 -ic_surface_entropy -1
 -ic_core_entropy -1
@@ -82,7 +75,6 @@
 # [3] is conventional as [1] above, but additionally allows you to
 #      specify a mid-mantle interface
 
--mixing_length 2
 #-mixing_length_layer_radius 0.0 # non-dimensional radius
 
 # physical parameters
@@ -139,12 +131,12 @@
 # atmosphere reference pressure (Pa)
 -P0 101325.0 # Pa (= 1 atm)
 
-# IW buffer
+# fO2 buffer chosen to define fO2 alongside the offset parameter (7: Iron-Wustite)
 -OXYGEN_FUGACITY 7
 
 # note that an offset of 0.5 is also the default, following
 # Sossi et al., 2020
--OXYGEN_FUGACITY_offset 0.5
+# -OXYGEN_FUGACITY_offset 0.5
 
 # internal heat sources
 

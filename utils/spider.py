@@ -21,7 +21,7 @@ class MyJSON( object ):
         try:
             json_data  = open( self.filename )
         except FileNotFoundError:
-            print('cannot find file: %s', self.filename )
+            print('cannot find file: %s' % self.filename )
             print('please specify times for which data exists')
             sys.exit(1)
         self.data_d = json.load( json_data )
@@ -118,11 +118,410 @@ class MyJSON( object ):
 
 
 
-#====================================================================
+# Solve partial pressures functions
+# Written by Dan Bower
+# See the related issue on the PROTEUS GitHub page:-
+# https://github.com/FormingWorlds/PROTEUS/issues/42
+# Paper to cite:-
+# https://www.sciencedirect.com/science/article/pii/S0012821X22005301
 
+# Solve for the equilibrium chemistry of a magma ocean atmosphere
+# for a given set of solubility and redox relations
+
+#====================================================================
+class OxygenFugacity:
+    """log10 oxygen fugacity as a function of temperature"""
+
+    def __init__(self, model='oneill'):
+        self.callmodel = getattr(self, model)
+
+    def __call__(self, T, fO2_shift=0):
+        '''Return log10 fO2'''
+        return self.callmodel(T) + fO2_shift
+
+    def fischer(self, T):
+        '''Fischer et al. (2011) IW'''
+        return 6.94059 -28.1808*1E3/T
+
+    def oneill(self, T): 
+        '''O'Neill and Eggin (2002) IW'''
+        return 2*(-244118+115.559*T-8.474*T*np.log(T))/(np.log(10)*8.31441*T)
+
+#====================================================================
+class ModifiedKeq:
+    """Modified equilibrium constant (includes fO2)"""
+
+    def __init__(self, Keq_model, fO2_model='oneill'):
+        self.fO2 = OxygenFugacity(fO2_model)
+        self.callmodel = getattr(self, Keq_model)
+
+    def __call__(self, T, fO2_shift=0):
+        fO2 = self.fO2(T, fO2_shift)
+        Keq, fO2_stoich = self.callmodel(T)
+        Geq = 10**(Keq-fO2_stoich*fO2)
+        return Geq
+
+    def schaefer_CH4(self, T): 
+        '''Schaefer log10Keq for CO2 + 2H2 = CH4 + fO2'''
+        # second argument returns stoichiometry of O2
+        return (-16276/T - 5.4738, 1)
+
+    def schaefer_C(self, T): 
+        '''Schaefer log10Keq for CO2 = CO + 0.5 fO2'''
+        return (-14787/T + 4.5472, 0.5) 
+
+    def schaefer_H(self, T): 
+        '''Schaefer log10Keq for H2O = H2 + 0.5 fO2'''
+        return (-12794/T + 2.7768, 0.5) 
+
+    def janaf_C(self, T): 
+        '''JANAF log10Keq, 1500 < K < 3000 for CO2 = CO + 0.5 fO2'''
+        return (-14467.511400133637/T + 4.348135473316284, 0.5) 
+
+    def janaf_H(self, T): 
+        '''JANAF log10Keq, 1500 < K < 3000 for H2O = H2 + 0.5 fO2'''
+        return (-13152.477779978302/T + 3.038586383273608, 0.5) 
+
+#====================================================================
+class Solubility:
+    """Solubility base class.  All p in bar"""
+
+    def __init__(self, composition):
+        self.callmodel = getattr(self, composition)
+
+    def power_law(self, p, const, exponent):
+        return const*p**exponent
+
+    def __call__(self, p, *args):
+        '''Dissolved concentration in ppmw in the melt'''
+        return self.callmodel(p, *args)
+
+#====================================================================
+class SolubilityH2O(Solubility):
+    """H2O solubility models"""
+
+    # below default gives the default model used
+    def __init__(self, composition='peridotite'):
+        super().__init__(composition)
+
+    def anorthite_diopside(self, p):
+        '''Newcombe et al. (2017)'''
+        return self.power_law(p, 727, 0.5)
+
+    def peridotite(self, p):
+        '''Sossi et al. (2022)'''
+        return self.power_law(p, 524, 0.5)
+
+    def basalt_dixon(self, p):
+        '''Dixon et al. (1995) refit by Paolo Sossi'''
+        return self.power_law(p, 965, 0.5)
+
+    def basalt_wilson(self, p):
+        '''Hamilton (1964) and Wilson and Head (1981)'''
+        return self.power_law(p, 215, 0.7)
+
+    def lunar_glass(self, p):
+        '''Newcombe et al. (2017)'''
+        return self.power_law(p, 683, 0.5)
+
+#====================================================================
+class SolubilityCO2(Solubility):
+    """CO2 solubility models"""
+
+    def __init__(self, composition='basalt_dixon'):
+        super().__init__(composition)
+
+    def basalt_dixon(self, p, temp):
+        '''Dixon et al. (1995)'''
+        ppmw = (3.8E-7)*p*np.exp(-23*(p-1)/(83.15*temp))
+        ppmw = 1.0E4*(4400*ppmw) / (36.6-44*ppmw)
+        return ppmw
+
+#====================================================================
+class SolubilityN2(Solubility):
+    """N2 solubility models"""
+
+    def __init__(self, composition='libourel'):
+        super().__init__(composition)
+
+    def libourel(self, p):
+        '''Libourel et al. (2003)'''
+        ppmw = self.power_law(p, 0.0611, 1.0)
+        return ppmw
+    
 #====================================================================
 # FUNCTIONS
 #====================================================================
+
+#====================================================================
+def solvepp_get_partial_pressures(pin, fO2_shift, global_d):
+    """Partial pressure of all considered species"""
+
+    # we only need to know pH2O, pCO2, and pN2, since reduced species
+    # can be directly determined from equilibrium chemistry
+
+    pH2O, pCO2, pN2 = pin
+
+    # return results in dict, to be explicit about which pressure
+    # corresponds to which volatile
+    p_d = {}
+    p_d['H2O'] = pH2O
+    p_d['CO2'] = pCO2
+    p_d['N2'] = pN2
+
+    # pH2 from equilibrium chemistry
+    gamma = ModifiedKeq('janaf_H')
+    gamma = gamma(global_d['temperature'], fO2_shift)
+    p_d['H2'] = gamma*pH2O
+
+    # pCO from equilibrium chemistry
+    gamma = ModifiedKeq('janaf_C')
+    gamma = gamma(global_d['temperature'], fO2_shift)
+    p_d['CO'] = gamma*pCO2
+
+    if global_d['is_CH4'] is True:
+        gamma = ModifiedKeq('schaefer_CH4')
+        gamma = gamma(global_d['temperature'], fO2_shift)
+        p_d['CH4'] = gamma*pCO2*p_d['H2']**2.0
+    else:
+        p_d['CH4'] = 0
+
+    return p_d
+
+#====================================================================
+def solvepp_get_total_pressure(pin, fO2_shift, global_d):
+    """Sum partial pressures to get total pressure"""
+
+    p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
+    ptot = sum(p_d.values())
+
+    return ptot
+
+#====================================================================
+def solvepp_atmosphere_mass(pin, fO2_shift, global_d):
+    """Atmospheric mass of volatiles and totals for H, C, and N"""
+
+    p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
+    mu_atm = solvepp_atmosphere_mean_molar_mass(pin, fO2_shift, global_d)
+
+    mass_atm_d = {}
+    for key, value in p_d.items():
+        # 1.0E5 because pressures are in bar
+        mass_atm_d[key] = value*1.0E5/global_d['little_g']
+        mass_atm_d[key] *= 4.0*np.pi*global_d['planetary_radius']**2.0
+        mass_atm_d[key] *= molar_mass[key]/mu_atm
+
+    # total mass of H
+    mass_atm_d['H'] = mass_atm_d['H2'] / molar_mass['H2']
+    mass_atm_d['H'] += mass_atm_d['H2O'] / molar_mass['H2O']
+    # note factor 2 below to account for stoichiometry
+    mass_atm_d['H'] += mass_atm_d['CH4'] * 2 / molar_mass['CH4']
+    # below converts moles of H2 to mass of H
+    mass_atm_d['H'] *= molar_mass['H2']
+
+    # total mass of C
+    mass_atm_d['C'] = mass_atm_d['CO'] / molar_mass['CO']
+    mass_atm_d['C'] += mass_atm_d['CO2'] / molar_mass['CO2']
+    mass_atm_d['C'] += mass_atm_d['CH4'] / molar_mass['CH4']
+    # below converts moles of C to mass of C
+    mass_atm_d['C'] *= molar_mass['C']
+
+    # total mass of N
+    mass_atm_d['N'] = mass_atm_d['N2']
+
+    return mass_atm_d
+
+#====================================================================
+def solvepp_atmosphere_mean_molar_mass(pin, fO2_shift, global_d):
+    """Mean molar mass of the atmosphere"""
+
+    p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
+    ptot = solvepp_get_total_pressure(pin, fO2_shift, global_d)
+
+    mu_atm = 0
+    for key, value in p_d.items():
+        mu_atm += molar_mass[key]*value
+    mu_atm /= ptot
+
+    return mu_atm
+
+#====================================================================
+def solvepp_dissolved_mass(pin, fO2_shift, global_d):
+    """Volatile masses in the (molten) mantle"""
+
+    mass_int_d = {}
+
+    p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
+
+    prefactor = 1E-6*global_d['mantle_mass']*global_d['mantle_melt_fraction']
+
+    # H2O
+    sol_H2O = SolubilityH2O() # gets the default solubility model
+    ppmw_H2O = sol_H2O(p_d['H2O'])
+    mass_int_d['H2O'] = prefactor*ppmw_H2O
+
+    # CO2
+    sol_CO2 = SolubilityCO2() # gets the default solubility model
+    ppmw_CO2 = sol_CO2(p_d['CO2'], global_d['temperature'])
+    mass_int_d['CO2'] = prefactor*ppmw_CO2
+
+    # N2
+    sol_N2 = SolubilityN2() # gets the default solubility model
+    ppmw_N2 = sol_N2(p_d['N2'])
+    mass_int_d['N2'] = prefactor*ppmw_N2
+
+    # now get totals of H, C, N
+    mass_int_d['H'] = mass_int_d['H2O']*(molar_mass['H2']/molar_mass['H2O'])
+    mass_int_d['C'] = mass_int_d['CO2']*(molar_mass['C']/molar_mass['CO2'])
+    mass_int_d['N'] = mass_int_d['N2']
+
+    return mass_int_d
+
+#====================================================================
+def solvepp_func(pin, fO2_shift, global_d, mass_target_d):
+    """Function to compute the residual of the mass balance"""
+
+    # get atmospheric masses
+    mass_atm_d = solvepp_atmosphere_mass(pin, fO2_shift, global_d)
+
+    # get (molten) mantle masses
+    mass_int_d = solvepp_dissolved_mass(pin, fO2_shift, global_d)
+
+    # compute residuals
+    res_l = []
+    for vol in ['H','C','N']:
+        # absolute residual
+        res = mass_atm_d[vol] + mass_int_d[vol] - mass_target_d[vol]
+        # if target is not zero, compute relative residual
+        # otherwise, zero target is already solved with zero pressures
+        if mass_target_d[vol]:
+            res /= mass_target_d[vol]
+        res_l.append(res)
+
+    return res_l
+
+#====================================================================
+def solvepp_get_initial_pressures(target_d):
+    """Get initial guesses of partial pressures"""
+
+    # all bar
+    pH2O = 1*np.random.random_sample() # H2O less soluble than CO2
+    pCO2 = 10*np.random.random_sample() # just a guess
+    pN2 = 10*np.random.random_sample()
+
+    if target_d['H'] == 0:
+        pH2O = 0
+    if target_d['C'] == 0:
+        pCO2 = 0
+    if target_d['N'] == 0:
+        pN2 = 0
+
+    return pH2O, pCO2, pN2
+
+#====================================================================
+def solvepp_equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitrogen):
+    """Calculate equilibrium chemistry of the atmosphere"""
+
+    H_kg = N_ocean_moles * global_d['ocean_moles'] * molar_mass['H2']
+    C_kg = CH_ratio * H_kg
+    N_kg = Nitrogen * 1.0E-6 * global_d['mantle_mass']
+    target_d = {'H': H_kg, 'C': C_kg, 'N': N_kg}
+
+    count = 0
+    ier = 0
+    # could in principle result in an infinite loop, if randomising
+    # the ic never finds the physical solution (but in practice,
+    # this doesn't seem to happen)
+    while ier != 1:
+        x0 = solvepp_get_initial_pressures(target_d)
+        sol, info, ier, msg = fsolve(solvepp_func, x0, args=(fO2_shift, 
+            global_d, target_d), full_output=True)
+        count += 1
+        # sometimes, a solution exists with negative pressures, which
+        # is clearly non-physical.  Here, assert we must have positive
+        # pressures.
+        if any(sol<0):
+            # if any negative pressures, report ier!=1
+            ier = 0
+
+    logging.info(f'Randomised initial conditions= {count}')
+
+    p_d = solvepp_get_partial_pressures(sol, fO2_shift, global_d)
+    # get residuals for output
+    res_l = solvepp_func(sol, fO2_shift, global_d, target_d)
+
+    # for convenience, add inputs to same dict
+    p_d['N_ocean_moles'] = N_ocean_moles
+    p_d['CH_ratio'] = CH_ratio
+    p_d['fO2_shift'] = fO2_shift
+    # for debugging/checking, add success initial condition
+    # that resulted in a converged solution with positive pressures
+    p_d['pH2O_0'] = x0[0]
+    p_d['pCO2_0'] = x0[1]
+    p_d['pN2_0'] = x0[2]
+    # also for debugging/checking, report residuals
+    p_d['res_H'] = res_l[0]
+    p_d['res_C'] = res_l[1]
+    p_d['res_N'] = res_l[2]
+
+    return p_d
+
+
+#====================================================================
+def solvepp_doit(COUPLER_options):
+    """Solves for initial surface partial pressures assuming melt-vapour eqm
+
+    Requires an initial guess to be made for some parameters, as provided in
+    the dictionary COUPLER_options. 
+
+    Parameters
+    ----------
+        COUPLER_options : dict
+            Dictionary of coupler options variables
+
+    Returns
+    ----------
+        partial_pressures : dict
+            Dictionary of volatile partial pressures [Pa]
+    """
+
+
+    print("Solving for equilibrium partial pressures at surface")
+
+    # Volatiles that are solved-for using this eqm calculation
+    solvepp_vols = ['H2O', 'CO2', 'N2', 'H2', 'CO', 'CH4']
+
+    # Dictionary for passing parameters around for the partial pressure calculations
+    global_d = {}
+
+    # These do not require guesses
+    global_d['ocean_moles'] =           7.68894973907177e+22 # moles of H2 (or H2O) in one present-day Earth ocean
+    global_d['is_CH4'] =                bool(COUPLER_options['CH4_included'] > 0)
+
+    # These require initial guesses
+    global_d['mantle_melt_fraction'] =  COUPLER_options['melt_fraction_guess'] 
+    global_d['mantle_mass'] =           COUPLER_options['mantle_mass_guess'] # kg
+    global_d['temperature'] =           COUPLER_options['T_surf_guess'] # K
+
+    # These are defined by the proteus configuration file
+    global_d['planetary_radius'] =  COUPLER_options['radius']
+    global_d['little_g'] =          COUPLER_options['gravity']
+    N_ocean_moles =                 COUPLER_options['hydrogen_earth_oceans']
+    CH_ratio =                      COUPLER_options['CH_ratio']
+    fO2_shift =                     COUPLER_options['fO2_shift_IW']
+    Nitrogen =                      COUPLER_options['nitrogen_ppmw']
+
+    # Solve for partial pressures
+    p_d = solvepp_equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitrogen)
+
+    partial_pressures = {}
+    for s in solvepp_vols:
+        print("    solvepp: p_%s = %f bar" % (s,p_d[s]))
+        partial_pressures[s] = p_d[s] * 1.0e5 # Convert from bar to Pa
+
+    return partial_pressures
+
+
 
 #====================================================================
 def get_column_data_from_SPIDER_lookup_file( infile ):
@@ -187,9 +586,11 @@ def get_all_output_times( odir='output' ):
 
     '''get all times (in Myrs) from the json files located in the
        output directory'''
+    
+    odir = odir+'/data/'
 
     # locate times to process based on files located in odir/
-    file_l = [f for f in os.listdir(odir) if os.path.isfile(os.path.join(odir,f))]
+    file_l = [f for f in os.listdir(odir) if os.path.isfile(odir+f)]
     if not file_l:
         print('output directory contains no files')
         sys.exit(0)
@@ -214,8 +615,10 @@ def get_all_output_pkl_times( odir='output' ):
     '''get all times (in Myrs) from the pkl files located in the
        output directory'''
 
+    odir = odir+'/data/'
+
     # locate times to process based on files located in odir/
-    file_l = [f for f in os.listdir(odir) if os.path.isfile(os.path.join(odir,f))]
+    file_l = [f for f in os.listdir(odir) if os.path.isfile(odir+f)]
     if not file_l:
         print('output directory contains no PKL files')
         sys.exit(0)
@@ -242,7 +645,7 @@ def get_dict_values_for_times( keys, time_l, indir='output' ):
     data_l = []
 
     for time in time_l:
-        filename = os.path.join( indir, '{}.json'.format(time) )
+        filename = indir + '/data/{}.json'.format(time)
         myjson_o = MyJSON( filename )
         values_a = myjson_o.get_dict_values( keys )
         data_l.append( values_a )
@@ -265,7 +668,7 @@ def get_dict_surface_values_for_times( keys_t, time_l, indir='output'):
     data_l = []
 
     for time in time_l:
-        filename = os.path.join( indir, '{}.json'.format(time) )
+        filename = indir + '/data/{}.json'.format(time)
         myjson_o = MyJSON( filename )
         keydata_l = []
         for key in keys_t:
@@ -294,7 +697,7 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
 
     data_l = []
 
-    filename = os.path.join( indir, '{}.json'.format(time) )
+    filename = indir + '/data/{}.json'.format(time)
     myjson_o = MyJSON( filename )
     for key in keys_t:
         value = myjson_o.get_dict_values( key )
@@ -460,12 +863,15 @@ def plot_static_structure( radius, rho_interp1d ):
 
 #====================================================================
 
+
 def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
+
+    PrintHalfSeparator()
+    print("Running SPIDER...")
+    print("IC_INTERIOR =",COUPLER_options["IC_INTERIOR"])
 
     SPIDER_options_file = dirs["output"]+"/init_spider.opts"
     SPIDER_options_file_orig = dirs["utils"]+"/init_spider.opts"
-
-    print("IC_INTERIOR =",COUPLER_options["IC_INTERIOR"])
 
     # First run
     if (loop_counter["init"] == 0):
@@ -476,51 +882,132 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     # Define which volatiles to track in SPIDER
     species_call = ""
     for vol in volatile_species: 
-        if COUPLER_options[vol+"_included"]:
+        if COUPLER_options[vol+"_included"] == 1:
             species_call = species_call + "," + vol
     species_call = species_call[1:] # Remove "," in front
 
     # Recalculate time stepping
-    if COUPLER_options["IC_INTERIOR"] == 2:  
+    if (COUPLER_options["IC_INTERIOR"] == 2) and (loop_counter["eqm"] <= 0):  
 
         # Current step
-        json_file   = MyJSON( dirs["output"]+'/{}.json'.format(int(time_dict["planet"])) )
+        json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(time_dict["planet"])) )
         step        = json_file.get_dict(['step'])
 
-        dtmacro     = float(COUPLER_options["dtmacro"])
-        dtswitch    = float(COUPLER_options["dtswitch"])
+        # Previous steps
+        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+        run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
 
-        # Time resolution adjustment in the beginning
-        if time_dict["planet"] < 1000:
-            dtmacro = 10
-            dtswitch = 50
-        if time_dict["planet"] < 100:
-            dtmacro = 2
-            dtswitch = 5
-        if time_dict["planet"] < 10:
+        # Time stepping adjustment
+        if time_dict["planet"] < 2.0:
+            # First few years, use static time-step
             dtmacro = 1
             dtswitch = 1
+            nsteps = 1
+            print("Time-stepping intent: static")
 
-        # Runtime left
-        dtime_max   = time_dict["target"] - time_dict["planet"]
+        else:
+            if (COUPLER_options["dt_method"] == 0):
+                # Proportional time-step calculation
+                print("Time-stepping intent: proportional")
+                dtswitch = time_dict["planet"] / 30.0
 
-        # Limit Atm-Int switch
-        dtime       = np.min([ dtime_max, dtswitch ])
+            elif (COUPLER_options["dt_method"] == 1):
+                # Dynamic time-step calculation
+                F_clip = 1.e-4
+
+                # Get time-step length from last iter
+                dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                
+                F_int_3  = max(run_int.iloc[-3]["F_int"],F_clip)
+                F_int_2  = max(run_int.iloc[-2]["F_int"],F_clip)
+                F_int_1  = max(run_int.iloc[-1]["F_int"],F_clip)
+                F_int_23 = abs((F_int_2 - F_int_3)/F_int_3)  # Relative change from [-3] to [-2] steps
+                F_int_12 = abs((F_int_1 - F_int_2)/F_int_2)  # Relative change from [-2] to [-1] steps
+
+                F_atm_3  = max(run_int.iloc[-3]["F_atm"],F_clip)
+                F_atm_2  = max(run_atm.iloc[-2]["F_atm"],F_clip)
+                F_atm_1  = max(run_atm.iloc[-1]["F_atm"],F_clip)
+                F_atm_23 = abs((F_atm_2 - F_atm_3)/F_atm_3)  # Relative change from [-3] to [-2] steps
+                F_atm_12 = abs((F_atm_1 - F_atm_2)/F_atm_2)  # Relative change from [-2] to [-1] steps
+
+                F_acc_max = max( F_int_12-F_int_23, F_atm_12-F_atm_23 ) * 100.0  # Maximum accel. (in relative terms)
+
+                if F_acc_max > 20.0:
+                    # Slow down!!
+                    print("Time-stepping intent: slow down!!")
+                    dtswitch = 0.10 * dtprev
+
+                elif (F_acc_max > 10.0) or (loop_counter["eqm"] == 0):
+                    # Slow down
+                    print("Time-stepping intent: slow down")
+                    dtswitch = 0.90 * dtprev
+
+                elif F_acc_max > 0.1:
+                    # Steady (speed up a little bit to promote evolution)
+                    print("Time-stepping intent: steady")
+                    dtswitch = 1.02 * dtprev
+
+                elif F_acc_max > -12.0:
+                    # Speed up
+                    print("Time-stepping intent: speed up")
+                    dtswitch = 1.5 * dtprev
+
+                else:
+                    # Speed up!!
+                    print("Time-stepping intent: speed up!!")
+                    dtswitch = 2.00 * dtprev
+
+            elif (COUPLER_options["dt_method"] == 2):
+                # Always use the maximum time-step, which can be adjusted in the cfg file
+                print("Time-stepping intent: maximum")
+                dtswitch = COUPLER_options["dt_maximum"]
+
+            else:
+                print("ERROR: Invalid time-stepping method '%d'" % COUPLER_options["dt_method"])
+                exit(1)
+
+            # Step-size floor
+            dtswitch = max(dtswitch, time_dict["planet"]*0.001)         # Relative
+            dtswitch = max(dtswitch, COUPLER_options["dt_minimum"] )    # Absolute
+
+            # Step-size ceiling
+            dtswitch = min(dtswitch, COUPLER_options["dt_maximum"] )                    # Absolute
+            dtswitch = min(dtswitch, float(time_dict["target"] - time_dict["planet"]))  # Run-over
+
+            # Calculate number of macro steps for SPIDER to perform within
+            # this time-step of PROTEUS, which sets the number of json files.
+            nsteps = 4
+            dtmacro = math.ceil(dtswitch / nsteps)   # Ensures that dtswitch is divisible by nsteps
+            dtswitch = nsteps * dtmacro
+
+            print("New time-step is %1.2e years" % dtswitch)
 
         # Number of total steps until currently desired switch/end time
-        COUPLER_options["nstepsmacro"] =  step + math.ceil( dtime / dtmacro )
+        nstepsmacro = step + nsteps
 
-        print("TIME OPTIONS IN RUNSPIDER:")
-        print(dtmacro, dtswitch, dtime_max, dtime, COUPLER_options["nstepsmacro"])
-
+        if debug:
+            print("TIME OPTIONS IN RUNSPIDER:", dtmacro, dtswitch, nstepsmacro)
 
     # For init loop
     else:
+        nstepsmacro = 1
         dtmacro     = 0
+        dtswitch    = 0
 
-    # Prevent interior oscillations during last-stage freeze-out
+    # Store time-step (for next iteration)
+    COUPLER_options["dtswitch"] = dtswitch
+    COUPLER_options["dtmacro"] = dtmacro
+
+    print("Surface volatile partial pressures:")
+    for s in volatile_species:
+        key_pp = str(s+"_initial_atmos_pressure")
+        key_in = str(s+"_included")
+        if (key_pp in COUPLER_options) and (COUPLER_options[key_in] == 1):
+            print("    p_%s = %.5f bar" % (s,COUPLER_options[key_pp]/1.0e5))
+
+    # Set spider flux boundary condition
     net_loss = COUPLER_options["F_atm"]
-    if len(runtime_helpfile) > 100 and runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]:
+    if len(runtime_helpfile) > 10 and runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]:
         net_loss = np.amax([abs(COUPLER_options["F_atm"]), COUPLER_options["F_eps"]])
         if debug:
             print("Prevent interior oscillations during last-stage freeze-out: F_atm =", COUPLER_options["F_atm"], "->", net_loss)
@@ -529,13 +1016,12 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     call_sequence = [   
                         dirs["spider"]+"/spider", 
                         "-options_file",          SPIDER_options_file, 
-                        "-outputDirectory",       dirs["output"],
+                        "-outputDirectory",       dirs["output"]+'data/',
                         "-IC_INTERIOR",           str(COUPLER_options["IC_INTERIOR"]),
-                        "-IC_ATMOSPHERE",         str(COUPLER_options["IC_ATMOSPHERE"]),
-                        "-SURFACE_BC",            str(COUPLER_options["SURFACE_BC"]), 
+                        "-OXYGEN_FUGACITY_offset",str(COUPLER_options["fO2_shift_IW"]),  # Relative to the specified buffer
                         "-surface_bc_value",      str(net_loss), 
                         "-teqm",                  str(COUPLER_options["T_eqm"]), 
-                        "-nstepsmacro",           str(COUPLER_options["nstepsmacro"]), 
+                        "-nstepsmacro",           str(nstepsmacro), 
                         "-dtmacro",               str(dtmacro), 
                         "-radius",                str(COUPLER_options["radius"]), 
                         "-gravity",               "-"+str(COUPLER_options["gravity"]), 
@@ -553,19 +1039,16 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # Define distribution coefficients and total mass/surface pressure for volatiles > 0
     for vol in volatile_species:
-        if COUPLER_options[vol+"_included"]:
+        if COUPLER_options[vol+"_included"] == 1:
 
-            # Set atmospheric pressure based on helpfile output
+            # Set atmospheric pressure based on helpfile output, if required
             if loop_counter["total"] > loop_counter["init_loops"]:
                 key = vol+"_initial_atmos_pressure"
                 val = float(runtime_helpfile[vol+"_mr"].iloc[-1]) * float(runtime_helpfile["P_surf"].iloc[-1]) * 1.0e5   # convert bar to Pa
                 COUPLER_options[key] = val
 
             # Load volatiles
-            if COUPLER_options["IC_ATMOSPHERE"] == 1:
-                call_sequence.extend(["-"+vol+"_initial_total_abundance", str(COUPLER_options[vol+"_initial_total_abundance"])])
-            elif COUPLER_options["IC_ATMOSPHERE"] == 3:
-                call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(COUPLER_options[vol+"_initial_atmos_pressure"])])
+            call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(COUPLER_options[vol+"_initial_atmos_pressure"])])
 
             # Exception for N2 case: reduced vs. oxidized
             if vol == "N2" and COUPLER_options["N2_partitioning"] == 1:
@@ -584,21 +1067,25 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     if COUPLER_options["IC_INTERIOR"] == 2:
         call_sequence.extend([ 
                                 "-ic_interior_filename", 
-                                str(dirs["output"]+"/"+COUPLER_options["ic_interior_filename"]),
+                                str(dirs["output"]+"data/"+COUPLER_options["ic_interior_filename"]),
                                 "-activate_poststep", 
                                 "-activate_rollback"
                              ])
         for vol in volatile_species:
-            if COUPLER_options[vol+"_included"]:
+            if COUPLER_options[vol+"_included"] == 1:
                 call_sequence.extend(["-"+vol+"_poststep_change", str(COUPLER_options[vol+"_poststep_change"])])
+    else:
+        call_sequence.extend([
+                                "-ic_adiabat_entropy", str(COUPLER_options["ic_adiabat_entropy"]),
+                                "-ic_dsdr", str(COUPLER_options["ic_dsdr"]) # initial dS/dr everywhere"
+                            ])
 
     # Gravitational separation of solid and melt phase, 0: off | 1: on
     if COUPLER_options["SEPARATION"] == 1:
         call_sequence.extend(["-SEPARATION", str(1)])
 
     # Mixing length parameterization: 1: variable | 2: constant
-    if COUPLER_options["mixing_length"] == 1:
-        call_sequence.extend(["-mixing_length", str(1)])
+    call_sequence.extend(["-mixing_length", str(COUPLER_options["mixing_length"])])
 
     # Ultra-thin thermal boundary layer at top, 0: off | 1: on
     if COUPLER_options["PARAM_UTBL"] == 1:
@@ -606,24 +1093,29 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         call_sequence.extend(["-param_utbl_const", str(COUPLER_options["param_utbl_const"])])
 
     # Check for convergence, if not converging, adjust tolerances iteratively
-    if len(runtime_helpfile) > 30 and loop_counter["total"] > loop_counter["init_loops"] :
+    if (loop_counter["total"] > loop_counter["init_loops"]) and (len(runtime_helpfile) > 50):
 
         # Check convergence for interior cycles
-        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
+        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+
+        ref_idx = -3
+        if len(run_int["Time"]) < abs(ref_idx)-1:
+            ref_idx = 0
 
         # First, relax too restrictive dTs
-        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[-3]:
+        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
             if COUPLER_options["tsurf_poststep_change"] <= 300:
                 COUPLER_options["tsurf_poststep_change"] += 10
                 print(">>> Raise dT poststep_changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
             else:
                 print(">> dTs_int too high! >>", COUPLER_options["tsurf_poststep_change"], "K")
+                
         # Slowly limit again if time advances smoothly
-        if (run_int["Time"].iloc[-1] != run_int["Time"].iloc[-3]) and COUPLER_options["tsurf_poststep_change"] > 30:
+        if (run_int["Time"].iloc[-1] != run_int["Time"].iloc[ref_idx]) and COUPLER_options["tsurf_poststep_change"] > 30:
             COUPLER_options["tsurf_poststep_change"] -= 10
             print(">>> Lower tsurf_poststep_change poststep changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
 
-        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[-7]:
+        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
             if "solver_tolerance" not in COUPLER_options:
                 COUPLER_options["solver_tolerance"] = 1.0e-10
             if COUPLER_options["solver_tolerance"] < 1.0e-2:
@@ -645,13 +1137,11 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
 
     # Runtime info
-    PrintSeparator()
-    print("Running SPIDER... (loop counter = ", loop_counter, ")")
     if debug:
-        print("   Flags:")
+        flags = ""
         for flag in call_sequence:
-            print("   ",flag)
-        print()
+            flags += " " + flag
+        print("SPIDER call sequence: '%s'" % flags)
 
     call_string = " ".join(call_sequence)
 
@@ -667,6 +1157,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         spider_print.close()
 
     # Update restart filename for next SPIDER run
-    COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"/*.json")])[-1]
+    COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
 
     return COUPLER_options

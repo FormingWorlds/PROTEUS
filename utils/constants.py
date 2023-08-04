@@ -5,7 +5,7 @@ import os
 import AEOLUS.utils.phys as phys
 
 ### Constants ###
-debug = True
+debug = False
 
 # Astronomical constants
 L_sun           = 3.828e+26             # W, IAU definition
@@ -60,6 +60,7 @@ molar_mass      = {
           "NH3" : 0.017031,             # kg mol−1 
         }
 
+# Supported volatiles and elements
 volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
 element_list     = [ "H", "O", "C", "N", "S", "He" ] 
 

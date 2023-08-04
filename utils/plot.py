@@ -3,15 +3,13 @@
 
 from utils.modules_ext import *
 from utils.constants import *
-from utils.coupler import *
+from utils.helper import *
+# from utils.coupler import *
 
 sci_colormaps = {}
-for name in [ 'acton', 'bamako', 'batlow', 'berlin', 'bilbao', 'broc', 'buda',
-           'cork', 'davos', 'devon', 'grayC', 'hawaii', 'imola', 'lajolla',
-           'lapaz', 'lisbon', 'nuuk', 'oleron', 'oslo', 'roma', 'tofino',
-           'tokyo', 'turku', 'vik' ]:
-    file = os.path.join(str(pathlib.Path(__file__).parent.absolute())+"/../AEOLUS/plotting_tools/colormaps/", name + '.txt')
-    cm_data = np.loadtxt(file)
+for g in glob.glob(str(pathlib.Path(__file__).parent.absolute())+"/../AEOLUS/plotting_tools/colormaps/*.txt"):
+    cm_data = np.loadtxt(g)
+    name = g.split('/')[-1].split('.')[0]
     sci_colormaps[name]      = LinearSegmentedColormap.from_list(name, cm_data)
     sci_colormaps[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
 
@@ -68,18 +66,33 @@ dict_colors  = {
     "H2O_1"          : "#8db4cb",
     "H2O_2"          : "#4283A9",
     "H2O_3"          : "#274e65",
-    "CO2_1"          : "#811111",
+    "CO2_3"          : "#811111",
     "CO2_2"          : "#B91919",
-    "CO2_3"          : "#ce5e5e",
+    "CO2_1"          : "#ce5e5e",
     "H2_1"           : "#a0d2cb",
     "H2_2"           : "#62B4A9",
     "H2_3"           : "#3a6c65",
+    "H_1"            : "#909090",
+    "H_2"            : "#606060",
+    "H_3"            : "#404040",
+    "OH_1"           : "#f02090",
+    "OH_2"           : "#b01080",
+    "OH_3"           : "#800040",
+    "HCN_1"          : "#fa9000",
+    "HCN_2"          : "#f86000",
+    "HCN_3"          : "#d02000",
     "CH4_1"          : "#eb9194",
     "CH4_2"          : "#E6767A",
     "CH4_3"          : "#b85e61",
-    "CO_1"           : "#eab597",
-    "CO_2"           : "#DD8452",
-    "CO_3"           : "#844f31",
+    "NH3_1"          : "#109010",
+    "NH3_2"          : "#108000",
+    "NH3_3"          : "#004000",
+    "CO_1"           : "#ff11ff",
+    "CO_2"           : "#ea00aa",
+    "CO_3"           : "#ba0080",
+    "NO_1"           : "#a0ffa0",
+    "NO_2"           : "#90ef40",
+    "NO_3"           : "#209f40",
     "N2_1"           : "#c29fb2",
     "N2_2"           : "#9A607F",
     "N2_3"           : "#4d303f",  
@@ -257,10 +270,6 @@ def AtmosphericHeight(atm, m_planet, r_planet):
     return z_profile
 
 
-def find_nearest(array, value):
-    array   = np.asarray(array)
-    idx     = (np.abs(array - value)).argmin()
-    return array[idx], idx
 
 #===================================================================
 class MyFuncFormatter( object ):
@@ -518,5 +527,49 @@ class FigureData( object ):
         if not ymin: ymin=yticks[0]
         ax.set_ylim( ymin, ymax )
 
+
+
+# Function to read PT profile and VULCAN output file and AEOLUS mixing ratios (if read_const=True)
+def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0, read_const=False):
+
+    year_data = {}  # Dictionary of mixing ratios, pressure, temperature
+
+    # Read VULCAN output file
+    with open(output_dir+"offchem/%d/output.vul" % year_int, "rb") as handle:
+        vul_data = pkl.load(handle)
+
+
+    # Save year
+    year_data["year"] = int(year_int)
+
+    # Parse mixing ratios
+    vul_var = vul_data['variable']
+    for si,sp in enumerate(vul_var['species']):
+        year_data["mx_"+sp] = np.clip(np.array(vul_var['ymix'])[:,si],mx_clip_min,mx_clip_max)
+
+    # Parse PT profile
+    vul_atm = vul_data['atm']
+    year_data["pressure"] =     np.array(vul_atm["pco"]) / 1e6  # convert to bar
+    year_data["temperature"] =  np.array(vul_atm["Tco"])
+
+    # Read AEOLUS mixing ratios which were used to initialise VULCAN
+    if read_const:
+        vol_data_str = None
+        with open(output_dir+"offchem/%d/vulcan_cfg.py" % year_int, "r") as f:
+            lines = f.read().splitlines()
+            for ln in lines:
+                if "const_mix" in ln:
+                    vol_data_str = ln.split("=")[1].replace("'",'"')
+
+        if vol_data_str == None:
+            raise Exception("Could not parse vulcan cfg file!")
+        
+        vol_data = json.loads(vol_data_str)
+        for vol in vol_data:
+            ae_mx = float(vol_data[vol])
+            if ae_mx > 1e-12:
+                year_data["ae_"+vol] = ae_mx
+
+    return year_data
 
 

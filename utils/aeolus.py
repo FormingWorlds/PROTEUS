@@ -5,6 +5,7 @@ from utils.modules_ext import *
 from utils.helper import *
 from AEOLUS.utils.atmosphere_column import atmos
 from AEOLUS.modules.radcoupler import RadConvEqm
+from AEOLUS.utils.SocRadModel import radCompSoc
 
 def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
 
@@ -66,7 +67,7 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
     and COUPLER_options["F_net"] > COUPLER_options["F_diff"]*COUPLER_options["F_int"]) \
     or  COUPLER_options["flux_convergence"] == 2:
 
-        PrintSeparator()
+        PrintHalfSeparator()
         print(">>>>>>>>>> Flux convergence scheme <<<<<<<<<<<")
 
         COUPLER_options["flux_convergence"] = 2
@@ -100,7 +101,7 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
             print("dTs_atm (K):", COUPLER_options["dTs_atm"], "t_previous_atm:", t_previous_atm, "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm:", Ts_last_atm, "t_curr:", t_curr, "Ts_curr:", COUPLER_options["T_surf"])
 
-        PrintSeparator()
+        PrintHalfSeparator()
 
     # Use Ts_int
     else:
@@ -109,8 +110,8 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
     # Create atmosphere object and set parameters
     pl_radius = COUPLER_options["radius"]
-    pl_mass = COUPLER_options["gravity"] * pl_radius * pl_radius / phys.G
-
+    pl_mass = COUPLER_options["mass"]
+    
     vol_list = { 
                   "H2O" : runtime_helpfile.iloc[-1]["H2O_mr"], 
                   "CO2" : runtime_helpfile.iloc[-1]["CO2_mr"],
@@ -123,41 +124,188 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
                   "NH3" : 0., 
                 }
 
+    match COUPLER_options["tropopause"]:
+        case 0:
+            trppT = 0
+        case 1:
+            trppT = COUPLER_options["T_skin"]
+        case 2:
+            trppT = None
+        case _:
+            print("ERROR: Invalid tropopause option '%d'" % COUPLER_options["tropopause"])
+            exit(1)
+            
     atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, 
                 COUPLER_options["P_top"]*1e5, pl_radius, pl_mass,
-                vol_mixing=vol_list
+                vol_mixing=vol_list, 
+                minT = COUPLER_options["min_temperature"],
+                trppT=trppT
                 )
 
     atm.zenith_angle    = COUPLER_options["zenith_angle"]
     atm.albedo_pl       = COUPLER_options["albedo_pl"]
     atm.albedo_s        = COUPLER_options["albedo_s"]
+    atm.toa_heating     = COUPLER_options["TOA_heating"]
         
 
     return atm, COUPLER_options
 
-
-def RunAEOLUS( atm, time_dict, dirs, runtime_helpfile, loop_counter, COUPLER_options ):
-
-    # Runtime info
-    PrintSeparator()
-    print("SOCRATES run... (loop =", loop_counter, ")")
-    PrintSeparator()
-
-    # Calculate temperature structure and heat flux w/ SOCRATES
-    _, atm = RadConvEqm(dirs, time_dict, atm, standalone=False, cp_dry=False, trppD=True, rscatter=True,calc_cf=False) # W/m^2
+def CallRadConvEqm(atm, dirs, time_dict, COUPLER_options):
+    """Call RadConvEqm util from AEOLUS.
     
-    # Atmosphere net flux from topmost atmosphere node; do not allow heating
-    COUPLER_options["F_atm"] = np.max( [ 0., atm.net_flux[0] ] )
+    Calculates the temperature structure of an atmosphere using the Graham+21
+    general adiabat and sets an isothermal stratosphere if required. Runs 
+    SOCRATES to calculate the fluxes and heating rates.
+
+    Parameters
+    ----------
+        atm : atmos
+            Atmosphere object
+        dirs : dict
+            Dictionary containing paths to directories
+        time_dict : dict
+            Dictionary containing simulation time variables
+        COUPLER_options : dict
+            Configuration options and other variables
+
+    Returns
+    ----------
+        atm : atmos
+            Updated atmos object
+
+    """
+
+    # Change directory so that SOCRATES files don't get littered
+    cwd = os.getcwd()
+    os.chdir(dirs["output"])
+
+    # Calculate temperature structure w/ General Adiabat 
+    trppD = bool(COUPLER_options["tropopause"] == 2 )
+    rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
+    _, atm = RadConvEqm(dirs, time_dict, atm, standalone=False, cp_dry=False, trppD=trppD, rscatter=rscatter, calc_cf=False)
+
+    # Go back to previous directory
+    os.chdir(cwd)
 
     # Clean up run directory
-    PrintSeparator()
-    print("Remove SOCRATES auxiliary files:", end =" ")
-    for file in natural_sort(glob.glob(dirs["output"]+"/current??.????")):
+    for file in glob.glob(dirs["output"]+"/current??.????"):
         os.remove(file)
-        print(os.path.basename(file), end =" ")
-    for file in natural_sort(glob.glob(dirs["output"]+"/profile.*")):
+    for file in glob.glob(dirs["output"]+"/profile.*"):
         os.remove(file)
-        print(os.path.basename(file), end =" ")
-    print(">>> Done.")
+
+    # Print flux info
+    print("SOCRATES fluxes (net@surf, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
+
+    return atm
+
+def CalcAtmFluxes(atm, dirs, COUPLER_options):
+    """Call RadCompSoc utility from AEOLUS
+    
+    Calculates the fluxes and heating rates within an atmosphere object using
+    SOCRATES. Does not modify the PT profile or composition.
+
+    Parameters
+    ----------
+        atm : atmos
+            Atmosphere object
+        dirs : dict
+            Dictionary containing paths to directories
+        COUPLER_options : dict
+            Configuration options and other variables
+
+    Returns
+    ----------
+        atm : atmos
+            Updated atmos object containing new fluxes and heating rates.
+
+    """
+
+    # Change directory so that SOCRATES files don't get littered
+    cwd = os.getcwd()
+    os.chdir(dirs["output"])
+
+    # Calculate fluxes and heating rates
+    rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
+    atm = radCompSoc(atm, dirs, recalc=False, calc_cf=False, rscatter=rscatter)
+
+    # Go back to previous directory
+    os.chdir(cwd)
+
+    # Clean up run directory
+    for file in glob.glob(dirs["output"]+"/current??.????"):
+        os.remove(file)
+    for file in glob.glob(dirs["output"]+"/profile.*"):
+        os.remove(file)
+
+    return atm
+
+
+def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
+    """Run AEOLUS.
+    
+    Calculates the temperature structure of the atmosphere and the fluxes, etc.
+    Stores the new flux boundary condition to be provided to SPIDER. Limits flux
+    change if required.
+
+    Parameters
+    ----------
+        atm : atmos
+            Atmosphere object
+        time_dict : dict
+            Dictionary containing simulation time variables
+        dirs : dict
+            Dictionary containing paths to directories
+        COUPLER_options : dict
+            Configuration options and other variables
+        runtime_helpfile : pd.DataFrame
+            Dataframe containing simulation variables (now and historic)
+
+    Returns
+    ----------
+        atm : atmos
+            Updated atmos object
+        COUPLER_options : dict
+            Updated configuration options and other variables
+
+    """
+
+    # Runtime info
+    PrintHalfSeparator()
+    print("Running AEOLUS...")
+
+    atm = CallRadConvEqm(atm, dirs, time_dict, COUPLER_options)
+
+    # New flux from SOCRATES
+    if (COUPLER_options["F_atm_bc"] == 0):
+        F_atm_new = atm.net_flux[0]  
+    else:
+        F_atm_new = atm.net_flux[-1]  
+
+    # Flux change limiters
+    F_atm_lim = F_atm_new
+    if (time_dict["planet"] > 3):
+
+        run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
+        F_atm_old = run_atm.loc[run_atm['Time'] != time_dict["planet"]].iloc[-1]["F_atm"]
+
+        if (F_atm_old < COUPLER_options["F_crit"]):
+            rel_max = abs(COUPLER_options["limit_pos_flux_change"])/100.0
+            F_atm_lim = min(F_atm_lim, (1+rel_max) * F_atm_old)
+
+            rel_max = abs(COUPLER_options["limit_neg_flux_change"])/100.0
+            F_atm_lim = max(F_atm_lim, (1-rel_max) * F_atm_old)
+
+    # Require that the net flux must be upward
+    if (COUPLER_options["prevent_warming"] == 1):
+        F_atm_lim = max( 0.0 , F_atm_lim )
+
+    # Print if a limit was applied
+    if (F_atm_lim != F_atm_new ):
+        print("Change in F_atm [W m-2] limited in this step!")
+        print("    %g  ->  %g" % (F_atm_new , F_atm_lim))
+            
+    COUPLER_options["F_atm"] = F_atm_lim
+    COUPLER_options["F_olr"] = atm.LW_flux_up[0]
 
     return atm, COUPLER_options
+

@@ -6,10 +6,12 @@ from utils.plot import *
 from utils.spider import *
 
 #====================================================================
-def plot_global( output_dir ):
+def plot_global( output_dir , COUPLER_options):
+
+    print("Plot global")
 
     # Plot settings
-    lw         = 1.5
+    lw         = 2.0
     fscale     = 1.1
     fsize      = 18
     fs_title   = 18
@@ -51,15 +53,26 @@ def plot_global( output_dir ):
 
     fig_o.time = get_all_output_times(output_dir)
 
+    # Downsample times if there are lots of them
+    # if len(fig_o.time > 700):
+    #     times_new = fig_o.time[1:-2:2]
+    # times_new = list(times_new)
+    # times_new.insert(0,fig_o.time[0])
+    # times_new.append(fig_o.time[-1])
+    # fig_o.time = np.array(times_new)
+
     # Read in runtime helpfile and separate in atmosphere and interior params
     df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep="\t")
-    df_int = df.loc[df['Input']=='Interior']
-    df_atm = df.loc[df['Input']=='Atmosphere']
+    df_int = df.loc[df['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+    df_atm = df.loc[df['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
+
     # Remove duplicate atm entries for one timestep
     for idx, row in df_atm.iterrows():
-        # print(row["Time"])
         if len(df_atm.loc[df_atm["Time"] == int(row["Time"])]) > 1:
             df_atm = df_atm.drop(idx)
+    for idx, row in df_int.iterrows():
+        if len(df_int.loc[df_int["Time"] == int(row["Time"])]) > 1:
+            df_int = df_int.drop(idx)
 
     ########## Global properties
     keys_t = ( ('atmosphere','mass_liquid'),
@@ -87,7 +100,9 @@ def plot_global( output_dir ):
 
 
     xlabel = r'Time, $t$ (yr)'
-    xlim = (1e1,1e8)
+
+    xmax = max(1.0e6,np.amax(df_int["Time"]))
+    xlim = (1.0e1,10 ** math.ceil(math.log10(xmax*1.1)))
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)
@@ -102,19 +117,15 @@ def plot_global( output_dir ):
     nsteps       = 5
 
     # Replace NaNs
-    for idx, val in enumerate(T_surf):
-        # print(idx, val)
-        if np.isnan(val):
-            json_file_time = MyJSON( output_dir+'/{}.json'.format(fig_o.time[idx]) )
-            int_tmp   = json_file_time.get_dict_values(['data','temp_b'])
-            print("T_surf:", idx, val, "-->", round(int_tmp[0],3), "K")
-            T_surf[idx] = int_tmp[0]
+    for idx in range(1,len(T_surf)-1):
+        if np.isnan(T_surf[idx]) or (T_surf[idx] <= 0.0):
+            T_surf[idx] = 0.5*(T_surf[idx-1]+T_surf[idx+1])
             
 
     ##########
     # figure a
     ##########
-    title = r'Heat flux to space'  
+    title = r'Net heat flux to space'  
     # Use helpfile information
     # time = df_atm["Time"].tolist()
     # Fatm1 = df_atm["Heat_flux"].tolist()
@@ -129,15 +140,19 @@ def plot_global( output_dir ):
         ax0.plot( Time_atm_rolling, Fatm_atm_rolling, color=dict_colors["qgray"], lw=lw )
     else:
         # ax0.plot( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
-        ax0.plot( df_int["Time"], df_int["F_int"], color=dict_colors["qred"], lw=lw, alpha=1.0 )
+        ax0.plot( df_atm["Time"], df_atm["F_int"], color=dict_colors["qred"], lw=lw, alpha=1.0 )
         ax0.plot( df_atm["Time"], df_atm["F_atm"], color=dict_colors["qgray"], lw=lw, alpha=1.0 )
+
+    ax0.axhline(y=0, color='black', lw=0.8)
       
     # fig_o.set_myaxes(ax0)
     ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)
     ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax0.set_xlim( *xlim )
-    # ax0.set_ylim(top=np.amax(df_atm["Heat_flux"])*1.1, bottom=np.amin(df_atm["Heat_flux"])*0.9)
+    ymax = max(np.amax(df_atm["F_atm"])*1.1, 1.0e1)
+    ymin = min(np.amin(df_atm["F_atm"]), -1.0e1)
+    ax0.set_ylim(top=ymax, bottom=ymin)
     ax0.set_yscale('symlog')
     ax0.set_xscale('symlog')
     ax0.set_xticklabels([])
@@ -163,12 +178,8 @@ def plot_global( output_dir ):
         h2, = ax1.plot(df_int["Time"], df_int["T_surf"],                color=dict_colors["qred"], label="Interior")
         h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=dict_colors["qgray"], label=r'Surface temp, $T_\mathrm{surf}$') # , color="blue"
         
-    if np.max(df_atm["Time"]) >= 1e3: 
-        ymin = np.min(df_atm["T_surf"])*0.9
-        ymax = np.max(df_atm["T_surf"])*1.1
-    else: 
-        ymin = 200
-        ymax = 3000
+    ymin = 500
+    ymax = 3500
     yticks = [ymin, ymin+0.2*(ymax-ymin), ymin+0.4*(ymax-ymin), ymin+0.6*(ymax-ymin), ymin+0.8*(ymax-ymin), ymax]
     # fig_o.set_myaxes( ax1, title=title, yticks=yticks)
     ax1.set_ylabel(r'$T_\mathrm{s}$ (K)', fontsize=label_fs)
@@ -187,19 +198,23 @@ def plot_global( output_dir ):
     ##########
 
     # Plot rheological front depth, mante melt + solid fraction
-    ax2.plot( df_int["Time"], df_int["RF_depth"], ls="-", lw=lw, color=dict_colors["qgray"], label=r'Rheol. front, $d_{\mathrm{front}}$')
+    ax2.axhline( y=COUPLER_options["planet_coresize"], ls='dashed', lw=lw*1.5, color=dict_colors["qmagenta_dark"], label=r'C-M boundary, $r_{\mathrm{core}}$ ' )
+    ax2.plot( df_int["Time"], 1.0-df_int["RF_depth"], ls="solid", lw=lw, color=dict_colors["qgray"], label=r'Rheol. front, $d_{\mathrm{front}}$')
     ax2.plot( df_int["Time"], df_int["Phi_global"], color=dict_colors["qblue"], linestyle=':', lw=lw, label=r'Melt fraction, $\phi_{\mathrm{mantle}}$')
+
     # ax2.plot( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
     # ax2.plot( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
     # ax2.plot( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
 
     ax2.set_xscale("symlog", linthresh=10)
+    ax2.set_ylim([0,1])
+    ax2.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
     ax2.set_xlim( *xlim )
     ax2.set_xlabel(xlabel, fontsize=label_fs)
     ax2.set_ylabel(r'Planet fraction', fontsize=label_fs)
     ax2.yaxis.set_label_coords(xcoord_l,ycoord_l)
     handles, labels = ax2.get_legend_handles_labels()
-    ax2.legend(handles, labels, ncol=1, loc=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
+    ax2.legend(handles, labels, ncol=1, loc='center left', frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
 
     title = r'Mantle evolution'
     ax2.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
@@ -210,7 +225,7 @@ def plot_global( output_dir ):
     ##########
     title_ax3 = r'Surface volatile partial pressure'
     # Total pressure
-    ax3.plot( df_int["Time"], df_int["P_surf"], color='black', linestyle='-', lw=lw, label=r'Total')
+    ax3.plot( df_int["Time"], df_int["P_surf"], color='black', linestyle='-', lw=lw*1.5, label=r'Total')
     ##########
     # figure e
     ##########
@@ -232,7 +247,7 @@ def plot_global( output_dir ):
         for sim_time in fig_o.time:
 
             # Define file name
-            json_file = output_dir+"/"+str(int(sim_time))+".json"
+            json_file = output_dir+"/data/"+str(int(sim_time))+".json"
 
             # For string check
             vol_str = '"'+vol+'"'
@@ -300,9 +315,11 @@ def plot_global( output_dir ):
     ax3.yaxis.tick_right()
     ax3.yaxis.set_label_position("right")
     ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
-    handles, labels = ax3.get_legend_handles_labels()
-    ax3.legend(handles, labels, ncol=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend, loc='upper left') 
+    ax3.set_yscale("log")
     ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
+
+    cur_ybot, cur_ytop = ax3.get_ylim()
+    ax3.set_ylim(max(cur_ybot, 1e-1), cur_ytop)
     ##########
     # figure e
     ##########
@@ -323,6 +340,8 @@ def plot_global( output_dir ):
     ax4.set_xticklabels([])
     ax4.yaxis.set_label_position("right")
     ax4.yaxis.set_label_coords(xcoord_r,ycoord_r)
+    ax4.set_ylim([0,1])
+    ax4.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
     ax4.set_xlim( *xlim )
     # ax4.set_ylim( 0, 1 )
     handles, labels = ax4.get_legend_handles_labels()
@@ -339,53 +358,35 @@ def plot_global( output_dir ):
     ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax5.set_xlim( *xlim )
     ax5.set_xscale("symlog", linthresh=10)
-    # ax5.set_ylim( 0, 1 )
+    ax5.set_ylim([0,1])
+    ax5.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
     ax5.yaxis.tick_right()
     ax5.yaxis.set_label_coords(xcoord_r,ycoord_r)
     ax5.yaxis.set_label_position("right")
     handles, labels = ax5.get_legend_handles_labels()
     ax5.set_xlabel(xlabel, fontsize=label_fs)
     ax5.set_ylabel(r'$X_{\mathrm{mantle}}^{\mathrm{i}}/X_{\mathrm{tot}}^{\mathrm{i}}$', fontsize=label_fs)
+    ax5.legend(handles, labels, ncol=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend, loc='upper left') 
     ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
-    plt.close()
-    plt.ioff()
+    # plt.close()
+    # plt.ioff()
     fig_o.savefig(6)
-
-#====================================================================
-def main():
-
-    # Optional command line arguments for running from the terminal
-    # Usage: $ python plot_atmosphere.py -t 0,718259
-    parser = argparse.ArgumentParser(description='COUPLER plotting script')
-    parser.add_argument('-odir', '--output_dir', type=str, help='Full path to output directory');
-    parser.add_argument('-t', '--times', type=str, help='Comma-separated (no spaces) list of times');
-    args = parser.parse_args()
-
-    # Define output directory for plots
-    if args.output_dir:
-        output_dir = args.output_dir
-    else:
-        output_dir = os.getcwd() + "/output/"
-
-    print("Output directory:", output_dir)
-
-    # Define which times are plotted
-    if args.times:
-        plot_list = [ int(time) for time in args.times.split(',') ]
-    else:
-        output_list = get_all_output_times(output_dir)
-
-        if len(output_list) <= 8:
-            plot_list = output_list
-        else:
-            plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
-    print("Snapshots:", plot_list)
-
-    plot_global(output_dir=output_dir)
 
 #====================================================================
 
 if __name__ == "__main__":
 
-    main()
+    if len(sys.argv) == 2:
+        cfg = sys.argv[1]
+    else:
+        cfg = 'init_coupler.cfg' 
+
+    # Read in COUPLER input file
+    from utils.coupler import ReadInitFile, SetDirectories
+    COUPLER_options, time_dict = ReadInitFile( cfg )
+
+    # Set directories dictionary
+    dirs = SetDirectories(COUPLER_options)
+
+    plot_global(dirs['output'],COUPLER_options)

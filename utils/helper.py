@@ -4,20 +4,30 @@ from utils.modules_ext import *
 from utils.constants import *
 
 def PrintSeparator():
-    print("-------------------------------------------------------------------------------------------------------------")
+    print("=============================================================================================================")
     pass
 
 def PrintHalfSeparator():
     print("--------------------------------------------------")
     pass
 
-# String sorting not based on natsorted package
+# String sorting inspired by natsorted
 def natural_sort(l): 
     convert = lambda text: int(text) if text.isdigit() else text.lower() 
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
     return sorted(l, key = alphanum_key)
 
 def CleanDir(dir):
+    """Clean a directory.
+
+    Deletes a given directory and its contents, then creates it as empty.
+
+    Parameters
+    ----------
+        dir : string
+            Path to directory
+
+    """
     if os.path.exists(dir):
         shutil.rmtree(dir)
     os.makedirs(dir)
@@ -25,6 +35,41 @@ def CleanDir(dir):
 def gravity( m, r ):
     g = phys.G*m/r**2
     return g
+
+def find_nearest(array, target):
+    """Find the element of an array that has a value closest to the target
+
+    Parameters
+    ----------
+        array : list
+            Array to search
+        target : float
+            Value to approximate
+
+    Returns
+    ----------
+        close : float
+            Element of array that is closest to target
+        idx : int
+            Index of closest element of array
+    """
+    array   = np.asarray(array)
+    idx     = (np.abs(array - target)).argmin()
+    close   = array[idx]
+    return close, idx
+
+# Return the number of each element within a given molecule, as a dictionary
+def mol_to_ele(mol:str):
+    decomp = re.findall(r'([A-Z][a-z]?)(\d*)', mol)   # https://codereview.stackexchange.com/a/232664
+    elems = {}
+    for ev in decomp:
+        if ev[1] == '':
+            val = 1
+        else:
+            val = int(ev[1])
+        elems[str(ev[0])] = val
+    return elems
+
 
 #====================================================================
 def find_xx_for_yy( xx, yy, yywant ):

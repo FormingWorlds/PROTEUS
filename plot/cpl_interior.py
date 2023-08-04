@@ -8,6 +8,8 @@ from utils.spider import *
 #====================================================================
 def plot_interior( output_dir, times ):
 
+    print("Plot interior")
+
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width
 
@@ -27,7 +29,7 @@ def plot_interior( output_dir, times ):
     time = fig_o.time[0] # first timestep since liquidus and solidus
                          # are time-independent
 
-    myjson_o = MyJSON( output_dir+'/{}.json'.format(time) )
+    myjson_o = MyJSON( output_dir+'/data/{}.json'.format(time) )
 
     # print(myjson_o.data_d)
     # TIMEYRS = myjson_o.data_d['nstep']
@@ -54,12 +56,12 @@ def plot_interior( output_dir, times ):
 
     handle_l = [] # handles for legend
 
-    fig_o.set_cmap(sci_colormaps['vik_r']) # "magma_r"
+    fig_o.set_cmap(sci_colormaps['batlowK_r']) # "magma_r"
 
     for nn, time in enumerate( fig_o.time ):
 
         # read json
-        myjson_o = MyJSON( output_dir+'/{}.json'.format(time) )
+        myjson_o = MyJSON( output_dir+'/data/{}.json'.format(time) )
 
         color = fig_o.get_color( 1.0*nn/len(fig_o.time) )
 
@@ -78,7 +80,7 @@ def plot_interior( output_dir, times ):
         # melt fraction
         yy = myjson_o.get_dict_values(['data','phi_b'])
         ax1.plot( yy, xx_pres, '-', color=color, lw=1.5 )
-        ax1.fill_betweenx( yy, xx_pres, color=color , alpha=0.4)
+        # ax1.fill_betweenx( yy, xx_pres, color=color , alpha=0.4)
 
         # viscosity
         visc_const = 1 # this is used for the arcsinh scaling
@@ -117,7 +119,7 @@ def plot_interior( output_dir, times ):
     xticks = [0,0.2,0.4,0.6,0.8,1.0]
     fig_o.set_myaxes( ax1, title=title, xlabel='$\phi$', xticks=xticks, ymax=ymax, yticks=yticks )
     # ax1.yaxis.set_label_coords(-0.075,0.475)
-    ax1.set_xlim( [0, 1] )
+    ax1.set_xlim( [-0.05, 1.05] )
     ax1.set_yticklabels([])
     ax1.invert_yaxis()
 
@@ -161,42 +163,29 @@ def plot_interior( output_dir, times ):
     plt.ioff()
     fig_o.savefig(1)
 
-#====================================================================
-def main():
-
-    # Optional command line arguments for running from the terminal
-    # Usage: $ python plot_atmosphere.py -t 0,718259
-    parser = argparse.ArgumentParser(description='COUPLER plotting script')
-    parser.add_argument('-odir', '--output_dir', type=str, help='Full path to output directory');
-    parser.add_argument('-t', '--times', type=str, help='Comma-separated (no spaces) list of times');
-    args = parser.parse_args()
-
-    # Define output directory for plots
-    if args.output_dir:
-        output_dir = args.output_dir
-        print("Output directory:", output_dir)
-        
-    else:
-        output_dir = os.getcwd() + "/output/"
-        print("Output directory:", output_dir)
-
-    # Define which times are plotted
-    if args.times:
-        plot_list = [ int(time) for time in args.times.split(',') ]
-        print("Snapshots:", plot_list)
-    else:
-        output_list = get_all_output_times(output_dir)
-
-        if len(output_list) <= 8:
-            plot_list = output_list
-        else:
-            plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
-        print("Snapshots:", plot_list)
-
-    plot_interior( output_dir=output_dir, times=plot_list )
 
 #====================================================================
 
 if __name__ == "__main__":
 
-    main()
+    if len(sys.argv) == 2:
+        cfg = sys.argv[1]
+    else:
+        cfg = 'init_coupler.cfg' 
+
+    # Read in COUPLER input file
+    from utils.coupler import ReadInitFile, SetDirectories
+    COUPLER_options, time_dict = ReadInitFile( cfg )
+
+    # Set directories dictionary
+    dirs = SetDirectories(COUPLER_options)
+
+    output_list = get_all_output_times(dirs['output'])
+
+    if len(output_list) <= 8:
+        plot_list = output_list
+    else:
+        plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
+    print("Snapshots:", plot_list)
+
+    plot_interior( dirs['output'], plot_list )
