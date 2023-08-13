@@ -12,7 +12,7 @@ from utils.coupler import *
 from utils.stellar_common import *
 from utils.stellar_mors import *
 from utils.stellar_baraffe import *
-from utils.aeolus import RunAEOLUS, StructAtm #, IterateHeating, CalcAtmFluxes, GetHeating
+from utils.aeolus import RunAEOLUS, StructAtm
 from utils.spider import RunSPIDER
 
 from plot.cpl_fluxes import *
@@ -178,7 +178,6 @@ def main():
         case _:
             print("ERROR: Invalid stellar model '%d'" % COUPLER_options['star_model'])
             exit(1)
-        
     
 
     # Main loop
@@ -256,12 +255,10 @@ def main():
                     fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl, COUPLER_options, track)
 
             # Write stellar spectra to disk
-            print("Writing spectrum to disk")
             writessurf = bool(COUPLER_options["atmosphere_chem_type"] > 0)
             SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs['output']+'/data/',write_surf=writessurf)
 
             # Generate a new SOCRATES spectral file containing this new spectrum
-            print("Inserting star into SOCRATES spectral file")
             star_spec_src = dirs["output"]+"socrates_star.txt"
             PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
             InsertStellarSpectrum(
@@ -321,33 +318,17 @@ def main():
 
 
         ############### ATMOSPHERE SUB-LOOP
-        atm_dt     = 1.e-5  # Initial dt [days]
-        atm_dF_1   = np.inf # Absolute change in F_atm this iter
-        atm_dF_2   = np.inf # Absolute change in F_atm last iter
-        eps_dF     = 10.0  # Convergence criterion for atm loops
-        while (loop_counter["atm"] == 0) \
-              or ( (COUPLER_options["radiative_heating"] == 1) and (loop_counter["atm"] < loop_counter["atm_loops"]) and (max(atm_dF_2,atm_dF_1) > eps_dF)):
+        while (loop_counter["atm"] == 0):
 
             # Initialize atmosphere structure
             if (loop_counter["atm"] == 0) or (loop_counter["total"] <= 2):
                 atm, COUPLER_options = StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
 
                 # Run AEOLUS: use the general adiabat to create a PT profile, then calculate fluxes
-                atm, COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile )
-                pt_aeolus = np.array([ atm.p , atm.tmp])
+                aeolus_method = COUPLER_options["atmosphere_solve_energy"]
+                atm, COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, method=aeolus_method )
 
             
-            # Step PT profile forwards using SOCRATES heating rates
-            if (COUPLER_options["radiative_heating"] == 1) and (loop_counter["total"] > 2):
-
-                # Radiative heating iteration here
-                # Not yet merged into master.
-                print("WARNING: Radiative heating disabled for now.")
-
-            else:
-                # Don't do another atm loop if not doing radiative heating
-                atm_dF_2 = atm_dF_1 = 0.0  
-
             # Update help quantities, input_flag: "Atmosphere"
             runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
 

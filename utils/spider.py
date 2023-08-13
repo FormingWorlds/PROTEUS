@@ -916,7 +916,8 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 F_clip = 1.e-4
 
                 # Get time-step length from last iter
-                dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                # dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                dtprev = float(COUPLER_options["dtswitch"])
                 
                 F_int_3  = max(run_int.iloc[-3]["F_int"],F_clip)
                 F_int_2  = max(run_int.iloc[-2]["F_int"],F_clip)
@@ -945,7 +946,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 elif F_acc_max > 0.1:
                     # Steady (speed up a little bit to promote evolution)
                     print("Time-stepping intent: steady")
-                    dtswitch = 1.02 * dtprev
+                    dtswitch = 1.01 * dtprev
 
                 elif F_acc_max > -12.0:
                     # Speed up

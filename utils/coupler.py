@@ -393,7 +393,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                     if key in [ "IC_INTERIOR", "ic_interior_filename", 
                                 "plot_iterfreq", "stellar_heating", "mixing_length",
                                 "atmosphere_chem_type", "solvepp_enabled", "insert_rscatter",
-                                "tropopause", "F_atm_bc", "radiative_heating",
+                                "tropopause", "F_atm_bc", "atmosphere_solve_energy",
                                 "dt_dynamic", "require_eqm_loops", "prevent_warming"]:
                         val = int(val)
 
@@ -427,7 +427,7 @@ def ReadInitFile( init_file_passed , verbose=False):
     return COUPLER_options, time_dict
 
 
-def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=8):
+def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
     
     Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
@@ -442,26 +442,39 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=8):
 
     PrintHalfSeparator()
     print("Updating plots...")
+
+    # Get all JSON files
     output_times = get_all_output_times( output_dir )
-
-
-    if len(output_times) < num_snapshots:
-        plot_times = output_times
-    else:
-        plot_times = []
-        tmin = max(1,np.amin(output_times))
-        tmax = max(tmin+1, np.amax(output_times))
-        samps = np.logspace(np.log10(tmin),np.log10(tmax),num_snapshots)
-        for s in samps:
-            v,_ = find_nearest(output_times,s)
-            v = int(v)
-            if v not in plot_times:
-                plot_times.append(v)
-    print("Snapshots to plot:", plot_times)
 
     # Global properties for all timesteps
     if len(output_times) > 1:
         cpl_global.plot_global(output_dir, COUPLER_options)   
+    
+    # Filter to JSON files with corresponding PKL files
+    pkls = glob.glob(output_dir + "/data/*_atm.pkl")
+    pkl_times = [int(f.split("/")[-1].split("_atm")[0]) for f in pkls]
+    output_times = sorted(list(set(output_times) & set(pkl_times)))
+
+    # Work out which times we want to plot
+    if len(output_times) <= num_snapshots:
+        plot_times = output_times
+
+    else:
+        plot_times = []
+        tmin = max(1,np.amin(output_times))
+        tmax = max(tmin+1, np.amax(output_times))
+    
+        for s in np.logspace(np.log10(tmin),np.log10(tmax),num_snapshots): # Sample on log-scale
+
+            remaining = list(set(output_times) - set(plot_times)) 
+            if len(remaining) == 0:
+                break
+
+            v,_ = find_nearest(remaining,s) # Find next new sample
+            plot_times.append(int(v))
+
+    plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
+    print("Snapshots to plot:", plot_times)
 
     # Specific timesteps for paper plots
     cpl_interior.plot_interior(output_dir, plot_times)     
