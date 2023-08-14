@@ -43,7 +43,20 @@ else
     # Dispatch screen session with PROTEUS inside
     echo "Dispatching screen session..."
     COMMAND="python proteus.py -cfg_file $CFGFILE"
-    screen -S $ALIAS -L -Logfile $LOGFILE bash -c "$COMMAND" 
+
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # MacOS uses a different version of screen
+        config="log on
+        logfile $LOGFILE";
+        config_file="/tmp/$ALIAS.screenconf"
+        rm -f "$config_file"
+        echo "$config" > "$config_file"
+        screen -S $ALIAS -L -c "$config_file" bash -c "$COMMAND" 
+    else
+        # Linux
+        screen -S $ALIAS -L -Logfile $LOGFILE bash -c "$COMMAND" 
+    fi
+    
 
     # Done?
     echo "Detached"
