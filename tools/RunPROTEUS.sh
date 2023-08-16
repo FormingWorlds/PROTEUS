@@ -45,7 +45,7 @@ else
     COMMAND="python proteus.py -cfg_file $CFGFILE"
 
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        # MacOS uses a different version of screen
+        # MacOS does not support the -Logfile flag
         config="log on
         logfile $LOGFILE";
         config_file="/tmp/$ALIAS.screenconf"

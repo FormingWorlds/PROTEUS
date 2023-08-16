@@ -151,8 +151,8 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
 
     return atm, COUPLER_options
 
-def CallRadConvEqm(atm, dirs, time_dict, COUPLER_options):
-    """Call RadConvEqm util from AEOLUS.
+def CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options):
+    """Create temperature structure based on general adiabat from AEOLUS.
     
     Calculates the temperature structure of an atmosphere using the Graham+21
     general adiabat and sets an isothermal stratosphere if required. Runs 
@@ -202,7 +202,7 @@ def CallRadConvEqm(atm, dirs, time_dict, COUPLER_options):
 
 def CallAtmRCE(atm, dirs, time_dict, COUPLER_options):
     
-    atm = CallRadConvEqm(atm, dirs, time_dict, COUPLER_options)
+    atm = CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options)
     
     cwd = os.getcwd()
     os.chdir(dirs["output"])
@@ -264,7 +264,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, method=0
 
     # Call AEOLUS to get new temperature profile
     if method == 0:
-        atm = CallRadConvEqm(atm, dirs, time_dict, COUPLER_options)
+        atm = CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options)
     else:
         atm = CallAtmRCE(atm, dirs, time_dict, COUPLER_options)
 

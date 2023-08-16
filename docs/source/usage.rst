@@ -225,11 +225,15 @@ inputs are provided.
    - (Float) Values greater than or equal to zero. Setting to zero will prevent
    any negative relative in the fluxes from one iteration to the next.
 
+* ``atmosphere_solve_energy``
+   - Flag to enable time-stepped solution to atmosphere temperature structure.   
+   - (Integer) 0: Disabled, 1: Enabled
+
 * ``phi_crit``
    - Value used for break condition; stop the model once the global melt 
    fraction drops below this value. This indiciates that the planet has 
-   solidified. Only applies when ``solid_stop`` is enabled.  
-   - (Float) Values between zero and unity.
+   solidified. Only applies when ``solid_stop`` is enabled.     
+   - (Float) Values between zero and unity.    
 
 * ``solid_stop``
    - Flag to toggle the melt fraction break condition ``phi_crit``.  
@@ -237,7 +241,7 @@ inputs are provided.
 
 * ``N2_partitioning``
    - The melt-vapour partitioning of the N2 volatile is redox-state dependent. 
-   Use this flag to determine which parameterisation will be calculated.  
+   Use this flag to determine which parameterisation will be calculated.   
    - (Integer) 0: Oxidised, 1: Reduced.
 
 * ``min_temperature``
@@ -246,36 +250,35 @@ inputs are provided.
    - (Float) Greater than or equal to 0. Set to 0 to disable.
 
 * ``tropopause``
-   - Model of tropopause to be used. AEOLUS does not currently support 
-   radiative-convective equilibrium calculations, so a tropopause is usually 
-   applied above a particular height. 'None' means no tropopause is applied. 
-   'Skin' means that the tropopause will be set to the skin temperature.  
-   'Flux' dynamically sets the tropopause based on the maximum heating rate.
+   - Model of tropopause to be used before, or in the absence of, a time-stepped
+   solution to the temperature structure. 'None' means no tropopause is applied. 
+   'Skin' means that the tropopause will be set to the skin temperature.   
+   'Flux' dynamically sets the tropopause based on the heating rate.    
    - (Integer) 0: None, 1: Skin, 2: Flux.
 
 * ``insert_rscatter``
-   - Insert Rayleigh scattering data into the SOCRATES spectral file?  
+   - Insert Rayleigh scattering data into the SOCRATES spectral file?    
    - (Integer) 0: Disabled, 1: Enabled.
 
 * ``atmosphere_chem_type``
    - Type of atmospheric chemistry to apply with VULCAN. 'None' applies no 
    chemistry. 'Offline' provides the files required for running it offline. 
-   'Online' is not yet implemented.  
+   'Online' is not yet implemented.   
    - (Integer) 0: None, 1: Offline, 2: Online.
 
 * ``IC_INTERIOR``
    - Initial condition for SPIDER's interior component. 'Fresh' begins the 
    simulation using the conditions provided. 'Restart' tries to pick up from
-   a previous run.   
+   a previous run.    
    - (Integer) 1: Fresh, 2: Restart (untested).
 
 * ``SEPARATION``
-   - Flag to include gravitational separation of solid/melt in SPIDER.    
+   - Flag to include gravitational separation of solid/melt in SPIDER.     
    - (Integer) 0: Disabled, 1: Enabled.
 
 * ``mixing_length``
    - Mixing length parameterisation to use in SPIDER. Can be constant or
-   variable, although variable is poorly tested.  
+   variable, although variable is poorly tested.   
    - (Integer) 1: Variable, 2: Constant.
 
 * ``PARAM_UTBL``
@@ -289,7 +292,7 @@ inputs are provided.
 
 * ``tsurf_poststep_change``
    - Maximum allowed change in surface temperature calculated by SPIDER before
-   it quits, to hand back to the other modules. Units of kelvin.  
+   it quits, to hand back to the other modules. Units of kelvin.   
    - (Float) Greater than zero.
 
 * ``tsurf_poststep_change_frac``
@@ -298,58 +301,58 @@ inputs are provided.
    - (Float) Greater than zero, but less than or equal to unity.
 
 * ``planet_coresize``
-   - Size of the planet's core as a fraction of its total interior radius.  
-   - (Float) Between zero and unity, exclusive.
+   - Size of the planet's core as a fraction of its total interior radius.   
+   - (Float) Between zero and unity, exclusive.  
 
 * ``ic_interior_filename``
-   - Resume PROTEUS from this SPIDER JSON file. Currently untested.  
+   - Resume PROTEUS from this SPIDER JSON file. Currently untested.   
    - (String) Path to file.
 
 * ``ic_adiabat_entropy``
-   - Entropy at the surface for intialising a SPIDER at the start of the run.  
+   - Entropy at the surface for intialising a SPIDER at the start of the run.   
    - (Float) Greater than zero [J kg-1 K-1].
 
 * ``ic_dsdr``
-   - Entropy gradient for intialising a SPIDER at the start of the run.  
+   - Entropy gradient for intialising a SPIDER at the start of the run.   
    - (Float) Less than zero [J kg-1 K-1 m-1].
 
 * ``F_atm``
    - Initial guess for net upward flux `F_atm`. Your choice for this value will
-   depend on where `F_atm` is measured (see ``F_atm_bc``).  
+   depend on where `F_atm` is measured (see ``F_atm_bc``).   
    - (Float) Greater than zero.
 
 * ``fO2_shift_IW``
    - Oxygen fugacity of the interior, measured in log10 units relative to the 
-   iron-wustite buffer. Positive values are oxidising, negative are reducing.  
+   iron-wustite buffer. Positive values are oxidising, negative are reducing.   
    - (Float) Any reasonable real value.
 
 * ``solvepp_enabled``
    - Flag to enable solving for initial partial pressures subject to interior
-   parameters, equilibrium reactions, and melt-vapour partitioning.  
+   parameters, equilibrium reactions, and melt-vapour partitioning.   
    - (Integer) 0: Disabled, 1: Enabled.
 
 * ``T_surf_guess``
-   - Initial guess for surface temperature when ``solvepp_enabled == 1``.  
+   - Initial guess for surface temperature when ``solvepp_enabled == 1``.   
    - (Float) Greater than zero [K].
 
 * ``mantle_mass_guess``
-   - Initial guess for total mantle mass when ``solvepp_enabled == 1``.  
+   - Initial guess for total mantle mass when ``solvepp_enabled == 1``.    
    - (Float) Greater than zero [kg].
 
 * ``melt_fraction_guess``
-   - Initial guess for mantle melt fraction when ``solvepp_enabled == 1``.  
+   - Initial guess for mantle melt fraction when ``solvepp_enabled == 1``.    
    - (Float) Between 0 and 1, inclusive.
 
 * ``CH_ratio``
-   - Initial guess for C/H ratio when ``solvepp_enabled == 1``.  
+   - Initial guess for C/H ratio when ``solvepp_enabled == 1``.    
    - (Float) Greater than zero.
 
 * ``hydrogen_earth_oceans``
-   - Total hydrogen inventory when ``solvepp_enabled == 1``.  
+   - Total hydrogen inventory when ``solvepp_enabled == 1``.    
    - (Float) Greater than zero. Units of Earth oceans equivalent.
 
 * ``nitrogen_ppmw``
-   - Initial nitrogen concentration in the mantle when ``solvepp_enabled == 1``.  
+   - Initial nitrogen concentration in the mantle when ``solvepp_enabled == 1``.    
    - (Float) Greater than zero. Parts per million of total mantle mass.
 
 The following three settings apply for all supported volatiles. They are written 

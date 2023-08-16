@@ -916,8 +916,8 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 F_clip = 1.e-4
 
                 # Get time-step length from last iter
-                # dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
-                dtprev = float(COUPLER_options["dtswitch"])
+                dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                # dtprev = float(COUPLER_options["dtswitch"])
                 
                 F_int_3  = max(run_int.iloc[-3]["F_int"],F_clip)
                 F_int_2  = max(run_int.iloc[-2]["F_int"],F_clip)
@@ -968,7 +968,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 exit(1)
 
             # Step-size floor
-            dtswitch = max(dtswitch, time_dict["planet"]*0.001)         # Relative
+            dtswitch = max(dtswitch, time_dict["planet"]*0.005)         # Relative
             dtswitch = max(dtswitch, COUPLER_options["dt_minimum"] )    # Absolute
 
             # Step-size ceiling
