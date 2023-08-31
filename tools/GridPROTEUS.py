@@ -3,7 +3,7 @@
 # Run PROTEUS for a pspace of parameters
 
 # Prepare
-import os, json
+import os, json, itertools
 import numpy as np
 COUPLER_DIR=os.getenv('COUPLER_DIR')
 
@@ -31,7 +31,6 @@ class Pspace():
     
     # Add a new empty dimension to the pspace
     def add_dimension(self,name:str):
-        name = name.lower()
         if name in self.dim_names:
             raise Exception("Dimension '%s' cannot be added twice" % name)
         
@@ -42,14 +41,12 @@ class Pspace():
         
 
     def _get_idx(self,name:str):
-        name = name.lower()
         if name not in self.dim_names:
             raise Exception("Dimension '%s' is not initialised" % name)
         return int(self.dim_names.index(name))
 
     # Set a dimension by linspace
     def set_dimension_linspace(self,name:str,var:str,start:float,stop:float,count:int):
-        name = name.lower()
         idx = self._get_idx(name)
         if self.dim_param[idx] != "_empty":
             raise Exception("Dimension '%s' cannot be set twice" % name)
@@ -58,7 +55,6 @@ class Pspace():
 
     # Set a dimension by logspace
     def set_dimension_logspace(self,name:str,var:str,start:float,stop:float,count:int):
-        name = name.lower()
         idx = self._get_idx(name)
         if self.dim_param[idx] != "_empty":
             raise Exception("Dimension '%s' cannot be set twice" % name)
@@ -67,7 +63,6 @@ class Pspace():
 
     # Set a dimension to manually take hypervariables
     def set_dimension_hyper(self,name:str):
-        name = name.lower()
         idx = self._get_idx(name)
         if self.dim_param[idx] != "_empty":
             raise Exception("Dimension '%s' cannot be set twice" % name)
@@ -76,7 +71,6 @@ class Pspace():
 
     # Add a new value (e.g. hypervariable) to a dimension of type 2
     def append_dimension_hyper(self,name:str,value:dict):
-        name = name.lower()
         idx = self._get_idx(name)
         if self.dim_param[idx] != "_hyper":
             raise Exception("Dimension '%s'is not ready to take new values" % name)
@@ -85,6 +79,8 @@ class Pspace():
     # Print current setup
     def print_setup(self):
         print("Current parameter space setup")
+        print("    name     :%s" % self.name)
+        print(" ")
         for name in self.dim_names:
             idx = self._get_idx(name)
             
@@ -95,7 +91,7 @@ class Pspace():
 
     # Print generated space
     def print_space(self):
-        print("Generated parameter space")
+        print("Current parameter space")
         for i,gp in enumerate(self.flat):
             print("    %d: %s" % (i,gp))
     
@@ -118,74 +114,33 @@ class Pspace():
             self.size *= len(v)
         print("    %d points expected" % self.size)
 
-        # Generate flattened parameter space
-        flat_dirty = []
-        hash_dirty = []
-        hash_clean = []
-        for k1 in self.dim_avars.keys():
-            i1 = self._get_idx(k1)
-            root_param = self.dim_param[i1]
+        # Create flattened parameter space 
+        flat_values = list(itertools.product(*values))
+        print("    created %d grid points" % len(flat_values))
 
-            for v1 in self.dim_avars[k1]:
-                
-                root_dict = {}
+        # Re-assign keys to values
+        print("    mapping keys")
+        for fl in flat_values:
+            gp = {}
 
-                # Ranged case
-                if root_param != "_hyper":
-                    root_dict[root_param] = v1
+            for i in range(len(fl)):
+                par = self.dim_param[i]
+                val = fl[i]
 
-                # Hyper case requires unpacking
+                if par == "_hyper":
+                    for key,value in val.items():
+                        gp[key] = value
                 else:
-                    for key, value in v1.items():
-                        root_dict[key] = value 
+                    gp[par] = val
+
+            self.flat.append(gp)
+        
+        print("    done")
 
 
-                # Add other parameters to this grid point
-                for k2 in self.dim_avars.keys():
-                    if k2 == k1:
-                        continue 
-                    
-                    i2 = self._get_idx(k2)
-                    stem_param = self.dim_param[i2]
-                    for v2 in self.dim_avars[k2]:
-
-                        gp = {} # single grid point
-
-                        # Add root vars to this stem
-                        for key, value in root_dict.items():
-                            gp[key] = value 
-                        
-                        # Add stem-specific vars 
-                        # Ranged case
-                        if stem_param != "_hyper":
-                            gp[stem_param] = v2
-
-                        # Hyper case requires unpacking
-                        else:
-                            for key, value in v2.items():
-                                gp[key] = value                      
-
-                        # store this grid point (and hash to check for duplicates)
-                        flat_dirty.append(gp) 
-                        hash_dirty.append(hash(json.dumps(gp, sort_keys=True,ensure_ascii=True)))
-
-        print("    created %d grid points" % len(hash_dirty))
-        print("    removing duplicates")
-
-        # Remove duplicate points from parameter space
-        for i in range(len(flat_dirty)):
-            if hash_dirty[i] not in hash_clean:
-                self.flat.append(flat_dirty[i])
-                hash_clean.append(hash_dirty[i])
-
-        print("    %d points left" % len(hash_clean))
-
-            
-
-
-    # Start running PROTEUS across this pspace
-    def start(self):
-        print("Running pspace...")
+    # Run PROTEUS across this pspace
+    def run(self):
+        print("Running PROTEUS across parameter space '%s'..." % self.name)
 
 
 
@@ -193,7 +148,7 @@ class Pspace():
     
 
 if __name__=='__main__':
-    print("Grid PROTEUS start")
+    print("Start")
 
     # -----
     # Define parameter space
@@ -204,21 +159,23 @@ if __name__=='__main__':
     ps.add_dimension("Redox state")
     ps.set_dimension_linspace("Redox state", "fO2_shift_IW", -2, +2, 3)
 
+    ps.add_dimension("C/H ratio")
+    ps.set_dimension_linspace("C/H ratio", "CH_ratio", 0.5, 2.0, 3)
+
     ps.add_dimension("Planet")
     ps.set_dimension_hyper("Planet")
-    ps.append_dimension_hyper("Planet", {   "case": "TRAPPIST-1b",
+    ps.append_dimension_hyper("Planet", {   ".case": "TRAPPIST-1b",
                                             "mean_distance": 0.01154,  # AU, star-planet distance
                                             "mass"         : 8.21e+24, # kg, planet mass
                                             "radius"       : 7.118e+6  # m, planet surface radius
                                         })
-    ps.append_dimension_hyper("Planet", {   "case": "TRAPPIST-1f",
+    ps.append_dimension_hyper("Planet", {   ".case": "TRAPPIST-1f",
                                             "mean_distance": 0.03849,  # AU, star-planet distance
                                             "mass"         : 6.21e+24, # kg, planet mass
                                             "radius"       : 6.665e+6  # m, planet surface radius
                                         })
     
     ps.print_setup()
-
     ps.generate()
 
     ps.print_space()
