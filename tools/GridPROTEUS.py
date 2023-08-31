@@ -3,7 +3,7 @@
 # Run PROTEUS for a pspace of parameters
 
 # Prepare
-import os, itertools, time, subprocess, shutil
+import os, itertools, time, subprocess, shutil, glob
 import numpy as np
 COUPLER_DIR=os.getenv('COUPLER_DIR')
 
@@ -98,7 +98,7 @@ class Pspace():
 
     # Print generated space
     def print_space(self):
-        print("Current parameter space")
+        print("Flattened grid points")
         for i,gp in enumerate(self.flat):
             print("    %d: %s" % (i,gp))
         print(" ")
@@ -153,37 +153,68 @@ class Pspace():
 
         name = self.name.strip()
 
+        if not test_run:
+            print(" ")
+            print("This program will generate several screen sessions")
+            print("To kill all of them, run `pkill -f pgrid_%s_`" % name)   # (from: https://stackoverflow.com/a/8987063)
+            print("Take care to avoid orphaned instances by using `screen -ls`")
+            print(" ")
+
+        # Read base config file
+        with open(self.conf, "r") as f:
+            base_config = f.readlines()
+
         # Loop over grid points
+        print("Dispatching cases...")
         for i,gp in enumerate(self.flat):  
 
-            # Create config file for this case
-            cfgfile = self.outdir+"case_%03d.cfg"%i
-            shutil.copyfile(self.conf,cfgfile )  
-            with open(cfgfile, 'a') as hdl:
-                
-                hdl.write("\n")
-                hdl.write("#[BEGIN GridPROTEUS INSERTION] \n")
-
-                for key,val in gp.items():
-                    if key[0] == '#': continue
-                    hdl.write("%s = %s\n" % (key,val))
-
-                hdl.write("#[END GridPROTEUS INSERTION]\n")
-
-
-            # Start screen session
+            cfgfile = self.outdir+"case_%03d.cfg" % i
+            logfile = self.outdir+"case_%03d.log" % i
             screen_name = "pgrid_%s_%03dx" % (name,i)
+
+            gp["dir_output"] = "pspace_"+self.name+"/case_%03d/"%i
+
+            # Create config file for this case
+            with open(cfgfile, 'w') as hdl:
+                
+                hdl.write("# GridPROTEUS config file \n")
+                hdl.write("# gp_index = %d \n" % i)
+                hdl.write("# screen_name = %s \n" % screen_name)
+
+                # Write lines
+                for l in base_config:
+                    if (l[0] == '#') or ('=' not in l): 
+                        continue
+                    
+                    l = l.split('#')[0]
+                    key = l.split('=')[0].strip()
+
+                    # Give priority to pgrid parameters
+                    if key in gp.keys():
+                        hdl.write("%s = %s # this value set by grid\n" % (key,gp[key]))
+
+                    # Otherwise, use default value
+                    else:
+                        hdl.write(str(l) + "\n")
+            
+            print("    %d%%" % ( (i+1.0)/self.size*100.0 ) ) 
+                    
+
+            # Start proteus inside a screen session
             if test_run:
                 print("(test run not dispatching proteus '%s')" % screen_name)
             else:
-                logfile = self.outdir+"case_%03d.log"
+                
                 proteus_run = 'screen -S %s -L -Logfile %s -dm bash -c "python proteus.py -cfg_file %s"' % (screen_name,logfile,cfgfile)
                 subprocess.run([proteus_run], shell=True, check=True)
 
-            time.sleep(5.0)
+            time.sleep(2.0)
+            # End of dispatch loop
 
-
-
+        print("    all cases running")
+        time.sleep(30.0)
+        for f in glob.glob(self.outdir+"/case_*.cfg"):
+            os.remove(f)
 
     
 
@@ -200,7 +231,7 @@ if __name__=='__main__':
     ps.set_dimension_linspace("Redox state", "fO2_shift_IW", -2, +2, 3)
 
     ps.add_dimension("C/H ratio")
-    ps.set_dimension_linspace("C/H ratio", "CH_ratio", 0.5, 2.0, 3)
+    ps.set_dimension_logspace("C/H ratio", "CH_ratio", 0.5, 2.0, 3)
 
     ps.add_dimension("Planet")
     ps.set_dimension_hyper("Planet")
@@ -215,14 +246,21 @@ if __name__=='__main__':
                                             "radius"       : 6.665e+6  # m, planet surface radius
                                         })
     
+    # -----
+    # Print state of parameter space
+    # -----
+
     ps.print_setup()
     ps.generate()
     ps.print_space()
 
-    ps.run(test_run=True)
+    # -----
+    # Start PROTEUS processes
+    # -----
+
+    ps.run(test_run=False)
 
 
-
-    print("Done!")
-
+    # When this script ends, all cases of PROTEUS should be running
+    # It does not mean that they are complete.
     
