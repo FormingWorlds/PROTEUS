@@ -3,7 +3,7 @@
 # Run PROTEUS for a pspace of parameters
 
 # Prepare
-import os, json, itertools
+import os, itertools, time, subprocess, shutil
 import numpy as np
 COUPLER_DIR=os.getenv('COUPLER_DIR')
 
@@ -14,9 +14,16 @@ class Pspace():
 
         # Pspace's own name (for versioning, etc.)
         self.name = str(name)
+        self.outdir = COUPLER_DIR+"/output/pspace_"+self.name+"/"
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
             raise Exception("Base config file '%s' does not exist!" % self.conf)
+        
+        # Make output dir
+        if os.path.exists(self.outdir):
+            shutil.rmtree(self.outdir)
+        os.makedirs(self.outdir)
+
 
         # List of dimension names and parameter names
         self.dim_names = []     # String
@@ -78,13 +85,13 @@ class Pspace():
 
     # Print current setup
     def print_setup(self):
-        print("Current parameter space setup")
-        print("    name     :%s" % self.name)
+        print("Current setup")
+        print(" -- name     : %s" % self.name)
         print(" ")
         for name in self.dim_names:
             idx = self._get_idx(name)
             
-            print("    dimension: %s" % name)
+            print(" -- dimension: %s" % name)
             print("    parameter: %s" % self.dim_param[idx])
             print("    values   : %s" % self.dim_avars[name])
             print(" ")
@@ -94,6 +101,7 @@ class Pspace():
         print("Current parameter space")
         for i,gp in enumerate(self.flat):
             print("    %d: %s" % (i,gp))
+        print(" ")
     
 
     # Generate the pspace based on the current configuration
@@ -136,11 +144,43 @@ class Pspace():
             self.flat.append(gp)
         
         print("    done")
+        print(" ")
 
 
     # Run PROTEUS across this pspace
-    def run(self):
+    def run(self,test_run:bool=False):
         print("Running PROTEUS across parameter space '%s'..." % self.name)
+
+        name = self.name.strip()
+
+        # Loop over grid points
+        for i,gp in enumerate(self.flat):  
+
+            # Create config file for this case
+            cfgfile = self.outdir+"case_%03d.cfg"%i
+            shutil.copyfile(self.conf,cfgfile )  
+            with open(cfgfile, 'a') as hdl:
+                
+                hdl.write("\n")
+                hdl.write("#[BEGIN GridPROTEUS INSERTION] \n")
+
+                for key,val in gp.items():
+                    if key[0] == '#': continue
+                    hdl.write("%s = %s\n" % (key,val))
+
+                hdl.write("#[END GridPROTEUS INSERTION]\n")
+
+
+            # Start screen session
+            screen_name = "pgrid_%s_%03dx" % (name,i)
+            if test_run:
+                print("(test run not dispatching proteus '%s')" % screen_name)
+            else:
+                logfile = self.outdir+"case_%03d.log"
+                proteus_run = 'screen -S %s -L -Logfile %s -dm bash -c "python proteus.py -cfg_file %s"' % (screen_name,logfile,cfgfile)
+                subprocess.run([proteus_run], shell=True, check=True)
+
+            time.sleep(5.0)
 
 
 
@@ -164,12 +204,12 @@ if __name__=='__main__':
 
     ps.add_dimension("Planet")
     ps.set_dimension_hyper("Planet")
-    ps.append_dimension_hyper("Planet", {   ".case": "TRAPPIST-1b",
+    ps.append_dimension_hyper("Planet", {   "#case": "TRAPPIST-1b",
                                             "mean_distance": 0.01154,  # AU, star-planet distance
                                             "mass"         : 8.21e+24, # kg, planet mass
                                             "radius"       : 7.118e+6  # m, planet surface radius
                                         })
-    ps.append_dimension_hyper("Planet", {   ".case": "TRAPPIST-1f",
+    ps.append_dimension_hyper("Planet", {   "#case": "TRAPPIST-1f",
                                             "mean_distance": 0.03849,  # AU, star-planet distance
                                             "mass"         : 6.21e+24, # kg, planet mass
                                             "radius"       : 6.665e+6  # m, planet surface radius
@@ -177,8 +217,9 @@ if __name__=='__main__':
     
     ps.print_setup()
     ps.generate()
-
     ps.print_space()
+
+    ps.run(test_run=True)
 
 
 
