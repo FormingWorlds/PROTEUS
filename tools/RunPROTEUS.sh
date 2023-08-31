@@ -34,11 +34,11 @@ else
     echo "Log file path = '$LOGFILE' "
     echo "Screen alias  = '$ALIAS' "
 
-    rm -f $LOGFILE
-    touch $LOGFILE
-
     echo "Sleeping 3 seconds..."
     sleep 3
+
+    rm -f $LOGFILE
+    touch $LOGFILE
 
     # Dispatch screen session with PROTEUS inside
     echo "Dispatching screen session..."

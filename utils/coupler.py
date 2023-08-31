@@ -106,7 +106,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         if "star_radius" in COUPLER_options.keys():
             runtime_helpfile_new["R_star"] = COUPLER_options["star_radius"]
         else:
-            runtime_helpfile_new["R_star"] = COUPLER_options["star_radius_modern"] # Just in case?
+            runtime_helpfile_new["R_star"] = COUPLER_options["star_radius_modern"]
 
         # Mass properties
         runtime_helpfile_new["M_mantle_liquid"] = float(data_a[0])
@@ -393,7 +393,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                     if key in [ "IC_INTERIOR", "ic_interior_filename", 
                                 "plot_iterfreq", "stellar_heating", "mixing_length",
                                 "atmosphere_chem_type", "solvepp_enabled", "insert_rscatter",
-                                "tropopause", "F_atm_bc", "atmosphere_solve_energy",
+                                "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
                                 "dt_dynamic", "require_eqm_loops", "prevent_warming"]:
                         val = int(val)
 

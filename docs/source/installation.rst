@@ -260,9 +260,7 @@ Step-by-step guide
 
             $   cd petsc
             $   ./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"
-        
-        * Make note of the value of ``PETSC_ARCH`` printed to ``stdout``.
-        
+                
         * Run the exact ``make all`` command provided at the end of the configure step
         
         * Run the exact ``make check`` command provided at the end of the ``make all`` step
@@ -272,9 +270,7 @@ Step-by-step guide
             $   cd ../
 
     9. Setup environment variables
-        
-        * Edit the variable ``PETSC_ARCH`` in the file ``PROTEUS.env`` to reflect the value provided by PETSc in the previous step
-        
+                
         * Only **IF** ``python`` has been installed via the ``conda`` route: 
 
             .. code-block:: console

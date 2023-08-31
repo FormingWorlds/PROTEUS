@@ -121,8 +121,8 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
                   "CH4" : runtime_helpfile.iloc[-1]["CH4_mr"], 
                   "O2"  : runtime_helpfile.iloc[-1]["O2_mr"], 
                   "CO"  : runtime_helpfile.iloc[-1]["CO_mr"], 
-                  "He"  : 0.,
-                  "NH3" : 0., 
+                  "He"  : 0.0,
+                  "NH3" : 0.0, 
                 }
 
     match COUPLER_options["tropopause"]:
@@ -133,8 +133,7 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
         case 2:
             trppT = None
         case _:
-            print("ERROR: Invalid tropopause option '%d'" % COUPLER_options["tropopause"])
-            exit(1)
+            raise ValueError("Invalid tropopause option '%d'" % COUPLER_options["tropopause"])
             
     atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, 
                 COUPLER_options["P_top"]*1e5, pl_radius, pl_mass,
@@ -183,8 +182,7 @@ def CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options):
     # Calculate temperature structure w/ General Adiabat 
     trppD = bool(COUPLER_options["tropopause"] == 2 )
     rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
-    print("Setting atmosphere according to multicondensible pseudoadiabat")
-    _, atm = RadConvEqm(dirs, time_dict, atm, standalone=False, cp_dry=False, trppD=trppD, rscatter=rscatter, calc_cf=False)
+    _, atm = RadConvEqm(dirs, time_dict, atm, False, False, trppD, False, rscatter)
 
     # Go back to previous directory
     os.chdir(cwd)
@@ -204,15 +202,21 @@ def CallAtmRCE(atm, dirs, time_dict, COUPLER_options):
     
     atm = CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options)
     
+    # Run socrates in output dir
     cwd = os.getcwd()
     os.chdir(dirs["output"])
 
     for file in glob.glob(dirs["output"]+"/radeqm_monitor_*"):
         os.remove(file)
 
-    print("Solving for radiative eqm...")
+    
+    if (COUPLER_options["atmosphere_surf_state"] == 1):
+        atm_bc_bot = 1
+    else:
+        atm_bc_bot = 0
+
     rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
-    atm_rce = find_rc_eqm(atm, dirs, rscatter=rscatter, verbose=False, plot=False)
+    atm_rce = find_rc_eqm(atm, dirs, rscatter=rscatter, verbose=False, plot=False, surf_state=atm_bc_bot)
 
     # Go back to previous directory
     os.chdir(cwd)
