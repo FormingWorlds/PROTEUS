@@ -68,7 +68,7 @@ class Pspace():
         self.dim_param[idx] = var
         self.dim_avars[name] = list(np.logspace( np.log10(start) , np.log10(stop) , count))
 
-    # Set a dimension to manually take hypervariables
+    # Set a dimension to take hypervariables
     def set_dimension_hyper(self,name:str):
         idx = self._get_idx(name)
         if self.dim_param[idx] != "_empty":
@@ -76,7 +76,10 @@ class Pspace():
         self.dim_param[idx] = "_hyper"
         self.dim_avars[name] = []
 
-    # Add a new value (e.g. hypervariable) to a dimension of type 2
+    # Add a new hypervariable to a _hyper dimension
+    # This allows multiple variables to be considered as one
+    # e.g. Earth and Mars are two cases of the 'planet' hypervariable, but 
+    #      each contains their own sub-variables like mass, radius, etc.
     def append_dimension_hyper(self,name:str,value:dict):
         idx = self._get_idx(name)
         if self.dim_param[idx] != "_hyper":

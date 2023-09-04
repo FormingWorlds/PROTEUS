@@ -887,7 +887,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     species_call = species_call[1:] # Remove "," in front
 
     # Recalculate time stepping
-    if (COUPLER_options["IC_INTERIOR"] == 2) and (loop_counter["eqm"] <= 0):  
+    if (COUPLER_options["IC_INTERIOR"] == 2):  
 
         # Current step
         json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(time_dict["planet"])) )
@@ -938,7 +938,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                     print("Time-stepping intent: slow down!!")
                     dtswitch = 0.10 * dtprev
 
-                elif (F_acc_max > 10.0) or (loop_counter["eqm"] == 0):
+                elif (F_acc_max > 10.0):
                     # Slow down
                     print("Time-stepping intent: slow down")
                     dtswitch = 0.90 * dtprev

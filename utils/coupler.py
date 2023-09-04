@@ -394,7 +394,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                                 "plot_iterfreq", "stellar_heating", "mixing_length",
                                 "atmosphere_chem_type", "solvepp_enabled", "insert_rscatter",
                                 "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
-                                "dt_dynamic", "require_eqm_loops", "prevent_warming"]:
+                                "dt_dynamic", "prevent_warming"]:
                         val = int(val)
 
                     # Some are str

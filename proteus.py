@@ -41,13 +41,13 @@ def main():
     print("Output directory: '%s'" % dirs["output"])
 
     # Count iterations
-    loop_counter = { "total": 0,            # Total number of itersperformed
-                     "init": 0,             # Number of init iters performed
-                     "atm": 0,              # Number of atmosphere sub-iters performed
-                     "eqm": -1,             # Number of eqm iters performed
-                     "init_loops": 3,       # Target number of init iters
-                     "atm_loops":  200,      # Maximum number of atmosphere sub-iters
-                     "eqm_loops":  3        # Target number of eqm iters
+    loop_counter = { 
+                    "total": 0,            # Total number of itersperformed
+                    "init": 0,             # Number of init iters performed
+                    "atm": 0,              # Number of atmosphere sub-iters performed
+                    "total_loops": 1e5,    # Maximum number of total loops
+                    "init_loops": 3,       # Maximum number of init iters
+                    "atm_loops":  200,     # Maximum number of atmosphere sub-iters
                     }
     
     # If restart skip init loop # args.r or args.rf or 
@@ -229,17 +229,6 @@ def main():
 
             print("T_eqm change: %.3f K (to 3dp)" % abs(T_eqm_new - T_eqm_prev))
 
-            # Check if instellation changed (do eqm iters?)
-            if (loop_counter["total"] > loop_counter["init_loops"]) \
-                and ( abs(T_eqm_new - T_eqm_prev) > 0.01 ) \
-                and ( COUPLER_options["require_eqm_loops"] == 1 ) \
-                and ( COUPLER_options["F_atm"] < COUPLER_options["F_crit"] ) \
-                and ( loop_counter["eqm"] == -1 ):
-
-                print("Beginning eqm loops to respond to change in instellation")
-                run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
-                loop_counter["eqm"] = 0       
-
         # Calculate a new (historical) stellar spectrum 
         if (COUPLER_options['star_model'] > 0  \
             and ( abs( time_dict['planet'] - time_dict['sspec_prev'] ) > COUPLER_options['sspec_dt_update'] ) \
@@ -347,13 +336,7 @@ def main():
 
         # Print info, save atm to file, update plots
         PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs)
-
-        # Update eqm loop counter
-        if (loop_counter["eqm"] > -1): # Next eqm iter
-            loop_counter["eqm"]     += 1
-        if (loop_counter["eqm"] >= loop_counter["eqm_loops"]): 
-            loop_counter["eqm"]     = -1  # -1 indicates that we are not to do any more eqm loops for now
-
+        
         # Update init loop counter
         if loop_counter["init"] < loop_counter["init_loops"]: # Next init iter
             loop_counter["init"]    += 1
@@ -368,17 +351,18 @@ def main():
 
         # Stop simulation when planet is completely solidified
         if (COUPLER_options["solid_stop"] == 1) \
-            and (runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]) \
-            and (loop_counter["eqm"] == -1):
-
+            and (runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]):
             print("\n===> Planet solidified! <===\n")
             break
+            
+        # Stop simulation if maximum loops reached
+        if (loop_counter["total"] > loop_counter["total_loops"]):
+            print("\n Maximum number of iterations reached. Stopping. \n")
+            break
         
-        # Otherwise, make plots if required and go to next iteration
-        elif (COUPLER_options["plot_iterfreq"] > 0) \
-            and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0) \
-            and (loop_counter["eqm"] == -1):
-
+        # Make plots if required and go to next iteration
+        if (COUPLER_options["plot_iterfreq"] > 0) \
+            and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0):
             UpdatePlots( dirs["output"], COUPLER_options )
 
 
@@ -386,12 +370,11 @@ def main():
 
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options )
-
-    print("\n\n===> PROTEUS run finished successfully <===")
     print("     "+datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
 #====================================================================
 if __name__ == '__main__':
     main()
+    print("Goodbye")
 
 # End of file
