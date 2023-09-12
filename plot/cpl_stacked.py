@@ -71,9 +71,9 @@ def plot_stacked( output_dir, times ):
 
             ds = nc.Dataset(atm_file)
             ds_keys = ds.variables.keys()
-            tmp =   np.array(ds.variables["tmp"][:])
-            p   =   np.array(ds.variables["p"][:])
-            z   =   np.array(ds.variables["z"][:]) * 1e-3  # convert to km
+            tmp =   np.array(ds.variables["tmpl"][:])
+            p   =   np.array(ds.variables["pl"][:])
+            z   =   np.array(ds.variables["zl"][:]) * 1e-3  # convert to km
             ds.close()
 
             # read json

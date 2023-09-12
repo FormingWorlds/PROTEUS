@@ -47,7 +47,7 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
                   "O2"  : runtime_helpfile.iloc[-1]["O2_mr"], 
                   "CO"  : runtime_helpfile.iloc[-1]["CO_mr"], 
                   "He"  : runtime_helpfile.iloc[-1]["He_mr"],
-                  "NH3" : runtime_helpfile.iloc[-1]["NH3_mr"], 
+                  "NH3" : 0.0 # not supported by SPIDER 
                 }
     for k in vol_list.keys():
         v = vol_list[k]
@@ -57,17 +57,17 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
     # Setup call sequence
     call_sequence = []
-    call_sequence.append(dirs["agni"]+"/agni_cli.jl")
-    call_sequence.append("%1.4e" % COUPLER_options["T_surf"])
-    call_sequence.append("%1.4e" % COUPLER_options["TOA_heating"])   # includes albedo_pl already
-    call_sequence.append("%1.4e" % gravity)
-    call_sequence.append("%1.4e" % COUPLER_options["radius"])
-    call_sequence.append("%1.4e" % runtime_helpfile.iloc[-1]["P_surf"])
-    call_sequence.append("%1.4e" % runtime_helpfile.iloc[-1]["P_top"])
+    call_sequence.append(dirs["agni"]+"agni_cli.jl")
+    call_sequence.append("%1.6e" % COUPLER_options["T_surf"])
+    call_sequence.append("%1.6e" % COUPLER_options["TOA_heating"])   # includes albedo_pl already
+    call_sequence.append("%1.6e" % gravity)
+    call_sequence.append("%1.6e" % COUPLER_options["radius"])
+    call_sequence.append("%1.6e" % runtime_helpfile.iloc[-1]["P_surf"])
+    call_sequence.append("%1.6e" % COUPLER_options["P_top"])
     call_sequence.append(mr_str)
     call_sequence.append("--spf \"%s\""             % str(dirs["output"]+"runtime_spectral_file"))  # already includes star
-    call_sequence.append("--albedo_s %1.4e"         % COUPLER_options["albedo_s"])
-    call_sequence.append("--zenith_degrees %1.4e"   % COUPLER_options["zenith_angle"])
+    call_sequence.append("--albedo_s %1.6e"         % COUPLER_options["albedo_s"])
+    call_sequence.append("--zenith_degrees %1.6e"   % COUPLER_options["zenith_angle"])
     call_sequence.append("--output %s"              % dirs["output"])
 
     if COUPLER_options["insert_rscatter"] == 1:
@@ -86,15 +86,15 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
         # If not, the model will start from an isothermal state at T=tstar
 
-    trppt = COUPLER_options["min_temperature"]
-    match COUPLER_options["tropopause_type"]:
+    trppt = COUPLER_options["min_temperature"] # use tropopause functionality to introduce temperature floor
+    match COUPLER_options["tropopause"]:
         case 0:
             pass
         case 1:
-            trppt = min(COUPLER_options["T_skin"], trppt)
+            trppt = max(COUPLER_options["T_skin"], trppt)
         case _:
             raise Exception("Tropopause type not supported by AGNI")
-    call_sequence.append("--trppt %1.4e" % trppt)  # use tropopause functionality to introduce temperature floor
+    call_sequence.append("--trppt %1.6e" % trppt)  
 
     if COUPLER_options["atmosphere_surf_state"] == 0:
         call_sequence.append("--surface 0")
@@ -106,6 +106,8 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
     call_string = " ".join(call_sequence)
 
+    print(call_string)
+
     # Run AGNI
     if debug:
         agni_print = sys.stdout
@@ -113,14 +115,17 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
         agni_print = open(dirs["output"]+"agni_recent.log",'w')
     subprocess.run([call_string],shell=True,check=True,stdout=agni_print)
 
+    if not debug:
+        agni_print.close()
+
     # Read result
     nc_fpath = dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.nc"
+    os.remove(dirs["output"]+"/fl.csv")
     shutil.move(dirs["output"]+"/atm.nc", nc_fpath)
-    ds = nc.Dataset(nc_fpath)
 
+    ds = nc.Dataset(nc_fpath)
     net_flux =      np.array(ds.variables["fl_N"][:])
     LW_flux_up =    np.array(ds.variables["fl_U_LW"][:])
-
     ds.close()
 
     # New flux from SOCRATES
