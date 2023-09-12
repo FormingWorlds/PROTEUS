@@ -34,7 +34,7 @@ def latex_float(f):
     else:
         return float_str
 
-def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs):
+def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options):
 
     # Print final statement
     PrintHalfSeparator()
@@ -44,18 +44,14 @@ def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_co
     print("    T_surf [K]:          %.1f" % float(runtime_helpfile.iloc[-1]["T_surf"]))
     print("    Phi_global:          %.3f" % float(runtime_helpfile.iloc[-1]["Phi_global"]))
     print("    P_surf [bar]:        %.1f" % float(runtime_helpfile.iloc[-1]["P_surf"]))
-    print("    TOA heating [W/m^2]: %.3e" % float(atm.toa_heating))
+    print("    TOA heating [W/m^2]: %.3e" % float(COUPLER_options["TOA_heating"]))
     print("    F_int [W/m^2]:       %.3e" % float(COUPLER_options["F_int"]))
-    print("    F_atm [W/m^2]:       %.3e" % float(COUPLER_options["F_atm"]))
+    print("    F_atm [W/m^2]:       %.3e" % float(COUPLER_options["F_atm"])) 
     print("    F_net [W/m^2]:       %.3e" % float(COUPLER_options["F_net"]))
     print("    Last file name:      %s "  % str(COUPLER_options["ic_interior_filename"]))
 
     print("Helpfile properties:")
     print(runtime_helpfile.tail(4))
-
-    # Save atm object to disk
-    with open(dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.pkl", "wb") as atm_file: 
-        pkl.dump(atm, atm_file)
 
 
 def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options):
@@ -349,6 +345,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 def calc_eqm_temperature(I_0, A_B):
     return (I_0 * (1.0 - A_B) / (4.0 * phys.sigma))**(1.0/4.0)
 
+
 def ReadInitFile( init_file_passed , verbose=False):
 
     # Read in input file as dictionary
@@ -394,7 +391,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                                 "plot_iterfreq", "stellar_heating", "mixing_length",
                                 "atmosphere_chem_type", "solvepp_enabled", "insert_rscatter",
                                 "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
-                                "dt_dynamic", "prevent_warming"]:
+                                "dt_dynamic", "prevent_warming", "atmosphere_model"]:
                         val = int(val)
 
                     # Some are str
@@ -449,11 +446,11 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     # Global properties for all timesteps
     if len(output_times) > 1:
         cpl_global.plot_global(output_dir, COUPLER_options)   
-    
-    # Filter to JSON files with corresponding PKL files
-    pkls = glob.glob(output_dir + "/data/*_atm.pkl")
-    pkl_times = [int(f.split("/")[-1].split("_atm")[0]) for f in pkls]
-    output_times = sorted(list(set(output_times) & set(pkl_times)))
+        
+    # Filter to JSON files with corresponding NetCDF files
+    ncs = glob.glob(output_dir + "/data/*_atm.nc")
+    nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
+    output_times = sorted(list(set(output_times) & set(nc_times)))
 
     # Work out which times we want to plot
     if len(output_times) <= num_snapshots:
@@ -504,13 +501,14 @@ def SetDirectories(COUPLER_options: dict):
     coupler_dir = os.getenv('COUPLER_DIR')
 
     dirs = {
-            "output": coupler_dir+"/output/"+COUPLER_options['dir_output']+"/", 
-            "input": coupler_dir+"/input/",
-            "coupler": coupler_dir, 
-            "rad_conv": coupler_dir+"/AEOLUS/", 
-            "vulcan": coupler_dir+"/VULCAN/", 
-            "spider": coupler_dir+"/SPIDER/", 
-            "utils": coupler_dir+"/utils/"
+            "output":   coupler_dir+"/output/"+COUPLER_options['dir_output']+"/", 
+            "input":    coupler_dir+"/input/",
+            "coupler":  coupler_dir, 
+            "aeolus":   coupler_dir+"/AEOLUS/", 
+            "agni":     coupler_dir+"/AGNI/", 
+            "vulcan":   coupler_dir+"/VULCAN/", 
+            "spider":   coupler_dir+"/SPIDER/", 
+            "utils":    coupler_dir+"/utils/"
             }
     
     return dirs

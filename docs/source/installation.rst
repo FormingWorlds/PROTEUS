@@ -120,7 +120,7 @@ Step-by-step guide
                 
                 .. code-block:: console
                     
-                    $   pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort
+                    $   pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort netCDF4
                 
                 * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step), by adding the following to your:
                     
@@ -149,7 +149,7 @@ Step-by-step guide
                     $   conda create -n proteus python=3.10.9   
                     $   conda activate proteus
                     $   conda install netcdf4 matplotlib numpy pandas scipy sympy natsort
-                    $   conda install -c conda-forge f90nml
+                    $   conda install -c conda-forge f90nml netcdf4
             
             * Refresh your shell:
                     

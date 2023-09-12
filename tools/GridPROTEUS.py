@@ -3,7 +3,7 @@
 # Run PROTEUS for a pspace of parameters
 
 # Prepare
-import os, itertools, time, subprocess, shutil, glob
+import os, itertools, time, subprocess, shutil, glob, sys
 import numpy as np
 COUPLER_DIR=os.getenv('COUPLER_DIR')
 
@@ -23,7 +23,6 @@ class Pspace():
         if os.path.exists(self.outdir):
             shutil.rmtree(self.outdir)
         os.makedirs(self.outdir)
-
 
         # List of dimension names and parameter names
         self.dim_names = []     # String
@@ -100,12 +99,12 @@ class Pspace():
             print(" ")
 
     # Print generated space
-    def print_space(self):
-        print("Flattened grid points")
+    def print_space(self, f=sys.stdout):
+        print("Flattened grid points", file=f)
         for i,gp in enumerate(self.flat):
-            print("    %d: %s" % (i,gp))
-        print(" ")
-    
+            print("    %d: %s" % (i,gp), file=f)
+        print(" ", file=f)
+
 
     # Generate the pspace based on the current configuration
     def generate(self):
@@ -171,6 +170,9 @@ class Pspace():
         print("Dispatching cases...")
         for i,gp in enumerate(self.flat):  
 
+            if (i > 0):
+                time.sleep(0.5)
+
             cfgfile = self.outdir+"case_%03d.cfg" % i
             logfile = self.outdir+"case_%03d.log" % i
             screen_name = "pgrid_%s_%03dx" % (name,i)
@@ -186,7 +188,7 @@ class Pspace():
 
                 # Write lines
                 for l in base_config:
-                    if (l[0] == '#') or ('=' not in l): 
+                    if ('=' not in l): 
                         continue
                     
                     l = l.split('#')[0]
@@ -207,19 +209,18 @@ class Pspace():
             if test_run:
                 print("(test run not dispatching proteus '%s')" % screen_name)
             else:
-                
                 proteus_run = 'screen -S %s -L -Logfile %s -dm bash -c "python proteus.py -cfg_file %s"' % (screen_name,logfile,cfgfile)
                 subprocess.run([proteus_run], shell=True, check=True)
 
-            time.sleep(2.0)
             # End of dispatch loop
 
-        print("    all cases running")
         time.sleep(30.0)
+        print("    all cases running")
+        print(" ")
+
         for f in glob.glob(self.outdir+"/case_*.cfg"):
             os.remove(f)
 
-    
 
 if __name__=='__main__':
     print("Start")
@@ -266,4 +267,5 @@ if __name__=='__main__':
 
     # When this script ends, all cases of PROTEUS should be running
     # It does not mean that they are complete.
+    print("Exit")
     

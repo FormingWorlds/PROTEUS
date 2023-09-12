@@ -1,11 +1,9 @@
-# Function used to handle atmosphere thermodynamics (running AEOLUS, etc.)
-
+# Functions used to handle atmosphere thermodynamics (running AEOLUS, etc.)
 
 from utils.modules_ext import *
 from utils.helper import *
 from AEOLUS.utils.atmosphere_column import atmos
-from AEOLUS.modules.radcoupler import RadConvEqm
-from AEOLUS.utils.socrates import radCompSoc
+from AEOLUS.modules.solve_pt import RadConvEqm
 from AEOLUS.modules.radconv_solver import find_rc_eqm
 
 def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
@@ -55,8 +53,8 @@ def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
     return Ts_curr
 
 
-# Generate/adapt atmosphere chemistry/radiation input files
-def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
+# Prepare surface BC for new atmosphere calculation
+def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
 
     # In the beginning: standard surface temperature from last entry
     if loop_counter["total"] < loop_counter["init_loops"]:
@@ -109,6 +107,12 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
         # Standard surface temperature from last entry
         COUPLER_options["T_surf"] = runtime_helpfile.iloc[-1]["T_surf"]
 
+    return COUPLER_options
+
+
+# Generate atmosphere from input files
+def StructAtm( runtime_helpfile, COUPLER_options ):
+
     # Create atmosphere object and set parameters
     pl_radius = COUPLER_options["radius"]
     pl_mass = COUPLER_options["mass"]
@@ -121,8 +125,8 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
                   "CH4" : runtime_helpfile.iloc[-1]["CH4_mr"], 
                   "O2"  : runtime_helpfile.iloc[-1]["O2_mr"], 
                   "CO"  : runtime_helpfile.iloc[-1]["CO_mr"], 
-                  "He"  : 0.0,
-                  "NH3" : 0.0, 
+                  "He"  : 0.0,  # broken
+                  "NH3" : 0.0,  # broken
                 }
 
     match COUPLER_options["tropopause"]:
@@ -146,9 +150,8 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
     atm.albedo_pl       = COUPLER_options["albedo_pl"]
     atm.albedo_s        = COUPLER_options["albedo_s"]
     atm.toa_heating     = COUPLER_options["TOA_heating"]
-        
 
-    return atm, COUPLER_options
+    return atm
 
 def CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options):
     """Create temperature structure based on general adiabat from AEOLUS.
@@ -192,7 +195,7 @@ def CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options):
         os.remove(file)
     for file in glob.glob(dirs["output"]+"/profile.*"):
         os.remove(file)
-
+        
     # Print flux info
     print("SOCRATES fluxes (net@surf, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
 
@@ -231,7 +234,7 @@ def CallAtmRCE(atm, dirs, time_dict, COUPLER_options):
     return atm_rce
 
 
-def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, method=0 ):
+def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
     """Run AEOLUS.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -250,9 +253,6 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, method=0
             Configuration options and other variables
         runtime_helpfile : pd.DataFrame
             Dataframe containing simulation variables (now and historic)
-        method : int
-            Solver method. 0: general adiabat, 1: solve for energy balance.
-
     Returns
     ----------
         atm : atmos
@@ -267,10 +267,14 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, method=0
     print("Running AEOLUS...")
 
     # Call AEOLUS to get new temperature profile
-    if method == 0:
+    if COUPLER_options["atmosphere_solve_energy"] == 0:
         atm = CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options)
     else:
         atm = CallAtmRCE(atm, dirs, time_dict, COUPLER_options)
+
+    # Save atm data to disk
+    nc_fpath = dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.nc"
+    atm.write_ncdf(nc_fpath)
 
     # New flux from SOCRATES
     if (COUPLER_options["F_atm_bc"] == 0):
@@ -304,5 +308,5 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, method=0
     COUPLER_options["F_atm"] = F_atm_lim
     COUPLER_options["F_olr"] = atm.LW_flux_up[0]
 
-    return atm, COUPLER_options
+    return COUPLER_options
 

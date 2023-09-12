@@ -12,7 +12,8 @@ from utils.coupler import *
 from utils.stellar_common import *
 from utils.stellar_mors import *
 from utils.stellar_baraffe import *
-from utils.aeolus import RunAEOLUS, StructAtm
+from utils.aeolus import RunAEOLUS, PrepAtm, StructAtm
+from utils.agni import RunAGNI
 from utils.spider import RunSPIDER
 
 from plot.cpl_fluxes import *
@@ -154,7 +155,7 @@ def main():
     print("Included volatiles:",inc_vols)
 
     # Check that spectral file exists
-    spectral_file_nostar = dirs["rad_conv"]+"/"+COUPLER_options["spectral_file"]
+    spectral_file_nostar = COUPLER_options["spectral_file"]
     if not os.path.exists(spectral_file_nostar):
         print("ERROR: Spectral file does not exist at '%s'!" % spectral_file_nostar)
         exit(1)
@@ -311,11 +312,19 @@ def main():
 
             # Initialize atmosphere structure
             if (loop_counter["atm"] == 0) or (loop_counter["total"] <= 2):
-                atm, COUPLER_options = StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
+                COUPLER_options = PrepAtm(loop_counter, runtime_helpfile, COUPLER_options)
 
-                # Run AEOLUS: use the general adiabat to create a PT profile, then calculate fluxes
-                aeolus_method = COUPLER_options["atmosphere_solve_energy"]
-                atm, COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, method=aeolus_method )
+                if COUPLER_options["atmosphere_model"] == 0:
+                    # Run AEOLUS: use the general adiabat to create a PT profile, then calculate fluxes
+                    atm = StructAtm( runtime_helpfile, COUPLER_options )
+                    COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile )
+
+                elif COUPLER_options["atmosphere_model"] == 1:
+                    # Run AGNI 
+                    COUPLER_options = RunAGNI(time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    
+                else:
+                    raise Exception("Invalid atmosphere model")
 
             
             # Update help quantities, input_flag: "Atmosphere"
@@ -335,7 +344,7 @@ def main():
         time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
 
         # Print info, save atm to file, update plots
-        PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs)
+        PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options)
         
         # Update init loop counter
         if loop_counter["init"] < loop_counter["init_loops"]: # Next init iter

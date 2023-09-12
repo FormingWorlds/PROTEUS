@@ -6,7 +6,7 @@ Code for running offline chemistry based on PROTEUS output
 
 # Import libraries
 import numpy as np
-import pickle as pkl
+import netCDF4 as nc
 import os, glob, shutil, subprocess, time, pathlib
 from datetime import datetime
 import numpy.random as nrand
@@ -70,15 +70,30 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
         raise Exception("Offline chemistry already running for this year!")
     os.makedirs(this_results)
 
-    # Read atm object
-    with open(dirs["output"]+"/data/%d_atm.pkl"%year,'rb') as atm_handle:
-        atm = pkl.load(atm_handle)
-        p_bot   = atm.pl[-1]        # Pressure
-        p_top   = atm.pl[0]         # Pressure
-        v_mx    = atm.vol_list      # Mixing ratios
-        
-        volatile_species = v_mx.keys()
+    # Read atm data
+    nc_fpath = dirs["output"]+"/data/%d_atm.nc"%year
+    ds = nc.Dataset(nc_fpath)
 
+    ds_keys = ds.variables.keys()
+    tmp =   np.array(ds.variables["tmp"][:])
+    tmpl =  np.array(ds.variables["tmpl"][:])
+    p   =   np.array(ds.variables["p"][:])
+    pl  =   np.array(ds.variables["pl"][:])
+    r_gas = np.array(ds.variables["gases"][:])  # gas names, as read
+    x_gas = np.array(ds.variables["x_gas"][:])  # gas mixing ratios
+
+    p_bot   = np.max(pl) 
+    p_top   = np.min(pl) 
+
+    v_mx    = dict()      # Mixing ratios
+    for i,g in enumerate(r_gas):
+        gas = str(g).strip()
+        val = x_gas[-1,i]
+        v_mx[gas] = float(val)
+        print("Mixing ratio of %s = %f" % (gas,val))
+
+    ds.close()
+    
     # Read helpfile to get data for this year
     helpfile_thisyear = helpfile_df.loc[helpfile_df['Time'] == year].iloc[0]
 
@@ -93,7 +108,7 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
 
         # Constant mixing ratios
         const_mix = "{"
-        for v in volatile_species:
+        for v in v_mx.keys():
             this_mx = max(float(v_mx[v]),mixing_ratio_floor)     
             const_mix += " '%s' : %1.5e ," % (v,this_mx)
         const_mix = const_mix[:-1]+" }"
@@ -103,7 +118,7 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
         tot = {}
         for e in element_list:
             tot[e] = 0
-        for v in volatile_species:
+        for v in v_mx.keys():
             this_mx = max(float(v_mx[v]),mixing_ratio_floor)    
             elems = mol_to_ele(v)
             for e in elems.keys():
@@ -173,12 +188,12 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
 
     # Write PT profile
     minT = 120.0
-    atm.tmpl = np.clip(atm.tmpl,minT,None)
-    if np.any(np.array(atm.tmpl) < minT):
+    tmpl = np.clip(tmpl,minT,None)
+    if np.any(np.array(tmpl) < minT):
         print("WARNING: Temperature is unreasonably low (< %f)!" % minT)
     vul_PT = np.array(
-        [np.array(atm.pl)  [::-1] * 10.0,
-         np.array(atm.tmpl)[::-1]
+        [np.array(pl)  [::-1] * 10.0,
+         np.array(tmpl)[::-1]
         ]
     ).T
     header = "#(dyne/cm2)\t (K) \n Pressure\t Temp"
@@ -314,14 +329,14 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
     json_years = np.sort(json_years)
     logging.info("Number of json files: %d"%len(json_years))
 
-    evolution_pkl = glob.glob(dirs["output"]+"/data/*_atm.pkl")
-    pkl_years = np.array([int(f.split("/")[-1].split("_atm.")[0]) for f in evolution_pkl])
-    pkl_years = np.sort(pkl_years)
-    logging.info("Number of pkl files: %d"%len(pkl_years))
+    evolution_nc = glob.glob(dirs["output"]+"/data/*_atm.nc")
+    nc_years = np.array([int(f.split("/")[-1].split("_atm.")[0]) for f in evolution_nc])
+    nc_years = np.sort(nc_years)
+    logging.info("Number of nc files: %d"%len(nc_years))
 
     years_all = []
     for y in json_years:
-        if y in pkl_years: 
+        if y in nc_years: 
             years_all.append(y)
 
     # All requested
@@ -532,13 +547,13 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
 if __name__ == '__main__':
 
     # Parameters
-    cfgfile =       "output/example_trappist1b_IW+0/init_coupler.cfg"  # Config file used for PROTEUS
+    cfgfile =       "output/case_002/init_coupler.cfg"  # Config file used for PROTEUS
     samples =       40                  # How many samples to use from output dir (set to -1 if all are requested)
     threads =       40                  # How many threads to use
     mkfuncs =       False               # Compile reaction functions again?
     mkplots =       True                # make plots?
-    s_width =       9e7                 # Width of sampling distribution [yr]
-    s_centre =      9e5                 # Centre of sampling distribution [yr]
+    s_width =       2e8                 # Width of sampling distribution [yr]
+    s_centre =      2e5                 # Centre of sampling distribution [yr]
     runtime_sleep = 30                  # Sleep seconds per iter (required for VULCAN warm up periods to pass)
     ini_method =    1                   # Method used to init VULCAN abundances  (0: const_mix, 1: eqm)
 

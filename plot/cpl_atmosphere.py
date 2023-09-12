@@ -4,11 +4,12 @@
 from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import MyJSON, get_all_output_times
+from AEOLUS.utils.height import AtmosphericHeight
 
 from AEOLUS.modules.spectral_planck_surface import surf_Planck_nu
 
 #====================================================================
-def plot_atmosphere( output_dir, times ):
+def plot_atmosphere( output_dir, times):
 
     print("Plot atmosphere")
 
@@ -72,14 +73,16 @@ def plot_atmosphere( output_dir, times ):
 
     for nn, time in enumerate( fig_o.time ):
 
-        atm_file = output_dir+"/data/"+str(int(time))+"_atm.pkl"
+        atm_file = output_dir+"/data/"+str(int(time))+"_atm.nc"
 
         if os.path.exists(atm_file):
 
-            # Read pickle file
-            atm_file_stream = open(atm_file,'rb')
-            atm = pkl.load(atm_file_stream)
-            atm_file_stream.close()
+            ds = nc.Dataset(atm_file)
+            ds_keys = ds.variables.keys()
+            tmp =   np.array(ds.variables["tmp"][:])
+            p   =   np.array(ds.variables["p"][:])
+            z   =   np.array(ds.variables["z"][:]) * 1e-3  # convert to km
+            ds.close()
 
             # read json
             myjson_o = MyJSON( output_dir+"/data/"+'{}.json'.format(time) )
@@ -90,30 +93,27 @@ def plot_atmosphere( output_dir, times ):
 
             label = latex_float(time)+" yr"
             
-            # Atmosphere T-Z
-            z_profile = AtmosphericHeight(atm, planet_mass, r_planet) # m
-            z_profile = z_profile*1e-3 # km
-            ax0.plot( atm.tmp, z_profile, '-', color=color, label=label, lw=1.5)
+            
+            ax0.plot( tmp, z, '-', color=color, label=label, lw=1.5)
 
             # print(time,atm.tmp, atm.p)
 
             # Atmosphere T-P
-            ax1.semilogy( atm.tmp, atm.p/1e5, '-', color=color, label=label, lw=1.5)
+            ax1.semilogy(tmp, p/1e5, '-', color=color, label=label, lw=1.5)
 
             # Spectral flux density per wavenumber
-            # ax2.plot( atm.band_centres, atm.LW_spectral_flux_up[:,0]/atm.band_widths, '-', color=color, label=label, lw=1.5)
-            ax2.plot( atm.band_centres, atm.net_spectral_flux[:,0]/atm.band_widths, '-', color=color, label=label, lw=1.5)
-            ymax_sp_flux = np.max( [ ymax_sp_flux, np.max(atm.net_spectral_flux[:,0]/atm.band_widths)] )
+            # ax2.plot( atm.band_centres, atm.net_spectral_flux[:,0]/atm.band_widths, '-', color=color, label=label, lw=1.5)
+            # ymax_sp_flux = np.max( [ ymax_sp_flux, np.max(atm.net_spectral_flux[:,0]/atm.band_widths)] )
 
             # Blackbody curves
-            ax2.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths, color=color, ls='--', lw=1.0, alpha=0.5, label=str(round(atm.ts))+' K blackbody')
+            # ax2.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths, color=color, ls='--', lw=1.0, alpha=0.5, label=str(round(atm.ts))+' K blackbody')
 
             # Reset y-axis boundaries
-            if np.min(atm.p) > 0:
-                ymax_atm_pressure = np.max([ymax_atm_pressure, np.max(atm.p/1e5)])
-                ymin_atm_pressure = np.min([ymin_atm_pressure, np.min(atm.p/1e5)])
-                ymax_atm_z = np.max([ymax_atm_z, np.max(z_profile)])
-                ymin_atm_z = np.min([ymin_atm_z, np.min(z_profile)])
+            if np.min(p) > 0:
+                ymax_atm_pressure = np.max([ymax_atm_pressure, np.max(p/1e5)])
+                ymin_atm_pressure = np.min([ymin_atm_pressure, np.min(p/1e5)])
+                ymax_atm_z = np.max([ymax_atm_z, np.max(z)])
+                ymin_atm_z = np.min([ymin_atm_z, np.min(z)])
 
     ### Figure settings
     xticks = [10, 500, 1000, 1500, 2000, 2500, 3000]

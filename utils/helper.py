@@ -32,10 +32,6 @@ def CleanDir(dir):
         shutil.rmtree(dir)
     os.makedirs(dir)
 
-def gravity( m, r ):
-    g = phys.G*m/r**2
-    return g
-
 def find_nearest(array, target):
     """Find the element of an array that has a value closest to the target
 

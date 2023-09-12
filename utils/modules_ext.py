@@ -34,6 +34,7 @@ import matplotlib.font_manager as fm
 
 
 # Data and science
+import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import math

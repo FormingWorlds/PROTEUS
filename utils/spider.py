@@ -610,9 +610,9 @@ def get_all_output_times( odir='output' ):
     return time_a
 
 #====================================================================
-def get_all_output_pkl_times( odir='output' ):
+def get_all_output_atm_times( odir='output' ):
 
-    '''get all times (in Myrs) from the pkl files located in the
+    '''get all times (in Myrs) from the nc files located in the
        output directory'''
 
     odir = odir+'/data/'
@@ -620,15 +620,15 @@ def get_all_output_pkl_times( odir='output' ):
     # locate times to process based on files located in odir/
     file_l = [f for f in os.listdir(odir) if os.path.isfile(odir+f)]
     if not file_l:
-        print('output directory contains no PKL files')
-        sys.exit(0)
+        raise Exception('Output directory contains no files')
 
     time_l = [fname for fname in file_l]
-    time_l = list(filter(lambda a: a.endswith('pkl'), time_l))
+    time_l = list(filter(lambda a: a.endswith('nc'), time_l))
+    if len(time_l) == 0:
+        raise Exception("Could not find any nc files in the output directory")
 
     # Filter and split files
     time_l = [ file for file in time_l if not file.startswith("orig_")]
-    time_l = [ time.split('.pkl')[0] for time in time_l ]
     time_l = [ int(time.split('_atm')[0]) for time in time_l ]
     
     # ascending order
@@ -744,7 +744,8 @@ def get_static_structure_for_radius( radius, *myargs ):
     M_earth = myargs[0]
     R_core = myargs[1]
     num = myargs[4]
-    g_Earth = gravity( M_earth, radius )
+    g_Earth = phys.G*M_earth/radius**2
+
     z0 = [0,M_earth,g_Earth]
     r = get_radius_array_static_structure( radius, *myargs )
     z = odeint( get_deriv_static_structure, z0, r, args=myargs )
@@ -769,46 +770,6 @@ def get_difference_static_structure( radius, *myargs ):
 
     return g_core-G_core
 
-#====================================================================
-def get_myargs_static_structure( rho_interp1d ):
-
-    # some constants taken from here (not the best reference)
-    # https://www.sciencedirect.com/topics/earth-and-planetary-sciences/earth-core
-
-    # hard-coded parameters here
-    M_earth = 5.972E24 # kg
-    # we want to match the mass and gravity at the core radius
-    # and the core is assumed static and unchanging
-    R_core = 3485000.0 # m
-    M_core = 1.94E24 # kg
-    G_core = gravity( M_core, R_core )
-    # number of layers
-    # FIXME: for plotting this might explain mismatch between
-    # atmosphere and mantle temperature at the surface?
-    num = 1000
-
-    # tuple of arguments required for functions
-    myargs = (M_earth,R_core,M_core,G_core,num,rho_interp1d)
-
-    return myargs
-
-#====================================================================
-def solve_for_planetary_radius( rho_interp1d ):
-
-    '''simple integrator for static structure equations based on the
-       approach outlined in Valencia et al. (2007)'''
-
-    # initial guess
-    R_earth = 6371000.0 # m
-
-    myargs = get_myargs_static_structure( rho_interp1d )
-
-    radius = newton( get_difference_static_structure, R_earth,
-        args=myargs, maxiter=500 )
-
-    check_static_structure( radius, *myargs )
-
-    return radius
 
 #====================================================================
 def check_static_structure( radius, *myargs ):
@@ -822,48 +783,6 @@ def check_static_structure( radius, *myargs ):
         print( 'WARNING: g relative accuracy= {}'.format(reldg) )
 
 #====================================================================
-def plot_static_structure( radius, rho_interp1d ):
-
-    myargs = get_myargs_static_structure( rho_interp1d )
-
-    radius_a = get_radius_array_static_structure( radius, *myargs )
-    radius_a *= 1.0E-3 # to km
-    z = get_static_structure_for_radius( radius, *myargs )
-
-    pressure_a = z[:,0]
-    rho_a = rho_interp1d( pressure_a )
-    pressure_a *= 1.0E-9 # to GPa
-    rho_a *= 1.0E-3 # to g/cc
-    mass_a = z[:,1]
-    gravity_a = z[:,2]
-
-    fig, axs = plt.subplots(2,2,sharex=True, sharey=False)
-    fig.set_figheight(6)
-    fig.set_figwidth(8)
-
-    ax0 = axs[0,0]
-    ax1 = axs[0,1]
-    ax2 = axs[1,0]
-    ax3 = axs[1,1]
-
-    ax0.plot( radius_a, pressure_a, 'k-' )
-    ax0.set_ylabel( 'Pressure (GPa)' )
-    ax1.plot( radius_a, mass_a, 'k-' )
-    ax1.set_ylabel( 'Mass (kg)' )
-    ax2.plot( radius_a, gravity_a, 'k-' )
-    ax2.set_xlabel( 'Radius (km)' )
-    ax2.set_ylabel( 'Gravity (m/s^2)' )
-    ax3.plot( radius_a, rho_a, 'k-' )
-    ax3.set_xlabel( 'Radius (km)' )
-    ax3.set_ylabel( 'Density (g/cc)' )
-
-    radius_title = np.round(radius,0) * 1.0E-3 # to km
-    fig.suptitle('Planetary radius= {} km'.format(radius_title))
-    fig.savefig( "static_structure.pdf", bbox_inches="tight")
-
-#====================================================================
-
-
 def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
 
     PrintHalfSeparator()
@@ -977,7 +896,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
             # Calculate number of macro steps for SPIDER to perform within
             # this time-step of PROTEUS, which sets the number of json files.
-            nsteps = 4
+            nsteps = 2
             dtmacro = math.ceil(dtswitch / nsteps)   # Ensures that dtswitch is divisible by nsteps
             dtswitch = nsteps * dtmacro
 
