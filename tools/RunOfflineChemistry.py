@@ -81,12 +81,24 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
     ds.close()
 
     # Decode gas names
-    gases = [ "".join([c.decode("utf-8") for c in g]).strip() for g in n_gas ]
+    # gases = [ "".join([c.decode("utf-8") for c in g]).strip() for g in n_gas ]
+    gases = []
     x_gas = {}
-    for i,g in enumerate(gases):
+    for i,g_read in enumerate(n_gas):
+
+        g = "".join([c.decode("utf-8") for c in g_read]).strip()
+
         if not(g in volatile_species):
             raise Exception("Volatile present in NetCDF is not present in volatile_species list")
-        x_gas[g] = np.array(r_gas[:,i])
+        
+        x_arr = np.array(r_gas[:,i])
+        x_arr = np.clip(x_arr, 0, None)
+
+        if max(x_arr) < 1e-25:  # neglect species with zero mixing ratio.
+            continue 
+        
+        gases.append(g)
+        x_gas[g] = x_arr
 
     p_bot   = np.max(pl) 
     p_top   = np.min(pl) 
@@ -95,10 +107,7 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
     for i,g in enumerate(gases):
         val = float(x_gas[g][-1])
         v_mx[g] = val
-    print("    mixing ratios dict: %s" % str(v_mx))
 
-    
-    
     # Read helpfile to get data for this year
     helpfile_thisyear = helpfile_df.loc[helpfile_df['Time'] == year].iloc[0]
 
@@ -194,7 +203,7 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
     minT = 120.0
     tmpl = np.clip(tmpl,minT,None)
     if np.any(np.array(tmpl) < minT):
-        print("WARNING: Temperature is unreasonably low (< %f)!" % minT)
+        logging.warn("Temperature is unreasonably low (< %f)!" % minT)
     vul_PT = np.array(
         [np.array(pl)  [::-1] * 10.0,
          np.array(tmpl)[::-1]
@@ -540,7 +549,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
             logging.error('In attempting to make plots, no VULCAN output files were found')
 
         for s in species:
-            print("\t species = %s" % s)
+            logging.info("\t species = %s" % s)
             plot_offchem_species(dirs["output"],s,plot_init_mx=plot_aeolus)
 
     # Done
