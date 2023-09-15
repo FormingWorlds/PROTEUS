@@ -46,9 +46,9 @@ def main():
                     "total": 0,            # Total number of itersperformed
                     "init": 0,             # Number of init iters performed
                     "atm": 0,              # Number of atmosphere sub-iters performed
-                    "total_loops": 1e5,    # Maximum number of total loops
+                    "total_loops": 2000,   # Maximum number of total loops
                     "init_loops": 3,       # Maximum number of init iters
-                    "atm_loops":  200,     # Maximum number of atmosphere sub-iters
+                    "atm_loops":  20,      # Maximum number of atmosphere sub-iters
                     }
     
     # If restart skip init loop # args.r or args.rf or 

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 """
-Code for running offline chemistry based on PROTEUS output
+Code for running offline chemistry based on PROTEUS output.
+Configuration options are near the bottom of this file.
 """
 
 # Import libraries
@@ -73,26 +74,30 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
     # Read atm data
     nc_fpath = dirs["output"]+"/data/%d_atm.nc"%year
     ds = nc.Dataset(nc_fpath)
-
-    ds_keys = ds.variables.keys()
-    tmp =   np.array(ds.variables["tmp"][:])
     tmpl =  np.array(ds.variables["tmpl"][:])
-    p   =   np.array(ds.variables["p"][:])
     pl  =   np.array(ds.variables["pl"][:])
-    r_gas = np.array(ds.variables["gases"][:])  # gas names, as read
-    x_gas = np.array(ds.variables["x_gas"][:])  # gas mixing ratios
+    n_gas = np.array(ds.variables["gases"][:])  # gas names, as read
+    r_gas = np.array(ds.variables["x_gas"][:])  # gas mixing ratios
+    ds.close()
+
+    # Decode gas names
+    gases = [ "".join([c.decode("utf-8") for c in g]).strip() for g in n_gas ]
+    x_gas = {}
+    for i,g in enumerate(gases):
+        if not(g in volatile_species):
+            raise Exception("Volatile present in NetCDF is not present in volatile_species list")
+        x_gas[g] = np.array(r_gas[:,i])
 
     p_bot   = np.max(pl) 
     p_top   = np.min(pl) 
 
     v_mx    = dict()      # Mixing ratios
-    for i,g in enumerate(r_gas):
-        gas = str(g).strip()
-        val = x_gas[-1,i]
-        v_mx[gas] = float(val)
-        print("Mixing ratio of %s = %f" % (gas,val))
+    for i,g in enumerate(gases):
+        val = float(x_gas[g][-1])
+        v_mx[g] = val
+    print("    mixing ratios dict: %s" % str(v_mx))
 
-    ds.close()
+    
     
     # Read helpfile to get data for this year
     helpfile_thisyear = helpfile_df.loc[helpfile_df['Time'] == year].iloc[0]
@@ -140,8 +145,7 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
 
         # Bottom boundary condition
         fix_bb_mr = "{ "
-        for v in volatile_species:
-
+        for v in gases:
             this_mx = max(float(v_mx[v]),mixing_ratio_floor)  # Mixing ratio floor to prevent issues with VULCAN
 
             if (this_mx > mixing_ratio_fixed):
@@ -153,7 +157,7 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
         # Background component of atmosphere
         bkgrnd_s = "H2"
         bkgrnd_v = -1
-        for v in volatile_species:
+        for v in gases:
             this_mx = float(v_mx[v])
             if (this_mx > bkgrnd_v) and (v in ["N2","H2","CO2","O2"]): # Compare against list of viable background gases
                 bkgrnd_s = v
@@ -344,7 +348,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         samples = len(years_all)
 
     threads = min(threads, samples)
-    max_threads = 60
+    max_threads = 1000
     if samples < 1:
         raise Exception("Too few samples requested! (Less than zero)") 
     if samples > len(years_all):
@@ -547,14 +551,14 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
 if __name__ == '__main__':
 
     # Parameters
-    cfgfile =       "output/case_002/init_coupler.cfg"  # Config file used for PROTEUS
-    samples =       40                  # How many samples to use from output dir (set to -1 if all are requested)
-    threads =       40                  # How many threads to use
-    mkfuncs =       False               # Compile reaction functions again?
+    cfgfile =       "output/agni_proteus_demo2/init_coupler.cfg"  # Config file used for PROTEUS
+    samples =       80                  # How many samples to use from output dir (set to -1 if all are requested)
+    threads =       70                  # How many threads to use
+    mkfuncs =       True                # Compile reaction functions again?
     mkplots =       True                # make plots?
-    s_width =       2e8                 # Width of sampling distribution [yr]
-    s_centre =      2e5                 # Centre of sampling distribution [yr]
-    runtime_sleep = 30                  # Sleep seconds per iter (required for VULCAN warm up periods to pass)
+    s_width =       1e9                 # Scale width of sampling distribution [yr]
+    s_centre =      1e6                 # Centre of sampling distribution [yr]
+    runtime_sleep = 40                  # Sleep seconds per iter (required for VULCAN warm up periods to pass)
     ini_method =    1                   # Method used to init VULCAN abundances  (0: const_mix, 1: eqm)
 
     # Do it

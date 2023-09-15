@@ -33,8 +33,13 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     PrintHalfSeparator()
     print("Running AGNI...")
 
-    gravity = phys.G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
+    # Check that Julia is present
+    if shutil.which("julia") is None:
+        raise Exception("Could not find julia in current environment!")
 
+    # Setup values to be provided by CLI
+    gravity = phys.G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
+    
     csv_fpath = dirs["output"]+"/pt.csv"
 
     mr_str = "\""
@@ -83,6 +88,7 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
         # Start from previous CSV file?
         if (time_dict["planet"] > 3.0) and os.path.exists(csv_fpath):
             call_sequence.append("--load_csv %s" % csv_fpath)
+            call_sequence.append("--noaccel")
 
         # If not, the model will start from an isothermal state at T=tstar
 
@@ -104,24 +110,30 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     if debug:
         call_sequence.append("--verbose")
 
-    call_string = " ".join(call_sequence)
+    call_sequence.append("--plot")
+    call_sequence.append("--nsteps 200")
 
-    print(call_string)
+    call_string = " ".join(call_sequence)
 
     # Run AGNI
     if debug:
-        agni_print = sys.stdout
-    else:
-        agni_print = open(dirs["output"]+"agni_recent.log",'w')
-    subprocess.run([call_string],shell=True,check=True,stdout=agni_print)
-
-    if not debug:
-        agni_print.close()
+        print(call_string)
+    subprocess.run([call_string],shell=True,check=True,stdout=sys.stdout, stderr=subprocess.DEVNULL)
 
     # Read result
     nc_fpath = dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.nc"
-    os.remove(dirs["output"]+"/fl.csv")
-    shutil.move(dirs["output"]+"/atm.nc", nc_fpath)
+    shutil.move(dirs["output"]+"/atm.nc", nc_fpath)  # read data
+
+    fl_path = dirs["output"]+"/plot_fluxes.pdf"   # move fluxes plot
+    if os.path.exists(fl_path):
+        os.remove(fl_path)
+    shutil.move(dirs["output"]+"/fl.pdf", fl_path)
+
+    os.remove(dirs["output"]+"/fl.csv")  # remove fluxes csv
+
+    pt_path = dirs["output"]+"/pt.pdf"  # remove pt plot
+    if os.path.exists(pt_path):
+        os.remove(pt_path)
 
     ds = nc.Dataset(nc_fpath)
     net_flux =      np.array(ds.variables["fl_N"][:])
