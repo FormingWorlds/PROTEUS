@@ -59,12 +59,15 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
             color = 'black'
             print("Warning: could not find a defined colour for species '%s' " % s)
 
+        pretty = s
+        if s in vol_latex.keys():
+            pretty = vol_latex[s]
 
         # VULCAN result
         key = str("mx_"+s)
         if key in year_dict.keys():
             ax1.plot(year_dict[key],year_dict["pressure"],lw=lw+0.4,color='black')
-            ax1.plot(year_dict[key],year_dict["pressure"],label=s,lw=lw,color=color)
+            ax1.plot(year_dict[key],year_dict["pressure"],label=pretty,lw=lw,color=color)
             min_mix = min(min_mix,np.amin(year_dict[key]))
             
         # AEOLUS result

@@ -103,8 +103,11 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
             mean_mx = np.mean(clean_mx)           
             mx_vul.append(float(mean_mx))
 
+        pretty = sp
+        if sp in vol_latex.keys():
+            pretty = vol_latex[sp]
         ax.plot(times,mx_vul,color='black',lw=lw+0.4,zorder=3)
-        ax.plot(times,mx_vul,color=color,label=sp,lw=lw,zorder=4)
+        ax.plot(times,mx_vul,color=color,label=pretty,lw=lw,zorder=4)
 
         if plot_init_mx:
             if str("ae_"+sp) in years_data[0].keys():

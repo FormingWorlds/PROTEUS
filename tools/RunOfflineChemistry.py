@@ -81,7 +81,6 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
     ds.close()
 
     # Decode gas names
-    # gases = [ "".join([c.decode("utf-8") for c in g]).strip() for g in n_gas ]
     gases = []
     x_gas = {}
     for i,g_read in enumerate(n_gas):
@@ -397,7 +396,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
                 raise Exception("Maximum iterations reached in selecting sample years!")
 
             # sample = np.abs(nrand.laplace(loc=ylast,scale=float(ylast*swidth)))
-            sample = nrand.gumbel(loc=s_centre,scale=s_width)
+            sample = -1.0 * nrand.gumbel(loc=-1.0*s_centre,scale=s_width)
             if (sample <= yfirst) or (sample >= ylast):
                 continue  # Try again
 
