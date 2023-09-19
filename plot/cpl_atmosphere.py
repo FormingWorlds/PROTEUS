@@ -135,8 +135,8 @@ def plot_atmosphere( output_dir, times):
 
     #####  T-P
     # fig_o.set_myaxes( ax1, xlabel='$T$ (K)', ylabel='$P_\mathrm{atm}$\n(bar)', xmin=xmin, xmax=xmax, xticks=xticks )
-    ax1.set_xlabel("Temperature, $T$ (K)")
-    ax1.set_ylabel("Atmosphere pressure, $P$ (bar)")
+    ax1.set_xlabel("Temperature, $T$ [K]")
+    ax1.set_ylabel("Atmosphere pressure, $P$ [bar]")
     ax1.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
     ax1.set_ylim( top=ymax_atm_pressure, bottom=ymin_atm_pressure )
     # ax1.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
@@ -154,9 +154,9 @@ def plot_atmosphere( output_dir, times):
     # ax2.set_xlabel( '$X_{H_2O}$ (mol$_i$/mol)')
 
     #####  Spectral OLR
-    fig_o.set_myaxes( ax2, xlabel='Wavenumber (cm$^{-1}$)', ylabel='Spectral flux' )
+    fig_o.set_myaxes( ax2, xlabel='Wavenumber [cm$^{-1}$]', ylabel='Spectral flux' )
     
-    ax2.set_ylabel( 'Spectral flux density (W m$^{-2}$ cm$^{-1}$)', rotation=90)
+    ax2.set_ylabel( 'Spectral flux density [W m$^{-2}$ cm$^{-1}$]', rotation=90)
     # ax2.yaxis.set_label_position("right")
     # ax2.yaxis.tick_right()
     ax2.set_xlim( left=0, right=20000 )

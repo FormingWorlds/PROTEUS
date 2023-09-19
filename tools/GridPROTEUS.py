@@ -6,6 +6,8 @@
 import os, itertools, time, subprocess, shutil, glob, sys
 import numpy as np
 COUPLER_DIR=os.getenv('COUPLER_DIR')
+if COUPLER_DIR == None:
+    raise Exception("Environment not activated and/or setup correctly")
 
 # Object for handling the parameter space
 class Pspace():
@@ -174,10 +176,9 @@ class Pspace():
                 time.sleep(0.5)
 
             cfgfile = self.outdir+"case_%03d.cfg" % i
-            logfile = self.outdir+"case_%03d.log" % i
             screen_name = "pgrid_%s_%03dx" % (name,i)
 
-            gp["dir_output"] = "pspace_"+self.name+"/case_%03d/"%i
+            gp["dir_output"] = "pspace_"+self.name+"/case_%03d"%i
 
             # Create config file for this case
             with open(cfgfile, 'w') as hdl:
@@ -202,15 +203,17 @@ class Pspace():
                     else:
                         hdl.write(str(l) + "\n")
             
-            print("    %d%%" % ( (i+1.0)/self.size*100.0 ) ) 
+            if self.size > 1:
+                print("    %d%%" % ( i/(self.size-1.0)*100.0 ) ) 
                     
-
-            # Start proteus inside a screen session
+            # Start the model using the RunPROTEUS utility
             if test_run:
-                print("(test run not dispatching proteus '%s')" % screen_name)
+                print("    (test run not dispatching proteus '%s')" % screen_name)
             else:
-                proteus_run = 'screen -S %s -L -Logfile %s -dm bash -c "python proteus.py -cfg_file %s"' % (screen_name,logfile,cfgfile)
+                proteus_run = COUPLER_DIR+"/tools/RunPROTEUS.sh " + cfgfile + " " + screen_name + " y "
                 subprocess.run([proteus_run], shell=True, check=True)
+            
+            print(" ")
 
             # End of dispatch loop
 
@@ -229,7 +232,7 @@ if __name__=='__main__':
     # Define parameter space
     # -----
 
-    ps = Pspace("test", os.getenv('COUPLER_DIR')+"/init_coupler.cfg")
+    ps = Pspace("redox", os.getenv('COUPLER_DIR')+"/init_coupler.cfg")
 
     ps.add_dimension("Redox state")
     ps.set_dimension_linspace("Redox state", "fO2_shift_IW", -2, +2, 3)

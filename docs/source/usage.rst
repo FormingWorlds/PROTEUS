@@ -16,11 +16,12 @@ You can also run PROTEUS using:
 
    .. code-block:: console
 
-         $  tools/RunPROTEUS.sh [cfgfile] [alias]
+         $  tools/RunPROTEUS.sh [cfgfile] [alias] [detach]
    
 Which runs PROTEUS using the config file ``[cfgfile]`` inside a Screen session 
-with the name ``[alias]``. This allows multiple instances of the model to be
-dispatched easily, while preventing runs from having clashing names.   
+with the name ``[alias]``. The ``[detatch]`` parameter (y/n) tells the session 
+whether to immediately detach or not. his allows multiple instances of the model 
+to be dispatched easily, while preventing runs from having clashing names.   
   
 Configuration file    
 ----------------   

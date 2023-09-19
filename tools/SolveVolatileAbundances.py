@@ -371,8 +371,7 @@ def equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitroge
     # this doesn't seem to happen)
     while ier != 1:
         x0 = get_initial_pressures(target_d)
-        sol, info, ier, msg = fsolve(func, x0, args=(fO2_shift, 
-            global_d, target_d), full_output=True)
+        sol, info, ier, msg = fsolve(func, x0, args=(fO2_shift, global_d, target_d), full_output=True)
         count += 1
         # sometimes, a solution exists with negative pressures, which
         # is clearly non-physical.  Here, assert we must have positive
@@ -391,11 +390,17 @@ def equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitroge
     p_d['N_ocean_moles'] = N_ocean_moles
     p_d['CH_ratio'] = CH_ratio
     p_d['fO2_shift'] = fO2_shift
+    p_d['Nitrogen_ppm'] = Nitrogen 
+
+    for key in global_d.keys():
+        p_d[key] = global_d[key]
+    
     # for debugging/checking, add success initial condition
     # that resulted in a converged solution with positive pressures
     p_d['pH2O_0'] = x0[0]
     p_d['pCO2_0'] = x0[1]
     p_d['pN2_0'] = x0[2]
+
     # also for debugging/checking, report residuals
     p_d['res_H'] = res_l[0]
     p_d['res_C'] = res_l[1]
@@ -407,19 +412,38 @@ def equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitroge
 def equilibrium_atmosphere_MC(Nitrogen):
     """Monte Carlo"""
 
-    NN = 3000
-    N_ocean_moles_l = np.random.uniform(1, 10, NN)
-    CH_ratio_l = np.random.uniform(0.1, 1, NN)
-    fO2_shift_l = np.random.uniform(-4, 4, NN)
     global_d = get_global_parameters()
+
+    NN = 2000
+
+    # Samples
+    N_ocean_moles_l =   np.random.uniform(2,    20,     NN)
+    CH_ratio_l =        np.random.uniform(0.1,  1,      NN)
+    fO2_shift_l =       np.random.uniform(-5,   3,      NN)
+    nitrogen_l =        np.random.uniform(0.5,  5.0,    NN)
+    mantle_l =          np.random.uniform(0.2,  5.0,    NN) * global_d['mantle_mass']
+    tsurf_l =           np.random.uniform(1500, 3000,   NN)
+    # Or,
+    # Constant
+    # N_ocean_moles_l =   np.ones(NN) * 1.0 
+    CH_ratio_l =        np.ones(NN) * 1.0
+    fO2_shift_l =       np.ones(NN) * 0.0   
+    nitrogen_l =        np.ones(NN) * 2.8
+    mantle_l =          np.ones(NN) * global_d['mantle_mass']
+    # tsurf_l =           np.ones(NN) * 2500.0
 
     out_l = []
 
     for ii in range(NN):
         logging.info(f'Simulation number= {ii}')
+
         N_ocean_moles = N_ocean_moles_l[ii]
         CH_ratio = CH_ratio_l[ii]
         fO2_shift = fO2_shift_l[ii]
+        Nitrogen = nitrogen_l[ii]
+        global_d['mantle_mass'] = mantle_l[ii]
+        global_d['temperature'] = tsurf_l[ii]
+
         p_d = equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitrogen)
         out_l.append(p_d)
 
@@ -456,6 +480,7 @@ def main():
     kwargs = vars(args)
 
     if args.monte_carlo:
+        print("Running monte-carlo simulation with parameter set in call function")
         equilibrium_atmosphere_MC(kwargs['nitrogen'])
     else:
         global_d = get_global_parameters()

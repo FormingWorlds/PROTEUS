@@ -39,6 +39,10 @@ def main():
     utils.constants.dirs = SetDirectories(COUPLER_options)
     from utils.constants import dirs
 
+    os.chdir(dirs["coupler"])
+
+    print("Hostname: " + str(os.uname()[1]))
+
     print("Output directory: '%s'" % dirs["output"])
 
     # Count iterations
