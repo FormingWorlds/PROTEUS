@@ -175,10 +175,10 @@ class Pspace():
             if (i > 0):
                 time.sleep(0.5)
 
-            cfgfile = self.outdir+"case_%03d.cfg" % i
-            screen_name = "pgrid_%s_%03dx" % (name,i)
+            cfgfile = self.outdir+"case_%05d.cfg" % i
+            screen_name = "pgrid_%s_%05dx" % (name,i)
 
-            gp["dir_output"] = "pspace_"+self.name+"/case_%03d"%i
+            gp["dir_output"] = "pspace_"+self.name+"/case_%05d"%i
 
             # Create config file for this case
             with open(cfgfile, 'w') as hdl:
@@ -226,7 +226,7 @@ class Pspace():
 
 
 if __name__=='__main__':
-    print("Start")
+    print("Start GridPROTEUS")
 
     # -----
     # Define parameter space
@@ -268,7 +268,7 @@ if __name__=='__main__':
     ps.run(test_run=False)
 
 
-    # When this script ends, all cases of PROTEUS should be running
+    # When this script ends, all cases of PROTEUS should be running.
     # It does not mean that they are complete.
-    print("Exit")
+    print("Exit GridPROTEUS")
     

@@ -2,7 +2,7 @@
 
 # Script to run PROTEUS using screen
 
-echo "RunPROTEUS"
+echo "Start RunPROTEUS"
 
 # Check if the required globals are set
 if [[ -z $COUPLER_DIR ]]; then

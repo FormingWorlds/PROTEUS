@@ -425,9 +425,9 @@ def equilibrium_atmosphere_MC(Nitrogen):
     tsurf_l =           np.random.uniform(1500, 3000,   NN)
     # Or,
     # Constant
-    # N_ocean_moles_l =   np.ones(NN) * 1.0 
+    N_ocean_moles_l =   np.ones(NN) * 1.0 
     CH_ratio_l =        np.ones(NN) * 1.0
-    fO2_shift_l =       np.ones(NN) * 0.0   
+    # fO2_shift_l =       np.ones(NN) * 0.0   
     nitrogen_l =        np.ones(NN) * 2.8
     mantle_l =          np.ones(NN) * global_d['mantle_mass']
     # tsurf_l =           np.ones(NN) * 2500.0

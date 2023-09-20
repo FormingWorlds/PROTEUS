@@ -33,17 +33,15 @@ result["fO2-IW"]            = df['fO2_shift'].values
 result["Tsurf"]             = df['temperature'].values
 
 num_rows        = len(df['N_ocean_moles'].values)
-
-
 print("Number of rows:",num_rows)
 
 # Make plots
 
 fig,ax = plt.subplots()
 
-x = "H2_oc_eqv"
+x = "fO2-IW"
 y = "Tsurf"
-z = "CH4_bar"
+z = "H2O_bar"
 
 x_plt = result[x]
 y_plt = result[y]

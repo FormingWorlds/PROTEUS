@@ -12,7 +12,6 @@ import os, glob, shutil, subprocess, time, pathlib
 from datetime import datetime
 import numpy.random as nrand
 import logging
-import multiprocessing as mp
 import pandas as pd
 
 # Import PROTEUS stuff
@@ -29,7 +28,45 @@ def find_nearest_idx(array, value):
     idx = (np.abs(array - value)).argmin()
     return int(idx)
 
-def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict, helpfile_df:pd.DataFrame, ini_method:int) -> bool:
+
+# # Handle exceptions with logging library, so that they are written to the log file
+# # https://stackoverflow.com/a/16993115
+# def handle_exception(exc_type, exc_value, exc_traceback):
+#     if issubclass(exc_type, KeyboardInterrupt):
+#         sys.__excepthook__(exc_type, exc_value, exc_traceback)
+#     else:
+#         logging.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+
+# Custom logger instance 
+# https://stackoverflow.com/a/61457119
+def setup_logger(name:str, logpath:str="new.log", level=logging.INFO)->logging.Logger:
+
+    custom_logger = logging.getLogger(name)    
+    custom_logger.handlers.clear()
+    
+    if os.path.exists(logpath):
+        os.remove(logpath)
+
+    fmt = logging.Formatter("[%(levelname)s] %(message)s")
+
+    sh = logging.StreamHandler(sys.stdout)
+    sh.setFormatter(fmt)
+    sh.setLevel(level)
+    custom_logger.addHandler(sh)
+
+    fh = logging.FileHandler(logpath)
+    fh.setFormatter(fmt)
+    fh.setLevel(level)
+    custom_logger.addHandler(fh)
+
+    custom_logger.setLevel(level)
+    # sys.excepthook = handle_exception
+
+    return custom_logger 
+
+
+def run_once(logger:logging.Logger, year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict, helpfile_df:pd.DataFrame, ini_method:int) -> bool:
     """Run VULCAN once for a given PROTEUS output year
     
     Runs VULCAN in a screen instance so that lots processes may still be
@@ -38,6 +75,8 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
 
     Parameters
     ----------
+        logger : logging.Logger
+            Logger class to use
         year : int
             Planet age corresponding to a data dump from PROTEUS [yr]
         now : int
@@ -202,7 +241,7 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
     minT = 120.0
     tmpl = np.clip(tmpl,minT,None)
     if np.any(np.array(tmpl) < minT):
-        logging.warn("Temperature is unreasonably low (< %f)!" % minT)
+        logger.warn("Temperature is unreasonably low (< %f)!" % minT)
     vul_PT = np.array(
         [np.array(pl)  [::-1] * 10.0,
          np.array(tmpl)[::-1]
@@ -224,14 +263,6 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
 
     return success
 
-
-# Handle exceptions with logging library, so that they are written to the log file
-# https://stackoverflow.com/a/16993115
-def handle_exception(exc_type, exc_value, exc_traceback):
-    if issubclass(exc_type, KeyboardInterrupt):
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
-    else:
-        logging.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
 
 
 def parent(cfgfile, samples, threads, s_width, s_centre, 
@@ -277,10 +308,6 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
 
     """
 
-    print("Started main process")
-
-    args = locals()
-
     # Read in PROTEUS config file
     COUPLER_options, _ = ReadInitFile( cfgfile )
 
@@ -302,35 +329,22 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
     shutil.copy2(cfgfile, offchem_dir)
 
     # Set up logging
-    logfile = offchem_dir+"parent.log"
-    if os.path.exists(logfile):
-        os.remove(logfile)
-
-    logging.basicConfig(
-    level=logging.INFO,
-    format="[%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(logfile),
-        logging.StreamHandler()
-        ]
-    )
-    sys.excepthook = handle_exception
+    logger_name = "logger_%d" % nrand.randint(low=1e9, high=9e9)
+    log_file = offchem_dir+"parent.log"
+    logger = setup_logger(logger_name,logpath=log_file)
 
     # Log info to user
     time_start = datetime.now()
-    logging.info("Date: " +str(time_start.strftime("%Y-%m-%d")))
+    logger.info("Date: " +str(time_start.strftime("%Y-%m-%d")))
 
     now = int(str(time_start.strftime("%H%M%S")))
-    logging.info("Time: %d"%now)
+    logger.info("Time: %d"%now)
 
-    logging.info(" ")
-    logging.info("Arguments: %s" % str(args))
-
-    logging.info(" ")
-    logging.info("This program will generate several screen sessions")
-    logging.info("To kill all of them, run `pkill -f %d_offchem_`" % now)   # (from: https://stackoverflow.com/a/8987063)
-    logging.info("Take care to avoid orphaned instances by using `screen -ls`")
-    logging.info(" ")
+    logger.info(" ")
+    logger.info("This program will generate several screen sessions")
+    logger.info("To kill all of them, run `pkill -f %d_offchem_`" % now)   # (from: https://stackoverflow.com/a/8987063)
+    logger.info("Take care to avoid orphaned instances by using `screen -ls`")
+    logger.info(" ")
 
     # Read helpfile
     helpfile_df = pd.read_csv(dirs["output"]+"runtime_helpfile.csv",sep='\t')
@@ -339,12 +353,12 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
     evolution_json = glob.glob(dirs["output"]+"/data/*.json")
     json_years = np.array([int(f.split("/")[-1].split(".")[0]) for f in evolution_json])
     json_years = np.sort(json_years)
-    logging.info("Number of json files: %d"%len(json_years))
+    logger.info("Number of json files: %d"%len(json_years))
 
     evolution_nc = glob.glob(dirs["output"]+"/data/*_atm.nc")
     nc_years = np.array([int(f.split("/")[-1].split("_atm.")[0]) for f in evolution_nc])
     nc_years = np.sort(nc_years)
-    logging.info("Number of nc files: %d"%len(nc_years))
+    logger.info("Number of nc files: %d"%len(nc_years))
 
     years_all = []
     for y in json_years:
@@ -367,7 +381,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         raise Exception("Too many threads requested! (More than %d)" % max_threads)
     
     # Select samples...
-    logging.info("Choosing sample years... (May take a while in some cases)")
+    logger.info("Choosing sample years... (May take a while in some cases)")
     years = [ ]
     yfirst = years_all[1]
     ylast = years_all[-1]
@@ -410,13 +424,13 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
 
     years = sorted(set(years))  # Ensure that there are no duplicates and sort ascending
     samples = len(years)
-    logging.info("Years selected: " +str(years))
+    logger.info("Years selected: " +str(years))
 
     # Start processes
-    logging.info(" ")
-    logging.info("Starting process manager (%d samples, %d threads) in..." % (samples,threads))
-    for w in range(5,0,-1):
-        logging.info("\t %d seconds" % w)
+    logger.info(" ")
+    logger.info("Starting process manager (%d samples, %d threads) in..." % (samples,threads))
+    for w in range(3,0,-1):
+        logger.info("\t %d seconds" % w)
         time.sleep(1.0)
 
     # Track statuses
@@ -459,7 +473,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
 
                 else:
                     status[i] = 3
-                    logging.info("WARNING: Output file missing for year = %d" % y)
+                    logger.info("WARNING: Output file missing for year = %d" % y)
 
         # How many are queued?
         count_queued = np.count_nonzero(status == 0)
@@ -474,7 +488,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         count_dispatched = np.count_nonzero(status > 0)
 
         # Print status
-        logging.info("Status: %d queued (%.1f%%), %d running (%.1f%%), %d completed (%.1f%%), %d threads active" % (
+        logger.info("Status: %d queued (%.1f%%), %d running (%.1f%%), %d completed (%.1f%%), %d threads active" % (
                     count_queued, 100.0*count_queued/samples,
                     count_current, 100.0*count_current/samples,
                     count_completed, 100.0*count_completed/samples,
@@ -499,14 +513,14 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
                     time.sleep(60.0)  
 
                 # Run new process
-                logging.info("Dispatching job %03d: %08d yrs..." % (i,y))
+                logger.info("Dispatching job %03d: %08d yrs..." % (i,y))
                 fr = bool( (count_dispatched == 0) and mkfuncs)
-                this_success = run_once(years[i], now, fr, dirs, COUPLER_options, helpfile_df, ini_method)
+                this_success = run_once(logger, years[i], now, fr, dirs, COUPLER_options, helpfile_df, ini_method)
                 status[i] = 1
                 if this_success:
-                    logging.info("\t (dispatched)")
+                    logger.info("\t (dispatched)")
                 else:
-                    logging.info("\t (failed)")
+                    logger.info("\t (failed)")
 
 
         # Check if all are done
@@ -514,26 +528,26 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         
     # Check if exited early
     if not done:
-        logging.info("WARNING: Master process loop terminated early!")
-        logging.info("         This could be because it timed-out or an error occurred.")
+        logger.info("WARNING: Master process loop terminated early!")
+        logger.info("         This could be because it timed-out or an error occurred.")
 
     # Tidy VULCAN output folder
     for f in glob.glob(dirs["vulcan"]+"output/%d_offchem_*"%now): 
         os.remove(f)
 
     time_end = datetime.now()
-    logging.info("All processes finished at: "+str(time_end.strftime("%Y-%m-%d %H%M%S")))
-    logging.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
+    logger.info("All processes finished at: "+str(time_end.strftime("%Y-%m-%d %H%M%S")))
+    logger.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
     # Plot
     if mkplots:
-        logging.info("Plotting results...")
+        logger.info("Plotting results...")
 
         # plot_aeolus = bool(ini_method == 0)
         plot_aeolus = True
 
         species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
-        logging.info("\t timeline")
+        logger.info("\t timeline")
         plot_offchem_time(dirs["output"],species,plot_init_mx=plot_aeolus,tmin=1e4)
 
         ls = glob.glob(dirs["output"]+"offchem/*/output.vul")
@@ -542,26 +556,26 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
 
         if len(years) > 0:
             for yd in years_data:
-                logging.info("\t year = %d" % yd["year"])
+                logger.info("\t year = %d" % yd["year"])
                 plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_aeolus)
         else:
-            logging.error('In attempting to make plots, no VULCAN output files were found')
+            logger.error('In attempting to make plots, no VULCAN output files were found')
 
         for s in species:
-            logging.info("\t species = %s" % s)
+            logger.info("\t species = %s" % s)
             plot_offchem_species(dirs["output"],s,plot_init_mx=plot_aeolus)
 
     # Done
-    logging.info("Done running offline chemistry!")
+    logger.info("Done running offline chemistry!")
 
 
 # If run directly
 if __name__ == '__main__':
 
     # Parameters
-    cfgfile =       "output/agni_proteus_demo2/init_coupler.cfg"  # Config file used for PROTEUS
-    samples =       80                  # How many samples to use from output dir (set to -1 if all are requested)
-    threads =       70                  # How many threads to use
+    cfgfile =       "output/pspace_redox/case_000/init_coupler.cfg"  # Config file used for PROTEUS
+    samples =       3                  # How many samples to use from output dir (set to -1 if all are requested)
+    threads =       1                  # How many threads to use
     mkfuncs =       True                # Compile reaction functions again?
     mkplots =       True                # make plots?
     s_width =       1e9                 # Scale width of sampling distribution [yr]
