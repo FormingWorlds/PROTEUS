@@ -4,7 +4,6 @@ from utils.modules_ext import *
 from utils.helper import *
 from AEOLUS.utils.atmosphere_column import atmos
 from AEOLUS.modules.solve_pt import RadConvEqm
-from AEOLUS.modules.radconv_solver import find_rc_eqm
 
 def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
 
@@ -201,39 +200,6 @@ def CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options):
 
     return atm
 
-def CallAtmRCE(atm, dirs, time_dict, COUPLER_options):
-    
-    atm = CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options)
-    
-    # Run socrates in output dir
-    cwd = os.getcwd()
-    os.chdir(dirs["output"])
-
-    for file in glob.glob(dirs["output"]+"/radeqm_monitor_*"):
-        os.remove(file)
-
-    
-    if (COUPLER_options["atmosphere_surf_state"] == 1):
-        atm_bc_bot = 1
-    else:
-        atm_bc_bot = 0
-
-    rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
-    atm_rce = find_rc_eqm(atm, dirs, rscatter=rscatter, verbose=False, plot=False, surf_state=atm_bc_bot)
-
-    # Go back to previous directory
-    os.chdir(cwd)
-
-    # Clean up run directory
-    for file in glob.glob(dirs["output"]+"/current??.????"):
-        os.remove(file)
-    for file in glob.glob(dirs["output"]+"/profile.*"):
-        os.remove(file)
-    
-
-    return atm_rce
-
-
 def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
     """Run AEOLUS.
     
@@ -270,7 +236,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
     if COUPLER_options["atmosphere_solve_energy"] == 0:
         atm = CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options)
     else:
-        atm = CallAtmRCE(atm, dirs, time_dict, COUPLER_options)
+        raise Exception("Cannot solve for RCE with AEOLUS")
 
     # Save atm data to disk
     nc_fpath = dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.nc"

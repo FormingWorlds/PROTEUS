@@ -226,8 +226,12 @@ inputs are provided.
    - (Float) Values greater than or equal to zero. Setting to zero will prevent
    any negative relative in the fluxes from one iteration to the next.
 
+* ``atmosphere_model``
+   - Choose atmosphere model used to set T(p).
+   - (Integer) 0: AEOLUS, 1: AGNI
+
 * ``atmosphere_solve_energy``
-   - Flag to enable time-stepped solution to atmosphere temperature structure.   
+   - Enable time-stepped solution for T(p). Only available with AGNI.
    - (Integer) 0: Disabled, 1: Enabled
 
 * ``phi_crit``
