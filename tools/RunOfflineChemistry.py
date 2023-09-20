@@ -40,7 +40,7 @@ def find_nearest_idx(array, value):
 
 # Custom logger instance 
 # https://stackoverflow.com/a/61457119
-def setup_logger(name:str, logpath:str="new.log", level=logging.INFO)->logging.Logger:
+def setup_logger(name:str, logpath:str="new.log", level=logging.INFO, logterm=True)->logging.Logger:
 
     custom_logger = logging.getLogger(name)    
     custom_logger.handlers.clear()
@@ -50,10 +50,11 @@ def setup_logger(name:str, logpath:str="new.log", level=logging.INFO)->logging.L
 
     fmt = logging.Formatter("[%(levelname)s] %(message)s")
 
-    sh = logging.StreamHandler(sys.stdout)
-    sh.setFormatter(fmt)
-    sh.setLevel(level)
-    custom_logger.addHandler(sh)
+    if logterm:
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(fmt)
+        sh.setLevel(level)
+        custom_logger.addHandler(sh)
 
     fh = logging.FileHandler(logpath)
     fh.setFormatter(fmt)
@@ -264,9 +265,8 @@ def run_once(logger:logging.Logger, year:int, now:int, first_run:bool, dirs:dict
     return success
 
 
-
 def parent(cfgfile, samples, threads, s_width, s_centre, 
-           mkfuncs=True, runtime_sleep=30, ini_method=1, mkplots=True):
+           mkfuncs=True, runtime_sleep=30, ini_method=1, mkplots=True, logterm=True):
     """Parent process for handing offline chemistry.
 
     Reads configuration from cfgfile, finds the files, takes samples, and dispatches 
@@ -304,7 +304,8 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
             1: calculate elemental abundances and run FastChem eqm chemistry.
         mkplots : bool
             Make plots at end?
-        
+        logterm : bool
+            Log output to terminal? Will always log to a file.
 
     """
 
@@ -331,7 +332,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
     # Set up logging
     logger_name = "logger_%d" % nrand.randint(low=1e9, high=9e9)
     log_file = offchem_dir+"parent.log"
-    logger = setup_logger(logger_name,logpath=log_file)
+    logger = setup_logger(logger_name,logpath=log_file,logterm=logterm)
 
     # Log info to user
     time_start = datetime.now()
@@ -574,8 +575,8 @@ if __name__ == '__main__':
 
     # Parameters
     cfgfile =       "output/pspace_redox/case_000/init_coupler.cfg"  # Config file used for PROTEUS
-    samples =       3                  # How many samples to use from output dir (set to -1 if all are requested)
-    threads =       1                  # How many threads to use
+    samples =       10                  # How many samples to use from output dir (set to -1 if all are requested)
+    threads =       70                  # How many threads to use
     mkfuncs =       True                # Compile reaction functions again?
     mkplots =       True                # make plots?
     s_width =       1e9                 # Scale width of sampling distribution [yr]

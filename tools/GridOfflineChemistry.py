@@ -36,7 +36,7 @@ if __name__ == '__main__':
     if tsamples < 1:
         raise Exception("Too few time samples per grid point") 
     tprocs = tsamples
-    procs_tot = npoints * tprocs 
+    procs_tot = npoints * (tprocs + 1)  # +1 for parent process
     while procs_tot > procs_max:
         tprocs -= 1
         if tprocs == 0:
@@ -45,28 +45,42 @@ if __name__ == '__main__':
     print("We will be running up to %d simultaneous processes. Check that this is what you want." % procs_tot)
     
     print("Sleeping 5 seconds...")
-    time.sleep(5)
+    for w in range(5,0,-1):
+        print("\t %d seconds" % w)
+        time.sleep(1.0)
 
     # Prepare processes as thread objects
     # They are 'parents' of VULCAN processes but 'children' of this process
     # If this processes, dies then these will die too. This process MUST
     # stay alive until the end in order to get any results from 
     # the calculations made by VULCAN.
+    print("Creating process pool")
     pool = []
     for i in range(npoints):
         fr = bool(i == 0)
         cfgfile = configs[i]
-
+        
         pool.append(threading.Thread(target =   ROC.parent, 
                                      args =     (cfgfile, tsamples, tprocs, s_width, s_centre),
-                                     kwargs =   {"mkfuncs":fr, "runtime_sleep":runtime_sleep, "ini_method":ini_method, "mkplots":False}
+                                     kwargs =   {"mkfuncs":fr, 
+                                                 "runtime_sleep":runtime_sleep, 
+                                                 "ini_method":ini_method, 
+                                                 "mkplots":False, 
+                                                 "logterm":False
+                                                 }
                                      )
                     )
-    
+        
     # Spawn each process in a new thread, making them a child of this process.
     # They need to stay alive to watch for (grand)child process completion.
-    for p in pool:
+    for i,p in enumerate(pool):
+        # Start async process
+        print("Dispatching chemistry for grid point %05d" % i)
         p.start()
+
+        # Wait for makefuncs to finish
+        if i == 0:
+            time.sleep(60.0) # 60 sec period in ROC + 2 sec buffer
         
     # Wait for processes to finish
     for i in range(npoints):
