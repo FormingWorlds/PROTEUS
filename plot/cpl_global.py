@@ -6,7 +6,7 @@ from utils.plot import *
 from utils.spider import *
 
 #====================================================================
-def plot_global( output_dir , COUPLER_options):
+def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 
     print("Plot global")
 
@@ -31,7 +31,12 @@ def plot_global( output_dir , COUPLER_options):
     txt_pad    = 0.1
     label_fs   = 11
 
-    fig_o = FigureData( 3, 2, width, height, output_dir+'/plot_global', units='yr' )
+    plt_name = "plot_global"
+    if logt:
+        plt_name += "_log"
+    else:
+        plt_name += "_lin"
+    fig_o = FigureData( 3, 2, width, height, output_dir+'/'+plt_name, units='yr' )
     fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.1)
 
     ax0 = fig_o.ax[0][0]
@@ -101,8 +106,13 @@ def plot_global( output_dir , COUPLER_options):
 
     xlabel = r'Time, $t$ (yr)'
 
-    xmax = max(1.0e6,np.amax(df_int["Time"]))
-    xlim = (1.0e1,10 ** math.ceil(math.log10(xmax*1.1)))
+    xmin = max(tmin, 1.0)
+    if logt:
+        xmax = max(1.0e6,np.amax(df_int["Time"]))
+        xlim = (xmin,10 ** math.ceil(math.log10(xmax*1.1)))
+    else:
+        xmax = np.amax(df_int["Time"])
+        xlim = (xmin, xmax)
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)
@@ -147,14 +157,15 @@ def plot_global( output_dir , COUPLER_options):
       
     # fig_o.set_myaxes(ax0)
     ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)
-    ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-    ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     ax0.set_xlim( *xlim )
     ymax = max(np.amax(df_atm["F_atm"])*1.1, 1.0e1)
     ymin = min(np.amin(df_atm["F_atm"]), -1.0e1)
     ax0.set_ylim(top=ymax, bottom=ymin)
     ax0.set_yscale('symlog')
-    ax0.set_xscale('symlog')
+    if logt:
+        ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
+        ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
+        ax0.set_xscale('symlog')
     ax0.set_xticklabels([])
     ax0.yaxis.set_label_coords(xcoord_l,ycoord_l)
     handles, labels = ax0.get_legend_handles_labels()
@@ -180,13 +191,13 @@ def plot_global( output_dir , COUPLER_options):
         
     ymin = 500
     ymax = 3500
-    yticks = [ymin, ymin+0.2*(ymax-ymin), ymin+0.4*(ymax-ymin), ymin+0.6*(ymax-ymin), ymin+0.8*(ymax-ymin), ymax]
     # fig_o.set_myaxes( ax1, title=title, yticks=yticks)
     ax1.set_ylabel(r'$T_\mathrm{s}$ (K)', fontsize=label_fs)
     # ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     # ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     # ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
-    ax1.set_xscale("symlog", linthresh=5) # , linthresh=100
+    if logt:
+        ax1.set_xscale("symlog", linthresh=5) # , linthresh=100
     ax1.set_xlim( *xlim )
     ax1.set_xticklabels([])
     ax1.yaxis.set_label_coords(xcoord_l,ycoord_l)
@@ -206,7 +217,8 @@ def plot_global( output_dir , COUPLER_options):
     # ax2.plot( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
     # ax2.plot( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
 
-    ax2.set_xscale("symlog", linthresh=5)
+    if logt:
+        ax2.set_xscale("symlog", linthresh=5)
     ax2.set_ylim([0,1])
     ax2.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
     ax2.set_xlim( *xlim )
@@ -302,15 +314,12 @@ def plot_global( output_dir , COUPLER_options):
     ##########
     fig_o.set_myaxes( ax3)
     ax3.set_ylabel('$p^{\mathrm{i}}$ [bar]', fontsize=label_fs)
-    ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-    ax3.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-    ax3.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax3.set_xlim( *xlim )
-    # ax3.set_ylim( bottom=0 )
-    # https://brohrer.github.io/matplotlib_ticks.html#tick_style
-    # ax3.tick_params(axis="x", direction="in", length=3, width=1)
-    # ax3.tick_params(axis="y", direction="in", length=10, width=1)
-    ax3.set_xscale("symlog", linthresh=5)
+    if logt:
+        ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
+        ax3.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
+        ax3.xaxis.set_minor_formatter(ticker.NullFormatter())
+        ax3.set_xscale("symlog", linthresh=5)
     ax3.set_xticklabels([])
     ax3.yaxis.tick_right()
     ax3.yaxis.set_label_position("right")
@@ -332,11 +341,12 @@ def plot_global( output_dir , COUPLER_options):
 
     fig_o.set_myaxes( ax4)
     ax4.set_ylabel(r'$X_{\mathrm{atm}}^{\mathrm{i}}/X_{\mathrm{tot}}^{\mathrm{i}}$', fontsize=label_fs)
-    ax4.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-    ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-    ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
+    if logt:
+        ax4.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
+        ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
+        ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
+        ax4.set_xscale("symlog", linthresh=5)
     ax4.yaxis.tick_right()
-    ax4.set_xscale("symlog", linthresh=5)
     ax4.set_xticklabels([])
     ax4.yaxis.set_label_position("right")
     ax4.yaxis.set_label_coords(xcoord_r,ycoord_r)
@@ -353,11 +363,12 @@ def plot_global( output_dir , COUPLER_options):
     # figure f
     ##########
     fig_o.set_myaxes( ax5, title=title_ax5)
-    ax5.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-    ax5.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-    ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
+    if logt:
+        ax5.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
+        ax5.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
+        ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
+        ax5.set_xscale("symlog", linthresh=5)
     ax5.set_xlim( *xlim )
-    ax5.set_xscale("symlog", linthresh=5)
     ax5.set_ylim([0,1])
     ax5.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
     ax5.yaxis.tick_right()
@@ -389,4 +400,4 @@ if __name__ == "__main__":
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
 
-    plot_global(dirs['output'],COUPLER_options)
+    plot_global(dirs['output'],COUPLER_options, logt=False, tmin=1e1)

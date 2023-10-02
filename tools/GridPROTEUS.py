@@ -88,17 +88,17 @@ class Pspace():
         self.dim_avars[name].append(value)
 
     # Print current setup
-    def print_setup(self):
-        print("Current setup")
-        print(" -- name     : %s" % self.name)
-        print(" ")
+    def print_setup(self, f=sys.stdout):
+        print("Current setup", file=f)
+        print(" -- name     : %s" % self.name, file=f)
+        print(" ", file=f)
         for name in self.dim_names:
             idx = self._get_idx(name)
             
-            print(" -- dimension: %s" % name)
-            print("    parameter: %s" % self.dim_param[idx])
-            print("    values   : %s" % self.dim_avars[name])
-            print(" ")
+            print(" -- dimension: %s" % name, file=f)
+            print("    parameter: %s" % self.dim_param[idx], file=f)
+            print("    values   : %s" % self.dim_avars[name], file=f)
+            print(" ", file=f)
 
     # Print generated space
     def print_space(self, f=sys.stdout):
@@ -232,7 +232,8 @@ if __name__=='__main__':
     # Define parameter space
     # -----
 
-    ps = Pspace("redox", os.getenv('COUPLER_DIR')+"/init_coupler.cfg")
+    cfg_base = os.getenv('COUPLER_DIR')+"/init_coupler.cfg"
+    ps = Pspace("redox", cfg_base)
 
     ps.add_dimension("Redox state")
     ps.set_dimension_linspace("Redox state", "fO2_shift_IW", -2, +2, 3)
@@ -260,6 +261,14 @@ if __name__=='__main__':
     ps.print_setup()
     ps.generate()
     ps.print_space()
+
+    # -----
+    # Write parameter space to file
+    # -----
+
+    with open(ps.outdir+"grid.txt") as hdl:
+        ps.print_setup(f=hdl)
+        ps.print_space(f=hdl)
 
     # -----
     # Start PROTEUS processes

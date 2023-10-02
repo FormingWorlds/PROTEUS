@@ -36,7 +36,7 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # Check that Julia is present
     if shutil.which("julia") is None:
         raise Exception("Could not find julia in current environment!")
-
+    
     # Setup values to be provided by CLI
     gravity = phys.G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
     
@@ -60,7 +60,7 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     mr_str = mr_str[:-1]
     mr_str += "\""
 
-    # Setup call sequence
+    # Setup call sequence with base flags
     call_sequence = []
     call_sequence.append(dirs["agni"]+"agni_cli.jl")
     call_sequence.append("%1.6e" % COUPLER_options["T_surf"])
@@ -69,56 +69,88 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     call_sequence.append("%1.6e" % COUPLER_options["radius"])
     call_sequence.append("%1.6e" % runtime_helpfile.iloc[-1]["P_surf"])
     call_sequence.append("%1.6e" % COUPLER_options["P_top"])
-    call_sequence.append(mr_str)
-    call_sequence.append("--spf \"%s\""             % str(dirs["output"]+"runtime_spectral_file"))  # already includes star
+    call_sequence.append("--x_dict %s"              % mr_str)
+    call_sequence.append("--sp_file \"%s\""         % str(dirs["output"]+"runtime_spectral_file"))  # already includes star
     call_sequence.append("--albedo_s %1.6e"         % COUPLER_options["albedo_s"])
     call_sequence.append("--zenith_degrees %1.6e"   % COUPLER_options["zenith_angle"])
     call_sequence.append("--output %s"              % dirs["output"])
+    call_sequence.append("--tmp_magma %1.6e"        % COUPLER_options["T_surf"])  # magma temperature given by SPIDER output
+    call_sequence.append("--tmp_floor %1.6e"        % COUPLER_options["min_temperature"])
 
+    # Rayleigh scattering
     if COUPLER_options["insert_rscatter"] == 1:
         call_sequence.append("--rscatter")
-    
+
+    load_prev = False
     if COUPLER_options["atmosphere_solve_energy"] == 0:
         call_sequence.append("--once")
         call_sequence.append("--ini_dry")
         call_sequence.append("--ini_sat")
+        
     else:
         # Solving for RCE...
 
+        call_sequence.append("--equivext")  # use equivalent extinction because it's much faster
+
         # Start from previous CSV file?
         if (time_dict["planet"] > 3.0) and os.path.exists(csv_fpath):
-            call_sequence.append("--load_csv %s" % csv_fpath)
+            call_sequence.append("--pt_path %s" % csv_fpath)
             call_sequence.append("--noaccel")
-
+            load_prev = True  
         # If not, the model will start from an isothermal state at T=tstar
 
-    trppt = COUPLER_options["min_temperature"] # use tropopause functionality to introduce temperature floor
-    match COUPLER_options["tropopause"]:
-        case 0:
-            pass
-        case 1:
-            trppt = max(COUPLER_options["T_skin"], trppt)
-        case _:
-            raise Exception("Tropopause type not supported by AGNI")
+
+    # Tropopause
+    trppt = COUPLER_options["min_temperature"] 
+    if not load_prev:
+        match COUPLER_options["tropopause"]:
+            case 0:
+                pass
+            case 1:
+                trppt = max(COUPLER_options["T_skin"], trppt)
+            case _:
+                raise Exception("Tropopause type not supported by AGNI")
     call_sequence.append("--trppt %1.6e" % trppt)  
 
-    if COUPLER_options["atmosphere_surf_state"] == 0:
-        call_sequence.append("--surface 0")
-    else:
-        call_sequence.append("--surface 2")
+    # Surface condition
+    surf_state = int(COUPLER_options["atmosphere_surf_state"])
+    if (surf_state >= 0) and (surf_state <= 2):
+        call_sequence.append("--surface %d" % surf_state)
 
+        if surf_state == 2:
+            if COUPLER_options["flux_convergence"] == 1:
+                raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off.")
+            
+            if COUPLER_options["atmosphere_solve_energy"] == 0:
+                raise Exception("It is necessary to use a time-stepped solution alongside the conductive lid scheme! Turn them both on or both off.")
+            
+            if COUPLER_options["PARAM_UTBL"] == 1:
+                raise Exception("SPIDER's UTBL is incompatible with the conductive lid scheme! Turn one of them off.")
+            
+        else:
+            call_sequence.append("--tstar_enforce")  # do not allow pt_path to overwrite tstar
+
+    else:
+        raise Exception("Invalid surface state %d" % surf_state)
+
+    # Misc flags
     if debug:
         call_sequence.append("--verbose")
-
+        call_sequence.append("--animate")
     call_sequence.append("--plot")
-    call_sequence.append("--nsteps 200")
 
+    if (time_dict["planet"] > 3.0):
+        call_sequence.append("--nsteps 200")
+    else:
+        call_sequence.append("--nsteps 300")
+
+    # Join flags together
     call_string = " ".join(call_sequence)
 
     # Run AGNI
-    if debug:
-        print(call_string)
-    subprocess.run([call_string],shell=True,check=True,stdout=sys.stdout, stderr=subprocess.DEVNULL)
+    agni_print = open(dirs["output"]+"agni_recent.log",'w')
+    subprocess.run([call_string],shell=True,check=True,stdout=sys.stdout, stderr=agni_print)
+    agni_print.close()
 
     # Read result
     nc_fpath = dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.nc"
@@ -129,11 +161,12 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
         os.remove(fl_path)
     shutil.move(dirs["output"]+"/fl.pdf", fl_path)
 
-    os.remove(dirs["output"]+"/fl.csv")  # remove fluxes csv
-
-    pt_path = dirs["output"]+"/pt.pdf"  # remove pt plot
-    if os.path.exists(pt_path):
-        os.remove(pt_path)
+    files_remove = ["fl.csv", "pt.pdf", "mf.pdf"]  # remove files
+    files_remove.extend(glob.glob("solve_monitor_*.png"))
+    for frem in files_remove:
+        frem_path = dirs["output"]+"/"+frem 
+        if os.path.exists(frem_path):
+            os.remove(frem_path)
 
     ds = nc.Dataset(nc_fpath)
     net_flux =      np.array(ds.variables["fl_N"][:])

@@ -422,7 +422,6 @@ def ReadInitFile( init_file_passed , verbose=False):
 
     return COUPLER_options, time_dict
 
-
 def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
     

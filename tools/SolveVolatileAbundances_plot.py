@@ -39,9 +39,9 @@ print("Number of rows:",num_rows)
 
 fig,ax = plt.subplots()
 
-x = "fO2-IW"
-y = "Tsurf"
-z = "H2O_bar"
+x = "H2_oc_eqv"
+y = "N_ppm"
+z = "N2_bar"
 
 x_plt = result[x]
 y_plt = result[y]

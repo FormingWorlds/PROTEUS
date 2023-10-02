@@ -980,7 +980,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             call_sequence.extend(["-"+vol+"_kdist", str(volatile_distribution_coefficients[vol+"_kdist"])])
             call_sequence.extend(["-"+vol+"_kabs", str(volatile_distribution_coefficients[vol+"_kabs"])])
             call_sequence.extend(["-"+vol+"_molar_mass", str(molar_mass[vol])])
-            call_sequence.extend(["-"+vol+"_SOLUBILITY 1"])
+            call_sequence.extend(["-"+vol+"_SOLUBILITY 1"])  # Set to use Henry's law
 
     # With start of the main loop only:
     # Volatile specific options: post step settings, restart filename

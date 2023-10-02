@@ -60,51 +60,52 @@ def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
         COUPLER_options["T_surf"] = runtime_helpfile.iloc[-1]["T_surf"]
     
     # Check for flux_convergence scheme criteria
-    elif (COUPLER_options["flux_convergence"] == 1 \
-    and runtime_helpfile.iloc[-1]["RF_depth"] < COUPLER_options["RF_crit"] \
-    and COUPLER_options["F_net"] > COUPLER_options["F_diff"]*COUPLER_options["F_int"]) \
-    or  COUPLER_options["flux_convergence"] == 2:
-
-        PrintHalfSeparator()
-        print(">>>>>>>>>> Flux convergence scheme <<<<<<<<<<<")
-
-        COUPLER_options["flux_convergence"] = 2
-
-        # In case last atm T_surf from flux convergence scheme was smaller(!) than threshold 
-        if abs(COUPLER_options["F_net"]) < COUPLER_options["F_eps"]:
-            
-            COUPLER_options["T_surf"] = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].iloc[-1]["T_surf"]
-            print("Use previous T_surf =", COUPLER_options["T_surf"])
-
-        else:
-
-            # Last T_surf and time from atmosphere, K
-            t_curr          = runtime_helpfile.iloc[-1]["Time"]
-            run_atm         = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']
-            run_atm_prev    = run_atm.loc[run_atm['Time'] != t_curr]
-            run_atm_curr    = run_atm.loc[run_atm['Time'] == t_curr]
-            t_previous_atm  = run_atm_prev.iloc[-1]["Time"]
-            Ts_previous_atm = run_atm_prev.iloc[-1]["T_surf"]
-            Ts_last_atm     = run_atm.iloc[-1]["T_surf"]
-
-            print("F_net", str(COUPLER_options["F_net"]), "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm", Ts_last_atm, "dTs_atm", str(COUPLER_options["dTs_atm"]), "t_curr", t_curr, "t_previous_atm", t_previous_atm)
-
-            # Apply flux convergence via shallow layer function
-            COUPLER_options["T_surf"] = shallow_mixed_ocean_layer(COUPLER_options["F_net"], Ts_previous_atm, COUPLER_options["dTs_atm"], t_curr, t_previous_atm)
-
-            # Prevent atmospheric oscillations
-            if len(run_atm_curr) > 2 and (np.sign(run_atm_curr["F_net"].iloc[-1]) != np.sign(run_atm_curr["F_net"].iloc[-2])) and (np.sign(run_atm_curr["F_net"].iloc[-2]) != np.sign(run_atm_curr["F_net"].iloc[-3])):
-                COUPLER_options["T_surf"] = np.mean([run_atm.iloc[-1]["T_surf"], run_atm.iloc[-2]["T_surf"]])
-                print("Prevent oscillations, new T_surf =", COUPLER_options["T_surf"])
-
-            print("dTs_atm (K):", COUPLER_options["dTs_atm"], "t_previous_atm:", t_previous_atm, "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm:", Ts_last_atm, "t_curr:", t_curr, "Ts_curr:", COUPLER_options["T_surf"])
-
-        PrintHalfSeparator()
-
-    # Use Ts_int
     else:
+        if (COUPLER_options["flux_convergence"] == 2) \
+            or ( (COUPLER_options["flux_convergence"] == 1) and \
+                 (runtime_helpfile.iloc[-1]["RF_depth"] < COUPLER_options["RF_crit"]) #and \
+                 #(COUPLER_options["F_net"] > COUPLER_options["F_diff"]*COUPLER_options["F_int"]) \
+               ):
+
+            PrintHalfSeparator()
+            print(">>>>>>>>>> Flux convergence scheme <<<<<<<<<<<")
+
+            COUPLER_options["flux_convergence"] = 2
+
+            # In case last atm T_surf from flux convergence scheme was smaller(!) than threshold 
+            if abs(COUPLER_options["F_net"]) < COUPLER_options["F_eps"]:
+                
+                COUPLER_options["T_surf"] = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].iloc[-1]["T_surf"]
+                print("Use previous T_surf =", COUPLER_options["T_surf"])
+
+            else:
+
+                # Last T_surf and time from atmosphere, K
+                t_curr          = runtime_helpfile.iloc[-1]["Time"]
+                run_atm         = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']
+                run_atm_prev    = run_atm.loc[run_atm['Time'] != t_curr]
+                run_atm_curr    = run_atm.loc[run_atm['Time'] == t_curr]
+                t_previous_atm  = run_atm_prev.iloc[-1]["Time"]
+                Ts_previous_atm = run_atm_prev.iloc[-1]["T_surf"]
+                Ts_last_atm     = run_atm.iloc[-1]["T_surf"]
+
+                print("F_net", str(COUPLER_options["F_net"]), "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm", Ts_last_atm, "dTs_atm", str(COUPLER_options["dTs_atm"]), "t_curr", t_curr, "t_previous_atm", t_previous_atm)
+
+                # Apply flux convergence via shallow layer function
+                COUPLER_options["T_surf"] = shallow_mixed_ocean_layer(COUPLER_options["F_net"], Ts_previous_atm, COUPLER_options["dTs_atm"], t_curr, t_previous_atm)
+
+                # Prevent atmospheric oscillations
+                if len(run_atm_curr) > 2 and (np.sign(run_atm_curr["F_net"].iloc[-1]) != np.sign(run_atm_curr["F_net"].iloc[-2])) and (np.sign(run_atm_curr["F_net"].iloc[-2]) != np.sign(run_atm_curr["F_net"].iloc[-3])):
+                    COUPLER_options["T_surf"] = np.mean([run_atm.iloc[-1]["T_surf"], run_atm.iloc[-2]["T_surf"]])
+                    print("Prevent oscillations, new T_surf =", COUPLER_options["T_surf"])
+
+                print("dTs_atm (K):", COUPLER_options["dTs_atm"], "t_previous_atm:", t_previous_atm, "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm:", Ts_last_atm, "t_curr:", t_curr, "Ts_curr:", COUPLER_options["T_surf"])
+
+            PrintHalfSeparator()
+
         # Standard surface temperature from last entry
-        COUPLER_options["T_surf"] = runtime_helpfile.iloc[-1]["T_surf"]
+        else:
+            COUPLER_options["T_surf"] = runtime_helpfile.iloc[-1]["T_surf"]
 
     return COUPLER_options
 

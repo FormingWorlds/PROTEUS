@@ -30,17 +30,6 @@ Ne_mol_mass     = 0.020180              # kg mol−1
 Kr_mol_mass     = 0.083798              # kg mol−1
 Xe_mol_mass     = 0.131293              # kg mol−1
 
-# Volatile molar masses
-H2O_mol_mass    = 0.01801528            # kg mol−1
-CO2_mol_mass    = 0.04401               # kg mol−1
-H2_mol_mass     = 0.00201588            # kg mol−1
-CH4_mol_mass    = 0.01604               # kg mol−1
-CO_mol_mass     = 0.02801               # kg mol−1
-N2_mol_mass     = 0.028014              # kg mol−1
-O2_mol_mass     = 0.031999              # kg mol−1
-SO2_mol_mass    = 0.064066              # kg mol−1
-H2S_mol_mass    = 0.0341                # kg mol−1
-
 molar_mass      = {
           "H2O" : 0.01801528,           # kg mol−1
           "CO2" : 0.04401,              # kg mol−1

@@ -40,7 +40,7 @@ Read access to the following repositories:
         
         * URL: https://github.com/sciath/sciath
 
-Step-by-step guide
+Step-by-step (core modules)
 ----------------
 
 1. Install dependencies
