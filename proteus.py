@@ -347,7 +347,7 @@ def main():
         time_dict["planet"] = runtime_helpfile.iloc[-1]["Time"]
         time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
 
-        # Print info, save atm to file, update plots
+        # Print info, save atm to file
         PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options)
         
         # Update init loop counter

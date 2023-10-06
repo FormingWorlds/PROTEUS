@@ -4,7 +4,7 @@
 
 # Import things
 import matplotlib as mpl
-from utils.plot import *
+from utils.plot_offchem import *
 from utils.helper import find_nearest
 import sys
 
@@ -110,9 +110,9 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
         ax.plot(times,mx_vul,color=color,label=pretty,lw=lw,zorder=4)
 
         if plot_init_mx:
-            if str("ae_"+sp) in years_data[0].keys():
+            if str("mv_"+sp) in years_data[0].keys():
                 for yd in years_data:
-                    clean_mx = np.nan_to_num(yd["ae_"+sp])
+                    clean_mx = np.nan_to_num(yd["mv_"+sp])
                     mean_mx = np.mean(clean_mx)   
                     mx_aeo.append(float(mean_mx))
 

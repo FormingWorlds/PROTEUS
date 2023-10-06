@@ -5,7 +5,7 @@
 # Import things
 import matplotlib as mpl
 mpl.use("Agg")
-from utils.plot import *
+from utils.plot_offchem import *
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
@@ -105,7 +105,7 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
         min_mix = min(min_mix,np.amin(yd[key]))
 
         if plot_init_mx:
-            key = str("ae_"+sp)
+            key = str("mv_"+sp)
             if key in yd.keys():
                 ax1.scatter(yd[key],p[0], s=40,color='grey')
                 ax1.scatter(yd[key],p[0], s=20,color=color)

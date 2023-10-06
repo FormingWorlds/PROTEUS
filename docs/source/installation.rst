@@ -8,15 +8,15 @@ Software dependencies
 
 Read access to the following repositories:
 
-    * Coupler framework: **PROTEUS**
+    * Core coupler framework: **PROTEUS**
         
         * URL: https://github.com/FormingWorlds/PROTEUS
 
-    * Radiative-convective scheme: **AEOLUS** 
+    * Pseudoadiabatic temperature structure scheme: **AEOLUS** 
         
         * URL: https://github.com/FormingWorlds/AEOLUS/
 
-    * Radiation transport: **SOCRATES** 
+    * Radiative transfer: **SOCRATES** 
         
         * Main development URL: https://code.metoffice.gov.uk/trac/socrates
         
@@ -124,7 +124,7 @@ Step-by-step (core modules)
                 
                 * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step), by adding the following to your:
                     
-                    * ``~/.zsrhrc`` (ARM):
+                    * ``~/.zshrc`` (ARM):
                     
                     .. code-block:: console
                         
@@ -252,6 +252,7 @@ Step-by-step (core modules)
             $   cd Mors 
             $   wget http://www.astro.yale.edu/demarque/fs255_grid.tar.gz
             $   tar -xvf fs255_grid.tar.gz
+            $   pip install .
             $   cd ../
         
     8. Setup PETSc
@@ -270,6 +271,8 @@ Step-by-step (core modules)
             $   cd ../
 
     9. Setup environment variables
+
+        * Edit the variable ``PETSC_ARCH`` in the file ``PROTEUS.env`` to reflect the value provided by PETSc in the previous step
                 
         * Only **IF** ``python`` has been installed via the ``conda`` route: 
 
@@ -296,6 +299,34 @@ Step-by-step (core modules)
             $   cd ..
 
 **Done!**
+
+Step-by-step (optional modules)
+----------------
+
+* Radiative-convective scheme: **AGNI **
+
+    1. Ensure that you have access to https://github.com/nichollsh/AGNI 
+
+    2. Install Julia (version 1.9.1 or later) on your system
+
+    3. Enter into the base directory of PROTEUS
+    
+    4.  Download AGNI using git
+
+        .. code-block:: console 
+            $ git clone git@github.com/nichollsh/AGNI
+            $ cd AGNI/
+
+    5. Follow the installation instructions in `README.md`
+
+    6. Go back to the PROTEUS directory 
+
+        .. code-block:: console 
+            $ cd ../
+    
+    7. Done!
+
+
 
 Troubleshooting
 ----------------

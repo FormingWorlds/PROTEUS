@@ -13,6 +13,7 @@ radiation_code.lock
 # Specific subfolders
 old/
 output/*
+AGNI
 
 # misc
 ######

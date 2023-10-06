@@ -28,16 +28,6 @@ def find_nearest_idx(array, value):
     idx = (np.abs(array - value)).argmin()
     return int(idx)
 
-
-# # Handle exceptions with logging library, so that they are written to the log file
-# # https://stackoverflow.com/a/16993115
-# def handle_exception(exc_type, exc_value, exc_traceback):
-#     if issubclass(exc_type, KeyboardInterrupt):
-#         sys.__excepthook__(exc_type, exc_value, exc_traceback)
-#     else:
-#         logging.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
-
-
 # Custom logger instance 
 # https://stackoverflow.com/a/61457119
 def setup_logger(name:str, logpath:str="new.log", level=logging.INFO, logterm=True)->logging.Logger:
@@ -67,7 +57,50 @@ def setup_logger(name:str, logpath:str="new.log", level=logging.INFO, logterm=Tr
     return custom_logger 
 
 
-def run_once(logger:logging.Logger, year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict, helpfile_df:pd.DataFrame, ini_method:int) -> bool:
+# Draw samples from all of the years following a distribution
+def get_sample_years(years_all,samples,s_centre,s_width):
+    years = [ ]
+    yfirst = years_all[1]
+    ylast = years_all[-1]
+
+    # Draw samples
+    if len(years_all) == samples:
+        # If number of samples = number of data points, don't need to use sampling method
+        years = years_all
+    else:
+        # Otherwise:
+        # Draw other runs randomly from a distribution. This is set-up to sample
+        # the end of the run more densely than the start, because the evolution at 
+        # the start isn't so interesting compared to the end.
+
+        years.append(ylast) # Include last run
+
+        if samples > 1:
+            years.append(yfirst) # Include first run
+
+        sample_itermax = 30000*samples
+        sample_iter = 0
+        while (len(years) < samples): 
+
+            sample_iter += 1
+            if sample_iter > sample_itermax:
+                raise Exception("Maximum iterations reached in selecting sample years!")
+
+            # sample = np.abs(nrand.laplace(loc=ylast,scale=float(ylast*swidth)))
+            sample = -1.0 * nrand.gumbel(loc=-1.0*s_centre,scale=s_width)
+            if (sample <= yfirst) or (sample >= ylast):
+                continue  # Try again
+
+            inear = find_nearest_idx(years_all,sample)
+            ynear = years_all[inear]
+            if ynear in years:
+                continue  # Try again
+            
+            years.append(ynear)
+
+    return sorted(set(years))  # Ensure that there are no duplicates and sort ascending
+
+def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, dirs:dict, COUPLER_options:dict, helpfile_df:pd.DataFrame, ini_method:int) -> bool:
     """Run VULCAN once for a given PROTEUS output year
     
     Runs VULCAN in a screen instance so that lots processes may still be
@@ -80,8 +113,8 @@ def run_once(logger:logging.Logger, year:int, now:int, first_run:bool, dirs:dict
             Logger class to use
         year : int
             Planet age corresponding to a data dump from PROTEUS [yr]
-        now : int
-            Time at which this run was started (format: HHMMSS)
+        screen_name : str 
+            Screen name to use
         first_run : bool
             Is this the first time that VULCAN is run for this configuration?
         dirs : dict
@@ -108,7 +141,7 @@ def run_once(logger:logging.Logger, year:int, now:int, first_run:bool, dirs:dict
     # Make results folder for this run
     this_results = dirs["output"]+"offchem/%d/"%year
     if os.path.exists(this_results):
-        raise Exception("Offline chemistry already running for this year!")
+        raise Exception("Offline chemistry already running for this year (%s)!" % screen_name)
     os.makedirs(this_results)
 
     # Read atm data
@@ -153,7 +186,7 @@ def run_once(logger:logging.Logger, year:int, now:int, first_run:bool, dirs:dict
     # Write specifics to config file
     with open(dirs["vulcan"]+"vulcan_cfg.py",'a') as vcf:
         # Output file to use
-        vcf.write("out_name = '%d_offchem_%d.vul' \n" % (now,year))
+        vcf.write("out_name = '%s.vul' \n" % (screen_name))
 
         # Pressure grid limits
         vcf.write("P_b = %1.5e \n" % float(p_bot * 10.0))  # pressure at the bottom (dyne/cm^2)
@@ -214,10 +247,10 @@ def run_once(logger:logging.Logger, year:int, now:int, first_run:bool, dirs:dict
         vcf.write("atm_base = '%s' \n" % bkgrnd_s)
 
         # PT profile
-        vcf.write("atm_file = 'output/%d_offchem_%d_PT.txt' \n"%(now,year))
+        vcf.write("atm_file = 'output/%s_PT.txt' \n"%screen_name)
 
         # Stellar flux (at surface of star)
-        vcf.write("sflux_file = 'output/%d_offchem_%d_SF.txt' \n"%(now,year))
+        vcf.write("sflux_file = 'output/%s_SF.txt' \n"%screen_name)
 
         # Stellar radius
         vcf.write("r_star = %1.6e \n" %         float(helpfile_thisyear["R_star"]))
@@ -236,7 +269,7 @@ def run_once(logger:logging.Logger, year:int, now:int, first_run:bool, dirs:dict
     ls = glob.glob(dirs["output"]+"/data/*.sfluxsurf")
     years = [int(f.split("/")[-1].split(".")[0]) for f in ls]
     year_near = years[find_nearest_idx(years,year)]
-    shutil.copyfile(dirs["output"]+"/data/%d.sfluxsurf"%year_near,dirs["vulcan"]+"output/%d_offchem_%d_SF.txt"%(now,year))
+    shutil.copyfile(dirs["output"]+"/data/%d.sfluxsurf"%year_near,dirs["vulcan"]+"output/%s_SF.txt"%screen_name)
 
     # Write PT profile
     minT = 120.0
@@ -249,16 +282,15 @@ def run_once(logger:logging.Logger, year:int, now:int, first_run:bool, dirs:dict
         ]
     ).T
     header = "#(dyne/cm2)\t (K) \n Pressure\t Temp"
-    np.savetxt(dirs["vulcan"]+"output/%d_offchem_%d_PT.txt"%(now,year),vul_PT,  delimiter="\t",header=header,comments='',fmt="%1.5e")
-    shutil.copyfile(dirs["vulcan"]+"output/%d_offchem_%d_PT.txt"%(now,year),    dirs["output"]+"offchem/%d/PT.txt"%year)
+    np.savetxt(     dirs["vulcan"]+"output/%s_PT.txt"%screen_name, vul_PT,  delimiter="\t",header=header,comments='',fmt="%1.5e")
+    shutil.copyfile(dirs["vulcan"]+"output/%s_PT.txt"%screen_name, dirs["output"]+"offchem/%d/PT.txt"%year)
 
     # Run vulcan
     # Note that the screen name ends with an 'x' so that accurate matching can be done with grep
     os.chdir(dirs["vulcan"])
-    screen_name = "%d_offchem_%dx" % (now,year)
     logfile = dirs["output"]+"offchem/%d/vulcan.log"%year
     vulcan_flag = " " if first_run else "-n"
-    vulcan_run = 'screen -S %s -L -Logfile %s -dm bash -c "python3 vulcan.py %s"' % (screen_name,logfile,vulcan_flag)
+    vulcan_run = 'screen -S %sx -L -Logfile %s -dm bash -c "python3 vulcan.py %s"' % (screen_name,logfile,vulcan_flag)
     subprocess.run([vulcan_run], shell=True, check=True)
     os.chdir(dirs["coupler"])
 
@@ -383,47 +415,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
     
     # Select samples...
     logger.info("Choosing sample years... (May take a while in some cases)")
-    years = [ ]
-    yfirst = years_all[1]
-    ylast = years_all[-1]
-
-    # Draw samples
-    if len(years_all) == samples:
-        # If number of samples = number of data points, don't need to use sampling method
-        years = years_all
-    else:
-        # Otherwise:
-        # Draw other runs randomly from a distribution. This is set-up to sample
-        # the end of the run more densely than the start, because the evolution at 
-        # the start isn't so interesting compared to the end.
-
-        if samples >= 1:
-            years.append(yfirst) # Include first run
-        if samples >= 2:
-            years.append(ylast) # Include last run
-
-        sample_itermax = 30000*samples
-        sample_iter = 0
-        while (len(years) < samples): 
-
-            sample_iter += 1
-            if sample_iter > sample_itermax:
-                raise Exception("Maximum iterations reached in selecting sample years!")
-
-            # sample = np.abs(nrand.laplace(loc=ylast,scale=float(ylast*swidth)))
-            sample = -1.0 * nrand.gumbel(loc=-1.0*s_centre,scale=s_width)
-            if (sample <= yfirst) or (sample >= ylast):
-                continue  # Try again
-
-            inear = find_nearest_idx(years_all,sample)
-            ynear = years_all[inear]
-            if ynear in years:
-                continue  # Try again
-            
-            years.append(ynear)
-
-
-    years = sorted(set(years))  # Ensure that there are no duplicates and sort ascending
+    years = get_sample_years(years_all, samples, s_centre, s_width)
     samples = len(years)
     logger.info("Years selected: " +str(years))
 
@@ -460,14 +452,16 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         count_threads = 0
         for i in range(samples):
             y = years[i]
-            running = bool(str("%d_offchem_%dx"%(now,y)) in screen_out)
+
+            sname = "%d_offchem_%d" % (now,y)
+            running = bool(str("%sx"%sname) in screen_out)
             
             if running:
                 count_threads += 1
             
             # Currently tagged as running, but check if done
             if (not running) and (status[i] == 1):
-                to_copy = dirs["vulcan"]+"/output/%d_offchem_%d.vul" % (now,y)
+                to_copy = dirs["vulcan"]+"/output/%s.vul" % sname
                 if os.path.exists(to_copy): # Is done?
                     status[i] = 2
                     shutil.copyfile(to_copy, dirs["output"]+"/offchem/%d/output.vul"%y) # Copy output
@@ -516,7 +510,8 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
                 # Run new process
                 logger.info("Dispatching job %03d: %08d yrs..." % (i,y))
                 fr = bool( (count_dispatched == 0) and mkfuncs)
-                this_success = run_once(logger, years[i], now, fr, dirs, COUPLER_options, helpfile_df, ini_method)
+                sname = "%d_offchem_%d" % (now,y)
+                this_success = run_once(logger, years[i], sname, fr, dirs, COUPLER_options, helpfile_df, ini_method)
                 status[i] = 1
                 if this_success:
                     logger.info("\t (dispatched)")

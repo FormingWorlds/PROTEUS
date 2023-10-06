@@ -444,6 +444,7 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     # Global properties for all timesteps
     if len(output_times) > 1:
         cpl_global.plot_global(output_dir, COUPLER_options)   
+        cpl_global.plot_global(output_dir, COUPLER_options, logt=False)   
         
     # Filter to JSON files with corresponding NetCDF files
     ncs = glob.glob(output_dir + "/data/*_atm.nc")

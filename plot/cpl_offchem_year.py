@@ -5,7 +5,7 @@
 # Import things
 import matplotlib as mpl
 mpl.use("Agg")
-from utils.plot import *
+from utils.plot_offchem import *
 
 
 def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
@@ -72,7 +72,7 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
             
         # AEOLUS result
         if plot_init_mx:
-            key = str("ae_"+s)
+            key = str("mv_"+s)
             if key in year_dict.keys():
                 ax1.plot(np.ones((len(year_dict["pressure"]))) * year_dict[key],year_dict["pressure"],linestyle='--',lw=lw*0.5,color=color)
             
