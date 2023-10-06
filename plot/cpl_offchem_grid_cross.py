@@ -10,7 +10,8 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 cmap_name = 'batlowK_r'
 
-def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_dict:dict={}, contour:bool=False):
+def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_dict:dict={}, 
+                            contour:bool=True, labelcontrols:bool=False):
     """Plot a cross-section of the GridOfflineChemistry output.
 
     Parameters
@@ -28,6 +29,8 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
             Control variable filter dictionary (see `offchem_slice_grid` for more info)
         contour : bool
             Plot using contours instead of scatter points.
+        labelcontrols : bool
+            Write the control variables on the plot
 
     """
 
@@ -47,6 +50,9 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
     if len(cvar_dict.keys()) > 0:
         years, opts, data = offchem_slice_grid(years, opts, data, cvar_dict)
     gpoints = np.shape(opts)[0]
+
+    if contour and (gpoints < 12):
+        print("WARNING: grid size is small but contour plotting is enabled - expect ugly plots")
 
     # Flatten x,y,z data into 1D arrays...
 
@@ -161,6 +167,18 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
     else:
         ax.scatter(x_arr, y_arr, c=z_arr, cmap=cmap, norm=norm)
 
+    if labelcontrols:
+        lbl = "Control variables:\n"
+        for k in cvar_dict.keys():
+             lbl += k + " = %g\n" % cvar_dict[k]
+        ax.text(0.02, 0.98, lbl,
+                horizontalalignment='left',
+                verticalalignment='top',
+                transform = ax.transAxes,
+                color='white',
+                backgroundcolor=(0.0, 0.0, 0.0, 0.3),
+                fontsize='small')
+
     fig.tight_layout()
     fig.savefig(grid_dir+"/plot_offchem_grid_cross_[%s]_[%s]_[%s].pdf"%(x_var, y_var, z_var))
     plt.close('all') 
@@ -183,15 +201,16 @@ if __name__ == '__main__':
     # Filter
     cf = {"mean_distance":0.01154}
 
-    # Contour?
-    contour = True
+    # Plotting options
+    contour = False
+    lctrl   = True
 
     print("    x: %s" % xv)
     print("    y: %s" % yv)
     print("    z: %s" % zv)
     print("    f: %s" % cf)
 
-    plot_offchem_grid_cross(os.path.abspath(fol), xv, yv, zv, cf, contour)
+    plot_offchem_grid_cross(os.path.abspath(fol), xv, yv, zv, cf, contour, lctrl)
     
     print("Done!")
 
