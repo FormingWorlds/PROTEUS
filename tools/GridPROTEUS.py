@@ -274,7 +274,7 @@ if __name__=='__main__':
     # Write parameter space to file
     # -----
 
-    with open(ps.outdir+"grid.txt") as hdl:
+    with open(ps.outdir+"grid.txt","w") as hdl:
         ps.print_setup(f=hdl)
         ps.print_space(f=hdl)
 
