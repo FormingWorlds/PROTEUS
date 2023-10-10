@@ -4,7 +4,6 @@
 from utils.modules_ext import *
 from utils.spider import *
 from utils.plot import *
-from AEOLUS.utils.height import AtmosphericHeight
 
 
 #====================================================================

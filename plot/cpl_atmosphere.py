@@ -4,7 +4,6 @@
 from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import MyJSON, get_all_output_times
-from AEOLUS.utils.height import AtmosphericHeight
 
 from AEOLUS.modules.spectral_planck_surface import surf_Planck_nu
 

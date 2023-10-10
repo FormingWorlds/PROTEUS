@@ -343,7 +343,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
 # Calculate eqm temperature given stellar flux and bond albedo
 def calc_eqm_temperature(I_0, A_B):
-    return (I_0 * (1.0 - A_B) / (4.0 * phys.sigma))**(1.0/4.0)
+    return (I_0 * (1.0 - A_B) / (4.0 * const_sigma))**(1.0/4.0)
 
 
 def ReadInitFile( init_file_passed , verbose=False):
@@ -418,7 +418,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                             time_dict["offset"] = float(val.strip())
 
     # Calculate gravity from mass and radius
-    COUPLER_options["gravity"] =  phys.G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
+    COUPLER_options["gravity"] =  const_G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
 
     return COUPLER_options, time_dict
 

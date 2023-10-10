@@ -1,8 +1,6 @@
 # Physical, numerical, etc constants
 
 # Avoid importing from utils.*
-import os
-import AEOLUS.utils.phys as phys
 
 ### Constants ###
 debug = False
@@ -17,6 +15,16 @@ M_earth         = 5.972E24              # kg
 R_core_earth    = 3485000.0             # m
 M_core_earth    = 1.94E24               # kg
 mol             = 6.02214076e+23        # mol definition
+
+# Values from phys.py
+const_h = 6.626075540e-34    #Planck's constant
+const_c = 2.99792458e8       #Speed of light
+const_k =1.38065812e-23      #Boltzman thermodynamic constant
+const_sigma = 5.67051196e-8  #Stefan-Boltzman constant
+const_G = 6.67428e-11        #Gravitational constant (2006 measurements)
+const_N_avogadro = 6.022136736e23  #Avogadro's number
+const_R_gas = 8.31446261815324 # Universal gas constant, J.K-1.mol-1
+
 
 # Elements
 H_mol_mass      = 0.001008              # kg mol−1

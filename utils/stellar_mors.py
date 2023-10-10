@@ -42,10 +42,10 @@ def MorsSolarConstant(time_dict: dict, COUPLER_options: dict):
 
     Mstar = COUPLER_options["star_mass"]
     if (Mstar < 0.1):
-        print("WARNING: Star mass too low! Clipping to 0.1 M_sun")
+        # print("WARNING: Star mass too low! Clipping to 0.1 M_sun")
         Mstar = 0.1
     if (Mstar > 1.25):
-        print("WARNING: Star mass too high! Clipping to 1.25 M_sun")
+        # print("WARNING: Star mass too high! Clipping to 1.25 M_sun")
         Mstar = 1.25
     
     Lstar = mors.Value(Mstar, tstar, 'Lbol')  # Units of L_sun
@@ -82,10 +82,10 @@ def MorsStellarRadius(time_dict: dict, COUPLER_options: dict):
 
     Mstar = COUPLER_options["star_mass"]
     if (Mstar < 0.1):
-        print("WARNING: Star mass too low! Clipping to 0.1 M_sun")
+        # print("WARNING: Star mass too low! Clipping to 0.1 M_sun")
         Mstar = 0.1
     if (Mstar > 1.25):
-        print("WARNING: Star mass too high! Clipping to 1.25 M_sun")
+        # print("WARNING: Star mass too high! Clipping to 1.25 M_sun")
         Mstar = 1.25
     
     Rstar = mors.Value(Mstar, tstar, 'Rstar')  # Units of R_sun
@@ -113,14 +113,14 @@ def IntegratePlanckFunction(lam1, lam2, Teff):
         I_planck : float
             Flux at stellar surface
     """
-    hc_by_kT = phys.h * phys.c / (phys.k * Teff)
+    hc_by_kT = const_h * const_c / (const_k * Teff)
     planck_func = lambda lam : 1.0/( (lam ** 5.0) * ( np.exp( hc_by_kT/ lam) - 1.0 ) ) 
 
     planck_wl = np.linspace(lam1 * 1e-9, lam2 * 1e-9, 2000)
     planck_fl = planck_func(planck_wl)
     I_planck = np.trapz(planck_fl, planck_wl)  # Integrate planck function over wavelength
 
-    I_planck *= 2 * phys.h * phys.c * phys.c   # W m-2 sr-1, at stellar surface
+    I_planck *= 2 * const_h * const_c * const_c   # W m-2 sr-1, at stellar surface
     I_planck *= np.pi # W m-2, integrate over solid angle
     I_planck *= 1.0e3  # erg s-1 cm-2, convert units
 

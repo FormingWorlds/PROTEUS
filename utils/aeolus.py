@@ -2,8 +2,7 @@
 
 from utils.modules_ext import *
 from utils.helper import *
-from AEOLUS.utils.atmosphere_column import atmos
-from AEOLUS.modules.solve_pt import RadConvEqm
+
 
 def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
 
@@ -113,6 +112,8 @@ def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
 # Generate atmosphere from input files
 def StructAtm( runtime_helpfile, COUPLER_options ):
 
+    from AEOLUS.utils.atmosphere_column import atmos
+
     # Create atmosphere object and set parameters
     pl_radius = COUPLER_options["radius"]
     pl_mass = COUPLER_options["mass"]
@@ -143,7 +144,8 @@ def StructAtm( runtime_helpfile, COUPLER_options ):
                 COUPLER_options["P_top"]*1e5, pl_radius, pl_mass,
                 vol_mixing=vol_list, 
                 minT = COUPLER_options["min_temperature"],
-                trppT=trppT
+                trppT=trppT,
+                water_lookup=False
                 )
 
     atm.zenith_angle    = COUPLER_options["zenith_angle"]
@@ -177,6 +179,8 @@ def CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options):
             Updated atmos object
 
     """
+
+    from AEOLUS.modules.solve_pt import RadConvEqm
 
     # Change directory so that SOCRATES files don't get littered
     cwd = os.getcwd()

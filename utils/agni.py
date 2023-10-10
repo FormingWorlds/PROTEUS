@@ -38,7 +38,7 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
         raise Exception("Could not find julia in current environment!")
     
     # Setup values to be provided by CLI
-    gravity = phys.G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
+    gravity = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
     
     csv_fpath = dirs["output"]+"/pt.csv"
 
@@ -144,6 +144,10 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     else:
         call_sequence.append("--nsteps 300")
 
+    call_sequence.append("--convcrit_tmpabs  %1.4e" % 4.0 )
+    call_sequence.append("--convcrit_tmprel  %1.4e" % 2.5 )
+    call_sequence.append("--convcrit_fradrel %1.4e" % 0.1 )
+
     # Join flags together
     call_string = " ".join(call_sequence)
 
@@ -171,6 +175,7 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     ds = nc.Dataset(nc_fpath)
     net_flux =      np.array(ds.variables["fl_N"][:])
     LW_flux_up =    np.array(ds.variables["fl_U_LW"][:])
+    T_surf =        float(ds.variables["tmpl"][-1])
     ds.close()
 
     # New flux from SOCRATES
@@ -183,8 +188,9 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     if (COUPLER_options["prevent_warming"] == 1):
         F_atm_new = max( 1e-5 , F_atm_new )
             
-    COUPLER_options["F_atm"] = F_atm_new
-    COUPLER_options["F_olr"] = LW_flux_up[0]
+    COUPLER_options["F_atm"]  = F_atm_new
+    COUPLER_options["F_olr"]  = LW_flux_up[0]
+    COUPLER_options["T_surf"] = T_surf
     
     print("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 

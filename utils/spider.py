@@ -723,7 +723,7 @@ def get_deriv_static_structure( z, r, *args ):
     # derivatives
     dpdr = -rho*g
     dmdr = 4*np.pi*r**2*rho
-    dgdr = 4*np.pi*phys.G*rho - 2*phys.G*m/r**3
+    dgdr = 4*np.pi*const_G*rho - 2*const_G*m/r**3
 
     return [dpdr,dmdr,dgdr]
 
@@ -744,7 +744,7 @@ def get_static_structure_for_radius( radius, *myargs ):
     M_earth = myargs[0]
     R_core = myargs[1]
     num = myargs[4]
-    g_Earth = phys.G*M_earth/radius**2
+    g_Earth = const_G*M_earth/radius**2
 
     z0 = [0,M_earth,g_Earth]
     r = get_radius_array_static_structure( radius, *myargs )

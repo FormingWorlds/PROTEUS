@@ -69,6 +69,14 @@ class Pspace():
         self.dim_param[idx] = var
         self.dim_avars[name] = list(np.logspace( np.log10(start) , np.log10(stop) , count))
 
+    # Set a dimension directly
+    def set_dimension_direct(self,name:str,var:str,values:list):
+        idx = self._get_idx(name)
+        if self.dim_param[idx] != "_empty":
+            raise Exception("Dimension '%s' cannot be set twice" % name)
+        self.dim_param[idx] = var
+        self.dim_avars[name] = list(sorted(np.array(set(values), dtype=float)))  # check for duplicates, sort, and cast
+
     # Set a dimension to take hypervariables
     def set_dimension_hyper(self,name:str):
         idx = self._get_idx(name)
@@ -178,7 +186,7 @@ class Pspace():
             cfgfile = self.outdir+"case_%05d.cfg" % i
             screen_name = "pgrid_%s_%05dx" % (name,i)
 
-            gp["dir_output"] = "pspace_"+self.name+"/case_%05d"%i
+            gp["dir_output"] = "pgrid_"+self.name+"/case_%05d"%i
 
             # Create config file for this case
             with open(cfgfile, 'w') as hdl:
@@ -233,13 +241,13 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.getenv('COUPLER_DIR')+"/init_coupler.cfg"
-    ps = Pspace("redox", cfg_base)
+    ps = Pspace("v2", cfg_base)
 
     ps.add_dimension("Redox state")
-    ps.set_dimension_linspace("Redox state", "fO2_shift_IW", -2, +2, 3)
+    ps.set_dimension_linspace("Redox state", "fO2_shift_IW", -5, +5, 8)
 
     ps.add_dimension("C/H ratio")
-    ps.set_dimension_logspace("C/H ratio", "CH_ratio", 0.5, 2.0, 3)
+    ps.set_dimension_logspace("C/H ratio", "CH_ratio", 0.2, 3.0, 8)
 
     ps.add_dimension("Planet")
     ps.set_dimension_hyper("Planet")

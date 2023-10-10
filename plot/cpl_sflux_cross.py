@@ -16,10 +16,10 @@ star_cmap = sci_colormaps['oleron']
 def planck_function(lam, T):
 
     x = lam * 1.0e-9   # convert nm -> m
-    hc_by_kT = phys.h*phys.c / (phys.k*T) 
+    hc_by_kT = const_h*const_c / (const_k*T) 
 
     planck_func = 1.0/( (x ** 5.0) * ( np.exp( hc_by_kT/ x) - 1.0 ) )  
-    planck_func *= 2 * phys.h * phys.c * phys.c #  w m-2 sr-1 s-1 m-1
+    planck_func *= 2 * const_h * const_c * const_c #  w m-2 sr-1 s-1 m-1
     planck_func *= np.pi * 1.0e3 * 1.0e-9  # erg s-1 cm-2 nm-1
 
     return planck_func
