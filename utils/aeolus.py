@@ -269,7 +269,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
 
     # Require that the net flux must be upward
     if (COUPLER_options["prevent_warming"] == 1):
-        F_atm_lim = max( 0.0 , F_atm_lim )
+        F_atm_lim = max( 1.0e-8 , F_atm_lim )
 
     # Print if a limit was applied
     if (F_atm_lim != F_atm_new ):

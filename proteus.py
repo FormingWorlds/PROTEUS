@@ -83,8 +83,7 @@ def main():
     # Start conditions and help files depending on restart option
     else:
         CleanDir( dirs["output"] )
-        CleanDir( dirs['output']+'/data/')
-        CleanDir( dirs["vulcan"]+"/output/" )
+        CleanDir( dirs['output']+'data/')
         
         runtime_helpfile    = []
 

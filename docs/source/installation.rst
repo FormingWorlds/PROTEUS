@@ -319,6 +319,8 @@ Step-by-step (optional modules)
 
     5. Follow the installation instructions in `README.md`
 
+    6. Run AGNI at least once to precompile the code and check that it works
+
     6. Go back to the PROTEUS directory 
 
         .. code-block:: console 

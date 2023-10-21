@@ -112,7 +112,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         xlim = (xmin,10 ** math.ceil(math.log10(xmax*1.1)))
     else:
         xmax = np.amax(df_int["Time"])
-        xlim = (xmin, xmax)
+        xlim = (1.0, xmax)
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)

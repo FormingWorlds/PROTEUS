@@ -54,7 +54,7 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
     if sp in vol_latex.keys():
         pretty = vol_latex[sp]
     ax1.set_title("Evolution of "+pretty)
-    ax1.set_xlabel("Mixing ratio")
+    ax1.set_xlabel("Mole fraction")
     ax1.set_xscale("log")
 
     divider = make_axes_locatable(ax1)

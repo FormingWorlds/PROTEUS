@@ -7,7 +7,7 @@ import os, itertools, time, subprocess, shutil, glob, sys
 import numpy as np
 COUPLER_DIR=os.getenv('COUPLER_DIR')
 if COUPLER_DIR == None:
-    raise Exception("Environment not activated and/or setup correctly")
+    raise Exception("Environment is not activated or is setup incorrectly")
 
 # Object for handling the parameter space
 class Pspace():
@@ -16,7 +16,7 @@ class Pspace():
 
         # Pspace's own name (for versioning, etc.)
         self.name = str(name)
-        self.outdir = COUPLER_DIR+"/output/pspace_"+self.name+"/"
+        self.outdir = COUPLER_DIR+"/output/pgrid_"+self.name+"/"
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
             raise Exception("Base config file '%s' does not exist!" % self.conf)
@@ -172,6 +172,12 @@ class Pspace():
             print("Take care to avoid orphaned instances by using `screen -ls`")
             print(" ")
 
+            print("Sleeping...")
+            for i in range(5,0,-1):
+                print("    %d " % i)
+                time.sleep(1.0)
+            print(" ")
+
         # Read base config file
         with open(self.conf, "r") as f:
             base_config = f.readlines()
@@ -212,13 +218,21 @@ class Pspace():
                         hdl.write(str(l) + "\n")
             
             if self.size > 1:
-                print("    %d%%" % ( i/(self.size-1.0)*100.0 ) ) 
+                print("    %d%% (%d of %d)" % ( i/self.size*100.0, i, self.size ) ) 
                     
-            # Start the model using the RunPROTEUS utility
+            # Start the model
             if test_run:
                 print("    (test run not dispatching proteus '%s')" % screen_name)
+
             else:
-                proteus_run = COUPLER_DIR+"/tools/RunPROTEUS.sh " + cfgfile + " " + screen_name + " y "
+                # For first grid point, use RunPROTEUS to make log file
+                if i == 0:
+                    proteus_run = COUPLER_DIR+"/tools/RunPROTEUS.sh " + cfgfile + " " + screen_name + " y "
+
+                # In all other cases, don't log the output from PROTEUS
+                else:
+                    proteus_run = "screen -d -m -S " + screen_name + " python proteus.py -cfg_file " + cfgfile
+                
                 subprocess.run([proteus_run], shell=True, check=True)
             
             print(" ")

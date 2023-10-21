@@ -186,7 +186,7 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
     # Require that the net flux must be upward (positive)
     if (COUPLER_options["prevent_warming"] == 1):
-        F_atm_new = max( 1e-5 , F_atm_new )
+        F_atm_new = max( 1e-8 , F_atm_new )
             
     COUPLER_options["F_atm"]  = F_atm_new
     COUPLER_options["F_olr"]  = LW_flux_up[0]

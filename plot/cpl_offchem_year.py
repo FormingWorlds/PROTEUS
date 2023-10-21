@@ -45,7 +45,7 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
     ax0.plot(year_dict["temperature"],year_dict["pressure"],color='black',lw=lw)
 
     # Mixing ratios
-    ax1.set_xlabel("Mixing ratio")
+    ax1.set_xlabel("Mole fraction")
     ax1.set_xscale("log")
 
 

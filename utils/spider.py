@@ -500,7 +500,13 @@ def solvepp_doit(COUPLER_options):
 
     # These require initial guesses
     global_d['mantle_melt_fraction'] =  COUPLER_options['melt_fraction_guess'] 
-    global_d['mantle_mass'] =           COUPLER_options['mantle_mass_guess'] # kg
+
+    core_rho = 12.0e4  # iron density [kg.m-3] at approx 250 Gpa (DOI: 10.2138/rmg.2013.75.8)
+    core_mass = core_rho * 4.0/3.0 * np.pi * (COUPLER_options["radius"] * COUPLER_options["planet_coresize"] )**3.0
+    global_d['mantle_mass'] =           COUPLER_options["mass"] - core_mass
+    if (global_d['mantle_mass'] <= 0.0):
+        raise Exception("Something has gone wrong in calculating the mantle mass")
+
     global_d['temperature'] =           COUPLER_options['T_surf_guess'] # K
 
     # These are defined by the proteus configuration file
