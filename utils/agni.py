@@ -127,6 +127,9 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
             if COUPLER_options["PARAM_UTBL"] == 1:
                 raise Exception("SPIDER's UTBL is incompatible with the conductive lid scheme! Turn one of them off.")
             
+            call_sequence.append("--skin_k %1.6e" % COUPLER_options["skin_k"])
+            call_sequence.append("--skin_d %1.6e" % COUPLER_options["skin_d"])
+            
         else:
             call_sequence.append("--tstar_enforce")  # do not allow pt_path to overwrite tstar
 

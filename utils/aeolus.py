@@ -152,56 +152,9 @@ def StructAtm( runtime_helpfile, COUPLER_options ):
     atm.albedo_pl       = COUPLER_options["albedo_pl"]
     atm.albedo_s        = COUPLER_options["albedo_s"]
     atm.toa_heating     = COUPLER_options["TOA_heating"]
-
-    return atm
-
-def CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options):
-    """Create temperature structure based on general adiabat from AEOLUS.
-    
-    Calculates the temperature structure of an atmosphere using the Graham+21
-    general adiabat and sets an isothermal stratosphere if required. Runs 
-    SOCRATES to calculate the fluxes and heating rates.
-
-    Parameters
-    ----------
-        atm : atmos
-            Atmosphere object
-        dirs : dict
-            Dictionary containing paths to directories
-        time_dict : dict
-            Dictionary containing simulation time variables
-        COUPLER_options : dict
-            Configuration options and other variables
-
-    Returns
-    ----------
-        atm : atmos
-            Updated atmos object
-
-    """
-
-    from AEOLUS.modules.solve_pt import RadConvEqm
-
-    # Change directory so that SOCRATES files don't get littered
-    cwd = os.getcwd()
-    os.chdir(dirs["output"])
-
-    # Calculate temperature structure w/ General Adiabat 
-    trppD = bool(COUPLER_options["tropopause"] == 2 )
-    rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
-    _, atm = RadConvEqm(dirs, time_dict, atm, False, False, trppD, False, rscatter)
-
-    # Go back to previous directory
-    os.chdir(cwd)
-
-    # Clean up run directory
-    for file in glob.glob(dirs["output"]+"/current??.????"):
-        os.remove(file)
-    for file in glob.glob(dirs["output"]+"/profile.*"):
-        os.remove(file)
-        
-    # Print flux info
-    print("SOCRATES fluxes (net@surf, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
+    atm.tmp_magma       = COUPLER_options["T_surf"]
+    atm.skin_d          = COUPLER_options["skin_d"]
+    atm.skin_k          = COUPLER_options["skin_k"]
 
     return atm
 
@@ -237,17 +190,45 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
     PrintHalfSeparator()
     print("Running AEOLUS...")
 
-    # Call AEOLUS to get new temperature profile
+    # Change dir
+    cwd = os.getcwd()
+    os.chdir(dirs["output"])
+
+    # Prepare to calculate temperature structure w/ General Adiabat 
+    trppD = bool(COUPLER_options["tropopause"] == 2 )
+    rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
+
+    # Run AEOLUS
     if COUPLER_options["atmosphere_solve_energy"] == 0:
-        atm = CallGeneralAdiabat(atm, dirs, time_dict, COUPLER_options)
+
+        if COUPLER_options["atmosphere_surf_state"] == 1:  # fixed T_Surf
+            from AEOLUS.modules.solve_pt import MCPA
+            atm = MCPA(dirs, atm, False, trppD, rscatter)
+
+        elif COUPLER_options["atmosphere_surf_state"] == 2: # conductive lid
+            from AEOLUS.modules.solve_pt import MCPA_CL
+            atm = MCPA_CL(dirs, atm, False, trppD, rscatter)
+            COUPLER_options["T_surf"] = atm.ts
+
+        else:
+            raise Exception("Free surface state is not a valid option for AEOLUS")
     else:
         raise Exception("Cannot solve for RCE with AEOLUS")
+    
+    # Clean up run directory
+    os.chdir(cwd)
+    for file in glob.glob(dirs["output"]+"/current??.????"):
+        os.remove(file)
+    for file in glob.glob(dirs["output"]+"/profile.*"):
+        os.remove(file)
+
+    print("SOCRATES fluxes (net@surf, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
 
     # Save atm data to disk
     nc_fpath = dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.nc"
     atm.write_ncdf(nc_fpath)
 
-    # New flux from SOCRATES
+    # Store new flux
     if (COUPLER_options["F_atm_bc"] == 0):
         F_atm_new = atm.net_flux[0]  
     else:
