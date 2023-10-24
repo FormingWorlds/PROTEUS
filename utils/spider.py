@@ -501,13 +501,23 @@ def solvepp_doit(COUPLER_options):
     # These require initial guesses
     global_d['mantle_melt_fraction'] =  COUPLER_options['melt_fraction_guess'] 
 
-    core_rho = 12.0e4  # iron density [kg.m-3] at approx 250 Gpa (DOI: 10.2138/rmg.2013.75.8)
-    core_mass = core_rho * 4.0/3.0 * np.pi * (COUPLER_options["radius"] * COUPLER_options["planet_coresize"] )**3.0
-    global_d['mantle_mass'] =           COUPLER_options["mass"] - core_mass
-    if (global_d['mantle_mass'] <= 0.0):
-        raise Exception("Something has gone wrong in calculating the mantle mass")
+    # Get core's average density using Earth values
+    earth_fr = 0.55     # earth core radius fraction
+    earth_fm = 0.325    # earth core mass fraction  (https://arxiv.org/pdf/1708.08718.pdf)
+    earth_m  = 5.97e24  # kg
+    earth_r  = 6.37e6   # m
 
-    global_d['temperature'] =           COUPLER_options['T_surf_guess'] # K
+    core_rho = (3.0 * earth_fm * earth_m) / (4.0 * np.pi * ( earth_fr * earth_r )**3.0 )  # core density [kg m-3]
+    print("Estimating core density to be %g kg m-3" % core_rho)
+
+    # Calculate mantle mass by subtracting core from total
+    core_mass = core_rho * 4.0/3.0 * np.pi * (COUPLER_options["radius"] * COUPLER_options["planet_coresize"] )**3.0
+    global_d['mantle_mass'] = COUPLER_options["mass"] - core_mass 
+    print("Total mantle mass is %.2e kg" % global_d['mantle_mass'])
+    if (global_d['mantle_mass'] <= 0.0):
+        raise Exception("Something has gone wrong (mantle mass is negative)")
+
+    global_d['temperature'] =       COUPLER_options['T_surf_guess'] # K
 
     # These are defined by the proteus configuration file
     global_d['planetary_radius'] =  COUPLER_options['radius']

@@ -324,7 +324,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
             runtime_helpfile_new[vol+"_mr"]          = runtime_helpfile.iloc[-1][vol+"_mr"]
         
         for vol in volatile_species:
-            for suffix in ["_liquid_kg", "_solid_kg", "_atm_kg", "_atm_bar", "_mr"]:
+            for suffix in ["_liquid_kg", "_mol_liquid", "_solid_kg", "_mol_solid", "_atm_kg", "_atm_bar", "_mol_atm", "_mol_total","_mr"]:
                 key = vol+suffix
                 runtime_helpfile_new[key] = runtime_helpfile.iloc[-1][key] 
 
