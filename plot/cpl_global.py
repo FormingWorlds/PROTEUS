@@ -186,8 +186,10 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         h2, = ax1.plot(Time_int_rolling, Ts_int_rolling,                color=dict_colors["qred"], label="Interior")
         h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-", lw=lw, color=dict_colors["qgray"], label=r'Surface temp, $T_\mathrm{surf}$') # , color="blue"
     else:
-        h2, = ax1.plot(df_int["Time"], df_int["T_surf"],                color=dict_colors["qred"], label="Interior")
-        h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-", lw=lw, color=dict_colors["qgray"], label=r'Surface temp, $T_\mathrm{surf}$') # , color="blue"
+        if not logt:
+            ax1.scatter(df_int["Time"], df_int["T_surf"],color=dict_colors["qred"], alpha=0.5, s=20, marker='x')
+        h2, = ax1.plot(df_int["Time"], df_int["T_surf"], ls="dashed", lw=lw, color=dict_colors["qred"],  label=r'$T_\mathrm{surf}^{int}$')
+        h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-",      lw=lw, color=dict_colors["qgray"], label=r'$T_\mathrm{surf}^{atm}$')
         
     ymin = 500
     ymax = 3500
@@ -204,14 +206,17 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ax1.set_ylim(ymin, ymax)
     ax1.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
+    handles, labels = ax1.get_legend_handles_labels()
+    ax1.legend(handles, labels, ncol=1, loc='center left', frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
+
     ##########
     # figure c
     ##########
 
     # Plot rheological front depth, mante melt + solid fraction
-    ax2.axhline( y=COUPLER_options["planet_coresize"], ls='dashed', lw=lw*1.5, color=dict_colors["qmagenta_dark"], label=r'C-M boundary, $r_{\mathrm{core}}$ ' )
-    ax2.plot( df_int["Time"], 1.0-df_int["RF_depth"], ls="solid", lw=lw, color=dict_colors["qgray"], label=r'Rheol. front, $d_{\mathrm{front}}$')
-    ax2.plot( df_int["Time"], df_int["Phi_global"], color=dict_colors["qblue"], linestyle=':', lw=lw, label=r'Melt fraction, $\phi_{\mathrm{mantle}}$')
+    ax2.axhline( y=COUPLER_options["planet_coresize"], ls='dashed', lw=lw*1.5, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
+    ax2.plot( df_int["Time"], 1.0-df_int["RF_depth"],   color=dict_colors["qgray"], ls="solid",    lw=lw, label=r'Rheol. front')
+    ax2.plot( df_int["Time"],     df_int["Phi_global"], color=dict_colors["qblue"], linestyle=':', lw=lw, label=r'Melt fraction')
 
     # ax2.plot( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
     # ax2.plot( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
@@ -377,7 +382,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     handles, labels = ax5.get_legend_handles_labels()
     ax5.set_xlabel(xlabel, fontsize=label_fs)
     ax5.set_ylabel(r'$X_{\mathrm{mantle}}^{\mathrm{i}}/X_{\mathrm{tot}}^{\mathrm{i}}$', fontsize=label_fs)
-    ax5.legend(handles, labels, ncol=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend, loc='upper left') 
+    ax5.legend(handles, labels, ncol=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend, loc='center left') 
     ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
     # plt.close()
@@ -400,4 +405,4 @@ if __name__ == "__main__":
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
 
-    plot_global(dirs['output'],COUPLER_options, logt=False, tmin=1e1)
+    plot_global(dirs['output'],COUPLER_options, logt=True, tmin=1e1)

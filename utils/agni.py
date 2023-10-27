@@ -5,7 +5,7 @@ from utils.helper import *
 from utils.constants import *
 
 
-def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
+def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     """Run AGNI.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -14,6 +14,8 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
     Parameters
     ----------
+        loop_counter : dict 
+            Model loop counter values.
         time_dict : dict
             Dictionary containing simulation time variables
         dirs : dict
@@ -33,14 +35,10 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     PrintHalfSeparator()
     print("Running AGNI...")
 
-    # Check that Julia is present
-    if shutil.which("julia") is None:
-        raise Exception("Could not find julia in current environment!")
-    
     # Setup values to be provided by CLI
     gravity = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
     
-    csv_fpath = dirs["output"]+"/pt.csv"
+    csv_fpath = dirs["output"]+"pt.csv"
 
     mr_str = "\""
     vol_list = { 
@@ -114,18 +112,19 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
     # Surface condition
     surf_state = int(COUPLER_options["atmosphere_surf_state"])
-    if (surf_state >= 0) and (surf_state <= 2):
+    if (0 <= surf_state <= 2):
+
+        # Don't allow free T_surf on first call (for stability)
+        if (loop_counter["total"] == 0) and (surf_state == 2):
+            surf_state = 1
+        
         call_sequence.append("--surface %d" % surf_state)
 
+        # Conductive skin case
         if surf_state == 2:
-            if COUPLER_options["flux_convergence"] == 1:
-                raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off.")
             
             if COUPLER_options["atmosphere_solve_energy"] == 0:
                 raise Exception("It is necessary to use a time-stepped solution alongside the conductive lid scheme! Turn them both on or both off.")
-            
-            if COUPLER_options["PARAM_UTBL"] == 1:
-                raise Exception("SPIDER's UTBL is incompatible with the conductive lid scheme! Turn one of them off.")
             
             call_sequence.append("--skin_k %1.6e" % COUPLER_options["skin_k"])
             call_sequence.append("--skin_d %1.6e" % COUPLER_options["skin_d"])
@@ -143,9 +142,11 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     call_sequence.append("--plot")
 
     if (time_dict["planet"] > 3.0):
-        call_sequence.append("--nsteps 200")
+        call_sequence.append("--nsteps 200") 
     else:
         call_sequence.append("--nsteps 300")
+
+    call_sequence.append("--nlevels %d" % int(COUPLER_options["atmosphere_nlev"]))
 
     call_sequence.append("--convcrit_tmpabs  %1.4e" % 4.0 )
     call_sequence.append("--convcrit_tmprel  %1.4e" % 2.5 )
@@ -160,13 +161,13 @@ def RunAGNI( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     agni_print.close()
 
     # Read result
-    nc_fpath = dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.nc"
-    shutil.move(dirs["output"]+"/atm.nc", nc_fpath)  # read data
+    nc_fpath = dirs["output"]+"data/"+str(int(time_dict["planet"]))+"_atm.nc"
+    shutil.move(dirs["output"]+"atm.nc", nc_fpath)  # read data
 
-    fl_path = dirs["output"]+"/plot_fluxes.pdf"   # move fluxes plot
+    fl_path = dirs["output"]+"plot_fluxes.pdf"   # move fluxes plot
     if os.path.exists(fl_path):
         os.remove(fl_path)
-    shutil.move(dirs["output"]+"/fl.pdf", fl_path)
+    shutil.move(dirs["output"]+"fl.pdf", fl_path)
 
     files_remove = ["fl.csv", "pt.pdf", "mf.pdf"]  # remove files
     files_remove.extend(glob.glob("solve_monitor_*.png"))

@@ -55,6 +55,20 @@ def main():
                     "atm_loops":  20,      # Maximum number of atmosphere sub-iters
                     }
     
+    # Check options are compatible
+    if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
+        if COUPLER_options["flux_convergence"] == 1:
+            raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off.")
+        if COUPLER_options["PARAM_UTBL"] == 1:
+            raise Exception("SPIDER's UTBL is incompatible with the conductive lid scheme! Turn one of them off.")
+        
+    if COUPLER_options["atmosphere_model"] == 1:  # Julia required for AGNI
+        if shutil.which("julia") is None:
+            raise Exception("Could not find julia in current environment!")
+        
+    if COUPLER_options["atmosphere_nlev"] < 10:
+        raise Exception("Atmosphere must have more than 10 levels")
+    
     # If restart skip init loop # args.r or args.rf or 
     if COUPLER_options["IC_INTERIOR"] == 2:
 
@@ -183,6 +197,7 @@ def main():
             print("ERROR: Invalid stellar model '%d'" % COUPLER_options['star_model'])
             exit(1)
     
+    COUPLER_options["spider_repeat"] = False
 
     # Main loop
     while time_dict["planet"] < time_dict["target"]:
@@ -284,7 +299,6 @@ def main():
 
                 # Store new guesses based on last init iteration
                 run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
-                COUPLER_options["mantle_mass_guess"] =      run_int.iloc[-1]["M_mantle"]
                 COUPLER_options["T_surf_guess"] =           run_int.iloc[-1]["T_surf"]
                 COUPLER_options["melt_fraction_guess"] =    run_int.iloc[-1]["Phi_global"]
 
@@ -324,7 +338,7 @@ def main():
 
                 elif COUPLER_options["atmosphere_model"] == 1:
                     # Run AGNI 
-                    COUPLER_options = RunAGNI(time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    COUPLER_options = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile)
                     
                 else:
                     raise Exception("Invalid atmosphere model")

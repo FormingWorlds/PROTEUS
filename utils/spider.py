@@ -833,7 +833,15 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
 
         # Time stepping adjustment
-        if time_dict["planet"] < 2.0:
+        if COUPLER_options["spider_repeat"]:
+            # Ask SPIDER to repeat the previous time-step
+            dtmacro = 0
+            dtswitch = 0
+            nsteps = 1
+            print("Time-stepping intent: repeat")
+        
+        
+        elif time_dict["planet"] < 2.0:
             # First few years, use static time-step
             dtmacro = 1
             dtswitch = 1

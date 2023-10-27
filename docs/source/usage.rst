@@ -339,11 +339,7 @@ inputs are provided.
 * ``T_surf_guess``
    - Initial guess for surface temperature when ``solvepp_enabled == 1``.   
    - (Float) Greater than zero [K].
-
-* ``mantle_mass_guess``
-   - Initial guess for total mantle mass when ``solvepp_enabled == 1``.    
-   - (Float) Greater than zero [kg].
-
+   
 * ``melt_fraction_guess``
    - Initial guess for mantle melt fraction when ``solvepp_enabled == 1``.    
    - (Float) Between 0 and 1, inclusive.

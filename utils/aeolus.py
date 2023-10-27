@@ -141,22 +141,28 @@ def StructAtm( runtime_helpfile, COUPLER_options ):
             trppT = None
         case _:
             raise ValueError("Invalid tropopause option '%d'" % COUPLER_options["tropopause"])
+        
+    nlev = int(COUPLER_options["atmosphere_nlev"])
             
     atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, 
                 COUPLER_options["P_top"]*1e5, pl_radius, pl_mass,
                 vol_mixing=vol_list, 
                 minT = COUPLER_options["min_temperature"],
+                maxT = COUPLER_options["max_temperature"],
                 trppT=trppT,
-                water_lookup=False
+                water_lookup=False,
+                req_levels=nlev
                 )
 
     atm.zenith_angle    = COUPLER_options["zenith_angle"]
     atm.albedo_pl       = COUPLER_options["albedo_pl"]
     atm.albedo_s        = COUPLER_options["albedo_s"]
     atm.toa_heating     = COUPLER_options["TOA_heating"]
-    atm.tmp_magma       = COUPLER_options["T_surf"]
     atm.skin_d          = COUPLER_options["skin_d"]
     atm.skin_k          = COUPLER_options["skin_k"]
+
+    run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+    atm.tmp_magma = run_atm.iloc[-1]["T_surf"]
 
     return atm
 
@@ -210,9 +216,26 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
         elif COUPLER_options["atmosphere_surf_state"] == 2: # conductive lid
             from AEOLUS.modules.solve_pt import MCPA_CL
 
-            atm = MCPA_CL(dirs, atm, trppD, rscatter)
+            T_surf_max = -1
+            T_surf_old = -1 
+
+            # Done with initial loops
+            if (time_dict["planet"] > 0):
+
+                # Get previous temperature as initial guess
+                run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
+                T_surf_old = run_atm.iloc[-1]["T_surf"]
+
+                # Prevent heating of the interior
+                if (COUPLER_options["prevent_warming"] == 1):
+                    run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+                    T_surf_max = run_atm.iloc[-1]["T_surf"]
+
+            atm = MCPA_CL(dirs, atm, trppD, rscatter, 
+                          atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old), T_surf_max=float(T_surf_max))
+            
             COUPLER_options["T_surf"] = atm.ts
-            print(atm.net_flux)
+            COUPLER_options["spider_repeat"] = not COUPLER_options["spider_repeat"] # Do a step of dt=0 once
 
         else:
             raise Exception("Free surface state is not a valid option for AEOLUS")

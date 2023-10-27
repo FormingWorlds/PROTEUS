@@ -298,7 +298,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
                 Ts_last         = run_atm_last.iloc[-1]["T_surf"]
 
             # IF T_surf change too high
-            if abs(Ts_last-COUPLER_options["T_surf"]) >= COUPLER_options["dTs_atm"]: 
+            if (abs(Ts_last-COUPLER_options["T_surf"]) >= COUPLER_options["dTs_atm"]) and (COUPLER_options["atmosphere_surf_state"] != 2): 
                 COUPLER_options["F_net"] = -COUPLER_options["F_eps"]   
                 print("T_surf change too high. dT =", Ts_last-COUPLER_options["T_surf"])
                 
@@ -390,7 +390,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                                 "plot_iterfreq", "stellar_heating", "mixing_length",
                                 "atmosphere_chem_type", "solvepp_enabled", "insert_rscatter",
                                 "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
-                                "dt_dynamic", "prevent_warming", "atmosphere_model"]:
+                                "dt_dynamic", "prevent_warming", "atmosphere_model", "atmosphere_nlev"]:
                         val = int(val)
 
                     # Some are str
