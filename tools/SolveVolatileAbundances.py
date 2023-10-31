@@ -153,6 +153,32 @@ class SolubilityH2O(Solubility):
         return self.power_law(p, 683, 0.5)
 
 #====================================================================
+class SolubilityCH4(Solubility):
+    """CH4 solubility models"""
+
+    def __init__(self, composition='basalt_ardia'):
+        super().__init__(composition)
+
+    def basalt_ardia(self, p, p_total):
+        '''Ardia 2013'''
+        p_total *= 1e-4  # Convert to GPa
+        p *= 1e-4 # Convert to GPa
+        ppmw = p*np.exp(4.93 - (0.000193 * p_total))
+        return ppmw
+    
+#====================================================================
+class SolubilityCO(Solubility):
+    """CO solubility models"""
+
+    def __init__(self, composition='mafic_armstrong'):
+        super().__init__(composition)
+
+    def mafic_armstrong(self, p, p_total):
+        '''Armstrong 2015'''
+        ppmw = 10 ** (-0.738 + 0.876 * np.log10(p) - 5.44e-5 * p_total)
+        return ppmw
+
+#====================================================================
 class SolubilityCO2(Solubility):
     """CO2 solubility models"""
 
@@ -310,6 +336,16 @@ def dissolved_mass(pin, fO2_shift, global_d):
     ppmw_H2O = sol_H2O(p_d['H2O'])
     mass_int_d['H2O'] = prefactor*ppmw_H2O
 
+    # CO
+    sol_CO = SolubilityCO() # gets the default solubility model
+    ppmw_CO = sol_CO(p_d["CO"], ptot)
+    mass_int_d['CO'] = prefactor*ppmw_CO
+
+    # CH4
+    sol_CH4 = SolubilityCH4() # gets the default solubility model
+    ppmw_CH4 = sol_CH4(p_d["CH4"], ptot)
+    mass_int_d['CH4'] = prefactor*ppmw_CH4
+
     # CO2
     sol_CO2 = SolubilityCO2() # gets the default solubility model
     ppmw_CO2 = sol_CO2(p_d['CO2'], global_d['temperature'])
@@ -326,8 +362,12 @@ def dissolved_mass(pin, fO2_shift, global_d):
     mass_int_d['N2'] = prefactor*ppmw_N2
 
     # now get totals of H, C, N
-    mass_int_d['H'] = mass_int_d['H2O']*(mass_d['H2']/mass_d['H2O'])
-    mass_int_d['C'] = mass_int_d['CO2']*(mass_d['C']/mass_d['CO2'])
+    mass_int_d['H'] = mass_int_d['H2O']/mass_d['H2O'] + mass_int_d['CH4']*2/mass_d["CH4"]
+    mass_int_d['H'] *= mass_d['H2']
+    
+    mass_int_d['C'] = mass_int_d['CO2']/mass_d['CO2'] + mass_int_d['CO']/mass_d['CO'] + mass_int_d['CH4']/mass_d['CH4']
+    mass_int_d['C'] *= mass_d['C']
+
     mass_int_d['N'] = mass_int_d['N2']
 
     return mass_int_d
@@ -543,7 +583,8 @@ def equilibrium_atmosphere_GR():
 
     # Samples
     hydrogen_l =        np.array([1.0, 10.0, 100.0, 1000.0, 10000.0])
-    CH_ratio_l =        np.array([0.1, 1.0, 10.0, 100.0]) * C_to_H
+    # CH_ratio_l =        np.array([0.1, 1.0, 10.0, 100.0]) * C_to_H
+    CH_ratio_l =        np.array([0.01, 0.05]) * C_to_H
     fO2_shift_l =       np.array([-5.0, -2.0, 0.0, 2.0, 4.0])
     mantle_l =          np.array([0.001, 0.01, 0.1, 1.0]) * pl_m
     tsurf_l =           np.array([1500.0, 2000.0, 2500.0, 3000.0])

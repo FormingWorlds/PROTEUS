@@ -186,8 +186,8 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         h2, = ax1.plot(Time_int_rolling, Ts_int_rolling,                color=dict_colors["qred"], label="Interior")
         h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-", lw=lw, color=dict_colors["qgray"], label=r'Surface temp, $T_\mathrm{surf}$') # , color="blue"
     else:
-        if not logt:
-            ax1.scatter(df_int["Time"], df_int["T_surf"],color=dict_colors["qred"], alpha=0.5, s=20, marker='x')
+        # if not logt:
+        #     ax1.scatter(df_int["Time"], df_int["T_surf"],color=dict_colors["qred"], alpha=0.5, s=20, marker='x')
         h2, = ax1.plot(df_int["Time"], df_int["T_surf"], ls="dashed", lw=lw, color=dict_colors["qred"],  label=r'$T_\mathrm{surf}^{int}$')
         h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-",      lw=lw, color=dict_colors["qgray"], label=r'$T_\mathrm{surf}^{atm}$')
         

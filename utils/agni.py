@@ -91,10 +91,11 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         call_sequence.append("--equivext")  # use equivalent extinction because it's much faster
 
         # Start from previous CSV file?
-        if (time_dict["planet"] > 3.0) and os.path.exists(csv_fpath):
-            call_sequence.append("--pt_path %s" % csv_fpath)
-            call_sequence.append("--noaccel")
+        if os.path.exists(csv_fpath):
             load_prev = True  
+            call_sequence.append("--pt_path %s" % csv_fpath)
+            if (time_dict["planet"] > 0.0):
+                call_sequence.append("--noaccel")
         # If not, the model will start from an isothermal state at T=tstar
 
 
@@ -142,15 +143,17 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     call_sequence.append("--plot")
 
     if (time_dict["planet"] > 3.0):
-        call_sequence.append("--nsteps 200") 
+        call_sequence.append("--nsteps 250") 
     else:
-        call_sequence.append("--nsteps 300")
+        call_sequence.append("--nsteps 400")
+        call_sequence.append("--cvode")
 
     call_sequence.append("--nlevels %d" % int(COUPLER_options["atmosphere_nlev"]))
 
-    call_sequence.append("--convcrit_tmpabs  %1.4e" % 4.0 )
-    call_sequence.append("--convcrit_tmprel  %1.4e" % 2.5 )
-    call_sequence.append("--convcrit_fradrel %1.4e" % 0.1 )
+    call_sequence.append("--convcrit_tmpabs   %1.4e" % 4.0 )
+    call_sequence.append("--convcrit_tmprel   %1.4e" % 2.5 )
+    call_sequence.append("--convcrit_fradrel  %1.4e" % 0.1 )
+    call_sequence.append("--convcrit_flosspct %1.4e" % 2.0 )
 
     # Join flags together
     call_string = " ".join(call_sequence)
