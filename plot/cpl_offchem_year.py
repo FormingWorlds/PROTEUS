@@ -5,7 +5,7 @@
 # Import things
 import matplotlib as mpl
 mpl.use("Agg")
-from utils.plot import *
+from utils.plot_offchem import *
 
 
 def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
@@ -45,7 +45,7 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
     ax0.plot(year_dict["temperature"],year_dict["pressure"],color='black',lw=lw)
 
     # Mixing ratios
-    ax1.set_xlabel("Mixing ratio")
+    ax1.set_xlabel("Mole fraction")
     ax1.set_xscale("log")
 
 
@@ -59,17 +59,20 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
             color = 'black'
             print("Warning: could not find a defined colour for species '%s' " % s)
 
+        pretty = s
+        if s in vol_latex.keys():
+            pretty = vol_latex[s]
 
         # VULCAN result
         key = str("mx_"+s)
         if key in year_dict.keys():
             ax1.plot(year_dict[key],year_dict["pressure"],lw=lw+0.4,color='black')
-            ax1.plot(year_dict[key],year_dict["pressure"],label=s,lw=lw,color=color)
+            ax1.plot(year_dict[key],year_dict["pressure"],label=pretty,lw=lw,color=color)
             min_mix = min(min_mix,np.amin(year_dict[key]))
             
         # AEOLUS result
         if plot_init_mx:
-            key = str("ae_"+s)
+            key = str("mv_"+s)
             if key in year_dict.keys():
                 ax1.plot(np.ones((len(year_dict["pressure"]))) * year_dict[key],year_dict["pressure"],linestyle='--',lw=lw*0.5,color=color)
             

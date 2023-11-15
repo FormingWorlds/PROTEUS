@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 
 """
-Code for running offline chemistry based on PROTEUS output
+Code for running offline chemistry based on PROTEUS output.
+Configuration options are near the bottom of this file.
 """
 
 # Import libraries
 import numpy as np
-import pickle as pkl
+import netCDF4 as nc
 import os, glob, shutil, subprocess, time, pathlib
 from datetime import datetime
 import numpy.random as nrand
 import logging
-import multiprocessing as mp
 import pandas as pd
 
 # Import PROTEUS stuff
@@ -28,7 +28,79 @@ def find_nearest_idx(array, value):
     idx = (np.abs(array - value)).argmin()
     return int(idx)
 
-def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict, helpfile_df:pd.DataFrame, ini_method:int) -> bool:
+# Custom logger instance 
+# https://stackoverflow.com/a/61457119
+def setup_logger(name:str, logpath:str="new.log", level=logging.INFO, logterm=True)->logging.Logger:
+
+    custom_logger = logging.getLogger(name)    
+    custom_logger.handlers.clear()
+    
+    if os.path.exists(logpath):
+        os.remove(logpath)
+
+    fmt = logging.Formatter("[%(levelname)s] %(message)s")
+
+    if logterm:
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(fmt)
+        sh.setLevel(level)
+        custom_logger.addHandler(sh)
+
+    fh = logging.FileHandler(logpath)
+    fh.setFormatter(fmt)
+    fh.setLevel(level)
+    custom_logger.addHandler(fh)
+
+    custom_logger.setLevel(level)
+    # sys.excepthook = handle_exception
+
+    return custom_logger 
+
+
+# Draw samples from all of the years following a distribution
+def get_sample_years(years_all,samples,s_centre,s_width):
+    years = [ ]
+    yfirst = years_all[1]
+    ylast = years_all[-1]
+
+    # Draw samples
+    if len(years_all) == samples:
+        # If number of samples = number of data points, don't need to use sampling method
+        years = years_all
+    else:
+        # Otherwise:
+        # Draw other runs randomly from a distribution. This is set-up to sample
+        # the end of the run more densely than the start, because the evolution at 
+        # the start isn't so interesting compared to the end.
+
+        years.append(ylast) # Include last run
+
+        if samples > 1:
+            years.append(yfirst) # Include first run
+
+        sample_itermax = 30000*samples
+        sample_iter = 0
+        while (len(years) < samples): 
+
+            sample_iter += 1
+            if sample_iter > sample_itermax:
+                raise Exception("Maximum iterations reached in selecting sample years!")
+
+            # sample = np.abs(nrand.laplace(loc=ylast,scale=float(ylast*swidth)))
+            sample = -1.0 * nrand.gumbel(loc=-1.0*s_centre,scale=s_width)
+            if (sample <= yfirst) or (sample >= ylast):
+                continue  # Try again
+
+            inear = find_nearest_idx(years_all,sample)
+            ynear = years_all[inear]
+            if ynear in years:
+                continue  # Try again
+            
+            years.append(ynear)
+
+    return sorted(set(years))  # Ensure that there are no duplicates and sort ascending
+
+def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, dirs:dict, COUPLER_options:dict, helpfile_df:pd.DataFrame, ini_method:int) -> bool:
     """Run VULCAN once for a given PROTEUS output year
     
     Runs VULCAN in a screen instance so that lots processes may still be
@@ -37,10 +109,12 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
 
     Parameters
     ----------
+        logger : logging.Logger
+            Logger class to use
         year : int
             Planet age corresponding to a data dump from PROTEUS [yr]
-        now : int
-            Time at which this run was started (format: HHMMSS)
+        screen_name : str 
+            Screen name to use
         first_run : bool
             Is this the first time that VULCAN is run for this configuration?
         dirs : dict
@@ -67,17 +141,44 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
     # Make results folder for this run
     this_results = dirs["output"]+"offchem/%d/"%year
     if os.path.exists(this_results):
-        raise Exception("Offline chemistry already running for this year!")
+        raise Exception("Offline chemistry already running for this year (%s)!" % screen_name)
     os.makedirs(this_results)
 
-    # Read atm object
-    with open(dirs["output"]+"/data/%d_atm.pkl"%year,'rb') as atm_handle:
-        atm = pkl.load(atm_handle)
-        p_bot   = atm.pl[-1]        # Pressure
-        p_top   = atm.pl[0]         # Pressure
-        v_mx    = atm.vol_list      # Mixing ratios
+    # Read atm data
+    nc_fpath = dirs["output"]+"/data/%d_atm.nc"%year
+    ds = nc.Dataset(nc_fpath)
+    tmpl =  np.array(ds.variables["tmpl"][:])
+    pl  =   np.array(ds.variables["pl"][:])
+    n_gas = np.array(ds.variables["gases"][:])  # gas names, as read
+    r_gas = np.array(ds.variables["x_gas"][:])  # gas mixing ratios
+    ds.close()
+
+    # Decode gas names
+    gases = []
+    x_gas = {}
+    for i,g_read in enumerate(n_gas):
+
+        g = "".join([c.decode("utf-8") for c in g_read]).strip()
+
+        if not(g in volatile_species):
+            raise Exception("Volatile present in NetCDF is not present in volatile_species list")
         
-        volatile_species = v_mx.keys()
+        x_arr = np.array(r_gas[:,i])
+        x_arr = np.clip(x_arr, 0, None)
+
+        if max(x_arr) < 1e-25:  # neglect species with zero mixing ratio.
+            continue 
+        
+        gases.append(g)
+        x_gas[g] = x_arr
+
+    p_bot   = np.max(pl) 
+    p_top   = np.min(pl) 
+
+    v_mx    = dict()      # Mixing ratios
+    for i,g in enumerate(gases):
+        val = float(x_gas[g][-1])
+        v_mx[g] = val
 
     # Read helpfile to get data for this year
     helpfile_thisyear = helpfile_df.loc[helpfile_df['Time'] == year].iloc[0]
@@ -85,7 +186,7 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
     # Write specifics to config file
     with open(dirs["vulcan"]+"vulcan_cfg.py",'a') as vcf:
         # Output file to use
-        vcf.write("out_name = '%d_offchem_%d.vul' \n" % (now,year))
+        vcf.write("out_name = '%s.vul' \n" % (screen_name))
 
         # Pressure grid limits
         vcf.write("P_b = %1.5e \n" % float(p_bot * 10.0))  # pressure at the bottom (dyne/cm^2)
@@ -93,7 +194,7 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
 
         # Constant mixing ratios
         const_mix = "{"
-        for v in volatile_species:
+        for v in v_mx.keys():
             this_mx = max(float(v_mx[v]),mixing_ratio_floor)     
             const_mix += " '%s' : %1.5e ," % (v,this_mx)
         const_mix = const_mix[:-1]+" }"
@@ -103,7 +204,7 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
         tot = {}
         for e in element_list:
             tot[e] = 0
-        for v in volatile_species:
+        for v in v_mx.keys():
             this_mx = max(float(v_mx[v]),mixing_ratio_floor)    
             elems = mol_to_ele(v)
             for e in elems.keys():
@@ -125,8 +226,7 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
 
         # Bottom boundary condition
         fix_bb_mr = "{ "
-        for v in volatile_species:
-
+        for v in gases:
             this_mx = max(float(v_mx[v]),mixing_ratio_floor)  # Mixing ratio floor to prevent issues with VULCAN
 
             if (this_mx > mixing_ratio_fixed):
@@ -138,7 +238,7 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
         # Background component of atmosphere
         bkgrnd_s = "H2"
         bkgrnd_v = -1
-        for v in volatile_species:
+        for v in gases:
             this_mx = float(v_mx[v])
             if (this_mx > bkgrnd_v) and (v in ["N2","H2","CO2","O2"]): # Compare against list of viable background gases
                 bkgrnd_s = v
@@ -147,10 +247,10 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
         vcf.write("atm_base = '%s' \n" % bkgrnd_s)
 
         # PT profile
-        vcf.write("atm_file = 'output/%d_offchem_%d_PT.txt' \n"%(now,year))
+        vcf.write("atm_file = 'output/%s_PT.txt' \n"%screen_name)
 
         # Stellar flux (at surface of star)
-        vcf.write("sflux_file = 'output/%d_offchem_%d_SF.txt' \n"%(now,year))
+        vcf.write("sflux_file = 'output/%s_SF.txt' \n"%screen_name)
 
         # Stellar radius
         vcf.write("r_star = %1.6e \n" %         float(helpfile_thisyear["R_star"]))
@@ -169,46 +269,36 @@ def run_once(year:int, now:int, first_run:bool, dirs:dict, COUPLER_options:dict,
     ls = glob.glob(dirs["output"]+"/data/*.sfluxsurf")
     years = [int(f.split("/")[-1].split(".")[0]) for f in ls]
     year_near = years[find_nearest_idx(years,year)]
-    shutil.copyfile(dirs["output"]+"/data/%d.sfluxsurf"%year_near,dirs["vulcan"]+"output/%d_offchem_%d_SF.txt"%(now,year))
+    shutil.copyfile(dirs["output"]+"/data/%d.sfluxsurf"%year_near,dirs["vulcan"]+"output/%s_SF.txt"%screen_name)
 
     # Write PT profile
     minT = 120.0
-    atm.tmpl = np.clip(atm.tmpl,minT,None)
-    if np.any(np.array(atm.tmpl) < minT):
-        print("WARNING: Temperature is unreasonably low (< %f)!" % minT)
+    tmpl = np.clip(tmpl,minT,None)
+    if np.any(np.array(tmpl) < minT):
+        logger.warn("Temperature is unreasonably low (< %f)!" % minT)
     vul_PT = np.array(
-        [np.array(atm.pl)  [::-1] * 10.0,
-         np.array(atm.tmpl)[::-1]
+        [np.array(pl)  [::-1] * 10.0,
+         np.array(tmpl)[::-1]
         ]
     ).T
     header = "#(dyne/cm2)\t (K) \n Pressure\t Temp"
-    np.savetxt(dirs["vulcan"]+"output/%d_offchem_%d_PT.txt"%(now,year),vul_PT,  delimiter="\t",header=header,comments='',fmt="%1.5e")
-    shutil.copyfile(dirs["vulcan"]+"output/%d_offchem_%d_PT.txt"%(now,year),    dirs["output"]+"offchem/%d/PT.txt"%year)
+    np.savetxt(     dirs["vulcan"]+"output/%s_PT.txt"%screen_name, vul_PT,  delimiter="\t",header=header,comments='',fmt="%1.5e")
+    shutil.copyfile(dirs["vulcan"]+"output/%s_PT.txt"%screen_name, dirs["output"]+"offchem/%d/PT.txt"%year)
 
     # Run vulcan
     # Note that the screen name ends with an 'x' so that accurate matching can be done with grep
     os.chdir(dirs["vulcan"])
-    screen_name = "%d_offchem_%dx" % (now,year)
     logfile = dirs["output"]+"offchem/%d/vulcan.log"%year
     vulcan_flag = " " if first_run else "-n"
-    vulcan_run = 'screen -S %s -L -Logfile %s -dm bash -c "python3 vulcan.py %s"' % (screen_name,logfile,vulcan_flag)
+    vulcan_run = 'screen -S %sx -L -Logfile %s -dm bash -c "python3 vulcan.py %s"' % (screen_name,logfile,vulcan_flag)
     subprocess.run([vulcan_run], shell=True, check=True)
     os.chdir(dirs["coupler"])
 
     return success
 
 
-# Handle exceptions with logging library, so that they are written to the log file
-# https://stackoverflow.com/a/16993115
-def handle_exception(exc_type, exc_value, exc_traceback):
-    if issubclass(exc_type, KeyboardInterrupt):
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
-    else:
-        logging.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
-
-
 def parent(cfgfile, samples, threads, s_width, s_centre, 
-           mkfuncs=True, runtime_sleep=30, ini_method=1, mkplots=True):
+           mkfuncs=True, runtime_sleep=30, ini_method=1, mkplots=True, logterm=True):
     """Parent process for handing offline chemistry.
 
     Reads configuration from cfgfile, finds the files, takes samples, and dispatches 
@@ -246,13 +336,10 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
             1: calculate elemental abundances and run FastChem eqm chemistry.
         mkplots : bool
             Make plots at end?
-        
+        logterm : bool
+            Log output to terminal? Will always log to a file.
 
     """
-
-    print("Started main process")
-
-    args = locals()
 
     # Read in PROTEUS config file
     COUPLER_options, _ = ReadInitFile( cfgfile )
@@ -275,35 +362,22 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
     shutil.copy2(cfgfile, offchem_dir)
 
     # Set up logging
-    logfile = offchem_dir+"parent.log"
-    if os.path.exists(logfile):
-        os.remove(logfile)
-
-    logging.basicConfig(
-    level=logging.INFO,
-    format="[%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(logfile),
-        logging.StreamHandler()
-        ]
-    )
-    sys.excepthook = handle_exception
+    logger_name = "logger_%d" % nrand.randint(low=1e9, high=9e9)
+    log_file = offchem_dir+"parent.log"
+    logger = setup_logger(logger_name,logpath=log_file,logterm=logterm)
 
     # Log info to user
     time_start = datetime.now()
-    logging.info("Date: " +str(time_start.strftime("%Y-%m-%d")))
+    logger.info("Date: " +str(time_start.strftime("%Y-%m-%d")))
 
     now = int(str(time_start.strftime("%H%M%S")))
-    logging.info("Time: %d"%now)
+    logger.info("Time: %d"%now)
 
-    logging.info(" ")
-    logging.info("Arguments: %s" % str(args))
-
-    logging.info(" ")
-    logging.info("This program will generate several screen sessions")
-    logging.info("To kill all of them, run `pkill -f %d_offchem_`" % now)   # (from: https://stackoverflow.com/a/8987063)
-    logging.info("Take care to avoid orphaned instances by using `screen -ls`")
-    logging.info(" ")
+    logger.info(" ")
+    logger.info("This program will generate several screen sessions")
+    logger.info("To kill all of them, run `pkill -f %d_offchem_`" % now)   # (from: https://stackoverflow.com/a/8987063)
+    logger.info("Take care to avoid orphaned instances by using `screen -ls`")
+    logger.info(" ")
 
     # Read helpfile
     helpfile_df = pd.read_csv(dirs["output"]+"runtime_helpfile.csv",sep='\t')
@@ -312,16 +386,16 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
     evolution_json = glob.glob(dirs["output"]+"/data/*.json")
     json_years = np.array([int(f.split("/")[-1].split(".")[0]) for f in evolution_json])
     json_years = np.sort(json_years)
-    logging.info("Number of json files: %d"%len(json_years))
+    logger.info("Number of json files: %d"%len(json_years))
 
-    evolution_pkl = glob.glob(dirs["output"]+"/data/*_atm.pkl")
-    pkl_years = np.array([int(f.split("/")[-1].split("_atm.")[0]) for f in evolution_pkl])
-    pkl_years = np.sort(pkl_years)
-    logging.info("Number of pkl files: %d"%len(pkl_years))
+    evolution_nc = glob.glob(dirs["output"]+"/data/*_atm.nc")
+    nc_years = np.array([int(f.split("/")[-1].split("_atm.")[0]) for f in evolution_nc])
+    nc_years = np.sort(nc_years)
+    logger.info("Number of nc files: %d"%len(nc_years))
 
     years_all = []
     for y in json_years:
-        if y in pkl_years: 
+        if y in nc_years: 
             years_all.append(y)
 
     # All requested
@@ -329,7 +403,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         samples = len(years_all)
 
     threads = min(threads, samples)
-    max_threads = 60
+    max_threads = 1000
     if samples < 1:
         raise Exception("Too few samples requested! (Less than zero)") 
     if samples > len(years_all):
@@ -340,56 +414,16 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         raise Exception("Too many threads requested! (More than %d)" % max_threads)
     
     # Select samples...
-    logging.info("Choosing sample years... (May take a while in some cases)")
-    years = [ ]
-    yfirst = years_all[1]
-    ylast = years_all[-1]
-
-    # Draw samples
-    if len(years_all) == samples:
-        # If number of samples = number of data points, don't need to use sampling method
-        years = years_all
-    else:
-        # Otherwise:
-        # Draw other runs randomly from a distribution. This is set-up to sample
-        # the end of the run more densely than the start, because the evolution at 
-        # the start isn't so interesting compared to the end.
-
-        if samples >= 1:
-            years.append(yfirst) # Include first run
-        if samples >= 2:
-            years.append(ylast) # Include last run
-
-        sample_itermax = 30000*samples
-        sample_iter = 0
-        while (len(years) < samples): 
-
-            sample_iter += 1
-            if sample_iter > sample_itermax:
-                raise Exception("Maximum iterations reached in selecting sample years!")
-
-            # sample = np.abs(nrand.laplace(loc=ylast,scale=float(ylast*swidth)))
-            sample = nrand.gumbel(loc=s_centre,scale=s_width)
-            if (sample <= yfirst) or (sample >= ylast):
-                continue  # Try again
-
-            inear = find_nearest_idx(years_all,sample)
-            ynear = years_all[inear]
-            if ynear in years:
-                continue  # Try again
-            
-            years.append(ynear)
-
-
-    years = sorted(set(years))  # Ensure that there are no duplicates and sort ascending
+    logger.info("Choosing sample years... (May take a while in some cases)")
+    years = get_sample_years(years_all, samples, s_centre, s_width)
     samples = len(years)
-    logging.info("Years selected: " +str(years))
+    logger.info("Years selected: " +str(years))
 
     # Start processes
-    logging.info(" ")
-    logging.info("Starting process manager (%d samples, %d threads) in..." % (samples,threads))
-    for w in range(5,0,-1):
-        logging.info("\t %d seconds" % w)
+    logger.info(" ")
+    logger.info("Starting process manager (%d samples, %d threads) in..." % (samples,threads))
+    for w in range(3,0,-1):
+        logger.info("\t %d seconds" % w)
         time.sleep(1.0)
 
     # Track statuses
@@ -418,21 +452,23 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         count_threads = 0
         for i in range(samples):
             y = years[i]
-            running = bool(str("%d_offchem_%dx"%(now,y)) in screen_out)
+
+            sname = "%d_offchem_%d" % (now,y)
+            running = bool(str("%sx"%sname) in screen_out)
             
             if running:
                 count_threads += 1
             
             # Currently tagged as running, but check if done
             if (not running) and (status[i] == 1):
-                to_copy = dirs["vulcan"]+"/output/%d_offchem_%d.vul" % (now,y)
+                to_copy = dirs["vulcan"]+"/output/%s.vul" % sname
                 if os.path.exists(to_copy): # Is done?
                     status[i] = 2
                     shutil.copyfile(to_copy, dirs["output"]+"/offchem/%d/output.vul"%y) # Copy output
 
                 else:
                     status[i] = 3
-                    logging.info("WARNING: Output file missing for year = %d" % y)
+                    logger.info("WARNING: Output file missing for year = %d" % y)
 
         # How many are queued?
         count_queued = np.count_nonzero(status == 0)
@@ -447,7 +483,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         count_dispatched = np.count_nonzero(status > 0)
 
         # Print status
-        logging.info("Status: %d queued (%.1f%%), %d running (%.1f%%), %d completed (%.1f%%), %d threads active" % (
+        logger.info("Status: %d queued (%.1f%%), %d running (%.1f%%), %d completed (%.1f%%), %d threads active" % (
                     count_queued, 100.0*count_queued/samples,
                     count_current, 100.0*count_current/samples,
                     count_completed, 100.0*count_completed/samples,
@@ -472,14 +508,15 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
                     time.sleep(60.0)  
 
                 # Run new process
-                logging.info("Dispatching job %03d: %08d yrs..." % (i,y))
+                logger.info("Dispatching job %03d: %08d yrs..." % (i,y))
                 fr = bool( (count_dispatched == 0) and mkfuncs)
-                this_success = run_once(years[i], now, fr, dirs, COUPLER_options, helpfile_df, ini_method)
+                sname = "%d_offchem_%d" % (now,y)
+                this_success = run_once(logger, years[i], sname, fr, dirs, COUPLER_options, helpfile_df, ini_method)
                 status[i] = 1
                 if this_success:
-                    logging.info("\t (dispatched)")
+                    logger.info("\t (dispatched)")
                 else:
-                    logging.info("\t (failed)")
+                    logger.info("\t (failed)")
 
 
         # Check if all are done
@@ -487,26 +524,26 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         
     # Check if exited early
     if not done:
-        logging.info("WARNING: Master process loop terminated early!")
-        logging.info("         This could be because it timed-out or an error occurred.")
+        logger.info("WARNING: Master process loop terminated early!")
+        logger.info("         This could be because it timed-out or an error occurred.")
 
     # Tidy VULCAN output folder
     for f in glob.glob(dirs["vulcan"]+"output/%d_offchem_*"%now): 
         os.remove(f)
 
     time_end = datetime.now()
-    logging.info("All processes finished at: "+str(time_end.strftime("%Y-%m-%d %H%M%S")))
-    logging.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
+    logger.info("All processes finished at: "+str(time_end.strftime("%Y-%m-%d %H%M%S")))
+    logger.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
     # Plot
     if mkplots:
-        logging.info("Plotting results...")
+        logger.info("Plotting results...")
 
         # plot_aeolus = bool(ini_method == 0)
         plot_aeolus = True
 
         species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
-        logging.info("\t timeline")
+        logger.info("\t timeline")
         plot_offchem_time(dirs["output"],species,plot_init_mx=plot_aeolus,tmin=1e4)
 
         ls = glob.glob(dirs["output"]+"offchem/*/output.vul")
@@ -515,31 +552,31 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
 
         if len(years) > 0:
             for yd in years_data:
-                logging.info("\t year = %d" % yd["year"])
+                logger.info("\t year = %d" % yd["year"])
                 plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_aeolus)
         else:
-            logging.error('In attempting to make plots, no VULCAN output files were found')
+            logger.error('In attempting to make plots, no VULCAN output files were found')
 
         for s in species:
-            print("\t species = %s" % s)
+            logger.info("\t species = %s" % s)
             plot_offchem_species(dirs["output"],s,plot_init_mx=plot_aeolus)
 
     # Done
-    logging.info("Done running offline chemistry!")
+    logger.info("Done running offline chemistry!")
 
 
 # If run directly
 if __name__ == '__main__':
 
     # Parameters
-    cfgfile =       "output/example_trappist1b_IW+0/init_coupler.cfg"  # Config file used for PROTEUS
-    samples =       40                  # How many samples to use from output dir (set to -1 if all are requested)
-    threads =       40                  # How many threads to use
-    mkfuncs =       False               # Compile reaction functions again?
+    cfgfile =       "output/pspace_redox/case_000/init_coupler.cfg"  # Config file used for PROTEUS
+    samples =       10                  # How many samples to use from output dir (set to -1 if all are requested)
+    threads =       70                  # How many threads to use
+    mkfuncs =       True                # Compile reaction functions again?
     mkplots =       True                # make plots?
-    s_width =       9e7                 # Width of sampling distribution [yr]
-    s_centre =      9e5                 # Centre of sampling distribution [yr]
-    runtime_sleep = 30                  # Sleep seconds per iter (required for VULCAN warm up periods to pass)
+    s_width =       1e9                 # Scale width of sampling distribution [yr]
+    s_centre =      1e6                 # Centre of sampling distribution [yr]
+    runtime_sleep = 40                  # Sleep seconds per iter (required for VULCAN warm up periods to pass)
     ini_method =    1                   # Method used to init VULCAN abundances  (0: const_mix, 1: eqm)
 
     # Do it

@@ -12,6 +12,7 @@ import plot.cpl_stacked as cpl_stacked
 import plot.cpl_interior as cpl_interior
 import plot.cpl_sflux as cpl_sflux
 import plot.cpl_sflux_cross as cpl_sflux_cross
+import plot.cpl_fluxes as cpl_fluxes
 
 # Handle optional command line arguments for volatiles
 # Optional arguments: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
@@ -34,7 +35,7 @@ def latex_float(f):
     else:
         return float_str
 
-def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs):
+def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options):
 
     # Print final statement
     PrintHalfSeparator()
@@ -42,20 +43,16 @@ def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_co
     print("    Datetime:            %s"   % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
     print("    Time [yr]:           %.1e" % float(time_dict["planet"]))
     print("    T_surf [K]:          %.1f" % float(runtime_helpfile.iloc[-1]["T_surf"]))
-    print("    Phi_global:          %.3f" % float(runtime_helpfile.iloc[-1]["Phi_global"]))
     print("    P_surf [bar]:        %.1f" % float(runtime_helpfile.iloc[-1]["P_surf"]))
-    print("    TOA heating [W/m^2]: %.3e" % float(atm.toa_heating))
+    print("    Phi_global:          %.3f" % float(runtime_helpfile.iloc[-1]["Phi_global"]))
+    print("    Star flux [W/m^2]:   %.3e" % float(COUPLER_options["TOA_heating"]))
     print("    F_int [W/m^2]:       %.3e" % float(COUPLER_options["F_int"]))
-    print("    F_atm [W/m^2]:       %.3e" % float(COUPLER_options["F_atm"]))
+    print("    F_atm [W/m^2]:       %.3e" % float(COUPLER_options["F_atm"])) 
     print("    F_net [W/m^2]:       %.3e" % float(COUPLER_options["F_net"]))
     print("    Last file name:      %s "  % str(COUPLER_options["ic_interior_filename"]))
 
     print("Helpfile properties:")
     print(runtime_helpfile.tail(4))
-
-    # Save atm object to disk
-    with open(dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.pkl", "wb") as atm_file: 
-        pkl.dump(atm, atm_file)
 
 
 def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options):
@@ -65,7 +62,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
     # If runtime_helpfile not existent, create it + write to disk
     if not os.path.isfile(dirs["output"]+"/"+runtime_helpfile_name):
-        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'R_star', 'T_surf', 'T_eqm', 'F_int', 'F_atm', 'F_net', 'F_olr', 'P_surf', 'M_atm', 'M_atm_kgmol', 'Phi_global', 'RF_depth', 'M_mantle', 'M_core', 'M_mantle_liquid', 'M_mantle_solid', 'H_mol_atm', 'H_mol_solid', 'H_mol_liquid', 'H_mol_total', 'O_mol_total', 'C_mol_total', 'N_mol_total', 'S_mol_total', 'He_mol_total', 'O/H_atm', 'C/H_atm', 'N/H_atm', 'S/H_atm', 'He/H_atm', 'H2O_mr', 'CO2_mr', 'H2_mr', 'CO_mr', 'CH4_mr', 'N2_mr', 'O2_mr', 'S_mr', 'He_mr'])
+        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'R_star', 'T_surf', 'T_eqm', 'F_int', 'F_atm', 'F_net', 'F_olr', 'F_ins', 'P_surf', 'M_atm', 'M_atm_kgmol', 'Phi_global', 'RF_depth', 'M_mantle', 'M_core', 'M_mantle_liquid', 'M_mantle_solid', 'H_mol_atm', 'H_mol_solid', 'H_mol_liquid', 'H_mol_total', 'O_mol_total', 'C_mol_total', 'N_mol_total', 'S_mol_total', 'He_mol_total', 'O/H_atm', 'C/H_atm', 'N/H_atm', 'S/H_atm', 'He/H_atm', 'H2O_mr', 'CO2_mr', 'H2_mr', 'CO_mr', 'CH4_mr', 'N2_mr', 'O2_mr', 'S_mr', 'He_mr'])
         runtime_helpfile.to_csv( dirs["output"]+"/"+runtime_helpfile_name, index=False, sep="\t") 
         time_dict["planet"] = 0
         #, 'H2O_atm_bar', 'CO2_atm_bar', 'H2_atm_bar', 'CH4_atm_bar', 'CO_atm_bar', 'N2_atm_bar', 'O2_atm_bar', 'S_atm_bar', 'He_atm_bar'run
@@ -106,7 +103,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         if "star_radius" in COUPLER_options.keys():
             runtime_helpfile_new["R_star"] = COUPLER_options["star_radius"]
         else:
-            runtime_helpfile_new["R_star"] = COUPLER_options["star_radius_modern"] # Just in case?
+            runtime_helpfile_new["R_star"] = COUPLER_options["star_radius_modern"]
 
         # Mass properties
         runtime_helpfile_new["M_mantle_liquid"] = float(data_a[0])
@@ -243,7 +240,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         COUPLER_options["F_int"]      = runtime_helpfile_new["F_int"]
 
         # F_atm from before
-        if loop_counter["total"] >= loop_counter["init_loops"]:
+        if loop_counter["total"] > 0:
             run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
             COUPLER_options["F_atm"] = run_atm["F_atm"].iloc[-1]
             COUPLER_options["F_olr"] = run_atm["F_olr"].iloc[-1]
@@ -254,6 +251,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         COUPLER_options["F_net"]      = COUPLER_options["F_atm"]-COUPLER_options["F_int"]
         runtime_helpfile_new["F_net"] = COUPLER_options["F_net"]
         runtime_helpfile_new["F_atm"] = COUPLER_options["F_atm"]
+        runtime_helpfile_new["F_ins"] = COUPLER_options["F_ins"]
         runtime_helpfile_new["F_olr"] = COUPLER_options["F_olr"]
         runtime_helpfile_new["T_eqm"] = COUPLER_options["T_eqm"]
 
@@ -265,7 +263,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
         # Infos from latest interior loop
         run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
-        runtime_helpfile_new["R_star"]          = run_int.iloc[-1]["R_star"]
+        runtime_helpfile_new["R_star"]          = run_int.iloc[-1]["R_star"] 
         runtime_helpfile_new["Phi_global"]      = run_int.iloc[-1]["Phi_global"]
         runtime_helpfile_new["RF_depth"]        = run_int.iloc[-1]["RF_depth"]     
         runtime_helpfile_new["M_mantle"]        = run_int.iloc[-1]["M_mantle"]       
@@ -279,6 +277,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["T_eqm"]           = COUPLER_options["T_eqm"]
         runtime_helpfile_new["T_surf"]          = COUPLER_options["T_surf"] 
         runtime_helpfile_new["F_atm"]           = COUPLER_options["F_atm"]
+        runtime_helpfile_new["F_ins"]           = COUPLER_options["F_ins"]
 
         COUPLER_options["F_int"] = run_int.iloc[-1]["F_int"]
         COUPLER_options["F_net"] = COUPLER_options["F_atm"] - COUPLER_options["F_int"]
@@ -302,7 +301,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
                 Ts_last         = run_atm_last.iloc[-1]["T_surf"]
 
             # IF T_surf change too high
-            if abs(Ts_last-COUPLER_options["T_surf"]) >= COUPLER_options["dTs_atm"]: 
+            if (abs(Ts_last-COUPLER_options["T_surf"]) >= COUPLER_options["dTs_atm"]) and (COUPLER_options["atmosphere_surf_state"] != 2): 
                 COUPLER_options["F_net"] = -COUPLER_options["F_eps"]   
                 print("T_surf change too high. dT =", Ts_last-COUPLER_options["T_surf"])
                 
@@ -328,7 +327,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
             runtime_helpfile_new[vol+"_mr"]          = runtime_helpfile.iloc[-1][vol+"_mr"]
         
         for vol in volatile_species:
-            for suffix in ["_liquid_kg", "_solid_kg", "_atm_kg", "_atm_bar", "_mr"]:
+            for suffix in ["_liquid_kg", "_mol_liquid", "_solid_kg", "_mol_solid", "_atm_kg", "_atm_bar", "_mol_atm", "_mol_total","_mr"]:
                 key = vol+suffix
                 runtime_helpfile_new[key] = runtime_helpfile.iloc[-1][key] 
 
@@ -347,21 +346,21 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
 # Calculate eqm temperature given stellar flux and bond albedo
 def calc_eqm_temperature(I_0, A_B):
-    return (I_0 * (1.0 - A_B) / (4.0 * phys.sigma))**(1.0/4.0)
+    return (I_0 * (1.0 - A_B) / (4.0 * const_sigma))**(1.0/4.0)
+
 
 def ReadInitFile( init_file_passed , verbose=False):
 
     # Read in input file as dictionary
     COUPLER_options  = {}
     time_dict       = {}
-    print("Read in init file:", end=" ")
+    if verbose: print("Read in init file:" + init_file)
 
     if os.path.isfile(init_file_passed):
         init_file = init_file_passed
     else: 
         raise Exception("Init file provided is not a file or does not exist!")
 
-    print(init_file)   
     if verbose: print("Settings:")
 
     # Open file and fill dict
@@ -393,8 +392,8 @@ def ReadInitFile( init_file_passed , verbose=False):
                     if key in [ "IC_INTERIOR", "ic_interior_filename", 
                                 "plot_iterfreq", "stellar_heating", "mixing_length",
                                 "atmosphere_chem_type", "solvepp_enabled", "insert_rscatter",
-                                "tropopause", "F_atm_bc", "radiative_heating",
-                                "dt_dynamic", "require_eqm_loops", "prevent_warming"]:
+                                "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
+                                "dt_dynamic", "prevent_warming", "atmosphere_model", "atmosphere_nlev"]:
                         val = int(val)
 
                     # Some are str
@@ -422,12 +421,11 @@ def ReadInitFile( init_file_passed , verbose=False):
                             time_dict["offset"] = float(val.strip())
 
     # Calculate gravity from mass and radius
-    COUPLER_options["gravity"] =  phys.G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
+    COUPLER_options["gravity"] =  const_G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
 
     return COUPLER_options, time_dict
 
-
-def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=8):
+def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
     
     Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
@@ -442,26 +440,40 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=8):
 
     PrintHalfSeparator()
     print("Updating plots...")
+
+    # Get all JSON files
     output_times = get_all_output_times( output_dir )
-
-
-    if len(output_times) < num_snapshots:
-        plot_times = output_times
-    else:
-        plot_times = []
-        tmin = max(1,np.amin(output_times))
-        tmax = max(tmin+1, np.amax(output_times))
-        samps = np.logspace(np.log10(tmin),np.log10(tmax),num_snapshots)
-        for s in samps:
-            v,_ = find_nearest(output_times,s)
-            v = int(v)
-            if v not in plot_times:
-                plot_times.append(v)
-    print("Snapshots to plot:", plot_times)
 
     # Global properties for all timesteps
     if len(output_times) > 1:
         cpl_global.plot_global(output_dir, COUPLER_options)   
+        # cpl_global.plot_global(output_dir, COUPLER_options, logt=False)   
+        
+    # Filter to JSON files with corresponding NetCDF files
+    ncs = glob.glob(output_dir + "/data/*_atm.nc")
+    nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
+    output_times = sorted(list(set(output_times) & set(nc_times)))
+
+    # Work out which times we want to plot
+    if len(output_times) <= num_snapshots:
+        plot_times = output_times
+
+    else:
+        plot_times = []
+        tmin = max(1,np.amin(output_times))
+        tmax = max(tmin+1, np.amax(output_times))
+    
+        for s in np.logspace(np.log10(tmin),np.log10(tmax),num_snapshots): # Sample on log-scale
+
+            remaining = list(set(output_times) - set(plot_times)) 
+            if len(remaining) == 0:
+                break
+
+            v,_ = find_nearest(remaining,s) # Find next new sample
+            plot_times.append(int(v))
+
+    plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
+    print("Snapshots to plot:", plot_times)
 
     # Specific timesteps for paper plots
     cpl_interior.plot_interior(output_dir, plot_times)     
@@ -472,6 +484,7 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=8):
     if end:
         cpl_sflux.plot_sflux(output_dir)
         cpl_sflux_cross.plot_sflux_cross(output_dir)
+        cpl_fluxes.plot_fluxes_global(output_dir, COUPLER_options)
 
     # Close all figures
     plt.close()
@@ -484,20 +497,26 @@ def SetDirectories(COUPLER_options: dict):
 
     Parameters
     ----------
+        COUPLER_options : dict
+            PROTEUS options dictionary
+
+    Returns
+    ----------
         dirs : dict
-            Dictionary of paths to directories
+            Dictionary of paths to important directories
     """
 
     coupler_dir = os.getenv('COUPLER_DIR')
 
     dirs = {
-            "output": coupler_dir+"/output/"+COUPLER_options['dir_output']+"/", 
-            "input": coupler_dir+"/input/",
-            "coupler": coupler_dir, 
-            "rad_conv": coupler_dir+"/AEOLUS/", 
-            "vulcan": coupler_dir+"/VULCAN/", 
-            "spider": coupler_dir+"/SPIDER/", 
-            "utils": coupler_dir+"/utils/"
+            "output":   coupler_dir+"/output/"+COUPLER_options['dir_output']+"/", 
+            "input":    coupler_dir+"/input/",
+            "coupler":  coupler_dir, 
+            "aeolus":   coupler_dir+"/AEOLUS/", 
+            "agni":     coupler_dir+"/AGNI/", 
+            "vulcan":   coupler_dir+"/VULCAN/", 
+            "spider":   coupler_dir+"/SPIDER/", 
+            "utils":    coupler_dir+"/utils/"
             }
     
     return dirs

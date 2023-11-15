@@ -11,7 +11,7 @@ import csv
 import logging
 import numpy as np
 import pprint
-import scipy as sp
+from itertools import product
 from scipy.optimize import fsolve
 
 # Solve for the equilibrium chemistry of a magma ocean atmosphere
@@ -24,11 +24,8 @@ def get_global_parameters():
     global_d = {}
     global_d['mantle_mass'] = 4.208261222595111e+24 # kg
     global_d['mantle_melt_fraction'] = 1.0 # fraction of mantle that is molten
-    # below is moles of H2 (or H2O) in one present-day Earth ocean
-    global_d['ocean_moles'] = 7.68894973907177e+22
     global_d['little_g'] = 9.81 # m/s^2
     global_d['planetary_radius'] = 6371000.0 # m
-    global_d['is_CH4'] = True # include CH4
     global_d['temperature'] = 2000.0 # K
     # add molar mass dict
     global_d['molar_mass_d'] = get_molar_masses()
@@ -64,6 +61,8 @@ class OxygenFugacity:
     def __init__(self, model='oneill'):
         self.callmodel = getattr(self, model)
 
+        self.o_coeff_2 = np.log(10)*8.31441
+
     def __call__(self, T, fO2_shift=0):
         '''Return log10 fO2'''
         return self.callmodel(T) + fO2_shift
@@ -74,7 +73,7 @@ class OxygenFugacity:
 
     def oneill(self, T): 
         '''O'Neill and Eggin (2002) IW'''
-        return 2*(-244118+115.559*T-8.474*T*np.log(T))/(np.log(10)*8.31441*T)
+        return 2*(-244118+115.559*T-8.474*T*np.log(T))/(self.o_coeff_2*T)
 
 #====================================================================
 class ModifiedKeq:
@@ -154,6 +153,32 @@ class SolubilityH2O(Solubility):
         return self.power_law(p, 683, 0.5)
 
 #====================================================================
+class SolubilityCH4(Solubility):
+    """CH4 solubility models"""
+
+    def __init__(self, composition='basalt_ardia'):
+        super().__init__(composition)
+
+    def basalt_ardia(self, p, p_total):
+        '''Ardia 2013'''
+        p_total *= 1e-4  # Convert to GPa
+        p *= 1e-4 # Convert to GPa
+        ppmw = p*np.exp(4.93 - (0.000193 * p_total))
+        return ppmw
+    
+#====================================================================
+class SolubilityCO(Solubility):
+    """CO solubility models"""
+
+    def __init__(self, composition='mafic_armstrong'):
+        super().__init__(composition)
+
+    def mafic_armstrong(self, p, p_total):
+        '''Armstrong 2015'''
+        ppmw = 10 ** (-0.738 + 0.876 * np.log10(p) - 5.44e-5 * p_total)
+        return ppmw
+
+#====================================================================
 class SolubilityCO2(Solubility):
     """CO2 solubility models"""
 
@@ -173,10 +198,32 @@ class SolubilityN2(Solubility):
     def __init__(self, composition='libourel'):
         super().__init__(composition)
 
+        # melt composition
+        x_SiO2  = 0.56
+        x_Al2O3 = 0.11
+        x_TiO2  = 0.01
+        self.dasfac_2 = np.exp(4.67 + 7.11*x_SiO2 - 13.06*x_Al2O3 - 120.67*x_TiO2)
+
     def libourel(self, p):
         '''Libourel et al. (2003)'''
         ppmw = self.power_law(p, 0.0611, 1.0)
         return ppmw
+    
+    def dasgupta(self, p, ptot, temp, fO2_shift):
+        '''Dasgupta et al. (2022)'''
+        
+        # convert bar to GPa
+        pb_N2  = p * 1.0e-4  
+        pb_tot = ptot * 1.0e-4
+
+        pb_tot = max(pb_tot, 1e-15)
+
+        # calculate N2 concentration in melt
+        ppmw  = pb_N2**0.5 * np.exp(5908.0 * pb_tot**0.5/temp - 1.6*fO2_shift)
+        ppmw += pb_N2 * self.dasfac_2
+
+        return ppmw 
+
 
 #====================================================================
 def get_partial_pressures(pin, fO2_shift, global_d):
@@ -204,12 +251,9 @@ def get_partial_pressures(pin, fO2_shift, global_d):
     gamma = gamma(global_d['temperature'], fO2_shift)
     p_d['CO'] = gamma*pCO2
 
-    if global_d['is_CH4'] is True:
-        gamma = ModifiedKeq('schaefer_CH4')
-        gamma = gamma(global_d['temperature'], fO2_shift)
-        p_d['CH4'] = gamma*pCO2*p_d['H2']**2.0
-    else:
-        p_d['CH4'] = 0
+    gamma = ModifiedKeq('schaefer_CH4')
+    gamma = gamma(global_d['temperature'], fO2_shift)
+    p_d['CH4'] = gamma*pCO2*p_d['H2']**2.0
 
     return p_d
 
@@ -253,7 +297,7 @@ def atmosphere_mass(pin, fO2_shift, global_d):
     mass_atm_d['C'] *= mass_d['C']
 
     # total mass of N
-    mass_atm_d['N'] = mass_atm_d['N2']
+    mass_atm_d['N'] = mass_atm_d['N2'] 
 
     return mass_atm_d
 
@@ -280,6 +324,9 @@ def dissolved_mass(pin, fO2_shift, global_d):
     mass_int_d = {}
 
     p_d = get_partial_pressures(pin, fO2_shift, global_d)
+    ptot = get_total_pressure(pin, fO2_shift, global_d)
+
+    invalid = (ptot != ptot) or (ptot < 0.0)
 
     prefactor = 1E-6*global_d['mantle_mass']*global_d['mantle_melt_fraction']
     mass_d = global_d['molar_mass_d']
@@ -289,19 +336,38 @@ def dissolved_mass(pin, fO2_shift, global_d):
     ppmw_H2O = sol_H2O(p_d['H2O'])
     mass_int_d['H2O'] = prefactor*ppmw_H2O
 
+    # CO
+    sol_CO = SolubilityCO() # gets the default solubility model
+    ppmw_CO = sol_CO(p_d["CO"], ptot)
+    mass_int_d['CO'] = prefactor*ppmw_CO
+
+    # CH4
+    sol_CH4 = SolubilityCH4() # gets the default solubility model
+    ppmw_CH4 = sol_CH4(p_d["CH4"], ptot)
+    mass_int_d['CH4'] = prefactor*ppmw_CH4
+
     # CO2
     sol_CO2 = SolubilityCO2() # gets the default solubility model
     ppmw_CO2 = sol_CO2(p_d['CO2'], global_d['temperature'])
     mass_int_d['CO2'] = prefactor*ppmw_CO2
 
     # N2
-    sol_N2 = SolubilityN2() # gets the default solubility model
-    ppmw_N2 = sol_N2(p_d['N2'])
+    # sol_N2 = SolubilityN2("libourel")  # libourel model without fO2 dependence
+    # ppmw_N2 = sol_N2(p_d['N2'])
+    # mass_int_d['N2'] = prefactor*ppmw_N2
+
+    # N2
+    sol_N2 = SolubilityN2("dasgupta") # calculate fO2-dependent solubility
+    ppmw_N2 = sol_N2(p_d['N2'], ptot, global_d['temperature'], fO2_shift)
     mass_int_d['N2'] = prefactor*ppmw_N2
 
     # now get totals of H, C, N
-    mass_int_d['H'] = mass_int_d['H2O']*(mass_d['H2']/mass_d['H2O'])
-    mass_int_d['C'] = mass_int_d['CO2']*(mass_d['C']/mass_d['CO2'])
+    mass_int_d['H'] = mass_int_d['H2O']/mass_d['H2O'] + mass_int_d['CH4']*2/mass_d["CH4"]
+    mass_int_d['H'] *= mass_d['H2']
+    
+    mass_int_d['C'] = mass_int_d['CO2']/mass_d['CO2'] + mass_int_d['CO']/mass_d['CO'] + mass_int_d['CH4']/mass_d['CH4']
+    mass_int_d['C'] *= mass_d['C']
+
     mass_int_d['N'] = mass_int_d['N2']
 
     return mass_int_d
@@ -336,13 +402,26 @@ def func(pin, fO2_shift, global_d, mass_target_d):
     return res_l
 
 #====================================================================
-def get_initial_pressures(target_d):
+def get_log_rand(rng):
+    r = np.random.uniform(low=rng[0], high=rng[1])
+    return 10.0**r
+
+def get_initial_pressures(target_d, log=False):
     """Get initial guesses of partial pressures"""
 
-    # all bar
-    pH2O = 1*np.random.random_sample() # H2O less soluble than CO2
-    pCO2 = 10*np.random.random_sample() # just a guess
-    pN2 = 10*np.random.random_sample()
+    # all in bar
+    if log:
+        cH2O = [-7 , +5]  # range in log10 units
+        cCO2 = [-8 , +5]
+        cN2  = [-10, +5]
+
+        pH2O = get_log_rand(cH2O)
+        pCO2 = get_log_rand(cCO2)
+        pN2  = get_log_rand(cN2 )
+    else:
+        pH2O = np.random.uniform(low=1.0e-12, high=1.0)
+        pCO2 = np.random.uniform(low=1.0e-12, high=0.9)
+        pN2  = np.random.uniform(low=1.0e-12, high=0.5)
 
     if target_d['H'] == 0:
         pH2O = 0
@@ -354,26 +433,29 @@ def get_initial_pressures(target_d):
     return pH2O, pCO2, pN2
 
 #====================================================================
-def equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitrogen):
+def equilibrium_atmosphere(Hydrogen, CH_ratio, fO2_shift, global_d, Nitrogen):
     """Calculate equilibrium chemistry of the atmosphere"""
 
-    mass_d = global_d['molar_mass_d']
-
-    H_kg = N_ocean_moles * global_d['ocean_moles'] * mass_d['H2']
+    H_kg = Hydrogen * 1.0E-6 * global_d['mantle_mass']
     C_kg = CH_ratio * H_kg
     N_kg = Nitrogen * 1.0E-6 * global_d['mantle_mass']
     target_d = {'H': H_kg, 'C': C_kg, 'N': N_kg}
 
     count = 0
     ier = 0
+    count_warn = 5e3
+    warned = False
     # could in principle result in an infinite loop, if randomising
     # the ic never finds the physical solution (but in practice,
     # this doesn't seem to happen)
     while ier != 1:
-        x0 = get_initial_pressures(target_d)
-        sol, info, ier, msg = fsolve(func, x0, args=(fO2_shift, 
-            global_d, target_d), full_output=True)
+
+        x0 = get_initial_pressures(target_d, log=True)
+        # solve for mass of volatiles in atm and int by finding a solution
+        # where the total mass is conserved.
+        sol, info, ier, msg = fsolve(func, x0, args=(fO2_shift, global_d, target_d), full_output=True, maxfev=40)
         count += 1
+
         # sometimes, a solution exists with negative pressures, which
         # is clearly non-physical.  Here, assert we must have positive
         # pressures.
@@ -381,21 +463,47 @@ def equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitroge
             # if any negative pressures, report ier!=1
             ier = 0
 
-    logging.info(f'Randomised initial conditions= {count}')
+        if (count > count_warn) and not warned:
+            warned = True
+            print("    mantle = %g earth masses" % float(global_d['mantle_mass'] / 5.972e24))
+            print("    H_ppm  =", Hydrogen)
+            print("    C/H    =", CH_ratio)
+            print("    fO2-IW =", fO2_shift)
+            print("    N_ppm  =", Nitrogen)
+            print("    Tsurf  =", global_d['temperature'])
+    
+    print("    n_fev",info["nfev"],"   n_ini",count)
 
     p_d = get_partial_pressures(sol, fO2_shift, global_d)
+    if warned:
+        print(p_d)
+
     # get residuals for output
     res_l = func(sol, fO2_shift, global_d, target_d)
 
     # for convenience, add inputs to same dict
-    p_d['N_ocean_moles'] = N_ocean_moles
+    p_d['Hydrogen_ppm'] = Hydrogen
     p_d['CH_ratio'] = CH_ratio
     p_d['fO2_shift'] = fO2_shift
+    p_d['Nitrogen_ppm'] = Nitrogen 
+
+    for key in global_d.keys():
+        if key == 'molar_mass_d':
+            continue
+        p_d[key] = global_d[key]
+
+    ptot = 0.0
+    for key in p_d.keys():
+        if key in ["H2O","CO2","N2","H2","CO","CH4"]:
+            ptot += p_d[key]
+    p_d["tot"] = ptot
+    
     # for debugging/checking, add success initial condition
     # that resulted in a converged solution with positive pressures
-    p_d['pH2O_0'] = x0[0]
-    p_d['pCO2_0'] = x0[1]
-    p_d['pN2_0'] = x0[2]
+    # p_d['pH2O_0'] = x0[0]
+    # p_d['pCO2_0'] = x0[1]
+    # p_d['pN2_0'] = x0[2]
+
     # also for debugging/checking, report residuals
     p_d['res_H'] = res_l[0]
     p_d['res_C'] = res_l[1]
@@ -404,29 +512,111 @@ def equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitroge
     return p_d
 
 #====================================================================
-def equilibrium_atmosphere_MC(Nitrogen):
+def equilibrium_atmosphere_MC():
     """Monte Carlo"""
 
-    NN = 3000
-    N_ocean_moles_l = np.random.uniform(1, 10, NN)
-    CH_ratio_l = np.random.uniform(0.1, 1, NN)
-    fO2_shift_l = np.random.uniform(-4, 4, NN)
     global_d = get_global_parameters()
+
+    NN = 2000
+
+    # Samples
+    hydrogen_l =        np.random.uniform(5.0,  60,     NN)
+    CH_ratio_l =        np.random.uniform(0.1,  1,      NN)
+    fO2_shift_l =       np.random.uniform(-5,   3,      NN)
+    nitrogen_l =        np.random.uniform(0.5,  9.0,    NN)
+    mantle_l =          np.random.uniform(0.2,  5.0,    NN) * global_d['mantle_mass']
+    tsurf_l =           np.random.uniform(1500, 3000,   NN)
+    # Or,
+    # Constant
+    # hydrogen_l =        np.ones(NN) * 36.0
+    CH_ratio_l =        np.ones(NN) * 1.0
+    fO2_shift_l =       np.ones(NN) * -4.0 
+    nitrogen_l =        np.ones(NN) * 2.8
+    # mantle_l =          np.ones(NN) * global_d['mantle_mass']
+    tsurf_l =           np.ones(NN) * 2500.0
 
     out_l = []
 
     for ii in range(NN):
         logging.info(f'Simulation number= {ii}')
-        N_ocean_moles = N_ocean_moles_l[ii]
+
+        Hydrogen = hydrogen_l[ii]
         CH_ratio = CH_ratio_l[ii]
         fO2_shift = fO2_shift_l[ii]
-        p_d = equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitrogen)
+        Nitrogen = nitrogen_l[ii]
+        global_d['mantle_mass'] = mantle_l[ii]
+        global_d['temperature'] = tsurf_l[ii]
+
+        p_d = equilibrium_atmosphere(Hydrogen, CH_ratio, fO2_shift, global_d, Nitrogen)
         out_l.append(p_d)
 
+    print("Writing results")
     filename = 'equilibrium_atmosphere_MC.csv'
     write_output(filename, out_l)
 
 #====================================================================
+def equilibrium_atmosphere_GR():
+    """Gridded run"""
+
+    global_d = get_global_parameters()
+
+    
+    pl_m = 8.63 * 5.972e24 # kg
+
+    rho = 5515.0 # earth value for density [kg m-3]
+    pl_r = ( (3 * pl_m) / (4 * np.pi * rho))**(1.0/3)
+
+    global_d['little_g'] = 6.67408e-11 * pl_m / ( pl_r * pl_r )
+    global_d['planetary_radius'] = pl_r
+    global_d['planetary_mass'] = pl_m
+    
+    # N_ppm calculation..
+    # Z    = metallicity
+    # A(E) = 12 + log10(n_E / n_H)
+    # -> m_N/m_H = mu_N/mu_H * n_N/n_H
+
+    Z   = 1.0
+
+    N_to_H = (14.0/1.0) * 10**(7.83 - 12.0) # mass ratio to hydrogen from Asplund 2009
+    C_to_H = (12.0/1.0) * 10**(8.43 - 12.0) # ^
+
+
+    # Samples
+    hydrogen_l =        np.array([1.0, 10.0, 100.0, 1000.0, 10000.0])
+    # CH_ratio_l =        np.array([0.1, 1.0, 10.0, 100.0]) * C_to_H
+    CH_ratio_l =        np.array([0.01, 0.05]) * C_to_H
+    fO2_shift_l =       np.array([-5.0, -2.0, 0.0, 2.0, 4.0])
+    mantle_l =          np.array([0.001, 0.01, 0.1, 1.0]) * pl_m
+    tsurf_l =           np.array([1500.0, 2000.0, 2500.0, 3000.0])
+
+    out_l = []
+
+    i = 0
+    prod   = product(hydrogen_l, CH_ratio_l, fO2_shift_l, mantle_l, tsurf_l)
+    pspace = np.array(list(p for p in prod))
+    psize  = len(pspace)
+
+    modprint = 1
+    for p in pspace:
+        if i%modprint == 0:
+            print('Simulation %04d/%04d = %2.2f%%' % (i,psize, i/psize*100.0))
+
+        Hydrogen, CH_ratio, fO2_shift, mm, mt = p
+        
+        Nitrogen = Hydrogen * N_to_H
+
+        global_d['mantle_mass'] = mm
+        global_d['temperature'] = mt
+
+        p_d = equilibrium_atmosphere(Hydrogen, CH_ratio, fO2_shift, global_d, Nitrogen)
+        out_l.append(p_d)
+        i += 1
+
+    print("Writing results")
+    filename = 'equilibrium_atmosphere_GR.csv'
+    write_output(filename, out_l)
+
+#==================================================== ================
 def write_output(filename, out_l):
     """Write output (list of dictionaries) to a CSV"""
 
@@ -445,25 +635,30 @@ def main():
     logging.info('Started')
 
     # parsing arguments
-    parser = argparse.ArgumentParser(description='Monte Carlo Atmosphere')
-    parser.add_argument('-f','--fo2_shift', help='fO2 shift in log10 units relative to IW', action='store', type=float, default=0)
-    parser.add_argument('-c','--ch_ratio', help='C/H ratio by wt %', action='store', type=float, default=1)
-    parser.add_argument('-o','--oceans', help='Number of Earth oceans', action='store', type=float, default=1)
-    parser.add_argument('-m','--monte_carlo', help='Run Monte Carlo simulation', action='store_true')
-    parser.add_argument('-n','--nitrogen', help='Include Nitrogen', action='store', type=float, default = 2.8) # 2.8 is the mantle value of N in ppmw
+    parser = argparse.ArgumentParser(description='Melt-vapour equilibrium atmosphere')
+    parser.add_argument('-f','--fo2_shift',     help='fO2 shift in log10 units relative to IW', action='store', type=float, default=0)
+    parser.add_argument('-c','--ch_ratio',      help='C/H ratio by wt %', action='store', type=float, default=1)
+    parser.add_argument('-x','--hydrogen',      help='Hydrogen concentration ppmw', action='store', type=float, default=1)
+    parser.add_argument('-m','--monte_carlo',   help='Run Monte Carlo simulation', action='store_true')
+    parser.add_argument('-g','--grid',          help='Run grid of simulations', action='store_true')
+    parser.add_argument('-n','--nitrogen',      help='Nitrogen concentration ppmw', action='store', type=float, default = 2.8) # 2.8 is the mantle value of N in ppmw
 
     args = parser.parse_args()
     kwargs = vars(args)
 
     if args.monte_carlo:
-        equilibrium_atmosphere_MC(kwargs['nitrogen'])
+        print("Running monte-carlo simulation")
+        equilibrium_atmosphere_MC()
+    elif args.grid:
+        print("Running gridded simulation")
+        equilibrium_atmosphere_GR()
     else:
         global_d = get_global_parameters()
-        N_ocean_moles = kwargs['oceans']
+        Hydrogen = kwargs['hydrogen']
         CH_ratio = kwargs['ch_ratio']
         fO2_shift = kwargs['fo2_shift']
         Nitrogen = kwargs['nitrogen']
-        p_d = equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitrogen)
+        p_d = equilibrium_atmosphere(Hydrogen, CH_ratio, fO2_shift, global_d, Nitrogen)
         print('Output')
         pprint.pprint(p_d)
 

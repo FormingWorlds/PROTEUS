@@ -66,7 +66,9 @@ def plot_interior( output_dir, times ):
         color = fig_o.get_color( 1.0*nn/len(fig_o.time) )
 
         # use melt fraction to determine mixed region
-        MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' ) # basic_internal
+        MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' ) 
+        MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' ) 
+        MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' ) 
         MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
         # label = fig_o.get_legend_label( time )
@@ -74,8 +76,9 @@ def plot_interior( output_dir, times ):
 
         # temperature
         yy = myjson_o.get_dict_values(['data','temp_b'])
-        ax0.plot( yy, xx_pres, '--', color=color, lw=1.5 )
-        handle, = ax0.plot( yy*MIX, xx_pres*MIX, '-', color=color, lw=1.5, label=label )
+        handle, = ax0.plot( yy*MASK_SO, xx_pres*MASK_SO, linestyle='solid',  color=color, lw=1.5, label=label )
+        ax0.plot(           yy*MASK_MI, xx_pres*MASK_MI, linestyle='dashed', color=color, lw=1.5 )
+        ax0.plot(           yy*MASK_ME, xx_pres*MASK_ME, linestyle='dotted', color=color, lw=1.5 )
 
         # melt fraction
         yy = myjson_o.get_dict_values(['data','phi_b'])
@@ -108,7 +111,7 @@ def plot_interior( output_dir, times ):
     units = myjson_o.get_dict_units(['data','temp_b'])
     title = '(a) Temperature' #'(a) Temperature, {}'.format(units)
     xticks = [200, 1000, 2000, 3000, 4000, 5000]
-    fig_o.set_myaxes( ax0, title=title, xlabel='$T$, '+units, ylabel='$P$\n(GPa)', xticks=xticks, ymax=ymax, yticks=yticks ) # , xmin=300, xmax=4200
+    fig_o.set_myaxes( ax0, title=title, xlabel='$T$ ['+str(units).strip()+']', ylabel='$P$\n[GPa]', xticks=xticks, ymax=ymax, yticks=yticks ) # , xmin=300, xmax=4200
     ax0.set_xlim( 200, 5000 )
     ax0.yaxis.set_label_coords(-0.25,0.5)
     ax0.invert_yaxis()
@@ -125,14 +128,14 @@ def plot_interior( output_dir, times ):
 
     units = myjson_o.get_dict_units(['data','visc_b'])
     title = '(c) Viscosity'#'(c) Viscosity, ' + units
-    fig_o.set_myaxes( ax2, title=title, xticks=[1.0E1, 1.0E5, 1.0E10, 1.0E15, 1.0E19, 1.0E22], xlabel='$\eta$, '+ units, yticks=[0,20,40,60,80,100,120,140], xfmt=visc_fmt )
+    fig_o.set_myaxes( ax2, title=title, xticks=[1.0E1, 1.0E5, 1.0E10, 1.0E15, 1.0E19, 1.0E22], xlabel='$\eta$ ['+str(units).strip()+']', yticks=[0,20,40,60,80,100,120,140], xfmt=visc_fmt )
     ax2.set_yticklabels([])
     ax2.invert_yaxis()
 
     units = myjson_o.get_dict_units(['data','S_b'])
     title = '(d) Entropy'#'(d) Entropy, {}'.format(units)
     xticks = [400,800,1600,2400,3200]
-    fig_o.set_myaxes( ax3, title=title, xlabel='$S$, '+ units, xticks=xticks, ymax=ymax, yticks=yticks ) # ' $(J \; kg^\mathrm{-1} \; K^\mathrm{-1})$'
+    fig_o.set_myaxes( ax3, title=title, xlabel='$S$ ['+str(units).strip()+']', xticks=xticks, ymax=ymax, yticks=yticks ) # ' $(J \; kg^\mathrm{-1} \; K^\mathrm{-1})$'
     ax3.set_yticklabels([])
     ax3.invert_yaxis()
 
@@ -143,7 +146,7 @@ def plot_interior( output_dir, times ):
     ax3b.set_ylim(top=xx_depth[-1], bottom=xx_depth[0])
     ax3b.set_xlim(right=np.max(xticks), left=np.min(xticks))
     ax3b.set_yticks([0, 500, 1000, 1500, 2000, 2500, int(xx_depth[-1])])
-    ax3b.set_ylabel( '$d$\n(km)', rotation=0 )
+    ax3b.set_ylabel( '$d$\n[km]', rotation=0 )
     ax3b.yaxis.set_label_coords(1.30,0.55)
     ax3b.invert_yaxis()
 
@@ -185,7 +188,11 @@ if __name__ == "__main__":
     if len(output_list) <= 8:
         plot_list = output_list
     else:
-        plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
+        plot_list = [ output_list[0] ]
+        for f in [15,25,33,50,66,75]:
+            plot_list.append(output_list[int(round(len(output_list)*(float(f)/100.)))])
+        plot_list.append(output_list[-1])
+
     print("Snapshots:", plot_list)
 
     plot_interior( dirs['output'], plot_list )

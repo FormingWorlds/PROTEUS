@@ -12,7 +12,8 @@ from utils.coupler import *
 from utils.stellar_common import *
 from utils.stellar_mors import *
 from utils.stellar_baraffe import *
-from utils.aeolus import RunAEOLUS, StructAtm #, IterateHeating, CalcAtmFluxes, GetHeating
+from utils.aeolus import RunAEOLUS, PrepAtm, StructAtm
+from utils.agni import RunAGNI
 from utils.spider import RunSPIDER
 
 from plot.cpl_fluxes import *
@@ -38,17 +39,35 @@ def main():
     utils.constants.dirs = SetDirectories(COUPLER_options)
     from utils.constants import dirs
 
+    os.chdir(dirs["coupler"])
+
+    print("Hostname: " + str(os.uname()[1]))
+
     print("Output directory: '%s'" % dirs["output"])
 
     # Count iterations
-    loop_counter = { "total": 0,            # Total number of itersperformed
-                     "init": 0,             # Number of init iters performed
-                     "atm": 0,              # Number of atmosphere sub-iters performed
-                     "eqm": -1,             # Number of eqm iters performed
-                     "init_loops": 3,       # Target number of init iters
-                     "atm_loops":  200,      # Maximum number of atmosphere sub-iters
-                     "eqm_loops":  3        # Target number of eqm iters
+    loop_counter = { 
+                    "total": 0,            # Total number of itersperformed
+                    "init": 0,             # Number of init iters performed
+                    "atm": 0,              # Number of atmosphere sub-iters performed
+                    "total_loops": 2000,   # Maximum number of total loops
+                    "init_loops": 3,       # Maximum number of init iters
+                    "atm_loops":  20,      # Maximum number of atmosphere sub-iters
                     }
+    
+    # Check options are compatible
+    if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
+        if COUPLER_options["flux_convergence"] == 1:
+            raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off.")
+        if COUPLER_options["PARAM_UTBL"] == 1:
+            raise Exception("SPIDER's UTBL is incompatible with the conductive lid scheme! Turn one of them off.")
+        
+    if COUPLER_options["atmosphere_model"] == 1:  # Julia required for AGNI
+        if shutil.which("julia") is None:
+            raise Exception("Could not find julia in current environment!")
+        
+    if COUPLER_options["atmosphere_nlev"] < 10:
+        raise Exception("Atmosphere must have more than 10 levels")
     
     # If restart skip init loop # args.r or args.rf or 
     if COUPLER_options["IC_INTERIOR"] == 2:
@@ -78,8 +97,7 @@ def main():
     # Start conditions and help files depending on restart option
     else:
         CleanDir( dirs["output"] )
-        CleanDir( dirs['output']+'/data/')
-        CleanDir( dirs["vulcan"]+"/output/" )
+        CleanDir( dirs['output']+'data/')
         
         runtime_helpfile    = []
 
@@ -154,7 +172,7 @@ def main():
     print("Included volatiles:",inc_vols)
 
     # Check that spectral file exists
-    spectral_file_nostar = dirs["rad_conv"]+"/"+COUPLER_options["spectral_file"]
+    spectral_file_nostar = COUPLER_options["spectral_file"]
     if not os.path.exists(spectral_file_nostar):
         print("ERROR: Spectral file does not exist at '%s'!" % spectral_file_nostar)
         exit(1)
@@ -178,8 +196,8 @@ def main():
         case _:
             print("ERROR: Invalid stellar model '%d'" % COUPLER_options['star_model'])
             exit(1)
-        
     
+    COUPLER_options["spider_repeat"] = False
 
     # Main loop
     while time_dict["planet"] < time_dict["target"]:
@@ -224,22 +242,12 @@ def main():
                 T_eqm_new   = 0.0
                 T_eqm_prev  = 0.0
 
-            COUPLER_options["TOA_heating"]  = toa_heating
+            COUPLER_options["TOA_heating"]  = toa_heating  # instellation * ASF scale factor
+            COUPLER_options["F_ins"]        = S_0          # instellation (solar constant)
             COUPLER_options["T_eqm"]        = T_eqm_new
             COUPLER_options["T_skin"]       = T_eqm_new * (0.5**0.25) # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
 
             print("T_eqm change: %.3f K (to 3dp)" % abs(T_eqm_new - T_eqm_prev))
-
-            # Check if instellation changed (do eqm iters?)
-            if (loop_counter["total"] > loop_counter["init_loops"]) \
-                and ( abs(T_eqm_new - T_eqm_prev) > 0.01 ) \
-                and ( COUPLER_options["require_eqm_loops"] == 1 ) \
-                and ( COUPLER_options["F_atm"] < COUPLER_options["F_crit"] ) \
-                and ( loop_counter["eqm"] == -1 ):
-
-                print("Beginning eqm loops to respond to change in instellation")
-                run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
-                loop_counter["eqm"] = 0       
 
         # Calculate a new (historical) stellar spectrum 
         if (COUPLER_options['star_model'] > 0  \
@@ -256,12 +264,10 @@ def main():
                     fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl, COUPLER_options, track)
 
             # Write stellar spectra to disk
-            print("Writing spectrum to disk")
             writessurf = bool(COUPLER_options["atmosphere_chem_type"] > 0)
             SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs['output']+'/data/',write_surf=writessurf)
 
             # Generate a new SOCRATES spectral file containing this new spectrum
-            print("Inserting star into SOCRATES spectral file")
             star_spec_src = dirs["output"]+"socrates_star.txt"
             PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
             InsertStellarSpectrum(
@@ -294,7 +300,6 @@ def main():
 
                 # Store new guesses based on last init iteration
                 run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
-                COUPLER_options["mantle_mass_guess"] =      run_int.iloc[-1]["M_mantle"]
                 COUPLER_options["T_surf_guess"] =           run_int.iloc[-1]["T_surf"]
                 COUPLER_options["melt_fraction_guess"] =    run_int.iloc[-1]["Phi_global"]
 
@@ -321,33 +326,25 @@ def main():
 
 
         ############### ATMOSPHERE SUB-LOOP
-        atm_dt     = 1.e-5  # Initial dt [days]
-        atm_dF_1   = np.inf # Absolute change in F_atm this iter
-        atm_dF_2   = np.inf # Absolute change in F_atm last iter
-        eps_dF     = 10.0  # Convergence criterion for atm loops
-        while (loop_counter["atm"] == 0) \
-              or ( (COUPLER_options["radiative_heating"] == 1) and (loop_counter["atm"] < loop_counter["atm_loops"]) and (max(atm_dF_2,atm_dF_1) > eps_dF)):
+        while (loop_counter["atm"] == 0):
 
             # Initialize atmosphere structure
             if (loop_counter["atm"] == 0) or (loop_counter["total"] <= 2):
-                atm, COUPLER_options = StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options )
+                COUPLER_options = PrepAtm(loop_counter, runtime_helpfile, COUPLER_options)
 
-                # Run AEOLUS: use the general adiabat to create a PT profile, then calculate fluxes
-                atm, COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile )
-                pt_aeolus = np.array([ atm.p , atm.tmp])
+                if COUPLER_options["atmosphere_model"] == 0:
+                    # Run AEOLUS: use the general adiabat to create a PT profile, then calculate fluxes
+                    atm = StructAtm( runtime_helpfile, COUPLER_options )
+                    COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile )
+
+                elif COUPLER_options["atmosphere_model"] == 1:
+                    # Run AGNI 
+                    COUPLER_options = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    
+                else:
+                    raise Exception("Invalid atmosphere model")
 
             
-            # Step PT profile forwards using SOCRATES heating rates
-            if (COUPLER_options["radiative_heating"] == 1) and (loop_counter["total"] > 2):
-
-                # Radiative heating iteration here
-                # Not yet merged into master.
-                print("WARNING: Radiative heating disabled for now.")
-
-            else:
-                # Don't do another atm loop if not doing radiative heating
-                atm_dF_2 = atm_dF_1 = 0.0  
-
             # Update help quantities, input_flag: "Atmosphere"
             runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
 
@@ -364,15 +361,9 @@ def main():
         time_dict["planet"] = runtime_helpfile.iloc[-1]["Time"]
         time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
 
-        # Print info, save atm to file, update plots
-        PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options, atm, loop_counter, dirs)
-
-        # Update eqm loop counter
-        if (loop_counter["eqm"] > -1): # Next eqm iter
-            loop_counter["eqm"]     += 1
-        if (loop_counter["eqm"] >= loop_counter["eqm_loops"]): 
-            loop_counter["eqm"]     = -1  # -1 indicates that we are not to do any more eqm loops for now
-
+        # Print info, save atm to file
+        PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options)
+        
         # Update init loop counter
         if loop_counter["init"] < loop_counter["init_loops"]: # Next init iter
             loop_counter["init"]    += 1
@@ -387,30 +378,30 @@ def main():
 
         # Stop simulation when planet is completely solidified
         if (COUPLER_options["solid_stop"] == 1) \
-            and (runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]) \
-            and (loop_counter["eqm"] == -1):
-
+            and (runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]):
             print("\n===> Planet solidified! <===\n")
             break
+            
+        # Stop simulation if maximum loops reached
+        if (loop_counter["total"] > loop_counter["total_loops"]):
+            print("\n Maximum number of iterations reached. Stopping. \n")
+            break
         
-        # Otherwise, make plots if required and go to next iteration
-        elif (COUPLER_options["plot_iterfreq"] > 0) \
-            and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0) \
-            and (loop_counter["eqm"] == -1):
-
+        # Make plots if required and go to next iteration
+        if (COUPLER_options["plot_iterfreq"] > 0) \
+            and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0):
             UpdatePlots( dirs["output"], COUPLER_options )
 
 
         ############### / LOOP ITERATION MANAGEMENT
 
     # Plot conditions at the end
-    UpdatePlots( dirs["output"], COUPLER_options )
-
-    print("\n\n===> PROTEUS run finished successfully <===")
+    UpdatePlots( dirs["output"], COUPLER_options, end=True)
     print("     "+datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
 #====================================================================
 if __name__ == '__main__':
     main()
+    print("Goodbye")
 
 # End of file

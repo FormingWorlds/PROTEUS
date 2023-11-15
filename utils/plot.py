@@ -4,7 +4,6 @@
 from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import *
-# from utils.coupler import *
 
 sci_colormaps = {}
 for g in glob.glob(str(pathlib.Path(__file__).parent.absolute())+"/../AEOLUS/plotting_tools/colormaps/*.txt"):
@@ -12,7 +11,6 @@ for g in glob.glob(str(pathlib.Path(__file__).parent.absolute())+"/../AEOLUS/plo
     name = g.split('/')[-1].split('.')[0]
     sci_colormaps[name]      = LinearSegmentedColormap.from_list(name, cm_data)
     sci_colormaps[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
-
 
 # https://matplotlib.org/tutorials/colors/colormaps.html
 
@@ -141,53 +139,57 @@ vol_latex = {
     "N2_reduced" : r"N$_2^{-}$",
     "S"       : r"S",
     "O2"      : r"O$_2$",
+    "O3"      : r"O$_3$",
+    "OH"      : r"OH",
+    "HCN"     : r"HCN",
+    "NH3"     : r"NH$_3$",
     "He"      : r"He",
     "NH3"     : r"NH$_3$",
-    "H2O-CO2" : r"H$_2$O–CO$_2$",
-    "H2O-H2"  : r"H$_2$O–H$_2$",
-    "H2O-CO"  : r"H$_2$O–CO",
-    "H2O-CH4" : r"H$_2$O–CH$_4$",
-    "H2O-N2"  : r"H$_2$O–N$_2$",
-    "H2O-O2"  : r"H$_2$O–O$_2$",
-    "H2-H2O"  : r"H$_2$–H$_2$O",
-    "H2-CO"   : r"H$_2$–CO",
-    "H2-CH4"  : r"H$_2$–CH$_4$",
-    "H2-CO2"  : r"H$_2$–CO$_2$",
-    "H2-N2"   : r"H$_2$–N$_2$",
+    "H2O-CO2" : r"H$_2$O-CO$_2$",
+    "H2O-H2"  : r"H$_2$O-H$_2$",
+    "H2O-CO"  : r"H$_2$O-CO",
+    "H2O-CH4" : r"H$_2$O-CH$_4$",
+    "H2O-N2"  : r"H$_2$O-N$_2$",
+    "H2O-O2"  : r"H$_2$O-O$_2$",
+    "H2-H2O"  : r"H$_2$-H$_2$O",
+    "H2-CO"   : r"H$_2$-CO",
+    "H2-CH4"  : r"H$_2$-CH$_4$",
+    "H2-CO2"  : r"H$_2$-CO$_2$",
+    "H2-N2"   : r"H$_2$-N$_2$",
     "H2-O2"   : r"H$_2$-O$_2$",
-    "CO2-N2"  : r"CO$_2$–N$_2$",
-    "CO2-H2O" : r"CO$_2$–H$_2$O",
-    "CO2-CO"  : r"CO$_2$–CO",
-    "CO2-CH4"  : r"CO$_2$–CH$_4$",
-    "CO2-O2"  : r"CO$_2$–O$_2$",
-    "CO2-H2"  : r"CO$_2$–H$_2$",
-    "CO-H2O" : r"CO–H$_2$O",
-    "CO-CO2" : r"CO–CO$_2$",
-    "CO-H2"  : r"CO–H$_2$",
-    "CO-CH4" : r"CO–CH$_4$",
-    "CO-N2"  : r"CO–N$_2$",
-    "CO-O2"  : r"CO–O$_2$",
-    "CH4-H2O" : r"CH$_4$–H$_2$O",
-    "CH4-CO2" : r"CH$_4$–CO$_2$",
-    "CH4-H2"  : r"CH$_4$–H$_2$",
-    "CH4-CO"  : r"CH$_4$–CO",
-    "CH4-CH4" : r"CH$_4$–CH$_4$",
-    "CH4-N2"  : r"CH$_4$–N$_2$",
-    "CH4-O2"  : r"CH$_4$–O$_2$",
-    "N2-H2O" : r"N$_2$–H$_2$O",
-    "N2-CO2" : r"N$_2$–CO$_2$",
-    "N2-H2"  : r"N$_2$–H$_2$",
-    "N2-CO"  : r"N$_2$–CO",
-    "N2-CH4" : r"N$_2$–CH$_4$",
-    "N2-N2"  : r"N$_2$–N$_2$",
-    "N2-O2"  : r"N$_2$–O$_2$",
-    "O2-H2O" : r"O$_2$–H$_2$O",
-    "O2-CO2" : r"O$_2$–CO$_2$",
-    "O2-H2"  : r"O$_2$–H$_2$",
-    "O2-CO"  : r"O$_2$–CO",
-    "O2-CH4" : r"O$_2$–CH$_4$",
-    "O2-N2"  : r"O$_2$–N$_2$",
-    "O2-O2"  : r"O$_2$–O$_2$",
+    "CO2-N2"  : r"CO$_2$-N$_2$",
+    "CO2-H2O" : r"CO$_2$-H$_2$O",
+    "CO2-CO"  : r"CO$_2$-CO",
+    "CO2-CH4"  : r"CO$_2$-CH$_4$",
+    "CO2-O2"  : r"CO$_2$-O$_2$",
+    "CO2-H2"  : r"CO$_2$-H$_2$",
+    "CO-H2O" : r"CO-H$_2$O",
+    "CO-CO2" : r"CO-CO$_2$",
+    "CO-H2"  : r"CO-H$_2$",
+    "CO-CH4" : r"CO-CH$_4$",
+    "CO-N2"  : r"CO-N$_2$",
+    "CO-O2"  : r"CO-O$_2$",
+    "CH4-H2O" : r"CH$_4$-H$_2$O",
+    "CH4-CO2" : r"CH$_4$-CO$_2$",
+    "CH4-H2"  : r"CH$_4$-H$_2$",
+    "CH4-CO"  : r"CH$_4$-CO",
+    "CH4-CH4" : r"CH$_4$-CH$_4$",
+    "CH4-N2"  : r"CH$_4$-N$_2$",
+    "CH4-O2"  : r"CH$_4$-O$_2$",
+    "N2-H2O" : r"N$_2$-H$_2$O",
+    "N2-CO2" : r"N$_2$-CO$_2$",
+    "N2-H2"  : r"N$_2$-H$_2$",
+    "N2-CO"  : r"N$_2$-CO",
+    "N2-CH4" : r"N$_2$-CH$_4$",
+    "N2-N2"  : r"N$_2$-N$_2$",
+    "N2-O2"  : r"N$_2$-O$_2$",
+    "O2-H2O" : r"O$_2$-H$_2$O",
+    "O2-CO2" : r"O$_2$-CO$_2$",
+    "O2-H2"  : r"O$_2$-H$_2$",
+    "O2-CO"  : r"O$_2$-CO",
+    "O2-CH4" : r"O$_2$-CH$_4$",
+    "O2-N2"  : r"O$_2$-N$_2$",
+    "O2-O2"  : r"O$_2$-O$_2$",
 }
 
 molar_mass      = {
@@ -221,53 +223,6 @@ def latex_float(f):
         return r"${0} \times 10^{{{1}}}$".format(base, int(exponent))
     else:
         return float_str
-
-def AtmosphericHeight(atm, m_planet, r_planet):
-
-    z_profile       = np.zeros(len(atm.p))
-    P_s             = np.max(atm.p)
-    grav_s          = gravity( m_planet, r_planet )
-
-    # Reverse arrays to go from high to low pressure
-    atm.p   = atm.p[::-1]
-    atm.tmp = atm.tmp[::-1]
-    for vol in atm.vol_list.keys():
-        atm.x_gas[vol] = atm.x_gas[vol][::-1]
-
-    # print(atm.p)
-
-    for n in range(0, len(z_profile)-1):
-
-        # Gravity with height
-        grav_z = grav_s * ((r_planet)**2) / ((r_planet + z_profile[n])**2)
-
-        # print(r_planet, grav_s, grav_z, z_profile[n])
-
-        # Mean molar mass depending on mixing ratio
-        mean_molar_mass = 0
-        for vol in atm.vol_list.keys():
-            mean_molar_mass += molar_mass[vol]*atm.x_gas[vol][n]
-
-        # Temperature below present height
-        T_mean_below    = np.mean(atm.tmp[n:])
-
-        # # Direction calculation
-        # z_profile[n] = - R_gas * T_mean_below * np.log(atm.p[n]/P_s) / ( mean_molar_mass * grav_s )
-
-        # Integration
-        dz = - R_gas * T_mean_below * np.log(atm.p[n+1]/atm.p[n]) / (mean_molar_mass*grav_z)
-        
-        # Next height
-        z_profile[n+1] = z_profile[n] + dz
-
-    # Reverse arrays again back to normal
-    atm.p   = atm.p[::-1]
-    atm.tmp = atm.tmp[::-1]
-    for vol in atm.vol_list.keys():
-        atm.x_gas[vol] = atm.x_gas[vol][::-1]
-    z_profile = z_profile[::-1]
-
-    return z_profile
 
 
 
@@ -526,50 +481,3 @@ class FigureData( object ):
         if not ymax: ymax=yticks[-1]
         if not ymin: ymin=yticks[0]
         ax.set_ylim( ymin, ymax )
-
-
-
-# Function to read PT profile and VULCAN output file and AEOLUS mixing ratios (if read_const=True)
-def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0, read_const=False):
-
-    year_data = {}  # Dictionary of mixing ratios, pressure, temperature
-
-    # Read VULCAN output file
-    with open(output_dir+"offchem/%d/output.vul" % year_int, "rb") as handle:
-        vul_data = pkl.load(handle)
-
-
-    # Save year
-    year_data["year"] = int(year_int)
-
-    # Parse mixing ratios
-    vul_var = vul_data['variable']
-    for si,sp in enumerate(vul_var['species']):
-        year_data["mx_"+sp] = np.clip(np.array(vul_var['ymix'])[:,si],mx_clip_min,mx_clip_max)
-
-    # Parse PT profile
-    vul_atm = vul_data['atm']
-    year_data["pressure"] =     np.array(vul_atm["pco"]) / 1e6  # convert to bar
-    year_data["temperature"] =  np.array(vul_atm["Tco"])
-
-    # Read AEOLUS mixing ratios which were used to initialise VULCAN
-    if read_const:
-        vol_data_str = None
-        with open(output_dir+"offchem/%d/vulcan_cfg.py" % year_int, "r") as f:
-            lines = f.read().splitlines()
-            for ln in lines:
-                if "const_mix" in ln:
-                    vol_data_str = ln.split("=")[1].replace("'",'"')
-
-        if vol_data_str == None:
-            raise Exception("Could not parse vulcan cfg file!")
-        
-        vol_data = json.loads(vol_data_str)
-        for vol in vol_data:
-            ae_mx = float(vol_data[vol])
-            if ae_mx > 1e-12:
-                year_data["ae_"+vol] = ae_mx
-
-    return year_data
-
-

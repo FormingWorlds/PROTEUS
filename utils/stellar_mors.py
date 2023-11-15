@@ -31,32 +31,27 @@ def MorsSolarConstant(time_dict: dict, COUPLER_options: dict):
 
     Returns
     ----------
-        flux : float
+        inst : float
             Flux at planet's orbital separation (solar constant) in W/m^2
         heat : float
-            Instellation at TOA in W/m^2
+            Absorbed stellar flux (ASF) at TOA [W/m^2]
 
     """ 
 
     tstar = time_dict['star'] * 1.e-6  # Convert from yr to Myr
 
     Mstar = COUPLER_options["star_mass"]
-    if (Mstar < 0.1):
-        print("WARNING: Star mass too low! Clipping to 0.1 M_sun")
-        Mstar = 0.1
-    if (Mstar > 1.25):
-        print("WARNING: Star mass too high! Clipping to 1.25 M_sun")
-        Mstar = 1.25
+    Mstar = max(min(Mstar, 1.25), 0.1)
     
     Lstar = mors.Value(Mstar, tstar, 'Lbol')  # Units of L_sun
     Lstar *= L_sun # Convert to W
 
     mean_distance = COUPLER_options["mean_distance"] * AU
 
-    flux = Lstar /  ( 4. * np.pi * mean_distance * mean_distance )
-    heat = flux * ( 1. - COUPLER_options["albedo_pl"] )
+    inst = Lstar /  ( 4. * np.pi * mean_distance * mean_distance )
+    heat = inst * ( 1. - COUPLER_options["albedo_pl"] ) * COUPLER_options["asf_scalefactor"]
 
-    return flux, heat
+    return inst, heat
 
 def MorsStellarRadius(time_dict: dict, COUPLER_options: dict):
     """Calculates the star's radius at a time t.
@@ -73,7 +68,7 @@ def MorsStellarRadius(time_dict: dict, COUPLER_options: dict):
 
     Returns
     ----------
-        radius : float
+        Rstar : float
             Radius of star in units of solar radii
 
     """ 
@@ -81,13 +76,8 @@ def MorsStellarRadius(time_dict: dict, COUPLER_options: dict):
     tstar = time_dict['star'] * 1.e-6  # Convert from yr to Myr
 
     Mstar = COUPLER_options["star_mass"]
-    if (Mstar < 0.1):
-        print("WARNING: Star mass too low! Clipping to 0.1 M_sun")
-        Mstar = 0.1
-    if (Mstar > 1.25):
-        print("WARNING: Star mass too high! Clipping to 1.25 M_sun")
-        Mstar = 1.25
-    
+    Mstar = max(min(Mstar, 1.25), 0.1)
+
     Rstar = mors.Value(Mstar, tstar, 'Rstar')  # Units of R_sun
 
     return Rstar
@@ -113,14 +103,14 @@ def IntegratePlanckFunction(lam1, lam2, Teff):
         I_planck : float
             Flux at stellar surface
     """
-    hc_by_kT = phys.h * phys.c / (phys.k * Teff)
+    hc_by_kT = const_h * const_c / (const_k * Teff)
     planck_func = lambda lam : 1.0/( (lam ** 5.0) * ( np.exp( hc_by_kT/ lam) - 1.0 ) ) 
 
     planck_wl = np.linspace(lam1 * 1e-9, lam2 * 1e-9, 2000)
     planck_fl = planck_func(planck_wl)
     I_planck = np.trapz(planck_fl, planck_wl)  # Integrate planck function over wavelength
 
-    I_planck *= 2 * phys.h * phys.c * phys.c   # W m-2 sr-1, at stellar surface
+    I_planck *= 2 * const_h * const_c * const_c   # W m-2 sr-1, at stellar surface
     I_planck *= np.pi # W m-2, integrate over solid angle
     I_planck *= 1.0e3  # erg s-1 cm-2, convert units
 

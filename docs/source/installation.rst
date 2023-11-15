@@ -8,15 +8,15 @@ Software dependencies
 
 Read access to the following repositories:
 
-    * Coupler framework: **PROTEUS**
+    * Core coupler framework: **PROTEUS**
         
         * URL: https://github.com/FormingWorlds/PROTEUS
 
-    * Radiative-convective scheme: **AEOLUS** 
+    * Pseudoadiabatic temperature structure scheme: **AEOLUS** 
         
         * URL: https://github.com/FormingWorlds/AEOLUS/
 
-    * Radiation transport: **SOCRATES** 
+    * Radiative transfer: **SOCRATES** 
         
         * Main development URL: https://code.metoffice.gov.uk/trac/socrates
         
@@ -40,7 +40,7 @@ Read access to the following repositories:
         
         * URL: https://github.com/sciath/sciath
 
-Step-by-step guide
+Step-by-step (core modules)
 ----------------
 
 1. Install dependencies
@@ -120,11 +120,11 @@ Step-by-step guide
                 
                 .. code-block:: console
                     
-                    $   pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort
+                    $   pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort netCDF4
                 
                 * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step), by adding the following to your:
                     
-                    * ``~/.zsrhrc`` (ARM):
+                    * ``~/.zshrc`` (ARM):
                     
                     .. code-block:: console
                         
@@ -149,7 +149,7 @@ Step-by-step guide
                     $   conda create -n proteus python=3.10.9   
                     $   conda activate proteus
                     $   conda install netcdf4 matplotlib numpy pandas scipy sympy natsort
-                    $   conda install -c conda-forge f90nml
+                    $   conda install -c conda-forge f90nml netcdf4
             
             * Refresh your shell:
                     
@@ -252,6 +252,7 @@ Step-by-step guide
             $   cd Mors 
             $   wget http://www.astro.yale.edu/demarque/fs255_grid.tar.gz
             $   tar -xvf fs255_grid.tar.gz
+            $   pip install .
             $   cd ../
         
     8. Setup PETSc
@@ -260,9 +261,7 @@ Step-by-step guide
 
             $   cd petsc
             $   ./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"
-        
-        * Make note of the value of ``PETSC_ARCH`` printed to ``stdout``.
-        
+                
         * Run the exact ``make all`` command provided at the end of the configure step
         
         * Run the exact ``make check`` command provided at the end of the ``make all`` step
@@ -272,9 +271,9 @@ Step-by-step guide
             $   cd ../
 
     9. Setup environment variables
-        
+
         * Edit the variable ``PETSC_ARCH`` in the file ``PROTEUS.env`` to reflect the value provided by PETSc in the previous step
-        
+                
         * Only **IF** ``python`` has been installed via the ``conda`` route: 
 
             .. code-block:: console
@@ -300,6 +299,36 @@ Step-by-step guide
             $   cd ..
 
 **Done!**
+
+Step-by-step (optional modules)
+----------------
+
+* Radiative-convective scheme: **AGNI **
+
+    1. Ensure that you have access to https://github.com/nichollsh/AGNI 
+
+    2. Install Julia (version 1.9.1 or later) on your system
+
+    3. Enter into the base directory of PROTEUS
+    
+    4.  Download AGNI using git
+
+        .. code-block:: console 
+            $ git clone git@github.com/nichollsh/AGNI
+            $ cd AGNI/
+
+    5. Follow the installation instructions in `README.md`
+
+    6. Run AGNI at least once to precompile the code and check that it works
+
+    6. Go back to the PROTEUS directory 
+
+        .. code-block:: console 
+            $ cd ../
+    
+    7. Done!
+
+
 
 Troubleshooting
 ----------------

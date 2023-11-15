@@ -1,11 +1,10 @@
-# Function used to handle atmosphere thermodynamics (running AEOLUS, etc.)
-
+# Functions used to handle atmosphere thermodynamics (running AEOLUS, etc.)
 
 from utils.modules_ext import *
 from utils.helper import *
-from AEOLUS.utils.atmosphere_column import atmos
-from AEOLUS.modules.radcoupler import RadConvEqm
-from AEOLUS.utils.SocRadModel import radCompSoc
+
+# Debugging
+# from AEOLUS.modules.plot_flux_balance import plot_atmosphere_fluxes
 
 def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
 
@@ -54,59 +53,68 @@ def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
     return Ts_curr
 
 
-# Generate/adapt atmosphere chemistry/radiation input files
-def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
+# Prepare surface BC for new atmosphere calculation
+def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
 
     # In the beginning: standard surface temperature from last entry
     if loop_counter["total"] < loop_counter["init_loops"]:
         COUPLER_options["T_surf"] = runtime_helpfile.iloc[-1]["T_surf"]
     
     # Check for flux_convergence scheme criteria
-    elif (COUPLER_options["flux_convergence"] == 1 \
-    and runtime_helpfile.iloc[-1]["RF_depth"] < COUPLER_options["RF_crit"] \
-    and COUPLER_options["F_net"] > COUPLER_options["F_diff"]*COUPLER_options["F_int"]) \
-    or  COUPLER_options["flux_convergence"] == 2:
-
-        PrintHalfSeparator()
-        print(">>>>>>>>>> Flux convergence scheme <<<<<<<<<<<")
-
-        COUPLER_options["flux_convergence"] = 2
-
-        # In case last atm T_surf from flux convergence scheme was smaller(!) than threshold 
-        if abs(COUPLER_options["F_net"]) < COUPLER_options["F_eps"]:
-            
-            COUPLER_options["T_surf"] = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].iloc[-1]["T_surf"]
-            print("Use previous T_surf =", COUPLER_options["T_surf"])
-
-        else:
-
-            # Last T_surf and time from atmosphere, K
-            t_curr          = runtime_helpfile.iloc[-1]["Time"]
-            run_atm         = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']
-            run_atm_prev    = run_atm.loc[run_atm['Time'] != t_curr]
-            run_atm_curr    = run_atm.loc[run_atm['Time'] == t_curr]
-            t_previous_atm  = run_atm_prev.iloc[-1]["Time"]
-            Ts_previous_atm = run_atm_prev.iloc[-1]["T_surf"]
-            Ts_last_atm     = run_atm.iloc[-1]["T_surf"]
-
-            print("F_net", str(COUPLER_options["F_net"]), "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm", Ts_last_atm, "dTs_atm", str(COUPLER_options["dTs_atm"]), "t_curr", t_curr, "t_previous_atm", t_previous_atm)
-
-            # Apply flux convergence via shallow layer function
-            COUPLER_options["T_surf"] = shallow_mixed_ocean_layer(COUPLER_options["F_net"], Ts_previous_atm, COUPLER_options["dTs_atm"], t_curr, t_previous_atm)
-
-            # Prevent atmospheric oscillations
-            if len(run_atm_curr) > 2 and (np.sign(run_atm_curr["F_net"].iloc[-1]) != np.sign(run_atm_curr["F_net"].iloc[-2])) and (np.sign(run_atm_curr["F_net"].iloc[-2]) != np.sign(run_atm_curr["F_net"].iloc[-3])):
-                COUPLER_options["T_surf"] = np.mean([run_atm.iloc[-1]["T_surf"], run_atm.iloc[-2]["T_surf"]])
-                print("Prevent oscillations, new T_surf =", COUPLER_options["T_surf"])
-
-            print("dTs_atm (K):", COUPLER_options["dTs_atm"], "t_previous_atm:", t_previous_atm, "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm:", Ts_last_atm, "t_curr:", t_curr, "Ts_curr:", COUPLER_options["T_surf"])
-
-        PrintHalfSeparator()
-
-    # Use Ts_int
     else:
+        if (COUPLER_options["flux_convergence"] == 2) \
+            or ( (COUPLER_options["flux_convergence"] == 1) and \
+                 (runtime_helpfile.iloc[-1]["RF_depth"] < COUPLER_options["RF_crit"]) #and \
+                 #(COUPLER_options["F_net"] > COUPLER_options["F_diff"]*COUPLER_options["F_int"]) \
+               ):
+
+            PrintHalfSeparator()
+            print(">>>>>>>>>> Flux convergence scheme <<<<<<<<<<<")
+
+            COUPLER_options["flux_convergence"] = 2
+
+            # In case last atm T_surf from flux convergence scheme was smaller(!) than threshold 
+            if abs(COUPLER_options["F_net"]) < COUPLER_options["F_eps"]:
+                
+                COUPLER_options["T_surf"] = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].iloc[-1]["T_surf"]
+                print("Use previous T_surf =", COUPLER_options["T_surf"])
+
+            else:
+
+                # Last T_surf and time from atmosphere, K
+                t_curr          = runtime_helpfile.iloc[-1]["Time"]
+                run_atm         = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']
+                run_atm_prev    = run_atm.loc[run_atm['Time'] != t_curr]
+                run_atm_curr    = run_atm.loc[run_atm['Time'] == t_curr]
+                t_previous_atm  = run_atm_prev.iloc[-1]["Time"]
+                Ts_previous_atm = run_atm_prev.iloc[-1]["T_surf"]
+                Ts_last_atm     = run_atm.iloc[-1]["T_surf"]
+
+                print("F_net", str(COUPLER_options["F_net"]), "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm", Ts_last_atm, "dTs_atm", str(COUPLER_options["dTs_atm"]), "t_curr", t_curr, "t_previous_atm", t_previous_atm)
+
+                # Apply flux convergence via shallow layer function
+                COUPLER_options["T_surf"] = shallow_mixed_ocean_layer(COUPLER_options["F_net"], Ts_previous_atm, COUPLER_options["dTs_atm"], t_curr, t_previous_atm)
+
+                # Prevent atmospheric oscillations
+                if len(run_atm_curr) > 2 and (np.sign(run_atm_curr["F_net"].iloc[-1]) != np.sign(run_atm_curr["F_net"].iloc[-2])) and (np.sign(run_atm_curr["F_net"].iloc[-2]) != np.sign(run_atm_curr["F_net"].iloc[-3])):
+                    COUPLER_options["T_surf"] = np.mean([run_atm.iloc[-1]["T_surf"], run_atm.iloc[-2]["T_surf"]])
+                    print("Prevent oscillations, new T_surf =", COUPLER_options["T_surf"])
+
+                print("dTs_atm (K):", COUPLER_options["dTs_atm"], "t_previous_atm:", t_previous_atm, "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm:", Ts_last_atm, "t_curr:", t_curr, "Ts_curr:", COUPLER_options["T_surf"])
+
+            PrintHalfSeparator()
+
         # Standard surface temperature from last entry
-        COUPLER_options["T_surf"] = runtime_helpfile.iloc[-1]["T_surf"]
+        else:
+            COUPLER_options["T_surf"] = runtime_helpfile.iloc[-1]["T_surf"]
+
+    return COUPLER_options
+
+
+# Generate atmosphere from input files
+def StructAtm( runtime_helpfile, COUPLER_options ):
+
+    from AEOLUS.utils.atmosphere_column import atmos
 
     # Create atmosphere object and set parameters
     pl_radius = COUPLER_options["radius"]
@@ -120,127 +128,45 @@ def StructAtm( loop_counter, dirs, runtime_helpfile, COUPLER_options ):
                   "CH4" : runtime_helpfile.iloc[-1]["CH4_mr"], 
                   "O2"  : runtime_helpfile.iloc[-1]["O2_mr"], 
                   "CO"  : runtime_helpfile.iloc[-1]["CO_mr"], 
-                  "He"  : 0.,
-                  "NH3" : 0., 
+                  "He"  : 0.0,  # broken
+                  "NH3" : 0.0,  # broken
                 }
 
     match COUPLER_options["tropopause"]:
         case 0:
-            trppT = 0
+            trppT = 0.0  # none
         case 1:
-            trppT = COUPLER_options["T_skin"]
+            trppT = COUPLER_options["T_skin"]  # skin temperature (grey stratosphere)
         case 2:
-            trppT = None
+            trppT = COUPLER_options["min_temperature"]  # dynamically, based on heating rate
         case _:
-            print("ERROR: Invalid tropopause option '%d'" % COUPLER_options["tropopause"])
-            exit(1)
+            raise ValueError("Invalid tropopause option '%d'" % COUPLER_options["tropopause"])
+        
+    nlev = int(COUPLER_options["atmosphere_nlev"])
             
     atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, 
                 COUPLER_options["P_top"]*1e5, pl_radius, pl_mass,
                 vol_mixing=vol_list, 
                 minT = COUPLER_options["min_temperature"],
-                trppT=trppT
+                maxT = COUPLER_options["max_temperature"],
+                trppT=trppT,
+                water_lookup=False,
+                req_levels=nlev
                 )
 
     atm.zenith_angle    = COUPLER_options["zenith_angle"]
     atm.albedo_pl       = COUPLER_options["albedo_pl"]
     atm.albedo_s        = COUPLER_options["albedo_s"]
     atm.toa_heating     = COUPLER_options["TOA_heating"]
-        
+    atm.skin_d          = COUPLER_options["skin_d"]
+    atm.skin_k          = COUPLER_options["skin_k"]
 
-    return atm, COUPLER_options
-
-def CallRadConvEqm(atm, dirs, time_dict, COUPLER_options):
-    """Call RadConvEqm util from AEOLUS.
-    
-    Calculates the temperature structure of an atmosphere using the Graham+21
-    general adiabat and sets an isothermal stratosphere if required. Runs 
-    SOCRATES to calculate the fluxes and heating rates.
-
-    Parameters
-    ----------
-        atm : atmos
-            Atmosphere object
-        dirs : dict
-            Dictionary containing paths to directories
-        time_dict : dict
-            Dictionary containing simulation time variables
-        COUPLER_options : dict
-            Configuration options and other variables
-
-    Returns
-    ----------
-        atm : atmos
-            Updated atmos object
-
-    """
-
-    # Change directory so that SOCRATES files don't get littered
-    cwd = os.getcwd()
-    os.chdir(dirs["output"])
-
-    # Calculate temperature structure w/ General Adiabat 
-    trppD = bool(COUPLER_options["tropopause"] == 2 )
-    rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
-    _, atm = RadConvEqm(dirs, time_dict, atm, standalone=False, cp_dry=False, trppD=trppD, rscatter=rscatter, calc_cf=False)
-
-    # Go back to previous directory
-    os.chdir(cwd)
-
-    # Clean up run directory
-    for file in glob.glob(dirs["output"]+"/current??.????"):
-        os.remove(file)
-    for file in glob.glob(dirs["output"]+"/profile.*"):
-        os.remove(file)
-
-    # Print flux info
-    print("SOCRATES fluxes (net@surf, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
+    run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+    atm.tmp_magma = run_atm.iloc[-1]["T_surf"]
 
     return atm
 
-def CalcAtmFluxes(atm, dirs, COUPLER_options):
-    """Call RadCompSoc utility from AEOLUS
-    
-    Calculates the fluxes and heating rates within an atmosphere object using
-    SOCRATES. Does not modify the PT profile or composition.
-
-    Parameters
-    ----------
-        atm : atmos
-            Atmosphere object
-        dirs : dict
-            Dictionary containing paths to directories
-        COUPLER_options : dict
-            Configuration options and other variables
-
-    Returns
-    ----------
-        atm : atmos
-            Updated atmos object containing new fluxes and heating rates.
-
-    """
-
-    # Change directory so that SOCRATES files don't get littered
-    cwd = os.getcwd()
-    os.chdir(dirs["output"])
-
-    # Calculate fluxes and heating rates
-    rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
-    atm = radCompSoc(atm, dirs, recalc=False, calc_cf=False, rscatter=rscatter)
-
-    # Go back to previous directory
-    os.chdir(cwd)
-
-    # Clean up run directory
-    for file in glob.glob(dirs["output"]+"/current??.????"):
-        os.remove(file)
-    for file in glob.glob(dirs["output"]+"/profile.*"):
-        os.remove(file)
-
-    return atm
-
-
-def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
+def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
     """Run AEOLUS.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -259,7 +185,6 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
             Configuration options and other variables
         runtime_helpfile : pd.DataFrame
             Dataframe containing simulation variables (now and historic)
-
     Returns
     ----------
         atm : atmos
@@ -273,9 +198,66 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     PrintHalfSeparator()
     print("Running AEOLUS...")
 
-    atm = CallRadConvEqm(atm, dirs, time_dict, COUPLER_options)
+    # Change dir
+    cwd = os.getcwd()
+    os.chdir(dirs["output"])
 
-    # New flux from SOCRATES
+    # Prepare to calculate temperature structure w/ General Adiabat 
+    trppD = bool(COUPLER_options["tropopause"] == 2 )
+    rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
+
+    # Run AEOLUS
+    if COUPLER_options["atmosphere_solve_energy"] == 0:
+
+        if COUPLER_options["atmosphere_surf_state"] == 1:  # fixed T_Surf
+            from AEOLUS.modules.solve_pt import MCPA
+            atm = MCPA(dirs, atm, False, trppD, rscatter)
+
+        elif COUPLER_options["atmosphere_surf_state"] == 2: # conductive lid
+            from AEOLUS.modules.solve_pt import MCPA_CL
+
+            T_surf_max = -1
+            T_surf_old = -1 
+
+            # Done with initial loops
+            if (time_dict["planet"] > 0):
+
+                # Get previous temperature as initial guess
+                run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
+                T_surf_old = run_atm.iloc[-1]["T_surf"]
+
+                # Prevent heating of the interior
+                if (COUPLER_options["prevent_warming"] == 1):
+                    run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+                    T_surf_max = run_atm.iloc[-1]["T_surf"]
+
+            atm = MCPA_CL(dirs, atm, trppD, rscatter, 
+                          atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old), T_surf_max=float(T_surf_max))
+            
+            COUPLER_options["T_surf"] = atm.ts
+            # COUPLER_options["spider_repeat"] = not COUPLER_options["spider_repeat"] # Do a step of dt=0 once
+
+        else:
+            raise Exception("Free surface state is not a valid option for AEOLUS")
+    else:
+        raise Exception("Cannot solve for RCE with AEOLUS")
+    
+    # Clean up run directory
+    os.chdir(cwd)
+    for file in glob.glob(dirs["output"]+"/current??.????"):
+        os.remove(file)
+    for file in glob.glob(dirs["output"]+"/profile.*"):
+        os.remove(file)
+
+    print("SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
+
+    # plot_fluxes_atmosphere(atm, dirs["output"]+"/fluxes.pdf")
+
+    # Save atm data to disk
+    nc_fpath = dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.nc"
+    atm.write_ncdf(nc_fpath)
+
+    # Store new flux
     if (COUPLER_options["F_atm_bc"] == 0):
         F_atm_new = atm.net_flux[0]  
     else:
@@ -297,7 +279,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
     # Require that the net flux must be upward
     if (COUPLER_options["prevent_warming"] == 1):
-        F_atm_lim = max( 0.0 , F_atm_lim )
+        F_atm_lim = max( 1.0e-8 , F_atm_lim )
 
     # Print if a limit was applied
     if (F_atm_lim != F_atm_new ):
@@ -307,5 +289,5 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     COUPLER_options["F_atm"] = F_atm_lim
     COUPLER_options["F_olr"] = atm.LW_flux_up[0]
 
-    return atm, COUPLER_options
+    return COUPLER_options
 

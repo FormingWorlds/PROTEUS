@@ -20,7 +20,7 @@ def BaraffeStellarRadius(time_dict: dict, COUPLER_options: dict, track: dict):
 
     Returns
     ----------
-        radius : float
+        Rstar : float
             Radius of star in units of solar radii
 
     """ 
@@ -62,10 +62,10 @@ def BaraffeSolarConstant(time_dict: dict, COUPLER_options: dict, track: dict):
 
     Returns
     ----------
-        flux : float
+        inst : float
             Flux at planet's orbital separation (solar constant) in W/m^2
         heat : float
-            Instellation rate at TOA in W/m^2
+            Absorbed stellar flux (ASF) at TOA [W/m^2]
 
     """ 
 
@@ -89,10 +89,10 @@ def BaraffeSolarConstant(time_dict: dict, COUPLER_options: dict, track: dict):
     Lstar *= L_sun
     mean_distance = COUPLER_options["mean_distance"] * AU
 
-    flux = Lstar /  ( 4. * np.pi * mean_distance * mean_distance )
-    heat = flux * ( 1. - COUPLER_options["albedo_pl"] )
+    inst = Lstar /  ( 4. * np.pi * mean_distance * mean_distance )
+    heat = inst * ( 1. - COUPLER_options["albedo_pl"] ) * COUPLER_options["asf_scalefactor"]
 
-    return flux, heat
+    return inst, heat
 
 
 

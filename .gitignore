@@ -13,6 +13,8 @@ radiation_code.lock
 # Specific subfolders
 old/
 output/*
+output.link
+AGNI
 
 # misc
 ######
@@ -30,6 +32,7 @@ atm_chemistry.pdf
 Mors/fs255_grid
 screenlog.0
 tools/analyse.py
+tools/analyse.ipynb
 
 
 # From Read the Docs

@@ -78,9 +78,36 @@ class MyJSON( object ):
         # define mixed phase by these threshold values
         MIX = (phi<0.999) & (phi>0.001)
         MIX = MIX * 1.0 # convert to float array
-        # set single phase region to nan to prevent plotting
-        MIX[MIX==0] = np.nan
+        MIX[MIX==0] = np.nan  # set false region to nan to prevent plotting
         return MIX
+    
+    def get_melt_phase_boolean_array( self, nodes='basic' ):
+        '''this array enables us to plot different linestyles for
+           melt phase regions'''
+        if nodes == 'basic':
+            phi = self.get_dict_values( ['data','phi_b'] )
+        elif nodes == 'basic_internal':
+            phi = self.get_dict_values_internal( ['data','phi_b'] )
+        elif nodes == 'staggered':
+            phi = self.get_dict_values( ['data','phi_s'] )
+        MELT = (phi>0.999)
+        MELT = MELT * 1.0 # convert to float array
+        MELT[MELT==0] = np.nan # set false region to nan to prevent plotting
+        return MELT
+    
+    def get_solid_phase_boolean_array( self, nodes='basic' ):
+        '''this array enables us to plot different linestyles for
+           solid phase regions'''
+        if nodes == 'basic':
+            phi = self.get_dict_values( ['data','phi_b'] )
+        elif nodes == 'basic_internal':
+            phi = self.get_dict_values_internal( ['data','phi_b'] )
+        elif nodes == 'staggered':
+            phi = self.get_dict_values( ['data','phi_s'] )
+        SOLID = (phi<0.001)
+        SOLID = SOLID * 1.0 # convert to float array
+        SOLID[SOLID==0] = np.nan # set false region to nan to prevent plotting
+        return SOLID
 
     def get_rho_interp1d( self ):
         '''return interp1d object for determining density as a
@@ -500,8 +527,24 @@ def solvepp_doit(COUPLER_options):
 
     # These require initial guesses
     global_d['mantle_melt_fraction'] =  COUPLER_options['melt_fraction_guess'] 
-    global_d['mantle_mass'] =           COUPLER_options['mantle_mass_guess'] # kg
-    global_d['temperature'] =           COUPLER_options['T_surf_guess'] # K
+
+    # Get core's average density using Earth values
+    earth_fr = 0.55     # earth core radius fraction
+    earth_fm = 0.325    # earth core mass fraction  (https://arxiv.org/pdf/1708.08718.pdf)
+    earth_m  = 5.97e24  # kg
+    earth_r  = 6.37e6   # m
+
+    core_rho = (3.0 * earth_fm * earth_m) / (4.0 * np.pi * ( earth_fr * earth_r )**3.0 )  # core density [kg m-3]
+    print("Estimating core density to be %g kg m-3" % core_rho)
+
+    # Calculate mantle mass by subtracting core from total
+    core_mass = core_rho * 4.0/3.0 * np.pi * (COUPLER_options["radius"] * COUPLER_options["planet_coresize"] )**3.0
+    global_d['mantle_mass'] = COUPLER_options["mass"] - core_mass 
+    print("Total mantle mass is %.2e kg" % global_d['mantle_mass'])
+    if (global_d['mantle_mass'] <= 0.0):
+        raise Exception("Something has gone wrong (mantle mass is negative)")
+
+    global_d['temperature'] =       COUPLER_options['T_surf_guess'] # K
 
     # These are defined by the proteus configuration file
     global_d['planetary_radius'] =  COUPLER_options['radius']
@@ -610,9 +653,9 @@ def get_all_output_times( odir='output' ):
     return time_a
 
 #====================================================================
-def get_all_output_pkl_times( odir='output' ):
+def get_all_output_atm_times( odir='output' ):
 
-    '''get all times (in Myrs) from the pkl files located in the
+    '''get all times (in Myrs) from the nc files located in the
        output directory'''
 
     odir = odir+'/data/'
@@ -620,15 +663,15 @@ def get_all_output_pkl_times( odir='output' ):
     # locate times to process based on files located in odir/
     file_l = [f for f in os.listdir(odir) if os.path.isfile(odir+f)]
     if not file_l:
-        print('output directory contains no PKL files')
-        sys.exit(0)
+        raise Exception('Output directory contains no files')
 
     time_l = [fname for fname in file_l]
-    time_l = list(filter(lambda a: a.endswith('pkl'), time_l))
+    time_l = list(filter(lambda a: a.endswith('nc'), time_l))
+    if len(time_l) == 0:
+        raise Exception("Could not find any nc files in the output directory")
 
     # Filter and split files
     time_l = [ file for file in time_l if not file.startswith("orig_")]
-    time_l = [ time.split('.pkl')[0] for time in time_l ]
     time_l = [ int(time.split('_atm')[0]) for time in time_l ]
     
     # ascending order
@@ -723,7 +766,7 @@ def get_deriv_static_structure( z, r, *args ):
     # derivatives
     dpdr = -rho*g
     dmdr = 4*np.pi*r**2*rho
-    dgdr = 4*np.pi*phys.G*rho - 2*phys.G*m/r**3
+    dgdr = 4*np.pi*const_G*rho - 2*const_G*m/r**3
 
     return [dpdr,dmdr,dgdr]
 
@@ -744,7 +787,8 @@ def get_static_structure_for_radius( radius, *myargs ):
     M_earth = myargs[0]
     R_core = myargs[1]
     num = myargs[4]
-    g_Earth = gravity( M_earth, radius )
+    g_Earth = const_G*M_earth/radius**2
+
     z0 = [0,M_earth,g_Earth]
     r = get_radius_array_static_structure( radius, *myargs )
     z = odeint( get_deriv_static_structure, z0, r, args=myargs )
@@ -769,46 +813,6 @@ def get_difference_static_structure( radius, *myargs ):
 
     return g_core-G_core
 
-#====================================================================
-def get_myargs_static_structure( rho_interp1d ):
-
-    # some constants taken from here (not the best reference)
-    # https://www.sciencedirect.com/topics/earth-and-planetary-sciences/earth-core
-
-    # hard-coded parameters here
-    M_earth = 5.972E24 # kg
-    # we want to match the mass and gravity at the core radius
-    # and the core is assumed static and unchanging
-    R_core = 3485000.0 # m
-    M_core = 1.94E24 # kg
-    G_core = gravity( M_core, R_core )
-    # number of layers
-    # FIXME: for plotting this might explain mismatch between
-    # atmosphere and mantle temperature at the surface?
-    num = 1000
-
-    # tuple of arguments required for functions
-    myargs = (M_earth,R_core,M_core,G_core,num,rho_interp1d)
-
-    return myargs
-
-#====================================================================
-def solve_for_planetary_radius( rho_interp1d ):
-
-    '''simple integrator for static structure equations based on the
-       approach outlined in Valencia et al. (2007)'''
-
-    # initial guess
-    R_earth = 6371000.0 # m
-
-    myargs = get_myargs_static_structure( rho_interp1d )
-
-    radius = newton( get_difference_static_structure, R_earth,
-        args=myargs, maxiter=500 )
-
-    check_static_structure( radius, *myargs )
-
-    return radius
 
 #====================================================================
 def check_static_structure( radius, *myargs ):
@@ -822,48 +826,6 @@ def check_static_structure( radius, *myargs ):
         print( 'WARNING: g relative accuracy= {}'.format(reldg) )
 
 #====================================================================
-def plot_static_structure( radius, rho_interp1d ):
-
-    myargs = get_myargs_static_structure( rho_interp1d )
-
-    radius_a = get_radius_array_static_structure( radius, *myargs )
-    radius_a *= 1.0E-3 # to km
-    z = get_static_structure_for_radius( radius, *myargs )
-
-    pressure_a = z[:,0]
-    rho_a = rho_interp1d( pressure_a )
-    pressure_a *= 1.0E-9 # to GPa
-    rho_a *= 1.0E-3 # to g/cc
-    mass_a = z[:,1]
-    gravity_a = z[:,2]
-
-    fig, axs = plt.subplots(2,2,sharex=True, sharey=False)
-    fig.set_figheight(6)
-    fig.set_figwidth(8)
-
-    ax0 = axs[0,0]
-    ax1 = axs[0,1]
-    ax2 = axs[1,0]
-    ax3 = axs[1,1]
-
-    ax0.plot( radius_a, pressure_a, 'k-' )
-    ax0.set_ylabel( 'Pressure (GPa)' )
-    ax1.plot( radius_a, mass_a, 'k-' )
-    ax1.set_ylabel( 'Mass (kg)' )
-    ax2.plot( radius_a, gravity_a, 'k-' )
-    ax2.set_xlabel( 'Radius (km)' )
-    ax2.set_ylabel( 'Gravity (m/s^2)' )
-    ax3.plot( radius_a, rho_a, 'k-' )
-    ax3.set_xlabel( 'Radius (km)' )
-    ax3.set_ylabel( 'Density (g/cc)' )
-
-    radius_title = np.round(radius,0) * 1.0E-3 # to km
-    fig.suptitle('Planetary radius= {} km'.format(radius_title))
-    fig.savefig( "static_structure.pdf", bbox_inches="tight")
-
-#====================================================================
-
-
 def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
 
     PrintHalfSeparator()
@@ -887,7 +849,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     species_call = species_call[1:] # Remove "," in front
 
     # Recalculate time stepping
-    if (COUPLER_options["IC_INTERIOR"] == 2) and (loop_counter["eqm"] <= 0):  
+    if (COUPLER_options["IC_INTERIOR"] == 2):  
 
         # Current step
         json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(time_dict["planet"])) )
@@ -898,7 +860,15 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
 
         # Time stepping adjustment
-        if time_dict["planet"] < 2.0:
+        if COUPLER_options["spider_repeat"]:
+            # Ask SPIDER to repeat the previous time-step
+            dtmacro = 0
+            dtswitch = 0
+            nsteps = 1
+            print("Time-stepping intent: repeat")
+        
+        
+        elif time_dict["planet"] < 2.0:
             # First few years, use static time-step
             dtmacro = 1
             dtswitch = 1
@@ -917,6 +887,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
                 # Get time-step length from last iter
                 dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                # dtprev = float(COUPLER_options["dtswitch"])
                 
                 F_int_3  = max(run_int.iloc[-3]["F_int"],F_clip)
                 F_int_2  = max(run_int.iloc[-2]["F_int"],F_clip)
@@ -937,7 +908,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                     print("Time-stepping intent: slow down!!")
                     dtswitch = 0.10 * dtprev
 
-                elif (F_acc_max > 10.0) or (loop_counter["eqm"] == 0):
+                elif (F_acc_max > 10.0):
                     # Slow down
                     print("Time-stepping intent: slow down")
                     dtswitch = 0.90 * dtprev
@@ -945,17 +916,17 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 elif F_acc_max > 0.1:
                     # Steady (speed up a little bit to promote evolution)
                     print("Time-stepping intent: steady")
-                    dtswitch = 1.02 * dtprev
+                    dtswitch = 1.01 * dtprev
 
                 elif F_acc_max > -12.0:
                     # Speed up
                     print("Time-stepping intent: speed up")
-                    dtswitch = 1.5 * dtprev
+                    dtswitch = 1.10 * dtprev
 
                 else:
                     # Speed up!!
                     print("Time-stepping intent: speed up!!")
-                    dtswitch = 2.00 * dtprev
+                    dtswitch = 1.50 * dtprev
 
             elif (COUPLER_options["dt_method"] == 2):
                 # Always use the maximum time-step, which can be adjusted in the cfg file
@@ -967,7 +938,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 exit(1)
 
             # Step-size floor
-            dtswitch = max(dtswitch, time_dict["planet"]*0.001)         # Relative
+            dtswitch = max(dtswitch, time_dict["planet"]*0.005)         # Relative
             dtswitch = max(dtswitch, COUPLER_options["dt_minimum"] )    # Absolute
 
             # Step-size ceiling
@@ -976,7 +947,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
             # Calculate number of macro steps for SPIDER to perform within
             # this time-step of PROTEUS, which sets the number of json files.
-            nsteps = 4
+            nsteps = 2
             dtmacro = math.ceil(dtswitch / nsteps)   # Ensures that dtswitch is divisible by nsteps
             dtswitch = nsteps * dtmacro
 
@@ -1060,7 +1031,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             call_sequence.extend(["-"+vol+"_kdist", str(volatile_distribution_coefficients[vol+"_kdist"])])
             call_sequence.extend(["-"+vol+"_kabs", str(volatile_distribution_coefficients[vol+"_kabs"])])
             call_sequence.extend(["-"+vol+"_molar_mass", str(molar_mass[vol])])
-            call_sequence.extend(["-"+vol+"_SOLUBILITY 1"])
+            call_sequence.extend(["-"+vol+"_SOLUBILITY 1"])  # Set to use Henry's law
 
     # With start of the main loop only:
     # Volatile specific options: post step settings, restart filename
