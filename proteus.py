@@ -242,7 +242,8 @@ def main():
                 T_eqm_new   = 0.0
                 T_eqm_prev  = 0.0
 
-            COUPLER_options["TOA_heating"]  = toa_heating
+            COUPLER_options["TOA_heating"]  = toa_heating  # instellation * ASF scale factor
+            COUPLER_options["F_ins"]        = S_0          # instellation (solar constant)
             COUPLER_options["T_eqm"]        = T_eqm_new
             COUPLER_options["T_skin"]       = T_eqm_new * (0.5**0.25) # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
 
@@ -395,7 +396,7 @@ def main():
         ############### / LOOP ITERATION MANAGEMENT
 
     # Plot conditions at the end
-    UpdatePlots( dirs["output"], COUPLER_options )
+    UpdatePlots( dirs["output"], COUPLER_options, end=True)
     print("     "+datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
 #====================================================================

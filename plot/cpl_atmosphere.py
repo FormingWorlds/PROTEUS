@@ -18,8 +18,8 @@ def plot_atmosphere( output_dir, times):
     # logger.info( 'building stacked interior atmosphere' )
 
     width = 6.00 #* 3.0/2.0
-    height = 12.0
-    fig_o = FigureData( 3, 1, width, height, output_dir+'/plot_atmosphere', units='kyr', times=times ) 
+    height = 9.0
+    fig_o = FigureData( 2, 1, width, height, output_dir+'/plot_atmosphere', units='kyr', times=times ) 
     # fig1 = plt.figure()
     fig_o.fig.subplots_adjust(wspace=0.07,hspace=0.2)
     fig_o.time = times
@@ -29,7 +29,6 @@ def plot_atmosphere( output_dir, times):
 
     ax0 = fig_o.ax[0]#[0]
     ax1 = fig_o.ax[1]#[0]
-    ax2 = fig_o.ax[2]#[0]
     # ax3 = fig_o.ax[1][1]
 
     time = fig_o.time[0] # first timestep since liquidus and solidus
@@ -99,13 +98,6 @@ def plot_atmosphere( output_dir, times):
             # Atmosphere T-P
             ax1.semilogy(tmp, p/1e5, '-', color=color, label=label, lw=1.5)
 
-            # Spectral flux density per wavenumber
-            # ax2.plot( atm.band_centres, atm.net_spectral_flux[:,0]/atm.band_widths, '-', color=color, label=label, lw=1.5)
-            # ymax_sp_flux = np.max( [ ymax_sp_flux, np.max(atm.net_spectral_flux[:,0]/atm.band_widths)] )
-
-            # Blackbody curves
-            # ax2.plot(atm.band_centres,surf_Planck_nu(atm)/atm.band_widths, color=color, ls='--', lw=1.0, alpha=0.5, label=str(round(atm.ts))+' K blackbody')
-
             # Reset y-axis boundaries
             if np.min(p) > 0:
                 ymax_atm_pressure = np.max([ymax_atm_pressure, np.max(p/1e5)])
@@ -114,16 +106,13 @@ def plot_atmosphere( output_dir, times):
                 ymin_atm_z = np.min([ymin_atm_z, np.min(z)])
 
     ### Figure settings
-    xticks = [10, 500, 1000, 1500, 2000, 2500, 3000]
-    xmin = 10
-    xmax = 3000
     title_xcoord = -0.09
     title_ycoord = 0.5
 
     #####  T-Z
     # fig_o.set_myaxes( ax0, xlabel='$T$ (K)', ylabel='$z_\mathrm{atm}$\n(km)', xmin=xmin, xmax=xmax, ymin=0, ymax=ymax_atm_z, xticks=xticks )
     ax0.set_xlabel("Temperature, $T$ (K)")
-    ax0.set_ylabel("Atmosphere height, $z_\mathrm{atm}$ (km)")
+    ax0.set_ylabel("Atmosphere height, $z_\mathrm{atm}$ [km]")
     ax0.set_ylim( top=ymax_atm_z, bottom=ymin_atm_z )
     # ax0.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
     ax0.yaxis.set_label_coords(title_xcoord,title_ycoord)
@@ -144,27 +133,8 @@ def plot_atmosphere( output_dir, times):
     ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
     ax1.invert_yaxis()
 
-    # #####  Volatile mixing ratios
-    # ax2.yaxis.set_label_position("right")
-    # ax2.yaxis.tick_right()
-    # ax2.set_xlim( left=0, right=1 )
-    # ax2.set_ylabel( "$z_\mathrm{atm}$\n(km)", rotation=0)
-    # ax2.yaxis.set_label_coords(1.10,0.5)
-    # ax2.set_xlabel( '$X_{H_2O}$ (mol$_i$/mol)')
-
-    #####  Spectral OLR
-    fig_o.set_myaxes( ax2, xlabel='Wavenumber [cm$^{-1}$]', ylabel='Spectral flux' )
-    
-    ax2.set_ylabel( 'Spectral flux density [W m$^{-2}$ cm$^{-1}$]', rotation=90)
-    # ax2.yaxis.set_label_position("right")
-    # ax2.yaxis.tick_right()
-    ax2.set_xlim( left=0, right=20000 )
-    ax2.set_ylim( bottom=0, top=ymax_sp_flux )
-    ax2.yaxis.set_label_coords(title_xcoord,title_ycoord)
-
     # Legend
     ax1.legend( fontsize=8, fancybox=True, framealpha=0.5 )
-    # ax2.legend( fontsize=8, fancybox=True, framealpha=0.5 )
 
     plt.close()
     plt.ioff()
@@ -180,60 +150,6 @@ title_xycoords = 'axes fraction'
 title_ha   = "left"
 title_va   = "bottom"
 title_font = 'Arial'
-
-# def plot_current_mixing_ratio( output_dir, times, vulcan_setting ):
-
-#     fig, ax1 = plt.subplots()
-
-#     time = str(times)
-
-#     # # Read atmospheric chemistry
-#     # atm_chemistry       = pd.read_csv(output_dir+time+"_atm_chemistry_volume.dat", skiprows=1, delim_whitespace=True) # skipfooter=1
-
-#     if vulcan_setting == 0 or vulcan_setting == 1:
-#         runtime_helpfile = pd.read_csv(output_dir+"/"+"runtime_helpfile.csv", delim_whitespace=True)
-
-#         for vol in volatile_species:
-#             if runtime_helpfile.iloc[-1][vol+"_mr"] > 0.:
-#                 ax1.axvline(x=runtime_helpfile.iloc[-1][vol+"_mr"], linewidth=lw+0.5, color=dict_colors[vol+"_2"], ls=":")
-
-#     atm_file = open(filename,'rb')
-#     new_dict = pickle.load(infile)
-#     infile.close()
-    
-#     ax1.set_xlabel("Mole fraction, log ($n^{\mathrm{i}}$/$n_{\mathrm{tot}}$)")
-#     ax1.set_ylabel("Pressure, $P_{\mathrm{tot}}$ (bar)")
-#     ax1.set_xscale("log")
-#     ax1.set_yscale("log")
-#     ax1.set_xlim(left=1e-16, right=2e+0)
-#     ax1.set_ylim(np.max(atm.p), np.min(atm.p))
-
-#     # Temperature y-axis on the right
-#     ax1b = ax1.twinx()
-#     ax1b.plot( atm_chemistry["H2O"], atm_chemistry["Temp"], alpha=0.0)
-#     ax1b.set_ylim(np.max(atm_chemistry["Temp"]), np.min(atm_chemistry["Temp"]))
-#     if not np.min(atm_chemistry["Temp"]) == np.max(atm_chemistry["Temp"]):
-#         ax1b.set_yticks(
-#          [ 
-#             int(np.max(atm_chemistry["Temp"])), 
-#             int(np.min(atm_chemistry["Temp"])+0.75*(np.max(atm_chemistry["Temp"])-np.min(atm_chemistry["Temp"]))), 
-#             int(np.min(atm_chemistry["Temp"])+0.5*(np.max(atm_chemistry["Temp"])-np.min(atm_chemistry["Temp"]))), 
-#             int(np.min(atm_chemistry["Temp"])+0.25*(np.max(atm_chemistry["Temp"])-np.min(atm_chemistry["Temp"]))), 
-#             int(np.min(atm_chemistry["Temp"]))
-#          ])
-#     ax1b.yaxis.tick_right()
-#     ax1b.set_ylabel( 'Temperature, $T$ (K)' )
-
-#     ax1.set_title("Time = "+latex_float(float(time))+" yr", fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va)
-
-
-#     ax1.legend(loc=2, fancybox=True, framealpha=0.9)
-#     plt.xticks([1e-16, 1e-14, 1e-12, 1e-10, 1e-8, 1e-6, 1e-4, 1e-2, 1e0], ["-16", "-14", "-12", "-10", "-8", "-6", "-4", "-2", "0"])
-
-#     plt.savefig(output_dir+"plot_atm_chemistry_"+str(time)+".pdf", bbox_inches = 'tight',
-#     pad_inches = 0.1)
-#     plt.close()
-
 
 #====================================================================
 def main():

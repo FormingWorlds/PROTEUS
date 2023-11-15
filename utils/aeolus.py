@@ -4,7 +4,7 @@ from utils.modules_ext import *
 from utils.helper import *
 
 # Debugging
-# from AEOLUS.modules.plot_flux_balance import plot_fluxes
+# from AEOLUS.modules.plot_flux_balance import plot_atmosphere_fluxes
 
 def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
 
@@ -134,11 +134,11 @@ def StructAtm( runtime_helpfile, COUPLER_options ):
 
     match COUPLER_options["tropopause"]:
         case 0:
-            trppT = 0
+            trppT = 0.0  # none
         case 1:
-            trppT = COUPLER_options["T_skin"]
+            trppT = COUPLER_options["T_skin"]  # skin temperature (grey stratosphere)
         case 2:
-            trppT = None
+            trppT = COUPLER_options["min_temperature"]  # dynamically, based on heating rate
         case _:
             raise ValueError("Invalid tropopause option '%d'" % COUPLER_options["tropopause"])
         
@@ -235,7 +235,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
                           atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old), T_surf_max=float(T_surf_max))
             
             COUPLER_options["T_surf"] = atm.ts
-            COUPLER_options["spider_repeat"] = not COUPLER_options["spider_repeat"] # Do a step of dt=0 once
+            # COUPLER_options["spider_repeat"] = not COUPLER_options["spider_repeat"] # Do a step of dt=0 once
 
         else:
             raise Exception("Free surface state is not a valid option for AEOLUS")
@@ -251,7 +251,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
 
     print("SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
 
-    # plot_fluxes(atm, dirs["output"]+"/fluxes.pdf")
+    # plot_fluxes_atmosphere(atm, dirs["output"]+"/fluxes.pdf")
 
     # Save atm data to disk
     nc_fpath = dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.nc"

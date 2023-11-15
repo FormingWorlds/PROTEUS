@@ -146,7 +146,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_sflux.pdf")
+    fig.savefig(output_dir+"/plot_sflux.pdf", bbox_inches='tight')
 
 
 # Run directly

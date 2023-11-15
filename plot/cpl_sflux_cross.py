@@ -24,7 +24,7 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux_cross(output_dir, wl_targets, surface=False):
+def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False):
     """Plots stellar flux vs time, for a set of wavelengths.
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -34,6 +34,7 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False):
     ----------
         output_dir : str
             Directory for both reading from and saving to.
+
         wl_targets : list
             List of wavelengths to plot [nm]
         surface : bool
@@ -41,6 +42,10 @@ def plot_sflux_cross(output_dir, wl_targets, surface=False):
     """ 
 
     mpl.use('Agg')
+
+    # Wavelength targets default value
+    if len(wl_targets) < 1:
+        wl_targets = [1.0, 12.0, 50.0, 121.0, 200.0, 400.0, 500.0, 2000.0]
 
     # Find and sort files
     if surface:
@@ -143,7 +148,6 @@ if __name__ == '__main__':
         cfg = sys.argv[1]
     else:
         cfg = 'init_coupler.cfg' 
-
    
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
@@ -152,7 +156,7 @@ if __name__ == '__main__':
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
 
-    plot_sflux_cross(dirs['output'], wl_bins, surface=False)
+    plot_sflux_cross(dirs['output'], wl_targets=wl_bins, surface=False)
 
     print("Done!")
 

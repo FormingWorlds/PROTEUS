@@ -90,11 +90,16 @@ inputs are provided.
 
 * ``zenith_angle``
    - Angle of the incoming stellar radiation relative to the zenith, in units of
-   degrees.  
+   degrees.    
    - (Float) Positive values less than 90 degrees.
 
+* ``asf_scalefactor``
+   - Scale factor for the absorbed stellar flux (ASF), used in combination with 
+   ``zenith_angle``; see Cronin+14 for a discussion on this.    
+   - (Float) Greater than zero.
+
 * ``albedo_s``
-   - Albedo of the surface of the planet.  
+   - Albedo of the surface of the planet.    
    - (Float) Between zero and unity, inclusive.
 
 * ``albedo_pl``
@@ -102,7 +107,7 @@ inputs are provided.
    - (Float) Between zero and unity, inclusive.
 
 * ``P_top``
-   - Pressure at the top of the atmosphere, in units of bar.  
+   - Pressure at the top of the atmosphere, in units of bar.   
    - (Float) Any reasonable positive value; 1e-5 works well.
 
 * ``dir_output``
@@ -134,27 +139,27 @@ inputs are provided.
 
 * ``plot_iterfreq``
    - Iteration frequency at which to make (or update) the plots. Plots can be 
-   generated during the simulation to follow  its progress and status.  
+   generated during the simulation to follow  its progress and status.   
    - (Integer) 0: Do not make plots until the simulation is complete; values
    greater than 0: make plots every ``plot_iterfreq`` iterations. 
 
 * ``sspec_dt_update``
    - Period at which to update the stellar spectrum using the stellar evolution 
-   model of choice, in units of years.  
+   model of choice, in units of years.   
    - (Float) Greater than or equal to zero.
 
 * ``sinst_dt_update``
    - Period at which to update the instellation flux and the stellar radius 
-   using the stellar evolution model of choice, in units of years.  
+   using the stellar evolution model of choice, in units of years.    
    - (Float) Greater than or equal to zero.
 
 * ``dt_maximum``
-   - Maximum allowable time-step for the model, in units of years.  
+   - Maximum allowable time-step for the model, in units of years.    
    - (Float) Greater than zero.
 
 * ``dt_minimum``
    - Minimum allowable time-step for the model once the start-up phase has 
-   completed. Units of years.    
+   completed. Units of years.     
    - (Float) Greater than zero.
 
 * ``dt_method``
@@ -166,7 +171,7 @@ inputs are provided.
    - (Integer) 0: Proportional, 1: Adaptive, 2: Maximum.
 
 * ``flux_convergence``
-   - Method to be used for converging atmospheric and interior upward fluxes.
+   - DEPRECATED. Method to be used for converging atmospheric and interior upward fluxes.
    'Off' applies nothing special, and allows SPIDER to determine the surface 
    temperature. 'Restart' uses a shallow mixed ocean layer with a given heat
    capacity to balance the fluxes and obtain a surface temperature. 'On' waits 
@@ -180,32 +185,24 @@ inputs are provided.
 
 * ``F_crit``
    - Critical flux. Once the upward net flux at the top of the atmosphere drops
-   below this value, various stabilisation measures are applied which help 
-   prevent the model crashing when the instellation is large. 
+   below this value, flux-change limiters are activated.
    - (Float) Greater than or equal to 0. Set to 0 to disable.
 
 * ``F_eps``
-   - ??  
+   - Deprecated.    
    - (Float) ??
 
 * ``F_diff``
-   - ??  
+   - Deprecated.     
    - (Float) ??
 
 * ``RF_crit``
-   - ??  
+   - Deprecated.     
    - (Float) ??
 
 * ``dTs_atm``
-   - ??  
+   - Deprecated.      
    - (Float) ??
-
-* ``require_eqm_loops``
-   - When the instellation is large, it is sometimes necessary to apply so
-   called 'equilibrium loops' in order to ensure the interior and atmospheric
-   fluxes are balanced. This flag toggles these loops on and off. They only 
-   apply once the fluxes drop below ``F_crit``.  
-   - (Integer) 0: Disabled, 1: Enabled.
 
 * ``prevent_warming``
    - Flag to ensure that the net upward energy flux is always positive, which
@@ -226,13 +223,29 @@ inputs are provided.
    - (Float) Values greater than or equal to zero. Setting to zero will prevent
    any negative relative in the fluxes from one iteration to the next.
 
-* ``atmosphere_model``
-   - Choose atmosphere model used to set T(p).
+* ``atmosphere_model``   
+   - Atmosphere model used to set T(p) and T_surf.    
    - (Integer) 0: AEOLUS, 1: AGNI
 
-* ``atmosphere_solve_energy``
+* ``atmosphere_solve_energy``   
    - Enable time-stepped solution for T(p). Only available with AGNI.
    - (Integer) 0: Disabled, 1: Enabled
+
+* ``atmosphere_surf_state``   
+   - Surface boundary condition; e.g. T_surf set by conductive heat transport.   
+   - (Integer) 0: Free, 1: Fixed, 2: Conductive.
+
+* ``skin_d``  
+   - Conductive skin thickness, parameterising a thin layer at the surface.
+   - (Float) Greater than zero, [m].       
+
+* ``skin_k``  
+   - Conductive skin thermal conductivity.
+   - (Float) Greater than zero, [W m-1 K-1].    
+
+* ``atmosphere_nlev``   
+   - Number of atmosphere model levels, measured at cell-centres.     
+   - (Integer) Greater than 10.
 
 * ``phi_crit``
    - Value used for break condition; stop the model once the global melt 
@@ -257,7 +270,7 @@ inputs are provided.
 * ``tropopause``
    - Model of tropopause to be used before, or in the absence of, a time-stepped
    solution to the temperature structure. 'None' means no tropopause is applied. 
-   'Skin' means that the tropopause will be set to the skin temperature.   
+   'Skin' means that the tropopause will be set to the radiative skin temperature.   
    'Flux' dynamically sets the tropopause based on the heating rate.    
    - (Integer) 0: None, 1: Skin, 2: Flux.
 
@@ -288,7 +301,8 @@ inputs are provided.
 
 * ``PARAM_UTBL``
    - Flag to include an ultra-thin thermal boundary layer (UTBL) in SPIDER. This
-   is used to parameterise the under-resolved conductive layer at the surface.   
+   is used to parameterise the under-resolved conductive layer at the surface. 
+   Not compatible with ``atmosphere_surf_state==2``.   
    - (Integer) 0: Disabled, 1: Enabled.
 
 * ``solver_tolerance``
@@ -368,13 +382,13 @@ out once here, with a generic volatile X.
    - Bars of volatile X to add to the system at the start of the model run. When
    ``solvepp_enabled == 1``, these bars are included in addition to those found
    by the partial pressure solver. Otherwise, this parameter is how you specify
-   the initial volatile inventory of the planet.  
+   the initial volatile inventory of the planet.    
    - (Float) Greater than zero [bar].
 
 * ``X_poststep_change``
    - Relative change in X abundance in SPIDER in order to trigger early exit 
    to pass back to other modules within PROTEUS. Prevents large single-step
-   changes from occuring.    
+   changes from occuring.     
    - (Float) Greater than zero.
 
 

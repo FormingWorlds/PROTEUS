@@ -66,7 +66,9 @@ def plot_interior( output_dir, times ):
         color = fig_o.get_color( 1.0*nn/len(fig_o.time) )
 
         # use melt fraction to determine mixed region
-        MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' ) # basic_internal
+        MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' ) 
+        MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' ) 
+        MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' ) 
         MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
         # label = fig_o.get_legend_label( time )
@@ -74,8 +76,9 @@ def plot_interior( output_dir, times ):
 
         # temperature
         yy = myjson_o.get_dict_values(['data','temp_b'])
-        ax0.plot( yy, xx_pres, '--', color=color, lw=1.5 )
-        handle, = ax0.plot( yy*MIX, xx_pres*MIX, '-', color=color, lw=1.5, label=label )
+        handle, = ax0.plot( yy*MASK_SO, xx_pres*MASK_SO, linestyle='solid',  color=color, lw=1.5, label=label )
+        ax0.plot(           yy*MASK_MI, xx_pres*MASK_MI, linestyle='dashed', color=color, lw=1.5 )
+        ax0.plot(           yy*MASK_ME, xx_pres*MASK_ME, linestyle='dotted', color=color, lw=1.5 )
 
         # melt fraction
         yy = myjson_o.get_dict_values(['data','phi_b'])
@@ -185,7 +188,11 @@ if __name__ == "__main__":
     if len(output_list) <= 8:
         plot_list = output_list
     else:
-        plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
+        plot_list = [ output_list[0] ]
+        for f in [15,25,33,50,66,75]:
+            plot_list.append(output_list[int(round(len(output_list)*(float(f)/100.)))])
+        plot_list.append(output_list[-1])
+
     print("Snapshots:", plot_list)
 
     plot_interior( dirs['output'], plot_list )

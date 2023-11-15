@@ -7,9 +7,11 @@ from utils.stellar_mors import *
 from utils.stellar_baraffe import *
 from utils.stellar_common import *
 
+import shutil
+
 Myr = 1.0e6
 
-def evolve(cfg_file: str, tf: float):
+def evolve(cfg_file: str, tf: float, nsamps: int = 500):
 
     # Read in PROTEUS config file
     COUPLER_options, time_dict = ReadInitFile( cfg_file )
@@ -19,6 +21,7 @@ def evolve(cfg_file: str, tf: float):
 
     # Check if output directory exists, otherwise create
     CleanDir( dirs["output"] )
+    CleanDir( dirs["output"]+"/data/" )
 
     # Check which model we are using
     model = COUPLER_options['star_model']
@@ -37,6 +40,8 @@ def evolve(cfg_file: str, tf: float):
         case 2:
             # Load track
             track = BaraffeLoadtrack(COUPLER_options)
+        case _:
+            raise Exception("Unsupported stellar model")
 
     # Parameters
     ti = time_dict['star']  # Start time, yr
@@ -53,25 +58,21 @@ def evolve(cfg_file: str, tf: float):
 
     # Calculate historical spectrum (1 AU) over time, saving it to files
     print("Running evolution code...")
-    t_prev = -1e99
-    for t in np.logspace(np.log10(ti),np.log10(tf),10000):
+    t_arr = np.logspace(np.log10(ti),np.log10(tf),nsamps)
+    for i,t in enumerate(t_arr):
 
-        if (t-t_prev) >= dt:
+        print("Age = %1.2e yr, Progress = %3.1f%%" % (t,(i+1)/len(t_arr)*100.0))
 
-            t_prev = t
+        time_dict["star"] = t
+        time_dict["planet"] = t
 
-            print("Age = %1.2e yr, Progress = %3.1f%%" % (t,(t-ti)/(tf-ti)*100.0))
+        match model:
+            case 1:
+                fl,fls = MorsSpectrumCalc(time_dict['star'], StellarFlux_wl, StellarFlux_fl,COUPLER_options)
+            case 2:
+                fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl,COUPLER_options, track)
 
-            time_dict["star"] = t
-            time_dict["planet"] = t
-
-            match model:
-                case 1:
-                    fl,fls = MorsSpectrumCalc(time_dict['star'], StellarFlux_wl, StellarFlux_fl,COUPLER_options)
-                case 2:
-                    fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl,COUPLER_options, track)
-
-            SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs['output'])
+        SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs['output']+"/data/")
 
 
 if __name__ == "__main__":
@@ -83,14 +84,15 @@ if __name__ == "__main__":
         cfg = 'init_coupler.cfg' 
     
     # Parameters
-    t_final =       4.6e3 * Myr     # Final time for evolution
+    t_final =       3.0e3 * Myr     # Final time for evolution
+    samples =       20
 
     print("NOTE: File convention differs with this script, compared to PROTEUS!")
     print("      Files of the format t.sflux* refer to a STAR AGE of t years.")
     print(" ")
 
     # Evolve star over time
-    evolve(cfg, t_final)
+    evolve(cfg, t_final, samples)
 
     print("Done!")
 

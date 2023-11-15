@@ -67,7 +67,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     # fig_o.time = np.array(times_new)
 
     # Read in runtime helpfile and separate in atmosphere and interior params
-    df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep="\t")
+    df = pd.read_csv(output_dir+"/runtime_helpfile.csv",sep='\s+')
     df_int = df.loc[df['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
     df_atm = df.loc[df['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
 
@@ -104,7 +104,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     rheol_front         = data_a[9,:]
 
 
-    xlabel = r'Time, $t$ (yr)'
+    xlabel = r'Time, $t$ [yr]'
 
     xmin = max(tmin, 1.0)
     if logt:
@@ -113,6 +113,8 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     else:
         xmax = np.amax(df_int["Time"])
         xlim = (1.0, xmax)
+
+    xlim = (xlim[0], max(xlim[1], xlim[0]+1))
 
     red = (0.5,0.1,0.1)
     blue = (0.1,0.1,0.5)
@@ -156,10 +158,10 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ax0.axhline(y=0, color='black', lw=0.8)
       
     # fig_o.set_myaxes(ax0)
-    ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ (W m$^{-2}$)', fontsize=label_fs)
+    ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ [W m$^{-2}$]', fontsize=label_fs)
     ax0.set_xlim( *xlim )
     ymax = max(np.amax(df_atm["F_atm"])*1.1, 1.0e1)
-    ymin = min(np.amin(df_atm["F_atm"]), -1.0e1)
+    ymin = min(np.amin(df_atm["F_atm"]), -1.0e0)
     ax0.set_ylim(top=ymax, bottom=ymin)
     ax0.set_yscale('symlog')
     if logt:
@@ -194,7 +196,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ymin = 500
     ymax = 3500
     # fig_o.set_myaxes( ax1, title=title, yticks=yticks)
-    ax1.set_ylabel(r'$T_\mathrm{s}$ (K)', fontsize=label_fs)
+    ax1.set_ylabel(r'$T_\mathrm{s}$ [K]', fontsize=label_fs)
     # ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
     # ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
     # ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
@@ -246,15 +248,16 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ##########
     # figure e
     ##########
-    title_ax4 = r'Atmosphere volatile mass fraction'
+    title_ax4 = r'Surface volatile mole fraction'
     ##########
     # figure f
     ##########
-    title_ax5 = r'Interior volatile mass fraction'
+    title_ax5 = r'Interior volatile partitioning'
 
     ########## Volatile species-specific plots
     
     # Check for times when volatile is present in data dumps
+    mf_min = 1.0e-2
     for vol in volatile_species:
 
         vol_times   = []
@@ -279,7 +282,8 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
                                ('atmosphere', vol, 'solid_kg'),
                                ('atmosphere', vol, 'initial_kg'),
                                ('atmosphere', vol, 'atmosphere_kg'),
-                               ('atmosphere', vol, 'atmosphere_bar')
+                               ('atmosphere', vol, 'atmosphere_bar'),
+                               ('atmosphere', 'pressure_surface')
                                )
 
                     vol_times.append(sim_time)
@@ -297,8 +301,12 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
             vol_initial_kg      = data_vol[2,:]
             vol_atm_kg          = data_vol[3,:]
             vol_atm_pressure    = data_vol[4,:]
+            tot_atm_pressure    = data_vol[5,:]
             vol_interior_kg     = vol_liquid_kg   + vol_solid_kg
             vol_total_kg        = vol_interior_kg + vol_atm_kg
+
+            vol_molefraction    = np.array(vol_atm_pressure)/np.array(tot_atm_pressure)
+            mf_min = min(mf_min, np.amin(vol_molefraction))
 
             ##########
             # figure d
@@ -307,18 +315,21 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
             ##########
             # figure e
             ##########
-            ax4.plot( vol_times, vol_atm_kg/vol_total_kg, lw=lw, color=dict_colors[vol+"_2"], linestyle='-', label=vol_latex[vol])
+            # ax4.plot( vol_times, vol_atm_kg/vol_total_kg, lw=lw, color=dict_colors[vol+"_2"], linestyle='-', label=vol_latex[vol])
+            ax4.plot( vol_times, vol_molefraction, lw=lw, color=dict_colors[vol+"_2"], linestyle='-', label=vol_latex[vol])
             ##########
             # figure f
             ##########
             # ax5.plot( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
             ax5.plot( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=dict_colors[vol+"_2"], linestyle='-', label=vol_latex[vol] )
 
+    
+
     ##########
     # figure d
     ##########
     fig_o.set_myaxes( ax3)
-    ax3.set_ylabel('$p^{\mathrm{i}}$ [bar]', fontsize=label_fs)
+    ax3.set_ylabel('$p_{\mathrm{i}}$ [bar]', fontsize=label_fs)
     ax3.set_xlim( *xlim )
     if logt:
         ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
@@ -334,18 +345,12 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 
     cur_ybot, cur_ytop = ax3.get_ylim()
     ax3.set_ylim(max(cur_ybot, 1e-1), cur_ytop)
+
     ##########
     # figure e
     ##########
-    # # Check atmospheric comparisons for mass conservation
-    # runtime_helpfile = pd.read_csv(output_dir+"/"+"runtime_helpfile.csv", delim_whitespace=True)
-    # ax4.semilogx( runtime_helpfile["Time"], runtime_helpfile["M_atm"]/runtime_helpfile.iloc[0]["M_atm"], lw=lw, color=vol_colors["black_2"], linestyle='-')
-    # ax4.semilogx( runtime_helpfile.loc[runtime_helpfile['Input'] == "Interior"]["Time"], runtime_helpfile.loc[runtime_helpfile['Input'] == "Interior"]["H_mol_total"]/runtime_helpfile.iloc[0]["H_mol_total"], lw=lw, color=vol_colors["black_3"], linestyle='--')
-    # ax4.semilogx( runtime_helpfile.loc[runtime_helpfile['Input'] == "Atmosphere"]["Time"], runtime_helpfile.loc[runtime_helpfile['Input'] == "Atmosphere"]["C/H_atm"]/runtime_helpfile.iloc[0]["C/H_atm"], lw=lw, color=vol_colors["black_1"], linestyle=':')
-    # print(runtime_helpfile[["Time", "Input", "M_atm", "M_atm_kgmol", "H_mol_atm", "H_mol_solid", "H_mol_liquid", "H_mol_total", "O_mol_total", "O/H_atm"]])
-
     fig_o.set_myaxes( ax4)
-    ax4.set_ylabel(r'$X_{\mathrm{atm}}^{\mathrm{i}}/X_{\mathrm{tot}}^{\mathrm{i}}$', fontsize=label_fs)
+    ax4.set_ylabel(r'$\chi^{\mathrm{atm}}_{\mathrm{i}}$', fontsize=label_fs)
     if logt:
         ax4.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
         ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
@@ -355,12 +360,10 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ax4.set_xticklabels([])
     ax4.yaxis.set_label_position("right")
     ax4.yaxis.set_label_coords(xcoord_r,ycoord_r)
-    ax4.set_ylim([0,1])
-    ax4.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
+    ax4.set_ylim([mf_min,1.0])
+    ax4.set_yscale("log")
     ax4.set_xlim( *xlim )
-    # ax4.set_ylim( 0, 1 )
     handles, labels = ax4.get_legend_handles_labels()
-    # ax4.legend(handles, labels, ncol=1, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend) # , loc='center left'
     ax4.set_title(title_ax4, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
 
@@ -381,8 +384,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ax5.yaxis.set_label_position("right")
     handles, labels = ax5.get_legend_handles_labels()
     ax5.set_xlabel(xlabel, fontsize=label_fs)
-    ax5.set_ylabel(r'$X_{\mathrm{mantle}}^{\mathrm{i}}/X_{\mathrm{tot}}^{\mathrm{i}}$', fontsize=label_fs)
-    ax5.legend(handles, labels, ncol=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend, loc='center left') 
+    ax5.set_ylabel(r'$m^{\mathrm{int}}_{\mathrm{i}}/m^{\mathrm{tot}}_{\mathrm{i}}$', fontsize=label_fs)
     ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
     # plt.close()
@@ -399,6 +401,7 @@ if __name__ == "__main__":
         cfg = 'init_coupler.cfg' 
 
     # Read in COUPLER input file
+    print("Read cfg file")
     from utils.coupler import ReadInitFile, SetDirectories
     COUPLER_options, time_dict = ReadInitFile( cfg )
 

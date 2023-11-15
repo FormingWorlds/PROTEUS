@@ -143,10 +143,9 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     call_sequence.append("--plot")
 
     if (time_dict["planet"] > 3.0):
-        call_sequence.append("--nsteps 250") 
+        call_sequence.append("--nsteps 500") 
     else:
-        call_sequence.append("--nsteps 400")
-        call_sequence.append("--cvode")
+        call_sequence.append("--nsteps 1500")
 
     call_sequence.append("--nlevels %d" % int(COUPLER_options["atmosphere_nlev"]))
 

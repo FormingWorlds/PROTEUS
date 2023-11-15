@@ -19,21 +19,23 @@ https://proteus-code.readthedocs.io/en/latest/contact.html
 * HII - Hamish Innes (hamish.innes@physics.ox.ac.uk)
 
 ### Repository structure
-| Object            | Description                                               |
-| -                 | -                                                         |
-| `proteus.py`      | Main PROTEUS Python script                                |
-| `README.md`       | This file                                                 |
-| `AEOLUS/`         | Submodule AEOLUS                                          |
-| `SPIDER/`         | Submodule SPIDER                                          |
-| `VULCAN/`         | Submodule VULCAN                                          |
-| `Mors/`           | Submodule Mors                                            |
-| `utils/`          | Scripts used for running PROTEUS and its submodules       |
-| `plot/`           | Plotting scripts                                          |
-| `output/`         | Output folder (e.g. planet evolution results, plots)      |
-| `input/`          | Input folder (e.g. stellar spectra, example configs)      |
-| `docs/`			| Documentation source                                      |
-| `examples/`       | Example model results                                     |
-| `pyproject.toml`	| Documentation file                                        |
+| Object                | Description                                               |
+| -                     | -                                                         |
+| `proteus.py`          | Main PROTEUS Python script                                |
+| `README.md`           | Overview file                                             |
+| `pyproject.toml`	    | Documentation file                                        |
+| `CODE_OF_CONDUCT.md`	| Project code of conduct                                   |
+| `LICENSE`	            | Project license                                           |
+| `AEOLUS/`             | Submodule AEOLUS                                          |
+| `SPIDER/`             | Submodule SPIDER                                          |
+| `VULCAN/`             | Submodule VULCAN                                          |
+| `Mors/`               | Submodule Mors                                            |
+| `utils/`              | Code used for running PROTEUS and its submodules          |
+| `plot/`               | Code used for plotting results                            |
+| `output/`             | Output folder with subfolders for each model run          |
+| `input/`              | Input folder (e.g. stellar spectra, example configs)      |
+| `docs/`			    | Documentation source files                                |
+| `tests/`              | Test cases that the model should be able to reproduce     |
 
 
 ### Installation instructions   
@@ -42,10 +44,10 @@ See https://proteus-code.readthedocs.io/en/latest/installation.html for steps an
 ### Run instructions
 Only attempt to run PROTEUS after you have followed all of the installation instructions.    
 If using a fresh shell, it is necessary to perform the following steps:     
-1. `conda activate proteus` (if installed with `conda`)
-2. `source PROTEUS.env`    
+1. `conda activate proteus` (if using Anaconda/Miniconda)     
+2. `source PROTEUS.env`      
 Then you can start the model by running: `python proteus.py`.      
-Results are produced in folders within `output/`.      
+See the ReadTheDocs pages for more information.    
 
 ### Updating the code
 Run `git submodule update --recursive --remote`
