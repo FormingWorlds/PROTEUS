@@ -231,7 +231,7 @@ class Pspace():
 
                 # In all other cases, don't log the output from PROTEUS
                 else:
-                    proteus_run = "screen -d -m -S " + screen_name + " python proteus.py -cfg_file " + cfgfile
+                    proteus_run = "screen -d -m -S " + screen_name + " python proteus.py --cfg_file " + cfgfile
                 
                 subprocess.run([proteus_run], shell=True, check=True)
             

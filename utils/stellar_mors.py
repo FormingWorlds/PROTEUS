@@ -33,9 +33,6 @@ def MorsSolarConstant(time_dict: dict, COUPLER_options: dict):
     ----------
         inst : float
             Flux at planet's orbital separation (solar constant) in W/m^2
-        heat : float
-            Absorbed stellar flux (ASF) at TOA [W/m^2]
-
     """ 
 
     tstar = time_dict['star'] * 1.e-6  # Convert from yr to Myr
@@ -49,9 +46,8 @@ def MorsSolarConstant(time_dict: dict, COUPLER_options: dict):
     mean_distance = COUPLER_options["mean_distance"] * AU
 
     inst = Lstar /  ( 4. * np.pi * mean_distance * mean_distance )
-    heat = inst * ( 1. - COUPLER_options["albedo_pl"] ) * COUPLER_options["asf_scalefactor"]
 
-    return inst, heat
+    return inst
 
 def MorsStellarRadius(time_dict: dict, COUPLER_options: dict):
     """Calculates the star's radius at a time t.

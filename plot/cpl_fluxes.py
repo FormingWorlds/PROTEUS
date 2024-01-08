@@ -86,7 +86,7 @@ def plot_fluxes_global(output_dir, COUPLER_options):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes.pdf", bbox_inches='tight')
+    fig.savefig(output_dir+"/plot_fluxes_global.pdf", bbox_inches='tight')
 
 if __name__ == '__main__':
 

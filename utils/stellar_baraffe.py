@@ -90,9 +90,8 @@ def BaraffeSolarConstant(time_dict: dict, COUPLER_options: dict, track: dict):
     mean_distance = COUPLER_options["mean_distance"] * AU
 
     inst = Lstar /  ( 4. * np.pi * mean_distance * mean_distance )
-    heat = inst * ( 1. - COUPLER_options["albedo_pl"] ) * COUPLER_options["asf_scalefactor"]
 
-    return inst, heat
+    return inst
 
 
 

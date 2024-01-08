@@ -80,7 +80,10 @@ def plot_stacked( output_dir, times ):
 
             color = fig_o.get_color( 1.0*nn/len(fig_o.time) )
             # use melt fraction to determine mixed region
-            MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' )
+            # MIX = myjson_o.get_mixed_phase_boolean_array( 'basic' )
+            MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' ) 
+            MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' ) 
+            MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' ) 
             # MIX = myjson_o.get_mixed_phase_boolean_array( 'basic_internal' )
             # MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
@@ -95,8 +98,13 @@ def plot_stacked( output_dir, times ):
             # interior
             temperature_interior = myjson_o.get_dict_values(['data','temp_b'])
             # yy_s = myjson_o.get_dict_values_internal(['data','temp_s'])
-            ax1.plot( temperature_interior, pressure_interior, '--', color=color, lw=1.5 )
-            ax1.plot( temperature_interior*MIX, pressure_interior*MIX, '-', color=color, label=label, lw=1.5 )
+            # ax1.plot( temperature_interior, pressure_interior, '--', color=color, lw=1.5 )
+            # ax1.plot( temperature_interior*MIX, pressure_interior*MIX, '-', color=color, label=label, lw=1.5 )
+
+            ax1.plot( temperature_interior*MASK_SO, pressure_interior*MASK_SO, linestyle='solid',  color=color, lw=1.5 )
+            ax1.plot( temperature_interior*MASK_MI, pressure_interior*MASK_MI, linestyle='dashed', color=color, lw=1.5 )
+            ax1.plot( temperature_interior*MASK_ME, pressure_interior*MASK_ME, linestyle='dotted', color=color, lw=1.5 )
+
 
             # # connect atmosphere and interior lines at interface
             # connecting_line_T = [ temperature_atmosphere[-1], temperature_interior[0] ]

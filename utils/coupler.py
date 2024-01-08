@@ -19,9 +19,9 @@ import plot.cpl_fluxes as cpl_fluxes
 def parse_console_arguments():
     
     parser = argparse.ArgumentParser(description='PROTEUS optional command line arguments')
-    parser.add_argument('-cfg_file', type=str, default="init_coupler.cfg", help='Specify cfg filename')
-    parser.add_argument('-restart_file', type=str, default="0", help='Restart from specific .json file in folder. Specify only the number of the file.')
-    parser.add_argument('-r', '--restart', action='store_true', help='Restart from last file in folder.')
+    parser.add_argument('--cfg_file', type=str, default="init_coupler.cfg", help='Specify cfg filename')
+    parser.add_argument('--restart_file', type=str, default="0", help='Restart from specific .json file in folder. Specify only the number of the file.')
+    parser.add_argument('--restart', action='store_true', help='Restart from last file in folder.')
     args = parser.parse_args()
 
     return args
@@ -45,7 +45,7 @@ def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options):
     print("    T_surf [K]:          %.1f" % float(runtime_helpfile.iloc[-1]["T_surf"]))
     print("    P_surf [bar]:        %.1f" % float(runtime_helpfile.iloc[-1]["P_surf"]))
     print("    Phi_global:          %.3f" % float(runtime_helpfile.iloc[-1]["Phi_global"]))
-    print("    Star flux [W/m^2]:   %.3e" % float(COUPLER_options["TOA_heating"]))
+    print("    Star flux [W/m^2]:   %.3e" % float(COUPLER_options["F_ins"]))
     print("    F_int [W/m^2]:       %.3e" % float(COUPLER_options["F_int"]))
     print("    F_atm [W/m^2]:       %.3e" % float(COUPLER_options["F_atm"])) 
     print("    F_net [W/m^2]:       %.3e" % float(COUPLER_options["F_net"]))
@@ -485,7 +485,7 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
         cpl_sflux.plot_sflux(output_dir)
         cpl_sflux_cross.plot_sflux_cross(output_dir)
         cpl_fluxes.plot_fluxes_global(output_dir, COUPLER_options)
-
+ 
     # Close all figures
     plt.close()
 

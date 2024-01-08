@@ -51,7 +51,7 @@ else
 
     # Dispatch screen session with PROTEUS inside
     echo "    Dispatching screen session..."
-    COMMAND="python $EXECUTABLE -cfg_file $CFGFILE"
+    COMMAND="python $EXECUTABLE --cfg_file $CFGFILE"
 
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # MacOS does not support the -Logfile flag

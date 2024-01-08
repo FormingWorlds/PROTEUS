@@ -29,6 +29,10 @@ def main():
     print(":::::::::::: START PROTEUS RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
     print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
+    # Check that environment variables are set 
+    if os.environ.get('COUPLER_DIR') == None:
+        raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
+
     # Parse console arguments
     args = parse_console_arguments()
 
@@ -51,7 +55,7 @@ def main():
                     "init": 0,             # Number of init iters performed
                     "atm": 0,              # Number of atmosphere sub-iters performed
                     "total_loops": 2000,   # Maximum number of total loops
-                    "init_loops": 3,       # Maximum number of init iters
+                    "init_loops": 2,       # Maximum number of init iters
                     "atm_loops":  20,      # Maximum number of atmosphere sub-iters
                     }
     
@@ -219,13 +223,13 @@ def main():
 
                 match COUPLER_options['star_model']:
                     case 0:
-                        S_0, toa_heating = InterpolateStellarLuminosity(time_dict, COUPLER_options)
+                        S_0 = InterpolateStellarLuminosity(time_dict, COUPLER_options)
                     case 1:
                         COUPLER_options["star_radius"] = MorsStellarRadius(time_dict, COUPLER_options)
-                        S_0, toa_heating = MorsSolarConstant(time_dict, COUPLER_options)
+                        S_0 = MorsSolarConstant(time_dict, COUPLER_options)
                     case 2:
                         COUPLER_options["star_radius"] = BaraffeStellarRadius(time_dict, COUPLER_options, track)
-                        S_0, toa_heating = BaraffeSolarConstant(time_dict, COUPLER_options, track)
+                        S_0 = BaraffeSolarConstant(time_dict, COUPLER_options, track)
 
                 # Calculate new eqm temperature
                 T_eqm_new = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
@@ -238,12 +242,10 @@ def main():
                 
             else:
                 print("Stellar heating is disabled")
-                toa_heating = 0.0
                 T_eqm_new   = 0.0
                 T_eqm_prev  = 0.0
 
-            COUPLER_options["TOA_heating"]  = toa_heating  # instellation * ASF scale factor
-            COUPLER_options["F_ins"]        = S_0          # instellation (solar constant)
+            COUPLER_options["F_ins"]        = S_0          # instellation 
             COUPLER_options["T_eqm"]        = T_eqm_new
             COUPLER_options["T_skin"]       = T_eqm_new * (0.5**0.25) # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
 

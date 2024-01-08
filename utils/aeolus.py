@@ -157,7 +157,7 @@ def StructAtm( runtime_helpfile, COUPLER_options ):
     atm.zenith_angle    = COUPLER_options["zenith_angle"]
     atm.albedo_pl       = COUPLER_options["albedo_pl"]
     atm.albedo_s        = COUPLER_options["albedo_s"]
-    atm.toa_heating     = COUPLER_options["TOA_heating"]
+    atm.toa_heating     = COUPLER_options["F_ins"] * COUPLER_options["asf_scalefactor"] * (1- COUPLER_options["albedo_pl"])
     atm.skin_d          = COUPLER_options["skin_d"]
     atm.skin_k          = COUPLER_options["skin_k"]
 
