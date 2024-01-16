@@ -102,10 +102,12 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
         # Start from previous CSV file?
         # If not, the model will start from an isothermal state at T=tstar
-        if os.path.exists(csv_fpath) and (time_dict["planet"] > 0):
-            load_prev = True  
-            call_sequence.append("--pt_path %s" % csv_fpath)
-        else :
+        # if os.path.exists(csv_fpath) and (time_dict["planet"] > 0):
+        #     load_prev = True  
+        #     call_sequence.append("--pt_path %s" % csv_fpath)
+        # else :
+        #     call_sequence.append("--dtsolve")
+        if (time_dict["planet"] < 1):
             call_sequence.append("--dtsolve")
 
     # Tropopause

@@ -16,7 +16,7 @@ fi
 # Check if the required arguments have been passed
 if [ -z "$1" ] || [ -z "$3" ]
 then
-    echo "    ERROR: Config file or alias provided" 
+    echo "    ERROR: Config file or alias not provided" 
     echo "    First argument:   config file     (string)"
     echo "    Second argument:  screen alias    (string)"
     echo "    Third argument:   detach?         (y or n)"

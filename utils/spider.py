@@ -76,9 +76,9 @@ class MyJSON( object ):
         elif nodes == 'staggered':
             phi = self.get_dict_values( ['data','phi_s'] )
         # define mixed phase by these threshold values
-        MIX = (phi<0.999) & (phi>0.001)
-        MIX = MIX * 1.0 # convert to float array
-        MIX[MIX==0] = np.nan  # set false region to nan to prevent plotting
+        MIX = (phi<0.95) & (phi>0.05)
+        # MIX = MIX * 1.0 # convert to float array
+        # MIX[MIX==0] = np.nan  # set false region to nan to prevent plotting
         return MIX
     
     def get_melt_phase_boolean_array( self, nodes='basic' ):
@@ -90,9 +90,9 @@ class MyJSON( object ):
             phi = self.get_dict_values_internal( ['data','phi_b'] )
         elif nodes == 'staggered':
             phi = self.get_dict_values( ['data','phi_s'] )
-        MELT = (phi>0.999)
-        MELT = MELT * 1.0 # convert to float array
-        MELT[MELT==0] = np.nan # set false region to nan to prevent plotting
+        MELT = (phi>0.95)
+        # MELT = MELT * 1.0 # convert to float array
+        # MELT[MELT==0] = np.nan # set false region to nan to prevent plotting
         return MELT
     
     def get_solid_phase_boolean_array( self, nodes='basic' ):
@@ -104,9 +104,9 @@ class MyJSON( object ):
             phi = self.get_dict_values_internal( ['data','phi_b'] )
         elif nodes == 'staggered':
             phi = self.get_dict_values( ['data','phi_s'] )
-        SOLID = (phi<0.001)
-        SOLID = SOLID * 1.0 # convert to float array
-        SOLID[SOLID==0] = np.nan # set false region to nan to prevent plotting
+        SOLID = (phi<0.05)
+        # SOLID = SOLID * 1.0 # convert to float array
+        # SOLID[SOLID==0] = np.nan # set false region to nan to prevent plotting
         return SOLID
 
     def get_rho_interp1d( self ):
@@ -921,7 +921,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 elif F_acc_max > -12.0:
                     # Speed up
                     print("Time-stepping intent: speed up")
-                    dtswitch = 1.10 * dtprev
+                    dtswitch = 1.15 * dtprev
 
                 else:
                     # Speed up!!

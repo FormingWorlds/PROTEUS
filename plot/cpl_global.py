@@ -383,6 +383,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ax5.yaxis.set_label_coords(xcoord_r,ycoord_r)
     ax5.yaxis.set_label_position("right")
     handles, labels = ax5.get_legend_handles_labels()
+    ax5.legend(handles, labels, ncol=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend, loc='center left') 
     ax5.set_xlabel(xlabel, fontsize=label_fs)
     ax5.set_ylabel(r'$m^{\mathrm{int}}_{\mathrm{i}}/m^{\mathrm{tot}}_{\mathrm{i}}$', fontsize=label_fs)
     ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
@@ -408,4 +409,4 @@ if __name__ == "__main__":
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
 
-    plot_global(dirs['output'],COUPLER_options, logt=True, tmin=1e1)
+    plot_global(dirs['output'],COUPLER_options, logt=False, tmin=1e1)
