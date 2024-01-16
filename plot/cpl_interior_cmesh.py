@@ -29,14 +29,14 @@ def plot_interior_cmesh(output_dir):
 
     # Initialise plot
     scale = 1.0
-    fig,(ax1,ax2,ax3,ax4) = plt.subplots(4,1, sharex=True, figsize=(5*scale,7*scale))
-    for ax in (ax1,ax2,ax3,ax4):
+    fig,axs = plt.subplots(4,1, sharex=True, figsize=(5*scale,7*scale))
+    ax1,ax2,ax3,ax4 = axs
+    for ax in axs:
         ax.set_ylabel("Pressure, $P$ [GPa]")
     ax4.set_xlabel("Time, $t$ [yr]")
 
     # Colour mapping
-    cblevels = 25
-    alpha = 1.0
+    cblevels = 40
     
     # Loop through years to arrange data
     arr_yb  = np.array(MyJSON( output_dir+"/data/%d.json"%sorted_times[-1]).get_dict_values(['data','pressure_b'])) * 1.0E-9
@@ -67,9 +67,16 @@ def plot_interior_cmesh(output_dir):
     # Y-axis ticks
     yticks = np.linspace(arr_yb[0],arr_ys[-1],4)
     yticks = [round(v) for v in yticks]
-    for ax in (ax1,ax2,ax3,ax4):
+    for ax in axs:
         ax.set_ylim([yticks[-1], yticks[0]])
         ax.set_yticks(yticks)
+
+    # Plot panel label
+    panel_labels = ['A)','B)','C)','D)']
+    for i in range(4):
+        axt = axs[i].text(0.03,0.94, panel_labels[i], transform=axs[i].transAxes, verticalalignment="top", horizontalalignment="left",
+                    fontsize=12)
+        axt.set_bbox(dict(facecolor='white', alpha=0.5, linewidth=0))
 
     # Plot temperature
     cmap = sci_colormaps['lajolla_r']
