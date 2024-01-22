@@ -2,7 +2,7 @@
 
 from utils.modules_ext import *
 from utils.constants import *
-from utils.helper import find_nearest
+from utils.helper import find_nearest, UpdateStatusfile
 from utils.stellar_common import *
 import Mors as mors
 
@@ -219,11 +219,11 @@ def MorsSolveUV(dirs: dict, COUPLER_options: dict, spec_wl: list, spec_fl: list,
 
     # Check inputs
     if uv_try[0] < 100.0:
-        print("ERROR: Cannot perform bisection search below 100 nm ")
-        exit(1)
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Cannot perform bisection search below 100 nm")
     if uv_try[1] <= uv_try[0]:
-        print("ERROR: Cannot perform bisection search on invalid range ", uv_try)
-        exit(1)
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Cannot perform bisection search on invalid range " + str(uv_try))
 
     # Make copy of options dict
     COPY_options = COUPLER_options
@@ -275,8 +275,8 @@ def MorsSolveUV(dirs: dict, COUPLER_options: dict, spec_wl: list, spec_fl: list,
 
         # Somehow they are equally good choices
         else:
-            print("ERROR: Bisection search cannot decide on new search boundary")
-            exit(1)
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Bisection search cannot decide on new search boundary")
 
         # Check break condition
         rel_err = fl_bst_err/fl_opt*100.0
@@ -376,7 +376,8 @@ def MorsSpectrumCalc(time_star : float, spec_wl: list, spec_fl: list, COUPLER_op
 
     # Calculate historical spectrum...
     if len(spec_wl) != len(spec_fl):
-        raise Exception("Stellar spectrum wl and fl arrays are of different lengths!")
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Stellar spectrum wl and fl arrays are of different lengths")
     
     if debug:
         print("F_band", F_band)

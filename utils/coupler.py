@@ -13,6 +13,7 @@ import plot.cpl_interior as cpl_interior
 import plot.cpl_sflux as cpl_sflux
 import plot.cpl_sflux_cross as cpl_sflux_cross
 import plot.cpl_fluxes as cpl_fluxes
+import plot.cpl_interior_cmesh as cpl_interior_cmesh
 
 # Handle optional command line arguments for volatiles
 # Optional arguments: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
@@ -53,6 +54,7 @@ def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options):
 
     print("Helpfile properties:")
     print(runtime_helpfile.tail(4))
+
 
 
 def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options):
@@ -288,22 +290,22 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         run_atm_last    = run_atm.loc[run_atm['Time'] != t_curr]
 
         # IF in early MO phase and RF is deep in mantle
-        if runtime_helpfile_new["RF_depth"] >= COUPLER_options["RF_crit"]:
-            COUPLER_options["F_net"] = -COUPLER_options["F_eps"]
-            print("Early MO phase and RF is deep in mantle. RF_depth = ", runtime_helpfile.iloc[-1]["RF_depth"])
+        # if runtime_helpfile_new["RF_depth"] >= COUPLER_options["RF_crit"]:
+        #     COUPLER_options["F_net"] = -COUPLER_options["F_eps"]
+        #     print("Early MO phase and RF is deep in mantle. RF_depth = ", runtime_helpfile.iloc[-1]["RF_depth"])
 
-        if loop_counter["init"] >= loop_counter["init_loops"]:
+        # if loop_counter["init"] >= loop_counter["init_loops"]:
             
-            if loop_counter["init"] == loop_counter["init_loops"]:
-                Ts_last         = runtime_helpfile.iloc[-1]["T_surf"]
+        #     if loop_counter["init"] == loop_counter["init_loops"]:
+        #         Ts_last         = runtime_helpfile.iloc[-1]["T_surf"]
 
-            else:
-                Ts_last         = run_atm_last.iloc[-1]["T_surf"]
+        #     else:
+        #         Ts_last         = run_atm_last.iloc[-1]["T_surf"]
 
             # IF T_surf change too high
-            if (abs(Ts_last-COUPLER_options["T_surf"]) >= COUPLER_options["dTs_atm"]) and (COUPLER_options["atmosphere_surf_state"] != 2): 
-                COUPLER_options["F_net"] = -COUPLER_options["F_eps"]   
-                print("T_surf change too high. dT =", Ts_last-COUPLER_options["T_surf"])
+            # if (abs(Ts_last-COUPLER_options["T_surf"]) >= COUPLER_options["dTs_atm"]) and (COUPLER_options["atmosphere_surf_state"] != 2): 
+            #     COUPLER_options["F_net"] = -COUPLER_options["F_eps"]   
+            #     print("T_surf change too high. dT =", Ts_last-COUPLER_options["T_surf"])
                 
             # OR IF negligible change in F_atm in the last two entries
             # if round(COUPLER_options["F_atm"],2) == round(run_atm.iloc[-1]["F_atm"],2):
@@ -390,6 +392,7 @@ def ReadInitFile( init_file_passed , verbose=False):
 
                     # Some parameters are int
                     if key in [ "IC_INTERIOR", "ic_interior_filename", 
+                                "solid_stop", "steady_stop",
                                 "plot_iterfreq", "stellar_heating", "mixing_length",
                                 "atmosphere_chem_type", "solvepp_enabled", "insert_rscatter",
                                 "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
@@ -447,7 +450,6 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     # Global properties for all timesteps
     if len(output_times) > 1:
         cpl_global.plot_global(output_dir, COUPLER_options)   
-        # cpl_global.plot_global(output_dir, COUPLER_options, logt=False)   
         
     # Filter to JSON files with corresponding NetCDF files
     ncs = glob.glob(output_dir + "/data/*_atm.nc")
@@ -480,8 +482,10 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
     cpl_stacked.plot_stacked(output_dir, plot_times)
 
-    # Include stellar evolution?
+    # Only at the end of the simulation
     if end:
+        cpl_global.plot_global(output_dir, COUPLER_options, logt=False)   
+        cpl_interior_cmesh.plot_interior_cmesh(output_dir)
         cpl_sflux.plot_sflux(output_dir)
         cpl_sflux_cross.plot_sflux_cross(output_dir)
         cpl_fluxes.plot_fluxes_global(output_dir, COUPLER_options)

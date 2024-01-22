@@ -19,6 +19,10 @@ def plot_interior_cbar(output_dir):
     sorted_files = np.array(output_files)[sort_mask]
     sorted_times = np.array(output_times)[sort_mask]
 
+    if len(sorted_times) < 3:
+        print("WARNING: Too few samples to make interior_cbar plot")
+        return
+
     stride = int(50)
     sorted_files = sorted_files[::stride]
     sorted_times = sorted_times[::stride]

@@ -5,7 +5,7 @@
 -ts_sundials_rtol 1.0e-10
 
 # mesh
--n 150
+-n 200
 
 # -MASS_COORDINATES
 

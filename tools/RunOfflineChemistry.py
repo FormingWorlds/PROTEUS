@@ -261,6 +261,9 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
         vcf.write("sl_angle = %1.6e \n" %       float(COUPLER_options["zenith_angle"]*np.pi/180.0))
         vcf.write("orbit_radius = %1.6e \n" %   float(COUPLER_options["mean_distance"]))
 
+        vcf.flush()
+        os.fsync(vcf.fileno())
+    os.sync()
     
     # Also copy config file to results dir for posterity
     shutil.copyfile(dirs["vulcan"]+"vulcan_cfg.py",this_results+"vulcan_cfg.py")

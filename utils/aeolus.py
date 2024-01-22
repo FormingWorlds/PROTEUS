@@ -112,7 +112,7 @@ def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
 
 
 # Generate atmosphere from input files
-def StructAtm( runtime_helpfile, COUPLER_options ):
+def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
 
     from AEOLUS.utils.atmosphere_column import atmos
 
@@ -140,7 +140,8 @@ def StructAtm( runtime_helpfile, COUPLER_options ):
         case 2:
             trppT = COUPLER_options["min_temperature"]  # dynamically, based on heating rate
         case _:
-            raise ValueError("Invalid tropopause option '%d'" % COUPLER_options["tropopause"])
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Invalid tropopause option '%d'" % COUPLER_options["tropopause"])
         
     nlev = int(COUPLER_options["atmosphere_nlev"])
             
@@ -238,8 +239,10 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
             # COUPLER_options["spider_repeat"] = not COUPLER_options["spider_repeat"] # Do a step of dt=0 once
 
         else:
-            raise Exception("Free surface state is not a valid option for AEOLUS")
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Invalid surface state chosen for AEOLUS")
     else:
+        UpdateStatusfile(dirs, 20)
         raise Exception("Cannot solve for RCE with AEOLUS")
     
     # Clean up run directory

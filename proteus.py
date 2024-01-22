@@ -25,9 +25,9 @@ from AEOLUS.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpe
 #====================================================================
 def main():
 
-    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-    print(":::::::::::: START PROTEUS RUN |", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    print("            PROTEUS framework (version 0.1)            ")
+    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
     # Check that environment variables are set 
     if os.environ.get('COUPLER_DIR') == None:
@@ -42,44 +42,54 @@ def main():
     # Set directories dictionary
     utils.constants.dirs = SetDirectories(COUPLER_options)
     from utils.constants import dirs
+    UpdateStatusfile(dirs, 0)
 
     os.chdir(dirs["coupler"])
 
-    print("Hostname: " + str(os.uname()[1]))
-
-    print("Output directory: '%s'" % dirs["output"])
+    print("Current time:     "+datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print("Hostname:         " + str(os.uname()[1]))
+    print("Output directory: %s" % dirs["output"])
 
     # Count iterations
     loop_counter = { 
-                    "total": 0,            # Total number of itersperformed
-                    "init": 0,             # Number of init iters performed
-                    "atm": 0,              # Number of atmosphere sub-iters performed
+                    "total": 0,            # Total number of iters performed
                     "total_loops": 2000,   # Maximum number of total loops
+
+                    "init": 0,             # Number of init iters performed
                     "init_loops": 2,       # Maximum number of init iters
+
+                    "atm": 0,              # Number of atmosphere sub-iters performed
                     "atm_loops":  20,      # Maximum number of atmosphere sub-iters
+
+                    "steady": 0,           # Number of iterations passed since steady-state declared
+                    "steady_loops": 8      # Number of steady-state iterations to perform
                     }
     
     # Check options are compatible
     if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
         if COUPLER_options["flux_convergence"] == 1:
-            raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off.")
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
         if COUPLER_options["PARAM_UTBL"] == 1:
-            raise Exception("SPIDER's UTBL is incompatible with the conductive lid scheme! Turn one of them off.")
+            UpdateStatusfile(dirs, 20)
+            raise Exception("SPIDER's UTBL is incompatible with the conductive lid scheme! Turn one of them off")
         
     if COUPLER_options["atmosphere_model"] == 1:  # Julia required for AGNI
         if shutil.which("julia") is None:
-            raise Exception("Could not find julia in current environment!")
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Could not find Julia in current environment")
         
-    if COUPLER_options["atmosphere_nlev"] < 10:
-        raise Exception("Atmosphere must have more than 10 levels")
+    if COUPLER_options["atmosphere_nlev"] < 15:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Atmosphere must have at least 15 levels")
     
     # If restart skip init loop # args.r or args.rf or 
     if COUPLER_options["IC_INTERIOR"] == 2:
 
         # Check if output directory actually exists
         if (not os.path.exists(dirs["output"])) or (not os.path.exists(dirs["output"]+'/data/')):
-            print("ERROR: Cannot resume run because directory doesn't exist!")
-            exit(1)
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Cannot resume run because directory doesn't exist")
 
         loop_counter["total"] += loop_counter["init_loops"]
         loop_counter["init"]  += loop_counter["init_loops"]
@@ -163,10 +173,8 @@ def main():
 
             # Check positive
             if (COUPLER_options[key_pp] <= 0.0):
-                print("ERROR: Partial pressures of included volatiles must be positive!")
-                print("       Consider assigning volatile '%s' a small positive value." % s)
-                print("       Check that solvepp_enabled has the intended setting.")
-                exit(1)
+                UpdateStatusfile(dirs, 20)
+                raise Exception("Partial pressures of included volatiles must be positive. Consider assigning volatile '%s' a small positive value. Check that solvepp_enabled has the intended setting." % v)
 
             # Ensure numerically reasonable
             if (COUPLER_options[key_pp] <= 1e-3):
@@ -178,8 +186,8 @@ def main():
     # Check that spectral file exists
     spectral_file_nostar = COUPLER_options["spectral_file"]
     if not os.path.exists(spectral_file_nostar):
-        print("ERROR: Spectral file does not exist at '%s'!" % spectral_file_nostar)
-        exit(1)
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
 
     # Handle stellar spectrum...
 
@@ -198,12 +206,13 @@ def main():
         case 2:
             track = BaraffeLoadtrack(COUPLER_options)
         case _:
-            print("ERROR: Invalid stellar model '%d'" % COUPLER_options['star_model'])
-            exit(1)
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Invalid stellar model '%d'" % COUPLER_options['star_model'])
     
     COUPLER_options["spider_repeat"] = False
 
     # Main loop
+    UpdateStatusfile(dirs, 1)
     while time_dict["planet"] < time_dict["target"]:
 
         PrintSeparator()
@@ -336,7 +345,7 @@ def main():
 
                 if COUPLER_options["atmosphere_model"] == 0:
                     # Run AEOLUS: use the general adiabat to create a PT profile, then calculate fluxes
-                    atm = StructAtm( runtime_helpfile, COUPLER_options )
+                    atm = StructAtm( dirs, runtime_helpfile, COUPLER_options )
                     COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile )
 
                 elif COUPLER_options["atmosphere_model"] == 1:
@@ -344,6 +353,7 @@ def main():
                     COUPLER_options = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile)
                     
                 else:
+                    UpdateStatusfile(dirs, 20)
                     raise Exception("Invalid atmosphere model")
 
             
@@ -377,16 +387,59 @@ def main():
         loop_counter["atm"]         = 0
         loop_counter["total"]       += 1
 
-
         # Stop simulation when planet is completely solidified
         if (COUPLER_options["solid_stop"] == 1) \
             and (runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]):
+            UpdateStatusfile(dirs, 10)
             print("\n===> Planet solidified! <===\n")
             break
+
+        # Determine when the simulation when planet enters a steady state (if it ever does)
+        if (COUPLER_options["steady_stop"] == 1) and (loop_counter["total"] > 20):
+            # How many iterations to look backwards
+            lb1 = -10
+            lb2 = -1
+
+            # Time samples
+            t1 = runtime_helpfile.iloc[lb1]["Time"]
+            t2 = runtime_helpfile.iloc[lb2]["Time"]
+
+            # Check flux (relative percentage change per year)
+            F_atm_1 = runtime_helpfile.iloc[lb1]["F_atm"]
+            F_atm_2 = runtime_helpfile.iloc[lb2]["F_atm"] 
+            F_atm_r = abs( (F_atm_2 - F_atm_1) / F_atm_1) * 100.0 / (t2 - t1)
+
+            # Check partial pressure (maximum relative percentage change per year, across all volatiles)
+            v_bar_1 = 1.0e-30
+            v_bar_2 = 1.0e-30
+            v_max_r = 0.0
+            v_max_r_test = 0.0
+            for v in volatile_species:
+                v_bar_1 = runtime_helpfile.iloc[lb1]["%s_atm_bar"%v]
+                v_bar_2 = runtime_helpfile.iloc[lb2]["%s_atm_bar"%v]
+                if (v_bar_1 < 1.0e-10) or (v_bar_2 < 1.0e-10):
+                    continue
+                v_max_r_test = abs( (v_bar_2 - v_bar_1) / v_bar_1) * 100.0 / (t2 - t1)
+                v_max_r = max(v_max_r, v_max_r_test)
+
+            # Enable countdown (countup?) for stopping the loop
+            if (F_atm_r < COUPLER_options["steady_dfrel"]) and (v_max_r < COUPLER_options["steady_dprel"]):
+                print("Steady state declared")
+                loop_counter["steady"] = 1
+
+        # Steady-state count
+        if loop_counter["steady"] > 0:
+            if loop_counter["steady"] < loop_counter["steady_loops"]:
+                loop_counter["steady"] += 1
+            else:
+                UpdateStatusfile(dirs, 11)
+                print("\n===> Planet has entered a steady state! <===\n")
+                break
             
         # Stop simulation if maximum loops reached
         if (loop_counter["total"] > loop_counter["total_loops"]):
-            print("\n Maximum number of iterations reached. Stopping. \n")
+            UpdateStatusfile(dirs, 12)
+            print("\n===> Maximum number of iterations reached. <===\n")
             break
         
         # Make plots if required and go to next iteration
@@ -399,7 +452,7 @@ def main():
 
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options, end=True)
-    print("     "+datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    print("Simulation completed at "+datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 
 #====================================================================
 if __name__ == '__main__':

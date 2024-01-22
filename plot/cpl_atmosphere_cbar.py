@@ -45,6 +45,10 @@ def plot_atmosphere_cbar(output_dir):
     sorted_files = np.array(output_files)[sort_mask]
     sorted_times = np.array(output_times)[sort_mask]
 
+    if len(sorted_times) < 3:
+        print("WARNING: Too few samples to make atmosphere_cbar plot")
+        return
+
     # Parse NetCDF files
     stride = 1
     sorted_p = []

@@ -2,7 +2,7 @@
 
 from utils.modules_ext import *
 from utils.constants import *
-from utils.helper import find_nearest
+from utils.helper import find_nearest, UpdateStatusfile
 
 def ModernSpectrumLoad(dirs: dict, COUPLER_options: dict):
     """Copy file and load modern spectrum into memory.
@@ -36,7 +36,8 @@ def ModernSpectrumLoad(dirs: dict, COUPLER_options: dict):
         spec_wl = spec_data[0]
         spec_fl = spec_data[1]
     else:
-        raise Exception("Cannot find stellar spectrum!")
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Cannot find stellar spectrum")
     
 
     binwidth_wl = spec_wl[1:] - spec_wl[0:-1]

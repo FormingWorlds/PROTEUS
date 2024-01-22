@@ -19,6 +19,9 @@ def plot_interior_cmesh(output_dir):
     sorted_files = np.array(output_files)[sort_mask]
     sorted_times = np.array(output_times)[sort_mask]
 
+    if len(sorted_times) < 3:
+        print("WARNING: Too few samples to make interior_cmesh plot")
+        return
     if len(sorted_times) < 1000:
         stride = int(1)
     else:

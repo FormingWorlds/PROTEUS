@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Run PROTEUS for a pspace of parameters
+# Run PROTEUS for a grid of parameters
 
 # Prepare
 import os, itertools, time, subprocess, shutil, glob, sys
@@ -9,22 +9,46 @@ COUPLER_DIR=os.getenv('COUPLER_DIR')
 if COUPLER_DIR == None:
     raise Exception("Environment is not activated or is setup incorrectly")
 
-# Object for handling the parameter space
-class Pspace():
+# Object for handling the parameter grid
+class Pgrid():
 
-    def __init__(self, name:str, base_config_path:str):
+    def __init__(self, name:str, base_config_path:str, symlink_dir:str=""):
 
-        # Pspace's own name (for versioning, etc.)
+        # Pgrid's own name (for versioning, etc.)
         self.name = str(name)
         self.outdir = COUPLER_DIR+"/output/pgrid_"+self.name+"/"
+        self.tmpdir = "/tmp/pgrid_"+self.name+"/"
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
             raise Exception("Base config file '%s' does not exist!" % self.conf)
         
-        # Make output dir
+        # Paths
+        self.outdir = os.path.abspath(self.outdir)
+        symlink_dir = os.path.abspath(symlink_dir)
+        self.tmpdir = os.path.abspath(self.tmpdir)
+        
+        # Remove old output location
         if os.path.exists(self.outdir):
-            shutil.rmtree(self.outdir)
-        os.makedirs(self.outdir)
+            if os.path.islink(self.outdir):
+                os.unlink(self.outdir)
+            if os.path.isdir(self.outdir):
+                shutil.rmtree(self.outdir)
+        
+        # Create new outpit location
+        if len(symlink_dir) == 0:
+            # Not using symlink
+            os.makedirs(self.outdir)
+        else:
+            # Will be using symlink
+            if os.path.exists(symlink_dir):
+                shutil.rmtree(symlink_dir)
+            os.makedirs(symlink_dir)
+            os.symlink(symlink_dir, self.outdir)
+
+        # Make temp dir
+        if os.path.exists(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+        os.makedirs(self.tmpdir)
 
         # List of dimension names and parameter names
         self.dim_names = []     # String
@@ -33,11 +57,11 @@ class Pspace():
         # Dimension variables (incl hypervariables)
         self.dim_avars = {}  
 
-        # Flattened pspace 
+        # Flattened pgrid
         self.flat = []   # List of grid points, each is a dictionary
         self.hash = []   # Hash values of each point, for removing duplicates
     
-    # Add a new empty dimension to the pspace
+    # Add a new empty dimension to the pgrid
     def add_dimension(self,name:str):
         if name in self.dim_names:
             raise Exception("Dimension '%s' cannot be added twice" % name)
@@ -75,7 +99,7 @@ class Pspace():
         if self.dim_param[idx] != "_empty":
             raise Exception("Dimension '%s' cannot be set twice" % name)
         self.dim_param[idx] = var
-        self.dim_avars[name] = list(sorted(np.array(set(values), dtype=float)))  # check for duplicates, sort, and cast
+        self.dim_avars[name] = list(sorted(np.array(list(set(values)), dtype=float)))  # check for duplicates, sort, and cast
 
     # Set a dimension to take hypervariables
     def set_dimension_hyper(self,name:str):
@@ -108,33 +132,32 @@ class Pspace():
             print("    values   : %s" % self.dim_avars[name], file=f)
             print(" ", file=f)
 
-    # Print generated space
-    def print_space(self, f=sys.stdout):
+    # Print generated grid
+    def print_grid(self, f=sys.stdout):
         print("Flattened grid points", file=f)
         for i,gp in enumerate(self.flat):
             print("    %d: %s" % (i,gp), file=f)
         print(" ", file=f)
 
-
-    # Generate the pspace based on the current configuration
+    # Generate the pgrid based on the current configuration
     def generate(self):
-        print("Generating parameter space")
+        print("Generating parameter grid")
 
         # Validate
         if len(self.dim_avars) == 0:
-            raise Exception("pspace is empty")
+            raise Exception("pgrid is empty")
         
         # Dimension count
         print("    %d dimensions" % len(self.dim_names))
         
-        # Calculate total pspace size
+        # Calculate total pgrid size
         values = list(self.dim_avars.values())
         self.size = 1
         for v in values:
             self.size *= len(v)
         print("    %d points expected" % self.size)
 
-        # Create flattened parameter space 
+        # Create flattened parameter grid 
         flat_values = list(itertools.product(*values))
         print("    created %d grid points" % len(flat_values))
 
@@ -159,9 +182,9 @@ class Pspace():
         print(" ")
 
 
-    # Run PROTEUS across this pspace
-    def run(self,test_run:bool=False):
-        print("Running PROTEUS across parameter space '%s'..." % self.name)
+    # Run PROTEUS across this pgrid
+    def run(self,test_run:bool=False,makelog:bool=False):
+        print("Running PROTEUS across parameter grid '%s'..." % self.name)
 
         name = self.name.strip()
 
@@ -182,14 +205,11 @@ class Pspace():
         with open(self.conf, "r") as f:
             base_config = f.readlines()
 
-        # Loop over grid points
-        print("Dispatching cases...")
+        # Loop over grid points to write config files
+        print("Writing config files")
         for i,gp in enumerate(self.flat):  
 
-            if (i > 0):
-                time.sleep(0.5)
-
-            cfgfile = self.outdir+"case_%05d.cfg" % i
+            cfgfile = self.tmpdir+"case_%05d.cfg" % i
             screen_name = "pgrid_%s_%05dx" % (name,i)
 
             gp["dir_output"] = "pgrid_"+self.name+"/case_%05d"%i
@@ -216,87 +236,100 @@ class Pspace():
                     # Otherwise, use default value
                     else:
                         hdl.write(str(l) + "\n")
+
+                # Ensure data is written to disk
+                hdl.flush()
+                os.fsync(hdl.fileno()) 
+
+        print("Dispatching cases...")
+        for i,gp in enumerate(self.flat):  
+
+            cfgfile = self.tmpdir+"case_%05d.cfg" % i
+            screen_name = "pgrid_%s_%05dx" % (name,i)
+            gp["dir_output"] = "pgrid_"+self.name+"/case_%05d"%i
             
             if self.size > 1:
-                print("    %d%% (%d of %d)" % ( i/self.size*100.0, i, self.size ) ) 
+                print("    %d%% (%d of %d)" % ( (i+1)/self.size*100.0, i+1, self.size ) ) 
                     
             # Start the model
             if test_run:
-                print("    (test run not dispatching proteus '%s')" % screen_name)
+                print("    (test run not dispatching PROTEUS '%s')" % screen_name)
 
             else:
-                # For first grid point, use RunPROTEUS to make log file
-                if i == 0:
-                    proteus_run = COUPLER_DIR+"/tools/RunPROTEUS.sh " + cfgfile + " " + screen_name + " y "
+                cfgexists = False
+                waitfor   = 4.0 
+                for _ in range(int(waitfor*1.0e3)):
+                    time.sleep(1.0e-3)
+                    if os.path.exists(cfgfile):
+                        cfgexists = True
+                        break
+                if not cfgexists:
+                    print("ERROR: Config file could not be found for case %d!" % i)
 
-                # In all other cases, don't log the output from PROTEUS
+                if makelog:
+                    proteus_run = COUPLER_DIR+"/tools/RunPROTEUS.sh " + cfgfile + " " + screen_name + " y "
                 else:
                     proteus_run = "screen -d -m -S " + screen_name + " python proteus.py --cfg_file " + cfgfile
                 
-                subprocess.run([proteus_run], shell=True, check=True)
-            
-            print(" ")
+                subprocess.run([proteus_run], shell=True, check=True, stdout=subprocess.DEVNULL)
 
-            # End of dispatch loop
-
-        time.sleep(30.0)
+        time.sleep(5.0)
         print("    all cases running")
         print(" ")
-
-        for f in glob.glob(self.outdir+"/case_*.cfg"):
-            os.remove(f)
 
 
 if __name__=='__main__':
     print("Start GridPROTEUS")
 
     # -----
-    # Define parameter space
+    # Define parameter grid
     # -----
 
-    cfg_base = os.getenv('COUPLER_DIR')+"/init_coupler.cfg"
-    ps = Pspace("v2", cfg_base)
+    cfg_base = os.getenv('COUPLER_DIR')+"/input/earth_gridtest.cfg"
+    symlink  = "/local/scratch/nichollsh/proteus_output/pgrid_test/"
+    pg = Pgrid("earth_gridtest_2", cfg_base, symlink_dir=symlink)
 
-    ps.add_dimension("Redox state")
-    ps.set_dimension_linspace("Redox state", "fO2_shift_IW", -5, +5, 8)
+    # pg.add_dimension("Redox state")
+    # pg.set_dimension_linspace("Redox state", "fO2_shift_IW", -5, +5, 8)
 
-    ps.add_dimension("C/H ratio")
-    ps.set_dimension_logspace("C/H ratio", "CH_ratio", 0.2, 3.0, 8)
+    # pg.add_dimension("Planet")
+    # pg.set_dimension_hyper("Planet")
+    # pg.append_dimension_hyper("Planet", {   "#case": "TRAPPIST-1b",
+    #                                         "mean_distance": 0.01154,  # AU, star-planet distance
+    #                                         "mass"         : 8.21e+24, # kg, planet mass
+    #                                         "radius"       : 7.118e+6  # m, planet surface radius
+    #                                     })
 
-    ps.add_dimension("Planet")
-    ps.set_dimension_hyper("Planet")
-    ps.append_dimension_hyper("Planet", {   "#case": "TRAPPIST-1b",
-                                            "mean_distance": 0.01154,  # AU, star-planet distance
-                                            "mass"         : 8.21e+24, # kg, planet mass
-                                            "radius"       : 7.118e+6  # m, planet surface radius
-                                        })
-    ps.append_dimension_hyper("Planet", {   "#case": "TRAPPIST-1f",
-                                            "mean_distance": 0.03849,  # AU, star-planet distance
-                                            "mass"         : 6.21e+24, # kg, planet mass
-                                            "radius"       : 6.665e+6  # m, planet surface radius
-                                        })
+    pg.add_dimension("Orbital separation")
+    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.1, 0.7, 1.0, 1.5])
+
+    pg.add_dimension("Redox state")
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-4.0, -2.0, 0.0, 2.0, 4.0])
+
+    pg.add_dimension("C/H ratio")
+    pg.set_dimension_direct("C/H ratio", "CH_ratio", list(np.array([0.01, 0.1, 1.0, 2.0])))
     
     # -----
-    # Print state of parameter space
+    # Print state of parameter grid
     # -----
 
-    ps.print_setup()
-    ps.generate()
-    ps.print_space()
+    pg.print_setup()
+    pg.generate()
+    pg.print_grid()
 
     # -----
-    # Write parameter space to file
+    # Write parameter grid to file
     # -----
 
-    with open(ps.outdir+"grid.txt","w") as hdl:
-        ps.print_setup(f=hdl)
-        ps.print_space(f=hdl)
+    with open(os.path.join(pg.outdir,"grid.txt"),"w") as hdl:
+        pg.print_setup(f=hdl)
+        pg.print_grid(f=hdl)
 
     # -----
     # Start PROTEUS processes
     # -----
 
-    ps.run(test_run=False)
+    pg.run(test_run=False, makelog=True)
 
 
     # When this script ends, all cases of PROTEUS should be running.

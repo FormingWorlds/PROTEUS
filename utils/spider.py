@@ -542,6 +542,7 @@ def solvepp_doit(COUPLER_options):
     global_d['mantle_mass'] = COUPLER_options["mass"] - core_mass 
     print("Total mantle mass is %.2e kg" % global_d['mantle_mass'])
     if (global_d['mantle_mass'] <= 0.0):
+        UpdateStatusfile(dirs, 20)
         raise Exception("Something has gone wrong (mantle mass is negative)")
 
     global_d['temperature'] =       COUPLER_options['T_surf_guess'] # K
@@ -660,14 +661,18 @@ def get_all_output_atm_times( odir='output' ):
 
     odir = odir+'/data/'
 
+    stub_dirs = {"output": os.path.abspath(odir)}
+
     # locate times to process based on files located in odir/
     file_l = [f for f in os.listdir(odir) if os.path.isfile(odir+f)]
     if not file_l:
-        raise Exception('Output directory contains no files')
+        UpdateStatusfile(stub_dirs, 20)
+        raise Exception("Output directory contains no files")
 
     time_l = [fname for fname in file_l]
     time_l = list(filter(lambda a: a.endswith('nc'), time_l))
     if len(time_l) == 0:
+        UpdateStatusfile(stub_dirs, 20)
         raise Exception("Could not find any nc files in the output directory")
 
     # Filter and split files
@@ -934,8 +939,8 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
                 dtswitch = COUPLER_options["dt_maximum"]
 
             else:
-                print("ERROR: Invalid time-stepping method '%d'" % COUPLER_options["dt_method"])
-                exit(1)
+                UpdateStatusfile(dirs, 20)
+                raise Exception("Invalid time-stepping method '%d'" % COUPLER_options["dt_method"])
 
             # Step-size floor
             dtswitch = max(dtswitch, time_dict["planet"]*0.005)         # Relative
@@ -978,10 +983,10 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # Set spider flux boundary condition
     net_loss = COUPLER_options["F_atm"]
-    if len(runtime_helpfile) > 10 and runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]:
-        net_loss = np.amax([abs(COUPLER_options["F_atm"]), COUPLER_options["F_eps"]])
-        if debug:
-            print("Prevent interior oscillations during last-stage freeze-out: F_atm =", COUPLER_options["F_atm"], "->", net_loss)
+    # if len(runtime_helpfile) > 10 and runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]:
+    #     net_loss = np.amax([abs(COUPLER_options["F_atm"]), COUPLER_options["F_eps"]])
+    #     if debug:
+    #         print("Prevent interior oscillations during last-stage freeze-out: F_atm =", COUPLER_options["F_atm"], "->", net_loss)
 
     ### SPIDER base call sequence 
     call_sequence = [   
@@ -1122,10 +1127,14 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     else:
         spider_print = open(dirs["output"]+"spider_recent.log",'w')
 
-    subprocess.run([call_string],shell=True,check=True,stdout=spider_print)
+    proc = subprocess.run([call_string],shell=True,stdout=spider_print)
 
     if not debug:
         spider_print.close()
+
+    if proc.returncode != 0:
+        UpdateStatusfile(dirs, 21)
+        raise Exception("An error occurred when executing SPIDER")
 
     # Update restart filename for next SPIDER run
     COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]

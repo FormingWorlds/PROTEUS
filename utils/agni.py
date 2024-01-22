@@ -159,8 +159,11 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # Run AGNI
     call_string = " ".join(call_sequence)
     agni_print = open(dirs["output"]+"agni_recent.log",'w')
-    subprocess.run([call_string], shell=True, check=True, stdout=sys.stdout, stderr=agni_print)
+    proc = subprocess.run([call_string], shell=True, stdout=sys.stdout, stderr=agni_print)
     agni_print.close()
+    if proc.returncode != 0:
+        UpdateStatusfile(dirs, 22)
+        raise Exception("An error occurred when executing AGNI")
 
     # Read result
     nc_fpath = dirs["output"]+"data/"+str(int(time_dict["planet"]))+"_atm.nc"
