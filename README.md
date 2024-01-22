@@ -10,7 +10,7 @@ https://proteus-code.readthedocs.io/en/latest/contact.html
 ### Contributors
 * TL – Tim Lichtenberg (tim.lichtenberg@rug.nl)
 * MH – Mark Hammond (mark.hammond@physics.ox.ac.uk)
-* DJB – Dan J. Bower (daniel.bower@csh.unibe.ch)
+* DJB – Dan J. Bower (dbower@ethz.ch)
 * PS – Patrick Sanan (patrick.sanan@gmail.com)
 * RTP – Raymond Pierrehumbert (raymond.pierrehumbert@physics.ox.ac.uk)
 * RB – Ryan Boukrouche (ryan.boukrouche@astro.su.se)
