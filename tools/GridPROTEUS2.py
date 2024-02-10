@@ -3,11 +3,13 @@
 # Run PROTEUS for a grid of parameters
 
 # Prepare
-import os, itertools, time, subprocess, shutil, sys
+import os, itertools, time, subprocess, shutil, sys, threading
+from datetime import datetime
 import numpy as np
 COUPLER_DIR=os.getenv('COUPLER_DIR')
 if COUPLER_DIR == None:
     raise Exception("Environment is not activated or is setup incorrectly")
+
 
 # Object for handling the parameter grid
 class Pgrid():
@@ -59,7 +61,7 @@ class Pgrid():
 
         # Flattened pgrid
         self.flat = []   # List of grid points, each is a dictionary
-        self.hash = []   # Hash values of each point, for removing duplicates
+        self.size = 0    # Total size of grid
     
     # Add a new empty dimension to the pgrid
     def add_dimension(self,name:str):
@@ -99,7 +101,10 @@ class Pgrid():
         if self.dim_param[idx] != "_empty":
             raise Exception("Dimension '%s' cannot be set twice" % name)
         self.dim_param[idx] = var
-        self.dim_avars[name] = list(sorted(np.array(list(set(values)))))  # check for duplicates, sort, and cast
+        the_list = list(set(values))  # remove duplicates
+        if not isinstance(values[0],str): # sort if numeric
+            the_list = sorted(the_list)
+        self.dim_avars[name] = the_list 
 
     # Set a dimension to take hypervariables
     def set_dimension_hyper(self,name:str):
@@ -177,22 +182,26 @@ class Pgrid():
                     gp[par] = val
 
             self.flat.append(gp)
-        
+
+        self.size = len(self.flat)
         print("    done")
         print(" ")
 
 
     # Run PROTEUS across this pgrid
-    def run(self,test_run:bool=False,makelog:bool=False):
-        print("Running PROTEUS across parameter grid '%s'..." % self.name)
+    def run(self,threads:int,test_run:bool=False):
+        print("Running PROTEUS across parameter grid '%s'" % self.name)
+
+        time_start = datetime.now()
+        print("Current time: "+time_end.strftime('%Y-%m-%d_%H:%M:%S'))
 
         name = self.name.strip()
 
         if not test_run:
             print(" ")
-            print("This program will generate several screen sessions")
-            print("To kill all of them, run `pkill -f pgrid_%s_`" % name)   # (from: https://stackoverflow.com/a/8987063)
-            print("Take care to avoid orphaned instances by using `screen -ls`")
+            print("Confirm that the grid above is what you had intended.")
+            print("There are %d grid points. There will be %d threads." % (self.size, threads))
+            print("Do not close this program! It must stay alive to manage each of the subproceses.")
             print(" ")
 
             print("Sleeping...")
@@ -210,8 +219,6 @@ class Pgrid():
         for i,gp in enumerate(self.flat):  
 
             cfgfile = self.tmpdir+"/case_%05d.cfg" % i
-            screen_name = "pgrid_%s_%05dx" % (name,i)
-
             gp["dir_output"] = "pgrid_"+self.name+"/case_%05d"%i
 
             # Create config file for this case
@@ -219,7 +226,6 @@ class Pgrid():
                 
                 hdl.write("# GridPROTEUS config file \n")
                 hdl.write("# gp_index = %d \n" % i)
-                hdl.write("# screen_name = %s \n" % screen_name)
 
                 # Write lines
                 for l in base_config:
@@ -241,42 +247,99 @@ class Pgrid():
                 hdl.flush()
                 os.fsync(hdl.fileno()) 
 
-        print("Dispatching cases...")
-        for i,gp in enumerate(self.flat):  
 
-            cfgfile = self.tmpdir+"/case_%05d.cfg" % i
-            screen_name = "pgrid_%s_%05dx" % (name,i)
-            gp["dir_output"] = "pgrid_"+self.name+"/case_%05d"%i
-            
-            if self.size > 1:
-                print("    %d%% (%d of %d)" % ( (i+1)/self.size*100.0, i+1, self.size ) ) 
-                    
-            # Start the model
+         # Thread targget
+        def _thread_target(cfg_path, log_path):
+            proteus_py = os.path.join(COUPLER_DIR,"proteus.py")
             if test_run:
-                print("    (test run not dispatching PROTEUS '%s')" % screen_name)
-
+                command = ["/bin/echo","Dummmy output. Config file is at %s" % cfg_path]
             else:
-                cfgexists = False
-                waitfor   = 4.0 
-                for _ in range(int(waitfor*1.0e3)):
-                    time.sleep(1.0e-3)
-                    if os.path.exists(cfgfile):
-                        cfgexists = True
-                        break
-                if not cfgexists:
-                    print("ERROR: Config file could not be found for case %d!" % i)
+                command = ["python",proteus_py,"--cfg_file",cfg_path]
+            loghand = open(log_path, 'w')
+            subprocess.run(command, shell=False, check=False, stdout=loghand, stderr=loghand)
+            loghand.close()
 
-                if makelog:
-                    proteus_run = COUPLER_DIR+"/tools/RunPROTEUS.sh " + cfgfile + " " + screen_name + " y "
+        # Setup threads
+        threads = []
+        for i in range(self.size):
+            # Case paths
+            cfg_path  = self.tmpdir+"case_%05d.cfg" % i
+            log_path = os.path.join(COUPLER_DIR,"output","pgrid_%s_%05d.log" % (self.name,i))
+            # Check cfg exists
+            cfgexists = False
+            waitfor   = 4.0 
+            for _ in range(int(waitfor*1.0e3)):
+                time.sleep(1.0e-3)
+                if os.path.exists(cfgfile):
+                    cfgexists = True
+                    break
+            if not cfgexists:
+                print("ERROR: Config file could not be found for case %d!" % i)
+            # Add thread
+            threads.append(threading.Thread(target=_thread_target, args=(cfg_path, log_path)))
+
+        # Track statuses
+        # 0: queued
+        # 1: running
+        # 2: done
+        status = np.zeros(self.size)
+        done = False                # All done?
+        print("Starting process manager (%d grid points, %d threads)" % (self.size,threads))
+        while not done:
+            # Check alive
+            n_run = 0
+            for i in range(self.size):
+                if threads[i].is_alive():
+                    # still going
+                    status[i] = 1
+                    n_run += 1
                 else:
-                    proteus_run = "screen -d -m -S " + screen_name + " python proteus.py --cfg_file " + cfgfile
-                
-                subprocess.run([proteus_run], shell=True, check=True, stdout=subprocess.DEVNULL)
+                    # completed
+                    if status[i] == 1:
+                        status[i] = 2
 
-        time.sleep(5.0)
-        print("    all cases running")
-        print(" ")
+            # Print info
+            count_que = np.count_nonzero(status == 0)
+            count_run = np.count_nonzero(status == 1)
+            count_end = np.count_nonzero(status == 2)
+            print("    %d queued (%.1f%%), %d running (%.1f%%), %d completed (%.1f%%), %d threads active" % (
+                    count_que, 100.0*count_que/self.size,
+                    count_run, 100.0*count_run/self.size,
+                    count_end, 100.0*count_end/self.size,
+                    n_run)
+                  )
 
+            # Done?
+            if np.count_nonzero(status == 2) == self.size:
+                done = True 
+                break 
+
+            # Start new?
+            start_new = np.count_nonzero(status == 1) < threads
+            if start_new:
+                for i in range(self.size):
+                    if status[i] == 0:
+                        status[i] == 1
+                        start_new = False
+                        threads[i].start() 
+                        break
+
+            time.sleep(0.25)
+            # / end while loop
+
+        # join threads
+        print("Joining threads")
+        for t in threads:
+            t.join()
+
+        # Check if exited early
+        if not done:
+            print("WARNING: Master process loop terminated early!")
+            print("         This could be because it timed-out or an error occurred.")
+
+        time_end = datetime.now()
+        print("All processes finished at: "+str(time_end.strftime('%Y-%m-%d_%H:%M:%S')))
+        print("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
 if __name__=='__main__':
     print("Start GridPROTEUS")
@@ -286,8 +349,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.getenv('COUPLER_DIR')+"/input/earth_gridtest.cfg"
-    symlink  = "/local/scratch/nichollsh/proteus_output/pgrid_earth_gridtest_11"
-    pg = Pgrid("earth_gridtest_11", cfg_base, symlink_dir=symlink)
+    symlink  = ""
+    pg = Pgrid("threading", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -298,16 +361,13 @@ if __name__=='__main__':
     #                                     })
 
     pg.add_dimension("Orbital separation")
-    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.1, 0.2, 0.3, 0.4, 0.5, 1.0])
+    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.3 , 1.0 , 3.0])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-3.0, 0.0, 6.0])
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [0.0])
 
     pg.add_dimension("C/H ratio")
-    pg.set_dimension_direct("C/H ratio", "CH_ratio", [0.01, 2.0])
-
-    pg.add_dimension("Tropopause")
-    pg.set_dimension_direct("Tropopause", "tropopause", [0,1])
+    pg.set_dimension_direct("C/H ratio", "CH_ratio", [0.01, 1.0])
     
     # -----
     # Print state of parameter grid
@@ -329,7 +389,7 @@ if __name__=='__main__':
     # Start PROTEUS processes
     # -----
 
-    pg.run(test_run=False, makelog=True)
+    pg.run(2, test_run=True)
 
 
     # When this script ends, all cases of PROTEUS should be running.

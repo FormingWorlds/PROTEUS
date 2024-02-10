@@ -4,10 +4,6 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import *
 
-#===================================================================
-# CLASSES
-#===================================================================
-
 class MyJSON( object ):
 
     '''load and access json data'''
@@ -143,6 +139,8 @@ class MyJSON( object ):
         atm_interp1d = interp1d( apressure_a, atemp_a, kind='linear' )
         return atm_interp1d
 
+#====================================================================
+#====================================================================
 
 
 # Solve partial pressures functions
@@ -155,7 +153,6 @@ class MyJSON( object ):
 # Solve for the equilibrium chemistry of a magma ocean atmosphere
 # for a given set of solubility and redox relations
 
-#====================================================================
 class OxygenFugacity:
     """log10 oxygen fugacity as a function of temperature"""
 
@@ -174,7 +171,6 @@ class OxygenFugacity:
         '''O'Neill and Eggin (2002) IW'''
         return 2*(-244118+115.559*T-8.474*T*np.log(T))/(np.log(10)*8.31441*T)
 
-#====================================================================
 class ModifiedKeq:
     """Modified equilibrium constant (includes fO2)"""
 
@@ -209,7 +205,6 @@ class ModifiedKeq:
         '''JANAF log10Keq, 1500 < K < 3000 for H2O = H2 + 0.5 fO2'''
         return (-13152.477779978302/T + 3.038586383273608, 0.5) 
 
-#====================================================================
 class Solubility:
     """Solubility base class.  All p in bar"""
 
@@ -223,7 +218,6 @@ class Solubility:
         '''Dissolved concentration in ppmw in the melt'''
         return self.callmodel(p, *args)
 
-#====================================================================
 class SolubilityH2O(Solubility):
     """H2O solubility models"""
 
@@ -251,7 +245,6 @@ class SolubilityH2O(Solubility):
         '''Newcombe et al. (2017)'''
         return self.power_law(p, 683, 0.5)
 
-#====================================================================
 class SolubilityCO2(Solubility):
     """CO2 solubility models"""
 
@@ -264,7 +257,6 @@ class SolubilityCO2(Solubility):
         ppmw = 1.0E4*(4400*ppmw) / (36.6-44*ppmw)
         return ppmw
 
-#====================================================================
 class SolubilityN2(Solubility):
     """N2 solubility models"""
 
@@ -276,11 +268,7 @@ class SolubilityN2(Solubility):
         ppmw = self.power_law(p, 0.0611, 1.0)
         return ppmw
     
-#====================================================================
-# FUNCTIONS
-#====================================================================
 
-#====================================================================
 def solvepp_get_partial_pressures(pin, fO2_shift, global_d):
     """Partial pressure of all considered species"""
 
@@ -315,7 +303,6 @@ def solvepp_get_partial_pressures(pin, fO2_shift, global_d):
 
     return p_d
 
-#====================================================================
 def solvepp_get_total_pressure(pin, fO2_shift, global_d):
     """Sum partial pressures to get total pressure"""
 
@@ -324,7 +311,6 @@ def solvepp_get_total_pressure(pin, fO2_shift, global_d):
 
     return ptot
 
-#====================================================================
 def solvepp_atmosphere_mass(pin, fO2_shift, global_d):
     """Atmospheric mass of volatiles and totals for H, C, and N"""
 
@@ -358,7 +344,6 @@ def solvepp_atmosphere_mass(pin, fO2_shift, global_d):
 
     return mass_atm_d
 
-#====================================================================
 def solvepp_atmosphere_mean_molar_mass(pin, fO2_shift, global_d):
     """Mean molar mass of the atmosphere"""
 
@@ -372,7 +357,6 @@ def solvepp_atmosphere_mean_molar_mass(pin, fO2_shift, global_d):
 
     return mu_atm
 
-#====================================================================
 def solvepp_dissolved_mass(pin, fO2_shift, global_d):
     """Volatile masses in the (molten) mantle"""
 
@@ -404,7 +388,6 @@ def solvepp_dissolved_mass(pin, fO2_shift, global_d):
 
     return mass_int_d
 
-#====================================================================
 def solvepp_func(pin, fO2_shift, global_d, mass_target_d):
     """Function to compute the residual of the mass balance"""
 
@@ -427,7 +410,6 @@ def solvepp_func(pin, fO2_shift, global_d, mass_target_d):
 
     return res_l
 
-#====================================================================
 def solvepp_get_initial_pressures(target_d):
     """Get initial guesses of partial pressures"""
 
@@ -445,7 +427,6 @@ def solvepp_get_initial_pressures(target_d):
 
     return pH2O, pCO2, pN2
 
-#====================================================================
 def solvepp_equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitrogen):
     """Calculate equilibrium chemistry of the atmosphere"""
 
@@ -493,8 +474,6 @@ def solvepp_equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d,
 
     return p_d
 
-
-#====================================================================
 def solvepp_doit(COUPLER_options):
     """Solves for initial surface partial pressures assuming melt-vapour eqm
 
@@ -565,9 +544,9 @@ def solvepp_doit(COUPLER_options):
 
     return partial_pressures
 
-
-
 #====================================================================
+#====================================================================
+
 def get_column_data_from_SPIDER_lookup_file( infile ):
     '''Load column data from a text file and scale by the specified
     value (by position)'''
@@ -595,9 +574,7 @@ def get_column_data_from_SPIDER_lookup_file( infile ):
 
     return (data_a, size_a)
 
-#====================================================================
 def get_SPIDER_1D_lookup( infile ):
-
     ''' return 1-D lookup object using linear interpolation'''
 
     data_a, size_a = get_column_data_from_SPIDER_lookup_file( infile )
@@ -608,9 +585,7 @@ def get_SPIDER_1D_lookup( infile ):
     lookup_o = interp1d( xx, yy, kind='linear' )
     return lookup_o
 
-#====================================================================
 def get_SPIDER_2D_lookup( infile ):
-
     '''return 2-D lookup object'''
 
     data_a, size_a = get_column_data_from_SPIDER_lookup_file( infile )
@@ -625,9 +600,7 @@ def get_SPIDER_2D_lookup( infile ):
 
     return lookup_o
 
-#====================================================================
 def get_all_output_times( odir='output' ):
-
     '''get all times (in Myrs) from the json files located in the
        output directory'''
     
@@ -653,9 +626,7 @@ def get_all_output_times( odir='output' ):
 
     return time_a
 
-#====================================================================
 def get_all_output_atm_times( odir='output' ):
-
     '''get all times (in Myrs) from the nc files located in the
        output directory'''
 
@@ -687,11 +658,8 @@ def get_all_output_atm_times( odir='output' ):
 
 
 
-#====================================================================
 def get_dict_values_for_times( keys, time_l, indir='output' ):
-
     data_l = []
-
     for time in time_l:
         filename = indir + '/data/{}.json'.format(time)
         myjson_o = MyJSON( filename )
@@ -707,9 +675,7 @@ def get_dict_values_for_times( keys, time_l, indir='output' ):
 
     return data_a
 
-#====================================================================
 def get_dict_surface_values_for_times( keys_t, time_l, indir='output'):
-
     '''Similar to above, but only loop over all times once and get
        all requested (surface / zero index) data in one go'''
 
@@ -737,9 +703,7 @@ def get_dict_surface_values_for_times( keys_t, time_l, indir='output'):
 
     return data_a
 
-#====================================================================
 def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
-
     '''Similar to above, but only loop over all times once and get
        all requested (surface / zero index) data in one go'''
 
@@ -755,9 +719,7 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
     return np.array(data_l)
 
 
-#====================================================================
 def get_deriv_static_structure( z, r, *args ):
-
     '''get derivatives of pressure, mass, and gravity
        returns dp/dr, dm/dr, and dg/dr'''
 
@@ -775,17 +737,13 @@ def get_deriv_static_structure( z, r, *args ):
 
     return [dpdr,dmdr,dgdr]
 
-#====================================================================
 def get_radius_array_static_structure( radius, *myargs ):
-
     R_core = myargs[1]
     num = myargs[4]
 
     return np.linspace(radius,R_core,num)
 
-#====================================================================
 def get_static_structure_for_radius( radius, *myargs ):
-
     '''get static structure (pressure, mass, and gravity) for an
        input radius'''
 
@@ -800,9 +758,7 @@ def get_static_structure_for_radius( radius, *myargs ):
 
     return z
 
-#====================================================================
 def get_difference_static_structure( radius, *myargs ):
-
     '''return root, difference between computed mass or gravity at
        the core-mantle boundary and the desired value'''
 
@@ -819,9 +775,7 @@ def get_difference_static_structure( radius, *myargs ):
     return g_core-G_core
 
 
-#====================================================================
 def check_static_structure( radius, *myargs ):
-
     '''compute relative accuracy of gravity'''
 
     G_core = myargs[3]
@@ -830,12 +784,19 @@ def check_static_structure( radius, *myargs ):
     if reldg > 1.0e-6:
         print( 'WARNING: g relative accuracy= {}'.format(reldg) )
 
-#====================================================================
-def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
 
-    PrintHalfSeparator()
-    print("Running SPIDER...")
-    print("IC_INTERIOR =",COUPLER_options["IC_INTERIOR"])
+
+
+#====================================================================
+def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile, step_sf, atol_sf ):
+    '''
+    Try to run spider with the current configuration.
+    On success, return (True, COUPLER_options)
+    On failure, return (False, {})
+    '''
+
+    step_sf = min(1.0, max(1.0e-10, step_sf))
+    atol_sf = min(1.0e10, max(1.0e-10, atol_sf))
 
     SPIDER_options_file = dirs["output"]+"/init_spider.opts"
     SPIDER_options_file_orig = dirs["utils"]+"/init_spider.opts"
@@ -865,15 +826,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
 
         # Time stepping adjustment
-        if COUPLER_options["spider_repeat"]:
-            # Ask SPIDER to repeat the previous time-step
-            dtmacro = 0
-            dtswitch = 0
-            nsteps = 1
-            print("Time-stepping intent: repeat")
-        
-        
-        elif time_dict["planet"] < 2.0:
+        if time_dict["planet"] < 2.0:
             # First few years, use static time-step
             dtmacro = 1
             dtswitch = 1
@@ -941,14 +894,22 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             else:
                 UpdateStatusfile(dirs, 20)
                 raise Exception("Invalid time-stepping method '%d'" % COUPLER_options["dt_method"])
+            
+            # Additional step-size ceiling when F_crit is used
+            if abs(run_atm.iloc[-1]["F_atm"]) <= COUPLER_options["F_crit"]:
+                dtswitch = min(dtswitch, COUPLER_options["dt_crit"])
+                print("F_atm < F_crit, so time-step is being limited")
 
-            # Step-size floor
-            dtswitch = max(dtswitch, time_dict["planet"]*0.005)         # Relative
-            dtswitch = max(dtswitch, COUPLER_options["dt_minimum"] )    # Absolute
+            # Step scale factor (is always <= 1.0)
+            dtswitch *= step_sf
 
             # Step-size ceiling
             dtswitch = min(dtswitch, COUPLER_options["dt_maximum"] )                    # Absolute
             dtswitch = min(dtswitch, float(time_dict["target"] - time_dict["planet"]))  # Run-over
+
+            # Step-size floor
+            dtswitch = max(dtswitch, time_dict["planet"]*0.005)         # Relative
+            dtswitch = max(dtswitch, COUPLER_options["dt_minimum"] )    # Absolute
 
             # Calculate number of macro steps for SPIDER to perform within
             # this time-step of PROTEUS, which sets the number of json files.
@@ -983,10 +944,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # Set spider flux boundary condition
     net_loss = COUPLER_options["F_atm"]
-    # if len(runtime_helpfile) > 10 and runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]:
-    #     net_loss = np.amax([abs(COUPLER_options["F_atm"]), COUPLER_options["F_eps"]])
-    #     if debug:
-    #         print("Prevent interior oscillations during last-stage freeze-out: F_atm =", COUPLER_options["F_atm"], "->", net_loss)
 
     ### SPIDER base call sequence 
     call_sequence = [   
@@ -1092,8 +1049,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
             print(">>> Lower tsurf_poststep_change poststep changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
 
         if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
-            if "solver_tolerance" not in COUPLER_options:
-                COUPLER_options["solver_tolerance"] = 1.0e-10
             if COUPLER_options["solver_tolerance"] < 1.0e-2:
                 COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
                 print(">>> ADJUST tolerances:", COUPLER_options["solver_tolerance"])
@@ -1103,14 +1058,15 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         # If tolerance was adjusted, restart SPIDER w/ new tolerances
         if "adjust_tolerance" in COUPLER_options:
             print(">>>>> >>>>> RESTART W/ ADJUSTED TOLERANCES")
-            call_sequence.extend(["-ts_sundials_atol", str(COUPLER_options["solver_tolerance"])])
-            call_sequence.extend(["-ts_sundials_rtol", str(COUPLER_options["solver_tolerance"])])
             call_sequence.extend(["-atmosts_snes_atol", str(COUPLER_options["solver_tolerance"])])
             call_sequence.extend(["-atmosts_snes_rtol", str(COUPLER_options["solver_tolerance"])])
             call_sequence.extend(["-atmosts_ksp_atol", str(COUPLER_options["solver_tolerance"])])
             call_sequence.extend(["-atmosts_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
             call_sequence.extend(["-atmosic_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
             call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
+
+    call_sequence.extend(["-ts_sundials_atol", str(COUPLER_options["solver_tolerance"] * atol_sf)])
+    call_sequence.extend(["-ts_sundials_rtol", str(COUPLER_options["solver_tolerance"] * atol_sf)])
 
     # Runtime info
     if debug:
@@ -1126,17 +1082,76 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         spider_print = sys.stdout
     else:
         spider_print = open(dirs["output"]+"spider_recent.log",'w')
+        spider_print.write(call_string+"\n")
 
     proc = subprocess.run([call_string],shell=True,stdout=spider_print)
 
     if not debug:
         spider_print.close()
 
-    if proc.returncode != 0:
-        UpdateStatusfile(dirs, 21)
-        raise Exception("An error occurred when executing SPIDER")
-
     # Update restart filename for next SPIDER run
     COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
 
-    return COUPLER_options
+    # Check status
+    if proc.returncode == 0:
+        # Success
+        return True, COUPLER_options
+    else:
+        # Failure
+        return False, {"failure":True}
+
+
+def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
+    '''
+    Wrapper function for running SPIDER.
+    This wrapper handles cases where SPIDER fails to find a solution.
+    '''
+
+    # info
+    PrintHalfSeparator()
+    print("Running SPIDER...")
+    print("IC_INTERIOR =",COUPLER_options["IC_INTERIOR"])
+
+    # parameters
+    max_attempts = 4        # maximum number of attempts
+    step_sf = 1.0           # step scale factor at attempt 1
+    atol_sf = 1.0           # tolerance scale factor at attempt 1
+
+    # tracking
+    spider_success = False  # success?
+    temp_options = {}       # COUPLER_options dict to be used for attempts
+    attempts = 0            # number of attempts so far
+
+    # make attempts
+    while not spider_success:
+        attempts += 1
+        print("Attempt %d" % attempts)
+
+        # run SPIDER
+        temp_options = copy.deepcopy(COUPLER_options)
+        spider_success, temp_options = _try_spider(time_dict, dirs, temp_options, loop_counter, runtime_helpfile, step_sf, atol_sf)
+
+        if spider_success:
+            # success
+            print("Attempt %d succeeded" % attempts)
+        else:
+            # failure
+            print("Attempt %d failed" % attempts)
+            if attempts > max_attempts:
+                # give up
+                break
+            else:
+                # try again (change tolerance and step size)
+                step_sf *= 0.8 
+                atol_sf *= 4.0
+    
+    # check status
+    if spider_success:
+        # success after some attempts
+        return temp_options
+    else:
+        # failure of all attempts
+        UpdateStatusfile(dirs, 21)
+        raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
+
+

@@ -188,14 +188,6 @@ inputs are provided.
    below this value, flux-change limiters are activated.
    - (Float) Greater than or equal to 0. Set to 0 to disable.
 
-* ``F_eps``
-   - Deprecated.    
-   - (Float) ??
-
-* ``F_diff``
-   - Deprecated.     
-   - (Float) ??
-
 * ``RF_crit``
    - Deprecated.     
    - (Float) ??
@@ -208,20 +200,6 @@ inputs are provided.
    - Flag to ensure that the net upward energy flux is always positive, which
    prevents the star from causing net heating inside the planet.   
    - (Integer) 0: Disabled, 1: Enabled.
-
-* ``limit_pos_flux_change``
-   - Limiter on the positive percentage relative change in upward flux between
-   iterations, which may be necessary for high instellations. Only applies 
-   once the fluxes drop below ``F_crit``.  
-   - (Float) Values greater than or equal to zero. Setting to zero will prevent
-   any positive relative change in the fluxes from one iteration to the next.
-
-* ``limit_neg_flux_change``
-   - Limiter on the negative percentage relative change in upward flux between
-   iterations, which may be necessary for high instellations. Only applies 
-   once the fluxes drop below ``F_crit``.  
-   - (Float) Values greater than or equal to zero. Setting to zero will prevent
-   any negative relative in the fluxes from one iteration to the next.
 
 * ``atmosphere_model``   
    - Atmosphere model used to set T(p) and T_surf.    
@@ -247,15 +225,29 @@ inputs are provided.
    - Number of atmosphere model levels, measured at cell-centres.     
    - (Integer) Greater than 10.
 
+* ``solid_stop``
+   - Flag to toggle the solidification break condition.  
+   - (Integer) 0: Disabled, 1: Enabled.
+
 * ``phi_crit``
-   - Value used for break condition; stop the model once the global melt 
-   fraction drops below this value. This indiciates that the planet has 
-   solidified. Only applies when ``solid_stop`` is enabled.     
+   - Value used for solidification break condition; stop the model once the 
+   global melt fraction drops below this value. This indiciates that the 
+   planet has solidified. Only applies when ``solid_stop`` is enabled.     
    - (Float) Values between zero and unity.    
 
-* ``solid_stop``
-   - Flag to toggle the melt fraction break condition ``phi_crit``.  
+* ``steady_stop``
+   - Flag to toggle the steady-state break condition(s).  
    - (Integer) 0: Disabled, 1: Enabled.
+
+* ``steady_dfrel``
+   - Steady-state break condition on the relative rate of change in outgoing 
+   net flux ``F_atm``. Requires that ``[d(F_atm)/F_atm*100]/dt < steady_dfrel``.
+   - (Float) Values between zero and unity.    
+
+* ``steady_dprel``
+   - Steady-state break condition on the maximum relative rate of change in the
+   surface partial pressures. Requires that ``max[dp/p*100]/dt < steady_dprel``.
+   - (Float) Values between zero and unity.  
 
 * ``N2_partitioning``
    - The melt-vapour partitioning of the N2 volatile is redox-state dependent. 

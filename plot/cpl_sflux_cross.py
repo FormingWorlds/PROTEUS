@@ -59,6 +59,9 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False):
     if (len(files) == 0):
         print("WARNING: No files found when trying to plot stellar flox (crossection)")
         return
+    if (len(files) == 1):
+        print("WARNING: Cannot make sflux_cross plot with only 1 stellar spectrum sample")
+        return
 
     # Arrays for storing data over time
     time_t = []

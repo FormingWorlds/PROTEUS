@@ -8,7 +8,7 @@ from utils.spider import *
 #====================================================================
 
 # Plotting function
-def plot_interior_cmesh(output_dir):
+def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5):
 
     print("Plot interior colourmesh")
 
@@ -38,9 +38,6 @@ def plot_interior_cmesh(output_dir):
         ax.set_ylabel("Pressure, $P$ [GPa]")
     ax4.set_xlabel("Time, $t$ [yr]")
 
-    # Colour mapping
-    cblevels = 40
-    
     # Loop through years to arrange data
     arr_yb  = np.array(MyJSON( output_dir+"/data/%d.json"%sorted_times[-1]).get_dict_values(['data','pressure_b'])) * 1.0E-9
     arr_ys  = np.array(MyJSON( output_dir+"/data/%d.json"%sorted_times[-1]).get_dict_values(['data','pressure_s'])) * 1.0E-9
@@ -67,6 +64,9 @@ def plot_interior_cmesh(output_dir):
         for j in range(nlev_s):
             arr_z4[i,j] = y_ent[j]
 
+    for a in (arr_z1,arr_z2,arr_z3,arr_z4,arr_yb,arr_ys):
+        a = np.array(a,dtype=float)
+
     # Y-axis ticks
     yticks = np.linspace(arr_yb[0],arr_ys[-1],4)
     yticks = [round(v) for v in yticks]
@@ -85,42 +85,60 @@ def plot_interior_cmesh(output_dir):
     cmap = sci_colormaps['lajolla_r']
     cax = make_axes_locatable(ax1).append_axes('right', size='5%', pad=0.05)
     norm = mpl.colors.Normalize(vmin=np.amin(arr_z1), vmax=np.amax(arr_z1))
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
-    ax1.contourf(sorted_times, arr_yb, arr_z1.T, cmap=cmap, norm=norm, levels=cblevels)
-    fig.colorbar(sm, cax=cax, orientation='vertical').set_label("Temperature [K]") 
+    if use_contour:
+        cf = ax1.contourf(sorted_times, arr_yb, arr_z1.T, cmap=cmap, norm=norm, levels=cblevels)
+    else:
+        cf = ax1.pcolormesh(sorted_times, arr_yb, arr_z1.T, cmap=cmap, norm=norm, rasterized=True)
+    cb = fig.colorbar(cf, cax=cax, orientation='vertical')
+    cb.set_label("Temperature [K]") 
+    cb.set_ticks([float(round(v, -2)) for v in np.linspace(np.amin(arr_z1), np.amax(arr_z1), numticks)])
+
 
     # Plot melt fraction
     cmap = sci_colormaps['grayC_r']
     cax = make_axes_locatable(ax2).append_axes('right', size='5%', pad=0.05)
-    norm = mpl.colors.Normalize(vmin=0.0, vmax=1.0)
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
-    ax2.contourf(sorted_times, arr_yb, arr_z2.T, cmap=cmap, norm=norm, levels=cblevels)
-    fig.colorbar(sm, cax=cax, orientation='vertical').set_label("Melt fraction")
+    norm = mpl.colors.Normalize(vmin=0.0, vmax=1.0, clip=True)
+    if use_contour:
+        cf = ax2.contourf(sorted_times, arr_yb, arr_z2.T, cmap=cmap, norm=norm, levels=np.linspace(0.0, 1.0, cblevels))
+    else:
+        cf = ax2.pcolormesh(sorted_times, arr_yb, arr_z2.T, cmap=cmap, norm=norm, rasterized=True)
+    cb = fig.colorbar(cf, cax=cax, orientation='vertical')
+    cb.set_label("Melt fraction")
+    cb.set_ticks(list(np.linspace(0.0,1.0,numticks)))
 
     # Plot viscosity
     cmap = sci_colormaps['imola_r']
     cax = make_axes_locatable(ax3).append_axes('right', size='5%', pad=0.05)
-    if np.amax(arr_z3) > 100*np.amin(arr_z3):
+    if (np.amax(arr_z3) > 100.0*np.amin(arr_z3)):
         norm = mpl.colors.LogNorm(vmin=np.amin(arr_z3), vmax=np.amax(arr_z3))
+        cbticks = [int(v) for v in np.linspace( np.log10(np.amin(arr_z3)), np.log10(np.amax(arr_z3)), numticks)]
+        cbticks = [10.0**float(v) for v in cbticks]
     else:
         norm = mpl.colors.Normalize(vmin=np.amin(arr_z3), vmax=np.amax(arr_z3))
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
-    ax3.contourf(sorted_times, arr_yb, arr_z3.T, cmap=cmap, norm=norm, levels=cblevels)
-    fig.colorbar(sm, cax=cax, orientation='vertical').set_label("Viscosity [Pa s]") 
+        cbticks = [float(int(v)) for v in np.linspace(np.amin(arr_z3), np.amax(arr_z3), numticks)]
+    if use_contour:
+        cf = ax3.contourf(sorted_times, arr_yb, arr_z3.T, cmap=cmap, norm=norm, levels=cblevels)
+    else:
+        cf = ax3.pcolormesh(sorted_times, arr_yb, arr_z3.T, cmap=cmap, norm=norm, rasterized=True)
+    cb = fig.colorbar(cf, cax=cax, orientation='vertical')
+    cb.set_label("Viscosity [Pa s]") 
+    if len(cb.get_ticks()) > numticks:
+        cb.set_ticks(sorted(list(set(cbticks))))
     
     # Plot entropy
     cmap = sci_colormaps['acton']
     cax = make_axes_locatable(ax4).append_axes('right', size='5%', pad=0.05)
     norm = mpl.colors.Normalize(vmin=np.amin(arr_z4), vmax=np.amax(arr_z4))
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
-    ax4.contourf(sorted_times, arr_ys, arr_z4.T, cmap=cmap, norm=norm, levels=cblevels)
-    fig.colorbar(sm, cax=cax, orientation='vertical').set_label("Sp. entropy [J K$^{-1} $kg$^{-1}$]")
+    if use_contour:
+        cf = ax4.contourf(sorted_times, arr_ys, arr_z4.T, cmap=cmap, norm=norm, levels=cblevels)
+    else:
+        cf = ax4.pcolormesh(sorted_times, arr_ys, arr_z4.T, cmap=cmap, norm=norm, rasterized=True)
+    cb = fig.colorbar(cf, cax=cax, orientation='vertical')
+    cb.set_label("Sp. entropy [J K$^{-1} $kg$^{-1}$]")
+    cb.set_ticks([float(round(v, -1)) for v in np.linspace(np.amin(arr_z4), np.amax(arr_z4), numticks)])
 
     # Save plot
+    ax4.set_xticks(np.linspace(sorted_times[0], sorted_times[-1], 5))
     fname = os.path.join(output_dir,"plot_interior_cmesh.pdf")
     fig.subplots_adjust(top=0.98, bottom=0.07, right=0.85, left=0.13, hspace=0.11)
     fig.savefig(fname, transparent=True)

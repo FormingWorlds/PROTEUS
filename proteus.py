@@ -46,7 +46,8 @@ def main():
 
     os.chdir(dirs["coupler"])
 
-    print("Current time:     "+datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    start_time = datetime.now()
+    print("Current time:     "+start_time.strftime('%Y-%m-%d_%H:%M:%S'))
     print("Hostname:         " + str(os.uname()[1]))
     print("Output directory: %s" % dirs["output"])
 
@@ -62,7 +63,7 @@ def main():
                     "atm_loops":  20,      # Maximum number of atmosphere sub-iters
 
                     "steady": 0,           # Number of iterations passed since steady-state declared
-                    "steady_loops": 8      # Number of steady-state iterations to perform
+                    "steady_loops": 2      # Number of steady-state iterations to perform
                     }
     
     # Check options are compatible
@@ -142,7 +143,7 @@ def main():
 
                 # This volatile calculated by solvepp
                 if s in solvepp_dict:
-                    if solvepp_dict[s] > 1e-1:
+                    if solvepp_dict[s] > 1e-3:
                         COUPLER_options[key_in] = 1
                         COUPLER_options[key_pp] = solvepp_dict[s]
                     else:
@@ -174,7 +175,7 @@ def main():
             # Check positive
             if (COUPLER_options[key_pp] <= 0.0):
                 UpdateStatusfile(dirs, 20)
-                raise Exception("Partial pressures of included volatiles must be positive. Consider assigning volatile '%s' a small positive value. Check that solvepp_enabled has the intended setting." % v)
+                raise Exception("Partial pressures of included volatiles must be positive. Consider assigning volatile '%s' a small positive value. Check that solvepp_enabled has the intended setting." % s)
 
             # Ensure numerically reasonable
             if (COUPLER_options[key_pp] <= 1e-3):
@@ -209,8 +210,6 @@ def main():
             UpdateStatusfile(dirs, 20)
             raise Exception("Invalid stellar model '%d'" % COUPLER_options['star_model'])
     
-    COUPLER_options["spider_repeat"] = False
-
     # Main loop
     UpdateStatusfile(dirs, 1)
     while time_dict["planet"] < time_dict["target"]:
@@ -241,7 +240,7 @@ def main():
                         S_0 = BaraffeSolarConstant(time_dict, COUPLER_options, track)
 
                 # Calculate new eqm temperature
-                T_eqm_new = calc_eqm_temperature(S_0,  COUPLER_options["albedo_pl"])
+                T_eqm_new = calc_eqm_temperature(S_0, COUPLER_options["asf_scalefactor"], COUPLER_options["albedo_pl"])
                 
                 # Get old eqm temperature
                 if (loop_counter["total"] > 0):
@@ -395,41 +394,33 @@ def main():
             break
 
         # Determine when the simulation when planet enters a steady state (if it ever does)
-        if (COUPLER_options["steady_stop"] == 1) and (loop_counter["total"] > 20):
+        if (COUPLER_options["steady_stop"] == 1) and (loop_counter["total"] > 20) and (loop_counter["steady"] == 0):
             # How many iterations to look backwards
-            lb1 = -10
+            lb1 = -20
             lb2 = -1
 
             # Time samples
             t1 = runtime_helpfile.iloc[lb1]["Time"]
             t2 = runtime_helpfile.iloc[lb2]["Time"]
 
-            # Check flux (relative percentage change per year)
+            # Check flux (average abs value across time must be small)
             F_atm_1 = runtime_helpfile.iloc[lb1]["F_atm"]
             F_atm_2 = runtime_helpfile.iloc[lb2]["F_atm"] 
-            F_atm_r = abs( (F_atm_2 - F_atm_1) / F_atm_1) * 100.0 / (t2 - t1)
+            F_atm_m = 0.5 * abs( F_atm_1 + F_atm_2 )
 
-            # Check partial pressure (maximum relative percentage change per year, across all volatiles)
-            v_bar_1 = 1.0e-30
-            v_bar_2 = 1.0e-30
-            v_max_r = 0.0
-            v_max_r_test = 0.0
-            for v in volatile_species:
-                v_bar_1 = runtime_helpfile.iloc[lb1]["%s_atm_bar"%v]
-                v_bar_2 = runtime_helpfile.iloc[lb2]["%s_atm_bar"%v]
-                if (v_bar_1 < 1.0e-10) or (v_bar_2 < 1.0e-10):
-                    continue
-                v_max_r_test = abs( (v_bar_2 - v_bar_1) / v_bar_1) * 100.0 / (t2 - t1)
-                v_max_r = max(v_max_r, v_max_r_test)
+            # Check melt fraction (relative change per year must be small)
+            phi_1 =  runtime_helpfile.iloc[lb1]["Phi_global"]
+            phi_2 =  runtime_helpfile.iloc[lb2]["Phi_global"]
+            phi_r = abs( (phi_2 - phi_1) / phi_1) * 100.0 / (t2 - t1)
 
             # Enable countdown (countup?) for stopping the loop
-            if (F_atm_r < COUPLER_options["steady_dfrel"]) and (v_max_r < COUPLER_options["steady_dprel"]):
+            if (F_atm_m < COUPLER_options["steady_flux"]) and (phi_r < COUPLER_options["steady_dprel"]):
                 print("Steady state declared")
                 loop_counter["steady"] = 1
 
         # Steady-state count
         if loop_counter["steady"] > 0:
-            if loop_counter["steady"] < loop_counter["steady_loops"]:
+            if loop_counter["steady"] <= loop_counter["steady_loops"]:
                 loop_counter["steady"] += 1
             else:
                 UpdateStatusfile(dirs, 11)
@@ -452,7 +443,10 @@ def main():
 
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options, end=True)
-    print("Simulation completed at "+datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+    end_time = datetime.now()
+    run_time = end_time - start_time
+    print("Simulation completed at: "+end_time.strftime('%Y-%m-%d_%H:%M:%S'))
+    print("Total runtime: %.2f hours" % ( run_time.total_seconds()/(60.0 * 60.0)  ))
 
 #====================================================================
 if __name__ == '__main__':

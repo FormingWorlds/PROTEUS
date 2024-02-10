@@ -31,8 +31,8 @@ atm_chemistry.pdf
 .vscode
 Mors/fs255_grid
 screenlog.0
-tools/analyse.py
-tools/analyse.ipynb
+tools/nogit_*.py
+tools/nogit_*.ipynb
 
 
 # From Read the Docs

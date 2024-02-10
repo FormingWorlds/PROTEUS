@@ -73,34 +73,26 @@ def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
 
             COUPLER_options["flux_convergence"] = 2
 
-            # In case last atm T_surf from flux convergence scheme was smaller(!) than threshold 
-            if abs(COUPLER_options["F_net"]) < COUPLER_options["F_eps"]:
-                
-                COUPLER_options["T_surf"] = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].iloc[-1]["T_surf"]
-                print("Use previous T_surf =", COUPLER_options["T_surf"])
+            # Last T_surf and time from atmosphere, K
+            t_curr          = runtime_helpfile.iloc[-1]["Time"]
+            run_atm         = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']
+            run_atm_prev    = run_atm.loc[run_atm['Time'] != t_curr]
+            run_atm_curr    = run_atm.loc[run_atm['Time'] == t_curr]
+            t_previous_atm  = run_atm_prev.iloc[-1]["Time"]
+            Ts_previous_atm = run_atm_prev.iloc[-1]["T_surf"]
+            Ts_last_atm     = run_atm.iloc[-1]["T_surf"]
 
-            else:
+            print("F_net", str(COUPLER_options["F_net"]), "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm", Ts_last_atm, "dTs_atm", str(COUPLER_options["dTs_atm"]), "t_curr", t_curr, "t_previous_atm", t_previous_atm)
 
-                # Last T_surf and time from atmosphere, K
-                t_curr          = runtime_helpfile.iloc[-1]["Time"]
-                run_atm         = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere']
-                run_atm_prev    = run_atm.loc[run_atm['Time'] != t_curr]
-                run_atm_curr    = run_atm.loc[run_atm['Time'] == t_curr]
-                t_previous_atm  = run_atm_prev.iloc[-1]["Time"]
-                Ts_previous_atm = run_atm_prev.iloc[-1]["T_surf"]
-                Ts_last_atm     = run_atm.iloc[-1]["T_surf"]
+            # Apply flux convergence via shallow layer function
+            COUPLER_options["T_surf"] = shallow_mixed_ocean_layer(COUPLER_options["F_net"], Ts_previous_atm, COUPLER_options["dTs_atm"], t_curr, t_previous_atm)
 
-                print("F_net", str(COUPLER_options["F_net"]), "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm", Ts_last_atm, "dTs_atm", str(COUPLER_options["dTs_atm"]), "t_curr", t_curr, "t_previous_atm", t_previous_atm)
+            # Prevent atmospheric oscillations
+            if len(run_atm_curr) > 2 and (np.sign(run_atm_curr["F_net"].iloc[-1]) != np.sign(run_atm_curr["F_net"].iloc[-2])) and (np.sign(run_atm_curr["F_net"].iloc[-2]) != np.sign(run_atm_curr["F_net"].iloc[-3])):
+                COUPLER_options["T_surf"] = np.mean([run_atm.iloc[-1]["T_surf"], run_atm.iloc[-2]["T_surf"]])
+                print("Prevent oscillations, new T_surf =", COUPLER_options["T_surf"])
 
-                # Apply flux convergence via shallow layer function
-                COUPLER_options["T_surf"] = shallow_mixed_ocean_layer(COUPLER_options["F_net"], Ts_previous_atm, COUPLER_options["dTs_atm"], t_curr, t_previous_atm)
-
-                # Prevent atmospheric oscillations
-                if len(run_atm_curr) > 2 and (np.sign(run_atm_curr["F_net"].iloc[-1]) != np.sign(run_atm_curr["F_net"].iloc[-2])) and (np.sign(run_atm_curr["F_net"].iloc[-2]) != np.sign(run_atm_curr["F_net"].iloc[-3])):
-                    COUPLER_options["T_surf"] = np.mean([run_atm.iloc[-1]["T_surf"], run_atm.iloc[-2]["T_surf"]])
-                    print("Prevent oscillations, new T_surf =", COUPLER_options["T_surf"])
-
-                print("dTs_atm (K):", COUPLER_options["dTs_atm"], "t_previous_atm:", t_previous_atm, "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm:", Ts_last_atm, "t_curr:", t_curr, "Ts_curr:", COUPLER_options["T_surf"])
+            print("dTs_atm (K):", COUPLER_options["dTs_atm"], "t_previous_atm:", t_previous_atm, "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm:", Ts_last_atm, "t_curr:", t_curr, "Ts_curr:", COUPLER_options["T_surf"])
 
             PrintHalfSeparator()
 
@@ -157,8 +149,9 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
 
     atm.zenith_angle    = COUPLER_options["zenith_angle"]
     atm.albedo_pl       = COUPLER_options["albedo_pl"]
+    atm.inst_sf         = COUPLER_options["asf_scalefactor"]
     atm.albedo_s        = COUPLER_options["albedo_s"]
-    atm.toa_heating     = COUPLER_options["F_ins"] * COUPLER_options["asf_scalefactor"] * (1- COUPLER_options["albedo_pl"])
+    atm.instellation    = COUPLER_options["F_ins"]
     atm.skin_d          = COUPLER_options["skin_d"]
     atm.skin_k          = COUPLER_options["skin_k"]
 
@@ -215,7 +208,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
             atm = MCPA(dirs, atm, False, trppD, rscatter)
 
         elif COUPLER_options["atmosphere_surf_state"] == 2: # conductive lid
-            from AEOLUS.modules.solve_pt import MCPA_CL
+            from AEOLUS.modules.solve_pt import MCPA_CBL
 
             T_surf_max = -1
             T_surf_old = -1 
@@ -232,11 +225,10 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
                     run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
                     T_surf_max = run_atm.iloc[-1]["T_surf"]
 
-            atm = MCPA_CL(dirs, atm, trppD, rscatter, 
+            atm = MCPA_CBL(dirs, atm, trppD, rscatter, 
                           atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old), T_surf_max=float(T_surf_max))
             
             COUPLER_options["T_surf"] = atm.ts
-            # COUPLER_options["spider_repeat"] = not COUPLER_options["spider_repeat"] # Do a step of dt=0 once
 
         else:
             UpdateStatusfile(dirs, 20)
@@ -254,11 +246,14 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
 
     print("SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
 
-    # plot_fluxes_atmosphere(atm, dirs["output"]+"/fluxes.pdf")
-
     # Save atm data to disk
     nc_fpath = dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.nc"
     atm.write_ncdf(nc_fpath)
+
+    # Check for NaNs
+    if not np.isfinite(atm.net_flux).all():
+        UpdateStatusfile(dirs, 23)
+        raise Exception("AEOLUS output array contains NaN or Inf values")
 
     # Store new flux
     if (COUPLER_options["F_atm_bc"] == 0):
@@ -266,23 +261,9 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
     else:
         F_atm_new = atm.net_flux[-1]  
 
-    # Flux change limiters
-    F_atm_lim = F_atm_new
-    if (time_dict["planet"] > 3):
-
-        run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
-        F_atm_old = run_atm.loc[run_atm['Time'] != time_dict["planet"]].iloc[-1]["F_atm"]
-
-        if (F_atm_old < COUPLER_options["F_crit"]):
-            rel_max = abs(COUPLER_options["limit_pos_flux_change"])/100.0
-            F_atm_lim = min(F_atm_lim, (1+rel_max) * F_atm_old)
-
-            rel_max = abs(COUPLER_options["limit_neg_flux_change"])/100.0
-            F_atm_lim = max(F_atm_lim, (1-rel_max) * F_atm_old)
-
     # Require that the net flux must be upward
     if (COUPLER_options["prevent_warming"] == 1):
-        F_atm_lim = max( 1.0e-8 , F_atm_lim )
+        F_atm_lim = max( 1.0e-8 , F_atm_new )
 
     # Print if a limit was applied
     if (F_atm_lim != F_atm_new ):

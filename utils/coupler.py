@@ -346,9 +346,9 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
     return runtime_helpfile, time_dict, COUPLER_options
 
-# Calculate eqm temperature given stellar flux and bond albedo
-def calc_eqm_temperature(I_0, A_B):
-    return (I_0 * (1.0 - A_B) / (4.0 * const_sigma))**(1.0/4.0)
+# Calculate eqm temperature given stellar flux, ASF scale factor, and bond albedo
+def calc_eqm_temperature(I_0, ASF_sf, A_B):
+    return (I_0 * ASF_sf * (1.0 - A_B) / const_sigma)**(1.0/4.0)
 
 
 def ReadInitFile( init_file_passed , verbose=False):

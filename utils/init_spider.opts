@@ -1,8 +1,8 @@
 # Default spider options file for use with PROTEUS
 
 # tolerances
--ts_sundials_atol 1.0e-10
--ts_sundials_rtol 1.0e-10
+#-ts_sundials_atol 1.0e-10
+#-ts_sundials_rtol 1.0e-10
 
 # mesh
 -n 200
@@ -11,7 +11,6 @@
 
 -activate_poststep
 -activate_rollback
--tsurf_poststep_change 1050
 
 # all units are SI unless indicated otherwise
 

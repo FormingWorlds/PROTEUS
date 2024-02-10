@@ -62,6 +62,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     mr_str = mr_str[:-1]
     mr_str += "\""
     if mrzero:
+        UpdateStatusfile(dirs, 20)
         raise Exception("All volatiles have a volume mixing ratio of zero")
 
     # Setup call sequence with base flags
@@ -98,6 +99,8 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         call_sequence.append("--ini_sat")
     else:
         # Solving for RCE
+        call_sequence.append("--ini_iso %1.5e" % float(COUPLER_options["T_surf"]-400.0))
+        call_sequence.append("--dtsolve")
         call_sequence.append("--nlsolve")
 
         # Start from previous CSV file?
@@ -107,8 +110,6 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         #     call_sequence.append("--pt_path %s" % csv_fpath)
         # else :
         #     call_sequence.append("--dtsolve")
-        if (time_dict["planet"] < 1):
-            call_sequence.append("--dtsolve")
 
     # Tropopause
     if not load_prev:
@@ -118,6 +119,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
             case 1:
                 call_sequence.append("--trppt %1.5e" % COUPLER_options["T_skin"])
             case _:
+                UpdateStatusfile(dirs, 20)
                 raise Exception("Tropopause type not supported by AGNI")
             
     # Surface condition
@@ -132,17 +134,15 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
         # Conductive skin case
         if surf_state == 2:
-            
             if COUPLER_options["atmosphere_solve_energy"] == 0:
+                UpdateStatusfile(dirs, 20)
                 raise Exception("It is necessary to an energy-conserving solver alongside the conductive lid scheme! Turn them both on or both off.")
             
             call_sequence.append("--skin_k %1.6e" % COUPLER_options["skin_k"])
             call_sequence.append("--skin_d %1.6e" % COUPLER_options["skin_d"])
-            
-        else:
-            call_sequence.append("--tstar_enforce")  # do not allow pt_path to overwrite tstar
 
     else:
+        UpdateStatusfile(dirs, 20)
         raise Exception("Invalid surface state %d" % surf_state)
 
     # Misc flags
@@ -158,8 +158,12 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
     # Run AGNI
     call_string = " ".join(call_sequence)
+
     agni_print = open(dirs["output"]+"agni_recent.log",'w')
+    agni_print.write(call_string+" \n")
+
     proc = subprocess.run([call_string], shell=True, stdout=sys.stdout, stderr=agni_print)
+    
     agni_print.close()
     if proc.returncode != 0:
         UpdateStatusfile(dirs, 22)

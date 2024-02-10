@@ -31,7 +31,7 @@ def CommentFromStatus(status:int):
         case 11: desc = "Completed (steady-state)"
         case 12: desc = "Completed (maximum iterations)"
         # Error cases
-        case 20: desc = "Error (generic)"
+        case 20: desc = "Error (generic/configuration)"
         case 21: desc = "Error (SPIDER)"
         case 22: desc = "Error (AGNI)"
         case 23: desc = "Error (AEOLUS)"
