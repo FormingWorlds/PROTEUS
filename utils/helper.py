@@ -35,6 +35,7 @@ def CommentFromStatus(status:int):
         case 21: desc = "Error (SPIDER)"
         case 22: desc = "Error (AGNI)"
         case 23: desc = "Error (AEOLUS)"
+        case 24: desc = "Error (VULCAN)"
         # Default case
         case _:
             desc = "UNHANDLED STATUS"

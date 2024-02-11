@@ -10,16 +10,15 @@ def summarise(pgrid_dir:str, opts:list):
     if (not os.path.exists(pgrid_dir)) or (not os.path.isdir(pgrid_dir)):
         raise Exception("Invalid path '%s'" % pgrid_dir)
     
-    pgrid_dir = os.path.abspath(pgrid_dir)
-    print("Pgrid folder '%s'" % pgrid_dir)
 
     # Find folders
+    pgrid_dir = os.path.abspath(pgrid_dir)
     case_dirs = glob.glob(pgrid_dir + "/case_*")
     N = len(case_dirs)
-    print("Found %d cases" % N)
+    print("Found %d cases in '%s'" % (N,pgrid_dir))
 
     # Statuses
-    # Check utils.helper.CommentFromStatus() for information on error codes
+    # Check `utils.helper.CommentFromStatus` for information on error codes
     status = np.full(N, -1, dtype=int)
     cmmnts = np.full(N, "", dtype=str)
     for i in range(N):
@@ -53,10 +52,12 @@ def summarise(pgrid_dir:str, opts:list):
     }
     for o in opts:
         o = str(o).lower()
+        matched = False
 
         # general cases
         for g in gen_cases.keys():  # for each general case
             if o == g.lower():
+                matched = True
                 print("%s cases:" % g)
                 e_any = False
                 for i in range(N):  # for each grid point
@@ -69,6 +70,7 @@ def summarise(pgrid_dir:str, opts:list):
 
         # code cases
         if "code" in o:
+            matched = True
             code = int(o.replace(" ","").split("=")[-1])
             print("Code %d cases:" % code)
             e_any = False
@@ -79,27 +81,37 @@ def summarise(pgrid_dir:str, opts:list):
             if not e_any:
                 print("  (None)")
 
+        if not matched:
+            print("Invalid status category '%s'" % o)
+
+def print_help():
+   
+    print("Command usage: GridSummarise.py [fold] (opt1) (opt2) (opt3) ...")
+    print("    [fold] = path to Pgrid output folder, required")
+    print("    [optN] = status categories to print, optional")
+    print("             'completed', 'running', 'error', or 'code=[c]' for some error code [c]")
+    exit(1)
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
+
+    # Check syntax
+    if (len(sys.argv) < 2):
         print("Invalid number of arguments!")
-        print("Command usage: GridSummarise.py [fold] (opt1) (opt2) (opt3) ...")
-        print("    [fold] = path to Pgrid output folder, required")
-        print("    [optN] = extra information to print, optional")
-        print("             'completed', 'running', 'error', 'code=[c]' for some error code [c]")
+        print_help()
         exit(1)
+    if  (len(sys.argv) == 2) and (sys.argv[1].strip().lower() == "help"):
+        print_help()
+        exit(0)
     
-    # folder 
+    # Grid folder 
     fold = sys.argv[1]
 
-    # default options
+    # Extra requested status categories
     opts = []  
-
-    # extra options
     if len(sys.argv) > 2:
         for o in sys.argv[2:]:
             opts.append(str(o))
 
-    # get summary
+    # Get the summary
     summarise(fold, opts)
     exit(0)

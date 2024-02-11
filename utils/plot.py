@@ -128,6 +128,12 @@ dict_colors  = {
     "qyellow_light"  : "#f1ca70",
 }
 
+dict_colors["OLR"] = "crimson"
+dict_colors["ASF"]  = "royalblue"
+dict_colors["sct"] = "seagreen" # scattering
+dict_colors["atm"] = dict_colors["qgray"]
+dict_colors["int"] = dict_colors["qorange"]
+
 # Volatile Latex names
 vol_latex = {
     "H2O"     : r"H$_2$O",

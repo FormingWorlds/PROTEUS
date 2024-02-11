@@ -270,8 +270,9 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
         print("Change in F_atm [W m-2] limited in this step!")
         print("    %g  ->  %g" % (F_atm_new , F_atm_lim))
             
-    COUPLER_options["F_atm"] = F_atm_lim
-    COUPLER_options["F_olr"] = atm.LW_flux_up[0]
+    COUPLER_options["F_atm"] = F_atm_lim         # Net flux at TOA
+    COUPLER_options["F_olr"] = atm.LW_flux_up[0] # OLR
+    COUPLER_options["F_sct"] = atm.SW_flux_up[0] # Scattered SW flux
 
     return COUPLER_options
 

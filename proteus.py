@@ -440,6 +440,10 @@ def main():
 
 
         ############### / LOOP ITERATION MANAGEMENT
+            
+    # Check if model exited early 
+    if loop_counter["total"] < 30:
+        print("WARNING: model exited very early - possible misconfiguration")
 
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options, end=True)

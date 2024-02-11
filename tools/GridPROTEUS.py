@@ -12,7 +12,7 @@ if COUPLER_DIR == None:
 # Object for handling the parameter grid
 class Pgrid():
 
-    def __init__(self, name:str, base_config_path:str, symlink_dir:str=""):
+    def __init__(self, name:str, base_config_path:str, symlink_dir:str="UNSET"):
 
         # Pgrid's own name (for versioning, etc.)
         self.name = str(name)
@@ -34,7 +34,7 @@ class Pgrid():
                 shutil.rmtree(self.outdir)
         
         # Create new output location
-        if len(symlink_dir) == 0:
+        if (symlink_dir == "UNSET"):
             # Not using symlink
             os.makedirs(self.outdir)
         else:
@@ -286,8 +286,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.getenv('COUPLER_DIR')+"/input/earth_gridtest.cfg"
-    symlink  = "/local/scratch/nichollsh/proteus_output/pgrid_earth_gridtest_11"
-    pg = Pgrid("earth_gridtest_11", cfg_base, symlink_dir=symlink)
+    symlink  = "/local/scratch/nichollsh/proteus_output/pgrid_earth_gridtest_12"
+    pg = Pgrid("earth_gridtest_12", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -298,16 +298,14 @@ if __name__=='__main__':
     #                                     })
 
     pg.add_dimension("Orbital separation")
-    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.1, 0.2, 0.3, 0.4, 0.5, 1.0])
+    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.1, 0.3, 0.5, 1.0, 3.0])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-3.0, 0.0, 6.0])
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-3.0, 0.0, 3.0, 6.0])
 
     pg.add_dimension("C/H ratio")
-    pg.set_dimension_direct("C/H ratio", "CH_ratio", [0.01, 2.0])
+    pg.set_dimension_direct("C/H ratio", "CH_ratio", [0.01, 0.1, 1.0, 2.0])
 
-    pg.add_dimension("Tropopause")
-    pg.set_dimension_direct("Tropopause", "tropopause", [0,1])
     
     # -----
     # Print state of parameter grid

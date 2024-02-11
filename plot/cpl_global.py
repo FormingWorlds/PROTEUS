@@ -148,12 +148,12 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         Time_int_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
         Fatm_atm_rolling = np.convolve(df_atm["F_atm"], np.ones((nsteps,))/nsteps, mode='valid')
         Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
-        ax0.plot( Time_int_rolling, Fatm_int_rolling, color=dict_colors["qred"], lw=lw )
-        ax0.plot( Time_atm_rolling, Fatm_atm_rolling, color=dict_colors["qgray"], lw=lw )
+        ax0.plot( Time_int_rolling, Fatm_int_rolling, color=dict_colors["int"], lw=lw )
+        ax0.plot( Time_atm_rolling, Fatm_atm_rolling, color=dict_colors["atm"], lw=lw )
     else:
         # ax0.plot( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
-        ax0.plot( df_atm["Time"], df_atm["F_int"], color=dict_colors["qred"], lw=lw, alpha=1.0 )
-        ax0.plot( df_atm["Time"], df_atm["F_atm"], color=dict_colors["qgray"], lw=lw, alpha=1.0 )
+        ax0.plot( df_atm["Time"], df_atm["F_int"], color=dict_colors["int"], lw=lw, alpha=1.0 )
+        ax0.plot( df_atm["Time"], df_atm["F_atm"], color=dict_colors["atm"], lw=lw, alpha=1.0 )
 
     ax0.axhline(y=0, color='black', lw=0.8)
       
@@ -185,13 +185,13 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
         Ts_atm_rolling = np.convolve(df_atm["T_surf"], np.ones((nsteps,))/nsteps, mode='valid')
         
-        h2, = ax1.plot(Time_int_rolling, Ts_int_rolling,                color=dict_colors["qred"],  label="Int.")
-        h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-", lw=lw, color=dict_colors["qgray"], label="Atm.") # , color="blue"
+        h2, = ax1.plot(Time_int_rolling, Ts_int_rolling,                color=dict_colors["int"],  label="Int.")
+        h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-", lw=lw, color=dict_colors["atm"], label="Atm.") # , color="blue"
     else:
         # if not logt:
         #     ax1.scatter(df_int["Time"], df_int["T_surf"],color=dict_colors["qred"], alpha=0.5, s=20, marker='x')
-        h2, = ax1.plot(df_int["Time"], df_int["T_surf"], ls="dashed", lw=lw, color=dict_colors["qred"],  label="Int.")
-        h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-",      lw=lw, color=dict_colors["qgray"], label="Atm.")
+        h2, = ax1.plot(df_int["Time"], df_int["T_surf"], ls="dashed", lw=lw, color=dict_colors["int"],  label="Int.")
+        h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-",      lw=lw, color=dict_colors["atm"], label="Atm.")
         
     ymin = 500
     ymax = 3500
@@ -217,8 +217,8 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 
     # Plot rheological front depth, mante melt + solid fraction
     ax2.axhline( y=COUPLER_options["planet_coresize"], ls='dashed', lw=lw*1.5, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
-    ax2.plot( df_int["Time"], 1.0-df_int["RF_depth"],   color=dict_colors["qgray"], ls="solid",    lw=lw, label=r'Rheol. front')
-    ax2.plot( df_int["Time"],     df_int["Phi_global"], color=dict_colors["qblue"], linestyle=':', lw=lw, label=r'Melt fraction')
+    ax2.plot( df_int["Time"], 1.0-df_int["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, label=r'Rheol. front')
+    ax2.plot( df_int["Time"],     df_int["Phi_global"], color=dict_colors["atm"], linestyle=':', lw=lw, label=r'Melt fraction')
 
     # ax2.plot( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
     # ax2.plot( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')

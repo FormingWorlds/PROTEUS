@@ -37,24 +37,18 @@ def latex_float(f):
         return float_str
 
 def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options):
-
-    # Print final statement
     PrintHalfSeparator()
     print("Runtime info...")
-    print("    Datetime:            %s"   % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
-    print("    Time [yr]:           %.1e" % float(time_dict["planet"]))
-    print("    T_surf [K]:          %.1f" % float(runtime_helpfile.iloc[-1]["T_surf"]))
-    print("    P_surf [bar]:        %.1f" % float(runtime_helpfile.iloc[-1]["P_surf"]))
-    print("    Phi_global:          %.3f" % float(runtime_helpfile.iloc[-1]["Phi_global"]))
-    print("    Star flux [W/m^2]:   %.3e" % float(COUPLER_options["F_ins"]))
-    print("    F_int [W/m^2]:       %.3e" % float(COUPLER_options["F_int"]))
-    print("    F_atm [W/m^2]:       %.3e" % float(COUPLER_options["F_atm"])) 
-    print("    F_net [W/m^2]:       %.3e" % float(COUPLER_options["F_net"]))
-    print("    Last file name:      %s "  % str(COUPLER_options["ic_interior_filename"]))
-
-    print("Helpfile properties:")
-    print(runtime_helpfile.tail(4))
-
+    print("    System time  :   %s  "           % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
+    print("    Model time   :   %.3e   [yr]"    % float(time_dict["planet"]))
+    print("    T_surf       :   %.3f   [K]"     % float(runtime_helpfile.iloc[-1]["T_surf"]))
+    print("    P_surf       :   %.3f   [bar]"   % float(runtime_helpfile.iloc[-1]["P_surf"]))
+    print("    Phi_global   :   %.3f  "         % float(runtime_helpfile.iloc[-1]["Phi_global"]))
+    print("    Instellation :   %.3e   [W/m^2]" % float(COUPLER_options["F_ins"]))
+    print("    F_int        :   %.3e   [W/m^2]" % float(COUPLER_options["F_int"]))
+    print("    F_atm        :   %.3e   [W/m^2]" % float(COUPLER_options["F_atm"])) 
+    print("    F_net        :   %.3e   [W/m^2]" % float(COUPLER_options["F_net"]))
+    print("    Last file    :   %s "            % str(COUPLER_options["ic_interior_filename"]))
 
 
 def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options):
@@ -64,7 +58,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
     # If runtime_helpfile not existent, create it + write to disk
     if not os.path.isfile(dirs["output"]+"/"+runtime_helpfile_name):
-        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'R_star', 'T_surf', 'T_eqm', 'F_int', 'F_atm', 'F_net', 'F_olr', 'F_ins', 'P_surf', 'M_atm', 'M_atm_kgmol', 'Phi_global', 'RF_depth', 'M_mantle', 'M_core', 'M_mantle_liquid', 'M_mantle_solid', 'H_mol_atm', 'H_mol_solid', 'H_mol_liquid', 'H_mol_total', 'O_mol_total', 'C_mol_total', 'N_mol_total', 'S_mol_total', 'He_mol_total', 'O/H_atm', 'C/H_atm', 'N/H_atm', 'S/H_atm', 'He/H_atm', 'H2O_mr', 'CO2_mr', 'H2_mr', 'CO_mr', 'CH4_mr', 'N2_mr', 'O2_mr', 'S_mr', 'He_mr'])
+        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'R_star', 'T_surf', 'T_eqm', 'F_int', 'F_atm', 'F_net', 'F_olr', 'F_ins', 'F_sct', 'P_surf', 'M_atm', 'M_atm_kgmol', 'Phi_global', 'RF_depth', 'M_mantle', 'M_core', 'M_mantle_liquid', 'M_mantle_solid', 'H_mol_atm', 'H_mol_solid', 'H_mol_liquid', 'H_mol_total', 'O_mol_total', 'C_mol_total', 'N_mol_total', 'S_mol_total', 'He_mol_total', 'O/H_atm', 'C/H_atm', 'N/H_atm', 'S/H_atm', 'He/H_atm', 'H2O_mr', 'CO2_mr', 'H2_mr', 'CO_mr', 'CH4_mr', 'N2_mr', 'O2_mr', 'S_mr', 'He_mr'])
         runtime_helpfile.to_csv( dirs["output"]+"/"+runtime_helpfile_name, index=False, sep="\t") 
         time_dict["planet"] = 0
         #, 'H2O_atm_bar', 'CO2_atm_bar', 'H2_atm_bar', 'CH4_atm_bar', 'CO_atm_bar', 'N2_atm_bar', 'O2_atm_bar', 'S_atm_bar', 'He_atm_bar'run
@@ -254,6 +248,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["F_net"] = COUPLER_options["F_net"]
         runtime_helpfile_new["F_atm"] = COUPLER_options["F_atm"]
         runtime_helpfile_new["F_ins"] = COUPLER_options["F_ins"]
+        runtime_helpfile_new["F_sct"] = COUPLER_options["F_sct"]
         runtime_helpfile_new["F_olr"] = COUPLER_options["F_olr"]
         runtime_helpfile_new["T_eqm"] = COUPLER_options["T_eqm"]
 
@@ -280,6 +275,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["T_surf"]          = COUPLER_options["T_surf"] 
         runtime_helpfile_new["F_atm"]           = COUPLER_options["F_atm"]
         runtime_helpfile_new["F_ins"]           = COUPLER_options["F_ins"]
+        runtime_helpfile_new["F_sct"]           = COUPLER_options["F_sct"]
 
         COUPLER_options["F_int"] = run_int.iloc[-1]["F_int"]
         COUPLER_options["F_net"] = COUPLER_options["F_atm"] - COUPLER_options["F_int"]

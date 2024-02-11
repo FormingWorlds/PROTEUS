@@ -837,7 +837,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             if (COUPLER_options["dt_method"] == 0):
                 # Proportional time-step calculation
                 print("Time-stepping intent: proportional")
-                dtswitch = time_dict["planet"] / 30.0
+                dtswitch = time_dict["planet"] / 35.0
 
             elif (COUPLER_options["dt_method"] == 1):
                 # Dynamic time-step calculation
@@ -908,7 +908,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             dtswitch = min(dtswitch, float(time_dict["target"] - time_dict["planet"]))  # Run-over
 
             # Step-size floor
-            dtswitch = max(dtswitch, time_dict["planet"]*0.005)         # Relative
+            dtswitch = max(dtswitch, time_dict["planet"]*0.0003)        # Relative
             dtswitch = max(dtswitch, COUPLER_options["dt_minimum"] )    # Absolute
 
             # Calculate number of macro steps for SPIDER to perform within
