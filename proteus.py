@@ -242,22 +242,22 @@ def main():
                 # Calculate new eqm temperature
                 T_eqm_new = calc_eqm_temperature(S_0, COUPLER_options["asf_scalefactor"], COUPLER_options["albedo_pl"])
                 
-                # Get old eqm temperature
+                # Get previous instellation
                 if (loop_counter["total"] > 0):
-                    T_eqm_prev = COUPLER_options["T_eqm"]
+                    F_inst_prev = S_0
                 else:
-                    T_eqm_prev = 0.0
+                    F_inst_prev = 0.0
                 
             else:
                 print("Stellar heating is disabled")
                 T_eqm_new   = 0.0
-                T_eqm_prev  = 0.0
+                F_inst_prev = 0.0
 
             COUPLER_options["F_ins"]        = S_0          # instellation 
             COUPLER_options["T_eqm"]        = T_eqm_new
             COUPLER_options["T_skin"]       = T_eqm_new * (0.5**0.25) # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
 
-            print("T_eqm change: %.3f K (to 3dp)" % abs(T_eqm_new - T_eqm_prev))
+            print("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
 
         # Calculate a new (historical) stellar spectrum 
         if (COUPLER_options['star_model'] > 0  \

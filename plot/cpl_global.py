@@ -244,7 +244,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ##########
     title_ax3 = r'Surface volatile partial pressure'
     # Total pressure
-    ax3.plot( df_int["Time"], df_int["P_surf"], color='black', linestyle='-', lw=lw*1.5, label=r'Total')
+    ax3.plot( df_int["Time"], df_int["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
     ##########
     # figure e
     ##########

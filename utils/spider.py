@@ -837,7 +837,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             if (COUPLER_options["dt_method"] == 0):
                 # Proportional time-step calculation
                 print("Time-stepping intent: proportional")
-                dtswitch = time_dict["planet"] / 35.0
+                dtswitch = time_dict["planet"] / 40.0
 
             elif (COUPLER_options["dt_method"] == 1):
                 # Dynamic time-step calculation

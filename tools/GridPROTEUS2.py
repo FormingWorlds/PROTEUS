@@ -14,7 +14,7 @@ if COUPLER_DIR == None:
 # Object for handling the parameter grid
 class Pgrid():
 
-    def __init__(self, name:str, base_config_path:str, symlink_dir:str="UNSET"):
+    def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
 
         # Pgrid's own name (for versioning, etc.)
         self.name = str(name)
@@ -36,7 +36,7 @@ class Pgrid():
                 shutil.rmtree(self.outdir)
         
         # Create new output location
-        if (symlink_dir == "UNSET"):
+        if (symlink_dir == "_UNSET"):
             # Not using symlink
             os.makedirs(self.outdir)
         else:

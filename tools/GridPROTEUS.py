@@ -12,7 +12,7 @@ if COUPLER_DIR == None:
 # Object for handling the parameter grid
 class Pgrid():
 
-    def __init__(self, name:str, base_config_path:str, symlink_dir:str="UNSET"):
+    def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
 
         # Pgrid's own name (for versioning, etc.)
         self.name = str(name)
@@ -31,16 +31,18 @@ class Pgrid():
             if os.path.islink(self.outdir):
                 os.unlink(self.outdir)
             if os.path.isdir(self.outdir):
+                print("Removing old files at '%s'" % self.outdir)
                 shutil.rmtree(self.outdir)
         
         # Create new output location
-        if (symlink_dir == "UNSET"):
+        if (symlink_dir == "_UNSET"):
             # Not using symlink
             os.makedirs(self.outdir)
         else:
             # Will be using symlink
             symlink_dir = os.path.abspath(symlink_dir)
             if os.path.exists(symlink_dir):
+                print("Removing old files at '%s'" % symlink_dir)
                 shutil.rmtree(symlink_dir)
             os.makedirs(symlink_dir)
             os.symlink(symlink_dir, self.outdir)
@@ -286,8 +288,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.getenv('COUPLER_DIR')+"/input/earth_gridtest.cfg"
-    symlink  = "/local/scratch/nichollsh/proteus_output/pgrid_earth_gridtest_12"
-    pg = Pgrid("earth_gridtest_12", cfg_base, symlink_dir=symlink)
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/pgrid_earth_gridtest_13"
+    pg = Pgrid("earth_gridtest_13", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")

@@ -160,7 +160,7 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
 
     return atm
 
-def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
+def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_tmp_dir=True):
     """Run AEOLUS.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -179,6 +179,9 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
             Configuration options and other variables
         runtime_helpfile : pd.DataFrame
             Dataframe containing simulation variables (now and historic)
+
+        write_in_tmp_dir : bool
+            Write temporary files in a local folder within /tmp, rather than in the output folder
     Returns
     ----------
         atm : atmos
@@ -194,7 +197,11 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
 
     # Change dir
     cwd = os.getcwd()
-    os.chdir(dirs["output"])
+    tmp_dir = dirs["output"]
+    if write_in_tmp_dir:
+        tmp_dir = "/tmp/socrates_%d/" % np.random.randint(int(100),int(1e13))
+        os.makedirs(tmp_dir)
+    os.chdir(tmp_dir)
 
     # Prepare to calculate temperature structure w/ General Adiabat 
     trppD = bool(COUPLER_options["tropopause"] == 2 )
@@ -238,11 +245,13 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile):
         raise Exception("Cannot solve for RCE with AEOLUS")
     
     # Clean up run directory
+    for file in glob.glob(tmp_dir+"/current??.????"):
+        os.remove(file)
+    for file in glob.glob(tmp_dir+"/profile.*"):
+        os.remove(file)
     os.chdir(cwd)
-    for file in glob.glob(dirs["output"]+"/current??.????"):
-        os.remove(file)
-    for file in glob.glob(dirs["output"]+"/profile.*"):
-        os.remove(file)
+    if write_in_tmp_dir:
+        shutil.rmtree(tmp_dir,ignore_errors=True)
 
     print("SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
 
