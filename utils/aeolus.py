@@ -233,7 +233,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
                     T_surf_max = run_atm.iloc[-1]["T_surf"]
 
             atm = MCPA_CBL(dirs, atm, trppD, rscatter, 
-                          atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old), T_surf_max=float(T_surf_max))
+                          atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.5, T_surf_max=float(T_surf_max))
             
             COUPLER_options["T_surf"] = atm.ts
 

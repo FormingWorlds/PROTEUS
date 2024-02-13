@@ -80,29 +80,12 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
             df_int = df_int.drop(idx)
 
     ########## Global properties
-    keys_t = ( ('atmosphere','mass_liquid'),
-               ('atmosphere','mass_solid'),
-               ('atmosphere','mass_mantle'),
-               ('atmosphere','mass_core'),
-               ('atmosphere','temperature_surface'),
-               ('atmosphere','emissivity'),
-               ('rheological_front_phi','phi_global'),
-               ('atmosphere','Fatm'),
-               ('atmosphere','pressure_surface'),
-               ('rheological_front_dynamic','depth')
+    keys_t = ( ('atmosphere','temperature_surface'),
+               ('atmosphere','Fatm')
                )
     data_a = get_dict_surface_values_for_times( keys_t, fig_o.time, output_dir )
-    mass_liquid         = data_a[0,:]
-    mass_solid          = data_a[1,:]
-    mass_mantle         = data_a[2,:]
-    mass_core           = data_a[3,:]
-    T_surf              = data_a[4,:]
-    emissivity          = data_a[5,:]
-    phi_global          = data_a[6,:]
-    Fatm                = data_a[7,:]
-    P_surf              = data_a[8,:]
-    rheol_front         = data_a[9,:]
-
+    T_surf              = data_a[0,:]
+    Fatm                = data_a[1,:]
 
     xlabel = r'Time, $t$ [yr]'
 
@@ -115,11 +98,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         xlim = (1.0, xmax)
 
     xlim = (xlim[0], max(xlim[1], xlim[0]+1))
-
-    red = (0.5,0.1,0.1)
-    blue = (0.1,0.1,0.5)
-    black = 'black'
-
+    
     xcoord_l = -0.10
     ycoord_l = 0.5
     xcoord_r = 1.09
@@ -148,22 +127,23 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         Time_int_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
         Fatm_atm_rolling = np.convolve(df_atm["F_atm"], np.ones((nsteps,))/nsteps, mode='valid')
         Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
-        ax0.plot( Time_int_rolling, Fatm_int_rolling, color=dict_colors["int"], lw=lw )
-        ax0.plot( Time_atm_rolling, Fatm_atm_rolling, color=dict_colors["atm"], lw=lw )
+        ax0.plot( Time_int_rolling, Fatm_int_rolling, color=dict_colors["int"], lw=lw ,  label="Int.", zorder=3)
+        ax0.plot( Time_atm_rolling, Fatm_atm_rolling, color=dict_colors["atm"], lw=lw ,  label="Atm.", zorder=3)
     else:
         # ax0.plot( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
-        ax0.plot( df_atm["Time"], df_atm["F_int"], color=dict_colors["int"], lw=lw, alpha=1.0 )
-        ax0.plot( df_atm["Time"], df_atm["F_atm"], color=dict_colors["atm"], lw=lw, alpha=1.0 )
+        ax0.plot( df_atm["Time"], df_atm["F_int"], color=dict_colors["int"], lw=lw, alpha=1.0 ,  label="Int.",zorder=3, linestyle='dashed')
+        ax0.plot( df_atm["Time"], df_atm["F_atm"], color=dict_colors["atm"], lw=lw, alpha=1.0 ,  label="Atm.",zorder=3)
 
-    ax0.axhline(y=0, color='black', lw=0.8)
-      
+    ax0.plot(df_atm["Time"], np.array(df_atm["F_olr"]), color=dict_colors["OLR"], lw=lw, alpha=1.0, label="OLR",zorder=2)
+
     # fig_o.set_myaxes(ax0)
-    ax0.set_ylabel(r'$F_\mathrm{atm}^{\uparrow}$ [W m$^{-2}$]', fontsize=label_fs)
+    ax0.set_ylabel('Upward flux [W m$^{-2}$]', fontsize=label_fs)
     ax0.set_xlim( *xlim )
     ymax = max(np.amax(df_atm["F_atm"])*1.1, 1.0e1)
-    ymin = min(np.amin(df_atm["F_atm"]), -1.0e0)
+    ymax = max(ymax, np.amax(df_atm["F_olr"])*1.1)
+    ymin = min(np.amin(df_atm["F_atm"]), 0.0)
     ax0.set_ylim(top=ymax, bottom=ymin)
-    ax0.set_yscale('symlog')
+    ax0.set_yscale('symlog', linthresh=0.1)
     if logt:
         ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
         ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
@@ -171,7 +151,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ax0.set_xticklabels([])
     ax0.yaxis.set_label_coords(xcoord_l,ycoord_l)
     handles, labels = ax0.get_legend_handles_labels()
-    ax0.legend(handles, labels, loc='upper right', ncol=1, frameon=0, fontsize=fs_legend)
+    ax0.legend(handles, labels, ncol=1, loc='center left', frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
     ax0.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
     # print(T_surf)
@@ -185,13 +165,13 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
         Ts_atm_rolling = np.convolve(df_atm["T_surf"], np.ones((nsteps,))/nsteps, mode='valid')
         
-        h2, = ax1.plot(Time_int_rolling, Ts_int_rolling,                color=dict_colors["int"],  label="Int.")
-        h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-", lw=lw, color=dict_colors["atm"], label="Atm.") # , color="blue"
+        h2, = ax1.plot(Time_int_rolling, Ts_int_rolling, ls='dashed', lw=lw, color=dict_colors["int"])
+        h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-",      lw=lw, color=dict_colors["atm"]) # , color="blue"
     else:
         # if not logt:
         #     ax1.scatter(df_int["Time"], df_int["T_surf"],color=dict_colors["qred"], alpha=0.5, s=20, marker='x')
-        h2, = ax1.plot(df_int["Time"], df_int["T_surf"], ls="dashed", lw=lw, color=dict_colors["int"],  label="Int.")
-        h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-",      lw=lw, color=dict_colors["atm"], label="Atm.")
+        h2, = ax1.plot(df_int["Time"], df_int["T_surf"], ls="dashed", lw=lw, color=dict_colors["int"])
+        h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-",      lw=lw, color=dict_colors["atm"])
         
     ymin = 500
     ymax = 3500
@@ -208,8 +188,8 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ax1.set_ylim(ymin, ymax)
     ax1.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
 
-    handles, labels = ax1.get_legend_handles_labels()
-    ax1.legend(handles, labels, ncol=1, loc='center left', frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
+    # handles, labels = ax1.get_legend_handles_labels()
+    # ax1.legend(handles, labels, ncol=1, loc='center left', frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
 
     ##########
     # figure c

@@ -54,6 +54,7 @@ def main():
     # Count iterations
     loop_counter = { 
                     "total": 0,            # Total number of iters performed
+                    "total_min"  : 30,     # Minimum number of total loops
                     "total_loops": 2000,   # Maximum number of total loops
 
                     "init": 0,             # Number of init iters performed
@@ -63,8 +64,12 @@ def main():
                     "atm_loops":  20,      # Maximum number of atmosphere sub-iters
 
                     "steady": 0,           # Number of iterations passed since steady-state declared
-                    "steady_loops": 2      # Number of steady-state iterations to perform
+                    "steady_loops": 3,     # Number of iterations to perform post-steady state
+                    "steady_check": 25     # Number of iterations to look backwards when checking steady state
                     }
+    
+    # Model has completed?
+    complete = False
     
     # Check options are compatible
     if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
@@ -226,6 +231,12 @@ def main():
             
             time_dict['sinst_prev'] = time_dict['planet'] 
 
+            # Get previous instellation
+            if (loop_counter["total"] > 0):
+                F_inst_prev = S_0
+            else:
+                F_inst_prev = 0.0
+
             if (COUPLER_options["stellar_heating"] > 0):
                 print("Updating instellation and radius")
 
@@ -242,16 +253,10 @@ def main():
                 # Calculate new eqm temperature
                 T_eqm_new = calc_eqm_temperature(S_0, COUPLER_options["asf_scalefactor"], COUPLER_options["albedo_pl"])
                 
-                # Get previous instellation
-                if (loop_counter["total"] > 0):
-                    F_inst_prev = S_0
-                else:
-                    F_inst_prev = 0.0
-                
             else:
                 print("Stellar heating is disabled")
                 T_eqm_new   = 0.0
-                F_inst_prev = 0.0
+                S_0 = 0.0
 
             COUPLER_options["F_ins"]        = S_0          # instellation 
             COUPLER_options["T_eqm"]        = T_eqm_new
@@ -387,64 +392,69 @@ def main():
         loop_counter["total"]       += 1
 
         # Stop simulation when planet is completely solidified
-        if (COUPLER_options["solid_stop"] == 1) \
-            and (runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]):
+        if (COUPLER_options["solid_stop"] == 1) and (runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]):
             UpdateStatusfile(dirs, 10)
             print("\n===> Planet solidified! <===\n")
-            break
+            complete = True
 
-        # Determine when the simulation when planet enters a steady state (if it ever does)
-        if (COUPLER_options["steady_stop"] == 1) and (loop_counter["total"] > 20) and (loop_counter["steady"] == 0):
+        # Determine when the simulation enters a steady state
+        if (COUPLER_options["steady_stop"] == 1) and (loop_counter["total"] > loop_counter["steady_check"]*2+5) and (loop_counter["steady"] == 0):
             # How many iterations to look backwards
-            lb1 = -20
+            lb1 = -int(loop_counter["steady_check"])
             lb2 = -1
 
+            # Get data
+            df_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
+            arr_t = np.array(df_atm["Time"])
+            arr_f = np.array(df_atm["F_atm"])
+            arr_p = np.array(df_atm["Phi_global"])
+
             # Time samples
-            t1 = runtime_helpfile.iloc[lb1]["Time"]
-            t2 = runtime_helpfile.iloc[lb2]["Time"]
+            t1 = arr_t[lb1]; t2 = arr_t[lb2]
 
-            # Check flux (average abs value across time must be small)
-            F_atm_1 = runtime_helpfile.iloc[lb1]["F_atm"]
-            F_atm_2 = runtime_helpfile.iloc[lb2]["F_atm"] 
-            F_atm_m = 0.5 * abs( F_atm_1 + F_atm_2 )
+            # Flux samples
+            flx_m = max(arr_f[lb1],arr_f[lb2])
 
-            # Check melt fraction (relative change per year must be small)
-            phi_1 =  runtime_helpfile.iloc[lb1]["Phi_global"]
-            phi_2 =  runtime_helpfile.iloc[lb2]["Phi_global"]
-            phi_r = abs( (phi_2 - phi_1) / phi_1) * 100.0 / (t2 - t1)
-
-            # Enable countdown (countup?) for stopping the loop
-            if (F_atm_m < COUPLER_options["steady_flux"]) and (phi_r < COUPLER_options["steady_dprel"]):
+            # Check melt fraction rate
+            phi_1 =  arr_p[lb1]
+            phi_2 =  arr_p[lb2]
+            phi_r = abs(phi_2 - phi_1) / (t2 - t1)
+                        
+            # Stop when flux is small and melt fraction is unchanging
+            if (flx_m < COUPLER_options["steady_flux"]) and (phi_r < COUPLER_options["steady_dprel"]):
                 print("Steady state declared")
                 loop_counter["steady"] = 1
 
-        # Steady-state count
+        # Steady-state handling
         if loop_counter["steady"] > 0:
             if loop_counter["steady"] <= loop_counter["steady_loops"]:
                 loop_counter["steady"] += 1
             else:
                 UpdateStatusfile(dirs, 11)
                 print("\n===> Planet has entered a steady state! <===\n")
-                break
+                complete = True
             
         # Stop simulation if maximum loops reached
         if (loop_counter["total"] > loop_counter["total_loops"]):
             UpdateStatusfile(dirs, 12)
             print("\n===> Maximum number of iterations reached. <===\n")
-            break
+            complete = True
         
         # Make plots if required and go to next iteration
-        if (COUPLER_options["plot_iterfreq"] > 0) \
-            and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0):
+        if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0):
             UpdatePlots( dirs["output"], COUPLER_options )
 
+        # Check if the minimum number of loops have been performed
+        if complete and (loop_counter["total"] < loop_counter["total_min"]):
+            print("Minimum number of iterations not yet attained")
+            complete = False
+
+        # If marked as complete, exit
+        if complete:
+            break
 
         ############### / LOOP ITERATION MANAGEMENT
             
-    # Check if model exited early 
-    if loop_counter["total"] < 30:
-        print("WARNING: model exited very early - possible misconfiguration")
-
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options, end=True)
     end_time = datetime.now()

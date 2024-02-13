@@ -39,16 +39,16 @@ def latex_float(f):
 def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options):
     PrintHalfSeparator()
     print("Runtime info...")
-    print("    System time  :   %s  "           % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
+    print("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
     print("    Model time   :   %.3e   yr"    % float(time_dict["planet"]))
-    print("    T_surf       :   %.4f   K"     % float(runtime_helpfile.iloc[-1]["T_surf"]))
-    print("    P_surf       :   %.4f   bar"   % float(runtime_helpfile.iloc[-1]["P_surf"]))
-    print("    Phi_global   :   %.3f  "         % float(runtime_helpfile.iloc[-1]["Phi_global"]))
+    print("    T_surf       :   %.3e   K"     % float(runtime_helpfile.iloc[-1]["T_surf"]))
+    print("    P_surf       :   %.3e   bar"   % float(runtime_helpfile.iloc[-1]["P_surf"]))
+    print("    Phi_global   :   %.3e   "      % float(runtime_helpfile.iloc[-1]["Phi_global"]))
     print("    Instellation :   %.3e   W/m^2" % float(COUPLER_options["F_ins"]))
     print("    F_int        :   %.3e   W/m^2" % float(COUPLER_options["F_int"]))
     print("    F_atm        :   %.3e   W/m^2" % float(COUPLER_options["F_atm"])) 
-    print("    F_net        :   %.3e   W/m^2" % float(COUPLER_options["F_net"]))
-    print("    Last file    :   %s "            % str(COUPLER_options["ic_interior_filename"]))
+    print("    |F_net|      :   %.3e   W/m^2" % abs(float(COUPLER_options["F_net"])))
+    print("    Last file    :   %s "          % str(COUPLER_options["ic_interior_filename"]))
 
 
 def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options):

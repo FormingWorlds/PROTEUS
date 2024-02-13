@@ -84,7 +84,7 @@ def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
     ax.set_xscale("log")
     ax.set_xlabel("Time [yr]")
     ax.set_xlim(t_atm[0], t_atm[-1])
-    ax.legend(loc='upper right')
+    ax.legend(loc='center left')
     ax.grid(color='black', alpha=0.05)
 
     plt.close()

@@ -168,25 +168,30 @@ inputs are provided.
    of the simulation time. 'Adapative' dynamically adjusts ``dt`` according to how 
    rapidly the upward energy fluxes are changing. 'Maximum' sets ``dt`` to always 
    be equal to ``dt_maximum``.    
-   - (Integer) 0: Proportional, 1: Adaptive, 2: Maximum.
+   - (Integer) 0: Proportional, 1: Adaptive, 2: Maximum.    
+
+* ``dt_propconst``
+   - Proportionality constant when using ``dt_method=0``. Time step is set by 
+   ``dt = t/dt_propconst``, so larger values mean smaller steps.   
+   - (Float) Greater than zero.    
 
 * ``flux_convergence``
    - DEPRECATED. Method to be used for converging atmospheric and interior upward fluxes.
    'Off' applies nothing special, and allows SPIDER to determine the surface 
    temperature. 'Restart' uses a shallow mixed ocean layer with a given heat
    capacity to balance the fluxes and obtain a surface temperature. 'On' waits 
-   until certain conditions are met, and then applies the 'Restart' method.    
-   - (Integer) 0: Off, 1: On, 2: Restart.  
+   until certain conditions are met, and then applies the 'Restart' method.     
+   - (Integer) 0: Off, 1: On, 2: Restart.   
 
 * ``F_atm_bc``
    - Boundary condition to use for calculating `F_atm`. Can be set to either the 
    top of the atmosphere or the bottom.     
-   - (Integer) 0: Top of atmosphere, 1: Bottom of atmosphere.
+   - (Integer) 0: Top of atmosphere, 1: Bottom of atmosphere.    
 
 * ``F_crit``
    - Critical flux. Once the upward net flux at the top of the atmosphere drops
-   below this value, flux-change limiters are activated.
-   - (Float) Greater than or equal to 0. Set to 0 to disable.
+   below this value, a smaller time-step is imposed.
+   - (Float) Greater than or equal to 0. Set to 0 to disable.    
 
 * ``RF_crit``
    - Deprecated.     
@@ -239,14 +244,12 @@ inputs are provided.
    - Flag to toggle the steady-state break condition(s).  
    - (Integer) 0: Disabled, 1: Enabled.
 
-* ``steady_dfrel``
-   - Steady-state break condition on the relative rate of change in outgoing 
-   net flux ``F_atm``. Requires that ``[d(F_atm)/F_atm*100]/dt < steady_dfrel``.
+* ``steady_flux``
+   - Steady-state break condition. Requires that ``F_atm < steady_dfrel``.    
    - (Float) Values between zero and unity.    
 
 * ``steady_dprel``
-   - Steady-state break condition on the maximum relative rate of change in the
-   surface partial pressures. Requires that ``max[dp/p*100]/dt < steady_dprel``.
+   - Steady-state break condition. Requires that ``dphi/dt < steady_dprel``.
    - (Float) Values between zero and unity.  
 
 * ``N2_partitioning``
@@ -255,9 +258,14 @@ inputs are provided.
    - (Integer) 0: Oxidised, 1: Reduced.
 
 * ``min_temperature``
-   - Temperature floor to pass to AEOLUS. The temperature of the atmosphere is
-   prevented from dropping below this value. Units of kelvin.  
-   - (Float) Greater than or equal to 0. Set to 0 to disable.
+   - Temperature floor. The temperature of the atmosphere is prevented from 
+   dropping below this value. Units of kelvin.    
+   - (Float) Greater than or equal to 0. Set to 0 to disable.    
+
+* ``max_temperature``
+   - Temperature ceiling. The temperature of the atmosphere is prevented from 
+   reaching above this value. Units of kelvin.  
+   - (Float) Greater than or equal to 0. Set to 0 to disable.    
 
 * ``tropopause``
    - Model of tropopause to be used before, or in the absence of, a time-stepped

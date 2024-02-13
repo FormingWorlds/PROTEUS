@@ -288,8 +288,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.getenv('COUPLER_DIR')+"/input/earth_gridtest.cfg"
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/pgrid_earth_gridtest_13"
-    pg = Pgrid("earth_gridtest_13", cfg_base, symlink_dir=symlink)
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/pgrid_earth_gridtest_14"
+    pg = Pgrid("earth_gridtest_14", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -300,7 +300,7 @@ if __name__=='__main__':
     #                                     })
 
     pg.add_dimension("Orbital separation")
-    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.1, 0.3, 0.5, 1.0, 3.0])
+    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.1, 0.2, 0.4, 0.6, 1.0, 3.0])
 
     pg.add_dimension("Redox state")
     pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-3.0, 0.0, 3.0, 6.0])
