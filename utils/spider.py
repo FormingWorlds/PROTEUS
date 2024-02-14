@@ -1113,7 +1113,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     print("IC_INTERIOR =",COUPLER_options["IC_INTERIOR"])
 
     # parameters
-    max_attempts = 4        # maximum number of attempts
+    max_attempts = 7        # maximum number of attempts
     step_sf = 1.0           # step scale factor at attempt 1
     atol_sf = 1.0           # tolerance scale factor at attempt 1
 
@@ -1137,12 +1137,12 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         else:
             # failure
             print("Attempt %d failed" % attempts)
-            if attempts > max_attempts:
+            if attempts >= max_attempts:
                 # give up
                 break
             else:
                 # try again (change tolerance and step size)
-                step_sf *= 0.8 
+                step_sf *= 0.5 
                 atol_sf *= 4.0
     
     # check status

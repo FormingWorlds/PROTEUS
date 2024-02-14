@@ -67,9 +67,8 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
 
     for i,sp in enumerate(species):
 
-        color_key = sp+"_1"
-        if color_key in dict_colors:
-            color = dict_colors[color_key]
+        if sp in dict_colors:
+            color = dict_colors[sp]
         else:
             color = 'black'
             print("Warning: could not find a defined colour for species '%s' " % sp)

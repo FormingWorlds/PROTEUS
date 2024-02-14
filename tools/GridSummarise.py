@@ -45,10 +45,14 @@ def summarise(pgrid_dir:str, opts:list):
 
     # Check options
     gen_cases = {
+        # Broad categories
         "Running":   list(range(0,  10, 1)),
         "Completed": list(range(10, 20, 1)),
         "Error":     list(range(20, 30, 1)),
-        "All":       list(range(0,100,1))
+        "All":       list(range(0,100,1)),
+        # Narrower categories
+        "Solidified": [10],
+        "Steady":     [11]
     }
     for o in opts:
         o = str(o).lower()

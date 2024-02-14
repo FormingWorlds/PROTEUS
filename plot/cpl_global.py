@@ -291,17 +291,16 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
             ##########
             # figure d
             ##########
-            ax3.plot( vol_times, vol_atm_pressure, color=dict_colors[vol+"_2"], linestyle='-', lw=lw, label=vol_latex[vol])
+            ax3.plot( vol_times, vol_atm_pressure, color=dict_colors[vol], linestyle='-', lw=lw, label=vol_latex[vol])
             ##########
             # figure e
             ##########
-            # ax4.plot( vol_times, vol_atm_kg/vol_total_kg, lw=lw, color=dict_colors[vol+"_2"], linestyle='-', label=vol_latex[vol])
-            ax4.plot( vol_times, vol_molefraction, lw=lw, color=dict_colors[vol+"_2"], linestyle='-', label=vol_latex[vol])
+            ax4.plot( vol_times, vol_molefraction, lw=lw, color=dict_colors[vol], linestyle='-', label=vol_latex[vol])
             ##########
             # figure f
             ##########
             # ax5.plot( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
-            ax5.plot( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=dict_colors[vol+"_2"], linestyle='-', label=vol_latex[vol] )
+            ax5.plot( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=dict_colors[vol], linestyle='-', label=vol_latex[vol] )
 
     
 
