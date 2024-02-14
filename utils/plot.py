@@ -6,15 +6,11 @@ from utils.constants import *
 from utils.helper import *
 
 sci_colormaps = {}
-for g in glob.glob(str(pathlib.Path(__file__).parent.absolute())+"/../AEOLUS/plotting_tools/colormaps/*.txt"):
+for g in glob.glob(str(pathlib.Path(__file__).parent.absolute())+"/../plot/SciColMaps8/cont/*.txt"):
     cm_data = np.loadtxt(g)
     name = g.split('/')[-1].split('.')[0]
     sci_colormaps[name]      = LinearSegmentedColormap.from_list(name, cm_data)
     sci_colormaps[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
-
-# https://matplotlib.org/tutorials/colors/colormaps.html
-
-no_colors   = 9
 
 vol_zorder  = {
     "H2O"            : 11,
@@ -31,6 +27,7 @@ vol_zorder  = {
 }
 
 dict_colors  = {
+    # From Julia's default colours
     "H2O": "#C720DD",
     "CO2": "#D24901",
     "H2" : "#008C01",
@@ -41,6 +38,7 @@ dict_colors  = {
     "O2" : "#00008B",
     "He" : "#30FF71",
     "NH3": "#675200",
+    # Misc colours
     "qgray"          : "#768E95",
     "qgray2"         : "#888888",
     "qblue"          : "#4283A9", # http://www.color-hex.com/color/4283a9
@@ -66,9 +64,10 @@ dict_colors  = {
     "qyellow_light"  : "#f1ca70",
 }
 
+# Additional aliases
 dict_colors["OLR"] = "crimson"
-dict_colors["ASF"]  = "royalblue"
-dict_colors["sct"] = "seagreen" # scattering
+dict_colors["ASF"] = "royalblue"
+dict_colors["sct"] = "seagreen" # for scattering
 dict_colors["atm"] = dict_colors["qgray"]
 dict_colors["int"] = dict_colors["qorange"]
 

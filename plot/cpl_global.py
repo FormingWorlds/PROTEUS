@@ -5,90 +5,108 @@ from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import *
 
-#====================================================================
 def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 
-    print("Plot global")
+    # Plotting parameters
+    lw=2.0
+    al=0.95
+    fig_ratio=(3,2)
+    fig_scale=3.5
+    leg_kwargs = {
+        "frameon":1, 
+        "fancybox":True,
+        "framealpha":0.9
+    }
 
-    # Plot settings
-    lw         = 2.0
-    fscale     = 1.1
-    fsize      = 18
-    fs_title   = 18
-    fs_legend  = 11
-    width      = 12.00 #* 3.0/2.0
-    height     = 8.0 #/ 2.0
-    # Subplot titles
-    title_fs   = 12
-    title_xy   = (0.07, 0.02)
-    title_x    = title_xy[0]
-    title_y    = title_xy[1]
-    title_xycoords = 'axes fraction'
-    title_ha   = "left"
-    title_va   = "bottom"
-    title_font = 'Arial'
-    txt_alpha  = 0.5
-    txt_pad    = 0.1
-    label_fs   = 11
-
-    plt_name = "plot_global"
-    if logt:
-        plt_name += "_log"
-    else:
-        plt_name += "_lin"
-    fig_o = FigureData( 3, 2, width, height, output_dir+'/'+plt_name, units='yr' )
-    fig_o.fig.subplots_adjust(wspace=0.05,hspace=0.1)
-
-    ax0 = fig_o.ax[0][0]
-    ax1 = fig_o.ax[1][0]
-    ax2 = fig_o.ax[2][0]
-    ax3 = fig_o.ax[0][1]
-    ax4 = fig_o.ax[1][1]
-    ax5 = fig_o.ax[2][1]
-
-    title_xNumbering = 0.02
-    title_yNumbering = 0.05
-    fsplus = 5
-    ax0.text(title_xNumbering, title_yNumbering, 'A', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax0.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-    ax1.text(title_xNumbering, title_yNumbering, 'B', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax1.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-    ax2.text(title_xNumbering, title_yNumbering, 'C', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax2.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-    ax3.text(title_xNumbering, title_yNumbering, 'D', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax3.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-    ax4.text(title_xNumbering, title_yNumbering, 'E', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax4.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-    ax5.text(title_xNumbering, title_yNumbering, 'F', color="k", rotation=0, ha="left", va="bottom", fontsize=label_fs+fsplus, transform=ax5.transAxes, bbox=dict(fc='white', ec="white", alpha=0.01, pad=0.1, boxstyle='round'))
-
-    fig_o.time = get_all_output_times(output_dir)
-
-    # Downsample times if there are lots of them
-    # if len(fig_o.time > 700):
-    #     times_new = fig_o.time[1:-2:2]
-    # times_new = list(times_new)
-    # times_new.insert(0,fig_o.time[0])
-    # times_new.append(fig_o.time[-1])
-    # fig_o.time = np.array(times_new)
-
-    # Read in runtime helpfile and separate in atmosphere and interior params
+    # Read data
+    #    Helpfiles...
     df = pd.read_csv(output_dir+"/runtime_helpfile.csv",sep='\s+')
     df_int = df.loc[df['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
     df_atm = df.loc[df['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
 
-    # Remove duplicate atm entries for one timestep
-    for idx, row in df_atm.iterrows():
-        if len(df_atm.loc[df_atm["Time"] == int(row["Time"])]) > 1:
-            df_atm = df_atm.drop(idx)
-    for idx, row in df_int.iterrows():
-        if len(df_int.loc[df_int["Time"] == int(row["Time"])]) > 1:
-            df_int = df_int.drop(idx)
+    #    Volatile parameters (keys=vols, vals=quantites_over_time)
+    vol_present = {} # Is present ever? (true/false)
+    vol_vmr     = {} # Volume mixing ratio 
+    vol_bars    = {} # Surface partial pressure [bar]
+    vol_mol_atm = {} # Moles in atmosphere
+    vol_mol_int = {} # Moles in interior
+    vol_mol_tot = {} # Moles in total
+    vol_atmpart = {} # Partitioning into atm
+    vol_intpart = {} # Partitioning into int
 
-    ########## Global properties
-    keys_t = ( ('atmosphere','temperature_surface'),
-               ('atmosphere','Fatm')
-               )
-    data_a = get_dict_surface_values_for_times( keys_t, fig_o.time, output_dir )
-    T_surf              = data_a[0,:]
-    Fatm                = data_a[1,:]
+    for vol in volatile_species:
+        # Check vmr for presence
+        this_vmr = np.array(df_atm[vol+"_mr"])
+        vol_present[vol] = True 
+        if np.amax(this_vmr) < 1.0e-30:
+            vol_present[vol] = False 
+            continue 
+        vol_vmr[vol] = this_vmr 
+        
+        # Do other variables
+        vol_bars[vol]    = np.array(df_atm[vol+"_atm_bar"])
+        vol_mol_atm[vol] = np.array(df_atm[vol+"_mol_atm"])
+        vol_mol_tot[vol] = np.array(df_atm[vol+"_mol_total"])
+        vol_mol_int[vol] = vol_mol_tot[vol] - vol_mol_atm[vol]
+        vol_atmpart[vol] = vol_mol_atm[vol]/vol_mol_tot[vol]
+        vol_intpart[vol] = vol_mol_int[vol]/vol_mol_tot[vol]
 
-    xlabel = r'Time, $t$ [yr]'
 
+    # Init plot
+    fig,axs = plt.subplots(3,2, figsize=(fig_ratio[0]*fig_scale, fig_ratio[1]*fig_scale), sharex=True)
+    ax_tl = axs[0][0] 
+    ax_cl = axs[1][0] 
+    ax_bl = axs[2][0] 
+    ax_tr = axs[0][1] 
+    ax_cr = axs[1][1] 
+    ax_br = axs[2][1] 
+    axs = (ax_tl, ax_cl, ax_bl, ax_tr, ax_cr, ax_br) # flatten
+
+    # Set y-labels
+    ax_tl.set_ylabel('Upward flux [W m$^{-2}$]')  
+    ax_cl.set_ylabel(r'$T_\mathrm{s}$ [K]')  
+    ax_bl.set_ylabel('Planet fraction')  
+    ax_tr.set_ylabel(r'$p_{\mathrm{i}}$ [bar]')  
+    ax_cr.set_ylabel(r'$\chi^{\mathrm{atm}}_{\mathrm{i}}$')
+    ax_br.set_ylabel(r'$m^{\mathrm{int}}_{\mathrm{i}}/m^{\mathrm{tot}}_{\mathrm{i}}$')
+
+    # Set x-labels
+    for ax in (ax_bl, ax_br):
+        ax.set_xlabel("Time [yr]")
+
+    # Set titles 
+    ax_titles = [
+        "A) Net heat flux to space",
+        "B) Surface temperature",
+        "C) Mantle evolution",
+        "D) Surface volatile partial pressure",
+        "E) Surface volatile mole fraction",
+        "F) Interior volatile partitioning"
+    ]
+    for i,ax in enumerate(axs):
+        ax.text(0.015, 0.015, ax_titles[i],
+                transform=ax.transAxes,
+                horizontalalignment='left',
+                verticalalignment='bottom',
+                fontsize=10,
+                zorder=20,
+                bbox=dict(fc='white', ec="white", alpha=0.5, pad=0.1, boxstyle='round')
+                )
+
+    # Move right subplots y-axes to right side
+    for ax in (ax_tr, ax_cr, ax_br): 
+        ax.yaxis.set_label_position("right")
+        ax.yaxis.tick_right()
+
+    # Log axes
+    if logt:
+        for ax in axs:
+            ax.set_xscale("log")
+    ax_tl.set_yscale("symlog", linthresh=0.1)
+    ax_tr.set_yscale("log")
+    ax_cr.set_yscale("log")
+
+    # Set xlim
     xmin = max(tmin, 1.0)
     if logt:
         xmax = max(1.0e6,np.amax(df_int["Time"]))
@@ -96,280 +114,75 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     else:
         xmax = np.amax(df_int["Time"])
         xlim = (1.0, xmax)
-
-    xlim = (xlim[0], max(xlim[1], xlim[0]+1))
+    for ax in axs:
+        ax.set_xlim(xlim[0],  max(xlim[1], xlim[0]+1))
     
-    xcoord_l = -0.10
-    ycoord_l = 0.5
-    xcoord_r = 1.09
-    ycoord_r = 0.5
 
-    rolling_mean = 0
-    nsteps       = 5
+    # ------------------------------------------------------------------------
 
-    # Replace NaNs
-    for idx in range(1,len(T_surf)-1):
-        if np.isnan(T_surf[idx]) or (T_surf[idx] <= 0.0):
-            T_surf[idx] = 0.5*(T_surf[idx-1]+T_surf[idx+1])
-            
+    # PLOT ax_tl
+    ax_tl.plot( df_atm["Time"], df_atm["F_int"], color=dict_colors["int"], lw=lw, alpha=al,  label="Int.",zorder=3, linestyle='dashed')
+    ax_tl.plot( df_atm["Time"], df_atm["F_atm"], color=dict_colors["atm"], lw=lw, alpha=al,  label="Atm.",zorder=3)
+    ax_tl.plot( df_atm["Time"], df_atm["F_olr"], color=dict_colors["OLR"], lw=lw, alpha=al,  label="OLR", zorder=2)
+    ax_tl.legend(loc='center left', **leg_kwargs)
+    ax_tl.set_ylim(0.0, np.amax(df_atm["F_olr"]*2.0))
 
-    ##########
-    # figure a
-    ##########
-    title = r'Net heat flux to space'  
-    # Use helpfile information
-    # time = df_atm["Time"].tolist()
-    # Fatm1 = df_atm["Heat_flux"].tolist()
-    if rolling_mean == 1:
-        # ax0.loglog( time[:nsteps+4], Fatm[:nsteps+4], qgray_dark, lw=lw, alpha=1.0 )
-        
-        Fatm_int_rolling = np.convolve(Fatm, np.ones((nsteps,))/nsteps, mode='valid')
-        Time_int_rolling = np.convolve(fig_o.time, np.ones((nsteps,))/nsteps, mode='valid')
-        Fatm_atm_rolling = np.convolve(df_atm["F_atm"], np.ones((nsteps,))/nsteps, mode='valid')
-        Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
-        ax0.plot( Time_int_rolling, Fatm_int_rolling, color=dict_colors["int"], lw=lw ,  label="Int.", zorder=3)
-        ax0.plot( Time_atm_rolling, Fatm_atm_rolling, color=dict_colors["atm"], lw=lw ,  label="Atm.", zorder=3)
-    else:
-        # ax0.plot( fig_o.time, Fatm, "red", lw=lw, alpha=1.0 )
-        ax0.plot( df_atm["Time"], df_atm["F_int"], color=dict_colors["int"], lw=lw, alpha=1.0 ,  label="Int.",zorder=3, linestyle='dashed')
-        ax0.plot( df_atm["Time"], df_atm["F_atm"], color=dict_colors["atm"], lw=lw, alpha=1.0 ,  label="Atm.",zorder=3)
 
-    ax0.plot(df_atm["Time"], np.array(df_atm["F_olr"]), color=dict_colors["OLR"], lw=lw, alpha=1.0, label="OLR",zorder=2)
+    # PLOT ax_cl
+    ax_cl.plot(df_int["Time"], df_int["T_surf"], ls="dashed", lw=lw, alpha=al, color=dict_colors["int"])
+    ax_cl.plot(df_atm["Time"], df_atm["T_surf"], ls="-",      lw=lw, alpha=al, color=dict_colors["atm"])
+    ax_cl.set_ylim(1000.0 , 3500.0)
 
-    # fig_o.set_myaxes(ax0)
-    ax0.set_ylabel('Upward flux [W m$^{-2}$]', fontsize=label_fs)
-    ax0.set_xlim( *xlim )
-    ymax = max(np.amax(df_atm["F_atm"])*1.1, 1.0e1)
-    ymax = max(ymax, np.amax(df_atm["F_olr"])*1.1)
-    ymin = min(np.amin(df_atm["F_atm"]), 0.0)
-    ax0.set_ylim(top=ymax, bottom=ymin)
-    ax0.set_yscale('symlog', linthresh=0.1)
-    if logt:
-        ax0.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-        ax0.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-        ax0.set_xscale('symlog')
-    ax0.set_xticklabels([])
-    ax0.yaxis.set_label_coords(xcoord_l,ycoord_l)
-    handles, labels = ax0.get_legend_handles_labels()
-    ax0.legend(handles, labels, ncol=1, loc='center left', frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
-    ax0.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
-
-    # print(T_surf)
-    ##########
-    # figure b
-    ##########
-    title = r'Surface temperature'
-    if rolling_mean == 1:
-        Time_int_rolling = np.convolve(df_int["Time"], np.ones((nsteps,))/nsteps, mode='valid')
-        Ts_int_rolling = np.convolve(df_int["T_surf"], np.ones((nsteps,))/nsteps, mode='valid')
-        Time_atm_rolling = np.convolve(df_atm["Time"], np.ones((nsteps,))/nsteps, mode='valid')
-        Ts_atm_rolling = np.convolve(df_atm["T_surf"], np.ones((nsteps,))/nsteps, mode='valid')
-        
-        h2, = ax1.plot(Time_int_rolling, Ts_int_rolling, ls='dashed', lw=lw, color=dict_colors["int"])
-        h1, = ax1.plot(Time_atm_rolling, Ts_atm_rolling, ls="-",      lw=lw, color=dict_colors["atm"]) # , color="blue"
-    else:
-        # if not logt:
-        #     ax1.scatter(df_int["Time"], df_int["T_surf"],color=dict_colors["qred"], alpha=0.5, s=20, marker='x')
-        h2, = ax1.plot(df_int["Time"], df_int["T_surf"], ls="dashed", lw=lw, color=dict_colors["int"])
-        h1, = ax1.plot(df_atm["Time"], df_atm["T_surf"], ls="-",      lw=lw, color=dict_colors["atm"])
-        
-    ymin = 500
-    ymax = 3500
-    # fig_o.set_myaxes( ax1, title=title, yticks=yticks)
-    ax1.set_ylabel(r'$T_\mathrm{s}$ [K]', fontsize=label_fs)
-    # ax1.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-    # ax1.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-    # ax1.xaxis.set_minor_formatter(ticker.NullFormatter())
-    if logt:
-        ax1.set_xscale("symlog", linthresh=5) # , linthresh=100
-    ax1.set_xlim( *xlim )
-    ax1.set_xticklabels([])
-    ax1.yaxis.set_label_coords(xcoord_l,ycoord_l)
-    ax1.set_ylim(ymin, ymax)
-    ax1.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
-
-    # handles, labels = ax1.get_legend_handles_labels()
-    # ax1.legend(handles, labels, ncol=1, loc='center left', frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
-
-    ##########
-    # figure c
-    ##########
-
-    # Plot rheological front depth, mante melt + solid fraction
-    ax2.axhline( y=COUPLER_options["planet_coresize"], ls='dashed', lw=lw*1.5, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
-    ax2.plot( df_int["Time"], 1.0-df_int["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, label=r'Rheol. front')
-    ax2.plot( df_int["Time"],     df_int["Phi_global"], color=dict_colors["atm"], linestyle=':', lw=lw, label=r'Melt fraction')
-
-    # ax2.plot( fig_o.time, rheol_front/np.max(rheol_front), ls="-", lw=lw, color=qgray_light, label=r'Rheol. front, $d_{\mathrm{front}}$')
-    # ax2.plot( fig_o.time, phi_global, color=qgray_dark, linestyle=':', lw=lw, label=r'Melt, $\phi_{\mathrm{mantle}}$')
-    # ax2.plot( fig_o.time, mass_solid/(mass_liquid+mass_solid), color=qgray_dark, linestyle='--', lw=lw, label=r'Solid, $1-\phi_{\mathrm{mantle}}$')
-
-    if logt:
-        ax2.set_xscale("symlog", linthresh=5)
-    ax2.set_ylim([0,1])
-    ax2.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
-    ax2.set_xlim( *xlim )
-    ax2.set_xlabel(xlabel, fontsize=label_fs)
-    ax2.set_ylabel(r'Planet fraction', fontsize=label_fs)
-    ax2.yaxis.set_label_coords(xcoord_l,ycoord_l)
-    handles, labels = ax2.get_legend_handles_labels()
-    ax2.legend(handles, labels, ncol=1, loc='center left', frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend-1)
-
-    title = r'Mantle evolution'
-    ax2.set_title(title, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
-
-    ### Plot axes setup
-    ##########
-    # figure d
-    ##########
-    title_ax3 = r'Surface volatile partial pressure'
-    # Total pressure
-    ax3.plot( df_int["Time"], df_int["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
-    ##########
-    # figure e
-    ##########
-    title_ax4 = r'Surface volatile mole fraction'
-    ##########
-    # figure f
-    ##########
-    title_ax5 = r'Interior volatile partitioning'
-
-    ########## Volatile species-specific plots
     
-    # Check for times when volatile is present in data dumps
-    mf_min = 1.0e-2
+    # PLOT ax_bl
+    ax_bl.axhline( y=COUPLER_options["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
+    ax_bl.plot( df_int["Time"], 1.0-df_int["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
+    ax_bl.plot( df_int["Time"],     df_int["Phi_global"], color=dict_colors["atm"], linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
+    ax_bl.legend(loc='center left', **leg_kwargs)
+    ax_bl.set_ylim(0.0,1.0)
+
+
+    # PLOT ax_tr
+    bar_min, bar_max = 0.1, 10.0
+    ax_tr.plot( df_int["Time"], df_int["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
     for vol in volatile_species:
+        if not vol_present[vol]:
+            continue 
+        ax_tr.plot( df_atm["Time"], vol_bars[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+        bar_min = min(bar_min, np.amin(vol_bars[vol]))
+        bar_max = max(bar_max, np.amax(vol_bars[vol]))
+    ax_tr.set_ylim(max(bar_min, 0.1), bar_max * 2.0)
+    ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
 
-        vol_times   = []
-        # M_atm_total = np.zeros(len(fig_o.time))
+    # PLOT ax_cr
+    vmr_min = 1.0e-3
+    for vol in volatile_species:
+        if not vol_present[vol]:
+            continue 
+        ax_cr.plot( df_atm["Time"], vol_vmr[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+        vmr_min = min(vmr_min, np.amin(vol_vmr[vol]))
+    ax_cr.set_ylim(vmr_min, 1.0)
+    ax_cr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
 
-        # For all times
-        for sim_time in fig_o.time:
-
-            # Define file name
-            json_file = output_dir+"/data/"+str(int(sim_time))+".json"
-
-            # For string check
-            vol_str = '"'+vol+'"'
-
-            # # Find the times with the volatile in the JSON file
-            # # https://stackoverflow.com/questions/4940032/how-to-search-for-a-string-in-text-files
-            with open(json_file, 'rb', 0) as file, \
-                mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as s:
-                # if s.find(vol.encode()) != -1:
-                if s.find(vol_str.encode()) != -1:
-                    keys_t = ( ('atmosphere', vol, 'liquid_kg'),
-                               ('atmosphere', vol, 'solid_kg'),
-                               ('atmosphere', vol, 'initial_kg'),
-                               ('atmosphere', vol, 'atmosphere_kg'),
-                               ('atmosphere', vol, 'atmosphere_bar'),
-                               ('atmosphere', 'pressure_surface')
-                               )
-
-                    vol_times.append(sim_time)
-
-        # # Find the times the volatile is *not* present
-        # np.setdiff1d(fig_o.time,vol_times)
-
-        # Only for volatiles that are present at some point 
-        if vol_times:
-
-            # Get the data for these files
-            data_vol = get_dict_surface_values_for_times( keys_t, vol_times, output_dir )
-            vol_liquid_kg       = data_vol[0,:]
-            vol_solid_kg        = data_vol[1,:]
-            vol_initial_kg      = data_vol[2,:]
-            vol_atm_kg          = data_vol[3,:]
-            vol_atm_pressure    = data_vol[4,:]
-            tot_atm_pressure    = data_vol[5,:]
-            vol_interior_kg     = vol_liquid_kg   + vol_solid_kg
-            vol_total_kg        = vol_interior_kg + vol_atm_kg
-
-            vol_molefraction    = np.array(vol_atm_pressure)/np.array(tot_atm_pressure)
-            mf_min = min(mf_min, np.amin(vol_molefraction))
-
-            ##########
-            # figure d
-            ##########
-            ax3.plot( vol_times, vol_atm_pressure, color=dict_colors[vol], linestyle='-', lw=lw, label=vol_latex[vol])
-            ##########
-            # figure e
-            ##########
-            ax4.plot( vol_times, vol_molefraction, lw=lw, color=dict_colors[vol], linestyle='-', label=vol_latex[vol])
-            ##########
-            # figure f
-            ##########
-            # ax5.plot( fig_o.time, vol_mass_interior/vol_mass_total, lw=lw, color="gray", linestyle='-', label=r'Total')
-            ax5.plot( vol_times, vol_interior_kg/vol_total_kg, lw=lw, color=dict_colors[vol], linestyle='-', label=vol_latex[vol] )
-
+    # PLOT ax_br
+    for vol in volatile_species:
+        if not vol_present[vol]:
+            continue 
+        ax_br.plot( df_atm["Time"], vol_intpart[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+    ax_br.set_ylim(0.0,1.0)
+    ax_br.legend(loc='center left', ncol=2, **leg_kwargs).set_zorder(20)
     
 
-    ##########
-    # figure d
-    ##########
-    fig_o.set_myaxes( ax3)
-    ax3.set_ylabel('$p_{\mathrm{i}}$ [bar]', fontsize=label_fs)
-    ax3.set_xlim( *xlim )
+    # ------------------------------------------------------------------------
+
+    # Save plot
+    fig.subplots_adjust(wspace=0.05,hspace=0.1)
+    plt_name = "plot_global"
     if logt:
-        ax3.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-        ax3.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-        ax3.xaxis.set_minor_formatter(ticker.NullFormatter())
-        ax3.set_xscale("symlog", linthresh=5)
-    ax3.set_xticklabels([])
-    ax3.yaxis.tick_right()
-    ax3.yaxis.set_label_position("right")
-    ax3.yaxis.set_label_coords(xcoord_r,ycoord_r)
-    ax3.set_yscale("log")
-    ax3.set_title(title_ax3, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
-
-    cur_ybot, cur_ytop = ax3.get_ylim()
-    ax3.set_ylim(max(cur_ybot, 1e-1), cur_ytop)
-
-    ##########
-    # figure e
-    ##########
-    fig_o.set_myaxes( ax4)
-    ax4.set_ylabel(r'$\chi^{\mathrm{atm}}_{\mathrm{i}}$', fontsize=label_fs)
-    if logt:
-        ax4.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-        ax4.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-        ax4.xaxis.set_minor_formatter(ticker.NullFormatter())
-        ax4.set_xscale("symlog", linthresh=5)
-    ax4.yaxis.tick_right()
-    ax4.set_xticklabels([])
-    ax4.yaxis.set_label_position("right")
-    ax4.yaxis.set_label_coords(xcoord_r,ycoord_r)
-    ax4.set_ylim([mf_min,1.0])
-    ax4.set_yscale("log")
-    ax4.set_xlim( *xlim )
-    handles, labels = ax4.get_legend_handles_labels()
-    ax4.set_title(title_ax4, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
-
-
-    ##########
-    # figure f
-    ##########
-    fig_o.set_myaxes( ax5, title=title_ax5)
-    if logt:
-        ax5.xaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=20) )
-        ax5.xaxis.set_minor_locator(ticker.LogLocator(base=10.0, subs=(0.2,0.4,0.6,0.8), numticks=20))
-        ax5.xaxis.set_minor_formatter(ticker.NullFormatter())
-        ax5.set_xscale("symlog", linthresh=5)
-    ax5.set_xlim( *xlim )
-    ax5.set_ylim([0,1])
-    ax5.set_yticks([0.0,0.2,0.4,0.6,0.8,1.0])
-    ax5.yaxis.tick_right()
-    ax5.yaxis.set_label_coords(xcoord_r,ycoord_r)
-    ax5.yaxis.set_label_position("right")
-    handles, labels = ax5.get_legend_handles_labels()
-    ax5.legend(handles, labels, ncol=2, frameon=1, fancybox=True, framealpha=0.9, fontsize=fs_legend, loc='center left') 
-    ax5.set_xlabel(xlabel, fontsize=label_fs)
-    ax5.set_ylabel(r'$m^{\mathrm{int}}_{\mathrm{i}}/m^{\mathrm{tot}}_{\mathrm{i}}$', fontsize=label_fs)
-    ax5.set_title(title_ax5, fontname=title_font, fontsize=title_fs, x=title_x, y=title_y, ha=title_ha, va=title_va, bbox=dict(fc='white', ec="white", alpha=txt_alpha, pad=txt_pad))
-
-    # plt.close()
-    # plt.ioff()
-    fig_o.savefig(6)
+        plt_name += "_log"
+    else:
+        plt_name += "_lin"
+    fig.savefig(output_dir+"/%s.pdf"%plt_name, bbox_inches='tight')
 
 #====================================================================
 
@@ -388,4 +201,5 @@ if __name__ == "__main__":
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
 
-    plot_global(dirs['output'],COUPLER_options, logt=False, tmin=1e1)
+    for logt in [True,False]:
+        plot_global(dirs['output'],COUPLER_options, logt=logt, tmin=1e1)
