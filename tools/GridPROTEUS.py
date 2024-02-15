@@ -22,6 +22,9 @@ class Pgrid():
         if not os.path.exists(self.conf):
             raise Exception("Base config file '%s' does not exist!" % self.conf)
         
+        if symlink_dir == "":
+            raise Exception("Symlinked directory is set to a blank path")
+        
         # Paths
         self.outdir = os.path.abspath(self.outdir)
         self.tmpdir = os.path.abspath(self.tmpdir)
@@ -32,6 +35,9 @@ class Pgrid():
                 os.unlink(self.outdir)
             if os.path.isdir(self.outdir):
                 print("Removing old files at '%s'" % self.outdir)
+                subfolders = [ f.path.split("/")[-1] for f in os.scandir(self.outdir) if f.is_dir() ]
+                if ".git" in subfolders:
+                    raise Exception("Not emptying directory - it contains a Git repository!")
                 shutil.rmtree(self.outdir)
         
         # Create new output location
@@ -43,6 +49,9 @@ class Pgrid():
             symlink_dir = os.path.abspath(symlink_dir)
             if os.path.exists(symlink_dir):
                 print("Removing old files at '%s'" % symlink_dir)
+                subfolders = [ f.path.split("/")[-1] for f in os.scandir(symlink_dir) if f.is_dir() ]
+                if ".git" in subfolders:
+                    raise Exception("Not emptying directory - it contains a Git repository!")
                 shutil.rmtree(symlink_dir)
             os.makedirs(symlink_dir)
             os.symlink(symlink_dir, self.outdir)

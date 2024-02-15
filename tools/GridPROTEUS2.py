@@ -3,7 +3,7 @@
 # Run PROTEUS for a grid of parameters
 
 # Prepare
-import os, itertools, time, subprocess, shutil, sys, threading
+import os, itertools, time, subprocess, shutil, sys, multiprocessing
 from datetime import datetime
 import numpy as np
 COUPLER_DIR=os.getenv('COUPLER_DIR')
@@ -17,12 +17,15 @@ class Pgrid():
     def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
 
         # Pgrid's own name (for versioning, etc.)
-        self.name = str(name)
+        self.name = str(name).strip()
         self.outdir = COUPLER_DIR+"/output/pgrid_"+self.name+"/"
         self.tmpdir = "/tmp/pgrid_"+self.name+"/"
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
             raise Exception("Base config file '%s' does not exist!" % self.conf)
+        
+        if symlink_dir == "":
+            raise Exception("Symlinked directory is set to a blank path")
         
         # Paths
         self.outdir = os.path.abspath(self.outdir)
@@ -33,6 +36,11 @@ class Pgrid():
             if os.path.islink(self.outdir):
                 os.unlink(self.outdir)
             if os.path.isdir(self.outdir):
+                print("Removing old files at '%s'" % self.outdir)
+                subfolders = [ f.path.split("/")[-1].lower() for f in os.scandir(self.outdir) if f.is_dir() ]
+                if ".git" in subfolders:
+                    raise Exception("Not emptying directory - it contains a Git repository!")
+                time.sleep(2.0)
                 shutil.rmtree(self.outdir)
         
         # Create new output location
@@ -43,6 +51,11 @@ class Pgrid():
             # Will be using symlink
             symlink_dir = os.path.abspath(symlink_dir)
             if os.path.exists(symlink_dir):
+                print("Removing old files at '%s'" % symlink_dir)
+                subfolders = [ f.path.split("/")[-1].lower() for f in os.scandir(symlink_dir) if f.is_dir() ]
+                if ".git" in subfolders:
+                    raise Exception("Not emptying directory - it contains a Git repository!")
+                time.sleep(2.0)
                 shutil.rmtree(symlink_dir)
             os.makedirs(symlink_dir)
             os.symlink(symlink_dir, self.outdir)
@@ -73,7 +86,6 @@ class Pgrid():
         self.dim_param.append("_empty")
         self.dim_avars[name] = None
         
-
     def _get_idx(self,name:str):
         if name not in self.dim_names:
             raise Exception("Dimension '%s' is not initialised" % name)
@@ -189,18 +201,18 @@ class Pgrid():
 
 
     # Run PROTEUS across this pgrid
-    def run(self,threads:int,test_run:bool=False):
+    def run(self,num_threads:int,test_run:bool=False):
         print("Running PROTEUS across parameter grid '%s'" % self.name)
 
         time_start = datetime.now()
-        print("Current time: "+time_end.strftime('%Y-%m-%d_%H:%M:%S'))
+        print("Current time: "+time_start.strftime('%Y-%m-%d_%H:%M:%S'))
 
-        name = self.name.strip()
+        check_interval = 1.0 # seconds
 
         if not test_run:
             print(" ")
             print("Confirm that the grid above is what you had intended.")
-            print("There are %d grid points. There will be %d threads." % (self.size, threads))
+            print("There are %d grid points. There will be %d threads." % (self.size, num_threads))
             print("Do not close this program! It must stay alive to manage each of the subproceses.")
             print(" ")
 
@@ -258,6 +270,7 @@ class Pgrid():
             loghand = open(log_path, 'w')
             subprocess.run(command, shell=False, check=False, stdout=loghand, stderr=loghand)
             loghand.close()
+            time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
 
         # Setup threads
         threads = []
@@ -276,7 +289,8 @@ class Pgrid():
             if not cfgexists:
                 print("ERROR: Config file could not be found for case %d!" % i)
             # Add thread
-            threads.append(threading.Thread(target=_thread_target, args=(cfg_path, log_path)))
+            # threads.append(threading.Thread(target=_thread_target, args=(cfg_path, log_path)))
+            threads.append(multiprocessing.Process(target=_thread_target, args=(cfg_path, log_path)))
 
         # Track statuses
         # 0: queued
@@ -284,7 +298,7 @@ class Pgrid():
         # 2: done
         status = np.zeros(self.size)
         done = False                # All done?
-        print("Starting process manager (%d grid points, %d threads)" % (self.size,threads))
+        print("Starting process manager (%d grid points, %d threads)" % (self.size,num_threads))
         while not done:
             # Check alive
             n_run = 0
@@ -302,7 +316,7 @@ class Pgrid():
             count_que = np.count_nonzero(status == 0)
             count_run = np.count_nonzero(status == 1)
             count_end = np.count_nonzero(status == 2)
-            print("    %d queued (%.1f%%), %d running (%.1f%%), %d completed (%.1f%%), %d threads active" % (
+            print("    %3d queued (%5.1f%%), %3d running (%5.1f%%), %3d completed (%5.1f%%), %3d threads active" % (
                     count_que, 100.0*count_que/self.size,
                     count_run, 100.0*count_run/self.size,
                     count_end, 100.0*count_end/self.size,
@@ -315,16 +329,16 @@ class Pgrid():
                 break 
 
             # Start new?
-            start_new = np.count_nonzero(status == 1) < threads
+            start_new = np.count_nonzero(status == 1) < num_threads
             if start_new:
                 for i in range(self.size):
                     if status[i] == 0:
-                        status[i] == 1
+                        status[i] = 1
                         start_new = False
                         threads[i].start() 
                         break
 
-            time.sleep(0.25)
+            time.sleep(check_interval)
             # / end while loop
 
         # join threads
@@ -349,7 +363,7 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.getenv('COUPLER_DIR')+"/input/earth_gridtest.cfg"
-    symlink  = ""
+    symlink  = "/tmp/threading_test"
     pg = Pgrid("threading", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
@@ -364,7 +378,7 @@ if __name__=='__main__':
     pg.set_dimension_direct("Orbital separation", "mean_distance", [0.3 , 1.0 , 3.0])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [0.0])
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
 
     pg.add_dimension("C/H ratio")
     pg.set_dimension_direct("C/H ratio", "CH_ratio", [0.01, 1.0])
@@ -389,7 +403,7 @@ if __name__=='__main__':
     # Start PROTEUS processes
     # -----
 
-    pg.run(2, test_run=True)
+    pg.run(4, test_run=True)
 
 
     # When this script ends, all cases of PROTEUS should be running.
