@@ -1,0 +1,173 @@
+# Default spider options file for use with PROTEUS
+
+# tolerances
+#-ts_sundials_atol 1.0e-10
+#-ts_sundials_rtol 1.0e-10
+
+# mesh
+-n 200
+
+# -MASS_COORDINATES
+
+-activate_poststep
+-activate_rollback
+
+# all units are SI unless indicated otherwise
+
+# primary scaling parameters
+# - these are used to non-dimensionalise (scale) the numerical problem
+#   and do not represent the physical quantities that are actually
+#   used (physical parameters are listed below)
+-radius0 63710000.0 # Earth radius
+-entropy0 2993.025100070677 # overturn of liquidus in Stixrude et al. (2009)
+-time0 1.0E5
+-pressure0 10.0E5
+-volatile0 1.0E-6
+
+# energy fluxes and sources to include
+# [0] is off
+# [1] is on
+-CONDUCTION 1 # conduction
+-CONVECTION 1 # convection
+-MIXING 1 # mixing (latent heat transport)
+-SEPARATION 1 # gravitational separation of solid and melt phase
+
+-phase_names melt,solid
+
+-melt_TYPE 1
+-melt_alpha_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/thermal_exp_melt.dat
+-melt_cp_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/heat_capacity_melt.dat
+-melt_dTdPs_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/adiabat_temp_grad_melt.dat
+-melt_rho_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/density_melt.dat
+-melt_temp_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/temperature_melt.dat
+-melt_log10visc 2.0 
+-melt_cond 4.0 # conductivity of melt
+-melt_phase_boundary_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/liquidus_A11_H13.dat
+
+-solid_TYPE 1
+-solid_alpha_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/thermal_exp_solid.dat
+-solid_cp_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/heat_capacity_solid.dat
+-solid_dTdPs_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/adiabat_temp_grad_solid.dat
+-solid_rho_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/density_solid.dat
+-solid_temp_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/temperature_solid.dat
+-solid_log10visc 22.0
+-solid_cond 4.0 # conductivity of solid
+-solid_phase_boundary_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/solidus_A11_H13.dat
+
+# initial condition
+# [1] is set dS/dr to constant everywhere
+# [2] is restart from file
+# -IC_INTERIOR 1
+#-ic_interior_filename output/dSdr_b_aug_0.m
+# -ic_adiabat_entropy 2600.0
+# -ic_dsdr -4.6978890285209187e-07 # initial dS/dr everywhere
+# set surface and core entropy (-1 is a flag to ignore, positive values are used)
+-ic_surface_entropy -1
+-ic_core_entropy -1
+
+# mixing length
+# [1] is conventional, i.e. distance from the nearest boundary
+#     which is either the surface or core-mantle boundary
+# [2] is constant, i.e. 1/4 x mantle depth, which is the mean
+#     of conventional theory.  This can help to prevent a rigid
+#     lid from forming at the surface
+# [3] is conventional as [1] above, but additionally allows you to
+#      specify a mid-mantle interface
+
+#-mixing_length_layer_radius 0.0 # non-dimensional radius
+
+# physical parameters
+
+# static pressure profile derived from Adams-Williamson equation of state
+# these parameters are from fitting PREM in the lower mantle (for Earth)
+-adams_williamson_rhos 4078.95095544 # surface density
+-adams_williamson_beta 1.1115348931000002e-07 # beta parameter
+
+# eddy diffusivity
+# if negative, this value is adopted (units m^2/s)
+# if positive, this value is used to scale the internally calculated eddy diffusivity
+-eddy_diffusivity_thermal 1.0
+-eddy_diffusivity_chemical 1.0
+
+# material properties
+-grain 1.0E-1 # grain size (m)
+
+# smoothing of material properties across liquidus and solidus
+# units of melt fraction (non-dimensional)
+-matprop_smooth_width 1.0E-2
+
+# viscosity
+-phi_critical 0.4 # transition melt fraction (non-dimensional)
+-phi_width 0.15 # transition width (non-dimensional)
+
+# core-mantle boundary condition
+# [1] core-cooling
+# [2] heat flux (prescribe value using core_bc_value)
+# [3] entropy
+-CORE_BC 1
+
+# core parameters for CORE_BC=1
+-rho_core 10738.332568062382 # core density
+-cp_core 880.0 # core heat capacity
+
+# surface boundary condition
+# [1] grey-body, i.e. sigma*emiss*(T^4-Teqm^4), with constant emissivity
+# [2] steam atmosphere parameterisation (Zahnle et al., 1988)
+# [3] self-consistent volatile evolution (Bower et al., 2019, Bower et al., 2021)
+# [4] heat flux (prescribe value using surface_bc_value)
+# [5] entropy
+-SURFACE_BC 4
+
+# parameterise the upper thermal boundary layer, where
+# dT = param_utbl_const * [Surface temperature]**3.0
+# this is useful for high melt fraction dynamics where the ultra-thin thermal boundary layer
+# (often only a few cms thick) cannot be resolved by the choice of mesh
+-PARAM_UTBL 0 # flag to turn on parameterisation
+-param_utbl_const 1.0E-7 # value of parameterisation
+
+-IC_ATMOSPHERE 3
+
+# atmosphere reference pressure (Pa)
+-P0 101325.0 # Pa (= 1 atm)
+
+# fO2 buffer chosen to define fO2 alongside the offset parameter (7: Iron-Wustite)
+-OXYGEN_FUGACITY 7
+
+# note that an offset of 0.5 is also the default, following
+# Sossi et al., 2020
+# -OXYGEN_FUGACITY_offset 0.5
+
+# internal heat sources
+
+# line below controls if radiogenic heating is included
+# must uncomment, and have at least one radionuclide
+# options: al26,k40,fe60,th232,u235,u238
+-radionuclide_names k40,th232,u235,u238
+
+# K40
+-k40_t0 4.55E9 # years
+-k40_abundance 1.1668E-4 # (40K/K) Ruedas (2017)
+-k40_concentration 310 # ppm (Turcotte & Schubert, 2014, p. 170)
+-k40_heat_production 2.8761E-5 # W/kg (Ruedas, 2017)
+-k40_half_life 1248E6 # years (Ruedas, 2017)
+
+# Th232
+-th232_t0 4.55E9 # years
+-th232_abundance 1.0 # (232Th/Th) Ruedas (2017)
+-th232_concentration 0.124 # ppm (Turcotte & Schubert, 2014, p. 170)
+-th232_heat_production 2.6368E-5 # W/kg (Ruedas, 2017)
+-th232_half_life 14000E6 # years (Ruedas, 2017)
+
+# U235
+-u235_t0 4.55E9 # years
+-u235_abundance 0.0072045 # (235U/U) Ruedas (2017)
+-u235_concentration 0.031 # ppm (Turcotte & Schubert, 2014, p. 170)
+-u235_heat_production 5.68402E-4 # W/kg (Ruedas, 2017)
+-u235_half_life 704E6 # years (Ruedas, 2017)
+
+# U238
+-u238_t0 4.55E9 # years
+-u238_abundance 0.9927955 # (238U/U) Ruedas (2017)
+-u238_concentration 0.031
+-u238_heat_production 9.4946E-5 # W/kg (Ruedas, 2017)
+-u238_half_life 4468E6 # years (Ruedas, 2017)
