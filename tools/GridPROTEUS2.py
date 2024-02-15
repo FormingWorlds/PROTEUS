@@ -208,6 +208,7 @@ class Pgrid():
         print("Current time: "+time_start.strftime('%Y-%m-%d_%H:%M:%S'))
 
         check_interval = 1.0 # seconds
+        print_interval = 10  # step interval at which to print
 
         if not test_run:
             print(" ")
@@ -264,11 +265,11 @@ class Pgrid():
         def _thread_target(cfg_path, log_path):
             proteus_py = os.path.join(COUPLER_DIR,"proteus.py")
             if test_run:
-                command = ["/bin/echo","Dummmy output. Config file is at %s" % cfg_path]
+                command = ['/bin/echo Dummmy output. Config file is at "' + cfg_path + '"']
             else:
-                command = ["python",proteus_py,"--cfg_file",cfg_path]
+                command = ["python " + proteus_py + " --cfg_file " + cfg_path]
             loghand = open(log_path, 'w')
-            subprocess.run(command, shell=False, check=False, stdout=loghand, stderr=loghand)
+            subprocess.run(command, shell=True, check=False, stdout=loghand, stderr=loghand)
             loghand.close()
             time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
 
@@ -276,13 +277,13 @@ class Pgrid():
         threads = []
         for i in range(self.size):
             # Case paths
-            cfg_path  = self.tmpdir+"case_%05d.cfg" % i
-            log_path = os.path.join(COUPLER_DIR,"output","pgrid_%s_%05d.log" % (self.name,i))
+            cfg_path = os.path.join(self.tmpdir,"case_%05d.cfg" % i)
+            log_path = os.path.join(self.outdir,"case_%05d.log" % i)
             # Check cfg exists
             cfgexists = False
             waitfor   = 4.0 
-            for _ in range(int(waitfor*1.0e3)):
-                time.sleep(1.0e-3)
+            for _ in range(int(waitfor*10)):  # do n=100*wait_for checks
+                time.sleep(0.1)
                 if os.path.exists(cfgfile):
                     cfgexists = True
                     break
@@ -299,6 +300,7 @@ class Pgrid():
         status = np.zeros(self.size)
         done = False                # All done?
         print("Starting process manager (%d grid points, %d threads)" % (self.size,num_threads))
+        step = 0
         while not done:
             # Check alive
             n_run = 0
@@ -316,12 +318,13 @@ class Pgrid():
             count_que = np.count_nonzero(status == 0)
             count_run = np.count_nonzero(status == 1)
             count_end = np.count_nonzero(status == 2)
-            print("    %3d queued (%5.1f%%), %3d running (%5.1f%%), %3d completed (%5.1f%%), %3d threads active" % (
-                    count_que, 100.0*count_que/self.size,
-                    count_run, 100.0*count_run/self.size,
-                    count_end, 100.0*count_end/self.size,
-                    n_run)
-                  )
+            if (step%print_interval == 0):
+                print("    %3d queued (%5.1f%%), %3d running (%5.1f%%), %3d completed (%5.1f%%), %3d threads active" % (
+                        count_que, 100.0*count_que/self.size,
+                        count_run, 100.0*count_run/self.size,
+                        count_end, 100.0*count_end/self.size,
+                        n_run)
+                    )
 
             # Done?
             if np.count_nonzero(status == 2) == self.size:
@@ -339,6 +342,7 @@ class Pgrid():
                         break
 
             time.sleep(check_interval)
+            step += 1
             # / end while loop
 
         # join threads
@@ -363,7 +367,7 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.getenv('COUPLER_DIR')+"/input/earth_gridtest.cfg"
-    symlink  = "/tmp/threading_test"
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/threading"
     pg = Pgrid("threading", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
@@ -375,13 +379,13 @@ if __name__=='__main__':
     #                                     })
 
     pg.add_dimension("Orbital separation")
-    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.3 , 1.0 , 3.0])
+    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.3 , 3.0])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [0.0, 1.5, 3.0])
 
     pg.add_dimension("C/H ratio")
-    pg.set_dimension_direct("C/H ratio", "CH_ratio", [0.01, 1.0])
+    pg.set_dimension_direct("C/H ratio", "CH_ratio", [0.1, 1.0, 2.0])
     
     # -----
     # Print state of parameter grid
@@ -403,10 +407,9 @@ if __name__=='__main__':
     # Start PROTEUS processes
     # -----
 
-    pg.run(4, test_run=True)
+    pg.run(8, test_run=False)
 
-
-    # When this script ends, all cases of PROTEUS should be running.
-    # It does not mean that they are complete.
+    # When this script ends, it means that all processes ARE complete or they
+    # have been killed or crashed.
     print("Exit GridPROTEUS")
-    
+    exit(0)
