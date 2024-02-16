@@ -5,7 +5,11 @@ from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import *
 
+log = logging.getLogger(__name__)
+
 def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
+
+    log.info("Plot global")
 
     # Plotting parameters
     lw=2.0
@@ -194,7 +198,7 @@ if __name__ == "__main__":
         cfg = 'init_coupler.cfg' 
 
     # Read in COUPLER input file
-    print("Read cfg file")
+    log.info("Read cfg file")
     from utils.coupler import ReadInitFile, SetDirectories
     COUPLER_options, time_dict = ReadInitFile( cfg )
 

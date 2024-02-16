@@ -3,8 +3,8 @@
 from utils.modules_ext import *
 from utils.helper import *
 
-# Debugging
-# from AEOLUS.modules.plot_flux_balance import plot_atmosphere_fluxes
+log = logging.getLogger(__name__)
+
 
 def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
 
@@ -40,15 +40,15 @@ def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):
     # Slow change IF dT too high
     if abs(Ts_last-Ts_curr) > dT_max:
         dT_sgn  = np.sign(Ts_last-Ts_curr)
-        print("Limit max dT:", Ts_curr, "->", Ts_last-dT_sgn*dT_max)
+        log.warning("Limit max dT:", Ts_curr, "->", Ts_last-dT_sgn*dT_max)
         Ts_curr = Ts_last-dT_sgn*dT_max
     if abs(Ts_last-Ts_curr) > 0.05*Ts_last:
         dT_sgn  = np.sign(Ts_last-Ts_curr)
-        print("Limit max dT:", Ts_curr, "->", Ts_last-dT_sgn*0.01*Ts_last)
+        log.warning("Limit max dT:", Ts_curr, "->", Ts_last-dT_sgn*0.01*Ts_last)
         Ts_curr = Ts_last-dT_sgn*0.05*Ts_last
 
-    print("t_last:", t_last/yr, "Ts_last:", Ts_last)
-    print("t_curr:", t_curr/yr, "Ts_curr:", Ts_curr)
+    log.info("t_last:", t_last/yr, "Ts_last:", Ts_last)
+    log.info("t_curr:", t_curr/yr, "Ts_curr:", Ts_curr)
 
     return Ts_curr
 
@@ -69,7 +69,7 @@ def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
                ):
 
             PrintHalfSeparator()
-            print(">>>>>>>>>> Flux convergence scheme <<<<<<<<<<<")
+            log.info(">>>>>>>>>> Flux convergence scheme <<<<<<<<<<<")
 
             COUPLER_options["flux_convergence"] = 2
 
@@ -82,7 +82,7 @@ def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
             Ts_previous_atm = run_atm_prev.iloc[-1]["T_surf"]
             Ts_last_atm     = run_atm.iloc[-1]["T_surf"]
 
-            print("F_net", str(COUPLER_options["F_net"]), "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm", Ts_last_atm, "dTs_atm", str(COUPLER_options["dTs_atm"]), "t_curr", t_curr, "t_previous_atm", t_previous_atm)
+            log.info("F_net", str(COUPLER_options["F_net"]), "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm", Ts_last_atm, "dTs_atm", str(COUPLER_options["dTs_atm"]), "t_curr", t_curr, "t_previous_atm", t_previous_atm)
 
             # Apply flux convergence via shallow layer function
             COUPLER_options["T_surf"] = shallow_mixed_ocean_layer(COUPLER_options["F_net"], Ts_previous_atm, COUPLER_options["dTs_atm"], t_curr, t_previous_atm)
@@ -90,9 +90,9 @@ def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
             # Prevent atmospheric oscillations
             if len(run_atm_curr) > 2 and (np.sign(run_atm_curr["F_net"].iloc[-1]) != np.sign(run_atm_curr["F_net"].iloc[-2])) and (np.sign(run_atm_curr["F_net"].iloc[-2]) != np.sign(run_atm_curr["F_net"].iloc[-3])):
                 COUPLER_options["T_surf"] = np.mean([run_atm.iloc[-1]["T_surf"], run_atm.iloc[-2]["T_surf"]])
-                print("Prevent oscillations, new T_surf =", COUPLER_options["T_surf"])
+                log.warning("Prevent oscillations, new T_surf =", COUPLER_options["T_surf"])
 
-            print("dTs_atm (K):", COUPLER_options["dTs_atm"], "t_previous_atm:", t_previous_atm, "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm:", Ts_last_atm, "t_curr:", t_curr, "Ts_curr:", COUPLER_options["T_surf"])
+            log.info("dTs_atm (K):", COUPLER_options["dTs_atm"], "t_previous_atm:", t_previous_atm, "Ts_previous_atm:", Ts_previous_atm, "Ts_last_atm:", Ts_last_atm, "t_curr:", t_curr, "Ts_curr:", COUPLER_options["T_surf"])
 
             PrintHalfSeparator()
 
@@ -193,7 +193,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
 
     # Runtime info
     PrintHalfSeparator()
-    print("Running AEOLUS...")
+    log.info("Running AEOLUS...")
 
     # Change dir
     cwd = os.getcwd()
@@ -253,7 +253,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
     if write_in_tmp_dir:
         shutil.rmtree(tmp_dir,ignore_errors=True)
 
-    print("SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
+    log.info("SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
 
     # Save atm data to disk
     nc_fpath = dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.nc"
@@ -276,8 +276,8 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
 
     # Print if a limit was applied
     if (F_atm_lim != F_atm_new ):
-        print("Change in F_atm [W m-2] limited in this step!")
-        print("    %g  ->  %g" % (F_atm_new , F_atm_lim))
+        log.warning("Change in F_atm [W m-2] limited in this step!")
+        log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
             
     COUPLER_options["F_atm"] = F_atm_lim         # Net flux at TOA
     COUPLER_options["F_olr"] = atm.LW_flux_up[0] # OLR

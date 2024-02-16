@@ -4,6 +4,7 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import *
 
+log = logging.getLogger(__name__)
 class MyJSON( object ):
 
     '''load and access json data'''
@@ -17,8 +18,8 @@ class MyJSON( object ):
         try:
             json_data  = open( self.filename )
         except FileNotFoundError:
-            print('cannot find file: %s' % self.filename )
-            print('please specify times for which data exists')
+            log.error('cannot find file: %s' % self.filename )
+            log.error('please specify times for which data exists')
             sys.exit(1)
         self.data_d = json.load( json_data )
         json_data.close()
@@ -30,7 +31,7 @@ class MyJSON( object ):
             dict_d = recursive_get( self.data_d, keys )
             return dict_d
         except NameError:
-            print('dictionary for %s does not exist', keys )
+            log.error('dictionary for %s does not exist', keys )
             sys.exit(1)
 
     # was get_field_units
@@ -492,7 +493,7 @@ def solvepp_doit(COUPLER_options):
     """
 
 
-    print("Solving for equilibrium partial pressures at surface")
+    log.info("Solving for equilibrium partial pressures at surface")
 
     # Volatiles that are solved-for using this eqm calculation
     solvepp_vols = ['H2O', 'CO2', 'N2', 'H2', 'CO', 'CH4']
@@ -514,12 +515,12 @@ def solvepp_doit(COUPLER_options):
     earth_r  = 6.37e6   # m
 
     core_rho = (3.0 * earth_fm * earth_m) / (4.0 * np.pi * ( earth_fr * earth_r )**3.0 )  # core density [kg m-3]
-    print("Estimating core density to be %g kg m-3" % core_rho)
+    log.info("Estimating core density to be %g kg m-3" % core_rho)
 
     # Calculate mantle mass by subtracting core from total
     core_mass = core_rho * 4.0/3.0 * np.pi * (COUPLER_options["radius"] * COUPLER_options["planet_coresize"] )**3.0
     global_d['mantle_mass'] = COUPLER_options["mass"] - core_mass 
-    print("Total mantle mass is %.2e kg" % global_d['mantle_mass'])
+    log.info("Total mantle mass is %.2e kg" % global_d['mantle_mass'])
     if (global_d['mantle_mass'] <= 0.0):
         UpdateStatusfile(dirs, 20)
         raise Exception("Something has gone wrong (mantle mass is negative)")
@@ -539,7 +540,7 @@ def solvepp_doit(COUPLER_options):
 
     partial_pressures = {}
     for s in solvepp_vols:
-        print("    solvepp: p_%s = %f bar" % (s,p_d[s]))
+        log.info("    solvepp: p_%s = %f bar" % (s,p_d[s]))
         partial_pressures[s] = p_d[s] * 1.0e5 # Convert from bar to Pa
 
     return partial_pressures
@@ -609,7 +610,7 @@ def get_all_output_times( odir='output' ):
     # locate times to process based on files located in odir/
     file_l = [f for f in os.listdir(odir) if os.path.isfile(odir+f)]
     if not file_l:
-        print('output directory contains no files')
+        log.error('output directory contains no files')
         sys.exit(0)
 
     time_l = [fname for fname in file_l]
@@ -782,7 +783,7 @@ def check_static_structure( radius, *myargs ):
     dg = get_difference_static_structure( radius, *myargs )
     reldg = np.abs( dg/G_core )
     if reldg > 1.0e-6:
-        print( 'WARNING: g relative accuracy= {}'.format(reldg) )
+        log.warning('g relative accuracy= {}'.format(reldg) )
 
 
 
@@ -831,12 +832,12 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             dtmacro = 1
             dtswitch = 1
             nsteps = 1
-            print("Time-stepping intent: static")
+            log.info("Time-stepping intent: static")
 
         else:
             if (COUPLER_options["dt_method"] == 0):
                 # Proportional time-step calculation
-                print("Time-stepping intent: proportional")
+                log.info("Time-stepping intent: proportional")
                 dtswitch = time_dict["planet"] / float(COUPLER_options["dt_propconst"])
 
             elif (COUPLER_options["dt_method"] == 1):
@@ -863,32 +864,32 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
 
                 if F_acc_max > 20.0:
                     # Slow down!!
-                    print("Time-stepping intent: slow down!!")
+                    log.info("Time-stepping intent: slow down!!")
                     dtswitch = 0.10 * dtprev
 
                 elif (F_acc_max > 10.0):
                     # Slow down
-                    print("Time-stepping intent: slow down")
+                    log.info("Time-stepping intent: slow down")
                     dtswitch = 0.90 * dtprev
 
                 elif F_acc_max > 0.1:
                     # Steady (speed up a little bit to promote evolution)
-                    print("Time-stepping intent: steady")
+                    log.info("Time-stepping intent: steady")
                     dtswitch = 1.01 * dtprev
 
                 elif F_acc_max > -12.0:
                     # Speed up
-                    print("Time-stepping intent: speed up")
+                    log.info("Time-stepping intent: speed up")
                     dtswitch = 1.15 * dtprev
 
                 else:
                     # Speed up!!
-                    print("Time-stepping intent: speed up!!")
+                    log.info("Time-stepping intent: speed up!!")
                     dtswitch = 1.50 * dtprev
 
             elif (COUPLER_options["dt_method"] == 2):
                 # Always use the maximum time-step, which can be adjusted in the cfg file
-                print("Time-stepping intent: maximum")
+                log.info("Time-stepping intent: maximum")
                 dtswitch = COUPLER_options["dt_maximum"]
 
             else:
@@ -898,7 +899,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             # Additional step-size ceiling when F_crit is used
             if abs(run_atm.iloc[-1]["F_atm"]) <= COUPLER_options["F_crit"]:
                 dtswitch = min(dtswitch, COUPLER_options["dt_crit"])
-                print("F_atm < F_crit, so time-step is being limited")
+                log.info("F_atm < F_crit, so time-step is being limited")
 
             # Step scale factor (is always <= 1.0)
             dtswitch *= step_sf
@@ -917,13 +918,12 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             dtmacro = math.ceil(dtswitch / nsteps)   # Ensures that dtswitch is divisible by nsteps
             dtswitch = nsteps * dtmacro
 
-            print("New time-step is %1.2e years" % dtswitch)
+            log.info("New time-step is %1.2e years" % dtswitch)
 
         # Number of total steps until currently desired switch/end time
         nstepsmacro = step + nsteps
 
-        if debug:
-            print("TIME OPTIONS IN RUNSPIDER:", dtmacro, dtswitch, nstepsmacro)
+        log.debug("TIME OPTIONS IN RUNSPIDER: %g %g %d" % (dtmacro, dtswitch, nstepsmacro))
 
     # For init loop
     else:
@@ -935,12 +935,12 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     COUPLER_options["dtswitch"] = dtswitch
     COUPLER_options["dtmacro"] = dtmacro
 
-    print("Surface volatile partial pressures:")
+    log.info("Surface volatile partial pressures:")
     for s in volatile_species:
         key_pp = str(s+"_initial_atmos_pressure")
         key_in = str(s+"_included")
         if (key_pp in COUPLER_options) and (COUPLER_options[key_in] == 1):
-            print("    p_%s = %.5f bar" % (s,COUPLER_options[key_pp]/1.0e5))
+            log.info("    p_%s = %.5f bar" % (s,COUPLER_options[key_pp]/1.0e5))
 
     # Set spider flux boundary condition
     net_loss = COUPLER_options["F_atm"]
@@ -1039,25 +1039,25 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
         if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
             if COUPLER_options["tsurf_poststep_change"] <= 300:
                 COUPLER_options["tsurf_poststep_change"] += 10
-                print(">>> Raise dT poststep_changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
+                log.warning(">>> Raise dT poststep_changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
             else:
-                print(">> dTs_int too high! >>", COUPLER_options["tsurf_poststep_change"], "K")
+                log.warning(">> dTs_int too high! >>", COUPLER_options["tsurf_poststep_change"], "K")
                 
         # Slowly limit again if time advances smoothly
         if (run_int["Time"].iloc[-1] != run_int["Time"].iloc[ref_idx]) and COUPLER_options["tsurf_poststep_change"] > 30:
             COUPLER_options["tsurf_poststep_change"] -= 10
-            print(">>> Lower tsurf_poststep_change poststep changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
+            log.warning(">>> Lower tsurf_poststep_change poststep changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
 
         if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
             if COUPLER_options["solver_tolerance"] < 1.0e-2:
                 COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
-                print(">>> ADJUST tolerances:", COUPLER_options["solver_tolerance"])
+                log.warning(">>> ADJUST tolerances:", COUPLER_options["solver_tolerance"])
             COUPLER_options["adjust_tolerance"] = 1
-            print(">>> CURRENT TOLERANCES:", COUPLER_options["solver_tolerance"])
+            log.warning(">>> CURRENT TOLERANCES:", COUPLER_options["solver_tolerance"])
 
         # If tolerance was adjusted, restart SPIDER w/ new tolerances
         if "adjust_tolerance" in COUPLER_options:
-            print(">>>>> >>>>> RESTART W/ ADJUSTED TOLERANCES")
+            log.warning(">>>>> >>>>> RESTART W/ ADJUSTED TOLERANCES")
             call_sequence.extend(["-atmosts_snes_atol", str(COUPLER_options["solver_tolerance"])])
             call_sequence.extend(["-atmosts_snes_rtol", str(COUPLER_options["solver_tolerance"])])
             call_sequence.extend(["-atmosts_ksp_atol", str(COUPLER_options["solver_tolerance"])])
@@ -1069,25 +1069,19 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     call_sequence.extend(["-ts_sundials_rtol", str(COUPLER_options["solver_tolerance"] * atol_sf)])
 
     # Runtime info
-    if debug:
-        flags = ""
-        for flag in call_sequence:
-            flags += " " + flag
-        print("SPIDER call sequence: '%s'" % flags)
+    flags = ""
+    for flag in call_sequence:
+        flags += " " + flag
+    log.debug("SPIDER call sequence: '%s'" % flags)
 
     call_string = " ".join(call_sequence)
 
     # Run SPIDER
-    if debug:
-        spider_print = sys.stdout
-    else:
-        spider_print = open(dirs["output"]+"spider_recent.log",'w')
-        spider_print.write(call_string+"\n")
-
+    spider_print = open(dirs["output"]+"spider_recent.log",'w')
+    spider_print.write(call_string+"\n")
+    spider_print.flush()
     proc = subprocess.run([call_string],shell=True,stdout=spider_print)
-
-    if not debug:
-        spider_print.close()
+    spider_print.close()
 
     # Update restart filename for next SPIDER run
     COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
@@ -1109,8 +1103,8 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # info
     PrintHalfSeparator()
-    print("Running SPIDER...")
-    print("IC_INTERIOR =",COUPLER_options["IC_INTERIOR"])
+    log.info("Running SPIDER...")
+    log.debug("IC_INTERIOR = " + str(COUPLER_options["IC_INTERIOR"]))
 
     # parameters
     max_attempts = 7        # maximum number of attempts
@@ -1125,7 +1119,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     # make attempts
     while not spider_success:
         attempts += 1
-        print("Attempt %d" % attempts)
+        log.info("Attempt %d" % attempts)
 
         # run SPIDER
         temp_options = copy.deepcopy(COUPLER_options)
@@ -1133,10 +1127,10 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
         if spider_success:
             # success
-            print("Attempt %d succeeded" % attempts)
+            log.info("Attempt %d succeeded" % attempts)
         else:
             # failure
-            print("Attempt %d failed" % attempts)
+            log.warning("Attempt %d failed" % attempts)
             if attempts >= max_attempts:
                 # give up
                 break

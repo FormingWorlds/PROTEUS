@@ -5,12 +5,14 @@ from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import *
 
+log = logging.getLogger(__name__)
+
 #====================================================================
 
 # Plotting function
 def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5):
 
-    print("Plot interior colourmesh")
+    log.info("Plot interior colourmesh")
 
     # Gather data
     output_files = glob.glob(output_dir+"/data/*.json")
@@ -20,7 +22,7 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5):
     sorted_times = np.array(output_times)[sort_mask]
 
     if len(sorted_times) < 3:
-        print("WARNING: Too few samples to make interior_cmesh plot")
+        log.warning("Too few samples to make interior_cmesh plot")
         return
     if len(sorted_times) < 1000:
         stride = int(1)

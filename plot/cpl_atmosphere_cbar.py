@@ -4,6 +4,8 @@
 from utils.modules_ext import *
 from utils.plot import *
 
+log = logging.getLogger(__name__)
+
 #====================================================================
 
 # Helper function
@@ -36,7 +38,7 @@ def _read_nc(nc_fpath):
 # Plotting function
 def plot_atmosphere_cbar(output_dir):
 
-    print("Plot atmosphere colourbar")
+    log.info("Plot atmosphere colourbar")
 
     # Gather data files
     output_files = glob.glob(output_dir+"/data/*_atm.nc")
@@ -46,7 +48,7 @@ def plot_atmosphere_cbar(output_dir):
     sorted_times = np.array(output_times)[sort_mask]
 
     if len(sorted_times) < 3:
-        print("WARNING: Too few samples to make atmosphere_cbar plot")
+        log.warning("Too few samples to make atmosphere_cbar plot")
         return
 
     # Parse NetCDF files
@@ -104,10 +106,10 @@ def main():
     # Define output directory for plots
     if args.output_dir:
         output_dir = args.output_dir
-        print("Output directory:", output_dir)
+        log.info("Output directory:", output_dir)
     else:
         output_dir = os.getcwd()
-        print("Output directory:", output_dir)
+        log.info("Output directory:", output_dir)
 
     # Plot fixed set from above
     plot_atmosphere_cbar( output_dir=output_dir)

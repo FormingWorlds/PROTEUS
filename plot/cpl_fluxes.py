@@ -4,10 +4,12 @@
 from utils.modules_ext import *
 from utils.plot import *
 
+log = logging.getLogger(__name__)
+
 # Plotting fluxes
 def plot_fluxes_atmosphere(output_dir, atm):
 
-    print("Plotting fluxes at each level")
+    log.info("Plotting fluxes at each level")
 
     mpl.use('Agg')
 
@@ -42,7 +44,7 @@ def plot_fluxes_atmosphere(output_dir, atm):
 # Plotting fluxes
 def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
 
-    print("Plotting fluxes")
+    log.info("Plotting fluxes")
 
     # Get values
     df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep="\t")

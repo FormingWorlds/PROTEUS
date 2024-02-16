@@ -7,9 +7,7 @@
 import importlib.util
 import argparse
 import logging
-import mmap
 import pathlib
-import errno
 import json
 import subprocess
 import fileinput
@@ -44,7 +42,6 @@ from scipy.interpolate import RectBivariateSpline, interp1d, PchipInterpolator
 from scipy import interpolate
 from scipy.integrate import solve_ivp, odeint
 from scipy.optimize import newton, fsolve, curve_fit
-from scipy.signal import savgol_filter
 from scipy import stats
 
 

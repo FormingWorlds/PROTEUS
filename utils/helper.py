@@ -2,15 +2,17 @@
 # This file should not depend on too many other files, as this can cause circular import issues
 
 import numpy as np
-import os, shutil, re
+import os, shutil, re, glob, logging
 from utils.constants import *
 
+log = logging.getLogger(__name__)
+
 def PrintSeparator():
-    print("=============================================================================================================")
+    log.info("=============================================================================================================")
     pass
 
 def PrintHalfSeparator():
-    print("--------------------------------------------------")
+    log.info("--------------------------------------------------")
     pass
 
 # String sorting inspired by natsorted
@@ -39,7 +41,7 @@ def CommentFromStatus(status:int):
         # Default case
         case _:
             desc = "UNHANDLED STATUS"
-            print("WARNING: Unhandled model status selected")
+            log.warning("Unhandled model status selected")
     return desc
 
 # Update the status file with the current state of the program
@@ -64,20 +66,46 @@ def UpdateStatusfile(dirs:dict, status:int):
         # hdl.flush()
         # os.fsync(hdl.fileno())
 
-def CleanDir(dir):
+def CleanDir(directory, keep_stdlog=False):
     """Clean a directory.
 
     Deletes a given directory and its contents, then creates it as empty.
 
     Parameters
     ----------
-        dir : string
+        directory : string
             Path to directory
 
     """
-    if os.path.exists(dir):
-        shutil.rmtree(dir)
-    os.makedirs(dir)
+
+    def _check_safe(d):
+        subfolders = [ f.path.split("/")[-1] for f in os.scandir(d) if f.is_dir() ]
+        if ".git" in subfolders:
+            raise Exception("Not emptying directory - it contains a Git repository!")
+
+    # Simple case...
+    if not keep_stdlog:
+        if os.path.exists(directory):
+            _check_safe(directory)
+            shutil.rmtree(directory)
+        os.makedirs(directory)
+        return
+
+    # Case where we want to keep log file...
+    # If exists
+    if os.path.exists(directory):
+        for p in glob.glob(directory+"/*"):
+            p = str(p)
+            if os.path.isdir(p):
+                # Remove folders
+                _check_safe(p)
+                shutil.rmtree(p)
+            else:
+                # Remove all files EXCEPT std.log in topmost dir
+                if not ("std.log" in p):
+                    os.remove(p)
+    else:
+        os.makedirs(directory)
 
 def find_nearest(array, target):
     """Find the element of an array that has a value closest to the target

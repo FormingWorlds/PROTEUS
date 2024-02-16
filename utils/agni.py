@@ -4,6 +4,7 @@ from utils.modules_ext import *
 from utils.helper import *
 from utils.constants import *
 
+log = logging.getLogger(__name__)
 
 def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     """Run AGNI.
@@ -33,7 +34,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     """
 
     PrintHalfSeparator()
-    print("Running AGNI...")
+    log.info("Running AGNI...")
 
     # Setup values to be provided by CLI
     gravity = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
@@ -208,7 +209,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     COUPLER_options["F_olr"]  = LW_flux_up[0]
     COUPLER_options["T_surf"] = T_surf
     
-    print("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
+    log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
     return COUPLER_options
 

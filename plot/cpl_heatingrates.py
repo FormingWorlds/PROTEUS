@@ -4,6 +4,8 @@
 from utils.modules_ext import *
 from utils.plot import *
 
+log = logging.getLogger(__name__)
+
 def cpl_heatingrates(output_dir, atm, comp=[]):
     """Plot temperature structure and corresponding heating rates versus pressure
     
@@ -22,7 +24,7 @@ def cpl_heatingrates(output_dir, atm, comp=[]):
             Optional PT profile for comparison (p=comp[0] and T=comp[1])
     """
 
-    print("Plotting heating rates at each level")
+    log.info("Plotting heating rates at each level")
 
     mpl.use('Agg')
 
@@ -56,5 +58,5 @@ def cpl_heatingrates(output_dir, atm, comp=[]):
     fig.savefig(output_dir+"/plot_heatingrates.pdf")
 
 if __name__ == '__main__':
-    print("WARNING: cpl_heatingrates does not support command-line execution.")
+    print("cpl_heatingrates does not support command-line execution.")
     exit(1)

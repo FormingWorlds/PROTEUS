@@ -5,12 +5,14 @@ from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import *
 
+log = logging.getLogger(__name__)
+
 #====================================================================
 
 # Plotting function
 def plot_interior_cbar(output_dir):
 
-    print("Plot interior colourbar")
+    log.info("Plot interior colourbar")
 
     # Gather data
     output_files = glob.glob(output_dir+"/data/*.json")
@@ -20,7 +22,7 @@ def plot_interior_cbar(output_dir):
     sorted_times = np.array(output_times)[sort_mask]
 
     if len(sorted_times) < 3:
-        print("WARNING: Too few samples to make interior_cbar plot")
+        log.warning("Too few samples to make interior_cbar plot")
         return
 
     stride = int(50)
