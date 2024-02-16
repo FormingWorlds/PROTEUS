@@ -1,6 +1,8 @@
 # Small helper functions that can be used universally
+# This file should not depend on too many other files, as this can cause circular import issues
 
-from utils.modules_ext import *
+import numpy as np
+import os, shutil, re
 from utils.constants import *
 
 def PrintSeparator():
@@ -16,6 +18,51 @@ def natural_sort(l):
     convert = lambda text: int(text) if text.isdigit() else text.lower() 
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
     return sorted(l, key = alphanum_key)
+
+# Get comment from status
+def CommentFromStatus(status:int):
+    desc = ""
+    match status:
+        # Running cases
+        case 0:  desc = "Started"
+        case 1:  desc = "Running"
+        # Successful cases
+        case 10: desc = "Completed (solidified)"
+        case 11: desc = "Completed (steady-state)"
+        case 12: desc = "Completed (maximum iterations)"
+        # Error cases
+        case 20: desc = "Error (generic/configuration)"
+        case 21: desc = "Error (SPIDER)"
+        case 22: desc = "Error (AGNI)"
+        case 23: desc = "Error (AEOLUS)"
+        case 24: desc = "Error (VULCAN)"
+        # Default case
+        case _:
+            desc = "UNHANDLED STATUS"
+            print("WARNING: Unhandled model status selected")
+    return desc
+
+# Update the status file with the current state of the program
+def UpdateStatusfile(dirs:dict, status:int):
+    # Path to status file 
+    stsfold = os.path.abspath(dirs["output"])
+    stsfile = os.path.join(stsfold,"status")
+
+    # Does the folder exist?
+    if not os.path.exists(stsfold):
+        os.makedirs(stsfold)
+
+    # Does the status file exist?
+    if os.path.exists(stsfile):
+        os.remove(stsfile)
+
+    # Write status file
+    with open(stsfile,'x') as hdl:
+        hdl.write("%d\n" % status)
+        desc = CommentFromStatus(status)
+        hdl.write("%s\n"%desc)
+        # hdl.flush()
+        # os.fsync(hdl.fileno())
 
 def CleanDir(dir):
     """Clean a directory.

@@ -30,8 +30,9 @@ import matplotlib.ticker as ticker
 from matplotlib import cm
 import matplotlib.transforms as transforms
 from matplotlib.colors import LinearSegmentedColormap
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.font_manager as fm
-
 
 # Data and science
 import netCDF4 as nc

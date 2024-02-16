@@ -53,8 +53,8 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
     files = natural_sort(files_unsorted)
 
     if (len(files) == 0):
-        print("No files found!")
-        exit(1)
+        print("WARNING: No files found when trying to plot stellar flux")
+        return
 
     # Downsample data
     if (len(files) > 200):
@@ -97,16 +97,18 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
     fig,ax = plt.subplots(1,1)
 
     # Colorbar
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes('right', size='3%', pad=0.05)
+    justone = bool(N == 1)
+    if not justone:
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes('right', size='3%', pad=0.05)
 
-    vmin = max(time_t[0],1.0)
-    vmax = time_t[-1]
-    norm = mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
-    sm = plt.cm.ScalarMappable(cmap=star_cmap, norm=norm)
-    sm.set_array([])
-    cbar = fig.colorbar(sm, cax=cax, orientation='vertical') 
-    cbar.set_label("Time [Myr]") 
+        vmin = max(time_t[0],1.0)
+        vmax = time_t[-1]
+        norm = mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
+        sm = plt.cm.ScalarMappable(cmap=star_cmap, norm=norm)
+        sm.set_array([])
+        cbar = fig.colorbar(sm, cax=cax, orientation='vertical') 
+        cbar.set_label("Time [Myr]") 
 
     ax.set_yscale("log")
     ax.set_ylabel("Flux [erg s-1 cm-2 nm-1]")
@@ -122,12 +124,11 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
 
     # Plot historical spectra
     for i in range(N):
-        c =  sm.to_rgba(time_t[i])
+        if justone:
+            c = 'black'
+        else:
+            c = sm.to_rgba(time_t[i])
         ax.plot(wave_t[i],flux_t[i],color=c,lw=0.7,alpha=0.6)
-
-    # ymax = np.amax(flux_t)*1.1
-    # ymin = np.amin(flux_t)/1.1
-    # ax.set_ylim([ymin,ymax])
 
     # Plot current spectrum (use the copy made in the output directory)
     if not surface:

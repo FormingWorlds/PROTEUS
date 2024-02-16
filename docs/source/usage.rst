@@ -168,33 +168,30 @@ inputs are provided.
    of the simulation time. 'Adapative' dynamically adjusts ``dt`` according to how 
    rapidly the upward energy fluxes are changing. 'Maximum' sets ``dt`` to always 
    be equal to ``dt_maximum``.    
-   - (Integer) 0: Proportional, 1: Adaptive, 2: Maximum.
+   - (Integer) 0: Proportional, 1: Adaptive, 2: Maximum.    
+
+* ``dt_propconst``
+   - Proportionality constant when using ``dt_method=0``. Time step is set by 
+   ``dt = t/dt_propconst``, so larger values mean smaller steps.   
+   - (Float) Greater than zero.    
 
 * ``flux_convergence``
    - DEPRECATED. Method to be used for converging atmospheric and interior upward fluxes.
    'Off' applies nothing special, and allows SPIDER to determine the surface 
    temperature. 'Restart' uses a shallow mixed ocean layer with a given heat
    capacity to balance the fluxes and obtain a surface temperature. 'On' waits 
-   until certain conditions are met, and then applies the 'Restart' method.    
-   - (Integer) 0: Off, 1: On, 2: Restart.  
+   until certain conditions are met, and then applies the 'Restart' method.     
+   - (Integer) 0: Off, 1: On, 2: Restart.   
 
 * ``F_atm_bc``
    - Boundary condition to use for calculating `F_atm`. Can be set to either the 
    top of the atmosphere or the bottom.     
-   - (Integer) 0: Top of atmosphere, 1: Bottom of atmosphere.
+   - (Integer) 0: Top of atmosphere, 1: Bottom of atmosphere.    
 
 * ``F_crit``
    - Critical flux. Once the upward net flux at the top of the atmosphere drops
-   below this value, flux-change limiters are activated.
-   - (Float) Greater than or equal to 0. Set to 0 to disable.
-
-* ``F_eps``
-   - Deprecated.    
-   - (Float) ??
-
-* ``F_diff``
-   - Deprecated.     
-   - (Float) ??
+   below this value, a smaller time-step is imposed.
+   - (Float) Greater than or equal to 0. Set to 0 to disable.    
 
 * ``RF_crit``
    - Deprecated.     
@@ -208,20 +205,6 @@ inputs are provided.
    - Flag to ensure that the net upward energy flux is always positive, which
    prevents the star from causing net heating inside the planet.   
    - (Integer) 0: Disabled, 1: Enabled.
-
-* ``limit_pos_flux_change``
-   - Limiter on the positive percentage relative change in upward flux between
-   iterations, which may be necessary for high instellations. Only applies 
-   once the fluxes drop below ``F_crit``.  
-   - (Float) Values greater than or equal to zero. Setting to zero will prevent
-   any positive relative change in the fluxes from one iteration to the next.
-
-* ``limit_neg_flux_change``
-   - Limiter on the negative percentage relative change in upward flux between
-   iterations, which may be necessary for high instellations. Only applies 
-   once the fluxes drop below ``F_crit``.  
-   - (Float) Values greater than or equal to zero. Setting to zero will prevent
-   any negative relative in the fluxes from one iteration to the next.
 
 * ``atmosphere_model``   
    - Atmosphere model used to set T(p) and T_surf.    
@@ -247,15 +230,27 @@ inputs are provided.
    - Number of atmosphere model levels, measured at cell-centres.     
    - (Integer) Greater than 10.
 
+* ``solid_stop``
+   - Flag to toggle the solidification break condition.  
+   - (Integer) 0: Disabled, 1: Enabled.
+
 * ``phi_crit``
-   - Value used for break condition; stop the model once the global melt 
-   fraction drops below this value. This indiciates that the planet has 
-   solidified. Only applies when ``solid_stop`` is enabled.     
+   - Value used for solidification break condition; stop the model once the 
+   global melt fraction drops below this value. This indiciates that the 
+   planet has solidified. Only applies when ``solid_stop`` is enabled.     
    - (Float) Values between zero and unity.    
 
-* ``solid_stop``
-   - Flag to toggle the melt fraction break condition ``phi_crit``.  
+* ``steady_stop``
+   - Flag to toggle the steady-state break condition(s).  
    - (Integer) 0: Disabled, 1: Enabled.
+
+* ``steady_flux``
+   - Steady-state break condition. Requires that ``F_atm < steady_dfrel``.    
+   - (Float) Values between zero and unity.    
+
+* ``steady_dprel``
+   - Steady-state break condition. Requires that ``dphi/dt < steady_dprel``.
+   - (Float) Values between zero and unity.  
 
 * ``N2_partitioning``
    - The melt-vapour partitioning of the N2 volatile is redox-state dependent. 
@@ -263,9 +258,14 @@ inputs are provided.
    - (Integer) 0: Oxidised, 1: Reduced.
 
 * ``min_temperature``
-   - Temperature floor to pass to AEOLUS. The temperature of the atmosphere is
-   prevented from dropping below this value. Units of kelvin.  
-   - (Float) Greater than or equal to 0. Set to 0 to disable.
+   - Temperature floor. The temperature of the atmosphere is prevented from 
+   dropping below this value. Units of kelvin.    
+   - (Float) Greater than or equal to 0. Set to 0 to disable.    
+
+* ``max_temperature``
+   - Temperature ceiling. The temperature of the atmosphere is prevented from 
+   reaching above this value. Units of kelvin.  
+   - (Float) Greater than or equal to 0. Set to 0 to disable.    
 
 * ``tropopause``
    - Model of tropopause to be used before, or in the absence of, a time-stepped

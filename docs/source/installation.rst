@@ -272,8 +272,6 @@ Step-by-step (core modules)
 
     9. Setup environment variables
 
-        * Edit the variable ``PETSC_ARCH`` in the file ``PROTEUS.env`` to reflect the value provided by PETSc in the previous step
-                
         * Only **IF** ``python`` has been installed via the ``conda`` route: 
 
             .. code-block:: console
@@ -303,7 +301,7 @@ Step-by-step (core modules)
 Step-by-step (optional modules)
 ----------------
 
-* Radiative-convective scheme: **AGNI **
+* Radiative-convective scheme: **AGNI**
 
     1. Ensure that you have access to https://github.com/nichollsh/AGNI 
 
@@ -364,10 +362,6 @@ This section includes troubleshooting advice for common errors. Each entry is la
 
     * Firstly, check that you are in the correct directory when running ``make`` or ``./configure``. If you are, then this could be caused by the environment variable ``PETSC_DIR`` remaining set after a previous PETSc installation. Run ``unset PETSC_DIR`` and try again.
 
-* All: SPIDER can't find PETSc
-
-    * Have you sourced ``PROTEUS.env``? If yes, check that the variables ``PETSC_ARCH`` and ``PETSC_DIR`` in that file are correct for your system.
-
 * MacOS: The FastChem code distributed with VULCAN won't compile 
 
     * With the new Apple Silicon hardware (M1/M2), the option ``-march=native`` sometimes causes issues. In order to avoid this, you need to make sure to use the GNU version of ``g++``, not the Apple one. The Apple one located at ``/usr/bin/gcc`` is actually a wrapped around ``clang``. We found that using the Homebrew version located at ``/opt/homebrew/bin/`` works well. To fix this error, find out which ``gcc`` version homebrew installed (``ls /opt/homebrew/bin/gcc-*``), and edit the file ``make.globaloptions`` in the FastChem directory to use, e.g. ``g++-12`` or ``g++-13`` instead of ``g++``.
@@ -421,6 +415,12 @@ This section includes troubleshooting advice for common errors. Each entry is la
     .. code-block:: console
         
         $   brew install python-tk
+
+* MacOS: ``ImportError: Cannot load backend 'TkAgg' which requires the 'tk' interactive framework, as 'headless' is currently running``
+    
+    * If you are connecting to a computer over ssh, make sure to enable X-forwarding. This can be done in your configuration file or as a command line parameter. 
+
+    * If you are using a Mac, install XQuartz (https://www.xquartz.org/).
 
 * MacOS: In the terminal or SourceTree ``Error: Permission denied (publickey)``
     

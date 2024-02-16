@@ -76,9 +76,9 @@ def plot_interior( output_dir, times ):
 
         # temperature
         yy = myjson_o.get_dict_values(['data','temp_b'])
-        handle, = ax0.plot( yy*MASK_SO, xx_pres*MASK_SO, linestyle='solid',  color=color, lw=1.5, label=label )
-        ax0.plot(           yy*MASK_MI, xx_pres*MASK_MI, linestyle='dashed', color=color, lw=1.5 )
-        ax0.plot(           yy*MASK_ME, xx_pres*MASK_ME, linestyle='dotted', color=color, lw=1.5 )
+        handle, = ax0.plot( yy[MASK_SO], xx_pres[MASK_SO], linestyle='solid',  color=color, lw=1.5, label=label )
+        ax0.plot(           yy[MASK_MI], xx_pres[MASK_MI], linestyle='dashed', color=color, lw=1.5 )
+        ax0.plot(           yy[MASK_ME], xx_pres[MASK_ME], linestyle='dotted', color=color, lw=1.5 )
 
         # melt fraction
         yy = myjson_o.get_dict_values(['data','phi_b'])
@@ -133,7 +133,7 @@ def plot_interior( output_dir, times ):
     ax2.invert_yaxis()
 
     units = myjson_o.get_dict_units(['data','S_b'])
-    title = '(d) Entropy'#'(d) Entropy, {}'.format(units)
+    title = '(d) Specific entropy'#'(d) Entropy, {}'.format(units)
     xticks = [400,800,1600,2400,3200]
     fig_o.set_myaxes( ax3, title=title, xlabel='$S$ ['+str(units).strip()+']', xticks=xticks, ymax=ymax, yticks=yticks ) # ' $(J \; kg^\mathrm{-1} \; K^\mathrm{-1})$'
     ax3.set_yticklabels([])
