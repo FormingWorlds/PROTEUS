@@ -195,6 +195,11 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
     PrintHalfSeparator()
     log.info("Running AEOLUS...")
 
+    # Update stdout
+    old_stdout , old_stderr = sys.stdout , sys.stderr
+    sys.stdout = StreamToLogger(log, logging.INFO)
+    sys.stderr = StreamToLogger(log, logging.ERROR)
+
     # Change dir
     cwd = os.getcwd()
     tmp_dir = dirs["output"]
@@ -278,6 +283,9 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
     if (F_atm_lim != F_atm_new ):
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
+
+    # Restore stdout
+    sys.stdout , sys.stderr = old_stdout , old_stderr
             
     COUPLER_options["F_atm"] = F_atm_lim         # Net flux at TOA
     COUPLER_options["F_olr"] = atm.LW_flux_up[0] # OLR
