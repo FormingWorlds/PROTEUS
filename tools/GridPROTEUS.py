@@ -3,12 +3,64 @@
 # Run PROTEUS for a grid of parameters
 
 # Prepare
-import os, itertools, time, subprocess, shutil, sys, multiprocessing
+import os, itertools, time, subprocess, shutil, sys, multiprocessing, logging
 from datetime import datetime
 import numpy as np
 COUPLER_DIR=os.getenv('COUPLER_DIR')
 if COUPLER_DIR == None:
     raise Exception("Environment is not activated or is setup incorrectly")
+
+
+# Custom logger instance 
+def setup_logger(logpath:str="new.log",level=1,logterm=True):
+
+    # https://stackoverflow.com/a/61457119
+
+    custom_logger = logging.getLogger()
+    custom_logger.handlers.clear()
+    
+    if os.path.exists(logpath):
+        os.remove(logpath)
+
+    fmt = logging.Formatter("[%(asctime)s] %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
+
+    level_code = logging.INFO
+    match level:
+        case 0:
+            level_code = logging.DEBUG
+        case 2:
+            level_code = logging.WARNING
+        case 3:
+            level_code = logging.ERROR 
+        case 4: 
+            level_code = logging.CRITICAL
+
+    # Add terminal output to logger
+    if logterm:
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(fmt)
+        sh.setLevel(level_code)
+        custom_logger.addHandler(sh)
+
+    # Add file output to logger
+    fh = logging.FileHandler(logpath)
+    fh.setFormatter(fmt)
+    fh.setLevel(level)
+    custom_logger.addHandler(fh)
+    custom_logger.setLevel(level_code)
+
+    # Capture unhandled exceptions
+    # https://stackoverflow.com/a/16993115
+    def handle_exception(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            custom_logger.error("KeyboardInterrupt")
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        custom_logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+    sys.excepthook = handle_exception
+    
+    return 
+
 
 # Object for handling the parameter grid
 class Pgrid():
@@ -64,6 +116,13 @@ class Pgrid():
             shutil.rmtree(self.tmpdir)
         os.makedirs(self.tmpdir)
 
+        # Setup logging
+        setup_logger(logpath=os.path.join(self.outdir,"manager.log"), logterm=True, level=1)
+        global log
+        log = logging.getLogger(__name__)
+
+        log.info("Grid '%s' says hello!" % self.name)
+
         # List of dimension names and parameter names
         self.dim_names = []     # String
         self.dim_param = []     # Dimension parameter of interest ('_hyper' for hypervariables)
@@ -80,7 +139,7 @@ class Pgrid():
         if name in self.dim_names:
             raise Exception("Dimension '%s' cannot be added twice" % name)
         
-        print("Added new dimension '%s' " % name)
+        log.info("Added new dimension '%s' " % name)
         self.dim_names.append(name)
         self.dim_param.append("_empty")
         self.dim_avars[name] = None
@@ -136,49 +195,51 @@ class Pgrid():
         self.dim_avars[name].append(value)
 
     # Print current setup
-    def print_setup(self, f=sys.stdout):
-        print("Current setup", file=f)
-        print(" -- name     : %s" % self.name, file=f)
-        print(" ", file=f)
+    def print_setup(self):
+
+        log.info("Current setup")
+        log.info(" -- name     : %s" % self.name)
+        log.info(" ")
         for name in self.dim_names:
             idx = self._get_idx(name)
             
-            print(" -- dimension: %s" % name, file=f)
-            print("    parameter: %s" % self.dim_param[idx], file=f)
-            print("    values   : %s" % self.dim_avars[name], file=f)
-            print(" ", file=f)
+            log.info(" -- dimension: %s" % name)
+            log.info("    parameter: %s" % self.dim_param[idx])
+            log.info("    values   : %s" % self.dim_avars[name])
+            log.info("    length   : %d" % len(self.dim_avars[name]))
+            log.info(" ")
 
     # Print generated grid
-    def print_grid(self, f=sys.stdout):
-        print("Flattened grid points", file=f)
+    def print_grid(self):
+        log.info("Flattened grid points")
         for i,gp in enumerate(self.flat):
-            print("    %d: %s" % (i,gp), file=f)
-        print(" ", file=f)
+            log.info("    %d: %s" % (i,gp))
+        log.info(" ")
 
     # Generate the pgrid based on the current configuration
     def generate(self):
-        print("Generating parameter grid")
+        log.info("Generating parameter grid")
 
         # Validate
         if len(self.dim_avars) == 0:
             raise Exception("pgrid is empty")
         
         # Dimension count
-        print("    %d dimensions" % len(self.dim_names))
+        log.info("    %d dimensions" % len(self.dim_names))
         
         # Calculate total pgrid size
         values = list(self.dim_avars.values())
         self.size = 1
         for v in values:
             self.size *= len(v)
-        print("    %d points expected" % self.size)
+        log.info("    %d points expected" % self.size)
 
         # Create flattened parameter grid 
         flat_values = list(itertools.product(*values))
-        print("    created %d grid points" % len(flat_values))
+        log.info("    created %d grid points" % len(flat_values))
 
         # Re-assign keys to values
-        print("    mapping keys")
+        log.info("    mapping keys")
         for fl in flat_values:
             gp = {}
 
@@ -195,39 +256,46 @@ class Pgrid():
             self.flat.append(gp)
 
         self.size = len(self.flat)
-        print("    done")
-        print(" ")
+        log.info("    done")
+        log.info(" ")
 
 
     # Run PROTEUS across this pgrid
     def run(self,num_threads:int,test_run:bool=False):
-        print("Running PROTEUS across parameter grid '%s'" % self.name)
+        log.info("Running PROTEUS across parameter grid '%s'" % self.name)
 
         time_start = datetime.now()
-        print("Current time: "+time_start.strftime('%Y-%m-%d_%H:%M:%S'))
+        log.info("Current time: "+time_start.strftime('%Y-%m-%d_%H:%M:%S'))
 
         check_interval = 30.0 # seconds
         print_interval = 10   # step interval at which to print (30*10 seconds = 5 minutes)
 
+        # Print warning
         if not test_run:
-            print(" ")
-            print("Confirm that the grid above is what you had intended.")
-            print("There are %d grid points. There will be %d threads." % (self.size, num_threads))
-            print("Do not close this program! It must stay alive to manage each of the subproceses.")
-            print(" ")
+            log.info(" ")
+            log.info("Confirm that the grid above is what you had intended.")
+            log.info("There are %d grid points. There will be %d threads." % (self.size, num_threads))
+            log.info("Do not close this program! It must stay alive to manage each of the subproceses.")
+            log.info(" ")
 
-            print("Sleeping...")
-            for i in range(5,0,-1):
-                print("    %d " % i)
+            log.info("Sleeping...")
+            for i in range(7,0,-1):
+                log.info("    %d " % i, end='')
+                sys.stdout.flush()
                 time.sleep(1.0)
-            print(" ")
+            log.info("\n ")
+        
+        # Print more often if this is a test
+        else:
+            check_interval = 1.0
+            print_interval = 1
 
         # Read base config file
         with open(self.conf, "r") as f:
             base_config = f.readlines()
 
         # Loop over grid points to write config files
-        print("Writing config files")
+        log.info("Writing config files")
         for i,gp in enumerate(self.flat):  
 
             cfgfile = os.path.join(self.tmpdir,"case_%05d.cfg" % i)
@@ -284,7 +352,7 @@ class Pgrid():
                     cfgexists = True
                     break
             if not cfgexists:
-                print("ERROR: Config file could not be found for case %d!" % i)
+               raise Exception("Config file could not be found for case %d!" % i)
             # Add thread
             # threads.append(threading.Thread(target=_thread_target, args=(cfg_path,)))
             threads.append(multiprocessing.Process(target=_thread_target, args=(cfg_path,)))
@@ -295,7 +363,7 @@ class Pgrid():
         # 2: done
         status = np.zeros(self.size)
         done = False                # All done?
-        print("Starting process manager (%d grid points, %d threads)" % (self.size,num_threads))
+        log.info("Starting process manager (%d grid points, %d threads)" % (self.size,num_threads))
         step = 0
         while not done:
             # Check alive
@@ -315,9 +383,7 @@ class Pgrid():
             count_run = np.count_nonzero(status == 1)
             count_end = np.count_nonzero(status == 2)
             if (step%print_interval == 0):
-                now = str(datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
-                print("[%s] %3d queued (%5.1f%%), %3d running (%5.1f%%), %3d completed (%5.1f%%)" % (
-                        now,
+                log.info("%3d queued (%5.1f%%), %3d running (%5.1f%%), %3d completed (%5.1f%%)" % (
                         count_que, 100.0*count_que/self.size,
                         count_run, 100.0*count_run/self.size,
                         count_end, 100.0*count_end/self.size
@@ -327,6 +393,7 @@ class Pgrid():
             # Done?
             if np.count_nonzero(status == 2) == self.size:
                 done = True 
+                log.info("Grid is complete")
                 break 
 
             # Start new?
@@ -344,18 +411,18 @@ class Pgrid():
             # / end while loop
 
         # join threads
-        print("Joining threads")
+        log.info("Joining threads")
         for t in threads:
             t.join()
 
         # Check if exited early
         if not done:
-            print("WARNING: Master process loop terminated early!")
-            print("         This could be because it timed-out or an error occurred.")
+            log.warning("Master process loop terminated early!")
+            log.warning("This could be because it timed-out or an error occurred.")
 
         time_end = datetime.now()
-        print("All processes finished at: "+str(time_end.strftime('%Y-%m-%d_%H:%M:%S')))
-        print("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
+        log.info("All processes finished at: "+str(time_end.strftime('%Y-%m-%d_%H:%M:%S')))
+        log.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
 if __name__=='__main__':
     print("Start GridPROTEUS")
@@ -364,9 +431,9 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","earth_gridtest.cfg")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/threading"
-    pg = Pgrid("threading", cfg_base, symlink_dir=symlink)
+    cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","jgr_grid.cfg")
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_grid_1"
+    pg = Pgrid("jgr_grid_1", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -377,13 +444,16 @@ if __name__=='__main__':
     #                                     })
 
     pg.add_dimension("Orbital separation")
-    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.3 , 1.0,  3.0])
+    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.1, 0.3, 0.5, 0.7, 1.0, 2.0, 3.0])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [0.0, 1.5, 3.0])
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-3.0, -1.0, 0.0, 1.0, 3.0, 5.0, 6.0 ])
 
     pg.add_dimension("C/H ratio")
-    pg.set_dimension_direct("C/H ratio", "CH_ratio", [0.1, 1.0, 2.0])
+    pg.set_dimension_logspace("C/H ratio", "CH_ratio", 0.01, 2.0, 7)
+
+    pg.add_dimension("Hydrogen")
+    pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 10.0])
     
     # -----
     # Print state of parameter grid
@@ -394,18 +464,10 @@ if __name__=='__main__':
     pg.print_grid()
 
     # -----
-    # Write parameter grid to file
-    # -----
-
-    with open(os.path.join(pg.outdir,"grid.txt"),"w") as hdl:
-        pg.print_setup(f=hdl)
-        pg.print_grid(f=hdl)
-
-    # -----
     # Start PROTEUS processes
     # -----
 
-    pg.run(9, test_run=False)
+    pg.run(10, test_run=True)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.
