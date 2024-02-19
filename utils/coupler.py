@@ -331,12 +331,13 @@ def ReadInitFile( init_file_passed , verbose=False):
     # Read in input file as dictionary
     COUPLER_options  = {}
     time_dict       = {}
-    if verbose: log.info("Read in init file:" + init_file)
+    if verbose: 
+        log.info("Read in init file:" + init_file)
 
     if os.path.isfile(init_file_passed):
         init_file = init_file_passed
     else: 
-        raise Exception("Init file provided is not a file or does not exist!")
+        raise Exception("Init file provided is not a file or does not exist (%s)" % init_file_passed)
 
     if verbose: log.info("Settings:")
 
