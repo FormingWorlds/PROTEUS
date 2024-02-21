@@ -462,6 +462,13 @@ def main():
             break
 
         ############### / LOOP ITERATION MANAGEMENT
+
+    # ----------------------
+    # FINAL THINGS BEFORE EXIT
+
+    # Clean up spectral files
+    for file in glob.glob(dirs["output"]+"/runtime_spectral_file*"):
+        os.remove(file)
             
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options, end=True)
@@ -469,6 +476,9 @@ def main():
     run_time = end_time - start_time
     log.info("Simulation completed at: "+end_time.strftime('%Y-%m-%d_%H:%M:%S'))
     log.info("Total runtime: %.2f hours" % ( run_time.total_seconds()/(60.0 * 60.0)  ))
+
+    # EXIT
+    return 
 
 #====================================================================
 if __name__ == '__main__':

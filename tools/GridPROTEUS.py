@@ -268,7 +268,6 @@ class Pgrid():
         log.info("Running PROTEUS across parameter grid '%s'" % self.name)
 
         time_start = datetime.now()
-        log.info("Current time: "+time_start.strftime('%Y-%m-%d_%H:%M:%S'))
         log.info("Output path: '%s'" % self.outdir)
         if self.using_symlink:
             log.info("Symlink target: '%s'" % self.symlink_dir)
@@ -374,14 +373,21 @@ class Pgrid():
             # Check alive
             n_run = 0
             for i in range(self.size):
+                # if not marked as running, don't do anything here
+                if status[i] != 1:
+                    continue
+
+                # marked as running
                 if threads[i].is_alive():
-                    # still going
+                    # it is still going
                     status[i] = 1
                     n_run += 1
                 else:
-                    # completed
+                    # it has completed
                     if status[i] == 1:
                         status[i] = 2
+                        threads[i].join()   # make everything wait until it's completed
+                        threads[i].close()  # release resources
 
             # Print info
             count_que = np.count_nonzero(status == 0)
@@ -420,9 +426,9 @@ class Pgrid():
             # / end while loop
 
         # join threads
-        log.info("Joining threads")
-        for t in threads:
-            t.join()
+        # log.info("Joining threads")
+        # for t in threads:
+        #     t.join()
 
         # Check all cases' status files
         for i in range(self.size):
@@ -442,11 +448,6 @@ class Pgrid():
                 with open(status_path,'x') as hdl:
                     hdl.write("25\n")
                     hdl.write("Error (died)\n")         
-
-        # Check if exited early
-        if not done:
-            log.warning("Master process loop terminated early!")
-            log.warning("This could be because it timed-out or an error occurred.")
 
         time_end = datetime.now()
         log.info("All processes finished at: "+str(time_end.strftime('%Y-%m-%d_%H:%M:%S')))

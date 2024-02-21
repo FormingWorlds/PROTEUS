@@ -258,10 +258,6 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
     if write_in_tmp_dir:
         shutil.rmtree(tmp_dir,ignore_errors=True)
 
-    # Clean up spectral files
-    for file in glob.glob(dirs["output"]+"/runtime_spectral_file*"):
-        os.remove(file)
-
     log.info("SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
 
     # Save atm data to disk

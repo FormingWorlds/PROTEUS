@@ -55,7 +55,11 @@ def summarise(pgrid_dir:str, opts:list):
         "Steady":     [11]
     }
     for o in opts:
-        o = str(o).lower()
+        # sanitise input
+        o = str(o).strip().lower()
+        if (o=="complete"):
+             o = "completed"
+
         matched = False
 
         # general cases
