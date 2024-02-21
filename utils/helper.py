@@ -38,10 +38,11 @@ def CommentFromStatus(status:int):
         case 22: desc = "Error (AGNI)"
         case 23: desc = "Error (AEOLUS)"
         case 24: desc = "Error (VULCAN)"
+        case 25: desc = "Error (died)"
         # Default case
         case _:
-            desc = "UNHANDLED STATUS"
-            log.warning("Unhandled model status selected")
+            desc = "UNHANDLED STATUS (%d)" % status
+            log.warning("Unhandled model status (%d) selected" % status)
     return desc
 
 # Update the status file with the current state of the program

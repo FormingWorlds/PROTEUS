@@ -75,7 +75,8 @@ class Pgrid():
         if not os.path.exists(self.conf):
             raise Exception("Base config file '%s' does not exist!" % self.conf)
         
-        if symlink_dir == "":
+        self.symlink_dir = symlink_dir
+        if self.symlink_dir == "":
             raise Exception("Symlinked directory is set to a blank path")
         
         # Paths
@@ -95,21 +96,23 @@ class Pgrid():
                 shutil.rmtree(self.outdir)
         
         # Create new output location
-        if (symlink_dir == "_UNSET"):
+        if (self.symlink_dir == "_UNSET"):
             # Not using symlink
+            self.using_symlink = False
             os.makedirs(self.outdir)
         else:
             # Will be using symlink
-            symlink_dir = os.path.abspath(symlink_dir)
-            if os.path.exists(symlink_dir):
-                print("Removing old files at '%s'" % symlink_dir)
-                subfolders = [ f.path.split("/")[-1].lower() for f in os.scandir(symlink_dir) if f.is_dir() ]
+            self.using_symlink = True
+            self.symlink_dir = os.path.abspath(self.symlink_dir)
+            if os.path.exists(self.symlink_dir):
+                print("Removing old files at '%s'" % self.symlink_dir)
+                subfolders = [ f.path.split("/")[-1].lower() for f in os.scandir(self.symlink_dir) if f.is_dir() ]
                 if ".git" in subfolders:
                     raise Exception("Not emptying directory - it contains a Git repository!")
                 time.sleep(2.0)
-                shutil.rmtree(symlink_dir)
-            os.makedirs(symlink_dir)
-            os.symlink(symlink_dir, self.outdir)
+                shutil.rmtree(self.symlink_dir)
+            os.makedirs(self.symlink_dir)
+            os.symlink(self.symlink_dir, self.outdir)
 
         # Make temp dir
         if os.path.exists(self.tmpdir):
@@ -266,6 +269,9 @@ class Pgrid():
 
         time_start = datetime.now()
         log.info("Current time: "+time_start.strftime('%Y-%m-%d_%H:%M:%S'))
+        log.info("Output path: '%s'" % self.outdir)
+        if self.using_symlink:
+            log.info("Symlink target: '%s'" % self.symlink_dir)
 
         check_interval = 30.0 # seconds
         print_interval = 10   # step interval at which to print (30*10 seconds = 5 minutes)
@@ -280,10 +286,9 @@ class Pgrid():
 
             log.info("Sleeping...")
             for i in range(7,0,-1):
-                log.info("    %d " % i, end='')
-                sys.stdout.flush()
+                log.info("    %d " % i)
                 time.sleep(1.0)
-            log.info("\n ")
+            log.info(" ")
         
         # Print more often if this is a test
         else:
@@ -405,8 +410,12 @@ class Pgrid():
                         start_new = False
                         threads[i].start() 
                         break
-
-            time.sleep(check_interval)
+            
+            # Short sleeps while doing initial dispatch
+            if step < num_threads:
+                time.sleep(1.0)
+            else:
+                time.sleep(check_interval)
             step += 1
             # / end while loop
 
@@ -414,6 +423,25 @@ class Pgrid():
         log.info("Joining threads")
         for t in threads:
             t.join()
+
+        # Check all cases' status files
+        for i in range(self.size):
+            # find file
+            status_path = os.path.join(self.outdir, "case_%05d"%i, "status")
+            if not os.path.exists(status_path):
+                raise Exception("Cannot find status file at '%s'" % status_path)
+
+            # read file
+            with open(status_path,'r') as hdl:
+                lines = hdl.readlines()
+            this_stat = int(lines[0])
+
+            # if still marked as running, it must have died at some point
+            if ( 0 <= this_stat <= 9 ):
+                log.warning("Case %05d has status=running but it is not alive. Setting status=died.")
+                with open(status_path,'x') as hdl:
+                    hdl.write("25\n")
+                    hdl.write("Error (died)\n")         
 
         # Check if exited early
         if not done:
@@ -432,8 +460,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","jgr_grid.cfg")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_grid_1"
-    pg = Pgrid("jgr_grid_1", cfg_base, symlink_dir=symlink)
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_2"
+    pg = Pgrid("jgr_2", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -447,7 +475,7 @@ if __name__=='__main__':
     pg.set_dimension_direct("Orbital separation", "mean_distance", [0.1, 0.3, 0.5, 0.7, 1.0, 2.0, 3.0])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-3.0, -1.0, 0.0, 1.0, 3.0, 5.0, 6.0 ])
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-5.0, -3.0, -1.0, 0.0, 1.0, 3.0, 5.0 ])
 
     pg.add_dimension("C/H ratio")
     pg.set_dimension_logspace("C/H ratio", "CH_ratio", 0.01, 2.0, 7)
@@ -467,7 +495,7 @@ if __name__=='__main__':
     # Start PROTEUS processes
     # -----
 
-    pg.run(10, test_run=True)
+    pg.run(105, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.

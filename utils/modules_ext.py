@@ -19,6 +19,7 @@ import copy
 # Plotting
 import matplotlib as mpl
 mpl.use('Agg')
+mpl.rcParams.update({'font.size': 12})
 logging.getLogger('matplotlib.font_manager').disabled = True  # Disable font fallback logging
 
 import matplotlib.pyplot as plt
