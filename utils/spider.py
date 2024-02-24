@@ -411,13 +411,26 @@ def solvepp_func(pin, fO2_shift, global_d, mass_target_d):
 
     return res_l
 
-def solvepp_get_initial_pressures(target_d):
+def get_log_rand(rng):
+    r = np.random.uniform(low=rng[0], high=rng[1])
+    return 10.0**r
+
+def solvepp_get_initial_pressures(target_d, log=True):
     """Get initial guesses of partial pressures"""
 
-    # all bar
-    pH2O = 1*np.random.random_sample() # H2O less soluble than CO2
-    pCO2 = 10*np.random.random_sample() # just a guess
-    pN2 = 10*np.random.random_sample()
+    # all in bar
+    if log:
+        cH2O = [-7 , +5]  # range in log10 units
+        cCO2 = [-8 , +5]
+        cN2  = [-10, +5]
+
+        pH2O = get_log_rand(cH2O)
+        pCO2 = get_log_rand(cCO2)
+        pN2  = get_log_rand(cN2 )
+    else:
+        pH2O = np.random.uniform(low=1.0e-12, high=1.0)
+        pCO2 = np.random.uniform(low=1.0e-12, high=0.9)
+        pN2  = np.random.uniform(low=1.0e-12, high=0.5)
 
     if target_d['H'] == 0:
         pH2O = 0
@@ -437,23 +450,33 @@ def solvepp_equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d,
     target_d = {'H': H_kg, 'C': C_kg, 'N': N_kg}
 
     count = 0
+    max_attempts = 10000
     ier = 0
     # could in principle result in an infinite loop, if randomising
     # the ic never finds the physical solution (but in practice,
     # this doesn't seem to happen)
     while ier != 1:
         x0 = solvepp_get_initial_pressures(target_d)
-        sol, info, ier, msg = fsolve(solvepp_func, x0, args=(fO2_shift, 
-            global_d, target_d), full_output=True)
+        sol, info, ier, msg = fsolve(solvepp_func, x0, args=(fO2_shift, global_d, target_d), full_output=True)
         count += 1
-        # sometimes, a solution exists with negative pressures, which
-        # is clearly non-physical.  Here, assert we must have positive
-        # pressures.
+        
+        # if any negative pressures, report ier!=1
         if any(sol<0):
-            # if any negative pressures, report ier!=1
+            # sometimes, a solution exists with negative pressures, which is clearly non-physical.  Here, assert we must have positive pressures.
             ier = 0
 
-    logging.info(f'Randomised initial conditions= {count}')
+        # check residuals
+        this_resid = solvepp_func(sol, fO2_shift, global_d, target_d)
+        if np.amax(np.abs(this_resid)) > 1.0:
+            ier = 0
+
+        # give up after a while
+        if count > max_attempts:
+            UpdateStatusfile(dirs, 21)
+            raise Exception("Could not find solution for volatile abundances")
+
+    log.info("Initial guess attempt number = %d" % count)
+    log.info("Residuals: " + str(this_resid))
 
     p_d = solvepp_get_partial_pressures(sol, fO2_shift, global_d)
     # get residuals for output
@@ -899,7 +922,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             # Additional step-size ceiling when F_crit is used
             if abs(run_atm.iloc[-1]["F_atm"]) <= COUPLER_options["F_crit"]:
                 dtswitch = min(dtswitch, COUPLER_options["dt_crit"])
-                log.info("F_atm < F_crit, so time-step is being limited")
+                log.info("F_atm <= F_crit, so time-step is being limited")
 
             # Step scale factor (is always <= 1.0)
             dtswitch *= step_sf
@@ -909,7 +932,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             dtswitch = min(dtswitch, float(time_dict["target"] - time_dict["planet"]))  # Run-over
 
             # Step-size floor
-            dtswitch = max(dtswitch, time_dict["planet"]*0.0003)        # Relative
+            dtswitch = max(dtswitch, time_dict["planet"]*0.0001)        # Relative
             dtswitch = max(dtswitch, COUPLER_options["dt_minimum"] )    # Absolute
 
             # Calculate number of macro steps for SPIDER to perform within

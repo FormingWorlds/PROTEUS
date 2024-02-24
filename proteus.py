@@ -70,7 +70,7 @@ def main():
                     }
     
     # Model has completed?
-    complete = False
+    finished = False
     
     # Check options are compatible
     if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
@@ -218,7 +218,7 @@ def main():
     
     # Main loop
     UpdateStatusfile(dirs, 1)
-    while time_dict["planet"] < time_dict["target"]:
+    while not finished:
 
         PrintSeparator()
         log.info("Loop counters: " +  str(loop_counter))
@@ -402,8 +402,10 @@ def main():
         # Stop simulation when planet is completely solidified
         if (COUPLER_options["solid_stop"] == 1) and (runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]):
             UpdateStatusfile(dirs, 10)
-            log.info("\n===> Planet solidified! <===\n")
-            complete = True
+            log.info("")
+            log.info("===> Planet solidified! <===")
+            log.info("")
+            finished = True
 
         # Determine when the simulation enters a steady state
         if (COUPLER_options["steady_stop"] == 1) and (loop_counter["total"] > loop_counter["steady_check"]*2+5) and (loop_counter["steady"] == 0):
@@ -439,27 +441,35 @@ def main():
                 loop_counter["steady"] += 1
             else:
                 UpdateStatusfile(dirs, 11)
-                log.info("\n===> Planet has entered a steady state! <===\n")
-                complete = True
+                log.info("")
+                log.info("===> Planet has entered a steady state! <===")
+                log.info("")
+                finished = True
             
         # Stop simulation if maximum loops reached
         if (loop_counter["total"] > loop_counter["total_loops"]):
             UpdateStatusfile(dirs, 12)
-            log.info("\n===> Maximum number of iterations reached. <===\n")
-            complete = True
+            log.info("")
+            log.info("===> Maximum number of iterations reached! <===")
+            log.info("")
+            finished = True
+
+        # Stop simulation if maximum time reached
+        if (time_dict["total"] >= time_dict["target"]):
+            UpdateStatusfile(dirs, 13)
+            log.info("")
+            log.info("===> Target time reached! <===")
+            log.info("")
+            finished = True
         
-        # Make plots if required and go to next iteration
-        if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0):
-            UpdatePlots( dirs["output"], COUPLER_options )
-
         # Check if the minimum number of loops have been performed
-        if complete and (loop_counter["total"] < loop_counter["total_min"]):
-            log.info("Minimum number of iterations not yet attained")
-            complete = False
+        if finished and (loop_counter["total"] < loop_counter["total_min"]):
+            log.info("Minimum number of iterations not yet attained; continuing...")
+            finished = False
 
-        # If marked as complete, exit
-        if complete:
-            break
+        # Make plots if required and go to next iteration
+        if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0) and (not finished):
+            UpdatePlots( dirs["output"], COUPLER_options )
 
         ############### / LOOP ITERATION MANAGEMENT
 
@@ -478,7 +488,7 @@ def main():
     log.info("Total runtime: %.2f hours" % ( run_time.total_seconds()/(60.0 * 60.0)  ))
 
     # EXIT
-    return 
+    return
 
 #====================================================================
 if __name__ == '__main__':

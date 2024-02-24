@@ -51,7 +51,7 @@ else
     if [[ "$DETACH" == "y" ]]; then 
         screen -S $ALIAS -d -m bash -c "$COMMAND" 
     else 
-        screen -S $ALIAS -c bash -c "$COMMAND" 
+        screen -S $ALIAS bash -c "$COMMAND" 
     fi
     
     # Done?

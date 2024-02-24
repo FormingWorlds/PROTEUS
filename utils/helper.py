@@ -32,6 +32,7 @@ def CommentFromStatus(status:int):
         case 10: desc = "Completed (solidified)"
         case 11: desc = "Completed (steady-state)"
         case 12: desc = "Completed (maximum iterations)"
+        case 13: desc = "Completed (target time)"
         # Error cases
         case 20: desc = "Error (generic/configuration)"
         case 21: desc = "Error (SPIDER)"

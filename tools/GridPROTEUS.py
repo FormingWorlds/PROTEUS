@@ -419,7 +419,7 @@ class Pgrid():
             
             # Short sleeps while doing initial dispatch
             if step < num_threads:
-                time.sleep(1.0)
+                time.sleep(2.0)
             else:
                 time.sleep(check_interval)
             step += 1

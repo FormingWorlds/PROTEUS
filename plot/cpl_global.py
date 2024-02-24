@@ -15,7 +15,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     lw=2.0
     al=0.95
     fig_ratio=(3,2)
-    fig_scale=3.5
+    fig_scale=4.0
     leg_kwargs = {
         "frameon":1, 
         "fancybox":True,
@@ -92,7 +92,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
                 transform=ax.transAxes,
                 horizontalalignment='left',
                 verticalalignment='bottom',
-                fontsize=10,
+                fontsize=11,
                 zorder=20,
                 bbox=dict(fc='white', ec="white", alpha=0.5, pad=0.1, boxstyle='round')
                 )
@@ -147,14 +147,14 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 
 
     # PLOT ax_tr
-    bar_min, bar_max = 0.1, 10.0
     ax_tr.plot( df_int["Time"], df_int["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
+    bar_min, bar_max = 0.1, 10.0
+    bar_max = max(bar_max, np.amax(df_int["P_surf"]))
     for vol in volatile_species:
         if not vol_present[vol]:
             continue 
         ax_tr.plot( df_atm["Time"], vol_bars[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
         bar_min = min(bar_min, np.amin(vol_bars[vol]))
-        bar_max = max(bar_max, np.amax(vol_bars[vol]))
     ax_tr.set_ylim(max(bar_min, 0.1), bar_max * 2.0)
     ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
 
