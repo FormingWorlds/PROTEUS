@@ -455,7 +455,7 @@ def main():
             finished = True
 
         # Stop simulation if maximum time reached
-        if (time_dict["total"] >= time_dict["target"]):
+        if (time_dict["planet"] >= time_dict["target"]):
             UpdateStatusfile(dirs, 13)
             log.info("")
             log.info("===> Target time reached! <===")
