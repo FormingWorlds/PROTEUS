@@ -258,17 +258,63 @@ class SolubilityCO2(Solubility):
         ppmw = 1.0E4*(4400*ppmw) / (36.6-44*ppmw)
         return ppmw
 
+
 class SolubilityN2(Solubility):
     """N2 solubility models"""
 
     def __init__(self, composition='libourel'):
         super().__init__(composition)
 
+        # melt composition
+        x_SiO2  = 0.56
+        x_Al2O3 = 0.11
+        x_TiO2  = 0.01
+        self.dasfac_2 = np.exp(4.67 + 7.11*x_SiO2 - 13.06*x_Al2O3 - 120.67*x_TiO2)
+
     def libourel(self, p):
         '''Libourel et al. (2003)'''
         ppmw = self.power_law(p, 0.0611, 1.0)
         return ppmw
     
+    def dasgupta(self, p, ptot, temp, fO2_shift):
+        '''Dasgupta et al. (2022)'''
+        
+        # convert bar to GPa
+        pb_N2  = p * 1.0e-4  
+        pb_tot = ptot * 1.0e-4
+
+        pb_tot = max(pb_tot, 1e-15)
+
+        # calculate N2 concentration in melt
+        ppmw  = pb_N2**0.5 * np.exp(5908.0 * pb_tot**0.5/temp - 1.6*fO2_shift)
+        ppmw += pb_N2 * self.dasfac_2
+
+        return ppmw 
+
+class SolubilityCH4(Solubility):
+    """CH4 solubility models"""
+
+    def __init__(self, composition='basalt_ardia'):
+        super().__init__(composition)
+
+    def basalt_ardia(self, p, p_total):
+        '''Ardia 2013'''
+        p_total *= 1e-4  # Convert to GPa
+        p *= 1e-4 # Convert to GPa
+        ppmw = p*np.exp(4.93 - (0.000193 * p_total))
+        return ppmw
+    
+
+class SolubilityCO(Solubility):
+    """CO solubility models"""
+
+    def __init__(self, composition='mafic_armstrong'):
+        super().__init__(composition)
+
+    def mafic_armstrong(self, p, p_total):
+        '''Armstrong 2015'''
+        ppmw = 10 ** (-0.738 + 0.876 * np.log10(p) - 5.44e-5 * p_total)
+        return ppmw
 
 def solvepp_get_partial_pressures(pin, fO2_shift, global_d):
     """Partial pressure of all considered species"""
@@ -295,12 +341,9 @@ def solvepp_get_partial_pressures(pin, fO2_shift, global_d):
     gamma = gamma(global_d['temperature'], fO2_shift)
     p_d['CO'] = gamma*pCO2
 
-    if global_d['is_CH4'] is True:
-        gamma = ModifiedKeq('schaefer_CH4')
-        gamma = gamma(global_d['temperature'], fO2_shift)
-        p_d['CH4'] = gamma*pCO2*p_d['H2']**2.0
-    else:
-        p_d['CH4'] = 0
+    gamma = ModifiedKeq('schaefer_CH4')
+    gamma = gamma(global_d['temperature'], fO2_shift)
+    p_d['CH4'] = gamma*pCO2*p_d['H2']**2.0
 
     return p_d
 
@@ -364,6 +407,7 @@ def solvepp_dissolved_mass(pin, fO2_shift, global_d):
     mass_int_d = {}
 
     p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
+    ptot = solvepp_get_total_pressure(pin, fO2_shift, global_d)
 
     prefactor = 1E-6*global_d['mantle_mass']*global_d['mantle_melt_fraction']
 
@@ -377,14 +421,29 @@ def solvepp_dissolved_mass(pin, fO2_shift, global_d):
     ppmw_CO2 = sol_CO2(p_d['CO2'], global_d['temperature'])
     mass_int_d['CO2'] = prefactor*ppmw_CO2
 
+    # CO
+    sol_CO = SolubilityCO() # gets the default solubility model
+    ppmw_CO = sol_CO(p_d["CO"], ptot)
+    mass_int_d['CO'] = prefactor*ppmw_CO
+
+    # CH4
+    sol_CH4 = SolubilityCH4() # gets the default solubility model
+    ppmw_CH4 = sol_CH4(p_d["CH4"], ptot)
+    mass_int_d['CH4'] = prefactor*ppmw_CH4
+
     # N2
-    sol_N2 = SolubilityN2() # gets the default solubility model
-    ppmw_N2 = sol_N2(p_d['N2'])
+    sol_N2 = SolubilityN2("dasgupta") # calculate fO2-dependent solubility
+    ppmw_N2 = sol_N2(p_d['N2'], ptot, global_d['temperature'], fO2_shift)
     mass_int_d['N2'] = prefactor*ppmw_N2
 
+
     # now get totals of H, C, N
-    mass_int_d['H'] = mass_int_d['H2O']*(molar_mass['H2']/molar_mass['H2O'])
-    mass_int_d['C'] = mass_int_d['CO2']*(molar_mass['C']/molar_mass['CO2'])
+    mass_int_d['H'] = mass_int_d['H2O']/molar_mass['H2O'] + mass_int_d['CH4']*2/molar_mass["CH4"]
+    mass_int_d['H'] *= molar_mass['H2']
+    
+    mass_int_d['C'] = mass_int_d['CO2']/molar_mass['CO2'] + mass_int_d['CO']/molar_mass['CO'] + mass_int_d['CH4']/molar_mass['CH4']
+    mass_int_d['C'] *= molar_mass['C']
+
     mass_int_d['N'] = mass_int_d['N2']
 
     return mass_int_d
@@ -473,13 +532,12 @@ def solvepp_equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d,
         # give up after a while
         if count > max_attempts:
             UpdateStatusfile(dirs, 21)
-            raise Exception("Could not find solution for volatile abundances")
+            raise Exception("Could not find solution for volatile abundances (max attempts reached)")
 
     log.info("Initial guess attempt number = %d" % count)
     log.info("Residuals: " + str(this_resid))
 
     p_d = solvepp_get_partial_pressures(sol, fO2_shift, global_d)
-    # get residuals for output
     res_l = solvepp_func(sol, fO2_shift, global_d, target_d)
 
     # for convenience, add inputs to same dict
@@ -568,7 +626,6 @@ def solvepp_doit(COUPLER_options):
 
     return partial_pressures
 
-#====================================================================
 #====================================================================
 
 def get_column_data_from_SPIDER_lookup_file( infile ):
