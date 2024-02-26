@@ -12,9 +12,9 @@ Read access to the following repositories:
         
         * URL: https://github.com/FormingWorlds/PROTEUS
 
-    * Pseudoadiabatic temperature structure scheme: **AEOLUS** 
+    * Pseudoadiabatic temperature structure scheme: **JANUS** 
         
-        * URL: https://github.com/FormingWorlds/AEOLUS/
+        * URL: https://github.com/FormingWorlds/JANUS/
 
     * Radiative transfer: **SOCRATES** 
         
@@ -194,7 +194,7 @@ Step-by-step (core modules)
         
         .. code-block:: console
 
-            $   cd AEOLUS/rad_trans/socrates_code/
+            $   cd JANUS/rad_trans/socrates_code/
             $   tar --strip-components 1 -xvf ../socrates_2306_trunk_r1403.tar.xz -C ./
             $   cp -f ../build_code_modified build_code
 

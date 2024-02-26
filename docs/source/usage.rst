@@ -131,7 +131,7 @@ inputs are provided.
 
 * ``spectral_file``
    - Spectral file to use when running SOCRATES.   
-   - (String) Path to file measured relative to the ``AEOLUS/`` folder.
+   - (String) Path to file measured relative to the ``JANUS/`` folder.
 
 * ``stellar_heating``
    - Flag to toggle stellar heating, including the downward shortwave stream.  
@@ -208,7 +208,7 @@ inputs are provided.
 
 * ``atmosphere_model``   
    - Atmosphere model used to set T(p) and T_surf.    
-   - (Integer) 0: AEOLUS, 1: AGNI
+   - (Integer) 0: JANUS, 1: AGNI
 
 * ``atmosphere_solve_energy``   
    - Enable time-stepped solution for T(p). Only available with AGNI.

@@ -26,7 +26,7 @@ https://proteus-code.readthedocs.io/en/latest/contact.html
 | `pyproject.toml`	    | Documentation file                                        |
 | `CODE_OF_CONDUCT.md`	| Project code of conduct                                   |
 | `LICENSE`	            | Project license                                           |
-| `AEOLUS/`             | Submodule AEOLUS                                          |
+| `JANUS/`             | Submodule JANUS                                          |
 | `SPIDER/`             | Submodule SPIDER                                          |
 | `VULCAN/`             | Submodule VULCAN                                          |
 | `Mors/`               | Submodule Mors                                            |

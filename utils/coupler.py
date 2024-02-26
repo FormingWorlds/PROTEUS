@@ -492,7 +492,7 @@ def SetDirectories(COUPLER_options: dict):
             "output":   coupler_dir+"/output/"+COUPLER_options['dir_output']+"/", 
             "input":    coupler_dir+"/input/",
             "coupler":  coupler_dir, 
-            "aeolus":   coupler_dir+"/AEOLUS/", 
+            "janus":   coupler_dir+"/JANUS/", 
             "agni":     coupler_dir+"/AGNI/", 
             "vulcan":   coupler_dir+"/VULCAN/", 
             "spider":   coupler_dir+"/SPIDER/", 

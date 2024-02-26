@@ -120,7 +120,7 @@ def parent(folder, samples, threads, s_width, s_centre,
         # Read helpfile
         helpfile_df = pd.read_csv(dirs["output"]+"runtime_helpfile.csv",sep='\t')
 
-        # Find out which years we have both SPIDER and AEOLUS data for
+        # Find out which years we have both SPIDER and JANUS data for
         evolution_json = glob.glob(dirs["output"]+"/data/*.json")
         json_years = np.array([int(f.split("/")[-1].split(".")[0]) for f in evolution_json])
         json_years = np.sort(json_years)

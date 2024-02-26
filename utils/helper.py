@@ -37,7 +37,7 @@ def CommentFromStatus(status:int):
         case 20: desc = "Error (generic/configuration)"
         case 21: desc = "Error (SPIDER)"
         case 22: desc = "Error (AGNI)"
-        case 23: desc = "Error (AEOLUS)"
+        case 23: desc = "Error (JANUS)"
         case 24: desc = "Error (VULCAN)"
         case 25: desc = "Error (died)"
         # Default case

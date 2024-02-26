@@ -1,4 +1,4 @@
-# Functions used to handle atmosphere thermodynamics (running AEOLUS, etc.)
+# Functions used to handle atmosphere thermodynamics (running JANUS, etc.)
 
 from utils.modules_ext import *
 from utils.helper import *
@@ -106,7 +106,7 @@ def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
 # Generate atmosphere from input files
 def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
 
-    from AEOLUS.utils.atmosphere_column import atmos
+    from JANUS.utils.atmosphere_column import atmos
 
     # Create atmosphere object and set parameters
     pl_radius = COUPLER_options["radius"]
@@ -160,8 +160,8 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
 
     return atm
 
-def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_tmp_dir=True, search_method=0):
-    """Run AEOLUS.
+def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_tmp_dir=True, search_method=0):
+    """Run JANUS.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
     Stores the new flux boundary condition to be provided to SPIDER. Limits flux
@@ -193,7 +193,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
 
     # Runtime info
     PrintHalfSeparator()
-    log.info("Running AEOLUS...")
+    log.info("Running JANUS...")
 
     # Update stdout
     old_stdout , old_stderr = sys.stdout , sys.stderr
@@ -212,15 +212,15 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
     trppD = bool(COUPLER_options["tropopause"] == 2 )
     rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
 
-    # Run AEOLUS
+    # Run JANUS
     if COUPLER_options["atmosphere_solve_energy"] == 0:
 
         if COUPLER_options["atmosphere_surf_state"] == 1:  # fixed T_Surf
-            from AEOLUS.modules.solve_pt import MCPA
+            from JANUS.modules.solve_pt import MCPA
             atm = MCPA(dirs, atm, False, trppD, rscatter)
 
         elif COUPLER_options["atmosphere_surf_state"] == 2: # conductive lid
-            from AEOLUS.modules.solve_pt import MCPA_CBL
+            from JANUS.modules.solve_pt import MCPA_CBL
 
             T_surf_max = -1
             T_surf_old = -1 
@@ -244,10 +244,10 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
 
         else:
             UpdateStatusfile(dirs, 20)
-            raise Exception("Invalid surface state chosen for AEOLUS")
+            raise Exception("Invalid surface state chosen for JANUS")
     else:
         UpdateStatusfile(dirs, 20)
-        raise Exception("Cannot solve for RCE with AEOLUS")
+        raise Exception("Cannot solve for RCE with JANUS")
     
     # Clean up run directory
     for file in glob.glob(tmp_dir+"/current??.????"):
@@ -267,7 +267,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
     # Check for NaNs
     if not np.isfinite(atm.net_flux).all():
         UpdateStatusfile(dirs, 23)
-        raise Exception("AEOLUS output array contains NaN or Inf values")
+        raise Exception("JANUS output array contains NaN or Inf values")
 
     # Store new flux
     if (COUPLER_options["F_atm_bc"] == 0):

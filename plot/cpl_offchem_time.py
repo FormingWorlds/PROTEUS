@@ -13,7 +13,7 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
     """Plot evolution of chemistry according to offline VULCAN output.
     
     Reads-in the data from output_dir for a set of provided species. Can also
-    include AEOLUS/SPIDER mixing ratios as dashed lines, which were used to 
+    include JANUS/SPIDER mixing ratios as dashed lines, which were used to 
     initialise each VULCAN run. Mixing ratios are averaged over the provided 
     pressure range.
 

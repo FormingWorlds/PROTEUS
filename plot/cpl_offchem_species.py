@@ -13,7 +13,7 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
     """Plot evolution of a single component according to offline VULCAN output
     
     Reads-in the data from output_dir for a single species. Can also
-    include AEOLUS/SPIDER mixing ratios as dashed lines, which were used to 
+    include JANUS/SPIDER mixing ratios as dashed lines, which were used to 
     initialise each VULCAN run.
 
     Parameters
@@ -127,7 +127,7 @@ if __name__ == '__main__':
     else:
         cfg = 'init_coupler.cfg' 
 
-    plot_aeolus_result = True
+    plot_janus_result = True
 
 
     # Read in COUPLER input file
@@ -145,6 +145,6 @@ if __name__ == '__main__':
     # Call plotting function
     for s in species:
         print("Species = %s" % s)
-        plot_offchem_species(dirs["output"],s,tmin=-1, plot_init_mx=plot_aeolus_result)
+        plot_offchem_species(dirs["output"],s,tmin=-1, plot_init_mx=plot_janus_result)
 
     print("Done!")

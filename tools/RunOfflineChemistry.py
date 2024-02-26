@@ -385,7 +385,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
     # Read helpfile
     helpfile_df = pd.read_csv(dirs["output"]+"runtime_helpfile.csv",sep='\t')
 
-    # Find out which years we have both SPIDER and AEOLUS data for
+    # Find out which years we have both SPIDER and JANUS data for
     evolution_json = glob.glob(dirs["output"]+"/data/*.json")
     json_years = np.array([int(f.split("/")[-1].split(".")[0]) for f in evolution_json])
     json_years = np.sort(json_years)
@@ -542,27 +542,27 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
     if mkplots:
         logger.info("Plotting results...")
 
-        # plot_aeolus = bool(ini_method == 0)
-        plot_aeolus = True
+        # plot_janus = bool(ini_method == 0)
+        plot_janus = True
 
         species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
         logger.info("\t timeline")
-        plot_offchem_time(dirs["output"],species,plot_init_mx=plot_aeolus,tmin=1e4)
+        plot_offchem_time(dirs["output"],species,plot_init_mx=plot_janus,tmin=1e4)
 
         ls = glob.glob(dirs["output"]+"offchem/*/output.vul")
         years = [int(f.split("/")[-2]) for f in ls]
-        years_data = [offchem_read_year(dirs["output"],y,read_const=plot_aeolus) for y in years]
+        years_data = [offchem_read_year(dirs["output"],y,read_const=plot_janus) for y in years]
 
         if len(years) > 0:
             for yd in years_data:
                 logger.info("\t year = %d" % yd["year"])
-                plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_aeolus)
+                plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_janus)
         else:
             logger.error('In attempting to make plots, no VULCAN output files were found')
 
         for s in species:
             logger.info("\t species = %s" % s)
-            plot_offchem_species(dirs["output"],s,plot_init_mx=plot_aeolus)
+            plot_offchem_species(dirs["output"],s,plot_init_mx=plot_janus)
 
     # Done
     logger.info("Done running offline chemistry!")

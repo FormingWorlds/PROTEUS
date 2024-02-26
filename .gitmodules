@@ -2,9 +2,9 @@
 	path = VULCAN
 	url = git@github.com:exoclime/VULCAN.git
 	branch = master
-[submodule "AEOLUS"]
-	path = AEOLUS
-	url = git@github.com:FormingWorlds/AEOLUS.git
+[submodule "JANUS"]
+	path = JANUS
+	url = git@github.com:FormingWorlds/JANUS.git
 	branch = master
 [submodule "SPIDER"]
 	path = SPIDER
