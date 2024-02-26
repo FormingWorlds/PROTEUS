@@ -358,7 +358,10 @@ def main():
                 if COUPLER_options["atmosphere_model"] == 0:
                     # Run AEOLUS: use the general adiabat to create a PT profile, then calculate fluxes
                     atm = StructAtm( dirs, runtime_helpfile, COUPLER_options )
-                    COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile )
+                    search_method=0
+                    # if (loop_counter["total"] > loop_counter["init_loops"]):
+                    #     search_method=1
+                    COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, search_method=search_method)
 
                 elif COUPLER_options["atmosphere_model"] == 1:
                     # Run AGNI 

@@ -160,7 +160,7 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
 
     return atm
 
-def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_tmp_dir=True):
+def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_tmp_dir=True, search_method=0):
     """Run AEOLUS.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -237,7 +237,7 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
                     run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
                     T_surf_max = run_atm.iloc[-1]["T_surf"]
 
-            atm = MCPA_CBL(dirs, atm, trppD, rscatter, 
+            atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method,
                           atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.5, T_surf_max=float(T_surf_max))
             
             COUPLER_options["T_surf"] = atm.ts
@@ -276,11 +276,12 @@ def RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in
         F_atm_new = atm.net_flux[-1]  
 
     # Require that the net flux must be upward
+    F_atm_lim = F_atm_new
     if (COUPLER_options["prevent_warming"] == 1):
         F_atm_lim = max( 1.0e-8 , F_atm_new )
 
     # Print if a limit was applied
-    if (F_atm_lim != F_atm_new ):
+    if not np.isclose(F_atm_lim , F_atm_new ):
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
