@@ -2,10 +2,6 @@
 	path = VULCAN
 	url = git@github.com:exoclime/VULCAN.git
 	branch = master
-[submodule "JANUS"]
-	path = JANUS
-	url = git@github.com:FormingWorlds/JANUS.git
-	branch = master
 [submodule "SPIDER"]
 	path = SPIDER
 	url = git@github.com:djbower/spider.git
@@ -23,3 +19,6 @@
 	url = https://github.com/ColinPhilipJohnstone/Mors
 	branch = master
 
+[submodule "JANUS"]
+	path = JANUS
+	url = git@github.com:FormingWorlds/JANUS.git
