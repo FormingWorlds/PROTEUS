@@ -21,6 +21,12 @@ def natural_sort(l):
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
     return sorted(l, key = alphanum_key)
 
+# Savely remove a file
+def safe_rm(fpath):
+    fpath = os.path.abspath(fpath)
+    if os.path.exists(fpath):
+        os.remove(fpath)
+
 # Get comment from status
 def CommentFromStatus(status:int):
     desc = ""
@@ -57,16 +63,13 @@ def UpdateStatusfile(dirs:dict, status:int):
         os.makedirs(stsfold)
 
     # Does the status file exist?
-    if os.path.exists(stsfile):
-        os.remove(stsfile)
+    safe_rm(stsfile)
 
     # Write status file
     with open(stsfile,'x') as hdl:
         hdl.write("%d\n" % status)
         desc = CommentFromStatus(status)
         hdl.write("%s\n"%desc)
-        # hdl.flush()
-        # os.fsync(hdl.fileno())
 
 def CleanDir(directory, keep_stdlog=False):
     """Clean a directory.

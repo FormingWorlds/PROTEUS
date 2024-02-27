@@ -63,6 +63,10 @@ def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
     F_int = np.array(df_int["F_int"])
     t_int = np.array(df_int["Time"])
 
+    if max(len(t_atm),len(t_int)) < 3:
+        log.warning("Cannot make plot with less than 3 samples")
+        return
+
     # Create plot
     mpl.use('Agg')
     fig,ax = plt.subplots(figsize=(5,4))

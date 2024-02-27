@@ -922,50 +922,35 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
 
             elif (COUPLER_options["dt_method"] == 1):
                 # Dynamic time-step calculation
-                F_clip = 1.e-4
 
-                # Get time-step length from last iter
                 dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
-                # dtprev = float(COUPLER_options["dtswitch"])
-                
-                F_int_3  = max(run_int.iloc[-3]["F_int"],F_clip)
-                F_int_2  = max(run_int.iloc[-2]["F_int"],F_clip)
-                F_int_1  = max(run_int.iloc[-1]["F_int"],F_clip)
-                F_int_23 = abs((F_int_2 - F_int_3)/F_int_3)  # Relative change from [-3] to [-2] steps
-                F_int_12 = abs((F_int_1 - F_int_2)/F_int_2)  # Relative change from [-2] to [-1] steps
 
-                F_atm_3  = max(run_int.iloc[-3]["F_atm"],F_clip)
-                F_atm_2  = max(run_atm.iloc[-2]["F_atm"],F_clip)
-                F_atm_1  = max(run_atm.iloc[-1]["F_atm"],F_clip)
-                F_atm_23 = abs((F_atm_2 - F_atm_3)/F_atm_3)  # Relative change from [-3] to [-2] steps
-                F_atm_12 = abs((F_atm_1 - F_atm_2)/F_atm_2)  # Relative change from [-2] to [-1] steps
+                F_int_2  = run_int.iloc[-2]["F_int"]
+                F_int_1  = run_int.iloc[-1]["F_int"]
+                F_int_12 = abs(F_int_1 - F_int_2)  # Change from [-2] to [-1] steps
 
-                F_acc_max = max( F_int_12-F_int_23, F_atm_12-F_atm_23 ) * 100.0  # Maximum accel. (in relative terms)
+                F_atm_2  = run_atm.iloc[-2]["F_atm"]
+                F_atm_1  = run_atm.iloc[-1]["F_atm"]
+                F_atm_12 = abs(F_atm_1 - F_atm_2)  # Change from [-2] to [-1] steps
 
-                if F_acc_max > 20.0:
-                    # Slow down!!
-                    log.info("Time-stepping intent: slow down!!")
-                    dtswitch = 0.10 * dtprev
+                phi_2  = run_atm.iloc[-2]["Phi_global"]
+                phi_1  = run_atm.iloc[-1]["Phi_global"]
+                phi_12 = abs(phi_1 - phi_2)  # Change from [-2] to [-1] steps
 
-                elif (F_acc_max > 10.0):
-                    # Slow down
-                    log.info("Time-stepping intent: slow down")
-                    dtswitch = 0.90 * dtprev
+                dt_rtol = COUPLER_options["dt_rtol"]
+                dt_atol = COUPLER_options["dt_atol"]
+                speed_up=True 
+                speed_up = speed_up and ( F_int_12 < dt_rtol*F_int_2 + dt_atol )
+                speed_up = speed_up and ( F_atm_12 < dt_rtol*F_atm_2 + dt_atol )
+                speed_up = speed_up and ( phi_12    < dt_rtol*phi_2  + dt_atol )
 
-                elif F_acc_max > 0.1:
-                    # Steady (speed up a little bit to promote evolution)
-                    log.info("Time-stepping intent: steady")
-                    dtswitch = 1.01 * dtprev
-
-                elif F_acc_max > -12.0:
-                    # Speed up
+                if speed_up:
+                    dtswitch = dtprev * 1.05
                     log.info("Time-stepping intent: speed up")
-                    dtswitch = 1.15 * dtprev
-
                 else:
-                    # Speed up!!
-                    log.info("Time-stepping intent: speed up!!")
-                    dtswitch = 1.50 * dtprev
+                    dtswitch = dtprev * 0.9
+                    log.info("Time-stepping intent: slow down")
+
 
             elif (COUPLER_options["dt_method"] == 2):
                 # Always use the maximum time-step, which can be adjusted in the cfg file

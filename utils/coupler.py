@@ -486,18 +486,21 @@ def SetDirectories(COUPLER_options: dict):
             Dictionary of paths to important directories
     """
 
-    coupler_dir = os.getenv('COUPLER_DIR')
+    coupler_dir = os.path.abspath(os.getenv('COUPLER_DIR'))
 
     dirs = {
-            "output":   coupler_dir+"/output/"+COUPLER_options['dir_output']+"/", 
-            "input":    coupler_dir+"/input/",
-            "coupler":  coupler_dir, 
-            "janus":   coupler_dir+"/JANUS/", 
-            "agni":     coupler_dir+"/AGNI/", 
-            "vulcan":   coupler_dir+"/VULCAN/", 
-            "spider":   coupler_dir+"/SPIDER/", 
-            "utils":    coupler_dir+"/utils/"
+            "output":   os.path.join(coupler_dir,"output",COUPLER_options['dir_output']), 
+            "input":    os.path.join(coupler_dir,"input"),
+            "coupler":  coupler_dir,
+            "janus":    os.path.join(coupler_dir,"JANUS"),
+            "agni":     os.path.join(coupler_dir,"AGNI"),
+            "vulcan":   os.path.join(coupler_dir,"VULCAN"),
+            "spider":   os.path.join(coupler_dir,"SPIDER"),
+            "utils":    os.path.join(coupler_dir,"utils")
             }
+    
+    for key in dirs.keys():
+        dirs[key] = dirs[key]+"/"
     
     return dirs
 

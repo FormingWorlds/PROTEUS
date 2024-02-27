@@ -71,7 +71,7 @@ def main():
     
     # Model has completed?
     finished = False
-    
+
     # Check options are compatible
     if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
         if COUPLER_options["flux_convergence"] == 1:
@@ -215,6 +215,14 @@ def main():
         case _:
             UpdateStatusfile(dirs, 20)
             raise Exception("Invalid stellar model '%d'" % COUPLER_options['star_model'])
+        
+    # Create lockfile 
+    keepalive_file = os.path.join(dirs["output"],"keepalive")
+    if os.path.exists(keepalive_file):
+        os.remove(keepalive_file)
+    with open(keepalive_file, 'w') as fp:
+        fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
+    
     
     # Main loop
     UpdateStatusfile(dirs, 1)
@@ -470,6 +478,13 @@ def main():
             log.info("Minimum number of iterations not yet attained; continuing...")
             finished = False
 
+        # Check if keepalive file has been removed - this means that the model should exit ASAP
+        if not os.path.exists(keepalive_file):
+            log.info("")
+            log.info("===> Model exit was requested by user! <===")
+            log.info("")
+            finished=True
+
         # Make plots if required and go to next iteration
         if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0) and (not finished):
             UpdatePlots( dirs["output"], COUPLER_options )
@@ -479,10 +494,11 @@ def main():
     # ----------------------
     # FINAL THINGS BEFORE EXIT
 
-    # Clean up spectral files
+    # Clean up files
+    safe_rm(keepalive_file)
     for file in glob.glob(dirs["output"]+"/runtime_spectral_file*"):
         os.remove(file)
-            
+
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options, end=True)
     end_time = datetime.now()
