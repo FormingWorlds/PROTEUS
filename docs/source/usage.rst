@@ -32,16 +32,22 @@ explanations of their purpose and the values they accept. Configuration files
 can contain blank lines. Comments are indicated with a # symbol. A lot of these 
 parameters are not validated by the code, so it will misbehave if unreasonable
 inputs are provided.
-   
-* ``star_model``
-   - The star model to use for calculating the spectrum and luminosity. Options
-   are the legacy implementation, the Baraffe model, and the Mors model.  
-   - (Integer) 0: Legacy, 1: Mors, 2: Baraffe.
 
-* ``star_rot_percentile``
-   - The percentile used to find rotation rate of star from a distribution when
-   the Mors evolution model is selected.  
-   - (Float) 0 to 100.
+.. list-table:: Model input parameters
+   :header-rows: 1
+
+   * - Name
+     - Description
+     - Type and doma
+
+
+   * - ``star_model``
+     - The star model to use for calculating the spectrum and luminosity. Options are the legacy implementation, the Baraffe model, and the Mors model.  
+     - (Integer) 0: Legacy, 1: Mors, 2: Baraffe.
+
+   * - ``star_rot_percentile``
+     - The percentile used to find rotation rate of star from a distribution when the Mors evolution model is selected.  
+     - (Float) 0 to 100.
 
 * ``star_mass``
    - Mass of the host star, in units of solar masses.  
@@ -85,7 +91,7 @@ inputs are provided.
    - (Float) Greater than zero. 
 
 * ``radius``
-   - Radius of the planet, in units of m.  
+   - Radius of the planet at the surface, in units of m.  
    - (Float) Greater than zero.
 
 * ``zenith_angle``
@@ -175,6 +181,14 @@ inputs are provided.
    ``dt = t/dt_propconst``, so larger values mean smaller steps.   
    - (Float) Greater than zero.    
 
+* ``dt_atol``
+   - Absolute tolerance on change in flux and melt fraction for each iteration.   
+   - (Float) Greater than zero.    
+
+* ``dt_rtol``
+   - Relative tolerance on change in flux and melt fraction for each iteration.   
+   - (Float) Greater than zero.    
+
 * ``flux_convergence``
    - DEPRECATED. Method to be used for converging atmospheric and interior upward fluxes.
    'Off' applies nothing special, and allows SPIDER to determine the surface 
@@ -245,11 +259,11 @@ inputs are provided.
    - (Integer) 0: Disabled, 1: Enabled.
 
 * ``steady_flux``
-   - Steady-state break condition. Requires that ``F_atm < steady_dfrel``.    
+   - Steady-state break condition, requiring that ``F_atm < steady_flux``.    
    - (Float) Values between zero and unity.    
 
 * ``steady_dprel``
-   - Steady-state break condition. Requires that ``dphi/dt < steady_dprel``.
+   - Steady-state break condition, requiring that ``dphi/dt < steady_dprel``.
    - (Float) Values between zero and unity.  
 
 * ``N2_partitioning``

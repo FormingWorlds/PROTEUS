@@ -377,7 +377,7 @@ def ReadInitFile( init_file_passed , verbose=False):
 
                     # Some are str
                     elif key in [ 'star_spectrum', 'star_btrack', 'dir_output', 
-                                  'spectral_file' ]:
+                                  'spectral_file' , 'log_level']:
                         val = str(val)
                         
                     # Most are float

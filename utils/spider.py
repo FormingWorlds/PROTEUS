@@ -940,12 +940,12 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
                 dt_rtol = COUPLER_options["dt_rtol"]
                 dt_atol = COUPLER_options["dt_atol"]
                 speed_up=True 
-                speed_up = speed_up and ( F_int_12 < dt_rtol*F_int_2 + dt_atol )
-                speed_up = speed_up and ( F_atm_12 < dt_rtol*F_atm_2 + dt_atol )
-                speed_up = speed_up and ( phi_12    < dt_rtol*phi_2  + dt_atol )
+                speed_up = speed_up and ( F_int_12 < dt_rtol*abs(F_int_2) + dt_atol )
+                speed_up = speed_up and ( F_atm_12 < dt_rtol*abs(F_atm_2) + dt_atol )
+                speed_up = speed_up and ( phi_12   < dt_rtol*abs(phi_2  ) + dt_atol )
 
                 if speed_up:
-                    dtswitch = dtprev * 1.05
+                    dtswitch = dtprev * 1.03
                     log.info("Time-stepping intent: speed up")
                 else:
                     dtswitch = dtprev * 0.9
@@ -1000,13 +1000,6 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     COUPLER_options["dtswitch"] = dtswitch
     COUPLER_options["dtmacro"] = dtmacro
 
-    log.info("Surface volatile partial pressures:")
-    for s in volatile_species:
-        key_pp = str(s+"_initial_atmos_pressure")
-        key_in = str(s+"_included")
-        if (key_pp in COUPLER_options) and (COUPLER_options[key_in] == 1):
-            log.info("    p_%s = %.5f bar" % (s,COUPLER_options[key_pp]/1.0e5))
-
     # Set spider flux boundary condition
     net_loss = COUPLER_options["F_atm"]
 
@@ -1036,6 +1029,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
         call_sequence.extend(["-tsurf_poststep_change", str(COUPLER_options["tsurf_poststep_change"])])
 
     # Define distribution coefficients and total mass/surface pressure for volatiles > 0
+    log.info("Input surface volatile partial pressures:")
     for vol in volatile_species:
         if COUPLER_options[vol+"_included"] == 1:
 
@@ -1046,7 +1040,9 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
                 COUPLER_options[key] = val
 
             # Load volatiles
-            call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(COUPLER_options[vol+"_initial_atmos_pressure"])])
+            pp = COUPLER_options[vol+"_initial_atmos_pressure"]
+            call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(pp)])
+            log.info("    p_%s = %.5f bar" % (vol,pp/1.0e5))
 
             # Exception for N2 case: reduced vs. oxidized
             if vol == "N2" and COUPLER_options["N2_partitioning"] == 1:
@@ -1152,11 +1148,12 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
 
     # Check status
-    if proc.returncode == 0:
-        # Success
+    success = (proc.returncode == 0)
+
+    # Handle failure by signalling for another _try_spider attempt
+    if success:
         return True, COUPLER_options
     else:
-        # Failure
         return False, {"failure":True}
 
 

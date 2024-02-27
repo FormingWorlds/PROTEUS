@@ -3,7 +3,7 @@
 import logging, sys, os
 
 # Custom logger instance 
-def setup_logger(logpath:str="new.log",level=1,logterm=True):
+def setup_logger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
 
     # https://stackoverflow.com/a/61457119
 
@@ -15,16 +15,10 @@ def setup_logger(logpath:str="new.log",level=1,logterm=True):
 
     fmt = logging.Formatter("[%(levelname)s] %(message)s")
 
-    level_code = logging.INFO
-    match level:
-        case 0:
-            level_code = logging.DEBUG
-        case 2:
-            level_code = logging.WARNING
-        case 3:
-            level_code = logging.ERROR 
-        case 4: 
-            level_code = logging.CRITICAL
+    level = str(level).strip().upper()
+    if level not in ["INFO", "DEBUG", "ERROR", "CRITICAL"]:
+        level = "INFO"
+    level_code = logging.getLevelName(level)
 
     # Add terminal output to logger
     if logterm:

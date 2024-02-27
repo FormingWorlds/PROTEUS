@@ -38,7 +38,7 @@ def main():
     UpdateStatusfile(dirs, 0)
     
     # Switch to logger 
-    setup_logger(logpath=dirs["output"]+"std.log", logterm=True, level=1)
+    setup_logger(logpath=dirs["output"]+"std.log", logterm=True, level=COUPLER_options["log_level"])
     log = logging.getLogger(__name__)
 
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
@@ -480,6 +480,7 @@ def main():
 
         # Check if keepalive file has been removed - this means that the model should exit ASAP
         if not os.path.exists(keepalive_file):
+            UpdateStatusfile(dirs, 25)
             log.info("")
             log.info("===> Model exit was requested by user! <===")
             log.info("")
