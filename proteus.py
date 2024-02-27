@@ -219,8 +219,7 @@ def main():
         
     # Create lockfile 
     keepalive_file = os.path.join(dirs["output"],"keepalive")
-    if os.path.exists(keepalive_file):
-        os.remove(keepalive_file)
+    safe_rm(keepalive_file)
     with open(keepalive_file, 'w') as fp:
         fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
     

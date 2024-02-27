@@ -237,7 +237,7 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
                     run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
                     T_surf_max = run_atm.iloc[-1]["T_surf"]
 
-            atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method,
+            atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=1.0e-5,
                           atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.5, T_surf_max=float(T_surf_max))
             
             COUPLER_options["T_surf"] = atm.ts
