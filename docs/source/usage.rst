@@ -275,7 +275,7 @@ configuration, but they must all be passed via the config file.
      - Atmosphere model used to set T(p) and T_surf.    
      - False
      - Integer
-     - 0: JANUS, 1: AGNI
+     - 0: JANUS, 1: AGNI, 2: Dummy
 
    * - ``atmosphere_solve_energy``   
      - Enable radiative-convective solution for calculating T(p). Only available with AGNI.

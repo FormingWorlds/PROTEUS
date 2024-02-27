@@ -14,6 +14,7 @@ from utils.stellar_mors import *
 from utils.stellar_baraffe import *
 from utils.janus import RunJANUS, PrepAtm, StructAtm
 from utils.agni import RunAGNI
+from utils.dummy_atmosphere import RunDummyAtm
 from utils.spider import RunSPIDER
 from utils.logging import setup_logger
 
@@ -366,14 +367,15 @@ def main():
                 if COUPLER_options["atmosphere_model"] == 0:
                     # Run JANUS: use the general adiabat to create a PT profile, then calculate fluxes
                     atm = StructAtm( dirs, runtime_helpfile, COUPLER_options )
-                    search_method=0
-                    # if (loop_counter["total"] > loop_counter["init_loops"]):
-                    #     search_method=1
-                    COUPLER_options = RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, search_method=search_method)
+                    COUPLER_options = RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile)
 
                 elif COUPLER_options["atmosphere_model"] == 1:
                     # Run AGNI 
                     COUPLER_options = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile)
+
+                elif COUPLER_options["atmosphere_model"] == 1:
+                    # Run dummy atmosphere model 
+                    COUPLER_options = RunDummyAtm(time_dict, dirs, COUPLER_options, runtime_helpfile)
                     
                 else:
                     UpdateStatusfile(dirs, 20)
