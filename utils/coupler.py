@@ -426,11 +426,15 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     # Global properties for all timesteps
     if len(output_times) > 1:
         cpl_global.plot_global(output_dir, COUPLER_options)   
+
+    # Check if we are using the dummy atmosphere
+    dummy_atm = (COUPLER_options["atmosphere_model"] == 2)
         
     # Filter to JSON files with corresponding NetCDF files
-    ncs = glob.glob(output_dir + "/data/*_atm.nc")
-    nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
-    output_times = sorted(list(set(output_times) & set(nc_times)))
+    if not dummy_atm:
+        ncs = glob.glob(output_dir + "/data/*_atm.nc")
+        nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
+        output_times = sorted(list(set(output_times) & set(nc_times)))
 
     # Work out which times we want to plot
     if len(output_times) <= num_snapshots:
@@ -455,8 +459,9 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
 
     # Specific timesteps for paper plots
     cpl_interior.plot_interior(output_dir, plot_times)     
-    cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
-    cpl_stacked.plot_stacked(output_dir, plot_times)
+    if not dummy_atm:
+        cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
+        cpl_stacked.plot_stacked(output_dir, plot_times)
 
     # Only at the end of the simulation
     if end:

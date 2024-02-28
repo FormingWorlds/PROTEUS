@@ -291,22 +291,23 @@ def main():
             writessurf = bool(COUPLER_options["atmosphere_chem_type"] > 0)
             SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs['output']+'/data/',write_surf=writessurf)
 
-            # Generate a new SOCRATES spectral file containing this new spectrum
-            star_spec_src = dirs["output"]+"socrates_star.txt"
-            #    Update stdout
-            old_stdout , old_stderr = sys.stdout , sys.stderr
-            sys.stdout = StreamToLogger(log, logging.INFO)
-            sys.stderr = StreamToLogger(log, logging.ERROR)
-            #    Spectral file stuff
-            PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
-            InsertStellarSpectrum(
-                                    spectral_file_nostar,
-                                    star_spec_src,
-                                    dirs["output"]+"runtime_spectral_file"
-                                )
-            os.remove(star_spec_src)
-            #    Restore stdout
-            sys.stdout , sys.stderr = old_stdout , old_stderr
+            if not (COUPLER_options["atmosphere_model"] == 2):
+                # Generate a new SOCRATES spectral file containing this new spectrum
+                star_spec_src = dirs["output"]+"socrates_star.txt"
+                #    Update stdout
+                old_stdout , old_stderr = sys.stdout , sys.stderr
+                sys.stdout = StreamToLogger(log, logging.INFO)
+                sys.stderr = StreamToLogger(log, logging.ERROR)
+                #    Spectral file stuff
+                PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
+                InsertStellarSpectrum(
+                                        spectral_file_nostar,
+                                        star_spec_src,
+                                        dirs["output"]+"runtime_spectral_file"
+                                    )
+                os.remove(star_spec_src)
+                #    Restore stdout
+                sys.stdout , sys.stderr = old_stdout , old_stderr
 
         else:
             log.info("New spectrum not required at this time")
@@ -372,7 +373,7 @@ def main():
                     # Run AGNI 
                     COUPLER_options = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile)
 
-                elif COUPLER_options["atmosphere_model"] == 1:
+                elif COUPLER_options["atmosphere_model"] == 2:
                     # Run dummy atmosphere model 
                     COUPLER_options = RunDummyAtm(time_dict, dirs, COUPLER_options, runtime_helpfile)
                     
