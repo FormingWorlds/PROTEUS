@@ -127,8 +127,10 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         log.info(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, F_int) )
 
         # Limit F_int to positive values
-        runtime_helpfile_new["F_int"] = np.amax([F_int, 0.])
+        if COUPLER_options["prevent_warming"]:
+            F_int = max(1.0e-8, F_int)
 
+        runtime_helpfile_new["F_int"] = F_int
 
         # Check and replace NaNs
         if np.isnan(runtime_helpfile_new["T_surf"]):

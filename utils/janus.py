@@ -160,7 +160,7 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
 
     return atm
 
-def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_tmp_dir=True, search_method=0):
+def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_tmp_dir=True, search_method=0, rtol=1.0e-4):
     """Run JANUS.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -182,6 +182,10 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
 
         write_in_tmp_dir : bool
             Write temporary files in a local folder within /tmp, rather than in the output folder
+        search_method : int
+            Root finding method used by JANUS
+        rtol : float
+            Relative tolerance on solution for root finding method
     Returns
     ----------
         atm : atmos
@@ -224,6 +228,8 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
 
             T_surf_max = -1
             T_surf_old = -1 
+            atol       = 1.0e-2
+            atol_min   = 1.0e-8
 
             # Done with initial loops
             if (time_dict["planet"] > 0):
@@ -237,7 +243,11 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
                     run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
                     T_surf_max = run_atm.iloc[-1]["T_surf"]
 
-            atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=1.0e-5,
+                # calculate tolerance
+                atol = rtol * run_atm.iloc[-1]["F_atm"]
+
+            # run JANUS
+            atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=max(atol,atol_min),
                           atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.5, T_surf_max=float(T_surf_max))
             
             COUPLER_options["T_surf"] = atm.ts

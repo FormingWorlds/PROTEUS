@@ -133,9 +133,11 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 
 
     # PLOT ax_cl
+    min_temp = np.amin(df_atm["T_surf"])
+    max_temp = np.amax(df_int["T_surf"])
     ax_cl.plot(df_int["Time"], df_int["T_surf"], ls="dashed", lw=lw, alpha=al, color=dict_colors["int"])
     ax_cl.plot(df_atm["Time"], df_atm["T_surf"], ls="-",      lw=lw, alpha=al, color=dict_colors["atm"])
-    ax_cl.set_ylim(1000.0 , 3500.0)
+    ax_cl.set_ylim(min(1000.0,min_temp) , max(3500.0,max_temp))
 
     
     # PLOT ax_bl
@@ -155,7 +157,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
             continue 
         ax_tr.plot( df_atm["Time"], vol_bars[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
         bar_min = min(bar_min, np.amin(vol_bars[vol]))
-    ax_tr.set_ylim(max(bar_min, 0.1), bar_max * 2.0)
+    ax_tr.set_ylim(max(1.0e-7,min(bar_min, 1.0e-1)), bar_max * 2.0)
     ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
 
     # PLOT ax_cr

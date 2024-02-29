@@ -45,10 +45,11 @@ def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):
         fl_U_LW = const_sigma * (1.0 - albedo_s) * (x - gamma * x)**4.0
         fl_D_SW = instellation * (1.0 - albedo_pl) * inst_sf * np.cos(zenith_angle * np.pi / 180.0)
         fl_U_SW = 0.0
-        # fl_N = fl_U_LW + fl_U_SW - fl_D_SW
+        fl_N = fl_U_LW + fl_U_SW - fl_D_SW
 
-        T_eqm = 1716.7
-        fl_N = const_sigma * (1-albedo_s) * (x**4.0 - T_eqm**4.0)
+        # T_eqm = 1716.7
+        # fl_N = const_sigma * (1-albedo_s) * (x**4.0 - T_eqm**4.0)
+        
         return {"fl_U_LW":fl_U_LW, "fl_D_SW":fl_D_SW, "fl_U_SW":fl_U_SW, "fl_N":fl_N}
         
     # fixed T_Surf
