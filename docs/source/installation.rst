@@ -146,10 +146,11 @@ Step-by-step (core modules)
                 
                 .. code-block:: console
                     
-                    $   conda create -n proteus python=3.10.9   
+                    $   conda create -n proteus python=3.12.2   
                     $   conda activate proteus
-                    $   conda install netcdf4 matplotlib numpy pandas scipy sympy natsort
-                    $   conda install -c conda-forge f90nml netcdf4
+                    $   conda install matplotlib numpy pandas scipy sympy natsort
+                    $   conda install conda-forge::f90nml
+                    $   conda install conda-forge::netcdf4
             
             * Refresh your shell:
                     
@@ -181,7 +182,7 @@ Step-by-step (core modules)
         
         .. code-block:: console
                         
-            $   git clone --recursive git@github.com:FormingWorlds/PROTEUS.git
+            $   git clone git@github.com:FormingWorlds/PROTEUS.git
 
     2. Enter into PROTEUS folder and ensure that submodules are up to date
         

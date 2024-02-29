@@ -18,5 +18,5 @@
 	path = JANUS
 	url = git@github.com:FormingWorlds/JANUS.git
 [submodule "MORS"]
-	path = MORS
+	path = Mors
 	url = https://github.com/FormingWorlds/MORS
