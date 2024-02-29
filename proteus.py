@@ -91,6 +91,10 @@ def main():
         UpdateStatusfile(dirs, 20)
         raise Exception("Atmosphere must have at least 15 levels")
     
+    if COUPLER_options["interior_nlev"] < 40:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Interior must have at least 40 levels")
+    
     # If restart skip init loop # args.r or args.rf or 
     if COUPLER_options["IC_INTERIOR"] == 2:
 

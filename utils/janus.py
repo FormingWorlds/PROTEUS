@@ -228,8 +228,7 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
 
             T_surf_max = -1
             T_surf_old = -1 
-            atol       = 1.0e-2
-            atol_min   = 1.0e-8
+            atol       = 1.0e-5
 
             # Done with initial loops
             if (time_dict["planet"] > 0):
@@ -244,10 +243,12 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
                     T_surf_max = run_atm.iloc[-1]["T_surf"]
 
                 # calculate tolerance
-                atol = rtol * run_atm.iloc[-1]["F_atm"]
+                tol = rtol * run_atm.iloc[-1]["F_atm"] + atol
+            else:
+                tol = 0.1
 
             # run JANUS
-            atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=max(atol,atol_min),
+            atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=tol,
                           atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.5, T_surf_max=float(T_surf_max))
             
             COUPLER_options["T_surf"] = atm.ts

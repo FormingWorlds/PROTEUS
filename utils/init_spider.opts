@@ -1,12 +1,5 @@
 # Default spider options file for use with PROTEUS
 
-# tolerances
-#-ts_sundials_atol 1.0e-10
-#-ts_sundials_rtol 1.0e-10
-
-# mesh
--n 280
-
 # -MASS_COORDINATES
 
 -activate_poststep
@@ -88,9 +81,6 @@
 # if positive, this value is used to scale the internally calculated eddy diffusivity
 -eddy_diffusivity_thermal 1.0
 -eddy_diffusivity_chemical 1.0
-
-# material properties
--grain 1.0E-1 # grain size (m)
 
 # smoothing of material properties across liquidus and solidus
 # units of melt fraction (non-dimensional)

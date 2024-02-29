@@ -373,6 +373,18 @@ configuration, but they must all be passed via the config file.
      - Integer
      - 0: None, 1: Offline, 2: Online.
 
+   * - ``interior_nlev``
+     - Number of levels used in the interior model
+     - False
+     - Integer
+     - Greater than 40.
+
+   * - ``grain_size``
+     - Size of crystal grains considered within mushy interior regions, units of metres.
+     - False
+     - Float
+     - Any reasonable value greater than zero (for example, 0.1 metres)
+
    * - ``IC_INTERIOR``
      - Initial condition for SPIDER's interior component. 'Fresh' begins the simulation using the conditions provided. 'Restart' tries to pick up from a previous run, but is currently unsupported    
      - False

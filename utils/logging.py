@@ -31,7 +31,7 @@ def setup_logger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
 
     custom_logger = logging.getLogger()
     custom_logger.handlers.clear()
-    
+
     if os.path.exists(logpath):
         os.remove(logpath)
     

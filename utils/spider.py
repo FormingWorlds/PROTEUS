@@ -939,13 +939,13 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
 
                 dt_rtol = COUPLER_options["dt_rtol"]
                 dt_atol = COUPLER_options["dt_atol"]
-                speed_up=True 
+                speed_up = True 
                 speed_up = speed_up and ( F_int_12 < dt_rtol*abs(F_int_2) + dt_atol )
                 speed_up = speed_up and ( F_atm_12 < dt_rtol*abs(F_atm_2) + dt_atol )
                 speed_up = speed_up and ( phi_12   < dt_rtol*abs(phi_2  ) + dt_atol )
 
                 if speed_up:
-                    dtswitch = dtprev * 1.03
+                    dtswitch = dtprev * 1.05
                     log.info("Time-stepping intent: speed up")
                 else:
                     dtswitch = dtprev * 0.9
@@ -1006,18 +1006,20 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     ### SPIDER base call sequence 
     call_sequence = [   
                         dirs["spider"]+"/spider", 
-                        "-options_file",          SPIDER_options_file, 
-                        "-outputDirectory",       dirs["output"]+'data/',
-                        "-IC_INTERIOR",           str(COUPLER_options["IC_INTERIOR"]),
-                        "-OXYGEN_FUGACITY_offset",str(COUPLER_options["fO2_shift_IW"]),  # Relative to the specified buffer
-                        "-surface_bc_value",      str(net_loss), 
-                        "-teqm",                  str(COUPLER_options["T_eqm"]), 
-                        "-nstepsmacro",           str(nstepsmacro), 
-                        "-dtmacro",               str(dtmacro), 
-                        "-radius",                str(COUPLER_options["radius"]), 
-                        "-gravity",               "-"+str(COUPLER_options["gravity"]), 
-                        "-coresize",              str(COUPLER_options["planet_coresize"]),
-                        "-volatile_names",        str(species_call)
+                        "-options_file",           SPIDER_options_file, 
+                        "-outputDirectory",        dirs["output"]+'data/',
+                        "-IC_INTERIOR",            "%d"  %(COUPLER_options["IC_INTERIOR"]),
+                        "-OXYGEN_FUGACITY_offset", "%.6e"%(COUPLER_options["fO2_shift_IW"]),  # Relative to the specified buffer
+                        "-surface_bc_value",       "%.6e"%(net_loss), 
+                        "-teqm",                   "%.6e"%(COUPLER_options["T_eqm"]), 
+                        "-n",                      "%d"  %(COUPLER_options["interior_nlev"]),
+                        "-nstepsmacro",            "%d"  %(nstepsmacro), 
+                        "-dtmacro",                "%.6e"%(dtmacro), 
+                        "-radius",                 "%.6e"%(COUPLER_options["radius"]), 
+                        "-gravity",                "%.6e"%(-1.0 * COUPLER_options["gravity"]), 
+                        "-coresize",               "%.6e"%(COUPLER_options["planet_coresize"]),
+                        "-grain",                  "%.6e"%(COUPLER_options["grain_size"]),
+                        "-volatile_names",          str(species_call)
                     ]
 
     # Min of fractional and absolute Ts poststep change

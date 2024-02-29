@@ -89,9 +89,6 @@
 -eddy_diffusivity_thermal 1.0
 -eddy_diffusivity_chemical 1.0
 
-# material properties
--grain 1.0E-1 # grain size (m)
-
 # smoothing of material properties across liquidus and solidus
 # units of melt fraction (non-dimensional)
 -matprop_smooth_width 1.0E-2

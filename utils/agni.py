@@ -137,7 +137,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         if surf_state == 2:
             if COUPLER_options["atmosphere_solve_energy"] == 0:
                 UpdateStatusfile(dirs, 20)
-                raise Exception("It is necessary to an energy-conserving solver alongside the conductive lid scheme! Turn them both on or both off.")
+                raise Exception("With AGNI, it is necessary to an energy-conserving solver alongside the conductive lid scheme! Turn them both on or both off.")
             
             call_sequence.append("--skin_k %1.6e" % COUPLER_options["skin_k"])
             call_sequence.append("--skin_d %1.6e" % COUPLER_options["skin_d"])
@@ -147,7 +147,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         raise Exception("Invalid surface state %d" % surf_state)
 
     # Misc flags
-    if debug:
+    if log.getEffectiveLevel() == logging.DEBUG:
         call_sequence.append("--verbose")
     call_sequence.append("--plot")
     call_sequence.append("--nsteps 500") 
