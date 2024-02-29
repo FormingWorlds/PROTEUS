@@ -5,7 +5,7 @@
 #-ts_sundials_rtol 1.0e-10
 
 # mesh
--n 280
+-n 200
 
 # -MASS_COORDINATES
 
@@ -35,24 +35,24 @@
 -phase_names melt,solid
 
 -melt_TYPE 1
--melt_alpha_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/thermal_exp_melt.dat
--melt_cp_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/heat_capacity_melt.dat
--melt_dTdPs_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/adiabat_temp_grad_melt.dat
--melt_rho_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/density_melt.dat
--melt_temp_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/temperature_melt.dat
+-melt_alpha_filename_rel_to_src lookup_data/RTmelt/thermal_exp_melt.dat
+-melt_cp_filename_rel_to_src lookup_data/RTmelt/heat_capacity_melt.dat
+-melt_dTdPs_filename_rel_to_src lookup_data/RTmelt/adiabat_temp_grad_melt.dat
+-melt_rho_filename_rel_to_src lookup_data/RTmelt/density_melt.dat
+-melt_temp_filename_rel_to_src lookup_data/RTmelt/temperature_melt.dat
 -melt_log10visc 2.0 
 -melt_cond 4.0 # conductivity of melt
--melt_phase_boundary_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/liquidus_A11_H13.dat
+-melt_phase_boundary_filename_rel_to_src lookup_data/RTmelt/liquidus_andrault2011.dat
 
 -solid_TYPE 1
--solid_alpha_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/thermal_exp_solid.dat
--solid_cp_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/heat_capacity_solid.dat
--solid_dTdPs_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/adiabat_temp_grad_solid.dat
--solid_rho_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/density_solid.dat
--solid_temp_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/temperature_solid.dat
+-solid_alpha_filename_rel_to_src lookup_data/RTmelt/thermal_exp_solid.dat
+-solid_cp_filename_rel_to_src lookup_data/RTmelt/heat_capacity_solid.dat
+-solid_dTdPs_filename_rel_to_src lookup_data/RTmelt/adiabat_temp_grad_solid.dat
+-solid_rho_filename_rel_to_src lookup_data/RTmelt/density_solid.dat
+-solid_temp_filename_rel_to_src lookup_data/RTmelt/temperature_solid.dat
 -solid_log10visc 22.0
 -solid_cond 4.0 # conductivity of solid
--solid_phase_boundary_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/solidus_A11_H13.dat
+-solid_phase_boundary_filename_rel_to_src lookup_data/RTmelt/solidus_andrault2011.dat
 
 # initial condition
 # [1] is set dS/dr to constant everywhere

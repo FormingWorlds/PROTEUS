@@ -266,7 +266,7 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
 
     # Check for NaNs
     if not np.isfinite(atm.net_flux).all():
-        UpdateStatusfile(dirs, 23)
+        UpdateStatusfile(dirs, 22)
         raise Exception("JANUS output array contains NaN or Inf values")
 
     # Store new flux

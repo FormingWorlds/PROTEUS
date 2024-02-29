@@ -41,10 +41,10 @@ def CommentFromStatus(status:int):
         case 13: desc = "Completed (target time)"
         # Error cases
         case 20: desc = "Error (generic case, or configuration issue)"
-        case 21: desc = "Error (SPIDER)"
-        case 22: desc = "Error (AGNI)"
-        case 23: desc = "Error (JANUS)"
-        case 24: desc = "Error (VULCAN)"
+        case 21: desc = "Error (Interior model)"
+        case 22: desc = "Error (Atmosphere model)"
+        case 23: desc = "Error (Stellar evolution model)"
+        case 24: desc = "Error (Kinetics model)"
         case 25: desc = "Error (died, or exit requested by user)"
         # Default case
         case _:

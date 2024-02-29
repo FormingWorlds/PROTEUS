@@ -57,7 +57,7 @@ def main():
     loop_counter = { 
                     "total": 0,            # Total number of iters performed
                     "total_min"  : 30,     # Minimum number of total loops
-                    "total_loops": 2000,   # Maximum number of total loops
+                    "total_loops": COUPLER_options["iter_max"],   # Maximum number of total loops
 
                     "init": 0,             # Number of init iters performed
                     "init_loops": 2,       # Maximum number of init iters
@@ -354,6 +354,27 @@ def main():
                         COUPLER_options[key_pp] += float(COUPLER_options[key_ab] * 1.0e5)  # Convert bar -> Pa
                     
         ############### / INTERIOR SUB-LOOP
+                        
+
+
+        ############### UPDATE TIME 
+                                   
+        # Advance current time in main loop according to interior step
+        time_dict["planet"] = runtime_helpfile.iloc[-1]["Time"]
+        time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
+
+        # Update init loop counter
+        if loop_counter["init"] < loop_counter["init_loops"]: # Next init iter
+            loop_counter["init"]    += 1
+            time_dict["planet"]     = 0.
+        if loop_counter["total"] >= loop_counter["init_loops"]: # Reset restart flag once SPIDER was started w/ ~correct volatile chemistry + heat flux
+            COUPLER_options["IC_INTERIOR"] = 2
+
+        # Adjust total iteration counters
+        loop_counter["atm"]         = 0
+        loop_counter["total"]       += 1
+
+        ############### / UPDATE TIME
 
 
 
@@ -392,25 +413,10 @@ def main():
         
 
 
-        ############### LOOP ITERATION MANAGEMENT
+        ############### CONVERGENCE CHECK 
 
-        # Advance current time in main loop
-        time_dict["planet"] = runtime_helpfile.iloc[-1]["Time"]
-        time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
-
-        # Print info, save atm to file
+        # Print info to terminal and log file
         PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options)
-        
-        # Update init loop counter
-        if loop_counter["init"] < loop_counter["init_loops"]: # Next init iter
-            loop_counter["init"]    += 1
-            time_dict["planet"]     = 0.
-        if loop_counter["total"] >= loop_counter["init_loops"]: # Reset restart flag once SPIDER was started w/ ~correct volatile chemistry + heat flux
-            COUPLER_options["IC_INTERIOR"] = 2
-
-        # Adjust total iteration counters
-        loop_counter["atm"]         = 0
-        loop_counter["total"]       += 1
 
         # Stop simulation when planet is completely solidified
         if (COUPLER_options["solid_stop"] == 1) and (runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]):
@@ -492,7 +498,7 @@ def main():
         if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0) and (not finished):
             UpdatePlots( dirs["output"], COUPLER_options )
 
-        ############### / LOOP ITERATION MANAGEMENT
+        ############### / CONVERGENCE CHECK 
 
     # ----------------------
     # FINAL THINGS BEFORE EXIT

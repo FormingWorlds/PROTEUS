@@ -6,14 +6,20 @@ from utils.constants import *
 
 log = logging.getLogger(__name__)
 
-# Run the dummy atmosphere module (calculate fluxes)
+# Run the dummy atmosphere module
 def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
     PrintHalfSeparator()
     log.info("Running dummy_atmosphere...")
 
-    # Parameters
-    T_surf_int = COUPLER_options["T_surf"]
+    # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
+    # It represents a measure of the radiating temperature of the atmosphere above the surface, relative to the surface temperature itself
+    # Setting this to 0 will result in an entirely transparent atmosphere
+    # Setting this to 1 will result in an OLR of zero
+    gamma           = 0.0   
+
+    # Variables 
+    T_surf_int      = COUPLER_options["T_surf"]
     zenith_angle    = COUPLER_options["zenith_angle"]
     albedo_pl       = COUPLER_options["albedo_pl"]
     inst_sf         = COUPLER_options["asf_scalefactor"]
@@ -30,21 +36,30 @@ def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     if COUPLER_options["insert_rscatter"] == 1:
         log.warning("Rayleigh scattering is enabled but it will be neglected")
 
+    log.info("Gamma = %.4f" % gamma)
+    if not (0.0 <= gamma <= 1.0):
+        log.warning("Gamma value is out of bounds; expect unreasonable fluxes")
+
     # Simple rad trans
     def _calc_fluxes(x):
-        fl_U_LW = const_sigma * (1.0 - albedo_s) * x**4.0
+        fl_U_LW = const_sigma * (1.0 - albedo_s) * (x - gamma * x)**4.0
         fl_D_SW = instellation * (1.0 - albedo_pl) * inst_sf * np.cos(zenith_angle * np.pi / 180.0)
         fl_U_SW = 0.0
-        fl_N = fl_U_LW + fl_U_SW - fl_D_SW
-        return {"fl_U_LW":fl_U_LW, "fl_D_SW":fl_D_SW, "fl_U_SW":fl_U_SW, "fl_N":fl_N}
+        # fl_N = fl_U_LW + fl_U_SW - fl_D_SW
 
+        T_eqm = 1716.7
+        fl_N = const_sigma * (1-albedo_s) * (x**4.0 - T_eqm**4.0)
+        return {"fl_U_LW":fl_U_LW, "fl_D_SW":fl_D_SW, "fl_U_SW":fl_U_SW, "fl_N":fl_N}
+        
     # fixed T_Surf
     if COUPLER_options["atmosphere_surf_state"] == 1:  
+        log.info("Calculating fluxes with dummy atmosphere")
         T_surf_atm = T_surf_int
         fluxes = _calc_fluxes(T_surf_atm)
         
     # conductive lid
     elif COUPLER_options["atmosphere_surf_state"] == 2: 
+        log.info("Calculating fluxes with dummy atmosphere and CBL")
         import scipy.optimize as optimise
 
         # We need to solve for the state where fl_N = f_skn
@@ -54,9 +69,15 @@ def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):
             _f = _calc_fluxes(x)
             return _f["fl_N"] - F_skn
 
-        r = optimise.root_scalar(_resid, method='secant', x0=T_surf_int, x1=T_surf_int-10.0, xtol=1.0e-6, maxiter=30)
+        r = optimise.root_scalar(_resid, method='secant', x0=T_surf_int, x1=T_surf_int-10.0, xtol=1.0e-7, maxiter=30)
         T_surf_atm = float(r.root)
         fluxes = _calc_fluxes(T_surf_atm)
+
+        if r.converged:
+            log.info("Found solution after %d iterations" % int(r.iterations))
+        else:
+            UpdateStatusfile(dirs, 22)
+            raise Exception("Could not find solution for T_surf with dummy_atmosphere")
 
     else:
         UpdateStatusfile(dirs, 20)
