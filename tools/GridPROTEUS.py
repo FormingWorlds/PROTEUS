@@ -69,8 +69,8 @@ class Pgrid():
 
         # Pgrid's own name (for versioning, etc.)
         self.name = str(name).strip()
-        self.outdir = COUPLER_DIR+"/output/pgrid_"+self.name+"/"
-        self.tmpdir = "/tmp/pgrid_"+self.name+"/"
+        self.outdir = COUPLER_DIR+"/output/"+self.name+"/"
+        self.tmpdir = "/tmp/"+self.name+"/"
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
             raise Exception("Base config file '%s' does not exist!" % self.conf)
@@ -303,7 +303,7 @@ class Pgrid():
         for i,gp in enumerate(self.flat):  
 
             cfgfile = os.path.join(self.tmpdir,"case_%05d.cfg" % i)
-            gp["dir_output"] = "pgrid_"+self.name+"/case_%05d"%i
+            gp["dir_output"] = self.name+"/case_%05d"%i
 
             # Create config file for this case
             with open(cfgfile, 'w') as hdl:
@@ -461,8 +461,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","jgr_grid.cfg")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_2"
-    pg = Pgrid("jgr_2", cfg_base, symlink_dir=symlink)
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_3"
+    pg = Pgrid("jgr_3", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -496,7 +496,7 @@ if __name__=='__main__':
     # Start PROTEUS processes
     # -----
 
-    pg.run(110, test_run=False)
+    pg.run(106, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.

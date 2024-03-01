@@ -148,7 +148,7 @@ Step-by-step (core modules)
                     
                     $   conda create -n proteus python=3.12.2   
                     $   conda activate proteus
-                    $   conda install matplotlib numpy pandas scipy sympy natsort
+                    $   conda install matplotlib numpy pandas scipy sympy natsort ipykernel 
                     $   conda install conda-forge::f90nml
                     $   conda install conda-forge::netcdf4
             
