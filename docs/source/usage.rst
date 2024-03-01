@@ -235,6 +235,12 @@ configuration, but they must all be passed via the config file.
      - Float
      - Greater than zero.    
 
+   * - ``dt_initial``
+     - Intial step size when using ``dt_method=1``, years.
+     - False
+     - Float
+     - Greater than zero.  
+
    * - ``flux_convergence``
      - Method to be used for converging atmospheric and interior upward fluxes. 'Off' applies nothing special, and allows SPIDER to determine the surface temperature. 'Restart' uses a shallow mixed ocean layer with a given heat capacity to balance the fluxes and obtain a surface temperature. 'On' waits until certain conditions are met, and then applies the 'Restart' method. 
      - True

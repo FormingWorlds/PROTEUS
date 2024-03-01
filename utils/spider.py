@@ -908,7 +908,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
 
         # Time stepping adjustment
         if time_dict["planet"] < 2.0:
-            # First few years, use static time-step
+            # First year, use small step
             dtmacro = 1
             dtswitch = 1
             nsteps = 1
@@ -923,7 +923,10 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             elif (COUPLER_options["dt_method"] == 1):
                 # Dynamic time-step calculation
 
-                dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                if time_dict["planet"] > 10.0:
+                    dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                else:
+                    dtprev = COUPLER_options["dt_initial"]
 
                 F_int_2  = run_int.iloc[-2]["F_int"]
                 F_int_1  = run_int.iloc[-1]["F_int"]
