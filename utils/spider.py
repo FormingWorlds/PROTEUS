@@ -898,7 +898,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     # Recalculate time stepping
     if (COUPLER_options["IC_INTERIOR"] == 2):  
 
-        # Current step
+        # Current step number
         json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(time_dict["planet"])) )
         step        = json_file.get_dict(['step'])
 
@@ -923,23 +923,28 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             elif (COUPLER_options["dt_method"] == 1):
                 # Dynamic time-step calculation
 
-                if time_dict["planet"] > 10.0:
+                # Try to maintain a minimum step size of dt_initial at first
+                if time_dict["planet"] > COUPLER_options["dt_initial"]:
                     dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
                 else:
                     dtprev = COUPLER_options["dt_initial"]
 
+                # Change in F_int 
                 F_int_2  = run_int.iloc[-2]["F_int"]
                 F_int_1  = run_int.iloc[-1]["F_int"]
-                F_int_12 = abs(F_int_1 - F_int_2)  # Change from [-2] to [-1] steps
+                F_int_12 = abs(F_int_1 - F_int_2) 
 
+                # Change in F_atm
                 F_atm_2  = run_atm.iloc[-2]["F_atm"]
                 F_atm_1  = run_atm.iloc[-1]["F_atm"]
-                F_atm_12 = abs(F_atm_1 - F_atm_2)  # Change from [-2] to [-1] steps
+                F_atm_12 = abs(F_atm_1 - F_atm_2)  
 
+                # Change in global melt fraction
                 phi_2  = run_atm.iloc[-2]["Phi_global"]
                 phi_1  = run_atm.iloc[-1]["Phi_global"]
-                phi_12 = abs(phi_1 - phi_2)  # Change from [-2] to [-1] steps
+                phi_12 = abs(phi_1 - phi_2)  
 
+                # Determine new time-step given the tolerances
                 dt_rtol = COUPLER_options["dt_rtol"]
                 dt_atol = COUPLER_options["dt_atol"]
                 speed_up = True 

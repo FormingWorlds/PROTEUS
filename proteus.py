@@ -304,11 +304,10 @@ def main():
                 sys.stderr = StreamToLogger(log, logging.ERROR)
                 #    Spectral file stuff
                 PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
-                InsertStellarSpectrum(
-                                        spectral_file_nostar,
+                InsertStellarSpectrum(  spectral_file_nostar,
                                         star_spec_src,
-                                        dirs["output"]+"runtime_spectral_file"
-                                    )
+                                        dirs["output"]
+                                     )
                 os.remove(star_spec_src)
                 #    Restore stdout
                 sys.stdout , sys.stderr = old_stdout , old_stderr

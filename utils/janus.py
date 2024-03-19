@@ -107,6 +107,7 @@ def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
 def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
 
     from JANUS.utils.atmosphere_column import atmos
+    from utils.ReadSpectralFile import ReadBandEdges
 
     # Create atmosphere object and set parameters
     pl_radius = COUPLER_options["radius"]
@@ -137,8 +138,11 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
         
     nlev = int(COUPLER_options["atmosphere_nlev"])
             
+    band_edges = ReadBandEdges(dirs["output"]+"star.sf")
+
     atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, 
                 COUPLER_options["P_top"]*1e5, pl_radius, pl_mass,
+                band_edges,
                 vol_mixing=vol_list, 
                 minT = COUPLER_options["min_temperature"],
                 maxT = COUPLER_options["max_temperature"],

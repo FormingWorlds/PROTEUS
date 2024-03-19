@@ -31,8 +31,7 @@ atm_chemistry.pdf
 .vscode
 MORS/fs255_grid*
 screenlog.0
-tools/nogit_*.py
-tools/nogit_*.ipynb
+nogit_*
 
 
 # From Read the Docs
