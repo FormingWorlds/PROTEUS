@@ -36,6 +36,7 @@ configuration, but they must all be passed via the config file.
 
 .. list-table:: Model input parameters
    :header-rows: 1
+   :widths: 25, 80, 7, 7, 80
 
    * - Name
      - Description
