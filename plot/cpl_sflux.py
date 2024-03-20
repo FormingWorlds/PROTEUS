@@ -5,9 +5,9 @@
 from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import natural_sort
-
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+log = logging.getLogger(__name__)
 
 # Planck function value at stellar surface
 # lam in nm
@@ -53,7 +53,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
     files = natural_sort(files_unsorted)
 
     if (len(files) == 0):
-        print("WARNING: No files found when trying to plot stellar flux")
+        log.warning("No files found when trying to plot stellar flux")
         return
 
     # Downsample data
@@ -65,7 +65,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
         files = files[::3]
 
     if (len(files) != len(files_unsorted)):
-        print("Downsampled data over time")
+        log.debug("Downsampled data over time")
 
     # Arrays for storing data over time
     time_t = []

@@ -5,11 +5,12 @@ from utils.modules_ext import *
 from utils.spider import *
 from utils.plot import *
 
+log = logging.getLogger(__name__)
 
 #====================================================================
 def plot_stacked( output_dir, times ):
 
-    print("Plot stacked")
+    log.info("Plot stacked")
 
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width

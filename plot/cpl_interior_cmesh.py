@@ -5,12 +5,14 @@ from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import *
 
+log = logging.getLogger(__name__)
+
 #====================================================================
 
 # Plotting function
 def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5):
 
-    print("Plot interior colourmesh")
+    log.info("Plot interior colourmesh")
 
     # Gather data
     output_files = glob.glob(output_dir+"/data/*.json")
@@ -20,7 +22,7 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5):
     sorted_times = np.array(output_times)[sort_mask]
 
     if len(sorted_times) < 3:
-        print("WARNING: Too few samples to make interior_cmesh plot")
+        log.warning("Too few samples to make interior_cmesh plot")
         return
     if len(sorted_times) < 1000:
         stride = int(1)
@@ -82,7 +84,7 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5):
         axt.set_bbox(dict(facecolor='white', alpha=0.5, linewidth=0))
 
     # Plot temperature
-    cmap = sci_colormaps['lajolla_r']
+    cmap = sci_colormaps['lajolla']
     cax = make_axes_locatable(ax1).append_axes('right', size='5%', pad=0.05)
     norm = mpl.colors.Normalize(vmin=np.amin(arr_z1), vmax=np.amax(arr_z1))
     if use_contour:
@@ -95,7 +97,7 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5):
 
 
     # Plot melt fraction
-    cmap = sci_colormaps['grayC_r']
+    cmap = sci_colormaps['grayC']
     cax = make_axes_locatable(ax2).append_axes('right', size='5%', pad=0.05)
     norm = mpl.colors.Normalize(vmin=0.0, vmax=1.0, clip=True)
     if use_contour:
@@ -111,19 +113,19 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5):
     cax = make_axes_locatable(ax3).append_axes('right', size='5%', pad=0.05)
     if (np.amax(arr_z3) > 100.0*np.amin(arr_z3)):
         norm = mpl.colors.LogNorm(vmin=np.amin(arr_z3), vmax=np.amax(arr_z3))
-        cbticks = [int(v) for v in np.linspace( np.log10(np.amin(arr_z3)), np.log10(np.amax(arr_z3)), numticks)]
-        cbticks = [10.0**float(v) for v in cbticks]
+        # cbticks = [int(v) for v in np.linspace( np.log10(np.amin(arr_z3)), np.log10(np.amax(arr_z3)), numticks)]
+        # cbticks = [10.0**float(v) for v in cbticks]
     else:
         norm = mpl.colors.Normalize(vmin=np.amin(arr_z3), vmax=np.amax(arr_z3))
-        cbticks = [float(int(v)) for v in np.linspace(np.amin(arr_z3), np.amax(arr_z3), numticks)]
+        # cbticks = [float(int(v)) for v in np.linspace(np.amin(arr_z3), np.amax(arr_z3), numticks)]
     if use_contour:
         cf = ax3.contourf(sorted_times, arr_yb, arr_z3.T, cmap=cmap, norm=norm, levels=cblevels)
     else:
         cf = ax3.pcolormesh(sorted_times, arr_yb, arr_z3.T, cmap=cmap, norm=norm, rasterized=True)
     cb = fig.colorbar(cf, cax=cax, orientation='vertical')
     cb.set_label("Viscosity [Pa s]") 
-    if len(cb.get_ticks()) > numticks:
-        cb.set_ticks(sorted(list(set(cbticks))))
+    # if len(cb.get_ticks()) > numticks:
+    #     cb.set_ticks(sorted(list(set(cbticks))))
     
     # Plot entropy
     cmap = sci_colormaps['acton']

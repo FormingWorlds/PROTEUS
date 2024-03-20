@@ -6,6 +6,8 @@ from utils.constants import *
 from utils.spider import *
 from utils.helper import *
 
+log = logging.getLogger(__name__)
+
 import plot.cpl_atmosphere as cpl_atmosphere
 import plot.cpl_global as cpl_global
 import plot.cpl_stacked as cpl_stacked
@@ -24,7 +26,6 @@ def parse_console_arguments():
     parser.add_argument('--restart_file', type=str, default="0", help='Restart from specific .json file in folder. Specify only the number of the file.')
     parser.add_argument('--restart', action='store_true', help='Restart from last file in folder.')
     args = parser.parse_args()
-
     return args
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
@@ -38,17 +39,17 @@ def latex_float(f):
 
 def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options):
     PrintHalfSeparator()
-    print("Runtime info...")
-    print("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
-    print("    Model time   :   %.3e   yr"    % float(time_dict["planet"]))
-    print("    T_surf       :   %.3e   K"     % float(runtime_helpfile.iloc[-1]["T_surf"]))
-    print("    P_surf       :   %.3e   bar"   % float(runtime_helpfile.iloc[-1]["P_surf"]))
-    print("    Phi_global   :   %.3e   "      % float(runtime_helpfile.iloc[-1]["Phi_global"]))
-    print("    Instellation :   %.3e   W/m^2" % float(COUPLER_options["F_ins"]))
-    print("    F_int        :   %.3e   W/m^2" % float(COUPLER_options["F_int"]))
-    print("    F_atm        :   %.3e   W/m^2" % float(COUPLER_options["F_atm"])) 
-    print("    |F_net|      :   %.3e   W/m^2" % abs(float(COUPLER_options["F_net"])))
-    print("    Last file    :   %s "          % str(COUPLER_options["ic_interior_filename"]))
+    log.info("Runtime info...")
+    log.info("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
+    log.info("    Model time   :   %.3e   yr"    % float(time_dict["planet"]))
+    log.info("    T_surf       :   %.3e   K"     % float(runtime_helpfile.iloc[-1]["T_surf"]))
+    log.info("    P_surf       :   %.3e   bar"   % float(runtime_helpfile.iloc[-1]["P_surf"]))
+    log.info("    Phi_global   :   %.3e   "      % float(runtime_helpfile.iloc[-1]["Phi_global"]))
+    log.info("    Instellation :   %.3e   W/m^2" % float(COUPLER_options["F_ins"]))
+    log.info("    F_int        :   %.3e   W/m^2" % float(COUPLER_options["F_int"]))
+    log.info("    F_atm        :   %.3e   W/m^2" % float(COUPLER_options["F_atm"])) 
+    log.info("    |F_net|      :   %.3e   W/m^2" % abs(float(COUPLER_options["F_net"])))
+    log.info("    Last file    :   %s "          % str(COUPLER_options["ic_interior_filename"]))
 
 
 def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options):
@@ -123,17 +124,19 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         F_int2      = E0/area[0]
 
         F_int = runtime_helpfile_new["F_int"]
-        print(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, F_int) )
+        log.info(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, F_int) )
 
         # Limit F_int to positive values
-        runtime_helpfile_new["F_int"] = np.amax([F_int, 0.])
+        if COUPLER_options["prevent_warming"]:
+            F_int = max(1.0e-8, F_int)
 
+        runtime_helpfile_new["F_int"] = F_int
 
         # Check and replace NaNs
         if np.isnan(runtime_helpfile_new["T_surf"]):
             json_file_time = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
             int_tmp   = json_file_time.get_dict_values(['data','temp_b'])
-            print("Replace T_surf NaN:", runtime_helpfile_new["T_surf"], "-->", int_tmp[0], "K")
+            log.info("Replace T_surf NaN:", runtime_helpfile_new["T_surf"], "-->", int_tmp[0], "K")
             runtime_helpfile_new["T_surf"] = int_tmp[0]
 
         # Total atmospheric mass
@@ -171,7 +174,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
                 runtime_helpfile_new[vol+"_atm_kg"]     = 0.0
                 runtime_helpfile_new[vol+"_atm_bar"]    = 0.0
                 runtime_helpfile_new[vol+"_mr"]         = 0.0
-                # print(vol, runtime_helpfile_new[vol+"_atm_kg"])
+                log.debug(str(vol) + " kg = " + str(runtime_helpfile_new[vol+"_atm_kg"]))
 
         ## Derive X/H ratios for atmosphere from interior outgassing
 
@@ -286,29 +289,6 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         run_atm         = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
         run_atm_last    = run_atm.loc[run_atm['Time'] != t_curr]
 
-        # IF in early MO phase and RF is deep in mantle
-        # if runtime_helpfile_new["RF_depth"] >= COUPLER_options["RF_crit"]:
-        #     COUPLER_options["F_net"] = -COUPLER_options["F_eps"]
-        #     print("Early MO phase and RF is deep in mantle. RF_depth = ", runtime_helpfile.iloc[-1]["RF_depth"])
-
-        # if loop_counter["init"] >= loop_counter["init_loops"]:
-            
-        #     if loop_counter["init"] == loop_counter["init_loops"]:
-        #         Ts_last         = runtime_helpfile.iloc[-1]["T_surf"]
-
-        #     else:
-        #         Ts_last         = run_atm_last.iloc[-1]["T_surf"]
-
-            # IF T_surf change too high
-            # if (abs(Ts_last-COUPLER_options["T_surf"]) >= COUPLER_options["dTs_atm"]) and (COUPLER_options["atmosphere_surf_state"] != 2): 
-            #     COUPLER_options["F_net"] = -COUPLER_options["F_eps"]   
-            #     print("T_surf change too high. dT =", Ts_last-COUPLER_options["T_surf"])
-                
-            # OR IF negligible change in F_atm in the last two entries
-            # if round(COUPLER_options["F_atm"],2) == round(run_atm.iloc[-1]["F_atm"],2):
-            #     COUPLER_options["F_net"] = -COUPLER_options["F_eps"]
-            #     print("Negligible change in F_atm in the last two entries. F_atm(curr/-1) = ", round(COUPLER_options["F_atm"],2), round(run_atm.iloc[-1]["F_atm"],2))
-
         # Write F_net to next file
         runtime_helpfile_new["F_net"]           = COUPLER_options["F_net"]
         runtime_helpfile_new["F_olr"]           = COUPLER_options["F_olr"]
@@ -353,14 +333,15 @@ def ReadInitFile( init_file_passed , verbose=False):
     # Read in input file as dictionary
     COUPLER_options  = {}
     time_dict       = {}
-    if verbose: print("Read in init file:" + init_file)
+    if verbose: 
+        log.info("Read in init file:" + init_file)
 
     if os.path.isfile(init_file_passed):
         init_file = init_file_passed
     else: 
-        raise Exception("Init file provided is not a file or does not exist!")
+        raise Exception("Init file provided is not a file or does not exist (%s)" % init_file_passed)
 
-    if verbose: print("Settings:")
+    if verbose: log.info("Settings:")
 
     # Open file and fill dict
     with open(init_file) as f:
@@ -377,7 +358,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                 line = line.split("#")[0]
                 line = line.split(",")[0]
 
-                if verbose: print(line)
+                if verbose: log.info(line)
 
                 # Assign key and value
                 (key, val) = line.split("=")
@@ -389,7 +370,7 @@ def ReadInitFile( init_file_passed , verbose=False):
 
                     # Some parameters are int
                     if key in [ "IC_INTERIOR", "ic_interior_filename", 
-                                "solid_stop", "steady_stop",
+                                "solid_stop", "steady_stop", "iter_max",
                                 "plot_iterfreq", "stellar_heating", "mixing_length",
                                 "atmosphere_chem_type", "solvepp_enabled", "insert_rscatter",
                                 "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
@@ -398,7 +379,7 @@ def ReadInitFile( init_file_passed , verbose=False):
 
                     # Some are str
                     elif key in [ 'star_spectrum', 'star_btrack', 'dir_output', 
-                                  'spectral_file' ]:
+                                  'spectral_file' , 'log_level']:
                         val = str(val)
                         
                     # Most are float
@@ -439,7 +420,7 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     """
 
     PrintHalfSeparator()
-    print("Updating plots...")
+    log.info("Updating plots...")
 
     # Get all JSON files
     output_times = get_all_output_times( output_dir )
@@ -447,11 +428,15 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     # Global properties for all timesteps
     if len(output_times) > 1:
         cpl_global.plot_global(output_dir, COUPLER_options)   
+
+    # Check if we are using the dummy atmosphere
+    dummy_atm = (COUPLER_options["atmosphere_model"] == 2)
         
     # Filter to JSON files with corresponding NetCDF files
-    ncs = glob.glob(output_dir + "/data/*_atm.nc")
-    nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
-    output_times = sorted(list(set(output_times) & set(nc_times)))
+    if not dummy_atm:
+        ncs = glob.glob(output_dir + "/data/*_atm.nc")
+        nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
+        output_times = sorted(list(set(output_times) & set(nc_times)))
 
     # Work out which times we want to plot
     if len(output_times) <= num_snapshots:
@@ -472,12 +457,13 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
             plot_times.append(int(v))
 
     plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
-    print("Snapshots to plot:", plot_times)
+    log.debug("Snapshots to plot:", plot_times)
 
     # Specific timesteps for paper plots
     cpl_interior.plot_interior(output_dir, plot_times)     
-    cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
-    cpl_stacked.plot_stacked(output_dir, plot_times)
+    if not dummy_atm:
+        cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
+        cpl_stacked.plot_stacked(output_dir, plot_times)
 
     # Only at the end of the simulation
     if end:
@@ -507,18 +493,21 @@ def SetDirectories(COUPLER_options: dict):
             Dictionary of paths to important directories
     """
 
-    coupler_dir = os.getenv('COUPLER_DIR')
+    coupler_dir = os.path.abspath(os.getenv('COUPLER_DIR'))
 
     dirs = {
-            "output":   coupler_dir+"/output/"+COUPLER_options['dir_output']+"/", 
-            "input":    coupler_dir+"/input/",
-            "coupler":  coupler_dir, 
-            "aeolus":   coupler_dir+"/AEOLUS/", 
-            "agni":     coupler_dir+"/AGNI/", 
-            "vulcan":   coupler_dir+"/VULCAN/", 
-            "spider":   coupler_dir+"/SPIDER/", 
-            "utils":    coupler_dir+"/utils/"
+            "output":   os.path.join(coupler_dir,"output",COUPLER_options['dir_output']), 
+            "input":    os.path.join(coupler_dir,"input"),
+            "coupler":  coupler_dir,
+            "janus":    os.path.join(coupler_dir,"JANUS"),
+            "agni":     os.path.join(coupler_dir,"AGNI"),
+            "vulcan":   os.path.join(coupler_dir,"VULCAN"),
+            "spider":   os.path.join(coupler_dir,"SPIDER"),
+            "utils":    os.path.join(coupler_dir,"utils")
             }
+    
+    for key in dirs.keys():
+        dirs[key] = dirs[key]+"/"
     
     return dirs
 

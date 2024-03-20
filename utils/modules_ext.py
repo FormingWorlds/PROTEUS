@@ -7,9 +7,7 @@
 import importlib.util
 import argparse
 import logging
-import mmap
 import pathlib
-import errno
 import json
 import subprocess
 import fileinput
@@ -21,6 +19,7 @@ import copy
 # Plotting
 import matplotlib as mpl
 mpl.use('Agg')
+mpl.rcParams.update({'font.size': 12})
 logging.getLogger('matplotlib.font_manager').disabled = True  # Disable font fallback logging
 
 import matplotlib.pyplot as plt
@@ -44,7 +43,6 @@ from scipy.interpolate import RectBivariateSpline, interp1d, PchipInterpolator
 from scipy import interpolate
 from scipy.integrate import solve_ivp, odeint
 from scipy.optimize import newton, fsolve, curve_fit
-from scipy.signal import savgol_filter
 from scipy import stats
 
 

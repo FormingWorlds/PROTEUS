@@ -2,15 +2,17 @@
 # This file should not depend on too many other files, as this can cause circular import issues
 
 import numpy as np
-import os, shutil, re
+import os, shutil, re, glob, logging
 from utils.constants import *
 
+log = logging.getLogger(__name__)
+
 def PrintSeparator():
-    print("=============================================================================================================")
+    log.info("==============================================================================================")
     pass
 
 def PrintHalfSeparator():
-    print("--------------------------------------------------")
+    log.info("--------------------------------------------------")
     pass
 
 # String sorting inspired by natsorted
@@ -18,6 +20,12 @@ def natural_sort(l):
     convert = lambda text: int(text) if text.isdigit() else text.lower() 
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
     return sorted(l, key = alphanum_key)
+
+# Savely remove a file
+def safe_rm(fpath):
+    fpath = os.path.abspath(fpath)
+    if os.path.exists(fpath):
+        os.remove(fpath)
 
 # Get comment from status
 def CommentFromStatus(status:int):
@@ -30,16 +38,18 @@ def CommentFromStatus(status:int):
         case 10: desc = "Completed (solidified)"
         case 11: desc = "Completed (steady-state)"
         case 12: desc = "Completed (maximum iterations)"
+        case 13: desc = "Completed (target time)"
         # Error cases
-        case 20: desc = "Error (generic/configuration)"
-        case 21: desc = "Error (SPIDER)"
-        case 22: desc = "Error (AGNI)"
-        case 23: desc = "Error (AEOLUS)"
-        case 24: desc = "Error (VULCAN)"
+        case 20: desc = "Error (generic case, or configuration issue)"
+        case 21: desc = "Error (Interior model)"
+        case 22: desc = "Error (Atmosphere model)"
+        case 23: desc = "Error (Stellar evolution model)"
+        case 24: desc = "Error (Kinetics model)"
+        case 25: desc = "Error (died, or exit requested by user)"
         # Default case
         case _:
-            desc = "UNHANDLED STATUS"
-            print("WARNING: Unhandled model status selected")
+            desc = "UNHANDLED STATUS (%d)" % status
+            log.warning("Unhandled model status (%d) selected" % status)
     return desc
 
 # Update the status file with the current state of the program
@@ -53,31 +63,82 @@ def UpdateStatusfile(dirs:dict, status:int):
         os.makedirs(stsfold)
 
     # Does the status file exist?
-    if os.path.exists(stsfile):
-        os.remove(stsfile)
+    safe_rm(stsfile)
 
     # Write status file
     with open(stsfile,'x') as hdl:
         hdl.write("%d\n" % status)
         desc = CommentFromStatus(status)
         hdl.write("%s\n"%desc)
-        # hdl.flush()
-        # os.fsync(hdl.fileno())
 
-def CleanDir(dir):
+def CleanDir(directory, keep_stdlog=False):
     """Clean a directory.
 
     Deletes a given directory and its contents, then creates it as empty.
 
     Parameters
     ----------
-        dir : string
+        directory : string
             Path to directory
 
     """
-    if os.path.exists(dir):
-        shutil.rmtree(dir)
-    os.makedirs(dir)
+
+    def _check_safe(d):
+        subfolders = [ f.path.split("/")[-1] for f in os.scandir(d) if f.is_dir() ]
+        if ".git" in subfolders:
+            raise Exception("Not emptying directory - it contains a Git repository!")
+
+    # Simple case...
+    if not keep_stdlog:
+        if os.path.exists(directory):
+            _check_safe(directory)
+            shutil.rmtree(directory)
+        os.makedirs(directory)
+        return
+
+    # Case where we want to keep log file...
+    # If exists
+    if os.path.exists(directory):
+        for p in glob.glob(directory+"/*"):
+            p = str(p)
+            if os.path.isdir(p):
+                # Remove folders
+                _check_safe(p)
+                shutil.rmtree(p)
+            else:
+                # Remove all files EXCEPT std.log in topmost dir
+                if not ("std.log" in p):
+                    os.remove(p)
+    else:
+        os.makedirs(directory)
+
+# Fake file-like stream object that redirects writes to a logger instance.
+class StreamToLogger(object):
+    # https://stackoverflow.com/a/36296215
+    def __init__(self, logger, log_level=logging.INFO):
+        self.logger = logger
+        self.log_level = log_level
+        self.linebuf = ''
+
+    def write(self, buf):
+        temp_linebuf = self.linebuf + buf
+        self.linebuf = ''
+        for line in temp_linebuf.splitlines(True):
+            # From the io.TextIOWrapper docs:
+            #   On output, if newline is None, any '\n' characters written
+            #   are translated to the system default line separator.
+            # By default sys.stdout.write() expects '\n' newlines and then
+            # translates them so this is still cross platform.
+            if line[-1] == '\n':
+                self.logger.log(self.log_level, line.rstrip())
+            else:
+                self.linebuf += line
+
+    def flush(self):
+        if self.linebuf != '':
+            self.logger.log(self.log_level, self.linebuf.rstrip())
+        self.linebuf = ''
+
 
 def find_nearest(array, target):
     """Find the element of an array that has a value closest to the target

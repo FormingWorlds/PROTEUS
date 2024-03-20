@@ -4,6 +4,7 @@ from utils.modules_ext import *
 from utils.helper import *
 from utils.constants import *
 
+log = logging.getLogger(__name__)
 
 def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     """Run AGNI.
@@ -33,7 +34,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     """
 
     PrintHalfSeparator()
-    print("Running AGNI...")
+    log.info("Running AGNI...")
 
     # Setup values to be provided by CLI
     gravity = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
@@ -136,7 +137,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         if surf_state == 2:
             if COUPLER_options["atmosphere_solve_energy"] == 0:
                 UpdateStatusfile(dirs, 20)
-                raise Exception("It is necessary to an energy-conserving solver alongside the conductive lid scheme! Turn them both on or both off.")
+                raise Exception("With AGNI, it is necessary to an energy-conserving solver alongside the conductive lid scheme! Turn them both on or both off.")
             
             call_sequence.append("--skin_k %1.6e" % COUPLER_options["skin_k"])
             call_sequence.append("--skin_d %1.6e" % COUPLER_options["skin_d"])
@@ -146,7 +147,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         raise Exception("Invalid surface state %d" % surf_state)
 
     # Misc flags
-    if debug:
+    if log.getEffectiveLevel() == logging.DEBUG:
         call_sequence.append("--verbose")
     call_sequence.append("--plot")
     call_sequence.append("--nsteps 500") 
@@ -208,7 +209,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     COUPLER_options["F_olr"]  = LW_flux_up[0]
     COUPLER_options["T_surf"] = T_surf
     
-    print("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
+    log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
     return COUPLER_options
 

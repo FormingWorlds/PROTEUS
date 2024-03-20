@@ -5,13 +5,17 @@ from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import *
 
+log = logging.getLogger(__name__)
+
 def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
+
+    log.info("Plot global")
 
     # Plotting parameters
     lw=2.0
     al=0.95
     fig_ratio=(3,2)
-    fig_scale=3.5
+    fig_scale=4.0
     leg_kwargs = {
         "frameon":1, 
         "fancybox":True,
@@ -20,7 +24,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 
     # Read data
     #    Helpfiles...
-    df = pd.read_csv(output_dir+"/runtime_helpfile.csv",sep='\s+')
+    df = pd.read_csv(output_dir+"/runtime_helpfile.csv",sep=r'\s+')
     df_int = df.loc[df['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
     df_atm = df.loc[df['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
 
@@ -88,7 +92,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
                 transform=ax.transAxes,
                 horizontalalignment='left',
                 verticalalignment='bottom',
-                fontsize=10,
+                fontsize=11,
                 zorder=20,
                 bbox=dict(fc='white', ec="white", alpha=0.5, pad=0.1, boxstyle='round')
                 )
@@ -129,9 +133,11 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 
 
     # PLOT ax_cl
+    min_temp = np.amin(df_atm["T_surf"])
+    max_temp = np.amax(df_int["T_surf"])
     ax_cl.plot(df_int["Time"], df_int["T_surf"], ls="dashed", lw=lw, alpha=al, color=dict_colors["int"])
     ax_cl.plot(df_atm["Time"], df_atm["T_surf"], ls="-",      lw=lw, alpha=al, color=dict_colors["atm"])
-    ax_cl.set_ylim(1000.0 , 3500.0)
+    ax_cl.set_ylim(min(1000.0,min_temp) , max(3500.0,max_temp))
 
     
     # PLOT ax_bl
@@ -143,15 +149,15 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 
 
     # PLOT ax_tr
-    bar_min, bar_max = 0.1, 10.0
     ax_tr.plot( df_int["Time"], df_int["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
+    bar_min, bar_max = 0.1, 10.0
+    bar_max = max(bar_max, np.amax(df_int["P_surf"]))
     for vol in volatile_species:
         if not vol_present[vol]:
             continue 
         ax_tr.plot( df_atm["Time"], vol_bars[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
         bar_min = min(bar_min, np.amin(vol_bars[vol]))
-        bar_max = max(bar_max, np.amax(vol_bars[vol]))
-    ax_tr.set_ylim(max(bar_min, 0.1), bar_max * 2.0)
+    ax_tr.set_ylim(max(1.0e-7,min(bar_min, 1.0e-1)), bar_max * 2.0)
     ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
 
     # PLOT ax_cr
@@ -194,7 +200,7 @@ if __name__ == "__main__":
         cfg = 'init_coupler.cfg' 
 
     # Read in COUPLER input file
-    print("Read cfg file")
+    log.info("Read cfg file")
     from utils.coupler import ReadInitFile, SetDirectories
     COUPLER_options, time_dict = ReadInitFile( cfg )
 

@@ -12,7 +12,7 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
     """Plot a set of species in the atmosphere, for a single year only
     
     Reads-in the data from output_dir for a single year. Can also
-    include AEOLUS/SPIDER mixing ratios as dashed lines, which were used to 
+    include JANUS/SPIDER mixing ratios as dashed lines, which were used to 
     initialise each VULCAN run.
 
     Parameters
@@ -70,7 +70,7 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
             ax1.plot(year_dict[key],year_dict["pressure"],label=pretty,lw=lw,color=color)
             min_mix = min(min_mix,np.amin(year_dict[key]))
             
-        # AEOLUS result
+        # JANUS result
         if plot_init_mx:
             key = str("mv_"+s)
             if key in year_dict.keys():
@@ -94,7 +94,7 @@ if __name__ == '__main__':
         cfg = 'init_coupler.cfg' 
 
 
-    plot_aeolus = False
+    plot_janus = False
 
 
     # Read in COUPLER input file
@@ -110,7 +110,7 @@ if __name__ == '__main__':
     # Load data
     ls = glob.glob(dirs["output"]+"offchem/*/output.vul")
     years = [int(f.split("/")[-2]) for f in ls]
-    years_data = [offchem_read_year(dirs["output"],y,read_const=plot_aeolus) for y in years]
+    years_data = [offchem_read_year(dirs["output"],y,read_const=plot_janus) for y in years]
 
     if len(years) == 0:
         raise Exception('No VULCAN output files found')
@@ -118,6 +118,6 @@ if __name__ == '__main__':
     # Call plotting function
     for yd in years_data:
         print("Year = %d" % yd["year"])
-        plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_aeolus)
+        plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_janus)
 
     print("Done!")

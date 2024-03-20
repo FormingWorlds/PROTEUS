@@ -4,6 +4,8 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import find_nearest
 
+log = logging.getLogger(__name__)
+
 def BaraffeStellarRadius(time_dict: dict, COUPLER_options: dict, track: dict):
     """Calculates the star's radius at a time t.
 
@@ -30,11 +32,11 @@ def BaraffeStellarRadius(time_dict: dict, COUPLER_options: dict, track: dict):
     # Get time and check that it is in range
     tmin = track['t'][0]
     if (tstar < tmin):
-        print("WARNING: Star age too low! Clipping to %.1g Myr" % int(tmin*1.e-6))
+        log.warning("Star age too low! Clipping to %.1g Myr" % int(tmin*1.e-6))
         tstar = tmin
     tmax = track['t'][-1]
     if (tstar > tmax):
-        print("WARNING: Star age too high! Clipping to %.1g Myr" % int(tmax*1.e-6))
+        log.warning("Star age too high! Clipping to %.1g Myr" % int(tmax*1.e-6))
         tstar = tmax
 
     # Find closest row in track
@@ -74,11 +76,11 @@ def BaraffeSolarConstant(time_dict: dict, COUPLER_options: dict, track: dict):
     # Get time and check that it is in range
     tmin = track['t'][0]
     if (tstar < tmin):
-        print("WARNING: Star age too low! Clipping to %.1g Myr" % int(tmin*1.e-6))
+        log.warning("Star age too low! Clipping to %.1g Myr" % int(tmin*1.e-6))
         tstar = tmin
     tmax = track['t'][-1]
     if (tstar > tmax):
-        print("WARNING: Star age too high! Clipping to %.1g Myr" % int(tmax*1.e-6))
+        log.warning("Star age too high! Clipping to %.1g Myr" % int(tmax*1.e-6))
         tstar = tmax
 
     # Find closest row in track
@@ -142,7 +144,7 @@ def BaraffeLoadtrack(COUPLER_options: dict, pre_interp = True):
         grid_count = 5e4
 
         # Do interpolation
-        print("Interpolating stellar track onto a grid of size %d" % grid_count)
+        log.info("Interpolating stellar track onto a grid of size %d" % grid_count)
         interp_Teff =   PchipInterpolator(t,Teff)
         interp_Lstar =  PchipInterpolator(t,Lstar)
         interp_Rstar =  PchipInterpolator(t,Rstar)
@@ -193,11 +195,11 @@ def BaraffeSpectrumCalc(time_star: float, spec_fl: list, COUPLER_options: dict, 
     tstar = time_star * 1.e-6
     tmin = track['t'][0]*1.e-6
     if (tstar < tmin):
-        print("WARNING: Star age too low! Clipping to %.1g Myr" % int(tmin))
+        log.warning("Star age too low! Clipping to %.1g Myr" % int(tmin))
         tstar = tmin
     tmax = track['t'][-1]*1.e-6
     if (tstar > tmax):
-        print("WARNING: Star age too high! Clipping to %.1g Myr" % int(tmax))
+        log.warning("Star age too high! Clipping to %.1g Myr" % int(tmax))
         tstar = tmax
 
     # Find closest row in track
@@ -212,7 +214,7 @@ def BaraffeSpectrumCalc(time_star: float, spec_fl: list, COUPLER_options: dict, 
 
     # Get luminosity scale factor
     Q_bol = Lstar / float(COUPLER_options['star_luminosity_modern'])
-    if debug: print(Q_bol)
+    log.debug("Bolometric scale factor: " + str(Q_bol))
 
     # Calculate scaled spectrum
     hspec_fl = np.array(spec_fl) * Q_bol

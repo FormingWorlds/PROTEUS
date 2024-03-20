@@ -34,7 +34,7 @@ def _read_nc(nc_fpath):
 
 
 # Plotting function
-def plot_atmosphere_cbar(output_dir):
+def plot_atmosphere_cbar(output_dir, plot_both=False):
 
     print("Plot atmosphere colourbar")
 
@@ -43,7 +43,7 @@ def plot_atmosphere_cbar(output_dir):
     output_times = [ int(str(f).split('/')[-1].split('_')[0]) for f in output_files]
     sort_mask = np.argsort(output_times)
     sorted_files = np.array(output_files)[sort_mask]
-    sorted_times = np.array(output_times)[sort_mask]
+    sorted_times = np.array(output_times)[sort_mask] / 1e6
 
     if len(sorted_times) < 3:
         print("WARNING: Too few samples to make atmosphere_cbar plot")
@@ -57,41 +57,50 @@ def plot_atmosphere_cbar(output_dir):
     for i in range(0,len(sorted_files),stride):
         p,t,z = _read_nc(sorted_files[i])
         sorted_p.append(p / 1.0e5)  # Convert Pa -> bar
-        sorted_t.append(t)
+        sorted_t.append(t ) 
         sorted_z.append(z / 1.0e3)  # Convert m -> km    
     nfiles = len(sorted_p)
 
     # Initialise plot
-    fig,(ax1,ax2) = plt.subplots(2,1, sharex=True, figsize=(5,7))
-    ax1.set_ylabel("Atmosphere height, $z_\mathrm{atm}$ [km]")
-    ax2.set_ylabel("Atmosphere pressure, $P$ [bar]")
-    ax2.set_xlabel("Temperature, $T$ [K]")
+    scale = 1.1
+    if plot_both:
+        fig,(ax1,ax2) = plt.subplots(2,1, sharex=True, figsize=(5*scale,8*scale))
+        ax1.set_ylabel("Height [km]")
+    else:
+        fig,ax2 = plt.subplots(1,1,figsize=(5*scale,4*scale))
+    ax2.set_ylabel("Pressure [bar]")
+    ax2.set_xlabel("Temperature [K]")
     ax2.invert_yaxis()
     ax2.set_yscale("log")
 
     # Colour mapping
-    norm = mpl.colors.Normalize(vmin=100.0, vmax=np.amax(sorted_times))
+    norm = mpl.colors.Normalize(vmin=sorted_times[0], vmax=sorted_times[-1])
     sm = plt.cm.ScalarMappable(cmap=sci_colormaps['batlowK_r'], norm=norm) # 
     sm.set_array([])
 
     # Plot data
     for i in range(nfiles):
-        a = 0.5
+        a = 0.7
         c = sm.to_rgba(sorted_times[i])
-        ax1.plot(sorted_t[i], sorted_z[i], color=c, alpha=a)
-        ax2.plot(sorted_t[i], sorted_p[i], color=c, alpha=a)
+        if plot_both:
+            ax1.plot(sorted_t[i], sorted_z[i], color=c, alpha=a, zorder=3)
+        ax2.plot(sorted_t[i], sorted_p[i], color=c, alpha=a, zorder=3)
+
+    # Grid
+    if plot_both:
+        ax1.grid(alpha=0.2, zorder=2)
+    ax2.grid(alpha=0.2, zorder=2)
+    ax2.set_xlim(0,np.amax(sorted_t)+100)
 
     # Plot colourbar
-    # divider = make_axes_locatable(ax2)
-    # cax = divider.append_axes('right', size='5%', pad=0.05)
-    cax = inset_axes(ax1, width="50%", height="8%", loc='upper right', borderpad=1.0) 
+    cax = inset_axes(ax2, width="50%", height="8%", loc='upper right', borderpad=1.0) 
     cbar = fig.colorbar(sm, cax=cax, orientation='horizontal') 
-    cbar.set_label("Time [yr]") 
+    cbar.ax.set_xticks([round(v,1) for v in np.linspace(sorted_times[0] , sorted_times[-1], 4)])
+    cbar.set_label("Time [Myr]") 
 
     # Save plot
     fname = os.path.join(output_dir,"plot_atmosphere_cbar.pdf")
-    fig.subplots_adjust(top=0.98, bottom=0.08, right=0.96, left=0.14, hspace=0.1)
-    fig.savefig(fname, transparent=True)
+    fig.savefig(fname, transparent=True, bbox_inches='tight')
 
 #====================================================================
 def main():

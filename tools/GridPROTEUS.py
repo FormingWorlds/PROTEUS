@@ -3,11 +3,64 @@
 # Run PROTEUS for a grid of parameters
 
 # Prepare
-import os, itertools, time, subprocess, shutil, sys
+import os, itertools, time, subprocess, shutil, sys, multiprocessing, logging
+from datetime import datetime
 import numpy as np
 COUPLER_DIR=os.getenv('COUPLER_DIR')
 if COUPLER_DIR == None:
     raise Exception("Environment is not activated or is setup incorrectly")
+
+
+# Custom logger instance 
+def setup_logger(logpath:str="new.log",level=1,logterm=True):
+
+    # https://stackoverflow.com/a/61457119
+
+    custom_logger = logging.getLogger()
+    custom_logger.handlers.clear()
+    
+    if os.path.exists(logpath):
+        os.remove(logpath)
+
+    fmt = logging.Formatter("[%(asctime)s] %(message)s", datefmt='%Y-%m-%d %H:%M:%S')
+
+    level_code = logging.INFO
+    match level:
+        case 0:
+            level_code = logging.DEBUG
+        case 2:
+            level_code = logging.WARNING
+        case 3:
+            level_code = logging.ERROR 
+        case 4: 
+            level_code = logging.CRITICAL
+
+    # Add terminal output to logger
+    if logterm:
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(fmt)
+        sh.setLevel(level_code)
+        custom_logger.addHandler(sh)
+
+    # Add file output to logger
+    fh = logging.FileHandler(logpath)
+    fh.setFormatter(fmt)
+    fh.setLevel(level)
+    custom_logger.addHandler(fh)
+    custom_logger.setLevel(level_code)
+
+    # Capture unhandled exceptions
+    # https://stackoverflow.com/a/16993115
+    def handle_exception(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            custom_logger.error("KeyboardInterrupt")
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        custom_logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+    sys.excepthook = handle_exception
+    
+    return 
+
 
 # Object for handling the parameter grid
 class Pgrid():
@@ -15,14 +68,15 @@ class Pgrid():
     def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
 
         # Pgrid's own name (for versioning, etc.)
-        self.name = str(name)
-        self.outdir = COUPLER_DIR+"/output/pgrid_"+self.name+"/"
-        self.tmpdir = "/tmp/pgrid_"+self.name+"/"
+        self.name = str(name).strip()
+        self.outdir = COUPLER_DIR+"/output/"+self.name+"/"
+        self.tmpdir = "/tmp/"+self.name+"/"
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
             raise Exception("Base config file '%s' does not exist!" % self.conf)
         
-        if symlink_dir == "":
+        self.symlink_dir = symlink_dir
+        if self.symlink_dir == "":
             raise Exception("Symlinked directory is set to a blank path")
         
         # Paths
@@ -35,31 +89,42 @@ class Pgrid():
                 os.unlink(self.outdir)
             if os.path.isdir(self.outdir):
                 print("Removing old files at '%s'" % self.outdir)
-                subfolders = [ f.path.split("/")[-1] for f in os.scandir(self.outdir) if f.is_dir() ]
+                subfolders = [ f.path.split("/")[-1].lower() for f in os.scandir(self.outdir) if f.is_dir() ]
                 if ".git" in subfolders:
                     raise Exception("Not emptying directory - it contains a Git repository!")
+                time.sleep(2.0)
                 shutil.rmtree(self.outdir)
         
         # Create new output location
-        if (symlink_dir == "_UNSET"):
+        if (self.symlink_dir == "_UNSET"):
             # Not using symlink
+            self.using_symlink = False
             os.makedirs(self.outdir)
         else:
             # Will be using symlink
-            symlink_dir = os.path.abspath(symlink_dir)
-            if os.path.exists(symlink_dir):
-                print("Removing old files at '%s'" % symlink_dir)
-                subfolders = [ f.path.split("/")[-1] for f in os.scandir(symlink_dir) if f.is_dir() ]
+            self.using_symlink = True
+            self.symlink_dir = os.path.abspath(self.symlink_dir)
+            if os.path.exists(self.symlink_dir):
+                print("Removing old files at '%s'" % self.symlink_dir)
+                subfolders = [ f.path.split("/")[-1].lower() for f in os.scandir(self.symlink_dir) if f.is_dir() ]
                 if ".git" in subfolders:
                     raise Exception("Not emptying directory - it contains a Git repository!")
-                shutil.rmtree(symlink_dir)
-            os.makedirs(symlink_dir)
-            os.symlink(symlink_dir, self.outdir)
+                time.sleep(2.0)
+                shutil.rmtree(self.symlink_dir)
+            os.makedirs(self.symlink_dir)
+            os.symlink(self.symlink_dir, self.outdir)
 
         # Make temp dir
         if os.path.exists(self.tmpdir):
             shutil.rmtree(self.tmpdir)
         os.makedirs(self.tmpdir)
+
+        # Setup logging
+        setup_logger(logpath=os.path.join(self.outdir,"manager.log"), logterm=True, level=1)
+        global log
+        log = logging.getLogger(__name__)
+
+        log.info("Grid '%s' says hello!" % self.name)
 
         # List of dimension names and parameter names
         self.dim_names = []     # String
@@ -70,19 +135,18 @@ class Pgrid():
 
         # Flattened pgrid
         self.flat = []   # List of grid points, each is a dictionary
-        self.hash = []   # Hash values of each point, for removing duplicates
+        self.size = 0    # Total size of grid
     
     # Add a new empty dimension to the pgrid
     def add_dimension(self,name:str):
         if name in self.dim_names:
             raise Exception("Dimension '%s' cannot be added twice" % name)
         
-        print("Added new dimension '%s' " % name)
+        log.info("Added new dimension '%s' " % name)
         self.dim_names.append(name)
         self.dim_param.append("_empty")
         self.dim_avars[name] = None
         
-
     def _get_idx(self,name:str):
         if name not in self.dim_names:
             raise Exception("Dimension '%s' is not initialised" % name)
@@ -110,7 +174,10 @@ class Pgrid():
         if self.dim_param[idx] != "_empty":
             raise Exception("Dimension '%s' cannot be set twice" % name)
         self.dim_param[idx] = var
-        self.dim_avars[name] = list(sorted(np.array(list(set(values)))))  # check for duplicates, sort, and cast
+        the_list = list(set(values))  # remove duplicates
+        if not isinstance(values[0],str): # sort if numeric
+            the_list = sorted(the_list)
+        self.dim_avars[name] = the_list 
 
     # Set a dimension to take hypervariables
     def set_dimension_hyper(self,name:str):
@@ -131,49 +198,51 @@ class Pgrid():
         self.dim_avars[name].append(value)
 
     # Print current setup
-    def print_setup(self, f=sys.stdout):
-        print("Current setup", file=f)
-        print(" -- name     : %s" % self.name, file=f)
-        print(" ", file=f)
+    def print_setup(self):
+
+        log.info("Current setup")
+        log.info(" -- name     : %s" % self.name)
+        log.info(" ")
         for name in self.dim_names:
             idx = self._get_idx(name)
             
-            print(" -- dimension: %s" % name, file=f)
-            print("    parameter: %s" % self.dim_param[idx], file=f)
-            print("    values   : %s" % self.dim_avars[name], file=f)
-            print(" ", file=f)
+            log.info(" -- dimension: %s" % name)
+            log.info("    parameter: %s" % self.dim_param[idx])
+            log.info("    values   : %s" % self.dim_avars[name])
+            log.info("    length   : %d" % len(self.dim_avars[name]))
+            log.info(" ")
 
     # Print generated grid
-    def print_grid(self, f=sys.stdout):
-        print("Flattened grid points", file=f)
+    def print_grid(self):
+        log.info("Flattened grid points")
         for i,gp in enumerate(self.flat):
-            print("    %d: %s" % (i,gp), file=f)
-        print(" ", file=f)
+            log.info("    %d: %s" % (i,gp))
+        log.info(" ")
 
     # Generate the pgrid based on the current configuration
     def generate(self):
-        print("Generating parameter grid")
+        log.info("Generating parameter grid")
 
         # Validate
         if len(self.dim_avars) == 0:
             raise Exception("pgrid is empty")
         
         # Dimension count
-        print("    %d dimensions" % len(self.dim_names))
+        log.info("    %d dimensions" % len(self.dim_names))
         
         # Calculate total pgrid size
         values = list(self.dim_avars.values())
         self.size = 1
         for v in values:
             self.size *= len(v)
-        print("    %d points expected" % self.size)
+        log.info("    %d points expected" % self.size)
 
         # Create flattened parameter grid 
         flat_values = list(itertools.product(*values))
-        print("    created %d grid points" % len(flat_values))
+        log.info("    created %d grid points" % len(flat_values))
 
         # Re-assign keys to values
-        print("    mapping keys")
+        log.info("    mapping keys")
         for fl in flat_values:
             gp = {}
 
@@ -188,49 +257,59 @@ class Pgrid():
                     gp[par] = val
 
             self.flat.append(gp)
-        
-        print("    done")
-        print(" ")
+
+        self.size = len(self.flat)
+        log.info("    done")
+        log.info(" ")
 
 
     # Run PROTEUS across this pgrid
-    def run(self,test_run:bool=False,makelog:bool=False):
-        print("Running PROTEUS across parameter grid '%s'..." % self.name)
+    def run(self,num_threads:int,test_run:bool=False):
+        log.info("Running PROTEUS across parameter grid '%s'" % self.name)
 
-        name = self.name.strip()
+        time_start = datetime.now()
+        log.info("Output path: '%s'" % self.outdir)
+        if self.using_symlink:
+            log.info("Symlink target: '%s'" % self.symlink_dir)
 
+        check_interval = 30.0 # seconds
+        print_interval = 10   # step interval at which to print (30*10 seconds = 5 minutes)
+
+        # Print warning
         if not test_run:
-            print(" ")
-            print("This program will generate several screen sessions")
-            print("To kill all of them, run `pkill -f pgrid_%s_`" % name)   # (from: https://stackoverflow.com/a/8987063)
-            print("Take care to avoid orphaned instances by using `screen -ls`")
-            print(" ")
+            log.info(" ")
+            log.info("Confirm that the grid above is what you had intended.")
+            log.info("There are %d grid points. There will be %d threads." % (self.size, num_threads))
+            log.info("Do not close this program! It must stay alive to manage each of the subproceses.")
+            log.info(" ")
 
-            print("Sleeping...")
-            for i in range(5,0,-1):
-                print("    %d " % i)
+            log.info("Sleeping...")
+            for i in range(7,0,-1):
+                log.info("    %d " % i)
                 time.sleep(1.0)
-            print(" ")
+            log.info(" ")
+        
+        # Print more often if this is a test
+        else:
+            check_interval = 1.0
+            print_interval = 1
 
         # Read base config file
         with open(self.conf, "r") as f:
             base_config = f.readlines()
 
         # Loop over grid points to write config files
-        print("Writing config files")
+        log.info("Writing config files")
         for i,gp in enumerate(self.flat):  
 
-            cfgfile = self.tmpdir+"/case_%05d.cfg" % i
-            screen_name = "pgrid_%s_%05dx" % (name,i)
-
-            gp["dir_output"] = "pgrid_"+self.name+"/case_%05d"%i
+            cfgfile = os.path.join(self.tmpdir,"case_%05d.cfg" % i)
+            gp["dir_output"] = self.name+"/case_%05d"%i
 
             # Create config file for this case
             with open(cfgfile, 'w') as hdl:
                 
                 hdl.write("# GridPROTEUS config file \n")
                 hdl.write("# gp_index = %d \n" % i)
-                hdl.write("# screen_name = %s \n" % screen_name)
 
                 # Write lines
                 for l in base_config:
@@ -252,42 +331,127 @@ class Pgrid():
                 hdl.flush()
                 os.fsync(hdl.fileno()) 
 
-        print("Dispatching cases...")
-        for i,gp in enumerate(self.flat):  
 
-            cfgfile = self.tmpdir+"/case_%05d.cfg" % i
-            screen_name = "pgrid_%s_%05dx" % (name,i)
-            gp["dir_output"] = "pgrid_"+self.name+"/case_%05d"%i
-            
-            if self.size > 1:
-                print("    %d%% (%d of %d)" % ( (i+1)/self.size*100.0, i+1, self.size ) ) 
-                    
-            # Start the model
+         # Thread targget
+        def _thread_target(cfg_path):
+            proteus_py = os.path.join(COUPLER_DIR,"proteus.py")
             if test_run:
-                print("    (test run not dispatching PROTEUS '%s')" % screen_name)
-
+                command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
             else:
-                cfgexists = False
-                waitfor   = 4.0 
-                for _ in range(int(waitfor*1.0e3)):
-                    time.sleep(1.0e-3)
-                    if os.path.exists(cfgfile):
-                        cfgexists = True
-                        break
-                if not cfgexists:
-                    print("ERROR: Config file could not be found for case %d!" % i)
+                command = ["python",proteus_py,"--cfg_file",cfg_path]
+            subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
 
-                if makelog:
-                    proteus_run = COUPLER_DIR+"/tools/RunPROTEUS.sh " + cfgfile + " " + screen_name + " y "
+        # Setup threads
+        threads = []
+        for i in range(self.size):
+            # Case paths
+            cfg_path = os.path.join(self.tmpdir,"case_%05d.cfg" % i)
+            # Check cfg exists
+            cfgexists = False
+            waitfor   = 4.0 
+            for _ in range(int(waitfor*10)):  # do n=100*wait_for checks
+                time.sleep(0.1)
+                if os.path.exists(cfgfile):
+                    cfgexists = True
+                    break
+            if not cfgexists:
+               raise Exception("Config file could not be found for case %d!" % i)
+            # Add thread
+            # threads.append(threading.Thread(target=_thread_target, args=(cfg_path,)))
+            threads.append(multiprocessing.Process(target=_thread_target, args=(cfg_path,)))
+
+        # Track statuses
+        # 0: queued
+        # 1: running
+        # 2: done
+        status = np.zeros(self.size)
+        done = False                # All done?
+        log.info("Starting process manager (%d grid points, %d threads)" % (self.size,num_threads))
+        step = 0
+        while not done:
+            # Check alive
+            n_run = 0
+            for i in range(self.size):
+                # if not marked as running, don't do anything here
+                if status[i] != 1:
+                    continue
+
+                # marked as running
+                if threads[i].is_alive():
+                    # it is still going
+                    status[i] = 1
+                    n_run += 1
                 else:
-                    proteus_run = "screen -d -m -S " + screen_name + " python proteus.py --cfg_file " + cfgfile
-                
-                subprocess.run([proteus_run], shell=True, check=True, stdout=subprocess.DEVNULL)
+                    # it has completed
+                    if status[i] == 1:
+                        status[i] = 2
+                        threads[i].join()   # make everything wait until it's completed
+                        threads[i].close()  # release resources
 
-        time.sleep(5.0)
-        print("    all cases running")
-        print(" ")
+            # Print info
+            count_que = np.count_nonzero(status == 0)
+            count_run = np.count_nonzero(status == 1)
+            count_end = np.count_nonzero(status == 2)
+            if (step%print_interval == 0):
+                log.info("%3d queued (%5.1f%%), %3d running (%5.1f%%), %3d completed (%5.1f%%)" % (
+                        count_que, 100.0*count_que/self.size,
+                        count_run, 100.0*count_run/self.size,
+                        count_end, 100.0*count_end/self.size
+                        )
+                    )
 
+            # Done?
+            if np.count_nonzero(status == 2) == self.size:
+                done = True 
+                log.info("Grid is complete")
+                break 
+
+            # Start new?
+            start_new = np.count_nonzero(status == 1) < num_threads
+            if start_new:
+                for i in range(self.size):
+                    if status[i] == 0:
+                        status[i] = 1
+                        start_new = False
+                        threads[i].start() 
+                        break
+            
+            # Short sleeps while doing initial dispatch
+            if step < num_threads:
+                time.sleep(2.0)
+            else:
+                time.sleep(check_interval)
+            step += 1
+            # / end while loop
+
+        # join threads
+        # log.info("Joining threads")
+        # for t in threads:
+        #     t.join()
+
+        # Check all cases' status files
+        for i in range(self.size):
+            # find file
+            status_path = os.path.join(self.outdir, "case_%05d"%i, "status")
+            if not os.path.exists(status_path):
+                raise Exception("Cannot find status file at '%s'" % status_path)
+
+            # read file
+            with open(status_path,'r') as hdl:
+                lines = hdl.readlines()
+            this_stat = int(lines[0])
+
+            # if still marked as running, it must have died at some point
+            if ( 0 <= this_stat <= 9 ):
+                log.warning("Case %05d has status=running but it is not alive. Setting status=died.")
+                with open(status_path,'x') as hdl:
+                    hdl.write("25\n")
+                    hdl.write("Error (died)\n")         
+
+        time_end = datetime.now()
+        log.info("All processes finished at: "+str(time_end.strftime('%Y-%m-%d_%H:%M:%S')))
+        log.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
 if __name__=='__main__':
     print("Start GridPROTEUS")
@@ -296,9 +460,9 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    cfg_base = os.getenv('COUPLER_DIR')+"/input/earth_gridtest.cfg"
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/pgrid_earth_gridtest_14"
-    pg = Pgrid("earth_gridtest_14", cfg_base, symlink_dir=symlink)
+    cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","jgr_grid.cfg")
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_3"
+    pg = Pgrid("jgr_3", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -309,14 +473,16 @@ if __name__=='__main__':
     #                                     })
 
     pg.add_dimension("Orbital separation")
-    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.1, 0.2, 0.4, 0.6, 1.0, 3.0])
+    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.1, 0.3, 0.5, 0.7, 1.0, 2.0, 3.0])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-3.0, 0.0, 3.0, 6.0])
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-5.0, -3.0, -1.0, 0.0, 1.0, 3.0, 5.0 ])
 
     pg.add_dimension("C/H ratio")
-    pg.set_dimension_direct("C/H ratio", "CH_ratio", [0.01, 0.1, 1.0, 2.0])
+    pg.set_dimension_logspace("C/H ratio", "CH_ratio", 0.01, 2.0, 7)
 
+    pg.add_dimension("Hydrogen")
+    pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 10.0])
     
     # -----
     # Print state of parameter grid
@@ -327,21 +493,12 @@ if __name__=='__main__':
     pg.print_grid()
 
     # -----
-    # Write parameter grid to file
-    # -----
-
-    with open(os.path.join(pg.outdir,"grid.txt"),"w") as hdl:
-        pg.print_setup(f=hdl)
-        pg.print_grid(f=hdl)
-
-    # -----
     # Start PROTEUS processes
     # -----
 
-    pg.run(test_run=False, makelog=True)
+    pg.run(106, test_run=False)
 
-
-    # When this script ends, all cases of PROTEUS should be running.
-    # It does not mean that they are complete.
+    # When this script ends, it means that all processes ARE complete or they
+    # have been killed or crashed.
     print("Exit GridPROTEUS")
-    
+    exit(0)

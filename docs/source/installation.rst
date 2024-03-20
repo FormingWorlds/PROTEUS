@@ -12,9 +12,9 @@ Read access to the following repositories:
         
         * URL: https://github.com/FormingWorlds/PROTEUS
 
-    * Pseudoadiabatic temperature structure scheme: **AEOLUS** 
+    * Pseudoadiabatic temperature structure scheme: **JANUS** 
         
-        * URL: https://github.com/FormingWorlds/AEOLUS/
+        * URL: https://github.com/FormingWorlds/JANUS/
 
     * Radiative transfer: **SOCRATES** 
         
@@ -146,10 +146,11 @@ Step-by-step (core modules)
                 
                 .. code-block:: console
                     
-                    $   conda create -n proteus python=3.10.9   
+                    $   conda create -n proteus python=3.12.2   
                     $   conda activate proteus
-                    $   conda install netcdf4 matplotlib numpy pandas scipy sympy natsort
-                    $   conda install -c conda-forge f90nml netcdf4
+                    $   conda install matplotlib numpy pandas scipy sympy natsort ipykernel 
+                    $   conda install conda-forge::f90nml
+                    $   conda install conda-forge::netcdf4
             
             * Refresh your shell:
                     
@@ -181,7 +182,7 @@ Step-by-step (core modules)
         
         .. code-block:: console
                         
-            $   git clone --recursive git@github.com:FormingWorlds/PROTEUS.git
+            $   git clone git@github.com:FormingWorlds/PROTEUS.git
 
     2. Enter into PROTEUS folder and ensure that submodules are up to date
         
@@ -194,7 +195,7 @@ Step-by-step (core modules)
         
         .. code-block:: console
 
-            $   cd AEOLUS/rad_trans/socrates_code/
+            $   cd JANUS/rad_trans/socrates_code/
             $   tar --strip-components 1 -xvf ../socrates_2306_trunk_r1403.tar.xz -C ./
             $   cp -f ../build_code_modified build_code
 

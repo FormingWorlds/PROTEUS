@@ -12,26 +12,20 @@ from utils.coupler import *
 from utils.stellar_common import *
 from utils.stellar_mors import *
 from utils.stellar_baraffe import *
-from utils.aeolus import RunAEOLUS, PrepAtm, StructAtm
+from utils.janus import RunJANUS, PrepAtm, StructAtm
 from utils.agni import RunAGNI
+from utils.dummy_atmosphere import RunDummyAtm
 from utils.spider import RunSPIDER
+from utils.logging import setup_logger
 
 from plot.cpl_fluxes import *
 from plot.cpl_heatingrates import *
 
-from AEOLUS.modules.stellar_luminosity import InterpolateStellarLuminosity
-from AEOLUS.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
+from JANUS.modules.stellar_luminosity import InterpolateStellarLuminosity
+from JANUS.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 
 #====================================================================
 def main():
-
-    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-    print("            PROTEUS framework (version 0.1)            ")
-    print(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-
-    # Check that environment variables are set 
-    if os.environ.get('COUPLER_DIR') == None:
-        raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
 
     # Parse console arguments
     args = parse_console_arguments()
@@ -43,19 +37,27 @@ def main():
     utils.constants.dirs = SetDirectories(COUPLER_options)
     from utils.constants import dirs
     UpdateStatusfile(dirs, 0)
+    
+    # Switch to logger 
+    setup_logger(logpath=dirs["output"]+"std.log", logterm=True, level=COUPLER_options["log_level"])
+    log = logging.getLogger(__name__)
+
+    log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    log.info("            PROTEUS framework (version 0.1)            ")
+    log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
 
     os.chdir(dirs["coupler"])
 
     start_time = datetime.now()
-    print("Current time:     "+start_time.strftime('%Y-%m-%d_%H:%M:%S'))
-    print("Hostname:         " + str(os.uname()[1]))
-    print("Output directory: %s" % dirs["output"])
+    log.info("Current time:     " + start_time.strftime('%Y-%m-%d_%H:%M:%S'))
+    log.info("Hostname:         " + str(os.uname()[1]))
+    log.info("Output directory: " + dirs["output"])
 
     # Count iterations
     loop_counter = { 
                     "total": 0,            # Total number of iters performed
                     "total_min"  : 30,     # Minimum number of total loops
-                    "total_loops": 2000,   # Maximum number of total loops
+                    "total_loops": COUPLER_options["iter_max"],   # Maximum number of total loops
 
                     "init": 0,             # Number of init iters performed
                     "init_loops": 2,       # Maximum number of init iters
@@ -69,8 +71,8 @@ def main():
                     }
     
     # Model has completed?
-    complete = False
-    
+    finished = False
+
     # Check options are compatible
     if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
         if COUPLER_options["flux_convergence"] == 1:
@@ -88,6 +90,10 @@ def main():
     if COUPLER_options["atmosphere_nlev"] < 15:
         UpdateStatusfile(dirs, 20)
         raise Exception("Atmosphere must have at least 15 levels")
+    
+    if COUPLER_options["interior_nlev"] < 40:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Interior must have at least 40 levels")
     
     # If restart skip init loop # args.r or args.rf or 
     if COUPLER_options["IC_INTERIOR"] == 2:
@@ -107,7 +113,7 @@ def main():
         # Clean all overtimes from present helpfile
         runtime_helpfile = pd.read_csv(dirs["output"]+"/"+"runtime_helpfile.csv", index_col=False, header=0, sep="\t")
         t_curr = COUPLER_options["ic_interior_filename"][:-5]
-        print("Clean helpfile from overtimes >", t_curr, "yr")
+        log.debug("Clean helpfile from overtimes " + str(t_curr) + " yr")
         runtime_helpfile = runtime_helpfile.loc[runtime_helpfile["Time"] <= int(t_curr)]
 
         COUPLER_options["F_int"] = runtime_helpfile.iloc[-1]["F_int"]
@@ -116,7 +122,7 @@ def main():
 
     # Start conditions and help files depending on restart option
     else:
-        CleanDir( dirs["output"] )
+        CleanDir( dirs["output"] , keep_stdlog=True)
         CleanDir( dirs['output']+'data/')
         
         runtime_helpfile    = []
@@ -187,7 +193,7 @@ def main():
                 COUPLER_options[key_pp] = 1e-3
             
 
-    print("Included volatiles:",inc_vols)
+    log.info("Included volatiles: " + str(inc_vols))
 
     # Check that spectral file exists
     spectral_file_nostar = COUPLER_options["spectral_file"]
@@ -214,16 +220,23 @@ def main():
         case _:
             UpdateStatusfile(dirs, 20)
             raise Exception("Invalid stellar model '%d'" % COUPLER_options['star_model'])
+        
+    # Create lockfile 
+    keepalive_file = os.path.join(dirs["output"],"keepalive")
+    safe_rm(keepalive_file)
+    with open(keepalive_file, 'w') as fp:
+        fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
+    
     
     # Main loop
     UpdateStatusfile(dirs, 1)
-    while time_dict["planet"] < time_dict["target"]:
+    while not finished:
 
         PrintSeparator()
-        print("Loop counters:", loop_counter)
+        log.info("Loop counters: " +  str(loop_counter))
 
         ############### STELLAR FLUX MANAGEMENT
-        print("Stellar flux management...")
+        log.info("Stellar flux management...")
         
         # Calculate new instellation and radius
         if (abs( time_dict['planet'] - time_dict['sinst_prev'] ) > COUPLER_options['sinst_dt_update']) \
@@ -238,7 +251,7 @@ def main():
                 F_inst_prev = 0.0
 
             if (COUPLER_options["stellar_heating"] > 0):
-                print("Updating instellation and radius")
+                log.info("Updating instellation and radius")
 
                 match COUPLER_options['star_model']:
                     case 0:
@@ -254,7 +267,7 @@ def main():
                 T_eqm_new = calc_eqm_temperature(S_0, COUPLER_options["asf_scalefactor"], COUPLER_options["albedo_pl"])
                 
             else:
-                print("Stellar heating is disabled")
+                log.info("Stellar heating is disabled")
                 T_eqm_new   = 0.0
                 S_0 = 0.0
 
@@ -262,7 +275,7 @@ def main():
             COUPLER_options["T_eqm"]        = T_eqm_new
             COUPLER_options["T_skin"]       = T_eqm_new * (0.5**0.25) # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
 
-            print("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
+            log.info("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
 
         # Calculate a new (historical) stellar spectrum 
         if (COUPLER_options['star_model'] > 0  \
@@ -271,7 +284,7 @@ def main():
             
             time_dict['sspec_prev'] = time_dict['planet'] 
 
-            print("Updating stellar spectrum") 
+            log.info("Updating stellar spectrum") 
             match COUPLER_options['star_model']: 
                 case 1:
                     fl,fls = MorsSpectrumCalc(time_dict['star'], StellarFlux_wl, StellarFlux_fl, COUPLER_options)
@@ -282,18 +295,25 @@ def main():
             writessurf = bool(COUPLER_options["atmosphere_chem_type"] > 0)
             SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs['output']+'/data/',write_surf=writessurf)
 
-            # Generate a new SOCRATES spectral file containing this new spectrum
-            star_spec_src = dirs["output"]+"socrates_star.txt"
-            PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
-            InsertStellarSpectrum(
-                                    spectral_file_nostar,
-                                    star_spec_src,
-                                    dirs["output"]+"runtime_spectral_file"
-                                )
-            os.remove(star_spec_src)
+            if not (COUPLER_options["atmosphere_model"] == 2):
+                # Generate a new SOCRATES spectral file containing this new spectrum
+                star_spec_src = dirs["output"]+"socrates_star.txt"
+                #    Update stdout
+                old_stdout , old_stderr = sys.stdout , sys.stderr
+                sys.stdout = StreamToLogger(log, logging.INFO)
+                sys.stderr = StreamToLogger(log, logging.ERROR)
+                #    Spectral file stuff
+                PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
+                InsertStellarSpectrum(  spectral_file_nostar,
+                                        star_spec_src,
+                                        dirs["output"]
+                                     )
+                os.remove(star_spec_src)
+                #    Restore stdout
+                sys.stdout , sys.stderr = old_stdout , old_stderr
 
         else:
-            print("New spectrum not required at this time")
+            log.info("New spectrum not required at this time")
 
         ############### / STELLAR FLUX MANAGEMENT
 
@@ -328,7 +348,7 @@ def main():
 
             # Penultimate init loop: inject additional atmosphere
             if (loop_counter["init"] == max(0,loop_counter["init_loops"]-1)):
-                print("Including additional volatile bars in addition to solvepp result")
+                log.info("Including additional volatile bars in addition to solvepp result")
                 for s in volatile_species:
                     key_pp = str(s+"_initial_atmos_pressure")
                     key_ab = str(s+"_add_bars")
@@ -337,6 +357,27 @@ def main():
                         COUPLER_options[key_pp] += float(COUPLER_options[key_ab] * 1.0e5)  # Convert bar -> Pa
                     
         ############### / INTERIOR SUB-LOOP
+                        
+
+
+        ############### UPDATE TIME 
+                                   
+        # Advance current time in main loop according to interior step
+        time_dict["planet"] = runtime_helpfile.iloc[-1]["Time"]
+        time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
+
+        # Update init loop counter
+        if loop_counter["init"] < loop_counter["init_loops"]: # Next init iter
+            loop_counter["init"]    += 1
+            time_dict["planet"]     = 0.
+        if loop_counter["total"] >= loop_counter["init_loops"]: # Reset restart flag once SPIDER was started w/ ~correct volatile chemistry + heat flux
+            COUPLER_options["IC_INTERIOR"] = 2
+
+        # Adjust total iteration counters
+        loop_counter["atm"]         = 0
+        loop_counter["total"]       += 1
+
+        ############### / UPDATE TIME
 
 
 
@@ -348,13 +389,17 @@ def main():
                 COUPLER_options = PrepAtm(loop_counter, runtime_helpfile, COUPLER_options)
 
                 if COUPLER_options["atmosphere_model"] == 0:
-                    # Run AEOLUS: use the general adiabat to create a PT profile, then calculate fluxes
+                    # Run JANUS: use the general adiabat to create a PT profile, then calculate fluxes
                     atm = StructAtm( dirs, runtime_helpfile, COUPLER_options )
-                    COUPLER_options = RunAEOLUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile )
+                    COUPLER_options = RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile)
 
                 elif COUPLER_options["atmosphere_model"] == 1:
                     # Run AGNI 
                     COUPLER_options = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile)
+
+                elif COUPLER_options["atmosphere_model"] == 2:
+                    # Run dummy atmosphere model 
+                    COUPLER_options = RunDummyAtm(time_dict, dirs, COUPLER_options, runtime_helpfile)
                     
                 else:
                     UpdateStatusfile(dirs, 20)
@@ -371,31 +416,18 @@ def main():
         
 
 
-        ############### LOOP ITERATION MANAGEMENT
+        ############### CONVERGENCE CHECK 
 
-        # Advance current time in main loop
-        time_dict["planet"] = runtime_helpfile.iloc[-1]["Time"]
-        time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
-
-        # Print info, save atm to file
+        # Print info to terminal and log file
         PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options)
-        
-        # Update init loop counter
-        if loop_counter["init"] < loop_counter["init_loops"]: # Next init iter
-            loop_counter["init"]    += 1
-            time_dict["planet"]     = 0.
-        if loop_counter["total"] >= loop_counter["init_loops"]: # Reset restart flag once SPIDER was started w/ ~correct volatile chemistry + heat flux
-            COUPLER_options["IC_INTERIOR"] = 2
-
-        # Adjust total iteration counters
-        loop_counter["atm"]         = 0
-        loop_counter["total"]       += 1
 
         # Stop simulation when planet is completely solidified
         if (COUPLER_options["solid_stop"] == 1) and (runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]):
             UpdateStatusfile(dirs, 10)
-            print("\n===> Planet solidified! <===\n")
-            complete = True
+            log.info("")
+            log.info("===> Planet solidified! <===")
+            log.info("")
+            finished = True
 
         # Determine when the simulation enters a steady state
         if (COUPLER_options["steady_stop"] == 1) and (loop_counter["total"] > loop_counter["steady_check"]*2+5) and (loop_counter["steady"] == 0):
@@ -422,7 +454,7 @@ def main():
                         
             # Stop when flux is small and melt fraction is unchanging
             if (flx_m < COUPLER_options["steady_flux"]) and (phi_r < COUPLER_options["steady_dprel"]):
-                print("Steady state declared")
+                log.info("Steady state declared")
                 loop_counter["steady"] = 1
 
         # Steady-state handling
@@ -431,40 +463,72 @@ def main():
                 loop_counter["steady"] += 1
             else:
                 UpdateStatusfile(dirs, 11)
-                print("\n===> Planet has entered a steady state! <===\n")
-                complete = True
+                log.info("")
+                log.info("===> Planet has entered a steady state! <===")
+                log.info("")
+                finished = True
             
         # Stop simulation if maximum loops reached
         if (loop_counter["total"] > loop_counter["total_loops"]):
             UpdateStatusfile(dirs, 12)
-            print("\n===> Maximum number of iterations reached. <===\n")
-            complete = True
+            log.info("")
+            log.info("===> Maximum number of iterations reached! <===")
+            log.info("")
+            finished = True
+
+        # Stop simulation if maximum time reached
+        if (time_dict["planet"] >= time_dict["target"]):
+            UpdateStatusfile(dirs, 13)
+            log.info("")
+            log.info("===> Target time reached! <===")
+            log.info("")
+            finished = True
         
+        # Check if the minimum number of loops have been performed
+        if finished and (loop_counter["total"] < loop_counter["total_min"]):
+            log.info("Minimum number of iterations not yet attained; continuing...")
+            finished = False
+
+        # Check if keepalive file has been removed - this means that the model should exit ASAP
+        if not os.path.exists(keepalive_file):
+            UpdateStatusfile(dirs, 25)
+            log.info("")
+            log.info("===> Model exit was requested by user! <===")
+            log.info("")
+            finished=True
+
         # Make plots if required and go to next iteration
-        if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0):
+        if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0) and (not finished):
             UpdatePlots( dirs["output"], COUPLER_options )
 
-        # Check if the minimum number of loops have been performed
-        if complete and (loop_counter["total"] < loop_counter["total_min"]):
-            print("Minimum number of iterations not yet attained")
-            complete = False
+        ############### / CONVERGENCE CHECK 
 
-        # If marked as complete, exit
-        if complete:
-            break
+    # ----------------------
+    # FINAL THINGS BEFORE EXIT
 
-        ############### / LOOP ITERATION MANAGEMENT
-            
+    # Clean up files
+    safe_rm(keepalive_file)
+    for file in glob.glob(dirs["output"]+"/runtime_spectral_file*"):
+        os.remove(file)
+
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options, end=True)
     end_time = datetime.now()
     run_time = end_time - start_time
-    print("Simulation completed at: "+end_time.strftime('%Y-%m-%d_%H:%M:%S'))
-    print("Total runtime: %.2f hours" % ( run_time.total_seconds()/(60.0 * 60.0)  ))
+    log.info("Simulation completed at: "+end_time.strftime('%Y-%m-%d_%H:%M:%S'))
+    log.info("Total runtime: %.2f hours" % ( run_time.total_seconds()/(60.0 * 60.0)  ))
+
+    # EXIT
+    return
 
 #====================================================================
 if __name__ == '__main__':
+    # Check that environment variables are set 
+    if os.environ.get('COUPLER_DIR') == None:
+        raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
+    # Start main function
     main()
     print("Goodbye")
+    exit(0)
 
 # End of file

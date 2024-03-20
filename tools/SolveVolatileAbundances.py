@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Written by Dan Bower
+# Written by Dan Bower. Adapted by Harrison Nicholls.
 # See the related issue on the PROTEUS GitHub page:-
 # https://github.com/FormingWorlds/PROTEUS/issues/42
 # Paper to cite:-
@@ -268,7 +268,7 @@ def get_total_pressure(pin, fO2_shift, global_d):
 
 #====================================================================
 def atmosphere_mass(pin, fO2_shift, global_d):
-    """Atmospheric mass of volatiles and totals for H, C, and N"""
+    """Atmospheric mass of volatiles and totals for H, C, O"""
 
     mass_d = global_d['molar_mass_d']
     p_d = get_partial_pressures(pin, fO2_shift, global_d)
@@ -276,7 +276,6 @@ def atmosphere_mass(pin, fO2_shift, global_d):
 
     mass_atm_d = {}
     for key, value in p_d.items():
-        # 1.0E5 because pressures are in bar
         mass_atm_d[key] = value*1.0E5/global_d['little_g']
         mass_atm_d[key] *= 4.0*np.pi*global_d['planetary_radius']**2.0
         mass_atm_d[key] *= mass_d[key]/mu_atm
@@ -293,11 +292,17 @@ def atmosphere_mass(pin, fO2_shift, global_d):
     mass_atm_d['C'] = mass_atm_d['CO'] / mass_d['CO']
     mass_atm_d['C'] += mass_atm_d['CO2'] / mass_d['CO2']
     mass_atm_d['C'] += mass_atm_d['CH4'] / mass_d['CH4']
-    # below converts moles of C to mass of C
     mass_atm_d['C'] *= mass_d['C']
 
     # total mass of N
     mass_atm_d['N'] = mass_atm_d['N2'] 
+
+    # total mass of O
+    mass_atm_d['O'] = 0.0
+    mass_atm_d['O'] += mass_atm_d['H2O'] / mass_d['H2O']
+    mass_atm_d['O'] += mass_atm_d['CO'] / mass_d['CO']
+    mass_atm_d['C'] += mass_atm_d['CO2'] / mass_d['CO2'] * 2.0
+    mass_atm_d['O'] *= mass_d['O']
 
     return mass_atm_d
 
@@ -487,6 +492,10 @@ def equilibrium_atmosphere(Hydrogen, CH_ratio, fO2_shift, global_d, Nitrogen):
     p_d['fO2_shift'] = fO2_shift
     p_d['Nitrogen_ppm'] = Nitrogen 
 
+    # add total masses of elements
+    for k in target_d:
+        p_d[k+"_tot_kg"] = target_d[k]
+
     for key in global_d.keys():
         if key == 'molar_mass_d':
             continue
@@ -497,6 +506,24 @@ def equilibrium_atmosphere(Hydrogen, CH_ratio, fO2_shift, global_d, Nitrogen):
         if key in ["H2O","CO2","N2","H2","CO","CH4"]:
             ptot += p_d[key]
     p_d["tot"] = ptot
+
+    atm_tot_mass = 0.0
+    for k in ["H2O","CO2","N2","H2","CO","CH4"]:
+        # mmr in atmosphere
+        p_d[k+"_atm_vmr"] = p_d[k]/p_d["tot"]
+        # kg in atmosphere
+        this_kg = p_d[k]*1.0E5 * 4.0*np.pi*global_d['planetary_radius']**2.0 / global_d['little_g'] # 1.0E5 because pressures are in bar
+        atm_tot_mass += this_kg 
+        p_d[k+"_atm_kg"] = this_kg
+       
+    p_d["tot_atm_kg"] = atm_tot_mass
+
+    atm_masses = atmosphere_mass( (p_d["H2O"], p_d["CO2"], p_d["N2"]) ,fO2_shift, global_d )
+    for e in ["H","C","N","O"]:
+        p_d[k+"_atm_kg"] = atm_masses[e]
+        if e in target_d:
+            p_d["%s_atm_kg/%s_tot_kg"%(e,e)] = atm_masses[e]/target_d[e]
+            p_d["%s_atm_kg/tot_atm_kg"%(e)]  = atm_masses[e]/atm_tot_mass
     
     # for debugging/checking, add success initial condition
     # that resulted in a converged solution with positive pressures
@@ -561,14 +588,16 @@ def equilibrium_atmosphere_GR():
     global_d = get_global_parameters()
 
     
-    pl_m = 8.63 * 5.972e24 # kg
+    pl_m = 8.63 * 5.972e24 # kg, known k2-18b mass
 
-    rho = 5515.0 # earth value for density [kg m-3]
-    pl_r = ( (3 * pl_m) / (4 * np.pi * rho))**(1.0/3)
+    rho = 5515.0 # earth value for interior density [kg m-3]
+    pl_r = ( (3 * pl_m) / (4 * np.pi * rho))**(1.0/3)  # get radius at surface, assuming atmosphere mass is small
 
     global_d['little_g'] = 6.67408e-11 * pl_m / ( pl_r * pl_r )
     global_d['planetary_radius'] = pl_r
     global_d['planetary_mass'] = pl_m
+
+    print(global_d)
     
     # N_ppm calculation..
     # Z    = metallicity
@@ -583,11 +612,15 @@ def equilibrium_atmosphere_GR():
 
     # Samples
     hydrogen_l =        np.array([1.0, 10.0, 100.0, 1000.0, 10000.0])
-    # CH_ratio_l =        np.array([0.1, 1.0, 10.0, 100.0]) * C_to_H
-    CH_ratio_l =        np.array([0.01, 0.05]) * C_to_H
+    CH_ratio_l =        np.array([0.01, 0.05, 0.1, 1.0, 10.0, 100.0]) * C_to_H
     fO2_shift_l =       np.array([-5.0, -2.0, 0.0, 2.0, 4.0])
     mantle_l =          np.array([0.001, 0.01, 0.1, 1.0]) * pl_m
     tsurf_l =           np.array([1500.0, 2000.0, 2500.0, 3000.0])
+
+    # CH_ratio_l =        np.array([0.05, 0.1]) * C_to_H
+    # fO2_shift_l =       np.array([-2.0, 0.0])
+    # mantle_l =          np.array([0.01, 0.1]) * pl_m
+    # tsurf_l =           np.array([2000.0, 2500.0])
 
     out_l = []
 
@@ -596,8 +629,10 @@ def equilibrium_atmosphere_GR():
     pspace = np.array(list(p for p in prod))
     psize  = len(pspace)
 
-    modprint = 1
+    modprint = 10
+    weird_idx = []
     for p in pspace:
+        i += 1
         if i%modprint == 0:
             print('Simulation %04d/%04d = %2.2f%%' % (i,psize, i/psize*100.0))
 
@@ -609,8 +644,16 @@ def equilibrium_atmosphere_GR():
         global_d['temperature'] = mt
 
         p_d = equilibrium_atmosphere(Hydrogen, CH_ratio, fO2_shift, global_d, Nitrogen)
+        p_d["invalid"] = 0
+        for k in ["H","C","N"]:
+            if abs(p_d["res_"+k]) > 0.5:
+                weird_idx.append(i)
+                p_d["invalid"] = 1
+                break
+                
         out_l.append(p_d)
-        i += 1
+
+    print("Invalid cases: " + str(weird_idx))    
 
     print("Writing results")
     filename = 'equilibrium_atmosphere_GR.csv'

@@ -4,6 +4,8 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import find_nearest, UpdateStatusfile
 
+log = logging.getLogger(__name__)
+
 def ModernSpectrumLoad(dirs: dict, COUPLER_options: dict):
     """Copy file and load modern spectrum into memory.
 
@@ -42,11 +44,9 @@ def ModernSpectrumLoad(dirs: dict, COUPLER_options: dict):
 
     binwidth_wl = spec_wl[1:] - spec_wl[0:-1]
 
-    if debug:
-        print("Modern spectrum statistics:")
-        print("\t Flux \n\t\t (min, max) = (%1.2e, %1.2e) erg s-1 cm-2 nm-1" % (np.amin(spec_fl),np.amax(spec_fl)))
-        print("\t Wavelength \n\t\t (min, max) = (%1.2e, %1.2e) nm" % (np.amin(spec_wl),np.amax(spec_wl)))
-        print("\t Bin width \n\t\t (min, median, max) = (%1.2e, %1.2e, %1.2e) nm" % (np.amin(binwidth_wl),np.median(binwidth_wl),np.amax(binwidth_wl)))
+    log.debug("Modern spectrum statistics:")
+    log.debug("\t Flux \n\t\t (min, max) = (%1.2e, %1.2e) erg s-1 cm-2 nm-1" % (np.amin(spec_fl),np.amax(spec_fl)))
+    log.debug("\t Wavelength \n\t\t (min, max) = (%1.2e, %1.2e) nm" % (np.amin(spec_wl),np.amax(spec_wl)))
+    log.debug("\t Bin width \n\t\t (min, median, max) = (%1.2e, %1.2e, %1.2e) nm" % (np.amin(binwidth_wl),np.median(binwidth_wl),np.amax(binwidth_wl)))
         
-    
     return spec_wl, spec_fl

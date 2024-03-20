@@ -5,12 +5,12 @@ from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import MyJSON, get_all_output_times
 
-from AEOLUS.modules.spectral_planck_surface import surf_Planck_nu
+log = logging.getLogger(__name__)
 
 #====================================================================
 def plot_atmosphere( output_dir, times):
 
-    print("Plot atmosphere")
+    log.info("Plot atmosphere")
 
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width
@@ -92,8 +92,6 @@ def plot_atmosphere( output_dir, times):
             
             
             ax0.plot( tmp, z, '-', color=color, label=label, lw=1.5)
-
-            # print(time,atm.tmp, atm.p)
 
             # Atmosphere T-P
             ax1.semilogy(tmp, p/1e5, '-', color=color, label=label, lw=1.5)

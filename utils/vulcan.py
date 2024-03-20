@@ -156,7 +156,7 @@ def RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_opt
         vcf.write("# </ PROTEUS INSERT > \n")
         vcf.write(" ")
 
-    # Write PT profile (to VULCAN, from AEOLUS)
+    # Write PT profile (to VULCAN, from JANUS)
     vul_PT = np.array(
         [np.array(atm.pl)  [::-1] * 10.0,
          np.array(atm.tmpl)[::-1]

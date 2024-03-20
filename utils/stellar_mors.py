@@ -6,6 +6,8 @@ from utils.helper import find_nearest, UpdateStatusfile
 from utils.stellar_common import *
 import Mors as mors
 
+log = logging.getLogger(__name__)
+
 # Spectral bands for stellar fluxes, in nm
 star_bands = {
     "xr" : [1.e-3 , 10.0],  # X-ray,  defined by mors
@@ -162,7 +164,7 @@ def MorsCalculateFband(dirs: dict, COUPLER_options: dict):
     # bolometric luminosity by integrating the observed spectrum, and comparing it to the known luminosity.
     predict_fl,_ = MorsSpectrumCalc(COUPLER_options['star_age_modern'], spec_wl, spec_fl,COUPLER_options)
 
-    # print("Modern spectrum F_band values:")
+    log.debug("Modern spectrum F_band values:")
     for band in star_bands.keys():
 
         wl_min = star_bands[band][0]
@@ -178,7 +180,7 @@ def MorsCalculateFband(dirs: dict, COUPLER_options: dict):
 
         COUPLER_options["Fband_modern_"+band] = fl_integ
 
-        # print('F_%s [%d,%d] = %g' % (band,wl_min,wl_max,fl_integ))
+        log.debug('F_%s [%d,%d] = %g' % (band,wl_min,wl_max,fl_integ))
 
     return COUPLER_options
 
@@ -215,7 +217,7 @@ def MorsSolveUV(dirs: dict, COUPLER_options: dict, spec_wl: list, spec_fl: list,
             Optimal wavelength for the UV-PL boundary
     """
 
-    print("Solving for optimal UV-PL band edge using bisection search...")
+    log.info("Solving for optimal UV-PL band edge using bisection search...")
 
     # Check inputs
     if uv_try[0] < 100.0:
@@ -280,7 +282,7 @@ def MorsSolveUV(dirs: dict, COUPLER_options: dict, spec_wl: list, spec_fl: list,
 
         # Check break condition
         rel_err = fl_bst_err/fl_opt*100.0
-        print("    iter %d, rel. err = %.5e pct"  % (i,rel_err))
+        log.info("    iter %d, rel. err = %.5e pct"  % (i,rel_err))
         if ( rel_err < eps ):
             break
 
@@ -288,10 +290,10 @@ def MorsSolveUV(dirs: dict, COUPLER_options: dict, spec_wl: list, spec_fl: list,
     star_bands["uv"][1] = sol_wl
     star_bands["pl"][0] = sol_wl
     
-    print("   Complete")
-    print("   Target flux: %1.2e erg s-1 cm-2 nm-1" % fl_opt)
-    print("   Solved flux: %1.2e erg s-1 cm-2 nm-1" % sol_fl)
-    print("   Optimal wavelength for band edge is %.2f nm"   % sol_wl)
+    log.info("   Complete")
+    log.info("   Target flux: %1.2e erg s-1 cm-2 nm-1" % fl_opt)
+    log.info("   Solved flux: %1.2e erg s-1 cm-2 nm-1" % sol_fl)
+    log.info("   Optimal wavelength for band edge is %.2f nm"   % sol_wl)
 
     return sol_wl
 
@@ -328,19 +330,19 @@ def MorsSpectrumCalc(time_star : float, spec_wl: list, spec_fl: list, COUPLER_op
     # Get time and check that it is in range
     tstar = time_star * 1.e-6
     if (tstar < 0.117):
-        print("WARNING: Star age too low! Clipping to 0.117 Myr")
+        log.warning("Star age too low! Clipping to 0.117 Myr")
         tstar = 0.117
     if (tstar > 11058.0):
-        print("WARNING: Star age too high! Clipping to 11058 Myr")
+        log.warning("Star age too high! Clipping to 11058 Myr")
         tstar = 11058.0
 
     # Get mass and check that it is in range
     Mstar = COUPLER_options["star_mass"]
     if (Mstar < 0.1):
-        print("WARNING: Star mass too low! Clipping to 0.1 M_sun")
+        log.warning("Star mass too low! Clipping to 0.1 M_sun")
         Mstar = 0.1
     if (Mstar > 1.25):
-        print("WARNING: Star mass too high! Clipping to 1.25 M_sun")
+        log.warning("Star mass too high! Clipping to 1.25 M_sun")
         Mstar = 1.25
 
     Rstar = mors.Value(Mstar, tstar, 'Rstar') # radius in solar radii
@@ -379,9 +381,8 @@ def MorsSpectrumCalc(time_star : float, spec_wl: list, spec_fl: list, COUPLER_op
         UpdateStatusfile(dirs, 20)
         raise Exception("Stellar spectrum wl and fl arrays are of different lengths")
     
-    if debug:
-        print("F_band", F_band)
-        print("Q_band", Q_band)
+    log.debug("F_band", F_band)
+    log.debug("Q_band", Q_band)
 
     hspec_fl = np.zeros((len(spec_wl)))
     
