@@ -461,8 +461,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","jgr_grid.cfg")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_3"
-    pg = Pgrid("jgr_3", cfg_base, symlink_dir=symlink)
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_4"
+    pg = Pgrid("jgr_4", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -482,7 +482,7 @@ if __name__=='__main__':
     pg.set_dimension_logspace("C/H ratio", "CH_ratio", 0.01, 2.0, 7)
 
     pg.add_dimension("Hydrogen")
-    pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 10.0])
+    pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 5.0, 10.0])
     
     # -----
     # Print state of parameter grid

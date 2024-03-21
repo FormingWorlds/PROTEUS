@@ -247,7 +247,7 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
                     T_surf_max = run_atm.iloc[-1]["T_surf"]
 
                 # calculate tolerance
-                tol = rtol * run_atm.iloc[-1]["F_atm"] + atol
+                tol = rtol * abs(run_atm.iloc[-1]["F_atm"]) + atol
             else:
                 tol = 0.1
 
