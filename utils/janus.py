@@ -107,7 +107,7 @@ def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
 def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
 
     from JANUS.utils.atmosphere_column import atmos
-    from utils.ReadSpectralFile import ReadBandEdges
+    from JANUS.utils.ReadSpectralFile import ReadBandEdges
 
     # Create atmosphere object and set parameters
     pl_radius = COUPLER_options["radius"]
@@ -284,6 +284,8 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
     if write_in_tmp_dir:
         shutil.rmtree(tmp_dir,ignore_errors=True)
 
+    any_cloud = np.any(np.array(atm.clfr) > 1.0e-20)
+    log.info("Water clouds have formed = %s"%(str(any_cloud)))
     log.info("SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
 
     # Save atm data to disk
