@@ -147,6 +147,7 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
     lwm  = 0.8    # Liquid water mass fraction [kg/kg] - how much liquid vs. gas is there upon cloud formation? 0 : saturated water vapor does not turn liquid ; 1 : the entire mass of the cell contributes to the cloud
     clfr = 0.8    # Water cloud fraction - how much of the current cell turns into cloud? 0 : clear sky cell ; 1 : the cloud takes over the entire area of the cell (just leave at 1 for 1D runs)
     do_cloud = bool(COUPLER_options["water_cloud"] == 1)
+    alpha_cloud = float(COUPLER_options["alpha_cloud"])
 
     # Make object 
     atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, 
@@ -157,7 +158,7 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
                 maxT = COUPLER_options["max_temperature"],
                 trppT=trppT,
                 water_lookup=False,
-                req_levels=nlev,
+                req_levels=nlev, alpha_cloud=alpha_cloud,
                 re=re, lwm=lwm, clfr=clfr, do_cloud=do_cloud
                 )
 

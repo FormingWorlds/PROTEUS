@@ -10,7 +10,7 @@ log = logging.getLogger(__name__)
 #====================================================================
 def plot_atmosphere( output_dir, times):
 
-    log.info("Plot atmosphere")
+    log.info("Plot atmosphere temperatures")
 
     # article class text width is 4.7747 inches
     # http://tex.stackexchange.com/questions/39383/determine-text-width

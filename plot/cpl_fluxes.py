@@ -7,27 +7,37 @@ from utils.plot import *
 log = logging.getLogger(__name__)
 
 # Plotting fluxes
-def plot_fluxes_atmosphere(output_dir, atm):
+def plot_fluxes_atmosphere(output_dir, nc_fpath):
 
-    log.info("Plotting fluxes at each level")
+    log.info("Plotting atmosphere fluxes")
 
-    mpl.use('Agg')
+    # Read netCDF
+    ds = nc.Dataset(nc_fpath)
+    atm_pl      = np.array(ds.variables['pl'     ][:])
+    atm_fl_D_LW = np.array(ds.variables['fl_D_LW'][:])
+    atm_fl_U_LW = np.array(ds.variables['fl_U_LW'][:])
+    atm_fl_D_SW = np.array(ds.variables['fl_D_SW'][:])
+    atm_fl_U_SW = np.array(ds.variables['fl_U_SW'][:])
+    atm_fl_D    = np.array(ds.variables['fl_D'   ][:])
+    atm_fl_U    = np.array(ds.variables['fl_U'   ][:])
+    atm_fl_N    = np.array(ds.variables['fl_N'   ][:])
+    ds.close()
 
     fig,ax = plt.subplots()
 
     ax.axvline(0,color='black',lw=0.8)
 
-    pl = atm.pl * 1.e-5
+    pl = atm_pl * 1.e-5
 
-    ax.plot(atm.flux_up_total,pl,color='red',label='UP',lw=1)
-    ax.plot(atm.SW_flux_up   ,pl,color='red',label='UP SW',linestyle='dotted',lw=2)
-    ax.plot(atm.LW_flux_up   ,pl,color='red',label='UP LW',linestyle='dashed',lw=1)
+    ax.plot(atm_fl_U      ,pl,color='red',label='UP',lw=1)
+    ax.plot(atm_fl_U_SW   ,pl,color='red',label='UP SW',linestyle='dotted',lw=2)
+    ax.plot(atm_fl_U_LW   ,pl,color='red',label='UP LW',linestyle='dashed',lw=1)
 
-    ax.plot(-1.0*atm.flux_down_total,pl,color='green',label='DN',lw=2)
-    ax.plot(-1.0*atm.SW_flux_down   ,pl,color='green',label='DN SW',linestyle='dotted',lw=3)
-    ax.plot(-1.0*atm.LW_flux_down   ,pl,color='green',label='DN LW',linestyle='dashed',lw=2)
+    ax.plot(-1.0*atm_fl_D      ,pl,color='green',label='DN',lw=2)
+    ax.plot(-1.0*atm_fl_D_SW   ,pl,color='green',label='DN SW',linestyle='dotted',lw=3)
+    ax.plot(-1.0*atm_fl_D_LW   ,pl,color='green',label='DN LW',linestyle='dashed',lw=2)
 
-    ax.plot(atm.net_flux ,pl,color='black',label='NET')
+    ax.plot(atm_fl_N ,pl,color='black',label='NET')
 
     ax.set_xscale("symlog")
     ax.set_xlabel("Upward-directed flux [W m-2]")
@@ -39,12 +49,12 @@ def plot_fluxes_atmosphere(output_dir, atm):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_atmosphere.pdf")
+    fig.savefig(output_dir+"/plot_fluxes_atmosphere.pdf", bbox_inches='tight')
 
 # Plotting fluxes
 def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
 
-    log.info("Plotting fluxes")
+    log.info("Plotting global fluxes")
 
     # Get values
     df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep="\t")

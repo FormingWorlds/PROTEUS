@@ -36,7 +36,7 @@ def _read_nc(nc_fpath):
 # Plotting function
 def plot_atmosphere_cbar(output_dir, plot_both=False):
 
-    print("Plot atmosphere colourbar")
+    print("Plot atmosphere temperatures colourbar")
 
     # Gather data files
     output_files = glob.glob(output_dir+"/data/*_atm.nc")
