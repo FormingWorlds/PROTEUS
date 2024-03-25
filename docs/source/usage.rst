@@ -368,6 +368,18 @@ configuration, but they must all be passed via the config file.
      - Integer
      - 0: None, 1: Skin, 2: Flux.
 
+   * - ``water_cloud``
+     - Enable water cloud radiative effects.
+     - False
+     - Integer
+     - 0: Disabled, 1: Enabled.
+
+   * - ``alpha_cloud``
+     - Condensate retention fraction. A value of 0 means full rainout. A value of 1 means full retention (cf. Li+2018).
+     - False
+     - Float
+     - Between 0 and 1, inclusive.
+
    * - ``insert_rscatter``
      - Enable rayleigh scattering.
      - False

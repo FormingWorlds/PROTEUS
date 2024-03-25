@@ -107,7 +107,7 @@ def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
 def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
 
     from JANUS.utils.atmosphere_column import atmos
-    from utils.ReadSpectralFile import ReadBandEdges
+    from JANUS.utils.ReadSpectralFile import ReadBandEdges
 
     # Create atmosphere object and set parameters
     pl_radius = COUPLER_options["radius"]
@@ -135,11 +135,21 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
         case _:
             UpdateStatusfile(dirs, 20)
             raise Exception("Invalid tropopause option '%d'" % COUPLER_options["tropopause"])
-        
+
+    # Number of levels   
     nlev = int(COUPLER_options["atmosphere_nlev"])
             
+    # Spectral bands
     band_edges = ReadBandEdges(dirs["output"]+"star.sf")
 
+    # Cloud properties 
+    re   = 1.0e-5 # Effective radius of the droplets [m] (drizzle forms above 20 microns)
+    lwm  = 0.8    # Liquid water mass fraction [kg/kg] - how much liquid vs. gas is there upon cloud formation? 0 : saturated water vapor does not turn liquid ; 1 : the entire mass of the cell contributes to the cloud
+    clfr = 0.8    # Water cloud fraction - how much of the current cell turns into cloud? 0 : clear sky cell ; 1 : the cloud takes over the entire area of the cell (just leave at 1 for 1D runs)
+    do_cloud = bool(COUPLER_options["water_cloud"] == 1)
+    alpha_cloud = float(COUPLER_options["alpha_cloud"])
+
+    # Make object 
     atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, 
                 COUPLER_options["P_top"]*1e5, pl_radius, pl_mass,
                 band_edges,
@@ -148,7 +158,8 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
                 maxT = COUPLER_options["max_temperature"],
                 trppT=trppT,
                 water_lookup=False,
-                req_levels=nlev
+                req_levels=nlev, alpha_cloud=alpha_cloud,
+                re=re, lwm=lwm, clfr=clfr, do_cloud=do_cloud
                 )
 
     atm.zenith_angle    = COUPLER_options["zenith_angle"]
@@ -247,7 +258,7 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
                     T_surf_max = run_atm.iloc[-1]["T_surf"]
 
                 # calculate tolerance
-                tol = rtol * run_atm.iloc[-1]["F_atm"] + atol
+                tol = rtol * abs(run_atm.iloc[-1]["F_atm"]) + atol
             else:
                 tol = 0.1
 
@@ -273,6 +284,8 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
     if write_in_tmp_dir:
         shutil.rmtree(tmp_dir,ignore_errors=True)
 
+    any_cloud = np.any(np.array(atm.clfr) > 1.0e-20)
+    log.info("Water clouds have formed = %s"%(str(any_cloud)))
     log.info("SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2" % (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
 
     # Save atm data to disk

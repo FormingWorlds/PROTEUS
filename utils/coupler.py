@@ -372,7 +372,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                     if key in [ "IC_INTERIOR", "ic_interior_filename", 
                                 "solid_stop", "steady_stop", "iter_max",
                                 "plot_iterfreq", "stellar_heating", "mixing_length",
-                                "atmosphere_chem_type", "solvepp_enabled", "insert_rscatter",
+                                "atmosphere_chem_type", "solvepp_enabled", "insert_rscatter", "water_cloud",
                                 "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
                                 "dt_dynamic", "prevent_warming", "atmosphere_model", "atmosphere_nlev"]:
                         val = int(val)
@@ -464,6 +464,10 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     if not dummy_atm:
         cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
         cpl_stacked.plot_stacked(output_dir, plot_times)
+
+        nc_path = output_dir + "/data/%d_atm.nc"%(int(output_times[-1]))
+        cpl_fluxes.plot_fluxes_atmosphere(output_dir, nc_path)
+
 
     # Only at the end of the simulation
     if end:

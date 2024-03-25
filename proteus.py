@@ -445,7 +445,7 @@ def main():
             t1 = arr_t[lb1]; t2 = arr_t[lb2]
 
             # Flux samples
-            flx_m = max(arr_f[lb1],arr_f[lb2])
+            flx_m = max(abs(arr_f[lb1]),abs(arr_f[lb2]))
 
             # Check melt fraction rate
             phi_1 =  arr_p[lb1]
