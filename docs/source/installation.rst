@@ -261,7 +261,7 @@ Step-by-step (core modules)
         .. code-block:: console
 
             $   cd petsc
-            $   ./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"
+            $   ./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --download-f2cblaslapack --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"
                 
         * Run the exact ``make all`` command provided at the end of the configure step
         
