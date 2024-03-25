@@ -41,7 +41,7 @@ def plot_fluxes_atmosphere(output_dir, nc_fpath):
 
     ax.set_xscale("symlog")
     ax.set_xlabel("Upward-directed flux [W m-2]")
-    ax.set_ylabel("Pressure [Bar]")
+    ax.set_ylabel("Pressure [bar]")
     ax.set_yscale("log")
     ax.set_ylim([pl[-1],pl[0]])
 
