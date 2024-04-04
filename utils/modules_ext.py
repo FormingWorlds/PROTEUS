@@ -4,7 +4,6 @@
 # https://docs.python.org/3/tutorial/modules.html
 
 # System and file management
-import importlib.util
 import argparse
 import logging
 import pathlib
@@ -27,9 +26,9 @@ plt.ioff()
 
 import matplotlib.ticker as ticker
 from matplotlib import cm
-import matplotlib.transforms as transforms
 from matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.font_manager as fm
 
@@ -42,7 +41,7 @@ import pickle as pkl
 from scipy.interpolate import RectBivariateSpline, interp1d, PchipInterpolator
 from scipy import interpolate
 from scipy.integrate import solve_ivp, odeint
-from scipy.optimize import newton, fsolve, curve_fit
+from scipy.optimize import fsolve
 from scipy import stats
 
 

@@ -987,7 +987,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
 
             # Calculate number of macro steps for SPIDER to perform within
             # this time-step of PROTEUS, which sets the number of json files.
-            nsteps = 2
+            nsteps = 1
             dtmacro = math.ceil(dtswitch / nsteps)   # Ensures that dtswitch is divisible by nsteps
             dtswitch = nsteps * dtmacro
 

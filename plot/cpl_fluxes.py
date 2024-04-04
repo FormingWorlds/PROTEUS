@@ -57,7 +57,7 @@ def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
     log.info("Plotting global fluxes")
 
     # Get values
-    df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep="\t")
+    df = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=r"\s+")
 
     df_atm = df.loc[df['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
     df_atm = df_atm.loc[df_atm['Time']>t0]
@@ -79,7 +79,8 @@ def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
 
     # Create plot
     mpl.use('Agg')
-    fig,ax = plt.subplots(figsize=(5,4))
+    scale = 1.1
+    fig,ax = plt.subplots(1,1,figsize=(5*scale,4*scale))
     lw = 2.0
     al = 0.96
 
@@ -100,7 +101,9 @@ def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
     ax.set_xscale("log")
     ax.set_xlabel("Time [yr]")
     ax.set_xlim(t_atm[0], t_atm[-1])
-    ax.legend(loc='center left')
+    legend = ax.legend(loc='lower left')
+    legend.get_frame().set_alpha(None)
+    legend.get_frame().set_facecolor((1, 1, 1, 0.99))
     ax.grid(color='black', alpha=0.05)
 
     plt.close()
