@@ -34,7 +34,7 @@ def _read_nc(nc_fpath):
 
 
 # Plotting function
-def plot_atmosphere_cbar(output_dir, plot_both=False):
+def plot_atmosphere_cbar(output_dir):
 
     print("Plot atmosphere temperatures colourbar")
 
@@ -63,15 +63,11 @@ def plot_atmosphere_cbar(output_dir, plot_both=False):
 
     # Initialise plot
     scale = 1.1
-    if plot_both:
-        fig,(ax1,ax2) = plt.subplots(2,1, sharex=True, figsize=(5*scale,8*scale))
-        ax1.set_ylabel("Height [km]")
-    else:
-        fig,ax2 = plt.subplots(1,1,figsize=(5*scale,4*scale))
-    ax2.set_ylabel("Pressure [bar]")
-    ax2.set_xlabel("Temperature [K]")
-    ax2.invert_yaxis()
-    ax2.set_yscale("log")
+    fig,ax = plt.subplots(1,1,figsize=(5*scale,4*scale))
+    ax.set_ylabel("Pressure [bar]")
+    ax.set_xlabel("Temperature [K]")
+    ax.invert_yaxis()
+    ax.set_yscale("log")
 
     # Colour mapping
     norm = mpl.colors.Normalize(vmin=sorted_times[0], vmax=sorted_times[-1])
@@ -82,20 +78,21 @@ def plot_atmosphere_cbar(output_dir, plot_both=False):
     for i in range(nfiles):
         a = 0.7
         c = sm.to_rgba(sorted_times[i])
-        if plot_both:
-            ax1.plot(sorted_t[i], sorted_z[i], color=c, alpha=a, zorder=3)
-        ax2.plot(sorted_t[i], sorted_p[i], color=c, alpha=a, zorder=3)
+        ax.plot(sorted_t[i], sorted_p[i], color=c, alpha=a, zorder=3)
 
     # Grid
-    if plot_both:
-        ax1.grid(alpha=0.2, zorder=2)
-    ax2.grid(alpha=0.2, zorder=2)
-    ax2.set_xlim(0,np.amax(sorted_t)+100)
+    ax.grid(alpha=0.2, zorder=2)
+    ax.set_xlim(0,np.amax(sorted_t)+100)
+    ax.xaxis.set_minor_locator(MultipleLocator(base=250))
+
+    ax.set_ylim(np.amax(sorted_p)*3, np.amin(sorted_p)/3)
+    ax.yaxis.set_major_locator(LogLocator())
 
     # Plot colourbar
-    cax = inset_axes(ax2, width="50%", height="8%", loc='upper right', borderpad=1.0) 
-    cbar = fig.colorbar(sm, cax=cax, orientation='horizontal') 
-    cbar.ax.set_xticks([round(v,1) for v in np.linspace(sorted_times[0] , sorted_times[-1], 4)])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    cbar = fig.colorbar(sm, cax=cax, orientation='vertical') 
+    cbar.ax.set_yticks([round(v,1) for v in np.linspace(sorted_times[0] , sorted_times[-1], 8)])
     cbar.set_label("Time [Myr]") 
 
     # Save plot

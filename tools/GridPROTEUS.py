@@ -3,7 +3,7 @@
 # Run PROTEUS for a grid of parameters
 
 # Prepare
-import os, itertools, time, subprocess, shutil, sys, multiprocessing, logging
+import os, itertools, time, subprocess, shutil, sys, multiprocessing, logging, gc
 from datetime import datetime
 import numpy as np
 COUPLER_DIR=os.getenv('COUPLER_DIR')
@@ -330,6 +330,7 @@ class Pgrid():
                 # Ensure data is written to disk
                 hdl.flush()
                 os.fsync(hdl.fileno()) 
+        gc.collect()
 
 
          # Thread targget
@@ -350,8 +351,8 @@ class Pgrid():
             # Check cfg exists
             cfgexists = False
             waitfor   = 4.0 
-            for _ in range(int(waitfor*10)):  # do n=100*wait_for checks
-                time.sleep(0.1)
+            for _ in range(int(waitfor*100)):  # do n=100*wait_for checks
+                time.sleep(0.01)
                 if os.path.exists(cfgfile):
                     cfgexists = True
                     break
@@ -388,6 +389,7 @@ class Pgrid():
                         status[i] = 2
                         threads[i].join()   # make everything wait until it's completed
                         threads[i].close()  # release resources
+                        gc.collect()
 
             # Print info
             count_que = np.count_nonzero(status == 0)
@@ -461,8 +463,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","jgr_grid.cfg")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_4"
-    pg = Pgrid("jgr_4", cfg_base, symlink_dir=symlink)
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/CHANGEME"
+    pg = Pgrid("CHANGEME", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")

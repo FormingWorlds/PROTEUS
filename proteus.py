@@ -67,7 +67,7 @@ def main():
 
                     "steady": 0,           # Number of iterations passed since steady-state declared
                     "steady_loops": 3,     # Number of iterations to perform post-steady state
-                    "steady_check": 25     # Number of iterations to look backwards when checking steady state
+                    "steady_check": 15     # Number of iterations to look backwards when checking steady state
                     }
     
     # Model has completed?
