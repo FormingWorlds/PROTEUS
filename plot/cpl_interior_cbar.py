@@ -5,7 +5,7 @@ from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import *
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 #====================================================================
 
@@ -35,8 +35,8 @@ def plot_interior_cbar(output_dir):
     ax1.set_ylabel("Interior pressure, $P$ [GPa]")
     ax1.invert_yaxis()
     ax1.set_xlabel("$T$ [K]"); ax1.set_title("(a) Temperature")
-    ax2.set_xlabel("$\phi$"); ax2.set_title("(b) Melt fraction")
-    ax3.set_xlabel("$\eta$ [Pa s]"); ax3.set_title("(c) Viscosity"); ax3.set_xscale("log")
+    ax2.set_xlabel(r"$\phi$"); ax2.set_title("(b) Melt fraction")
+    ax3.set_xlabel(r"$\eta$ [Pa s]"); ax3.set_title("(c) Viscosity"); ax3.set_xscale("log")
     ax4.set_xlabel("$S$ [J K$^{-1}$ kg$^{-1}$]"); ax4.set_title("(d) Specific entropy")
 
     # Colour mapping

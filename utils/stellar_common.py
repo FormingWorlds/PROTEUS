@@ -4,7 +4,7 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import find_nearest, UpdateStatusfile
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 def ModernSpectrumLoad(dirs: dict, COUPLER_options: dict):
     """Copy file and load modern spectrum into memory.

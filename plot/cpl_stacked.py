@@ -5,7 +5,7 @@ from utils.modules_ext import *
 from utils.spider import *
 from utils.plot import *
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 #====================================================================
 def plot_stacked( output_dir, times ):
@@ -132,7 +132,7 @@ def plot_stacked( output_dir, times ):
     ##### Atmosphere part
 
     # ax0.set_xlabel("Temperature, $T$ (K)")
-    ax0.set_ylabel("Atmosphere height, $z_\mathrm{atm}$ [km]")
+    ax0.set_ylabel(r"Atmosphere height, $z_\mathrm{atm}$ [km]")
     ax0.set_xlim( left=xmin, right=xmax )
     ax0.set_ylim( top=ymax_atm_z, bottom=ymin_atm_z )
     # ax0.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
@@ -195,7 +195,7 @@ def plot_stacked( output_dir, times ):
     ax1b.invert_yaxis()
     ax1b.yaxis.tick_left()
     # ax1b.tick_params(direction='in')
-    ax1.set_ylabel( 'Mantle depth, $d_\mathrm{mantle}$ [km]' )
+    ax1.set_ylabel(r'Mantle depth, $d_\mathrm{mantle}$ [km]' )
     ax1.yaxis.set_label_coords(title_xcoord,title_ycoord)
 
     # # Pressure-height conversion for y-axis

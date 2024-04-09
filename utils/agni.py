@@ -6,7 +6,7 @@ from utils.constants import *
 
 import tomlkit as toml
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     """Run AGNI.

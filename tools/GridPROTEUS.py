@@ -122,7 +122,7 @@ class Pgrid():
         # Setup logging
         setup_logger(logpath=os.path.join(self.outdir,"manager.log"), logterm=True, level=1)
         global log
-        log = logging.getLogger(__name__)
+        log = logging.getLogger("PROTEUS")
 
         log.info("Grid '%s' says hello!" % self.name)
 

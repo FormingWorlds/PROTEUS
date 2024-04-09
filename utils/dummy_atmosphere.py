@@ -4,7 +4,7 @@ from utils.modules_ext import *
 from utils.helper import *
 from utils.constants import *
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 # Run the dummy atmosphere module
 def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):

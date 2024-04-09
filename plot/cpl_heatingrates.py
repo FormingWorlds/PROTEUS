@@ -4,7 +4,7 @@
 from utils.modules_ext import *
 from utils.plot import *
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 def cpl_heatingrates(output_dir, atm, comp=[]):
     """Plot temperature structure and corresponding heating rates versus pressure

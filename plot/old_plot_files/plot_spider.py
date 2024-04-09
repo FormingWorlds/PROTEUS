@@ -146,7 +146,7 @@ def spiderplot_fig1( times ):
     title = '(d) Viscosity, ' + units
     yticks = [1.0E2, 1.0E6, 1.0E12, 1.0E18, 1.0E21]
     fig_o.set_myaxes( ax3, title=title, xlabel='$P$ (GPa)',
-        ylabel='$\eta$', xticks=xticks, xmax=xmax, yticks=yticks, fmt=visc_fmt )
+        ylabel=r'$\eta$', xticks=xticks, xmax=xmax, yticks=yticks, fmt=visc_fmt )
     ax3.yaxis.set_label_coords(-0.075,0.67)
 
     if 0:

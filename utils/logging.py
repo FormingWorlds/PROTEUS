@@ -29,7 +29,7 @@ def setup_logger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
 
     # https://stackoverflow.com/a/61457119
 
-    custom_logger = logging.getLogger()
+    custom_logger = logging.getLogger("PROTEUS")
     custom_logger.handlers.clear()
 
     if os.path.exists(logpath):

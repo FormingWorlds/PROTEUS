@@ -40,7 +40,7 @@ def main():
     
     # Switch to logger 
     setup_logger(logpath=dirs["output"]+"std.log", logterm=True, level=COUPLER_options["log_level"])
-    log = logging.getLogger(__name__)
+    log = logging.getLogger("PROTEUS")
 
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     log.info("            PROTEUS framework (version 0.1)            ")

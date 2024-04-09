@@ -5,7 +5,7 @@ from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import *
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 #====================================================================
 def plot_interior( output_dir, times ):
@@ -122,7 +122,7 @@ def plot_interior( output_dir, times ):
 
     title = '(b) Melt fraction'
     xticks = [0,0.2,0.4,0.6,0.8,1.0]
-    fig_o.set_myaxes( ax1, title=title, xlabel='$\phi$', xticks=xticks, ymax=ymax, yticks=yticks )
+    fig_o.set_myaxes( ax1, title=title, xlabel=r'$\phi$', xticks=xticks, ymax=ymax, yticks=yticks )
     # ax1.yaxis.set_label_coords(-0.075,0.475)
     ax1.set_xlim( [-0.05, 1.05] )
     ax1.set_yticklabels([])
@@ -130,7 +130,7 @@ def plot_interior( output_dir, times ):
 
     units = myjson_o.get_dict_units(['data','visc_b'])
     title = '(c) Viscosity'#'(c) Viscosity, ' + units
-    fig_o.set_myaxes( ax2, title=title, xticks=[1.0E1, 1.0E5, 1.0E10, 1.0E15, 1.0E19, 1.0E22], xlabel='$\eta$ ['+str(units).strip()+']', yticks=[0,20,40,60,80,100,120,140], xfmt=visc_fmt )
+    fig_o.set_myaxes( ax2, title=title, xticks=[1.0E1, 1.0E5, 1.0E10, 1.0E15, 1.0E19, 1.0E22], xlabel=r'$\eta$ ['+str(units).strip()+']', yticks=[0,20,40,60,80,100,120,140], xfmt=visc_fmt )
     ax2.set_yticklabels([])
     ax2.invert_yaxis()
 

@@ -3,7 +3,7 @@
 from utils.modules_ext import *
 from utils.helper import *
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 
 def shallow_mixed_ocean_layer(F_eff, Ts_last, dT_max, t_curr, t_last):

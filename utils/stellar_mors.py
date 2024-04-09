@@ -6,7 +6,7 @@ from utils.helper import find_nearest, UpdateStatusfile
 from utils.stellar_common import *
 import Mors as mors
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 # Spectral bands for stellar fluxes, in nm
 star_bands = {

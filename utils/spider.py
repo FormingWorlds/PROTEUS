@@ -4,7 +4,7 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import *
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 class MyJSON( object ):
 
     '''load and access json data'''

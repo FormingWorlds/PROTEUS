@@ -7,7 +7,7 @@ from utils.constants import *
 from utils.plot import *
 from utils.helper import natural_sort
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 star_cmap = sci_colormaps['oleron']
 
@@ -132,7 +132,7 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False):
             ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='o',color='k',s=40, zorder=3)
             ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='o',color=c,  s=34, zorder=4)
 
-    leg = ax.legend(title="$\lambda$ [nm]", loc='center left',bbox_to_anchor=(1.02, 0.5))
+    leg = ax.legend(title=r"$\lambda$ [nm]", loc='center left',bbox_to_anchor=(1.02, 0.5))
     for legobj in leg.legendHandles:
         legobj.set_linewidth(4.0)
 

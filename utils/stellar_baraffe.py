@@ -4,7 +4,7 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import find_nearest
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 def BaraffeStellarRadius(time_dict: dict, COUPLER_options: dict, track: dict):
     """Calculates the star's radius at a time t.

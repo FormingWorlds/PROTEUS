@@ -5,7 +5,7 @@ from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import MyJSON, get_all_output_times
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 #====================================================================
 def plot_atmosphere( output_dir, times):
@@ -109,8 +109,8 @@ def plot_atmosphere( output_dir, times):
 
     #####  T-Z
     # fig_o.set_myaxes( ax0, xlabel='$T$ (K)', ylabel='$z_\mathrm{atm}$\n(km)', xmin=xmin, xmax=xmax, ymin=0, ymax=ymax_atm_z, xticks=xticks )
-    ax0.set_xlabel("Temperature, $T$ (K)")
-    ax0.set_ylabel("Atmosphere height, $z_\mathrm{atm}$ [km]")
+    ax0.set_xlabel(r"Temperature, $T$ (K)")
+    ax0.set_ylabel(r"Atmosphere height, $z_\mathrm{atm}$ [km]")
     ax0.set_ylim( top=ymax_atm_z, bottom=ymin_atm_z )
     # ax0.set_yticks([ymin_atm_pressure, 1e-2, 1e-1, 1e0, 1e1, ymax_atm_pressure])
     ax0.yaxis.set_label_coords(title_xcoord,title_ycoord)
