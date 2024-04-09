@@ -465,8 +465,10 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
         cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
         cpl_stacked.plot_stacked(output_dir, plot_times)
 
-        nc_path = output_dir + "/data/%d_atm.nc"%(int(output_times[-1]))
-        cpl_fluxes.plot_fluxes_atmosphere(output_dir, nc_path)
+        if COUPLER_options["atmosphere_model"] != 1:
+            # don't make this plot for AGNI, since it will do it itself
+            nc_path = output_dir + "/data/%d_atm.nc"%(int(output_times[-1]))
+            cpl_fluxes.plot_fluxes_atmosphere(output_dir, nc_path)
 
 
     # Only at the end of the simulation

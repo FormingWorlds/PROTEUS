@@ -1148,6 +1148,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     call_string = " ".join(call_sequence)
 
     # Run SPIDER
+    log.info("Terminal output suppressed")
     spider_print = open(dirs["output"]+"spider_recent.log",'w')
     spider_print.write(call_string+"\n")
     spider_print.flush()

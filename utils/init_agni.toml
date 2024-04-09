@@ -1,0 +1,32 @@
+# AGNI configuration file 
+# This is the base configuration used when coupling to PROTEUS
+title = "PROTEUS base"
+
+[planet]
+    p_top           = 1.0e-5
+
+[files]
+    clean_output    = false
+    input_star      = ""   
+
+[execution]
+    silent          = false  
+    max_steps       = 200    
+    max_runtime     = 400    
+    continua        = true   
+    aerosol         = false  
+    overlap_method  = 4      
+    thermo_funct    = false  
+    sensible_heat   = false  
+
+    dry_convection  = "mlt" 
+    condensates     = [] 
+    solvers         = ["newton"]        # assuming that we want to solve for RCE
+    initial_state   = ["iso","1800"] 
+    stabilise       = false   
+    converge_atol   = 1.0e-4  
+    converge_rtol   = 1.0e-4  
+
+
+[plots]
+    animate         = false

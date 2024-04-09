@@ -72,7 +72,7 @@ Step-by-step (core modules)
         
         $   sudo apt install libnetcdff-dev
     
-    * Set up a Python environment:
+    * Set up a Python (version 3.12) environment:
          
          * Option A (*recommended*): using the `brew` package manager
             
@@ -120,7 +120,7 @@ Step-by-step (core modules)
                 
                 .. code-block:: console
                     
-                    $   pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort netCDF4
+                    $   pip3 install matplotlib pandas netcdf4 matplotlib numpy pandas scipy sympy natsort netCDF4 tomlkit
                 
                 * Make the new Python version the system default (check what `brew` tells you during/after the `brew install python` step), by adding the following to your:
                     
@@ -146,11 +146,12 @@ Step-by-step (core modules)
                 
                 .. code-block:: console
                     
-                    $   conda create -n proteus python=3.12.2   
+                    $   conda create -n proteus python=3.12   
                     $   conda activate proteus
-                    $   conda install matplotlib numpy pandas scipy sympy natsort ipykernel 
+                    $   conda install matplotlib numpy pandas scipy sympy natsort ipykernel pip
                     $   conda install conda-forge::f90nml
                     $   conda install conda-forge::netcdf4
+                    $   pip install tomlkit
             
             * Refresh your shell:
                     
