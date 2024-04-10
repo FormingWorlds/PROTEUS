@@ -75,6 +75,8 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # Make configuration file
     # ---------------------------
 
+    log.debug("Write cfg file")
+
     # Read base AGNI configuration file
     cfg_base = os.path.join(dirs["utils"] , "init_agni.toml")
     with open(cfg_base, 'r') as hdl:
@@ -121,6 +123,15 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         # Tell AGNI not to solve for RCE
         cfg_toml["execution"]["solvers"] = []
         cfg_toml["execution"]["dry_convection"] = ""
+
+    elif time_dict["planet"] > 1:
+        # If solving for RCE and are current inside the init stage, use old T(p)
+        # as initial guess for solver.
+        pt_path = os.path.join(dirs["output"], "pt.csv")
+        if os.path.exists(pt_path):
+            log.debug("Initialise from last T(p) CSV file")
+            cfg_toml["execution"]["initial_state"] = ["csv", pt_path]
+
     
     # Solution stuff 
     surf_state = int(COUPLER_options["atmosphere_surf_state"])
@@ -130,6 +141,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         if loop_counter["total"] <= 1:
             surf_state = 0
             cfg_toml["execution"]["stabilise"] = True
+            log.debug("Stabilising")
 
         # CBL case
         if surf_state == 2:
@@ -171,6 +183,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         agni_stdout = subprocess.DEVNULL
 
     # Call the module
+    log.debug("Call AGNI subprocess")
     call_sequence = [ os.path.join(dirs["agni"],"agni.jl"), cfg_this]
     proc = subprocess.run(call_sequence, stdout=agni_stdout, stderr=sys.stdout) 
     if proc.returncode != 0:
@@ -185,6 +198,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
                 outfile.write(infile.read())
     
     # Move files
+    log.debug("Tidy files")
     files_move = [  
                     ("plot_fluxes.png", "plot_fluxes_atmosphere.png"),
                     ("atm.nc", "data/"+time_str+"_atm.nc"),
@@ -193,21 +207,20 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     for pair in files_move:
         p_inp = os.path.join(dirs["output"], pair[0])
         p_out = os.path.join(dirs["output"], pair[1])
-        if os.path.exists(p_out):
-            os.remove(p_out)
+        safe_rm(p_out)
         shutil.move(p_inp, p_out)
 
     # Remove files
-    files_remove = ["plot_ptprofile.png", "plot_vmrs.png", "fl.csv", "pt_ini.csv", "pt.csv", "agni.cfg"] 
+    files_remove = ["plot_ptprofile.png", "plot_vmrs.png", "fl.csv", "pt_ini.csv", "agni.cfg", "solver_flx.png", "solver_prf.png"] 
     for frem in files_remove:
-        frem_path = dirs["output"]+"/"+frem 
-        if os.path.exists(frem_path):
-            os.remove(frem_path)
+        frem_path = os.path.join(dirs["output"],frem)
+        safe_rm(frem_path)
 
     # ---------------------------
     # Read results
     # ---------------------------
     
+    log.debug("Read results")
     ds = nc.Dataset(os.path.join(dirs["output"],"data",time_str+"_atm.nc"))
     net_flux =      np.array(ds.variables["fl_N"][:])
     LW_flux_up =    np.array(ds.variables["fl_U_LW"][:])
