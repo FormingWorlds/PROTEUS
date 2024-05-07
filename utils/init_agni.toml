@@ -24,7 +24,7 @@ title = "PROTEUS base"
     initial_state   = ["iso","1800"] 
     stabilise       = false   
     converge_atol   = 1.0e-3  
-    converge_rtol   = 1.0e-4  
+    converge_rtol   = 2.0e-3  
 
 
 [plots]

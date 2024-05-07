@@ -137,7 +137,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         cfg_toml["execution"]["solvers"] = []
         cfg_toml["execution"]["convection_type"] = ""
 
-    elif time_dict["planet"] > 1:
+    elif time_dict["planet"] > 0:
         # If solving for RCE and are current inside the init stage, use old T(p)
         # as initial guess for solver.
         pt_path = os.path.join(dirs["output"], "pt.csv")
