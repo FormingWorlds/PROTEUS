@@ -301,7 +301,7 @@ def atmosphere_mass(pin, fO2_shift, global_d):
     mass_atm_d['O'] = 0.0
     mass_atm_d['O'] += mass_atm_d['H2O'] / mass_d['H2O']
     mass_atm_d['O'] += mass_atm_d['CO'] / mass_d['CO']
-    mass_atm_d['C'] += mass_atm_d['CO2'] / mass_d['CO2'] * 2.0
+    mass_atm_d['O'] += mass_atm_d['CO2'] / mass_d['CO2'] * 2.0
     mass_atm_d['O'] *= mass_d['O']
 
     return mass_atm_d
@@ -544,7 +544,7 @@ def equilibrium_atmosphere_MC():
 
     global_d = get_global_parameters()
 
-    NN = 2000
+    NN = 2300
 
     # Samples
     hydrogen_l =        np.random.uniform(5.0,  60,     NN)
@@ -556,11 +556,11 @@ def equilibrium_atmosphere_MC():
     # Or,
     # Constant
     # hydrogen_l =        np.ones(NN) * 36.0
-    CH_ratio_l =        np.ones(NN) * 1.0
-    fO2_shift_l =       np.ones(NN) * -4.0 
-    nitrogen_l =        np.ones(NN) * 2.8
+    # CH_ratio_l =        np.ones(NN) * 1.0
+    # fO2_shift_l =       np.ones(NN) * 2.0 
+    # nitrogen_l =        np.ones(NN) * 2.01  # primitive mantle
     # mantle_l =          np.ones(NN) * global_d['mantle_mass']
-    tsurf_l =           np.ones(NN) * 2500.0
+    # tsurf_l =           np.ones(NN) * 2500.0
 
     out_l = []
 
@@ -665,7 +665,7 @@ def write_output(filename, out_l):
 
     fieldnames = list(out_l[0].keys())
     with open(filename, 'w', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter='\t')
         writer.writeheader()
         writer.writerows(out_l)
 

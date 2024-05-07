@@ -317,9 +317,12 @@ Step-by-step (optional modules)
             $ git clone git@github.com/nichollsh/AGNI
             $ cd AGNI/
 
-    5. Follow the installation instructions in `README.md`
+    5. Follow the installation instructions in AGNI's `README.md`
 
-    6. Run AGNI at least once to precompile the code and check that it works
+    6. Run the AGNI tests 
+
+        .. code-block:: console 
+            $ ./demo_tests.jl
 
     6. Go back to the PROTEUS directory 
 

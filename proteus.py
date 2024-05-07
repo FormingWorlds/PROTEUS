@@ -16,6 +16,7 @@ from utils.janus import RunJANUS, PrepAtm, StructAtm
 from utils.agni import RunAGNI
 from utils.dummy_atmosphere import RunDummyAtm
 from utils.spider import RunSPIDER
+from utils.surface_gases import *
 from utils.logging import setup_logger
 
 from plot.cpl_fluxes import *
@@ -31,7 +32,7 @@ def main():
     args = parse_console_arguments()
 
     # Read in COUPLER input file
-    COUPLER_options, time_dict = ReadInitFile( args.cfg_file , verbose=False )
+    COUPLER_options, time_dict = ReadInitFile( args["cfg"] , verbose=False )
 
     # Set directories dictionary
     utils.constants.dirs = SetDirectories(COUPLER_options)
@@ -128,7 +129,7 @@ def main():
         runtime_helpfile    = []
 
         # Copy config file to output directory, for future reference
-        shutil.copyfile( args.cfg_file, dirs["output"]+"/init_coupler.cfg")
+        shutil.copyfile( args["cfg"], dirs["output"]+"/init_coupler.cfg")
 
         # Zero-out all volatiles, and ensure that they are all tracked
         for s in volatile_species:
@@ -278,8 +279,7 @@ def main():
             log.info("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
 
         # Calculate a new (historical) stellar spectrum 
-        if (COUPLER_options['star_model'] > 0  \
-            and ( abs( time_dict['planet'] - time_dict['sspec_prev'] ) > COUPLER_options['sspec_dt_update'] ) \
+        if (COUPLER_options['star_model'] > 0  and ( abs( time_dict['planet'] - time_dict['sspec_prev'] ) > COUPLER_options['sspec_dt_update'] ) \
             or (loop_counter["total"] == 0) ):
             
             time_dict['sspec_prev'] = time_dict['planet'] 
@@ -291,11 +291,12 @@ def main():
                 case 2:
                     fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl, COUPLER_options, track)
 
-            # Write stellar spectra to disk
+            # Write stellar spectrum to disk
             writessurf = bool(COUPLER_options["atmosphere_chem_type"] > 0)
             SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs['output']+'/data/',write_surf=writessurf)
 
-            if not (COUPLER_options["atmosphere_model"] == 2):
+            # Prepare spectral file for JANUS 
+            if COUPLER_options["atmosphere_model"] == 0:
                 # Generate a new SOCRATES spectral file containing this new spectrum
                 star_spec_src = dirs["output"]+"socrates_star.txt"
                 #    Update stdout
@@ -307,10 +308,14 @@ def main():
                 InsertStellarSpectrum(  spectral_file_nostar,
                                         star_spec_src,
                                         dirs["output"]
-                                     )
+                                    )
                 os.remove(star_spec_src)
                 #    Restore stdout
                 sys.stdout , sys.stderr = old_stdout , old_stderr
+
+            # Other cases...
+            #  - AGNI will prepare the file itself
+            #  - dummy_atmosphere does not require this file
 
         else:
             log.info("New spectrum not required at this time")

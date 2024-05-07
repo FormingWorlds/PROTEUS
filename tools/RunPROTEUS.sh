@@ -46,7 +46,7 @@ else
 
     # Dispatch screen session with PROTEUS inside
     echo "    Dispatching screen session..."
-    COMMAND="python $EXECUTABLE --cfg_file $CFGFILE"
+    COMMAND="python $EXECUTABLE --cfg $CFGFILE"
 
     if [[ "$DETACH" == "y" ]]; then 
         screen -S $ALIAS -d -m bash -c "$COMMAND" 

@@ -17,15 +17,11 @@ import plot.cpl_sflux_cross as cpl_sflux_cross
 import plot.cpl_fluxes as cpl_fluxes
 import plot.cpl_interior_cmesh as cpl_interior_cmesh
 
-# Handle optional command line arguments for volatiles
-# Optional arguments: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
-def parse_console_arguments():
-    
-    parser = argparse.ArgumentParser(description='PROTEUS optional command line arguments')
-    parser.add_argument('--cfg_file', type=str, default="init_coupler.cfg", help='Specify cfg filename')
-    parser.add_argument('--restart_file', type=str, default="0", help='Restart from specific .json file in folder. Specify only the number of the file.')
-    parser.add_argument('--restart', action='store_true', help='Restart from last file in folder.')
-    args = parser.parse_args()
+# Handle optional command line arguments for PROTEUS
+def parse_console_arguments()->dict:
+    parser = argparse.ArgumentParser(description='PROTEUS command line arguments')
+    parser.add_argument('--cfg', type=str, default="init_coupler.cfg", help='Path to configuration file')
+    args = vars(parser.parse_args())
     return args
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
@@ -385,6 +381,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                     else:
                         val = float(val)
 
+                    # Set option
                     COUPLER_options[key] = val
 
 
@@ -402,6 +399,9 @@ def ReadInitFile( init_file_passed , verbose=False):
 
     # Calculate gravity from mass and radius
     COUPLER_options["gravity"] =  const_G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
+
+    # Special cases...
+    COUPLER_options["spectral_file"] = os.path.abspath(COUPLER_options["spectral_file"])
 
     return COUPLER_options, time_dict
 

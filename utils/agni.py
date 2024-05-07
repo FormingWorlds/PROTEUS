@@ -9,7 +9,7 @@ import tomlkit as toml
 log = logging.getLogger("PROTEUS")
 
 def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
-    """Run AGNI.
+    """Run AGNI atmosphere model.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
     Stores the new flux boundary condition to be provided to SPIDER. Limits flux
@@ -45,6 +45,12 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     time_str = "%d"%time_dict["planet"]
     agni_debug = bool(log.getEffectiveLevel() == logging.DEBUG)
     make_plots = (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0)
+    try_spfile = os.path.join(dirs["output"] , "runtime.sf")
+    
+    sflux_files = glob.glob(dirs["output"]+"/data/*.sflux")
+    sflux_times = [ int(s.split("/")[-1].split(".")[0]) for s in sflux_files]
+    sflux_tlast = sorted(sflux_times)[-1]
+    sflux_path  = dirs["output"]+"/data/%d.sflux"%sflux_tlast
 
     vol_list = { 
                   "H2O" : runtime_helpfile.iloc[-1]["H2O_mr"], 
@@ -102,8 +108,15 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     cfg_toml["planet"]["vmr"] =             vol_list
 
     # Set files
-    cfg_toml["files"]["input_sf"] =         os.path.join(dirs["output"] , "star.sf")
     cfg_toml["files"]["output_dir"] =       os.path.join(dirs["output"])
+    if os.path.exists(try_spfile):
+        # exists => don't modify it
+        cfg_toml["files"]["input_sf"] =     try_spfile
+        cfg_toml["files"]["input_star"] =   ""   
+    else:
+        # doesn't exist => AGNI will copy it + modify as required
+        cfg_toml["files"]["input_sf"] =     COUPLER_options["spectral_file"]
+        cfg_toml["files"]["input_star"] =   sflux_path
     
     # Set execution
     cfg_toml["execution"]["num_levels"] =   COUPLER_options["atmosphere_nlev"]
@@ -122,7 +135,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         
         # Tell AGNI not to solve for RCE
         cfg_toml["execution"]["solvers"] = []
-        cfg_toml["execution"]["dry_convection"] = ""
+        cfg_toml["execution"]["convection_type"] = ""
 
     elif time_dict["planet"] > 1:
         # If solving for RCE and are current inside the init stage, use old T(p)
@@ -211,7 +224,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         shutil.move(p_inp, p_out)
 
     # Remove files
-    files_remove = ["plot_ptprofile.png", "plot_vmrs.png", "fl.csv", "pt_ini.csv", "agni.cfg", "solver_flx.png", "solver_prf.png"] 
+    files_remove = ["plot_ptprofile.png", "plot_vmrs.png", "fl.csv", "pt_ini.csv", "agni.cfg", "solver_flx.png", "solver_prf.png", "solver_mon.png"] 
     for frem in files_remove:
         frem_path = os.path.join(dirs["output"],frem)
         safe_rm(frem_path)
