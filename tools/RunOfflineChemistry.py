@@ -16,7 +16,7 @@ import pandas as pd
 
 # Import PROTEUS stuff
 from utils.coupler import *
-from utils.plot import offchem_read_year
+from utils.plot_offchem import offchem_read_year
 from plot.cpl_offchem_species import *
 from plot.cpl_offchem_time import *
 from plot.cpl_offchem_year import *
@@ -160,8 +160,8 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
 
         g = "".join([c.decode("utf-8") for c in g_read]).strip()
 
-        if not(g in volatile_species):
-            raise Exception("Volatile present in NetCDF is not present in volatile_species list")
+        # if not(g in volatile_species):
+        #     raise Exception("Volatile (%s) present in NetCDF is not present in volatile_species list"%g)
         
         x_arr = np.array(r_gas[:,i])
         x_arr = np.clip(x_arr, 0, None)
@@ -383,7 +383,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
     logger.info(" ")
 
     # Read helpfile
-    helpfile_df = pd.read_csv(dirs["output"]+"runtime_helpfile.csv",sep='\t')
+    helpfile_df = pd.read_csv(dirs["output"]+"runtime_helpfile.csv",sep=r'\s+')
 
     # Find out which years we have both SPIDER and JANUS data for
     evolution_json = glob.glob(dirs["output"]+"/data/*.json")
@@ -572,13 +572,13 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
 if __name__ == '__main__':
 
     # Parameters
-    cfgfile =       "output/pspace_redox/case_000/init_coupler.cfg"  # Config file used for PROTEUS
-    samples =       10                  # How many samples to use from output dir (set to -1 if all are requested)
-    threads =       70                  # How many threads to use
+    cfgfile =       "output/vulcan_test/init_coupler.cfg"  # Config file used for PROTEUS
+    samples =       -1                  # How many samples to use from output dir (set to -1 if all are requested)
+    threads =       50                  # How many threads to use
     mkfuncs =       True                # Compile reaction functions again?
     mkplots =       True                # make plots?
-    s_width =       1e9                 # Scale width of sampling distribution [yr]
-    s_centre =      1e6                 # Centre of sampling distribution [yr]
+    s_width =       1e7                 # Scale width of sampling distribution [yr]
+    s_centre =      8e5                 # Centre of sampling distribution [yr]
     runtime_sleep = 40                  # Sleep seconds per iter (required for VULCAN warm up periods to pass)
     ini_method =    1                   # Method used to init VULCAN abundances  (0: const_mix, 1: eqm)
 
