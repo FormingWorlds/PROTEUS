@@ -5,7 +5,7 @@ from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import *
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 #====================================================================
 

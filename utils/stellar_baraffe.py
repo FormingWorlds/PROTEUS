@@ -4,7 +4,7 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import find_nearest
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 def BaraffeStellarRadius(time_dict: dict, COUPLER_options: dict, track: dict):
     """Calculates the star's radius at a time t.
@@ -223,7 +223,7 @@ def BaraffeSpectrumCalc(time_star: float, spec_fl: list, COUPLER_options: dict, 
 
     return hspec_fl, hspec_fl_surf
 
-def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, folder, write_surf=True, write_1AU=True):
+def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, folder, write_surf=True):
     """Write historical spectrum to files.
 
     Parameters
@@ -243,17 +243,18 @@ def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, folder, write_surf=True, writ
 
     tstar = time_dict['star'] * 1.0e-6  # yr -> Myr
 
-    if write_1AU:
-        X = np.array([wl,sflux]).T
-        outname1 = folder + "/%d.sflux" % time_dict['planet']
-        header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (1 AU) at t_star = %.3f Myr ' % round(tstar,3)
-        np.savetxt(outname1, X, header=header,comments='',fmt='%1.4e',delimiter='\t')
+    X = np.array([wl,sflux]).T
+    outname1 = folder + "/%d.sflux" % time_dict['planet']
+    header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (1 AU) at t_star = %.3f Myr ' % round(tstar,3)
+    np.savetxt(outname1, X, header=header,comments='',fmt='%1.4e',delimiter='\t')
 
     if write_surf:
         Y = np.array([wl,sfluxsurf]).T
         outname2 = folder + "/%d.sfluxsurf" % time_dict['planet']
         header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (surface) at t_star = %.3f Myr ' % round(tstar,3)
         np.savetxt(outname2, Y, header=header,comments='',fmt='%1.4e',delimiter='\t')
+
+    return outname1
 
 
 # End of file

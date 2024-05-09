@@ -4,7 +4,7 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import *
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 class MyJSON( object ):
 
     '''load and access json data'''
@@ -1148,6 +1148,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     call_string = " ".join(call_sequence)
 
     # Run SPIDER
+    log.info("Terminal output suppressed")
     spider_print = open(dirs["output"]+"spider_recent.log",'w')
     spider_print.write(call_string+"\n")
     spider_print.flush()

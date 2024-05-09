@@ -173,14 +173,14 @@ def spiderplot_fig1( times ):
     #title = '(c) Melt fraction'
     #yticks = [0,0.2,0.4,0.6,0.8,1.0]
     #fig_o.set_myaxes( ax2, title=title, xlabel='$P$ (GPa)',
-    #    ylabel='$\phi$', xticks=xticks, xmax=xmax, yticks=yticks )
+    #    ylabel=r'$\phi$', xticks=xticks, xmax=xmax, yticks=yticks )
     #ax2.yaxis.set_label_coords(-0.075,0.475)
     #ax2.set_ylim( [0, 1] )
     #units = myjson_o.get_dict_units(['data','visc_b'])
     #title = '(d) Viscosity, ' + units
     #yticks = [1.0E2, 1.0E6, 1.0E12, 1.0E18, 1.0E21]
     #fig_o.set_myaxes( ax3, title=title, xlabel='$P$ (GPa)',
-    #    ylabel='$\eta$', xticks=xticks, xmax=xmax, yticks=yticks, fmt=visc_fmt )
+    #    ylabel=r'$\eta$', xticks=xticks, xmax=xmax, yticks=yticks, fmt=visc_fmt )
     #ax3.yaxis.set_label_coords(-0.075,0.67)
 
     if 0:

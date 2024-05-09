@@ -4,10 +4,12 @@ from utils.modules_ext import *
 from utils.helper import *
 from utils.constants import *
 
-log = logging.getLogger(__name__)
+import tomlkit as toml
+
+log = logging.getLogger("PROTEUS")
 
 def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
-    """Run AGNI.
+    """Run AGNI atmosphere model.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
     Stores the new flux boundary condition to be provided to SPIDER. Limits flux
@@ -36,10 +38,19 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     PrintHalfSeparator()
     log.info("Running AGNI...")
 
-    # Setup values to be provided by CLI
-    gravity = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
+    # ---------------------------
+    # Setup values to be provided to AGNI
+    # ---------------------------
+    gravity  = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
+    time_str = "%d"%time_dict["planet"]
+    agni_debug = bool(log.getEffectiveLevel() == logging.DEBUG)
+    make_plots = (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0)
+    try_spfile = os.path.join(dirs["output"] , "runtime.sf")
     
-    csv_fpath = dirs["output"]+"pt.csv"
+    sflux_files = glob.glob(dirs["output"]+"/data/*.sflux")
+    sflux_times = [ int(s.split("/")[-1].split(".")[0]) for s in sflux_files]
+    sflux_tlast = sorted(sflux_times)[-1]
+    sflux_path  = dirs["output"]+"/data/%d.sflux"%sflux_tlast
 
     vol_list = { 
                   "H2O" : runtime_helpfile.iloc[-1]["H2O_mr"], 
@@ -52,144 +63,178 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
                   "He"  : runtime_helpfile.iloc[-1]["He_mr"],
                   "NH3" : 0.0 # not supported by SPIDER 
                 }
-    mr_str = "\""
     mrzero = True
     for k in vol_list.keys():
         v = vol_list[k]
         if v < 1.0e-20:
             continue
         mrzero = False
-        mr_str += str("%s=%1.6f," % (k,v) )
-    mr_str = mr_str[:-1]
-    mr_str += "\""
     if mrzero:
         UpdateStatusfile(dirs, 20)
         raise Exception("All volatiles have a volume mixing ratio of zero")
+    
+    if COUPLER_options["tropopause"] not in [0,1]:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Tropopause type not supported by AGNI")
 
-    # Setup call sequence with base flags
-    call_sequence = []
-    call_sequence.append(dirs["agni"]+"agni_cli.jl")
-    call_sequence.append("%1.5e" % COUPLER_options["T_surf"])
-    call_sequence.append("%1.5e" % COUPLER_options["F_ins"]) 
-    call_sequence.append("%1.5e" % COUPLER_options["zenith_angle"]) 
-    call_sequence.append("%1.5e" % COUPLER_options["asf_scalefactor"]) 
-    call_sequence.append("%1.5e" % COUPLER_options["albedo_pl"]) 
-    call_sequence.append("%1.5e" % gravity)
-    call_sequence.append("%1.5e" % COUPLER_options["radius"])
-    call_sequence.append("%1.5e" % runtime_helpfile.iloc[-1]["P_surf"])
-    call_sequence.append("%1.5e" % COUPLER_options["P_top"])
-    call_sequence.append("--x_dict %s"              % mr_str)
-    call_sequence.append("--sp_file \"%s\""         % str(dirs["output"]+"runtime_spectral_file"))  # already includes star
-    call_sequence.append("--albedo_s %1.5e"         % COUPLER_options["albedo_s"])
-    call_sequence.append("--output %s"              % dirs["output"])
-    call_sequence.append("--tmp_magma %1.5e"        % COUPLER_options["T_surf"])  # magma temperature given by SPIDER output
-    call_sequence.append("--tmp_floor %1.5e"        % COUPLER_options["min_temperature"])
+    # ---------------------------
+    # Make configuration file
+    # ---------------------------
 
-    # Rayleigh scattering
-    if COUPLER_options["insert_rscatter"] == 1:
-        call_sequence.append("--rscatter")
+    log.debug("Write cfg file")
 
-    # Convection scheme
-    call_sequence.append("--convect_mlt")
+    # Read base AGNI configuration file
+    cfg_base = os.path.join(dirs["utils"] , "init_agni.toml")
+    with open(cfg_base, 'r') as hdl:
+        cfg_toml = toml.load(hdl) 
 
-    # Solution type
-    load_prev = False
-    if COUPLER_options["atmosphere_solve_energy"] == 0:
-        # Prescribed dry adiabat + condensation curve
-        call_sequence.append("--ini_dry")
-        call_sequence.append("--ini_sat")
+    # Setup new AGNI configuration file for this run
+    cfg_this = os.path.join(dirs["output"] , "agni_recent.toml")
+
+    # Set title 
+    cfg_toml["title"] = "PROTEUS configured"
+
+    # Set planet 
+    cfg_toml["planet"]["tmp_surf"] =        COUPLER_options["T_surf"]
+    cfg_toml["planet"]["instellation"] =    COUPLER_options["F_ins"]
+    cfg_toml["planet"]["s0_fact"] =         COUPLER_options["asf_scalefactor"]
+    cfg_toml["planet"]["albedo_b"] =        COUPLER_options["albedo_pl"]
+    cfg_toml["planet"]["zenith_angle"] =    COUPLER_options["zenith_angle"]
+    cfg_toml["planet"]["albedo_s"] =        COUPLER_options["albedo_s"]
+    cfg_toml["planet"]["gravity"] =         gravity
+    cfg_toml["planet"]["radius"] =          COUPLER_options["radius"]
+    cfg_toml["planet"]["p_surf"] =          runtime_helpfile.iloc[-1]["P_surf"]
+    cfg_toml["planet"]["p_top"] =           COUPLER_options["P_top"]
+    cfg_toml["planet"]["vmr"] =             vol_list
+
+    # Set files
+    cfg_toml["files"]["output_dir"] =       os.path.join(dirs["output"])
+    if os.path.exists(try_spfile):
+        # exists => don't modify it
+        cfg_toml["files"]["input_sf"] =     try_spfile
+        cfg_toml["files"]["input_star"] =   ""   
     else:
-        # Solving for RCE
-        call_sequence.append("--ini_iso %1.5e" % float(COUPLER_options["T_surf"]-400.0))
-        call_sequence.append("--dtsolve")
-        call_sequence.append("--nlsolve")
-
-        # Start from previous CSV file?
-        # If not, the model will start from an isothermal state at T=tstar
-        # if os.path.exists(csv_fpath) and (time_dict["planet"] > 0):
-        #     load_prev = True  
-        #     call_sequence.append("--pt_path %s" % csv_fpath)
-        # else :
-        #     call_sequence.append("--dtsolve")
-
-    # Tropopause
-    if not load_prev:
-        match COUPLER_options["tropopause"]:
-            case 0:
-                pass
-            case 1:
-                call_sequence.append("--trppt %1.5e" % COUPLER_options["T_skin"])
-            case _:
-                UpdateStatusfile(dirs, 20)
-                raise Exception("Tropopause type not supported by AGNI")
-            
-    # Surface condition
-    surf_state = int(COUPLER_options["atmosphere_surf_state"])
-    if (0 <= surf_state <= 2):
-
-        # Don't allow free T_surf on first call (for stability)
-        if (loop_counter["total"] <= 1) and (surf_state == 2):
-            surf_state = 0
+        # doesn't exist => AGNI will copy it + modify as required
+        cfg_toml["files"]["input_sf"] =     COUPLER_options["spectral_file"]
+        cfg_toml["files"]["input_star"] =   sflux_path
+    
+    # Set execution
+    cfg_toml["execution"]["num_levels"] =   COUPLER_options["atmosphere_nlev"]
+    cfg_toml["execution"]["rayleigh"] =     bool(COUPLER_options["insert_rscatter"] == 1)
+    cfg_toml["execution"]["cloud"] =        bool(COUPLER_options["water_cloud"] == 1)
+    if COUPLER_options["atmosphere_solve_energy"] == 0:
+        # The default cfg assumes solving for energy balance.
+        # If we don't want to do that, set the configuration to a prescribed
+        # profile of: T(p) = dry + condensing + stratosphere
+        initial_arr = ["sat", "dry"]
+        for vol in vol_list.keys():
+            initial_arr.extend(["con", vol])
+        if COUPLER_options["tropopause"] == 1:
+            initial_arr.extend(["str", "%.3e"%COUPLER_options["T_skin"]])
+        cfg_toml["execution"]["initial_state"] = initial_arr
         
-        call_sequence.append("--surface %d" % surf_state)
+        # Tell AGNI not to solve for RCE
+        cfg_toml["execution"]["solvers"] = []
+        cfg_toml["execution"]["convection_type"] = ""
 
-        # Conductive skin case
+    elif time_dict["planet"] > 0:
+        # If solving for RCE and are current inside the init stage, use old T(p)
+        # as initial guess for solver.
+        pt_path = os.path.join(dirs["output"], "pt.csv")
+        if os.path.exists(pt_path):
+            log.debug("Initialise from last T(p) CSV file")
+            cfg_toml["execution"]["initial_state"] = ["csv", pt_path]
+
+    
+    # Solution stuff 
+    surf_state = int(COUPLER_options["atmosphere_surf_state"])
+    if (0 <= surf_state <= 3):
+
+        # Stability on first call
+        if loop_counter["total"] <= 1:
+            surf_state = 0
+            cfg_toml["execution"]["stabilise"] = True
+            log.debug("Stabilising")
+
+        # CBL case
         if surf_state == 2:
             if COUPLER_options["atmosphere_solve_energy"] == 0:
                 UpdateStatusfile(dirs, 20)
-                raise Exception("With AGNI, it is necessary to an energy-conserving solver alongside the conductive lid scheme! Turn them both on or both off.")
-            
-            call_sequence.append("--skin_k %1.6e" % COUPLER_options["skin_k"])
-            call_sequence.append("--skin_d %1.6e" % COUPLER_options["skin_d"])
+                raise Exception("With AGNI it is necessary to an energy-conserving solver alongside the conductive lid scheme. Turn them both on or both off.")
+            cfg_toml["planet"]["skin_k"] =          COUPLER_options["skin_k"]
+            cfg_toml["planet"]["skin_d"] =          COUPLER_options["skin_d"]
+            cfg_toml["planet"]["tmp_magma"] =       COUPLER_options["T_surf"]
+
+        cfg_toml["execution"]["solution_type"] = surf_state
 
     else:
         UpdateStatusfile(dirs, 20)
         raise Exception("Invalid surface state %d" % surf_state)
 
-    # Misc flags
-    if log.getEffectiveLevel() == logging.DEBUG:
-        call_sequence.append("--verbose")
-    call_sequence.append("--plot")
-    call_sequence.append("--nsteps 500") 
-    call_sequence.append("--nlevels %d" % int(COUPLER_options["atmosphere_nlev"]))
+    # Set plots 
+    cfg_toml["plots"]["at_runtime"]     = agni_debug and make_plots
+    cfg_toml["plots"]["temperature"]    = make_plots
+    cfg_toml["plots"]["fluxes"]         = make_plots
+    cfg_toml["plots"]["contribution"]   = make_plots
+    cfg_toml["plots"]["emission"]       = make_plots
+    cfg_toml["plots"]["albedo"]         = make_plots
+    cfg_toml["plots"]["mixing_ratios"]  = make_plots
 
-    call_sequence.append("--convcrit_tmprel   %1.4e" % 2.5 )
-    call_sequence.append("--convcrit_fradrel  %1.4e" % 0.1 )
-    call_sequence.append("--convcrit_flosspct %1.4e" % 2.0 )
+    # Write new configuration file 
+    with open(cfg_this, 'w') as hdl:
+        toml.dump(cfg_toml, hdl)
 
+    # ---------------------------
     # Run AGNI
-    call_string = " ".join(call_sequence)
+    # ---------------------------
 
-    agni_print = open(dirs["output"]+"agni_recent.log",'w')
-    agni_print.write(call_string+" \n")
+    # Setup output stream
+    if agni_debug:
+        agni_stdout = sys.stdout 
+    else:
+        log.info("Terminal output suppressed")
+        agni_stdout = subprocess.DEVNULL
 
-    proc = subprocess.run([call_string], shell=True, stdout=sys.stdout, stderr=agni_print)
-    
-    agni_print.close()
+    # Call the module
+    log.debug("Call AGNI subprocess")
+    call_sequence = [ os.path.join(dirs["agni"],"agni.jl"), cfg_this]
+    proc = subprocess.run(call_sequence, stdout=agni_stdout, stderr=sys.stdout) 
     if proc.returncode != 0:
         UpdateStatusfile(dirs, 22)
         raise Exception("An error occurred when executing AGNI")
+    
+    # Copy AGNI log into PROTEUS log
+    # There are probably better ways to do this, but it works well enough. We don't use agni_debug much anyway
+    if agni_debug:
+        with open(os.path.join(dirs["output"], "std.log"), "a") as outfile:
+            with open(os.path.join(dirs["output"], "agni.log"), "r") as infile:
+                outfile.write(infile.read())
+    
+    # Move files
+    log.debug("Tidy files")
+    files_move = [  
+                    ("plot_fluxes.png", "plot_fluxes_atmosphere.png"),
+                    ("atm.nc", "data/"+time_str+"_atm.nc"),
+                    ("agni.log", "agni_recent.log")
+                 ]
+    for pair in files_move:
+        p_inp = os.path.join(dirs["output"], pair[0])
+        p_out = os.path.join(dirs["output"], pair[1])
+        safe_rm(p_out)
+        shutil.move(p_inp, p_out)
 
-    # Read result
-    nc_fpath = dirs["output"]+"data/"+str(int(time_dict["planet"]))+"_atm.nc"
-    shutil.move(dirs["output"]+"atm.nc", nc_fpath)  # read data
-
-    # Move fluxes plot file
-    fl_path = dirs["output"]+"plot_fluxes_atmosphere.pdf"   
-    if os.path.exists(fl_path):
-        os.remove(fl_path)
-    shutil.move(dirs["output"]+"fl.pdf", fl_path)
-
-    files_remove = ["pt.pdf", "mf.pdf"]  # remove files
-    files_remove.extend(glob.glob("zzframe_*.png"))
-    files_remove.extend(glob.glob("zyframe_*.png"))
+    # Remove files
+    files_remove = ["plot_ptprofile.png", "plot_vmrs.png", "fl.csv", "pt_ini.csv", "agni.cfg", "solver_flx.png", "solver_prf.png", "solver_mon.png"] 
     for frem in files_remove:
-        frem_path = dirs["output"]+"/"+frem 
-        if os.path.exists(frem_path):
-            os.remove(frem_path)
+        frem_path = os.path.join(dirs["output"],frem)
+        safe_rm(frem_path)
 
-    # Read AGNI output NetCDF file
-    ds = nc.Dataset(nc_fpath)
+    # ---------------------------
+    # Read results
+    # ---------------------------
+    
+    log.debug("Read results")
+    ds = nc.Dataset(os.path.join(dirs["output"],"data",time_str+"_atm.nc"))
     net_flux =      np.array(ds.variables["fl_N"][:])
     LW_flux_up =    np.array(ds.variables["fl_U_LW"][:])
     T_surf =        float(ds.variables["tmpl"][-1])

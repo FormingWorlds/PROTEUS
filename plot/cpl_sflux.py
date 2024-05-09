@@ -7,7 +7,7 @@ from utils.constants import *
 from utils.helper import natural_sort
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 # Planck function value at stellar surface
 # lam in nm

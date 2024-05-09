@@ -5,7 +5,7 @@ from utils.modules_ext import *
 from utils.plot import *
 from utils.spider import *
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 

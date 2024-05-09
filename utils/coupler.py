@@ -6,7 +6,7 @@ from utils.constants import *
 from utils.spider import *
 from utils.helper import *
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("PROTEUS")
 
 import plot.cpl_atmosphere as cpl_atmosphere
 import plot.cpl_global as cpl_global
@@ -17,15 +17,11 @@ import plot.cpl_sflux_cross as cpl_sflux_cross
 import plot.cpl_fluxes as cpl_fluxes
 import plot.cpl_interior_cmesh as cpl_interior_cmesh
 
-# Handle optional command line arguments for volatiles
-# Optional arguments: https://towardsdatascience.com/learn-enough-python-to-be-useful-argparse-e482e1764e05
-def parse_console_arguments():
-    
-    parser = argparse.ArgumentParser(description='PROTEUS optional command line arguments')
-    parser.add_argument('--cfg_file', type=str, default="init_coupler.cfg", help='Specify cfg filename')
-    parser.add_argument('--restart_file', type=str, default="0", help='Restart from specific .json file in folder. Specify only the number of the file.')
-    parser.add_argument('--restart', action='store_true', help='Restart from last file in folder.')
-    args = parser.parse_args()
+# Handle optional command line arguments for PROTEUS
+def parse_console_arguments()->dict:
+    parser = argparse.ArgumentParser(description='PROTEUS command line arguments')
+    parser.add_argument('--cfg', type=str, default="init_coupler.cfg", help='Path to configuration file')
+    args = vars(parser.parse_args())
     return args
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
@@ -59,10 +55,9 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
     # If runtime_helpfile not existent, create it + write to disk
     if not os.path.isfile(dirs["output"]+"/"+runtime_helpfile_name):
-        runtime_helpfile = pd.DataFrame(columns=['Time', 'Input', 'R_star', 'T_surf', 'T_eqm', 'F_int', 'F_atm', 'F_net', 'F_olr', 'F_ins', 'F_sct', 'P_surf', 'M_atm', 'M_atm_kgmol', 'Phi_global', 'RF_depth', 'M_mantle', 'M_core', 'M_mantle_liquid', 'M_mantle_solid', 'H_mol_atm', 'H_mol_solid', 'H_mol_liquid', 'H_mol_total', 'O_mol_total', 'C_mol_total', 'N_mol_total', 'S_mol_total', 'He_mol_total', 'O/H_atm', 'C/H_atm', 'N/H_atm', 'S/H_atm', 'He/H_atm', 'H2O_mr', 'CO2_mr', 'H2_mr', 'CO_mr', 'CH4_mr', 'N2_mr', 'O2_mr', 'S_mr', 'He_mr'])
+        runtime_helpfile = pd.DataFrame(columns=["Time", "Input", "R_star", "T_surf", "T_eqm", "F_int", "F_atm", "F_net", "F_olr", "F_ins", "F_sct", "P_surf", "M_atm", "M_atm_kgmol", "Phi_global", "RF_depth", "M_mantle", "M_core", "M_mantle_liquid", "M_mantle_solid", "H_mol_atm", "H_mol_solid", "H_mol_liquid", "H_mol_total", "O_mol_total", "C_mol_total", "N_mol_total", "S_mol_total", "He_mol_total", "O/H_atm", "C/H_atm", "N/H_atm", "S/H_atm", "He/H_atm", "H2O_mr", "CO2_mr", "H2_mr", "CO_mr", "CH4_mr", "N2_mr", "O2_mr", "S_mr", "He_mr", "H2O_liquid_kg", "H2O_solid_kg", "H2O_atm_kg", "H2O_atm_bar", "CO2_liquid_kg", "CO2_solid_kg", "CO2_atm_kg", "CO2_atm_bar", "H2_liquid_kg", "H2_solid_kg", "H2_atm_kg", "H2_atm_bar", "CH4_liquid_kg", "CH4_solid_kg", "CH4_atm_kg", "CH4_atm_bar", "CO_liquid_kg", "CO_solid_kg", "CO_atm_kg", "CO_atm_bar", "N2_liquid_kg", "N2_solid_kg", "N2_atm_kg", "N2_atm_bar", "O2_liquid_kg", "O2_solid_kg", "O2_atm_kg", "O2_atm_bar", "S_liquid_kg", "S_solid_kg", "S_atm_kg", "S_atm_bar", "He_liquid_kg", "He_solid_kg", "He_atm_kg", "He_atm_bar", "H2O_mol_atm", "H2O_mol_solid", "H2O_mol_liquid", "H2O_mol_total", "CO2_mol_atm", "CO2_mol_solid", "CO2_mol_liquid", "CO2_mol_total", "H2_mol_atm", "H2_mol_solid", "H2_mol_liquid", "H2_mol_total", "CH4_mol_atm", "CH4_mol_solid", "CH4_mol_liquid", "CH4_mol_total", "CO_mol_atm", "CO_mol_solid", "CO_mol_liquid", "CO_mol_total", "N2_mol_atm", "N2_mol_solid", "N2_mol_liquid", "N2_mol_total", "O2_mol_atm", "O2_mol_solid", "O2_mol_liquid", "O2_mol_total", "S_mol_atm", "S_mol_solid", "S_mol_liquid", "He_mol_atm", "He_mol_solid", "He_mol_liquid", "O_mol_solid", "C_mol_solid", "N_mol_solid", "O_mol_liquid", "C_mol_liquid", "N_mol_liquid", "O_mol_atm", "C_mol_atm", "N_mol_atm"])
         runtime_helpfile.to_csv( dirs["output"]+"/"+runtime_helpfile_name, index=False, sep="\t") 
         time_dict["planet"] = 0
-        #, 'H2O_atm_bar', 'CO2_atm_bar', 'H2_atm_bar', 'CH4_atm_bar', 'CO_atm_bar', 'N2_atm_bar', 'O2_atm_bar', 'S_atm_bar', 'He_atm_bar'run
 
         # Save coupler options to file
         COUPLER_options_save = pd.DataFrame(COUPLER_options, index=[0])
@@ -174,7 +169,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
                 runtime_helpfile_new[vol+"_atm_kg"]     = 0.0
                 runtime_helpfile_new[vol+"_atm_bar"]    = 0.0
                 runtime_helpfile_new[vol+"_mr"]         = 0.0
-                log.debug(str(vol) + " kg = " + str(runtime_helpfile_new[vol+"_atm_kg"]))
+            log.debug(str(vol) + " bar = " + str(runtime_helpfile_new[vol+"_atm_bar"])  + " , included=" + str(COUPLER_options[vol+"_included"]))
 
         ## Derive X/H ratios for atmosphere from interior outgassing
 
@@ -386,6 +381,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                     else:
                         val = float(val)
 
+                    # Set option
                     COUPLER_options[key] = val
 
 
@@ -403,6 +399,9 @@ def ReadInitFile( init_file_passed , verbose=False):
 
     # Calculate gravity from mass and radius
     COUPLER_options["gravity"] =  const_G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
+
+    # Special cases...
+    COUPLER_options["spectral_file"] = os.path.abspath(COUPLER_options["spectral_file"])
 
     return COUPLER_options, time_dict
 
@@ -457,7 +456,7 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
             plot_times.append(int(v))
 
     plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
-    log.debug("Snapshots to plot:", plot_times)
+    log.debug("Snapshots to plot:" + str(plot_times))
 
     # Specific timesteps for paper plots
     cpl_interior.plot_interior(output_dir, plot_times)     
@@ -465,8 +464,10 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
         cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
         cpl_stacked.plot_stacked(output_dir, plot_times)
 
-        nc_path = output_dir + "/data/%d_atm.nc"%(int(output_times[-1]))
-        cpl_fluxes.plot_fluxes_atmosphere(output_dir, nc_path)
+        if COUPLER_options["atmosphere_model"] != 1:
+            # don't make this plot for AGNI, since it will do it itself
+            nc_path = output_dir + "/data/%d_atm.nc"%(int(output_times[-1]))
+            cpl_fluxes.plot_fluxes_atmosphere(output_dir, nc_path)
 
 
     # Only at the end of the simulation

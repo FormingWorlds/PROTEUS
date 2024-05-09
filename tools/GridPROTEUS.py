@@ -122,7 +122,7 @@ class Pgrid():
         # Setup logging
         setup_logger(logpath=os.path.join(self.outdir,"manager.log"), logterm=True, level=1)
         global log
-        log = logging.getLogger(__name__)
+        log = logging.getLogger("PROTEUS")
 
         log.info("Grid '%s' says hello!" % self.name)
 
@@ -339,7 +339,7 @@ class Pgrid():
             if test_run:
                 command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
             else:
-                command = ["python",proteus_py,"--cfg_file",cfg_path]
+                command = ["python",proteus_py,"--cfg",cfg_path]
             subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
 
