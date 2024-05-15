@@ -174,10 +174,10 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         ## Derive X/H ratios for atmosphere from interior outgassing
 
         # Number of mols per species and reservoir
+        runtime_helpfile_new["M_atm_kgmol"] = 0.0
         for vol in volatile_species:
 
             # Total and baseline
-            
             runtime_helpfile_new[vol+"_mol_atm"]    = 0.
             runtime_helpfile_new[vol+"_mol_solid"]  = 0.
             runtime_helpfile_new[vol+"_mol_liquid"] = 0.
@@ -192,13 +192,14 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
                                                          + runtime_helpfile_new[vol+"_mol_solid"]  \
                                                          + runtime_helpfile_new[vol+"_mol_liquid"]
 
-        runtime_helpfile_new["M_atm_kgmol"] = 0.
+                runtime_helpfile_new["M_atm_kgmol"] += runtime_helpfile_new[vol+"_atm_bar"] * molar_mass[vol] / runtime_helpfile_new["P_surf"]
 
         # Number of mols per element and reservoir
         for res in [ "total", "solid", "liquid", "atm" ]: 
             runtime_helpfile_new["H_mol_"+res]  = runtime_helpfile_new["H2O_mol_"+res] * 2. \
                                                 + runtime_helpfile_new["H2_mol_"+res]  * 2. \
                                                 + runtime_helpfile_new["CH4_mol_"+res] * 4. 
+
             if ('O' in element_list):
                 runtime_helpfile_new["O_mol_"+res]  = runtime_helpfile_new["H2O_mol_"+res] * 1. \
                                                     + runtime_helpfile_new["CO2_mol_"+res] * 2. \
@@ -215,10 +216,24 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
             if ('He' in element_list):
                 runtime_helpfile_new["He_mol_"+res] = runtime_helpfile_new["He_mol_"+res]  * 1.
 
-            if res == "atm":
-                runtime_helpfile_new["M_atm_kgmol"] = 0.0
-                for elem in element_list:
-                    runtime_helpfile_new["M_atm_kgmol"] += runtime_helpfile_new[elem+"_mol_"+res] * molar_mass[elem]
+
+        # Track hydrogen
+        H_kg_this = 0.0
+        H_kg_this += runtime_helpfile_new["H2O_liquid_kg"] * (2/18)
+        H_kg_this += runtime_helpfile_new["H2O_solid_kg"]  * (2/18)
+        H_kg_this += runtime_helpfile_new["H2O_atm_kg"]    * (2/18)
+
+        H_kg_this += runtime_helpfile_new["H2_liquid_kg"]
+        H_kg_this += runtime_helpfile_new["H2_solid_kg"] 
+        H_kg_this += runtime_helpfile_new["H2_atm_kg"]   
+
+        H_kg_this += runtime_helpfile_new["CH4_liquid_kg"] * (4/16)
+        H_kg_this += runtime_helpfile_new["CH4_solid_kg"]  * (4/16)
+        H_kg_this += runtime_helpfile_new["CH4_atm_kg"]    * (4/16)
+
+        H_oceans = H_kg_this / (1.55e20)
+        log.debug("Calculated [H] = %.2e oceans" % (H_oceans))
+
 
         # Avoid division by 0
         min_val     = 1e-99

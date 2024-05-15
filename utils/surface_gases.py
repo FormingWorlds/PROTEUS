@@ -2,6 +2,7 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import *
 
+log = logging.getLogger("PROTEUS")
 
 # Solve partial pressures functions
 # Written by Dan Bower
@@ -315,7 +316,7 @@ def solvepp_func(pin, fO2_shift, global_d, mass_target_d):
 
     # get (molten) mantle masses
     mass_int_d = solvepp_dissolved_mass(pin, fO2_shift, global_d)
-
+    
     # compute residuals
     res_l = []
     for vol in ['H','C','N']:
