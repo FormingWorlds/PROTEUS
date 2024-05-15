@@ -35,7 +35,7 @@ https://proteus-code.readthedocs.io/en/latest/contact.html
 | `output/`             | Output folder with subfolders for each model run          |
 | `input/`              | Input folder (e.g. stellar spectra, example configs)      |
 | `docs/`			    | Documentation source files                                |
-| `tests/`              | Test cases that the model should be able to reproduce     |
+| `examples/`           | Example cases that the model should be able to reproduce     |
 
 
 ### Installation instructions   
