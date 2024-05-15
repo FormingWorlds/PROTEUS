@@ -36,10 +36,6 @@ Read access to the following repositories:
         
         * URL: https://gitlab.com/petsc/petsc
 
-    * Scientific application test utility: **SciATH**
-        
-        * URL: https://github.com/sciath/sciath
-
 Step-by-step (core modules)
 ----------------
 

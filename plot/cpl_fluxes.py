@@ -96,7 +96,7 @@ def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
     ax.plot(t_atm, F_asf, lw=lw, alpha=al, zorder=3, color=dict_colors["ASF"],    label="ASF", linestyle='dotted')
 
     # Configure plot
-    # ax.set_yscale("symlog")
+    ax.set_yscale("symlog")
     ax.set_ylabel("Unsigned flux [W m$^{-2}$]")
     ax.set_xscale("log")
     ax.set_xlabel("Time [yr]")
