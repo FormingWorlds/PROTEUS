@@ -144,10 +144,9 @@ Step-by-step (core modules)
                     
                     $   conda create -n proteus python=3.12   
                     $   conda activate proteus
-                    $   conda install matplotlib numpy pandas scipy sympy natsort ipykernel pip
+                    $   conda install matplotlib numpy pandas scipy sympy natsort ipykernel pip tomlkit
                     $   conda install conda-forge::f90nml
                     $   conda install conda-forge::netcdf4
-                    $   pip install tomlkit
             
             * Refresh your shell:
                     
@@ -411,7 +410,7 @@ This section includes troubleshooting advice for common errors. Each entry is la
 
 * MacOS: ``ModuleNotFoundError: No module named '_tkinter'``
     
-    * Install ``tkinter`` packageu using ``brew``: 
+    * Install ``tkinter`` package using ``brew``: 
     
     .. code-block:: console
         
@@ -436,7 +435,7 @@ This section includes troubleshooting advice for common errors. Each entry is la
     4.  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection
 
 
-* MacOS: An error during the SOCRATES compilation: 
+* MacOS: YAML library error
    `` ld: unsupported tapi file type '!tapi-tbd' in YAML file '/Library/Developer/CommandLineTools/SDKs/MacOSX13.sdk/usr/lib/libSystem.tbd' for architecture arm64``
 
       * There is an issue with your ``ld``, potentially caused by an existing installation of ``anaconda``
@@ -458,7 +457,10 @@ This section includes troubleshooting advice for common errors. Each entry is la
             $   sudo rm -rf /Library/Developer/CommandLineTools
             $   sudo xcode-select --install
 
+* MacOS: gfortran cannot find system libraries 
+    ``ld library not found for -lsystem``
 
-
-
+    * This usually occurs when your operating system has been updated, but Xcode is not on the latest version
+    * To fix this, try updating or reinstalling Xcode
+    * Alternatively, try adding the following flag to the gfortran compile and link steps: ``-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib/`` 
 

@@ -3,7 +3,7 @@
 # -- Project information
 
 project = 'PROTEUS'
-copyright = '2023, Forming Worlds Lab'
+copyright = '2024, Forming Worlds Lab'
 author = 'Forming Worlds'
 
 release = '0.1'
