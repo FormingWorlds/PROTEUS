@@ -110,7 +110,7 @@ def main():
     
     # Zero-out all possible volatiles, and ensure that they are all tracked
     for s in volatile_species:
-        key_pp = str(s+"_pa")
+        key_pp = str(s+"_bar")
         COUPLER_options[key_pp] = 0.0
 
         key_in = str(s+"_included")
@@ -121,7 +121,7 @@ def main():
 
     # Work out which vols are included
     for s in volatile_species:
-        key_pp = str(s+"_pa")
+        key_pp = str(s+"_bar")
         key_in = str(s+"_included")
 
         # This volatile not in cfg file
@@ -134,14 +134,15 @@ def main():
             raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
 
     # Get target elemental masses depending on required method
-    if COUPLER_options["solvepp_use_params"] > 0:
-        solvepp_target = solvepp_get_target_from_params(COUPLER_options)
+    if COUPLER_options["solvevol_use_params"] > 0:
+        solvevol_target = solvevol_get_target_from_params(COUPLER_options)
     else:
-        solvepp_target = solvepp_get_target_from_pressures(COUPLER_options)
+        solvevol_target = solvevol_get_target_from_pressures(COUPLER_options)
 
     # Check that all partial pressures are positive
+    inc_vols = []
     for s in volatile_species:
-        key_pp = str(s+"_pa")
+        key_pp = str(s+"_bar")
         key_in = str(s+"_included")
         if (COUPLER_options[key_in] > 0):
 
@@ -151,7 +152,6 @@ def main():
             # Store
             inc_vols.append(s)
             
-
     log.info("Included volatiles: " + str(inc_vols))
 
     # Check that spectral file exists
@@ -293,10 +293,7 @@ def main():
         COUPLER_options["T_outgas"] =    run_int.iloc[-1]["T_surf"]
         COUPLER_options["Phi_global"] =  run_int.iloc[-1]["Phi_global"]
         #    do calculation
-        solvepp_dict = solvepp_equilibrium_atmosphere(solvepp_target, COUPLER_options)
-        #    store result
-        for vol in volatile_species:
-            COUPLER_options[vol+"_pa"] = solvepp_dict[vol]
+        solvevol_dict = solvevol_equilibrium_atmosphere(solvevol_target, COUPLER_options)
 
         # Update help quantities, input_flag: "Interior"
         runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)

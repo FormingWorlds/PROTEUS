@@ -179,7 +179,7 @@ class SolubilityCO(Solubility):
 def is_included(gas, COUPLER_options):
     return bool(COUPLER_options[gas+"_included"]>0)
 
-def solvepp_get_partial_pressures(pin, COUPLER_options):
+def solvevol_get_partial_pressures(pin, COUPLER_options):
     """Partial pressure of all considered species from oxidised species"""
 
     # we only need to know pH2O, pCO2, and pN2, since reduced species
@@ -242,19 +242,19 @@ def calc_mantle_mass(COUPLER_options):
     return mantle_mass
 
 
-def solvepp_get_total_pressure(pin, COUPLER_options):
+def solvevol_get_total_pressure(pin, COUPLER_options):
     """Sum partial pressures to get total pressure"""
 
-    p_d = solvepp_get_partial_pressures(pin, COUPLER_options)
+    p_d = solvevol_get_partial_pressures(pin, COUPLER_options)
     ptot = sum(p_d.values())
 
     return ptot
 
-def solvepp_atmosphere_mean_molar_mass(pin, COUPLER_options):
+def solvevol_atmosphere_mean_molar_mass(pin, COUPLER_options):
     """Mean molar mass of the atmosphere"""
 
-    p_d = solvepp_get_partial_pressures(pin, COUPLER_options)
-    ptot = solvepp_get_total_pressure(pin, COUPLER_options)
+    p_d = solvevol_get_partial_pressures(pin, COUPLER_options)
+    ptot = solvevol_get_total_pressure(pin, COUPLER_options)
 
     mu_atm = 0
     for key, value in p_d.items():
@@ -263,11 +263,11 @@ def solvepp_atmosphere_mean_molar_mass(pin, COUPLER_options):
 
     return mu_atm
 
-def solvepp_atmosphere_mass(pin, COUPLER_options):
+def solvevol_atmosphere_mass(pin, COUPLER_options):
     """Atmospheric mass of volatiles and totals for H, C, and N"""
 
-    p_d = solvepp_get_partial_pressures(pin, COUPLER_options)
-    mu_atm = solvepp_atmosphere_mean_molar_mass(pin, COUPLER_options)
+    p_d = solvevol_get_partial_pressures(pin, COUPLER_options)
+    mu_atm = solvevol_atmosphere_mean_molar_mass(pin, COUPLER_options)
 
     mass_atm_d = {}
     for key, value in p_d.items():
@@ -301,13 +301,13 @@ def solvepp_atmosphere_mass(pin, COUPLER_options):
 
 
 
-def solvepp_dissolved_mass(pin, COUPLER_options):
+def solvevol_dissolved_mass(pin, COUPLER_options):
     """Volatile masses in the (molten) mantle"""
 
     mass_int_d = {}
 
-    p_d = solvepp_get_partial_pressures(pin, COUPLER_options)
-    ptot = solvepp_get_total_pressure(pin, COUPLER_options)
+    p_d = solvevol_get_partial_pressures(pin, COUPLER_options)
+    ptot = solvevol_get_total_pressure(pin, COUPLER_options)
 
     prefactor = 1E-6*COUPLER_options['mantle_mass']*COUPLER_options['Phi_global']
 
@@ -357,7 +357,7 @@ def solvepp_dissolved_mass(pin, COUPLER_options):
 
     return mass_int_d
 
-def solvepp_func(pin_arr, COUPLER_options, mass_target_d):
+def solvevol_func(pin_arr, COUPLER_options, mass_target_d):
     """Function to compute the residual of the mass balance given the partial pressures [bar]"""
 
     pin_dict = {
@@ -367,10 +367,10 @@ def solvepp_func(pin_arr, COUPLER_options, mass_target_d):
     }
 
     # get atmospheric masses
-    mass_atm_d = solvepp_atmosphere_mass(pin_dict, COUPLER_options)
+    mass_atm_d = solvevol_atmosphere_mass(pin_dict, COUPLER_options)
 
     # get (molten) mantle masses
-    mass_int_d = solvepp_dissolved_mass(pin_dict, COUPLER_options)
+    mass_int_d = solvevol_dissolved_mass(pin_dict, COUPLER_options)
     
     # compute residuals
     res_l = []
@@ -389,7 +389,7 @@ def get_log_rand(rng):
     r = np.random.uniform(low=rng[0], high=rng[1])
     return 10.0**r
 
-def solvepp_get_initial_pressures(target_d, log=True):
+def solvevol_get_initial_pressures(target_d, log=True):
     """Get initial guesses of partial pressures"""
 
     # all in bar
@@ -411,7 +411,7 @@ def solvepp_get_initial_pressures(target_d, log=True):
     return pH2O, pCO2, pN2
 
 
-def solvepp_get_target_from_params(COUPLER_options):
+def solvevol_get_target_from_params(COUPLER_options):
 
     N_ocean_moles = COUPLER_options['hydrogen_earth_oceans']
     CH_ratio =      COUPLER_options['CH_ratio']
@@ -423,15 +423,15 @@ def solvepp_get_target_from_params(COUPLER_options):
     target_d = {'H': H_kg, 'C': C_kg, 'N': N_kg}
     return target_d
 
-def solvepp_get_target_from_pressures(COUPLER_options):
+def solvevol_get_target_from_pressures(COUPLER_options):
 
     pin_dict = {}
     for vol in volatile_species:
         if is_included(vol, COUPLER_options):
-            pin_dict[vol] = COUPLER_options[vol+"_pa"]*1.0e-5  # Pa to bar
+            pin_dict[vol] = COUPLER_options[vol+"_bar"]
 
-    mass_atm_d = solvepp_atmosphere_mass(pin_dict, COUPLER_options)
-    mass_int_d = solvepp_dissolved_mass(pin_dict, COUPLER_options)
+    mass_atm_d = solvevol_atmosphere_mass(pin_dict, COUPLER_options)
+    mass_int_d = solvevol_dissolved_mass(pin_dict, COUPLER_options)
 
     target_d = {}
     for vol in ['H','C','N']:
@@ -439,7 +439,7 @@ def solvepp_get_target_from_pressures(COUPLER_options):
 
     return target_d
 
-def solvepp_equilibrium_atmosphere(target_d, COUPLER_options):
+def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
     """Solves for surface partial pressures assuming melt-vapour eqm
 
 
@@ -467,8 +467,8 @@ def solvepp_equilibrium_atmosphere(target_d, COUPLER_options):
     # the ic never finds the physical solution (but in practice,
     # this doesn't seem to happen)
     while ier != 1:
-        x0 = solvepp_get_initial_pressures(target_d)
-        sol, info, ier, msg = fsolve(solvepp_func, x0, args=(COUPLER_options, target_d), full_output=True)
+        x0 = solvevol_get_initial_pressures(target_d)
+        sol, info, ier, msg = fsolve(solvevol_func, x0, args=(COUPLER_options, target_d), full_output=True)
         count += 1
         
         # if any negative pressures, report ier!=1
@@ -477,7 +477,7 @@ def solvepp_equilibrium_atmosphere(target_d, COUPLER_options):
             ier = 0
 
         # check residuals
-        this_resid = solvepp_func(sol, COUPLER_options, target_d)
+        this_resid = solvevol_func(sol, COUPLER_options, target_d)
         if np.amax(np.abs(this_resid)) > 1.0:
             ier = 0
 
@@ -496,24 +496,24 @@ def solvepp_equilibrium_atmosphere(target_d, COUPLER_options):
     }
 
     # Final partial pressures [bar]
-    p_d        = solvepp_get_partial_pressures(sol_dict, COUPLER_options)
+    p_d        = solvevol_get_partial_pressures(sol_dict, COUPLER_options)
 
     # Final masses [kg]
-    mass_atm_d = solvepp_atmosphere_mass(p_d, COUPLER_options)
-    mass_int_d = solvepp_dissolved_mass(p_d, COUPLER_options)
+    mass_atm_d = solvevol_atmosphere_mass(p_d, COUPLER_options)
+    mass_int_d = solvevol_dissolved_mass(p_d, COUPLER_options)
     
     # Residuals [relative]
-    res_l      = solvepp_func(sol, COUPLER_options, target_d)
+    res_l      = solvevol_func(sol, COUPLER_options, target_d)
     
     # Output dict 
     outdict = {"M_atm":0.0}
 
     # Initialise and store partial pressures 
-    tot_pa = 0.0
+    outdict["P_surf"] = 0.0
     for s in volatile_species:
 
         # Defaults
-        outdict[s+"_pa"]        = 0.0      # surface partial pressure [Pa]
+        outdict[s+"_atm_bar"]   = 0.0      # surface partial pressure [bar]
         outdict[s+"_atm_kg"]    = 0.0      # kg in atmosphere
         outdict[s+"_liquid_kg"] = 0.0      # kg in liquid
         outdict[s+"_solid_kg"]  = 0.0      # kg in solid (not handled here)
@@ -521,15 +521,15 @@ def solvepp_equilibrium_atmosphere(target_d, COUPLER_options):
 
         # Store partial pressures
         if s in p_d.keys():
-            outdict[s+"_pa"] = p_d[s] * 1.0e5  # store as pascals
-            tot_pa += outdict[s+"_pa"]
+            outdict[s+"_atm_bar"] = p_d[s]  # store as bar
+            outdict["P_surf"] += outdict[s+"_atm_bar"]
 
         # Inform user
-        log.info("    solvepp: p_%s = %f bar" % (s,outdict[s+"_pa"]*1.0e-5))  # print in bar
+        log.info("    solvevol: p_%s = %f bar" % (s,outdict[s+"_atm_bar"])) 
 
     # Store VMRs (=mole fractions) and total atmosphere
     for s in volatile_species:
-        outdict[s+"_mr"] = outdict[s+"_pa"]/tot_pa
+        outdict[s+"_mr"] = outdict[s+"_atm_bar"]/outdict["P_surf"]
         outdict["M_atm"] += outdict[s+"_atm_kg"]
 
     # Store masses of both gases and elements
