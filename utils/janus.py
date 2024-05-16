@@ -115,7 +115,7 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
     
     vol_list = {}
     for vol in volatile_species:
-        vol_list[vol] = runtime_helpfile.iloc[-1][vol+"_mr"], 
+        vol_list[vol] = runtime_helpfile.iloc[-1][vol+"_mr"]
 
     match COUPLER_options["tropopause"]:
         case 0:

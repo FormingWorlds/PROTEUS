@@ -137,12 +137,6 @@ def main():
         
         log.info("%s\t: %s,  %.2f bar"%(s, str(COUPLER_options[key_in]>0), COUPLER_options[key_pp]))
 
-    # Get target elemental masses depending on required method
-    if COUPLER_options["solvevol_use_params"] > 0:
-        solvevol_target = solvevol_get_target_from_params(COUPLER_options)
-    else:
-        solvevol_target = solvevol_get_target_from_pressures(COUPLER_options)
-
     # Check that all partial pressures are positive
     inc_vols = []
     for s in volatile_species:
@@ -292,11 +286,29 @@ def main():
         COUPLER_options = RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile )
 
         # Run outgassing model
+
         #    get info from spider
         if loop_counter["total"] > 0:
             run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
             COUPLER_options["T_outgas"] =    run_int.iloc[-1]["T_surf"]
             COUPLER_options["Phi_global"] =  run_int.iloc[-1]["Phi_global"]
+
+        #    reset target if during init phase 
+        #    since these target masses will be adjusted depending on the true melt fraction and T_outgas
+        if loop_counter["init"] < loop_counter["init_loops"]:
+
+            # calculate target mass of atoms
+            if COUPLER_options["solvevol_use_params"] > 0:
+                solvevol_target = solvevol_get_target_from_params(COUPLER_options)
+            else:
+                solvevol_target = solvevol_get_target_from_pressures(COUPLER_options)
+
+            # prevent numerical issues
+            for key in solvevol_target.keys():
+                if solvevol_target[key] < 1.0e4:
+                    solvevol_target[key] = 0.0
+
+        
         #    do calculation
         solvevol_dict = solvevol_equilibrium_atmosphere(solvevol_target, COUPLER_options)
 

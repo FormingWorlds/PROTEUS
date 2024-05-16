@@ -540,13 +540,13 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
             outdict[s+"_atm_bar"] = p_d[s]  # store as bar
             outdict["P_surf"] += outdict[s+"_atm_bar"]
 
-        # Inform user
-        log.info("    solvevol: p_%s = %f bar" % (s,outdict[s+"_atm_bar"])) 
 
     # Store VMRs (=mole fractions) and total atmosphere
     for s in volatile_species:
         outdict[s+"_mr"] = outdict[s+"_atm_bar"]/outdict["P_surf"]
         outdict["M_atm"] += outdict[s+"_atm_kg"]
+
+        log.info("    solvevol: %s = %.1f bar (%.3f VMR)" % (s,outdict[s+"_atm_bar"], outdict[s+"_mr"])) 
 
     # Store masses of both gases and elements
     all = [s for s in volatile_species]
