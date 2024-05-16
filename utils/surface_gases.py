@@ -277,13 +277,13 @@ def solvevol_atmosphere_mass(pin, COUPLER_options):
         mass_atm_d[key] *= molar_mass[key]/mu_atm
 
     # total mass of H
-    mass_atm_d['H'] = mass_atm_d['H2O'] / molar_mass['H2O']
+    mass_atm_d['H'] = 2*mass_atm_d['H2O'] / molar_mass['H2O']
     if is_included('H2', COUPLER_options):
-        mass_atm_d['H'] += mass_atm_d['H2'] / molar_mass['H2']
+        mass_atm_d['H'] += 2*mass_atm_d['H2'] / molar_mass['H2']
     if is_included('CH4', COUPLER_options):
-        mass_atm_d['H'] += mass_atm_d['CH4'] * 2 / molar_mass['CH4']    # note factor 2 to account for stoichiometry
+        mass_atm_d['H'] += 4*mass_atm_d['CH4'] / molar_mass['CH4']    # note factor 4 to account for stoichiometry
     # below converts moles of H2 to mass of H
-    mass_atm_d['H'] *= molar_mass['H2']
+    mass_atm_d['H'] *= molar_mass['H']
 
     # total mass of C
     mass_atm_d['C'] = mass_atm_d['CO2'] / molar_mass['CO2']
@@ -296,6 +296,15 @@ def solvevol_atmosphere_mass(pin, COUPLER_options):
 
     # total mass of N
     mass_atm_d['N'] = mass_atm_d['N2']
+
+    # total mass of O
+    mass_atm_d['O'] = mass_atm_d['H2O'] / molar_mass['H2O']
+    if is_included("CO", COUPLER_options):
+        mass_atm_d['O'] += mass_atm_d['CO'] / molar_mass['CO']
+    if is_included("CO2", COUPLER_options):
+        mass_atm_d['O'] += mass_atm_d['CO2'] / molar_mass['CO2'] * 2.0
+    # below converts moles of O to mass of O
+    mass_atm_d['O'] *= molar_mass['O']
 
     return mass_atm_d
 
@@ -340,11 +349,11 @@ def solvevol_dissolved_mass(pin, COUPLER_options):
     ppmw_N2 = sol_N2(p_d['N2'], ptot,  COUPLER_options['T_outgas'],  COUPLER_options['fO2_shift_IW'])
     mass_int_d['N2'] = prefactor*ppmw_N2
 
-    # now get totals of H, C, N
-    mass_int_d['H'] = mass_int_d['H2O']/molar_mass['H2O'] 
+    # now get totals of H, C, N, O
+    mass_int_d['H'] = mass_int_d['H2O']*2/molar_mass['H2O'] 
     if is_included("CH4", COUPLER_options):
-        mass_int_d['H'] += mass_int_d['CH4']*2/molar_mass["CH4"]
-    mass_int_d['H'] *= molar_mass['H2']
+        mass_int_d['H'] += mass_int_d['CH4']*4/molar_mass["CH4"]
+    mass_int_d['H'] *= molar_mass['H']
     
     mass_int_d['C'] = mass_int_d['CO2']/molar_mass['CO2']
     if is_included("CO", COUPLER_options):
@@ -354,6 +363,13 @@ def solvevol_dissolved_mass(pin, COUPLER_options):
     mass_int_d['C'] *= molar_mass['C']
 
     mass_int_d['N'] = mass_int_d['N2']
+
+    mass_int_d['O'] = mass_int_d['H2O'] / molar_mass['H2O']
+    if is_included("CO", COUPLER_options):
+        mass_int_d['O'] = mass_int_d['CO'] / molar_mass['CO']
+    if is_included("CO2", COUPLER_options):
+        mass_int_d['O'] = mass_int_d['CO2'] / molar_mass['CO2'] * 2.0
+    mass_int_d['O'] *= molar_mass['O']
 
     return mass_int_d
 
@@ -428,7 +444,7 @@ def solvevol_get_target_from_pressures(COUPLER_options):
     pin_dict = {}
     for vol in volatile_species:
         if is_included(vol, COUPLER_options):
-            pin_dict[vol] = COUPLER_options[vol+"_bar"]
+            pin_dict[vol] = COUPLER_options[vol+"_initial_bar"]
 
     mass_atm_d = solvevol_atmosphere_mass(pin_dict, COUPLER_options)
     mass_int_d = solvevol_dissolved_mass(pin_dict, COUPLER_options)
@@ -501,7 +517,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
     # Final masses [kg]
     mass_atm_d = solvevol_atmosphere_mass(p_d, COUPLER_options)
     mass_int_d = solvevol_dissolved_mass(p_d, COUPLER_options)
-    
+
     # Residuals [relative]
     res_l      = solvevol_func(sol, COUPLER_options, target_d)
     
@@ -534,12 +550,13 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
 
     # Store masses of both gases and elements
     all = [s for s in volatile_species]
-    all.extend(["H","C","N"])
+    all.extend(["H","C","N","O"])
     for s in all:
         tot_kg = 0.0
 
         if s in mass_atm_d.keys():
             outdict[s+"_atm_kg"] = mass_atm_d[s]
+            tot_kg += mass_atm_d[s]
 
         if s in mass_int_d.keys():
             outdict[s+"_liquid_kg"] = mass_int_d[s]

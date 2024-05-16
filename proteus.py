@@ -108,30 +108,34 @@ def main():
     # Calculate mantle mass (liquid + solid)
     COUPLER_options["mantle_mass"] = calc_mantle_mass(COUPLER_options)
     
-    # Zero-out all possible volatiles, and ensure that they are all tracked
+    # Zero-out volatiles, and ensure that they are all tracked
     for s in volatile_species:
-        key_pp = str(s+"_bar")
-        COUPLER_options[key_pp] = 0.0
+        key_pp = str(s+"_initial_bar")
 
         key_in = str(s+"_included")
-        if (key_in in COUPLER_options):
+        if (key_in in COUPLER_options) and (key_pp in COUPLER_options):
             COUPLER_options[key_in] = int(COUPLER_options[key_in])
+            COUPLER_options[key_pp] = float(COUPLER_options[key_pp])
         else:
             COUPLER_options[key_in] = 0
+            COUPLER_options[key_pp] = 0.0
+
+    # Required vols
+    for s in ["H2O","CO2","N2"]:
+        COUPLER_options[s+"_included"] = 1
 
     # Work out which vols are included
     for s in volatile_species:
-        key_pp = str(s+"_bar")
+        key_pp = str(s+"_initial_bar")
         key_in = str(s+"_included")
-
-        # This volatile not in cfg file
-        if not ( (key_in in COUPLER_options) or (key_pp in COUPLER_options)):
-            COUPLER_options[key_in] = 0
-            COUPLER_options[key_pp] = 0.0
-            continue 
 
         if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options[key_in] == 0):
             raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
+        
+        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0):
+            raise Exception("Parameterised solvevol is enabled but volatile initial_bar is non-zero")
+        
+        log.info("%s\t: %s,  %.2f bar"%(s, str(COUPLER_options[key_in]>0), COUPLER_options[key_pp]))
 
     # Get target elemental masses depending on required method
     if COUPLER_options["solvevol_use_params"] > 0:
@@ -142,7 +146,7 @@ def main():
     # Check that all partial pressures are positive
     inc_vols = []
     for s in volatile_species:
-        key_pp = str(s+"_bar")
+        key_pp = str(s+"_initial_bar")
         key_in = str(s+"_included")
         if (COUPLER_options[key_in] > 0):
 
@@ -289,14 +293,15 @@ def main():
 
         # Run outgassing model
         #    get info from spider
-        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
-        COUPLER_options["T_outgas"] =    run_int.iloc[-1]["T_surf"]
-        COUPLER_options["Phi_global"] =  run_int.iloc[-1]["Phi_global"]
+        if loop_counter["total"] > 0:
+            run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
+            COUPLER_options["T_outgas"] =    run_int.iloc[-1]["T_surf"]
+            COUPLER_options["Phi_global"] =  run_int.iloc[-1]["Phi_global"]
         #    do calculation
         solvevol_dict = solvevol_equilibrium_atmosphere(solvevol_target, COUPLER_options)
 
         # Update help quantities, input_flag: "Interior"
-        runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
+        runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options, solvevol_dict=solvevol_dict)
 
         ############### / INTERIOR SUB-LOOP
                         

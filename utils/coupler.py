@@ -169,7 +169,6 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
             runtime_helpfile_new["O_mol_"+res]  = runtime_helpfile_new["H2O_mol_"+res] * 1. \
                                                 + runtime_helpfile_new["CO2_mol_"+res] * 2. \
                                                 + runtime_helpfile_new["CO_mol_"+res]  * 1. \
-                                                + runtime_helpfile_new["O2_mol_"+res]  * 2.
 
             runtime_helpfile_new["C_mol_"+res]  = runtime_helpfile_new["CO2_mol_"+res] * 1. \
                                                 + runtime_helpfile_new["CH4_mol_"+res] * 1. \
@@ -186,7 +185,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
                 em2 = runtime_helpfile_new[e2+"_atm_kg"]
                 if em2 == 0:
                     continue  # avoid division by zero
-                runtime_helpfile_new[element+"%s/%s_atm"] = em1/em2
+                runtime_helpfile_new["%s/%s_atm"%(e1,e2)] = em1/em2
 
         COUPLER_options["F_int"] = runtime_helpfile_new["F_int"]
 
