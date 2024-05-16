@@ -176,7 +176,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
             runtime_helpfile_new["N_mol_"+res]  = runtime_helpfile_new["N2_mol_"+res]  * 2.
 
-        # Calculate X/Y ratios
+        # Calculate elemental ratios
         for e1 in element_list:
             for e2 in element_list:
                 if e1==e2:
@@ -251,15 +251,21 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         for res in [ "total", "solid", "liquid", "atm" ]: 
             for elem in element_list:
                 runtime_helpfile_new[elem+"_mol_"+res]       = runtime_helpfile.iloc[-1][elem+"_mol_"+res]
-        for elem in [n for n in element_list if n != 'H']:
-            runtime_helpfile_new[elem+"/H_atm"]         = runtime_helpfile.iloc[-1][elem+"/H_atm"]
+        for e1 in element_list:
+            for e2 in element_list:
+                key = "%s/%s_atm"%(e1,e2)
+                if key in runtime_helpfile.keys():
+                    runtime_helpfile_new[key] = runtime_helpfile.iloc[-1][key]
         for vol in volatile_species:
             runtime_helpfile_new[vol+"_mr"]          = runtime_helpfile.iloc[-1][vol+"_mr"]
         
-        for vol in volatile_species:
-            for suffix in ["_liquid_kg", "_mol_liquid", "_solid_kg", "_mol_solid", "_atm_kg", "_atm_bar", "_mol_atm", "_mol_total","_mr"]:
-                key = vol+suffix
-                runtime_helpfile_new[key] = runtime_helpfile.iloc[-1][key] 
+        all = [v for v in volatile_species]
+        all.extend(element_list)
+        for a in all:
+            for suffix in ["_liquid_kg", "_mol_liquid", "_solid_kg", "_mol_solid", "_atm_kg", "_atm_bar", "_mol_atm", "_mol_total","_total_kg","_mr","_res"]:
+                key = a+suffix
+                if key in runtime_helpfile.keys():
+                    runtime_helpfile_new[key] = runtime_helpfile.iloc[-1][key] 
 
     runtime_helpfile_new = pd.DataFrame(runtime_helpfile_new,index=[0])
     runtime_helpfile = pd.concat([runtime_helpfile, runtime_helpfile_new])

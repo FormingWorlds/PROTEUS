@@ -125,6 +125,7 @@ def main():
         COUPLER_options[s+"_included"] = 1
 
     # Work out which vols are included
+    solvevol_warnboth = False
     for s in volatile_species:
         key_pp = str(s+"_initial_bar")
         key_in = str(s+"_included")
@@ -132,10 +133,16 @@ def main():
         if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options[key_in] == 0):
             raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
         
-        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0):
-            raise Exception("Parameterised solvevol is enabled but volatile initial_bar is non-zero")
-        
+        solvevol_warnboth = solvevol_warnboth or ((COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0))
         log.info("%s\t: %s,  %.2f bar"%(s, str(COUPLER_options[key_in]>0), COUPLER_options[key_pp]))
+
+        if COUPLER_options["solvevol_use_params"] > 0:
+            COUPLER_options[key_pp] = 0.0
+
+    # Warn (once)
+    if solvevol_warnboth:
+        log.warning("Parameterised solvevol is enabled but initial_bar is non-zero for at least one volatile")
+        log.warning("Ignoring pressure provided in cfg file")
 
     # Check that all partial pressures are positive
     inc_vols = []

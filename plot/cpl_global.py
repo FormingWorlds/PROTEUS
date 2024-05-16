@@ -42,7 +42,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         # Check vmr for presence
         this_vmr = np.array(df_atm[vol+"_mr"])
         vol_present[vol] = True 
-        if np.amax(this_vmr) < 1.0e-30:
+        if (np.amax(this_vmr) < 1.0e-30) or (COUPLER_options[vol+"_included"] < 1):
             vol_present[vol] = False 
             continue 
         vol_vmr[vol] = this_vmr 
@@ -54,7 +54,6 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         vol_mol_int[vol] = vol_mol_tot[vol] - vol_mol_atm[vol]
         vol_atmpart[vol] = vol_mol_atm[vol]/vol_mol_tot[vol]
         vol_intpart[vol] = vol_mol_int[vol]/vol_mol_tot[vol]
-
 
     # Init plot
     fig,axs = plt.subplots(3,2, figsize=(fig_ratio[0]*fig_scale, fig_ratio[1]*fig_scale), sharex=True)
