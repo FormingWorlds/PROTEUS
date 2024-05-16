@@ -96,92 +96,57 @@ def main():
         UpdateStatusfile(dirs, 20)
         raise Exception("Interior must have at least 40 levels")
     
+    # Clean output folders
+    COUPLER_options["IC_INTERIOR"] = 1  # start from initial condition (not resuming)
+    CleanDir( dirs["output"] , keep_stdlog=True)
+    CleanDir( dirs['output']+'data/')
+    runtime_helpfile    = []
+    
+    # Copy config file to output directory, for future reference
+    shutil.copyfile( args["cfg"], dirs["output"]+"/init_coupler.cfg")
+
     # Calculate mantle mass (liquid + solid)
     COUPLER_options["mantle_mass"] = calc_mantle_mass(COUPLER_options)
     
-    # If restart skip init loop # args.r or args.rf or 
-    if COUPLER_options["IC_INTERIOR"] == 2:
+    # Zero-out all possible volatiles, and ensure that they are all tracked
+    for s in volatile_species:
+        key_pp = str(s+"_pa")
+        COUPLER_options[key_pp] = 0.0
 
-        # Check if output directory actually exists
-        if (not os.path.exists(dirs["output"])) or (not os.path.exists(dirs["output"]+'/data/')):
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Cannot resume run because directory doesn't exist")
-
-        loop_counter["total"] += loop_counter["init_loops"]
-        loop_counter["init"]  += loop_counter["init_loops"]
-
-        # Restart file name if not specified: use last file output
-        if (COUPLER_options["IC_INTERIOR"] == 2 and COUPLER_options["ic_interior_filename"] == 0):
-            COUPLER_options["ic_interior_filename"] = str(natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"/data/*.json")])[-1])
-
-        # Clean all overtimes from present helpfile
-        runtime_helpfile = pd.read_csv(dirs["output"]+"/"+"runtime_helpfile.csv", index_col=False, header=0, sep="\t")
-        t_curr = COUPLER_options["ic_interior_filename"][:-5]
-        log.debug("Clean helpfile from overtimes " + str(t_curr) + " yr")
-        runtime_helpfile = runtime_helpfile.loc[runtime_helpfile["Time"] <= int(t_curr)]
-
-        COUPLER_options["F_int"] = runtime_helpfile.iloc[-1]["F_int"]
-        COUPLER_options["F_atm"] = runtime_helpfile.iloc[-1]["F_atm"]
-        COUPLER_options["F_net"] = runtime_helpfile.iloc[-1]["F_net"]
-
-    # Start conditions and help files depending on restart option
-    else:
-        CleanDir( dirs["output"] , keep_stdlog=True)
-        CleanDir( dirs['output']+'data/')
-        
-        runtime_helpfile    = []
-
-        # Copy config file to output directory, for future reference
-        shutil.copyfile( args["cfg"], dirs["output"]+"/init_coupler.cfg")
-
-
-        # Zero-out all possible volatiles, and ensure that they are all tracked
-        for s in volatile_species:
-            key_pp = str(s+"_pa")
-            COUPLER_options[key_pp] = 0.0
-
-            key_in = str(s+"_included")
-            if (key_in in COUPLER_options):
-                COUPLER_options[key_in] = int(COUPLER_options[key_in])
-            else:
-                COUPLER_options[key_in] = 0
-
-        # Work out which vols are included
-        for s in volatile_species:
-            key_pp = str(s+"_pa")
-            key_in = str(s+"_included")
-
-            # This volatile not in cfg file
-            if not ( (key_in in COUPLER_options) and (key_pp in COUPLER_options)):
-                COUPLER_options[key_in] = 0
-                COUPLER_options[key_pp] = 0.0
-                continue 
-
-            if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options[key_in] == 0):
-                raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
-
-        # Get target elemental masses depending on required method
-        solvepp_target = {"_unset":True}
-        if COUPLER_options["solvepp_use_params"] > 0:
-            solvepp_target = solvepp_get_target_from_params(COUPLER_options)
+        key_in = str(s+"_included")
+        if (key_in in COUPLER_options):
+            COUPLER_options[key_in] = int(COUPLER_options[key_in])
         else:
-            solvepp_target = solvepp_get_target_from_pressures(COUPLER_options)
+            COUPLER_options[key_in] = 0
 
-
-    # Check that all partial pressures are positive
-    inc_vols = []
+    # Work out which vols are included
     for s in volatile_species:
         key_pp = str(s+"_pa")
         key_in = str(s+"_included")
-        if (COUPLER_options[key_in] == 1):
 
-            # Check positive
-            if (COUPLER_options[key_pp] <= 0.0):
-                UpdateStatusfile(dirs, 20)
-                raise Exception("Partial pressures of included volatiles must be positive. Consider assigning volatile '%s' a small positive value. Check that solvepp_enabled has the intended setting." % s)
+        # This volatile not in cfg file
+        if not ( (key_in in COUPLER_options) or (key_pp in COUPLER_options)):
+            COUPLER_options[key_in] = 0
+            COUPLER_options[key_pp] = 0.0
+            continue 
+
+        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options[key_in] == 0):
+            raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
+
+    # Get target elemental masses depending on required method
+    if COUPLER_options["solvepp_use_params"] > 0:
+        solvepp_target = solvepp_get_target_from_params(COUPLER_options)
+    else:
+        solvepp_target = solvepp_get_target_from_pressures(COUPLER_options)
+
+    # Check that all partial pressures are positive
+    for s in volatile_species:
+        key_pp = str(s+"_pa")
+        key_in = str(s+"_included")
+        if (COUPLER_options[key_in] > 0):
 
             # Ensure numerically reasonable
-            COUPLER_options[key_pp] = max( COUPLER_options[key_pp], 1.0e-10)
+            COUPLER_options[key_pp] = max( COUPLER_options[key_pp], 1.0e-30)
 
             # Store
             inc_vols.append(s)
@@ -322,20 +287,19 @@ def main():
         # Run SPIDER
         COUPLER_options = RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile )
 
+        # Run outgassing model
+        #    get info from spider
+        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
+        COUPLER_options["T_outgas"] =    run_int.iloc[-1]["T_surf"]
+        COUPLER_options["Phi_global"] =  run_int.iloc[-1]["Phi_global"]
+        #    do calculation
+        solvepp_dict = solvepp_equilibrium_atmosphere(solvepp_target, COUPLER_options)
+        #    store result
+        for vol in volatile_species:
+            COUPLER_options[vol+"_pa"] = solvepp_dict[vol]
+
         # Update help quantities, input_flag: "Interior"
         runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
-
-        # Before injecting additional atmosphere
-        if (loop_counter["init"] < loop_counter["init_loops"]):
-
-            # Store new guesses based on last init iteration
-            run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
-            COUPLER_options["T_surf_guess"] =           run_int.iloc[-1]["T_surf"]
-            COUPLER_options["melt_fraction_guess"] =    run_int.iloc[-1]["Phi_global"]
-
-            # Solve for partial pressures again
-            solvepp_dict = solvepp_doit(COUPLER_options)
-
 
         ############### / INTERIOR SUB-LOOP
                         
@@ -351,7 +315,7 @@ def main():
         if loop_counter["init"] < loop_counter["init_loops"]: # Next init iter
             loop_counter["init"]    += 1
             time_dict["planet"]     = 0.
-        if loop_counter["total"] >= loop_counter["init_loops"]: # Reset restart flag once SPIDER was started w/ ~correct volatile chemistry + heat flux
+        if loop_counter["total"] >= loop_counter["init_loops"]: # Reset restart flag once SPIDER has correct heat flux
             COUPLER_options["IC_INTERIOR"] = 2
 
         # Adjust total iteration counters

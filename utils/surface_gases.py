@@ -180,7 +180,7 @@ def is_included(gas, COUPLER_options):
     return bool(COUPLER_options[gas+"_included"]>0)
 
 def solvepp_get_partial_pressures(pin, COUPLER_options):
-    """Partial pressure of all considered species"""
+    """Partial pressure of all considered species from oxidised species"""
 
     # we only need to know pH2O, pCO2, and pN2, since reduced species
     # can be directly determined from equilibrium chemistry
@@ -358,7 +358,7 @@ def solvepp_dissolved_mass(pin, COUPLER_options):
     return mass_int_d
 
 def solvepp_func(pin_arr, COUPLER_options, mass_target_d):
-    """Function to compute the residual of the mass balance"""
+    """Function to compute the residual of the mass balance given the partial pressures [bar]"""
 
     pin_dict = {
         "H2O" : pin_arr[0],
@@ -451,7 +451,7 @@ def solvepp_equilibrium_atmosphere(target_d, COUPLER_options):
     Returns
     ----------
         partial_pressures : dict
-            Dictionary of volatile partial pressures [Pa]
+            Dictionary of: volatile partial pressures [Pa], and corresponding reservoir masses [kg]
     """
 
 
@@ -495,26 +495,63 @@ def solvepp_equilibrium_atmosphere(target_d, COUPLER_options):
         "N2"  : sol[2]
     }
 
-    p_d = solvepp_get_partial_pressures(sol_dict, COUPLER_options)
-    res_l = solvepp_func(sol, COUPLER_options, target_d)
+    # Final partial pressures [bar]
+    p_d        = solvepp_get_partial_pressures(sol_dict, COUPLER_options)
 
-    # for debugging/checking, add success initial condition
-    # that resulted in a converged solution with positive pressures
-    p_d['pH2O_0'] = x0[0]
-    p_d['pCO2_0'] = x0[1]
-    p_d['pN2_0'] = x0[2]
-    # also for debugging/checking, report residuals
-    p_d['res_H'] = res_l[0]
-    p_d['res_C'] = res_l[1]
-    p_d['res_N'] = res_l[2]
+    # Final masses [kg]
+    mass_atm_d = solvepp_atmosphere_mass(p_d, COUPLER_options)
+    mass_int_d = solvepp_dissolved_mass(p_d, COUPLER_options)
+    
+    # Residuals [relative]
+    res_l      = solvepp_func(sol, COUPLER_options, target_d)
+    
+    # Output dict 
+    outdict = {"M_atm":0.0}
 
-    partial_pressures = {}
+    # Initialise and store partial pressures 
+    tot_pa = 0.0
     for s in volatile_species:
-        if s in p_d.keys():
-            partial_pressures[s] = p_d[s] * 1.0e5
-        else:
-            partial_pressures[s] = 0.0
-        log.info("    solvepp: p_%s = %f bar" % (s,partial_pressures[s]))
 
-    return partial_pressures
+        # Defaults
+        outdict[s+"_pa"]        = 0.0      # surface partial pressure [Pa]
+        outdict[s+"_atm_kg"]    = 0.0      # kg in atmosphere
+        outdict[s+"_liquid_kg"] = 0.0      # kg in liquid
+        outdict[s+"_solid_kg"]  = 0.0      # kg in solid (not handled here)
+        outdict[s+"_total_kg"]  = 0.0      # kg (total)
+
+        # Store partial pressures
+        if s in p_d.keys():
+            outdict[s+"_pa"] = p_d[s] * 1.0e5  # store as pascals
+            tot_pa += outdict[s+"_pa"]
+
+        # Inform user
+        log.info("    solvepp: p_%s = %f bar" % (s,outdict[s+"_pa"]*1.0e-5))  # print in bar
+
+    # Store VMRs (=mole fractions) and total atmosphere
+    for s in volatile_species:
+        outdict[s+"_mr"] = outdict[s+"_pa"]/tot_pa
+        outdict["M_atm"] += outdict[s+"_atm_kg"]
+
+    # Store masses of both gases and elements
+    all = [s for s in volatile_species]
+    all.extend(["H","C","N"])
+    for s in all:
+        tot_kg = 0.0
+
+        if s in mass_atm_d.keys():
+            outdict[s+"_atm_kg"] = mass_atm_d[s]
+
+        if s in mass_int_d.keys():
+            outdict[s+"_liquid_kg"] = mass_int_d[s]
+            outdict[s+"_solid_kg"] = 0.0
+            tot_kg += mass_int_d[s]
+
+        outdict[s+"_total_kg"] = tot_kg
+    
+    # Store residuals 
+    outdict["H_res"] = res_l[0]
+    outdict["C_res"] = res_l[1]
+    outdict["N_res"] = res_l[2]
+
+    return outdict
 

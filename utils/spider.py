@@ -529,7 +529,6 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
         call_sequence.extend(["-tsurf_poststep_change", str(COUPLER_options["tsurf_poststep_change"])])
 
     # With start of the main loop only:
-    # Volatile specific options: post step settings, restart filename
     if COUPLER_options["IC_INTERIOR"] == 2:
         call_sequence.extend([ 
                                 "-ic_interior_filename", 

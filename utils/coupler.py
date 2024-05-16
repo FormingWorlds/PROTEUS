@@ -102,6 +102,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["M_mantle_solid"]  = float(data_a[1])
         runtime_helpfile_new["M_mantle"]        = float(data_a[2])
         runtime_helpfile_new["M_core"]          = float(data_a[3])
+        COUPLER_options["mantle_mass"] = runtime_helpfile_new["M_mantle"]
 
         # Surface properties
         runtime_helpfile_new["T_surf"]          = float(data_a[4])
@@ -134,42 +135,6 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
             log.info("Replace T_surf NaN:", runtime_helpfile_new["T_surf"], "-->", int_tmp[0], "K")
             runtime_helpfile_new["T_surf"] = int_tmp[0]
 
-        # Total atmospheric mass
-        runtime_helpfile_new["M_atm"] = 0
-
-        # Now volatile data
-        for vol in volatile_species:
-
-            # Instantiate empty
-            runtime_helpfile_new[vol+"_mr"]     = 0.
-
-            if COUPLER_options[vol+"_included"] == 1:
-
-                keys_t = ( 
-                            ('atmosphere',vol,'liquid_kg'),
-                            ('atmosphere',vol,'solid_kg'),
-                            ('atmosphere',vol,'atmosphere_kg'),
-                            ('atmosphere',vol,'atmosphere_bar'),
-                            ('atmosphere',vol,'mixing_ratio')  
-                         )
-                
-                data_a = get_dict_surface_values_for_specific_time( keys_t, sim_time, indir=dirs["output"] )
-
-                runtime_helpfile_new[vol+"_liquid_kg"]  = float(data_a[0])
-                runtime_helpfile_new[vol+"_solid_kg"]   = float(data_a[1])
-                runtime_helpfile_new[vol+"_atm_kg"]     = float(data_a[2])
-                runtime_helpfile_new[vol+"_atm_bar"]    = float(data_a[3])
-                runtime_helpfile_new[vol+"_mr"]         = float(data_a[4])
-
-                # Total mass of atmosphere
-                runtime_helpfile_new["M_atm"] += runtime_helpfile_new[vol+"_atm_kg"]
-            else:
-                runtime_helpfile_new[vol+"_liquid_kg"]  = 0.0
-                runtime_helpfile_new[vol+"_solid_kg"]   = 0.0
-                runtime_helpfile_new[vol+"_atm_kg"]     = 0.0
-                runtime_helpfile_new[vol+"_atm_bar"]    = 0.0
-                runtime_helpfile_new[vol+"_mr"]         = 0.0
-            log.debug(str(vol) + " bar = " + str(runtime_helpfile_new[vol+"_atm_bar"])  + " , included=" + str(COUPLER_options[vol+"_included"]))
 
         ## Derive X/H ratios for atmosphere from interior outgassing
 
@@ -192,9 +157,9 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
                                                          + runtime_helpfile_new[vol+"_mol_solid"]  \
                                                          + runtime_helpfile_new[vol+"_mol_liquid"]
 
-                runtime_helpfile_new["M_atm_kgmol"] += runtime_helpfile_new[vol+"_atm_bar"] * molar_mass[vol] / runtime_helpfile_new["P_surf"]
+                runtime_helpfile_new["atm_kg_per_mol"] += runtime_helpfile_new[vol+"_atm_pa"] * molar_mass[vol] / runtime_helpfile_new["P_surf"]
 
-        # Number of mols per element and reservoir
+        # Number of mols per element and reservoirf
         for res in [ "total", "solid", "liquid", "atm" ]: 
             runtime_helpfile_new["H_mol_"+res]  = runtime_helpfile_new["H2O_mol_"+res] * 2. \
                                                 + runtime_helpfile_new["H2_mol_"+res]  * 2. \
