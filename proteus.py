@@ -96,6 +96,9 @@ def main():
         UpdateStatusfile(dirs, 20)
         raise Exception("Interior must have at least 40 levels")
     
+    # Calculate mantle mass (liquid + solid)
+    COUPLER_options["mantle_mass"] = calc_mantle_mass(COUPLER_options)
+    
     # If restart skip init loop # args.r or args.rf or 
     if COUPLER_options["IC_INTERIOR"] == 2:
 
@@ -131,9 +134,10 @@ def main():
         # Copy config file to output directory, for future reference
         shutil.copyfile( args["cfg"], dirs["output"]+"/init_coupler.cfg")
 
-        # Zero-out all volatiles, and ensure that they are all tracked
+
+        # Zero-out all possible volatiles, and ensure that they are all tracked
         for s in volatile_species:
-            key_pp = str(s+"_initial_atmos_pressure")
+            key_pp = str(s+"_pa")
             COUPLER_options[key_pp] = 0.0
 
             key_in = str(s+"_included")
@@ -142,47 +146,34 @@ def main():
             else:
                 COUPLER_options[key_in] = 0
 
-
-        # Solve for initial partial pressures of volatiles, using parameterised method
-        solvepp_dict = {"dummy_item"}
-        if (COUPLER_options['solvepp_enabled'] == 1):
-
-            solvepp_dict = solvepp_doit(COUPLER_options)
-
-            for s in volatile_species:
-                key_pp = str(s+"_initial_atmos_pressure")
-                key_in = str(s+"_included")
-
-                # This volatile calculated by solvepp
-                if s in solvepp_dict:
-                    if solvepp_dict[s] > 1e-3:
-                        COUPLER_options[key_in] = 1
-                        COUPLER_options[key_pp] = solvepp_dict[s]
-                    else:
-                        COUPLER_options[key_in] = 0
-                        COUPLER_options[key_pp] = 0.0
-
-        # Prepare to use prescribed additional partial pressures
+        # Work out which vols are included
         for s in volatile_species:
-            key_pp = str(s+"_initial_atmos_pressure")
-            key_ab = str(s+"_add_bars")
+            key_pp = str(s+"_pa")
             key_in = str(s+"_included")
 
-            # Ensure that additional bars are recorded, even if zero
-            if (key_ab not in COUPLER_options):
-                COUPLER_options[key_ab] = 0.0
+            # This volatile not in cfg file
+            if not ( (key_in in COUPLER_options) and (key_pp in COUPLER_options)):
+                COUPLER_options[key_in] = 0
+                COUPLER_options[key_pp] = 0.0
+                continue 
 
-            # Inject additional bars now, if solvepp is disabled or doesn't handle this volatile
-            if (COUPLER_options[key_in] == 1) and ( (COUPLER_options["solvepp_enabled"] == 0) or (s not in solvepp_dict)):
-                    COUPLER_options[key_pp] = float(COUPLER_options[key_ab] * 1.0e5)  # Convert bar -> Pa
+            if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options[key_in] == 0):
+                raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
+
+        # Get target elemental masses depending on required method
+        solvepp_target = {"_unset":True}
+        if COUPLER_options["solvepp_use_params"] > 0:
+            solvepp_target = solvepp_get_target_from_params(COUPLER_options)
+        else:
+            solvepp_target = solvepp_get_target_from_pressures(COUPLER_options)
+
 
     # Check that all partial pressures are positive
     inc_vols = []
     for s in volatile_species:
-        key_pp = str(s+"_initial_atmos_pressure")
+        key_pp = str(s+"_pa")
         key_in = str(s+"_included")
         if (COUPLER_options[key_in] == 1):
-            inc_vols.append(s)
 
             # Check positive
             if (COUPLER_options[key_pp] <= 0.0):
@@ -190,8 +181,10 @@ def main():
                 raise Exception("Partial pressures of included volatiles must be positive. Consider assigning volatile '%s' a small positive value. Check that solvepp_enabled has the intended setting." % s)
 
             # Ensure numerically reasonable
-            if (COUPLER_options[key_pp] <= 1e-3):
-                COUPLER_options[key_pp] = 1e-3
+            COUPLER_options[key_pp] = max( COUPLER_options[key_pp], 1.0e-10)
+
+            # Store
+            inc_vols.append(s)
             
 
     log.info("Included volatiles: " + str(inc_vols))
@@ -332,35 +325,18 @@ def main():
         # Update help quantities, input_flag: "Interior"
         runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options)
 
-        # Update initial guesses for partial pressure and mantle mass
-        if (COUPLER_options['solvepp_enabled'] == 1):
+        # Before injecting additional atmosphere
+        if (loop_counter["init"] < loop_counter["init_loops"]):
 
-            # Before injecting additional atmosphere
-            if (loop_counter["init"] < loop_counter["init_loops"]):
+            # Store new guesses based on last init iteration
+            run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
+            COUPLER_options["T_surf_guess"] =           run_int.iloc[-1]["T_surf"]
+            COUPLER_options["melt_fraction_guess"] =    run_int.iloc[-1]["Phi_global"]
 
-                # Store new guesses based on last init iteration
-                run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
-                COUPLER_options["T_surf_guess"] =           run_int.iloc[-1]["T_surf"]
-                COUPLER_options["melt_fraction_guess"] =    run_int.iloc[-1]["Phi_global"]
+            # Solve for partial pressures again
+            solvepp_dict = solvepp_doit(COUPLER_options)
 
-                # Solve for partial pressures again
-                solvepp_dict = solvepp_doit(COUPLER_options)
 
-                # Store results
-                for s in volatile_species:
-                    if (s in solvepp_dict.keys()) and (COUPLER_options[s+"_included"] == 1):
-                        COUPLER_options[s+"_initial_atmos_pressure"] = solvepp_dict[s]
-
-            # Penultimate init loop: inject additional atmosphere
-            if (loop_counter["init"] == max(0,loop_counter["init_loops"]-1)):
-                log.info("Including additional volatile bars in addition to solvepp result")
-                for s in volatile_species:
-                    key_pp = str(s+"_initial_atmos_pressure")
-                    key_ab = str(s+"_add_bars")
-                    key_in = str(s+"_included")
-                    if (COUPLER_options[key_in] == 1):
-                        COUPLER_options[key_pp] += float(COUPLER_options[key_ab] * 1.0e5)  # Convert bar -> Pa
-                    
         ############### / INTERIOR SUB-LOOP
                         
 

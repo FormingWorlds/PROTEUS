@@ -5,7 +5,7 @@ from utils.helper import *
 log = logging.getLogger("PROTEUS")
 
 # Solve partial pressures functions
-# Written by Dan Bower
+# Originally formulated by Dan Bower
 # See the related issue on the PROTEUS GitHub page:-
 # https://github.com/FormingWorlds/PROTEUS/issues/42
 # Paper to cite:-
@@ -176,83 +176,85 @@ class SolubilityCO(Solubility):
         ppmw = 10 ** (-0.738 + 0.876 * np.log10(p) - 5.44e-5 * p_total)
         return ppmw
 
-def solvepp_get_partial_pressures(pin, fO2_shift, global_d):
+def is_included(gas, COUPLER_options):
+    return bool(COUPLER_options[gas+"_included"]>0)
+
+def solvepp_get_partial_pressures(pin, COUPLER_options):
     """Partial pressure of all considered species"""
 
     # we only need to know pH2O, pCO2, and pN2, since reduced species
     # can be directly determined from equilibrium chemistry
 
-    pH2O, pCO2, pN2 = pin
+    fO2_shift = COUPLER_options["fO2_shift_IW"]
 
     # return results in dict, to be explicit about which pressure
     # corresponds to which volatile
     p_d = {}
-    p_d['H2O'] = pH2O
-    p_d['CO2'] = pCO2
-    p_d['N2'] = pN2
 
-    # pH2 from equilibrium chemistry
-    gamma = ModifiedKeq('janaf_H')
-    gamma = gamma(global_d['temperature'], fO2_shift)
-    p_d['H2'] = gamma*pH2O
+    # H2O
+    p_d['H2O'] = pin['H2O']
 
-    # pCO from equilibrium chemistry
-    gamma = ModifiedKeq('janaf_C')
-    gamma = gamma(global_d['temperature'], fO2_shift)
-    p_d['CO'] = gamma*pCO2
+    # H2
+    if is_included("H2", COUPLER_options):
+        gamma = ModifiedKeq('janaf_H')
+        gamma = gamma(COUPLER_options['T_outgas'], fO2_shift)
+        p_d['H2'] = gamma*pin["H2O"]
 
-    gamma = ModifiedKeq('schaefer_CH4')
-    gamma = gamma(global_d['temperature'], fO2_shift)
-    p_d['CH4'] = gamma*pCO2*p_d['H2']**2.0
+    # CO2
+    p_d['CO2'] = pin['CO2']
+
+    # CO
+    if is_included("CO", COUPLER_options):
+        gamma = ModifiedKeq('janaf_C')
+        gamma = gamma(COUPLER_options['T_outgas'], fO2_shift)
+        p_d['CO'] = gamma*pin["CO2"]
+    
+    # CH4
+    if is_included("H2",COUPLER_options) and is_included("CH4",COUPLER_options):
+        gamma = ModifiedKeq('schaefer_CH4')
+        gamma = gamma(COUPLER_options['T_outgas'], fO2_shift)
+        p_d['CH4'] = gamma*pin["CO2"]*p_d['H2']**2.0
+
+    # N2
+    p_d['N2']  = pin['N2']
 
     return p_d
 
-def solvepp_get_total_pressure(pin, fO2_shift, global_d):
+
+def calc_mantle_mass(COUPLER_options):
+    # Get core's average density using Earth values
+    earth_fr = 0.55     # earth core radius fraction
+    earth_fm = 0.325    # earth core mass fraction  (https://arxiv.org/pdf/1708.08718.pdf)
+    earth_m  = 5.97e24  # kg
+    earth_r  = 6.37e6   # m
+
+    core_rho = (3.0 * earth_fm * earth_m) / (4.0 * np.pi * ( earth_fr * earth_r )**3.0 )  # core density [kg m-3]
+    log.info("Estimating core density to be %g kg m-3" % core_rho)
+
+    # Calculate mantle mass by subtracting core from total
+    core_mass = core_rho * 4.0/3.0 * np.pi * (COUPLER_options["radius"] * COUPLER_options["planet_coresize"] )**3.0
+    mantle_mass = COUPLER_options["mass"] - core_mass 
+    log.debug("Total mantle mass is %.2e kg" % mantle_mass)
+    if (mantle_mass <= 0.0):
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Something has gone wrong (mantle mass is negative)")
+    
+    return mantle_mass
+
+
+def solvepp_get_total_pressure(pin, COUPLER_options):
     """Sum partial pressures to get total pressure"""
 
-    p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
+    p_d = solvepp_get_partial_pressures(pin, COUPLER_options)
     ptot = sum(p_d.values())
 
     return ptot
 
-def solvepp_atmosphere_mass(pin, fO2_shift, global_d):
-    """Atmospheric mass of volatiles and totals for H, C, and N"""
-
-    p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
-    mu_atm = solvepp_atmosphere_mean_molar_mass(pin, fO2_shift, global_d)
-
-    mass_atm_d = {}
-    for key, value in p_d.items():
-        # 1.0E5 because pressures are in bar
-        mass_atm_d[key] = value*1.0E5/global_d['little_g']
-        mass_atm_d[key] *= 4.0*np.pi*global_d['planetary_radius']**2.0
-        mass_atm_d[key] *= molar_mass[key]/mu_atm
-
-    # total mass of H
-    mass_atm_d['H'] = mass_atm_d['H2'] / molar_mass['H2']
-    mass_atm_d['H'] += mass_atm_d['H2O'] / molar_mass['H2O']
-    # note factor 2 below to account for stoichiometry
-    mass_atm_d['H'] += mass_atm_d['CH4'] * 2 / molar_mass['CH4']
-    # below converts moles of H2 to mass of H
-    mass_atm_d['H'] *= molar_mass['H2']
-
-    # total mass of C
-    mass_atm_d['C'] = mass_atm_d['CO'] / molar_mass['CO']
-    mass_atm_d['C'] += mass_atm_d['CO2'] / molar_mass['CO2']
-    mass_atm_d['C'] += mass_atm_d['CH4'] / molar_mass['CH4']
-    # below converts moles of C to mass of C
-    mass_atm_d['C'] *= molar_mass['C']
-
-    # total mass of N
-    mass_atm_d['N'] = mass_atm_d['N2']
-
-    return mass_atm_d
-
-def solvepp_atmosphere_mean_molar_mass(pin, fO2_shift, global_d):
+def solvepp_atmosphere_mean_molar_mass(pin, COUPLER_options):
     """Mean molar mass of the atmosphere"""
 
-    p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
-    ptot = solvepp_get_total_pressure(pin, fO2_shift, global_d)
+    p_d = solvepp_get_partial_pressures(pin, COUPLER_options)
+    ptot = solvepp_get_total_pressure(pin, COUPLER_options)
 
     mu_atm = 0
     for key, value in p_d.items():
@@ -261,15 +263,55 @@ def solvepp_atmosphere_mean_molar_mass(pin, fO2_shift, global_d):
 
     return mu_atm
 
-def solvepp_dissolved_mass(pin, fO2_shift, global_d):
+def solvepp_atmosphere_mass(pin, COUPLER_options):
+    """Atmospheric mass of volatiles and totals for H, C, and N"""
+
+    p_d = solvepp_get_partial_pressures(pin, COUPLER_options)
+    mu_atm = solvepp_atmosphere_mean_molar_mass(pin, COUPLER_options)
+
+    mass_atm_d = {}
+    for key, value in p_d.items():
+        # 1.0E5 because pressures are in bar
+        mass_atm_d[key] = value*1.0E5/COUPLER_options['gravity']
+        mass_atm_d[key] *= 4.0*np.pi*COUPLER_options['radius']**2.0
+        mass_atm_d[key] *= molar_mass[key]/mu_atm
+
+    # total mass of H
+    mass_atm_d['H'] = mass_atm_d['H2O'] / molar_mass['H2O']
+    if is_included('H2', COUPLER_options):
+        mass_atm_d['H'] += mass_atm_d['H2'] / molar_mass['H2']
+    if is_included('CH4', COUPLER_options):
+        mass_atm_d['H'] += mass_atm_d['CH4'] * 2 / molar_mass['CH4']    # note factor 2 to account for stoichiometry
+    # below converts moles of H2 to mass of H
+    mass_atm_d['H'] *= molar_mass['H2']
+
+    # total mass of C
+    mass_atm_d['C'] = mass_atm_d['CO2'] / molar_mass['CO2']
+    if is_included("CO", COUPLER_options):
+        mass_atm_d['C'] = mass_atm_d['CO'] / molar_mass['CO']
+    if is_included("CH4", COUPLER_options):
+        mass_atm_d['C'] += mass_atm_d['CH4'] / molar_mass['CH4']
+    # below converts moles of C to mass of C
+    mass_atm_d['C'] *= molar_mass['C']
+
+    # total mass of N
+    mass_atm_d['N'] = mass_atm_d['N2']
+
+    return mass_atm_d
+
+
+
+def solvepp_dissolved_mass(pin, COUPLER_options):
     """Volatile masses in the (molten) mantle"""
 
     mass_int_d = {}
 
-    p_d = solvepp_get_partial_pressures(pin, fO2_shift, global_d)
-    ptot = solvepp_get_total_pressure(pin, fO2_shift, global_d)
+    p_d = solvepp_get_partial_pressures(pin, COUPLER_options)
+    ptot = solvepp_get_total_pressure(pin, COUPLER_options)
 
-    prefactor = 1E-6*global_d['mantle_mass']*global_d['mantle_melt_fraction']
+    prefactor = 1E-6*COUPLER_options['mantle_mass']*COUPLER_options['Phi_global']
+
+    keys = list(p_d.keys())
 
     # H2O
     sol_H2O = SolubilityH2O() # gets the default solubility model
@@ -278,44 +320,57 @@ def solvepp_dissolved_mass(pin, fO2_shift, global_d):
 
     # CO2
     sol_CO2 = SolubilityCO2() # gets the default solubility model
-    ppmw_CO2 = sol_CO2(p_d['CO2'], global_d['temperature'])
+    ppmw_CO2 = sol_CO2(p_d['CO2'], COUPLER_options['T_outgas'])
     mass_int_d['CO2'] = prefactor*ppmw_CO2
 
     # CO
-    sol_CO = SolubilityCO() # gets the default solubility model
-    ppmw_CO = sol_CO(p_d["CO"], ptot)
-    mass_int_d['CO'] = prefactor*ppmw_CO
+    if is_included("CO", COUPLER_options):
+        sol_CO = SolubilityCO() # gets the default solubility model
+        ppmw_CO = sol_CO(p_d["CO"], ptot)
+        mass_int_d['CO'] = prefactor*ppmw_CO
 
     # CH4
-    sol_CH4 = SolubilityCH4() # gets the default solubility model
-    ppmw_CH4 = sol_CH4(p_d["CH4"], ptot)
-    mass_int_d['CH4'] = prefactor*ppmw_CH4
+    if is_included("CH4", COUPLER_options):
+        sol_CH4 = SolubilityCH4() # gets the default solubility model
+        ppmw_CH4 = sol_CH4(p_d["CH4"], ptot)
+        mass_int_d['CH4'] = prefactor*ppmw_CH4
 
     # N2
     sol_N2 = SolubilityN2("dasgupta") # calculate fO2-dependent solubility
-    ppmw_N2 = sol_N2(p_d['N2'], ptot, global_d['temperature'], fO2_shift)
+    ppmw_N2 = sol_N2(p_d['N2'], ptot,  COUPLER_options['T_outgas'],  COUPLER_options['fO2_shift_IW'])
     mass_int_d['N2'] = prefactor*ppmw_N2
 
-
     # now get totals of H, C, N
-    mass_int_d['H'] = mass_int_d['H2O']/molar_mass['H2O'] + mass_int_d['CH4']*2/molar_mass["CH4"]
+    mass_int_d['H'] = mass_int_d['H2O']/molar_mass['H2O'] 
+    if is_included("CH4", COUPLER_options):
+        mass_int_d['H'] += mass_int_d['CH4']*2/molar_mass["CH4"]
     mass_int_d['H'] *= molar_mass['H2']
     
-    mass_int_d['C'] = mass_int_d['CO2']/molar_mass['CO2'] + mass_int_d['CO']/molar_mass['CO'] + mass_int_d['CH4']/molar_mass['CH4']
+    mass_int_d['C'] = mass_int_d['CO2']/molar_mass['CO2']
+    if is_included("CO", COUPLER_options):
+        mass_int_d['C'] += mass_int_d['CO']/molar_mass['CO'] 
+    if is_included("CH4", COUPLER_options):
+        mass_int_d['C'] += mass_int_d['CH4']/molar_mass['CH4']
     mass_int_d['C'] *= molar_mass['C']
 
     mass_int_d['N'] = mass_int_d['N2']
 
     return mass_int_d
 
-def solvepp_func(pin, fO2_shift, global_d, mass_target_d):
+def solvepp_func(pin_arr, COUPLER_options, mass_target_d):
     """Function to compute the residual of the mass balance"""
 
+    pin_dict = {
+        "H2O" : pin_arr[0],
+        "CO2" : pin_arr[1],
+        "N2"  : pin_arr[2]
+    }
+
     # get atmospheric masses
-    mass_atm_d = solvepp_atmosphere_mass(pin, fO2_shift, global_d)
+    mass_atm_d = solvepp_atmosphere_mass(pin_dict, COUPLER_options)
 
     # get (molten) mantle masses
-    mass_int_d = solvepp_dissolved_mass(pin, fO2_shift, global_d)
+    mass_int_d = solvepp_dissolved_mass(pin_dict, COUPLER_options)
     
     # compute residuals
     res_l = []
@@ -338,89 +393,55 @@ def solvepp_get_initial_pressures(target_d, log=True):
     """Get initial guesses of partial pressures"""
 
     # all in bar
-    if log:
-        cH2O = [-7 , +5]  # range in log10 units
-        cCO2 = [-8 , +5]
-        cN2  = [-10, +5]
+    cH2O = [-7 , +5]  # range in log10 units
+    cCO2 = [-8 , +5]
+    cN2  = [-10, +5]
 
-        pH2O = get_log_rand(cH2O)
-        pCO2 = get_log_rand(cCO2)
-        pN2  = get_log_rand(cN2 )
-    else:
-        pH2O = np.random.uniform(low=1.0e-12, high=1.0)
-        pCO2 = np.random.uniform(low=1.0e-12, high=0.9)
-        pN2  = np.random.uniform(low=1.0e-12, high=0.5)
+    pH2O = get_log_rand(cH2O)
+    pCO2 = get_log_rand(cCO2)
+    pN2  = get_log_rand(cN2 )
 
     if target_d['H'] == 0:
-        pH2O = 0
+        pH2O = 0.0
     if target_d['C'] == 0:
-        pCO2 = 0
+        pCO2 = 0.0
     if target_d['N'] == 0:
-        pN2 = 0
+        pN2 = 0.0
 
     return pH2O, pCO2, pN2
 
-def solvepp_equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitrogen):
-    """Calculate equilibrium chemistry of the atmosphere"""
 
-    H_kg = N_ocean_moles * global_d['ocean_moles'] * molar_mass['H2']
+def solvepp_get_target_from_params(COUPLER_options):
+
+    N_ocean_moles = COUPLER_options['hydrogen_earth_oceans']
+    CH_ratio =      COUPLER_options['CH_ratio']
+    Nitrogen =      COUPLER_options['nitrogen_ppmw']
+
+    H_kg = N_ocean_moles * ocean_moles * molar_mass['H2']
     C_kg = CH_ratio * H_kg
-    N_kg = Nitrogen * 1.0E-6 * global_d['mantle_mass']
+    N_kg = Nitrogen * 1.0E-6 * COUPLER_options["mantle_mass"]
     target_d = {'H': H_kg, 'C': C_kg, 'N': N_kg}
+    return target_d
 
-    count = 0
-    max_attempts = 10000
-    ier = 0
-    # could in principle result in an infinite loop, if randomising
-    # the ic never finds the physical solution (but in practice,
-    # this doesn't seem to happen)
-    while ier != 1:
-        x0 = solvepp_get_initial_pressures(target_d)
-        sol, info, ier, msg = fsolve(solvepp_func, x0, args=(fO2_shift, global_d, target_d), full_output=True)
-        count += 1
-        
-        # if any negative pressures, report ier!=1
-        if any(sol<0):
-            # sometimes, a solution exists with negative pressures, which is clearly non-physical.  Here, assert we must have positive pressures.
-            ier = 0
+def solvepp_get_target_from_pressures(COUPLER_options):
 
-        # check residuals
-        this_resid = solvepp_func(sol, fO2_shift, global_d, target_d)
-        if np.amax(np.abs(this_resid)) > 1.0:
-            ier = 0
+    pin_dict = {}
+    for vol in volatile_species:
+        if is_included(vol, COUPLER_options):
+            pin_dict[vol] = COUPLER_options[vol+"_pa"]*1.0e-5  # Pa to bar
 
-        # give up after a while
-        if count > max_attempts:
-            UpdateStatusfile(dirs, 21)
-            raise Exception("Could not find solution for volatile abundances (max attempts reached)")
+    mass_atm_d = solvepp_atmosphere_mass(pin_dict, COUPLER_options)
+    mass_int_d = solvepp_dissolved_mass(pin_dict, COUPLER_options)
 
-    log.info("Initial guess attempt number = %d" % count)
-    log.info("Residuals: " + str(this_resid))
+    target_d = {}
+    for vol in ['H','C','N']:
+        target_d[vol] = mass_atm_d[vol] + mass_int_d[vol]
 
-    p_d = solvepp_get_partial_pressures(sol, fO2_shift, global_d)
-    res_l = solvepp_func(sol, fO2_shift, global_d, target_d)
+    return target_d
 
-    # for convenience, add inputs to same dict
-    p_d['N_ocean_moles'] = N_ocean_moles
-    p_d['CH_ratio'] = CH_ratio
-    p_d['fO2_shift'] = fO2_shift
-    # for debugging/checking, add success initial condition
-    # that resulted in a converged solution with positive pressures
-    p_d['pH2O_0'] = x0[0]
-    p_d['pCO2_0'] = x0[1]
-    p_d['pN2_0'] = x0[2]
-    # also for debugging/checking, report residuals
-    p_d['res_H'] = res_l[0]
-    p_d['res_C'] = res_l[1]
-    p_d['res_N'] = res_l[2]
+def solvepp_equilibrium_atmosphere(target_d, COUPLER_options):
+    """Solves for surface partial pressures assuming melt-vapour eqm
 
-    return p_d
-
-def solvepp_doit(COUPLER_options):
-    """Solves for initial surface partial pressures assuming melt-vapour eqm
-
-    Requires an initial guess to be made for some parameters, as provided in
-    the dictionary COUPLER_options. 
 
     Parameters
     ----------
@@ -436,52 +457,64 @@ def solvepp_doit(COUPLER_options):
 
     log.info("Solving for equilibrium partial pressures at surface")
 
-    # Volatiles that are solved-for using this eqm calculation
-    solvepp_vols = ['H2O', 'CO2', 'N2', 'H2', 'CO', 'CH4']
+    # pin_arr = [COUPLER_options["H2O_pa"], COUPLER_options["CO2_pa"], COUPLER_options["N2_pa"]]
+    # pin_arr = [p*1.0e-5 for p in pin_arr]
 
-    # Dictionary for passing parameters around for the partial pressure calculations
-    global_d = {}
+    count = 0
+    max_attempts = 10000
+    ier = 0
+    # could in principle result in an infinite loop, if randomising
+    # the ic never finds the physical solution (but in practice,
+    # this doesn't seem to happen)
+    while ier != 1:
+        x0 = solvepp_get_initial_pressures(target_d)
+        sol, info, ier, msg = fsolve(solvepp_func, x0, args=(COUPLER_options, target_d), full_output=True)
+        count += 1
+        
+        # if any negative pressures, report ier!=1
+        if any(sol<0):
+            # sometimes, a solution exists with negative pressures, which is clearly non-physical.  Here, assert we must have positive pressures.
+            ier = 0
 
-    # These do not require guesses
-    global_d['ocean_moles'] =           7.68894973907177e+22 # moles of H2 (or H2O) in one present-day Earth ocean
-    global_d['is_CH4'] =                bool(COUPLER_options['CH4_included'] > 0)
+        # check residuals
+        this_resid = solvepp_func(sol, COUPLER_options, target_d)
+        if np.amax(np.abs(this_resid)) > 1.0:
+            ier = 0
 
-    # These require initial guesses
-    global_d['mantle_melt_fraction'] =  COUPLER_options['melt_fraction_guess'] 
+        # give up after a while
+        if count > max_attempts:
+            UpdateStatusfile(dirs, 21)
+            raise Exception("Could not find solution for volatile abundances (max attempts reached)")
 
-    # Get core's average density using Earth values
-    earth_fr = 0.55     # earth core radius fraction
-    earth_fm = 0.325    # earth core mass fraction  (https://arxiv.org/pdf/1708.08718.pdf)
-    earth_m  = 5.97e24  # kg
-    earth_r  = 6.37e6   # m
+    log.info("Initial guess attempt number = %d" % count)
+    log.info("Residuals: " + str(this_resid))
 
-    core_rho = (3.0 * earth_fm * earth_m) / (4.0 * np.pi * ( earth_fr * earth_r )**3.0 )  # core density [kg m-3]
-    log.info("Estimating core density to be %g kg m-3" % core_rho)
+    sol_dict = {
+        "H2O" : sol[0],
+        "CO2" : sol[1],
+        "N2"  : sol[2]
+    }
 
-    # Calculate mantle mass by subtracting core from total
-    core_mass = core_rho * 4.0/3.0 * np.pi * (COUPLER_options["radius"] * COUPLER_options["planet_coresize"] )**3.0
-    global_d['mantle_mass'] = COUPLER_options["mass"] - core_mass 
-    log.info("Total mantle mass is %.2e kg" % global_d['mantle_mass'])
-    if (global_d['mantle_mass'] <= 0.0):
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Something has gone wrong (mantle mass is negative)")
+    p_d = solvepp_get_partial_pressures(sol_dict, COUPLER_options)
+    res_l = solvepp_func(sol, COUPLER_options, target_d)
 
-    global_d['temperature'] =       COUPLER_options['T_surf_guess'] # K
-
-    # These are defined by the proteus configuration file
-    global_d['planetary_radius'] =  COUPLER_options['radius']
-    global_d['little_g'] =          COUPLER_options['gravity']
-    N_ocean_moles =                 COUPLER_options['hydrogen_earth_oceans']
-    CH_ratio =                      COUPLER_options['CH_ratio']
-    fO2_shift =                     COUPLER_options['fO2_shift_IW']
-    Nitrogen =                      COUPLER_options['nitrogen_ppmw']
-
-    # Solve for partial pressures
-    p_d = solvepp_equilibrium_atmosphere(N_ocean_moles, CH_ratio, fO2_shift, global_d, Nitrogen)
+    # for debugging/checking, add success initial condition
+    # that resulted in a converged solution with positive pressures
+    p_d['pH2O_0'] = x0[0]
+    p_d['pCO2_0'] = x0[1]
+    p_d['pN2_0'] = x0[2]
+    # also for debugging/checking, report residuals
+    p_d['res_H'] = res_l[0]
+    p_d['res_C'] = res_l[1]
+    p_d['res_N'] = res_l[2]
 
     partial_pressures = {}
-    for s in solvepp_vols:
-        log.info("    solvepp: p_%s = %f bar" % (s,p_d[s]))
-        partial_pressures[s] = p_d[s] * 1.0e5 # Convert from bar to Pa
+    for s in volatile_species:
+        if s in p_d.keys():
+            partial_pressures[s] = p_d[s] * 1.0e5
+        else:
+            partial_pressures[s] = 0.0
+        log.info("    solvepp: p_%s = %f bar" % (s,partial_pressures[s]))
 
     return partial_pressures
+

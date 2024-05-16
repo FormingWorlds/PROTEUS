@@ -15,6 +15,7 @@ M_earth         = 5.972E24              # kg
 R_core_earth    = 3485000.0             # m
 M_core_earth    = 1.94E24               # kg
 mol             = 6.02214076e+23        # mol definition
+ocean_moles     = 7.68894973907177e+22 # moles of H2 (or H2O) in one present-day Earth ocean
 
 # Values from phys.py
 const_h = 6.626075540e-34    #Planck's constant
@@ -58,8 +59,8 @@ molar_mass      = {
         }
 
 # Supported volatiles and elements
-volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
-element_list     = [ "H", "O", "C", "N", "S", "He" ] 
+volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2"]
+element_list     = [ "H", "O", "C", "N" ] 
 
 # Henry's law coefficients
 # Add to dataframe + save to disk
