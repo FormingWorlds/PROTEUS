@@ -463,7 +463,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","jgr_grid.cfg")
-    pg = Pgrid("jgr_grid_solvevol", cfg_base)
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_solvevol"
+    pg = Pgrid("jgr_solvevol", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -497,7 +498,7 @@ if __name__=='__main__':
     # Start PROTEUS processes
     # -----
 
-    pg.run(120, test_run=False)
+    pg.run(110, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.
