@@ -395,6 +395,15 @@ def main():
             log.info("")
             finished = True
 
+        # Stop simulation when flux is small
+        if (COUPLER_options["emit_stop"] == 1) and (loop_counter["total"] > loop_counter["init_loops"]+1) \
+            and ( abs(runtime_helpfile.iloc[-1]["F_atm"]) <= COUPLER_options["F_crit"]):
+            UpdateStatusfile(dirs, 14)
+            log.info("")
+            log.info("===> Planet is no longer cooling! <===")
+            log.info("")
+            finished = True
+
         # Determine when the simulation enters a steady state
         if (COUPLER_options["steady_stop"] == 1) and (loop_counter["total"] > loop_counter["steady_check"]*2+5) and (loop_counter["steady"] == 0):
             # How many iterations to look backwards

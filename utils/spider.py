@@ -459,11 +459,6 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             else:
                 UpdateStatusfile(dirs, 20)
                 raise Exception("Invalid time-stepping method '%d'" % COUPLER_options["dt_method"])
-            
-            # Additional step-size ceiling when F_crit is used
-            if abs(run_atm.iloc[-1]["F_atm"]) <= COUPLER_options["F_crit"]:
-                dtswitch = min(dtswitch, COUPLER_options["dt_crit"])
-                log.info("|F_atm| <= F_crit, so time-step is limited to %g years" % COUPLER_options["dt_crit"])
 
             # Step scale factor (is always <= 1.0)
             dtswitch *= step_sf
