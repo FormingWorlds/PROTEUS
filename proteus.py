@@ -57,7 +57,7 @@ def main():
     # Count iterations
     loop_counter = { 
                     "total": 0,            # Total number of iters performed
-                    "total_min"  : 30,     # Minimum number of total loops
+                    "total_min"  : 10,     # Minimum number of total loops
                     "total_loops": COUPLER_options["iter_max"],   # Maximum number of total loops
 
                     "init": 0,             # Number of init iters performed
@@ -443,14 +443,6 @@ def main():
                 log.info("")
                 finished = True
             
-        # Stop simulation if maximum loops reached
-        if (loop_counter["total"] > loop_counter["total_loops"]):
-            UpdateStatusfile(dirs, 12)
-            log.info("")
-            log.info("===> Maximum number of iterations reached! <===")
-            log.info("")
-            finished = True
-
         # Stop simulation if maximum time reached
         if (time_dict["planet"] >= time_dict["target"]):
             UpdateStatusfile(dirs, 13)
@@ -463,6 +455,15 @@ def main():
         if finished and (loop_counter["total"] < loop_counter["total_min"]):
             log.info("Minimum number of iterations not yet attained; continuing...")
             finished = False
+            UpdateStatusfile(dirs, 1)
+
+        # Stop simulation if maximum loops reached
+        if (loop_counter["total"] > loop_counter["total_loops"]):
+            UpdateStatusfile(dirs, 12)
+            log.info("")
+            log.info("===> Maximum number of iterations reached! <===")
+            log.info("")
+            finished = True
 
         # Check if keepalive file has been removed - this means that the model should exit ASAP
         if not os.path.exists(keepalive_file):
