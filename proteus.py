@@ -314,7 +314,7 @@ def main():
             for key in solvevol_target.keys():
                 if solvevol_target[key] < 1.0e4:
                     solvevol_target[key] = 0.0
-
+                log.debug("Solvevol target %s = %g kg"%(key, solvevol_target[key]))
         
         #    do calculation
         solvevol_dict = solvevol_equilibrium_atmosphere(solvevol_target, COUPLER_options)

@@ -288,7 +288,7 @@ def solvevol_atmosphere_mass(pin, COUPLER_options):
     # total mass of C
     mass_atm_d['C'] = mass_atm_d['CO2'] / molar_mass['CO2']
     if is_included("CO", COUPLER_options):
-        mass_atm_d['C'] = mass_atm_d['CO'] / molar_mass['CO']
+        mass_atm_d['C'] += mass_atm_d['CO'] / molar_mass['CO']
     if is_included("CH4", COUPLER_options):
         mass_atm_d['C'] += mass_atm_d['CH4'] / molar_mass['CH4']
     # below converts moles of C to mass of C
@@ -365,10 +365,9 @@ def solvevol_dissolved_mass(pin, COUPLER_options):
     mass_int_d['N'] = mass_int_d['N2']
 
     mass_int_d['O'] = mass_int_d['H2O'] / molar_mass['H2O']
+    mass_int_d['O'] += mass_int_d['CO2'] / molar_mass['CO2'] * 2.0
     if is_included("CO", COUPLER_options):
-        mass_int_d['O'] = mass_int_d['CO'] / molar_mass['CO']
-    if is_included("CO2", COUPLER_options):
-        mass_int_d['O'] = mass_int_d['CO2'] / molar_mass['CO2'] * 2.0
+        mass_int_d['O'] += mass_int_d['CO'] / molar_mass['CO']
     mass_int_d['O'] *= molar_mass['O']
 
     return mass_int_d
@@ -398,6 +397,12 @@ def solvevol_func(pin_arr, COUPLER_options, mass_target_d):
         if mass_target_d[vol]:
             res /= mass_target_d[vol]
         res_l.append(res)
+
+    # Debug
+    # H_kg = (2*mass_atm_d["H2O"]/molar_mass["H2O"] + 2*mass_atm_d["H2"]/molar_mass["H2"] + 4*mass_atm_d["CH4"]/molar_mass["CH4"]) *molar_mass['H']
+    # C_kg = (mass_atm_d["CO2"]/molar_mass["CO2"] + mass_atm_d["CO"]/molar_mass["CO"] + mass_atm_d["CH4"]/molar_mass["CH4"]) * molar_mass['C']
+    # N_kg = mass_atm_d["N2"]
+    # print("Post:", H_kg, C_kg, N_kg)
 
     return res_l
 
