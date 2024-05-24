@@ -9,7 +9,7 @@ title = "PROTEUS base"
 
 [execution]
     silent          = false  
-    max_steps       = 200    
+    max_steps       = 400    
     max_runtime     = 400    
     continua        = true   
     aerosol         = false  
@@ -19,12 +19,13 @@ title = "PROTEUS base"
 
     convection_type = "mlt" 
     condensates     = [] 
-    solvers         = ["newton"]    
+    solvers         = ["newton"]  
+    dx_max          = 220.0    
     chemistry       = 0
     initial_state   = ["iso","1800"] 
     wary            = false   
     converge_atol   = 1.0e-3  
-    converge_rtol   = 2.0e-3  
+    converge_rtol   = 1.0e-2  
 
 
 [plots]

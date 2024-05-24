@@ -52,17 +52,11 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     sflux_tlast = sorted(sflux_times)[-1]
     sflux_path  = dirs["output"]+"/data/%d.sflux"%sflux_tlast
 
-    vol_list = { 
-                  "H2O" : runtime_helpfile.iloc[-1]["H2O_mr"], 
-                  "CO2" : runtime_helpfile.iloc[-1]["CO2_mr"],
-                  "H2"  : runtime_helpfile.iloc[-1]["H2_mr"], 
-                  "N2"  : runtime_helpfile.iloc[-1]["N2_mr"],  
-                  "CH4" : runtime_helpfile.iloc[-1]["CH4_mr"], 
-                  "O2"  : runtime_helpfile.iloc[-1]["O2_mr"], 
-                  "CO"  : runtime_helpfile.iloc[-1]["CO_mr"], 
-                  "He"  : runtime_helpfile.iloc[-1]["He_mr"],
-                  "NH3" : 0.0 # not supported by SPIDER 
-                }
+    vol_list = {}
+    for vol in volatile_species:
+        if COUPLER_options[vol+"_included"]:
+            vol_list[vol] = runtime_helpfile.iloc[-1][vol+"_mr"]
+
     mrzero = True
     for k in vol_list.keys():
         v = vol_list[k]
@@ -137,7 +131,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         cfg_toml["execution"]["solvers"] = []
         cfg_toml["execution"]["convection_type"] = ""
 
-    elif time_dict["planet"] > 0:
+    elif loop_counter["total"] >= 1:
         # If solving for RCE and are current inside the init stage, use old T(p)
         # as initial guess for solver.
         pt_path = os.path.join(dirs["output"], "pt.csv")
@@ -148,29 +142,32 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     
     # Solution stuff 
     surf_state = int(COUPLER_options["atmosphere_surf_state"])
-    if (0 <= surf_state <= 3):
-
-        # Stability on first call
-        if loop_counter["total"] <= 1:
-            surf_state = 0
-            cfg_toml["execution"]["stabilise"] = True
-            log.debug("Stabilising")
-
-        # CBL case
-        if surf_state == 2:
-            if COUPLER_options["atmosphere_solve_energy"] == 0:
-                UpdateStatusfile(dirs, 20)
-                raise Exception("With AGNI it is necessary to an energy-conserving solver alongside the conductive lid scheme. Turn them both on or both off.")
-            cfg_toml["planet"]["skin_k"] =          COUPLER_options["skin_k"]
-            cfg_toml["planet"]["skin_d"] =          COUPLER_options["skin_d"]
-            cfg_toml["planet"]["tmp_magma"] =       COUPLER_options["T_surf"]
-
-        cfg_toml["execution"]["solution_type"] = surf_state
-
-    else:
+    if not (0 <= surf_state <= 3):
         UpdateStatusfile(dirs, 20)
         raise Exception("Invalid surface state %d" % surf_state)
 
+    # Stability on first call
+    # if loop_counter["total"] < 1:
+    #     surf_state = 0
+    #     cfg_toml["execution"]["wary"] = True
+    #     log.debug("Wary solve = True")
+
+    # CBL case
+    if surf_state == 2:
+        if COUPLER_options["atmosphere_solve_energy"] == 0:
+            UpdateStatusfile(dirs, 20)
+            raise Exception("With AGNI it is necessary to an energy-conserving solver alongside the conductive lid scheme. Turn them both on or both off.")
+        cfg_toml["planet"]["skin_k"] =          COUPLER_options["skin_k"]
+        cfg_toml["planet"]["skin_d"] =          COUPLER_options["skin_d"]
+        cfg_toml["planet"]["tmp_magma"] =       COUPLER_options["T_surf"]
+
+    # Solution type ~ surface state
+    cfg_toml["execution"]["solution_type"] = surf_state
+
+    # Small steps after first iters, since it will be *near* the solution
+    if loop_counter["total"] > loop_counter["init_loops"]+2:
+        cfg_toml["execution"]["dx_max"] = 3.0
+        
     # Set plots 
     cfg_toml["plots"]["at_runtime"]     = agni_debug and make_plots
     cfg_toml["plots"]["temperature"]    = make_plots
@@ -192,11 +189,11 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     if agni_debug:
         agni_stdout = sys.stdout 
     else:
-        log.info("Terminal output suppressed")
+        log.info("AGNI output suppressed (see agni.log)")
         agni_stdout = subprocess.DEVNULL
 
     # Call the module
-    log.debug("Call AGNI subprocess")
+    log.debug("Call AGNI subprocess - output below...")
     call_sequence = [ os.path.join(dirs["agni"],"agni.jl"), cfg_this]
     proc = subprocess.run(call_sequence, stdout=agni_stdout, stderr=sys.stdout) 
     if proc.returncode != 0:
@@ -213,10 +210,11 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # Move files
     log.debug("Tidy files")
     files_move = [  
-                    ("plot_fluxes.png", "plot_fluxes_atmosphere.png"),
                     ("atm.nc", "data/"+time_str+"_atm.nc"),
                     ("agni.log", "agni_recent.log")
                  ]
+    if make_plots:
+        files_move.append(("plot_fluxes.png", "plot_fluxes_atmosphere.png"))
     for pair in files_move:
         p_inp = os.path.join(dirs["output"], pair[0])
         p_out = os.path.join(dirs["output"], pair[1])
