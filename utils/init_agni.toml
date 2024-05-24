@@ -22,7 +22,7 @@ title = "PROTEUS base"
     solvers         = ["newton"]    
     chemistry       = 0
     initial_state   = ["iso","1800"] 
-    stabilise       = false   
+    wary            = false   
     converge_atol   = 1.0e-3  
     converge_rtol   = 2.0e-3  
 
