@@ -8,43 +8,13 @@ import tomlkit as toml
 
 log = logging.getLogger("PROTEUS")
 
-def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
-    """Run AGNI atmosphere model.
-    
-    Calculates the temperature structure of the atmosphere and the fluxes, etc.
-    Stores the new flux boundary condition to be provided to SPIDER. Limits flux
-    change if required.
-
-    Parameters
-    ----------
-        loop_counter : dict 
-            Model loop counter values.
-        time_dict : dict
-            Dictionary containing simulation time variables
-        dirs : dict
-            Dictionary containing paths to directories
-        COUPLER_options : dict
-            Configuration options and other variables
-        runtime_helpfile : pd.DataFrame
-            Dataframe containing simulation variables (now and historic)
-
-    Returns
-    ----------
-        COUPLER_options : dict
-            Updated configuration options and other variables
-
-    """
-
-    PrintHalfSeparator()
-    log.info("Running AGNI...")
+def _try_agni(loop_counter, dirs, COUPLER_options, runtime_helpfile, make_plots, initial_offset):
 
     # ---------------------------
     # Setup values to be provided to AGNI
     # ---------------------------
     gravity  = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
-    time_str = "%d"%time_dict["planet"]
     agni_debug = bool(log.getEffectiveLevel() == logging.DEBUG)
-    make_plots = (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0)
     try_spfile = os.path.join(dirs["output"] , "runtime.sf")
     
     sflux_files = glob.glob(dirs["output"]+"/data/*.sflux")
@@ -137,20 +107,13 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         pt_path = os.path.join(dirs["output"], "pt.csv")
         if os.path.exists(pt_path):
             log.debug("Initialise from last T(p) CSV file")
-            cfg_toml["execution"]["initial_state"] = ["csv", pt_path]
+            cfg_toml["execution"]["initial_state"] = ["csv", pt_path, "add", "%.6f"%initial_offset]
 
-    
     # Solution stuff 
     surf_state = int(COUPLER_options["atmosphere_surf_state"])
     if not (0 <= surf_state <= 3):
         UpdateStatusfile(dirs, 20)
         raise Exception("Invalid surface state %d" % surf_state)
-
-    # Stability on first call
-    # if loop_counter["total"] < 1:
-    #     surf_state = 0
-    #     cfg_toml["execution"]["wary"] = True
-    #     log.debug("Wary solve = True")
 
     # CBL case
     if surf_state == 2:
@@ -166,7 +129,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
     # Small steps after first iters, since it will be *near* the solution
     if loop_counter["total"] > loop_counter["init_loops"]+2:
-        cfg_toml["execution"]["dx_max"] = 3.0
+        cfg_toml["execution"]["dx_max"] = 4.0
         
     # Set plots 
     cfg_toml["plots"]["at_runtime"]     = agni_debug and make_plots
@@ -196,9 +159,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     log.debug("Call AGNI subprocess - output below...")
     call_sequence = [ os.path.join(dirs["agni"],"agni.jl"), cfg_this]
     proc = subprocess.run(call_sequence, stdout=agni_stdout, stderr=sys.stdout) 
-    if proc.returncode != 0:
-        UpdateStatusfile(dirs, 22)
-        raise Exception("An error occurred when executing AGNI")
+    success = (proc.returncode == 0)
     
     # Copy AGNI log into PROTEUS log
     # There are probably better ways to do this, but it works well enough. We don't use agni_debug much anyway
@@ -207,6 +168,70 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
             with open(os.path.join(dirs["output"], "agni.log"), "r") as infile:
                 outfile.write(infile.read())
     
+    return success 
+
+def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
+    """Run AGNI atmosphere model.
+    
+    Calculates the temperature structure of the atmosphere and the fluxes, etc.
+    Stores the new flux boundary condition to be provided to SPIDER. 
+
+    Parameters
+    ----------
+        loop_counter : dict 
+            Model loop counter values.
+        time_dict : dict
+            Dictionary containing simulation time variables
+        dirs : dict
+            Dictionary containing paths to directories
+        COUPLER_options : dict
+            Configuration options and other variables
+        runtime_helpfile : pd.DataFrame
+            Dataframe containing simulation variables (now and historic)
+
+    Returns
+    ----------
+        COUPLER_options : dict
+            Updated configuration options and other variables
+
+    """
+
+    # Inform
+    PrintHalfSeparator()
+    log.info("Running AGNI...")
+    time_str = "%d"%time_dict["planet"]
+    make_plots = (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0)
+
+    # tracking
+    agni_success = False  # success?
+    attempts = 0          # number of attempts so far
+    max_attempts = 4      # max attempts
+    offset = 0.0
+
+    # make attempts
+    while not agni_success:
+        attempts += 1
+        log.info("Attempt %d" % attempts)
+
+        # Try the module
+        agni_success = _try_agni(loop_counter, dirs, COUPLER_options, runtime_helpfile, make_plots, offset)
+
+        if agni_success:
+            # success
+            log.info("Attempt %d succeeded" % attempts)
+            break
+        else:
+            # failure
+            log.warning("Attempt %d failed" % attempts)
+            if attempts >= max_attempts:
+                UpdateStatusfile(dirs, 22)
+                raise Exception("Max attempts when executing AGNI")
+            else:
+                # try again with offset to initial T(p)
+                offset = attempts * 0.2
+                if attempts%2 == 0:
+                    offset *= -1
+
     # Move files
     log.debug("Tidy files")
     files_move = [  

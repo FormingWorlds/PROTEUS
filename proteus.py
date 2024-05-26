@@ -61,7 +61,7 @@ def main():
                     "total_loops": COUPLER_options["iter_max"],   # Maximum number of total loops
 
                     "init": 0,             # Number of init iters performed
-                    "init_loops": 2,       # Maximum number of init iters
+                    "init_loops": 1,       # Maximum number of init iters
 
                     "atm": 0,              # Number of atmosphere sub-iters performed
                     "atm_loops":  20,      # Maximum number of atmosphere sub-iters

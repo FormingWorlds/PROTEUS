@@ -9,7 +9,7 @@ title = "PROTEUS base"
 
 [execution]
     silent          = false  
-    max_steps       = 400    
+    max_steps       = 200    
     max_runtime     = 400    
     continua        = true   
     aerosol         = false  
@@ -24,7 +24,7 @@ title = "PROTEUS base"
     chemistry       = 0
     initial_state   = ["iso","1800"] 
     wary            = false   
-    converge_atol   = 1.0e-3  
+    converge_atol   = 1.0e-2  
     converge_rtol   = 1.0e-2  
 
 
