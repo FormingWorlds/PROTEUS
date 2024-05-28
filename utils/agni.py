@@ -132,7 +132,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
 
     # Small steps after first iters, since it will be *near* the solution
     if loop_counter["total"] > loop_counter["init_loops"]+2:
-        cfg_toml["execution"]["dx_max"] = 20.0
+        cfg_toml["execution"]["dx_max"] = 50.0
         
     # Set plots 
     cfg_toml["plots"]["at_runtime"]     = agni_debug and make_plots
@@ -209,7 +209,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     agni_success = False  # success?
     attempts = 0          # number of attempts so far
     max_attempts = 4      # max attempts
-    linesearch = False
+    linesearch = True
     offset = 0.0
 
     # make attempts
