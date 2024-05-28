@@ -8,7 +8,9 @@ import tomlkit as toml
 
 log = logging.getLogger("PROTEUS")
 
-def _try_agni(loop_counter, dirs, COUPLER_options, runtime_helpfile, make_plots, initial_offset):
+def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict, 
+              runtime_helpfile, make_plots:bool, initial_offset:float, 
+              linesearch:bool)->bool:
 
     # ---------------------------
     # Setup values to be provided to AGNI
@@ -86,6 +88,7 @@ def _try_agni(loop_counter, dirs, COUPLER_options, runtime_helpfile, make_plots,
     cfg_toml["execution"]["num_levels"] =   COUPLER_options["atmosphere_nlev"]
     cfg_toml["execution"]["rayleigh"] =     bool(COUPLER_options["insert_rscatter"] == 1)
     cfg_toml["execution"]["cloud"] =        bool(COUPLER_options["water_cloud"] == 1)
+    cfg_toml["execution"]["linesearch"] =   linesearch
     if COUPLER_options["atmosphere_solve_energy"] == 0:
         # The default cfg assumes solving for energy balance.
         # If we don't want to do that, set the configuration to a prescribed
@@ -129,7 +132,7 @@ def _try_agni(loop_counter, dirs, COUPLER_options, runtime_helpfile, make_plots,
 
     # Small steps after first iters, since it will be *near* the solution
     if loop_counter["total"] > loop_counter["init_loops"]+2:
-        cfg_toml["execution"]["dx_max"] = 4.0
+        cfg_toml["execution"]["dx_max"] = 20.0
         
     # Set plots 
     cfg_toml["plots"]["at_runtime"]     = agni_debug and make_plots
@@ -206,6 +209,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     agni_success = False  # success?
     attempts = 0          # number of attempts so far
     max_attempts = 4      # max attempts
+    linesearch = False
     offset = 0.0
 
     # make attempts
@@ -214,7 +218,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         log.info("Attempt %d" % attempts)
 
         # Try the module
-        agni_success = _try_agni(loop_counter, dirs, COUPLER_options, runtime_helpfile, make_plots, offset)
+        agni_success = _try_agni(loop_counter, dirs, COUPLER_options, runtime_helpfile, make_plots, offset, linesearch)
 
         if agni_success:
             # success
@@ -231,6 +235,8 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
                 offset = attempts * 0.2
                 if attempts%2 == 0:
                     offset *= -1
+                # enable LS
+                linesearch = True
 
     # Move files
     log.debug("Tidy files")
