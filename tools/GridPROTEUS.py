@@ -446,7 +446,7 @@ class Pgrid():
 
             # if still marked as running, it must have died at some point
             if ( 0 <= this_stat <= 9 ):
-                log.warning("Case %05d has status=running but it is not alive. Setting status=died.")
+                log.warning("Case %05d has status=running but it is not alive. Setting status=died."%i)
                 with open(status_path,'x') as hdl:
                     hdl.write("25\n")
                     hdl.write("Error (died)\n")         
@@ -463,8 +463,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","jgr_grid.cfg")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/CHANGEME"
-    pg = Pgrid("CHANGEME", cfg_base, symlink_dir=symlink)
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_5"
+    pg = Pgrid("jgr_5", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -498,7 +498,7 @@ if __name__=='__main__':
     # Start PROTEUS processes
     # -----
 
-    pg.run(106, test_run=False)
+    pg.run(110, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.

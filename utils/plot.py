@@ -154,9 +154,6 @@ molar_mass      = {
           "NH3" : 0.017031,             # kg mol−1 
         }
 
-volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "O2", "S", "He" ]
-
-
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
 def latex_float(f):

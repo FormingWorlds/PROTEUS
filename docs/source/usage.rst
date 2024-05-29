@@ -482,56 +482,50 @@ configuration, but they must all be passed via the config file.
      - Float
      - Any reasonable real value.
 
-   * - ``solvepp_enabled``
-     - Flag to enable solving for initial partial pressures subject to interior parameters, equilibrium reactions, and melt-vapour partitioning.   
+   * - ``solvevol_use_params``
+     - Flag to enable solving for initial partial pressures subject to interior parameters, rather than using provided initial pressures. 
      - False
      - Integer
      - 0: Disabled, 1: Enabled.
 
-   * - ``T_surf_guess``
-     - Initial guess for surface temperature when ``solvepp_enabled == 1``, units of kelvin.
+   * - ``T_outgas``
+     - Initial guess for surface temperature, units of kelvin.
      - False
      - Float
      - Greater than zero.
    
-   * - ``melt_fraction_guess``
-     - Initial guess for mantle melt fraction when ``solvepp_enabled == 1``.    
+   * - ``Phi_global``
+     - Initial guess for mantle melt fraction.    
      - False
      - Float
      - Between 0 and 1, inclusive.
 
    * - ``CH_ratio``
-     - Initial guess for C/H ratio when ``solvepp_enabled == 1``.    
+     - Required total-planet C/H mass ratio. Used when ``solvevol_use_params == 1``.    
      - False
      - Float
      - Greater than zero.
 
    * - ``hydrogen_earth_oceans``
-     - Total hydrogen inventory of the planet, used when when ``solvepp_enabled == 1``.   Units of Earth oceans equivalent.  
+     - Total hydrogen inventory of the planet. Used when when ``solvevol_use_params == 1``. Units of Earth oceans equivalent.  
      - False
      - Float
      - Greater than zero.
 
    * - ``nitrogen_ppmw``
-     - Initial nitrogen concentration in the mantle when ``solvepp_enabled == 1``. Parts per million of total mantle mass.  
+     - Nitrogen concentration. Used when ``solvevol_use_params == 1``. Parts per million of total mantle mass.  
      - False
      - Float
      - Greater than zero. 
 
    * - ``X_included``
-     - Flag to include or exclude a volatile X from SPIDER and SOCRATES. This value may be overwritten at runtime but will be saved to the helpfile.  
+     - Flag to include X in the model. For H2O, CO2, and N2 this will always equal 1.
      - False
      - Integer
      - 0: Excluded, 1: Included.
 
-   * - ``X_add_bars``
-     - Bars of a volatile X to add to the system at the start of the model run. When ``solvepp_enabled == 1``, these bars are included in addition to those found by the partial pressure solver. Otherwise, this parameter is how you specify the initial volatile inventory of the planet.    
-     - False
-     - Float
-     - Greater than zero.
-
-   * - ``X_poststep_change``
-     - Relative change in the abundance of a volatile X, for which SPIDER will exit early to pass back to other modules within PROTEUS. Prevents large single-step changes from occuring.     
+   * - ``X_initial_bar``
+     - Initial partial pressure of X. Used when ``solvepp_enabled == 0``.    
      - False
      - Float
      - Greater than zero.

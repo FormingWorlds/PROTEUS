@@ -113,17 +113,9 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
     pl_radius = COUPLER_options["radius"]
     pl_mass = COUPLER_options["mass"]
     
-    vol_list = { 
-                  "H2O" : runtime_helpfile.iloc[-1]["H2O_mr"], 
-                  "CO2" : runtime_helpfile.iloc[-1]["CO2_mr"],
-                  "H2"  : runtime_helpfile.iloc[-1]["H2_mr"], 
-                  "N2"  : runtime_helpfile.iloc[-1]["N2_mr"],  
-                  "CH4" : runtime_helpfile.iloc[-1]["CH4_mr"], 
-                  "O2"  : runtime_helpfile.iloc[-1]["O2_mr"], 
-                  "CO"  : runtime_helpfile.iloc[-1]["CO_mr"], 
-                  "He"  : 0.0,  # broken
-                  "NH3" : 0.0,  # broken
-                }
+    vol_list = {}
+    for vol in volatile_species:
+        vol_list[vol] = runtime_helpfile.iloc[-1][vol+"_mr"]
 
     match COUPLER_options["tropopause"]:
         case 0:

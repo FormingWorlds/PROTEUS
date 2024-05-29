@@ -124,22 +124,6 @@ class MyJSON( object ):
             fill_value='extrapolate' )
         return temp_interp1d
 
-    def get_atm_struct_depth_interp1d( self ):
-        '''return interp1d object for determining atmospheric height
-           as a function of pressure for static structure calculations'''
-        apressure_a = self.get_dict_values( ['atmosphere', 'atm_struct_pressure'] )
-        adepth_a = self.get_dict_values( ['atmosphere', 'atm_struct_depth'] )
-        atm_interp1d = interp1d( apressure_a, adepth_a, kind='linear' )
-        return atm_interp1d
-
-    def get_atm_struct_temp_interp1d( self ):
-        '''return interp1d object for determining atmospheric temperature
-           as a function of pressure'''
-        apressure_a = self.get_dict_values( ['atmosphere', 'atm_struct_pressure'] )
-        atemp_a = self.get_dict_values( ['atmosphere', 'atm_struct_temp'] )
-        atm_interp1d = interp1d( apressure_a, atemp_a, kind='linear' )
-        return atm_interp1d
-
 #====================================================================
 
 def get_column_data_from_SPIDER_lookup_file( infile ):
@@ -402,13 +386,6 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             os.remove(SPIDER_options_file)
         shutil.copy(SPIDER_options_file_orig,SPIDER_options_file)
 
-    # Define which volatiles to track in SPIDER
-    species_call = ""
-    for vol in volatile_species: 
-        if COUPLER_options[vol+"_included"] == 1:
-            species_call = species_call + "," + vol
-    species_call = species_call[1:] # Remove "," in front
-
     # Recalculate time stepping
     if (COUPLER_options["IC_INTERIOR"] == 2):  
 
@@ -482,11 +459,6 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             else:
                 UpdateStatusfile(dirs, 20)
                 raise Exception("Invalid time-stepping method '%d'" % COUPLER_options["dt_method"])
-            
-            # Additional step-size ceiling when F_crit is used
-            if abs(run_atm.iloc[-1]["F_atm"]) <= COUPLER_options["F_crit"]:
-                dtswitch = min(dtswitch, COUPLER_options["dt_crit"])
-                log.info("|F_atm| <= F_crit, so time-step is limited to %g years" % COUPLER_options["dt_crit"])
 
             # Step scale factor (is always <= 1.0)
             dtswitch *= step_sf
@@ -541,7 +513,6 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
                         "-gravity",                "%.6e"%(-1.0 * COUPLER_options["gravity"]), 
                         "-coresize",               "%.6e"%(COUPLER_options["planet_coresize"]),
                         "-grain",                  "%.6e"%(COUPLER_options["grain_size"]),
-                        "-volatile_names",          str(species_call)
                     ]
 
     # Min of fractional and absolute Ts poststep change
@@ -552,36 +523,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     else:
         call_sequence.extend(["-tsurf_poststep_change", str(COUPLER_options["tsurf_poststep_change"])])
 
-    # Define distribution coefficients and total mass/surface pressure for volatiles > 0
-    log.info("Input surface volatile partial pressures:")
-    for vol in volatile_species:
-        if COUPLER_options[vol+"_included"] == 1:
-
-            # Set atmospheric pressure based on helpfile output, if required
-            if loop_counter["total"] > loop_counter["init_loops"]:
-                key = vol+"_initial_atmos_pressure"
-                val = float(runtime_helpfile[vol+"_mr"].iloc[-1]) * float(runtime_helpfile["P_surf"].iloc[-1]) * 1.0e5   # convert bar to Pa
-                COUPLER_options[key] = val
-
-            # Load volatiles
-            pp = COUPLER_options[vol+"_initial_atmos_pressure"]
-            call_sequence.extend(["-"+vol+"_initial_atmos_pressure", str(pp)])
-            log.info("    p_%s = %.5f bar" % (vol,pp/1.0e5))
-
-            # Exception for N2 case: reduced vs. oxidized
-            if vol == "N2" and COUPLER_options["N2_partitioning"] == 1:
-                volatile_distribution_coefficients["N2_henry"] = volatile_distribution_coefficients["N2_henry_reduced"]
-                volatile_distribution_coefficients["N2_henry_pow"] = volatile_distribution_coefficients["N2_henry_pow_reduced"]
-
-            call_sequence.extend(["-"+vol+"_henry", str(volatile_distribution_coefficients[vol+"_henry"])])
-            call_sequence.extend(["-"+vol+"_henry_pow", str(volatile_distribution_coefficients[vol+"_henry_pow"])])
-            call_sequence.extend(["-"+vol+"_kdist", str(volatile_distribution_coefficients[vol+"_kdist"])])
-            call_sequence.extend(["-"+vol+"_kabs", str(volatile_distribution_coefficients[vol+"_kabs"])])
-            call_sequence.extend(["-"+vol+"_molar_mass", str(molar_mass[vol])])
-            call_sequence.extend(["-"+vol+"_SOLUBILITY 1"])  # Set to use Henry's law
-
     # With start of the main loop only:
-    # Volatile specific options: post step settings, restart filename
     if COUPLER_options["IC_INTERIOR"] == 2:
         call_sequence.extend([ 
                                 "-ic_interior_filename", 
@@ -589,9 +531,6 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
                                 "-activate_poststep", 
                                 "-activate_rollback"
                              ])
-        for vol in volatile_species:
-            if COUPLER_options[vol+"_included"] == 1:
-                call_sequence.extend(["-"+vol+"_poststep_change", str(COUPLER_options[vol+"_poststep_change"])])
     else:
         call_sequence.extend([
                                 "-ic_adiabat_entropy", str(COUPLER_options["ic_adiabat_entropy"]),
