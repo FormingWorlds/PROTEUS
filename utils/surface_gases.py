@@ -477,6 +477,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
 
 
     log.info("Solving for equilibrium partial pressures at surface")
+    log.debug("Target masses: %s"%str(target_d))
 
     # pin_arr = [COUPLER_options["H2O_pa"], COUPLER_options["CO2_pa"], COUPLER_options["N2_pa"]]
     # pin_arr = [p*1.0e-5 for p in pin_arr]
