@@ -72,7 +72,7 @@ def summarise(pgrid_dir:str, opts:list):
                     for s in gen_cases[g]:  # for each case within this general case
                         if status[i] == s:
                             e_any = True
-                            print("  Case %-3d - %s" % (i,CommentFromStatus(s)))
+                            print("  Case %-4d : Code %-2d - %s" % (i,s, CommentFromStatus(s)))
                 if not e_any:
                     print("  (None)")
 
@@ -85,7 +85,7 @@ def summarise(pgrid_dir:str, opts:list):
             for i in range(N):
                 if status[i] == code:
                     e_any = True
-                    print("  Case %-3d - %s" % (i,CommentFromStatus(code)))
+                    print("  Case %-4d : Code %-2d - %s" % (i,code, CommentFromStatus(code)))
             if not e_any:
                 print("  (None)")
 

@@ -463,8 +463,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","jgr_grid.cfg")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_solvevol"
-    pg = Pgrid("jgr_solvevol", cfg_base, symlink_dir=symlink)
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_5"
+    pg = Pgrid("jgr_5", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
