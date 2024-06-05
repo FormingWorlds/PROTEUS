@@ -461,30 +461,20 @@ if __name__=='__main__':
     # -----
     # Define parameter grid
     # -----
+    
+    cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"init_coupler.cfg")
+    pg = Pgrid("Re_computing_time_step", cfg_base)
+    pg.add_dimension("Melt fraction rate")
+    pg.set_dimension_direct("Melt fraction rate", "delta_phi", [0.0003,0.005,0.01])
 
-    cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","jgr_grid.cfg")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_5"
-    pg = Pgrid("jgr_5", cfg_base, symlink_dir=symlink)
+    pg.add_dimension("Katz parametrization")
+    pg.set_dimension_direct("Katz parametrization", "solidus_water_depend", [1,0])
 
-    # pg.add_dimension("Planet")
-    # pg.set_dimension_hyper("Planet")
-    # pg.append_dimension_hyper("Planet", {   "#case": "TRAPPIST-1b",
-    #                                         "mean_distance": 0.01154,  # AU, star-planet distance
-    #                                         "mass"         : 8.21e+24, # kg, planet mass
-    #                                         "radius"       : 7.118e+6  # m, planet surface radius
-    #                                     })
+    pg.add_dimension("dt_switch_param")
+    pg.set_dimension_direct("dt_switch_param", "dt_switch_solidus", [1,10,50])
 
-    pg.add_dimension("Orbital separation")
-    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.1, 0.3, 0.5, 0.7, 1.0, 2.0, 3.0])
-
-    pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-5.0, -3.0, -1.0, 0.0, 1.0, 3.0, 5.0 ])
-
-    pg.add_dimension("C/H ratio")
-    pg.set_dimension_logspace("C/H ratio", "CH_ratio", 0.01, 2.0, 7)
-
-    pg.add_dimension("Hydrogen")
-    pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 5.0, 10.0])
+    pg.add_dimension("Number of levels on SPIDER")
+    pg.set_dimension_direct("Number of levels on SPIDER", "interior_nlev", [250,400,600])
     
     # -----
     # Print state of parameter grid

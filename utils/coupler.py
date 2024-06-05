@@ -326,7 +326,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                 if not line.startswith("time_"):
 
                     # Some parameters are int
-                    if key in [ "IC_INTERIOR", "ic_interior_filename", 
+                    if key in [ "IC_INTERIOR", "ic_interior_filename", "solidus_water_depend","dt_switch_solidus",
                                 "solid_stop", "steady_stop", "iter_max", "emit_stop",
                                 "plot_iterfreq", "stellar_heating", "mixing_length", 
                                 "atmosphere_chem_type", "solvevol_use_params", "insert_rscatter", "water_cloud",

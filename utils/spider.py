@@ -471,6 +471,29 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             dtswitch = max(dtswitch, time_dict["planet"]*0.0001)        # Relative
             dtswitch = max(dtswitch, COUPLER_options["dt_minimum"] )    # Absolute
 
+            lb1 = -2
+            lb2 = -1
+
+            # Get data
+            df_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
+            arr_t = np.array(df_atm["Time"])
+            arr_f = np.array(df_atm["F_atm"])
+            arr_p = np.array(df_atm["Phi_global"])
+
+            # Time samples
+            t1 = arr_t[lb1]; t2 = arr_t[lb2]
+
+            # Check melt fraction rate
+            phi_1 =  arr_p[lb1]
+            phi_2 =  arr_p[lb2]
+            phi_r = abs(phi_2 - phi_1) / (t2 - t1)
+            print('PHI_R'+ str(phi_r))
+                            
+            if phi_r>COUPLER_options['delta_phi'] and COUPLER_options["solidus_water_depend"]:
+                dtswitch = COUPLER_options['dt_switch_solidus']
+                log.info('dt changed due to high melt fraction rate after re-computation of solidus')
+
+
             # Calculate number of macro steps for SPIDER to perform within
             # this time-step of PROTEUS, which sets the number of json files.
             nsteps = 1
@@ -591,6 +614,13 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
 
     call_sequence.extend(["-ts_sundials_atol", str(COUPLER_options["solver_tolerance"] * atol_sf)])
     call_sequence.extend(["-ts_sundials_rtol", str(COUPLER_options["solver_tolerance"] * atol_sf)])
+
+
+    if COUPLER_options["solidus_water_depend"] and (loop_counter["total"] > 1):
+        solidus_path = str("../output/"+COUPLER_options["dir_output"]+"/solidus_A11_depression_H13.dat")
+        call_sequence.extend(["-solid_phase_boundary_filename_rel_to_src", solidus_path])
+    else:
+        call_sequence.extend(["-solid_phase_boundary_filename_rel_to_src", str("lookup_data/1TPa-dK09-elec-free/solidus_A11_H13.dat")])
 
     # Runtime info
     flags = ""
