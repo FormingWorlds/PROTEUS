@@ -18,6 +18,7 @@ from utils.dummy_atmosphere import RunDummyAtm
 from utils.spider import RunSPIDER
 from utils.surface_gases import *
 from utils.logging import setup_logger
+from utils.solidus_depression import *
 
 from plot.cpl_fluxes import *
 from plot.cpl_heatingrates import *
@@ -345,7 +346,15 @@ def main():
 
         ############### / UPDATE TIME
 
+        log.info('AMOUNT OF WATER AVAILABLE IN KG: ' + str(runtime_helpfile.iloc[-1]["H2O_liquid_kg"]))
+        log.info('AMOUNT OF MELT IN KG:'+ str(runtime_helpfile.iloc[-1]["M_mantle_liquid"]))               
+        wt=100*runtime_helpfile.iloc[-1]["H2O_liquid_kg"]/(runtime_helpfile.iloc[-1]["M_mantle_liquid"]+runtime_helpfile.iloc[-1]["H2O_liquid_kg"])
+        log.info('WT FOR SOLIDUS DEPRESSION:' + str(wt))
 
+        if COUPLER_options["solidus_water_depend"]==1:
+            katz2003(wt,dirs)
+        else:
+            print('Simulation without solidus depression')
 
         ############### ATMOSPHERE SUB-LOOP
         while (loop_counter["atm"] == 0):
