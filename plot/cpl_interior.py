@@ -191,7 +191,7 @@ if __name__ == "__main__":
         plot_list = output_list
     else:
         plot_list = [ output_list[0] ]
-        for f in [15,25,33,50,66,75]:
+        for f in [15,25,33,50,66,69,72,75,78,81,84,87,90,93,96,99]:
             plot_list.append(output_list[int(round(len(output_list)*(float(f)/100.)))])
         plot_list.append(output_list[-1])
 

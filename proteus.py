@@ -352,9 +352,14 @@ def main():
         log.info('WT FOR SOLIDUS DEPRESSION:' + str(wt))
 
         if COUPLER_options["solidus_water_depend"]==1:
-            katz2003(wt,dirs)
+            katz2003(wt,dirs['output'],'solidus_A11_depression_H13.dat')
+            log.info('RE-COMPUTATION OF SOLIDUS FOLLOWING KATZ+2003 DONE')
+
         else:
             print('Simulation without solidus depression')
+
+        if COUPLER_options["solidus_water_depend"]==1 and loop_counter["total"]==1:
+            katz2003(wt,dirs['output'],'solidus'+str(loop_counter["total"])+'.dat')
 
         ############### ATMOSPHERE SUB-LOOP
         while (loop_counter["atm"] == 0):

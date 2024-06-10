@@ -25,7 +25,7 @@ def rename_line(file_path, old_line, new_line):
 
 
 
-def katz2003(X_h20,dirs):
+def katz2003(X_h20,directory,file_name):
     
     gamma=0.75
     K=0.4
@@ -63,20 +63,10 @@ def katz2003(X_h20,dirs):
 
     header='# 5'+' '+ f'{len(entropy)}' '\n# (Pressure, Entropy, Quantity) After re-computation  due to water in melt following Katz+2003 \n# column * scaling factor should be SI units \n# scaling factors (constant) for each column given on line below \n#1000000000.0 4824266.84604467'
     
-    saved_file=np.savetxt(dirs['output']+'solidus_A11_depression_H13.dat', X=np.array([pressure,entropy/4824266.84604467]).T,
+    saved_file=np.savetxt(directory+file_name, X=np.array([pressure,entropy/4824266.84604467]).T,
             header=header,
             fmt='%.10e', delimiter='\t', comments='')
     
-    print(X_h20)
-    # file = 'output/Earth_solidus_depression/init_spider.opts'  
-    # new = '-solid_phase_boundary_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/solidus_A11_depression_H13.dat' 
-    # old= '-solid_phase_boundary_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/solidus_A11_H13.dat'  
-    # rename_line('utils/init_spider.opts',old,new)
-    # rename_line(file,old,new)
-    
-    
-    print('RE-COMPUTATION OF SOLIDUS FOLLOWING KATZ+2003 DONE')
-    
-    
+     
     return saved_file
 

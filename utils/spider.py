@@ -487,7 +487,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             phi_1 =  arr_p[lb1]
             phi_2 =  arr_p[lb2]
             phi_r = abs(phi_2 - phi_1) / (t2 - t1)
-            print('PHI_R'+ str(phi_r))
+            log.info('PHI_R'+ str(phi_r))
                             
             if phi_r>COUPLER_options['delta_phi'] and COUPLER_options["solidus_water_depend"]:
                 dtswitch = COUPLER_options['dt_switch_solidus']
@@ -619,8 +619,12 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     if COUPLER_options["solidus_water_depend"] and (loop_counter["total"] > 1):
         solidus_path = str("../output/"+COUPLER_options["dir_output"]+"/solidus_A11_depression_H13.dat")
         call_sequence.extend(["-solid_phase_boundary_filename_rel_to_src", solidus_path])
+        log.info('Test passed the condition on spider.py for solidus recomp.')
     else:
         call_sequence.extend(["-solid_phase_boundary_filename_rel_to_src", str("lookup_data/1TPa-dK09-elec-free/solidus_A11_H13.dat")])
+        log.info('Test using dry solidus')
+
+
 
     # Runtime info
     flags = ""

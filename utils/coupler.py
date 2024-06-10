@@ -327,7 +327,7 @@ def ReadInitFile( init_file_passed , verbose=False):
 
                     # Some parameters are int
                     if key in [ "IC_INTERIOR", "ic_interior_filename", "solidus_water_depend","dt_switch_solidus",
-                                "solid_stop", "steady_stop", "iter_max", "emit_stop",
+                                "solid_stop", "steady_stop", "iter_max", "emit_stop","hydrogen_earth_oceans",
                                 "plot_iterfreq", "stellar_heating", "mixing_length", 
                                 "atmosphere_chem_type", "solvevol_use_params", "insert_rscatter", "water_cloud",
                                 "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",

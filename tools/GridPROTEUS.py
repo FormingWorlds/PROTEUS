@@ -463,7 +463,7 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"init_coupler.cfg")
-    pg = Pgrid("Re_computing_time_step", cfg_base)
+    pg = Pgrid("Solidus", cfg_base)
     pg.add_dimension("Melt fraction rate")
     pg.set_dimension_direct("Melt fraction rate", "delta_phi", [0.0003,0.00015,0.01])
 
