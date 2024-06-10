@@ -463,7 +463,7 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"init_coupler.cfg")
-    pg = Pgrid("Solidus", cfg_base)
+    pg = Pgrid("Re_computing_time_step_confirmation", cfg_base)
     pg.add_dimension("Melt fraction rate")
     pg.set_dimension_direct("Melt fraction rate", "delta_phi", [0.0003,0.00015,0.01])
 
@@ -472,6 +472,9 @@ if __name__=='__main__':
 
     pg.add_dimension("dt_switch_param")
     pg.set_dimension_direct("dt_switch_param", "dt_switch_solidus", [1,10,50])
+
+    # pg.add_dimension("Earth's oceans")
+    # pg.set_dimension_direct("Earth's oceans", "hydrogen_earth_oceans", [1,5,10])
 
     pg.add_dimension("Number of levels on SPIDER")
     pg.set_dimension_direct("Number of levels on SPIDER", "interior_nlev", [250,400,600])
