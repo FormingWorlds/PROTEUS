@@ -463,21 +463,19 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"init_coupler.cfg")
-    pg = Pgrid("Re_computing_time_step_confirmation", cfg_base)
-    pg.add_dimension("Melt fraction rate")
-    pg.set_dimension_direct("Melt fraction rate", "delta_phi", [0.0003,0.00015,0.01])
+    pg = Pgrid("Solidus_confirmation", cfg_base)
 
     pg.add_dimension("Katz parametrization")
     pg.set_dimension_direct("Katz parametrization", "solidus_water_depend", [1,0])
 
-    pg.add_dimension("dt_switch_param")
-    pg.set_dimension_direct("dt_switch_param", "dt_switch_solidus", [1,10,50])
+    pg.add_dimension("Water inventory")
+    pg.set_dimension_direct("Water inventory", "hydrogen_earth_oceans", [1,5,10])
 
-    # pg.add_dimension("Earth's oceans")
-    # pg.set_dimension_direct("Earth's oceans", "hydrogen_earth_oceans", [1,5,10])
+    # pg.add_dimension("Oxygen fugacity")
+    # pg.set_dimension_direct("Oxygen fugacity", "fO2_shift_IW", [-4,-2,0,2,4])
 
-    pg.add_dimension("Number of levels on SPIDER")
-    pg.set_dimension_direct("Number of levels on SPIDER", "interior_nlev", [250,400,600])
+    # pg.add_dimension("Radius")
+    # pg.set_dimension_direct("Radius", "radius", [1,1.3,1.5])
     
     # -----
     # Print state of parameter grid
@@ -491,7 +489,7 @@ if __name__=='__main__':
     # Start PROTEUS processes
     # -----
 
-    pg.run(54, test_run=False)
+    pg.run(6, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.

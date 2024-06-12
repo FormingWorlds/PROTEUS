@@ -28,7 +28,7 @@ def rename_line(file_path, old_line, new_line):
 def katz2003(X_h20,directory,file_name):
     
     gamma=0.75
-    K=0.4
+    K=43
     data = np.loadtxt('utils/Entropy-Temperature_interpolation.dat') 
     deltaT=K*pow(X_h20, gamma)
     T_new=data[:,0]-deltaT
@@ -67,6 +67,5 @@ def katz2003(X_h20,directory,file_name):
             header=header,
             fmt='%.10e', delimiter='\t', comments='')
     
-     
     return saved_file
 
