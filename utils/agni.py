@@ -19,23 +19,21 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     agni_debug = bool(log.getEffectiveLevel() == logging.DEBUG)
     try_spfile = os.path.join(dirs["output"] , "runtime.sf")
     
+    # Get stellar spectrum at TOA
     sflux_files = glob.glob(dirs["output"]+"/data/*.sflux")
     sflux_times = [ int(s.split("/")[-1].split(".")[0]) for s in sflux_files]
     sflux_tlast = sorted(sflux_times)[-1]
     sflux_path  = dirs["output"]+"/data/%d.sflux"%sflux_tlast
 
+    # store VMRs
     vol_dict = {}
     for vol in volatile_species:
         if COUPLER_options[vol+"_included"]:
-            vol_dict[vol] = runtime_helpfile.iloc[-1][vol+"_mr"]
-
-    mrzero = True
-    for k in vol_dict.keys():
-        v = vol_dict[k]
-        if v < 1.0e-20:
-            continue
-        mrzero = False
-    if mrzero:
+            vmr = runtime_helpfile.iloc[-1][vol+"_mr"]
+            if vmr > 1e-40:
+                vol_dict[vol] = vmr 
+    
+    if len(vol_dict) == 0:
         UpdateStatusfile(dirs, 20)
         raise Exception("All volatiles have a volume mixing ratio of zero")
     

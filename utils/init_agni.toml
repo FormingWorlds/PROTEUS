@@ -9,7 +9,7 @@ title = "PROTEUS base"
     clean_output    = false
 
 [execution]
-    silent          = false  
+    verbosity       = 1
     max_steps       = 150    
     max_runtime     = 700    
     continua        = true   
