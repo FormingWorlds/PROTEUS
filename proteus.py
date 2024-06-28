@@ -9,9 +9,7 @@ import utils.constants
 
 from utils.constants import *
 from utils.coupler import *
-from utils.stellar_common import *
-from utils.stellar_mors import *
-from utils.stellar_baraffe import *
+from utils.baraffe import *
 from utils.janus import RunJANUS, PrepAtm, StructAtm
 from utils.agni import RunAGNI
 from utils.dummy_atmosphere import RunDummyAtm
@@ -24,6 +22,8 @@ from plot.cpl_heatingrates import *
 
 from JANUS.modules.stellar_luminosity import InterpolateStellarLuminosity
 from JANUS.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
+
+import MORS as mors
 
 #====================================================================
 def main():

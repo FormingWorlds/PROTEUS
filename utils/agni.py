@@ -24,14 +24,14 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     sflux_tlast = sorted(sflux_times)[-1]
     sflux_path  = dirs["output"]+"/data/%d.sflux"%sflux_tlast
 
-    vol_list = {}
+    vol_dict = {}
     for vol in volatile_species:
         if COUPLER_options[vol+"_included"]:
-            vol_list[vol] = runtime_helpfile.iloc[-1][vol+"_mr"]
+            vol_dict[vol] = runtime_helpfile.iloc[-1][vol+"_mr"]
 
     mrzero = True
-    for k in vol_list.keys():
-        v = vol_list[k]
+    for k in vol_dict.keys():
+        v = vol_dict[k]
         if v < 1.0e-20:
             continue
         mrzero = False
@@ -58,7 +58,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     cfg_this = os.path.join(dirs["output"] , "agni_recent.toml")
 
     # Set title 
-    cfg_toml["title"] = "PROTEUS configured"
+    cfg_toml["title"] = "PROTEUS runtime step %d"%loop_counter["total"]
 
     # Set planet 
     cfg_toml["planet"]["tmp_surf"] =        COUPLER_options["T_surf"]
@@ -71,7 +71,8 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     cfg_toml["planet"]["radius"] =          COUPLER_options["radius"]
     cfg_toml["planet"]["p_surf"] =          runtime_helpfile.iloc[-1]["P_surf"]
     cfg_toml["planet"]["p_top"] =           COUPLER_options["P_top"]
-    cfg_toml["planet"]["vmr"] =             vol_list
+    cfg_toml["planet"]["vmr"] =             vol_dict
+    cfg_toml["planet"]["condensates"] =     list(vol_dict.keys())
 
     # Set files
     cfg_toml["files"]["output_dir"] =       os.path.join(dirs["output"])
@@ -94,8 +95,6 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
         # If we don't want to do that, set the configuration to a prescribed
         # profile of: T(p) = dry + condensing + stratosphere
         initial_arr = ["sat", "dry"]
-        for vol in vol_list.keys():
-            initial_arr.extend(["con", vol])
         if COUPLER_options["tropopause"] == 1:
             initial_arr.extend(["str", "%.3e"%COUPLER_options["T_skin"]])
         cfg_toml["execution"]["initial_state"] = initial_arr
@@ -104,13 +103,15 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
         cfg_toml["execution"]["solvers"] = []
         cfg_toml["execution"]["convection_type"] = ""
 
-    elif loop_counter["total"] >= 1:
+    elif loop_counter["total"] > 1:
         # If solving for RCE and are current inside the init stage, use old T(p)
         # as initial guess for solver.
-        pt_path = os.path.join(dirs["output"], "pt.csv")
-        if os.path.exists(pt_path):
-            log.debug("Initialise from last T(p) CSV file")
-            cfg_toml["execution"]["initial_state"] = ["csv", pt_path, "add", "%.6f"%initial_offset]
+        ncdfs = glob.glob(os.path.join(dirs["output"], "data","*_atm.nc"))
+        ncdf_times = [float(f.split("/")[-1].split("_")[0]) for f in ncdfs]
+        nc_path = ncdfs[np.argmax(ncdf_times)]
+
+        log.debug("Initialise from last T(p)")
+        cfg_toml["execution"]["initial_state"] = ["ncdf", nc_path, "add", "%.6f"%initial_offset]
 
     # Solution stuff 
     surf_state = int(COUPLER_options["atmosphere_surf_state"])
@@ -123,25 +124,25 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
         if COUPLER_options["atmosphere_solve_energy"] == 0:
             UpdateStatusfile(dirs, 20)
             raise Exception("With AGNI it is necessary to an energy-conserving solver alongside the conductive lid scheme. Turn them both on or both off.")
-        cfg_toml["planet"]["skin_k"] =          COUPLER_options["skin_k"]
-        cfg_toml["planet"]["skin_d"] =          COUPLER_options["skin_d"]
-        cfg_toml["planet"]["tmp_magma"] =       COUPLER_options["T_surf"]
+        cfg_toml["planet"]["skin_k"] =    COUPLER_options["skin_k"]
+        cfg_toml["planet"]["skin_d"] =    COUPLER_options["skin_d"]
+        cfg_toml["planet"]["tmp_magma"] = COUPLER_options["T_surf"]
 
     # Solution type ~ surface state
     cfg_toml["execution"]["solution_type"] = surf_state
 
     # Small steps after first iters, since it will be *near* the solution
-    if loop_counter["total"] > loop_counter["init_loops"]+2:
+    # Tighter tolerances during first iters, to ensure consistent coupling
+    if loop_counter["total"] > loop_counter["init_loops"]+1:
         cfg_toml["execution"]["dx_max"] = 50.0
+    else:
+        cfg_toml["execution"]["converge_rtol"] = 1.0e-3
         
     # Set plots 
     cfg_toml["plots"]["at_runtime"]     = agni_debug and make_plots
     cfg_toml["plots"]["temperature"]    = make_plots
     cfg_toml["plots"]["fluxes"]         = make_plots
-    cfg_toml["plots"]["contribution"]   = make_plots
-    cfg_toml["plots"]["emission"]       = make_plots
-    cfg_toml["plots"]["albedo"]         = make_plots
-    cfg_toml["plots"]["mixing_ratios"]  = make_plots
+
 
     # Write new configuration file 
     with open(cfg_this, 'w') as hdl:
@@ -253,7 +254,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         shutil.move(p_inp, p_out)
 
     # Remove files
-    files_remove = ["plot_ptprofile.png", "plot_vmrs.png", "fl.csv", "pt_ini.csv", "agni.cfg", "solver_flx.png", "solver_prf.png", "solver_mon.png"] 
+    files_remove = ["plot_ptprofile.png", "plot_vmrs.png", "fl.csv", "pt_ini.csv", "pt.csv", "agni.cfg", "solver_flx.png", "solver_prf.png", "solver_mon.png"] 
     for frem in files_remove:
         frem_path = os.path.join(dirs["output"],frem)
         safe_rm(frem_path)

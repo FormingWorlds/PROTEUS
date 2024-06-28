@@ -2,7 +2,8 @@
 title = "PROTEUS base"
 
 [planet]
-    p_top           = 1.0e-5
+    turb_coeff      = 1.0e-3
+    wind_speed      = 10.0
 
 [files]
     clean_output    = false
@@ -10,15 +11,14 @@ title = "PROTEUS base"
 [execution]
     silent          = false  
     max_steps       = 150    
-    max_runtime     = 480    
+    max_runtime     = 700    
     continua        = true   
     aerosol         = false  
     overlap_method  = 4      
-    thermo_funct    = false  
-    sensible_heat   = false  
-
+    thermo_funct    = true  
+    sensible_heat   = true  
+    latent_heat     = true 
     convection_type = "mlt" 
-    condensates     = ["H2O"] 
     solvers         = ["newton"]  
     dx_max          = 230.0    
     chemistry       = 0
@@ -29,3 +29,7 @@ title = "PROTEUS base"
 
 [plots]
     animate         = false
+    contribution    = false
+    emission        = false
+    albedo          = false
+    mixing_ratios   = false
