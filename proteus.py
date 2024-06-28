@@ -23,7 +23,7 @@ from plot.cpl_heatingrates import *
 from JANUS.modules.stellar_luminosity import InterpolateStellarLuminosity
 from JANUS.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 
-import MORS as mors
+import mors 
 
 #====================================================================
 def main():
@@ -168,19 +168,31 @@ def main():
     # Handle stellar spectrum...
 
     # Store copy of modern spectrum in memory (1 AU)
-    StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
     time_dict['sspec_prev'] = -math.inf
     time_dict['sinst_prev'] = -math.inf
+    shutil.copyfile(COUPLER_options["star_spectrum"], os.path.join(dirs["output"],"-1.sflux"))
 
     # Prepare stellar models
     match COUPLER_options['star_model']:
-        case 0:
+        case 0: # LEGACY METHOD 
             COUPLER_options["star_radius"] = COUPLER_options["star_radius_modern"]  # Legacy stellar model doesn't update this
-        case 1:
-            MorsSolveUV(dirs,COUPLER_options,StellarFlux_wl,StellarFlux_fl)  # Solve for UV-PL band interface
-            COUPLER_options = MorsCalculateFband(dirs, COUPLER_options)
-        case 2:
+
+        case 1: # MORS
+            # load modern spectrum 
+            star_struct_modern = mors.spec.Spectrum()
+            star_struct_modern.LoadTSV(COUPLER_options["star_spectrum"])
+            star_struct_modern.CalcBandFluxes()
+
+            # get best rotation percentile 
+            star_pctle, _ = mors.synthesis.FitModernProperties(star_struct_modern, COUPLER_options["star_mass"], COUPLER_options["star_age_modern"]/1e6)
+
+            # modern properties 
+            star_props_modern = mors.synthesis.GetProperties(COUPLER_options["star_mass"], star_pctle, COUPLER_options["star_age_modern"]/1e6)
+
+        case 2:  # BARAFFE
+            modern_wl, modern_fl = ModernSpectrumLoad(dirs, COUPLER_options)
             track = BaraffeLoadtrack(COUPLER_options)
+
         case _:
             UpdateStatusfile(dirs, 20)
             raise Exception("Invalid stellar model '%d'" % COUPLER_options['star_model'])
@@ -221,8 +233,8 @@ def main():
                     case 0:
                         S_0 = InterpolateStellarLuminosity(time_dict, COUPLER_options)
                     case 1:
-                        COUPLER_options["star_radius"] = MorsStellarRadius(time_dict, COUPLER_options)
-                        S_0 = MorsSolarConstant(time_dict, COUPLER_options)
+                        COUPLER_options["star_radius"] = mors.Value(COUPLER_options["star_mass"],time_dict["star"]/1e6, 'Rstar') * mors.const.Rsun * 1.0e-2
+                        S_0 =  mors.Value(COUPLER_options["star_mass"], time_dict["star"]/1e6, 'Lbol') * L_sun / ( 4. * np.pi * AU * AU * COUPLER_options["mean_distance"]**2.0 )
                     case 2:
                         COUPLER_options["star_radius"] = BaraffeStellarRadius(time_dict, COUPLER_options, track)
                         S_0 = BaraffeSolarConstant(time_dict, COUPLER_options, track)
@@ -250,13 +262,16 @@ def main():
             log.info("Updating stellar spectrum") 
             match COUPLER_options['star_model']: 
                 case 1:
-                    fl,fls = MorsSpectrumCalc(time_dict['star'], StellarFlux_wl, StellarFlux_fl, COUPLER_options)
+                    synthetic = mors.synthesis.CalcScaledSpectrumFromProps(star_struct_modern, star_props_modern, time_dict["star"]/1e6)
+                    fl = synthetic.fl   # at 1 AU
+                    wl = synthetic.wl
                 case 2:
-                    fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl, COUPLER_options, track)
+                    fl = BaraffeSpectrumCalc(time_dict["star"], modern_fl, COUPLER_options, track)
+                    wl = modern_wl
 
-            # Write stellar spectrum to disk
-            writessurf = bool(COUPLER_options["atmosphere_chem_type"] > 0)
-            SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs['output']+'/data/',write_surf=writessurf)
+            # Scale fluxes from 1 AU to TOA 
+            fl *= (AU / COUPLER_options["mean_distance"])**2.0
+            SpectrumWrite(time_dict,wl,fl,dirs['output']+'/data/')
 
             # Prepare spectral file for JANUS 
             if COUPLER_options["atmosphere_model"] == 0:
@@ -267,7 +282,7 @@ def main():
                 sys.stdout = StreamToLogger(log, logging.INFO)
                 sys.stderr = StreamToLogger(log, logging.ERROR)
                 #    Spectral file stuff
-                PrepareStellarSpectrum(StellarFlux_wl,fl,star_spec_src)
+                PrepareStellarSpectrum(wl,fl,star_spec_src)
                 InsertStellarSpectrum(  spectral_file_nostar,
                                         star_spec_src,
                                         dirs["output"]
