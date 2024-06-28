@@ -270,7 +270,7 @@ def main():
                     wl = modern_wl
 
             # Scale fluxes from 1 AU to TOA 
-            fl *= (AU / COUPLER_options["mean_distance"])**2.0
+            fl *= (1.0 / COUPLER_options["mean_distance"])**2.0
             SpectrumWrite(time_dict,wl,fl,dirs['output']+'/data/')
 
             # Prepare spectral file for JANUS 
