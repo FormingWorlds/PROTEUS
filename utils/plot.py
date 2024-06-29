@@ -28,10 +28,10 @@ vol_zorder  = {
 
 dict_colors  = {
     # From Julia's default colours
-    "H2O": "#C720DD",
+    "H2O": "#027FB1",
     "CO2": "#D24901",
     "H2" : "#008C01",
-    "CH4": "#027FB1",
+    "CH4": "#C720DD",
     "CO" : "#D1AC02",
     "N2" : "#870036",
     "S"  : "#FF8FA1",

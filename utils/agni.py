@@ -70,7 +70,12 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     cfg_toml["planet"]["p_surf"] =          runtime_helpfile.iloc[-1]["P_surf"]
     cfg_toml["planet"]["p_top"] =           COUPLER_options["P_top"]
     cfg_toml["planet"]["vmr"] =             vol_dict
-    cfg_toml["planet"]["condensates"] =     list(vol_dict.keys())
+
+    if loop_counter["total"] == 1:
+        condensates = []    # Disable condensation for first iteration
+    else:
+        condensates = list(vol_dict.keys())   # Will cause issues if all gases try to condense at once
+    cfg_toml["planet"]["condensates"] = condensates
 
     # Set files
     cfg_toml["files"]["output_dir"] =       os.path.join(dirs["output"])
@@ -131,8 +136,9 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
 
     # Small steps after first iters, since it will be *near* the solution
     # Tighter tolerances during first iters, to ensure consistent coupling
-    if loop_counter["total"] > loop_counter["init_loops"]+1:
-        cfg_toml["execution"]["dx_max"] = 50.0
+    # if loop_counter["total"] > loop_counter["init_loops"]+1:
+    if loop_counter["total"] > 1:
+        cfg_toml["execution"]["dx_max"] = 30.0
     else:
         cfg_toml["execution"]["converge_rtol"] = 1.0e-3
         
@@ -210,6 +216,9 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     max_attempts = 4      # max attempts
     linesearch = True
     offset = 0.0
+
+    if loop_counter["total"] == 1:
+        linesearch = False
 
     # make attempts
     while not agni_success:
