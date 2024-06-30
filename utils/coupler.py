@@ -62,6 +62,10 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         # Save coupler options to file
         COUPLER_options_save = pd.DataFrame(COUPLER_options, index=[0])
         COUPLER_options_save.to_csv( dirs["output"]+"/"+COUPLER_options_name, index=False, sep="\t")
+    else:
+        # Get last interior quantities
+        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+
 
     # Data dict
     runtime_helpfile_new = {}
@@ -108,6 +112,10 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["Phi_global"]      = float(data_a[5])  # global melt fraction
         runtime_helpfile_new["F_int"]           = float(data_a[6])  # Heat flux from interior
         runtime_helpfile_new["RF_depth"]        = float(data_a[7])/COUPLER_options["radius"]  # depth of rheological front
+
+        # Do not allow warming after init stage has completed
+        if (COUPLER_options["prevent_warming"]) and (time_dict["planet"] > 5.0):
+            runtime_helpfile_new["T_surf"] = min(runtime_helpfile_new["T_surf"], run_int.iloc[-1]["Time"])
 
         # Handle volatiles 
         for key in solvevol_dict.keys():
@@ -214,7 +222,6 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         runtime_helpfile_new["Input"]           = input_flag   
 
         # Infos from latest interior loop
-        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
         runtime_helpfile_new["R_star"]          = run_int.iloc[-1]["R_star"] 
         runtime_helpfile_new["Phi_global"]      = run_int.iloc[-1]["Phi_global"]
         runtime_helpfile_new["RF_depth"]        = run_int.iloc[-1]["RF_depth"]     
