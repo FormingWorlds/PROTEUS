@@ -246,10 +246,10 @@ Step-by-step (core modules)
 
         .. code-block:: console
 
-            $   cd Mors 
+            $   cd MORS 
             $   wget http://www.astro.yale.edu/demarque/fs255_grid.tar.gz
             $   tar -xvf fs255_grid.tar.gz
-            $   pip install .
+            $   pip install -e .
             $   cd ../
         
     8. Setup PETSc

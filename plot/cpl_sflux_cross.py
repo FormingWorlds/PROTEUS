@@ -25,7 +25,7 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False):
+def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False, modern_age:float=-1):
     """Plots stellar flux vs time, for a set of wavelengths.
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -40,6 +40,8 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False):
             List of wavelengths to plot [nm]
         surface : bool
             Use fluxes at surface? If not, will use fluxes at 1 AU.
+        modern_age : float
+            Current age of star. If not provided, then won't be plotted
     """ 
 
     mpl.use('Agg')
@@ -117,20 +119,18 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False):
     if not surface:
         X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
 
-    # Plot spectra
+    # Plot bins over time 
     for i in range(N):
 
         fl = flux_t.T[wl_iarr[i]]
         c = star_cmap(1.0*i/N)
         lbl = "%d"%max(1,round(wl_varr[i]))
 
-        ax.plot(time_t,fl,color='black',lw=3.5)
-        ax.plot(time_t,fl,color=c      ,lw=2.8,label=lbl)
+        ax.plot(time_t,fl,color=c,lw=2.8,label=lbl)
 
         # Plot modern values
-        if not surface:
-            ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='o',color='k',s=40, zorder=3)
-            ax.scatter(time_t[-1],X[1][wl_iarr[i]],marker='o',color=c,  s=34, zorder=4)
+        if (not surface) and (modern_age > 0):
+            ax.scatter(modern_age,X[1][wl_iarr[i]],marker='o',color=c, s=40, zorder=4, edgecolors='white')
 
     leg = ax.legend(title=r"$\lambda$ [nm]", loc='center left',bbox_to_anchor=(1.02, 0.5))
     for legobj in leg.legendHandles:
@@ -160,7 +160,7 @@ if __name__ == '__main__':
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
 
-    plot_sflux_cross(dirs['output'], wl_targets=wl_bins, surface=False)
+    plot_sflux_cross(dirs['output'], wl_targets=wl_bins, surface=False, modern_age=COUPLER_options["star_age_modern"])
 
     print("Done!")
 

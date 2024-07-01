@@ -15,7 +15,6 @@
 -entropy0 2993.025100070677 # overturn of liquidus in Stixrude et al. (2009)
 -time0 1.0E5
 -pressure0 10.0E5
--volatile0 1.0E-6
 
 # energy fluxes and sources to include
 # [0] is off
@@ -114,11 +113,6 @@
 # (often only a few cms thick) cannot be resolved by the choice of mesh
 -PARAM_UTBL 0 # flag to turn on parameterisation
 -param_utbl_const 1.0E-7 # value of parameterisation
-
--IC_ATMOSPHERE 3
-
-# atmosphere reference pressure (Pa)
--P0 101325.0 # Pa (= 1 atm)
 
 # fO2 buffer chosen to define fO2 alongside the offset parameter (7: Iron-Wustite)
 -OXYGEN_FUGACITY 7

@@ -42,7 +42,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
     """ 
 
     mpl.use('Agg')
-    star_cmap = plt.get_cmap('gnuplot2_r')
+    star_cmap = plt.get_cmap('Spectral')
 
     # Find and sort files
     if surface:
@@ -83,7 +83,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
         flux = X[1]
 
         # Save data
-        time_t.append(time * 1.e-6)
+        time_t.append(time)
         wave_t.append(wave)
         flux_t.append(flux)
 
@@ -108,7 +108,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
         sm = plt.cm.ScalarMappable(cmap=star_cmap, norm=norm)
         sm.set_array([])
         cbar = fig.colorbar(sm, cax=cax, orientation='vertical') 
-        cbar.set_label("Time [Myr]") 
+        cbar.set_label("Time [yr]") 
 
     ax.set_yscale("log")
     ax.set_ylabel("Flux [erg s-1 cm-2 nm-1]")
@@ -133,7 +133,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
     # Plot current spectrum (use the copy made in the output directory)
     if not surface:
         X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
-        ax.plot(X[0],X[1],color='green',label='Modern',lw=0.7,alpha=0.9)
+        ax.plot(X[0],X[1],color='black',label='Modern',lw=0.8,alpha=0.9)
 
     # Calculate planck function
     # Tstar = 3274.3578960897644
@@ -144,6 +144,8 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
     # for w in wave_t[4]:
     #     planck_fl.append(planck_function(w,Tstar) * sf * sf) 
     # ax.plot(wave_t[4],planck_fl,color='green',lw=1.5)
+
+    ax.legend()
 
     plt.close()
     plt.ioff()

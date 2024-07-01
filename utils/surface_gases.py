@@ -446,11 +446,18 @@ def solvevol_get_target_from_params(COUPLER_options):
 
 def solvevol_get_target_from_pressures(COUPLER_options):
 
+    # store partial pressures for included gases
     pin_dict = {}
     for vol in volatile_species:
         if is_included(vol, COUPLER_options):
             pin_dict[vol] = COUPLER_options[vol+"_initial_bar"]
 
+    # check total pressure 
+    p_tot = np.sum(list(pin_dict.values()))
+    if p_tot < 1.0e-3:
+        raise Exception("Initial surface pressure too low! (%.2e bar)"%p_tot)
+
+    # get dissolved+atmosphere masses from partial pressures
     mass_atm_d = solvevol_atmosphere_mass(pin_dict, COUPLER_options)
     mass_int_d = solvevol_dissolved_mass(pin_dict, COUPLER_options)
 

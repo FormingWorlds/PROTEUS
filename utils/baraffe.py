@@ -2,9 +2,55 @@
 
 from utils.modules_ext import *
 from utils.constants import *
-from utils.helper import find_nearest
+from utils.helper import *
 
 log = logging.getLogger("PROTEUS")
+
+def ModernSpectrumLoad(dirs: dict, COUPLER_options: dict):
+    """Copy file and load modern spectrum into memory.
+
+    Scaled to 1 AU from the star. Generate these spectra using the python script
+    'GetStellarSpectrum.py' in the 'tools' directory.
+
+    Parameters
+    ----------
+        dirs : dict
+            Directories dictionary
+        COUPLER_options : dict
+            Dictionary of coupler options variables
+
+    Returns
+    ----------
+        spec_wl : np.array[float]
+            Wavelength [nm]
+        spec_fl : np.array[float]
+            Flux [erg s-1 cm-2 nm-1]
+    """
+
+    spec_file = dirs["coupler"]+"/"+COUPLER_options["star_spectrum"]
+    if os.path.isfile(spec_file):
+
+        # Copy modern spectrum file to output directory as -1.sflux.
+        copy_file = shutil.copyfile(spec_file,dirs['output']+'/-1.sflux') 
+
+        # Load file
+        spec_data = np.loadtxt(copy_file, skiprows=2,delimiter='\t').T
+        spec_wl = spec_data[0]
+        spec_fl = spec_data[1]
+    else:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Cannot find stellar spectrum")
+    
+
+    binwidth_wl = spec_wl[1:] - spec_wl[0:-1]
+
+    log.debug("Modern spectrum statistics:")
+    log.debug("\t Flux \n\t\t (min, max) = (%1.2e, %1.2e) erg s-1 cm-2 nm-1" % (np.amin(spec_fl),np.amax(spec_fl)))
+    log.debug("\t Wavelength \n\t\t (min, max) = (%1.2e, %1.2e) nm" % (np.amin(spec_wl),np.amax(spec_wl)))
+    log.debug("\t Bin width \n\t\t (min, median, max) = (%1.2e, %1.2e, %1.2e) nm" % (np.amin(binwidth_wl),np.median(binwidth_wl),np.amax(binwidth_wl)))
+        
+    return spec_wl, spec_fl
+
 
 def BaraffeStellarRadius(time_dict: dict, COUPLER_options: dict, track: dict):
     """Calculates the star's radius at a time t.
@@ -169,8 +215,7 @@ def BaraffeLoadtrack(COUPLER_options: dict, pre_interp = True):
 def BaraffeSpectrumCalc(time_star: float, spec_fl: list, COUPLER_options: dict, track: dict):
     """Determine historical spectrum at time_star, using the baraffe tracks
 
-    Uses a Baraffe evolution track. Calculates the spectrum both at 1 AU and 
-    at the surface of the star.
+    Uses a Baraffe evolution track. Calculates the spectrum at 1 AU.
 
     Parameters
     ----------
@@ -206,11 +251,7 @@ def BaraffeSpectrumCalc(time_star: float, spec_fl: list, COUPLER_options: dict, 
     iclose = (np.abs(track['t'] - time_star)).argmin()
     
     # Get data from track
-    Rstar_cm =  track['Rstar'][iclose] * R_sun_cm
     Lstar =     track['Lstar'][iclose]
-
-    # Get stellar radius and distance scale factor
-    sf = (Rstar_cm / AU_cm) ** 2
 
     # Get luminosity scale factor
     Q_bol = Lstar / float(COUPLER_options['star_luminosity_modern'])
@@ -219,11 +260,9 @@ def BaraffeSpectrumCalc(time_star: float, spec_fl: list, COUPLER_options: dict, 
     # Calculate scaled spectrum
     hspec_fl = np.array(spec_fl) * Q_bol
 
-    hspec_fl_surf = hspec_fl / sf
+    return hspec_fl
 
-    return hspec_fl, hspec_fl_surf
-
-def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, folder, write_surf=True):
+def SpectrumWrite(time_dict, wl, sflux, folder):
     """Write historical spectrum to files.
 
     Parameters
@@ -234,8 +273,6 @@ def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, folder, write_surf=True):
             Numpy array of wavelengths
         sflux : np.array(float)
             Numpy array flux at 1 AU
-        sfluxsurf : np.array(float)
-            Numpy array of flux at stellar surface
         folder : float
             Path to folder where file is to be written
 
@@ -247,12 +284,6 @@ def SpectrumWrite(time_dict, wl, sflux, sfluxsurf, folder, write_surf=True):
     outname1 = folder + "/%d.sflux" % time_dict['planet']
     header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (1 AU) at t_star = %.3f Myr ' % round(tstar,3)
     np.savetxt(outname1, X, header=header,comments='',fmt='%1.4e',delimiter='\t')
-
-    if write_surf:
-        Y = np.array([wl,sfluxsurf]).T
-        outname2 = folder + "/%d.sfluxsurf" % time_dict['planet']
-        header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)          Stellar flux (surface) at t_star = %.3f Myr ' % round(tstar,3)
-        np.savetxt(outname2, Y, header=header,comments='',fmt='%1.4e',delimiter='\t')
 
     return outname1
 

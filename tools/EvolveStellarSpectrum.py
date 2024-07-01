@@ -3,10 +3,11 @@
 # Python script to test stellar evolution implementation in PROTEUS
 
 from utils.coupler import *
-from utils.stellar_mors import *
-from utils.stellar_baraffe import *
-from utils.stellar_common import *
+from utils.baraffe import *
+from plot.cpl_sflux import plot_sflux
+from plot.cpl_sflux_cross import plot_sflux_cross
 
+import mors
 import shutil
 
 Myr = 1.0e6
@@ -19,26 +20,39 @@ def evolve(cfg_file: str, tf: float, nsamps: int = 500):
     # Set directories
     dirs = SetDirectories(COUPLER_options)
 
+    print(dirs["output"])
+
     # Check if output directory exists, otherwise create
     CleanDir( dirs["output"] )
     CleanDir( dirs["output"]+"/data/" )
 
     # Check which model we are using
-    model = COUPLER_options['star_model']
+    model = int(COUPLER_options['star_model'])
+    Mstar = float(COUPLER_options['star_mass'])
+    age   = float(COUPLER_options['star_age_modern'])
 
-    # Store copy of modern spectrum in memory (1 AU)
-    StellarFlux_wl, StellarFlux_fl = ModernSpectrumLoad(dirs, COUPLER_options)
-
-    # Solve for UV-PL band edge
-    MorsSolveUV(dirs,COUPLER_options,StellarFlux_wl,StellarFlux_fl)
+    # Modern spectrum file 
+    modern_path = COUPLER_options["star_spectrum"]
+    shutil.copyfile(modern_path, os.path.join(dirs["output"],"-1.sflux"))
 
     # Prep evolution data
     match model:
         case 1:
-            # Calculate band-integrated fluxes for modern stellar spectrum (1 AU)
-            COUPLER_options = MorsCalculateFband(dirs, COUPLER_options)
+            # WITH MORS
+
+            # load modern spectrum 
+            modern = mors.spec.Spectrum()
+            modern.LoadTSV(modern_path)
+            modern.CalcBandFluxes()
+
+            # get best rotation percentile 
+            best_pctle, _ = mors.synthesis.FitModernProperties(modern, Mstar, age/1e6)
+
+            # modern properties 
+            props = mors.synthesis.GetProperties(Mstar, best_pctle, age/1e6)
         case 2:
-            # Load track
+            # WITH BARAFFE
+
             track = BaraffeLoadtrack(COUPLER_options)
         case _:
             raise Exception("Unsupported stellar model")
@@ -68,11 +82,17 @@ def evolve(cfg_file: str, tf: float, nsamps: int = 500):
 
         match model:
             case 1:
-                fl,fls = MorsSpectrumCalc(time_dict['star'], StellarFlux_wl, StellarFlux_fl,COUPLER_options)
+                # WITH MORS 
+                synthetic = mors.synthesis.CalcScaledSpectrumFromProps(modern, props, t/1e6)
+                synthetic.WriteTSV(dirs['output']+"/data/%d.sflux"%time_dict['star'])
             case 2:
+                # WITH BARAFFE
                 fl,fls = BaraffeSpectrumCalc(time_dict['star'], StellarFlux_fl,COUPLER_options, track)
 
-        SpectrumWrite(time_dict,StellarFlux_wl,fl,fls,dirs['output']+"/data/")
+
+    # Plot 
+    plot_sflux_cross(dirs["output"], modern_age=age)
+    plot_sflux(dirs["output"])
 
 
 if __name__ == "__main__":
@@ -84,7 +104,7 @@ if __name__ == "__main__":
         cfg = 'init_coupler.cfg' 
     
     # Parameters
-    t_final =       3.0e3 * Myr     # Final time for evolution
+    t_final =       9.0e3 * Myr     # Final time for evolution
     samples =       20
 
     print("NOTE: File convention differs with this script, compared to PROTEUS!")
