@@ -336,7 +336,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                     if key in [ "IC_INTERIOR", "ic_interior_filename", 
                                 "solid_stop", "steady_stop", "iter_max", "emit_stop",
                                 "plot_iterfreq", "stellar_heating", "mixing_length", 
-                                "atmosphere_chem_type", "solvevol_use_params", "insert_rscatter", "water_cloud",
+                                "atmosphere_chemistry", "solvevol_use_params", "insert_rscatter", "water_cloud",
                                 "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
                                 "dt_dynamic", "prevent_warming", "atmosphere_model", "atmosphere_nlev"]:
                         val = int(val)

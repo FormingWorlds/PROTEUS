@@ -67,15 +67,32 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     cfg_toml["planet"]["albedo_s"] =        COUPLER_options["albedo_s"]
     cfg_toml["planet"]["gravity"] =         gravity
     cfg_toml["planet"]["radius"] =          COUPLER_options["radius"]
-    cfg_toml["planet"]["p_surf"] =          runtime_helpfile.iloc[-1]["P_surf"]
-    cfg_toml["planet"]["p_top"] =           COUPLER_options["P_top"]
-    cfg_toml["planet"]["vmr"] =             vol_dict
 
-    if loop_counter["total"] == 1:
-        condensates = []    # Disable condensation for first iteration
+    # set composition
+    cfg_toml["composition"]["p_surf"] =     runtime_helpfile.iloc[-1]["P_surf"]
+    cfg_toml["composition"]["p_top"] =      COUPLER_options["P_top"]
+    cfg_toml["composition"]["vmr_dict"] =   vol_dict
+
+    chem_type = COUPLER_options["atmosphere_chemistry"]
+    if chem_type > 0:
+        # any chemistry
+        cfg_toml["plots"]["mixing_ratios"] = True
+
+        if chem_type == 1:
+            # equilibrium
+            cfg_toml["composition"]["chemistry"]   = chem_type
+            cfg_toml["composition"]["include_all"] = True
+
+        elif chem_type >= 2:
+            # kinetics 
+            raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
+        
+    if (loop_counter["total"] == 1) or (chem_type > 0):
+        log.debug("Condensation disabled")
+        condensates = []    # Disable condensation for first iteration or when chemistry enabled
     else:
         condensates = list(vol_dict.keys())   # Will cause issues if all gases try to condense at once
-    cfg_toml["planet"]["condensates"] = condensates
+    cfg_toml["composition"]["condensates"] = condensates
 
     # Set files
     cfg_toml["files"]["output_dir"] =       os.path.join(dirs["output"])
@@ -105,6 +122,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
         # Tell AGNI not to solve for RCE
         cfg_toml["execution"]["solvers"] = []
         cfg_toml["execution"]["convection_type"] = ""
+
 
     elif loop_counter["total"] > 1:
         # If solving for RCE and are current inside the init stage, use old T(p)
@@ -261,7 +279,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         shutil.move(p_inp, p_out)
 
     # Remove files
-    files_remove = ["plot_ptprofile.png", "plot_vmrs.png", "fl.csv", "pt_ini.csv", "pt.csv", "agni.cfg", "solver_flx.png", "solver_prf.png", "solver_mon.png"] 
+    files_remove = ["plot_ptprofile.png", "fl.csv", "pt_ini.csv", "pt.csv", "agni.toml", "solver.png", "jacobian.png"] 
     for frem in files_remove:
         frem_path = os.path.join(dirs["output"],frem)
         safe_rm(frem_path)
