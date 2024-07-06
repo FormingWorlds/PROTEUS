@@ -87,11 +87,23 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
             # kinetics 
             raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
         
+    condensates = []
     if (loop_counter["total"] == 1) or (chem_type > 0):
         log.debug("Condensation disabled")
-        condensates = []    # Disable condensation for first iteration or when chemistry enabled
+        # Disable condensation for first iteration or when chemistry enabled
     else:
-        condensates = list(vol_dict.keys())   # Will cause issues if all gases try to condense at once
+        # get gas with lowest mixing ratio 
+        vmr_min = 2.0
+        gas_min = ""
+        for k in vol_dict.keys():
+            if vol_dict[k] < vmr_min:
+                vmr_min = vol_dict[k]
+                gas_min = k
+        # add all gases as condensates, except the least abundant gas 
+        for k in vol_dict.keys():
+            if k == gas_min:
+                continue 
+            condensates.append(k)
     cfg_toml["composition"]["condensates"] = condensates
 
     # Set files
