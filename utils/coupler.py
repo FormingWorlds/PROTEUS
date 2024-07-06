@@ -115,7 +115,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
 
         # Do not allow warming after init stage has completed
         if (COUPLER_options["prevent_warming"]) and (time_dict["planet"] > 5.0):
-            runtime_helpfile_new["T_surf"] = min(runtime_helpfile_new["T_surf"], run_int.iloc[-1]["Time"])
+            runtime_helpfile_new["T_surf"] = min(runtime_helpfile_new["T_surf"], run_int.iloc[-1]["T_surf"])
 
         # Handle volatiles 
         for key in solvevol_dict.keys():
