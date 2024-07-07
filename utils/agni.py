@@ -106,6 +106,9 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
             condensates.append(k)
     cfg_toml["composition"]["condensates"] = condensates
 
+    if len(condensates) > 1:
+        cfg_toml["plots"]["mixing_ratios"] = True
+
     # Set files
     cfg_toml["files"]["output_dir"] =       os.path.join(dirs["output"])
     if os.path.exists(try_spfile):
@@ -168,7 +171,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     # Tighter tolerances during first iters, to ensure consistent coupling
     # if loop_counter["total"] > loop_counter["init_loops"]+1:
     if loop_counter["total"] > 1:
-        cfg_toml["execution"]["dx_max"] = 30.0
+        cfg_toml["execution"]["dx_max"] = 10.0
     else:
         cfg_toml["execution"]["converge_rtol"] = 1.0e-3
         
@@ -243,7 +246,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # tracking
     agni_success = False  # success?
     attempts = 0          # number of attempts so far
-    max_attempts = 4      # max attempts
+    max_attempts = 3      # max attempts
     linesearch = True
     offset = 0.0
 
@@ -270,7 +273,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
                 raise Exception("Max attempts when executing AGNI")
             else:
                 # try again with offset to initial T(p)
-                offset = attempts * 0.2
+                offset = attempts * 0.5
                 if attempts%2 == 0:
                     offset *= -1
                 # enable LS
