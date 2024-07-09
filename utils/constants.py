@@ -54,13 +54,14 @@ molar_mass      = {
           "O"   : 0.015999,             # kg mol−1 
           "N"   : 0.014007,             # kg mol−1 
           "S"   : 0.03206,              # kg mol−1 
+          "S2"  : 0.0641,               # kg mol-1
           "He"  : 0.0040026,            # kg mol−1 
           "NH3" : 0.017031,             # kg mol−1 
         }
 
 # Supported volatiles and elements
-volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2"]
-element_list     = [ "H", "O", "C", "N" ] 
+volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "S2", "SO2"]
+element_list     = [ "H", "O", "C", "N", "S" ] 
 
 dirs = {}  # Modified by coupler.py: SetDirectories().
 
