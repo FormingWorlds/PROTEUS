@@ -21,6 +21,8 @@ vol_zorder  = {
     "O2"             : 5,
     "CO"             : 4,
     "S"              : 3,
+    "S2"             : 3,
+    "SO2"            : 3,
     "He"             : 2,
     "NH3"            : 1,
 }
@@ -135,26 +137,6 @@ vol_latex = {
     "O2-O2"  : r"O$_2$-O$_2$",
 }
 
-molar_mass      = {
-          "H2O" : 0.01801528,           # kg mol−1
-          "CO2" : 0.04401,              # kg mol−1
-          "H2"  : 0.00201588,           # kg mol−1
-          "CH4" : 0.01604,              # kg mol−1
-          "CO"  : 0.02801,              # kg mol−1
-          "N2"  : 0.028014,             # kg mol−1
-          "O2"  : 0.031999,             # kg mol−1
-          "SO2" : 0.064066,             # kg mol−1
-          "H2S" : 0.0341,               # kg mol−1 
-          "H"   : 0.001008,             # kg mol−1 
-          "C"   : 0.012011,             # kg mol−1 
-          "O"   : 0.015999,             # kg mol−1 
-          "N"   : 0.014007,             # kg mol−1 
-          "S"   : 0.03206,              # kg mol−1 
-          "He"  : 0.0040026,            # kg mol−1 
-          "NH3" : 0.017031,             # kg mol−1 
-        }
-
-
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
 def latex_float(f):
     float_str = "{0:.2g}".format(f)
@@ -163,7 +145,6 @@ def latex_float(f):
         return r"${0} \times 10^{{{1}}}$".format(base, int(exponent))
     else:
         return float_str
-
 
 
 #===================================================================

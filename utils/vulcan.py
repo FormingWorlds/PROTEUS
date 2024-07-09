@@ -177,17 +177,13 @@ def RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_opt
     if (loop_counter["atm"] > 0):      # If not first run, skip building chem_funcs
         vulcan_run_cmd += " -n"
 
-    if debug:
-        vulcan_print = sys.stdout
-    else:
-        vulcan_print = open(dirs["output"]+"vulcan_recent.log",'w')
+    vulcan_print = open(dirs["output"]+"vulcan_recent.log",'w')
 
     os.chdir(dirs["vulcan"])
     subprocess.run([vulcan_run_cmd], shell=True, check=True, stdout=vulcan_print)
     os.chdir(dirs["coupler"])
 
-    if not debug:
-        vulcan_print.close()
+    vulcan_print.close()
 
     # Copy VULCAN output data file to output folder
     vulcan_recent = dirs["output"]+str(int(time_dict["planet"]))+"_atm_chemistry.vul"

@@ -181,6 +181,9 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
             runtime_helpfile_new["C_mol_"+res]  = runtime_helpfile_new["CO2_mol_"+res] * 1. \
                                                 + runtime_helpfile_new["CH4_mol_"+res] * 1. \
                                                 + runtime_helpfile_new["CO_mol_"+res]  * 1.
+            
+            runtime_helpfile_new["S_mol_"+res]  = runtime_helpfile_new["SO2_mol_"+res] * 1. \
+                                                + runtime_helpfile_new["S2_mol_"+res]  * 2. \
 
             runtime_helpfile_new["N_mol_"+res]  = runtime_helpfile_new["N2_mol_"+res]  * 2.
 

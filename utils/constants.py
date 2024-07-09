@@ -1,9 +1,6 @@
 # Physical, numerical, etc constants
 
-# Avoid importing from utils.*
-
-### Constants ###
-debug = False
+# Avoid importing from any of the files within utils/
 
 # Astronomical constants
 L_sun           = 3.828e+26             # W, IAU definition
