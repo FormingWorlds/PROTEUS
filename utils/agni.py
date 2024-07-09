@@ -171,7 +171,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     # Tighter tolerances during first iters, to ensure consistent coupling
     # if loop_counter["total"] > loop_counter["init_loops"]+1:
     if loop_counter["total"] > 1:
-        cfg_toml["execution"]["dx_max"] = 10.0
+        cfg_toml["execution"]["dx_max"] = 25.0
     else:
         cfg_toml["execution"]["converge_rtol"] = 1.0e-3
         
@@ -307,7 +307,8 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     ds = nc.Dataset(os.path.join(dirs["output"],"data",time_str+"_atm.nc"))
     net_flux =      np.array(ds.variables["fl_N"][:])
     LW_flux_up =    np.array(ds.variables["fl_U_LW"][:])
-    T_surf =        float(ds.variables["tmpl"][-1])
+    SW_flux_up =    np.array(ds.variables["fl_U_SW"][:])
+    T_surf =        float(ds.variables["tmp_surf"][:])
     ds.close()
 
     # New flux from SOCRATES
@@ -322,6 +323,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
             
     COUPLER_options["F_atm"]  = F_atm_new
     COUPLER_options["F_olr"]  = LW_flux_up[0]
+    COUPLER_options["F_sct"]  = SW_flux_up[0]
     COUPLER_options["T_surf"] = T_surf
     
     log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
