@@ -111,34 +111,6 @@ class SolubilityH2O(Solubility):
         '''Newcombe et al. (2017)'''
         return self.power_law(p, 683, 0.5)
 
-# class SolubilitySO2(Solubility):
-#     """SO2 solubility models"""
-
-#     # below default gives the default model used
-#     def __init__(self, composition='boulliung'):
-#         self.fO2_model = OxygenFugacity()
-#         super().__init__(composition)
-
-#     def boulliung(self, p, ptot, temp, fO2_shift):
-
-#         # melt composition
-#         x_SiO2  = 62.42e-2
-#         x_Al2O3 = 2.7e-2
-#         x_TiO2  = 0.1e-2
-#         x_CaO   = 1.77e-2
-
-#         # logCs6 = -12.806 + (14502 * x_CaO + 30375)/temp
-#         # logCs6 -= (ptot - 0.1) * 1.5237 / temp
-
-#         logCs6 = -12.659 + (3692*x_CaO - 7592*x_SiO2 - 13736*x_TiO2 + 3762*x_Al2O3 + 34483)/temp
-
-#         logK10 = 18887/temp - 3.8064
-
-#         fO2 = self.fO2_model(temp, fO2_shift)
-        
-#         out = logCs6 - logK10 + np.log10(p) + 0.5 * fO2 - 1.5237 * (ptot - 0.1) / temp
-
-#         return 10000.0 * 10**out
 
 class SolubilityS2(Solubility):
     """S2 solubility models"""
@@ -648,6 +620,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
             outdict[s+"_atm_bar"] = p_d[s]  # store as bar
             outdict["P_surf"] += outdict[s+"_atm_bar"]
 
+    outdict["O2_atm_bar"] = p_d['O2']
 
     # Store VMRs (=mole fractions) and total atmosphere
     for s in volatile_species:
@@ -671,6 +644,9 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
             tot_kg += mass_int_d[s]
 
         outdict[s+"_total_kg"] = tot_kg
+
+        if (s in mass_atm_d.keys()) and ( s in mass_int_d.keys()):
+            outdict[s+"_outgassed_frac"] = outdict[s+"_atm_kg"]/ outdict[s+"_total_kg"]
 
     for s in volatile_species:
         outdict["M_atm"] += outdict[s+"_atm_kg"]
