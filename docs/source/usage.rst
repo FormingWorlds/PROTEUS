@@ -386,11 +386,11 @@ configuration, but they must all be passed via the config file.
      - Integer
      - 0: Disabled, 1: Enabled.
 
-   * - ``atmosphere_chem_type``
-     - Type of atmospheric chemistry to apply with VULCAN. 'None' applies no chemistry. 'Offline' provides the files required for running it offline. 'Online' is not yet implemented.
+   * - ``atmosphere_chemistry``
+     - Type of atmospheric chemistry to apply at runtime. 'None' applies no chemistry. 'Equilibrium' uses FastChem. 'Kinetics' is not yet implemented.
      - False
      - Integer
-     - 0: None, 1: Offline, 2: Online.
+     - 0: None, 1: Equilibrium, 2: Kinetics.
 
    * - ``interior_nlev``
      - Number of levels used in the interior model

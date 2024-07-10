@@ -20,6 +20,7 @@ from utils.plot_offchem import offchem_read_year
 from plot.cpl_offchem_species import *
 from plot.cpl_offchem_time import *
 from plot.cpl_offchem_year import *
+from utils.constants import R_sun_cm, AU_cm
 
 # ------------------------------------------------------------------------------------------------
 
@@ -268,11 +269,18 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
     # Also copy config file to results dir for posterity
     shutil.copyfile(dirs["vulcan"]+"vulcan_cfg.py",this_results+"vulcan_cfg.py")
 
-    # Copy a reasonable stellar flux file to the location where VULCAN will read it
-    ls = glob.glob(dirs["output"]+"/data/*.sfluxsurf")
+    # Copy a reasonable stellar flux file to the location where VULCAN will 
+    #   read it. This is scaled to the stellar surface
+    ls = glob.glob(dirs["output"]+"/data/*.sflux")
     years = [int(f.split("/")[-1].split(".")[0]) for f in ls]
-    year_near = years[find_nearest_idx(years,year)]
-    shutil.copyfile(dirs["output"]+"/data/%d.sfluxsurf"%year_near,dirs["vulcan"]+"output/%s_SF.txt"%screen_name)
+    sflux_near = dirs["output"]+"/data/%d.sflux"%years[find_nearest_idx(years,year)]
+
+    sflux_read = np.loadtxt(sflux_near, skiprows=1).T
+    f_sf = float(helpfile_thisyear["R_star"]) * R_sun_cm / (COUPLER_options["mean_distance"] * AU_cm)
+    sflux_scaled = sflux_read[1] * f_sf * f_sf       # scale to surface of star 
+
+    sflux_write = [sflux_read[0], sflux_scaled]
+    np.savetxt(dirs["vulcan"]+"output/%s_SF.txt"%screen_name, np.array(sflux_write).T, header="Stellar spectrum at R_star")
 
     # Write PT profile
     minT = 120.0
@@ -293,7 +301,7 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
     os.chdir(dirs["vulcan"])
     logfile = dirs["output"]+"offchem/%d/vulcan.log"%year
     vulcan_flag = " " if first_run else "-n"
-    vulcan_run = 'screen -S %sx -L -Logfile %s -dm bash -c "python3 vulcan.py %s"' % (screen_name,logfile,vulcan_flag)
+    vulcan_run = "screen -dmLS %s python3 vulcan.py %s" % (screen_name,vulcan_flag)
     subprocess.run([vulcan_run], shell=True, check=True)
     os.chdir(dirs["coupler"])
 
@@ -572,9 +580,9 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
 if __name__ == '__main__':
 
     # Parameters
-    cfgfile =       "output/vulcan_test/init_coupler.cfg"  # Config file used for PROTEUS
-    samples =       -1                  # How many samples to use from output dir (set to -1 if all are requested)
-    threads =       50                  # How many threads to use
+    cfgfile =       "output/agni_mixed_hot/init_coupler.cfg"  # Config file used for PROTEUS
+    samples =       4                  # How many samples to use from output dir (set to -1 if all are requested)
+    threads =       4                  # How many threads to use
     mkfuncs =       True                # Compile reaction functions again?
     mkplots =       True                # make plots?
     s_width =       1e7                 # Scale width of sampling distribution [yr]

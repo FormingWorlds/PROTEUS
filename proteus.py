@@ -121,7 +121,7 @@ def main():
             COUPLER_options[key_pp] = 0.0
 
     # Required vols
-    for s in ["H2O","CO2","N2"]:
+    for s in ["H2O","CO2","N2","S2"]:
         COUPLER_options[s+"_included"] = 1
 
     # Work out which vols are included
