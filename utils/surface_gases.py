@@ -125,6 +125,9 @@ class SolubilityS2(Solubility):
         # https://doi.org/10.1016/j.epsl.2021.117255
         # https://ars.els-cdn.com/content/image/1-s2.0-S0012821X21005112-mmc1.pdf
 
+        if p < 1.0e-20:
+            return 0.0
+
         # melt composition [wt%]
         x_FeO  = 10.0
 
@@ -514,6 +517,8 @@ def solvevol_get_target_from_params(COUPLER_options):
     return target_d
 
 def solvevol_get_target_from_pressures(COUPLER_options):
+    
+    target_d = {}
 
     # store partial pressures for included gases
     pin_dict = {}
@@ -526,12 +531,32 @@ def solvevol_get_target_from_pressures(COUPLER_options):
     if p_tot < 1.0e-3:
         raise Exception("Initial surface pressure too low! (%.2e bar)"%p_tot)
 
+    # Check if no sulfur is present
+    ptot_S = pin_dict["S2"]
+    if is_included("SO2", COUPLER_options):
+        ptot_S += pin_dict["SO2"]
+    if ptot_S < 1.0e-20:
+        target_d['S'] = 0.0
+
+    # Check if no carbon is present
+    ptot_C = pin_dict["CO2"]
+    if is_included("CO", COUPLER_options):
+        ptot_C += pin_dict["CO"]
+    if ptot_C < 1.0e-20:
+        target_d['C'] = 0.0
+
+    # Check if no nitrogen is present
+    ptot_N = pin_dict["N2"]
+    if ptot_N < 1.0e-20:
+        target_d['N'] = 0.0
+
     # get dissolved+atmosphere masses from partial pressures
     mass_atm_d = solvevol_atmosphere_mass(pin_dict, COUPLER_options)
     mass_int_d = solvevol_dissolved_mass(pin_dict, COUPLER_options)
 
-    target_d = {}
     for vol in ['H','C','N','S']:
+        if vol in target_d.keys():
+            continue
         target_d[vol] = mass_atm_d[vol] + mass_int_d[vol]
 
     return target_d
@@ -578,7 +603,6 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
 
         # give up after a while
         if count > max_attempts:
-            UpdateStatusfile(dirs, 21)
             raise Exception("Could not find solution for volatile abundances (max attempts reached)")
 
     log.info("Initial guess attempt number = %d" % count)

@@ -13,7 +13,7 @@ System configuration (MacOS)
       
     .. code-block:: console
 
-        $  xcode-select --install`
+        $  xcode-select --install
    
 2. Install ``FORTRAN NetCDF`` library via the most appropriate method for you
 
