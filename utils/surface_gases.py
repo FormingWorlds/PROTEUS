@@ -644,7 +644,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
             outdict[s+"_atm_bar"] = p_d[s]  # store as bar
             outdict["P_surf"] += outdict[s+"_atm_bar"]
 
-    outdict["O2_atm_bar"] = p_d['O2']
+    # outdict["O2_atm_bar"] = p_d['O2']
 
     # Store VMRs (=mole fractions) and total atmosphere
     for s in volatile_species:
@@ -669,8 +669,8 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
 
         outdict[s+"_total_kg"] = tot_kg
 
-        if (s in mass_atm_d.keys()) and ( s in mass_int_d.keys()):
-            outdict[s+"_outgassed_frac"] = outdict[s+"_atm_kg"]/ outdict[s+"_total_kg"]
+        # if (s in mass_atm_d.keys()) and ( s in mass_int_d.keys()):
+        #     outdict[s+"_outgassed_frac"] = outdict[s+"_atm_kg"]/ outdict[s+"_total_kg"]
 
     for s in volatile_species:
         outdict["M_atm"] += outdict[s+"_atm_kg"]

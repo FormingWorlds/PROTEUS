@@ -28,6 +28,8 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     df_int = df.loc[df['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
     df_atm = df.loc[df['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
 
+    print(df_atm["CO2_mr"])
+
     #    Volatile parameters (keys=vols, vals=quantites_over_time)
     vol_present = {} # Is present ever? (true/false)
     vol_vmr     = {} # Volume mixing ratio 
