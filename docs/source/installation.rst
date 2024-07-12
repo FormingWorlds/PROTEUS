@@ -205,7 +205,7 @@ Step-by-step (optional modules)
             $ source get_socrates.sh
     
     4. Build AGNI 
-     .. code-block:: console 
+        .. code-block:: console 
 
             $ julia -e 'using Pkg; Pkg.activate("."); Pkg.build()'
 
