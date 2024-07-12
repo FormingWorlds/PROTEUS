@@ -174,10 +174,7 @@ def main():
 
     # Prepare stellar models
     match COUPLER_options['star_model']:
-        case 0: # LEGACY METHOD 
-            COUPLER_options["star_radius"] = COUPLER_options["star_radius_modern"]  # Legacy stellar model doesn't update this
-
-        case 1: # MORS
+        case 0: # SPADA (MORS)
             # load modern spectrum 
             star_struct_modern = mors.spec.Spectrum()
             star_struct_modern.LoadTSV(COUPLER_options["star_spectrum"])
@@ -189,7 +186,7 @@ def main():
             # modern properties 
             star_props_modern = mors.synthesis.GetProperties(COUPLER_options["star_mass"], star_pctle, COUPLER_options["star_age_modern"]/1e6)
 
-        case 2:  # BARAFFE
+        case 1:  # BARAFFE
             modern_wl, modern_fl = ModernSpectrumLoad(dirs, COUPLER_options)
             track = BaraffeLoadtrack(COUPLER_options)
 
@@ -231,11 +228,9 @@ def main():
 
                 match COUPLER_options['star_model']:
                     case 0:
-                        S_0 = InterpolateStellarLuminosity(time_dict, COUPLER_options)
-                    case 1:
                         COUPLER_options["star_radius"] = mors.Value(COUPLER_options["star_mass"],time_dict["star"]/1e6, 'Rstar') * mors.const.Rsun * 1.0e-2
                         S_0 =  mors.Value(COUPLER_options["star_mass"], time_dict["star"]/1e6, 'Lbol') * L_sun / ( 4. * np.pi * AU * AU * COUPLER_options["mean_distance"]**2.0 )
-                    case 2:
+                    case 1:
                         COUPLER_options["star_radius"] = BaraffeStellarRadius(time_dict, COUPLER_options, track)
                         S_0 = BaraffeSolarConstant(time_dict, COUPLER_options, track)
 
@@ -254,18 +249,18 @@ def main():
             log.info("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
 
         # Calculate a new (historical) stellar spectrum 
-        if (COUPLER_options['star_model'] > 0  and ( abs( time_dict['planet'] - time_dict['sspec_prev'] ) > COUPLER_options['sspec_dt_update'] ) \
+        if ( ( abs( time_dict['planet'] - time_dict['sspec_prev'] ) > COUPLER_options['sspec_dt_update'] ) \
             or (loop_counter["total"] == 0) ):
             
             time_dict['sspec_prev'] = time_dict['planet'] 
 
             log.info("Updating stellar spectrum") 
             match COUPLER_options['star_model']: 
-                case 1:
+                case 0:
                     synthetic = mors.synthesis.CalcScaledSpectrumFromProps(star_struct_modern, star_props_modern, time_dict["star"]/1e6)
                     fl = synthetic.fl   # at 1 AU
                     wl = synthetic.wl
-                case 2:
+                case 1:
                     fl = BaraffeSpectrumCalc(time_dict["star"], modern_fl, COUPLER_options, track)
                     wl = modern_wl
 
