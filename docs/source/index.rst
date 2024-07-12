@@ -19,5 +19,6 @@ Contents
 .. toctree::
 
    installation
+   troubleshooting
    usage
    contact
