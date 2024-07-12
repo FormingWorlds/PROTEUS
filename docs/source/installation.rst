@@ -3,7 +3,7 @@ Installation
 
 These instructions will guide you through the typical installation process.
 The setup is written for MacOS and Linux. Depending on your system settings and installed libraries your procedure may differ. 
-If one or more of the steps below do not work for you we encourage you to first check the :ref:`troubleshooting` section. If that does not help you further, please contact the developers (see :doc:`contact`).
+If one or more of the steps below do not work for you we encourage you to first check the :doc:`troubleshooting` page. If that does not help you further, please contact the developers (see :doc:`contact`).
 
 
 System configuration (MacOS)
