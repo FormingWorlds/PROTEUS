@@ -162,6 +162,7 @@ Download the framework
 8. Setup environment variables
 
     * This can be done using the PROTEUS environment file
+
         .. code-block:: console
 
             $   source PROTEUS.env
