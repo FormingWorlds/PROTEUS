@@ -154,6 +154,7 @@ Download the framework
     3. Run the exact ``make check`` command provided at the end of the ``make all`` step
 
     4. Return to PROTEUS directory
+    
         .. code-block:: console
 
             $   cd ../
