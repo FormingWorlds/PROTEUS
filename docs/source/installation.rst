@@ -56,10 +56,10 @@ Python environment
 Download the framework
 --------------------------------
 1. Register your public SSH key with Github:
-    *  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys
-    *  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
-    *  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account
-    *  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection
+    -  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys
+    -  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
+    -  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account
+    -  https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection
 
 2. Download PROTEUS base
     
@@ -90,7 +90,7 @@ Download the framework
 
             $   cp -rf ../Mk_cmd_SYSTEM make/Mk_cmd    
         
-        * The available options are:
+        The available options are:
 
         .. code-block:: console
 
@@ -124,7 +124,7 @@ Download the framework
 
         $   cd VULCAN/fastchem_vulcan
     
-    * On MacOS you will need to edit ``make.globaloptions`` to reflect a GNU-compatible ``g++`` executable, not the Apple one (see :doc:`troubleshooting` if the next step results in an error)
+    - On MacOS you will need to edit ``make.globaloptions`` to reflect a GNU-compatible ``g++`` executable, not the Apple one (see :doc:`troubleshooting` if the next step results in an error)
         
     .. code-block:: console
 
@@ -161,13 +161,13 @@ Download the framework
 
 8. Setup environment variables
 
-    * This can be done using the PROTEUS environment file
+    - This can be done using the PROTEUS environment file
 
         .. code-block:: console
 
             $   source PROTEUS.env
 
-    * **IF** you want to be able to start PROTEUS immediately from a new shell every time, add ``source PROTEUS.env`` (and potentially ``conda activate proteus``) to your shell rc file.
+    - **IF** you want to be able to start PROTEUS immediately from a new shell every time, add ``source PROTEUS.env`` (and potentially ``conda activate proteus``) to your shell rc file.
 
 9. Setup interior evolution model (**SPIDER**)
 
@@ -185,9 +185,9 @@ Download the framework
 Step-by-step (optional modules)
 --------------------------------
 
-* Radiative-convective atmosphere model (**AGNI**)
+- Radiative-convective atmosphere model (**AGNI**)
 
-    * Installation steps can be found at the `AGNI wiki <https://nichollsh.github.io/AGNI/dev/setup/>`_. They are also reproduced below.
+    - Installation steps can be found at the `AGNI wiki <https://nichollsh.github.io/AGNI/dev/setup/>`_. They are also reproduced below.
 
     1. Setup Julia
         .. code-block:: console 
@@ -215,5 +215,5 @@ Step-by-step (optional modules)
 
             $ cd ../
 
-    * Consult the AGNI wiki if you encouter issues.
+    - Consult the AGNI wiki if you encouter issues.
 
