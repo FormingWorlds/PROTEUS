@@ -9,7 +9,6 @@ import utils.constants
 
 from utils.constants import *
 from utils.coupler import *
-from utils.baraffe import *
 from utils.janus import RunJANUS, PrepAtm, StructAtm
 from utils.agni import RunAGNI
 from utils.dummy_atmosphere import RunDummyAtm
@@ -190,8 +189,11 @@ def main():
             star_props_modern = mors.synthesis.GetProperties(COUPLER_options["star_mass"], star_pctle, COUPLER_options["star_age_modern"]/1e6)
 
         case 1:  # BARAFFE
-            modern_wl, modern_fl = ModernSpectrumLoad(dirs, COUPLER_options)
-            track = BaraffeLoadtrack(COUPLER_options)
+            modern_wl, modern_fl = mors.ModernSpectrumLoad(dirs["coupler"]+"/"+COUPLER_options["star_spectrum", #path to input spectral file
+                                                           dirs['output']+'/-1.sflux') #path to copied spectral file
+
+            mors.DownloadEvolutionTracks("/Baraffe")
+            baraffe = mors.BaraffeTrack(COUPLER_options["star_mass"])
 
         case _:
             UpdateStatusfile(dirs, 20)
@@ -234,8 +236,8 @@ def main():
                         COUPLER_options["star_radius"] = mors.Value(COUPLER_options["star_mass"],time_dict["star"]/1e6, 'Rstar') * mors.const.Rsun * 1.0e-2
                         S_0 =  mors.Value(COUPLER_options["star_mass"], time_dict["star"]/1e6, 'Lbol') * L_sun / ( 4. * np.pi * AU * AU * COUPLER_options["mean_distance"]**2.0 )
                     case 1:
-                        COUPLER_options["star_radius"] = BaraffeStellarRadius(time_dict, COUPLER_options, track)
-                        S_0 = BaraffeSolarConstant(time_dict, COUPLER_options, track)
+                        COUPLER_options["star_radius"] = baraffe.BaraffeStellarRadius(time_dict["star"])
+                        S_0 = baraffe.BaraffeSolarConstant(time_dict["star"], COUPLER_options["mean_distance"])
 
                 # Calculate new eqm temperature
                 T_eqm_new = calc_eqm_temperature(S_0, COUPLER_options["asf_scalefactor"], COUPLER_options["albedo_pl"])
@@ -264,12 +266,12 @@ def main():
                     fl = synthetic.fl   # at 1 AU
                     wl = synthetic.wl
                 case 1:
-                    fl = BaraffeSpectrumCalc(time_dict["star"], modern_fl, COUPLER_options, track)
+                    fl = baraffe.BaraffeSpectrumCalc(time_dict["star"], COUPLER_options["star_luminosity_modern"], modern_fl)
                     wl = modern_wl
 
             # Scale fluxes from 1 AU to TOA 
             fl *= (1.0 / COUPLER_options["mean_distance"])**2.0
-            SpectrumWrite(time_dict,wl,fl,dirs['output']+'/data/')
+            mors.SpectrumWrite(time_dict,wl,fl,dirs['output']+'/data/')
 
             # Prepare spectral file for JANUS 
             if COUPLER_options["atmosphere_model"] == 0:
