@@ -5,13 +5,6 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import *
 
-sci_colormaps = {}
-for g in glob.glob(str(pathlib.Path(__file__).parent.absolute())+"/../plot/SciColMaps8/cont/*.txt"):
-    cm_data = np.loadtxt(g)
-    name = g.split('/')[-1].split('.')[0]
-    sci_colormaps[name]      = LinearSegmentedColormap.from_list(name, cm_data)
-    sci_colormaps[name+"_r"] = LinearSegmentedColormap.from_list(name, cm_data[::-1])
-
 vol_zorder  = {
     "H2O"            : 11,
     "CO2"            : 10,
@@ -237,7 +230,7 @@ class FigureData( object ):
             dd['time_decimal_places'] = 2 # hard-coded
         dd['outname'] = outname
 
-        self.cmap = sci_colormaps['imola']
+        self.cmap = cm.imola
             
         self.set_properties( nrows, ncols, width, height )
 

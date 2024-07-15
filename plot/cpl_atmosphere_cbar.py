@@ -71,7 +71,7 @@ def plot_atmosphere_cbar(output_dir):
 
     # Colour mapping
     norm = mpl.colors.Normalize(vmin=sorted_times[0], vmax=sorted_times[-1])
-    sm = plt.cm.ScalarMappable(cmap=sci_colormaps['batlowK_r'], norm=norm) # 
+    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm) # 
     sm.set_array([])
 
     # Plot data
