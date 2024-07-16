@@ -73,7 +73,7 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
         
 
     norm = mpl.colors.LogNorm(vmin=cb_vmin, vmax=cb_vmax)
-    sm = plt.cm.ScalarMappable(cmap=sci_colormaps['batlowK_r'], norm=norm)
+    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)
     sm.set_array([])
     cbar = fig.colorbar(sm, cax=cax, orientation='vertical')  #, ticks=np.linspace(0,2,N), boundaries=np.arange(-0.05,2.1,.1))
     cbar.set_label("Time [yr]") 

@@ -25,8 +25,7 @@ import matplotlib.pyplot as plt
 plt.ioff()
 
 import matplotlib.ticker as ticker
-from matplotlib import cm
-from matplotlib.colors import LinearSegmentedColormap
+from cmcrameri import cm 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
