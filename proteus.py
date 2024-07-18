@@ -19,8 +19,7 @@ from utils.logging import setup_logger
 from plot.cpl_fluxes import *
 from plot.cpl_heatingrates import *
 
-from JANUS.modules.stellar_luminosity import InterpolateStellarLuminosity
-from JANUS.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
+from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 
 import mors 
 
