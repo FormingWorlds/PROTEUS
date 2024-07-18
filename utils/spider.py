@@ -431,11 +431,6 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     # Mixing length parameterization: 1: variable | 2: constant
     call_sequence.extend(["-mixing_length", str(COUPLER_options["mixing_length"])])
 
-    # Ultra-thin thermal boundary layer at top, 0: off | 1: on
-    if COUPLER_options["PARAM_UTBL"] == 1:
-        call_sequence.extend(["-PARAM_UTBL", str(1)])
-        call_sequence.extend(["-param_utbl_const", str(COUPLER_options["param_utbl_const"])])
-
     # Check for convergence, if not converging, adjust tolerances iteratively
     if (loop_counter["total"] > loop_counter["init_loops"]) and (len(runtime_helpfile) > 50):
 

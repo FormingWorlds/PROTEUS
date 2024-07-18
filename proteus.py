@@ -79,9 +79,6 @@ def main():
         if COUPLER_options["flux_convergence"] == 1:
             UpdateStatusfile(dirs, 20)
             raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
-        if COUPLER_options["PARAM_UTBL"] == 1:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("SPIDER's UTBL is incompatible with the conductive lid scheme! Turn one of them off")
         
     if COUPLER_options["atmosphere_model"] == 1:  # Julia required for AGNI
         if shutil.which("julia") is None:

@@ -422,12 +422,6 @@ configuration, but they must all be passed via the config file.
      - Integer
      - 1: Variable, 2: Constant.
 
-   * - ``PARAM_UTBL``
-     - Flag to include an ultra-thin thermal boundary layer (UTBL) in SPIDER. This is used to parameterise the under-resolved conductive layer at the surface. Not compatible with ``atmosphere_surf_state==2``.   
-     - False
-     - Integer
-     - 0: Disabled, 1: Enabled.
-
    * - ``solver_tolerance``
      - Tolerance to provide to SPIDER when it calls its numerical solver.  
      - False
