@@ -19,7 +19,6 @@ Contents
 .. toctree::
 
    installation
-   INSTALL
+   troubleshooting
    usage
    contact
-   api

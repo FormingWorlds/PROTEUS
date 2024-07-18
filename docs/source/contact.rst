@@ -1,5 +1,5 @@
 Contact
-=====
+===============
 
 You can contact the developers or ask questions via a number of ways, and we encourage you to reach out!
 
