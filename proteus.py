@@ -160,9 +160,9 @@ def main():
 
     # Set up spectral files
     if os.environ.get('FWL_DATA') == None:
-        raise Exception("The FWL_DATA environment variable where spectral
-                        and evolution tracks data will be downloaded needs to be set up!
-                        Did you source PROTEUS.env?")
+        raise Exception("The FWL_DATA environment variable where spectral"
+                        "and evolution tracks data will be downloaded needs to be set up!"
+                        "Did you source PROTEUS.env?")
     else:
         fwl_data_dir = os.environ.get('FWL_DATA')
 
