@@ -4,19 +4,20 @@ import logging, sys, os
 
 class CustomFormatter(logging.Formatter):
 
-    grey = "\x1b[38;20m"
-    yellow = "\x1b[33;20m"
-    red = "\x1b[31;20m"
-    bold_red = "\x1b[31;1m"
-    reset = "\x1b[0m"
-    format = "[%(levelname)7s] %(message)s"
+    part1 = "[\033["
+
+    info =  "32"
+    warn =  "93"
+    debug = "96"
+    error = "91"
+
+    part2 = "m\033[1m%(levelname)-7s\033[21m\033[0m] %(message)s"
 
     FORMATS = {
-        logging.DEBUG: grey + format + reset,
-        logging.INFO: grey + format + reset,
-        logging.WARNING: yellow + format + reset,
-        logging.ERROR: red + format + reset,
-        logging.CRITICAL: bold_red + format + reset
+        logging.DEBUG:   part1+debug+part2,
+        logging.INFO:    part1+info +part2,
+        logging.WARNING: part1+warn +part2,
+        logging.ERROR:   part1+error+part2,
     }
 
     def format(self, record):
@@ -36,7 +37,7 @@ def setup_logger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
         os.remove(logpath)
     
     level = str(level).strip().upper()
-    if level not in ["INFO", "DEBUG", "ERROR", "CRITICAL"]:
+    if level not in ["INFO", "DEBUG", "ERROR", "WARNING"]:
         level = "INFO"
     level_code = logging.getLevelName(level)
 
@@ -49,7 +50,7 @@ def setup_logger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
 
     # Add file output to logger
     fh = logging.FileHandler(logpath)
-    fh.setFormatter(logging.Formatter("[%(levelname)8s] %(message)s"))
+    fh.setFormatter(logging.Formatter("[%(levelname)-7s] %(message)s"))
     fh.setLevel(level)
     custom_logger.addHandler(fh)
     custom_logger.setLevel(level_code)
