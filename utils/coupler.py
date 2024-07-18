@@ -472,6 +472,7 @@ def SetDirectories(COUPLER_options: dict):
 
     coupler_dir = os.path.abspath(os.getenv('COUPLER_DIR'))
 
+    # PROTEUS folders
     dirs = {
             "output":   os.path.join(coupler_dir,"output",COUPLER_options['dir_output']), 
             "input":    os.path.join(coupler_dir,"input"),
@@ -483,9 +484,30 @@ def SetDirectories(COUPLER_options: dict):
             "utils":    os.path.join(coupler_dir,"utils")
             }
     
-    for key in dirs.keys():
-        dirs[key] = dirs[key]+"/"
+    # FWL data folder
+    if os.environ.get('FWL_DATA') == None:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("The FWL_DATA environment variable where spectral"
+                        "and evolution tracks data will be downloaded needs to be set up!"
+                        "Did you source PROTEUS.env?")
+    else:
+        dirs["fwl"] = os.environ.get('FWL_DATA')
     
+
+    # SOCRATES directory
+    if COUPLER_options["atmosphere_model"] in [0,1]:
+        # needed for atmosphere models 0 and 1
+        
+        if os.environ.get('RAD_DIR') == None:
+            UpdateStatusfile(dirs, 20)
+            raise Exception("The RAD_DIR environment variable has not been set")
+        else:
+            dirs["rad"] = os.environ.get('RAD_DIR')
+    
+    # Get abspaths
+    for key in dirs.keys():
+        dirs[key] = os.path.abspath(dirs[key])+"/"
+
     return dirs
 
 

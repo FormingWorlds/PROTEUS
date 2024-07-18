@@ -9,7 +9,6 @@ import utils.constants
 
 from utils.constants import *
 from utils.coupler import *
-from utils.baraffe import *
 from utils.janus import RunJANUS, PrepAtm, StructAtm
 from utils.agni import RunAGNI
 from utils.dummy_atmosphere import RunDummyAtm
@@ -20,8 +19,8 @@ from utils.logging import setup_logger
 from plot.cpl_fluxes import *
 from plot.cpl_heatingrates import *
 
-from JANUS.modules.stellar_luminosity import InterpolateStellarLuminosity
-from JANUS.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
+from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
+from janus.utils import DownloadSpectralFiles
 
 import mors 
 
@@ -50,9 +49,12 @@ def main():
     os.chdir(dirs["coupler"])
 
     start_time = datetime.now()
-    log.info("Current time:     " + start_time.strftime('%Y-%m-%d_%H:%M:%S'))
-    log.info("Hostname:         " + str(os.uname()[1]))
-    log.info("Output directory: " + dirs["output"])
+    log.info("Current time: " + start_time.strftime('%Y-%m-%d_%H:%M:%S'))
+    log.info("Hostname:     " + str(os.uname()[1]))
+    log.info("Output dir:   " + dirs["output"])
+    log.info("FWL data dir: " + dirs["fwl"])
+    if COUPLER_options["atmosphere_model"] in [0,1]:
+        log.info("SOCRATES dir: " + dirs["rad"])
 
     # Count iterations
     loop_counter = { 
@@ -156,8 +158,20 @@ def main():
             
     log.info("Included volatiles: " + str(inc_vols))
 
-    # Check that spectral file exists
-    spectral_file_nostar = COUPLER_options["spectral_file"]
+    # Set up spectral files
+    if os.environ.get('FWL_DATA') == None:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("The FWL_DATA environment variable where spectral"
+                        "and evolution tracks data will be downloaded needs to be set up!"
+                        "Did you source PROTEUS.env?")
+    else:
+        fwl_data_dir = os.environ.get('FWL_DATA')
+
+    # Download all basic spectral files data
+    # (to be improved such that we only download the one we need)
+    DownloadSpectralFiles()
+
+    spectral_file_nostar = fwl_data_dir + COUPLER_options["spectral_file"]
     if not os.path.exists(spectral_file_nostar):
         UpdateStatusfile(dirs, 20)
         raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
@@ -171,10 +185,10 @@ def main():
 
     # Prepare stellar models
     match COUPLER_options['star_model']:
-        case 0: # LEGACY METHOD 
-            COUPLER_options["star_radius"] = COUPLER_options["star_radius_modern"]  # Legacy stellar model doesn't update this
+        case 0: # SPADA (MORS)
+            # download evolution track data if not present
+            mors.DownloadEvolutionTracks("/Spada")
 
-        case 1: # MORS
             # load modern spectrum 
             star_struct_modern = mors.spec.Spectrum()
             star_struct_modern.LoadTSV(COUPLER_options["star_spectrum"])
@@ -186,9 +200,12 @@ def main():
             # modern properties 
             star_props_modern = mors.synthesis.GetProperties(COUPLER_options["star_mass"], star_pctle, COUPLER_options["star_age_modern"]/1e6)
 
-        case 2:  # BARAFFE
-            modern_wl, modern_fl = ModernSpectrumLoad(dirs, COUPLER_options)
-            track = BaraffeLoadtrack(COUPLER_options)
+        case 1:  # BARAFFE
+            modern_wl, modern_fl = mors.ModernSpectrumLoad(dirs["coupler"]+"/"+COUPLER_options["star_spectrum"], #path to input spectral file
+                                                           dirs['output']+'/-1.sflux') #path to copied spectral file
+
+            mors.DownloadEvolutionTracks("/Baraffe")
+            baraffe = mors.BaraffeTrack(COUPLER_options["star_mass"])
 
         case _:
             UpdateStatusfile(dirs, 20)
@@ -228,13 +245,11 @@ def main():
 
                 match COUPLER_options['star_model']:
                     case 0:
-                        S_0 = InterpolateStellarLuminosity(time_dict, COUPLER_options)
-                    case 1:
                         COUPLER_options["star_radius"] = mors.Value(COUPLER_options["star_mass"],time_dict["star"]/1e6, 'Rstar') * mors.const.Rsun * 1.0e-2
                         S_0 =  mors.Value(COUPLER_options["star_mass"], time_dict["star"]/1e6, 'Lbol') * L_sun / ( 4. * np.pi * AU * AU * COUPLER_options["mean_distance"]**2.0 )
-                    case 2:
-                        COUPLER_options["star_radius"] = BaraffeStellarRadius(time_dict, COUPLER_options, track)
-                        S_0 = BaraffeSolarConstant(time_dict, COUPLER_options, track)
+                    case 1:
+                        COUPLER_options["star_radius"] = baraffe.BaraffeStellarRadius(time_dict["star"])
+                        S_0 = baraffe.BaraffeSolarConstant(time_dict["star"], COUPLER_options["mean_distance"])
 
                 # Calculate new eqm temperature
                 T_eqm_new = calc_eqm_temperature(S_0, COUPLER_options["asf_scalefactor"], COUPLER_options["albedo_pl"])
@@ -251,24 +266,24 @@ def main():
             log.info("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
 
         # Calculate a new (historical) stellar spectrum 
-        if (COUPLER_options['star_model'] > 0  and ( abs( time_dict['planet'] - time_dict['sspec_prev'] ) > COUPLER_options['sspec_dt_update'] ) \
+        if ( ( abs( time_dict['planet'] - time_dict['sspec_prev'] ) > COUPLER_options['sspec_dt_update'] ) \
             or (loop_counter["total"] == 0) ):
             
             time_dict['sspec_prev'] = time_dict['planet'] 
 
             log.info("Updating stellar spectrum") 
             match COUPLER_options['star_model']: 
-                case 1:
+                case 0:
                     synthetic = mors.synthesis.CalcScaledSpectrumFromProps(star_struct_modern, star_props_modern, time_dict["star"]/1e6)
                     fl = synthetic.fl   # at 1 AU
                     wl = synthetic.wl
-                case 2:
-                    fl = BaraffeSpectrumCalc(time_dict["star"], modern_fl, COUPLER_options, track)
+                case 1:
+                    fl = baraffe.BaraffeSpectrumCalc(time_dict["star"], COUPLER_options["star_luminosity_modern"], modern_fl)
                     wl = modern_wl
 
             # Scale fluxes from 1 AU to TOA 
             fl *= (1.0 / COUPLER_options["mean_distance"])**2.0
-            SpectrumWrite(time_dict,wl,fl,dirs['output']+'/data/')
+            mors.SpectrumWrite(time_dict,wl,fl,dirs['output']+'/data/')
 
             # Prepare spectral file for JANUS 
             if COUPLER_options["atmosphere_model"] == 0:

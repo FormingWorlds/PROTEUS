@@ -106,8 +106,8 @@ def PrepAtm( loop_counter, runtime_helpfile, COUPLER_options ):
 # Generate atmosphere from input files
 def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
 
-    from JANUS.utils.atmosphere_column import atmos
-    from JANUS.utils.ReadSpectralFile import ReadBandEdges
+    from janus.utils import atmos
+    from janus.utils import ReadBandEdges
 
     # Create atmosphere object and set parameters
     pl_radius = COUPLER_options["radius"]
@@ -217,6 +217,7 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
     if write_in_tmp_dir:
         tmp_dir = "/tmp/socrates_%d/" % np.random.randint(int(100),int(1e13))
         os.makedirs(tmp_dir)
+    log.debug("Will run socrates inside '%s'"%tmp_dir)
     os.chdir(tmp_dir)
 
     # Prepare to calculate temperature structure w/ General Adiabat 
@@ -227,11 +228,11 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
     if COUPLER_options["atmosphere_solve_energy"] == 0:
 
         if COUPLER_options["atmosphere_surf_state"] == 1:  # fixed T_Surf
-            from JANUS.modules.solve_pt import MCPA
+            from janus.modules import MCPA
             atm = MCPA(dirs, atm, False, trppD, rscatter)
 
         elif COUPLER_options["atmosphere_surf_state"] == 2: # conductive lid
-            from JANUS.modules.solve_pt import MCPA_CBL
+            from janus.modules import MCPA_CBL
 
             T_surf_max = -1
             T_surf_old = -1 
