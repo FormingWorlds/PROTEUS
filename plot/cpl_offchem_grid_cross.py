@@ -8,8 +8,6 @@ mpl.use("Agg")
 from utils.plot_offchem import *
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-cmap_name = 'batlowK_r'
-
 def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_dict:dict={}, 
                             contour:bool=True, labelcontrols:bool=False):
     """Plot a cross-section of the GridOfflineChemistry output.
@@ -152,7 +150,7 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
     else:
         norm = mpl.colors.Normalize(vmin=cb_vmin, vmax=cb_vmax)
 
-    cmap = sci_colormaps[cmap_name]
+    cmap = cm.batlowK_r
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
 

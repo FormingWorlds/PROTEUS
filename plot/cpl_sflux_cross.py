@@ -9,7 +9,6 @@ from utils.helper import natural_sort
 
 log = logging.getLogger("PROTEUS")
 
-star_cmap = sci_colormaps['oleron']
 
 # Planck function value at stellar surface
 # lam in nm
@@ -123,7 +122,7 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False, modern_
     for i in range(N):
 
         fl = flux_t.T[wl_iarr[i]]
-        c = star_cmap(1.0*i/N)
+        c = cm.oleron(1.0*i/N)
         lbl = "%d"%max(1,round(wl_varr[i]))
 
         ax.plot(time_t,fl,color=c,lw=2.8,label=lbl)

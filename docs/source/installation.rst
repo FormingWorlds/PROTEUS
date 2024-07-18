@@ -51,6 +51,7 @@ Python environment
         $   conda install matplotlib numpy pandas scipy sympy natsort ipykernel pip tomlkit
         $   conda install conda-forge::f90nml
         $   conda install conda-forge::netcdf4
+        $   conda install conda-forge::cmcrameri 
 
 
 Download the framework
@@ -136,8 +137,6 @@ Download the framework
     .. code-block:: console
 
         $   cd Mors 
-        $   wget http://www.astro.yale.edu/demarque/fs255_grid.tar.gz
-        $   tar -xvf fs255_grid.tar.gz
         $   pip install -e .
         $   cd ../
     

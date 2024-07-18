@@ -58,7 +58,7 @@ def plot_interior( output_dir, times ):
 
     handle_l = [] # handles for legend
 
-    fig_o.set_cmap(sci_colormaps['batlowK_r']) # "magma_r"
+    fig_o.set_cmap(cm.batlowK_r) # "magma_r"
 
     for nn, time in enumerate( fig_o.time ):
 

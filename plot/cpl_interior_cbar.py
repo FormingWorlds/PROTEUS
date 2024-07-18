@@ -41,7 +41,7 @@ def plot_interior_cbar(output_dir):
 
     # Colour mapping
     norm = mpl.colors.Normalize(vmin=1.0, vmax=np.amax(output_times))
-    sm = plt.cm.ScalarMappable(cmap=sci_colormaps['batlowK_r'], norm=norm) # 
+    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm) # 
     sm.set_array([])
 
     # Loop through years

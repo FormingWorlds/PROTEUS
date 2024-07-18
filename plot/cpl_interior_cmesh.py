@@ -84,7 +84,7 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5):
         axt.set_bbox(dict(facecolor='white', alpha=0.5, linewidth=0))
 
     # Plot temperature
-    cmap = sci_colormaps['lajolla']
+    cmap = cm.lajolla
     cax = make_axes_locatable(ax1).append_axes('right', size='5%', pad=0.05)
     norm = mpl.colors.Normalize(vmin=np.amin(arr_z1), vmax=np.amax(arr_z1))
     if use_contour:
@@ -97,7 +97,7 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5):
 
 
     # Plot melt fraction
-    cmap = sci_colormaps['grayC']
+    cmap = cm.grayC
     cax = make_axes_locatable(ax2).append_axes('right', size='5%', pad=0.05)
     norm = mpl.colors.Normalize(vmin=0.0, vmax=1.0, clip=True)
     if use_contour:
@@ -109,7 +109,7 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5):
     cb.set_ticks(list(np.linspace(0.0,1.0,numticks)))
 
     # Plot viscosity
-    cmap = sci_colormaps['imola_r']
+    cmap = cm.imola_r
     cax = make_axes_locatable(ax3).append_axes('right', size='5%', pad=0.05)
     if (np.amax(arr_z3) > 100.0*np.amin(arr_z3)):
         norm = mpl.colors.LogNorm(vmin=np.amin(arr_z3), vmax=np.amax(arr_z3))
@@ -128,7 +128,7 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5):
     #     cb.set_ticks(sorted(list(set(cbticks))))
     
     # Plot entropy
-    cmap = sci_colormaps['acton']
+    cmap = cm.acton
     cax = make_axes_locatable(ax4).append_axes('right', size='5%', pad=0.05)
     norm = mpl.colors.Normalize(vmin=np.amin(arr_z4), vmax=np.amax(arr_z4))
     if use_contour:
