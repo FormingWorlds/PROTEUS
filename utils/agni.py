@@ -148,6 +148,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
 
         log.debug("Initialise from last T(p)")
         cfg_toml["execution"]["initial_state"] = ["ncdf", nc_path, "add", "%.6f"%initial_offset]
+        cfg_toml["execution"]["easy_start"] = False
 
     # Solution stuff 
     surf_state = int(COUPLER_options["atmosphere_surf_state"])
