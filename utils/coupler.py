@@ -372,9 +372,6 @@ def ReadInitFile( init_file_passed , verbose=False):
     # Calculate gravity from mass and radius
     COUPLER_options["gravity"] =  const_G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
 
-    # Special cases...
-    COUPLER_options["spectral_file"] = os.path.abspath(COUPLER_options["spectral_file"])
-
     return COUPLER_options, time_dict
 
 def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):

@@ -136,7 +136,7 @@ def main():
             raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
         
         solvevol_warnboth = solvevol_warnboth or ((COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0))
-        log.info("    %s\t: %s,  %.2f bar"%(s, str(COUPLER_options[key_in]>0), COUPLER_options[key_pp]))
+        log.info("    %-6s : %-8.2f bar (included = %s)"%(s, COUPLER_options[key_pp], str(COUPLER_options[key_in]>0)))
 
         if COUPLER_options["solvevol_use_params"] > 0:
             COUPLER_options[key_pp] = 0.0
@@ -161,20 +161,11 @@ def main():
             
     log.info("Included volatiles: " + str(inc_vols))
 
-    # Set up spectral files
-    if os.environ.get('FWL_DATA') == None:
-        UpdateStatusfile(dirs, 20)
-        raise Exception("The FWL_DATA environment variable where spectral"
-                        "and evolution tracks data will be downloaded needs to be set up!"
-                        "Did you source PROTEUS.env?")
-    else:
-        fwl_data_dir = os.environ.get('FWL_DATA')
-
     # Download all basic spectral files data
     # (to be improved such that we only download the one we need)
     DownloadSpectralFiles()
 
-    spectral_file_nostar = fwl_data_dir + COUPLER_options["spectral_file"]
+    spectral_file_nostar = os.path.join(dirs["fwl"] , COUPLER_options["spectral_file"])
     if not os.path.exists(spectral_file_nostar):
         UpdateStatusfile(dirs, 20)
         raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
@@ -515,8 +506,6 @@ def main():
 
     # Clean up files
     safe_rm(keepalive_file)
-    for file in glob.glob(dirs["output"]+"/runtime_spectral_file*"):
-        os.remove(file)
 
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options, end=True)

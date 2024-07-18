@@ -578,7 +578,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
 
 
     log.info("Solving for equilibrium partial pressures at surface")
-    log.debug("Target masses: %s"%str(target_d))
+    log.debug("    target masses: %s"%str(target_d))
 
     count = 0
     max_attempts = 7000
@@ -605,8 +605,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
         if count > max_attempts:
             raise Exception("Could not find solution for volatile abundances (max attempts reached)")
 
-    log.info("Initial guess attempt number = %d" % count)
-    log.info("Residuals: " + str(this_resid))
+    log.debug("    Initial guess attempt number = %d" % count)
 
     sol_dict = {
         "H2O" : sol[0],
@@ -624,6 +623,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
 
     # Residuals [relative]
     res_l      = solvevol_func(sol, COUPLER_options, target_d)
+    log.debug("    Residuals: %s"%res_l)
     
     # Output dict 
     outdict = {"M_atm":0.0}
@@ -650,7 +650,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
     for s in volatile_species:
         outdict[s+"_mr"] = outdict[s+"_atm_bar"]/outdict["P_surf"]
 
-        log.info("    solvevol: %s = %.1f bar (%.3f VMR)" % (s,outdict[s+"_atm_bar"], outdict[s+"_mr"])) 
+        log.info("    %-6s : %-8.2f bar (%.2e VMR)" % (s,outdict[s+"_atm_bar"], outdict[s+"_mr"])) 
 
     # Store masses of both gases and elements
     all = [s for s in volatile_species]

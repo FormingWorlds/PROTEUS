@@ -86,11 +86,12 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
         elif chem_type >= 2:
             # kinetics 
             raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
-        
+    
+    # set condensation
     condensates = []
-    if (loop_counter["total"] == 1) or (chem_type > 0):
-        log.debug("Condensation disabled")
-        # Disable condensation for first iteration or when chemistry enabled
+    if len(vol_dict) == 1:
+        # single-gas case
+        condensates = [list(vol_dict.keys())[0]]
     else:
         # get gas with lowest mixing ratio 
         vmr_min = 2.0
@@ -117,7 +118,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
         cfg_toml["files"]["input_star"] =   ""   
     else:
         # doesn't exist => AGNI will copy it + modify as required
-        cfg_toml["files"]["input_sf"] =     COUPLER_options["spectral_file"]
+        cfg_toml["files"]["input_sf"] =     os.path.join(dirs["fwl"],COUPLER_options["spectral_file"])
         cfg_toml["files"]["input_star"] =   sflux_path
     
     # Set execution
