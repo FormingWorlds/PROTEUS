@@ -189,7 +189,7 @@ def main():
             star_props_modern = mors.synthesis.GetProperties(COUPLER_options["star_mass"], star_pctle, COUPLER_options["star_age_modern"]/1e6)
 
         case 1:  # BARAFFE
-            modern_wl, modern_fl = mors.ModernSpectrumLoad(dirs["coupler"]+"/"+COUPLER_options["star_spectrum", #path to input spectral file
+            modern_wl, modern_fl = mors.ModernSpectrumLoad(dirs["coupler"]+"/"+COUPLER_options["star_spectrum"], #path to input spectral file
                                                            dirs['output']+'/-1.sflux') #path to copied spectral file
 
             mors.DownloadEvolutionTracks("/Baraffe")
