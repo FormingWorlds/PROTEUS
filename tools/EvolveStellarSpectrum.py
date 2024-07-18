@@ -32,7 +32,7 @@ def evolve(cfg_file: str, tf: float, nsamps: int = 500):
     age   = float(COUPLER_options['star_age_modern'])
 
     # Modern spectrum file 
-    modern_path = COUPLER_options["star_spectrum"]
+    modern_path = os.path.join(dirs["fwl"],COUPLER_options["star_spectrum"])
     shutil.copyfile(modern_path, os.path.join(dirs["output"],"-1.sflux"))
 
     # Prep evolution data
@@ -65,7 +65,7 @@ def evolve(cfg_file: str, tf: float, nsamps: int = 500):
     print("")
     print("Parameters:")
     print("\t star_model = %d" % COUPLER_options['star_model'])
-    print("\t star_spectrum = '%s'" % COUPLER_options['star_spectrum'])
+    print("\t star_spectrum = '%s'" % modern_path)
     print("\t ti = %1.3e Myr" % (time_dict['star'] * 1.e-6))
     print("\t tf = %1.3e Myr" % (tf * 1.e-6))
     print("\t dt = %1.3e Myr" % (dt * 1.e-6))

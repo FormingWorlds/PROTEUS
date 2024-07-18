@@ -20,7 +20,7 @@ from plot.cpl_fluxes import *
 from plot.cpl_heatingrates import *
 
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
-from janus.utils import DownloadSpectralFiles
+from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
 
 import mors 
 
@@ -161,9 +161,10 @@ def main():
             
     log.info("Included volatiles: " + str(inc_vols))
 
-    # Download all basic spectral files data
+    # Download all basic data.
     # (to be improved such that we only download the one we need)
     DownloadSpectralFiles()
+    DownloadStellarSpectra()
 
     spectral_file_nostar = os.path.join(dirs["fwl"] , COUPLER_options["spectral_file"])
     if not os.path.exists(spectral_file_nostar):
@@ -175,7 +176,8 @@ def main():
     # Store copy of modern spectrum in memory (1 AU)
     time_dict['sspec_prev'] = -math.inf
     time_dict['sinst_prev'] = -math.inf
-    shutil.copyfile(COUPLER_options["star_spectrum"], os.path.join(dirs["output"],"-1.sflux"))
+    star_modern_path = os.path.join(dirs["fwl"],COUPLER_options["star_spectrum"])
+    shutil.copyfile(star_modern_path, os.path.join(dirs["output"],"-1.sflux"))
 
     # Prepare stellar models
     match COUPLER_options['star_model']:
@@ -185,7 +187,7 @@ def main():
 
             # load modern spectrum 
             star_struct_modern = mors.spec.Spectrum()
-            star_struct_modern.LoadTSV(COUPLER_options["star_spectrum"])
+            star_struct_modern.LoadTSV(star_modern_path)
             star_struct_modern.CalcBandFluxes()
 
             # get best rotation percentile 
@@ -195,8 +197,7 @@ def main():
             star_props_modern = mors.synthesis.GetProperties(COUPLER_options["star_mass"], star_pctle, COUPLER_options["star_age_modern"]/1e6)
 
         case 1:  # BARAFFE
-            modern_wl, modern_fl = mors.ModernSpectrumLoad(dirs["coupler"]+"/"+COUPLER_options["star_spectrum"], #path to input spectral file
-                                                           dirs['output']+'/-1.sflux') #path to copied spectral file
+            modern_wl, modern_fl = mors.ModernSpectrumLoad(star_modern_path, dirs['output']+'/-1.sflux') 
 
             mors.DownloadEvolutionTracks("/Baraffe")
             baraffe = mors.BaraffeTrack(COUPLER_options["star_mass"])

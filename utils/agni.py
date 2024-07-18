@@ -296,7 +296,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         shutil.move(p_inp, p_out)
 
     # Remove files
-    files_remove = ["plot_ptprofile.png", "fl.csv", "pt_ini.csv", "pt.csv", "agni.toml", "solver.png", "jacobian.png"] 
+    files_remove = ["plot_ptprofile.png", "fl.csv", "ptz_ini.csv", "ptz.csv", "agni.toml", "solver.png", "jacobian.png"] 
     for frem in files_remove:
         frem_path = os.path.join(dirs["output"],frem)
         safe_rm(frem_path)

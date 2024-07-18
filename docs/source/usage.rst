@@ -90,13 +90,7 @@ configuration, but they must all be passed via the config file.
      - The spectrum of the host star as observed today. These files may be obtained using the ``GetStellarSpectrum`` tool.  
      - False
      - String
-     - Path to file, measured relative to the PROTEUS base directory.
-
-   * - ``star_btrack``
-     - Baraffe evolutionary track to be used when ``star_model = 1``.  
-     - False
-     - String
-     - Path to file, measured relative to the PROTEUS base directory.
+     - Path to file, measured relative to the FWL_DATA directory.
 
    * - ``mean_distance``
      - Distance between the planet and its host star, in units of AU.  
@@ -174,7 +168,7 @@ configuration, but they must all be passed via the config file.
      - Spectral file to use when running SOCRATES.   
      - False
      - String
-     - Path to file measured relative to the ``JANUS/`` folder.
+     - Path to file measured relative to the FWL_DATA directory.
 
    * - ``stellar_heating``
      - Flag to toggle stellar heating, including the downward shortwave stream.  
