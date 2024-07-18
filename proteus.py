@@ -20,6 +20,7 @@ from plot.cpl_fluxes import *
 from plot.cpl_heatingrates import *
 
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
+from janus.utils import DownloadSpectralFiles
 
 import mors 
 
@@ -157,8 +158,19 @@ def main():
             
     log.info("Included volatiles: " + str(inc_vols))
 
-    # Check that spectral file exists
-    spectral_file_nostar = COUPLER_options["spectral_file"]
+    # Set up spectral files
+    if os.environ.get('FWL_DATA') == None:
+        raise Exception("The FWL_DATA environment variable where spectral
+                        and evolution tracks data will be downloaded needs to be set up!
+                        Did you source PROTEUS.env?")
+    else:
+        fwl_data_dir = os.environ.get('FWL_DATA')
+
+    # Download all basic spectral files data
+    # (to be improved such that we only download the one we need)
+    DownloadSpectralFiles()
+
+    spectral_file_nostar = fwl_data_dir + COUPLER_options["spectral_file"]
     if not os.path.exists(spectral_file_nostar):
         UpdateStatusfile(dirs, 20)
         raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
