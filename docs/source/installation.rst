@@ -136,8 +136,6 @@ Download the framework
     .. code-block:: console
 
         $   cd Mors 
-        $   wget http://www.astro.yale.edu/demarque/fs255_grid.tar.gz
-        $   tar -xvf fs255_grid.tar.gz
         $   pip install -e .
         $   cd ../
     
