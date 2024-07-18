@@ -48,13 +48,15 @@ def main():
 
     os.chdir(dirs["coupler"])
 
+    log.info(" ")
     start_time = datetime.now()
     log.info("Current time: " + start_time.strftime('%Y-%m-%d_%H:%M:%S'))
-    log.info("Hostname:     " + str(os.uname()[1]))
-    log.info("Output dir:   " + dirs["output"])
+    log.info("Hostname    : " + str(os.uname()[1]))
+    log.info("Output dir  : " + dirs["output"])
     log.info("FWL data dir: " + dirs["fwl"])
     if COUPLER_options["atmosphere_model"] in [0,1]:
         log.info("SOCRATES dir: " + dirs["rad"])
+    log.info(" ")
 
     # Count iterations
     loop_counter = { 
@@ -125,6 +127,7 @@ def main():
 
     # Work out which vols are included
     solvevol_warnboth = False
+    log.info("Initial partial pressures:")
     for s in volatile_species:
         key_pp = str(s+"_initial_bar")
         key_in = str(s+"_included")
@@ -133,7 +136,7 @@ def main():
             raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
         
         solvevol_warnboth = solvevol_warnboth or ((COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0))
-        log.info("%s\t: %s,  %.2f bar"%(s, str(COUPLER_options[key_in]>0), COUPLER_options[key_pp]))
+        log.info("    %s\t: %s,  %.2f bar"%(s, str(COUPLER_options[key_in]>0), COUPLER_options[key_pp]))
 
         if COUPLER_options["solvevol_use_params"] > 0:
             COUPLER_options[key_pp] = 0.0
@@ -222,6 +225,7 @@ def main():
     UpdateStatusfile(dirs, 1)
     while not finished:
 
+        log.info(" ")
         PrintSeparator()
         log.info("Loop counters: " +  str(loop_counter))
 
