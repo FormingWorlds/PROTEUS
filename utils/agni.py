@@ -136,7 +136,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
         
         # Tell AGNI not to solve for RCE
         cfg_toml["execution"]["solvers"] = []
-        cfg_toml["execution"]["convection_type"] = ""
+        cfg_toml["execution"]["convection"] = True
 
 
     elif loop_counter["total"] > 1:
