@@ -45,10 +45,10 @@ configuration, but they must all be passed via the config file.
      - Domain
 
    * - ``star_model``
-     - The star model to use for calculating the spectrum and luminosity. Options are the legacy implementation, the Baraffe model, and the Mors model.  
+     - Evolution model to use for star 
      - False
      - Integer
-     - 0: Legacy, 1: Mors, 2: Baraffe.
+     - 0: Spada, 1: Baraffe.
 
    * - ``star_rot_percentile``
      - The percentile used to find rotation rate of star from a distribution when the Mors evolution model is selected.  
