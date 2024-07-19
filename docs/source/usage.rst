@@ -340,12 +340,6 @@ configuration, but they must all be passed via the config file.
      - Float
      - Values between zero and unity.  
 
-   * - ``N2_partitioning``
-     - The melt-vapour partitioning of the N2 volatile is redox-state dependent. Use this flag to determine which parameterisation will be calculated.   
-     - False
-     - Integer
-     - 0: Oxidised, 1: Reduced.
-
    * - ``min_temperature``
      - Temperature floor. The temperature of the atmosphere is prevented from dropping below this value. Units of kelvin.    
      - False
