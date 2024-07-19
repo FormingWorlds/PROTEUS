@@ -139,7 +139,14 @@ Download the framework
 
             $   source PROTEUS.env
 
-    - **IF** you want to be able to start PROTEUS immediately from a new shell every time, add ``source PROTEUS.env`` (and potentially ``conda activate proteus``) to your shell rc file.
+    - Additionally, you need to set up the environment variable ``FWL_DATA`` to indicate in which folder the input data need to be stored
+
+        .. code-block:: console
+
+            $   export FWL_DATA=/your_local_path
+
+    - **IF** you want to be able to start PROTEUS immediately from a new shell every time, add ``source PROTEUS.env``, ``export FWL_DATA=...`` (and potentially ``conda activate proteus``) to your shell rc file.
+
 
 10. Setup interior evolution model (**SPIDER**)
 
