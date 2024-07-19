@@ -8,9 +8,11 @@ You can directly run PROTEUS using the Python command:
 
    .. code-block:: console
 
-      $  python proteus.py
+      $  python proteus.py --cfg [cfgfile]
 
-Default settings and variables are set in ``init_coupler.cfg``.
+Where ``[cfgfile]`` is the path to the required configuratio file. If the  
+``--cfg`` flag is not passed, then the default configuration located at 
+``init_coupler.cfg`` will be used.
 
 You can also run PROTEUS using:
 
@@ -20,8 +22,8 @@ You can also run PROTEUS using:
    
 Which runs PROTEUS using the config file ``[cfgfile]`` inside a Screen session 
 with the name ``[alias]``. The ``[detatch]`` parameter (y/n) tells the session 
-whether to immediately detach or not. his allows multiple instances of the model 
-to be dispatched easily, while preventing runs from having clashing names.   
+whether to immediately detach or not. This allows multiple instances of the model 
+to be dispatched easily and safely.
   
 Configuration file    
 ------------------------   

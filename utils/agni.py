@@ -48,7 +48,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     log.debug("Write cfg file")
 
     # Read base AGNI configuration file
-    cfg_base = os.path.join(dirs["utils"] , "init_agni.toml")
+    cfg_base = os.path.join(dirs["utils"] , "templates", "init_agni.toml")
     with open(cfg_base, 'r') as hdl:
         cfg_toml = toml.load(hdl) 
 
@@ -253,9 +253,13 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     agni_success = False  # success?
     attempts = 0          # number of attempts so far
     max_attempts = 3      # max attempts
-    linesearch = False
+    linesearch = True
     easy_start = False
     offset = 0.0
+
+    # first iteration 
+    if loop_counter["total"] < 2:
+        linesearch = False
 
     # make attempts
     while not agni_success:
@@ -283,9 +287,9 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
                     offset *= -1
 
                 # Try alternating linesearch and easy_start
-                easy_start = not easy_start
-                linesearch = not easy_start
-
+                linesearch = not linesearch
+                easy_start = not linesearch
+                
     # Move files
     log.debug("Tidy files")
     files_move = [  

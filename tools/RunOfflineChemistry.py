@@ -137,7 +137,8 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
     mixing_ratio_fixed = 1e-0       # Species with mixing ratio greater than this value have fixed abundances at the surface
 
     # Copy template config file
-    shutil.copyfile(dirs["utils"]+"/vulcan_offline_template.py",dirs["vulcan"]+"vulcan_cfg.py")
+    shutil.copyfile(os.path.join(dirs["utils"], "templates", "vulcan_offline_template.py"),
+                    os.path.join(dirs["vulcan"],"vulcan_cfg.py"))
 
     # Make results folder for this run
     this_results = dirs["output"]+"offchem/%d/"%year

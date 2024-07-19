@@ -264,8 +264,8 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     step_sf = min(1.0, max(1.0e-10, step_sf))
     atol_sf = min(1.0e10, max(1.0e-10, atol_sf))
 
-    SPIDER_options_file = dirs["output"]+"/init_spider.opts"
-    SPIDER_options_file_orig = dirs["utils"]+"/init_spider.opts"
+    SPIDER_options_file      = os.path.join(dirs["output"], "init_spider.opts")
+    SPIDER_options_file_orig = os.path.join(dirs["utils"], "templates", "init_spider.opts")
 
     # First run
     if (loop_counter["init"] == 0):
