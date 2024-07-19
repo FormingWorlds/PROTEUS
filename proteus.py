@@ -100,10 +100,12 @@ def main():
         raise Exception("Interior must have at least 40 levels")
     
     # Clean output folders
-    COUPLER_options["IC_INTERIOR"] = 1  # start from initial condition (not resuming)
     CleanDir( dirs["output"] , keep_stdlog=True)
     CleanDir( dirs['output']+'data/')
     runtime_helpfile    = []
+
+    # SPIDER initial condition
+    IC_INTERIOR = 1
     
     # Copy config file to output directory, for future reference
     shutil.copyfile( args["cfg"], dirs["output"]+"/init_coupler.cfg")
@@ -315,9 +317,7 @@ def main():
         ############### INTERIOR SUB-LOOP
 
         # Run SPIDER
-        RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile )
-        COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
-
+        RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, runtime_helpfile )
 
         # Run outgassing model
 
@@ -369,7 +369,7 @@ def main():
             loop_counter["init"]    += 1
             time_dict["planet"]     = 0.
         if loop_counter["total"] >= loop_counter["init_loops"]: # Reset restart flag once SPIDER has correct heat flux
-            COUPLER_options["IC_INTERIOR"] = 2
+            IC_INTERIOR = 2
 
         # Adjust total iteration counters
         loop_counter["atm"]         = 0

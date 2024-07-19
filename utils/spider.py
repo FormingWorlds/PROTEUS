@@ -254,11 +254,9 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
     return np.array(data_l)
 
 #====================================================================
-def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile, step_sf, atol_sf ):
+def _try_spider( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, runtime_helpfile, step_sf, atol_sf ):
     '''
     Try to run spider with the current configuration.
-    On success, return (True, COUPLER_options)
-    On failure, return (False, {})
     '''
 
     step_sf = min(1.0, max(1.0e-10, step_sf))
@@ -274,7 +272,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
         shutil.copy(SPIDER_options_file_orig,SPIDER_options_file)
 
     # Recalculate time stepping
-    if (COUPLER_options["IC_INTERIOR"] == 2):  
+    if IC_INTERIOR == 2:  
 
         # Current step number
         json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(time_dict["planet"])) )
@@ -385,7 +383,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
                         dirs["spider"]+"/spider", 
                         "-options_file",           SPIDER_options_file, 
                         "-outputDirectory",        dirs["output"]+'data/',
-                        "-IC_INTERIOR",            "%d"  %(COUPLER_options["IC_INTERIOR"]),
+                        "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
                         "-OXYGEN_FUGACITY_offset", "%.6e"%(COUPLER_options["fO2_shift_IW"]),  # Relative to the specified buffer
                         "-surface_bc_value",       "%.6e"%(net_loss), 
                         "-teqm",                   "%.6e"%(COUPLER_options["T_eqm"]), 
@@ -406,18 +404,21 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     else:
         call_sequence.extend(["-tsurf_poststep_change", str(COUPLER_options["tsurf_poststep_change"])])
 
-    # With start of the main loop only:
-    if COUPLER_options["IC_INTERIOR"] == 2:
+    # Initial condition
+    if IC_INTERIOR == 2:
+        # get last JSON File 
+        last_filename = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
+        last_filename = os.path.join(dirs["output"], "data", last_filename)
         call_sequence.extend([ 
-                                "-ic_interior_filename", 
-                                str(dirs["output"]+"data/"+COUPLER_options["ic_interior_filename"]),
+                                "-ic_interior_filename", str(last_filename),
                                 "-activate_poststep", 
                                 "-activate_rollback"
                              ])
     else:
+        # set to adiabat
         call_sequence.extend([
                                 "-ic_adiabat_entropy", str(COUPLER_options["ic_adiabat_entropy"]),
-                                "-ic_dsdr", str(COUPLER_options["ic_dsdr"]) # initial dS/dr everywhere"
+                                "-ic_dsdr", str(COUPLER_options["ic_dsdr"]) # initial dS/dr everywhere
                             ])
 
     # Gravitational separation of solid and melt phase, 0: off | 1: on
@@ -490,7 +491,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     return bool(proc.returncode == 0)
 
 
-def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
+def RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, runtime_helpfile ):
     '''
     Wrapper function for running SPIDER.
     This wrapper handles cases where SPIDER fails to find a solution.
@@ -499,7 +500,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     # info
     PrintHalfSeparator()
     log.info("Running SPIDER...")
-    log.debug("IC_INTERIOR = " + str(COUPLER_options["IC_INTERIOR"]))
+    log.debug("    IC_INTERIOR = %d"%IC_INTERIOR)
 
     # parameters
     max_attempts = 7        # maximum number of attempts
@@ -516,7 +517,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         log.info("Attempt %d" % attempts)
 
         # run SPIDER
-        spider_success = _try_spider(time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile, step_sf, atol_sf)
+        spider_success = _try_spider(time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, runtime_helpfile, step_sf, atol_sf)
 
         if spider_success:
             # success

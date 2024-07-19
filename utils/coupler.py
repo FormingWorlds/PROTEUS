@@ -41,15 +41,10 @@ def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options):
     log.info("    T_surf       :   %.3e   K"     % float(runtime_helpfile.iloc[-1]["T_surf"]))
     log.info("    P_surf       :   %.3e   bar"   % float(runtime_helpfile.iloc[-1]["P_surf"]))
     log.info("    Phi_global   :   %.3e   "      % float(runtime_helpfile.iloc[-1]["Phi_global"]))
-    log.info("    Instellation :   %.3e   W/m^2" % float(COUPLER_options["F_ins"]))
-    log.info("    F_int        :   %.3e   W/m^2" % float(COUPLER_options["F_int"]))
-    log.info("    F_atm        :   %.3e   W/m^2" % float(COUPLER_options["F_atm"])) 
-    log.info("    |F_net|      :   %.3e   W/m^2" % abs(float(COUPLER_options["F_net"])))
-    log.info("    Last file    :   %s "          % str(COUPLER_options["ic_interior_filename"]))
-
-
-def GenerateHelpfile():
-    pass
+    log.info("    Instellation :   %.3e   W/m^2" % float(runtime_helpfile.iloc[-1]["F_ins"]))
+    log.info("    F_int        :   %.3e   W/m^2" % float(runtime_helpfile.iloc[-1]["F_int"]))
+    log.info("    F_atm        :   %.3e   W/m^2" % float(runtime_helpfile.iloc[-1]["F_atm"])) 
+    log.info("    |F_net|      :   %.3e   W/m^2" % abs(float(runtime_helpfile.iloc[-1]["F_net"])))
 
 
 def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options, solvevol_dict=None):
@@ -134,7 +129,7 @@ def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, 
         F_int2      = E0/area[0]
 
         F_int = runtime_helpfile_new["F_int"]
-        log.info(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, F_int) )
+        log.debug(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, F_int) )
 
         # Limit F_int to positive values
         if COUPLER_options["prevent_warming"]:
@@ -340,8 +335,7 @@ def ReadInitFile( init_file_passed , verbose=False):
                 if not line.startswith("time_"):
 
                     # Some parameters are int
-                    if key in [ "IC_INTERIOR", "ic_interior_filename", 
-                                "solid_stop", "steady_stop", "iter_max", "emit_stop",
+                    if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop",
                                 "plot_iterfreq", "stellar_heating", "mixing_length", 
                                 "atmosphere_chemistry", "solvevol_use_params", "insert_rscatter", "water_cloud",
                                 "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
