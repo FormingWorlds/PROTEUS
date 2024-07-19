@@ -10,7 +10,7 @@ log = logging.getLogger("PROTEUS")
 
 def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict, 
               runtime_helpfile, make_plots:bool, initial_offset:float, 
-              linesearch:bool)->bool:
+              linesearch:bool, easy_start:bool)->bool:
 
     # ---------------------------
     # Setup values to be provided to AGNI
@@ -126,6 +126,8 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     cfg_toml["execution"]["rayleigh"] =     bool(COUPLER_options["insert_rscatter"] == 1)
     cfg_toml["execution"]["cloud"] =        bool(COUPLER_options["water_cloud"] == 1)
     cfg_toml["execution"]["linesearch"] =   linesearch
+    cfg_toml["execution"]["easy_start"] =   easy_start
+
     if COUPLER_options["atmosphere_solve_energy"] == 0:
         # The default cfg assumes solving for energy balance.
         # If we don't want to do that, set the configuration to a prescribed
@@ -149,8 +151,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
 
         log.debug("Initialise from last T(p)")
         cfg_toml["execution"]["initial_state"] = ["ncdf", nc_path, "add", "%.6f"%initial_offset]
-        cfg_toml["execution"]["easy_start"] = False
-
+        
     # Solution stuff 
     surf_state = int(COUPLER_options["atmosphere_surf_state"])
     if not (0 <= surf_state <= 3):
@@ -249,11 +250,9 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     agni_success = False  # success?
     attempts = 0          # number of attempts so far
     max_attempts = 3      # max attempts
-    linesearch = True
+    linesearch = False
+    easy_start = False
     offset = 0.0
-
-    if loop_counter["total"] == 1:
-        linesearch = False
 
     # make attempts
     while not agni_success:
@@ -261,7 +260,8 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         log.info("Attempt %d" % attempts)
 
         # Try the module
-        agni_success = _try_agni(loop_counter, dirs, COUPLER_options, runtime_helpfile, make_plots, offset, linesearch)
+        agni_success = _try_agni(loop_counter, dirs, COUPLER_options, runtime_helpfile, 
+                                        make_plots, offset, linesearch, easy_start)
 
         if agni_success:
             # success
@@ -275,11 +275,13 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
                 raise Exception("Max attempts when executing AGNI")
             else:
                 # try again with offset to initial T(p)
-                offset = attempts * 0.5
+                offset = attempts * 1.5
                 if attempts%2 == 0:
                     offset *= -1
-                # enable LS
-                linesearch = True
+
+                # Try alternating linesearch and easy_start
+                easy_start = not easy_start
+                linesearch = not easy_start
 
     # Move files
     log.debug("Tidy files")

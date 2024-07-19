@@ -339,8 +339,13 @@ def main():
                     solvevol_target[key] = 0.0
                 log.debug("Solvevol target %s = %g kg"%(key, solvevol_target[key]))
         
-        #    do calculation
-        solvevol_dict = solvevol_equilibrium_atmosphere(solvevol_target, COUPLER_options)
+        #   do calculation
+        with warnings.catch_warnings():
+            # Suppress warnings from surface_gases solver, since they are triggered when 
+            # the model makes a poor guess for the composition. These are then discarded, 
+            # so the warning should not propagate anywhere. Errors are still printed.
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            solvevol_dict = solvevol_equilibrium_atmosphere(solvevol_target, COUPLER_options)
 
         # Update help quantities, input_flag: "Interior"
         runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options, solvevol_dict=solvevol_dict)
