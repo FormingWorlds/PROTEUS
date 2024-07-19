@@ -150,6 +150,10 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
 
         log.debug("Initialise from last T(p)")
         cfg_toml["execution"]["initial_state"] = ["ncdf", nc_path, "add", "%.6f"%initial_offset]
+
+    else:
+        log.debug("Initialise isothermal")
+        cfg_toml["execution"]["initial_state"] = ["iso", "3500"]
         
     # Solution stuff 
     surf_state = int(COUPLER_options["atmosphere_surf_state"])
@@ -252,7 +256,6 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # tracking
     agni_success = False  # success?
     attempts = 0          # number of attempts so far
-    max_attempts = 3      # max attempts
     linesearch = True
     easy_start = False
     offset = 0.0
@@ -277,18 +280,18 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         else:
             # failure
             log.warning("Attempt %d failed" % attempts)
-            if attempts >= max_attempts:
+            offset = 1.0 
+
+            if attempts == 2:
+                linesearch = True
+                easy_start = False
+            elif attempts == 3:
+                linesearch = True 
+                easy_start = True 
+            else:
                 UpdateStatusfile(dirs, 22)
                 raise Exception("Max attempts when executing AGNI")
-            else:
-                # try again with offset to initial T(p)
-                offset = attempts * 1.5
-                if attempts%2 == 0:
-                    offset *= -1
 
-                # Try alternating linesearch and easy_start
-                linesearch = not linesearch
-                easy_start = not linesearch
                 
     # Move files
     log.debug("Tidy files")

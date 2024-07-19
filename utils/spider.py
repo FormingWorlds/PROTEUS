@@ -377,10 +377,6 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
         dtmacro     = 0
         dtswitch    = 0
 
-    # Store time-step (for next iteration)
-    COUPLER_options["dtswitch"] = dtswitch
-    COUPLER_options["dtmacro"] = dtmacro
-
     # Set spider flux boundary condition
     net_loss = COUPLER_options["F_atm"]
 
@@ -442,24 +438,24 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             ref_idx = 0
 
         # First, relax too restrictive dTs
-        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
-            if COUPLER_options["tsurf_poststep_change"] <= 300:
-                COUPLER_options["tsurf_poststep_change"] += 10
-                log.warning(">>> Raise dT poststep_changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
-            else:
-                log.warning(">> dTs_int too high! >>", COUPLER_options["tsurf_poststep_change"], "K")
+        # if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
+        #     if COUPLER_options["tsurf_poststep_change"] <= 300:
+        #         COUPLER_options["tsurf_poststep_change"] += 10
+        #         log.warning(">>> Raise dT poststep_changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
+        #     else:
+        #         log.warning(">> dTs_int too high! >>", COUPLER_options["tsurf_poststep_change"], "K")
                 
         # Slowly limit again if time advances smoothly
-        if (run_int["Time"].iloc[-1] != run_int["Time"].iloc[ref_idx]) and COUPLER_options["tsurf_poststep_change"] > 30:
-            COUPLER_options["tsurf_poststep_change"] -= 10
-            log.warning(">>> Lower tsurf_poststep_change poststep changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
+        # if (run_int["Time"].iloc[-1] != run_int["Time"].iloc[ref_idx]) and COUPLER_options["tsurf_poststep_change"] > 30:
+        #     COUPLER_options["tsurf_poststep_change"] -= 10
+        #     log.warning(">>> Lower tsurf_poststep_change poststep changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
 
-        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
-            if COUPLER_options["solver_tolerance"] < 1.0e-2:
-                COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
-                log.warning(">>> ADJUST tolerances:", COUPLER_options["solver_tolerance"])
-            COUPLER_options["adjust_tolerance"] = 1
-            log.warning(">>> CURRENT TOLERANCES:", COUPLER_options["solver_tolerance"])
+        # if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
+        #     if COUPLER_options["solver_tolerance"] < 1.0e-2:
+        #         COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
+        #         log.warning(">>> ADJUST tolerances:", COUPLER_options["solver_tolerance"])
+        #     COUPLER_options["adjust_tolerance"] = 1
+        #     log.warning(">>> CURRENT TOLERANCES:", COUPLER_options["solver_tolerance"])
 
         # If tolerance was adjusted, restart SPIDER w/ new tolerances
         if "adjust_tolerance" in COUPLER_options:
@@ -490,17 +486,8 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     proc = subprocess.run([call_string],shell=True,stdout=spider_print)
     spider_print.close()
 
-    # Update restart filename for next SPIDER run
-    COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
-
     # Check status
-    success = (proc.returncode == 0)
-
-    # Handle failure by signalling for another _try_spider attempt
-    if success:
-        return True, COUPLER_options
-    else:
-        return False, {"failure":True}
+    return bool(proc.returncode == 0)
 
 
 def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
@@ -521,7 +508,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # tracking
     spider_success = False  # success?
-    temp_options = {}       # COUPLER_options dict to be used for attempts
     attempts = 0            # number of attempts so far
 
     # make attempts
@@ -530,8 +516,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         log.info("Attempt %d" % attempts)
 
         # run SPIDER
-        temp_options = copy.deepcopy(COUPLER_options)
-        spider_success, temp_options = _try_spider(time_dict, dirs, temp_options, loop_counter, runtime_helpfile, step_sf, atol_sf)
+        spider_success = _try_spider(time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile, step_sf, atol_sf)
 
         if spider_success:
             # success
@@ -550,7 +535,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     # check status
     if spider_success:
         # success after some attempts
-        return temp_options
+        return True
     else:
         # failure of all attempts
         UpdateStatusfile(dirs, 21)

@@ -315,7 +315,9 @@ def main():
         ############### INTERIOR SUB-LOOP
 
         # Run SPIDER
-        COUPLER_options = RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile )
+        RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile )
+        COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
+
 
         # Run outgassing model
 

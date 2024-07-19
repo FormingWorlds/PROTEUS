@@ -48,6 +48,10 @@ def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options):
     log.info("    Last file    :   %s "          % str(COUPLER_options["ic_interior_filename"]))
 
 
+def GenerateHelpfile():
+    pass
+
+
 def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options, solvevol_dict=None):
 
     runtime_helpfile_name = "runtime_helpfile.csv"
