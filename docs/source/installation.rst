@@ -75,51 +75,24 @@ Download the framework
         $   cd PROTEUS
         $   git submodule update --init --recursive
 
-4. Setup atmosphere model (**JANUS**)
-    
-    1. Extract radiative transfer code (**SOCRATES**)
+4. Setup radiative transfer code (**SOCRATES**)
 
-        .. code-block:: console
+   .. code-block:: console
 
-            $   cd JANUS/rad_trans/socrates_code/
-            $   tar --strip-components 1 -xvf ../socrates_2306_trunk_r1403.tar.xz -C ./
-            $   cp -f ../build_code_modified build_code
+        $   cd SOCRATES
+        $   ./configure
+        $   ./build-code
+        $   cd ..
 
-    2. Overwrite the ``Mk_cmd`` file with the right setup for your machine
-        
-        .. code-block:: console
+5. Setup atmosphere model (**JANUS**)
 
-            $   cp -rf ../Mk_cmd_SYSTEM make/Mk_cmd    
-        
-        The available options are:
+    .. code-block:: console
 
-        .. code-block:: console
+        $   cd JANUS
+        $   pip install -e .
+        $   cd ..
 
-            $   cp -rf ../Mk_cmd_MAC_INTEL make/Mk_cmd
-
-        OR
-
-        .. code-block:: console
-
-            $   cp -rf ../Mk_cmd_MAC_APPLESILICON make/Mk_cmd
-
-        OR
-
-        .. code-block:: console
-
-            $   cp -rf ../Mk_cmd_AOPP_CLUSTER make/Mk_cmd
-            
-        The command ``nf-config`` might be helpful if none of these options work for you.
-
-    3. Setup SOCRATES
-
-        .. code-block:: console
-        
-            $   ./build_code
-            $   type ksh >/dev/null 2>&1 ||  sed -i 's/ksh/bash/g' sbin/*
-            $   cd ../../../
-
-5. Setup atmosphere kinetics model (**VULCAN**)
+6. Setup atmosphere kinetics model (**VULCAN**)
 
     .. code-block:: console
 
@@ -132,7 +105,7 @@ Download the framework
         $   make
         $   cd ../../
 
-6. Setup stellar evolution model (**MORS**)
+7. Setup stellar evolution model (**MORS**)
 
     .. code-block:: console
 
@@ -140,7 +113,7 @@ Download the framework
         $   pip install -e .
         $   cd ../
     
-7. Setup numerical computing library (**PETSc**)
+8. Setup numerical computing library (**PETSc**)
     
     1. Configure step
         .. code-block:: console
@@ -158,7 +131,7 @@ Download the framework
 
             $   cd ../
 
-8. Setup environment variables
+9. Setup environment variables
 
     - This can be done using the PROTEUS environment file
 
@@ -166,9 +139,16 @@ Download the framework
 
             $   source PROTEUS.env
 
-    - **IF** you want to be able to start PROTEUS immediately from a new shell every time, add ``source PROTEUS.env`` (and potentially ``conda activate proteus``) to your shell rc file.
+    - Additionally, you need to set up the environment variable ``FWL_DATA`` to indicate in which folder the input data need to be stored
 
-9. Setup interior evolution model (**SPIDER**)
+        .. code-block:: console
+
+            $   export FWL_DATA=/your_local_path
+
+    - **IF** you want to be able to start PROTEUS immediately from a new shell every time, add ``source PROTEUS.env``, ``export FWL_DATA=...`` (and potentially ``conda activate proteus``) to your shell rc file.
+
+
+10. Setup interior evolution model (**SPIDER**)
 
     .. code-block:: console
 
@@ -178,7 +158,7 @@ Download the framework
         $   make test      # accept all default values when prompted
         $   cd ..
 
-10. Done!
+11. Done!
 
 
 Step-by-step (optional modules)
