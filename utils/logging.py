@@ -11,7 +11,7 @@ class CustomFormatter(logging.Formatter):
     debug = "96"
     error = "91"
 
-    part2 = "m\033[1m%(levelname)-7s\033[21m\033[0m] %(message)s"
+    part2 = "m\033[1m %(levelname)-5s \033[21m\033[0m] %(message)s"
 
     FORMATS = {
         logging.DEBUG:   part1+debug+part2,
@@ -50,7 +50,8 @@ def setup_logger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
 
     # Add file output to logger
     fh = logging.FileHandler(logpath)
-    fh.setFormatter(logging.Formatter("[%(levelname)-7s] %(message)s"))
+    fh.setFormatter(logging.Formatter("[ %(levelname)-5s ] %(message)s"))
+
     fh.setLevel(level)
     custom_logger.addHandler(fh)
     custom_logger.setLevel(level_code)

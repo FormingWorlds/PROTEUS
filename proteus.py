@@ -31,7 +31,8 @@ def main():
     args = parse_console_arguments()
 
     # Read in COUPLER input file
-    COUPLER_options, time_dict = ReadInitFile( args["cfg"] , verbose=False )
+    cfg_file = os.path.abspath(str(args["cfg"]))
+    COUPLER_options, time_dict = ReadInitFile( cfg_file , verbose=False )
 
     # Set directories dictionary
     utils.constants.dirs = SetDirectories(COUPLER_options)
@@ -52,6 +53,7 @@ def main():
     start_time = datetime.now()
     log.info("Current time: " + start_time.strftime('%Y-%m-%d_%H:%M:%S'))
     log.info("Hostname    : " + str(os.uname()[1]))
+    log.info("Config file : " + cfg_file)
     log.info("Output dir  : " + dirs["output"])
     log.info("FWL data dir: " + dirs["fwl"])
     if COUPLER_options["atmosphere_model"] in [0,1]:
@@ -385,19 +387,25 @@ def main():
                 if COUPLER_options["atmosphere_model"] == 0:
                     # Run JANUS: use the general adiabat to create a PT profile, then calculate fluxes
                     atm = StructAtm( dirs, runtime_helpfile, COUPLER_options )
-                    COUPLER_options = RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    atm_output = RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile)
 
                 elif COUPLER_options["atmosphere_model"] == 1:
                     # Run AGNI 
-                    COUPLER_options = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    atm_output = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile)
 
                 elif COUPLER_options["atmosphere_model"] == 2:
                     # Run dummy atmosphere model 
-                    COUPLER_options = RunDummyAtm(time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    atm_output = RunDummyAtm(time_dict, dirs, COUPLER_options, runtime_helpfile)
                     
                 else:
                     UpdateStatusfile(dirs, 20)
                     raise Exception("Invalid atmosphere model")
+                
+                # Store atmosphere module output variables
+                COUPLER_options["F_atm"]  = atm_output["F_atm"] 
+                COUPLER_options["F_olr"]  = atm_output["F_olr"] 
+                COUPLER_options["F_sct"]  = atm_output["F_sct"] 
+                COUPLER_options["T_surf"] = atm_output["T_surf"]
 
             
             # Update help quantities, input_flag: "Atmosphere"

@@ -139,7 +139,6 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
         
         # Tell AGNI not to solve for RCE
         cfg_toml["execution"]["solvers"] = []
-        cfg_toml["execution"]["convection"] = True
 
 
     elif loop_counter["total"] > 1:
@@ -183,6 +182,10 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     cfg_toml["plots"]["temperature"]    = make_plots
     cfg_toml["plots"]["fluxes"]         = make_plots
 
+    # AGNI log level
+    cfg_toml["execution"]["verbosity"] = 1
+    # if agni_debug:
+    #     cfg_toml["execution"]["verbosity"] = 2
 
     # Write new configuration file 
     with open(cfg_this, 'w') as hdl:
@@ -235,8 +238,8 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
 
     Returns
     ----------
-        COUPLER_options : dict
-            Updated configuration options and other variables
+        output : dict
+            Output variables, as a dictionary
 
     """
 
@@ -324,13 +327,14 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # Require that the net flux must be upward (positive)
     if (COUPLER_options["prevent_warming"] == 1):
         F_atm_new = max( 1e-8 , F_atm_new )
-            
-    COUPLER_options["F_atm"]  = F_atm_new
-    COUPLER_options["F_olr"]  = LW_flux_up[0]
-    COUPLER_options["F_sct"]  = SW_flux_up[0]
-    COUPLER_options["T_surf"] = T_surf
-    
+        
     log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
-    return COUPLER_options
+    output = {}
+    output["F_atm"]  = F_atm_new
+    output["F_olr"]  = LW_flux_up[0]
+    output["F_sct"]  = SW_flux_up[0]
+    output["T_surf"] = T_surf
+    
+    return output
 
