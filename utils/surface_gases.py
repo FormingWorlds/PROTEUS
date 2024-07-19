@@ -648,13 +648,13 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
 
     # Store VMRs (=mole fractions) and total atmosphere
     for s in volatile_species:
-        outdict[s+"_mr"] = outdict[s+"_atm_bar"]/outdict["P_surf"]
+        outdict[s+"_atm_vmr"] = outdict[s+"_atm_bar"]/outdict["P_surf"]
 
-        log.info("    %-6s : %-8.2f bar (%.2e VMR)" % (s,outdict[s+"_atm_bar"], outdict[s+"_mr"])) 
+        log.info("    %-6s : %-8.2f bar (%.2e VMR)" % (s,outdict[s+"_atm_bar"], outdict[s+"_atm_vmr"])) 
 
     # Store masses of both gases and elements
     all = [s for s in volatile_species]
-    all.extend(["H","C","N","O","S"])
+    all.extend(["H","C","N","S"])
     for s in all:
         tot_kg = 0.0
 
@@ -669,12 +669,31 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
 
         outdict[s+"_total_kg"] = tot_kg
 
-        # if (s in mass_atm_d.keys()) and ( s in mass_int_d.keys()):
-        #     outdict[s+"_outgassed_frac"] = outdict[s+"_atm_kg"]/ outdict[s+"_total_kg"]
-
+    # Total atmosphere mass 
     for s in volatile_species:
         outdict["M_atm"] += outdict[s+"_atm_kg"]
-    
+
+    # Store moles of gases and atmosphere total mmw 
+    outdict["atm_kg_per_mol"] = 0.0
+    for s in volatile_species:
+        outdict[s+"_mol_atm"]    = outdict[s+"_atm_kg"] / molar_mass[s]
+        outdict[s+"_mol_solid"]  = outdict[s+"_solid_kg"] / molar_mass[s]
+        outdict[s+"_mol_liquid"] = outdict[s+"_liquid_kg"] / molar_mass[s]
+        outdict[s+"_mol_total"]  = outdict[s+"_mol_atm"] + outdict[s+"_mol_solid"] + outdict[s+"_mol_liquid"]
+
+        outdict["atm_kg_per_mol"] += outdict[s+"_atm_vmr"] * molar_mass[s]
+        
+    # Calculate elemental ratios (by mass)
+    for e1 in element_list:
+        for e2 in element_list:
+            if e1==e2:
+                continue 
+            em1 = outdict[e1+"_atm_kg"]
+            em2 = outdict[e2+"_atm_kg"]
+            if em2 == 0:
+                continue  # avoid division by zero
+            outdict["%s/%s_atm"%(e1,e2)] = em1/em2
+
     # Store residuals 
     outdict["H_res"] = res_l[0]
     outdict["C_res"] = res_l[1]

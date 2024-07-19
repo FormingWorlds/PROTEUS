@@ -102,7 +102,6 @@ def main():
     # Clean output folders
     CleanDir( dirs["output"] , keep_stdlog=True)
     CleanDir( dirs['output']+'data/')
-    runtime_helpfile    = []
 
     # SPIDER initial condition
     IC_INTERIOR = 1
@@ -110,8 +109,14 @@ def main():
     # Copy config file to output directory, for future reference
     shutil.copyfile( args["cfg"], dirs["output"]+"/init_coupler.cfg")
 
+    # Generate running helpfile of output variables
+    hf_all = CreateHelpfile()
+
+    # Create an empty initial row for helpfile 
+    hf_row = ZeroHelpfileRow()
+
     # Calculate mantle mass (liquid + solid)
-    COUPLER_options["mantle_mass"] = calc_mantle_mass(COUPLER_options)
+    hf_row["M_mantle"] = calc_mantle_mass(COUPLER_options)
     
     # Zero-out volatiles, and ensure that they are all tracked
     for s in volatile_species:
@@ -127,8 +132,9 @@ def main():
 
     # Required vols
     for s in ["H2O","CO2","N2","S2"]:
-        COUPLER_options[s+"_included"] = 1
-
+        if COUPLER_options[s+"_included"] != 1:
+            raise Exception("Missing required volatile '%s'"%s)
+       
     # Work out which vols are included
     solvevol_warnboth = False
     log.info("Initial partial pressures:")
@@ -318,6 +324,7 @@ def main():
 
         # Run SPIDER
         RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, runtime_helpfile )
+        spider_result = ReadSPIDER(dirs, time_dict, COUPLER_options, afjkalfsjkld)
 
         # Run outgassing model
 

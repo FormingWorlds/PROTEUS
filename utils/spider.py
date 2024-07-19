@@ -543,3 +543,65 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, runt
         raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
+def ReadSPIDER(dirs:dict, time_dict:dict, COUPLER_options:dict, prev_T_magma:float):
+    '''
+    Read variables from last SPIDER output JSON file into a dictionary
+    '''
+
+    # Store variables in this dict
+    output = {}
+
+    ### Read in last SPIDER base parameters
+    sim_time = get_all_output_times(dirs["output"])[-1]  # yr
+
+    # SPIDER keys from JSON file that are read in
+    keys_t = ( ('atmosphere','mass_liquid'),
+                ('atmosphere','mass_solid'),
+                ('atmosphere','mass_mantle'),
+                ('atmosphere','mass_core'),
+                ('atmosphere','temperature_surface'),
+                ('rheological_front_phi','phi_global'),
+                ('atmosphere','Fatm'),
+                ('rheological_front_dynamic','depth'),
+                )
+
+    data_a = get_dict_surface_values_for_specific_time( keys_t, sim_time, indir=dirs["output"] )
+
+    # Fill the new dict
+    output["Time"]  = sim_time
+
+    output["M_mantle_liquid"] = float(data_a[0])
+    output["M_mantle_solid"]  = float(data_a[1])
+    output["M_mantle"]        = float(data_a[2])
+    output["M_core"]          = float(data_a[3])
+
+    # Surface properties
+    output["T_magma"]         = float(data_a[4])
+    output["Phi_global"]      = float(data_a[5])  # global melt fraction
+    output["F_int"]           = float(data_a[6])  # Heat flux from interior
+    output["RF_depth"]        = float(data_a[7])/COUPLER_options["radius"]  # depth of rheological front
+
+    # Do not allow warming after init stage has completed
+    if (COUPLER_options["prevent_warming"]) and (time_dict["planet"] > 5.0):
+        output["T_magma"] = min(output["T_magma"], prev_T_magma)
+
+   
+    # Manually calculate heat flux at near-surface from energy gradient
+    json_file   = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
+    Etot        = json_file.get_dict_values(['data','Etot_b'])
+    rad         = json_file.get_dict_values(['data','radius_b'])
+    area        = json_file.get_dict_values(['data','area_b'])
+    E0          = Etot[1] - (Etot[2]-Etot[1]) * (rad[2]-rad[1]) / (rad[1]-rad[0])
+    F_int2      = E0/area[0]
+    log.debug(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, output["F_int"]) )
+
+    # Limit F_int to positive values
+    if COUPLER_options["prevent_warming"]:
+        output["F_int"] = max(1.0e-8, output["F_int"])
+
+    # Check NaNs
+    if np.isnan(output["T_magma"]):
+        raise Exception("Magma ocean temperature is NaN")
+
+    return output
+
