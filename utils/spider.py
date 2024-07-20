@@ -254,7 +254,10 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
     return np.array(data_l)
 
 #====================================================================
-def _try_spider( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all, step_sf, atol_sf ):
+def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict, 
+                IC_INTERIOR:int, loop_counter:dict, 
+                hf_all:pd.DataFrame, hf_row:dict, 
+                step_sf:float, atol_sf:float ):
     '''
     Try to run spider with the current configuration.
     '''
@@ -382,7 +385,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf
                         "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
                         "-OXYGEN_FUGACITY_offset", "%.6e"%(COUPLER_options["fO2_shift_IW"]),  # Relative to the specified buffer
                         "-surface_bc_value",       "%.6e"%(net_loss), 
-                        "-teqm",                   "%.6e"%(COUPLER_options["T_eqm"]), 
+                        "-teqm",                   "%.6e"%(hf_row["T_eqm"]), 
                         "-n",                      "%d"  %(COUPLER_options["interior_nlev"]),
                         "-nstepsmacro",            "%d"  %(nstepsmacro), 
                         "-dtmacro",                "%.6e"%(dtmacro), 
@@ -487,7 +490,9 @@ def _try_spider( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf
     return bool(proc.returncode == 0)
 
 
-def RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all ):
+def RunSPIDER( time_dict:dict, dirs:dict, COUPLER_options:dict, 
+              IC_INTERIOR:int, loop_counter:dict, 
+              hf_all:pd.DataFrame, hf_row:dict ):
     '''
     Wrapper function for running SPIDER.
     This wrapper handles cases where SPIDER fails to find a solution.
@@ -513,7 +518,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_a
         log.info("Attempt %d" % attempts)
 
         # run SPIDER
-        spider_success = _try_spider(time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all, step_sf, atol_sf)
+        spider_success = _try_spider(time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all, hf_row, step_sf, atol_sf)
 
         if spider_success:
             # success

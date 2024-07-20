@@ -313,7 +313,7 @@ def main():
             prev_T_magma = hf_all.iloc[-1]["T_magma"]
 
         # Run SPIDER
-        RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all )
+        RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all, hf_row )
         spider_result = ReadSPIDER(dirs, time_dict, COUPLER_options, prev_T_magma)
 
         for k in spider_result.keys():

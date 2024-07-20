@@ -83,23 +83,23 @@ def GetHelpfileKeys():
 
     # gases
     for s in volatile_species:
-        keys.append[s+"_mol_atm"]   
-        keys.append[s+"_mol_solid"] 
-        keys.append[s+"_mol_liquid"]
-        keys.append[s+"_mol_total"] 
-        keys.append[s+"_kg_atm"]   
-        keys.append[s+"_kg_solid"] 
-        keys.append[s+"_kg_liquid"]
-        keys.append[s+"_kg_total"] 
-        keys.append[s+"_vmr"] 
-        keys.append[s+"_bar"] 
+        keys.append(s+"_mol_atm")   
+        keys.append(s+"_mol_solid") 
+        keys.append(s+"_mol_liquid")
+        keys.append(s+"_mol_total") 
+        keys.append(s+"_kg_atm")   
+        keys.append(s+"_kg_solid") 
+        keys.append(s+"_kg_liquid")
+        keys.append(s+"_kg_total") 
+        keys.append(s+"_vmr") 
+        keys.append(s+"_bar") 
 
     # element masses
     for e in element_list:
-        keys.append[e+"_kg_atm"]   
-        keys.append[e+"_kg_solid"] 
-        keys.append[e+"_kg_liquid"]
-        keys.append[e+"_kg_total"] 
+        keys.append(e+"_kg_atm")   
+        keys.append(e+"_kg_solid") 
+        keys.append(e+"_kg_liquid")
+        keys.append(e+"_kg_total") 
 
     # elemental ratios
     for e1 in element_list:

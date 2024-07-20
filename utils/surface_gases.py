@@ -213,16 +213,16 @@ class SolubilityCO(Solubility):
         ppmw = 10 ** (-0.738 + 0.876 * np.log10(p) - 5.44e-5 * p_total)
         return ppmw
 
-def is_included(gas, COUPLER_options):
-    return bool(COUPLER_options[gas+"_included"]>0)
+def is_included(gas, ddict):
+    return bool(ddict[gas+"_included"]>0)
 
-def solvevol_get_partial_pressures(pin, COUPLER_options):
+def solvevol_get_partial_pressures(pin, ddict):
     """Partial pressure of all considered species from oxidised species"""
 
     # we only need to know pH2O, pCO2, and pN2, since reduced species
     # can be directly determined from equilibrium chemistry
 
-    fO2_shift = COUPLER_options["fO2_shift_IW"]
+    fO2_shift = ddict["fO2_shift_IW"]
 
     # return results in dict, to be explicit about which pressure
     # corresponds to which volatile
@@ -232,24 +232,24 @@ def solvevol_get_partial_pressures(pin, COUPLER_options):
     p_d['H2O'] = pin['H2O']
 
     # H2
-    if is_included("H2", COUPLER_options):
+    if is_included("H2", ddict):
         gamma = ModifiedKeq('janaf_H')
-        gamma = gamma(COUPLER_options['T_outgas'], fO2_shift)
+        gamma = gamma(ddict['T_magma'], fO2_shift)
         p_d['H2'] = gamma*pin["H2O"]
 
     # CO2
     p_d['CO2'] = pin['CO2']
 
     # CO
-    if is_included("CO", COUPLER_options):
+    if is_included("CO", ddict):
         gamma = ModifiedKeq('janaf_C')
-        gamma = gamma(COUPLER_options['T_outgas'], fO2_shift)
+        gamma = gamma(ddict['T_magma'], fO2_shift)
         p_d['CO'] = gamma*pin["CO2"]
     
     # CH4
-    if is_included("H2",COUPLER_options) and is_included("CH4",COUPLER_options):
+    if is_included("H2",ddict) and is_included("CH4",ddict):
         gamma = ModifiedKeq('schaefer_CH4')
-        gamma = gamma(COUPLER_options['T_outgas'], fO2_shift)
+        gamma = gamma(ddict['T_magma'], fO2_shift)
         p_d['CH4'] = gamma*pin["CO2"]*p_d['H2']**2.0
 
     # N2
@@ -257,21 +257,21 @@ def solvevol_get_partial_pressures(pin, COUPLER_options):
 
     # O2 
     fO2_model = OxygenFugacity() 
-    p_d['O2'] = 10.0**fO2_model(COUPLER_options['T_outgas'], fO2_shift)
+    p_d['O2'] = 10.0**fO2_model(ddict['T_magma'], fO2_shift)
 
     # S2 
     p_d['S2'] = pin['S2']
 
     # SO2
-    if is_included("SO2", COUPLER_options):
+    if is_included("SO2", ddict):
         gamma = ModifiedKeq('janaf_S')
-        gamma = gamma(COUPLER_options['T_outgas'], fO2_shift)
+        gamma = gamma(ddict['T_magma'], fO2_shift)
         p_d['SO2']  = (gamma*pin['S2']*p_d['O2']**2)**0.5
 
     return p_d
 
 
-def calc_mantle_mass(COUPLER_options):
+def calc_mantle_mass(ddict):
     # Get core's average density using Earth values
     earth_fr = 0.55     # earth core radius fraction
     earth_fm = 0.325    # earth core mass fraction  (https://arxiv.org/pdf/1708.08718.pdf)
@@ -282,8 +282,8 @@ def calc_mantle_mass(COUPLER_options):
     log.debug("Estimating core density to be %g kg m-3" % core_rho)
 
     # Calculate mantle mass by subtracting core from total
-    core_mass = core_rho * 4.0/3.0 * np.pi * (COUPLER_options["radius"] * COUPLER_options["planet_coresize"] )**3.0
-    mantle_mass = COUPLER_options["mass"] - core_mass 
+    core_mass = core_rho * 4.0/3.0 * np.pi * (ddict["radius"] * ddict["planet_coresize"] )**3.0
+    mantle_mass = ddict["mass"] - core_mass 
     log.info("Total mantle mass is %.2e kg" % mantle_mass)
     if (mantle_mass <= 0.0):
         UpdateStatusfile(dirs, 20)
@@ -292,19 +292,19 @@ def calc_mantle_mass(COUPLER_options):
     return mantle_mass
 
 
-def solvevol_get_total_pressure(pin, COUPLER_options):
+def solvevol_get_total_pressure(pin, ddict):
     """Sum partial pressures to get total pressure"""
 
-    p_d = solvevol_get_partial_pressures(pin, COUPLER_options)
+    p_d = solvevol_get_partial_pressures(pin, ddict)
     ptot = sum(p_d.values())
 
     return ptot
 
-def solvevol_atmosphere_mean_molar_mass(pin, COUPLER_options):
+def solvevol_atmosphere_mean_molar_mass(pin, ddict):
     """Mean molar mass of the atmosphere"""
 
-    p_d = solvevol_get_partial_pressures(pin, COUPLER_options)
-    ptot = solvevol_get_total_pressure(pin, COUPLER_options)
+    p_d = solvevol_get_partial_pressures(pin, ddict)
+    ptot = solvevol_get_total_pressure(pin, ddict)
 
     mu_atm = 0
     for key, value in p_d.items():
@@ -313,33 +313,33 @@ def solvevol_atmosphere_mean_molar_mass(pin, COUPLER_options):
 
     return mu_atm
 
-def solvevol_atmosphere_mass(pin, COUPLER_options):
+def solvevol_atmosphere_mass(pin, ddict):
     """Atmospheric mass of volatiles and totals for H, C, and N"""
 
-    p_d = solvevol_get_partial_pressures(pin, COUPLER_options)
-    mu_atm = solvevol_atmosphere_mean_molar_mass(pin, COUPLER_options)
+    p_d = solvevol_get_partial_pressures(pin, ddict)
+    mu_atm = solvevol_atmosphere_mean_molar_mass(pin, ddict)
 
     mass_atm_d = {}
     for key, value in p_d.items():
         # 1.0E5 because pressures are in bar
-        mass_atm_d[key] = value*1.0E5/COUPLER_options['gravity']
-        mass_atm_d[key] *= 4.0*np.pi*COUPLER_options['radius']**2.0
+        mass_atm_d[key] = value*1.0E5/ddict['gravity']
+        mass_atm_d[key] *= 4.0*np.pi*ddict['radius']**2.0
         mass_atm_d[key] *= molar_mass[key]/mu_atm
 
     # total mass of H
     mass_atm_d['H'] = 2*mass_atm_d['H2O'] / molar_mass['H2O']
-    if is_included('H2', COUPLER_options):
+    if is_included('H2', ddict):
         mass_atm_d['H'] += 2*mass_atm_d['H2'] / molar_mass['H2']
-    if is_included('CH4', COUPLER_options):
+    if is_included('CH4', ddict):
         mass_atm_d['H'] += 4*mass_atm_d['CH4'] / molar_mass['CH4']    # note factor 4 to account for stoichiometry
     # below converts moles of H2 to mass of H
     mass_atm_d['H'] *= molar_mass['H']
 
     # total mass of C
     mass_atm_d['C'] = mass_atm_d['CO2'] / molar_mass['CO2']
-    if is_included("CO", COUPLER_options):
+    if is_included("CO", ddict):
         mass_atm_d['C'] += mass_atm_d['CO'] / molar_mass['CO']
-    if is_included("CH4", COUPLER_options):
+    if is_included("CH4", ddict):
         mass_atm_d['C'] += mass_atm_d['CH4'] / molar_mass['CH4']
     # below converts moles of C to mass of C
     mass_atm_d['C'] *= molar_mass['C']
@@ -349,18 +349,18 @@ def solvevol_atmosphere_mass(pin, COUPLER_options):
 
     # total mass of O
     mass_atm_d['O'] = mass_atm_d['H2O'] / molar_mass['H2O']
-    if is_included("CO", COUPLER_options):
+    if is_included("CO", ddict):
         mass_atm_d['O'] += mass_atm_d['CO'] / molar_mass['CO']
-    if is_included("CO2", COUPLER_options):
+    if is_included("CO2", ddict):
         mass_atm_d['O'] += mass_atm_d['CO2'] / molar_mass['CO2'] * 2.0
-    if is_included("SO2", COUPLER_options):
+    if is_included("SO2", ddict):
         mass_atm_d['O'] += mass_atm_d['SO2'] / molar_mass['SO2'] * 2.0
     # below converts moles of O to mass of O
     mass_atm_d['O'] *= molar_mass['O']
 
     # total mass of S 
     mass_atm_d['S'] = mass_atm_d['S2'] / molar_mass['S2']
-    if is_included("SO2", COUPLER_options):
+    if is_included("SO2", ddict):
         mass_atm_d['S'] += mass_atm_d['SO2'] / molar_mass['SO2']
     mass_atm_d['S'] *= molar_mass['S']
 
@@ -368,15 +368,15 @@ def solvevol_atmosphere_mass(pin, COUPLER_options):
 
 
 
-def solvevol_dissolved_mass(pin, COUPLER_options):
+def solvevol_dissolved_mass(pin, ddict):
     """Volatile masses in the (molten) mantle"""
 
     mass_int_d = {}
 
-    p_d = solvevol_get_partial_pressures(pin, COUPLER_options)
-    ptot = solvevol_get_total_pressure(pin, COUPLER_options)
+    p_d = solvevol_get_partial_pressures(pin, ddict)
+    ptot = solvevol_get_total_pressure(pin, ddict)
 
-    prefactor = 1E-6*COUPLER_options['mantle_mass']*COUPLER_options['Phi_global']
+    prefactor = 1E-6*ddict['M_mantle']*ddict['Phi_global']
 
     keys = list(p_d.keys())
 
@@ -387,41 +387,41 @@ def solvevol_dissolved_mass(pin, COUPLER_options):
 
     # CO2
     sol_CO2 = SolubilityCO2() # gets the default solubility model
-    ppmw_CO2 = sol_CO2(p_d['CO2'], COUPLER_options['T_outgas'])
+    ppmw_CO2 = sol_CO2(p_d['CO2'], ddict['T_magma'])
     mass_int_d['CO2'] = prefactor*ppmw_CO2
 
     # CO
-    if is_included("CO", COUPLER_options):
+    if is_included("CO", ddict):
         sol_CO = SolubilityCO() # gets the default solubility model
         ppmw_CO = sol_CO(p_d["CO"], ptot)
         mass_int_d['CO'] = prefactor*ppmw_CO
 
     # CH4
-    if is_included("CH4", COUPLER_options):
+    if is_included("CH4", ddict):
         sol_CH4 = SolubilityCH4() # gets the default solubility model
         ppmw_CH4 = sol_CH4(p_d["CH4"], ptot)
         mass_int_d['CH4'] = prefactor*ppmw_CH4
 
     # N2
     sol_N2 = SolubilityN2("dasgupta") # calculate fO2-dependent solubility
-    ppmw_N2 = sol_N2(p_d['N2'], ptot,  COUPLER_options['T_outgas'],  COUPLER_options['fO2_shift_IW'])
+    ppmw_N2 = sol_N2(p_d['N2'], ptot,  ddict['T_magma'],  ddict['fO2_shift_IW'])
     mass_int_d['N2'] = prefactor*ppmw_N2
 
     # S2
     sol_S2 = SolubilityS2()
-    ppmw_S2 = sol_S2(p_d["S2"], COUPLER_options["T_outgas"], COUPLER_options['fO2_shift_IW'])
+    ppmw_S2 = sol_S2(p_d["S2"], ddict["T_magma"], ddict['fO2_shift_IW'])
     mass_int_d['S2'] = prefactor*ppmw_S2
 
     # now get totals of H, C, N, O, S
     mass_int_d['H'] = mass_int_d['H2O']*2/molar_mass['H2O'] 
-    if is_included("CH4", COUPLER_options):
+    if is_included("CH4", ddict):
         mass_int_d['H'] += mass_int_d['CH4']*4/molar_mass["CH4"]
     mass_int_d['H'] *= molar_mass['H']
     
     mass_int_d['C'] = mass_int_d['CO2']/molar_mass['CO2']
-    if is_included("CO", COUPLER_options):
+    if is_included("CO", ddict):
         mass_int_d['C'] += mass_int_d['CO']/molar_mass['CO'] 
-    if is_included("CH4", COUPLER_options):
+    if is_included("CH4", ddict):
         mass_int_d['C'] += mass_int_d['CH4']/molar_mass['CH4']
     mass_int_d['C'] *= molar_mass['C']
 
@@ -429,7 +429,7 @@ def solvevol_dissolved_mass(pin, COUPLER_options):
 
     mass_int_d['O'] = mass_int_d['H2O'] / molar_mass['H2O']
     mass_int_d['O'] += mass_int_d['CO2'] / molar_mass['CO2'] * 2.0
-    if is_included("CO", COUPLER_options):
+    if is_included("CO", ddict):
         mass_int_d['O'] += mass_int_d['CO'] / molar_mass['CO']
     mass_int_d['O'] *= molar_mass['O']
 
@@ -437,7 +437,7 @@ def solvevol_dissolved_mass(pin, COUPLER_options):
 
     return mass_int_d
 
-def solvevol_func(pin_arr, COUPLER_options, mass_target_d):
+def solvevol_func(pin_arr, ddict, mass_target_d):
     """Function to compute the residual of the mass balance given the partial pressures [bar]"""
 
     pin_dict = {
@@ -448,10 +448,10 @@ def solvevol_func(pin_arr, COUPLER_options, mass_target_d):
     }
 
     # get atmospheric masses
-    mass_atm_d = solvevol_atmosphere_mass(pin_dict, COUPLER_options)
+    mass_atm_d = solvevol_atmosphere_mass(pin_dict, ddict)
 
     # get (molten) mantle masses
-    mass_int_d = solvevol_dissolved_mass(pin_dict, COUPLER_options)
+    mass_int_d = solvevol_dissolved_mass(pin_dict, ddict)
     
     # compute residuals
     res_l = []
@@ -502,29 +502,29 @@ def solvevol_get_initial_pressures(target_d, log=True):
     return pH2O, pCO2, pN2, pS2
 
 
-def solvevol_get_target_from_params(COUPLER_options):
+def solvevol_get_target_from_params(ddict):
 
-    N_ocean_moles = COUPLER_options['hydrogen_earth_oceans']
-    CH_ratio =      COUPLER_options['CH_ratio']
-    Nitrogen =      COUPLER_options['nitrogen_ppmw']
-    Sulfur =        COUPLER_options['sulfur_ppmw']
+    N_ocean_moles = ddict['hydrogen_earth_oceans']
+    CH_ratio =      ddict['CH_ratio']
+    Nitrogen =      ddict['nitrogen_ppmw']
+    Sulfur =        ddict['sulfur_ppmw']
 
     H_kg = N_ocean_moles * ocean_moles * molar_mass['H2']
     C_kg = CH_ratio * H_kg
-    N_kg = Nitrogen * 1.0E-6 * COUPLER_options["mantle_mass"]
-    S_kg = Sulfur * 1.0E-6 * COUPLER_options["mantle_mass"]
+    N_kg = Nitrogen * 1.0E-6 * ddict["M_mantle"]
+    S_kg = Sulfur * 1.0E-6 * ddict["M_mantle"]
     target_d = {'H': H_kg, 'C': C_kg, 'N': N_kg, 'S': S_kg}
     return target_d
 
-def solvevol_get_target_from_pressures(COUPLER_options):
+def solvevol_get_target_from_pressures(ddict):
     
     target_d = {}
 
     # store partial pressures for included gases
     pin_dict = {}
     for vol in volatile_species:
-        if is_included(vol, COUPLER_options):
-            pin_dict[vol] = COUPLER_options[vol+"_initial_bar"]
+        if is_included(vol, ddict):
+            pin_dict[vol] = ddict[vol+"_initial_bar"]
 
     # check total pressure 
     p_tot = np.sum(list(pin_dict.values()))
@@ -533,14 +533,14 @@ def solvevol_get_target_from_pressures(COUPLER_options):
 
     # Check if no sulfur is present
     ptot_S = pin_dict["S2"]
-    if is_included("SO2", COUPLER_options):
+    if is_included("SO2", ddict):
         ptot_S += pin_dict["SO2"]
     if ptot_S < 1.0e-20:
         target_d['S'] = 0.0
 
     # Check if no carbon is present
     ptot_C = pin_dict["CO2"]
-    if is_included("CO", COUPLER_options):
+    if is_included("CO", ddict):
         ptot_C += pin_dict["CO"]
     if ptot_C < 1.0e-20:
         target_d['C'] = 0.0
@@ -551,8 +551,8 @@ def solvevol_get_target_from_pressures(COUPLER_options):
         target_d['N'] = 0.0
 
     # get dissolved+atmosphere masses from partial pressures
-    mass_atm_d = solvevol_atmosphere_mass(pin_dict, COUPLER_options)
-    mass_int_d = solvevol_dissolved_mass(pin_dict, COUPLER_options)
+    mass_atm_d = solvevol_atmosphere_mass(pin_dict, ddict)
+    mass_int_d = solvevol_dissolved_mass(pin_dict, ddict)
 
     for vol in ['H','C','N','S']:
         if vol in target_d.keys():
@@ -561,13 +561,13 @@ def solvevol_get_target_from_pressures(COUPLER_options):
 
     return target_d
 
-def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
+def solvevol_equilibrium_atmosphere(target_d, ddict):
     """Solves for surface partial pressures assuming melt-vapour eqm
 
 
     Parameters
     ----------
-        COUPLER_options : dict
+        ddict : dict
             Dictionary of coupler options variables
 
     Returns
@@ -588,7 +588,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
     # this doesn't seem to happen)
     while ier != 1:
         x0 = solvevol_get_initial_pressures(target_d)
-        sol, info, ier, msg = fsolve(solvevol_func, x0, args=(COUPLER_options, target_d), full_output=True)
+        sol, info, ier, msg = fsolve(solvevol_func, x0, args=(ddict, target_d), full_output=True)
         count += 1
         
         # if any negative pressures, report ier!=1
@@ -597,7 +597,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
             ier = 0
 
         # check residuals
-        this_resid = solvevol_func(sol, COUPLER_options, target_d)
+        this_resid = solvevol_func(sol, ddict, target_d)
         if np.amax(np.abs(this_resid)) > 1.0:
             ier = 0
 
@@ -615,14 +615,14 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
     }
 
     # Final partial pressures [bar]
-    p_d        = solvevol_get_partial_pressures(sol_dict, COUPLER_options)
+    p_d        = solvevol_get_partial_pressures(sol_dict, ddict)
 
     # Final masses [kg]
-    mass_atm_d = solvevol_atmosphere_mass(p_d, COUPLER_options)
-    mass_int_d = solvevol_dissolved_mass(p_d, COUPLER_options)
+    mass_atm_d = solvevol_atmosphere_mass(p_d, ddict)
+    mass_int_d = solvevol_dissolved_mass(p_d, ddict)
 
     # Residuals [relative]
-    res_l      = solvevol_func(sol, COUPLER_options, target_d)
+    res_l      = solvevol_func(sol, ddict, target_d)
     log.debug("    Residuals: %s"%res_l)
     
     # Output dict 
@@ -633,7 +633,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
     for s in volatile_species:
 
         # Defaults
-        outdict[s+"_atm_bar"]   = 0.0      # surface partial pressure [bar]
+        outdict[s+"_bar"]   = 0.0      # surface partial pressure [bar]
         outdict[s+"_atm_kg"]    = 0.0      # kg in atmosphere
         outdict[s+"_liquid_kg"] = 0.0      # kg in liquid
         outdict[s+"_solid_kg"]  = 0.0      # kg in solid (not handled here)
@@ -641,20 +641,20 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
 
         # Store partial pressures
         if s in p_d.keys():
-            outdict[s+"_atm_bar"] = p_d[s]  # store as bar
-            outdict["P_surf"] += outdict[s+"_atm_bar"]
+            outdict[s+"_bar"] = p_d[s]  # store as bar
+            outdict["P_surf"] += outdict[s+"_bar"]
 
-    # outdict["O2_atm_bar"] = p_d['O2']
+    # outdict["O2_bar"] = p_d['O2']
 
     # Store VMRs (=mole fractions) and total atmosphere
     for s in volatile_species:
-        outdict[s+"_atm_vmr"] = outdict[s+"_atm_bar"]/outdict["P_surf"]
+        outdict[s+"_vmr"] = outdict[s+"_bar"]/outdict["P_surf"]
 
-        log.info("    %-6s : %-8.2f bar (%.2e VMR)" % (s,outdict[s+"_atm_bar"], outdict[s+"_atm_vmr"])) 
+        log.info("    %-6s : %-8.2f bar (%.2e VMR)" % (s,outdict[s+"_bar"], outdict[s+"_vmr"])) 
 
     # Store masses of both gases and elements
     all = [s for s in volatile_species]
-    all.extend(["H","C","N","S"])
+    all.extend(["H","C","N","S","O"])
     for s in all:
         tot_kg = 0.0
 
@@ -681,7 +681,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
         outdict[s+"_mol_liquid"] = outdict[s+"_liquid_kg"] / molar_mass[s]
         outdict[s+"_mol_total"]  = outdict[s+"_mol_atm"] + outdict[s+"_mol_solid"] + outdict[s+"_mol_liquid"]
 
-        outdict["atm_kg_per_mol"] += outdict[s+"_atm_vmr"] * molar_mass[s]
+        outdict["atm_kg_per_mol"] += outdict[s+"_vmr"] * molar_mass[s]
         
     # Calculate elemental ratios (by mass)
     for e1 in element_list:
