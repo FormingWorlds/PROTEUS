@@ -143,7 +143,7 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5, p
     ax4.set_xticks(np.linspace(sorted_times[0], sorted_times[-1], 5))
     fname = os.path.join(output_dir,"plot_interior_cmesh.%s"%plot_format)
     fig.subplots_adjust(top=0.98, bottom=0.07, right=0.85, left=0.13, hspace=0.11)
-    fig.savefig(fname)
+    fig.savefig(fname, dpi=200)
 
 #====================================================================
 def main():

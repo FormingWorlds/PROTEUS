@@ -303,6 +303,7 @@ def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict,
                     dtprev = float(hf_all.iloc[-1]["Time"] - hf_all.iloc[-2]["Time"])
                 else:
                     dtprev = COUPLER_options["dt_initial"]
+                log.debug("Previous step size: %.2e yr"%dtprev)
 
                 # Change in F_int 
                 F_int_2  = hf_all.iloc[-2]["F_int"]
@@ -366,7 +367,7 @@ def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict,
         # Number of total steps until currently desired switch/end time
         nstepsmacro = step + nsteps
 
-        log.debug("TIME OPTIONS IN RUNSPIDER: %g %g %d" % (dtmacro, dtswitch, nstepsmacro))
+        log.debug("Time options in RunSPIDER: %.2e yrs in %d steps" % (dtmacro, nstepsmacro))
 
     # For init loop
     else:

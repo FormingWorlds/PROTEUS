@@ -44,7 +44,7 @@ def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
         return Ts_cur
 
 # Generate atmosphere from input files
-def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
+def StructAtm( dirs:dict, hf_row:dict, COUPLER_options:dict ):
 
     from janus.utils import atmos
     from janus.utils import ReadBandEdges
@@ -55,13 +55,13 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
     
     vol_list = {}
     for vol in volatile_species:
-        vol_list[vol] = runtime_helpfile.iloc[-1][vol+"_mr"]
+        vol_list[vol] = hf_row[vol+"_vmr"]
 
     match COUPLER_options["tropopause"]:
         case 0:
             trppT = 0.0  # none
         case 1:
-            trppT = COUPLER_options["T_skin"]  # skin temperature (grey stratosphere)
+            trppT = hf_row["T_skin"]  # skin temperature (grey stratosphere)
         case 2:
             trppT = COUPLER_options["min_temperature"]  # dynamically, based on heating rate
         case _:
@@ -82,7 +82,7 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
     alpha_cloud = float(COUPLER_options["alpha_cloud"])
 
     # Make object 
-    atm = atmos(COUPLER_options["T_surf"], runtime_helpfile.iloc[-1]["P_surf"]*1e5, 
+    atm = atmos(hf_row["T_surf"], hf_row["P_surf"]*1e5, 
                 COUPLER_options["P_top"]*1e5, pl_radius, pl_mass,
                 band_edges,
                 vol_mixing=vol_list, 
@@ -102,12 +102,12 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
     atm.skin_d          = COUPLER_options["skin_d"]
     atm.skin_k          = COUPLER_options["skin_k"]
 
-    run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
-    atm.tmp_magma = run_atm.iloc[-1]["T_surf"]
+    atm.tmp_magma = hf_row["T_magma"]
 
     return atm
 
-def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, 
+def RunJANUS( atm, 
+             time_dict:dict, dirs:dict, COUPLER_options:dict, hf_all:pd.DataFrame,
              write_in_tmp_dir=True, search_method=0, rtol=1.0e-4):
     """Run JANUS.
     
@@ -125,7 +125,7 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile,
             Dictionary containing paths to directories
         COUPLER_options : dict
             Configuration options and other variables
-        runtime_helpfile : pd.DataFrame
+        hf_all : pd.DataFrame
             Dataframe containing simulation variables (now and historic)
 
         write_in_tmp_dir : bool
@@ -185,16 +185,14 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile,
             if (time_dict["planet"] > 0):
 
                 # Get previous temperature as initial guess
-                run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
-                T_surf_old = run_atm.iloc[-1]["T_surf"]
+                T_surf_old = hf_all.iloc[-1]["T_surf"]
 
                 # Prevent heating of the interior
                 if (COUPLER_options["prevent_warming"] == 1):
-                    run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
-                    T_surf_max = run_atm.iloc[-1]["T_surf"]
+                    T_surf_max = T_surf_old
 
                 # calculate tolerance
-                tol = rtol * abs(run_atm.iloc[-1]["F_atm"]) + atol
+                tol = rtol * abs(hf_all.iloc[-1]["F_atm"]) + atol
             else:
                 tol = 0.1
 

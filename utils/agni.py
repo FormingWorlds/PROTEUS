@@ -9,7 +9,7 @@ import tomlkit as toml
 log = logging.getLogger("PROTEUS")
 
 def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict, 
-              runtime_helpfile, make_plots:bool, initial_offset:float, 
+              hf_row:dict, make_plots:bool, initial_offset:float, 
               linesearch:bool, easy_start:bool)->bool:
 
     # ---------------------------
@@ -29,7 +29,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     vol_dict = {}
     for vol in volatile_species:
         if COUPLER_options[vol+"_included"]:
-            vmr = runtime_helpfile.iloc[-1][vol+"_mr"]
+            vmr = hf_row[vol+"_vmr"]
             if vmr > 1e-40:
                 vol_dict[vol] = vmr 
     
@@ -59,8 +59,8 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     cfg_toml["title"] = "PROTEUS runtime step %d"%loop_counter["total"]
 
     # Set planet 
-    cfg_toml["planet"]["tmp_surf"] =        COUPLER_options["T_surf"]
-    cfg_toml["planet"]["instellation"] =    COUPLER_options["F_ins"]
+    cfg_toml["planet"]["tmp_surf"] =        hf_row["T_surf"]
+    cfg_toml["planet"]["instellation"] =    hf_row["F_ins"]
     cfg_toml["planet"]["s0_fact"] =         COUPLER_options["asf_scalefactor"]
     cfg_toml["planet"]["albedo_b"] =        COUPLER_options["albedo_pl"]
     cfg_toml["planet"]["zenith_angle"] =    COUPLER_options["zenith_angle"]
@@ -69,7 +69,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     cfg_toml["planet"]["radius"] =          COUPLER_options["radius"]
 
     # set composition
-    cfg_toml["composition"]["p_surf"] =     runtime_helpfile.iloc[-1]["P_surf"]
+    cfg_toml["composition"]["p_surf"] =     hf_row["P_surf"]
     cfg_toml["composition"]["p_top"] =      COUPLER_options["P_top"]
     cfg_toml["composition"]["vmr_dict"] =   vol_dict
 
@@ -168,7 +168,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
             raise Exception("With AGNI it is necessary to an energy-conserving solver alongside the conductive lid scheme. Turn them both on or both off.")
         cfg_toml["planet"]["skin_k"] =    COUPLER_options["skin_k"]
         cfg_toml["planet"]["skin_d"] =    COUPLER_options["skin_d"]
-        cfg_toml["planet"]["tmp_magma"] = COUPLER_options["T_surf"]
+        cfg_toml["planet"]["tmp_magma"] = hf_row["T_magma"]
 
     # Solution type ~ surface state
     cfg_toml["execution"]["solution_type"] = surf_state
@@ -221,7 +221,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     
     return success 
 
-def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
+def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row ):
     """Run AGNI atmosphere model.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -237,8 +237,8 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
             Dictionary containing paths to directories
         COUPLER_options : dict
             Configuration options and other variables
-        runtime_helpfile : pd.DataFrame
-            Dataframe containing simulation variables (now and historic)
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
 
     Returns
     ----------
@@ -270,7 +270,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         log.info("Attempt %d" % attempts)
 
         # Try the module
-        agni_success = _try_agni(loop_counter, dirs, COUPLER_options, runtime_helpfile, 
+        agni_success = _try_agni(loop_counter, dirs, COUPLER_options, hf_row, 
                                         make_plots, offset, linesearch, easy_start)
 
         if agni_success:

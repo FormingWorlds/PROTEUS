@@ -214,7 +214,7 @@ def main():
         if loop_counter["total"] > 0:
             # Create new row to hold the updated variables. This will be
             #    overwritten by the routines below.
-            hf_row = GetLastRowFromHelpfile(hf_all)
+            hf_row = hf_all.iloc[-1].to_dict()
             
         log.info(" ")
         PrintSeparator()
@@ -392,16 +392,16 @@ def main():
             if (loop_counter["atm"] == 0) or (loop_counter["total"] <= 2):
 
                 if COUPLER_options["shallow_ocean_layer"] == 1:
-                    hf_row["T_surf"] = ShallowMixedOceanLayer(GetLastRowFromHelpfile(), hf_row)
+                    hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
                 if COUPLER_options["atmosphere_model"] == 0:
                     # Run JANUS: use the general adiabat to create a PT profile, then calculate fluxes
-                    atm = StructAtm( dirs, runtime_helpfile, COUPLER_options )
-                    atm_output = RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    atm = StructAtm( dirs, hf_row, COUPLER_options )
+                    atm_output = RunJANUS( atm, time_dict, dirs, COUPLER_options, hf_all)
 
                 elif COUPLER_options["atmosphere_model"] == 1:
                     # Run AGNI 
-                    atm_output = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    atm_output = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row)
 
                 elif COUPLER_options["atmosphere_model"] == 2:
                     # Run dummy atmosphere model 

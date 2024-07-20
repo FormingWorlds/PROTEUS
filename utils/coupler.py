@@ -45,8 +45,8 @@ def PrintCurrentState(time_dict:dict, hf_row:dict):
     log.info("Runtime info...")
     log.info("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
     log.info("    Model time   :   %.2e   yr"    % float(time_dict["planet"]))
-    log.info("    T_surf       :   %.1f   K"     %     float(hf_row["T_surf"]))
-    log.info("    T_magma      :   %.1f   K"     %     float(hf_row["T_magma"]))
+    log.info("    T_surf       :   %4.3f   K"     %     float(hf_row["T_surf"]))
+    log.info("    T_magma      :   %4.3f   K"     %     float(hf_row["T_magma"]))
     log.info("    P_surf       :   %.2e   bar"   %     float(hf_row["P_surf"]))
     log.info("    Phi_global   :   %.2e   "      %     float(hf_row["Phi_global"]))
     log.info("    Instellation :   %.2e   W/m^2" %     float(hf_row["F_ins"]))
@@ -106,7 +106,16 @@ def GetHelpfileKeys():
         for e2 in element_list:
             if e1==e2:
                 continue 
-            k = "%s/%s"%(e1,e2)
+            
+            # reversed ratio
+            k = "%s/%s_atm"%(e2,e1)
+            if k in keys:
+                # skip this, since it's redundant to store (for example) the 
+                # ratio of H/C when we already have C/H.
+                continue 
+            
+            # intended ratio to be stored
+            k = "%s/%s_atm"%(e1,e2)
             if k in keys:
                 continue 
             keys.append(k)
@@ -156,12 +165,6 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
 
     current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.5e")
     return fpath
-
-def GetLastRowFromHelpfile(current_hf:pd.DataFrame):
-    '''
-    Return the last row of the helpfile as a dictionary
-    '''
-    return current_hf.iloc[-1].to_dict()
 
 def ReadInitFile(init_file_passed:str, verbose=False):
 
