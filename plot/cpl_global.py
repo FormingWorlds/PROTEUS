@@ -70,8 +70,8 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ax_cl.set_ylabel(r'$T_\mathrm{s}$ [K]')  
     ax_bl.set_ylabel('Planet fraction')  
     ax_tr.set_ylabel(r'$p_{\mathrm{i}}$ [bar]')  
-    ax_cr.set_ylabel(r'$\chi^{\mathrm{atm}}_{\mathrm{i}}$')
-    ax_br.set_ylabel(r'$m^{\mathrm{int}}_{\mathrm{i}}/m^{\mathrm{tot}}_{\mathrm{i}}$')
+    ax_cr.set_ylabel(r'$\chi^{\mathrm{atm}}_{\mathrm{i}}$ [%]')
+    ax_br.set_ylabel(r'$m^{\mathrm{int}}_{\mathrm{i}}/m^{\mathrm{tot}}_{\mathrm{i}}$ [%]')
 
     # Set x-labels
     for ax in (ax_bl, ax_br):
@@ -101,13 +101,17 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         ax.yaxis.set_label_position("right")
         ax.yaxis.tick_right()
 
+    # Percentage plots 
+    for ax in (ax_cr, ax_br):
+        ax.yaxis.set_major_locator(ticker.MultipleLocator(20))
+        ax.yaxis.set_minor_locator(ticker.MultipleLocator(10))
+
     # Log axes
     if logt:
         for ax in axs:
             ax.set_xscale("log")
     ax_tl.set_yscale("symlog", linthresh=0.1)
     ax_tr.set_yscale("log")
-    ax_cr.set_yscale("log")
 
     # Set xlim
     xmin = max(tmin, 1.0)
@@ -160,21 +164,18 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
 
     # PLOT ax_cr
-    vmr_min = 1.0e-3
     for vol in volatile_species:
         if not vol_present[vol]:
             continue 
-        ax_cr.plot( df_atm["Time"], vol_vmr[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
-        vmr_min = min(vmr_min, np.amin(vol_vmr[vol]))
-    ax_cr.set_ylim(vmr_min, 1.0)
-    ax_cr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
+        ax_cr.plot( df_atm["Time"], vol_vmr[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+    ax_cr.set_ylim(0, 101)
 
     # PLOT ax_br
     for vol in volatile_species:
         if not vol_present[vol]:
             continue 
-        ax_br.plot( df_atm["Time"], vol_intpart[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
-    ax_br.set_ylim(0.0,1.0)
+        ax_br.plot( df_atm["Time"], vol_intpart[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+    ax_br.set_ylim(0,101)
     ax_br.legend(loc='center left', ncol=2, **leg_kwargs).set_zorder(20)
     
 

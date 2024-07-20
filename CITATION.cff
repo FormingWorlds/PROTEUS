@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+
+authors:
+- family-names: "Lichtenberg"
+  given-names: "Tim"
+  orcid: "https://orcid.org/0000-0002-3286-7683"
+
+- family-names: "Nicholls"
+  given-names: "Harrison"
+  orcid: "https://orcid.org/0000-0002-8368-4641"
+
+- family-names: "Soucasse"
+  given-names: "Laurent"
+  orcid: "https://orcid.org/0000-0002-5422-8794"
+
+- family-names: "Saste"
+  given-names: "Mariana"
+  orcid: "https://orcid.org/0000-0000-0000-0000"
+
+- family-names: "Postolec"
+  given-names: "Emma"
+  orcid: "https://orcid.org/0000-0000-0000-0000"
+
+- family-names: "Bower"
+  given-names: "Dan"
+  orcid: "https://orcid.org/0000-0002-0673-4860"
+
+title: "PROTEUS"
+version: 0.1
+doi: 10.xx/xx.xx
+date-released: 2024-07-19
+url: "https://github.com/FormingWorlds/PROTEUS"

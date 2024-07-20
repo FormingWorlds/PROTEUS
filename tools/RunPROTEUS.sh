@@ -6,21 +6,26 @@ echo "Start RunPROTEUS"
 
 # Check if the required globals are set
 if [[ -z $COUPLER_DIR ]]; then
-    echo "    ERROR: Required global variables have not been set"
-    echo "           Did you source the env file yet?"
-    sleep 3.0 
+    echo "ERROR: Required global variables have not been set"
+    echo "       Did you source the env file yet?"
+    sleep 1.0 
     exit 1
+fi
+if [[ -z $RAD_DIR ]]; then 
+    echo "ERROR: The RAD_DIR variable has not been set"
+    sleep 1.0 
+    exit 1 
 fi
 
 
 # Check if the required arguments have been passed
 if [ -z "$1" ] || [ -z "$3" ]
 then
-    echo "    ERROR: Config file or alias not provided" 
-    echo "    First argument:   config file     (string)"
-    echo "    Second argument:  screen alias    (string)"
-    echo "    Third argument:   detach?         (y or n)"
-    sleep 3.0 
+    echo "ERROR: Config file or alias not provided" 
+    echo "       First argument:   config file     (string)"
+    echo "       Second argument:  screen alias    (string)"
+    echo "       Third argument:   detach?         (y or n)"
+    sleep 1.0 
     exit 1
 else
     # Set variables
@@ -36,7 +41,7 @@ else
     if [[ $(screen -ls | grep -E "$ALIAS[[:blank:]]") ]]; then
         echo "    ERROR: PROTEUS is already running under this alias"
         screen -ls | grep -E "$ALIAS[[:blank:]]"
-        sleep 3.0
+        sleep 1.0
         exit 1
     fi
 
@@ -55,6 +60,6 @@ else
     fi
     
     # Done?
-    echo "        (detached)"
+    echo "    (detached)"
     exit 0
 fi

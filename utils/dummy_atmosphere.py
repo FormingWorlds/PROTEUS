@@ -101,8 +101,10 @@ def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     log.info("    F_olr  =  %.3e  W m-2" % fluxes["fl_U_LW"])
     log.info("    F_sct  =  %.3e  W m-2" % fluxes["fl_U_SW"])
 
-    COUPLER_options["T_surf"] = T_surf_atm
-    COUPLER_options["F_atm"] =  F_atm_lim             # Net flux at TOA
-    COUPLER_options["F_olr"] =  fluxes["fl_U_LW"]     # OLR
-    COUPLER_options["F_sct"] =  fluxes["fl_U_SW"]     # Scattered SW flux
-    return COUPLER_options
+    output = {}
+    output["T_surf"] = T_surf_atm
+    output["F_atm"] =  F_atm_lim             # Net flux at TOA
+    output["F_olr"] =  fluxes["fl_U_LW"]     # OLR
+    output["F_sct"] =  fluxes["fl_U_SW"]     # Scattered SW flux
+    
+    return output

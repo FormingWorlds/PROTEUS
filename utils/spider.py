@@ -106,24 +106,6 @@ class MyJSON( object ):
         # SOLID[SOLID==0] = np.nan # set false region to nan to prevent plotting
         return SOLID
 
-    def get_rho_interp1d( self ):
-        '''return interp1d object for determining density as a
-           function of pressure for static structure calculations'''
-        pressure_a = self.get_dict_values( ['data','pressure_s'] )
-        density_a = self.get_dict_values( ['data','rho_s'] )
-        rho_interp1d = interp1d( pressure_a, density_a, kind='linear',
-            fill_value='extrapolate' )
-        return rho_interp1d
-
-    def get_temp_interp1d( self ):
-        '''return interp1d object for determining temperature as a
-           function of pressure for static structure calculations'''
-        pressure_a = self.get_dict_values( ['data','pressure_b'] )
-        temp_a = self.get_dict_values( ['data','temp_b'] )
-        temp_interp1d = interp1d( pressure_a, temp_a, kind='linear',
-            fill_value='extrapolate' )
-        return temp_interp1d
-
 #====================================================================
 
 def get_column_data_from_SPIDER_lookup_file( infile ):
@@ -152,32 +134,6 @@ def get_column_data_from_SPIDER_lookup_file( infile ):
         data_a[:,nn] *= scale
 
     return (data_a, size_a)
-
-def get_SPIDER_1D_lookup( infile ):
-    ''' return 1-D lookup object using linear interpolation'''
-
-    data_a, size_a = get_column_data_from_SPIDER_lookup_file( infile )
-    xx = data_a[:,0]
-    yy = data_a[:,1]
-    # will not allow extrpolation beyond the bounds without an extra
-    # argument
-    lookup_o = interp1d( xx, yy, kind='linear' )
-    return lookup_o
-
-def get_SPIDER_2D_lookup( infile ):
-    '''return 2-D lookup object'''
-
-    data_a, size_a = get_column_data_from_SPIDER_lookup_file( infile )
-    xsize = int(size_a[0])
-    ysize = int(size_a[1])
-
-    xx = data_a[:,0][:xsize]
-    yy = data_a[:,1][0::xsize]
-    zz = data_a[:,2]
-    zz = zz.reshape( (xsize, ysize), order='F' )
-    lookup_o = RectBivariateSpline(xx, yy, zz, kx=1, ky=1, s=0 )
-
-    return lookup_o
 
 def get_all_output_times( odir='output' ):
     '''get all times (in Myrs) from the json files located in the
@@ -297,75 +253,6 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
 
     return np.array(data_l)
 
-
-def get_deriv_static_structure( z, r, *args ):
-    '''get derivatives of pressure, mass, and gravity
-       returns dp/dr, dm/dr, and dg/dr'''
-
-    p = z[0] # pressure
-    m = z[1] # mass
-    g = z[2] # gravity
-
-    rho_interp1d = args[5]
-    rho = np.asscalar(rho_interp1d( p ))
-
-    # derivatives
-    dpdr = -rho*g
-    dmdr = 4*np.pi*r**2*rho
-    dgdr = 4*np.pi*const_G*rho - 2*const_G*m/r**3
-
-    return [dpdr,dmdr,dgdr]
-
-def get_radius_array_static_structure( radius, *myargs ):
-    R_core = myargs[1]
-    num = myargs[4]
-
-    return np.linspace(radius,R_core,num)
-
-def get_static_structure_for_radius( radius, *myargs ):
-    '''get static structure (pressure, mass, and gravity) for an
-       input radius'''
-
-    M_earth = myargs[0]
-    R_core = myargs[1]
-    num = myargs[4]
-    g_Earth = const_G*M_earth/radius**2
-
-    z0 = [0,M_earth,g_Earth]
-    r = get_radius_array_static_structure( radius, *myargs )
-    z = odeint( get_deriv_static_structure, z0, r, args=myargs )
-
-    return z
-
-def get_difference_static_structure( radius, *myargs ):
-    '''return root, difference between computed mass or gravity at
-       the core-mantle boundary and the desired value'''
-
-    # you can either compare mass or gravity
-    z = get_static_structure_for_radius( radius, *myargs )
-    g_core = z[:,2][-1]
-    m_core = z[:,1][-1]
-
-    # if m_core > M_core, then radius is too small
-    # if m_core < M_core, then radius is too large
-    #return m_core-M_core
-    G_core = myargs[3]
-
-    return g_core-G_core
-
-
-def check_static_structure( radius, *myargs ):
-    '''compute relative accuracy of gravity'''
-
-    G_core = myargs[3]
-    dg = get_difference_static_structure( radius, *myargs )
-    reldg = np.abs( dg/G_core )
-    if reldg > 1.0e-6:
-        log.warning('g relative accuracy= {}'.format(reldg) )
-
-
-
-
 #====================================================================
 def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile, step_sf, atol_sf ):
     '''
@@ -377,8 +264,8 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     step_sf = min(1.0, max(1.0e-10, step_sf))
     atol_sf = min(1.0e10, max(1.0e-10, atol_sf))
 
-    SPIDER_options_file = dirs["output"]+"/init_spider.opts"
-    SPIDER_options_file_orig = dirs["utils"]+"/init_spider.opts"
+    SPIDER_options_file      = os.path.join(dirs["output"], "init_spider.opts")
+    SPIDER_options_file_orig = os.path.join(dirs["utils"], "templates", "init_spider.opts")
 
     # First run
     if (loop_counter["init"] == 0):
@@ -543,11 +430,6 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
 
     # Mixing length parameterization: 1: variable | 2: constant
     call_sequence.extend(["-mixing_length", str(COUPLER_options["mixing_length"])])
-
-    # Ultra-thin thermal boundary layer at top, 0: off | 1: on
-    if COUPLER_options["PARAM_UTBL"] == 1:
-        call_sequence.extend(["-PARAM_UTBL", str(1)])
-        call_sequence.extend(["-param_utbl_const", str(COUPLER_options["param_utbl_const"])])
 
     # Check for convergence, if not converging, adjust tolerances iteratively
     if (loop_counter["total"] > loop_counter["init_loops"]) and (len(runtime_helpfile) > 50):

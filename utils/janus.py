@@ -167,7 +167,8 @@ def StructAtm( dirs, runtime_helpfile, COUPLER_options ):
 
     return atm
 
-def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_tmp_dir=True, search_method=0, rtol=1.0e-4):
+def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, 
+             write_in_tmp_dir=True, search_method=0, rtol=1.0e-4):
     """Run JANUS.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -197,14 +198,16 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
     ----------
         atm : atmos
             Updated atmos object
-        COUPLER_options : dict
-            Updated configuration options and other variables
+        output : dict
+            Output variables, as a dict
 
     """
 
     # Runtime info
     PrintHalfSeparator()
     log.info("Running JANUS...")
+
+    output={}
 
     # Update stdout
     old_stdout , old_stderr = sys.stdout , sys.stderr
@@ -217,6 +220,7 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
     if write_in_tmp_dir:
         tmp_dir = "/tmp/socrates_%d/" % np.random.randint(int(100),int(1e13))
         os.makedirs(tmp_dir)
+    log.debug("Will run socrates inside '%s'"%tmp_dir)
     os.chdir(tmp_dir)
 
     # Prepare to calculate temperature structure w/ General Adiabat 
@@ -258,8 +262,6 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
             atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=tol,
                           atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.5, T_surf_max=float(T_surf_max))
             
-            COUPLER_options["T_surf"] = atm.ts
-
         else:
             UpdateStatusfile(dirs, 20)
             raise Exception("Invalid surface state chosen for JANUS")
@@ -307,10 +309,11 @@ def RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile, write_in_
 
     # Restore stdout
     sys.stdout , sys.stderr = old_stdout , old_stderr
-            
-    COUPLER_options["F_atm"] = F_atm_lim         # Net flux at TOA
-    COUPLER_options["F_olr"] = atm.LW_flux_up[0] # OLR
-    COUPLER_options["F_sct"] = atm.SW_flux_up[0] # Scattered SW flux
+    
+    output["T_surf"] = atm.ts            # Surface temperature [K]
+    output["F_atm"]  = F_atm_lim         # Net flux at TOA
+    output["F_olr"]  = atm.LW_flux_up[0] # OLR
+    output["F_sct"]  = atm.SW_flux_up[0] # Scattered SW flux
 
-    return COUPLER_options
+    return output
 

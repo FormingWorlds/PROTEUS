@@ -20,7 +20,7 @@ from plot.cpl_fluxes import *
 from plot.cpl_heatingrates import *
 
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
-from janus.utils import DownloadSpectralFiles
+from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
 
 import mors 
 
@@ -31,7 +31,8 @@ def main():
     args = parse_console_arguments()
 
     # Read in COUPLER input file
-    COUPLER_options, time_dict = ReadInitFile( args["cfg"] , verbose=False )
+    cfg_file = os.path.abspath(str(args["cfg"]))
+    COUPLER_options, time_dict = ReadInitFile( cfg_file , verbose=False )
 
     # Set directories dictionary
     utils.constants.dirs = SetDirectories(COUPLER_options)
@@ -48,10 +49,16 @@ def main():
 
     os.chdir(dirs["coupler"])
 
+    log.info(" ")
     start_time = datetime.now()
-    log.info("Current time:     " + start_time.strftime('%Y-%m-%d_%H:%M:%S'))
-    log.info("Hostname:         " + str(os.uname()[1]))
-    log.info("Output directory: " + dirs["output"])
+    log.info("Current time: " + start_time.strftime('%Y-%m-%d_%H:%M:%S'))
+    log.info("Hostname    : " + str(os.uname()[1]))
+    log.info("Config file : " + cfg_file)
+    log.info("Output dir  : " + dirs["output"])
+    log.info("FWL data dir: " + dirs["fwl"])
+    if COUPLER_options["atmosphere_model"] in [0,1]:
+        log.info("SOCRATES dir: " + dirs["rad"])
+    log.info(" ")
 
     # Count iterations
     loop_counter = { 
@@ -78,9 +85,6 @@ def main():
         if COUPLER_options["flux_convergence"] == 1:
             UpdateStatusfile(dirs, 20)
             raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
-        if COUPLER_options["PARAM_UTBL"] == 1:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("SPIDER's UTBL is incompatible with the conductive lid scheme! Turn one of them off")
         
     if COUPLER_options["atmosphere_model"] == 1:  # Julia required for AGNI
         if shutil.which("julia") is None:
@@ -125,6 +129,7 @@ def main():
 
     # Work out which vols are included
     solvevol_warnboth = False
+    log.info("Initial partial pressures:")
     for s in volatile_species:
         key_pp = str(s+"_initial_bar")
         key_in = str(s+"_included")
@@ -133,7 +138,7 @@ def main():
             raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
         
         solvevol_warnboth = solvevol_warnboth or ((COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0))
-        log.info("%s\t: %s,  %.2f bar"%(s, str(COUPLER_options[key_in]>0), COUPLER_options[key_pp]))
+        log.info("    %-6s : %-8.2f bar (included = %s)"%(s, COUPLER_options[key_pp], str(COUPLER_options[key_in]>0)))
 
         if COUPLER_options["solvevol_use_params"] > 0:
             COUPLER_options[key_pp] = 0.0
@@ -158,18 +163,12 @@ def main():
             
     log.info("Included volatiles: " + str(inc_vols))
 
-    # Set up spectral files
-    if os.environ.get('FWL_DATA') == None:
-        raise Exception("The FWL_DATA environment variable where spectral"
-                        "and evolution tracks data will be downloaded needs to be set up!")
-    else:
-        fwl_data_dir = os.environ.get('FWL_DATA')
-
-    # Download all basic spectral files data
+    # Download all basic data.
     # (to be improved such that we only download the one we need)
     DownloadSpectralFiles()
+    DownloadStellarSpectra()
 
-    spectral_file_nostar = fwl_data_dir + COUPLER_options["spectral_file"]
+    spectral_file_nostar = os.path.join(dirs["fwl"] , COUPLER_options["spectral_file"])
     if not os.path.exists(spectral_file_nostar):
         UpdateStatusfile(dirs, 20)
         raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
@@ -179,7 +178,8 @@ def main():
     # Store copy of modern spectrum in memory (1 AU)
     time_dict['sspec_prev'] = -math.inf
     time_dict['sinst_prev'] = -math.inf
-    shutil.copyfile(COUPLER_options["star_spectrum"], os.path.join(dirs["output"],"-1.sflux"))
+    star_modern_path = os.path.join(dirs["fwl"],COUPLER_options["star_spectrum"])
+    shutil.copyfile(star_modern_path, os.path.join(dirs["output"],"-1.sflux"))
 
     # Prepare stellar models
     match COUPLER_options['star_model']:
@@ -189,7 +189,7 @@ def main():
 
             # load modern spectrum 
             star_struct_modern = mors.spec.Spectrum()
-            star_struct_modern.LoadTSV(COUPLER_options["star_spectrum"])
+            star_struct_modern.LoadTSV(star_modern_path)
             star_struct_modern.CalcBandFluxes()
 
             # get best rotation percentile 
@@ -199,8 +199,7 @@ def main():
             star_props_modern = mors.synthesis.GetProperties(COUPLER_options["star_mass"], star_pctle, COUPLER_options["star_age_modern"]/1e6)
 
         case 1:  # BARAFFE
-            modern_wl, modern_fl = mors.ModernSpectrumLoad(dirs["coupler"]+"/"+COUPLER_options["star_spectrum"], #path to input spectral file
-                                                           dirs['output']+'/-1.sflux') #path to copied spectral file
+            modern_wl, modern_fl = mors.ModernSpectrumLoad(star_modern_path, dirs['output']+'/-1.sflux') 
 
             mors.DownloadEvolutionTracks("/Baraffe")
             baraffe = mors.BaraffeTrack(COUPLER_options["star_mass"])
@@ -220,6 +219,7 @@ def main():
     UpdateStatusfile(dirs, 1)
     while not finished:
 
+        log.info(" ")
         PrintSeparator()
         log.info("Loop counters: " +  str(loop_counter))
 
@@ -341,8 +341,13 @@ def main():
                     solvevol_target[key] = 0.0
                 log.debug("Solvevol target %s = %g kg"%(key, solvevol_target[key]))
         
-        #    do calculation
-        solvevol_dict = solvevol_equilibrium_atmosphere(solvevol_target, COUPLER_options)
+        #   do calculation
+        with warnings.catch_warnings():
+            # Suppress warnings from surface_gases solver, since they are triggered when 
+            # the model makes a poor guess for the composition. These are then discarded, 
+            # so the warning should not propagate anywhere. Errors are still printed.
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            solvevol_dict = solvevol_equilibrium_atmosphere(solvevol_target, COUPLER_options)
 
         # Update help quantities, input_flag: "Interior"
         runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options, solvevol_dict=solvevol_dict)
@@ -382,19 +387,25 @@ def main():
                 if COUPLER_options["atmosphere_model"] == 0:
                     # Run JANUS: use the general adiabat to create a PT profile, then calculate fluxes
                     atm = StructAtm( dirs, runtime_helpfile, COUPLER_options )
-                    COUPLER_options = RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    atm_output = RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile)
 
                 elif COUPLER_options["atmosphere_model"] == 1:
                     # Run AGNI 
-                    COUPLER_options = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    atm_output = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile)
 
                 elif COUPLER_options["atmosphere_model"] == 2:
                     # Run dummy atmosphere model 
-                    COUPLER_options = RunDummyAtm(time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    atm_output = RunDummyAtm(time_dict, dirs, COUPLER_options, runtime_helpfile)
                     
                 else:
                     UpdateStatusfile(dirs, 20)
                     raise Exception("Invalid atmosphere model")
+                
+                # Store atmosphere module output variables
+                COUPLER_options["F_atm"]  = atm_output["F_atm"] 
+                COUPLER_options["F_olr"]  = atm_output["F_olr"] 
+                COUPLER_options["F_sct"]  = atm_output["F_sct"] 
+                COUPLER_options["T_surf"] = atm_output["T_surf"]
 
             
             # Update help quantities, input_flag: "Atmosphere"
@@ -509,8 +520,6 @@ def main():
 
     # Clean up files
     safe_rm(keepalive_file)
-    for file in glob.glob(dirs["output"]+"/runtime_spectral_file*"):
-        os.remove(file)
 
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options, end=True)

@@ -8,9 +8,11 @@ You can directly run PROTEUS using the Python command:
 
    .. code-block:: console
 
-      $  python proteus.py
+      $  python proteus.py --cfg [cfgfile]
 
-Default settings and variables are set in ``init_coupler.cfg``.
+Where ``[cfgfile]`` is the path to the required configuratio file. If the  
+``--cfg`` flag is not passed, then the default configuration located at 
+``init_coupler.cfg`` will be used.
 
 You can also run PROTEUS using:
 
@@ -20,8 +22,8 @@ You can also run PROTEUS using:
    
 Which runs PROTEUS using the config file ``[cfgfile]`` inside a Screen session 
 with the name ``[alias]``. The ``[detatch]`` parameter (y/n) tells the session 
-whether to immediately detach or not. his allows multiple instances of the model 
-to be dispatched easily, while preventing runs from having clashing names.   
+whether to immediately detach or not. This allows multiple instances of the model 
+to be dispatched easily and safely.
   
 Configuration file    
 ------------------------   
@@ -45,10 +47,10 @@ configuration, but they must all be passed via the config file.
      - Domain
 
    * - ``star_model``
-     - The star model to use for calculating the spectrum and luminosity. Options are the legacy implementation, the Baraffe model, and the Mors model.  
+     - Evolution model to use for star 
      - False
      - Integer
-     - 0: Legacy, 1: Mors, 2: Baraffe.
+     - 0: Spada, 1: Baraffe.
 
    * - ``star_rot_percentile``
      - The percentile used to find rotation rate of star from a distribution when the Mors evolution model is selected.  
@@ -90,13 +92,7 @@ configuration, but they must all be passed via the config file.
      - The spectrum of the host star as observed today. These files may be obtained using the ``GetStellarSpectrum`` tool.  
      - False
      - String
-     - Path to file, measured relative to the PROTEUS base directory.
-
-   * - ``star_btrack``
-     - Baraffe evolutionary track to be used when ``star_model = 1``.  
-     - False
-     - String
-     - Path to file, measured relative to the PROTEUS base directory.
+     - Path to file, measured relative to the FWL_DATA directory.
 
    * - ``mean_distance``
      - Distance between the planet and its host star, in units of AU.  
@@ -174,7 +170,7 @@ configuration, but they must all be passed via the config file.
      - Spectral file to use when running SOCRATES.   
      - False
      - String
-     - Path to file measured relative to the ``JANUS/`` folder.
+     - Path to file measured relative to the FWL_DATA directory.
 
    * - ``stellar_heating``
      - Flag to toggle stellar heating, including the downward shortwave stream.  
@@ -344,12 +340,6 @@ configuration, but they must all be passed via the config file.
      - Float
      - Values between zero and unity.  
 
-   * - ``N2_partitioning``
-     - The melt-vapour partitioning of the N2 volatile is redox-state dependent. Use this flag to determine which parameterisation will be calculated.   
-     - False
-     - Integer
-     - 0: Oxidised, 1: Reduced.
-
    * - ``min_temperature``
      - Temperature floor. The temperature of the atmosphere is prevented from dropping below this value. Units of kelvin.    
      - False
@@ -421,12 +411,6 @@ configuration, but they must all be passed via the config file.
      - False
      - Integer
      - 1: Variable, 2: Constant.
-
-   * - ``PARAM_UTBL``
-     - Flag to include an ultra-thin thermal boundary layer (UTBL) in SPIDER. This is used to parameterise the under-resolved conductive layer at the surface. Not compatible with ``atmosphere_surf_state==2``.   
-     - False
-     - Integer
-     - 0: Disabled, 1: Enabled.
 
    * - ``solver_tolerance``
      - Tolerance to provide to SPIDER when it calls its numerical solver.  

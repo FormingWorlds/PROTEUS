@@ -279,12 +279,12 @@ def calc_mantle_mass(COUPLER_options):
     earth_r  = 6.37e6   # m
 
     core_rho = (3.0 * earth_fm * earth_m) / (4.0 * np.pi * ( earth_fr * earth_r )**3.0 )  # core density [kg m-3]
-    log.info("Estimating core density to be %g kg m-3" % core_rho)
+    log.debug("Estimating core density to be %g kg m-3" % core_rho)
 
     # Calculate mantle mass by subtracting core from total
     core_mass = core_rho * 4.0/3.0 * np.pi * (COUPLER_options["radius"] * COUPLER_options["planet_coresize"] )**3.0
     mantle_mass = COUPLER_options["mass"] - core_mass 
-    log.debug("Total mantle mass is %.2e kg" % mantle_mass)
+    log.info("Total mantle mass is %.2e kg" % mantle_mass)
     if (mantle_mass <= 0.0):
         UpdateStatusfile(dirs, 20)
         raise Exception("Something has gone wrong (mantle mass is negative)")
@@ -578,7 +578,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
 
 
     log.info("Solving for equilibrium partial pressures at surface")
-    log.debug("Target masses: %s"%str(target_d))
+    log.debug("    target masses: %s"%str(target_d))
 
     count = 0
     max_attempts = 7000
@@ -605,8 +605,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
         if count > max_attempts:
             raise Exception("Could not find solution for volatile abundances (max attempts reached)")
 
-    log.info("Initial guess attempt number = %d" % count)
-    log.info("Residuals: " + str(this_resid))
+    log.debug("    Initial guess attempt number = %d" % count)
 
     sol_dict = {
         "H2O" : sol[0],
@@ -624,6 +623,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
 
     # Residuals [relative]
     res_l      = solvevol_func(sol, COUPLER_options, target_d)
+    log.debug("    Residuals: %s"%res_l)
     
     # Output dict 
     outdict = {"M_atm":0.0}
@@ -650,7 +650,7 @@ def solvevol_equilibrium_atmosphere(target_d, COUPLER_options):
     for s in volatile_species:
         outdict[s+"_mr"] = outdict[s+"_atm_bar"]/outdict["P_surf"]
 
-        log.info("    solvevol: %s = %.1f bar (%.3f VMR)" % (s,outdict[s+"_atm_bar"], outdict[s+"_mr"])) 
+        log.info("    %-6s : %-8.2f bar (%.2e VMR)" % (s,outdict[s+"_atm_bar"], outdict[s+"_mr"])) 
 
     # Store masses of both gases and elements
     all = [s for s in volatile_species]

@@ -1,0 +1,40 @@
+# AGNI configuration file used when coupling to PROTEUS
+title = "PROTEUS base"
+
+[planet]
+    turb_coeff      = 1.0e-3
+    wind_speed      = 10.0
+    surface_material = "blackbody"        
+
+[files]
+    
+
+[composition]
+    chemistry       = 0
+    include_all     = false 
+
+[execution]
+    clean_output    = false
+    max_steps       = 200    
+    max_runtime     = 900    
+    continua        = true   
+    aerosol         = false  
+    overlap_method  = 4      
+    thermo_funct    = true  
+    sensible_heat   = true  
+    latent_heat     = true 
+    convection      = true 
+    solvers         = ["newton"]  
+    dx_max          = 350.0    
+    initial_state   = ["dry","str","1000"] 
+    easy_start      = true
+    converge_atol   = 1.0e-2  
+    converge_rtol   = 1.0e-2  
+
+
+[plots]
+    animate         = false
+    contribution    = false
+    emission        = false
+    albedo          = false
+    mixing_ratios   = false
