@@ -10,9 +10,9 @@ You can directly run PROTEUS using the Python command:
 
       $  python proteus.py --cfg [cfgfile]
 
-Where ``[cfgfile]`` is the path to the required configuratio file. If the  
+Where ``[cfgfile]`` is the path to the required configuration file. If the  
 ``--cfg`` flag is not passed, then the default configuration located at 
-``init_coupler.cfg`` will be used.
+``input/default.cfg`` will be used.
 
 You can also run PROTEUS using:
 
@@ -238,11 +238,11 @@ configuration, but they must all be passed via the config file.
      - Float
      - Greater than zero.  
 
-   * - ``flux_convergence``
-     - Method to be used for converging atmospheric and interior upward fluxes. 'Off' applies nothing special, and allows SPIDER to determine the surface temperature. 'Restart' uses a shallow mixed ocean layer with a given heat capacity to balance the fluxes and obtain a surface temperature. 'On' waits until certain conditions are met, and then applies the 'Restart' method. 
+   * - ``shallow_ocean_layer``
+     - Legaacy method for converging atmospheric and interior upward fluxes. 
      - True
      - Integer
-     - 0: Off, 1: On, 2: Restart.   
+     - 0: Off, 1: On
 
    * - ``F_atm_bc``
      - Boundary condition to use for calculating `F_atm`. Can be set to either the top of the atmosphere or the bottom.     

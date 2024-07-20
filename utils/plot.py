@@ -278,13 +278,13 @@ class FigureData( object ):
         self.fig = fig
         self.ax = ax
 
-    def savefig( self, num ):
+    def savefig( self, num, fmt ):
         dd = self.data_d
         if dd['outname']:
-            outname = dd['outname'] + '.pdf'
+            outname = dd['outname'] + '.' + fmt
         else:
-            outname = 'fig{}.pdf'.format( num)
-        self.fig.savefig(outname, transparent=True, bbox_inches='tight',
+            outname = 'fig%d.'%num + fmt
+        self.fig.savefig(outname, bbox_inches='tight',
             pad_inches=0.05, dpi=dd['dpi'])
 
     def set_cmap( self, cmap_obj ):
@@ -317,7 +317,7 @@ class FigureData( object ):
         plt.rc('text', usetex=False)
 
         # Other params
-        dd['dpi'] = 300
+        dd['dpi'] = 200
         dd['extension'] = 'png'
         dd['fontsize_legend'] = 8
         dd['fontsize_title'] = 10

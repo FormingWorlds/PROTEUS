@@ -41,7 +41,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         # Check vmr for presence
         this_vmr = np.array(hf_all[vol+"_vmr"])
         vol_present[vol] = True 
-        if (np.amax(this_vmr) < 1.0e-30) or (COUPLER_options[vol+"_included"] < 1):
+        if (np.amax(this_vmr) < 1.0e-20) or (COUPLER_options[vol+"_included"] < 1):
             vol_present[vol] = False 
             continue 
         vol_vmr[vol] = this_vmr 
@@ -187,7 +187,9 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         plt_name += "_log"
     else:
         plt_name += "_lin"
-    fig.savefig(output_dir+"/%s.pdf"%plt_name, bbox_inches='tight')
+    
+    fig.savefig(output_dir+"/%s.%s"%(plt_name,COUPLER_options["plot_format"]), 
+                bbox_inches='tight', dpi=200)
 
 #====================================================================
 

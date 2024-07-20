@@ -27,7 +27,7 @@ def calc_eqm_temperature(I_0, ASF_sf, A_B):
 # Handle optional command line arguments for PROTEUS
 def parse_console_arguments()->dict:
     parser = argparse.ArgumentParser(description='PROTEUS command line arguments')
-    parser.add_argument('--cfg', type=str, default="init_coupler.cfg", help='Path to configuration file')
+    parser.add_argument('--cfg', type=str, default="input/default.cfg", help='Path to configuration file')
     args = vars(parser.parse_args())
     return args
 
@@ -212,7 +212,7 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                         val = int(val)
 
                     # Some are str
-                    elif key in [ 'star_spectrum', 'dir_output', 
+                    elif key in [ 'star_spectrum', 'dir_output', 'plot_format',
                                   'spectral_file' , 'log_level']:
                         val = str(val)
                         
@@ -295,7 +295,7 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     log.debug("Snapshots to plot:" + str(plot_times))
 
     # Specific timesteps for paper plots
-    cpl_interior.plot_interior(output_dir, plot_times)     
+    cpl_interior.plot_interior(output_dir, plot_times, COUPLER_options["plot_format"])     
     if not dummy_atm:
         cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
         cpl_stacked.plot_stacked(output_dir, plot_times)
@@ -309,7 +309,7 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     # Only at the end of the simulation
     if end:
         cpl_global.plot_global(output_dir, COUPLER_options, logt=False)   
-        cpl_interior_cmesh.plot_interior_cmesh(output_dir)
+        cpl_interior_cmesh.plot_interior_cmesh(output_dir, plot_format=COUPLER_options["plot_format"])
         cpl_sflux.plot_sflux(output_dir)
         cpl_sflux_cross.plot_sflux_cross(output_dir)
         cpl_fluxes.plot_fluxes_global(output_dir, COUPLER_options)

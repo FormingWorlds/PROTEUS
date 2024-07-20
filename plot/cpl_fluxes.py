@@ -108,7 +108,8 @@ def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_global.pdf", bbox_inches='tight')
+    fig.savefig(output_dir+"/plot_fluxes_global.%s"%COUPLER_options["plot_format"], 
+                bbox_inches='tight', dpi=200)
 
 if __name__ == '__main__':
 

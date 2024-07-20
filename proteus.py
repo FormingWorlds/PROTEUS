@@ -67,7 +67,7 @@ def main():
                     "total_loops": COUPLER_options["iter_max"],   # Maximum number of total loops
 
                     "init": 0,             # Number of init iters performed
-                    "init_loops": 1,       # Maximum number of init iters
+                    "init_loops": 2,       # Maximum number of init iters
 
                     "atm": 0,              # Number of atmosphere sub-iters performed
                     "atm_loops":  20,      # Maximum number of atmosphere sub-iters
@@ -82,7 +82,7 @@ def main():
 
     # Check options are compatible
     if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
-        if COUPLER_options["flux_convergence"] == 1:
+        if COUPLER_options["shallow_ocean_layer"] == 1:
             UpdateStatusfile(dirs, 20)
             raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
         
@@ -328,8 +328,9 @@ def main():
         # Run outgassing model
 
         solvevol_inp = copy.deepcopy(COUPLER_options)
-        solvevol_inp["M_mantle"] = hf_row["M_mantle"]
-        solvevol_inp["T_magma"] = hf_row["T_magma"]
+        solvevol_inp["M_mantle"] =   hf_row["M_mantle"]
+        solvevol_inp["T_magma"] =    hf_row["T_magma"]
+        solvevol_inp["Phi_global"] = hf_row["Phi_global"]
 
         #    reset target if during init phase 
         #    since these target masses will be adjusted depending on the true melt fraction and T_magma

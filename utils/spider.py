@@ -284,8 +284,8 @@ def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict,
         # Time stepping adjustment
         if time_dict["planet"] < 2.0:
             # First year, use small step
-            dtmacro = 1
-            dtswitch = 1
+            dtmacro = 1.0
+            dtswitch = 1.0
             nsteps = 1
             log.info("Time-stepping intent: static")
 
