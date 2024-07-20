@@ -7,7 +7,7 @@ from utils.constants import *
 log = logging.getLogger("PROTEUS")
 
 # Run the dummy atmosphere module
-def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):
+def RunDummyAtm( time_dict, dirs, COUPLER_options, hf_cur ):
 
     PrintHalfSeparator()
     log.info("Running dummy_atmosphere...")
@@ -18,15 +18,18 @@ def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # Setting this to 1 will result in an OLR of zero
     gamma           = 0.0   
 
-    # Variables 
-    T_surf_int      = COUPLER_options["T_surf"]
+    # Parameters 
     zenith_angle    = COUPLER_options["zenith_angle"]
     albedo_pl       = COUPLER_options["albedo_pl"]
     inst_sf         = COUPLER_options["asf_scalefactor"]
     albedo_s        = COUPLER_options["albedo_s"]
-    instellation    = COUPLER_options["F_ins"]
     skin_d          = COUPLER_options["skin_d"]
     skin_k          = COUPLER_options["skin_k"]
+
+    # Variables
+    T_surf_int      = hf_cur["T_surf"]
+    instellation    = hf_cur["F_ins"]
+
 
     # Check configuration
     if COUPLER_options["atmosphere_solve_energy"] == 1:

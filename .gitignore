@@ -4,9 +4,9 @@
 
 # Model files
 #############
-current*
-profile*
-runtime_spectral_file*
+current.*
+profile.*
+runtime.sf*
 socrates_star.txt
 radiation_code.lock
 
@@ -16,6 +16,7 @@ output/*
 output.link
 output
 AGNI
+SOCRATES
 
 # misc
 ######

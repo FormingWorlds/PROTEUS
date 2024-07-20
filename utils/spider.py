@@ -254,7 +254,7 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
     return np.array(data_l)
 
 #====================================================================
-def _try_spider( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, runtime_helpfile, step_sf, atol_sf ):
+def _try_spider( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all, step_sf, atol_sf ):
     '''
     Try to run spider with the current configuration.
     '''
@@ -278,10 +278,6 @@ def _try_spider( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, ru
         json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(time_dict["planet"])) )
         step        = json_file.get_dict(['step'])
 
-        # Previous steps
-        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
-        run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
-
         # Time stepping adjustment
         if time_dict["planet"] < 2.0:
             # First year, use small step
@@ -301,23 +297,23 @@ def _try_spider( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, ru
 
                 # Try to maintain a minimum step size of dt_initial at first
                 if time_dict["planet"] > COUPLER_options["dt_initial"]:
-                    dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                    dtprev = float(hf_all.iloc[-1]["Time"] - hf_all.iloc[-2]["Time"])
                 else:
                     dtprev = COUPLER_options["dt_initial"]
 
                 # Change in F_int 
-                F_int_2  = run_int.iloc[-2]["F_int"]
-                F_int_1  = run_int.iloc[-1]["F_int"]
+                F_int_2  = hf_all.iloc[-2]["F_int"]
+                F_int_1  = hf_all.iloc[-1]["F_int"]
                 F_int_12 = abs(F_int_1 - F_int_2) 
 
                 # Change in F_atm
-                F_atm_2  = run_atm.iloc[-2]["F_atm"]
-                F_atm_1  = run_atm.iloc[-1]["F_atm"]
+                F_atm_2  = hf_all.iloc[-2]["F_atm"]
+                F_atm_1  = hf_all.iloc[-1]["F_atm"]
                 F_atm_12 = abs(F_atm_1 - F_atm_2)  
 
                 # Change in global melt fraction
-                phi_2  = run_atm.iloc[-2]["Phi_global"]
-                phi_1  = run_atm.iloc[-1]["Phi_global"]
+                phi_2  = hf_all.iloc[-2]["Phi_global"]
+                phi_1  = hf_all.iloc[-1]["Phi_global"]
                 phi_12 = abs(phi_1 - phi_2)  
 
                 # Determine new time-step given the tolerances
@@ -398,7 +394,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, ru
 
     # Min of fractional and absolute Ts poststep change
     if time_dict["planet"] > 0:
-        dTs_frac = float(COUPLER_options["tsurf_poststep_change_frac"]) * float(runtime_helpfile["T_surf"].iloc[-1])
+        dTs_frac = float(COUPLER_options["tsurf_poststep_change_frac"]) * float(hf_all["T_surf"].iloc[-1])
         dT_int_max = np.min([ float(COUPLER_options["tsurf_poststep_change"]), float(dTs_frac) ])
         call_sequence.extend(["-tsurf_poststep_change", str(dT_int_max)])
     else:
@@ -429,14 +425,14 @@ def _try_spider( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, ru
     call_sequence.extend(["-mixing_length", str(COUPLER_options["mixing_length"])])
 
     # Check for convergence, if not converging, adjust tolerances iteratively
-    if (loop_counter["total"] > loop_counter["init_loops"]) and (len(runtime_helpfile) > 50):
+    # if (loop_counter["total"] > loop_counter["init_loops"]) and (len(runtime_helpfile) > 50):
 
-        # Check convergence for interior cycles
-        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+        # # Check convergence for interior cycles
+        # run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
 
-        ref_idx = -3
-        if len(run_int["Time"]) < abs(ref_idx)-1:
-            ref_idx = 0
+        # ref_idx = -3
+        # if len(run_int["Time"]) < abs(ref_idx)-1:
+        #     ref_idx = 0
 
         # First, relax too restrictive dTs
         # if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
@@ -459,14 +455,14 @@ def _try_spider( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, ru
         #     log.warning(">>> CURRENT TOLERANCES:", COUPLER_options["solver_tolerance"])
 
         # If tolerance was adjusted, restart SPIDER w/ new tolerances
-        if "adjust_tolerance" in COUPLER_options:
-            log.warning(">>>>> >>>>> RESTART W/ ADJUSTED TOLERANCES")
-            call_sequence.extend(["-atmosts_snes_atol", str(COUPLER_options["solver_tolerance"])])
-            call_sequence.extend(["-atmosts_snes_rtol", str(COUPLER_options["solver_tolerance"])])
-            call_sequence.extend(["-atmosts_ksp_atol", str(COUPLER_options["solver_tolerance"])])
-            call_sequence.extend(["-atmosts_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
-            call_sequence.extend(["-atmosic_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
-            call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
+        # if "adjust_tolerance" in COUPLER_options:
+        #     log.warning(">>>>> >>>>> RESTART W/ ADJUSTED TOLERANCES")
+        #     call_sequence.extend(["-atmosts_snes_atol", str(COUPLER_options["solver_tolerance"])])
+        #     call_sequence.extend(["-atmosts_snes_rtol", str(COUPLER_options["solver_tolerance"])])
+        #     call_sequence.extend(["-atmosts_ksp_atol", str(COUPLER_options["solver_tolerance"])])
+        #     call_sequence.extend(["-atmosts_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
+        #     call_sequence.extend(["-atmosic_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
+        #     call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
 
     call_sequence.extend(["-ts_sundials_atol", str(COUPLER_options["solver_tolerance"] * atol_sf)])
     call_sequence.extend(["-ts_sundials_rtol", str(COUPLER_options["solver_tolerance"] * atol_sf)])
@@ -491,7 +487,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, ru
     return bool(proc.returncode == 0)
 
 
-def RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, runtime_helpfile ):
+def RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all ):
     '''
     Wrapper function for running SPIDER.
     This wrapper handles cases where SPIDER fails to find a solution.
@@ -517,7 +513,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, runt
         log.info("Attempt %d" % attempts)
 
         # run SPIDER
-        spider_success = _try_spider(time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, runtime_helpfile, step_sf, atol_sf)
+        spider_success = _try_spider(time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all, step_sf, atol_sf)
 
         if spider_success:
             # success

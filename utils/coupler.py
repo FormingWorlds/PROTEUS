@@ -17,6 +17,13 @@ import plot.cpl_sflux_cross as cpl_sflux_cross
 import plot.cpl_fluxes as cpl_fluxes
 import plot.cpl_interior_cmesh as cpl_interior_cmesh
 
+def calc_eqm_temperature(I_0, ASF_sf, A_B):
+    '''
+    Calculate planetary equilibrium temperature.
+    Params: Stellar flux, ASF scale factor, and bond albedo.
+    '''
+    return (I_0 * ASF_sf * (1.0 - A_B) / const_sigma)**(1.0/4.0)
+
 # Handle optional command line arguments for PROTEUS
 def parse_console_arguments()->dict:
     parser = argparse.ArgumentParser(description='PROTEUS command line arguments')
@@ -33,18 +40,19 @@ def latex_float(f):
     else:
         return float_str
 
-def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options):
+def PrintCurrentState(time_dict, hf_cur):
     PrintHalfSeparator()
     log.info("Runtime info...")
     log.info("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
-    log.info("    Model time   :   %.3e   yr"    % float(time_dict["planet"]))
-    log.info("    T_surf       :   %.3e   K"     % float(runtime_helpfile.iloc[-1]["T_surf"]))
-    log.info("    P_surf       :   %.3e   bar"   % float(runtime_helpfile.iloc[-1]["P_surf"]))
-    log.info("    Phi_global   :   %.3e   "      % float(runtime_helpfile.iloc[-1]["Phi_global"]))
-    log.info("    Instellation :   %.3e   W/m^2" % float(runtime_helpfile.iloc[-1]["F_ins"]))
-    log.info("    F_int        :   %.3e   W/m^2" % float(runtime_helpfile.iloc[-1]["F_int"]))
-    log.info("    F_atm        :   %.3e   W/m^2" % float(runtime_helpfile.iloc[-1]["F_atm"])) 
-    log.info("    |F_net|      :   %.3e   W/m^2" % abs(float(runtime_helpfile.iloc[-1]["F_net"])))
+    log.info("    Model time   :   %.2e   yr"    % float(time_dict["planet"]))
+    log.info("    T_surf       :   %.1f   K"     %     float(hf_cur["T_surf"]))
+    log.info("    T_magma      :   %.1f   K"     %     float(hf_cur["T_magma"]))
+    log.info("    P_surf       :   %.2e   bar"   %     float(hf_cur["P_surf"]))
+    log.info("    Phi_global   :   %.2e   "      %     float(hf_cur["Phi_global"]))
+    log.info("    Instellation :   %.2e   W/m^2" %     float(hf_cur["F_ins"]))
+    log.info("    F_int        :   %.2e   W/m^2" %     float(hf_cur["F_int"]))
+    log.info("    F_atm        :   %.2e   W/m^2" %     float(hf_cur["F_atm"])) 
+    log.info("    |F_net|      :   %.2e   W/m^2" % abs(float(hf_cur["F_net"])))
 
 
 def GetHelpfileKeys():
@@ -55,22 +63,22 @@ def GetHelpfileKeys():
     # Basic keys
     keys = [
             # Model tracking 
-            "Time", 
+            "Iter", "Time", 
 
             # Stellar 
             "R_star", 
 
             # Temperatures 
-            "T_surf", "T_mantle", "T_eqm", 
+            "T_surf", "T_magma", "T_eqm", "T_skin",
 
-            # Fluxes 
+            # Planetary fluxes 
             "F_int", "F_atm", "F_net", "F_olr", "F_ins", "F_sct", 
 
             # Surface composition
-            "P_surf", "atm_kg_per_mol", # gases will be added below
+            "P_surf", "atm_kg_per_mol", # more keys are added below
             
             # Interior properties
-            "Phi_global", "RF_depth", "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid"
+            "Phi_global", "RF_depth", "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid",
             ]
 
     # gases
@@ -110,7 +118,7 @@ def CreateHelpfile():
     Create helpfile to hold output variables.
     '''
     
-    return pd.DataFrame( columns=GetHelpfileKeys())
+    return pd.DataFrame(columns=GetHelpfileKeys())
 
 def ZeroHelpfileRow():
     '''
@@ -154,79 +162,7 @@ def GetLastRowFromHelpfile(current_hf:pd.DataFrame):
     '''
     Return the last row of the helpfile as a dictionary
     '''
-    return current_hf.loc[-1].to_dict()
-
-
-def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options, solvevol_dict=None):
-
-    runtime_helpfile_name = "runtime_helpfile.csv"
-    COUPLER_options_name  = "COUPLER_options.csv"
-
-
-
-    # For "Interior" sub-loop (SPIDER)
-    if input_flag == "Interior":
-
-
-
-    # For "Atmosphere" sub-loop (VULCAN+SOCRATES) update heat flux from SOCRATES
-    elif input_flag == "Atmosphere":
-
-        # Define input flag
-        runtime_helpfile_new["Input"]           = input_flag   
-
-        # Infos from latest interior loop
-        runtime_helpfile_new["R_star"]          = run_int.iloc[-1]["R_star"] 
-        runtime_helpfile_new["Phi_global"]      = run_int.iloc[-1]["Phi_global"]
-        runtime_helpfile_new["RF_depth"]        = run_int.iloc[-1]["RF_depth"]     
-        runtime_helpfile_new["M_mantle"]        = run_int.iloc[-1]["M_mantle"]       
-        runtime_helpfile_new["M_core"]          = run_int.iloc[-1]["M_core"]         
-        runtime_helpfile_new["M_mantle_liquid"] = run_int.iloc[-1]["M_mantle_liquid"]
-        runtime_helpfile_new["M_mantle_solid"]  = run_int.iloc[-1]["M_mantle_solid"]
-        runtime_helpfile_new["Time"]            = run_int.iloc[-1]["Time"]
-        runtime_helpfile_new["F_int"]           = run_int.iloc[-1]["F_int"]
-
-        # From latest atmosphere iteration
-        runtime_helpfile_new["T_eqm"]           = COUPLER_options["T_eqm"]
-        runtime_helpfile_new["T_surf"]          = COUPLER_options["T_surf"] 
-        runtime_helpfile_new["F_atm"]           = COUPLER_options["F_atm"]
-        runtime_helpfile_new["F_ins"]           = COUPLER_options["F_ins"]
-        runtime_helpfile_new["F_sct"]           = COUPLER_options["F_sct"]
-
-        COUPLER_options["F_int"] = run_int.iloc[-1]["F_int"]
-        COUPLER_options["F_net"] = COUPLER_options["F_atm"] - COUPLER_options["F_int"]
-
-        ### Adjust F_net to break atm main loop:
-        t_curr          = run_int.iloc[-1]["Time"]
-        run_atm         = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
-        run_atm_last    = run_atm.loc[run_atm['Time'] != t_curr]
-
-        # Write F_net to next file
-        runtime_helpfile_new["F_net"]           = COUPLER_options["F_net"]
-        runtime_helpfile_new["F_olr"]           = COUPLER_options["F_olr"]
-
-        # Other info from latest iteration run (X/H ratios stay fixed w/o loss)
-        runtime_helpfile_new["P_surf"]          = runtime_helpfile.iloc[-1]["P_surf"]         
-        runtime_helpfile_new["M_atm"]           = runtime_helpfile.iloc[-1]["M_atm"]
-        runtime_helpfile_new["atm_kg_per_mol"]  = runtime_helpfile.iloc[-1]["atm_kg_per_mol"]
-
-    runtime_helpfile_new = pd.DataFrame(runtime_helpfile_new,index=[0])
-    runtime_helpfile = pd.concat([runtime_helpfile, runtime_helpfile_new])
-
-    runtime_helpfile.to_csv( dirs["output"]+"/"+runtime_helpfile_name, index=False, sep="\t")
-
-    # Save COUPLER_options to disk
-    COUPLER_options_save = pd.read_csv(dirs["output"]+"/"+COUPLER_options_name, sep="\t")
-    COUPLER_options_df = pd.DataFrame.from_dict([COUPLER_options])
-    COUPLER_options_save = pd.concat([ COUPLER_options_save, COUPLER_options_df],ignore_index=True)
-    COUPLER_options_save.to_csv( dirs["output"]+"/"+COUPLER_options_name, index=False, sep="\t")
-
-    return runtime_helpfile, time_dict, COUPLER_options
-
-# Calculate eqm temperature given stellar flux, ASF scale factor, and bond albedo
-def calc_eqm_temperature(I_0, ASF_sf, A_B):
-    return (I_0 * ASF_sf * (1.0 - A_B) / const_sigma)**(1.0/4.0)
-
+    return current_hf.iloc[-1].to_dict()
 
 def ReadInitFile( init_file_passed , verbose=False):
 
@@ -270,7 +206,7 @@ def ReadInitFile( init_file_passed , verbose=False):
 
                     # Some parameters are int
                     if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop",
-                                "plot_iterfreq", "stellar_heating", "mixing_length", 
+                                "plot_iterfreq", "stellar_heating", "mixing_length", "shallow_ocean_layer",
                                 "atmosphere_chemistry", "solvevol_use_params", "insert_rscatter", "water_cloud",
                                 "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
                                 "dt_dynamic", "prevent_warming", "atmosphere_model", "atmosphere_nlev"]:
