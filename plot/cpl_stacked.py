@@ -8,7 +8,7 @@ from utils.plot import *
 log = logging.getLogger("PROTEUS")
 
 #====================================================================
-def plot_stacked( output_dir, times ):
+def plot_stacked( output_dir, times, plot_format="pdf" ):
 
     log.info("Plot stacked")
 
@@ -214,7 +214,7 @@ def plot_stacked( output_dir, times ):
 
     plt.close()
     plt.ioff()
-    fig_o.savefig(1)
+    fig_o.savefig(1, plot_format)
 
 #====================================================================
 def main():
@@ -240,7 +240,7 @@ def main():
         plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
     print("Snapshots:", plot_list)
 
-    plot_stacked( output_dir=dirs["output"], times=plot_list )
+    plot_stacked( output_dir=dirs["output"], times=plot_list, plot_format=COUPLER_options["plot_format"] )
 
 #====================================================================
 

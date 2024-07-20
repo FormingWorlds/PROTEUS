@@ -300,13 +300,13 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     # Specific timesteps for paper plots
     cpl_interior.plot_interior(output_dir, plot_times, COUPLER_options["plot_format"])     
     if not dummy_atm:
-        cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
-        cpl_stacked.plot_stacked(output_dir, plot_times)
+        cpl_atmosphere.plot_atmosphere(output_dir, plot_times, COUPLER_options["plot_format"])
+        cpl_stacked.plot_stacked(output_dir, plot_times, COUPLER_options["plot_format"])
 
         if COUPLER_options["atmosphere_model"] != 1:
             # don't make this plot for AGNI, since it will do it itself
             nc_path = output_dir + "/data/%d_atm.nc"%(int(output_times[-1]))
-            cpl_fluxes.plot_fluxes_atmosphere(output_dir, nc_path)
+            cpl_fluxes.plot_fluxes_atmosphere(output_dir, nc_path, COUPLER_options["plot_format"])
 
 
     # Only at the end of the simulation

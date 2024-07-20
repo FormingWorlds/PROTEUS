@@ -68,9 +68,6 @@ def StructAtm( dirs:dict, hf_row:dict, COUPLER_options:dict ):
             UpdateStatusfile(dirs, 20)
             raise Exception("Invalid tropopause option '%d'" % COUPLER_options["tropopause"])
 
-    # Number of levels   
-    nlev = int(COUPLER_options["atmosphere_nlev"])
-            
     # Spectral bands
     band_edges = ReadBandEdges(dirs["output"]+"star.sf")
 
@@ -90,7 +87,7 @@ def StructAtm( dirs:dict, hf_row:dict, COUPLER_options:dict ):
                 maxT = COUPLER_options["max_temperature"],
                 trppT=trppT,
                 water_lookup=False,
-                req_levels=nlev, alpha_cloud=alpha_cloud,
+                req_levels=COUPLER_options["atmosphere_nlev"], alpha_cloud=alpha_cloud,
                 re=re, lwm=lwm, clfr=clfr, do_cloud=do_cloud
                 )
 
@@ -98,11 +95,11 @@ def StructAtm( dirs:dict, hf_row:dict, COUPLER_options:dict ):
     atm.albedo_pl       = COUPLER_options["albedo_pl"]
     atm.inst_sf         = COUPLER_options["asf_scalefactor"]
     atm.albedo_s        = COUPLER_options["albedo_s"]
-    atm.instellation    = COUPLER_options["F_ins"]
     atm.skin_d          = COUPLER_options["skin_d"]
     atm.skin_k          = COUPLER_options["skin_k"]
 
-    atm.tmp_magma = hf_row["T_magma"]
+    atm.instellation    = hf_row["F_ins"]
+    atm.tmp_magma       = hf_row["T_magma"]
 
     return atm
 

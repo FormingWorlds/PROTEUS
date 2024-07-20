@@ -8,7 +8,7 @@ from utils.spider import MyJSON, get_all_output_times
 log = logging.getLogger("PROTEUS")
 
 #====================================================================
-def plot_atmosphere( output_dir, times):
+def plot_atmosphere( output_dir, times, plot_format="pdf"):
 
     log.info("Plot atmosphere temperatures")
 
@@ -136,7 +136,7 @@ def plot_atmosphere( output_dir, times):
 
     plt.close()
     plt.ioff()
-    fig_o.savefig(1)
+    fig_o.savefig(1, plot_format)
 
 # Plot settings
 lw=2
@@ -177,7 +177,7 @@ def main():
     # plot_current_mixing_ratio( output_dir=output_dir, times=plot_list[-1], vulcan_setting=0 )
 
     # Plot fixed set from above
-    plot_atmosphere( output_dir=dirs["output"], times=plot_list )
+    plot_atmosphere( output_dir=dirs["output"], times=plot_list, plot_format=COUPLER_options["plot_format"] )
 
 #====================================================================
 

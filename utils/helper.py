@@ -8,11 +8,11 @@ from utils.constants import *
 log = logging.getLogger("PROTEUS")
 
 def PrintSeparator():
-    log.info("==============================================================================================")
+    log.info("===================================================")
     pass
 
 def PrintHalfSeparator():
-    log.info("--------------------------------------------------")
+    log.info("---------------------------------------------------")
     pass
 
 # String sorting inspired by natsorted

@@ -34,7 +34,7 @@ def _read_nc(nc_fpath):
 
 
 # Plotting function
-def plot_atmosphere_cbar(output_dir):
+def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
 
     print("Plot atmosphere temperatures colourbar")
 
@@ -96,8 +96,8 @@ def plot_atmosphere_cbar(output_dir):
     cbar.set_label("Time [Myr]") 
 
     # Save plot
-    fname = os.path.join(output_dir,"plot_atmosphere_cbar.pdf")
-    fig.savefig(fname, bbox_inches='tight')
+    fname = os.path.join(output_dir,"plot_atmosphere_cbar.%s"%plot_format)
+    fig.savefig(fname, bbox_inches='tight', dpi=200)
 
 #====================================================================
 def main():
@@ -116,7 +116,7 @@ def main():
     dirs = SetDirectories(COUPLER_options)
 
     # Plot fixed set from above
-    plot_atmosphere_cbar( output_dir=dirs["output"])
+    plot_atmosphere_cbar( output_dir=dirs["output"], plot_format=COUPLER_options["plot_format"])
 
 #====================================================================
 

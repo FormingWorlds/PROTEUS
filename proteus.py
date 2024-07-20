@@ -117,6 +117,7 @@ def main():
 
     # Initial guess for values 
     hf_row["T_magma"] = COUPLER_options["T_magma"]
+    hf_row["T_surf"] = hf_row["T_magma"]
     hf_row["F_atm"] = COUPLER_options["F_atm"]
     hf_row["F_int"] = hf_row["F_atm"]
 
@@ -362,7 +363,6 @@ def main():
 
         ############### / INTERIOR
                         
-
 
         ############### UPDATE TIME 
                                    

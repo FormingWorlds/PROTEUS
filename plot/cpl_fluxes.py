@@ -7,7 +7,7 @@ from utils.plot import *
 log = logging.getLogger("PROTEUS")
 
 # Plotting fluxes
-def plot_fluxes_atmosphere(output_dir, nc_fpath):
+def plot_fluxes_atmosphere(output_dir, nc_fpath, plot_format="pdf"):
 
     log.info("Plotting atmosphere fluxes")
 
@@ -23,7 +23,7 @@ def plot_fluxes_atmosphere(output_dir, nc_fpath):
     atm_fl_N    = np.array(ds.variables['fl_N'   ][:])
     ds.close()
 
-    fig,ax = plt.subplots()
+    fig,ax = plt.subplots(1,1)
 
     ax.axvline(0,color='black',lw=0.8)
 
@@ -49,7 +49,8 @@ def plot_fluxes_atmosphere(output_dir, nc_fpath):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_atmosphere.pdf", bbox_inches='tight')
+    fig.savefig(output_dir+"/plot_fluxes_atmosphere.%s"%plot_format, 
+                bbox_inches='tight', dpi=200)
 
 # Plotting fluxes
 def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
