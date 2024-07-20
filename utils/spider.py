@@ -374,9 +374,6 @@ def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict,
         dtmacro     = 0
         dtswitch    = 0
 
-    # Set spider flux boundary condition
-    net_loss = COUPLER_options["F_atm"]
-
     ### SPIDER base call sequence 
     call_sequence = [   
                         dirs["spider"]+"/spider", 
@@ -384,7 +381,7 @@ def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict,
                         "-outputDirectory",        dirs["output"]+'data/',
                         "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
                         "-OXYGEN_FUGACITY_offset", "%.6e"%(COUPLER_options["fO2_shift_IW"]),  # Relative to the specified buffer
-                        "-surface_bc_value",       "%.6e"%(net_loss), 
+                        "-surface_bc_value",       "%.6e"%(hf_row["F_atm"]), 
                         "-teqm",                   "%.6e"%(hf_row["T_eqm"]), 
                         "-n",                      "%d"  %(COUPLER_options["interior_nlev"]),
                         "-nstepsmacro",            "%d"  %(nstepsmacro), 

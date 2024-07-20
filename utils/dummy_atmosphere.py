@@ -7,7 +7,7 @@ from utils.constants import *
 log = logging.getLogger("PROTEUS")
 
 # Run the dummy atmosphere module
-def RunDummyAtm( time_dict, dirs, COUPLER_options, hf_cur ):
+def RunDummyAtm( dirs:dict, COUPLER_options:dict, hf_cur:dict ):
 
     PrintHalfSeparator()
     log.info("Running dummy_atmosphere...")
@@ -27,9 +27,8 @@ def RunDummyAtm( time_dict, dirs, COUPLER_options, hf_cur ):
     skin_k          = COUPLER_options["skin_k"]
 
     # Variables
-    T_surf_int      = hf_cur["T_surf"]
+    T_surf_int      = hf_cur["T_magma"]
     instellation    = hf_cur["F_ins"]
-
 
     # Check configuration
     if COUPLER_options["atmosphere_solve_energy"] == 1:

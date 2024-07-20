@@ -472,7 +472,7 @@ configuration, but they must all be passed via the config file.
      - Integer
      - 0: Disabled, 1: Enabled.
 
-   * - ``T_outgas``
+   * - ``T_magma``
      - Initial guess for surface temperature, units of kelvin.
      - False
      - Float

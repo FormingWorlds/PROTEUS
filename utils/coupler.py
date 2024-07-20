@@ -63,7 +63,7 @@ def GetHelpfileKeys():
     # Basic keys
     keys = [
             # Model tracking 
-            "Iter", "Time", 
+            "Time", 
 
             # Stellar 
             "R_star", 
@@ -154,9 +154,8 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
     if os.path.exists(fpath):
         os.remove(fpath)
 
-    current_hf.to_csv(fpath , index=False, sep="\t")
+    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.5e")
     return fpath
-
 
 def GetLastRowFromHelpfile(current_hf:pd.DataFrame):
     '''

@@ -115,6 +115,11 @@ def main():
     # Create an empty initial row for helpfile 
     hf_row = ZeroHelpfileRow()
 
+    # Initial guess for values 
+    hf_row["T_magma"] = COUPLER_options["T_magma"]
+    hf_row["F_atm"] = COUPLER_options["F_atm"]
+    hf_row["F_int"] = hf_row["F_atm"]
+
     # Calculate mantle mass (liquid + solid)
     hf_row["M_mantle"] = calc_mantle_mass(COUPLER_options)
     
@@ -308,7 +313,7 @@ def main():
 
         # Previous magma temperature 
         if loop_counter["init"] < loop_counter["init_loops"]:
-            prev_T_magma = 4000.0
+            prev_T_magma = COUPLER_options["T_magma"]
         else:
             prev_T_magma = hf_all.iloc[-1]["T_magma"]
 
@@ -327,7 +332,7 @@ def main():
         solvevol_inp["T_magma"] = hf_row["T_magma"]
 
         #    reset target if during init phase 
-        #    since these target masses will be adjusted depending on the true melt fraction and T_outgas
+        #    since these target masses will be adjusted depending on the true melt fraction and T_magma
         if loop_counter["init"] < loop_counter["init_loops"]:
 
             # calculate target mass of atoms
@@ -399,7 +404,7 @@ def main():
 
                 elif COUPLER_options["atmosphere_model"] == 2:
                     # Run dummy atmosphere model 
-                    atm_output = RunDummyAtm(time_dict, dirs, COUPLER_options, hf_row)
+                    atm_output = RunDummyAtm(dirs, COUPLER_options, hf_row)
                     
                 else:
                     UpdateStatusfile(dirs, 20)
@@ -410,6 +415,8 @@ def main():
                 hf_row["F_olr"]  = atm_output["F_olr"] 
                 hf_row["F_sct"]  = atm_output["F_sct"] 
                 hf_row["T_surf"] = atm_output["T_surf"]
+            
+            hf_row["F_net"] = hf_row["F_int"] - hf_row["F_atm"]
             
             # Iterate
             loop_counter["atm"] += 1
@@ -426,7 +433,7 @@ def main():
         ############### CONVERGENCE CHECK 
 
         # Print info to terminal and log file
-        PrintCurrentState(time_dict, hf_row,)
+        PrintCurrentState(time_dict, hf_row)
 
         # Stop simulation when planet is completely solidified
         if (COUPLER_options["solid_stop"] == 1) and (hf_row["Phi_global"] <= COUPLER_options["phi_crit"]):
