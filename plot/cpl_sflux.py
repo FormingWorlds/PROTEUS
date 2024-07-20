@@ -23,7 +23,7 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
+def plot_sflux(output_dir, wl_max = 6000.0, surface=False, plot_format="pdf"):
     """Plots stellar flux vs time for all wavelengths
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -149,7 +149,8 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_sflux.pdf", bbox_inches='tight')
+    fig.savefig(output_dir+"/plot_sflux.%s"%plot_format, 
+                bbox_inches='tight', dpi=200)
 
 
 # Run directly
@@ -170,7 +171,7 @@ if __name__ == '__main__':
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
 
-    plot_sflux(dirs['output'])
+    plot_sflux(dirs['output'], plot_format=COUPLER_options["plot_format"])
 
     print("Done!")
 

@@ -237,10 +237,19 @@ def main():
     if len(output_list) <= 8:
         plot_list = output_list
     else:
-        plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
+        plot_list = [ output_list[0], 
+                     output_list[int(round(len(output_list)*(2./100.)))], 
+                     output_list[int(round(len(output_list)*(15./100.)))], 
+                     output_list[int(round(len(output_list)*(22./100.)))], 
+                     output_list[int(round(len(output_list)*(33./100.)))], 
+                     output_list[int(round(len(output_list)*(50./100.)))], 
+                     output_list[int(round(len(output_list)*(66./100.)))], 
+                     output_list[-1] ]
+        
     print("Snapshots:", plot_list)
 
-    plot_stacked( output_dir=dirs["output"], times=plot_list, plot_format=COUPLER_options["plot_format"] )
+    plot_stacked( output_dir=dirs["output"], times=plot_list, 
+                 plot_format=COUPLER_options["plot_format"] )
 
 #====================================================================
 

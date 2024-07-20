@@ -313,8 +313,8 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     if end:
         cpl_global.plot_global(output_dir, COUPLER_options, logt=False)   
         cpl_interior_cmesh.plot_interior_cmesh(output_dir, plot_format=COUPLER_options["plot_format"])
-        cpl_sflux.plot_sflux(output_dir)
-        cpl_sflux_cross.plot_sflux_cross(output_dir)
+        cpl_sflux.plot_sflux(output_dir, plot_format=COUPLER_options["plot_format"])
+        cpl_sflux_cross.plot_sflux_cross(output_dir, plot_format=COUPLER_options["plot_format"])
         cpl_fluxes.plot_fluxes_global(output_dir, COUPLER_options)
  
     # Close all figures
