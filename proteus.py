@@ -322,15 +322,19 @@ def main():
 
         # Run outgassing model
 
+        solvevol_inp = copy.deepcopy(COUPLER_options)
+        solvevol_inp["M_mantle"] = hf_row["M_mantle"]
+        solvevol_inp["T_magma"] = hf_row["T_magma"]
+
         #    reset target if during init phase 
         #    since these target masses will be adjusted depending on the true melt fraction and T_outgas
         if loop_counter["init"] < loop_counter["init_loops"]:
 
             # calculate target mass of atoms
             if COUPLER_options["solvevol_use_params"] > 0:
-                solvevol_target = solvevol_get_target_from_params(COUPLER_options)
+                solvevol_target = solvevol_get_target_from_params(solvevol_inp)
             else:
-                solvevol_target = solvevol_get_target_from_pressures(COUPLER_options)
+                solvevol_target = solvevol_get_target_from_pressures(solvevol_inp)
 
             # prevent numerical issues
             for key in solvevol_target.keys():
@@ -344,7 +348,7 @@ def main():
             # the model makes a poor guess for the composition. These are then discarded, 
             # so the warning should not propagate anywhere. Errors are still printed.
             warnings.filterwarnings("ignore", category=RuntimeWarning)
-            solvevol_result = solvevol_equilibrium_atmosphere(solvevol_target, COUPLER_options)
+            solvevol_result = solvevol_equilibrium_atmosphere(solvevol_target, solvevol_inp)
 
         for k in solvevol_result.keys():
             if k in hf_row.keys():
@@ -412,15 +416,17 @@ def main():
 
         ############### / ATMOSPHERE SUB-LOOP
 
+        # Append row to helpfile 
+        hf_all = ExtendHelpfile(hf_all, hf_row)
 
         # Write helpfile to disk
-        WriteHelpfileToCSV(hf_all)
+        WriteHelpfileToCSV(dirs["output"], hf_all)
 
 
         ############### CONVERGENCE CHECK 
 
         # Print info to terminal and log file
-        PrintCurrentState(time_dict, hf_row, COUPLER_options)
+        PrintCurrentState(time_dict, hf_row,)
 
         # Stop simulation when planet is completely solidified
         if (COUPLER_options["solid_stop"] == 1) and (hf_row["Phi_global"] <= COUPLER_options["phi_crit"]):

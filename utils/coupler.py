@@ -40,19 +40,19 @@ def latex_float(f):
     else:
         return float_str
 
-def PrintCurrentState(time_dict, hf_cur):
+def PrintCurrentState(time_dict:dict, hf_row:dict):
     PrintHalfSeparator()
     log.info("Runtime info...")
     log.info("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
     log.info("    Model time   :   %.2e   yr"    % float(time_dict["planet"]))
-    log.info("    T_surf       :   %.1f   K"     %     float(hf_cur["T_surf"]))
-    log.info("    T_magma      :   %.1f   K"     %     float(hf_cur["T_magma"]))
-    log.info("    P_surf       :   %.2e   bar"   %     float(hf_cur["P_surf"]))
-    log.info("    Phi_global   :   %.2e   "      %     float(hf_cur["Phi_global"]))
-    log.info("    Instellation :   %.2e   W/m^2" %     float(hf_cur["F_ins"]))
-    log.info("    F_int        :   %.2e   W/m^2" %     float(hf_cur["F_int"]))
-    log.info("    F_atm        :   %.2e   W/m^2" %     float(hf_cur["F_atm"])) 
-    log.info("    |F_net|      :   %.2e   W/m^2" % abs(float(hf_cur["F_net"])))
+    log.info("    T_surf       :   %.1f   K"     %     float(hf_row["T_surf"]))
+    log.info("    T_magma      :   %.1f   K"     %     float(hf_row["T_magma"]))
+    log.info("    P_surf       :   %.2e   bar"   %     float(hf_row["P_surf"]))
+    log.info("    Phi_global   :   %.2e   "      %     float(hf_row["Phi_global"]))
+    log.info("    Instellation :   %.2e   W/m^2" %     float(hf_row["F_ins"]))
+    log.info("    F_int        :   %.2e   W/m^2" %     float(hf_row["F_int"]))
+    log.info("    F_atm        :   %.2e   W/m^2" %     float(hf_row["F_atm"])) 
+    log.info("    |F_net|      :   %.2e   W/m^2" % abs(float(hf_row["F_net"])))
 
 
 def GetHelpfileKeys():
@@ -146,16 +146,16 @@ def ExtendHelpfile(current_hf:pd.DataFrame, new_row:dict):
     return pd.concat([current_hf, new_row], ignore_index=True) 
 
 
-def WriteHelpfileToCSV(current_hf):
+def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
     '''
     Write helpfile to a CSV file 
     '''
-    fpath = os.path.join(dirs["output"] , "runtime_helpfile.csv")
+    fpath = os.path.join(output_dir , "runtime_helpfile.csv")
     if os.path.exists(fpath):
         os.remove(fpath)
 
     current_hf.to_csv(fpath , index=False, sep="\t")
-    return 
+    return fpath
 
 
 def GetLastRowFromHelpfile(current_hf:pd.DataFrame):
@@ -164,7 +164,7 @@ def GetLastRowFromHelpfile(current_hf:pd.DataFrame):
     '''
     return current_hf.iloc[-1].to_dict()
 
-def ReadInitFile( init_file_passed , verbose=False):
+def ReadInitFile(init_file_passed:str, verbose=False):
 
     # Read in input file as dictionary
     COUPLER_options  = {}
