@@ -123,6 +123,7 @@ def main():
 
     # Calculate mantle mass (liquid + solid)
     hf_row["M_mantle"] = calc_mantle_mass(COUPLER_options)
+    hf_row["gravity"] = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
     
     # Zero-out volatiles, and ensure that they are all tracked
     for s in volatile_species:
@@ -168,8 +169,8 @@ def main():
     # Handle stellar spectrum...
 
     # Store copy of modern spectrum in memory (1 AU)
-    time_dict['sspec_prev'] = -math.inf
-    time_dict['sinst_prev'] = -math.inf
+    time_dict['sspec_prev'] = -np.inf
+    time_dict['sinst_prev'] = -np.inf
     star_modern_path = os.path.join(dirs["fwl"],COUPLER_options["star_spectrum"])
     shutil.copyfile(star_modern_path, os.path.join(dirs["output"],"-1.sflux"))
 
@@ -201,12 +202,8 @@ def main():
             raise Exception("Invalid stellar model '%d'" % COUPLER_options['star_model'])
         
     # Create lockfile 
-    keepalive_file = os.path.join(dirs["output"],"keepalive")
-    safe_rm(keepalive_file)
-    with open(keepalive_file, 'w') as fp:
-        fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
-    
-    
+    keepalive_file = CreateLockFile(dirs["output"])
+
     # Main loop
     UpdateStatusfile(dirs, 1)
     while not finished:
@@ -332,6 +329,7 @@ def main():
         solvevol_inp["M_mantle"] =   hf_row["M_mantle"]
         solvevol_inp["T_magma"] =    hf_row["T_magma"]
         solvevol_inp["Phi_global"] = hf_row["Phi_global"]
+        solvevol_inp["gravity"]  =   hf_row["gravity"]
 
         #    reset target if during init phase 
         #    since these target masses will be adjusted depending on the true melt fraction and T_magma

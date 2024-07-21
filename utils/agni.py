@@ -15,7 +15,6 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     # ---------------------------
     # Setup values to be provided to AGNI
     # ---------------------------
-    gravity  = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
     agni_debug = bool(log.getEffectiveLevel() == logging.DEBUG)
     try_spfile = os.path.join(dirs["output"] , "runtime.sf")
     
@@ -65,7 +64,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     cfg_toml["planet"]["albedo_b"] =        COUPLER_options["albedo_pl"]
     cfg_toml["planet"]["zenith_angle"] =    COUPLER_options["zenith_angle"]
     cfg_toml["planet"]["albedo_s"] =        COUPLER_options["albedo_s"]
-    cfg_toml["planet"]["gravity"] =         gravity
+    cfg_toml["planet"]["gravity"] =         hf_row["gravity"]
     cfg_toml["planet"]["radius"] =          COUPLER_options["radius"]
 
     # set composition

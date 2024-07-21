@@ -139,7 +139,6 @@ def latex_float(f):
     else:
         return float_str
 
-
 #===================================================================
 class MyFuncFormatter( object ):
 

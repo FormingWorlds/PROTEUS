@@ -24,10 +24,14 @@ def calc_eqm_temperature(I_0, ASF_sf, A_B):
     '''
     return (I_0 * ASF_sf * (1.0 - A_B) / const_sigma)**(1.0/4.0)
 
-# Handle optional command line arguments for PROTEUS
 def parse_console_arguments()->dict:
+    '''
+    Handle command line arguments for PROTEUS
+    '''
     parser = argparse.ArgumentParser(description='PROTEUS command line arguments')
+
     parser.add_argument('--cfg', type=str, default="input/default.cfg", help='Path to configuration file')
+
     args = vars(parser.parse_args())
     return args
 
@@ -41,6 +45,9 @@ def latex_float(f):
         return float_str
 
 def PrintCurrentState(time_dict:dict, hf_row:dict):
+    '''
+    Print the current state of the model to the logger
+    '''
     PrintHalfSeparator()
     log.info("Runtime info...")
     log.info("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
@@ -54,6 +61,15 @@ def PrintCurrentState(time_dict:dict, hf_row:dict):
     log.info("    F_atm        :   %.2e   W/m^2" %     float(hf_row["F_atm"])) 
     log.info("    |F_net|      :   %.2e   W/m^2" % abs(float(hf_row["F_net"])))
 
+def CreateLockFile(output_dir:str):
+    '''
+    Create a lock file which, if removed, will signal for the simulation to stop.
+    '''
+    keepalive_file = os.path.join(output_dir,"keepalive")
+    safe_rm(keepalive_file)
+    with open(keepalive_file, 'w') as fp:
+        fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
+    return keepalive_file
 
 def GetHelpfileKeys():
     '''
@@ -126,7 +142,7 @@ def CreateHelpfile():
     '''
     Create helpfile to hold output variables.
     '''
-    
+    log.debug("Creating new helpfile")
     return pd.DataFrame(columns=GetHelpfileKeys())
 
 def ZeroHelpfileRow():
@@ -142,6 +158,7 @@ def ExtendHelpfile(current_hf:pd.DataFrame, new_row:dict):
     '''
     Extend helpfile with new row of variables
     '''
+    log.debug("Extending helpfile with new row")
     
     # validate keys 
     missing_keys = set(GetHelpfileKeys()) - set(new_row.keys())
@@ -159,6 +176,8 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
     '''
     Write helpfile to a CSV file 
     '''
+    log.debug("Writing helpfile to CSV file")
+
     fpath = os.path.join(output_dir , "runtime_helpfile.csv")
     if os.path.exists(fpath):
         os.remove(fpath)
@@ -167,6 +186,10 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
     return fpath
 
 def ReadInitFile(init_file_passed:str, verbose=False):
+    '''
+    Read configuration file into a dictionary
+    '''
+    log.debug("Reading configuration file")
 
     # Read in input file as dictionary
     COUPLER_options  = {}
@@ -238,9 +261,6 @@ def ReadInitFile(init_file_passed:str, verbose=False):
 
                         if line.startswith("star"):
                             time_dict["offset"] = float(val.strip())
-
-    # Calculate gravity from mass and radius
-    COUPLER_options["gravity"] =  const_G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
 
     return COUPLER_options, time_dict
 

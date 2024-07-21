@@ -58,7 +58,7 @@ def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
     log.info("Plotting global fluxes")
 
     # Get values
-    hf_all = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep="\t")
+    hf_all = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=r"\s+")
     hf_all = hf_all.loc[hf_all["Time"]>t0]
 
     time = np.array(hf_all["Time"] )

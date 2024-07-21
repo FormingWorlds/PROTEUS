@@ -25,7 +25,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     # Read data
     #    Helpfiles...
     fpath = os.path.join(output_dir , "runtime_helpfile.csv")
-    hf_all = pd.read_csv(fpath, sep="\t")
+    hf_all = pd.read_csv(fpath, sep=r"\s+")
 
     #    Volatile parameters (keys=vols, vals=quantites_over_time)
     vol_present = {} # Is present ever? (true/false)
@@ -116,7 +116,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     xmin = max(tmin, 1.0)
     if logt:
         xmax = max(1.0e6,np.amax(hf_all["Time"]))
-        xlim = (xmin,10 ** math.ceil(math.log10(xmax*1.1)))
+        xlim = (xmin,10 ** np.ceil(np.log10(xmax*1.1)))
     else:
         xmax = np.amax(hf_all["Time"])
         xlim = (1.0, xmax)

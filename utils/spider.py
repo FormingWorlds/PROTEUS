@@ -359,7 +359,7 @@ def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict,
             # Calculate number of macro steps for SPIDER to perform within
             # this time-step of PROTEUS, which sets the number of json files.
             nsteps = 1
-            dtmacro = math.ceil(dtswitch / nsteps)   # Ensures that dtswitch is divisible by nsteps
+            dtmacro = np.ceil(dtswitch / nsteps)   # Ensures that dtswitch is divisible by nsteps
             dtswitch = nsteps * dtmacro
 
             log.info("New time-step is %1.2e years" % dtswitch)
@@ -388,7 +388,7 @@ def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict,
                         "-nstepsmacro",            "%d"  %(nstepsmacro), 
                         "-dtmacro",                "%.6e"%(dtmacro), 
                         "-radius",                 "%.6e"%(COUPLER_options["radius"]), 
-                        "-gravity",                "%.6e"%(-1.0 * COUPLER_options["gravity"]), 
+                        "-gravity",                "%.6e"%(-1.0 * hf_row["gravity"]), 
                         "-coresize",               "%.6e"%(COUPLER_options["planet_coresize"]),
                         "-grain",                  "%.6e"%(COUPLER_options["grain_size"]),
                     ]

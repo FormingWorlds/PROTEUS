@@ -23,37 +23,25 @@ const_G = 6.67428e-11        #Gravitational constant (2006 measurements)
 const_N_avogadro = 6.022136736e23  #Avogadro's number
 const_R_gas = 8.31446261815324 # Universal gas constant, J.K-1.mol-1
 
+molar_mass  = {
+            "H"   : 0.001008,             # kg mol−1 
+            "C"   : 0.012011,             # kg mol−1 
+            "O"   : 0.015999,             # kg mol−1 
+            "N"   : 0.014007,             # kg mol−1 
+            "S"   : 0.03206,              # kg mol−1
+            "He"  : 0.0040026,            # kg mol−1 
 
-# Elements
-H_mol_mass      = 0.001008              # kg mol−1
-C_mol_mass      = 0.012011              # kg mol−1
-O_mol_mass      = 0.015999              # kg mol−1
-N_mol_mass      = 0.014007              # kg mol−1
-S_mol_mass      = 0.03206               # kg mol−1
-He_mol_mass     = 0.0040026             # kg mol−1
-Ar_mol_mass     = 0.039948              # kg mol−1
-Ne_mol_mass     = 0.020180              # kg mol−1
-Kr_mol_mass     = 0.083798              # kg mol−1
-Xe_mol_mass     = 0.131293              # kg mol−1
-
-molar_mass      = {
-          "H2O" : 0.01801528,           # kg mol−1
-          "CO2" : 0.04401,              # kg mol−1
-          "H2"  : 0.00201588,           # kg mol−1
-          "CH4" : 0.01604,              # kg mol−1
-          "CO"  : 0.02801,              # kg mol−1
-          "N2"  : 0.028014,             # kg mol−1
-          "O2"  : 0.031999,             # kg mol−1
-          "SO2" : 0.064066,             # kg mol−1
-          "H2S" : 0.0341,               # kg mol−1 
-          "H"   : 0.001008,             # kg mol−1 
-          "C"   : 0.012011,             # kg mol−1 
-          "O"   : 0.015999,             # kg mol−1 
-          "N"   : 0.014007,             # kg mol−1 
-          "S"   : 0.03206,              # kg mol−1 
-          "S2"  : 0.0641,               # kg mol-1
-          "He"  : 0.0040026,            # kg mol−1 
-          "NH3" : 0.017031,             # kg mol−1 
+            "H2O" : 0.01801528,           # kg mol−1
+            "CO2" : 0.04401,              # kg mol−1
+            "H2"  : 0.00201588,           # kg mol−1
+            "CH4" : 0.01604,              # kg mol−1
+            "CO"  : 0.02801,              # kg mol−1
+            "N2"  : 0.028014,             # kg mol−1
+            "O2"  : 0.031999,             # kg mol−1
+            "SO2" : 0.064066,             # kg mol−1
+            "H2S" : 0.0341,               # kg mol−1 
+            "S2"  : 0.0641,               # kg mol-1
+            "NH3" : 0.017031,             # kg mol−1 
         }
 
 # Supported volatiles and elements

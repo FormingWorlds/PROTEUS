@@ -118,7 +118,7 @@ def parent(folder, samples, threads, s_width, s_centre,
         shutil.copy2(cfgfile, offchem_dir)
 
         # Read helpfile
-        helpfile_df = pd.read_csv(dirs["output"]+"runtime_helpfile.csv",sep='\t')
+        helpfile_df = pd.read_csv(dirs["output"]+"runtime_helpfile.csv",sep=r"\s+")
 
         # Find out which years we have both SPIDER and JANUS data for
         evolution_json = glob.glob(dirs["output"]+"/data/*.json")
