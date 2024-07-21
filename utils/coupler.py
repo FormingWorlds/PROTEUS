@@ -82,20 +82,22 @@ def GetHelpfileKeys():
             # Model tracking 
             "Time", 
 
-            # Stellar 
-            "R_star", 
-
             # Temperatures 
             "T_surf", "T_magma", "T_eqm", "T_skin",
 
-            # Planetary fluxes 
-            "F_int", "F_atm", "F_net", "F_olr", "F_ins", "F_sct", 
+            # Energy fluxes 
+            "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins",
+
+            # Interior properties
+            "gravity", "Phi_global", "RF_depth", 
+            "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid",
+
+            # Stellar 
+            "R_star", 
 
             # Surface composition
             "P_surf", "atm_kg_per_mol", # more keys are added below
-            
-            # Interior properties
-            "Phi_global", "RF_depth", "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid",
+           
             ]
 
     # gases

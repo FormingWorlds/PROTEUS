@@ -531,7 +531,6 @@ def solvevol_get_target_from_pressures(ddict):
         if is_included(vol, ddict):
             pin_dict[vol] = ddict[vol+"_initial_bar"]
 
-    # check total pressure 
     p_tot = np.sum(list(pin_dict.values()))
     if p_tot < 1.0e-3:
         raise Exception("Initial surface pressure too low! (%.2e bar)"%p_tot)
@@ -639,10 +638,10 @@ def solvevol_equilibrium_atmosphere(target_d, ddict):
 
         # Defaults
         outdict[s+"_bar"]   = 0.0      # surface partial pressure [bar]
-        outdict[s+"_atm_kg"]    = 0.0      # kg in atmosphere
-        outdict[s+"_liquid_kg"] = 0.0      # kg in liquid
-        outdict[s+"_solid_kg"]  = 0.0      # kg in solid (not handled here)
-        outdict[s+"_total_kg"]  = 0.0      # kg (total)
+        outdict[s+"_kg_atm"]    = 0.0      # kg in atmosphere
+        outdict[s+"_kg_liquid"] = 0.0      # kg in liquid
+        outdict[s+"_kg_solid"]  = 0.0      # kg in solid (not handled here)
+        outdict[s+"_kg_total"]  = 0.0      # kg (total)
 
         # Store partial pressures
         if s in p_d.keys():
@@ -664,26 +663,26 @@ def solvevol_equilibrium_atmosphere(target_d, ddict):
         tot_kg = 0.0
 
         if s in mass_atm_d.keys():
-            outdict[s+"_atm_kg"] = mass_atm_d[s]
+            outdict[s+"_kg_atm"] = mass_atm_d[s]
             tot_kg += mass_atm_d[s]
 
         if s in mass_int_d.keys():
-            outdict[s+"_liquid_kg"] = mass_int_d[s]
-            outdict[s+"_solid_kg"] = 0.0
+            outdict[s+"_kg_liquid"] = mass_int_d[s]
+            outdict[s+"_kg_solid"] = 0.0
             tot_kg += mass_int_d[s]
 
-        outdict[s+"_total_kg"] = tot_kg
+        outdict[s+"_kg_total"] = tot_kg
 
     # Total atmosphere mass 
     for s in volatile_species:
-        outdict["M_atm"] += outdict[s+"_atm_kg"]
+        outdict["M_atm"] += outdict[s+"_kg_atm"]
 
     # Store moles of gases and atmosphere total mmw 
     outdict["atm_kg_per_mol"] = 0.0
     for s in volatile_species:
-        outdict[s+"_mol_atm"]    = outdict[s+"_atm_kg"] / molar_mass[s]
-        outdict[s+"_mol_solid"]  = outdict[s+"_solid_kg"] / molar_mass[s]
-        outdict[s+"_mol_liquid"] = outdict[s+"_liquid_kg"] / molar_mass[s]
+        outdict[s+"_mol_atm"]    = outdict[s+"_kg_atm"] / molar_mass[s]
+        outdict[s+"_mol_solid"]  = outdict[s+"_kg_solid"] / molar_mass[s]
+        outdict[s+"_mol_liquid"] = outdict[s+"_kg_liquid"] / molar_mass[s]
         outdict[s+"_mol_total"]  = outdict[s+"_mol_atm"] + outdict[s+"_mol_solid"] + outdict[s+"_mol_liquid"]
 
         outdict["atm_kg_per_mol"] += outdict[s+"_vmr"] * molar_mass[s]
@@ -693,8 +692,8 @@ def solvevol_equilibrium_atmosphere(target_d, ddict):
         for e2 in element_list:
             if e1==e2:
                 continue 
-            em1 = outdict[e1+"_atm_kg"]
-            em2 = outdict[e2+"_atm_kg"]
+            em1 = outdict[e1+"_kg_atm"]
+            em2 = outdict[e2+"_kg_atm"]
             if em2 == 0:
                 continue  # avoid division by zero
             outdict["%s/%s_atm"%(e1,e2)] = em1/em2

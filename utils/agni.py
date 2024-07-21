@@ -174,7 +174,6 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
 
     # Small steps after first iters, since it will be *near* the solution
     # Tighter tolerances during first iters, to ensure consistent coupling
-    # if loop_counter["total"] > loop_counter["init_loops"]+1:
     if loop_counter["total"] > 1:
         cfg_toml["execution"]["dx_max"] = 25.0
     else:
@@ -334,7 +333,8 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row ):
     if (COUPLER_options["prevent_warming"] == 1):
         F_atm_new = max( 1e-8 , F_atm_new )
         
-    log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
+    log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % 
+                                        (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
     output = {}
     output["F_atm"]  = F_atm_new
