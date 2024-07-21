@@ -16,9 +16,6 @@ from utils.spider import RunSPIDER
 from utils.surface_gases import *
 from utils.logging import setup_logger
 
-from plot.cpl_fluxes import *
-from plot.cpl_heatingrates import *
-
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
 

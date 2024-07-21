@@ -19,7 +19,7 @@ def plot_atmosphere( output_dir, times, plot_format="pdf"):
     sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm) # 
     sm.set_array([])
 
-    scale = 1.2
+    scale = 1.3
     fig,(ax0,ax1) = plt.subplots(2,1, sharex=True, figsize=(5*scale,7*scale))
 
     for i, t in enumerate( times ):
@@ -42,12 +42,12 @@ def plot_atmosphere( output_dir, times, plot_format="pdf"):
 
     #####  T-Z
     # fig_o.set_myaxes( ax0, xlabel='$T$ (K)', ylabel='$z_\mathrm{atm}$\n(km)', xmin=xmin, xmax=xmax, ymin=0, ymax=ymax_atm_z, xticks=xticks )
-    ax0.set_ylabel(r"Atmosphere height, $z_\mathrm{atm}$ [km]")
+    ax0.set_ylabel(r"Height [km]")
 
     #####  T-P
     # fig_o.set_myaxes( ax1, xlabel='$T$ (K)', ylabel='$P_\mathrm{atm}$\n(bar)', xmin=xmin, xmax=xmax, xticks=xticks )
-    ax1.set_xlabel("Temperature, $T$ [K]")
-    ax1.set_ylabel("Atmosphere pressure, $P$ [bar]")
+    ax1.set_xlabel("Temperature [K]")
+    ax1.set_ylabel("Pressure [bar]")
     ax1.invert_yaxis()
 
     # Legend

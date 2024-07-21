@@ -14,7 +14,8 @@ import plot.cpl_stacked as cpl_stacked
 import plot.cpl_interior as cpl_interior
 import plot.cpl_sflux as cpl_sflux
 import plot.cpl_sflux_cross as cpl_sflux_cross
-import plot.cpl_fluxes as cpl_fluxes
+import plot.cpl_fluxes_global as cpl_fluxes_global
+import plot.cpl_fluxes_atmosphere as cpl_fluxes_atmosphere
 import plot.cpl_interior_cmesh as cpl_interior_cmesh
 
 def CalculateEqmTemperature(I_0, ASF_sf, A_B):
@@ -325,8 +326,7 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
 
         if COUPLER_options["atmosphere_model"] != 1:
             # don't make this plot for AGNI, since it will do it itself
-            nc_path = output_dir + "/data/%d_atm.nc"%(int(output_times[-1]))
-            cpl_fluxes.plot_fluxes_atmosphere(output_dir, nc_path, COUPLER_options["plot_format"])
+            cpl_fluxes_atmosphere.plot_fluxes_atmosphere(output_dir, COUPLER_options["plot_format"])
 
 
     # Only at the end of the simulation
@@ -335,7 +335,7 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
         cpl_interior_cmesh.plot_interior_cmesh(output_dir, plot_format=COUPLER_options["plot_format"])
         cpl_sflux.plot_sflux(output_dir, plot_format=COUPLER_options["plot_format"])
         cpl_sflux_cross.plot_sflux_cross(output_dir, plot_format=COUPLER_options["plot_format"])
-        cpl_fluxes.plot_fluxes_global(output_dir, COUPLER_options)
+        cpl_fluxes_global.plot_fluxes_global(output_dir, COUPLER_options)
  
     # Close all figures
     plt.close()
