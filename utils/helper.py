@@ -21,14 +21,18 @@ def natural_sort(l):
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
     return sorted(l, key = alphanum_key)
 
-# Savely remove a file
-def safe_rm(fpath):
+def safe_rm(fpath:str):
+    '''
+    Safely remove a file 
+    '''
     fpath = os.path.abspath(fpath)
     if os.path.exists(fpath):
         os.remove(fpath)
 
-# Get comment from status
 def CommentFromStatus(status:int):
+    '''
+    Convert status number into comment string
+    '''
     desc = ""
     match status:
         # Running cases

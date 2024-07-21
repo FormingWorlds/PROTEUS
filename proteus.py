@@ -122,7 +122,7 @@ def main():
     hf_row["F_int"] = hf_row["F_atm"]
 
     # Calculate mantle mass (liquid + solid)
-    hf_row["M_mantle"] = calc_mantle_mass(COUPLER_options)
+    hf_row["M_mantle"] = CalculateMantleMass(COUPLER_options)
     hf_row["gravity"] = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
     
     # Zero-out volatiles, and ensure that they are all tracked
@@ -146,7 +146,8 @@ def main():
         key_pp = str(s+"_initial_bar")
         key_in = str(s+"_included")
 
-        log.info("    %-6s : %-8.2f bar (included = %s)"%(s, COUPLER_options[key_pp], str(COUPLER_options[key_in]>0)))
+        log.info("    %-6s : %-8.2f bar (included = %s)"%(s, COUPLER_options[key_pp], 
+                                                          str(COUPLER_options[key_in]>0)))
 
         if COUPLER_options[key_in] > 0:
             inc_vols.append(s)
@@ -186,13 +187,18 @@ def main():
             star_struct_modern.CalcBandFluxes()
 
             # get best rotation percentile 
-            star_pctle, _ = mors.synthesis.FitModernProperties(star_struct_modern, COUPLER_options["star_mass"], COUPLER_options["star_age_modern"]/1e6)
+            star_pctle, _ = mors.synthesis.FitModernProperties(star_struct_modern, 
+                                                               COUPLER_options["star_mass"], 
+                                                               COUPLER_options["star_age_modern"]/1e6)
 
             # modern properties 
-            star_props_modern = mors.synthesis.GetProperties(COUPLER_options["star_mass"], star_pctle, COUPLER_options["star_age_modern"]/1e6)
+            star_props_modern = mors.synthesis.GetProperties(COUPLER_options["star_mass"], 
+                                                             star_pctle, 
+                                                             COUPLER_options["star_age_modern"]/1e6)
 
         case 1:  # BARAFFE
-            modern_wl, modern_fl = mors.ModernSpectrumLoad(star_modern_path, dirs['output']+'/-1.sflux') 
+            modern_wl, modern_fl = mors.ModernSpectrumLoad(star_modern_path, 
+                                                           dirs['output']+'/-1.sflux') 
 
             mors.DownloadEvolutionTracks("/Baraffe")
             baraffe = mors.BaraffeTrack(COUPLER_options["star_mass"])
@@ -238,14 +244,19 @@ def main():
 
                 match COUPLER_options['star_model']:
                     case 0:
-                        hf_row["R_star"] = mors.Value(COUPLER_options["star_mass"],time_dict["star"]/1e6, 'Rstar') * mors.const.Rsun * 1.0e-2
-                        S_0 =  mors.Value(COUPLER_options["star_mass"], time_dict["star"]/1e6, 'Lbol') * L_sun / ( 4. * np.pi * AU * AU * COUPLER_options["mean_distance"]**2.0 )
+                        hf_row["R_star"] = mors.Value(COUPLER_options["star_mass"],
+                                                      time_dict["star"]/1e6, 'Rstar') * mors.const.Rsun * 1.0e-2
+                        S_0 =  mors.Value(COUPLER_options["star_mass"], 
+                                          time_dict["star"]/1e6, 'Lbol') * L_sun / ( 4. * np.pi * AU * AU * COUPLER_options["mean_distance"]**2.0 )
                     case 1:
                         hf_row["R_star"] = baraffe.BaraffeStellarRadius(time_dict["star"])
-                        S_0 = baraffe.BaraffeSolarConstant(time_dict["star"], COUPLER_options["mean_distance"])
+                        S_0 = baraffe.BaraffeSolarConstant(time_dict["star"], 
+                                                           COUPLER_options["mean_distance"])
 
                 # Calculate new eqm temperature
-                T_eqm_new = calc_eqm_temperature(S_0, COUPLER_options["asf_scalefactor"], COUPLER_options["albedo_pl"])
+                T_eqm_new = CalculateEqmTemperature(S_0,
+                                                 COUPLER_options["asf_scalefactor"], 
+                                                 COUPLER_options["albedo_pl"])
                 
             else:
                 log.info("Stellar heating is disabled")
@@ -267,11 +278,15 @@ def main():
             log.info("Updating stellar spectrum") 
             match COUPLER_options['star_model']: 
                 case 0:
-                    synthetic = mors.synthesis.CalcScaledSpectrumFromProps(star_struct_modern, star_props_modern, time_dict["star"]/1e6)
+                    synthetic = mors.synthesis.CalcScaledSpectrumFromProps(star_struct_modern, 
+                                                                           star_props_modern, 
+                                                                           time_dict["star"]/1e6)
                     fl = synthetic.fl   # at 1 AU
                     wl = synthetic.wl
                 case 1:
-                    fl = baraffe.BaraffeSpectrumCalc(time_dict["star"], COUPLER_options["star_luminosity_modern"], modern_fl)
+                    fl = baraffe.BaraffeSpectrumCalc(time_dict["star"], 
+                                                     COUPLER_options["star_luminosity_modern"], 
+                                                     modern_fl)
                     wl = modern_wl
 
             # Scale fluxes from 1 AU to TOA 
@@ -316,7 +331,8 @@ def main():
             prev_T_magma = hf_all.iloc[-1]["T_magma"]
 
         # Run SPIDER
-        RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all, hf_row )
+        RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, 
+                        loop_counter, hf_all, hf_row )
         spider_result = ReadSPIDER(dirs, time_dict, COUPLER_options, prev_T_magma)
 
         for k in spider_result.keys():
@@ -332,7 +348,8 @@ def main():
         solvevol_inp["gravity"]  =   hf_row["gravity"]
 
         #    reset target if during init phase 
-        #    since these target masses will be adjusted depending on the true melt fraction and T_magma
+        #    since these target masses will be adjusted depending 
+        #    on the true melt fraction and T_magma
         if loop_counter["init"] < loop_counter["init_loops"]:
 
             # calculate target mass of atoms
@@ -369,10 +386,12 @@ def main():
         time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
 
         # Update init loop counter
-        if loop_counter["init"] < loop_counter["init_loops"]: # Next init iter
+        # Next init iter
+        if loop_counter["init"] < loop_counter["init_loops"]: 
             loop_counter["init"]    += 1
             time_dict["planet"]     = 0.
-        if loop_counter["total"] >= loop_counter["init_loops"]: # Reset restart flag once SPIDER has correct heat flux
+        # Reset restart flag once SPIDER has correct heat flux
+        if loop_counter["total"] >= loop_counter["init_loops"]: 
             IC_INTERIOR = 2
 
         # Adjust total iteration counters
@@ -393,17 +412,20 @@ def main():
                     hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
                 if COUPLER_options["atmosphere_model"] == 0:
-                    # Run JANUS: use the general adiabat to create a PT profile, then calculate fluxes
+                    # Run JANUS: 
+                    # Use the general adiabat to create a PT profile, then calculate fluxes
                     atm = StructAtm( dirs, hf_row, COUPLER_options )
                     atm_output = RunJANUS( atm, time_dict, dirs, COUPLER_options, hf_all)
 
                 elif COUPLER_options["atmosphere_model"] == 1:
                     # Run AGNI 
-                    atm_output = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row)
+                    atm_output = RunAGNI(loop_counter, time_dict, dirs, 
+                                         COUPLER_options, hf_row)
 
                 elif COUPLER_options["atmosphere_model"] == 2:
                     # Run dummy atmosphere model 
-                    atm_output = RunDummyAtm(dirs, COUPLER_options, hf_row)
+                    atm_output = RunDummyAtm(dirs, COUPLER_options["T_magma"], 
+                                                            COUPLER_options["F_ins"])
                     
                 else:
                     UpdateStatusfile(dirs, 20)

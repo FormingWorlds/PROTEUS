@@ -17,7 +17,7 @@ import plot.cpl_sflux_cross as cpl_sflux_cross
 import plot.cpl_fluxes as cpl_fluxes
 import plot.cpl_interior_cmesh as cpl_interior_cmesh
 
-def calc_eqm_temperature(I_0, ASF_sf, A_B):
+def CalculateEqmTemperature(I_0, ASF_sf, A_B):
     '''
     Calculate planetary equilibrium temperature.
     Params: Stellar flux, ASF scale factor, and bond albedo.

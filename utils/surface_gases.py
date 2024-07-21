@@ -14,6 +14,34 @@ log = logging.getLogger("PROTEUS")
 # Solve for the equilibrium chemistry of a magma ocean atmosphere
 # for a given set of solubility and redox relations
 
+def CalculateMantleMass(ddict:dict)->float:
+    '''
+    A very simple interior structure model. 
+
+    This calculates mantle mass given planetary mass, radius, and core fraction. This 
+    assumes a core density equal to that of Earth's, and that the planet mass is simply 
+    the sum of mantle and core.
+    '''
+    
+    earth_fr = 0.55     # earth core radius fraction
+    earth_fm = 0.325    # earth core mass fraction  (https://arxiv.org/pdf/1708.08718.pdf)
+    earth_m  = 5.97e24  # kg
+    earth_r  = 6.37e6   # m
+
+    core_rho = (3.0 * earth_fm * earth_m) / (4.0 * np.pi * ( earth_fr * earth_r )**3.0 )  # core density [kg m-3]
+    log.debug("Estimating core density to be %g kg m-3" % core_rho)
+
+    # Calculate mantle mass by subtracting core from total
+    core_mass = core_rho * 4.0/3.0 * np.pi * (ddict["radius"] * ddict["planet_coresize"] )**3.0
+    mantle_mass = ddict["mass"] - core_mass 
+    log.info("Total mantle mass is %.2e kg" % mantle_mass)
+    if (mantle_mass <= 0.0):
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Something has gone wrong (mantle mass is negative)")
+    
+    return mantle_mass
+
+
 class OxygenFugacity:
     """log10 oxygen fugacity as a function of temperature"""
 
@@ -271,40 +299,15 @@ def solvevol_get_partial_pressures(pin, ddict):
     return p_d
 
 
-def calc_mantle_mass(ddict):
-    # Get core's average density using Earth values
-    earth_fr = 0.55     # earth core radius fraction
-    earth_fm = 0.325    # earth core mass fraction  (https://arxiv.org/pdf/1708.08718.pdf)
-    earth_m  = 5.97e24  # kg
-    earth_r  = 6.37e6   # m
 
-    core_rho = (3.0 * earth_fm * earth_m) / (4.0 * np.pi * ( earth_fr * earth_r )**3.0 )  # core density [kg m-3]
-    log.debug("Estimating core density to be %g kg m-3" % core_rho)
-
-    # Calculate mantle mass by subtracting core from total
-    core_mass = core_rho * 4.0/3.0 * np.pi * (ddict["radius"] * ddict["planet_coresize"] )**3.0
-    mantle_mass = ddict["mass"] - core_mass 
-    log.info("Total mantle mass is %.2e kg" % mantle_mass)
-    if (mantle_mass <= 0.0):
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Something has gone wrong (mantle mass is negative)")
-    
-    return mantle_mass
-
-
-def solvevol_get_total_pressure(pin, ddict):
+def solvevol_get_total_pressure(p_d):
     """Sum partial pressures to get total pressure"""
+    return sum(p_d.values())
 
-    p_d = solvevol_get_partial_pressures(pin, ddict)
-    ptot = sum(p_d.values())
-
-    return ptot
-
-def solvevol_atmosphere_mean_molar_mass(pin, ddict):
+def solvevol_atmosphere_mean_molar_mass(p_d):
     """Mean molar mass of the atmosphere"""
 
-    p_d = solvevol_get_partial_pressures(pin, ddict)
-    ptot = solvevol_get_total_pressure(pin, ddict)
+    ptot = solvevol_get_total_pressure(p_d)
 
     mu_atm = 0
     for key, value in p_d.items():
@@ -313,11 +316,13 @@ def solvevol_atmosphere_mean_molar_mass(pin, ddict):
 
     return mu_atm
 
+
+
 def solvevol_atmosphere_mass(pin, ddict):
     """Atmospheric mass of volatiles and totals for H, C, and N"""
 
     p_d = solvevol_get_partial_pressures(pin, ddict)
-    mu_atm = solvevol_atmosphere_mean_molar_mass(pin, ddict)
+    mu_atm = solvevol_atmosphere_mean_molar_mass(p_d)
 
     mass_atm_d = {}
     for key, value in p_d.items():
@@ -374,7 +379,7 @@ def solvevol_dissolved_mass(pin, ddict):
     mass_int_d = {}
 
     p_d = solvevol_get_partial_pressures(pin, ddict)
-    ptot = solvevol_get_total_pressure(pin, ddict)
+    ptot = solvevol_get_total_pressure(p_d)
 
     prefactor = 1E-6*ddict['M_mantle']*ddict['Phi_global']
 
@@ -476,7 +481,7 @@ def get_log_rand(rng):
     r = np.random.uniform(low=rng[0], high=rng[1])
     return 10.0**r
 
-def solvevol_get_initial_pressures(target_d, log=True):
+def solvevol_get_initial_pressures(target_d):
     """Get initial guesses of partial pressures"""
 
     # all in bar
