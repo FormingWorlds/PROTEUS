@@ -3,7 +3,6 @@
 # Import utils- and plot-specific modules
 from utils.modules_ext import *
 from utils.plot import *
-from utils.spider import MyJSON, get_all_output_times
 
 log = logging.getLogger("PROTEUS")
 
@@ -16,7 +15,7 @@ def plot_atmosphere( output_dir, times, plot_format="pdf"):
     # http://tex.stackexchange.com/questions/39383/determine-text-width
 
     norm = mpl.colors.Normalize(vmin=times[0], vmax=times[-1])
-    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm) # 
+    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)  
     sm.set_array([])
 
     scale = 1.3
@@ -78,17 +77,22 @@ def main():
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
 
-    output_list = get_all_output_times(dirs["output"])
+    files = glob.glob(os.path.join(dirs["output"], "data", "*_atm.nc"))
+    times = [int(f.split("/")[-1].split("_")[0]) for f in files]
 
-    if len(output_list) <= 8:
-        plot_list = output_list
+    if len(times) <= 8:
+        plot_list = times
     else:
-        plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
+        plot_list = [ times[0], 
+                     times[int(round(len(times)*(2./100.)))], 
+                     times[int(round(len(times)*(15./100.)))], 
+                     times[int(round(len(times)*(22./100.)))], 
+                     times[int(round(len(times)*(33./100.)))], 
+                     times[int(round(len(times)*(50./100.)))], 
+                     times[int(round(len(times)*(66./100.)))], 
+                     times[-1]
+                     ]
     print("Snapshots:", plot_list)
-
-    # # Plot only last snapshot
-    # plot_current_mixing_ratio( output_dir=output_dir, times=plot_list[-1], vulcan_setting=0 )
-
     # Plot fixed set from above
     plot_atmosphere( output_dir=dirs["output"], times=plot_list, plot_format=COUPLER_options["plot_format"] )
 
