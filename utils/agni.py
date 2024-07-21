@@ -281,10 +281,10 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row ):
             log.warning("Attempt %d failed" % attempts)
             offset = 1.0 
 
-            if attempts == 2:
+            if attempts == 1:
                 linesearch = True
                 easy_start = False
-            elif attempts == 3:
+            elif attempts == 2:
                 linesearch = True 
                 easy_start = True 
             else:
