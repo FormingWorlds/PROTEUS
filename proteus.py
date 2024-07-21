@@ -421,8 +421,8 @@ def main():
 
                 elif COUPLER_options["atmosphere_model"] == 2:
                     # Run dummy atmosphere model 
-                    atm_output = RunDummyAtm(dirs, COUPLER_options["T_magma"], 
-                                                            COUPLER_options["F_ins"])
+                    atm_output = RunDummyAtm(dirs, COUPLER_options, 
+                                             hf_row["T_magma"], hf_row["F_ins"])
                     
                 else:
                     UpdateStatusfile(dirs, 20)
