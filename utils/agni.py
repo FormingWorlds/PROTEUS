@@ -9,8 +9,8 @@ import tomlkit as toml
 log = logging.getLogger("PROTEUS")
 
 def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict, 
-              hf_row:dict, make_plots:bool, initial_offset:float, 
-              linesearch:bool, dx_max:float)->bool:
+              hf_row:dict, make_plots:bool, initial_offset:float, easy_start:bool,
+              linesearch:bool, dx_max:float, resume_prev:bool)->bool:
 
     # ---------------------------
     # Setup values to be provided to AGNI
@@ -125,6 +125,7 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
     cfg_toml["execution"]["rayleigh"] =     bool(COUPLER_options["insert_rscatter"] == 1)
     cfg_toml["execution"]["cloud"] =        bool(COUPLER_options["water_cloud"] == 1)
     cfg_toml["execution"]["linesearch"] =   linesearch
+    cfg_toml["execution"]["easy_start"] =   easy_start
     cfg_toml["execution"]["dx_max"] =       dx_max
 
     if COUPLER_options["atmosphere_solve_energy"] == 0:
@@ -140,7 +141,7 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
         cfg_toml["execution"]["solvers"] = []
 
 
-    elif loops_total > 1:
+    elif (loops_total > 1) and resume_prev:
         # If solving for RCE and are current inside the init stage, use old T(p)
         # as initial guess for solver.
         ncdfs = glob.glob(os.path.join(dirs["output"], "data","*_atm.nc"))
@@ -152,7 +153,7 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
 
     else:
         log.debug("Initialise isothermal")
-        cfg_toml["execution"]["initial_state"] = ["iso", "3500"]
+        cfg_toml["execution"]["initial_state"] = ["iso", "%.2f"%(hf_row["T_surf"]-1.0)]
         
     # Solution stuff 
     surf_state = int(COUPLER_options["atmosphere_surf_state"])
@@ -250,23 +251,46 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     # tracking
     agni_success = False  # success?
     attempts = 0          # number of attempts so far
+
+    # default run parameters
     linesearch = True
+    easy_start = False
+    resume_prev= True
     offset = 0.0
     dx_max = 100.0
-
-    # first iteration 
-    if loops_total < 2:
-        linesearch = False
-        dx_max = 260.0
 
     # make attempts
     while not agni_success:
         attempts += 1
         log.info("Attempt %d" % attempts)
 
+        if (attempts == 1) and (loops_total < 2):
+            # Initial steps
+            linesearch = True
+            easy_start = True
+            resume_prev= False
+            dx_max = 200.0
+
+        elif attempts == 2:
+            # Try offsetting temperature profile and decreasing step size
+            linesearch = False
+            offset     = 0.2
+            dx_max     = 50.0
+            resume_prev= True
+
+        elif attempts == 3:
+            # Try starting over
+            linesearch  = True 
+            dx_max      = 200.0
+            resume_prev = False 
+            easy_start  = True 
+
+        else:
+            raise Exception("Maximum attempts when executing AGNI")
+
         # Try the module
-        agni_success = _try_agni(loops_total, dirs, COUPLER_options, hf_row, 
-                                        make_plots, offset, linesearch, dx_max)
+        agni_success = _try_agni(loops_total, dirs, COUPLER_options, hf_row, make_plots, 
+                                 offset, easy_start, linesearch, dx_max, resume_prev)
 
         if agni_success:
             # success
@@ -275,17 +299,6 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
         else:
             # failure
             log.warning("Attempt %d failed" % attempts)
-
-            if attempts == 1:
-                linesearch = True
-                offset     = 0.05
-                dx_max     = 50.0
-            elif attempts == 2:
-                linesearch = True 
-                offset     = 1.0
-                dx_max     = 200.0
-            else:
-                log.errror("Max attempts when executing AGNI")
 
                 
     # Move files

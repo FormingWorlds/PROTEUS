@@ -418,12 +418,6 @@ configuration, but they must all be passed via the config file.
      - Float
      - Between zero and unity, exclusive.  
 
-   * - ``ic_interior_filename``
-     - Resume PROTEUS from this SPIDER JSON file. Currently untested.   
-     - False
-     - String 
-     - Path to file.
-
    * - ``ic_adiabat_entropy``
      - Entropy at the surface for intialising a SPIDER at the start of the run, in units of  [J kg-1 K-1].
      - False

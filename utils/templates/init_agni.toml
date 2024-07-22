@@ -15,7 +15,7 @@ title = "PROTEUS base"
 
 [execution]
     clean_output    = false
-    max_steps       = 150    
+    max_steps       = 160    
     max_runtime     = 900    
     continua        = true   
     aerosol         = false  
@@ -25,7 +25,6 @@ title = "PROTEUS base"
     latent_heat     = true 
     convection      = true 
     solvers         = ["newton"]  
-    easy_start      = false
     converge_atol   = 2.0e-3  
     converge_rtol   = 5.0e-2  
 
