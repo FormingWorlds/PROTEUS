@@ -9,12 +9,9 @@ import utils.constants
 
 from utils.constants import *
 from utils.coupler import *
-from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
-from utils.agni import RunAGNI
-from utils.dummy_atmosphere import RunDummyAtm
 from utils.spider import RunSPIDER
 from utils.surface_gases import *
-from utils.logging import setup_logger, GetNextLogfilePath
+from utils.logging import SetupLogger, GetNextLogfilePath
 
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
@@ -26,6 +23,7 @@ def main():
 
     # Parse console arguments
     args = parse_console_arguments()
+    resume = bool(args["resume"])
 
     # Read in COUPLER input file
     cfg_file = os.path.abspath(str(args["cfg"]))
@@ -39,24 +37,27 @@ def main():
     from utils.constants import dirs
     UpdateStatusfile(dirs, 0)
 
+    # Clean output directory 
+    if not resume:
+        CleanDir(dirs["output"])
+        CleanDir(os.path.join(dirs['output'], 'data'))
+
     # Get logfile path 
     logpath = GetNextLogfilePath(dirs["output"])
     
     # Switch to logger 
-    setup_logger(logpath=logpath, logterm=True, level=COUPLER_options["log_level"])
+    SetupLogger(logpath=logpath, logterm=True, level=COUPLER_options["log_level"])
     log = logging.getLogger("PROTEUS")
 
+    # Print information to logger
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     log.info("            PROTEUS framework (version 0.1)            ")
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-
-    os.chdir(dirs["coupler"])
-
     log.info(" ")
     start_time = datetime.now()
     log.info("Current time: " + start_time.strftime('%Y-%m-%d_%H:%M:%S'))
     log.info("Hostname    : " + str(os.uname()[1]))
-    log.info("PROTEUS hash: " + GitRevision(os.environ.get("COUPLER_DIR"))) 
+    log.info("PROTEUS hash: " + GitRevision(dirs["coupler"])) 
     log.info("Config file : " + cfg_file)
     log.info("Output dir  : " + dirs["output"])
     log.info("FWL data dir: " + dirs["fwl"])
@@ -67,14 +68,11 @@ def main():
     # Count iterations
     loop_counter = { 
                     "total": 0,            # Total number of iters performed
-                    "total_min"  : 10,     # Minimum number of total loops
+                    "total_min"  : 5,      # Minimum number of total loops
                     "total_loops": COUPLER_options["iter_max"],   # Maximum number of total loops
 
                     "init": 0,             # Number of init iters performed
                     "init_loops": 2,       # Maximum number of init iters
-
-                    "atm": 0,              # Number of atmosphere sub-iters performed
-                    "atm_loops":  20,      # Maximum number of atmosphere sub-iters
 
                     "steady": 0,           # Number of iterations passed since steady-state declared
                     "steady_loops": 3,     # Number of iterations to perform post-steady state
@@ -84,18 +82,15 @@ def main():
     # Model has completed?
     finished = False
 
-    # Model is resuming from previous state?
-    resume = bool(args["resume"])
+    # Is the model resuming from a previous state?
     if not resume:
-        # Clean output folders
-        CleanDir( dirs["output"] , keep_stdlog=True)
-        CleanDir( dirs['output']+'data/')
+        # New simulation
 
         # SPIDER initial condition
         IC_INTERIOR = 1
 
         # Copy config file to output directory, for future reference
-        shutil.copyfile( args["cfg"], dirs["output"]+"/init_coupler.cfg")
+        shutil.copyfile(args["cfg"], os.path.join(dirs["output"],"init_coupler.cfg"))
 
         # Generate running helpfile of output variables
         hf_all = CreateHelpfile()
@@ -135,6 +130,7 @@ def main():
         log.info("Included volatiles: " + str(inc_vols))
 
     else:
+        # Resuming from disk
         log.info("Resuming the simulation from the disk")
 
         # SPIDER initial condition
@@ -163,6 +159,16 @@ def main():
         for e in ["H","C","N","S"]:
             solvevol_target[e] = hf_row[e+"_kg_total"]
 
+    # Import the appropriate atmosphere module 
+    if COUPLER_options["atmosphere_model"] == 0:
+        from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
+    elif COUPLER_options["atmosphere_model"] == 1:
+        from utils.agni import RunAGNI
+    elif COUPLER_options["atmosphere_model"] == 2:
+        from utils.dummy_atmosphere import RunDummyAtm
+    else:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Invalid atmosphere model")
 
     # Download all basic data.
     # (to be improved such that we only download the one we need)
@@ -414,7 +420,6 @@ def main():
             IC_INTERIOR = 2
 
         # Adjust total iteration counters
-        loop_counter["atm"]         = 0
         loop_counter["total"]       += 1
 
         ############### / UPDATE TIME
@@ -423,44 +428,31 @@ def main():
 
         ############### ATMOSPHERE SUB-LOOP
         PrintHalfSeparator()
-        while (loop_counter["atm"] == 0):
+        if COUPLER_options["shallow_ocean_layer"] == 1:
+            hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
-            # Initialize atmosphere structure
-            if (loop_counter["atm"] == 0) or (loop_counter["total"] <= 2):
+        if COUPLER_options["atmosphere_model"] == 0:
+            # Run JANUS: 
+            # Use the general adiabat to create a PT profile, then calculate fluxes
+            atm = StructAtm( dirs, hf_row, COUPLER_options )
+            atm_output = RunJANUS( atm, hf_row["Time"], dirs, COUPLER_options, hf_all)
 
-                if COUPLER_options["shallow_ocean_layer"] == 1:
-                    hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
+        elif COUPLER_options["atmosphere_model"] == 1:
+            # Run AGNI 
+            atm_output = RunAGNI(loop_counter["total"], dirs, COUPLER_options, hf_row)
 
-                if COUPLER_options["atmosphere_model"] == 0:
-                    # Run JANUS: 
-                    # Use the general adiabat to create a PT profile, then calculate fluxes
-                    atm = StructAtm( dirs, hf_row, COUPLER_options )
-                    atm_output = RunJANUS( atm, hf_row["Time"], dirs, COUPLER_options, hf_all)
-
-                elif COUPLER_options["atmosphere_model"] == 1:
-                    # Run AGNI 
-                    atm_output = RunAGNI(loop_counter["total"], dirs, COUPLER_options, hf_row)
-
-                elif COUPLER_options["atmosphere_model"] == 2:
-                    # Run dummy atmosphere model 
-                    atm_output = RunDummyAtm(dirs, COUPLER_options, 
-                                             hf_row["T_magma"], hf_row["F_ins"])
-                    
-                else:
-                    UpdateStatusfile(dirs, 20)
-                    raise Exception("Invalid atmosphere model")
-                
-                # Store atmosphere module output variables
-                hf_row["F_atm"]  = atm_output["F_atm"] 
-                hf_row["F_olr"]  = atm_output["F_olr"] 
-                hf_row["F_sct"]  = atm_output["F_sct"] 
-                hf_row["T_surf"] = atm_output["T_surf"]
+        elif COUPLER_options["atmosphere_model"] == 2:
+            # Run dummy atmosphere model 
+            atm_output = RunDummyAtm(dirs, COUPLER_options, hf_row["T_magma"], hf_row["F_ins"])
             
-            hf_row["F_net"] = hf_row["F_int"] - hf_row["F_atm"]
-            
-            # Iterate
-            loop_counter["atm"] += 1
-
+        
+        # Store atmosphere module output variables
+        hf_row["F_atm"]  = atm_output["F_atm"] 
+        hf_row["F_olr"]  = atm_output["F_olr"] 
+        hf_row["F_sct"]  = atm_output["F_sct"] 
+        hf_row["T_surf"] = atm_output["T_surf"]
+        hf_row["F_net"] = hf_row["F_int"] - hf_row["F_atm"]
+        
         ############### / ATMOSPHERE SUB-LOOP
 
         # Append row to helpfile 
@@ -547,6 +539,12 @@ def main():
             log.info("")
             finished = True
 
+        # Check if the minimum number of loops have been performed
+        if finished and (loop_counter["total"] < loop_counter["total_min"]):
+            log.info("Minimum number of iterations not yet attained; continuing...")
+            finished = False
+            UpdateStatusfile(dirs, 1)
+
         # Check if keepalive file has been removed - this means that the model should exit ASAP
         if not os.path.exists(keepalive_file):
             UpdateStatusfile(dirs, 25)
@@ -554,12 +552,6 @@ def main():
             log.info("===> Model exit was requested! <===")
             log.info("")
             finished=True
-
-        # Check if the minimum number of loops have been performed
-        if finished and (loop_counter["total"] < loop_counter["total_min"]):
-            log.info("Minimum number of iterations not yet attained; continuing...")
-            finished = False
-            UpdateStatusfile(dirs, 1)
 
         # Make plots if required and go to next iteration
         if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0) and (not finished):
