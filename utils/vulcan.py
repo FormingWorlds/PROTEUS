@@ -4,7 +4,7 @@ from utils.coupler import *
 from utils.modules_ext import *
 from utils.helper import *
 
-def RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options ):
+def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, COUPLER_options ):
     '''
     Run online atmospheric chemistry via VULCAN kinetics 
 
@@ -190,7 +190,7 @@ def RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_opt
     vulcan_print.close()
 
     # Copy VULCAN output data file to output folder
-    vulcan_recent = dirs["output"]+str(int(time_dict["planet"]))+"_atm_chemistry.vul"
+    vulcan_recent = dirs["output"]+str(int(time))+"_atm_chemistry.vul"
     shutil.copyfile(dirs["vulcan"]+'output/PROTEUS_MX_output.vul', vulcan_recent )
 
     # Read in data from VULCAN output

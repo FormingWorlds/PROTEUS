@@ -8,7 +8,7 @@ import tomlkit as toml
 
 log = logging.getLogger("PROTEUS")
 
-def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict, 
+def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict, 
               hf_row:dict, make_plots:bool, initial_offset:float, 
               linesearch:bool, easy_start:bool)->bool:
 
@@ -55,7 +55,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     cfg_this = os.path.join(dirs["output"] , "agni_recent.toml")
 
     # Set title 
-    cfg_toml["title"] = "PROTEUS runtime step %d"%loop_counter["total"]
+    cfg_toml["title"] = "PROTEUS runtime step %d"%loops_total
 
     # Set planet 
     cfg_toml["planet"]["tmp_surf"] =        hf_row["T_surf"]
@@ -140,7 +140,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
         cfg_toml["execution"]["solvers"] = []
 
 
-    elif loop_counter["total"] > 1:
+    elif loops_total > 1:
         # If solving for RCE and are current inside the init stage, use old T(p)
         # as initial guess for solver.
         ncdfs = glob.glob(os.path.join(dirs["output"], "data","*_atm.nc"))
@@ -174,14 +174,14 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
 
     # Small steps after first iters, since it will be *near* the solution
     # Tighter tolerances during first iters, to ensure consistent coupling
-    if loop_counter["total"] > 1:
+    if loops_total > 1:
         cfg_toml["execution"]["dx_max"] = 200.0
     else:
         cfg_toml["execution"]["converge_rtol"] = 1.0e-3
         
     # Set plots 
     cfg_toml["plots"]["at_runtime"]     = agni_debug and make_plots
-    cfg_toml["plots"]["temperature"]    = make_plots
+    cfg_toml["plots"]["temperature"]    = agni_debug and make_plots
     cfg_toml["plots"]["fluxes"]         = make_plots
 
     # AGNI log level
@@ -219,7 +219,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     
     return success 
 
-def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row ):
+def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     """Run AGNI atmosphere model.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -227,10 +227,8 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row ):
 
     Parameters
     ----------
-        loop_counter : dict 
-            Model loop counter values.
-        time_dict : dict
-            Dictionary containing simulation time variables
+        loops_total : int 
+            Model total loops counter.
         dirs : dict
             Dictionary containing paths to directories
         COUPLER_options : dict
@@ -248,8 +246,8 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row ):
     # Inform
     PrintHalfSeparator()
     log.info("Running AGNI...")
-    time_str = "%d"%time_dict["planet"]
-    make_plots = (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0)
+    time_str = "%d"%hf_row["Time"]
+    make_plots = (COUPLER_options["plot_iterfreq"] > 0) and (loops_total % COUPLER_options["plot_iterfreq"] == 0)
 
     # tracking
     agni_success = False  # success?
@@ -259,7 +257,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row ):
     offset = 0.0
 
     # first iteration 
-    if loop_counter["total"] < 2:
+    if loops_total < 2:
         linesearch = False
 
     # make attempts
@@ -268,7 +266,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row ):
         log.info("Attempt %d" % attempts)
 
         # Try the module
-        agni_success = _try_agni(loop_counter, dirs, COUPLER_options, hf_row, 
+        agni_success = _try_agni(loops_total, dirs, COUPLER_options, hf_row, 
                                         make_plots, offset, linesearch, easy_start)
 
         if agni_success:
@@ -288,8 +286,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row ):
                 easy_start = False 
                 offset     = 1.0
             else:
-                UpdateStatusfile(dirs, 22)
-                raise Exception("Max attempts when executing AGNI")
+                log.errror("Max attempts when executing AGNI")
 
                 
     # Move files

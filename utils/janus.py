@@ -103,8 +103,7 @@ def StructAtm( dirs:dict, hf_row:dict, COUPLER_options:dict ):
 
     return atm
 
-def RunJANUS( atm, 
-             time_dict:dict, dirs:dict, COUPLER_options:dict, hf_all:pd.DataFrame,
+def RunJANUS( atm, time:float, dirs:dict, COUPLER_options:dict, hf_all:pd.DataFrame,
              write_in_tmp_dir=True, search_method=0, rtol=1.0e-4):
     """Run JANUS.
     
@@ -116,8 +115,8 @@ def RunJANUS( atm,
     ----------
         atm : atmos
             Atmosphere object
-        time_dict : dict
-            Dictionary containing simulation time variables
+        time : float
+            Model time [yrs]
         dirs : dict
             Dictionary containing paths to directories
         COUPLER_options : dict
@@ -179,7 +178,7 @@ def RunJANUS( atm,
             atol       = 1.0e-5
 
             # Done with initial loops
-            if (time_dict["planet"] > 0):
+            if time > 0:
 
                 # Get previous temperature as initial guess
                 T_surf_old = hf_all.iloc[-1]["T_surf"]
@@ -219,7 +218,7 @@ def RunJANUS( atm,
              (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
 
     # Save atm data to disk
-    nc_fpath = dirs["output"]+"/data/"+str(int(time_dict["planet"]))+"_atm.nc"
+    nc_fpath = dirs["output"]+"/data/"+str(int(time))+"_atm.nc"
     atm.write_ncdf(nc_fpath)
 
     # Check for NaNs

@@ -32,6 +32,7 @@ def parse_console_arguments()->dict:
     parser = argparse.ArgumentParser(description='PROTEUS command line arguments')
 
     parser.add_argument('--cfg', type=str, default="input/default.cfg", help='Path to configuration file')
+    parser.add_argument('--resume', type=bool, default=False, help='Resume simulation from disk')
 
     args = vars(parser.parse_args())
     return args
@@ -45,21 +46,21 @@ def latex_float(f):
     else:
         return float_str
 
-def PrintCurrentState(time_dict:dict, hf_row:dict):
+def PrintCurrentState(hf_row:dict):
     '''
     Print the current state of the model to the logger
     '''
     PrintHalfSeparator()
     log.info("Runtime info...")
     log.info("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
-    log.info("    Model time   :   %.2e   yr"    % float(time_dict["planet"]))
-    log.info("    T_surf       :   %4.3f   K"     %     float(hf_row["T_surf"]))
-    log.info("    T_magma      :   %4.3f   K"     %     float(hf_row["T_magma"]))
-    log.info("    P_surf       :   %.2e   bar"   %     float(hf_row["P_surf"]))
-    log.info("    Phi_global   :   %.2e   "      %     float(hf_row["Phi_global"]))
-    log.info("    Instellation :   %.2e   W/m^2" %     float(hf_row["F_ins"]))
-    log.info("    F_int        :   %.2e   W/m^2" %     float(hf_row["F_int"]))
-    log.info("    F_atm        :   %.2e   W/m^2" %     float(hf_row["F_atm"])) 
+    log.info("    Model time   :   %.2e   yr"    % float(hf_row["Time"]))
+    log.info("    T_surf       :   %4.3f   K"    % float(hf_row["T_surf"]))
+    log.info("    T_magma      :   %4.3f   K"    % float(hf_row["T_magma"]))
+    log.info("    P_surf       :   %.2e   bar"   % float(hf_row["P_surf"]))
+    log.info("    Phi_global   :   %.2e   "      % float(hf_row["Phi_global"]))
+    log.info("    Instellation :   %.2e   W/m^2" % float(hf_row["F_ins"]))
+    log.info("    F_int        :   %.2e   W/m^2" % float(hf_row["F_int"]))
+    log.info("    F_atm        :   %.2e   W/m^2" % float(hf_row["F_atm"])) 
     log.info("    |F_net|      :   %.2e   W/m^2" % abs(float(hf_row["F_net"])))
 
 def CreateLockFile(output_dir:str):
@@ -93,7 +94,7 @@ def GetHelpfileKeys():
             "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid",
 
             # Stellar 
-            "R_star", 
+            "R_star", "age_star",
 
             # Surface composition
             "P_surf", "atm_kg_per_mol", # more keys are added below
@@ -195,6 +196,15 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
     current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.5e")
     return fpath
 
+def ReadHelpfileFromCSV(output_dir:str):
+    '''
+    Read helpfile from disk CSV file to DataFrame
+    '''
+    fpath = os.path.join(output_dir , "runtime_helpfile.csv")
+    if not os.path.exists(fpath):
+        raise Exception("Cannot find helpfile at '%s'"%fpath)
+    return pd.read_csv(fpath, sep="\t")
+
 def ReadInitFile(init_file_passed:str, verbose=False):
     '''
     Read configuration file into a dictionary
@@ -268,9 +278,6 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                         (key, val) = line.split("=")
                     
                         time_dict[str(key.strip())] = float(val.strip())
-
-                        if line.startswith("star"):
-                            time_dict["offset"] = float(val.strip())
 
     return COUPLER_options, time_dict
 

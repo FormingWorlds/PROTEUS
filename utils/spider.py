@@ -250,7 +250,7 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
     return np.array(data_l)
 
 #====================================================================
-def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict, 
+def _try_spider( dirs:dict, COUPLER_options:dict, 
                 IC_INTERIOR:int, loop_counter:dict, 
                 hf_all:pd.DataFrame, hf_row:dict, 
                 step_sf:float, atol_sf:float ):
@@ -274,11 +274,11 @@ def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict,
     if IC_INTERIOR == 2:  
 
         # Current step number
-        json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(time_dict["planet"])) )
+        json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(hf_row["Time"])) )
         step        = json_file.get_dict(['step'])
 
         # Time stepping adjustment
-        if time_dict["planet"] < 2.0:
+        if hf_row["Time"] < 2.0:
             # First year, use small step
             dtmacro = 1.0
             dtswitch = 1.0
@@ -289,13 +289,13 @@ def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict,
             if (COUPLER_options["dt_method"] == 0):
                 # Proportional time-step calculation
                 log.info("Time-stepping intent: proportional")
-                dtswitch = time_dict["planet"] / float(COUPLER_options["dt_propconst"])
+                dtswitch = hf_row["Time"] / float(COUPLER_options["dt_propconst"])
 
             elif (COUPLER_options["dt_method"] == 1):
                 # Dynamic time-step calculation
 
                 # Try to maintain a minimum step size of dt_initial at first
-                if time_dict["planet"] > COUPLER_options["dt_initial"]:
+                if hf_row["Time"] > COUPLER_options["dt_initial"]:
                     dtprev = float(hf_all.iloc[-1]["Time"] - hf_all.iloc[-2]["Time"])
                 else:
                     dtprev = COUPLER_options["dt_initial"]
@@ -346,10 +346,9 @@ def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict,
 
             # Step-size ceiling
             dtswitch = min(dtswitch, COUPLER_options["dt_maximum"] )                    # Absolute
-            dtswitch = min(dtswitch, float(time_dict["target"] - time_dict["planet"]))  # Run-over
 
             # Step-size floor
-            dtswitch = max(dtswitch, time_dict["planet"]*0.0001)        # Relative
+            dtswitch = max(dtswitch, hf_row["Time"]*0.0001)        # Relative
             dtswitch = max(dtswitch, COUPLER_options["dt_minimum"] )    # Absolute
 
             # Calculate number of macro steps for SPIDER to perform within
@@ -390,7 +389,7 @@ def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict,
                     ]
 
     # Min of fractional and absolute Ts poststep change
-    if time_dict["planet"] > 0:
+    if hf_row["Time"] > 0:
         dTs_frac = float(COUPLER_options["tsurf_poststep_change_frac"]) * float(hf_all["T_surf"].iloc[-1])
         dT_int_max = np.min([ float(COUPLER_options["tsurf_poststep_change"]), float(dTs_frac) ])
         call_sequence.extend(["-tsurf_poststep_change", str(dT_int_max)])
@@ -484,7 +483,7 @@ def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict,
     return bool(proc.returncode == 0)
 
 
-def RunSPIDER( time_dict:dict, dirs:dict, COUPLER_options:dict, 
+def RunSPIDER( dirs:dict, COUPLER_options:dict, 
               IC_INTERIOR:int, loop_counter:dict, 
               hf_all:pd.DataFrame, hf_row:dict ):
     '''
@@ -512,7 +511,7 @@ def RunSPIDER( time_dict:dict, dirs:dict, COUPLER_options:dict,
         log.info("Attempt %d" % attempts)
 
         # run SPIDER
-        spider_success = _try_spider(time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all, hf_row, step_sf, atol_sf)
+        spider_success = _try_spider(dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all, hf_row, step_sf, atol_sf)
 
         if spider_success:
             # success
@@ -538,7 +537,7 @@ def RunSPIDER( time_dict:dict, dirs:dict, COUPLER_options:dict,
         raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
-def ReadSPIDER(dirs:dict, time_dict:dict, COUPLER_options:dict, prev_T_magma:float):
+def ReadSPIDER(dirs:dict, COUPLER_options:dict, time:float, prev_T_magma:float):
     '''
     Read variables from last SPIDER output JSON file into a dictionary
     '''
@@ -575,7 +574,7 @@ def ReadSPIDER(dirs:dict, time_dict:dict, COUPLER_options:dict, prev_T_magma:flo
     output["RF_depth"]        = float(data_a[7])/COUPLER_options["radius"]  # depth of rheological front
 
     # Do not allow warming after init stage has completed
-    if (COUPLER_options["prevent_warming"]) and (time_dict["planet"] > 5.0):
+    if (COUPLER_options["prevent_warming"]) and (time > 5.0):
         output["T_magma"] = min(output["T_magma"], prev_T_magma)
 
    
