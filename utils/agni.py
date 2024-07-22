@@ -175,7 +175,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     # Small steps after first iters, since it will be *near* the solution
     # Tighter tolerances during first iters, to ensure consistent coupling
     if loop_counter["total"] > 1:
-        cfg_toml["execution"]["dx_max"] = 25.0
+        cfg_toml["execution"]["dx_max"] = 200.0
     else:
         cfg_toml["execution"]["converge_rtol"] = 1.0e-3
         
@@ -278,14 +278,15 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row ):
         else:
             # failure
             log.warning("Attempt %d failed" % attempts)
-            offset = 1.0 
 
             if attempts == 1:
                 linesearch = True
                 easy_start = False
+                offset     = 0.05
             elif attempts == 2:
                 linesearch = True 
-                easy_start = True 
+                easy_start = False 
+                offset     = 1.0
             else:
                 UpdateStatusfile(dirs, 22)
                 raise Exception("Max attempts when executing AGNI")

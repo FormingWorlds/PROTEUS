@@ -109,6 +109,8 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False, plot_format="pdf"):
         sm.set_array([])
         cbar = fig.colorbar(sm, cax=cax, orientation='vertical') 
         cbar.set_label("Time [yr]") 
+    else:
+        print("Only one spectrum was found")
 
     ax.set_yscale("log")
     ax.set_ylabel("Flux [erg s-1 cm-2 nm-1]")
@@ -125,10 +127,12 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False, plot_format="pdf"):
     # Plot historical spectra
     for i in range(N):
         if justone:
-            c = 'black'
+            c = 'tab:blue'
+            l = "%.2e yr"%(time_t[i])
         else:
             c = sm.to_rgba(time_t[i])
-        ax.plot(wave_t[i],flux_t[i],color=c,lw=0.7,alpha=0.6)
+            l = None
+        ax.plot(wave_t[i],flux_t[i],color=c,lw=0.7,alpha=0.6, label=l)
 
     # Plot current spectrum (use the copy made in the output directory)
     if not surface:

@@ -27,7 +27,7 @@ title = "PROTEUS base"
     solvers         = ["newton"]  
     dx_max          = 350.0    
     easy_start      = true
-    converge_atol   = 1.0e-2  
+    converge_atol   = 5.0e-2  
     converge_rtol   = 1.0e-2  
 
 

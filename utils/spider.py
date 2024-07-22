@@ -136,23 +136,19 @@ def get_column_data_from_SPIDER_lookup_file( infile ):
     return (data_a, size_a)
 
 def get_all_output_times( odir='output' ):
-    '''get all times (in Myrs) from the json files located in the
-       output directory'''
+    '''
+    Get all times (in yr) from the json files located in the output directory
+    '''
     
     odir = odir+'/data/'
 
     # locate times to process based on files located in odir/
     file_l = [f for f in os.listdir(odir) if os.path.isfile(odir+f)]
     if not file_l:
-        log.error('output directory contains no files')
-        sys.exit(0)
+        raise Exception('Output data directory contains no files')
 
     time_l = [fname for fname in file_l]
     time_l = list(filter(lambda a: a.endswith('json'), time_l))
-
-    # Filter out original/non-hacked jsons
-    time_l = [ file for file in time_l if not file.startswith("orig_")]
-
     time_l = [int(time.split('.json')[0]) for time in time_l]
     
     # ascending order
@@ -551,7 +547,7 @@ def ReadSPIDER(dirs:dict, time_dict:dict, COUPLER_options:dict, prev_T_magma:flo
     output = {}
 
     ### Read in last SPIDER base parameters
-    sim_time = get_all_output_times(dirs["output"])[-1]  # yr
+    sim_time = get_all_output_times(dirs["output"])[-1]  # yr, as an integer value
 
     # SPIDER keys from JSON file that are read in
     keys_t = ( ('atmosphere','mass_liquid'),
@@ -567,8 +563,6 @@ def ReadSPIDER(dirs:dict, time_dict:dict, COUPLER_options:dict, prev_T_magma:flo
     data_a = get_dict_surface_values_for_specific_time( keys_t, sim_time, indir=dirs["output"] )
 
     # Fill the new dict
-    output["Time"]  = sim_time
-
     output["M_mantle_liquid"] = float(data_a[0])
     output["M_mantle_solid"]  = float(data_a[1])
     output["M_mantle"]        = float(data_a[2])
@@ -602,5 +596,5 @@ def ReadSPIDER(dirs:dict, time_dict:dict, COUPLER_options:dict, prev_T_magma:flo
     if np.isnan(output["T_magma"]):
         raise Exception("Magma ocean temperature is NaN")
 
-    return output
+    return sim_time, output
 

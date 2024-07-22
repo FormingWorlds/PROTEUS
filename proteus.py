@@ -330,8 +330,9 @@ def main():
         # Run SPIDER
         RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, 
                         loop_counter, hf_all, hf_row )
-        spider_result = ReadSPIDER(dirs, time_dict, COUPLER_options, prev_T_magma)
+        sim_time, spider_result = ReadSPIDER(dirs, time_dict, COUPLER_options, prev_T_magma)
 
+        hf_row["Time"] = float(sim_time)
         for k in spider_result.keys():
             if k in hf_row.keys():
                 hf_row[k] = spider_result[k]
@@ -344,9 +345,8 @@ def main():
         solvevol_inp["Phi_global"] = hf_row["Phi_global"]
         solvevol_inp["gravity"]  =   hf_row["gravity"]
 
-        #    reset target if during init phase 
-        #    since these target masses will be adjusted depending 
-        #    on the true melt fraction and T_magma
+        #    recalculate mass targets during init phase, since these will be adjusted 
+        #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
         if loop_counter["init"] < loop_counter["init_loops"]:
 
             # calculate target mass of atoms
@@ -379,7 +379,7 @@ def main():
         ############### UPDATE TIME 
                                    
         # Advance current time in main loop according to interior step
-        time_dict["planet"] = hf_row["Time"]
+        time_dict["planet"] = sim_time
         time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
 
         # Update init loop counter

@@ -146,7 +146,7 @@ def CreateHelpfile():
     Create helpfile to hold output variables.
     '''
     log.debug("Creating new helpfile")
-    return pd.DataFrame(columns=GetHelpfileKeys())
+    return pd.DataFrame(columns=GetHelpfileKeys(), dtype=float)
 
 def ZeroHelpfileRow():
     '''
@@ -181,10 +181,17 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
     '''
     log.debug("Writing helpfile to CSV file")
 
+    # check for invalid or missing keys 
+    difference = set(GetHelpfileKeys()) - set(current_hf.keys()) 
+    if len(difference) > 0:
+        raise Exception("There are invalid or missing keys in helpfile: "+str(difference))
+
+    # remove old file 
     fpath = os.path.join(output_dir , "runtime_helpfile.csv")
     if os.path.exists(fpath):
         os.remove(fpath)
 
+    # write new file 
     current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.5e")
     return fpath
 
