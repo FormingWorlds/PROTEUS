@@ -1,5 +1,5 @@
 Usage
-=====
+=========================
 
 Running PROTEUS
 ------------------------
@@ -10,20 +10,20 @@ You can directly run PROTEUS using the Python command:
 
       $  python proteus.py --cfg [cfgfile]
 
-Where ``[cfgfile]`` is the path to the required configuration file. If the  
-``--cfg`` flag is not passed, then the default configuration located at 
-``input/default.cfg`` will be used.
+Where ``[cfgfile]`` is the path to the required configuration file. If ``--cfg [cfgfile]`` 
+is not provided, then the default configuration located at ``input/default.cfg`` will be 
+used. Pass the flag ``--resume`` in order to resume the simulation from the disk.
 
-You can also run PROTEUS using:
+You can also run PROTEUS inside a Screen session using:
 
    .. code-block:: console
 
          $  tools/RunPROTEUS.sh [cfgfile] [alias] [detach]
    
-Which runs PROTEUS using the config file ``[cfgfile]`` inside a Screen session 
-with the name ``[alias]``. The ``[detatch]`` parameter (y/n) tells the session 
-whether to immediately detach or not. This allows multiple instances of the model 
-to be dispatched easily and safely.
+Which runs PROTEUS using the config file ``[cfgfile]`` inside a Screen session with the 
+name ``[alias]``. The ``[detach]`` parameter (y/n) tells the session whether to immediately 
+detach or not. This allows multiple instances of the model to be dispatched easily and 
+safely.
   
 Configuration file    
 ------------------------   
@@ -256,18 +256,6 @@ configuration, but they must all be passed via the config file.
      - Float
      - Greater than or equal to 0. Set to 0 to disable.    
 
-   * - ``RF_crit``
-     - Deprecated.     
-     - True
-     - Float 
-     - ??
-
-   * - ``dTs_atm``
-     - Deprecated.      
-     - True
-     - Float
-     - ??
-
    * - ``prevent_warming``
      - Flag to ensure that the net upward energy flux is always positive, which prevents the star from causing net heating inside the planet.   
      - False
@@ -393,13 +381,7 @@ configuration, but they must all be passed via the config file.
      - False
      - Float
      - Any reasonable value greater than zero (for example, 0.1 metres)
-
-   * - ``IC_INTERIOR``
-     - Initial condition for SPIDER's interior component. 'Fresh' begins the simulation using the conditions provided. 'Restart' tries to pick up from a previous run, but is currently unsupported    
-     - False
-     - Integer 
-     - 1: Fresh, 2: Restart.
-
+     
    * - ``SEPARATION``
      - Flag to include gravitational separation of solid/melt in SPIDER.     
      - False
@@ -501,6 +483,12 @@ configuration, but they must all be passed via the config file.
      - False
      - Float
      - Greater than zero. 
+
+   * - ``sulfur_ppmw``
+     - Sulfur concentration. Used when ``solvevol_use_params == 1``. Parts per million of total mantle mass.  
+     - False
+     - Float
+     - Greater than zero.
 
    * - ``X_included``
      - Flag to include X in the model. For H2O, CO2, and N2 this will always equal 1.
