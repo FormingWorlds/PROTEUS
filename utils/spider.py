@@ -362,7 +362,8 @@ def _try_spider( dirs:dict, COUPLER_options:dict,
         # Number of total steps until currently desired switch/end time
         nstepsmacro = step + nsteps
 
-        log.debug("Time options in RunSPIDER: %.2e yrs in %d steps" % (dtmacro, nstepsmacro))
+        log.debug("Time options in RunSPIDER: dt=%.2e yrs in %d steps (at i=%d)" % 
+                                                    (dtmacro, nsteps, nstepsmacro))
 
     # For init loop
     else:

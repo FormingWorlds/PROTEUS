@@ -50,6 +50,7 @@ def main():
     start_time = datetime.now()
     log.info("Current time: " + start_time.strftime('%Y-%m-%d_%H:%M:%S'))
     log.info("Hostname    : " + str(os.uname()[1]))
+    log.info("PROTEUS hash: " + GitRevision(os.environ.get("COUPLER_DIR"))) 
     log.info("Config file : " + cfg_file)
     log.info("Output dir  : " + dirs["output"])
     log.info("FWL data dir: " + dirs["fwl"])
@@ -161,9 +162,7 @@ def main():
         log.info("Included volatiles: " + str(inc_vols))
 
     else:
-        log.info(" ")
         log.info("Resuming the simulation from the disk")
-        log.info(" ")
 
         # SPIDER initial condition
         IC_INTERIOR = 2

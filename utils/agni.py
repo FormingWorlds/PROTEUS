@@ -10,7 +10,7 @@ log = logging.getLogger("PROTEUS")
 
 def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict, 
               hf_row:dict, make_plots:bool, initial_offset:float, 
-              linesearch:bool, easy_start:bool)->bool:
+              linesearch:bool, dx_max:float)->bool:
 
     # ---------------------------
     # Setup values to be provided to AGNI
@@ -125,7 +125,7 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
     cfg_toml["execution"]["rayleigh"] =     bool(COUPLER_options["insert_rscatter"] == 1)
     cfg_toml["execution"]["cloud"] =        bool(COUPLER_options["water_cloud"] == 1)
     cfg_toml["execution"]["linesearch"] =   linesearch
-    cfg_toml["execution"]["easy_start"] =   easy_start
+    cfg_toml["execution"]["dx_max"] =       dx_max
 
     if COUPLER_options["atmosphere_solve_energy"] == 0:
         # The default cfg assumes solving for energy balance.
@@ -172,11 +172,8 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
     # Solution type ~ surface state
     cfg_toml["execution"]["solution_type"] = surf_state
 
-    # Small steps after first iters, since it will be *near* the solution
     # Tighter tolerances during first iters, to ensure consistent coupling
-    if loops_total > 1:
-        cfg_toml["execution"]["dx_max"] = 200.0
-    else:
+    if loops_total < 3:
         cfg_toml["execution"]["converge_rtol"] = 1.0e-3
         
     # Set plots 
@@ -253,12 +250,13 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     agni_success = False  # success?
     attempts = 0          # number of attempts so far
     linesearch = True
-    easy_start = False
     offset = 0.0
+    dx_max = 100.0
 
     # first iteration 
     if loops_total < 2:
         linesearch = False
+        dx_max = 260.0
 
     # make attempts
     while not agni_success:
@@ -267,7 +265,7 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
 
         # Try the module
         agni_success = _try_agni(loops_total, dirs, COUPLER_options, hf_row, 
-                                        make_plots, offset, linesearch, easy_start)
+                                        make_plots, offset, linesearch, dx_max)
 
         if agni_success:
             # success
@@ -279,12 +277,12 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
 
             if attempts == 1:
                 linesearch = True
-                easy_start = False
                 offset     = 0.05
+                dx_max     = 50.0
             elif attempts == 2:
                 linesearch = True 
-                easy_start = False 
                 offset     = 1.0
+                dx_max     = 200.0
             else:
                 log.errror("Max attempts when executing AGNI")
 

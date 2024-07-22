@@ -18,6 +18,22 @@ import plot.cpl_fluxes_global as cpl_fluxes_global
 import plot.cpl_fluxes_atmosphere as cpl_fluxes_atmosphere
 import plot.cpl_interior_cmesh as cpl_interior_cmesh
 
+def GitRevision(dir:str) -> str:
+    '''
+    Get git hash for repository in `dir`.
+    '''
+    # change dir 
+    cwd = os.getcwd()
+    os.chdir(dir)
+
+    # get hash (https://stackoverflow.com/a/21901260)
+    hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+
+    # change dir back 
+    os.chdir(cwd)
+    
+    return hash
+
 def CalculateEqmTemperature(I_0, ASF_sf, A_B):
     '''
     Calculate planetary equilibrium temperature.
@@ -32,7 +48,7 @@ def parse_console_arguments()->dict:
     parser = argparse.ArgumentParser(description='PROTEUS command line arguments')
 
     parser.add_argument('--cfg', type=str, default="input/default.cfg", help='Path to configuration file')
-    parser.add_argument('--resume', type=bool, default=False, help='Resume simulation from disk')
+    parser.add_argument('--resume', action='store_true', help='Resume simulation from disk')
 
     args = vars(parser.parse_args())
     return args
@@ -193,7 +209,7 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
         os.remove(fpath)
 
     # write new file 
-    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.5e")
+    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.6e")
     return fpath
 
 def ReadHelpfileFromCSV(output_dir:str):
@@ -203,7 +219,7 @@ def ReadHelpfileFromCSV(output_dir:str):
     fpath = os.path.join(output_dir , "runtime_helpfile.csv")
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'"%fpath)
-    return pd.read_csv(fpath, sep="\t")
+    return pd.read_csv(fpath, sep=r"\s+")
 
 def ReadInitFile(init_file_passed:str, verbose=False):
     '''
