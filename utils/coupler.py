@@ -66,7 +66,6 @@ def PrintCurrentState(hf_row:dict):
     '''
     Print the current state of the model to the logger
     '''
-    PrintHalfSeparator()
     log.info("Runtime info...")
     log.info("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
     log.info("    Model time   :   %.2e   yr"    % float(hf_row["Time"]))
@@ -74,10 +73,10 @@ def PrintCurrentState(hf_row:dict):
     log.info("    T_magma      :   %4.3f   K"    % float(hf_row["T_magma"]))
     log.info("    P_surf       :   %.2e   bar"   % float(hf_row["P_surf"]))
     log.info("    Phi_global   :   %.2e   "      % float(hf_row["Phi_global"]))
-    log.info("    Instellation :   %.2e   W/m^2" % float(hf_row["F_ins"]))
-    log.info("    F_int        :   %.2e   W/m^2" % float(hf_row["F_int"]))
-    log.info("    F_atm        :   %.2e   W/m^2" % float(hf_row["F_atm"])) 
-    log.info("    |F_net|      :   %.2e   W/m^2" % abs(float(hf_row["F_net"])))
+    log.info("    Instellation :   %.2e   W m-2" % float(hf_row["F_ins"]))
+    log.info("    F_int        :   %.2e   W m-2" % float(hf_row["F_int"]))
+    log.info("    F_atm        :   %.2e   W m-2" % float(hf_row["F_atm"])) 
+    log.info("    |F_net|      :   %.2e   W m-2" % abs(float(hf_row["F_net"])))
 
 def CreateLockFile(output_dir:str):
     '''
@@ -297,6 +296,45 @@ def ReadInitFile(init_file_passed:str, verbose=False):
 
     return COUPLER_options, time_dict
 
+def ValidateInitFile(COUPLER_options:dict):
+    '''
+    Validate configuration file, checking for invalid options
+    '''
+
+    if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
+        if COUPLER_options["shallow_ocean_layer"] == 1:
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
+        
+    if COUPLER_options["atmosphere_model"] == 1:  # Julia required for AGNI
+        if shutil.which("julia") is None:
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Could not find Julia in current environment")
+        
+    if COUPLER_options["atmosphere_nlev"] < 15:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Atmosphere must have at least 15 levels")
+    
+    if COUPLER_options["interior_nlev"] < 40:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Interior must have at least 40 levels")
+    
+    # Ensure that all volatiles are all tracked
+    for s in volatile_species:
+        key_pp = str(s+"_initial_bar")
+        key_in = str(s+"_included")
+        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options[key_in] == 0):
+            raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
+        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0):
+            raise Exception("Volatile %s has non-zero pressure but outgassing parameters are enabled")
+
+    # Required vols
+    for s in ["H2O","CO2","N2","S2"]:
+        if COUPLER_options[s+"_included"] == 0:
+            raise Exception("Missing required volatile '%s'"%s)
+        
+    return True
+
 def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
     
@@ -310,8 +348,6 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
             Is this function being called at the end of the simulation?
     """
 
-    PrintHalfSeparator()
-    log.info("Updating plots...")
 
     # Get all JSON files
     output_times = get_all_output_times( output_dir )

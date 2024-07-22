@@ -14,7 +14,7 @@ from utils.agni import RunAGNI
 from utils.dummy_atmosphere import RunDummyAtm
 from utils.spider import RunSPIDER
 from utils.surface_gases import *
-from utils.logging import setup_logger
+from utils.logging import setup_logger, GetNextLogfilePath
 
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
@@ -31,13 +31,19 @@ def main():
     cfg_file = os.path.abspath(str(args["cfg"]))
     COUPLER_options, time_dict = ReadInitFile( cfg_file , verbose=False )
 
+    # Validate options
+    ValidateInitFile(COUPLER_options)
+
     # Set directories dictionary
     utils.constants.dirs = SetDirectories(COUPLER_options)
     from utils.constants import dirs
     UpdateStatusfile(dirs, 0)
+
+    # Get logfile path 
+    logpath = GetNextLogfilePath(dirs["output"])
     
     # Switch to logger 
-    setup_logger(logpath=dirs["output"]+"std.log", logterm=True, level=COUPLER_options["log_level"])
+    setup_logger(logpath=logpath, logterm=True, level=COUPLER_options["log_level"])
     log = logging.getLogger("PROTEUS")
 
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
@@ -77,39 +83,6 @@ def main():
     
     # Model has completed?
     finished = False
-
-    # Check options are compatible
-    if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
-        if COUPLER_options["shallow_ocean_layer"] == 1:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
-        
-    if COUPLER_options["atmosphere_model"] == 1:  # Julia required for AGNI
-        if shutil.which("julia") is None:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Could not find Julia in current environment")
-        
-    if COUPLER_options["atmosphere_nlev"] < 15:
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Atmosphere must have at least 15 levels")
-    
-    if COUPLER_options["interior_nlev"] < 40:
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Interior must have at least 40 levels")
-    
-    # Ensure that all volatiles are all tracked
-    for s in volatile_species:
-        key_pp = str(s+"_initial_bar")
-        key_in = str(s+"_included")
-        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options[key_in] == 0):
-            raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
-        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0):
-            raise Exception("Volatile %s has non-zero pressure but outgassing parameters are enabled")
-
-    # Required vols
-    for s in ["H2O","CO2","N2","S2"]:
-        if COUPLER_options[s+"_included"] == 0:
-            raise Exception("Missing required volatile '%s'"%s)
 
     # Model is resuming from previous state?
     resume = bool(args["resume"])
@@ -256,9 +229,16 @@ def main():
             
         log.info(" ")
         PrintSeparator()
-        log.info("Loop counters: " +  str(loop_counter))
+        log.info("Loop counters")
+        log.info("init    total     steady")
+        log.info("%1d/%1d   %04d/%04d   %02d/%02d" % (
+                 loop_counter["init"],  loop_counter["init_loops"], 
+                 loop_counter["total"], loop_counter["total_loops"],
+                 loop_counter["steady"],loop_counter["steady_loops"]
+                 ))
 
         ############### STELLAR FLUX MANAGEMENT
+        PrintHalfSeparator()
         log.info("Stellar flux management...")
         
         # Calculate new instellation and radius
@@ -358,6 +338,7 @@ def main():
 
 
         ############### INTERIOR
+        PrintHalfSeparator()
 
         # Previous magma temperature 
         if loop_counter["init"] < loop_counter["init_loops"]:
@@ -374,9 +355,11 @@ def main():
         for k in spider_result.keys():
             if k in hf_row.keys():
                 hf_row[k] = spider_result[k]
+        ############### / INTERIOR
 
-        # Run outgassing model
 
+        ############### OUTGASSING
+        PrintHalfSeparator()
         solvevol_inp = copy.deepcopy(COUPLER_options)
         solvevol_inp["M_mantle"] =   hf_row["M_mantle"]
         solvevol_inp["T_magma"] =    hf_row["T_magma"]
@@ -410,8 +393,8 @@ def main():
         for k in solvevol_result.keys():
             if k in hf_row.keys():
                 hf_row[k] = solvevol_result[k]
-
-        ############### / INTERIOR
+        ############### / OUTGASSING
+        
                         
 
         ############### UPDATE TIME 
@@ -439,6 +422,7 @@ def main():
 
 
         ############### ATMOSPHERE SUB-LOOP
+        PrintHalfSeparator()
         while (loop_counter["atm"] == 0):
 
             # Initialize atmosphere structure
@@ -489,6 +473,7 @@ def main():
         ############### CONVERGENCE CHECK 
 
         # Print info to terminal and log file
+        PrintHalfSeparator()
         PrintCurrentState(hf_row)
 
         # Stop simulation when planet is completely solidified
@@ -504,7 +489,7 @@ def main():
             and ( abs(hf_row["F_atm"]) <= COUPLER_options["F_crit"]):
             UpdateStatusfile(dirs, 14)
             log.info("")
-            log.info("===> Planet is no longer cooling! <===")
+            log.info("===> Planet no longer cooling! <===")
             log.info("")
             finished = True
 
@@ -532,7 +517,7 @@ def main():
                         
             # Stop when flux is small and melt fraction is unchanging
             if (flx_m < COUPLER_options["steady_flux"]) and (phi_r < COUPLER_options["steady_dprel"]):
-                log.info("Steady state declared")
+                log.debug("Steady state declared")
                 loop_counter["steady"] = 1
 
         # Steady-state handling
@@ -542,7 +527,7 @@ def main():
             else:
                 UpdateStatusfile(dirs, 11)
                 log.info("")
-                log.info("===> Planet has entered a steady state! <===")
+                log.info("===> Planet entered a steady state! <===")
                 log.info("")
                 finished = True
             
@@ -566,7 +551,7 @@ def main():
         if not os.path.exists(keepalive_file):
             UpdateStatusfile(dirs, 25)
             log.info("")
-            log.info("===> Model exit was requested by user! <===")
+            log.info("===> Model exit was requested! <===")
             log.info("")
             finished=True
 
@@ -578,12 +563,14 @@ def main():
 
         # Make plots if required and go to next iteration
         if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0) and (not finished):
+            PrintHalfSeparator()
             UpdatePlots( dirs["output"], COUPLER_options )
 
         ############### / CONVERGENCE CHECK 
 
     # ----------------------
     # FINAL THINGS BEFORE EXIT
+    PrintHalfSeparator()
 
     # Clean up files
     safe_rm(keepalive_file)
@@ -592,7 +579,7 @@ def main():
     UpdatePlots( dirs["output"], COUPLER_options, end=True)
     end_time = datetime.now()
     run_time = end_time - start_time
-    log.info("Simulation completed at: "+end_time.strftime('%Y-%m-%d_%H:%M:%S'))
+    log.info("Simulation stopped at: "+end_time.strftime('%Y-%m-%d_%H:%M:%S'))
     log.info("Total runtime: %.2f hours" % ( run_time.total_seconds()/(60.0 * 60.0)  ))
 
     # EXIT

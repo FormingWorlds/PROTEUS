@@ -8,8 +8,6 @@ log = logging.getLogger("PROTEUS")
 
 # Run the dummy atmosphere module
 def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
-
-    PrintHalfSeparator()
     log.info("Running dummy_atmosphere...")
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.

@@ -10,7 +10,6 @@ def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
         # This scheme is not typically used, but it maintained here from legacy code
         # We could consider removing it in the future.
 
-        PrintHalfSeparator()
         log.info(">>>>>>>>>> Flux convergence scheme <<<<<<<<<<<")
 
         # For SI conversion
@@ -39,7 +38,6 @@ def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
         # New current surface temperature from shallow mixed layer
         Ts_cur = sol_curr.y[0][-1] # K
 
-        PrintHalfSeparator()
 
         return Ts_cur
 
@@ -140,7 +138,6 @@ def RunJANUS( atm, time:float, dirs:dict, COUPLER_options:dict, hf_all:pd.DataFr
     """
 
     # Runtime info
-    PrintHalfSeparator()
     log.info("Running JANUS...")
 
     output={}

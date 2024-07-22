@@ -493,7 +493,6 @@ def RunSPIDER( dirs:dict, COUPLER_options:dict,
     '''
 
     # info
-    PrintHalfSeparator()
     log.info("Running SPIDER...")
     log.debug("    IC_INTERIOR = %d"%IC_INTERIOR)
 

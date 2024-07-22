@@ -12,7 +12,6 @@ def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, COUPLER_options 
     '''
 
     # Runtime info
-    PrintHalfSeparator()
     print("VULCAN run... (loop =", loop_counter, ")")
 
     # Copy template file

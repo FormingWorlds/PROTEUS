@@ -68,4 +68,23 @@ def setup_logger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
     
     return 
 
+def GetNextLogfilePath(output_dir:str):
+    '''
+    Get path to logfile, handling existing files appropriately.
+    '''
+
+    i=0
+    while i<10:
+        fname = "%01d.log"%i
+        fpath = os.path.join(output_dir, fname)
+
+        # this will be the new logfile path
+        if not os.path.exists(fpath):
+            return fpath
+        
+        # try new name 
+        i += 1
+    
+    raise Exception("Cannot create logfile - too many in output folder already")
+
     

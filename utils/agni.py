@@ -210,7 +210,9 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
     # Copy AGNI log into PROTEUS log
     # There are probably better ways to do this, but it works well enough. We don't use agni_debug much anyway
     if agni_debug:
-        with open(os.path.join(dirs["output"], "std.log"), "a") as outfile:
+        all_log = glob.glob(os.path.join(dirs["output"], "*.log"))
+        cur_log = natural_sort(all_log)[-1]
+        with open(cur_log, "a") as outfile:
             with open(os.path.join(dirs["output"], "agni.log"), "r") as infile:
                 outfile.write(infile.read())
     
@@ -241,7 +243,6 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     """
 
     # Inform
-    PrintHalfSeparator()
     log.info("Running AGNI...")
     time_str = "%d"%hf_row["Time"]
     make_plots = (COUPLER_options["plot_iterfreq"] > 0) and (loops_total % COUPLER_options["plot_iterfreq"] == 0)
