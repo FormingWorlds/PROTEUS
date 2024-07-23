@@ -11,7 +11,7 @@ from utils.constants import *
 from utils.coupler import *
 from utils.spider import RunSPIDER
 from utils.surface_gases import *
-from utils.logs import SetupLogger, GetNextLogfilePath
+from utils.logs import SetupLogger, GetLogfilePath, GetCurrentLogfileIndex
 
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
@@ -42,8 +42,9 @@ def main():
         CleanDir(dirs["output"])
         CleanDir(os.path.join(dirs['output'], 'data'))
 
-    # Get logfile path 
-    logpath = GetNextLogfilePath(dirs["output"])
+    # Get next logfile path 
+    logindex = 1 + GetCurrentLogfileIndex(dirs["output"])
+    logpath = GetLogfilePath(dirs["output"], logindex)
     
     # Switch to logger 
     SetupLogger(logpath=logpath, logterm=True, level=COUPLER_options["log_level"])

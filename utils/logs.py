@@ -2,6 +2,33 @@
 
 import logging, sys, os
 
+# Fake file-like stream object that redirects writes to a logger instance.
+class StreamToLogger(object):
+    # https://stackoverflow.com/a/36296215
+    def __init__(self, logger, log_level=logging.INFO):
+        self.logger = logger
+        self.log_level = log_level
+        self.linebuf = ''
+
+    def write(self, buf):
+        temp_linebuf = self.linebuf + buf
+        self.linebuf = ''
+        for line in temp_linebuf.splitlines(True):
+            # From the io.TextIOWrapper docs:
+            #   On output, if newline is None, any '\n' characters written
+            #   are translated to the system default line separator.
+            # By default sys.stdout.write() expects '\n' newlines and then
+            # translates them so this is still cross platform.
+            if line[-1] == '\n':
+                self.logger.log(self.log_level, line.rstrip())
+            else:
+                self.linebuf += line
+
+    def flush(self):
+        if self.linebuf != '':
+            self.logger.log(self.log_level, self.linebuf.rstrip())
+        self.linebuf = ''
+
 class CustomFormatter(logging.Formatter):
 
     part1 = "[\033["
@@ -68,9 +95,9 @@ def SetupLogger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
     
     return 
 
-def GetCurrentLogfilePath(output_dir:str):
+def GetCurrentLogfileIndex(output_dir:str):
     '''
-    Get the path to the current logfile
+    Get the index of the current logfile, returning -1 if none exists
     '''
     i=0
     j=-1
@@ -80,27 +107,20 @@ def GetCurrentLogfilePath(output_dir:str):
 
         if os.path.exists(fpath):
             j=i
+            i += 1
         else:
             break 
         
-        i += 1
-
     return j
 
-def GetNextLogfilePath(output_dir:str):
+def GetLogfilePath(output_dir:str, j:int):
     '''
-    Get path to next logfile
+    Get path to logfile with index j
     '''
 
-    j = GetCurrentLogfilePath(output_dir)
-    i = j + 1
-
-    if i>99:
+    if j>99:
         raise Exception("Cannot create logfile - too many in output folder already")
 
-    fname = "proteus_%02d.log"%i
-    fpath = os.path.join(output_dir, fname)
-
-    return fpath 
+    return os.path.join(output_dir, "proteus_%02d.log"%j) 
     
 

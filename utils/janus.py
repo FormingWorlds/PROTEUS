@@ -2,6 +2,7 @@
 
 from utils.modules_ext import *
 from utils.helper import *
+from utils.logs import StreamToLogger
 
 log = logging.getLogger("PROTEUS")
 

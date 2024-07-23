@@ -3,7 +3,7 @@
 from utils.modules_ext import *
 from utils.helper import *
 from utils.constants import *
-from utils.logs import GetCurrentLogfilePath
+from utils.logs import GetLogfilePath, GetCurrentLogfileIndex
 
 import tomlkit as toml
 
@@ -210,16 +210,16 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
     log.debug("Call AGNI subprocess - output below...")
     call_sequence = [ os.path.join(dirs["agni"],"agni.jl"), cfg_this]
     proc = subprocess.run(call_sequence, stdout=agni_stdout, stderr=sys.stdout) 
-    success = (proc.returncode == 0)
     
     # Copy AGNI log into PROTEUS log. There are probably better ways to do this, but it 
     #     works well enough. We don't use agni_debug much anyway
     if agni_debug:
-        with open(GetCurrentLogfilePath(dirs["output"]), "a") as outfile:
+        logpath = GetLogfilePath(dirs["output"], GetCurrentLogfileIndex(dirs["output"]))
+        with open(logpath, "a") as outfile:
             with open(os.path.join(dirs["output"], "agni.log"), "r") as infile:
                 outfile.write(infile.read())
     
-    return success 
+    return bool(proc.returncode == 0)
 
 def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     """Run AGNI atmosphere model.
