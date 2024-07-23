@@ -17,6 +17,7 @@ import plot.cpl_sflux_cross as cpl_sflux_cross
 import plot.cpl_fluxes_global as cpl_fluxes_global
 import plot.cpl_fluxes_atmosphere as cpl_fluxes_atmosphere
 import plot.cpl_interior_cmesh as cpl_interior_cmesh
+import plot.cpl_observables as cpl_observables
 
 def GitRevision(dir:str) -> str:
     '''
@@ -112,6 +113,9 @@ def GetHelpfileKeys():
 
             # Stellar 
             "R_star", "age_star",
+
+            # Observational 
+            "z_obs", "transit_depth", "contrast_ratio", # observed at 1 AU from the star
 
             # Surface composition
             "P_surf", "atm_kg_per_mol", # more keys are added below
@@ -415,6 +419,7 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
         cpl_sflux.plot_sflux(output_dir, plot_format=COUPLER_options["plot_format"])
         cpl_sflux_cross.plot_sflux_cross(output_dir, plot_format=COUPLER_options["plot_format"])
         cpl_fluxes_global.plot_fluxes_global(output_dir, COUPLER_options)
+        cpl_observables.plot_observables(output_dir, plot_format=COUPLER_options["plot_format"])
  
     # Close all figures
     plt.close()
