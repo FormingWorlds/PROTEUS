@@ -18,24 +18,27 @@ def plot_observables( output_dir, plot_format="pdf", t0=100.0):
 
     # make plot
     lw = 1.2
-    scale = 1.2
+    scale = 1.1
     fig,axl = plt.subplots(1,1, figsize=(7*scale,4*scale))
 
     # left axis 
     axl.plot(time, hf_all["transit_depth"]*1e6, lw=lw, color='k')    
     axl.set_ylabel("Transit depth [ppm]")
-    axl.set_xlabel("Time [yr]")
-    axl.set_xscale("log")
-    axl.set_xlim(left=t0, right=np.amax(time))
 
     # right axis 
     axr = axl.twinx()
     color = "tab:red"
+    axr.plot(time, hf_all["contrast_ratio"]*1e6, lw=lw, color=color)    
+    axr.set_yscale("log")
     axr.set_ylabel("Contrast ratio [ppm]")
     axr.yaxis.label.set_color(color)
     axr.tick_params(axis='y', colors=color)
-    axr.plot(time, hf_all["contrast_ratio"]*1e6, lw=lw, color=color)    
 
+    # x-axis
+    axl.set_xlabel("Time [yr]")
+    axl.set_xscale("log")
+    axl.set_xlim(left=t0, right=np.amax(time))
+    axl.grid(alpha=0.2)
 
     plt.close()
     plt.ioff()
