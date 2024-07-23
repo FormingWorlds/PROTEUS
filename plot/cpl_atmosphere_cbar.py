@@ -34,7 +34,7 @@ def _read_nc(nc_fpath):
 
 
 # Plotting function
-def plot_atmosphere_cbar(output_dir):
+def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
 
     print("Plot atmosphere temperatures colourbar")
 
@@ -96,27 +96,27 @@ def plot_atmosphere_cbar(output_dir):
     cbar.set_label("Time [Myr]") 
 
     # Save plot
-    fname = os.path.join(output_dir,"plot_atmosphere_cbar.pdf")
-    fig.savefig(fname, transparent=True, bbox_inches='tight')
+    fname = os.path.join(output_dir,"plot_atmosphere_cbar.%s"%plot_format)
+    fig.savefig(fname, bbox_inches='tight', dpi=200)
 
 #====================================================================
 def main():
 
-    # Optional command line arguments for running from the terminal
-    parser = argparse.ArgumentParser(description='COUPLER plotting script')
-    parser.add_argument('-odir', '--output_dir', type=str, help='Full path to output directory');
-    args = parser.parse_args()
-
-    # Define output directory for plots
-    if args.output_dir:
-        output_dir = args.output_dir
-        print("Output directory:", output_dir)
+    if len(sys.argv) == 2:
+        cfg = sys.argv[1]
     else:
-        output_dir = os.getcwd()
-        print("Output directory:", output_dir)
+        cfg = 'init_coupler.cfg' 
+
+    # Read in COUPLER input file
+    log.info("Read cfg file")
+    from utils.coupler import ReadInitFile, SetDirectories
+    COUPLER_options, time_dict = ReadInitFile( cfg )
+
+    # Set directories dictionary
+    dirs = SetDirectories(COUPLER_options)
 
     # Plot fixed set from above
-    plot_atmosphere_cbar( output_dir=output_dir)
+    plot_atmosphere_cbar( output_dir=dirs["output"], plot_format=COUPLER_options["plot_format"])
 
 #====================================================================
 

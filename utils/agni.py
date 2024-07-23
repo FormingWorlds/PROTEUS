@@ -9,13 +9,12 @@ import tomlkit as toml
 log = logging.getLogger("PROTEUS")
 
 def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict, 
-              runtime_helpfile, make_plots:bool, initial_offset:float, 
+              hf_row:dict, make_plots:bool, initial_offset:float, 
               linesearch:bool, easy_start:bool)->bool:
 
     # ---------------------------
     # Setup values to be provided to AGNI
     # ---------------------------
-    gravity  = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"])**2
     agni_debug = bool(log.getEffectiveLevel() == logging.DEBUG)
     try_spfile = os.path.join(dirs["output"] , "runtime.sf")
     
@@ -29,7 +28,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     vol_dict = {}
     for vol in volatile_species:
         if COUPLER_options[vol+"_included"]:
-            vmr = runtime_helpfile.iloc[-1][vol+"_mr"]
+            vmr = hf_row[vol+"_vmr"]
             if vmr > 1e-40:
                 vol_dict[vol] = vmr 
     
@@ -59,17 +58,17 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     cfg_toml["title"] = "PROTEUS runtime step %d"%loop_counter["total"]
 
     # Set planet 
-    cfg_toml["planet"]["tmp_surf"] =        COUPLER_options["T_surf"]
-    cfg_toml["planet"]["instellation"] =    COUPLER_options["F_ins"]
+    cfg_toml["planet"]["tmp_surf"] =        hf_row["T_surf"]
+    cfg_toml["planet"]["instellation"] =    hf_row["F_ins"]
     cfg_toml["planet"]["s0_fact"] =         COUPLER_options["asf_scalefactor"]
     cfg_toml["planet"]["albedo_b"] =        COUPLER_options["albedo_pl"]
     cfg_toml["planet"]["zenith_angle"] =    COUPLER_options["zenith_angle"]
     cfg_toml["planet"]["albedo_s"] =        COUPLER_options["albedo_s"]
-    cfg_toml["planet"]["gravity"] =         gravity
+    cfg_toml["planet"]["gravity"] =         hf_row["gravity"]
     cfg_toml["planet"]["radius"] =          COUPLER_options["radius"]
 
     # set composition
-    cfg_toml["composition"]["p_surf"] =     runtime_helpfile.iloc[-1]["P_surf"]
+    cfg_toml["composition"]["p_surf"] =     hf_row["P_surf"]
     cfg_toml["composition"]["p_top"] =      COUPLER_options["P_top"]
     cfg_toml["composition"]["vmr_dict"] =   vol_dict
 
@@ -150,6 +149,10 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
 
         log.debug("Initialise from last T(p)")
         cfg_toml["execution"]["initial_state"] = ["ncdf", nc_path, "add", "%.6f"%initial_offset]
+
+    else:
+        log.debug("Initialise isothermal")
+        cfg_toml["execution"]["initial_state"] = ["iso", "3500"]
         
     # Solution stuff 
     surf_state = int(COUPLER_options["atmosphere_surf_state"])
@@ -164,16 +167,15 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
             raise Exception("With AGNI it is necessary to an energy-conserving solver alongside the conductive lid scheme. Turn them both on or both off.")
         cfg_toml["planet"]["skin_k"] =    COUPLER_options["skin_k"]
         cfg_toml["planet"]["skin_d"] =    COUPLER_options["skin_d"]
-        cfg_toml["planet"]["tmp_magma"] = COUPLER_options["T_surf"]
+        cfg_toml["planet"]["tmp_magma"] = hf_row["T_magma"]
 
     # Solution type ~ surface state
     cfg_toml["execution"]["solution_type"] = surf_state
 
     # Small steps after first iters, since it will be *near* the solution
     # Tighter tolerances during first iters, to ensure consistent coupling
-    # if loop_counter["total"] > loop_counter["init_loops"]+1:
     if loop_counter["total"] > 1:
-        cfg_toml["execution"]["dx_max"] = 25.0
+        cfg_toml["execution"]["dx_max"] = 200.0
     else:
         cfg_toml["execution"]["converge_rtol"] = 1.0e-3
         
@@ -217,7 +219,7 @@ def _try_agni(loop_counter:dict, dirs:dict, COUPLER_options:dict,
     
     return success 
 
-def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
+def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, hf_row ):
     """Run AGNI atmosphere model.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -233,8 +235,8 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
             Dictionary containing paths to directories
         COUPLER_options : dict
             Configuration options and other variables
-        runtime_helpfile : pd.DataFrame
-            Dataframe containing simulation variables (now and historic)
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
 
     Returns
     ----------
@@ -252,7 +254,6 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # tracking
     agni_success = False  # success?
     attempts = 0          # number of attempts so far
-    max_attempts = 3      # max attempts
     linesearch = True
     easy_start = False
     offset = 0.0
@@ -267,7 +268,7 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         log.info("Attempt %d" % attempts)
 
         # Try the module
-        agni_success = _try_agni(loop_counter, dirs, COUPLER_options, runtime_helpfile, 
+        agni_success = _try_agni(loop_counter, dirs, COUPLER_options, hf_row, 
                                         make_plots, offset, linesearch, easy_start)
 
         if agni_success:
@@ -277,18 +278,19 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
         else:
             # failure
             log.warning("Attempt %d failed" % attempts)
-            if attempts >= max_attempts:
+
+            if attempts == 1:
+                linesearch = True
+                easy_start = False
+                offset     = 0.05
+            elif attempts == 2:
+                linesearch = True 
+                easy_start = False 
+                offset     = 1.0
+            else:
                 UpdateStatusfile(dirs, 22)
                 raise Exception("Max attempts when executing AGNI")
-            else:
-                # try again with offset to initial T(p)
-                offset = attempts * 1.5
-                if attempts%2 == 0:
-                    offset *= -1
 
-                # Try alternating linesearch and easy_start
-                linesearch = not linesearch
-                easy_start = not linesearch
                 
     # Move files
     log.debug("Tidy files")
@@ -332,7 +334,8 @@ def RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile ):
     if (COUPLER_options["prevent_warming"] == 1):
         F_atm_new = max( 1e-8 , F_atm_new )
         
-    log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
+    log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % 
+                                        (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
     output = {}
     output["F_atm"]  = F_atm_new

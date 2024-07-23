@@ -9,15 +9,12 @@ import utils.constants
 
 from utils.constants import *
 from utils.coupler import *
-from utils.janus import RunJANUS, PrepAtm, StructAtm
+from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
 from utils.agni import RunAGNI
 from utils.dummy_atmosphere import RunDummyAtm
 from utils.spider import RunSPIDER
 from utils.surface_gases import *
 from utils.logging import setup_logger
-
-from plot.cpl_fluxes import *
-from plot.cpl_heatingrates import *
 
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
@@ -67,7 +64,7 @@ def main():
                     "total_loops": COUPLER_options["iter_max"],   # Maximum number of total loops
 
                     "init": 0,             # Number of init iters performed
-                    "init_loops": 1,       # Maximum number of init iters
+                    "init_loops": 2,       # Maximum number of init iters
 
                     "atm": 0,              # Number of atmosphere sub-iters performed
                     "atm_loops":  20,      # Maximum number of atmosphere sub-iters
@@ -82,7 +79,7 @@ def main():
 
     # Check options are compatible
     if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
-        if COUPLER_options["flux_convergence"] == 1:
+        if COUPLER_options["shallow_ocean_layer"] == 1:
             UpdateStatusfile(dirs, 20)
             raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
         
@@ -100,67 +97,61 @@ def main():
         raise Exception("Interior must have at least 40 levels")
     
     # Clean output folders
-    COUPLER_options["IC_INTERIOR"] = 1  # start from initial condition (not resuming)
     CleanDir( dirs["output"] , keep_stdlog=True)
     CleanDir( dirs['output']+'data/')
-    runtime_helpfile    = []
+
+    # SPIDER initial condition
+    IC_INTERIOR = 1
     
     # Copy config file to output directory, for future reference
     shutil.copyfile( args["cfg"], dirs["output"]+"/init_coupler.cfg")
 
+    # Generate running helpfile of output variables
+    hf_all = CreateHelpfile()
+
+    # Create an empty initial row for helpfile 
+    hf_row = ZeroHelpfileRow()
+
+    # Initial guess for values 
+    hf_row["T_magma"] = COUPLER_options["T_magma"]
+    hf_row["T_surf"] = hf_row["T_magma"]
+    hf_row["F_atm"] = COUPLER_options["F_atm"]
+    hf_row["F_int"] = hf_row["F_atm"]
+
     # Calculate mantle mass (liquid + solid)
-    COUPLER_options["mantle_mass"] = calc_mantle_mass(COUPLER_options)
+    hf_row["M_mantle"] = CalculateMantleMass(COUPLER_options)
+    hf_row["gravity"] = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
     
     # Zero-out volatiles, and ensure that they are all tracked
     for s in volatile_species:
         key_pp = str(s+"_initial_bar")
-
         key_in = str(s+"_included")
-        if (key_in in COUPLER_options) and (key_pp in COUPLER_options):
-            COUPLER_options[key_in] = int(COUPLER_options[key_in])
-            COUPLER_options[key_pp] = float(COUPLER_options[key_pp])
-        else:
-            COUPLER_options[key_in] = 0
-            COUPLER_options[key_pp] = 0.0
+        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options[key_in] == 0):
+            raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
+        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0):
+            raise Exception("Volatile %s has non-zero pressure but outgassing parameters are enabled")
 
     # Required vols
     for s in ["H2O","CO2","N2","S2"]:
-        COUPLER_options[s+"_included"] = 1
-
-    # Work out which vols are included
-    solvevol_warnboth = False
+        if COUPLER_options[s+"_included"] != 1:
+            raise Exception("Missing required volatile '%s'"%s)
+       
+    # Store partial pressures and list of included volatiles
+    inc_vols = []
     log.info("Initial partial pressures:")
     for s in volatile_species:
         key_pp = str(s+"_initial_bar")
         key_in = str(s+"_included")
 
-        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options[key_in] == 0):
-            raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
-        
-        solvevol_warnboth = solvevol_warnboth or ((COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0))
-        log.info("    %-6s : %-8.2f bar (included = %s)"%(s, COUPLER_options[key_pp], str(COUPLER_options[key_in]>0)))
+        log.info("    %-6s : %-8.2f bar (included = %s)"%(s, COUPLER_options[key_pp], 
+                                                          str(COUPLER_options[key_in]>0)))
 
-        if COUPLER_options["solvevol_use_params"] > 0:
-            COUPLER_options[key_pp] = 0.0
-
-    # Warn (once)
-    if solvevol_warnboth:
-        log.warning("Parameterised solvevol is enabled but initial_bar is non-zero for at least one volatile")
-        log.warning("Ignoring pressure provided in cfg file")
-
-    # Check that all partial pressures are positive
-    inc_vols = []
-    for s in volatile_species:
-        key_pp = str(s+"_initial_bar")
-        key_in = str(s+"_included")
-        if (COUPLER_options[key_in] > 0):
-
-            # Ensure numerically reasonable
-            COUPLER_options[key_pp] = max( COUPLER_options[key_pp], 1.0e-30)
-
-            # Store
+        if COUPLER_options[key_in] > 0:
             inc_vols.append(s)
-            
+            hf_row[s+"_bar"] = max(1.0e-30, float(COUPLER_options[key_pp]))
+        else:
+            hf_row[s+"_bar"] = 0.0
+
     log.info("Included volatiles: " + str(inc_vols))
 
     # Download all basic data.
@@ -176,8 +167,8 @@ def main():
     # Handle stellar spectrum...
 
     # Store copy of modern spectrum in memory (1 AU)
-    time_dict['sspec_prev'] = -math.inf
-    time_dict['sinst_prev'] = -math.inf
+    time_dict['sspec_prev'] = -np.inf
+    time_dict['sinst_prev'] = -np.inf
     star_modern_path = os.path.join(dirs["fwl"],COUPLER_options["star_spectrum"])
     shutil.copyfile(star_modern_path, os.path.join(dirs["output"],"-1.sflux"))
 
@@ -193,13 +184,18 @@ def main():
             star_struct_modern.CalcBandFluxes()
 
             # get best rotation percentile 
-            star_pctle, _ = mors.synthesis.FitModernProperties(star_struct_modern, COUPLER_options["star_mass"], COUPLER_options["star_age_modern"]/1e6)
+            star_pctle, _ = mors.synthesis.FitModernProperties(star_struct_modern, 
+                                                               COUPLER_options["star_mass"], 
+                                                               COUPLER_options["star_age_modern"]/1e6)
 
             # modern properties 
-            star_props_modern = mors.synthesis.GetProperties(COUPLER_options["star_mass"], star_pctle, COUPLER_options["star_age_modern"]/1e6)
+            star_props_modern = mors.synthesis.GetProperties(COUPLER_options["star_mass"], 
+                                                             star_pctle, 
+                                                             COUPLER_options["star_age_modern"]/1e6)
 
         case 1:  # BARAFFE
-            modern_wl, modern_fl = mors.ModernSpectrumLoad(star_modern_path, dirs['output']+'/-1.sflux') 
+            modern_wl, modern_fl = mors.ModernSpectrumLoad(star_modern_path, 
+                                                           dirs['output']+'/-1.sflux') 
 
             mors.DownloadEvolutionTracks("/Baraffe")
             baraffe = mors.BaraffeTrack(COUPLER_options["star_mass"])
@@ -209,16 +205,18 @@ def main():
             raise Exception("Invalid stellar model '%d'" % COUPLER_options['star_model'])
         
     # Create lockfile 
-    keepalive_file = os.path.join(dirs["output"],"keepalive")
-    safe_rm(keepalive_file)
-    with open(keepalive_file, 'w') as fp:
-        fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
-    
-    
+    keepalive_file = CreateLockFile(dirs["output"])
+
     # Main loop
     UpdateStatusfile(dirs, 1)
     while not finished:
 
+        # New rows
+        if loop_counter["total"] > 0:
+            # Create new row to hold the updated variables. This will be
+            #    overwritten by the routines below.
+            hf_row = hf_all.iloc[-1].to_dict()
+            
         log.info(" ")
         PrintSeparator()
         log.info("Loop counters: " +  str(loop_counter))
@@ -243,23 +241,28 @@ def main():
 
                 match COUPLER_options['star_model']:
                     case 0:
-                        COUPLER_options["star_radius"] = mors.Value(COUPLER_options["star_mass"],time_dict["star"]/1e6, 'Rstar') * mors.const.Rsun * 1.0e-2
-                        S_0 =  mors.Value(COUPLER_options["star_mass"], time_dict["star"]/1e6, 'Lbol') * L_sun / ( 4. * np.pi * AU * AU * COUPLER_options["mean_distance"]**2.0 )
+                        hf_row["R_star"] = mors.Value(COUPLER_options["star_mass"],
+                                                      time_dict["star"]/1e6, 'Rstar') * mors.const.Rsun * 1.0e-2
+                        S_0 =  mors.Value(COUPLER_options["star_mass"], 
+                                          time_dict["star"]/1e6, 'Lbol') * L_sun / ( 4. * np.pi * AU * AU * COUPLER_options["mean_distance"]**2.0 )
                     case 1:
-                        COUPLER_options["star_radius"] = baraffe.BaraffeStellarRadius(time_dict["star"])
-                        S_0 = baraffe.BaraffeSolarConstant(time_dict["star"], COUPLER_options["mean_distance"])
+                        hf_row["R_star"] = baraffe.BaraffeStellarRadius(time_dict["star"])
+                        S_0 = baraffe.BaraffeSolarConstant(time_dict["star"], 
+                                                           COUPLER_options["mean_distance"])
 
                 # Calculate new eqm temperature
-                T_eqm_new = calc_eqm_temperature(S_0, COUPLER_options["asf_scalefactor"], COUPLER_options["albedo_pl"])
+                T_eqm_new = CalculateEqmTemperature(S_0,
+                                                 COUPLER_options["asf_scalefactor"], 
+                                                 COUPLER_options["albedo_pl"])
                 
             else:
                 log.info("Stellar heating is disabled")
                 T_eqm_new   = 0.0
                 S_0 = 0.0
 
-            COUPLER_options["F_ins"]        = S_0          # instellation 
-            COUPLER_options["T_eqm"]        = T_eqm_new
-            COUPLER_options["T_skin"]       = T_eqm_new * (0.5**0.25) # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
+            hf_row["F_ins"]  =  S_0          # instellation 
+            hf_row["T_eqm"]  =  T_eqm_new
+            hf_row["T_skin"] =  T_eqm_new * (0.5**0.25) # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
 
             log.info("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
 
@@ -272,11 +275,15 @@ def main():
             log.info("Updating stellar spectrum") 
             match COUPLER_options['star_model']: 
                 case 0:
-                    synthetic = mors.synthesis.CalcScaledSpectrumFromProps(star_struct_modern, star_props_modern, time_dict["star"]/1e6)
+                    synthetic = mors.synthesis.CalcScaledSpectrumFromProps(star_struct_modern, 
+                                                                           star_props_modern, 
+                                                                           time_dict["star"]/1e6)
                     fl = synthetic.fl   # at 1 AU
                     wl = synthetic.wl
                 case 1:
-                    fl = baraffe.BaraffeSpectrumCalc(time_dict["star"], COUPLER_options["star_luminosity_modern"], modern_fl)
+                    fl = baraffe.BaraffeSpectrumCalc(time_dict["star"], 
+                                                     COUPLER_options["star_luminosity_modern"], 
+                                                     modern_fl)
                     wl = modern_wl
 
             # Scale fluxes from 1 AU to TOA 
@@ -312,28 +319,41 @@ def main():
 
 
 
-        ############### INTERIOR SUB-LOOP
+        ############### INTERIOR
+
+        # Previous magma temperature 
+        if loop_counter["init"] < loop_counter["init_loops"]:
+            prev_T_magma = COUPLER_options["T_magma"]
+        else:
+            prev_T_magma = hf_all.iloc[-1]["T_magma"]
 
         # Run SPIDER
-        COUPLER_options = RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile )
+        RunSPIDER( time_dict, dirs, COUPLER_options, IC_INTERIOR, 
+                        loop_counter, hf_all, hf_row )
+        sim_time, spider_result = ReadSPIDER(dirs, time_dict, COUPLER_options, prev_T_magma)
+
+        hf_row["Time"] = float(sim_time)
+        for k in spider_result.keys():
+            if k in hf_row.keys():
+                hf_row[k] = spider_result[k]
 
         # Run outgassing model
 
-        #    get info from spider
-        if loop_counter["total"] > 0:
-            run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior']
-            COUPLER_options["T_outgas"] =    run_int.iloc[-1]["T_surf"]
-            COUPLER_options["Phi_global"] =  run_int.iloc[-1]["Phi_global"]
+        solvevol_inp = copy.deepcopy(COUPLER_options)
+        solvevol_inp["M_mantle"] =   hf_row["M_mantle"]
+        solvevol_inp["T_magma"] =    hf_row["T_magma"]
+        solvevol_inp["Phi_global"] = hf_row["Phi_global"]
+        solvevol_inp["gravity"]  =   hf_row["gravity"]
 
-        #    reset target if during init phase 
-        #    since these target masses will be adjusted depending on the true melt fraction and T_outgas
+        #    recalculate mass targets during init phase, since these will be adjusted 
+        #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
         if loop_counter["init"] < loop_counter["init_loops"]:
 
             # calculate target mass of atoms
             if COUPLER_options["solvevol_use_params"] > 0:
-                solvevol_target = solvevol_get_target_from_params(COUPLER_options)
+                solvevol_target = solvevol_get_target_from_params(solvevol_inp)
             else:
-                solvevol_target = solvevol_get_target_from_pressures(COUPLER_options)
+                solvevol_target = solvevol_get_target_from_pressures(solvevol_inp)
 
             # prevent numerical issues
             for key in solvevol_target.keys():
@@ -347,27 +367,29 @@ def main():
             # the model makes a poor guess for the composition. These are then discarded, 
             # so the warning should not propagate anywhere. Errors are still printed.
             warnings.filterwarnings("ignore", category=RuntimeWarning)
-            solvevol_dict = solvevol_equilibrium_atmosphere(solvevol_target, COUPLER_options)
+            solvevol_result = solvevol_equilibrium_atmosphere(solvevol_target, solvevol_inp)
 
-        # Update help quantities, input_flag: "Interior"
-        runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Interior", COUPLER_options, solvevol_dict=solvevol_dict)
+        for k in solvevol_result.keys():
+            if k in hf_row.keys():
+                hf_row[k] = solvevol_result[k]
 
-        ############### / INTERIOR SUB-LOOP
+        ############### / INTERIOR
                         
-
 
         ############### UPDATE TIME 
                                    
         # Advance current time in main loop according to interior step
-        time_dict["planet"] = runtime_helpfile.iloc[-1]["Time"]
+        time_dict["planet"] = sim_time
         time_dict["star"]   = time_dict["planet"] + time_dict["offset"]
 
         # Update init loop counter
-        if loop_counter["init"] < loop_counter["init_loops"]: # Next init iter
+        # Next init iter
+        if loop_counter["init"] < loop_counter["init_loops"]: 
             loop_counter["init"]    += 1
             time_dict["planet"]     = 0.
-        if loop_counter["total"] >= loop_counter["init_loops"]: # Reset restart flag once SPIDER has correct heat flux
-            COUPLER_options["IC_INTERIOR"] = 2
+        # Reset restart flag once SPIDER has correct heat flux
+        if loop_counter["total"] >= loop_counter["init_loops"]: 
+            IC_INTERIOR = 2
 
         # Adjust total iteration counters
         loop_counter["atm"]         = 0
@@ -382,49 +404,57 @@ def main():
 
             # Initialize atmosphere structure
             if (loop_counter["atm"] == 0) or (loop_counter["total"] <= 2):
-                COUPLER_options = PrepAtm(loop_counter, runtime_helpfile, COUPLER_options)
+
+                if COUPLER_options["shallow_ocean_layer"] == 1:
+                    hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
                 if COUPLER_options["atmosphere_model"] == 0:
-                    # Run JANUS: use the general adiabat to create a PT profile, then calculate fluxes
-                    atm = StructAtm( dirs, runtime_helpfile, COUPLER_options )
-                    atm_output = RunJANUS( atm, time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    # Run JANUS: 
+                    # Use the general adiabat to create a PT profile, then calculate fluxes
+                    atm = StructAtm( dirs, hf_row, COUPLER_options )
+                    atm_output = RunJANUS( atm, time_dict, dirs, COUPLER_options, hf_all)
 
                 elif COUPLER_options["atmosphere_model"] == 1:
                     # Run AGNI 
-                    atm_output = RunAGNI(loop_counter, time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    atm_output = RunAGNI(loop_counter, time_dict, dirs, 
+                                         COUPLER_options, hf_row)
 
                 elif COUPLER_options["atmosphere_model"] == 2:
                     # Run dummy atmosphere model 
-                    atm_output = RunDummyAtm(time_dict, dirs, COUPLER_options, runtime_helpfile)
+                    atm_output = RunDummyAtm(dirs, COUPLER_options, 
+                                             hf_row["T_magma"], hf_row["F_ins"])
                     
                 else:
                     UpdateStatusfile(dirs, 20)
                     raise Exception("Invalid atmosphere model")
                 
                 # Store atmosphere module output variables
-                COUPLER_options["F_atm"]  = atm_output["F_atm"] 
-                COUPLER_options["F_olr"]  = atm_output["F_olr"] 
-                COUPLER_options["F_sct"]  = atm_output["F_sct"] 
-                COUPLER_options["T_surf"] = atm_output["T_surf"]
-
+                hf_row["F_atm"]  = atm_output["F_atm"] 
+                hf_row["F_olr"]  = atm_output["F_olr"] 
+                hf_row["F_sct"]  = atm_output["F_sct"] 
+                hf_row["T_surf"] = atm_output["T_surf"]
             
-            # Update help quantities, input_flag: "Atmosphere"
-            runtime_helpfile, time_dict, COUPLER_options = UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, "Atmosphere", COUPLER_options)
-
+            hf_row["F_net"] = hf_row["F_int"] - hf_row["F_atm"]
+            
             # Iterate
             loop_counter["atm"] += 1
 
         ############### / ATMOSPHERE SUB-LOOP
-        
+
+        # Append row to helpfile 
+        hf_all = ExtendHelpfile(hf_all, hf_row)
+
+        # Write helpfile to disk
+        WriteHelpfileToCSV(dirs["output"], hf_all)
 
 
         ############### CONVERGENCE CHECK 
 
         # Print info to terminal and log file
-        PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options)
+        PrintCurrentState(time_dict, hf_row)
 
         # Stop simulation when planet is completely solidified
-        if (COUPLER_options["solid_stop"] == 1) and (runtime_helpfile.iloc[-1]["Phi_global"] <= COUPLER_options["phi_crit"]):
+        if (COUPLER_options["solid_stop"] == 1) and (hf_row["Phi_global"] <= COUPLER_options["phi_crit"]):
             UpdateStatusfile(dirs, 10)
             log.info("")
             log.info("===> Planet solidified! <===")
@@ -433,7 +463,7 @@ def main():
 
         # Stop simulation when flux is small
         if (COUPLER_options["emit_stop"] == 1) and (loop_counter["total"] > loop_counter["init_loops"]+1) \
-            and ( abs(runtime_helpfile.iloc[-1]["F_atm"]) <= COUPLER_options["F_crit"]):
+            and ( abs(hf_row["F_atm"]) <= COUPLER_options["F_crit"]):
             UpdateStatusfile(dirs, 14)
             log.info("")
             log.info("===> Planet is no longer cooling! <===")
@@ -447,10 +477,9 @@ def main():
             lb2 = -1
 
             # Get data
-            df_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
-            arr_t = np.array(df_atm["Time"])
-            arr_f = np.array(df_atm["F_atm"])
-            arr_p = np.array(df_atm["Phi_global"])
+            arr_t = np.array(hf_all["Time"])
+            arr_f = np.array(hf_all["F_atm"])
+            arr_p = np.array(hf_all["Phi_global"])
 
             # Time samples
             t1 = arr_t[lb1]; t2 = arr_t[lb2]

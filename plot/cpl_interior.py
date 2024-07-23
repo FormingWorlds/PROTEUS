@@ -8,7 +8,7 @@ from utils.spider import *
 log = logging.getLogger("PROTEUS")
 
 #====================================================================
-def plot_interior( output_dir, times ):
+def plot_interior( output_dir, times, plot_format="pdf"):
 
     log.info("Plot interior")
 
@@ -166,7 +166,7 @@ def plot_interior( output_dir, times ):
 
     plt.close()
     plt.ioff()
-    fig_o.savefig(1)
+    fig_o.savefig(1, plot_format)
 
 
 #====================================================================
@@ -197,4 +197,4 @@ if __name__ == "__main__":
 
     print("Snapshots:", plot_list)
 
-    plot_interior( dirs['output'], plot_list )
+    plot_interior( dirs['output'], plot_list, plot_format=COUPLER_options["plot_format"] )

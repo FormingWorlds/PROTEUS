@@ -8,7 +8,7 @@ from utils.plot import *
 log = logging.getLogger("PROTEUS")
 
 #====================================================================
-def plot_stacked( output_dir, times ):
+def plot_stacked( output_dir, times, plot_format="pdf" ):
 
     log.info("Plot stacked")
 
@@ -214,52 +214,42 @@ def plot_stacked( output_dir, times ):
 
     plt.close()
     plt.ioff()
-    fig_o.savefig(1)
+    fig_o.savefig(1, plot_format)
 
 #====================================================================
 def main():
 
-    # Optional command line arguments for running from the terminal
-    # Usage: $ python plot_atmosphere.py -t 0,718259
-    parser = argparse.ArgumentParser(description='COUPLER plotting script')
-    parser.add_argument('-odir', '--output_dir', type=str, help='Full path to output directory');
-    parser.add_argument('-t', '--times', type=str, help='Comma-separated (no spaces) list of times');
-    args = parser.parse_args()
+    if len(sys.argv) == 2:
+        cfg = sys.argv[1]
+    else:
+        cfg = 'init_coupler.cfg' 
 
-    # Define output directory for plots
-    if args.output_dir:
-        output_dir = args.output_dir
-        print("Output directory:", output_dir)
+    # Read in COUPLER input file
+    log.info("Read cfg file")
+    from utils.coupler import ReadInitFile, SetDirectories
+    COUPLER_options, time_dict = ReadInitFile( cfg )
+
+    # Set directories dictionary
+    dirs = SetDirectories(COUPLER_options)
+
+    output_list = get_all_output_atm_times(dirs["output"])
+
+    if len(output_list) <= 8:
+        plot_list = output_list
+    else:
+        plot_list = [ output_list[0], 
+                     output_list[int(round(len(output_list)*(2./100.)))], 
+                     output_list[int(round(len(output_list)*(15./100.)))], 
+                     output_list[int(round(len(output_list)*(22./100.)))], 
+                     output_list[int(round(len(output_list)*(33./100.)))], 
+                     output_list[int(round(len(output_list)*(50./100.)))], 
+                     output_list[int(round(len(output_list)*(66./100.)))], 
+                     output_list[-1] ]
         
-    else:
-        output_dir = os.getcwd() + "/output/"
-        print("Output directory:", output_dir)
+    print("Snapshots:", plot_list)
 
-    # Define which times are plotted
-    if args.times:
-        plot_list = [ int(time) for time in args.times.split(',') ]
-        print("Snapshots:", plot_list)
-    else:
-        output_list = get_all_output_atm_times(output_dir)
-
-        if len(output_list) <= 8:
-            plot_list = output_list
-        else:
-            plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
-        print("Snapshots:", plot_list)
-
-    # # Read optional argument from console to provide output dir
-    # output_dir_read = parser.parse_args().dir
-
-    # output_list = su.get_all_output_times(output_dir_read)
-
-    # if len(output_list) <= 8:
-    #     plot_list = output_list
-    # else:
-    #     plot_list = [ output_list[0], output_list[int(round(len(output_list)*(2./100.)))], output_list[int(round(len(output_list)*(15./100.)))], output_list[int(round(len(output_list)*(22./100.)))], output_list[int(round(len(output_list)*(33./100.)))], output_list[int(round(len(output_list)*(50./100.)))], output_list[int(round(len(output_list)*(66./100.)))], output_list[-1] ]
-    # print("snapshots:", plot_list)
-
-    plot_stacked( output_dir=output_dir, times=plot_list )
+    plot_stacked( output_dir=dirs["output"], times=plot_list, 
+                 plot_format=COUPLER_options["plot_format"] )
 
 #====================================================================
 

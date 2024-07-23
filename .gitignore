@@ -4,9 +4,9 @@
 
 # Model files
 #############
-current*
-profile*
-runtime_spectral_file*
+current.*
+profile.*
+runtime.sf*
 socrates_star.txt
 radiation_code.lock
 
@@ -16,6 +16,7 @@ output/*
 output.link
 output
 AGNI
+SOCRATES
 
 # misc
 ######
@@ -113,7 +114,6 @@ cover/
 *.pot
 
 # Django stuff:
-*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -159,8 +159,8 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
-.venv
+.env/
+.venv/
 env/
 venv/
 ENV/

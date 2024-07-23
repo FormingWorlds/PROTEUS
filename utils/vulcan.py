@@ -4,8 +4,12 @@ from utils.coupler import *
 from utils.modules_ext import *
 from utils.helper import *
 
-# run VULCAN/atmosphere chemistry
 def RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_options ):
+    '''
+    Run online atmospheric chemistry via VULCAN kinetics 
+
+    This function is deprecated.
+    '''
 
     # Runtime info
     PrintHalfSeparator()
@@ -194,19 +198,5 @@ def RunVULCAN( atm, time_dict, loop_counter, dirs, runtime_helpfile, COUPLER_opt
         vul_data = pkl.load(vof)
         
     print(vul_data)
-
-    # < LEGACY CODE >
-    # # Update SPIDER restart options w/ surface partial pressures
-    # for vol in volatile_species:
-        
-    #     # Calculate partial pressure from VULCAN output
-    #     volume_mixing_ratio     = atm_chemistry.iloc[0][vol]
-    #     surface_pressure_total  = atm_chemistry.iloc[0]["Pressure"]*1e5 # bar -> Pa
-    #     partial_pressure_vol    = surface_pressure_total*volume_mixing_ratio
-
-    #     # Only for major atmospheric species
-    #     if partial_pressure_vol > 1.: # Pa
-    #         COUPLER_options[vol+"_initial_atmos_pressure"] = partial_pressure_vol
-    # </ LEGACY CODE >
 
     return atm

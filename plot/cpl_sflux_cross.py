@@ -24,7 +24,7 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False, modern_age:float=-1):
+def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False, modern_age:float=-1, plot_format="pdf"):
     """Plots stellar flux vs time, for a set of wavelengths.
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -137,7 +137,8 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False, modern_
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_sflux_cross.pdf",  bbox_inches="tight")
+    fig.savefig(output_dir+"/plot_sflux_cross.%s"%plot_format, 
+                bbox_inches="tight", dpi=200)
 
 
 # Run directly
@@ -159,7 +160,8 @@ if __name__ == '__main__':
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
 
-    plot_sflux_cross(dirs['output'], wl_targets=wl_bins, surface=False, modern_age=COUPLER_options["star_age_modern"])
+    plot_sflux_cross(dirs['output'], wl_targets=wl_bins, surface=False, 
+                     modern_age=COUPLER_options["star_age_modern"], plot_format=COUPLER_options["plot_format"])
 
     print("Done!")
 

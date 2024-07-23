@@ -1,4 +1,5 @@
 {
     "editor.tabSize": 4,
+    "editor.rulers": [ 92 ],
     "python.analysis.extraPaths": ["JANUS","Mors"]
 }

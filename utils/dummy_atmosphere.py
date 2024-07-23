@@ -7,7 +7,7 @@ from utils.constants import *
 log = logging.getLogger("PROTEUS")
 
 # Run the dummy atmosphere module
-def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):
+def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
 
     PrintHalfSeparator()
     log.info("Running dummy_atmosphere...")
@@ -18,13 +18,11 @@ def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # Setting this to 1 will result in an OLR of zero
     gamma           = 0.0   
 
-    # Variables 
-    T_surf_int      = COUPLER_options["T_surf"]
+    # Parameters 
     zenith_angle    = COUPLER_options["zenith_angle"]
     albedo_pl       = COUPLER_options["albedo_pl"]
     inst_sf         = COUPLER_options["asf_scalefactor"]
     albedo_s        = COUPLER_options["albedo_s"]
-    instellation    = COUPLER_options["F_ins"]
     skin_d          = COUPLER_options["skin_d"]
     skin_k          = COUPLER_options["skin_k"]
 
@@ -43,7 +41,7 @@ def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # Simple rad trans
     def _calc_fluxes(x):
         fl_U_LW = const_sigma * (1.0 - albedo_s) * (x - gamma * x)**4.0
-        fl_D_SW = instellation * (1.0 - albedo_pl) * inst_sf * np.cos(zenith_angle * np.pi / 180.0)
+        fl_D_SW = F_ins * (1.0 - albedo_pl) * inst_sf * np.cos(zenith_angle * np.pi / 180.0)
         fl_U_SW = 0.0
         fl_N = fl_U_LW + fl_U_SW - fl_D_SW
 
@@ -55,7 +53,7 @@ def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):
     # fixed T_Surf
     if COUPLER_options["atmosphere_surf_state"] == 1:  
         log.info("Calculating fluxes with dummy atmosphere")
-        T_surf_atm = T_surf_int
+        T_surf_atm = T_magma
         fluxes = _calc_fluxes(T_surf_atm)
         
     # conductive lid
@@ -66,11 +64,11 @@ def RunDummyAtm( time_dict, dirs, COUPLER_options, runtime_helpfile ):
         # We need to solve for the state where fl_N = f_skn
         # This function takes T_surf_atm as the input value, and returns fl_N - f_skn
         def _resid(x):
-            F_skn = skin_k / skin_d * (T_surf_int - x)
+            F_skn = skin_k / skin_d * (T_magma - x)
             _f = _calc_fluxes(x)
             return _f["fl_N"] - F_skn
 
-        r = optimise.root_scalar(_resid, method='secant', x0=T_surf_int, x1=T_surf_int-10.0, xtol=1.0e-7, maxiter=30)
+        r = optimise.root_scalar(_resid, method='secant', x0=T_magma, x1=T_magma-10.0, xtol=1.0e-7, maxiter=30)
         T_surf_atm = float(r.root)
         fluxes = _calc_fluxes(T_surf_atm)
 

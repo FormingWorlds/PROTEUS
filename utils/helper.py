@@ -8,11 +8,11 @@ from utils.constants import *
 log = logging.getLogger("PROTEUS")
 
 def PrintSeparator():
-    log.info("==============================================================================================")
+    log.info("===================================================")
     pass
 
 def PrintHalfSeparator():
-    log.info("--------------------------------------------------")
+    log.info("---------------------------------------------------")
     pass
 
 # String sorting inspired by natsorted
@@ -21,14 +21,18 @@ def natural_sort(l):
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
     return sorted(l, key = alphanum_key)
 
-# Savely remove a file
-def safe_rm(fpath):
+def safe_rm(fpath:str):
+    '''
+    Safely remove a file 
+    '''
     fpath = os.path.abspath(fpath)
     if os.path.exists(fpath):
         os.remove(fpath)
 
-# Get comment from status
 def CommentFromStatus(status:int):
+    '''
+    Convert status number into comment string
+    '''
     desc = ""
     match status:
         # Running cases
@@ -53,8 +57,11 @@ def CommentFromStatus(status:int):
             log.warning("Unhandled model status (%d) selected" % status)
     return desc
 
-# Update the status file with the current state of the program
 def UpdateStatusfile(dirs:dict, status:int):
+    '''
+    Update the status file with the current state of the program
+    '''
+
     # Path to status file 
     stsfold = os.path.abspath(dirs["output"])
     stsfile = os.path.join(stsfold,"status")
@@ -163,8 +170,10 @@ def find_nearest(array, target):
     close   = array[idx]
     return close, idx
 
-# Return the number of each element within a given molecule, as a dictionary
 def mol_to_ele(mol:str):
+    '''
+    Return the number of each element within a given molecule, as a dictionary
+    '''
     decomp = re.findall(r'([A-Z][a-z]?)(\d*)', mol)   # https://codereview.stackexchange.com/a/232664
     elems = {}
     for ev in decomp:
@@ -176,44 +185,11 @@ def mol_to_ele(mol:str):
     return elems
 
 
-#====================================================================
-def find_xx_for_yy( xx, yy, yywant ):
-
-    a = yy - yywant
-
-    s = sign_change( a )
-
-    # for ease, just add zero at the beginning to enable us to
-    # have the same length array.  Could equally add to the end, or
-    # interpolate
-
-    s = np.insert(s,0,0)
-
-    result = xx * s
-
-    return result
-
-#====================================================================
-def get_first_non_zero_index( myList ):
-
-    # https://stackoverflow.com/questions/19502378/python-find-first-instance-of-non-zero-number-in-list
-
-    index = next((i for i, x in enumerate(myList) if x), None)
-
-    return index
-
-#====================================================================
-def sign_change( a ):
-
-    s = (np.diff(np.sign(a)) != 0)*1
-
-    return s
-
-#====================================================================
 def recursive_get(d, keys):
-
-    '''function to access nested dictionaries'''
-
+    '''
+    Function to access nested dictionaries
+    '''
     if len(keys) == 1:
         return d[keys[0]]
     return recursive_get(d[keys[0]], keys[1:])
+

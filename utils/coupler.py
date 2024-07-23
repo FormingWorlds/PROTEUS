@@ -14,13 +14,25 @@ import plot.cpl_stacked as cpl_stacked
 import plot.cpl_interior as cpl_interior
 import plot.cpl_sflux as cpl_sflux
 import plot.cpl_sflux_cross as cpl_sflux_cross
-import plot.cpl_fluxes as cpl_fluxes
+import plot.cpl_fluxes_global as cpl_fluxes_global
+import plot.cpl_fluxes_atmosphere as cpl_fluxes_atmosphere
 import plot.cpl_interior_cmesh as cpl_interior_cmesh
 
-# Handle optional command line arguments for PROTEUS
+def CalculateEqmTemperature(I_0, ASF_sf, A_B):
+    '''
+    Calculate planetary equilibrium temperature.
+    Params: Stellar flux, ASF scale factor, and bond albedo.
+    '''
+    return (I_0 * ASF_sf * (1.0 - A_B) / const_sigma)**(1.0/4.0)
+
 def parse_console_arguments()->dict:
+    '''
+    Handle command line arguments for PROTEUS
+    '''
     parser = argparse.ArgumentParser(description='PROTEUS command line arguments')
-    parser.add_argument('--cfg', type=str, default="init_coupler.cfg", help='Path to configuration file')
+
+    parser.add_argument('--cfg', type=str, default="input/default.cfg", help='Path to configuration file')
+
     args = vars(parser.parse_args())
     return args
 
@@ -33,269 +45,161 @@ def latex_float(f):
     else:
         return float_str
 
-def PrintCurrentState(time_dict, runtime_helpfile, COUPLER_options):
+def PrintCurrentState(time_dict:dict, hf_row:dict):
+    '''
+    Print the current state of the model to the logger
+    '''
     PrintHalfSeparator()
     log.info("Runtime info...")
     log.info("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
-    log.info("    Model time   :   %.3e   yr"    % float(time_dict["planet"]))
-    log.info("    T_surf       :   %.3e   K"     % float(runtime_helpfile.iloc[-1]["T_surf"]))
-    log.info("    P_surf       :   %.3e   bar"   % float(runtime_helpfile.iloc[-1]["P_surf"]))
-    log.info("    Phi_global   :   %.3e   "      % float(runtime_helpfile.iloc[-1]["Phi_global"]))
-    log.info("    Instellation :   %.3e   W/m^2" % float(COUPLER_options["F_ins"]))
-    log.info("    F_int        :   %.3e   W/m^2" % float(COUPLER_options["F_int"]))
-    log.info("    F_atm        :   %.3e   W/m^2" % float(COUPLER_options["F_atm"])) 
-    log.info("    |F_net|      :   %.3e   W/m^2" % abs(float(COUPLER_options["F_net"])))
-    log.info("    Last file    :   %s "          % str(COUPLER_options["ic_interior_filename"]))
+    log.info("    Model time   :   %.2e   yr"    % float(time_dict["planet"]))
+    log.info("    T_surf       :   %4.3f   K"     %     float(hf_row["T_surf"]))
+    log.info("    T_magma      :   %4.3f   K"     %     float(hf_row["T_magma"]))
+    log.info("    P_surf       :   %.2e   bar"   %     float(hf_row["P_surf"]))
+    log.info("    Phi_global   :   %.2e   "      %     float(hf_row["Phi_global"]))
+    log.info("    Instellation :   %.2e   W/m^2" %     float(hf_row["F_ins"]))
+    log.info("    F_int        :   %.2e   W/m^2" %     float(hf_row["F_int"]))
+    log.info("    F_atm        :   %.2e   W/m^2" %     float(hf_row["F_atm"])) 
+    log.info("    |F_net|      :   %.2e   W/m^2" % abs(float(hf_row["F_net"])))
 
+def CreateLockFile(output_dir:str):
+    '''
+    Create a lock file which, if removed, will signal for the simulation to stop.
+    '''
+    keepalive_file = os.path.join(output_dir,"keepalive")
+    safe_rm(keepalive_file)
+    with open(keepalive_file, 'w') as fp:
+        fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
+    return keepalive_file
 
-def UpdateHelpfile(loop_counter, dirs, time_dict, runtime_helpfile, input_flag, COUPLER_options, solvevol_dict=None):
+def GetHelpfileKeys():
+    '''
+    Variables to be held in the helpfile
+    '''
 
-    runtime_helpfile_name = "runtime_helpfile.csv"
-    COUPLER_options_name  = "COUPLER_options.csv"
+    # Basic keys
+    keys = [
+            # Model tracking 
+            "Time", 
 
-    # If runtime_helpfile not existent, create it + write to disk
-    if not os.path.isfile(dirs["output"]+"/"+runtime_helpfile_name):
-        runtime_helpfile = pd.DataFrame(columns=["Time", "Input", "R_star", "T_surf", "T_eqm", "F_int", "F_atm", "F_net", "F_olr", "F_ins", "F_sct", "P_surf", "Phi_global", "RF_depth"])
-        runtime_helpfile.to_csv( dirs["output"]+"/"+runtime_helpfile_name, index=False, sep="\t") 
-        time_dict["planet"] = 0
+            # Temperatures 
+            "T_surf", "T_magma", "T_eqm", "T_skin",
 
-        # Save coupler options to file
-        COUPLER_options_save = pd.DataFrame(COUPLER_options, index=[0])
-        COUPLER_options_save.to_csv( dirs["output"]+"/"+COUPLER_options_name, index=False, sep="\t")
-    else:
-        # Get last interior quantities
-        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+            # Energy fluxes 
+            "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins",
 
+            # Interior properties
+            "gravity", "Phi_global", "RF_depth", 
+            "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid",
 
-    # Data dict
-    runtime_helpfile_new = {}
+            # Stellar 
+            "R_star", 
 
-    # For "Interior" sub-loop (SPIDER)
-    if input_flag == "Interior":
+            # Surface composition
+            "P_surf", "atm_kg_per_mol", # more keys are added below
+           
+            ]
 
-        ### Read in last SPIDER base parameters
-        sim_times = get_all_output_times(dirs["output"])  # yr
-        sim_time  = sim_times[-1]
+    # gases
+    for s in volatile_species:
+        keys.append(s+"_mol_atm")   
+        keys.append(s+"_mol_solid") 
+        keys.append(s+"_mol_liquid")
+        keys.append(s+"_mol_total") 
+        keys.append(s+"_kg_atm")   
+        keys.append(s+"_kg_solid") 
+        keys.append(s+"_kg_liquid")
+        keys.append(s+"_kg_total") 
+        keys.append(s+"_vmr") 
+        keys.append(s+"_bar") 
 
-        # SPIDER keys from JSON file that are read in
-        keys_t = ( ('atmosphere','mass_liquid'),
-                   ('atmosphere','mass_solid'),
-                   ('atmosphere','mass_mantle'),
-                   ('atmosphere','mass_core'),
-                   ('atmosphere','temperature_surface'),
-                   ('rheological_front_phi','phi_global'),
-                   ('atmosphere','Fatm'),
-                   ('rheological_front_dynamic','depth'),
-                   )
+    # element masses
+    for e in element_list:
+        keys.append(e+"_kg_atm")   
+        keys.append(e+"_kg_solid") 
+        keys.append(e+"_kg_liquid")
+        keys.append(e+"_kg_total") 
 
-        data_a = get_dict_surface_values_for_specific_time( keys_t, sim_time, indir=dirs["output"] )
-
-        # Fill the new dict
-        runtime_helpfile_new["Time"]  = sim_time
-        runtime_helpfile_new["Input"] = input_flag
-
-        # Stellar radius
-        if "star_radius" in COUPLER_options.keys():
-            runtime_helpfile_new["R_star"] = COUPLER_options["star_radius"]
-        else:
-            runtime_helpfile_new["R_star"] = COUPLER_options["star_radius_modern"]
-
-        # Mass properties
-        runtime_helpfile_new["M_mantle_liquid"] = float(data_a[0])
-        runtime_helpfile_new["M_mantle_solid"]  = float(data_a[1])
-        runtime_helpfile_new["M_mantle"]        = float(data_a[2])
-        runtime_helpfile_new["M_core"]          = float(data_a[3])
-        COUPLER_options["mantle_mass"] = runtime_helpfile_new["M_mantle"]
-
-        # Surface properties
-        runtime_helpfile_new["T_surf"]          = float(data_a[4])
-        runtime_helpfile_new["Phi_global"]      = float(data_a[5])  # global melt fraction
-        runtime_helpfile_new["F_int"]           = float(data_a[6])  # Heat flux from interior
-        runtime_helpfile_new["RF_depth"]        = float(data_a[7])/COUPLER_options["radius"]  # depth of rheological front
-
-        # Do not allow warming after init stage has completed
-        if (COUPLER_options["prevent_warming"]) and (time_dict["planet"] > 5.0):
-            runtime_helpfile_new["T_surf"] = min(runtime_helpfile_new["T_surf"], run_int.iloc[-1]["T_surf"])
-
-        # Handle volatiles 
-        for key in solvevol_dict.keys():
-            runtime_helpfile_new[key] = solvevol_dict[key]
-
-        # Manually calculate heat flux at near-surface from energy gradient
-        json_file   = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
-        Etot        = json_file.get_dict_values(['data','Etot_b'])
-        rad         = json_file.get_dict_values(['data','radius_b'])
-        area        = json_file.get_dict_values(['data','area_b'])
-        E0          = Etot[1] - (Etot[2]-Etot[1]) * (rad[2]-rad[1]) / (rad[1]-rad[0])
-        F_int2      = E0/area[0]
-
-        F_int = runtime_helpfile_new["F_int"]
-        log.info(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, F_int) )
-
-        # Limit F_int to positive values
-        if COUPLER_options["prevent_warming"]:
-            F_int = max(1.0e-8, F_int)
-
-        runtime_helpfile_new["F_int"] = F_int
-
-        # Check and replace NaNs
-        if np.isnan(runtime_helpfile_new["T_surf"]):
-            json_file_time = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
-            int_tmp   = json_file_time.get_dict_values(['data','temp_b'])
-            log.info("Replace T_surf NaN:", runtime_helpfile_new["T_surf"], "-->", int_tmp[0], "K")
-            runtime_helpfile_new["T_surf"] = int_tmp[0]
-
-
-        ## Derive elemental ratios for volatiles in atmosphere
-
-        # Number of mols per species and reservoir
-        runtime_helpfile_new["atm_kg_per_mol"] = 0.0
-        for vol in volatile_species:
-
-            # Total and baseline
-            runtime_helpfile_new[vol+"_mol_atm"]    = 0.
-            runtime_helpfile_new[vol+"_mol_solid"]  = 0.
-            runtime_helpfile_new[vol+"_mol_liquid"] = 0.
-            runtime_helpfile_new[vol+"_mol_total"]  = 0.
+    # elemental ratios
+    for e1 in element_list:
+        for e2 in element_list:
+            if e1==e2:
+                continue 
             
-            # Only for the ones tracked in SPIDER
-            runtime_helpfile_new[vol+"_mol_atm"]    = runtime_helpfile_new[vol+"_atm_kg"] / molar_mass[vol]
-            runtime_helpfile_new[vol+"_mol_solid"]  = runtime_helpfile_new[vol+"_solid_kg"] / molar_mass[vol]
-            runtime_helpfile_new[vol+"_mol_liquid"] = runtime_helpfile_new[vol+"_liquid_kg"] / molar_mass[vol]
-            runtime_helpfile_new[vol+"_mol_total"] = runtime_helpfile_new[vol+"_mol_atm"]      \
-                                                        + runtime_helpfile_new[vol+"_mol_solid"]  \
-                                                        + runtime_helpfile_new[vol+"_mol_liquid"]
-
-            runtime_helpfile_new["atm_kg_per_mol"] += runtime_helpfile_new[vol+"_mr"] * molar_mass[vol]
-
-        # Number of mols per element and reservoirf
-        for res in [ "total", "solid", "liquid", "atm" ]: 
-            runtime_helpfile_new["H_mol_"+res]  = runtime_helpfile_new["H2O_mol_"+res] * 2. \
-                                                + runtime_helpfile_new["H2_mol_"+res]  * 2. \
-                                                + runtime_helpfile_new["CH4_mol_"+res] * 4. 
-
-            runtime_helpfile_new["O_mol_"+res]  = runtime_helpfile_new["H2O_mol_"+res] * 1. \
-                                                + runtime_helpfile_new["CO2_mol_"+res] * 2. \
-                                                + runtime_helpfile_new["CO_mol_"+res]  * 1. \
-
-            runtime_helpfile_new["C_mol_"+res]  = runtime_helpfile_new["CO2_mol_"+res] * 1. \
-                                                + runtime_helpfile_new["CH4_mol_"+res] * 1. \
-                                                + runtime_helpfile_new["CO_mol_"+res]  * 1.
+            # reversed ratio
+            k = "%s/%s_atm"%(e2,e1)
+            if k in keys:
+                # skip this, since it's redundant to store (for example) the 
+                # ratio of H/C when we already have C/H.
+                continue 
             
-            runtime_helpfile_new["S_mol_"+res]  = runtime_helpfile_new["SO2_mol_"+res] * 1. \
-                                                + runtime_helpfile_new["S2_mol_"+res]  * 2. \
-
-            runtime_helpfile_new["N_mol_"+res]  = runtime_helpfile_new["N2_mol_"+res]  * 2.
-
-        # Calculate elemental ratios
-        for e1 in element_list:
-            for e2 in element_list:
-                if e1==e2:
-                    continue 
-                em1 = runtime_helpfile_new[e1+"_atm_kg"]
-                em2 = runtime_helpfile_new[e2+"_atm_kg"]
-                if em2 == 0:
-                    continue  # avoid division by zero
-                runtime_helpfile_new["%s/%s_atm"%(e1,e2)] = em1/em2
-
-        COUPLER_options["F_int"] = runtime_helpfile_new["F_int"]
-
-        # F_atm from before
-        if loop_counter["total"] > 0:
-            run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
-            COUPLER_options["F_atm"] = run_atm["F_atm"].iloc[-1]
-            COUPLER_options["F_olr"] = run_atm["F_olr"].iloc[-1]
-        else:
-            COUPLER_options["F_atm"]  = 0.0
-            COUPLER_options["F_olr"]  = 0.0
-            COUPLER_options["F_sct"]  = 0.0
+            # intended ratio to be stored
+            k = "%s/%s_atm"%(e1,e2)
+            if k in keys:
+                continue 
+            keys.append(k)
         
-        COUPLER_options["F_net"]      = COUPLER_options["F_atm"]-COUPLER_options["F_int"]
-        runtime_helpfile_new["F_net"] = COUPLER_options["F_net"]
-        runtime_helpfile_new["F_atm"] = COUPLER_options["F_atm"]
-        runtime_helpfile_new["F_ins"] = COUPLER_options["F_ins"]
-        runtime_helpfile_new["F_sct"] = COUPLER_options["F_sct"]
-        runtime_helpfile_new["F_olr"] = COUPLER_options["F_olr"]
-        runtime_helpfile_new["T_eqm"] = COUPLER_options["T_eqm"]
+    return keys 
 
-    # For "Atmosphere" sub-loop (VULCAN+SOCRATES) update heat flux from SOCRATES
-    elif input_flag == "Atmosphere":
+def CreateHelpfile():
+    '''
+    Create helpfile to hold output variables.
+    '''
+    log.debug("Creating new helpfile")
+    return pd.DataFrame(columns=GetHelpfileKeys(), dtype=float)
 
-        # Define input flag
-        runtime_helpfile_new["Input"]           = input_flag   
+def ZeroHelpfileRow():
+    '''
+    Get a dictionary with same keys as helpfile but with values of zero
+    '''
+    out = {}
+    for k in GetHelpfileKeys():
+        out[k] = 0.0
+    return out
 
-        # Infos from latest interior loop
-        runtime_helpfile_new["R_star"]          = run_int.iloc[-1]["R_star"] 
-        runtime_helpfile_new["Phi_global"]      = run_int.iloc[-1]["Phi_global"]
-        runtime_helpfile_new["RF_depth"]        = run_int.iloc[-1]["RF_depth"]     
-        runtime_helpfile_new["M_mantle"]        = run_int.iloc[-1]["M_mantle"]       
-        runtime_helpfile_new["M_core"]          = run_int.iloc[-1]["M_core"]         
-        runtime_helpfile_new["M_mantle_liquid"] = run_int.iloc[-1]["M_mantle_liquid"]
-        runtime_helpfile_new["M_mantle_solid"]  = run_int.iloc[-1]["M_mantle_solid"]
-        runtime_helpfile_new["Time"]            = run_int.iloc[-1]["Time"]
-        runtime_helpfile_new["F_int"]           = run_int.iloc[-1]["F_int"]
+def ExtendHelpfile(current_hf:pd.DataFrame, new_row:dict):
+    '''
+    Extend helpfile with new row of variables
+    '''
+    log.debug("Extending helpfile with new row")
+    
+    # validate keys 
+    missing_keys = set(GetHelpfileKeys()) - set(new_row.keys())
+    if len(missing_keys)>0:
+        raise Exception("Cannot add row to helpfile dataframe because it is missing keys: %s"%missing_keys)
+    
+    # convert row to df 
+    new_row = pd.DataFrame([new_row])
 
-        # From latest atmosphere iteration
-        runtime_helpfile_new["T_eqm"]           = COUPLER_options["T_eqm"]
-        runtime_helpfile_new["T_surf"]          = COUPLER_options["T_surf"] 
-        runtime_helpfile_new["F_atm"]           = COUPLER_options["F_atm"]
-        runtime_helpfile_new["F_ins"]           = COUPLER_options["F_ins"]
-        runtime_helpfile_new["F_sct"]           = COUPLER_options["F_sct"]
-
-        COUPLER_options["F_int"] = run_int.iloc[-1]["F_int"]
-        COUPLER_options["F_net"] = COUPLER_options["F_atm"] - COUPLER_options["F_int"]
-
-        ### Adjust F_net to break atm main loop:
-        t_curr          = run_int.iloc[-1]["Time"]
-        run_atm         = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
-        run_atm_last    = run_atm.loc[run_atm['Time'] != t_curr]
-
-        # Write F_net to next file
-        runtime_helpfile_new["F_net"]           = COUPLER_options["F_net"]
-        runtime_helpfile_new["F_olr"]           = COUPLER_options["F_olr"]
-
-        # Other info from latest iteration run (X/H ratios stay fixed w/o loss)
-        runtime_helpfile_new["P_surf"]          = runtime_helpfile.iloc[-1]["P_surf"]         
-        runtime_helpfile_new["M_atm"]           = runtime_helpfile.iloc[-1]["M_atm"]
-        runtime_helpfile_new["atm_kg_per_mol"]  = runtime_helpfile.iloc[-1]["atm_kg_per_mol"]
-        for res in [ "total", "solid", "liquid", "atm" ]: 
-            for elem in element_list:
-                runtime_helpfile_new[elem+"_mol_"+res]       = runtime_helpfile.iloc[-1][elem+"_mol_"+res]
-        for e1 in element_list:
-            for e2 in element_list:
-                key = "%s/%s_atm"%(e1,e2)
-                if key in runtime_helpfile.keys():
-                    runtime_helpfile_new[key] = runtime_helpfile.iloc[-1][key]
-        for vol in volatile_species:
-            runtime_helpfile_new[vol+"_mr"]          = runtime_helpfile.iloc[-1][vol+"_mr"]
-        
-        all = [v for v in volatile_species]
-        all.extend(element_list)
-        for a in all:
-            for suffix in ["_liquid_kg", "_mol_liquid", "_solid_kg", "_mol_solid", "_atm_kg", "_atm_bar", "_mol_atm", "_mol_total","_total_kg","_mr","_res"]:
-                key = a+suffix
-                if key in runtime_helpfile.keys():
-                    runtime_helpfile_new[key] = runtime_helpfile.iloc[-1][key] 
-
-    runtime_helpfile_new = pd.DataFrame(runtime_helpfile_new,index=[0])
-    runtime_helpfile = pd.concat([runtime_helpfile, runtime_helpfile_new])
-
-    runtime_helpfile.to_csv( dirs["output"]+"/"+runtime_helpfile_name, index=False, sep="\t")
-
-    # Save COUPLER_options to disk
-    COUPLER_options_save = pd.read_csv(dirs["output"]+"/"+COUPLER_options_name, sep="\t")
-    COUPLER_options_df = pd.DataFrame.from_dict([COUPLER_options])
-    COUPLER_options_save = pd.concat([ COUPLER_options_save, COUPLER_options_df],ignore_index=True)
-    COUPLER_options_save.to_csv( dirs["output"]+"/"+COUPLER_options_name, index=False, sep="\t")
-
-    return runtime_helpfile, time_dict, COUPLER_options
-
-# Calculate eqm temperature given stellar flux, ASF scale factor, and bond albedo
-def calc_eqm_temperature(I_0, ASF_sf, A_B):
-    return (I_0 * ASF_sf * (1.0 - A_B) / const_sigma)**(1.0/4.0)
+    # concatenate and return
+    return pd.concat([current_hf, new_row], ignore_index=True) 
 
 
-def ReadInitFile( init_file_passed , verbose=False):
+def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
+    '''
+    Write helpfile to a CSV file 
+    '''
+    log.debug("Writing helpfile to CSV file")
+
+    # check for invalid or missing keys 
+    difference = set(GetHelpfileKeys()) - set(current_hf.keys()) 
+    if len(difference) > 0:
+        raise Exception("There are invalid or missing keys in helpfile: "+str(difference))
+
+    # remove old file 
+    fpath = os.path.join(output_dir , "runtime_helpfile.csv")
+    if os.path.exists(fpath):
+        os.remove(fpath)
+
+    # write new file 
+    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.5e")
+    return fpath
+
+def ReadInitFile(init_file_passed:str, verbose=False):
+    '''
+    Read configuration file into a dictionary
+    '''
+    log.debug("Reading configuration file")
 
     # Read in input file as dictionary
     COUPLER_options  = {}
@@ -336,16 +240,15 @@ def ReadInitFile( init_file_passed , verbose=False):
                 if not line.startswith("time_"):
 
                     # Some parameters are int
-                    if key in [ "IC_INTERIOR", "ic_interior_filename", 
-                                "solid_stop", "steady_stop", "iter_max", "emit_stop",
-                                "plot_iterfreq", "stellar_heating", "mixing_length", 
+                    if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop",
+                                "plot_iterfreq", "stellar_heating", "mixing_length", "shallow_ocean_layer",
                                 "atmosphere_chemistry", "solvevol_use_params", "insert_rscatter", "water_cloud",
                                 "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
                                 "dt_dynamic", "prevent_warming", "atmosphere_model", "atmosphere_nlev"]:
                         val = int(val)
 
                     # Some are str
-                    elif key in [ 'star_spectrum', 'star_btrack', 'dir_output', 
+                    elif key in [ 'star_spectrum', 'dir_output', 'plot_format',
                                   'spectral_file' , 'log_level']:
                         val = str(val)
                         
@@ -368,9 +271,6 @@ def ReadInitFile( init_file_passed , verbose=False):
 
                         if line.startswith("star"):
                             time_dict["offset"] = float(val.strip())
-
-    # Calculate gravity from mass and radius
-    COUPLER_options["gravity"] =  const_G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
 
     return COUPLER_options, time_dict
 
@@ -428,24 +328,23 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     log.debug("Snapshots to plot:" + str(plot_times))
 
     # Specific timesteps for paper plots
-    cpl_interior.plot_interior(output_dir, plot_times)     
+    cpl_interior.plot_interior(output_dir, plot_times, COUPLER_options["plot_format"])     
     if not dummy_atm:
-        cpl_atmosphere.plot_atmosphere(output_dir, plot_times)
-        cpl_stacked.plot_stacked(output_dir, plot_times)
+        cpl_atmosphere.plot_atmosphere(output_dir, plot_times, COUPLER_options["plot_format"])
+        cpl_stacked.plot_stacked(output_dir, plot_times, COUPLER_options["plot_format"])
 
         if COUPLER_options["atmosphere_model"] != 1:
             # don't make this plot for AGNI, since it will do it itself
-            nc_path = output_dir + "/data/%d_atm.nc"%(int(output_times[-1]))
-            cpl_fluxes.plot_fluxes_atmosphere(output_dir, nc_path)
+            cpl_fluxes_atmosphere.plot_fluxes_atmosphere(output_dir, COUPLER_options["plot_format"])
 
 
     # Only at the end of the simulation
     if end:
         cpl_global.plot_global(output_dir, COUPLER_options, logt=False)   
-        cpl_interior_cmesh.plot_interior_cmesh(output_dir)
-        cpl_sflux.plot_sflux(output_dir)
-        cpl_sflux_cross.plot_sflux_cross(output_dir)
-        cpl_fluxes.plot_fluxes_global(output_dir, COUPLER_options)
+        cpl_interior_cmesh.plot_interior_cmesh(output_dir, plot_format=COUPLER_options["plot_format"])
+        cpl_sflux.plot_sflux(output_dir, plot_format=COUPLER_options["plot_format"])
+        cpl_sflux_cross.plot_sflux_cross(output_dir, plot_format=COUPLER_options["plot_format"])
+        cpl_fluxes_global.plot_fluxes_global(output_dir, COUPLER_options)
  
     # Close all figures
     plt.close()

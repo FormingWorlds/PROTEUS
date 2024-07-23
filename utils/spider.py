@@ -136,23 +136,19 @@ def get_column_data_from_SPIDER_lookup_file( infile ):
     return (data_a, size_a)
 
 def get_all_output_times( odir='output' ):
-    '''get all times (in Myrs) from the json files located in the
-       output directory'''
+    '''
+    Get all times (in yr) from the json files located in the output directory
+    '''
     
     odir = odir+'/data/'
 
     # locate times to process based on files located in odir/
     file_l = [f for f in os.listdir(odir) if os.path.isfile(odir+f)]
     if not file_l:
-        log.error('output directory contains no files')
-        sys.exit(0)
+        raise Exception('Output data directory contains no files')
 
     time_l = [fname for fname in file_l]
     time_l = list(filter(lambda a: a.endswith('json'), time_l))
-
-    # Filter out original/non-hacked jsons
-    time_l = [ file for file in time_l if not file.startswith("orig_")]
-
     time_l = [int(time.split('.json')[0]) for time in time_l]
     
     # ascending order
@@ -254,11 +250,12 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
     return np.array(data_l)
 
 #====================================================================
-def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile, step_sf, atol_sf ):
+def _try_spider( time_dict:dict, dirs:dict, COUPLER_options:dict, 
+                IC_INTERIOR:int, loop_counter:dict, 
+                hf_all:pd.DataFrame, hf_row:dict, 
+                step_sf:float, atol_sf:float ):
     '''
     Try to run spider with the current configuration.
-    On success, return (True, COUPLER_options)
-    On failure, return (False, {})
     '''
 
     step_sf = min(1.0, max(1.0e-10, step_sf))
@@ -274,21 +271,17 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
         shutil.copy(SPIDER_options_file_orig,SPIDER_options_file)
 
     # Recalculate time stepping
-    if (COUPLER_options["IC_INTERIOR"] == 2):  
+    if IC_INTERIOR == 2:  
 
         # Current step number
         json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(time_dict["planet"])) )
         step        = json_file.get_dict(['step'])
 
-        # Previous steps
-        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
-        run_atm = runtime_helpfile.loc[runtime_helpfile['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
-
         # Time stepping adjustment
         if time_dict["planet"] < 2.0:
             # First year, use small step
-            dtmacro = 1
-            dtswitch = 1
+            dtmacro = 1.0
+            dtswitch = 1.0
             nsteps = 1
             log.info("Time-stepping intent: static")
 
@@ -303,23 +296,24 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
 
                 # Try to maintain a minimum step size of dt_initial at first
                 if time_dict["planet"] > COUPLER_options["dt_initial"]:
-                    dtprev = float(run_int.iloc[-1]["Time"] - run_int.iloc[-2]["Time"])
+                    dtprev = float(hf_all.iloc[-1]["Time"] - hf_all.iloc[-2]["Time"])
                 else:
                     dtprev = COUPLER_options["dt_initial"]
+                log.debug("Previous step size: %.2e yr"%dtprev)
 
                 # Change in F_int 
-                F_int_2  = run_int.iloc[-2]["F_int"]
-                F_int_1  = run_int.iloc[-1]["F_int"]
+                F_int_2  = hf_all.iloc[-2]["F_int"]
+                F_int_1  = hf_all.iloc[-1]["F_int"]
                 F_int_12 = abs(F_int_1 - F_int_2) 
 
                 # Change in F_atm
-                F_atm_2  = run_atm.iloc[-2]["F_atm"]
-                F_atm_1  = run_atm.iloc[-1]["F_atm"]
+                F_atm_2  = hf_all.iloc[-2]["F_atm"]
+                F_atm_1  = hf_all.iloc[-1]["F_atm"]
                 F_atm_12 = abs(F_atm_1 - F_atm_2)  
 
                 # Change in global melt fraction
-                phi_2  = run_atm.iloc[-2]["Phi_global"]
-                phi_1  = run_atm.iloc[-1]["Phi_global"]
+                phi_2  = hf_all.iloc[-2]["Phi_global"]
+                phi_1  = hf_all.iloc[-1]["Phi_global"]
                 phi_12 = abs(phi_1 - phi_2)  
 
                 # Determine new time-step given the tolerances
@@ -361,7 +355,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
             # Calculate number of macro steps for SPIDER to perform within
             # this time-step of PROTEUS, which sets the number of json files.
             nsteps = 1
-            dtmacro = math.ceil(dtswitch / nsteps)   # Ensures that dtswitch is divisible by nsteps
+            dtmacro = np.ceil(dtswitch / nsteps)   # Ensures that dtswitch is divisible by nsteps
             dtswitch = nsteps * dtmacro
 
             log.info("New time-step is %1.2e years" % dtswitch)
@@ -369,7 +363,7 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
         # Number of total steps until currently desired switch/end time
         nstepsmacro = step + nsteps
 
-        log.debug("TIME OPTIONS IN RUNSPIDER: %g %g %d" % (dtmacro, dtswitch, nstepsmacro))
+        log.debug("Time options in RunSPIDER: %.2e yrs in %d steps" % (dtmacro, nstepsmacro))
 
     # For init loop
     else:
@@ -377,51 +371,47 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
         dtmacro     = 0
         dtswitch    = 0
 
-    # Store time-step (for next iteration)
-    COUPLER_options["dtswitch"] = dtswitch
-    COUPLER_options["dtmacro"] = dtmacro
-
-    # Set spider flux boundary condition
-    net_loss = COUPLER_options["F_atm"]
-
     ### SPIDER base call sequence 
     call_sequence = [   
                         dirs["spider"]+"/spider", 
                         "-options_file",           SPIDER_options_file, 
                         "-outputDirectory",        dirs["output"]+'data/',
-                        "-IC_INTERIOR",            "%d"  %(COUPLER_options["IC_INTERIOR"]),
+                        "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
                         "-OXYGEN_FUGACITY_offset", "%.6e"%(COUPLER_options["fO2_shift_IW"]),  # Relative to the specified buffer
-                        "-surface_bc_value",       "%.6e"%(net_loss), 
-                        "-teqm",                   "%.6e"%(COUPLER_options["T_eqm"]), 
+                        "-surface_bc_value",       "%.6e"%(hf_row["F_atm"]), 
+                        "-teqm",                   "%.6e"%(hf_row["T_eqm"]), 
                         "-n",                      "%d"  %(COUPLER_options["interior_nlev"]),
                         "-nstepsmacro",            "%d"  %(nstepsmacro), 
                         "-dtmacro",                "%.6e"%(dtmacro), 
                         "-radius",                 "%.6e"%(COUPLER_options["radius"]), 
-                        "-gravity",                "%.6e"%(-1.0 * COUPLER_options["gravity"]), 
+                        "-gravity",                "%.6e"%(-1.0 * hf_row["gravity"]), 
                         "-coresize",               "%.6e"%(COUPLER_options["planet_coresize"]),
                         "-grain",                  "%.6e"%(COUPLER_options["grain_size"]),
                     ]
 
     # Min of fractional and absolute Ts poststep change
     if time_dict["planet"] > 0:
-        dTs_frac = float(COUPLER_options["tsurf_poststep_change_frac"]) * float(runtime_helpfile["T_surf"].iloc[-1])
+        dTs_frac = float(COUPLER_options["tsurf_poststep_change_frac"]) * float(hf_all["T_surf"].iloc[-1])
         dT_int_max = np.min([ float(COUPLER_options["tsurf_poststep_change"]), float(dTs_frac) ])
         call_sequence.extend(["-tsurf_poststep_change", str(dT_int_max)])
     else:
         call_sequence.extend(["-tsurf_poststep_change", str(COUPLER_options["tsurf_poststep_change"])])
 
-    # With start of the main loop only:
-    if COUPLER_options["IC_INTERIOR"] == 2:
+    # Initial condition
+    if IC_INTERIOR == 2:
+        # get last JSON File 
+        last_filename = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
+        last_filename = os.path.join(dirs["output"], "data", last_filename)
         call_sequence.extend([ 
-                                "-ic_interior_filename", 
-                                str(dirs["output"]+"data/"+COUPLER_options["ic_interior_filename"]),
+                                "-ic_interior_filename", str(last_filename),
                                 "-activate_poststep", 
                                 "-activate_rollback"
                              ])
     else:
+        # set to adiabat
         call_sequence.extend([
                                 "-ic_adiabat_entropy", str(COUPLER_options["ic_adiabat_entropy"]),
-                                "-ic_dsdr", str(COUPLER_options["ic_dsdr"]) # initial dS/dr everywhere"
+                                "-ic_dsdr", str(COUPLER_options["ic_dsdr"]) # initial dS/dr everywhere
                             ])
 
     # Gravitational separation of solid and melt phase, 0: off | 1: on
@@ -432,44 +422,44 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     call_sequence.extend(["-mixing_length", str(COUPLER_options["mixing_length"])])
 
     # Check for convergence, if not converging, adjust tolerances iteratively
-    if (loop_counter["total"] > loop_counter["init_loops"]) and (len(runtime_helpfile) > 50):
+    # if (loop_counter["total"] > loop_counter["init_loops"]) and (len(runtime_helpfile) > 50):
 
-        # Check convergence for interior cycles
-        run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
+        # # Check convergence for interior cycles
+        # run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
 
-        ref_idx = -3
-        if len(run_int["Time"]) < abs(ref_idx)-1:
-            ref_idx = 0
+        # ref_idx = -3
+        # if len(run_int["Time"]) < abs(ref_idx)-1:
+        #     ref_idx = 0
 
         # First, relax too restrictive dTs
-        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
-            if COUPLER_options["tsurf_poststep_change"] <= 300:
-                COUPLER_options["tsurf_poststep_change"] += 10
-                log.warning(">>> Raise dT poststep_changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
-            else:
-                log.warning(">> dTs_int too high! >>", COUPLER_options["tsurf_poststep_change"], "K")
+        # if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
+        #     if COUPLER_options["tsurf_poststep_change"] <= 300:
+        #         COUPLER_options["tsurf_poststep_change"] += 10
+        #         log.warning(">>> Raise dT poststep_changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
+        #     else:
+        #         log.warning(">> dTs_int too high! >>", COUPLER_options["tsurf_poststep_change"], "K")
                 
         # Slowly limit again if time advances smoothly
-        if (run_int["Time"].iloc[-1] != run_int["Time"].iloc[ref_idx]) and COUPLER_options["tsurf_poststep_change"] > 30:
-            COUPLER_options["tsurf_poststep_change"] -= 10
-            log.warning(">>> Lower tsurf_poststep_change poststep changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
+        # if (run_int["Time"].iloc[-1] != run_int["Time"].iloc[ref_idx]) and COUPLER_options["tsurf_poststep_change"] > 30:
+        #     COUPLER_options["tsurf_poststep_change"] -= 10
+        #     log.warning(">>> Lower tsurf_poststep_change poststep changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
 
-        if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
-            if COUPLER_options["solver_tolerance"] < 1.0e-2:
-                COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
-                log.warning(">>> ADJUST tolerances:", COUPLER_options["solver_tolerance"])
-            COUPLER_options["adjust_tolerance"] = 1
-            log.warning(">>> CURRENT TOLERANCES:", COUPLER_options["solver_tolerance"])
+        # if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
+        #     if COUPLER_options["solver_tolerance"] < 1.0e-2:
+        #         COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
+        #         log.warning(">>> ADJUST tolerances:", COUPLER_options["solver_tolerance"])
+        #     COUPLER_options["adjust_tolerance"] = 1
+        #     log.warning(">>> CURRENT TOLERANCES:", COUPLER_options["solver_tolerance"])
 
         # If tolerance was adjusted, restart SPIDER w/ new tolerances
-        if "adjust_tolerance" in COUPLER_options:
-            log.warning(">>>>> >>>>> RESTART W/ ADJUSTED TOLERANCES")
-            call_sequence.extend(["-atmosts_snes_atol", str(COUPLER_options["solver_tolerance"])])
-            call_sequence.extend(["-atmosts_snes_rtol", str(COUPLER_options["solver_tolerance"])])
-            call_sequence.extend(["-atmosts_ksp_atol", str(COUPLER_options["solver_tolerance"])])
-            call_sequence.extend(["-atmosts_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
-            call_sequence.extend(["-atmosic_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
-            call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
+        # if "adjust_tolerance" in COUPLER_options:
+        #     log.warning(">>>>> >>>>> RESTART W/ ADJUSTED TOLERANCES")
+        #     call_sequence.extend(["-atmosts_snes_atol", str(COUPLER_options["solver_tolerance"])])
+        #     call_sequence.extend(["-atmosts_snes_rtol", str(COUPLER_options["solver_tolerance"])])
+        #     call_sequence.extend(["-atmosts_ksp_atol", str(COUPLER_options["solver_tolerance"])])
+        #     call_sequence.extend(["-atmosts_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
+        #     call_sequence.extend(["-atmosic_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
+        #     call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
 
     call_sequence.extend(["-ts_sundials_atol", str(COUPLER_options["solver_tolerance"] * atol_sf)])
     call_sequence.extend(["-ts_sundials_rtol", str(COUPLER_options["solver_tolerance"] * atol_sf)])
@@ -490,20 +480,13 @@ def _try_spider( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfil
     proc = subprocess.run([call_string],shell=True,stdout=spider_print)
     spider_print.close()
 
-    # Update restart filename for next SPIDER run
-    COUPLER_options["ic_interior_filename"] = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
-
     # Check status
-    success = (proc.returncode == 0)
-
-    # Handle failure by signalling for another _try_spider attempt
-    if success:
-        return True, COUPLER_options
-    else:
-        return False, {"failure":True}
+    return bool(proc.returncode == 0)
 
 
-def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile ):
+def RunSPIDER( time_dict:dict, dirs:dict, COUPLER_options:dict, 
+              IC_INTERIOR:int, loop_counter:dict, 
+              hf_all:pd.DataFrame, hf_row:dict ):
     '''
     Wrapper function for running SPIDER.
     This wrapper handles cases where SPIDER fails to find a solution.
@@ -512,7 +495,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     # info
     PrintHalfSeparator()
     log.info("Running SPIDER...")
-    log.debug("IC_INTERIOR = " + str(COUPLER_options["IC_INTERIOR"]))
+    log.debug("    IC_INTERIOR = %d"%IC_INTERIOR)
 
     # parameters
     max_attempts = 7        # maximum number of attempts
@@ -521,7 +504,6 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
 
     # tracking
     spider_success = False  # success?
-    temp_options = {}       # COUPLER_options dict to be used for attempts
     attempts = 0            # number of attempts so far
 
     # make attempts
@@ -530,8 +512,7 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
         log.info("Attempt %d" % attempts)
 
         # run SPIDER
-        temp_options = copy.deepcopy(COUPLER_options)
-        spider_success, temp_options = _try_spider(time_dict, dirs, temp_options, loop_counter, runtime_helpfile, step_sf, atol_sf)
+        spider_success = _try_spider(time_dict, dirs, COUPLER_options, IC_INTERIOR, loop_counter, hf_all, hf_row, step_sf, atol_sf)
 
         if spider_success:
             # success
@@ -550,10 +531,70 @@ def RunSPIDER( time_dict, dirs, COUPLER_options, loop_counter, runtime_helpfile 
     # check status
     if spider_success:
         # success after some attempts
-        return temp_options
+        return True
     else:
         # failure of all attempts
         UpdateStatusfile(dirs, 21)
         raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
+
+def ReadSPIDER(dirs:dict, time_dict:dict, COUPLER_options:dict, prev_T_magma:float):
+    '''
+    Read variables from last SPIDER output JSON file into a dictionary
+    '''
+
+    # Store variables in this dict
+    output = {}
+
+    ### Read in last SPIDER base parameters
+    sim_time = get_all_output_times(dirs["output"])[-1]  # yr, as an integer value
+
+    # SPIDER keys from JSON file that are read in
+    keys_t = ( ('atmosphere','mass_liquid'),
+                ('atmosphere','mass_solid'),
+                ('atmosphere','mass_mantle'),
+                ('atmosphere','mass_core'),
+                ('atmosphere','temperature_surface'),
+                ('rheological_front_phi','phi_global'),
+                ('atmosphere','Fatm'),
+                ('rheological_front_dynamic','depth'),
+                )
+
+    data_a = get_dict_surface_values_for_specific_time( keys_t, sim_time, indir=dirs["output"] )
+
+    # Fill the new dict
+    output["M_mantle_liquid"] = float(data_a[0])
+    output["M_mantle_solid"]  = float(data_a[1])
+    output["M_mantle"]        = float(data_a[2])
+    output["M_core"]          = float(data_a[3])
+
+    # Surface properties
+    output["T_magma"]         = float(data_a[4])
+    output["Phi_global"]      = float(data_a[5])  # global melt fraction
+    output["F_int"]           = float(data_a[6])  # Heat flux from interior
+    output["RF_depth"]        = float(data_a[7])/COUPLER_options["radius"]  # depth of rheological front
+
+    # Do not allow warming after init stage has completed
+    if (COUPLER_options["prevent_warming"]) and (time_dict["planet"] > 5.0):
+        output["T_magma"] = min(output["T_magma"], prev_T_magma)
+
+   
+    # Manually calculate heat flux at near-surface from energy gradient
+    json_file   = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
+    Etot        = json_file.get_dict_values(['data','Etot_b'])
+    rad         = json_file.get_dict_values(['data','radius_b'])
+    area        = json_file.get_dict_values(['data','area_b'])
+    E0          = Etot[1] - (Etot[2]-Etot[1]) * (rad[2]-rad[1]) / (rad[1]-rad[0])
+    F_int2      = E0/area[0]
+    log.debug(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, output["F_int"]) )
+
+    # Limit F_int to positive values
+    if COUPLER_options["prevent_warming"]:
+        output["F_int"] = max(1.0e-8, output["F_int"])
+
+    # Check NaNs
+    if np.isnan(output["T_magma"]):
+        raise Exception("Magma ocean temperature is NaN")
+
+    return sim_time, output
 

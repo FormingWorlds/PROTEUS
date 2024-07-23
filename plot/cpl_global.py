@@ -24,9 +24,8 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 
     # Read data
     #    Helpfiles...
-    df = pd.read_csv(output_dir+"/runtime_helpfile.csv",sep=r'\s+')
-    df_int = df.loc[df['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
-    df_atm = df.loc[df['Input']=='Atmosphere'].drop_duplicates(subset=['Time'], keep='last')
+    fpath = os.path.join(output_dir , "runtime_helpfile.csv")
+    hf_all = pd.read_csv(fpath, sep=r"\s+")
 
     #    Volatile parameters (keys=vols, vals=quantites_over_time)
     vol_present = {} # Is present ever? (true/false)
@@ -40,17 +39,17 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 
     for vol in volatile_species:
         # Check vmr for presence
-        this_vmr = np.array(df_atm[vol+"_mr"])
+        this_vmr = np.array(hf_all[vol+"_vmr"])
         vol_present[vol] = True 
-        if (np.amax(this_vmr) < 1.0e-30) or (COUPLER_options[vol+"_included"] < 1):
+        if (np.amax(this_vmr) < 1.0e-20) or (COUPLER_options[vol+"_included"] < 1):
             vol_present[vol] = False 
             continue 
         vol_vmr[vol] = this_vmr 
         
         # Do other variables
-        vol_bars[vol]    = np.array(df_atm[vol+"_atm_bar"])
-        vol_mol_atm[vol] = np.array(df_atm[vol+"_mol_atm"])
-        vol_mol_tot[vol] = np.array(df_atm[vol+"_mol_total"])
+        vol_bars[vol]    = np.array(hf_all[vol+"_bar"])
+        vol_mol_atm[vol] = np.array(hf_all[vol+"_mol_atm"])
+        vol_mol_tot[vol] = np.array(hf_all[vol+"_mol_total"])
         vol_mol_int[vol] = vol_mol_tot[vol] - vol_mol_atm[vol]
         vol_atmpart[vol] = vol_mol_atm[vol]/vol_mol_tot[vol]
         vol_intpart[vol] = vol_mol_int[vol]/vol_mol_tot[vol]
@@ -116,10 +115,10 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     # Set xlim
     xmin = max(tmin, 1.0)
     if logt:
-        xmax = max(1.0e6,np.amax(df_int["Time"]))
-        xlim = (xmin,10 ** math.ceil(math.log10(xmax*1.1)))
+        xmax = max(1.0e6,np.amax(hf_all["Time"]))
+        xlim = (xmin,10 ** np.ceil(np.log10(xmax*1.1)))
     else:
-        xmax = np.amax(df_int["Time"])
+        xmax = np.amax(hf_all["Time"])
         xlim = (1.0, xmax)
     for ax in axs:
         ax.set_xlim(xlim[0],  max(xlim[1], xlim[0]+1))
@@ -128,37 +127,37 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     # ------------------------------------------------------------------------
 
     # PLOT ax_tl
-    ax_tl.plot( df_atm["Time"], df_atm["F_int"], color=dict_colors["int"], lw=lw, alpha=al,  label="Int.",zorder=3, linestyle='dashed')
-    ax_tl.plot( df_atm["Time"], df_atm["F_atm"], color=dict_colors["atm"], lw=lw, alpha=al,  label="Atm.",zorder=3)
-    ax_tl.plot( df_atm["Time"], df_atm["F_olr"], color=dict_colors["OLR"], lw=lw, alpha=al,  label="OLR", zorder=2)
+    ax_tl.plot( hf_all["Time"], hf_all["F_int"], color=dict_colors["int"], lw=lw, alpha=al,  label="Int.",zorder=3, linestyle='dashed')
+    ax_tl.plot( hf_all["Time"], hf_all["F_atm"], color=dict_colors["atm"], lw=lw, alpha=al,  label="Atm.",zorder=3)
+    ax_tl.plot( hf_all["Time"], hf_all["F_olr"], color=dict_colors["OLR"], lw=lw, alpha=al,  label="OLR", zorder=2)
     ax_tl.legend(loc='center left', **leg_kwargs)
-    ax_tl.set_ylim(0.0, np.amax(df_atm["F_olr"]*2.0))
+    ax_tl.set_ylim(0.0, np.amax(hf_all["F_olr"]*2.0))
 
 
     # PLOT ax_cl
-    min_temp = np.amin(df_atm["T_surf"])
-    max_temp = np.amax(df_int["T_surf"])
-    ax_cl.plot(df_int["Time"], df_int["T_surf"], ls="dashed", lw=lw, alpha=al, color=dict_colors["int"])
-    ax_cl.plot(df_atm["Time"], df_atm["T_surf"], ls="-",      lw=lw, alpha=al, color=dict_colors["atm"])
+    min_temp = np.amin(hf_all["T_surf"])
+    max_temp = np.amax(hf_all["T_surf"])
+    ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="dashed", lw=lw, alpha=al, color=dict_colors["int"])
+    ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="-",      lw=lw, alpha=al, color=dict_colors["atm"])
     ax_cl.set_ylim(min(1000.0,min_temp) , max(3500.0,max_temp))
 
     
     # PLOT ax_bl
     ax_bl.axhline( y=COUPLER_options["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
-    ax_bl.plot( df_int["Time"], 1.0-df_int["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
-    ax_bl.plot( df_int["Time"],     df_int["Phi_global"], color=dict_colors["atm"], linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
+    ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
+    ax_bl.plot( hf_all["Time"],     hf_all["Phi_global"], color=dict_colors["atm"], linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
     ax_bl.legend(loc='center left', **leg_kwargs)
     ax_bl.set_ylim(0.0,1.0)
 
 
     # PLOT ax_tr
-    ax_tr.plot( df_int["Time"], df_int["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
+    ax_tr.plot( hf_all["Time"], hf_all["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
     bar_min, bar_max = 0.1, 10.0
-    bar_max = max(bar_max, np.amax(df_int["P_surf"]))
+    bar_max = max(bar_max, np.amax(hf_all["P_surf"]))
     for vol in volatile_species:
         if not vol_present[vol]:
             continue 
-        ax_tr.plot( df_atm["Time"], vol_bars[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+        ax_tr.plot( hf_all["Time"], vol_bars[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
         bar_min = min(bar_min, np.amin(vol_bars[vol]))
     ax_tr.set_ylim(max(1.0e-7,min(bar_min, 1.0e-1)), bar_max * 2.0)
     ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
@@ -167,14 +166,14 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     for vol in volatile_species:
         if not vol_present[vol]:
             continue 
-        ax_cr.plot( df_atm["Time"], vol_vmr[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+        ax_cr.plot( hf_all["Time"], vol_vmr[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
     ax_cr.set_ylim(0, 101)
 
     # PLOT ax_br
     for vol in volatile_species:
         if not vol_present[vol]:
             continue 
-        ax_br.plot( df_atm["Time"], vol_intpart[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+        ax_br.plot( hf_all["Time"], vol_intpart[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
     ax_br.set_ylim(0,101)
     ax_br.legend(loc='center left', ncol=2, **leg_kwargs).set_zorder(20)
     
@@ -188,7 +187,9 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         plt_name += "_log"
     else:
         plt_name += "_lin"
-    fig.savefig(output_dir+"/%s.pdf"%plt_name, bbox_inches='tight')
+    
+    fig.savefig(output_dir+"/%s.%s"%(plt_name,COUPLER_options["plot_format"]), 
+                bbox_inches='tight', dpi=200)
 
 #====================================================================
 
