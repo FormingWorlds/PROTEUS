@@ -11,7 +11,7 @@ from utils.constants import *
 from utils.coupler import *
 from utils.spider import RunSPIDER
 from utils.surface_gases import *
-from utils.logging import SetupLogger, GetNextLogfilePath
+from utils.logs import SetupLogger, GetNextLogfilePath
 
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra

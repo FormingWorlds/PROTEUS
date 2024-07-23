@@ -68,23 +68,39 @@ def SetupLogger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
     
     return 
 
-def GetNextLogfilePath(output_dir:str):
+def GetCurrentLogfilePath(output_dir:str):
     '''
-    Get path to logfile, handling existing files appropriately.
+    Get the path to the current logfile
     '''
-
     i=0
-    while i<10:
-        fname = "%01d.log"%i
+    j=-1
+    while i<99:
+        fname = "proteus_%02d.log"%i
         fpath = os.path.join(output_dir, fname)
 
-        # this will be the new logfile path
-        if not os.path.exists(fpath):
-            return fpath
+        if os.path.exists(fpath):
+            j=i
+        else:
+            break 
         
-        # try new name 
         i += 1
-    
-    raise Exception("Cannot create logfile - too many in output folder already")
 
+    return j
+
+def GetNextLogfilePath(output_dir:str):
+    '''
+    Get path to next logfile
+    '''
+
+    j = GetCurrentLogfilePath(output_dir)
+    i = j + 1
+
+    if i>99:
+        raise Exception("Cannot create logfile - too many in output folder already")
+
+    fname = "proteus_%02d.log"%i
+    fpath = os.path.join(output_dir, fname)
+
+    return fpath 
     
+
