@@ -119,7 +119,8 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
         cfg_toml["files"]["input_star"] =   ""   
     else:
         # doesn't exist => AGNI will copy it + modify as required
-        cfg_toml["files"]["input_sf"] =     os.path.join(dirs["fwl"],COUPLER_options["spectral_file"])
+        cfg_toml["files"]["input_sf"] =     os.path.join(dirs["fwl"],
+                                                         COUPLER_options["spectral_file"])
         cfg_toml["files"]["input_star"] =   sflux_path
     
     # Set execution
@@ -151,7 +152,8 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
         nc_path = ncdfs[np.argmax(ncdf_times)]
 
         log.debug("Initialise from last T(p)")
-        cfg_toml["execution"]["initial_state"] = ["ncdf", nc_path, "add", "%.6f"%initial_offset]
+        cfg_toml["execution"]["initial_state"] = ["ncdf", nc_path, 
+                                                  "add", "%.6f"%initial_offset]
 
     else:
         log.debug("Initialise isothermal")
@@ -210,8 +212,8 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
     proc = subprocess.run(call_sequence, stdout=agni_stdout, stderr=sys.stdout) 
     success = (proc.returncode == 0)
     
-    # Copy AGNI log into PROTEUS log
-    # There are probably better ways to do this, but it works well enough. We don't use agni_debug much anyway
+    # Copy AGNI log into PROTEUS log. There are probably better ways to do this, but it 
+    #     works well enough. We don't use agni_debug much anyway
     if agni_debug:
         with open(GetCurrentLogfilePath(dirs["output"]), "a") as outfile:
             with open(os.path.join(dirs["output"], "agni.log"), "r") as infile:
@@ -246,7 +248,8 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     # Inform
     log.info("Running AGNI...")
     time_str = "%d"%hf_row["Time"]
-    make_plots = (COUPLER_options["plot_iterfreq"] > 0) and (loops_total % COUPLER_options["plot_iterfreq"] == 0)
+    make_plots = (COUPLER_options["plot_iterfreq"] > 0) \
+                        and (loops_total % COUPLER_options["plot_iterfreq"] == 0)
 
     # tracking
     agni_success = False  # success?
@@ -314,7 +317,8 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
         shutil.move(p_inp, p_out)
 
     # Remove files
-    files_remove = ["plot_ptprofile.png", "fl.csv", "ptz_ini.csv", "ptz.csv", "agni.toml", "solver.png", "jacobian.png"] 
+    files_remove = ["plot_ptprofile.png", "fl.csv", "ptz_ini.csv", "ptz.csv", "agni.toml", 
+                    "solver.png", "jacobian.png"] 
     for frem in files_remove:
         frem_path = os.path.join(dirs["output"],frem)
         safe_rm(frem_path)

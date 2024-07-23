@@ -47,7 +47,8 @@ def parse_console_arguments()->dict:
     '''
     parser = argparse.ArgumentParser(description='PROTEUS command line arguments')
 
-    parser.add_argument('--cfg', type=str, default="input/default.cfg", help='Path to configuration file')
+    parser.add_argument('--cfg', type=str, 
+                        default="input/default.cfg", help='Path to configuration file')
     parser.add_argument('--resume', action='store_true', help='Resume simulation from disk')
 
     args = vars(parser.parse_args())
@@ -85,7 +86,8 @@ def CreateLockFile(output_dir:str):
     keepalive_file = os.path.join(output_dir,"keepalive")
     safe_rm(keepalive_file)
     with open(keepalive_file, 'w') as fp:
-        fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
+        fp.write("Removing this file will be interpreted by PROTEUS as a \
+                        request to stop the simulation loop\n")
     return keepalive_file
 
 def GetHelpfileKeys():

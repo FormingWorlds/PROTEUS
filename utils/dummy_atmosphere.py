@@ -11,7 +11,8 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
     log.info("Running dummy_atmosphere...")
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
-    # It represents a measure of the radiating temperature of the atmosphere above the surface, relative to the surface temperature itself
+    # It represents a measure of the radiating temperature of the atmosphere above the 
+    #    surface, relative to the surface temperature itself
     # Setting this to 0 will result in an entirely transparent atmosphere
     # Setting this to 1 will result in an OLR of zero
     gamma           = 0.0   
@@ -66,7 +67,8 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
             _f = _calc_fluxes(x)
             return _f["fl_N"] - F_skn
 
-        r = optimise.root_scalar(_resid, method='secant', x0=T_magma, x1=T_magma-10.0, xtol=1.0e-7, maxiter=30)
+        r = optimise.root_scalar(_resid, method='secant', x0=T_magma, x1=T_magma-10.0, 
+                                        xtol=1.0e-7, maxiter=30)
         T_surf_atm = float(r.root)
         fluxes = _calc_fluxes(T_surf_atm)
 
