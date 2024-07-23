@@ -159,12 +159,12 @@ def GetHelpfileKeys():
         
     return keys 
 
-def CreateHelpfile():
+def CreateHelpfileFromDict(d:dict):
     '''
     Create helpfile to hold output variables.
     '''
-    log.debug("Creating new helpfile")
-    return pd.DataFrame(columns=GetHelpfileKeys(), dtype=float)
+    log.debug("Creating new helpfile from dict")
+    return pd.DataFrame([d], columns=GetHelpfileKeys(), dtype=float)
 
 def ZeroHelpfileRow():
     '''
@@ -184,10 +184,10 @@ def ExtendHelpfile(current_hf:pd.DataFrame, new_row:dict):
     # validate keys 
     missing_keys = set(GetHelpfileKeys()) - set(new_row.keys())
     if len(missing_keys)>0:
-        raise Exception("Cannot add row to helpfile dataframe because it is missing keys: %s"%missing_keys)
+        raise Exception("There are mismatched keys in helpfile: %s"%missing_keys)
     
     # convert row to df 
-    new_row = pd.DataFrame([new_row])
+    new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
 
     # concatenate and return
     return pd.concat([current_hf, new_row], ignore_index=True) 
@@ -202,7 +202,7 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
     # check for invalid or missing keys 
     difference = set(GetHelpfileKeys()) - set(current_hf.keys()) 
     if len(difference) > 0:
-        raise Exception("There are invalid or missing keys in helpfile: "+str(difference))
+        raise Exception("There are mismatched keys in helpfile: "+str(difference))
 
     # remove old file 
     fpath = os.path.join(output_dir , "runtime_helpfile.csv")
@@ -427,6 +427,8 @@ def SetDirectories(COUPLER_options: dict):
             Dictionary of paths to important directories
     """
 
+    if os.environ.get('COUPLER_DIR') == None:
+        raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
     coupler_dir = os.path.abspath(os.getenv('COUPLER_DIR'))
 
     # PROTEUS folders

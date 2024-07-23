@@ -58,6 +58,7 @@ def main():
     log.info("Current time: " + start_time.strftime('%Y-%m-%d_%H:%M:%S'))
     log.info("Hostname    : " + str(os.uname()[1]))
     log.info("PROTEUS hash: " + GitRevision(dirs["coupler"])) 
+    log.info("Py version  : " + sys.version.split(' ')[0]) 
     log.info("Config file : " + cfg_file)
     log.info("Output dir  : " + dirs["output"])
     log.info("FWL data dir: " + dirs["fwl"])
@@ -92,8 +93,10 @@ def main():
         # Copy config file to output directory, for future reference
         shutil.copyfile(args["cfg"], os.path.join(dirs["output"],"init_coupler.cfg"))
 
-        # Generate running helpfile of output variables
-        hf_all = CreateHelpfile()
+        # No previous iterations to be stored. It is therefore important that the 
+        #    submodules do not try to read data from the 'past' iterations, since they do
+        #    not yet exist.
+        hf_all = None
 
         # Create an empty initial row for helpfile 
         hf_row = ZeroHelpfileRow()
@@ -451,12 +454,17 @@ def main():
         hf_row["F_olr"]  = atm_output["F_olr"] 
         hf_row["F_sct"]  = atm_output["F_sct"] 
         hf_row["T_surf"] = atm_output["T_surf"]
-        hf_row["F_net"] = hf_row["F_int"] - hf_row["F_atm"]
+        hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
         
         ############### / ATMOSPHERE SUB-LOOP
 
-        # Append row to helpfile 
-        hf_all = ExtendHelpfile(hf_all, hf_row)
+        # Update full helpfile
+        if loop_counter["total"]>1:
+            # append row
+            hf_all = ExtendHelpfile(hf_all, hf_row)
+        else:
+            # first iter => generate new HF from dict
+            hf_all = CreateHelpfileFromDict(hf_row)
 
         # Write helpfile to disk
         WriteHelpfileToCSV(dirs["output"], hf_all)
@@ -579,10 +587,6 @@ def main():
 
 #====================================================================
 if __name__ == '__main__':
-    # Check that environment variables are set 
-    if os.environ.get('COUPLER_DIR') == None:
-        raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
-    # Start main function
     main()
     print("Goodbye")
     exit(0)
