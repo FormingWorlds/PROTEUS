@@ -15,7 +15,7 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
     #    surface, relative to the surface temperature itself
     # Setting this to 0 will result in an entirely transparent atmosphere
     # Setting this to 1 will result in an OLR of zero
-    gamma           = 0.0   
+    gamma           = 0.3   
 
     # Parameters 
     zenith_angle    = COUPLER_options["zenith_angle"]
@@ -26,10 +26,6 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
     skin_k          = COUPLER_options["skin_k"]
 
     # Check configuration
-    if COUPLER_options["atmosphere_solve_energy"] == 1:
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Cannot solve for RCE with dummy_atmosphere")
-    
     if COUPLER_options["insert_rscatter"] == 1:
         log.warning("Rayleigh scattering is enabled but it will be neglected")
 
@@ -39,13 +35,16 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
 
     # Simple rad trans
     def _calc_fluxes(x):
-        fl_U_LW = const_sigma * (1.0 - albedo_s) * (x - gamma * x)**4.0
+        # surface emission and stellar flux
+        fl_U_LW = const_sigma * (x - gamma * x)**4.0
         fl_D_SW = F_ins * (1.0 - albedo_pl) * inst_sf * np.cos(zenith_angle * np.pi / 180.0)
-        fl_U_SW = 0.0
-        fl_N = fl_U_LW + fl_U_SW - fl_D_SW
 
-        # T_eqm = 1716.7
-        # fl_N = const_sigma * (1-albedo_s) * (x**4.0 - T_eqm**4.0)
+        # surface reflection
+        fl_U_SW = fl_D_SW * albedo_s
+        fl_D_SW = fl_D_SW * (1.0-albedo_s)
+
+        # net flux at surface
+        fl_N = fl_U_LW + fl_U_SW - fl_D_SW
         
         return {"fl_U_LW":fl_U_LW, "fl_D_SW":fl_D_SW, "fl_U_SW":fl_U_SW, "fl_N":fl_N}
         
@@ -68,7 +67,7 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
             return _f["fl_N"] - F_skn
 
         r = optimise.root_scalar(_resid, method='secant', x0=T_magma, x1=T_magma-10.0, 
-                                        xtol=1.0e-7, maxiter=30)
+                                        xtol=1.0e-7, maxiter=40)
         T_surf_atm = float(r.root)
         fluxes = _calc_fluxes(T_surf_atm)
 

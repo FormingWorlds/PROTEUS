@@ -313,6 +313,12 @@ def ValidateInitFile(COUPLER_options:dict):
             UpdateStatusfile(dirs, 20)
             raise Exception("Could not find Julia in current environment")
         
+    if COUPLER_options["atmosphere_model"] == 2:
+        if COUPLER_options["atmosphere_solve_energy"] == 1:
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Cannot solve for RCE with dummy_atmosphere")
+    
+        
     if COUPLER_options["atmosphere_nlev"] < 15:
         UpdateStatusfile(dirs, 20)
         raise Exception("Atmosphere must have at least 15 levels")
@@ -326,13 +332,16 @@ def ValidateInitFile(COUPLER_options:dict):
         key_pp = str(s+"_initial_bar")
         key_in = str(s+"_included")
         if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options[key_in] == 0):
+            UpdateStatusfile(dirs, 20)
             raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
         if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0):
+            UpdateStatusfile(dirs, 20)
             raise Exception("Volatile %s has non-zero pressure but outgassing parameters are enabled")
 
     # Required vols
     for s in ["H2O","CO2","N2","S2"]:
         if COUPLER_options[s+"_included"] == 0:
+            UpdateStatusfile(dirs, 20)
             raise Exception("Missing required volatile '%s'"%s)
         
     return True
