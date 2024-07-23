@@ -459,7 +459,7 @@ def main():
 
         # Calculate observables
         hf_row["transit_depth"] =   (hf_row["z_obs"] / hf_row["R_star"])**2.0
-        hf_row["contrast_ratio"] =  (hf_row["F_atm"] / hf_row["F_ins"]) / (1 + COUPLER_options["mean_distance"])
+        hf_row["contrast_ratio"] =  (hf_row["F_atm"] / hf_row["F_ins"]) / (1 + COUPLER_options["mean_distance"])**2.0
         ############### / ATMOSPHERE SUB-LOOP
 
         # Update full helpfile
