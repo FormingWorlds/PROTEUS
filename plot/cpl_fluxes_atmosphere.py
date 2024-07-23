@@ -9,7 +9,7 @@ log = logging.getLogger("PROTEUS")
 # Plotting fluxes
 def plot_fluxes_atmosphere(output_dir, plot_format="pdf"):
 
-    log.info("Plotting atmosphere fluxes")
+    log.info("Plot atmosphere fluxes")
 
     files = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
     nc_fpath = natural_sort(files)[-1]

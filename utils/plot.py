@@ -325,7 +325,8 @@ class FigureData( object ):
         self.make_figure()
 
     def set_myaxes( self, ax, title='', xlabel='', xticks='',
-        ylabel='', yticks='', yrotation='', fmt='', xfmt='', xmin='', xmax='', ymin='', ymax='' ):
+                        ylabel='', yticks='', yrotation='', fmt='', xfmt='', 
+                        xmin='', xmax='', ymin='', ymax='' ):
         if title:
             self.set_mytitle( ax, title )
         if xlabel:
@@ -342,7 +343,8 @@ class FigureData( object ):
         fontsize = self.data_d['fontsize_legend']
         # FIXME
         if not TITLE:
-            legend = ax.legend(handles=handles, loc=loc, ncol=ncol, fontsize=fontsize, **kwargs )
+            legend = ax.legend(handles=handles, loc=loc, ncol=ncol, 
+                               fontsize=fontsize, **kwargs )
             #units = dd['time_units']
             #title = r'Time ({0})'.format( units )
         else:

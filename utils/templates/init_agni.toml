@@ -25,10 +25,8 @@ title = "PROTEUS base"
     latent_heat     = true 
     convection      = true 
     solvers         = ["newton"]  
-    dx_max          = 350.0    
-    easy_start      = true
-    converge_atol   = 5.0e-2  
-    converge_rtol   = 1.0e-2  
+    converge_atol   = 2.0e-3  
+    converge_rtol   = 5.0e-2  
 
 
 [plots]

@@ -18,6 +18,22 @@ import plot.cpl_fluxes_global as cpl_fluxes_global
 import plot.cpl_fluxes_atmosphere as cpl_fluxes_atmosphere
 import plot.cpl_interior_cmesh as cpl_interior_cmesh
 
+def GitRevision(dir:str) -> str:
+    '''
+    Get git hash for repository in `dir`.
+    '''
+    # change dir 
+    cwd = os.getcwd()
+    os.chdir(dir)
+
+    # get hash (https://stackoverflow.com/a/21901260)
+    hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
+
+    # change dir back 
+    os.chdir(cwd)
+    
+    return hash
+
 def CalculateEqmTemperature(I_0, ASF_sf, A_B):
     '''
     Calculate planetary equilibrium temperature.
@@ -31,7 +47,9 @@ def parse_console_arguments()->dict:
     '''
     parser = argparse.ArgumentParser(description='PROTEUS command line arguments')
 
-    parser.add_argument('--cfg', type=str, default="input/default.cfg", help='Path to configuration file')
+    parser.add_argument('--cfg', type=str, 
+                        default="input/default.cfg", help='Path to configuration file')
+    parser.add_argument('--resume', action='store_true', help='Resume simulation from disk')
 
     args = vars(parser.parse_args())
     return args
@@ -45,22 +63,21 @@ def latex_float(f):
     else:
         return float_str
 
-def PrintCurrentState(time_dict:dict, hf_row:dict):
+def PrintCurrentState(hf_row:dict):
     '''
     Print the current state of the model to the logger
     '''
-    PrintHalfSeparator()
     log.info("Runtime info...")
     log.info("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
-    log.info("    Model time   :   %.2e   yr"    % float(time_dict["planet"]))
-    log.info("    T_surf       :   %4.3f   K"     %     float(hf_row["T_surf"]))
-    log.info("    T_magma      :   %4.3f   K"     %     float(hf_row["T_magma"]))
-    log.info("    P_surf       :   %.2e   bar"   %     float(hf_row["P_surf"]))
-    log.info("    Phi_global   :   %.2e   "      %     float(hf_row["Phi_global"]))
-    log.info("    Instellation :   %.2e   W/m^2" %     float(hf_row["F_ins"]))
-    log.info("    F_int        :   %.2e   W/m^2" %     float(hf_row["F_int"]))
-    log.info("    F_atm        :   %.2e   W/m^2" %     float(hf_row["F_atm"])) 
-    log.info("    |F_net|      :   %.2e   W/m^2" % abs(float(hf_row["F_net"])))
+    log.info("    Model time   :   %.2e   yr"    % float(hf_row["Time"]))
+    log.info("    T_surf       :   %4.3f   K"    % float(hf_row["T_surf"]))
+    log.info("    T_magma      :   %4.3f   K"    % float(hf_row["T_magma"]))
+    log.info("    P_surf       :   %.2e   bar"   % float(hf_row["P_surf"]))
+    log.info("    Phi_global   :   %.2e   "      % float(hf_row["Phi_global"]))
+    log.info("    Instellation :   %.2e   W m-2" % float(hf_row["F_ins"]))
+    log.info("    F_int        :   %.2e   W m-2" % float(hf_row["F_int"]))
+    log.info("    F_atm        :   %.2e   W m-2" % float(hf_row["F_atm"])) 
+    log.info("    |F_net|      :   %.2e   W m-2" % abs(float(hf_row["F_net"])))
 
 def CreateLockFile(output_dir:str):
     '''
@@ -69,7 +86,8 @@ def CreateLockFile(output_dir:str):
     keepalive_file = os.path.join(output_dir,"keepalive")
     safe_rm(keepalive_file)
     with open(keepalive_file, 'w') as fp:
-        fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
+        fp.write("Removing this file will be interpreted by PROTEUS as a \
+                        request to stop the simulation loop\n")
     return keepalive_file
 
 def GetHelpfileKeys():
@@ -93,7 +111,7 @@ def GetHelpfileKeys():
             "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid",
 
             # Stellar 
-            "R_star", 
+            "R_star", "age_star",
 
             # Surface composition
             "P_surf", "atm_kg_per_mol", # more keys are added below
@@ -141,12 +159,12 @@ def GetHelpfileKeys():
         
     return keys 
 
-def CreateHelpfile():
+def CreateHelpfileFromDict(d:dict):
     '''
     Create helpfile to hold output variables.
     '''
-    log.debug("Creating new helpfile")
-    return pd.DataFrame(columns=GetHelpfileKeys(), dtype=float)
+    log.debug("Creating new helpfile from dict")
+    return pd.DataFrame([d], columns=GetHelpfileKeys(), dtype=float)
 
 def ZeroHelpfileRow():
     '''
@@ -166,10 +184,10 @@ def ExtendHelpfile(current_hf:pd.DataFrame, new_row:dict):
     # validate keys 
     missing_keys = set(GetHelpfileKeys()) - set(new_row.keys())
     if len(missing_keys)>0:
-        raise Exception("Cannot add row to helpfile dataframe because it is missing keys: %s"%missing_keys)
+        raise Exception("There are mismatched keys in helpfile: %s"%missing_keys)
     
     # convert row to df 
-    new_row = pd.DataFrame([new_row])
+    new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
 
     # concatenate and return
     return pd.concat([current_hf, new_row], ignore_index=True) 
@@ -184,7 +202,7 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
     # check for invalid or missing keys 
     difference = set(GetHelpfileKeys()) - set(current_hf.keys()) 
     if len(difference) > 0:
-        raise Exception("There are invalid or missing keys in helpfile: "+str(difference))
+        raise Exception("There are mismatched keys in helpfile: "+str(difference))
 
     # remove old file 
     fpath = os.path.join(output_dir , "runtime_helpfile.csv")
@@ -192,8 +210,17 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
         os.remove(fpath)
 
     # write new file 
-    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.5e")
+    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.6e")
     return fpath
+
+def ReadHelpfileFromCSV(output_dir:str):
+    '''
+    Read helpfile from disk CSV file to DataFrame
+    '''
+    fpath = os.path.join(output_dir , "runtime_helpfile.csv")
+    if not os.path.exists(fpath):
+        raise Exception("Cannot find helpfile at '%s'"%fpath)
+    return pd.read_csv(fpath, sep=r"\s+")
 
 def ReadInitFile(init_file_passed:str, verbose=False):
     '''
@@ -269,10 +296,55 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                     
                         time_dict[str(key.strip())] = float(val.strip())
 
-                        if line.startswith("star"):
-                            time_dict["offset"] = float(val.strip())
-
     return COUPLER_options, time_dict
+
+def ValidateInitFile(COUPLER_options:dict):
+    '''
+    Validate configuration file, checking for invalid options
+    '''
+
+    if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
+        if COUPLER_options["shallow_ocean_layer"] == 1:
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
+        
+    if COUPLER_options["atmosphere_model"] == 1:  # Julia required for AGNI
+        if shutil.which("julia") is None:
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Could not find Julia in current environment")
+        
+    if COUPLER_options["atmosphere_model"] == 2:
+        if COUPLER_options["atmosphere_solve_energy"] == 1:
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Cannot solve for RCE with dummy_atmosphere")
+    
+        
+    if COUPLER_options["atmosphere_nlev"] < 15:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Atmosphere must have at least 15 levels")
+    
+    if COUPLER_options["interior_nlev"] < 40:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Interior must have at least 40 levels")
+    
+    # Ensure that all volatiles are all tracked
+    for s in volatile_species:
+        key_pp = str(s+"_initial_bar")
+        key_in = str(s+"_included")
+        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options[key_in] == 0):
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
+        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0):
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Volatile %s has non-zero pressure but outgassing parameters are enabled")
+
+    # Required vols
+    for s in ["H2O","CO2","N2","S2"]:
+        if COUPLER_options[s+"_included"] == 0:
+            UpdateStatusfile(dirs, 20)
+            raise Exception("Missing required volatile '%s'"%s)
+        
+    return True
 
 def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
@@ -287,8 +359,6 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
             Is this function being called at the end of the simulation?
     """
 
-    PrintHalfSeparator()
-    log.info("Updating plots...")
 
     # Get all JSON files
     output_times = get_all_output_times( output_dir )
@@ -366,6 +436,8 @@ def SetDirectories(COUPLER_options: dict):
             Dictionary of paths to important directories
     """
 
+    if os.environ.get('COUPLER_DIR') == None:
+        raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
     coupler_dir = os.path.abspath(os.getenv('COUPLER_DIR'))
 
     # PROTEUS folders

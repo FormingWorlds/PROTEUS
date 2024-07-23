@@ -18,7 +18,7 @@ def plot_atmosphere( output_dir, times, plot_format="pdf"):
     sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)  
     sm.set_array([])
 
-    scale = 1.3
+    scale = 1.2
     fig,(ax0,ax1) = plt.subplots(2,1, sharex=True, figsize=(5*scale,7*scale))
 
     for i, t in enumerate( times ):
