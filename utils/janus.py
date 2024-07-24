@@ -242,11 +242,16 @@ def RunJANUS( atm, time:float, dirs:dict, COUPLER_options:dict, hf_all:pd.DataFr
 
     # Restore stdout
     sys.stdout , sys.stderr = old_stdout , old_stderr
+
+    # find 1 mbar level 
+    idx = find_nearest(atm.p*1e5, 1e-3)[1]
+    z_obs = atm.z[idx]
     
     output["T_surf"] = atm.ts            # Surface temperature [K]
     output["F_atm"]  = F_atm_lim         # Net flux at TOA
     output["F_olr"]  = atm.LW_flux_up[0] # OLR
     output["F_sct"]  = atm.SW_flux_up[0] # Scattered SW flux
+    output["z_obs"]  = z_obs + atm.planet_radius
 
     return output
 

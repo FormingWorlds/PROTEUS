@@ -332,6 +332,9 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     net_flux =      np.array(ds.variables["fl_N"][:])
     LW_flux_up =    np.array(ds.variables["fl_U_LW"][:])
     SW_flux_up =    np.array(ds.variables["fl_U_SW"][:])
+    arr_p =         np.array(ds.variables["p"][:])
+    arr_z =         np.array(ds.variables["z"][:])
+    radius =        float(ds.variables["planet_radius"][:])
     T_surf =        float(ds.variables["tmp_surf"][:])
     ds.close()
 
@@ -348,11 +351,16 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % 
                                         (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
+    # find 1 mbar level 
+    idx = find_nearest(arr_p*1e5, 1e-3)[1]
+    z_obs = arr_z[idx]
+
     output = {}
     output["F_atm"]  = F_atm_new
     output["F_olr"]  = LW_flux_up[0]
     output["F_sct"]  = SW_flux_up[0]
     output["T_surf"] = T_surf
+    output["z_obs"]  = z_obs + radius
     
     return output
 

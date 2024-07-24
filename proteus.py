@@ -11,7 +11,7 @@ from utils.constants import *
 from utils.coupler import *
 from utils.spider import RunSPIDER
 from utils.surface_gases import *
-from utils.logs import SetupLogger, GetLogfilePath, GetCurrentLogfileIndex
+from utils.logs import SetupLogger, GetLogfilePath, GetCurrentLogfileIndex, StreamToLogger
 
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
@@ -404,7 +404,6 @@ def main():
                 hf_row[k] = solvevol_result[k]
         ############### / OUTGASSING
         
-                        
 
         ############### UPDATE TIME 
                                    
@@ -450,13 +449,17 @@ def main():
             
         
         # Store atmosphere module output variables
+        hf_row["z_obs"]  = atm_output["z_obs"] 
         hf_row["F_atm"]  = atm_output["F_atm"] 
         hf_row["F_olr"]  = atm_output["F_olr"] 
         hf_row["F_sct"]  = atm_output["F_sct"] 
         hf_row["T_surf"] = atm_output["T_surf"]
         hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
-        
-        ############### / ATMOSPHERE SUB-LOOP
+
+        # Calculate observables (measured at infinite distance)
+        hf_row["transit_depth"] =  (hf_row["z_obs"] / hf_row["R_star"])**2.0
+        hf_row["contrast_ratio"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
+                                     (hf_row["z_obs"] / (COUPLER_options["mean_distance"]*AU))**2.0
 
         # Update full helpfile
         if loop_counter["total"]>1:

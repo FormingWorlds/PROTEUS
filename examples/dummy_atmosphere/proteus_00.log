@@ -2,9 +2,9 @@
 [ INFO  ]             PROTEUS framework (version 0.1)            
 [ INFO  ] :::::::::::::::::::::::::::::::::::::::::::::::::::::::
 [ INFO  ]  
-[ INFO  ] Current time: 2024-07-23_12:33:43
+[ INFO  ] Current time: 2024-07-24_07:45:24
 [ INFO  ] Hostname    : atmlxint5.atm.ox.ac.uk
-[ INFO  ] PROTEUS hash: 3bfa74dfaada5f802476b41649370150da2ae16c
+[ INFO  ] PROTEUS hash: 5420155534dab250c6106e456e6a599828df3e48
 [ INFO  ] Py version  : 3.12.2
 [ INFO  ] Config file : /home/n/nichollsh/PROTEUS/input/dummy.cfg
 [ INFO  ] Output dir  : /home/n/nichollsh/PROTEUS/output/dummy_atmosphere/
@@ -43,8 +43,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 2
-[ DEBUG ]     Residuals: [-4.980418758584053e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 1
+[ DEBUG ]     Residuals: [-3.8310913527569637e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.00    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -66,7 +66,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-33-53  
+[ INFO  ]     System time  :   2024-07-24_07-45-34  
 [ INFO  ]     Model time   :   0.00e+00   yr
 [ INFO  ]     T_surf       :   2852.748   K
 [ INFO  ]     T_magma      :   2852.748   K
@@ -84,61 +84,6 @@
 [ INFO  ] Loop counters
 [ INFO  ] init    total     steady
 [ INFO  ] 1/2   0001/9000   00/03
-[ INFO  ] ---------------------------------------------------
-[ INFO  ] Stellar flux management...
-[ INFO  ] New spectrum not required at this time
-[ INFO  ] ---------------------------------------------------
-[ INFO  ] Running SPIDER...
-[ DEBUG ]     IC_INTERIOR = 1
-[ INFO  ] Attempt 1
-[ DEBUG ] SPIDER call sequence: ' /home/n/nichollsh/PROTEUS/SPIDER//spider -options_file /home/n/nichollsh/PROTEUS/output/dummy_atmosphere/init_spider.opts -outputDirectory /home/n/nichollsh/PROTEUS/output/dummy_atmosphere/data/ -IC_INTERIOR 1 -OXYGEN_FUGACITY_offset 4.000000e+00 -surface_bc_value 9.015266e+05 -teqm 2.798065e+02 -n 220 -nstepsmacro 1 -dtmacro 0.000000e+00 -radius 6.371000e+06 -gravity -9.819944e+00 -coresize 5.500000e-01 -grain 1.000000e-01 -tsurf_poststep_change 20.0 -ic_adiabat_entropy 2700.0 -ic_dsdr -4.698e-06 -SEPARATION 1 -mixing_length 2 -ts_sundials_atol 1e-10 -ts_sundials_rtol 1e-10'
-[ INFO  ] Terminal output suppressed
-[ INFO  ] Attempt 1 succeeded
-[ DEBUG ] >>>>>>> F_int2: 3.60e+08, F_int: 9.02e+05
-[ INFO  ] ---------------------------------------------------
-[ INFO  ] Solving for equilibrium partial pressures at surface
-[ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-9.577728381892409e-15, 0.0, 0.0, 0.0]
-[ INFO  ]     H2O    : 30.00    bar (1.00e+00 VMR)
-[ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
-[ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
-[ INFO  ]     CH4    : 0.00     bar (0.00e+00 VMR)
-[ INFO  ]     CO     : 0.00     bar (0.00e+00 VMR)
-[ INFO  ]     N2     : 0.00     bar (0.00e+00 VMR)
-[ INFO  ]     S2     : 0.00     bar (0.00e+00 VMR)
-[ INFO  ]     SO2    : 0.00     bar (0.00e+00 VMR)
-[ INFO  ] ---------------------------------------------------
-[ INFO  ] Running dummy_atmosphere...
-[ INFO  ] Gamma = 0.3000
-[ INFO  ] Calculating fluxes with dummy atmosphere
-[ INFO  ] Resultant values:
-[ INFO  ]     T_surf =  2.853e+03  K
-[ INFO  ]     F_atm  =  9.015e+05  W m-2
-[ INFO  ]     F_olr  =  9.017e+05  W m-2
-[ INFO  ]     F_sct  =  2.317e+01  W m-2
-[ DEBUG ] Extending helpfile with new row
-[ DEBUG ] Writing helpfile to CSV file
-[ INFO  ] ---------------------------------------------------
-[ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-33-56  
-[ INFO  ]     Model time   :   0.00e+00   yr
-[ INFO  ]     T_surf       :   2852.748   K
-[ INFO  ]     T_magma      :   2852.748   K
-[ INFO  ]     P_surf       :   3.00e+01   bar
-[ INFO  ]     Phi_global   :   1.00e+00   
-[ INFO  ]     Instellation :   1.03e+03   W m-2
-[ INFO  ]     F_int        :   9.02e+05   W m-2
-[ INFO  ]     F_atm        :   9.02e+05   W m-2
-[ INFO  ]     |F_net|      :   4.50e-02   W m-2
-[ INFO  ] ---------------------------------------------------
-[ DEBUG ] Snapshots to plot:[0]
-[ INFO  ] Plot interior
-[ INFO  ]  
-[ INFO  ] ===================================================
-[ INFO  ] Loop counters
-[ INFO  ] init    total     steady
-[ INFO  ] 2/2   0002/9000   00/03
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Stellar flux management...
 [ INFO  ] New spectrum not required at this time
@@ -176,7 +121,62 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-33-58  
+[ INFO  ]     System time  :   2024-07-24_07-45-36  
+[ INFO  ]     Model time   :   0.00e+00   yr
+[ INFO  ]     T_surf       :   2852.748   K
+[ INFO  ]     T_magma      :   2852.748   K
+[ INFO  ]     P_surf       :   3.00e+01   bar
+[ INFO  ]     Phi_global   :   1.00e+00   
+[ INFO  ]     Instellation :   1.03e+03   W m-2
+[ INFO  ]     F_int        :   9.02e+05   W m-2
+[ INFO  ]     F_atm        :   9.02e+05   W m-2
+[ INFO  ]     |F_net|      :   4.50e-02   W m-2
+[ INFO  ] ---------------------------------------------------
+[ DEBUG ] Snapshots to plot:[0]
+[ INFO  ] Plot interior
+[ INFO  ]  
+[ INFO  ] ===================================================
+[ INFO  ] Loop counters
+[ INFO  ] init    total     steady
+[ INFO  ] 2/2   0002/9000   00/03
+[ INFO  ] ---------------------------------------------------
+[ INFO  ] Stellar flux management...
+[ INFO  ] New spectrum not required at this time
+[ INFO  ] ---------------------------------------------------
+[ INFO  ] Running SPIDER...
+[ DEBUG ]     IC_INTERIOR = 1
+[ INFO  ] Attempt 1
+[ DEBUG ] SPIDER call sequence: ' /home/n/nichollsh/PROTEUS/SPIDER//spider -options_file /home/n/nichollsh/PROTEUS/output/dummy_atmosphere/init_spider.opts -outputDirectory /home/n/nichollsh/PROTEUS/output/dummy_atmosphere/data/ -IC_INTERIOR 1 -OXYGEN_FUGACITY_offset 4.000000e+00 -surface_bc_value 9.015266e+05 -teqm 2.798065e+02 -n 220 -nstepsmacro 1 -dtmacro 0.000000e+00 -radius 6.371000e+06 -gravity -9.819944e+00 -coresize 5.500000e-01 -grain 1.000000e-01 -tsurf_poststep_change 20.0 -ic_adiabat_entropy 2700.0 -ic_dsdr -4.698e-06 -SEPARATION 1 -mixing_length 2 -ts_sundials_atol 1e-10 -ts_sundials_rtol 1e-10'
+[ INFO  ] Terminal output suppressed
+[ INFO  ] Attempt 1 succeeded
+[ DEBUG ] >>>>>>> F_int2: 3.60e+08, F_int: 9.02e+05
+[ INFO  ] ---------------------------------------------------
+[ INFO  ] Solving for equilibrium partial pressures at surface
+[ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
+[ DEBUG ]     Initial guess attempt number = 2
+[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ INFO  ]     H2O    : 30.00    bar (1.00e+00 VMR)
+[ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
+[ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
+[ INFO  ]     CH4    : 0.00     bar (0.00e+00 VMR)
+[ INFO  ]     CO     : 0.00     bar (0.00e+00 VMR)
+[ INFO  ]     N2     : 0.00     bar (0.00e+00 VMR)
+[ INFO  ]     S2     : 0.00     bar (0.00e+00 VMR)
+[ INFO  ]     SO2    : 0.00     bar (0.00e+00 VMR)
+[ INFO  ] ---------------------------------------------------
+[ INFO  ] Running dummy_atmosphere...
+[ INFO  ] Gamma = 0.3000
+[ INFO  ] Calculating fluxes with dummy atmosphere
+[ INFO  ] Resultant values:
+[ INFO  ]     T_surf =  2.853e+03  K
+[ INFO  ]     F_atm  =  9.015e+05  W m-2
+[ INFO  ]     F_olr  =  9.017e+05  W m-2
+[ INFO  ]     F_sct  =  2.317e+01  W m-2
+[ DEBUG ] Extending helpfile with new row
+[ DEBUG ] Writing helpfile to CSV file
+[ INFO  ] ---------------------------------------------------
+[ INFO  ] Runtime info...
+[ INFO  ]     System time  :   2024-07-24_07-45-39  
 [ INFO  ]     Model time   :   0.00e+00   yr
 [ INFO  ]     T_surf       :   2852.748   K
 [ INFO  ]     T_magma      :   2852.748   K
@@ -211,14 +211,14 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [0.0, 2.7012489841960063e-14, 0.0, 4.116263861154122e-30]
 [ INFO  ]     H2O    : 30.00    bar (1.00e+00 VMR)
-[ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
+[ INFO  ]     CO2    : 0.00     bar (2.32e-34 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     CH4    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     CO     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     N2     : 0.00     bar (0.00e+00 VMR)
-[ INFO  ]     S2     : 0.00     bar (0.00e+00 VMR)
+[ INFO  ]     S2     : 0.00     bar (1.53e-50 VMR)
 [ INFO  ]     SO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Running dummy_atmosphere...
@@ -233,7 +233,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-34-13  
+[ INFO  ]     System time  :   2024-07-24_07-45-53  
 [ INFO  ]     Model time   :   1.00e+00   yr
 [ INFO  ]     T_surf       :   2864.627   K
 [ INFO  ]     T_magma      :   2864.627   K
@@ -269,7 +269,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 4
-[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.00    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -291,7 +291,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-34-21  
+[ INFO  ]     System time  :   2024-07-24_07-46-01  
 [ INFO  ]     Model time   :   2.00e+00   yr
 [ INFO  ]     T_surf       :   2863.561   K
 [ INFO  ]     T_magma      :   2863.561   K
@@ -328,7 +328,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 3
+[ DEBUG ]     Initial guess attempt number = 1
 [ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.00    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -351,7 +351,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-34-28  
+[ INFO  ]     System time  :   2024-07-24_07-46-08  
 [ INFO  ]     Model time   :   1.80e+01   yr
 [ INFO  ]     T_surf       :   2846.432   K
 [ INFO  ]     T_magma      :   2846.432   K
@@ -389,7 +389,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-9.386173814254561e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [-1.9155456763784817e-15, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.00    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -411,7 +411,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-34-36  
+[ INFO  ]     System time  :   2024-07-24_07-46-16  
 [ INFO  ]     Model time   :   3.70e+01   yr
 [ INFO  ]     T_surf       :   2827.634   K
 [ INFO  ]     T_magma      :   2827.634   K
@@ -449,7 +449,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 3
-[ DEBUG ]     Residuals: [-4.980418758584053e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 29.99    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -471,7 +471,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-34-44  
+[ INFO  ]     System time  :   2024-07-24_07-46-23  
 [ INFO  ]     Model time   :   5.60e+01   yr
 [ INFO  ]     T_surf       :   2808.380   K
 [ INFO  ]     T_magma      :   2808.380   K
@@ -509,7 +509,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-5.938191596773294e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 29.99    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -531,7 +531,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-34-52  
+[ INFO  ]     System time  :   2024-07-24_07-46-31  
 [ INFO  ]     Model time   :   7.50e+01   yr
 [ INFO  ]     T_surf       :   2790.255   K
 [ INFO  ]     T_magma      :   2790.255   K
@@ -569,7 +569,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-3.8310913527569637e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [-4.597309623308356e-15, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 29.99    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -591,7 +591,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-35-00  
+[ INFO  ]     System time  :   2024-07-24_07-46-39  
 [ INFO  ]     Model time   :   9.40e+01   yr
 [ INFO  ]     T_surf       :   2771.838   K
 [ INFO  ]     T_magma      :   2771.838   K
@@ -628,8 +628,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 4
-[ DEBUG ]     Residuals: [-9.194619246616712e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 1
+[ DEBUG ]     Residuals: [-8.045291840789624e-15, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 29.99    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -651,7 +651,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-35-08  
+[ INFO  ]     System time  :   2024-07-24_07-46-47  
 [ INFO  ]     Model time   :   1.15e+02   yr
 [ INFO  ]     T_surf       :   2752.316   K
 [ INFO  ]     T_magma      :   2752.316   K
@@ -690,8 +690,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 2
+[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 29.99    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -713,7 +713,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-35-17  
+[ INFO  ]     System time  :   2024-07-24_07-46-55  
 [ INFO  ]     Model time   :   1.38e+02   yr
 [ INFO  ]     T_surf       :   2732.336   K
 [ INFO  ]     T_magma      :   2732.336   K
@@ -750,8 +750,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 2
-[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 5
+[ DEBUG ]     Residuals: [-3.8310913527569637e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 29.99    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -773,7 +773,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-35-27  
+[ INFO  ]     System time  :   2024-07-24_07-47-05  
 [ INFO  ]     Model time   :   1.61e+02   yr
 [ INFO  ]     T_surf       :   2712.387   K
 [ INFO  ]     T_magma      :   2712.387   K
@@ -810,8 +810,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 9
-[ DEBUG ]     Residuals: [3.8310913527569637e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 1
+[ DEBUG ]     Residuals: [-1.0152392084805953e-14, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 29.99    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -833,7 +833,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-35-37  
+[ INFO  ]     System time  :   2024-07-24_07-47-15  
 [ INFO  ]     Model time   :   1.82e+02   yr
 [ INFO  ]     T_surf       :   2692.456   K
 [ INFO  ]     T_magma      :   2692.456   K
@@ -871,7 +871,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-3.256427649843419e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 29.99    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -893,7 +893,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-35-50  
+[ INFO  ]     System time  :   2024-07-24_07-47-28  
 [ INFO  ]     Model time   :   2.01e+02   yr
 [ INFO  ]     T_surf       :   2672.579   K
 [ INFO  ]     T_magma      :   2672.579   K
@@ -930,8 +930,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 5
-[ DEBUG ]     Residuals: [-5.746637029135445e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 2
+[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 29.99    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -953,7 +953,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-36-04  
+[ INFO  ]     System time  :   2024-07-24_07-47-42  
 [ INFO  ]     Model time   :   2.19e+02   yr
 [ INFO  ]     T_surf       :   2652.617   K
 [ INFO  ]     T_magma      :   2652.617   K
@@ -992,7 +992,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 3
+[ DEBUG ]     Initial guess attempt number = 1
 [ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.01    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -1015,7 +1015,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-36-20  
+[ INFO  ]     System time  :   2024-07-24_07-47-57  
 [ INFO  ]     Model time   :   2.38e+02   yr
 [ INFO  ]     T_surf       :   2632.661   K
 [ INFO  ]     T_magma      :   2632.661   K
@@ -1053,7 +1053,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-2.4902093792920265e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.04    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -1075,7 +1075,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-36-35  
+[ INFO  ]     System time  :   2024-07-24_07-48-11  
 [ INFO  ]     Model time   :   2.57e+02   yr
 [ INFO  ]     T_surf       :   2612.682   K
 [ INFO  ]     T_magma      :   2612.682   K
@@ -1113,7 +1113,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 2
-[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.08    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -1135,7 +1135,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-36-49  
+[ INFO  ]     System time  :   2024-07-24_07-48-25  
 [ INFO  ]     Model time   :   2.76e+02   yr
 [ INFO  ]     T_surf       :   2592.814   K
 [ INFO  ]     T_magma      :   2592.814   K
@@ -1173,14 +1173,14 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 3
-[ DEBUG ]     Residuals: [0.0, 1.136916995822915e-10, 0.0, 2.532685379422008e-29]
+[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.13    bar (1.00e+00 VMR)
-[ INFO  ]     CO2    : 0.00     bar (9.50e-31 VMR)
+[ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     CH4    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     CO     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     N2     : 0.00     bar (0.00e+00 VMR)
-[ INFO  ]     S2     : 0.00     bar (9.13e-50 VMR)
+[ INFO  ]     S2     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     SO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Running dummy_atmosphere...
@@ -1195,7 +1195,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-37-04  
+[ INFO  ]     System time  :   2024-07-24_07-48-39  
 [ INFO  ]     Model time   :   2.96e+02   yr
 [ INFO  ]     T_surf       :   2572.889   K
 [ INFO  ]     T_magma      :   2572.889   K
@@ -1232,8 +1232,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 12
+[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.19    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -1255,7 +1255,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-37-20  
+[ INFO  ]     System time  :   2024-07-24_07-48-56  
 [ INFO  ]     Model time   :   3.16e+02   yr
 [ INFO  ]     T_surf       :   2552.910   K
 [ INFO  ]     T_magma      :   2552.910   K
@@ -1292,7 +1292,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 6
+[ DEBUG ]     Initial guess attempt number = 1
 [ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.26    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -1315,7 +1315,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-37-35  
+[ INFO  ]     System time  :   2024-07-24_07-49-11  
 [ INFO  ]     Model time   :   3.37e+02   yr
 [ INFO  ]     T_surf       :   2532.971   K
 [ INFO  ]     T_magma      :   2532.971   K
@@ -1377,7 +1377,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-37-51  
+[ INFO  ]     System time  :   2024-07-24_07-49-27  
 [ INFO  ]     Model time   :   3.58e+02   yr
 [ INFO  ]     T_surf       :   2512.996   K
 [ INFO  ]     T_magma      :   2512.996   K
@@ -1414,8 +1414,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 4
+[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.46    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -1437,7 +1437,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-38-06  
+[ INFO  ]     System time  :   2024-07-24_07-49-42  
 [ INFO  ]     Model time   :   3.80e+02   yr
 [ INFO  ]     T_surf       :   2493.021   K
 [ INFO  ]     T_magma      :   2493.021   K
@@ -1474,8 +1474,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 6
-[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 2
+[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.58    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -1497,7 +1497,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-38-22  
+[ INFO  ]     System time  :   2024-07-24_07-49-56  
 [ INFO  ]     Model time   :   4.02e+02   yr
 [ INFO  ]     T_surf       :   2473.037   K
 [ INFO  ]     T_magma      :   2473.037   K
@@ -1534,7 +1534,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
+[ DEBUG ]     Initial guess attempt number = 4
 [ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.72    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -1557,7 +1557,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-38-39  
+[ INFO  ]     System time  :   2024-07-24_07-50-14  
 [ INFO  ]     Model time   :   4.25e+02   yr
 [ INFO  ]     T_surf       :   2453.039   K
 [ INFO  ]     T_magma      :   2453.039   K
@@ -1595,7 +1595,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [2.10710024401633e-15, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 30.89    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -1617,7 +1617,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-38-55  
+[ INFO  ]     System time  :   2024-07-24_07-50-30  
 [ INFO  ]     Model time   :   4.48e+02   yr
 [ INFO  ]     T_surf       :   2433.040   K
 [ INFO  ]     T_magma      :   2433.040   K
@@ -1656,8 +1656,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-6.129746164411142e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 4
+[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 31.07    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -1679,7 +1679,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-39-11  
+[ INFO  ]     System time  :   2024-07-24_07-50-45  
 [ INFO  ]     Model time   :   4.71e+02   yr
 [ INFO  ]     T_surf       :   2413.044   K
 [ INFO  ]     T_magma      :   2413.044   K
@@ -1716,8 +1716,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 3
-[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 1
+[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 31.28    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -1739,7 +1739,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-39-28  
+[ INFO  ]     System time  :   2024-07-24_07-51-02  
 [ INFO  ]     Model time   :   4.96e+02   yr
 [ INFO  ]     T_surf       :   2393.047   K
 [ INFO  ]     T_magma      :   2393.047   K
@@ -1776,8 +1776,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 4
-[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 1
+[ DEBUG ]     Residuals: [-4.21420048803266e-15, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 31.52    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -1799,7 +1799,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-39-44  
+[ INFO  ]     System time  :   2024-07-24_07-51-18  
 [ INFO  ]     Model time   :   5.20e+02   yr
 [ INFO  ]     T_surf       :   2373.053   K
 [ INFO  ]     T_magma      :   2373.053   K
@@ -1836,8 +1836,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 3
-[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 7
+[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 31.78    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -1859,7 +1859,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-39-59  
+[ INFO  ]     System time  :   2024-07-24_07-51-34  
 [ INFO  ]     Model time   :   5.45e+02   yr
 [ INFO  ]     T_surf       :   2353.108   K
 [ INFO  ]     T_magma      :   2353.108   K
@@ -1896,8 +1896,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 5
+[ DEBUG ]     Residuals: [-3.8310913527569637e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 32.08    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -1919,7 +1919,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-40-16  
+[ INFO  ]     System time  :   2024-07-24_07-51-51  
 [ INFO  ]     Model time   :   5.71e+02   yr
 [ INFO  ]     T_surf       :   2333.136   K
 [ INFO  ]     T_magma      :   2333.136   K
@@ -1958,15 +1958,15 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 5
-[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 1.5420415599854208e-36]
+[ DEBUG ]     Initial guess attempt number = 7
+[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 32.42    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     CH4    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     CO     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     N2     : 0.00     bar (0.00e+00 VMR)
-[ INFO  ]     S2     : 0.00     bar (5.15e-57 VMR)
+[ INFO  ]     S2     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     SO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Running dummy_atmosphere...
@@ -1981,7 +1981,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-40-33  
+[ INFO  ]     System time  :   2024-07-24_07-52-08  
 [ INFO  ]     Model time   :   5.97e+02   yr
 [ INFO  ]     T_surf       :   2313.147   K
 [ INFO  ]     T_magma      :   2313.147   K
@@ -2018,15 +2018,15 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 8
-[ DEBUG ]     Residuals: [0.0, 1.7831635470927773e-11, 0.0, 1.5479974045035034e-28]
+[ DEBUG ]     Initial guess attempt number = 7
+[ DEBUG ]     Residuals: [-7.662182705513927e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 32.80    bar (1.00e+00 VMR)
-[ INFO  ]     CO2    : 0.00     bar (1.37e-31 VMR)
+[ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     CH4    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     CO     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     N2     : 0.00     bar (0.00e+00 VMR)
-[ INFO  ]     S2     : 0.00     bar (5.11e-49 VMR)
+[ INFO  ]     S2     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     SO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Running dummy_atmosphere...
@@ -2041,7 +2041,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-40-50  
+[ INFO  ]     System time  :   2024-07-24_07-52-25  
 [ INFO  ]     Model time   :   6.24e+02   yr
 [ INFO  ]     T_surf       :   2293.158   K
 [ INFO  ]     T_magma      :   2293.158   K
@@ -2078,8 +2078,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 7
-[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 3
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 33.23    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -2101,7 +2101,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-41-07  
+[ INFO  ]     System time  :   2024-07-24_07-52-43  
 [ INFO  ]     Model time   :   6.51e+02   yr
 [ INFO  ]     T_surf       :   2273.187   K
 [ INFO  ]     T_magma      :   2273.187   K
@@ -2138,8 +2138,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 2
-[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 16
+[ DEBUG ]     Residuals: [-3.8310913527569637e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 33.71    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -2161,7 +2161,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-41-23  
+[ INFO  ]     System time  :   2024-07-24_07-52-58  
 [ INFO  ]     Model time   :   6.79e+02   yr
 [ INFO  ]     T_surf       :   2253.187   K
 [ INFO  ]     T_magma      :   2253.187   K
@@ -2200,15 +2200,15 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 3
-[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 1
+[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 1.952316446084171e-36]
 [ INFO  ]     H2O    : 34.26    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     CH4    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     CO     : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     N2     : 0.00     bar (0.00e+00 VMR)
-[ INFO  ]     S2     : 0.00     bar (0.00e+00 VMR)
+[ INFO  ]     S2     : 0.00     bar (6.17e-57 VMR)
 [ INFO  ]     SO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Running dummy_atmosphere...
@@ -2223,7 +2223,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-41-39  
+[ INFO  ]     System time  :   2024-07-24_07-53-14  
 [ INFO  ]     Model time   :   7.07e+02   yr
 [ INFO  ]     T_surf       :   2233.201   K
 [ INFO  ]     T_magma      :   2233.201   K
@@ -2260,8 +2260,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 3
-[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 2
+[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 34.88    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -2283,7 +2283,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-41-57  
+[ INFO  ]     System time  :   2024-07-24_07-53-33  
 [ INFO  ]     Model time   :   7.36e+02   yr
 [ INFO  ]     T_surf       :   2213.228   K
 [ INFO  ]     T_magma      :   2213.228   K
@@ -2320,7 +2320,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 4
+[ DEBUG ]     Initial guess attempt number = 3
 [ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 35.60    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -2343,7 +2343,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-42-17  
+[ INFO  ]     System time  :   2024-07-24_07-53-52  
 [ INFO  ]     Model time   :   7.66e+02   yr
 [ INFO  ]     T_surf       :   2193.237   K
 [ INFO  ]     T_magma      :   2193.237   K
@@ -2380,8 +2380,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 9
-[ DEBUG ]     Residuals: [-1.5324365411027855e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 6
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 36.43    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -2403,7 +2403,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-42-35  
+[ INFO  ]     System time  :   2024-07-24_07-54-10  
 [ INFO  ]     Model time   :   7.96e+02   yr
 [ INFO  ]     T_surf       :   2173.266   K
 [ INFO  ]     T_magma      :   2173.266   K
@@ -2442,8 +2442,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 3
+[ DEBUG ]     Residuals: [7.27907357023823e-15, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 37.41    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -2465,7 +2465,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-42-53  
+[ INFO  ]     System time  :   2024-07-24_07-54-28  
 [ INFO  ]     Model time   :   8.27e+02   yr
 [ INFO  ]     T_surf       :   2153.267   K
 [ INFO  ]     T_magma      :   2153.267   K
@@ -2502,8 +2502,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 5
-[ DEBUG ]     Residuals: [-3.8310913527569637e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 6
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 38.51    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -2525,7 +2525,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-43-10  
+[ INFO  ]     System time  :   2024-07-24_07-54-45  
 [ INFO  ]     Model time   :   8.59e+02   yr
 [ INFO  ]     T_surf       :   2133.303   K
 [ INFO  ]     T_magma      :   2133.303   K
@@ -2563,7 +2563,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-3.8310913527569637e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [-7.662182705513927e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 39.71    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -2585,7 +2585,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-43-26  
+[ INFO  ]     System time  :   2024-07-24_07-55-00  
 [ INFO  ]     Model time   :   8.92e+02   yr
 [ INFO  ]     T_surf       :   2113.330   K
 [ INFO  ]     T_magma      :   2113.330   K
@@ -2622,8 +2622,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 8
-[ DEBUG ]     Residuals: [5.746637029135445e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 3
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 41.03    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -2645,7 +2645,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-43-44  
+[ INFO  ]     System time  :   2024-07-24_07-55-17  
 [ INFO  ]     Model time   :   9.27e+02   yr
 [ INFO  ]     T_surf       :   2093.352   K
 [ INFO  ]     T_magma      :   2093.352   K
@@ -2685,7 +2685,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [3.8310913527569637e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [-3.8310913527569637e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 42.29    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -2707,7 +2707,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-44-00  
+[ INFO  ]     System time  :   2024-07-24_07-55-33  
 [ INFO  ]     Model time   :   9.58e+02   yr
 [ INFO  ]     T_surf       :   2073.397   K
 [ INFO  ]     T_magma      :   2073.397   K
@@ -2745,7 +2745,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 2
-[ DEBUG ]     Residuals: [-1.9155456763784817e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 43.76    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -2767,7 +2767,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-44-15  
+[ INFO  ]     System time  :   2024-07-24_07-55-48  
 [ INFO  ]     Model time   :   9.94e+02   yr
 [ INFO  ]     T_surf       :   2053.442   K
 [ INFO  ]     T_magma      :   2053.442   K
@@ -2804,7 +2804,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
+[ DEBUG ]     Initial guess attempt number = 2
 [ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 45.21    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -2827,7 +2827,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-44-31  
+[ INFO  ]     System time  :   2024-07-24_07-56-04  
 [ INFO  ]     Model time   :   1.03e+03   yr
 [ INFO  ]     T_surf       :   2033.443   K
 [ INFO  ]     T_magma      :   2033.443   K
@@ -2866,8 +2866,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 10
-[ DEBUG ]     Residuals: [-7.662182705513927e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 8
+[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 46.76    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -2889,7 +2889,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-44-46  
+[ INFO  ]     System time  :   2024-07-24_07-56-19  
 [ INFO  ]     Model time   :   1.07e+03   yr
 [ INFO  ]     T_surf       :   2013.472   K
 [ INFO  ]     T_magma      :   2013.472   K
@@ -2926,7 +2926,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 5
+[ DEBUG ]     Initial guess attempt number = 8
 [ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 48.19    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -2949,7 +2949,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-45-00  
+[ INFO  ]     System time  :   2024-07-24_07-56-32  
 [ INFO  ]     Model time   :   1.10e+03   yr
 [ INFO  ]     T_surf       :   1993.489   K
 [ INFO  ]     T_magma      :   1993.489   K
@@ -2986,7 +2986,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 11
+[ DEBUG ]     Initial guess attempt number = 4
 [ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 51.10    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -3009,7 +3009,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-45-13  
+[ INFO  ]     System time  :   2024-07-24_07-56-45  
 [ INFO  ]     Model time   :   1.16e+03   yr
 [ INFO  ]     T_surf       :   1973.589   K
 [ INFO  ]     T_magma      :   1973.589   K
@@ -3048,8 +3048,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 2
-[ DEBUG ]     Residuals: [-7.662182705513927e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 6
+[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 55.68    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -3071,7 +3071,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-45-24  
+[ INFO  ]     System time  :   2024-07-24_07-56-56  
 [ INFO  ]     Model time   :   1.26e+03   yr
 [ INFO  ]     T_surf       :   1953.970   K
 [ INFO  ]     T_magma      :   1953.970   K
@@ -3108,8 +3108,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 5
-[ DEBUG ]     Residuals: [-5.171973326221901e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 2
+[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 60.82    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -3131,7 +3131,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-45-35  
+[ INFO  ]     System time  :   2024-07-24_07-57-07  
 [ INFO  ]     Model time   :   1.36e+03   yr
 [ INFO  ]     T_surf       :   1934.509   K
 [ INFO  ]     T_magma      :   1934.509   K
@@ -3170,8 +3170,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 8
-[ DEBUG ]     Residuals: [-3.8310913527569637e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 4
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 66.65    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -3193,7 +3193,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-45-45  
+[ INFO  ]     System time  :   2024-07-24_07-57-17  
 [ INFO  ]     Model time   :   1.46e+03   yr
 [ INFO  ]     T_surf       :   1915.168   K
 [ INFO  ]     T_magma      :   1915.168   K
@@ -3232,7 +3232,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 2
+[ DEBUG ]     Initial guess attempt number = 12
 [ DEBUG ]     Residuals: [3.8310913527569637e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 73.23    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -3255,7 +3255,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-45-54  
+[ INFO  ]     System time  :   2024-07-24_07-57-25  
 [ INFO  ]     Model time   :   1.56e+03   yr
 [ INFO  ]     T_surf       :   1896.106   K
 [ INFO  ]     T_magma      :   1896.106   K
@@ -3294,8 +3294,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 3
-[ DEBUG ]     Residuals: [-9.577728381892409e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 5
+[ DEBUG ]     Residuals: [-5.746637029135445e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 80.73    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -3317,7 +3317,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-46-01  
+[ INFO  ]     System time  :   2024-07-24_07-57-33  
 [ INFO  ]     Model time   :   1.67e+03   yr
 [ INFO  ]     T_surf       :   1877.209   K
 [ INFO  ]     T_magma      :   1877.209   K
@@ -3356,7 +3356,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 9
+[ DEBUG ]     Initial guess attempt number = 3
 [ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 88.77    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -3379,7 +3379,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-46-09  
+[ INFO  ]     System time  :   2024-07-24_07-57-41  
 [ INFO  ]     Model time   :   1.77e+03   yr
 [ INFO  ]     T_surf       :   1859.597   K
 [ INFO  ]     T_magma      :   1859.597   K
@@ -3418,7 +3418,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 2
+[ DEBUG ]     Initial guess attempt number = 8
 [ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 98.19    bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -3441,7 +3441,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-46-18  
+[ INFO  ]     System time  :   2024-07-24_07-57-50  
 [ INFO  ]     Model time   :   1.88e+03   yr
 [ INFO  ]     T_surf       :   1841.723   K
 [ INFO  ]     T_magma      :   1841.723   K
@@ -3481,7 +3481,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 6
-[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [-3.256427649843419e-15, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 109.32   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -3503,7 +3503,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-46-33  
+[ INFO  ]     System time  :   2024-07-24_07-58-05  
 [ INFO  ]     Model time   :   2.00e+03   yr
 [ INFO  ]     T_surf       :   1823.575   K
 [ INFO  ]     T_magma      :   1823.575   K
@@ -3542,8 +3542,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 2
-[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 1
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 120.79   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -3565,7 +3565,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-47-51  
+[ INFO  ]     System time  :   2024-07-24_07-59-24  
 [ INFO  ]     Model time   :   2.12e+03   yr
 [ INFO  ]     T_surf       :   1810.873   K
 [ INFO  ]     T_magma      :   1810.873   K
@@ -3604,8 +3604,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 3
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 132.39   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -3627,7 +3627,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-50-15  
+[ INFO  ]     System time  :   2024-07-24_08-01-45  
 [ INFO  ]     Model time   :   2.24e+03   yr
 [ INFO  ]     T_surf       :   1803.845   K
 [ INFO  ]     T_magma      :   1803.845   K
@@ -3666,7 +3666,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
+[ DEBUG ]     Initial guess attempt number = 5
 [ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 147.22   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -3689,7 +3689,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-52-41  
+[ INFO  ]     System time  :   2024-07-24_08-04-09  
 [ INFO  ]     Model time   :   2.38e+03   yr
 [ INFO  ]     T_surf       :   1796.067   K
 [ INFO  ]     T_magma      :   1796.067   K
@@ -3728,8 +3728,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 5
-[ DEBUG ]     Residuals: [-1.3408819734649373e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 1
+[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 165.35   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -3751,7 +3751,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-55-15  
+[ INFO  ]     System time  :   2024-07-24_08-06-44  
 [ INFO  ]     Model time   :   2.52e+03   yr
 [ INFO  ]     T_surf       :   1788.863   K
 [ INFO  ]     T_magma      :   1788.863   K
@@ -3790,8 +3790,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 8
+[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 188.95   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -3813,7 +3813,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_12-57-56  
+[ INFO  ]     System time  :   2024-07-24_08-09-30  
 [ INFO  ]     Model time   :   2.67e+03   yr
 [ INFO  ]     T_surf       :   1780.772   K
 [ INFO  ]     T_magma      :   1780.772   K
@@ -3852,8 +3852,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-3.8310913527569637e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 4
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 219.73   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -3875,7 +3875,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-00-51  
+[ INFO  ]     System time  :   2024-07-24_08-12-26  
 [ INFO  ]     Model time   :   2.83e+03   yr
 [ INFO  ]     T_surf       :   1773.045   K
 [ INFO  ]     T_magma      :   1773.045   K
@@ -3914,7 +3914,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 2
+[ DEBUG ]     Initial guess attempt number = 1
 [ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 262.28   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -3937,7 +3937,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-04-00  
+[ INFO  ]     System time  :   2024-07-24_08-15-33  
 [ INFO  ]     Model time   :   3.00e+03   yr
 [ INFO  ]     T_surf       :   1763.998   K
 [ INFO  ]     T_magma      :   1763.998   K
@@ -3976,8 +3976,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 2
+[ DEBUG ]     Residuals: [-4.597309623308356e-15, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 323.14   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -3999,7 +3999,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-07-31  
+[ INFO  ]     System time  :   2024-07-24_08-19-01  
 [ INFO  ]     Model time   :   3.17e+03   yr
 [ INFO  ]     T_surf       :   1754.595   K
 [ INFO  ]     T_magma      :   1754.595   K
@@ -4038,8 +4038,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 3
-[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 6
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 413.94   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -4061,7 +4061,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-11-56  
+[ INFO  ]     System time  :   2024-07-24_08-23-28  
 [ INFO  ]     Model time   :   3.36e+03   yr
 [ INFO  ]     T_surf       :   1746.731   K
 [ INFO  ]     T_magma      :   1746.731   K
@@ -4100,7 +4100,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 5
+[ DEBUG ]     Initial guess attempt number = 2
 [ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 537.98   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -4123,7 +4123,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-15-54  
+[ INFO  ]     System time  :   2024-07-24_08-27-24  
 [ INFO  ]     Model time   :   3.52e+03   yr
 [ INFO  ]     T_surf       :   1738.898   K
 [ INFO  ]     T_magma      :   1738.898   K
@@ -4162,7 +4162,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 4
+[ DEBUG ]     Initial guess attempt number = 9
 [ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 710.31   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -4185,7 +4185,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-19-46  
+[ INFO  ]     System time  :   2024-07-24_08-31-15  
 [ INFO  ]     Model time   :   3.67e+03   yr
 [ INFO  ]     T_surf       :   1731.589   K
 [ INFO  ]     T_magma      :   1731.589   K
@@ -4224,8 +4224,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 2
-[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 1
+[ DEBUG ]     Residuals: [-7.662182705513927e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 947.95   bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -4247,7 +4247,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-23-46  
+[ INFO  ]     System time  :   2024-07-24_08-35-20  
 [ INFO  ]     Model time   :   3.81e+03   yr
 [ INFO  ]     T_surf       :   1729.807   K
 [ INFO  ]     T_magma      :   1729.807   K
@@ -4286,8 +4286,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [3.8310913527569637e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 3
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 1298.96  bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -4309,7 +4309,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-27-30  
+[ INFO  ]     System time  :   2024-07-24_08-39-10  
 [ INFO  ]     Model time   :   3.93e+03   yr
 [ INFO  ]     T_surf       :   1717.847   K
 [ INFO  ]     T_magma      :   1717.847   K
@@ -4348,8 +4348,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 3
-[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 5
+[ DEBUG ]     Residuals: [-5.746637029135445e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 1588.78  bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -4371,7 +4371,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-29-51  
+[ INFO  ]     System time  :   2024-07-24_08-41-34  
 [ INFO  ]     Model time   :   4.00e+03   yr
 [ INFO  ]     T_surf       :   1700.671   K
 [ INFO  ]     T_magma      :   1700.671   K
@@ -4408,7 +4408,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 3
+[ DEBUG ]     Initial guess attempt number = 1
 [ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 1768.54  bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -4431,7 +4431,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-31-11  
+[ INFO  ]     System time  :   2024-07-24_08-42-57  
 [ INFO  ]     Model time   :   4.03e+03   yr
 [ INFO  ]     T_surf       :   1683.667   K
 [ INFO  ]     T_magma      :   1683.667   K
@@ -4470,8 +4470,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 4
+[ DEBUG ]     Residuals: [-4.022645920394812e-15, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 1914.85  bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -4493,7 +4493,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-32-17  
+[ INFO  ]     System time  :   2024-07-24_08-44-07  
 [ INFO  ]     Model time   :   4.06e+03   yr
 [ INFO  ]     T_surf       :   1666.879   K
 [ INFO  ]     T_magma      :   1666.879   K
@@ -4530,8 +4530,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [3.8310913527569637e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 2
+[ DEBUG ]     Residuals: [0.0, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 1981.62  bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -4553,7 +4553,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-32-48  
+[ INFO  ]     System time  :   2024-07-24_08-44-39  
 [ INFO  ]     Model time   :   4.07e+03   yr
 [ INFO  ]     T_surf       :   1650.214   K
 [ INFO  ]     T_magma      :   1650.214   K
@@ -4590,7 +4590,7 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 4
+[ DEBUG ]     Initial guess attempt number = 1
 [ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 2084.13  bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
@@ -4613,7 +4613,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-33-37  
+[ INFO  ]     System time  :   2024-07-24_08-45-31  
 [ INFO  ]     Model time   :   4.09e+03   yr
 [ INFO  ]     T_surf       :   1633.747   K
 [ INFO  ]     T_magma      :   1633.747   K
@@ -4651,7 +4651,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 3
-[ DEBUG ]     Residuals: [-3.639536785119115e-15, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 2143.08  bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -4673,7 +4673,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-34-06  
+[ INFO  ]     System time  :   2024-07-24_08-46-00  
 [ INFO  ]     Model time   :   4.10e+03   yr
 [ INFO  ]     T_surf       :   1617.425   K
 [ INFO  ]     T_magma      :   1617.425   K
@@ -4710,8 +4710,8 @@
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
-[ DEBUG ]     Initial guess attempt number = 1
-[ DEBUG ]     Residuals: [-1.9155456763784818e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Initial guess attempt number = 3
+[ DEBUG ]     Residuals: [3.8310913527569637e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 2242.44  bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -4733,7 +4733,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-34-52  
+[ INFO  ]     System time  :   2024-07-24_08-46-47  
 [ INFO  ]     Model time   :   4.12e+03   yr
 [ INFO  ]     T_surf       :   1601.252   K
 [ INFO  ]     T_magma      :   1601.252   K
@@ -4771,7 +4771,7 @@
 [ INFO  ] Solving for equilibrium partial pressures at surface
 [ DEBUG ]     target masses: {'S': 0.0, 'C': 0.0, 'N': 0.0, 'H': 1.368508217959113e+21}
 [ DEBUG ]     Initial guess attempt number = 3
-[ DEBUG ]     Residuals: [-3.8310913527569637e-16, 0.0, 0.0, 0.0]
+[ DEBUG ]     Residuals: [1.9155456763784818e-16, 0.0, 0.0, 0.0]
 [ INFO  ]     H2O    : 2312.11  bar (1.00e+00 VMR)
 [ INFO  ]     CO2    : 0.00     bar (0.00e+00 VMR)
 [ INFO  ]     H2     : 0.00     bar (0.00e+00 VMR)
@@ -4793,7 +4793,7 @@
 [ DEBUG ] Writing helpfile to CSV file
 [ INFO  ] ---------------------------------------------------
 [ INFO  ] Runtime info...
-[ INFO  ]     System time  :   2024-07-23_13-35-07  
+[ INFO  ]     System time  :   2024-07-24_08-47-03  
 [ INFO  ]     Model time   :   4.13e+03   yr
 [ INFO  ]     T_surf       :   1587.029   K
 [ INFO  ]     T_magma      :   1587.029   K
@@ -4814,5 +4814,6 @@
 [ INFO  ] Plot interior colourmesh
 [ WARNING ] Cannot make sflux_cross plot with only 1 stellar spectrum sample
 [ INFO  ] Plot global fluxes
-[ INFO  ] Simulation stopped at: 2024-07-23_13:35:11
-[ INFO  ] Total runtime: 1.02 hours
+[ INFO  ] Plot observables
+[ INFO  ] Simulation stopped at: 2024-07-24_08:47:07
+[ INFO  ] Total runtime: 1.03 hours
