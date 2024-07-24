@@ -87,8 +87,7 @@ def CreateLockFile(output_dir:str):
     keepalive_file = os.path.join(output_dir,"keepalive")
     safe_rm(keepalive_file)
     with open(keepalive_file, 'w') as fp:
-        fp.write("Removing this file will be interpreted by PROTEUS as a \
-                        request to stop the simulation loop\n")
+        fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
     return keepalive_file
 
 def GetHelpfileKeys():
