@@ -394,33 +394,27 @@ def main():
             PrintHalfSeparator()
 
             if COUPLER_options["escape_model"] == 1:
-                phi_esc = RunZEPHYRUS()
+                esc_result = RunZEPHYRUS()
 
             elif COUPLER_options["escape_model"] == 2:
-                phi_esc = RunDummyEsc()
+                esc_result = RunDummyEsc(hf_row, dt)
             
             # store total escape rate 
-            hf_row["esc_rate_total"] = phi_esc # bulk kg/s
-            log.info("Bulk escape rate: %.2e kg yr-1"%(phi_esc * secs_per_year))
+            hf_row["esc_rate_total"] = esc_result["rate_bulk"]
+            log.info("Bulk escape rate: %.2e kg yr-1"%(hf_row["esc_rate_total"] * secs_per_year))
 
-            # for each elem, calculate new total inventory while
-            # maintaining a constant mass mixing ratio in the atmosphere
+            # update elemental mass targets
             for e in element_list:
-                if e == 'O': continue
+                if e=='O': continue
+                solvevol_target[e] += esc_result[e+"_dm"]
 
-                # current elemental mass ratio in atmosphere 
-                emr = hf_row[e+"_kg_atm"]/hf_row["M_atm"]
+                esc_m  = solvevol_target[e]
+                esc_dm = esc_result[e+"_dm"]
+                log.debug("    escape %s: m=%.2e kg,  dm=%+.2e (%.3f%%)"%
+                                    (e, esc_m, esc_dm, 100*esc_dm/esc_m))
 
-                # mass loss of element e, keeping a constant mixing ratio 
-                e_atm = emr * (hf_row["M_atm"] - phi_esc * dt * secs_per_year) - hf_row[e+"_kg_atm"]
-
-                # calculate new elemental inventory 
-                solvevol_target[e] += e_atm
-
-                log.debug("New mass of %s: %.2e kg"%(e, solvevol_target[e]))
-
-                # do not allow zero or negative masses
-                solvevol_target[e] = max(0.0, solvevol_target[e])
+            # do not allow negative masses
+            solvevol_target[e] = max(0.0, solvevol_target[e])
 
 
 
@@ -441,9 +435,9 @@ def main():
 
             # calculate target mass of atoms (except O, which is derived from fO2)
             if COUPLER_options["solvevol_use_params"] > 0:
-                solvevol_target = solvevol_get_target_from_params(solvevol_inp)
+                solvevol_target = get_target_from_params(solvevol_inp)
             else:
-                solvevol_target = solvevol_get_target_from_pressures(solvevol_inp)
+                solvevol_target = get_target_from_pressures(solvevol_inp)
 
             # prevent numerical issues
             for key in solvevol_target.keys():
@@ -456,7 +450,7 @@ def main():
             # the model makes a poor guess for the composition. These are then discarded, 
             # so the warning should not propagate anywhere. Errors are still printed.
             warnings.filterwarnings("ignore", category=RuntimeWarning)
-            solvevol_result = solvevol_equilibrium_atmosphere(solvevol_target, solvevol_inp)
+            solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
 
         #    store results
         for k in solvevol_result.keys():
