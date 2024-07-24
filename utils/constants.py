@@ -14,6 +14,9 @@ M_core_earth    = 1.94E24               # kg
 mol             = 6.02214076e+23        # mol definition
 ocean_moles     = 7.68894973907177e+22 # moles of H2 (or H2O) in one present-day Earth ocean
 
+# Time constants 
+secs_per_year   = 365.25 * 24 * 60 * 60 # seconds per year 
+
 # Values from phys.py
 const_h = 6.626075540e-34    #Planck's constant
 const_c = 2.99792458e8       #Speed of light

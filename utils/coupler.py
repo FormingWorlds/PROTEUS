@@ -115,11 +115,18 @@ def GetHelpfileKeys():
 
             # Observational 
             "z_obs", "transit_depth", "contrast_ratio", # observed from infinity
-
-            # Surface composition
-            "P_surf", "atm_kg_per_mol", # more keys are added below
-           
             ]
+    
+    # Escape rates
+    keys.append("esc_rate_total")
+    for e in element_list:
+        if e == 'O': continue
+        keys.append("esc_rate_"+e)
+
+    # Atmosphere composition
+    keys.append("M_atm")
+    keys.append("P_surf")
+    keys.append("atm_kg_per_mol")
 
     # gases
     for s in volatile_species:
@@ -270,7 +277,7 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                 if not line.startswith("time_"):
 
                     # Some parameters are int
-                    if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop",
+                    if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop", "escape_model",
                                 "plot_iterfreq", "stellar_heating", "mixing_length", "shallow_ocean_layer",
                                 "atmosphere_chemistry", "solvevol_use_params", "insert_rscatter", "water_cloud",
                                 "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
@@ -301,7 +308,7 @@ def ReadInitFile(init_file_passed:str, verbose=False):
 
     return COUPLER_options, time_dict
 
-def ValidateInitFile(COUPLER_options:dict):
+def ValidateInitFile(dirs:dict, COUPLER_options:dict):
     '''
     Validate configuration file, checking for invalid options
     '''
@@ -339,7 +346,7 @@ def ValidateInitFile(COUPLER_options:dict):
             raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
         if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0):
             UpdateStatusfile(dirs, 20)
-            raise Exception("Volatile %s has non-zero pressure but outgassing parameters are enabled")
+            raise Exception("Volatile %s has non-zero pressure but outgassing parameters are enabled"%s)
 
     # Required vols
     for s in ["H2O","CO2","N2","S2"]:
