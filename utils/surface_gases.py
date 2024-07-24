@@ -485,8 +485,8 @@ def solvevol_get_initial_pressures(target_d):
     """Get initial guesses of partial pressures"""
 
     # all in bar
-    cH2O = [-7 , +5]  # range in log10 units
-    cCO2 = [-8 , +5]
+    cH2O = [-10, +5]  # range in log10 units
+    cCO2 = [-10, +5]
     cN2  = [-10, +5]
     cS2  = [-10, +5]
 
@@ -495,13 +495,15 @@ def solvevol_get_initial_pressures(target_d):
     pN2  = get_log_rand(cN2 )
     pS2  = get_log_rand(cS2)
 
-    if target_d['H'] == 0:
+    mass_min = 1.0 # kg
+
+    if target_d['H'] < mass_min:
         pH2O = 0.0
-    if target_d['C'] == 0:
+    if target_d['C'] < mass_min:
         pCO2 = 0.0
-    if target_d['N'] == 0:
+    if target_d['N'] < mass_min:
         pN2  = 0.0
-    if target_d['S'] == 0:
+    if target_d['S'] < mass_min:
         pS2 = 0.0
 
     return pH2O, pCO2, pN2, pS2

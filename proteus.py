@@ -411,12 +411,13 @@ def main():
                 # current elemental mass ratio in atmosphere 
                 emr = hf_row[e+"_kg_atm"]/hf_row["M_atm"]
 
-                # mass of e in atmosphere, after escape
-                e_atm = emr * (hf_row["M_atm"] - phi_esc * dt * secs_per_year)
+                # mass loss of element e, keeping a constant mixing ratio 
+                e_atm = emr * (hf_row["M_atm"] - phi_esc * dt * secs_per_year) - hf_row[e+"_kg_atm"]
 
                 # calculate new elemental inventory 
-                solvevol_target[e] -= hf_row[e+"_kg_atm"]
                 solvevol_target[e] += e_atm
+
+                log.debug("New mass of %s: %.2e kg"%(e, solvevol_target[e]))
 
                 # do not allow zero or negative masses
                 solvevol_target[e] = max(0.0, solvevol_target[e])
