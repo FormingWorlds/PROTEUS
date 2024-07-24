@@ -413,10 +413,8 @@ def main():
                 log.debug("    escape %s: m=%.2e kg,  dm=%+.2e (%.3f%%)"%
                                     (e, esc_m, esc_dm, 100*esc_dm/esc_m))
 
-            # do not allow negative masses
-            solvevol_target[e] = max(0.0, solvevol_target[e])
-
-
+                # do not allow negative masses
+                solvevol_target[e] = max(0.0, solvevol_target[e])
 
         ############### / ESCAPE
 
@@ -584,7 +582,7 @@ def main():
                 finished = True
         
         # Atmosphere has escaped
-        if hf_row["M_atm"] <= COUPLER_options["escape_stop_frac"]*hf_all.iloc[0]["M_atm"]:
+        if hf_row["M_atm"] <= COUPLER_options["escape_stop"]*hf_all.iloc[0]["M_atm"]:
             UpdateStatusfile(dirs, 15)
             log.info("")
             log.info("===> Atmosphere has escaped! <===")
