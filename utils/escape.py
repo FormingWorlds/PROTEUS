@@ -19,7 +19,7 @@ def RunDummyEsc():
     log.info("Running dummy escape...")
 
     # Hardcoded dummy value of bulk volatile escape rate [kg/s]
-    phi = 1e7 
+    phi = 1e8 
 
     # Escape rates for each element 
     out = {}

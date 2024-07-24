@@ -23,16 +23,14 @@ def plot_elements( output_dir, plot_format="pdf", t0=100.0):
     fig,ax = plt.subplots(1,1, figsize=(7*scale,4*scale))
 
 
-    all = np.zeros(len(time))
     for e in element_list:
-        y = hf_all[e+"_kg_total"]
-        all += y
-
-        l = ax.plot(time, y, lw=lw, ls='solid', label=e)[0]
+        l = ax.plot(time, hf_all[e+"_kg_total"], lw=lw, ls='solid', label="Total "+e)[0]
 
         # c = l.get_color()
         # ax.plot(time, hf_all[e+"_kg_liquid"], lw=lw, color=c, alpha=al, ls='dashed')  # in magma ocean
         # ax.plot(time, hf_all[e+"_kg_atm"],    lw=lw, color=c, alpha=al, ls='dotted')  # in atmosphere
+
+    ax.plot(time, hf_all["M_atm"], lw=lw, ls='solid', label='Atmos.', c='k')
 
     # decorate 
     ax.set_ylabel("Inventory [kg]")
@@ -41,7 +39,7 @@ def plot_elements( output_dir, plot_format="pdf", t0=100.0):
     ax.set_xscale("log")
     ax.set_xlim(left=t0, right=np.amax(time))
     ax.grid(alpha=0.2)
-    ax.legend()
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.close()
     plt.ioff()

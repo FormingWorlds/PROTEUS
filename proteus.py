@@ -583,10 +583,10 @@ def main():
                 finished = True
         
         # Atmosphere has escaped
-        if (hf_row["Time"] >= time_dict["target"]):
-            UpdateStatusfile(dirs, 13)
+        if hf_row["M_atm"] <= COUPLER_options["M_atm_stop"]:
+            UpdateStatusfile(dirs, 15)
             log.info("")
-            log.info("===> Target time reached! <===")
+            log.info("===> Atmosphere has escaped! <===")
             log.info("")
             finished = True
 
