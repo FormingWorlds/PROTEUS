@@ -115,19 +115,14 @@ def GetHelpfileKeys():
 
             # Observational 
             "z_obs", "transit_depth", "contrast_ratio", # observed from infinity
+
+            # Escape 
+            "esc_rate_total",
+
+            # Atmospheric composition
+            "M_atm", "P_surf", "atm_kg_per_mol", # more keys added below
             ]
     
-    # Escape rates
-    keys.append("esc_rate_total")
-    for e in element_list:
-        if e == 'O': continue
-        keys.append("esc_rate_"+e)
-
-    # Atmosphere composition
-    keys.append("M_atm")
-    keys.append("P_surf")
-    keys.append("atm_kg_per_mol")
-
     # gases
     for s in volatile_species:
         keys.append(s+"_mol_atm")   

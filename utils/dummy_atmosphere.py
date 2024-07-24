@@ -15,7 +15,7 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
     #    surface, relative to the surface temperature itself
     # Setting this to 0 will result in an entirely transparent atmosphere
     # Setting this to 1 will result in an OLR of zero
-    gamma           = 0.3   
+    gamma           = 0.9
 
     # Parameters 
     zenith_angle    = COUPLER_options["zenith_angle"]

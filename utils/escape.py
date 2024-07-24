@@ -12,21 +12,16 @@ def RunDummyEsc():
 
     Returns
     ----------
-        out : dict
-            Dictionary of bulk escape rates for each element [kg s-1]
+        phi : float 
+            Bulk escape rate [kg/s]
 
     """
     log.info("Running dummy escape...")
 
     # Hardcoded dummy value of bulk volatile escape rate [kg/s]
-    phi = 1e8 
+    phi = 1e10
 
-    # Escape rates for each element 
-    out = {}
-    for e in element_list:
-        out[e] = phi
-
-    return out
+    return phi
 
 
 

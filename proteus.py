@@ -388,29 +388,35 @@ def main():
 
         ############### ESCAPE
 
-        if loop_counter["total"] >= loop_counter["init_loops"]:
+        if (loop_counter["total"] >= loop_counter["init_loops"]) \
+            and (COUPLER_options["escape_model"] > 0):
+            
             PrintHalfSeparator()
 
-            if COUPLER_options["escape_model"] == 0:
-                pass
-
-            elif COUPLER_options["escape_model"] == 1:
-                escape_result = RunZEPHYRUS()
+            if COUPLER_options["escape_model"] == 1:
+                phi_esc = RunZEPHYRUS()
 
             elif COUPLER_options["escape_model"] == 2:
-                escape_result = RunDummyEsc()
+                phi_esc = RunDummyEsc()
             
             # store total escape rate 
-            hf_row["esc_rate_total"] = np.sum(list(escape_result.values())) # bulk kg/s
+            hf_row["esc_rate_total"] = phi_esc # bulk kg/s
+            log.info("Bulk escape rate: %.2e kg yr-1"%(phi_esc * secs_per_year))
 
-            # for each element 
+            # for each elem, calculate new total inventory while
+            # maintaining a constant mass mixing ratio in the atmosphere
             for e in element_list:
                 if e == 'O': continue
 
-                hf_row["esc_rate_"+e] = escape_result[e] # elemental kg/s
+                # current elemental mass ratio in atmosphere 
+                emr = hf_row[e+"_kg_atm"]/hf_row["M_atm"]
 
-                # subtract from total inventory 
-                solvevol_target[e] -= escape_result[e] * dt * secs_per_year
+                # mass of e in atmosphere, after escape
+                e_atm = emr * (hf_row["M_atm"] - phi_esc * dt * secs_per_year)
+
+                # calculate new elemental inventory 
+                solvevol_target[e] -= hf_row[e+"_kg_atm"]
+                solvevol_target[e] += e_atm
 
                 # do not allow zero or negative masses
                 solvevol_target[e] = max(0.0, solvevol_target[e])
@@ -583,7 +589,7 @@ def main():
                 finished = True
         
         # Atmosphere has escaped
-        if hf_row["M_atm"] <= COUPLER_options["M_atm_stop"]:
+        if hf_row["M_atm"] <= COUPLER_options["escape_stop_frac"]*hf_all.iloc[0]["M_atm"]:
             UpdateStatusfile(dirs, 15)
             log.info("")
             log.info("===> Atmosphere has escaped! <===")
