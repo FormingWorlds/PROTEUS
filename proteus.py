@@ -459,7 +459,7 @@ def main():
 
         # Calculate observables (measured at infinite distance)
         hf_row["transit_depth"] =  (hf_row["z_obs"] / hf_row["R_star"])**2.0
-        hf_row["contrast_ratio"] = (hf_row["F_atm"]/hf_row["F_ins"]) * \
+        hf_row["contrast_ratio"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
                                      (hf_row["z_obs"] / (COUPLER_options["mean_distance"]*AU))**2.0
 
         # Update full helpfile
