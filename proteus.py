@@ -410,7 +410,7 @@ def main():
                 esc_result = RunZEPHYRUS()
 
             elif COUPLER_options["escape_model"] == 2:
-                esc_result = RunDummyEsc(hf_row, dt)
+                esc_result = RunDummyEsc(hf_row, dt, COUPLER_options["escape_dummy_rate"])
             
             # store total escape rate 
             hf_row["esc_rate_total"] = esc_result["rate_bulk"]
@@ -419,10 +419,15 @@ def main():
             # update elemental mass targets
             for e in element_list:
                 if e=='O': continue
-                solvevol_target[e] += esc_result[e+"_dm"]
 
-                esc_m  = solvevol_target[e]
-                esc_dm = esc_result[e+"_dm"]
+                # store change, for statistics
+                esc_m  = esc_result[e+"_kg_total"]
+                esc_dm = esc_m - solvevol_target[e]
+
+                # update total elemental inventory
+                solvevol_target[e] = esc_m
+
+                # print info to user
                 log.debug("    escape %s: m=%.2e kg,  dm=%.2e (%.3f%%)"%
                                     (e, esc_m, esc_dm, 100*esc_dm/esc_m))
 

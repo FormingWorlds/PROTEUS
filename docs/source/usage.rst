@@ -267,7 +267,13 @@ configuration, but they must all be passed via the config file.
      - Stop the simulation when the atmosphere mass drops below this fraction of its initial mass.
      - False
      - Float
-     - Values between zero and unity.
+     - Values between zero and unity (exclusive).
+
+  * - ``escape_dummy_rate``
+     - Bulk escape rate for dummy escape model [kg s-1]
+     - False
+     - Float
+     - Any reasonable positive value.
 
    * - ``prevent_warming``
      - Flag to ensure that the net upward energy flux is always positive, which prevents the star from causing net heating inside the planet.   
