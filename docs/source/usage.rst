@@ -18,10 +18,11 @@ You can also run PROTEUS inside a Screen session using:
 
    .. code-block:: console
 
-         $  tools/RunPROTEUS.sh [cfgfile] [alias] [detach]
+         $  tools/RunPROTEUS.sh [cfgfile] [alias] [resume] [detach]
    
 Which runs PROTEUS using the config file ``[cfgfile]`` inside a Screen session with the 
-name ``[alias]``. The ``[detach]`` parameter (y/n) tells the session whether to immediately 
+name ``[alias]``. The ``[resume]`` parameter (y/n) tells the model whether to resume from 
+a previous state. The ``[detach]`` parameter (y/n) tells the session whether to immediately 
 detach or not. This allows multiple instances of the model to be dispatched easily and 
 safely.
   
@@ -239,7 +240,7 @@ configuration, but they must all be passed via the config file.
      - Greater than zero.  
 
    * - ``shallow_ocean_layer``
-     - Legaacy method for converging atmospheric and interior upward fluxes. 
+     - Legacy method for converging atmospheric and interior upward fluxes. 
      - True
      - Integer
      - 0: Off, 1: On
@@ -255,6 +256,24 @@ configuration, but they must all be passed via the config file.
      - False
      - Float
      - Greater than or equal to 0. Set to 0 to disable.    
+
+  * - ``escape_model``
+     - Escape model to be used.
+     - False
+     - Integer
+     - 0: None, 1: ZEPHYRUS, 2: Dummy 
+
+  * - ``escape_stop``
+     - Stop the simulation when the atmosphere mass drops below this fraction of its initial mass.
+     - False
+     - Float
+     - Values between zero and unity (exclusive).
+
+  * - ``escape_dummy_rate``
+     - Bulk escape rate for dummy escape model [kg s-1]
+     - False
+     - Float
+     - Any reasonable positive value.
 
    * - ``prevent_warming``
      - Flag to ensure that the net upward energy flux is always positive, which prevents the star from causing net heating inside the planet.   

@@ -24,14 +24,16 @@ then
     echo "ERROR: Config file or alias not provided" 
     echo "       First argument:   config file     (string)"
     echo "       Second argument:  screen alias    (string)"
-    echo "       Third argument:   detach?         (y or n)"
+    echo "       Third argument:   resume?         (y or n)"
+    echo "       Fourth argument:  detach?         (y or n)"
     sleep 1.0 
     exit 1
 else
     # Set variables
     CFGFILE="$1"
     ALIAS="$2"
-    DETACH=$(echo "$3" | tr -d ' ' | tr '[:upper:]' '[:lower:]' | cut -c1-1)  # strip spaces, covert to lowercase, get first char
+    RESUME=$(echo "$3" | tr -d ' ' | tr '[:upper:]' '[:lower:]' | cut -c1-1)  # strip spaces, covert to lowercase, get first char
+    DETACH=$(echo "$4" | tr -d ' ' | tr '[:upper:]' '[:lower:]' | cut -c1-1)  # strip spaces, covert to lowercase, get first char
     EXECUTABLE="$COUPLER_DIR/proteus.py"
 
     # Clear dead screens
@@ -51,7 +53,11 @@ else
 
     # Dispatch screen session with PROTEUS inside
     echo "    Dispatching screen session..."
+
     COMMAND="python $EXECUTABLE --cfg $CFGFILE"
+    if [[ "$RESUME" == "y" ]]; then 
+        COMMAND="$COMMAND --resume"
+    fi 
 
     if [[ "$DETACH" == "y" ]]; then 
         screen -S $ALIAS -d -m bash -c "$COMMAND" 

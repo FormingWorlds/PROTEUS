@@ -244,7 +244,7 @@ class SolubilityCO(Solubility):
 def is_included(gas, ddict):
     return bool(ddict[gas+"_included"]>0)
 
-def solvevol_get_partial_pressures(pin, ddict):
+def get_partial_pressures(pin, ddict):
     """Partial pressure of all considered species from oxidised species"""
 
     # we only need to know pH2O, pCO2, and pN2, since reduced species
@@ -300,14 +300,14 @@ def solvevol_get_partial_pressures(pin, ddict):
 
 
 
-def solvevol_get_total_pressure(p_d):
+def get_total_pressure(p_d):
     """Sum partial pressures to get total pressure"""
     return sum(p_d.values())
 
-def solvevol_atmosphere_mean_molar_mass(p_d):
+def atmosphere_mean_molar_mass(p_d):
     """Mean molar mass of the atmosphere"""
 
-    ptot = solvevol_get_total_pressure(p_d)
+    ptot = get_total_pressure(p_d)
 
     mu_atm = 0
     for key, value in p_d.items():
@@ -318,11 +318,11 @@ def solvevol_atmosphere_mean_molar_mass(p_d):
 
 
 
-def solvevol_atmosphere_mass(pin, ddict):
+def atmosphere_mass(pin, ddict):
     """Atmospheric mass of volatiles and totals for H, C, and N"""
 
-    p_d = solvevol_get_partial_pressures(pin, ddict)
-    mu_atm = solvevol_atmosphere_mean_molar_mass(p_d)
+    p_d = get_partial_pressures(pin, ddict)
+    mu_atm = atmosphere_mean_molar_mass(p_d)
 
     mass_atm_d = {}
     for key, value in p_d.items():
@@ -373,13 +373,13 @@ def solvevol_atmosphere_mass(pin, ddict):
 
 
 
-def solvevol_dissolved_mass(pin, ddict):
+def dissolved_mass(pin, ddict):
     """Volatile masses in the (molten) mantle"""
 
     mass_int_d = {}
 
-    p_d = solvevol_get_partial_pressures(pin, ddict)
-    ptot = solvevol_get_total_pressure(p_d)
+    p_d = get_partial_pressures(pin, ddict)
+    ptot = get_total_pressure(p_d)
 
     prefactor = 1E-6*ddict['M_mantle']*ddict['Phi_global']
 
@@ -442,7 +442,7 @@ def solvevol_dissolved_mass(pin, ddict):
 
     return mass_int_d
 
-def solvevol_func(pin_arr, ddict, mass_target_d):
+def func(pin_arr, ddict, mass_target_d):
     """Function to compute the residual of the mass balance given the partial pressures [bar]"""
 
     pin_dict = {
@@ -453,10 +453,10 @@ def solvevol_func(pin_arr, ddict, mass_target_d):
     }
 
     # get atmospheric masses
-    mass_atm_d = solvevol_atmosphere_mass(pin_dict, ddict)
+    mass_atm_d = atmosphere_mass(pin_dict, ddict)
 
     # get (molten) mantle masses
-    mass_int_d = solvevol_dissolved_mass(pin_dict, ddict)
+    mass_int_d = dissolved_mass(pin_dict, ddict)
     
     # compute residuals
     res_l = []
@@ -481,12 +481,12 @@ def get_log_rand(rng):
     r = np.random.uniform(low=rng[0], high=rng[1])
     return 10.0**r
 
-def solvevol_get_initial_pressures(target_d):
+def get_initial_pressures(target_d):
     """Get initial guesses of partial pressures"""
 
     # all in bar
-    cH2O = [-7 , +5]  # range in log10 units
-    cCO2 = [-8 , +5]
+    cH2O = [-10, +5]  # range in log10 units
+    cCO2 = [-10, +5]
     cN2  = [-10, +5]
     cS2  = [-10, +5]
 
@@ -495,19 +495,21 @@ def solvevol_get_initial_pressures(target_d):
     pN2  = get_log_rand(cN2 )
     pS2  = get_log_rand(cS2)
 
-    if target_d['H'] == 0:
+    mass_min = 1.0 # kg
+
+    if target_d['H'] < mass_min:
         pH2O = 0.0
-    if target_d['C'] == 0:
+    if target_d['C'] < mass_min:
         pCO2 = 0.0
-    if target_d['N'] == 0:
+    if target_d['N'] < mass_min:
         pN2  = 0.0
-    if target_d['S'] == 0:
+    if target_d['S'] < mass_min:
         pS2 = 0.0
 
     return pH2O, pCO2, pN2, pS2
 
 
-def solvevol_get_target_from_params(ddict):
+def get_target_from_params(ddict):
 
     N_ocean_moles = ddict['hydrogen_earth_oceans']
     CH_ratio =      ddict['CH_ratio']
@@ -521,7 +523,7 @@ def solvevol_get_target_from_params(ddict):
     target_d = {'H': H_kg, 'C': C_kg, 'N': N_kg, 'S': S_kg}
     return target_d
 
-def solvevol_get_target_from_pressures(ddict):
+def get_target_from_pressures(ddict):
     
     target_d = {}
 
@@ -555,8 +557,8 @@ def solvevol_get_target_from_pressures(ddict):
         target_d['N'] = 0.0
 
     # get dissolved+atmosphere masses from partial pressures
-    mass_atm_d = solvevol_atmosphere_mass(pin_dict, ddict)
-    mass_int_d = solvevol_dissolved_mass(pin_dict, ddict)
+    mass_atm_d = atmosphere_mass(pin_dict, ddict)
+    mass_int_d = dissolved_mass(pin_dict, ddict)
 
     for vol in ['H','C','N','S']:
         if vol in target_d.keys():
@@ -565,7 +567,7 @@ def solvevol_get_target_from_pressures(ddict):
 
     return target_d
 
-def solvevol_equilibrium_atmosphere(target_d, ddict):
+def equilibrium_atmosphere(target_d, ddict):
     """Solves for surface partial pressures assuming melt-vapour eqm
 
 
@@ -591,8 +593,8 @@ def solvevol_equilibrium_atmosphere(target_d, ddict):
     # the ic never finds the physical solution (but in practice,
     # this doesn't seem to happen)
     while ier != 1:
-        x0 = solvevol_get_initial_pressures(target_d)
-        sol, info, ier, msg = fsolve(solvevol_func, x0, args=(ddict, target_d), full_output=True)
+        x0 = get_initial_pressures(target_d)
+        sol, info, ier, msg = fsolve(func, x0, args=(ddict, target_d), full_output=True)
         count += 1
         
         # if any negative pressures, report ier!=1
@@ -601,7 +603,7 @@ def solvevol_equilibrium_atmosphere(target_d, ddict):
             ier = 0
 
         # check residuals
-        this_resid = solvevol_func(sol, ddict, target_d)
+        this_resid = func(sol, ddict, target_d)
         if np.amax(np.abs(this_resid)) > 1.0:
             ier = 0
 
@@ -619,14 +621,14 @@ def solvevol_equilibrium_atmosphere(target_d, ddict):
     }
 
     # Final partial pressures [bar]
-    p_d        = solvevol_get_partial_pressures(sol_dict, ddict)
+    p_d        = get_partial_pressures(sol_dict, ddict)
 
     # Final masses [kg]
-    mass_atm_d = solvevol_atmosphere_mass(p_d, ddict)
-    mass_int_d = solvevol_dissolved_mass(p_d, ddict)
+    mass_atm_d = atmosphere_mass(p_d, ddict)
+    mass_int_d = dissolved_mass(p_d, ddict)
 
     # Residuals [relative]
-    res_l      = solvevol_func(sol, ddict, target_d)
+    res_l      = func(sol, ddict, target_d)
     log.debug("    Residuals: %s"%res_l)
     
     # Output dict 

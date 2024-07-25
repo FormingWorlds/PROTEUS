@@ -26,16 +26,16 @@ def main():
     resume = bool(args["resume"])
 
     # Read in COUPLER input file
-    cfg_file = os.path.abspath(str(args["cfg"]))
-    COUPLER_options, time_dict = ReadInitFile( cfg_file , verbose=False )
-
-    # Validate options
-    ValidateInitFile(COUPLER_options)
+    cfgsrc = os.path.abspath(str(args["cfg"]))
+    COUPLER_options, time_dict = ReadInitFile( cfgsrc , verbose=False )
 
     # Set directories dictionary
     utils.constants.dirs = SetDirectories(COUPLER_options)
     from utils.constants import dirs
     UpdateStatusfile(dirs, 0)
+
+    # Validate options
+    ValidateInitFile(dirs, COUPLER_options)
 
     # Clean output directory 
     if not resume:
@@ -60,7 +60,7 @@ def main():
     log.info("Hostname    : " + str(os.uname()[1]))
     log.info("PROTEUS hash: " + GitRevision(dirs["coupler"])) 
     log.info("Py version  : " + sys.version.split(' ')[0]) 
-    log.info("Config file : " + cfg_file)
+    log.info("Config file : " + cfgsrc)
     log.info("Output dir  : " + dirs["output"])
     log.info("FWL data dir: " + dirs["fwl"])
     if COUPLER_options["atmosphere_model"] in [0,1]:
@@ -84,6 +84,9 @@ def main():
     # Model has completed?
     finished = False
 
+    # Config file paths
+    cfgbak = os.path.join(dirs["output"],"init_coupler.cfg")
+
     # Is the model resuming from a previous state?
     if not resume:
         # New simulation
@@ -92,7 +95,7 @@ def main():
         IC_INTERIOR = 1
 
         # Copy config file to output directory, for future reference
-        shutil.copyfile(args["cfg"], os.path.join(dirs["output"],"init_coupler.cfg"))
+        shutil.copyfile(args["cfg"], cfgbak)
 
         # No previous iterations to be stored. It is therefore important that the 
         #    submodules do not try to read data from the 'past' iterations, since they do
@@ -137,6 +140,16 @@ def main():
         # Resuming from disk
         log.info("Resuming the simulation from the disk")
 
+        # Copy cfg file 
+        if os.path.exists(cfgbak):
+            if cfgbak == cfgsrc:
+                # resuming from backed-up cfg file, not the original
+                pass
+            else:
+                # delete old and copy new 
+                safe_rm(cfgbak)
+                shutil.copyfile(cfgsrc, cfgbak)
+
         # SPIDER initial condition
         IC_INTERIOR = 2
 
@@ -160,7 +173,8 @@ def main():
 
         # Set volatile mass targets 
         solvevol_target = {}
-        for e in ["H","C","N","S"]:
+        for e in element_list:
+            if e == 'O': continue
             solvevol_target[e] = hf_row[e+"_kg_total"]
 
     # Import the appropriate atmosphere module 
@@ -173,6 +187,18 @@ def main():
     else:
         UpdateStatusfile(dirs, 20)
         raise Exception("Invalid atmosphere model")
+    
+    # Import the appropriate escape module 
+    if COUPLER_options["escape_model"] == 0:
+        pass 
+    elif COUPLER_options["escape_model"] == 1:
+        from utils.escape import RunZEPHYRUS
+    elif COUPLER_options["escape_model"] == 2:
+        from utils.escape import RunDummyEsc
+    else:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Invalid escape model")
+
 
     # Download all basic data.
     # (to be improved such that we only download the one we need)
@@ -291,7 +317,7 @@ def main():
             hf_row["T_eqm"]  =  T_eqm_new
             hf_row["T_skin"] =  T_eqm_new * (0.5**0.25) # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
 
-            log.info("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
+            log.debug("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
 
         # Calculate a new (historical) stellar spectrum 
         if ( ( abs( hf_row["Time"] - sspec_prev ) > COUPLER_options['sspec_dt_update'] ) \
@@ -361,11 +387,54 @@ def main():
                         loop_counter, hf_all, hf_row )
         sim_time, spider_result = ReadSPIDER(dirs, COUPLER_options, hf_row["Time"], prev_T_magma)
 
-        hf_row["Time"] = float(sim_time)
         for k in spider_result.keys():
             if k in hf_row.keys():
                 hf_row[k] = spider_result[k]
+
+        # Advance current time in main loop according to interior step
+        dt = float(sim_time) - hf_row["Time"]
+        hf_row["Time"]     += dt # in years 
+        hf_row["age_star"] += dt # in years
+
         ############### / INTERIOR
+
+
+        ############### ESCAPE
+
+        if (loop_counter["total"] >= loop_counter["init_loops"]) \
+            and (COUPLER_options["escape_model"] > 0):
+            
+            PrintHalfSeparator()
+
+            if COUPLER_options["escape_model"] == 1:
+                esc_result = RunZEPHYRUS()
+
+            elif COUPLER_options["escape_model"] == 2:
+                esc_result = RunDummyEsc(hf_row, dt, COUPLER_options["escape_dummy_rate"])
+            
+            # store total escape rate 
+            hf_row["esc_rate_total"] = esc_result["rate_bulk"]
+            log.info("Bulk escape rate: %.2e kg yr-1"%(hf_row["esc_rate_total"] * secs_per_year))
+
+            # update elemental mass targets
+            for e in element_list:
+                if e=='O': continue
+
+                # store change, for statistics
+                esc_m  = esc_result[e+"_kg_total"]
+                esc_dm = esc_m - solvevol_target[e]
+
+                # update total elemental inventory
+                solvevol_target[e] = esc_m
+
+                # print info to user
+                log.debug("    escape %s: m=%.2e kg,  dm=%.2e (%.3f%%)"%
+                                    (e, esc_m, esc_dm, 100*esc_dm/esc_m))
+
+                # do not allow negative masses
+                solvevol_target[e] = max(0.0, solvevol_target[e])
+
+        ############### / ESCAPE
 
 
         ############### OUTGASSING
@@ -380,11 +449,11 @@ def main():
         #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
         if (loop_counter["init"] < loop_counter["init_loops"]):
 
-            # calculate target mass of atoms
+            # calculate target mass of atoms (except O, which is derived from fO2)
             if COUPLER_options["solvevol_use_params"] > 0:
-                solvevol_target = solvevol_get_target_from_params(solvevol_inp)
+                solvevol_target = get_target_from_params(solvevol_inp)
             else:
-                solvevol_target = solvevol_get_target_from_pressures(solvevol_inp)
+                solvevol_target = get_target_from_pressures(solvevol_inp)
 
             # prevent numerical issues
             for key in solvevol_target.keys():
@@ -397,36 +466,19 @@ def main():
             # the model makes a poor guess for the composition. These are then discarded, 
             # so the warning should not propagate anywhere. Errors are still printed.
             warnings.filterwarnings("ignore", category=RuntimeWarning)
-            solvevol_result = solvevol_equilibrium_atmosphere(solvevol_target, solvevol_inp)
+            solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
 
+        #    store results
         for k in solvevol_result.keys():
             if k in hf_row.keys():
                 hf_row[k] = solvevol_result[k]
+
+        #    calculate total atmosphere mass 
+        hf_row["M_atm"] = 0.0
+        for s in volatile_species:
+            hf_row["M_atm"] += hf_row[s+"_kg_atm"]
         ############### / OUTGASSING
         
-
-        ############### UPDATE TIME 
-                                   
-        # Advance current time in main loop according to interior step
-        dt = sim_time - hf_row["Time"]
-        hf_row["Time"]     += dt
-        hf_row["age_star"] += dt
-
-        # Update init loop counter
-        # Next init iter
-        if loop_counter["init"] < loop_counter["init_loops"]: 
-            loop_counter["init"]    += 1
-            hf_row["Time"]     = 0.
-        # Reset restart flag once SPIDER has correct heat flux
-        if loop_counter["total"] >= loop_counter["init_loops"]: 
-            IC_INTERIOR = 2
-
-        # Adjust total iteration counters
-        loop_counter["total"]       += 1
-
-        ############### / UPDATE TIME
-
-
 
         ############### ATMOSPHERE SUB-LOOP
         PrintHalfSeparator()
@@ -461,6 +513,23 @@ def main():
         hf_row["contrast_ratio"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
                                      (hf_row["z_obs"] / (COUPLER_options["mean_distance"]*AU))**2.0
 
+
+        ############### HOUSEKEEPING AND CONVERGENCE CHECK 
+
+        PrintHalfSeparator()
+
+        # Update init loop counter
+        # Next init iter
+        if loop_counter["init"] < loop_counter["init_loops"]: 
+            loop_counter["init"]    += 1
+            hf_row["Time"]     = 0.
+        # Reset restart flag once SPIDER has correct heat flux
+        if loop_counter["total"] >= loop_counter["init_loops"]: 
+            IC_INTERIOR = 2
+
+        # Adjust total iteration counters
+        loop_counter["total"]       += 1
+
         # Update full helpfile
         if loop_counter["total"]>1:
             # append row
@@ -472,11 +541,7 @@ def main():
         # Write helpfile to disk
         WriteHelpfileToCSV(dirs["output"], hf_all)
 
-
-        ############### CONVERGENCE CHECK 
-
         # Print info to terminal and log file
-        PrintHalfSeparator()
         PrintCurrentState(hf_row)
 
         # Stop simulation when planet is completely solidified
@@ -533,8 +598,16 @@ def main():
                 log.info("===> Planet entered a steady state! <===")
                 log.info("")
                 finished = True
-            
-        # Stop simulation if maximum time reached
+        
+        # Atmosphere has escaped
+        if hf_row["M_atm"] <= COUPLER_options["escape_stop"]*hf_all.iloc[0]["M_atm"]:
+            UpdateStatusfile(dirs, 15)
+            log.info("")
+            log.info("===> Atmosphere has escaped! <===")
+            log.info("")
+            finished = True
+
+        # Maximum time reached
         if (hf_row["Time"] >= time_dict["target"]):
             UpdateStatusfile(dirs, 13)
             log.info("")
@@ -542,7 +615,7 @@ def main():
             log.info("")
             finished = True
 
-        # Stop simulation if maximum loops reached
+        # Maximum loops reached
         if (loop_counter["total"] > loop_counter["total_loops"]):
             UpdateStatusfile(dirs, 12)
             log.info("")
@@ -569,7 +642,7 @@ def main():
             PrintHalfSeparator()
             UpdatePlots( dirs["output"], COUPLER_options )
 
-        ############### / CONVERGENCE CHECK 
+        ############### / HOUSEKEEPING AND CONVERGENCE CHECK 
 
     # ----------------------
     # FINAL THINGS BEFORE EXIT

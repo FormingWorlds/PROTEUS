@@ -108,33 +108,6 @@ class MyJSON( object ):
 
 #====================================================================
 
-def get_column_data_from_SPIDER_lookup_file( infile ):
-    '''Load column data from a text file and scale by the specified
-    value (by position)'''
-
-    # this approach prevents reading the whole file into memory
-    # just to extract header information
-    fp = open( infile, 'r' )
-    for ii, line in enumerate( fp ):
-        if ii == 0:
-            splitline = list(map( float, line.lstrip('#').split() ))
-            sline = int(splitline[0])
-            size_a = splitline[1:]
-        elif ii == sline-1:
-            scalings = map( float, line.lstrip('#').split() )
-        elif ii > sline:
-            break
-    fp.close()
-
-    # read files, ignore headers (#), and make a 2-D array
-    data_a = np.loadtxt( infile, ndmin=2 )
-
-    # scale each column in the data array by the respective scaling
-    for nn, scale in enumerate( scalings ):
-        data_a[:,nn] *= scale
-
-    return (data_a, size_a)
-
 def get_all_output_times( odir='output' ):
     '''
     Get all times (in yr) from the json files located in the output directory
@@ -494,7 +467,7 @@ def RunSPIDER( dirs:dict, COUPLER_options:dict,
 
     # info
     log.info("Running SPIDER...")
-    log.debug("    IC_INTERIOR = %d"%IC_INTERIOR)
+    log.debug("IC_INTERIOR = %d"%IC_INTERIOR)
 
     # parameters
     max_attempts = 7        # maximum number of attempts

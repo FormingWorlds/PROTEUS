@@ -8,16 +8,17 @@ from utils.helper import *
 
 log = logging.getLogger("PROTEUS")
 
-import plot.cpl_atmosphere as cpl_atmosphere
-import plot.cpl_global as cpl_global
-import plot.cpl_stacked as cpl_stacked
-import plot.cpl_interior as cpl_interior
-import plot.cpl_sflux as cpl_sflux
-import plot.cpl_sflux_cross as cpl_sflux_cross
-import plot.cpl_fluxes_global as cpl_fluxes_global
-import plot.cpl_fluxes_atmosphere as cpl_fluxes_atmosphere
-import plot.cpl_interior_cmesh as cpl_interior_cmesh
-import plot.cpl_observables as cpl_observables
+from plot.cpl_atmosphere import plot_atmosphere
+from plot.cpl_global import plot_global
+from plot.cpl_stacked import plot_stacked
+from plot.cpl_interior import plot_interior
+from plot.cpl_sflux import plot_sflux
+from plot.cpl_sflux_cross import plot_sflux_cross
+from plot.cpl_fluxes_global import plot_fluxes_global
+from plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
+from plot.cpl_interior_cmesh import plot_interior_cmesh
+from plot.cpl_observables import plot_observables
+from plot.cpl_elements import plot_elements
 
 def GitRevision(dir:str) -> str:
     '''
@@ -116,11 +117,13 @@ def GetHelpfileKeys():
             # Observational 
             "z_obs", "transit_depth", "contrast_ratio", # observed from infinity
 
-            # Surface composition
-            "P_surf", "atm_kg_per_mol", # more keys are added below
-           
+            # Escape 
+            "esc_rate_total", 
+            
+            # Atmospheric composition
+            "M_atm", "P_surf", "atm_kg_per_mol", # more keys added below
             ]
-
+    
     # gases
     for s in volatile_species:
         keys.append(s+"_mol_atm")   
@@ -270,11 +273,14 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                 if not line.startswith("time_"):
 
                     # Some parameters are int
-                    if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop",
-                                "plot_iterfreq", "stellar_heating", "mixing_length", "shallow_ocean_layer",
-                                "atmosphere_chemistry", "solvevol_use_params", "insert_rscatter", "water_cloud",
-                                "tropopause", "F_atm_bc", "atmosphere_solve_energy", "atmosphere_surf_state",
-                                "dt_dynamic", "prevent_warming", "atmosphere_model", "atmosphere_nlev"]:
+                    if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop", 
+                                "escape_model", "atmosphere_surf_state", "water_cloud",
+                                "plot_iterfreq", "stellar_heating", "mixing_length", 
+                                "atmosphere_chemistry", "solvevol_use_params", 
+                                "tropopause", "F_atm_bc", "atmosphere_solve_energy", 
+                                "dt_dynamic", "prevent_warming", "atmosphere_model", 
+                                "atmosphere_nlev", "insert_rscatter", 
+                                "shallow_ocean_layer", "SEPARATION"]:
                         val = int(val)
 
                     # Some are str
@@ -301,7 +307,7 @@ def ReadInitFile(init_file_passed:str, verbose=False):
 
     return COUPLER_options, time_dict
 
-def ValidateInitFile(COUPLER_options:dict):
+def ValidateInitFile(dirs:dict, COUPLER_options:dict):
     '''
     Validate configuration file, checking for invalid options
     '''
@@ -339,7 +345,7 @@ def ValidateInitFile(COUPLER_options:dict):
             raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
         if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0):
             UpdateStatusfile(dirs, 20)
-            raise Exception("Volatile %s has non-zero pressure but outgassing parameters are enabled")
+            raise Exception("Volatile %s has non-zero pressure but outgassing parameters are enabled"%s)
 
     # Required vols
     for s in ["H2O","CO2","N2","S2"]:
@@ -363,15 +369,22 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     """
 
 
+
+    # Check model configuration
+    dummy_atm = bool(COUPLER_options["atmosphere_model"] == 2)
+    escape    = bool(COUPLER_options["escape_model"] > 0)
+
+
     # Get all JSON files
     output_times = get_all_output_times( output_dir )
 
     # Global properties for all timesteps
-    if len(output_times) > 1:
-        cpl_global.plot_global(output_dir, COUPLER_options)   
+    if len(output_times) > 2:
+        plot_global(output_dir, COUPLER_options)   
 
-    # Check if we are using the dummy atmosphere
-    dummy_atm = (COUPLER_options["atmosphere_model"] == 2)
+        # Elemental mass inventory
+        if escape:
+            plot_elements(output_dir, COUPLER_options["plot_format"])
         
     # Filter to JSON files with corresponding NetCDF files
     if not dummy_atm:
@@ -400,25 +413,24 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
     plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
     log.debug("Snapshots to plot:" + str(plot_times))
 
-    # Specific timesteps for paper plots
-    cpl_interior.plot_interior(output_dir, plot_times, COUPLER_options["plot_format"])     
+    # Temperature profiles
+    plot_interior(output_dir, plot_times, COUPLER_options["plot_format"])     
     if not dummy_atm:
-        cpl_atmosphere.plot_atmosphere(output_dir, plot_times, COUPLER_options["plot_format"])
-        cpl_stacked.plot_stacked(output_dir, plot_times, COUPLER_options["plot_format"])
+        plot_atmosphere(output_dir, plot_times, COUPLER_options["plot_format"])
+        plot_stacked(output_dir, plot_times, COUPLER_options["plot_format"])
 
         if COUPLER_options["atmosphere_model"] != 1:
             # don't make this plot for AGNI, since it will do it itself
-            cpl_fluxes_atmosphere.plot_fluxes_atmosphere(output_dir, COUPLER_options["plot_format"])
-
+            plot_fluxes_atmosphere(output_dir, COUPLER_options["plot_format"])
 
     # Only at the end of the simulation
     if end:
-        cpl_global.plot_global(output_dir, COUPLER_options, logt=False)   
-        cpl_interior_cmesh.plot_interior_cmesh(output_dir, plot_format=COUPLER_options["plot_format"])
-        cpl_sflux.plot_sflux(output_dir, plot_format=COUPLER_options["plot_format"])
-        cpl_sflux_cross.plot_sflux_cross(output_dir, plot_format=COUPLER_options["plot_format"])
-        cpl_fluxes_global.plot_fluxes_global(output_dir, COUPLER_options)
-        cpl_observables.plot_observables(output_dir, plot_format=COUPLER_options["plot_format"])
+        plot_global(output_dir, COUPLER_options, logt=False)   
+        plot_interior_cmesh(output_dir, plot_format=COUPLER_options["plot_format"])
+        plot_sflux(output_dir, plot_format=COUPLER_options["plot_format"])
+        plot_sflux_cross(output_dir, plot_format=COUPLER_options["plot_format"])
+        plot_fluxes_global(output_dir, COUPLER_options)
+        plot_observables(output_dir, plot_format=COUPLER_options["plot_format"])
  
     # Close all figures
     plt.close()

@@ -44,6 +44,7 @@ def CommentFromStatus(status:int):
         case 12: desc = "Completed (maximum iterations)"
         case 13: desc = "Completed (target time)"
         case 14: desc = "Completed (net flux is small)"
+        case 15: desc = "Completed (atmosphere escaped)"
         # Error cases
         case 20: desc = "Error (generic case, or configuration issue)"
         case 21: desc = "Error (Interior model)"
