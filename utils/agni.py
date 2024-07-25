@@ -10,7 +10,7 @@ import tomlkit as toml
 log = logging.getLogger("PROTEUS")
 
 def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict, 
-              hf_row:dict, make_plots:bool, initial_offset:float, easy_start:bool,
+              hf_row:dict, make_plots:bool, easy_start:bool,
               linesearch:bool, dx_max:float, resume_prev:bool)->bool:
 
     # ---------------------------
@@ -88,24 +88,23 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
             raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
     
     # set condensation
-    # condensates = []
-    # if len(vol_dict) == 1:
-    #     # single-gas case
-    #     condensates = [list(vol_dict.keys())[0]]
-    # else:
-    #     # get gas with lowest mixing ratio 
-    #     vmr_min = 2.0
-    #     gas_min = ""
-    #     for k in vol_dict.keys():
-    #         if vol_dict[k] < vmr_min:
-    #             vmr_min = vol_dict[k]
-    #             gas_min = k
-    #     # add all gases as condensates, except the least abundant gas 
-    #     for k in vol_dict.keys():
-    #         if k == gas_min:
-    #             continue 
-    #         condensates.append(k)
-    condensates = ["H2O"]
+    condensates = []
+    if len(vol_dict) == 1:
+        # single-gas case
+        condensates = list(vol_dict.keys())
+    else:
+        # get gas with smallest volume mixing ratio 
+        vmr_min = 2.0
+        gas_min = ""
+        for k in vol_dict.keys():
+            if vol_dict[k] < vmr_min:
+                vmr_min = vol_dict[k]
+                gas_min = k
+        # set all gases as condensates, except the least abundant gas 
+        for k in vol_dict.keys():
+            if k == gas_min:
+                continue 
+            condensates.append(k)
     cfg_toml["composition"]["condensates"] = condensates
 
     if len(condensates) > 0:
@@ -152,8 +151,7 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
         nc_path = ncdfs[np.argmax(ncdf_times)]
 
         log.debug("Initialise from last T(p)")
-        cfg_toml["execution"]["initial_state"] = ["ncdf", nc_path, 
-                                                  "add", "%.6f"%initial_offset]
+        cfg_toml["execution"]["initial_state"] = ["ncdf", nc_path]
 
     else:
         log.debug("Initialise isothermal")
@@ -259,7 +257,6 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     linesearch = True
     easy_start = False
     resume_prev= True
-    offset = 0.0
     dx_max = 100.0
 
     # bootstrapping run parameters
@@ -267,7 +264,7 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
         linesearch = True
         easy_start = True
         resume_prev= False
-        dx_max = 300.0
+        dx_max = 200.0
 
     # make attempts
     while not agni_success:
@@ -275,7 +272,7 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
 
         # Try the module
         agni_success = _try_agni(loops_total, dirs, COUPLER_options, hf_row, make_plots, 
-                                 offset, easy_start, linesearch, dx_max, resume_prev)
+                                 easy_start, linesearch, dx_max, resume_prev)
 
         if agni_success:
             # success
@@ -287,11 +284,11 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
             attempts += 1
 
             if attempts == 2:
-                # Try offsetting the temperature profile and decreasing the step size
+                # Try decreasing the step size
                 linesearch = False
-                offset     = 0.2
                 dx_max     = 50.0
                 resume_prev= True
+
             elif attempts == 3:
                 # Try starting over
                 linesearch  = True 

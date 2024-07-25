@@ -65,6 +65,9 @@ dict_colors["sct"] = "seagreen" # for scattering
 dict_colors["atm"] = dict_colors["qgray"]
 dict_colors["int"] = dict_colors["qorange"]
 
+dict_colors["atm_bkg"] = (0.95, 0.98, 1.0)
+dict_colors["int_bkg"] = (1.0, 0.98, 0.95)
+
 # Volatile Latex names
 vol_latex = {
     "H2O"     : r"H$_2$O",

@@ -11,9 +11,6 @@ def plot_atmosphere( output_dir, times, plot_format="pdf"):
 
     log.info("Plot atmosphere temperatures")
 
-    # article class text width is 4.7747 inches
-    # http://tex.stackexchange.com/questions/39383/determine-text-width
-
     norm = mpl.colors.Normalize(vmin=times[0], vmax=times[-1])
     sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)  
     sm.set_array([])
@@ -83,16 +80,12 @@ def main():
     if len(times) <= 8:
         plot_list = times
     else:
-        plot_list = [ times[0], 
-                     times[int(round(len(times)*(2./100.)))], 
-                     times[int(round(len(times)*(15./100.)))], 
-                     times[int(round(len(times)*(22./100.)))], 
-                     times[int(round(len(times)*(33./100.)))], 
-                     times[int(round(len(times)*(50./100.)))], 
-                     times[int(round(len(times)*(66./100.)))], 
-                     times[-1]
-                     ]
+        plot_list = [ times[0] ]
+        for f in [15,25,33,50,66,75]:
+            plot_list.append(times[int(round(len(times)*(float(f)/100.)))])
+        plot_list.append(times[-1])
     print("Snapshots:", plot_list)
+
     # Plot fixed set from above
     plot_atmosphere( output_dir=dirs["output"], times=plot_list, plot_format=COUPLER_options["plot_format"] )
 
