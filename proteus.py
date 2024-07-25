@@ -26,8 +26,8 @@ def main():
     resume = bool(args["resume"])
 
     # Read in COUPLER input file
-    cfg_file = os.path.abspath(str(args["cfg"]))
-    COUPLER_options, time_dict = ReadInitFile( cfg_file , verbose=False )
+    cfgsrc = os.path.abspath(str(args["cfg"]))
+    COUPLER_options, time_dict = ReadInitFile( cfgsrc , verbose=False )
 
     # Set directories dictionary
     utils.constants.dirs = SetDirectories(COUPLER_options)
@@ -60,7 +60,7 @@ def main():
     log.info("Hostname    : " + str(os.uname()[1]))
     log.info("PROTEUS hash: " + GitRevision(dirs["coupler"])) 
     log.info("Py version  : " + sys.version.split(' ')[0]) 
-    log.info("Config file : " + cfg_file)
+    log.info("Config file : " + cfgsrc)
     log.info("Output dir  : " + dirs["output"])
     log.info("FWL data dir: " + dirs["fwl"])
     if COUPLER_options["atmosphere_model"] in [0,1]:
@@ -84,6 +84,9 @@ def main():
     # Model has completed?
     finished = False
 
+    # Config file paths
+    cfgbak = os.path.join(dirs["output"],"init_coupler.cfg")
+
     # Is the model resuming from a previous state?
     if not resume:
         # New simulation
@@ -92,7 +95,7 @@ def main():
         IC_INTERIOR = 1
 
         # Copy config file to output directory, for future reference
-        shutil.copyfile(args["cfg"], os.path.join(dirs["output"],"init_coupler.cfg"))
+        shutil.copyfile(args["cfg"], cfgbak)
 
         # No previous iterations to be stored. It is therefore important that the 
         #    submodules do not try to read data from the 'past' iterations, since they do
@@ -136,6 +139,16 @@ def main():
     else:
         # Resuming from disk
         log.info("Resuming the simulation from the disk")
+
+        # Copy cfg file 
+        if os.path.exists(cfgbak):
+            if cfgbak == cfgsrc:
+                # resuming from backed-up cfg file, not the original
+                pass
+            else:
+                # delete old and copy new 
+                safe_rm(cfgbak)
+                shutil.copyfile(cfgsrc, cfgbak)
 
         # SPIDER initial condition
         IC_INTERIOR = 2
@@ -304,7 +317,7 @@ def main():
             hf_row["T_eqm"]  =  T_eqm_new
             hf_row["T_skin"] =  T_eqm_new * (0.5**0.25) # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
 
-            log.info("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
+            log.debug("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
 
         # Calculate a new (historical) stellar spectrum 
         if ( ( abs( hf_row["Time"] - sspec_prev ) > COUPLER_options['sspec_dt_update'] ) \
@@ -410,7 +423,7 @@ def main():
 
                 esc_m  = solvevol_target[e]
                 esc_dm = esc_result[e+"_dm"]
-                log.debug("    escape %s: m=%.2e kg,  dm=%+.2e (%.3f%%)"%
+                log.debug("    escape %s: m=%.2e kg,  dm=%.2e (%.3f%%)"%
                                     (e, esc_m, esc_dm, 100*esc_dm/esc_m))
 
                 # do not allow negative masses

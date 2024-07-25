@@ -26,7 +26,7 @@ def RunDummyEsc(hf_row:dict, dt:float):
     log.info("Running dummy escape...")
 
     # Hardcoded dummy value of bulk volatile escape rate [kg/s]
-    phi = 1e6
+    phi = 2e7
 
     # store value
     out = {}

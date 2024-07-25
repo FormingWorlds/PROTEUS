@@ -139,7 +139,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     max_temp = np.amax(hf_all["T_surf"])
     ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="dashed", lw=lw, alpha=al, color=dict_colors["int"])
     ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="-",      lw=lw, alpha=al, color=dict_colors["atm"])
-    ax_cl.set_ylim(min(1000.0,min_temp) , max(3500.0,max_temp))
+    ax_cl.set_ylim(min(1000.0,min_temp-25) , max(3500.0,max_temp+25))
 
     
     # PLOT ax_bl
@@ -147,7 +147,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
     ax_bl.plot( hf_all["Time"],     hf_all["Phi_global"], color=dict_colors["atm"], linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
     ax_bl.legend(loc='center left', **leg_kwargs)
-    ax_bl.set_ylim(0.0,1.0)
+    ax_bl.set_ylim(0.0,1.01)
 
 
     # PLOT ax_tr

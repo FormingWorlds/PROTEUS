@@ -18,10 +18,11 @@ You can also run PROTEUS inside a Screen session using:
 
    .. code-block:: console
 
-         $  tools/RunPROTEUS.sh [cfgfile] [alias] [detach]
+         $  tools/RunPROTEUS.sh [cfgfile] [alias] [resume] [detach]
    
 Which runs PROTEUS using the config file ``[cfgfile]`` inside a Screen session with the 
-name ``[alias]``. The ``[detach]`` parameter (y/n) tells the session whether to immediately 
+name ``[alias]``. The ``[resume]`` parameter (y/n) tells the model whether to resume from 
+a previous state. The ``[detach]`` parameter (y/n) tells the session whether to immediately 
 detach or not. This allows multiple instances of the model to be dispatched easily and 
 safely.
   

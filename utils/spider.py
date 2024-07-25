@@ -467,7 +467,7 @@ def RunSPIDER( dirs:dict, COUPLER_options:dict,
 
     # info
     log.info("Running SPIDER...")
-    log.debug("    IC_INTERIOR = %d"%IC_INTERIOR)
+    log.debug("IC_INTERIOR = %d"%IC_INTERIOR)
 
     # parameters
     max_attempts = 7        # maximum number of attempts
