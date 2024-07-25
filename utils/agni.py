@@ -254,14 +254,14 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     attempts = 1          # number of attempts so far
 
     # default run parameters
-    linesearch = True
+    linesearch = 1
     easy_start = False
     resume_prev= True
     dx_max = 100.0
 
     # bootstrapping run parameters
     if loops_total < 2:
-        linesearch = True
+        linesearch = 2
         easy_start = True
         resume_prev= False
         dx_max = 200.0
@@ -285,13 +285,13 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
 
             if attempts == 2:
                 # Try decreasing the step size
-                linesearch = False
-                dx_max     = 50.0
+                linesearch = 1
+                dx_max     = 5.0
                 resume_prev= True
 
             elif attempts == 3:
                 # Try starting over
-                linesearch  = True 
+                linesearch  = 2 
                 dx_max      = 200.0
                 resume_prev = False 
                 easy_start  = True 
