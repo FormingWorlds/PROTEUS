@@ -346,8 +346,13 @@ def main():
 
             # Scale fluxes from 1 AU to TOA 
             fl *= (1.0 / COUPLER_options["mean_distance"])**2.0
-            mors_time = {"planet":hf_row["Time"], "star":hf_row["age_star"]}
-            mors.SpectrumWrite(mors_time, wl, fl, dirs['output']+'/data/')
+
+            # Save spectrum to file
+            header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at t_star = %.2e yr'%hf_row["age_star"]
+            np.savetxt(os.path.join(dirs["output"],"data","%d.sflux"%hf_row["Time"]), 
+                       np.array([wl,fl]).T, 
+                       header=header,comments='',fmt="%.8e",delimiter='\t')
+    
 
             # Prepare spectral file for JANUS 
             if COUPLER_options["atmosphere_model"] == 0:
