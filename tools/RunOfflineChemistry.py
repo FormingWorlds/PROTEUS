@@ -454,6 +454,10 @@ def parent(cfgfile, samples, threads, elements, network, mkfuncs, runtime_sleep,
                 to_copy =  os.path.join(dirs["vulcan"], "output", "%s.vul" % sname)
                 if os.path.exists(to_copy): # Is done?
                     status[i] = 2
+
+                    # this is horrible, but VULCAN does not allow absolute paths
+                    # so it is not possible to have it output to the folder we want, and 
+                    # instead we must copy the file after it has been written.
                     shutil.copyfile(to_copy, 
                                     os.path.join(dirs["output"],"offchem","%d"%y,"output.vul")
                                     ) # Copy output
