@@ -24,7 +24,7 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False, modern_age:float=-1, plot_format="pdf"):
+def plot_sflux_cross(output_dir, wl_targets:list=[], modern_age:float=-1, plot_format="pdf"):
     """Plots stellar flux vs time, for a set of wavelengths.
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -37,8 +37,6 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False, modern_
 
         wl_targets : list
             List of wavelengths to plot [nm]
-        surface : bool
-            Use fluxes at surface? If not, will use fluxes at 1 AU.
         modern_age : float
             Current age of star. If not provided, then won't be plotted
     """ 
@@ -50,12 +48,7 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False, modern_
         wl_targets = [1.0, 12.0, 50.0, 121.0, 200.0, 400.0, 500.0, 2000.0]
 
     # Find and sort files
-    if surface:
-        suffix = 'sfluxsurf'
-    else:
-        suffix = 'sflux'
-
-    files = glob.glob(output_dir+"/data/*."+suffix)
+    files = glob.glob(output_dir+"/data/*.sflux")
     files = natural_sort(files)
 
     if (len(files) == 0):
@@ -96,10 +89,7 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False, modern_
 
     ax.set_xscale("log")
     ax.set_xlabel("Time [yr]")
-    if surface:
-        ax.set_title("Surface flux versus time")
-    else:
-        ax.set_title("1 AU flux versus time")
+    ax.set_title("TOA flux versus time")
 
     vmin = max(time_t[0],1.0)
     vmax = time_t[-1]
@@ -115,8 +105,7 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False, modern_
     N = len(wl_iarr)
 
     # Load modern spectrum
-    if not surface:
-        X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
+    X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
 
     # Plot bins over time 
     for i in range(N):
@@ -128,7 +117,7 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], surface:bool=False, modern_
         ax.plot(time_t,fl,color=c,lw=2.8,label=lbl)
 
         # Plot modern values
-        if (not surface) and (modern_age > 0):
+        if modern_age > 0:
             ax.scatter(modern_age,X[1][wl_iarr[i]],marker='o',color=c, s=40, zorder=4, edgecolors='white')
 
     leg = ax.legend(title=r"$\lambda$ [nm]", loc='center left',bbox_to_anchor=(1.02, 0.5))
@@ -160,8 +149,9 @@ if __name__ == '__main__':
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
 
-    plot_sflux_cross(dirs['output'], wl_targets=wl_bins, surface=False, 
-                     modern_age=COUPLER_options["star_age_modern"], plot_format=COUPLER_options["plot_format"])
+    plot_sflux_cross(dirs['output'], wl_targets=wl_bins,
+                     modern_age=COUPLER_options["star_age_modern"], 
+                     plot_format=COUPLER_options["plot_format"])
 
     print("Done!")
 

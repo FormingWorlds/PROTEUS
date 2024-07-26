@@ -8,14 +8,14 @@ from utils.plot import *
 log = logging.getLogger("PROTEUS")
 
 #====================================================================
-def plot_stacked( output_dir, times, plot_format="pdf" ):
+def plot_stacked( output_dir:str, times:list, plot_format="pdf" ):
 
     log.info("Plot stacked")
 
     scale = 1.1
     fig,(axt,axb) = plt.subplots(2,1, figsize=(5*scale,10*scale), sharex=True)
 
-    norm = mpl.colors.Normalize(vmin=times[0], vmax=times[-1])
+    norm = mpl.colors.LogNorm(vmin=max(1,times[0]), vmax=times[-1])
     sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)  
     sm.set_array([])
 
@@ -116,15 +116,25 @@ def main():
     times = [int(f.split("/")[-1].split("_")[0]) for f in files]
 
     if len(times) <= 8:
-        plot_list = times
+        plot_times = times
     else:
-        plot_list = [ times[0] ]
-        for f in [15,25,33,50,66,75]:
-            plot_list.append(times[int(round(len(times)*(float(f)/100.)))])
-        plot_list.append(times[-1])
-    print("Snapshots:", plot_list)
+        plot_times = []
+        tmin = max(1,np.amin(times))
+        tmax = max(tmin+1, np.amax(times))
 
-    plot_stacked( output_dir=dirs["output"], times=plot_list, 
+        for s in np.logspace(np.log10(tmin),np.log10(tmax),8): # Sample on log-scale
+
+            remaining = list(set(times) - set(plot_times)) 
+            if len(remaining) == 0:
+                break
+
+            v,_ = find_nearest(remaining,s) # Find next new sample
+            plot_times.append(int(v))
+        plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
+
+    print("Snapshots:", plot_times)
+
+    plot_stacked( output_dir=dirs["output"], times=plot_times, 
                  plot_format=COUPLER_options["plot_format"] )
 
 #====================================================================
