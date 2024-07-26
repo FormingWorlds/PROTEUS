@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to run PROTEUS using screen
+# Script to run PROTEUS using GNU Screen
 
 echo "Start RunPROTEUS"
 
@@ -19,9 +19,9 @@ fi
 
 
 # Check if the required arguments have been passed
-if [ -z "$1" ] || [ -z "$3" ]
+if [ -z "$4" ]
 then
-    echo "ERROR: Config file or alias not provided" 
+    echo "ERROR: One of the arguments was not provided" 
     echo "       First argument:   config file     (string)"
     echo "       Second argument:  screen alias    (string)"
     echo "       Third argument:   resume?         (y or n)"
