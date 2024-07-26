@@ -355,7 +355,7 @@ def ValidateInitFile(dirs:dict, COUPLER_options:dict):
         
     return True
 
-def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
+def UpdatePlots( output_dir:str, COUPLER_options, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
     
     Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
@@ -368,15 +368,16 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
             Is this function being called at the end of the simulation?
     """
 
-
-
     # Check model configuration
     dummy_atm = bool(COUPLER_options["atmosphere_model"] == 2)
     escape    = bool(COUPLER_options["escape_model"] > 0)
 
-
     # Get all JSON files
     output_times = get_all_output_times( output_dir )
+
+    # Do not plot if there's insufficient data 
+    if np.amax(output_times) < 2:
+        return
 
     # Global properties for all timesteps
     if len(output_times) > 2:
@@ -386,7 +387,7 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
         if escape:
             plot_elements(output_dir, COUPLER_options["plot_format"])
         
-    # Filter to JSON files with corresponding NetCDF files
+    # Filter to only include steps with corresponding NetCDF files
     if not dummy_atm:
         ncs = glob.glob(output_dir + "/data/*_atm.nc")
         nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
