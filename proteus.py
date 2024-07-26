@@ -4,13 +4,13 @@
 PROTEUS Main file
 """
 
-from utils.modules_ext import *
 import utils.constants
-
 from utils.constants import *
+
+from utils.modules_ext import *
 from utils.coupler import *
-from utils.spider import RunSPIDER
-from utils.surface_gases import *
+from utils.spider import RunSPIDER, ReadSPIDER
+from utils.surface_gases import get_target_from_params, get_target_from_pressures, equilibrium_atmosphere, CalculateMantleMass
 from utils.logs import SetupLogger, GetLogfilePath, GetCurrentLogfileIndex, StreamToLogger
 
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum

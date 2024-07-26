@@ -260,7 +260,7 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     dx_max = 70.0
 
     # bootstrapping run parameters
-    if loops_total < 2:
+    if loops_total <= 1:
         linesearch = 2
         easy_start = True
         resume_prev= False
