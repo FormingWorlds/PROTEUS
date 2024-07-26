@@ -324,7 +324,7 @@ def _try_spider( dirs:dict, COUPLER_options:dict,
                         "-n",                      "%d"  %(COUPLER_options["interior_nlev"]),
                         "-nstepsmacro",            "%d"  %(nstepsmacro), 
                         "-dtmacro",                "%.6e"%(dtmacro), 
-                        "-radius",                 "%.6e"%(COUPLER_options["radius"]), 
+                        "-radius",                 "%.6e"%(hf_row["R_planet"]), 
                         "-gravity",                "%.6e"%(-1.0 * hf_row["gravity"]), 
                         "-coresize",               "%.6e"%(COUPLER_options["planet_coresize"]),
                         "-grain",                  "%.6e"%(COUPLER_options["grain_size"]),
@@ -437,7 +437,7 @@ def RunSPIDER( dirs:dict, COUPLER_options:dict,
         raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
-def ReadSPIDER(dirs:dict, COUPLER_options:dict, time:float, prev_T_magma:float):
+def ReadSPIDER(dirs:dict, COUPLER_options:dict, time:float, prev_T_magma:float, R_planet:float):
     '''
     Read variables from last SPIDER output JSON file into a dictionary
     '''
@@ -471,7 +471,7 @@ def ReadSPIDER(dirs:dict, COUPLER_options:dict, time:float, prev_T_magma:float):
     output["T_magma"]         = float(data_a[4])
     output["Phi_global"]      = float(data_a[5])  # global melt fraction
     output["F_int"]           = float(data_a[6])  # Heat flux from interior
-    output["RF_depth"]        = float(data_a[7])/COUPLER_options["radius"]  # depth of rheological front
+    output["RF_depth"]        = float(data_a[7])/R_planet  # depth of rheological front
 
     # Do not allow warming after init stage has completed
     if (COUPLER_options["prevent_warming"]) and (time > 5.0):

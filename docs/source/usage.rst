@@ -89,6 +89,12 @@ configuration, but they must all be passed via the config file.
      - Float
      - Greater than zero. Values outside of the valid range will be clipped.
 
+  * - ``star_rot_pctle``
+     - Rotation rate percentile for the star, relative to other stars of the same mass. 
+     - False
+     - Float
+     - Between 0 and 100.
+
    * - ``star_spectrum``
      - The spectrum of the host star as observed today. These files may be obtained using the ``GetStellarSpectrum`` tool.  
      - False
@@ -102,13 +108,13 @@ configuration, but they must all be passed via the config file.
      - Greater than zero.
 
    * - ``mass``
-     - Mass of the planet, in units of kg.  
+     - Mass of the planet, in units of Earth mass.
      - False
      - Float
      - Greater than zero. 
 
    * - ``radius``
-     - Radius of the planet at the surface, in units of m.  
+     - Radius of the planet at the surface, in units of Earth radius.  
      - False
      - Float 
      - Greater than zero.
@@ -155,17 +161,11 @@ configuration, but they must all be passed via the config file.
      - Float
      - Greater than zero. Values outside of the valid range will be clipped.
 
-   * - ``time_planet``
-     - Age of the planet at the start of the simulation, in units of years.  
-     - False
-     - Float
-     - Greater than zero.
-
    * - ``time_target``
      - Simulation time at which to stop the model, if it hasn't stopped already, in units of years.  
      - False
      - Float
-     - Greater than ``time_planet``.
+     - Greater than zero.
 
    * - ``spectral_file``
      - Spectral file to use when running SOCRATES.   

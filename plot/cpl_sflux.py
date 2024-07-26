@@ -159,7 +159,7 @@ if __name__ == '__main__':
     from utils.coupler import ReadInitFile, SetDirectories
 
     # Read in COUPLER input file
-    COUPLER_options, time_dict = ReadInitFile( cfg )
+    COUPLER_options = ReadInitFile( cfg )
 
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)

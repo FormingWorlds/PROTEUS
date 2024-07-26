@@ -63,7 +63,7 @@ def main():
     # Read in COUPLER input file
     log.info("Read cfg file")
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options, time_dict = ReadInitFile( cfg )
+    COUPLER_options = ReadInitFile( cfg )
 
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)

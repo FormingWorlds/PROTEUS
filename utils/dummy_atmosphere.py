@@ -7,7 +7,7 @@ from utils.constants import *
 log = logging.getLogger("PROTEUS")
 
 # Run the dummy atmosphere module
-def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
+def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float, R_planet:float):
     log.info("Running dummy_atmosphere...")
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
@@ -103,6 +103,6 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
     output["F_atm"] =  F_atm_lim             # Net flux at TOA
     output["F_olr"] =  fluxes["fl_U_LW"]     # OLR
     output["F_sct"] =  fluxes["fl_U_SW"]     # Scattered SW flux
-    output["z_obs"] =  COUPLER_options["radius"]
+    output["z_obs"] =  R_planet
     
     return output

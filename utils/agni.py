@@ -66,7 +66,7 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
     cfg_toml["planet"]["zenith_angle"] =    COUPLER_options["zenith_angle"]
     cfg_toml["planet"]["albedo_s"] =        COUPLER_options["albedo_s"]
     cfg_toml["planet"]["gravity"] =         hf_row["gravity"]
-    cfg_toml["planet"]["radius"] =          COUPLER_options["radius"]
+    cfg_toml["planet"]["radius"] =          hf_row["R_planet"]
 
     # set composition
     cfg_toml["composition"]["p_surf"] =     hf_row["P_surf"]
@@ -257,7 +257,7 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     linesearch = 1
     easy_start = False
     resume_prev= True
-    dx_max = 100.0
+    dx_max = 70.0
 
     # bootstrapping run parameters
     if loops_total < 2:
@@ -284,17 +284,10 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
             attempts += 1
 
             if attempts == 2:
-                # Try decreasing the step size
-                linesearch = 1
-                dx_max     = 5.0
+                # Try using a different linesearch method
+                linesearch = 2
+                dx_max     = 10.0
                 resume_prev= True
-
-            elif attempts == 3:
-                # Try starting over
-                linesearch  = 2 
-                dx_max      = 200.0
-                resume_prev = False 
-                easy_start  = True 
             else:
                 log.error("Maximum attempts when executing AGNI")
                 break

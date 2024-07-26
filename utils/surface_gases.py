@@ -14,7 +14,7 @@ log = logging.getLogger("PROTEUS")
 # Solve for the equilibrium chemistry of a magma ocean atmosphere
 # for a given set of solubility and redox relations
 
-def CalculateMantleMass(ddict:dict)->float:
+def CalculateMantleMass(radius:float, mass:float, corefrac:float)->float:
     '''
     A very simple interior structure model. 
 
@@ -32,8 +32,8 @@ def CalculateMantleMass(ddict:dict)->float:
     log.debug("Estimating core density to be %g kg m-3" % core_rho)
 
     # Calculate mantle mass by subtracting core from total
-    core_mass = core_rho * 4.0/3.0 * np.pi * (ddict["radius"] * ddict["planet_coresize"] )**3.0
-    mantle_mass = ddict["mass"] - core_mass 
+    core_mass = core_rho * 4.0/3.0 * np.pi * (radius * corefrac )**3.0
+    mantle_mass = mass - core_mass 
     log.info("Total mantle mass is %.2e kg" % mantle_mass)
     if (mantle_mass <= 0.0):
         UpdateStatusfile(dirs, 20)

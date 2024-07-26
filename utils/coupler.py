@@ -98,8 +98,8 @@ def GetHelpfileKeys():
 
     # Basic keys
     keys = [
-            # Model tracking 
-            "Time", 
+            # Model tracking and basic parameters
+            "Time", "R_planet", "M_planet",
 
             # Temperatures 
             "T_surf", "T_magma", "T_eqm", "T_skin",
@@ -236,7 +236,6 @@ def ReadInitFile(init_file_passed:str, verbose=False):
 
     # Read in input file as dictionary
     COUPLER_options  = {}
-    time_dict       = {}
     if verbose: 
         log.info("Read in init file:" + init_file)
 
@@ -269,43 +268,30 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                 key = key.strip()
                 val = val.strip()
                 
-                # Standard options
-                if not line.startswith("time_"):
+                # Some parameters are int
+                if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop", 
+                            "escape_model", "atmosphere_surf_state", "water_cloud",
+                            "plot_iterfreq", "stellar_heating", "mixing_length", 
+                            "atmosphere_chemistry", "solvevol_use_params", 
+                            "tropopause", "F_atm_bc", "atmosphere_solve_energy", 
+                            "dt_dynamic", "prevent_warming", "atmosphere_model", 
+                            "atmosphere_nlev", "insert_rscatter", 
+                            "shallow_ocean_layer", "SEPARATION"]:
+                    val = int(val)
 
-                    # Some parameters are int
-                    if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop", 
-                                "escape_model", "atmosphere_surf_state", "water_cloud",
-                                "plot_iterfreq", "stellar_heating", "mixing_length", 
-                                "atmosphere_chemistry", "solvevol_use_params", 
-                                "tropopause", "F_atm_bc", "atmosphere_solve_energy", 
-                                "dt_dynamic", "prevent_warming", "atmosphere_model", 
-                                "atmosphere_nlev", "insert_rscatter", 
-                                "shallow_ocean_layer", "SEPARATION"]:
-                        val = int(val)
-
-                    # Some are str
-                    elif key in [ 'star_spectrum', 'dir_output', 'plot_format',
-                                  'spectral_file' , 'log_level']:
-                        val = str(val)
-                        
-                    # Most are float
-                    else:
-                        val = float(val)
-
-                    # Set option
-                    COUPLER_options[key] = val
-
-
-                # Time options
-                elif line.startswith("time_"):
-
-                        line = line.split("_")[1]
-
-                        (key, val) = line.split("=")
+                # Some are str
+                elif key in [ 'star_spectrum', 'dir_output', 'plot_format',
+                                'spectral_file' , 'log_level']:
+                    val = str(val)
                     
-                        time_dict[str(key.strip())] = float(val.strip())
+                # Most are float
+                else:
+                    val = float(val)
 
-    return COUPLER_options, time_dict
+                # Set option
+                COUPLER_options[key] = val
+
+    return COUPLER_options 
 
 def ValidateInitFile(dirs:dict, COUPLER_options:dict):
     '''

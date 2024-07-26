@@ -49,8 +49,8 @@ def StructAtm( dirs:dict, hf_row:dict, COUPLER_options:dict ):
     from janus.utils import ReadBandEdges
 
     # Create atmosphere object and set parameters
-    pl_radius = COUPLER_options["radius"]
-    pl_mass = COUPLER_options["mass"]
+    pl_radius = hf_row["R_planet"]
+    pl_mass   = hf_row["M_planet"]
     
     vol_list = {}
     for vol in volatile_species:

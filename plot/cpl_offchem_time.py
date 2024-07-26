@@ -147,7 +147,7 @@ if __name__ == '__main__':
 
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options, time_dict = ReadInitFile( cfg )
+    COUPLER_options = ReadInitFile( cfg )
 
     # Species to plot
     species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
