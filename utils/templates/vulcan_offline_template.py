@@ -123,8 +123,6 @@ save_evo_frq = 50
 use_live_plot  = False 
 scat_sp = [] 
 diff_esc = [] 
-atom_list  = ['H', 'O', 'C','N']
-network  = 'thermo/NCHO_full_photo_network.txt' 
 plot_spec = ['H2','H','H2O','OH','CH4','HCN','N2','NH3'] 
 atm_type = 'file'
 

@@ -70,7 +70,9 @@ def get_sample_years(years_all:list,samples:int):
 
     return sorted(set(years))  # Ensure that there are no duplicates and sort ascending
 
-def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, dirs:dict, COUPLER_options:dict, hf_all:pd.DataFrame, ini_method:int) -> bool:
+def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, dirs:dict, 
+             COUPLER_options:dict, hf_all:pd.DataFrame, 
+             ini_method:int, elements:list, network:str) -> bool:
     """Run VULCAN once for a given PROTEUS output year
     
     Runs VULCAN in a screen instance so that lots processes may still be
@@ -167,8 +169,17 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
         # Constant mixing ratios
         const_mix = "{"
         for v in v_mx.keys():
-            this_mx = max(float(v_mx[v]),mixing_ratio_floor)     
-            const_mix += " '%s' : %1.5e ," % (v,this_mx)
+            # check if this species includes a disallowed element 
+            allowed = True
+            for c in v:
+                if not c.isnumeric():
+                    if c not in elements:
+                        allowed = False 
+                        break 
+            # add gas to dict 
+            if allowed:
+                this_mx = max(float(v_mx[v]),mixing_ratio_floor)     
+                const_mix += " '%s' : %1.5e ," % (v,this_mx)
         const_mix = const_mix[:-1]+" }"
         vcf.write("const_mix = %s \n" % str(const_mix))
 
@@ -184,6 +195,10 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
         for e in tot.keys():
             per = tot[e]/tot['H']
             vcf.write("%s_H = %1.8e \n" % (e,per))
+
+        # Set incl elements and chemical network 
+        vcf.write("atom_list = %s \n"%str(elements))
+        vcf.write("network = '%s' \n"%network)
 
         # Set initial abundances using selected method
         if ini_method == 0: 
@@ -277,8 +292,8 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
     return success
 
 
-def parent(cfgfile, samples, threads, mkfuncs=True, runtime_sleep=30, ini_method=1, 
-                    mkplots=True, logterm=True):
+def parent(cfgfile, samples, threads, elements, network, mkfuncs, runtime_sleep, 
+           ini_method, mkplots, logterm):
     """Parent process for handing offline chemistry.
 
     Reads configuration from cfgfile, finds the files, takes samples, and dispatches 
@@ -297,6 +312,10 @@ def parent(cfgfile, samples, threads, mkfuncs=True, runtime_sleep=30, ini_method
             requested, but beware of long runtimes in this case).
         threads : int
             Maximum number of threads to use when running offline chemistry.
+        elements : list 
+            Included elements 
+        network : str 
+            Path to chemical network
         mkfuncs : bool
             Compile VULCAN reaction functions from network on first run?
         runtime_sleep : float
@@ -484,7 +503,9 @@ def parent(cfgfile, samples, threads, mkfuncs=True, runtime_sleep=30, ini_method
                 logger.info("Dispatching job %03d: %08d yrs..." % (i,y))
                 fr = bool( (count_dispatched == 0) and mkfuncs)
                 sname = "%s_offchem_%d" % (now,y)
-                this_success = run_once(logger, years[i], sname, fr, dirs, COUPLER_options, hf_all, ini_method)
+                this_success = run_once(logger, years[i], sname, fr, dirs, 
+                                        COUPLER_options, hf_all, ini_method,
+                                        elements, network)
                 status[i] = 1
                 if this_success:
                     logger.info("\t (dispatched)")
@@ -543,14 +564,16 @@ if __name__ == '__main__':
 
     # Parameters
     cfgfile =       "output/agni_mixed_hot/init_coupler.cfg"  # Config file used for PROTEUS
-    samples =       4                  # How many samples to use from output dir (set to -1 if all are requested)
-    threads =       4                  # How many threads to use
+    elements  =     ['H', 'O', 'C', 'N']
+    network  =      'thermo/NCHO_full_photo_network.txt' 
+    samples =       12                  # How many samples to use from output dir (set to -1 if all are requested)
+    threads =       12                  # How many threads to use
     mkfuncs =       True                # Compile reaction functions again?
     mkplots =       True                # make plots?
     runtime_sleep = 40                  # Sleep seconds per iter (required for VULCAN warm up periods to pass)
     ini_method =    0                   # Method used to init VULCAN abundances  (0: const_mix, 1: eqm)
 
     # Do it
-    parent(cfgfile, samples, threads, mkfuncs=mkfuncs, 
-            runtime_sleep=runtime_sleep, ini_method=ini_method, mkplots=mkplots)
+    parent(cfgfile, samples, threads, elements, network, 
+           mkfuncs, runtime_sleep, ini_method, mkplots, True)
     
