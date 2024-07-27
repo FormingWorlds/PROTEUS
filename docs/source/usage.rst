@@ -444,7 +444,7 @@ configuration, but they must all be passed via the config file.
      - Less than zero.
 
    * - ``F_atm``
-     - Initial guess for net upward flux `F_atm`. Your choice for this value will depend on where `F_atm` is measured (see ``F_atm_bc``).   
+     - Initial guess for net upward flux `F_atm`.  
      - False
      - Float
      - Greater than zero.
@@ -461,12 +461,6 @@ configuration, but they must all be passed via the config file.
      - Integer
      - 0: Disabled, 1: Enabled.
 
-   * - ``T_magma``
-     - Initial guess for surface temperature, units of kelvin.
-     - False
-     - Float
-     - Greater than zero.
-   
    * - ``Phi_global``
      - Initial guess for mantle melt fraction.    
      - False
@@ -498,7 +492,7 @@ configuration, but they must all be passed via the config file.
      - Greater than zero.
 
    * - ``X_included``
-     - Flag to include X in the model. For H2O, CO2, and N2 this will always equal 1.
+     - Flag to include X in the model. For some (H2O, CO2, N2, S2) this will always equal 1.
      - False
      - Integer
      - 0: Excluded, 1: Included.
