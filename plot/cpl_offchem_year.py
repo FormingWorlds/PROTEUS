@@ -52,11 +52,10 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
     min_mix = 5e-1
     for i,s in enumerate(species):
 
-        color_key = s+"_1"
-        if color_key in dict_colors:
-            color = dict_colors[color_key]
+        if s in dict_colors.keys():
+            color = dict_colors[s]
         else:
-            color = 'black'
+            color = None
             print("Warning: could not find a defined colour for species '%s' " % s)
 
         pretty = s
@@ -66,7 +65,6 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
         # VULCAN result
         key = str("mx_"+s)
         if key in year_dict.keys():
-            ax1.plot(year_dict[key],year_dict["pressure"],lw=lw+0.4,color='black')
             ax1.plot(year_dict[key],year_dict["pressure"],label=pretty,lw=lw,color=color)
             min_mix = min(min_mix,np.amin(year_dict[key]))
             

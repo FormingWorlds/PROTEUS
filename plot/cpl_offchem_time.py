@@ -23,7 +23,7 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
             Output directory that was specified in the PROTEUS cfg file
         species : list
             List of species to plot
-        prange : list(2) or float
+        prange : list(2) or float or None
             Minimum and maximum pressures (bar) to average over. If None, then whole column is used. If float, then single layer is used.
         plot_init_mx : bool
             Include initial mixing ratios for each VULCAN run in plot?
@@ -67,11 +67,10 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
 
     for i,sp in enumerate(species):
 
-        if sp in dict_colors:
+        if sp in dict_colors.keys():
             color = dict_colors[sp]
         else:
-            color = 'black'
-            print("Warning: could not find a defined colour for species '%s' " % sp)
+            color = None
 
         times =     []
         mx_vul =    []
@@ -105,7 +104,6 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
         pretty = sp
         if sp in vol_latex.keys():
             pretty = vol_latex[sp]
-        ax.plot(times,mx_vul,color='black',lw=lw+0.4,zorder=3)
         ax.plot(times,mx_vul,color=color,label=pretty,lw=lw,zorder=4)
 
         if plot_init_mx:
