@@ -26,7 +26,7 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float, R_
     skin_k          = COUPLER_options["skin_k"]
 
     # Check configuration
-    if COUPLER_options["insert_rscatter"] == 1:
+    if COUPLER_options["rayleigh"] == 1:
         log.warning("Rayleigh scattering is enabled but it will be neglected")
 
     log.info("Gamma = %.4f" % gamma)

@@ -159,7 +159,7 @@ def RunJANUS( atm, time:float, dirs:dict, COUPLER_options:dict, hf_all:pd.DataFr
 
     # Prepare to calculate temperature structure w/ General Adiabat 
     trppD = bool(COUPLER_options["tropopause"] == 2 )
-    rscatter = bool(COUPLER_options["insert_rscatter"] == 1)
+    rscatter = bool(COUPLER_options["rayleigh"] == 1)
 
     # Run JANUS
     if COUPLER_options["atmosphere_solve_energy"] == 0:

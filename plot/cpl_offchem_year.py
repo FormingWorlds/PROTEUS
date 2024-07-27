@@ -19,8 +19,8 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
     ----------
         output_dir : str
             Output directory that was specified in the PROTEUS cfg file
-        sp : list
-            Which species to plot? (e.g. H2O)
+        species : list
+            Which species to plot? (e.g. H2O) If none, then plot all.
         tmin : float
             Initial year to include [yr]
         tmax : float 
@@ -28,6 +28,13 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
         plot_init_mx : bool
             Include initial mixing ratios for each VULCAN run in plot?
     """
+
+    if species == None:
+        species = []
+        for k in year_dict.keys():
+            if "_" not in k:
+                continue 
+            species.append(k.split("_")[1])
 
     lw = 2
 
@@ -54,8 +61,10 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
 
         if s in dict_colors.keys():
             color = dict_colors[s]
+            ls = 'solid'
         else:
             color = None
+            ls = 'dotted'
             print("Warning: could not find a defined colour for species '%s' " % s)
 
         pretty = s
@@ -65,14 +74,15 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
         # VULCAN result
         key = str("mx_"+s)
         if key in year_dict.keys():
-            ax1.plot(year_dict[key],year_dict["pressure"],label=pretty,lw=lw,color=color)
+            l = ax1.plot(year_dict[key],year_dict["pressure"],label=pretty,ls=ls,lw=lw,color=color)[0]
+            color = l.get_color()
             min_mix = min(min_mix,np.amin(year_dict[key]))
             
         # JANUS result
         if plot_init_mx:
             key = str("mv_"+s)
             if key in year_dict.keys():
-                ax1.plot(np.ones((len(year_dict["pressure"]))) * year_dict[key],year_dict["pressure"],linestyle='--',lw=lw*0.5,color=color)
+                ax1.scatter([year_dict[key]],[np.amax(year_dict["pressure"])],color=color)
             
     ax1.set_xlim([min_mix,1])
     ax1.legend(loc="lower left")
@@ -92,7 +102,7 @@ if __name__ == '__main__':
         cfg = 'init_coupler.cfg' 
 
 
-    plot_janus = False
+    plot_janus = True
 
 
     # Read in COUPLER input file
@@ -101,6 +111,7 @@ if __name__ == '__main__':
 
     # Species to make plots for
     species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4","HCN", "NH3", "N2", "NO"]
+    # species = None
 
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)

@@ -275,8 +275,8 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                             "atmosphere_chemistry", "solvevol_use_params", 
                             "tropopause", "F_atm_bc", "atmosphere_solve_energy", 
                             "dt_dynamic", "prevent_warming", "atmosphere_model", 
-                            "atmosphere_nlev", "insert_rscatter", 
-                            "shallow_ocean_layer", "SEPARATION"]:
+                            "atmosphere_nlev", "rayleigh", 
+                            "shallow_ocean_layer"]:
                     val = int(val)
 
                 # Some are str

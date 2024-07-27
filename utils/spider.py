@@ -355,10 +355,6 @@ def _try_spider( dirs:dict, COUPLER_options:dict,
                                 "-ic_dsdr", str(COUPLER_options["ic_dsdr"]) # initial dS/dr everywhere
                             ])
 
-    # Gravitational separation of solid and melt phase, 0: off | 1: on
-    if COUPLER_options["SEPARATION"] == 1:
-        call_sequence.extend(["-SEPARATION", str(1)])
-
     # Mixing length parameterization: 1: variable | 2: constant
     call_sequence.extend(["-mixing_length", str(COUPLER_options["mixing_length"])])
     call_sequence.extend(["-ts_sundials_atol", str(COUPLER_options["solver_tolerance"] * atol_sf)])

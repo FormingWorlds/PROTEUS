@@ -109,9 +109,7 @@ def main():
         hf_row["Time"] =    0.0
         hf_row["age_star"]= COUPLER_options["time_star"]
 
-        # Initial guess for values 
-        hf_row["T_magma"] = COUPLER_options["T_magma"]
-        hf_row["T_surf"]  = hf_row["T_magma"]
+        # Initial guess for flux 
         hf_row["F_atm"]   = COUPLER_options["F_atm"]
         hf_row["F_int"]   = hf_row["F_atm"]
 
@@ -388,7 +386,7 @@ def main():
 
         # Previous magma temperature 
         if loop_counter["init"] < loop_counter["init_loops"]:
-            prev_T_magma = COUPLER_options["T_magma"]
+            prev_T_magma = 9000.0
         else:
             prev_T_magma = hf_all.iloc[-1]["T_magma"]
 
@@ -498,10 +496,12 @@ def main():
         PrintHalfSeparator()
         if COUPLER_options["shallow_ocean_layer"] == 1:
             hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
+        else:
+            hf_row["T_surf"] = hf_row["T_magma"]
 
         if COUPLER_options["atmosphere_model"] == 0:
             # Run JANUS: 
-            # Use the general adiabat to create a PT profile, then calculate fluxes
+            hf_row["T_surf"] = hf_row["T_magma"]
             atm = StructAtm( dirs, hf_row, COUPLER_options )
             atm_output = RunJANUS( atm, hf_row["Time"], dirs, COUPLER_options, hf_all)
 

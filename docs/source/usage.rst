@@ -377,7 +377,7 @@ configuration, but they must all be passed via the config file.
      - Float
      - Between 0 and 1, inclusive.
 
-   * - ``insert_rscatter``
+   * - ``rayleigh``
      - Enable rayleigh scattering.
      - False
      - Integer
@@ -400,12 +400,6 @@ configuration, but they must all be passed via the config file.
      - False
      - Float
      - Any reasonable value greater than zero (for example, 0.1 metres)
-     
-   * - ``SEPARATION``
-     - Flag to include gravitational separation of solid/melt in SPIDER.     
-     - False
-     - Integer
-     - 0: Disabled, 1: Enabled.
 
    * - ``mixing_length``
      - Mixing length parameterisation to use in SPIDER. Can be constant or variable with depth.

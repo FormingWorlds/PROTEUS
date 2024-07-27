@@ -124,7 +124,7 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
     
     # Set execution
     cfg_toml["execution"]["num_levels"] =   COUPLER_options["atmosphere_nlev"]
-    cfg_toml["execution"]["rayleigh"] =     bool(COUPLER_options["insert_rscatter"] == 1)
+    cfg_toml["execution"]["rayleigh"] =     bool(COUPLER_options["rayleigh"] == 1)
     cfg_toml["execution"]["cloud"] =        bool(COUPLER_options["water_cloud"] == 1)
     cfg_toml["execution"]["linesearch"] =   linesearch
     cfg_toml["execution"]["easy_start"] =   easy_start
