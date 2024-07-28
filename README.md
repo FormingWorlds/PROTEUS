@@ -12,7 +12,7 @@ Only attempt to run PROTEUS after you have followed all of the installation inst
 If using a fresh shell, it is necessary to perform the following steps:     
 1. `conda activate proteus` (if using Anaconda/Miniconda)     
 2. `source PROTEUS.env`      
-Then you can start the model by running: `python proteus.py`. See the ReadTheDocs pages for more information.    
+Then you can start the model by running: `proteus.py`. See the ReadTheDocs pages for more information.    
 
 ### Updating the code
 Run `git submodule update --recursive --remote`

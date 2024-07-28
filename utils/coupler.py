@@ -273,7 +273,7 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                             "escape_model", "atmosphere_surf_state", "water_cloud",
                             "plot_iterfreq", "stellar_heating", "mixing_length", 
                             "atmosphere_chemistry", "solvevol_use_params", 
-                            "tropopause", "F_atm_bc", "atmosphere_solve_energy", 
+                            "tropopause", "F_atm_bc", 
                             "dt_dynamic", "prevent_warming", "atmosphere_model", 
                             "atmosphere_nlev", "rayleigh", 
                             "shallow_ocean_layer"]:
@@ -307,12 +307,6 @@ def ValidateInitFile(dirs:dict, COUPLER_options:dict):
         if shutil.which("julia") is None:
             UpdateStatusfile(dirs, 20)
             raise Exception("Could not find Julia in current environment")
-        
-    if COUPLER_options["atmosphere_model"] == 2:
-        if COUPLER_options["atmosphere_solve_energy"] == 1:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Cannot solve for RCE with dummy_atmosphere")
-    
         
     if COUPLER_options["atmosphere_nlev"] < 15:
         UpdateStatusfile(dirs, 20)

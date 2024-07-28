@@ -162,44 +162,39 @@ def RunJANUS( atm, time:float, dirs:dict, COUPLER_options:dict, hf_all:pd.DataFr
     rscatter = bool(COUPLER_options["rayleigh"] == 1)
 
     # Run JANUS
-    if COUPLER_options["atmosphere_solve_energy"] == 0:
+    if COUPLER_options["atmosphere_surf_state"] == 1:  # fixed T_Surf
+        from janus.modules import MCPA
+        atm = MCPA(dirs, atm, False, trppD, rscatter)
 
-        if COUPLER_options["atmosphere_surf_state"] == 1:  # fixed T_Surf
-            from janus.modules import MCPA
-            atm = MCPA(dirs, atm, False, trppD, rscatter)
+    elif COUPLER_options["atmosphere_surf_state"] == 2: # conductive lid
+        from janus.modules import MCPA_CBL
 
-        elif COUPLER_options["atmosphere_surf_state"] == 2: # conductive lid
-            from janus.modules import MCPA_CBL
+        T_surf_max = -1
+        T_surf_old = -1 
+        atol       = 1.0e-5
 
-            T_surf_max = -1
-            T_surf_old = -1 
-            atol       = 1.0e-5
+        # Done with initial loops
+        if time > 0:
 
-            # Done with initial loops
-            if time > 0:
+            # Get previous temperature as initial guess
+            T_surf_old = hf_all.iloc[-1]["T_surf"]
 
-                # Get previous temperature as initial guess
-                T_surf_old = hf_all.iloc[-1]["T_surf"]
+            # Prevent heating of the interior
+            if (COUPLER_options["prevent_warming"] == 1):
+                T_surf_max = T_surf_old
 
-                # Prevent heating of the interior
-                if (COUPLER_options["prevent_warming"] == 1):
-                    T_surf_max = T_surf_old
-
-                # calculate tolerance
-                tol = rtol * abs(hf_all.iloc[-1]["F_atm"]) + atol
-            else:
-                tol = 0.1
-
-            # run JANUS
-            atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=tol,
-                          atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.5, T_surf_max=float(T_surf_max))
-            
+            # calculate tolerance
+            tol = rtol * abs(hf_all.iloc[-1]["F_atm"]) + atol
         else:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Invalid surface state chosen for JANUS")
+            tol = 0.1
+
+        # run JANUS
+        atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=tol,
+                        atm_bc=int(COUPLER_options["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.5, T_surf_max=float(T_surf_max))
+        
     else:
         UpdateStatusfile(dirs, 20)
-        raise Exception("Cannot solve for RCE with JANUS")
+        raise Exception("Invalid surface state chosen for JANUS")
     
     # Clean up run directory
     for file in glob.glob(tmp_dir+"/current??.????"):

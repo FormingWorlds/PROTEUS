@@ -130,20 +130,7 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
     cfg_toml["execution"]["easy_start"] =   easy_start
     cfg_toml["execution"]["dx_max"] =       dx_max
 
-    if COUPLER_options["atmosphere_solve_energy"] == 0:
-        # The default cfg assumes solving for energy balance.
-        # If we don't want to do that, set the configuration to a prescribed
-        # profile of: T(p) = dry + condensing + stratosphere
-        initial_arr = ["dry"]
-        if COUPLER_options["tropopause"] == 1:
-            initial_arr.extend(["str", "%.3e"%COUPLER_options["T_skin"]])
-        cfg_toml["execution"]["initial_state"] = initial_arr
-        
-        # Tell AGNI not to solve for RCE
-        cfg_toml["execution"]["solvers"] = []
-
-
-    elif (loops_total > 1) and resume_prev:
+    if (loops_total > 1) and resume_prev:
         # If solving for RCE and are current inside the init stage, use old T(p)
         # as initial guess for solver.
         ncdfs = glob.glob(os.path.join(dirs["output"], "data","*_atm.nc"))
@@ -165,9 +152,6 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
 
     # CBL case
     if surf_state == 2:
-        if COUPLER_options["atmosphere_solve_energy"] == 0:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("With AGNI it is necessary to an energy-conserving solver alongside the conductive lid scheme. Turn them both on or both off.")
         cfg_toml["planet"]["skin_k"] =    COUPLER_options["skin_k"]
         cfg_toml["planet"]["skin_d"] =    COUPLER_options["skin_d"]
         cfg_toml["planet"]["tmp_magma"] = hf_row["T_magma"]
@@ -257,7 +241,7 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     linesearch = 1
     easy_start = False
     resume_prev= True
-    dx_max = 70.0
+    dx_max = 100.0
 
     # bootstrapping run parameters
     if loops_total <= 1:
