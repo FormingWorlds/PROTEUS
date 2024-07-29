@@ -89,6 +89,12 @@ configuration, but they must all be passed via the config file.
      - Float
      - Greater than zero. Values outside of the valid range will be clipped.
 
+  * - ``star_rot_pctle``
+     - Rotation rate percentile for the star, relative to other stars of the same mass. 
+     - False
+     - Float
+     - Between 0 and 100.
+
    * - ``star_spectrum``
      - The spectrum of the host star as observed today. These files may be obtained using the ``GetStellarSpectrum`` tool.  
      - False
@@ -102,13 +108,13 @@ configuration, but they must all be passed via the config file.
      - Greater than zero.
 
    * - ``mass``
-     - Mass of the planet, in units of kg.  
+     - Mass of the planet, in units of Earth mass.
      - False
      - Float
      - Greater than zero. 
 
    * - ``radius``
-     - Radius of the planet at the surface, in units of m.  
+     - Radius of the planet at the surface, in units of Earth radius.  
      - False
      - Float 
      - Greater than zero.
@@ -155,17 +161,11 @@ configuration, but they must all be passed via the config file.
      - Float
      - Greater than zero. Values outside of the valid range will be clipped.
 
-   * - ``time_planet``
-     - Age of the planet at the start of the simulation, in units of years.  
-     - False
-     - Float
-     - Greater than zero.
-
    * - ``time_target``
      - Simulation time at which to stop the model, if it hasn't stopped already, in units of years.  
      - False
      - Float
-     - Greater than ``time_planet``.
+     - Greater than zero.
 
    * - ``spectral_file``
      - Spectral file to use when running SOCRATES.   
@@ -287,12 +287,6 @@ configuration, but they must all be passed via the config file.
      - Integer
      - 0: JANUS, 1: AGNI, 2: Dummy
 
-   * - ``atmosphere_solve_energy``   
-     - Enable radiative-convective solution for calculating T(p). Only available with AGNI.
-     - False
-     - Integer
-     - 0: Disabled, 1: Enabled
-
    * - ``atmosphere_surf_state``   
      - Surface boundary condition; e.g. T_surf set by conductive heat transport.   
      - False
@@ -377,7 +371,7 @@ configuration, but they must all be passed via the config file.
      - Float
      - Between 0 and 1, inclusive.
 
-   * - ``insert_rscatter``
+   * - ``rayleigh``
      - Enable rayleigh scattering.
      - False
      - Integer
@@ -400,12 +394,6 @@ configuration, but they must all be passed via the config file.
      - False
      - Float
      - Any reasonable value greater than zero (for example, 0.1 metres)
-     
-   * - ``SEPARATION``
-     - Flag to include gravitational separation of solid/melt in SPIDER.     
-     - False
-     - Integer
-     - 0: Disabled, 1: Enabled.
 
    * - ``mixing_length``
      - Mixing length parameterisation to use in SPIDER. Can be constant or variable with depth.
@@ -450,7 +438,7 @@ configuration, but they must all be passed via the config file.
      - Less than zero.
 
    * - ``F_atm``
-     - Initial guess for net upward flux `F_atm`. Your choice for this value will depend on where `F_atm` is measured (see ``F_atm_bc``).   
+     - Initial guess for net upward flux `F_atm`.  
      - False
      - Float
      - Greater than zero.
@@ -467,12 +455,6 @@ configuration, but they must all be passed via the config file.
      - Integer
      - 0: Disabled, 1: Enabled.
 
-   * - ``T_magma``
-     - Initial guess for surface temperature, units of kelvin.
-     - False
-     - Float
-     - Greater than zero.
-   
    * - ``Phi_global``
      - Initial guess for mantle melt fraction.    
      - False
@@ -504,7 +486,7 @@ configuration, but they must all be passed via the config file.
      - Greater than zero.
 
    * - ``X_included``
-     - Flag to include X in the model. For H2O, CO2, and N2 this will always equal 1.
+     - Flag to include X in the model. For some (H2O, CO2, N2, S2) this will always equal 1.
      - False
      - Integer
      - 0: Excluded, 1: Included.

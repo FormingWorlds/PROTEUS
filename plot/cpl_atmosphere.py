@@ -7,14 +7,11 @@ from utils.plot import *
 log = logging.getLogger("PROTEUS")
 
 #====================================================================
-def plot_atmosphere( output_dir, times, plot_format="pdf"):
+def plot_atmosphere( output_dir:str, times:list, plot_format="pdf"):
 
     log.info("Plot atmosphere temperatures")
 
-    # article class text width is 4.7747 inches
-    # http://tex.stackexchange.com/questions/39383/determine-text-width
-
-    norm = mpl.colors.Normalize(vmin=times[0], vmax=times[-1])
+    norm = mpl.colors.LogNorm(vmin=max(times[0],1), vmax=times[-1])
     sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)  
     sm.set_array([])
 
@@ -72,7 +69,7 @@ def main():
     # Read in COUPLER input file
     log.info("Read cfg file")
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options, time_dict = ReadInitFile( cfg )
+    COUPLER_options = ReadInitFile( cfg )
 
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
@@ -80,21 +77,24 @@ def main():
     files = glob.glob(os.path.join(dirs["output"], "data", "*_atm.nc"))
     times = [int(f.split("/")[-1].split("_")[0]) for f in files]
 
-    if len(times) <= 8:
-        plot_list = times
-    else:
-        plot_list = [ times[0], 
-                     times[int(round(len(times)*(2./100.)))], 
-                     times[int(round(len(times)*(15./100.)))], 
-                     times[int(round(len(times)*(22./100.)))], 
-                     times[int(round(len(times)*(33./100.)))], 
-                     times[int(round(len(times)*(50./100.)))], 
-                     times[int(round(len(times)*(66./100.)))], 
-                     times[-1]
-                     ]
-    print("Snapshots:", plot_list)
+    plot_times = []
+    tmin = max(1,np.amin(times))
+    tmax = max(tmin+1, np.amax(times))
+
+    for s in np.logspace(np.log10(tmin),np.log10(tmax),8): # Sample on log-scale
+
+        remaining = list(set(times) - set(plot_times)) 
+        if len(remaining) == 0:
+            break
+
+        v,_ = find_nearest(remaining,s) # Find next new sample
+        plot_times.append(int(v))
+
+    plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
+    print("Snapshots:", plot_times)
+
     # Plot fixed set from above
-    plot_atmosphere( output_dir=dirs["output"], times=plot_list, plot_format=COUPLER_options["plot_format"] )
+    plot_atmosphere( output_dir=dirs["output"], times=plot_times, plot_format=COUPLER_options["plot_format"] )
 
 #====================================================================
 

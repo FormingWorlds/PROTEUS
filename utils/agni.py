@@ -10,7 +10,7 @@ import tomlkit as toml
 log = logging.getLogger("PROTEUS")
 
 def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict, 
-              hf_row:dict, make_plots:bool, initial_offset:float, easy_start:bool,
+              hf_row:dict, make_plots:bool, easy_start:bool,
               linesearch:bool, dx_max:float, resume_prev:bool)->bool:
 
     # ---------------------------
@@ -66,7 +66,7 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
     cfg_toml["planet"]["zenith_angle"] =    COUPLER_options["zenith_angle"]
     cfg_toml["planet"]["albedo_s"] =        COUPLER_options["albedo_s"]
     cfg_toml["planet"]["gravity"] =         hf_row["gravity"]
-    cfg_toml["planet"]["radius"] =          COUPLER_options["radius"]
+    cfg_toml["planet"]["radius"] =          hf_row["R_planet"]
 
     # set composition
     cfg_toml["composition"]["p_surf"] =     hf_row["P_surf"]
@@ -88,24 +88,23 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
             raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
     
     # set condensation
-    # condensates = []
-    # if len(vol_dict) == 1:
-    #     # single-gas case
-    #     condensates = [list(vol_dict.keys())[0]]
-    # else:
-    #     # get gas with lowest mixing ratio 
-    #     vmr_min = 2.0
-    #     gas_min = ""
-    #     for k in vol_dict.keys():
-    #         if vol_dict[k] < vmr_min:
-    #             vmr_min = vol_dict[k]
-    #             gas_min = k
-    #     # add all gases as condensates, except the least abundant gas 
-    #     for k in vol_dict.keys():
-    #         if k == gas_min:
-    #             continue 
-    #         condensates.append(k)
-    condensates = ["H2O"]
+    condensates = []
+    if len(vol_dict) == 1:
+        # single-gas case
+        condensates = list(vol_dict.keys())
+    else:
+        # get gas with smallest volume mixing ratio 
+        vmr_min = 2.0
+        gas_min = ""
+        for k in vol_dict.keys():
+            if vol_dict[k] < vmr_min:
+                vmr_min = vol_dict[k]
+                gas_min = k
+        # set all gases as condensates, except the least abundant gas 
+        for k in vol_dict.keys():
+            if k == gas_min:
+                continue 
+            condensates.append(k)
     cfg_toml["composition"]["condensates"] = condensates
 
     if len(condensates) > 0:
@@ -125,26 +124,13 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
     
     # Set execution
     cfg_toml["execution"]["num_levels"] =   COUPLER_options["atmosphere_nlev"]
-    cfg_toml["execution"]["rayleigh"] =     bool(COUPLER_options["insert_rscatter"] == 1)
+    cfg_toml["execution"]["rayleigh"] =     bool(COUPLER_options["rayleigh"] == 1)
     cfg_toml["execution"]["cloud"] =        bool(COUPLER_options["water_cloud"] == 1)
     cfg_toml["execution"]["linesearch"] =   linesearch
     cfg_toml["execution"]["easy_start"] =   easy_start
     cfg_toml["execution"]["dx_max"] =       dx_max
 
-    if COUPLER_options["atmosphere_solve_energy"] == 0:
-        # The default cfg assumes solving for energy balance.
-        # If we don't want to do that, set the configuration to a prescribed
-        # profile of: T(p) = dry + condensing + stratosphere
-        initial_arr = ["dry"]
-        if COUPLER_options["tropopause"] == 1:
-            initial_arr.extend(["str", "%.3e"%COUPLER_options["T_skin"]])
-        cfg_toml["execution"]["initial_state"] = initial_arr
-        
-        # Tell AGNI not to solve for RCE
-        cfg_toml["execution"]["solvers"] = []
-
-
-    elif (loops_total > 1) and resume_prev:
+    if (loops_total > 1) and resume_prev:
         # If solving for RCE and are current inside the init stage, use old T(p)
         # as initial guess for solver.
         ncdfs = glob.glob(os.path.join(dirs["output"], "data","*_atm.nc"))
@@ -152,8 +138,7 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
         nc_path = ncdfs[np.argmax(ncdf_times)]
 
         log.debug("Initialise from last T(p)")
-        cfg_toml["execution"]["initial_state"] = ["ncdf", nc_path, 
-                                                  "add", "%.6f"%initial_offset]
+        cfg_toml["execution"]["initial_state"] = ["ncdf", nc_path]
 
     else:
         log.debug("Initialise isothermal")
@@ -167,9 +152,6 @@ def _try_agni(loops_total:int, dirs:dict, COUPLER_options:dict,
 
     # CBL case
     if surf_state == 2:
-        if COUPLER_options["atmosphere_solve_energy"] == 0:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("With AGNI it is necessary to an energy-conserving solver alongside the conductive lid scheme. Turn them both on or both off.")
         cfg_toml["planet"]["skin_k"] =    COUPLER_options["skin_k"]
         cfg_toml["planet"]["skin_d"] =    COUPLER_options["skin_d"]
         cfg_toml["planet"]["tmp_magma"] = hf_row["T_magma"]
@@ -256,18 +238,17 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     attempts = 1          # number of attempts so far
 
     # default run parameters
-    linesearch = True
+    linesearch = 1
     easy_start = False
     resume_prev= True
-    offset = 0.0
     dx_max = 100.0
 
     # bootstrapping run parameters
-    if loops_total < 2:
-        linesearch = True
+    if loops_total <= 1:
+        linesearch = 2
         easy_start = True
         resume_prev= False
-        dx_max = 300.0
+        dx_max = 200.0
 
     # make attempts
     while not agni_success:
@@ -275,7 +256,7 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
 
         # Try the module
         agni_success = _try_agni(loops_total, dirs, COUPLER_options, hf_row, make_plots, 
-                                 offset, easy_start, linesearch, dx_max, resume_prev)
+                                 easy_start, linesearch, dx_max, resume_prev)
 
         if agni_success:
             # success
@@ -287,17 +268,10 @@ def RunAGNI(loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
             attempts += 1
 
             if attempts == 2:
-                # Try offsetting the temperature profile and decreasing the step size
-                linesearch = False
-                offset     = 0.2
-                dx_max     = 50.0
+                # Try using a different linesearch method
+                linesearch = 2
+                dx_max     = 10.0
                 resume_prev= True
-            elif attempts == 3:
-                # Try starting over
-                linesearch  = True 
-                dx_max      = 200.0
-                resume_prev = False 
-                easy_start  = True 
             else:
                 log.error("Maximum attempts when executing AGNI")
                 break

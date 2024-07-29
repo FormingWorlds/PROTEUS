@@ -9,6 +9,7 @@ AU              = 1.495978707e+11       # m
 AU_cm           = AU * 100.0            # cm
 R_gas           = 8.31446261815324      # J K−1 mol−1
 M_earth         = 5.972E24              # kg
+R_earth         = 6.335439e6 
 R_core_earth    = 3485000.0             # m
 M_core_earth    = 1.94E24               # kg
 mol             = 6.02214076e+23        # mol definition

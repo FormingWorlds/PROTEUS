@@ -23,7 +23,7 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux(output_dir, wl_max = 6000.0, surface=False, plot_format="pdf"):
+def plot_sflux(output_dir, wl_max = 6000.0, plot_format="pdf"):
     """Plots stellar flux vs time for all wavelengths
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -36,8 +36,6 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False, plot_format="pdf"):
 
         wl_max : float
             Upper limit of wavelength axis [nm]
-        surface : bool
-            Use fluxes at surface? If not, will use fluxes at 1 AU.
 
     """ 
 
@@ -45,11 +43,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False, plot_format="pdf"):
     star_cmap = plt.get_cmap('Spectral')
 
     # Find and sort files
-    if surface:
-        suffix = 'sfluxsurf'
-    else:
-        suffix = 'sflux'
-    files_unsorted = glob.glob(output_dir+"/data/*."+suffix)
+    files_unsorted = glob.glob(output_dir+"/data/*.sflux")
     files = natural_sort(files_unsorted)
 
     if (len(files) == 0):
@@ -118,11 +112,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False, plot_format="pdf"):
     ax.set_xscale("log")
     ax.set_xlabel("Wavelength [nm]")
     ax.set_xlim([0.5,max(1.0,wl_max)])
-
-    if surface:
-        ax.set_title("Surface flux versus wavelength")
-    else:
-        ax.set_title("1 AU flux versus wavelength")
+    ax.set_title("TOA flux versus wavelength")
 
     # Plot historical spectra
     for i in range(N):
@@ -135,9 +125,8 @@ def plot_sflux(output_dir, wl_max = 6000.0, surface=False, plot_format="pdf"):
         ax.plot(wave_t[i],flux_t[i],color=c,lw=0.7,alpha=0.6, label=l)
 
     # Plot current spectrum (use the copy made in the output directory)
-    if not surface:
-        X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
-        ax.plot(X[0],X[1],color='black',label='Modern',lw=0.8,alpha=0.9)
+    X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
+    ax.plot(X[0],X[1],color='black',label='Modern',lw=0.8,alpha=0.9)
 
     # Calculate planck function
     # Tstar = 3274.3578960897644
@@ -170,7 +159,7 @@ if __name__ == '__main__':
     from utils.coupler import ReadInitFile, SetDirectories
 
     # Read in COUPLER input file
-    COUPLER_options, time_dict = ReadInitFile( cfg )
+    COUPLER_options = ReadInitFile( cfg )
 
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)

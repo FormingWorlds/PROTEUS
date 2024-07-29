@@ -29,7 +29,7 @@ def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
 
     # Create plot
     mpl.use('Agg')
-    scale = 1.4
+    scale = 1.2
     fig,ax = plt.subplots(1,1,figsize=(6*scale,5*scale))
     lw = 2.0
     al = 0.96
@@ -69,7 +69,7 @@ if __name__ == '__main__':
 
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options, time_dict = ReadInitFile( cfg )
+    COUPLER_options = ReadInitFile( cfg )
 
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)

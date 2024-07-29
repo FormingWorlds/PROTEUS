@@ -462,9 +462,9 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","jgr_grid.cfg")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/jgr_5"
-    pg = Pgrid("jgr_5", cfg_base, symlink_dir=symlink)
+    cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","t1c_rce.cfg")
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c"
+    pg = Pgrid("trappist1c", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -474,17 +474,18 @@ if __name__=='__main__':
     #                                         "radius"       : 7.118e+6  # m, planet surface radius
     #                                     })
 
-    pg.add_dimension("Orbital separation")
-    pg.set_dimension_direct("Orbital separation", "mean_distance", [0.1, 0.3, 0.5, 0.7, 1.0, 2.0, 3.0])
+    # pg.add_dimension("C/H ratio")
+    # pg.set_dimension_logspace("C/H ratio", "CH_ratio", 0.01, 2.0, 7)
+
+    # pg.add_dimension("Hydrogen")
+    # pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 5.0, 10.0])
+
+
+    pg.add_dimension("Model")
+    pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-5.0, -3.0, -1.0, 0.0, 1.0, 3.0, 5.0 ])
-
-    pg.add_dimension("C/H ratio")
-    pg.set_dimension_logspace("C/H ratio", "CH_ratio", 0.01, 2.0, 7)
-
-    pg.add_dimension("Hydrogen")
-    pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 5.0, 10.0])
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-2, 0, 4])
     
     # -----
     # Print state of parameter grid
@@ -498,7 +499,7 @@ if __name__=='__main__':
     # Start PROTEUS processes
     # -----
 
-    pg.run(110, test_run=False)
+    pg.run(7, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.

@@ -130,38 +130,6 @@ def get_all_output_times( odir='output' ):
 
     return time_a
 
-def get_all_output_atm_times( odir='output' ):
-    '''get all times (in Myrs) from the nc files located in the
-       output directory'''
-
-    odir = odir+'/data/'
-
-    stub_dirs = {"output": os.path.abspath(odir)}
-
-    # locate times to process based on files located in odir/
-    file_l = [f for f in os.listdir(odir) if os.path.isfile(odir+f)]
-    if not file_l:
-        UpdateStatusfile(stub_dirs, 20)
-        raise Exception("Output directory contains no files")
-
-    time_l = [fname for fname in file_l]
-    time_l = list(filter(lambda a: a.endswith('nc'), time_l))
-    if len(time_l) == 0:
-        UpdateStatusfile(stub_dirs, 20)
-        raise Exception("Could not find any nc files in the output directory")
-
-    # Filter and split files
-    time_l = [ file for file in time_l if not file.startswith("orig_")]
-    time_l = [ int(time.split('_atm')[0]) for time in time_l ]
-    
-    # ascending order
-    time_l = sorted( time_l, key=int)
-    time_a = np.array( time_l )
-
-    return time_a
-
-
-
 def get_dict_values_for_times( keys, time_l, indir='output' ):
     data_l = []
     for time in time_l:
@@ -356,7 +324,7 @@ def _try_spider( dirs:dict, COUPLER_options:dict,
                         "-n",                      "%d"  %(COUPLER_options["interior_nlev"]),
                         "-nstepsmacro",            "%d"  %(nstepsmacro), 
                         "-dtmacro",                "%.6e"%(dtmacro), 
-                        "-radius",                 "%.6e"%(COUPLER_options["radius"]), 
+                        "-radius",                 "%.6e"%(hf_row["R_planet"]), 
                         "-gravity",                "%.6e"%(-1.0 * hf_row["gravity"]), 
                         "-coresize",               "%.6e"%(COUPLER_options["planet_coresize"]),
                         "-grain",                  "%.6e"%(COUPLER_options["grain_size"]),
@@ -387,53 +355,8 @@ def _try_spider( dirs:dict, COUPLER_options:dict,
                                 "-ic_dsdr", str(COUPLER_options["ic_dsdr"]) # initial dS/dr everywhere
                             ])
 
-    # Gravitational separation of solid and melt phase, 0: off | 1: on
-    if COUPLER_options["SEPARATION"] == 1:
-        call_sequence.extend(["-SEPARATION", str(1)])
-
     # Mixing length parameterization: 1: variable | 2: constant
     call_sequence.extend(["-mixing_length", str(COUPLER_options["mixing_length"])])
-
-    # Check for convergence, if not converging, adjust tolerances iteratively
-    # if (loop_counter["total"] > loop_counter["init_loops"]) and (len(runtime_helpfile) > 50):
-
-        # # Check convergence for interior cycles
-        # run_int = runtime_helpfile.loc[runtime_helpfile['Input']=='Interior'].drop_duplicates(subset=['Time'], keep='last')
-
-        # ref_idx = -3
-        # if len(run_int["Time"]) < abs(ref_idx)-1:
-        #     ref_idx = 0
-
-        # First, relax too restrictive dTs
-        # if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
-        #     if COUPLER_options["tsurf_poststep_change"] <= 300:
-        #         COUPLER_options["tsurf_poststep_change"] += 10
-        #         log.warning(">>> Raise dT poststep_changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
-        #     else:
-        #         log.warning(">> dTs_int too high! >>", COUPLER_options["tsurf_poststep_change"], "K")
-                
-        # Slowly limit again if time advances smoothly
-        # if (run_int["Time"].iloc[-1] != run_int["Time"].iloc[ref_idx]) and COUPLER_options["tsurf_poststep_change"] > 30:
-        #     COUPLER_options["tsurf_poststep_change"] -= 10
-        #     log.warning(">>> Lower tsurf_poststep_change poststep changes:", COUPLER_options["tsurf_poststep_change"], COUPLER_options["tsurf_poststep_change_frac"])
-
-        # if run_int["Time"].iloc[-1] == run_int["Time"].iloc[ref_idx]:
-        #     if COUPLER_options["solver_tolerance"] < 1.0e-2:
-        #         COUPLER_options["solver_tolerance"] = float(COUPLER_options["solver_tolerance"])*2.
-        #         log.warning(">>> ADJUST tolerances:", COUPLER_options["solver_tolerance"])
-        #     COUPLER_options["adjust_tolerance"] = 1
-        #     log.warning(">>> CURRENT TOLERANCES:", COUPLER_options["solver_tolerance"])
-
-        # If tolerance was adjusted, restart SPIDER w/ new tolerances
-        # if "adjust_tolerance" in COUPLER_options:
-        #     log.warning(">>>>> >>>>> RESTART W/ ADJUSTED TOLERANCES")
-        #     call_sequence.extend(["-atmosts_snes_atol", str(COUPLER_options["solver_tolerance"])])
-        #     call_sequence.extend(["-atmosts_snes_rtol", str(COUPLER_options["solver_tolerance"])])
-        #     call_sequence.extend(["-atmosts_ksp_atol", str(COUPLER_options["solver_tolerance"])])
-        #     call_sequence.extend(["-atmosts_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
-        #     call_sequence.extend(["-atmosic_ksp_rtol", str(COUPLER_options["solver_tolerance"])])
-        #     call_sequence.extend(["-atmosic_ksp_atol", str(COUPLER_options["solver_tolerance"])])
-
     call_sequence.extend(["-ts_sundials_atol", str(COUPLER_options["solver_tolerance"] * atol_sf)])
     call_sequence.extend(["-ts_sundials_rtol", str(COUPLER_options["solver_tolerance"] * atol_sf)])
 
@@ -510,7 +433,7 @@ def RunSPIDER( dirs:dict, COUPLER_options:dict,
         raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
-def ReadSPIDER(dirs:dict, COUPLER_options:dict, time:float, prev_T_magma:float):
+def ReadSPIDER(dirs:dict, COUPLER_options:dict, time:float, prev_T_magma:float, R_planet:float):
     '''
     Read variables from last SPIDER output JSON file into a dictionary
     '''
@@ -544,7 +467,7 @@ def ReadSPIDER(dirs:dict, COUPLER_options:dict, time:float, prev_T_magma:float):
     output["T_magma"]         = float(data_a[4])
     output["Phi_global"]      = float(data_a[5])  # global melt fraction
     output["F_int"]           = float(data_a[6])  # Heat flux from interior
-    output["RF_depth"]        = float(data_a[7])/COUPLER_options["radius"]  # depth of rheological front
+    output["RF_depth"]        = float(data_a[7])/R_planet  # depth of rheological front
 
     # Do not allow warming after init stage has completed
     if (COUPLER_options["prevent_warming"]) and (time > 5.0):

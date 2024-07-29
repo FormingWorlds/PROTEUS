@@ -48,8 +48,6 @@ vz_prof = 'const'  # Options: 'const' or 'file'
 const_Kzz = 1.E10 # (cm^2/s) Only reads when use_Kzz = True and Kzz_prof = 'const'
 const_vz = 0 # (cm/s) Only reads when use_vz = True and vz_prof = 'const'
 
-f_diurnal = 1.0 # to account for the diurnal average of solar flux (i.e. 0.5 for Earth; 1 for tidally-locked planets) 
-
 
 # frequency for updating dz and dzi due to change of mu
 update_frq = 50 
@@ -125,8 +123,6 @@ save_evo_frq = 50
 use_live_plot  = False 
 scat_sp = [] 
 diff_esc = [] 
-atom_list  = ['H', 'O', 'C','N']
-network  = 'thermo/NCHO_full_photo_network.txt' 
 plot_spec = ['H2','H','H2O','OH','CH4','HCN','N2','NH3'] 
 atm_type = 'file'
 

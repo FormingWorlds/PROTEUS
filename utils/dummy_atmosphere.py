@@ -7,7 +7,7 @@ from utils.constants import *
 log = logging.getLogger("PROTEUS")
 
 # Run the dummy atmosphere module
-def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
+def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float, R_planet:float):
     log.info("Running dummy_atmosphere...")
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
@@ -26,7 +26,7 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
     skin_k          = COUPLER_options["skin_k"]
 
     # Check configuration
-    if COUPLER_options["insert_rscatter"] == 1:
+    if COUPLER_options["rayleigh"] == 1:
         log.warning("Rayleigh scattering is enabled but it will be neglected")
 
     log.info("Gamma = %.4f" % gamma)
@@ -103,6 +103,6 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float):
     output["F_atm"] =  F_atm_lim             # Net flux at TOA
     output["F_olr"] =  fluxes["fl_U_LW"]     # OLR
     output["F_sct"] =  fluxes["fl_U_SW"]     # Scattered SW flux
-    output["z_obs"] =  COUPLER_options["radius"]
+    output["z_obs"] =  R_planet
     
     return output

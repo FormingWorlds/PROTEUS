@@ -22,12 +22,6 @@ from plot.cpl_offchem_time import *
 from plot.cpl_offchem_year import *
 from utils.constants import R_sun_cm, AU_cm
 
-# ------------------------------------------------------------------------------------------------
-
-def find_nearest_idx(array, value):
-    array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
-    return int(idx)
 
 # Custom logger instance 
 # https://stackoverflow.com/a/61457119
@@ -58,10 +52,10 @@ def setup_logger(name:str, logpath:str="new.log", level=logging.INFO, logterm=Tr
     return custom_logger 
 
 
-# Draw samples from all of the years following a distribution
-def get_sample_years(years_all,samples,s_centre,s_width):
+# Draw samples from all of the years
+def get_sample_years(years_all:list,samples:int):
     years = [ ]
-    yfirst = years_all[1]
+    yfirst = max(years_all[0],1)
     ylast = years_all[-1]
 
     # Draw samples
@@ -69,39 +63,16 @@ def get_sample_years(years_all,samples,s_centre,s_width):
         # If number of samples = number of data points, don't need to use sampling method
         years = years_all
     else:
-        # Otherwise:
-        # Draw other runs randomly from a distribution. This is set-up to sample
-        # the end of the run more densely than the start, because the evolution at 
-        # the start isn't so interesting compared to the end.
-
-        years.append(ylast) # Include last run
-
-        if samples > 1:
-            years.append(yfirst) # Include first run
-
-        sample_itermax = 30000*samples
-        sample_iter = 0
-        while (len(years) < samples): 
-
-            sample_iter += 1
-            if sample_iter > sample_itermax:
-                raise Exception("Maximum iterations reached in selecting sample years!")
-
-            # sample = np.abs(nrand.laplace(loc=ylast,scale=float(ylast*swidth)))
-            sample = -1.0 * nrand.gumbel(loc=-1.0*s_centre,scale=s_width)
-            if (sample <= yfirst) or (sample >= ylast):
-                continue  # Try again
-
-            inear = find_nearest_idx(years_all,sample)
-            ynear = years_all[inear]
-            if ynear in years:
-                continue  # Try again
-            
-            years.append(ynear)
+        # Use log-spacing
+        years_target = np.logspace(np.log10(yfirst), np.log10(ylast), samples)
+        # Find nearest samples 
+        years = [find_nearest(years_all, y)[0] for y in years_target]
 
     return sorted(set(years))  # Ensure that there are no duplicates and sort ascending
 
-def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, dirs:dict, COUPLER_options:dict, helpfile_df:pd.DataFrame, ini_method:int) -> bool:
+def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, dirs:dict, 
+             COUPLER_options:dict, hf_all:pd.DataFrame, 
+             ini_method:int, elements:list, network:str) -> bool:
     """Run VULCAN once for a given PROTEUS output year
     
     Runs VULCAN in a screen instance so that lots processes may still be
@@ -122,7 +93,7 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
             Dictionary of useful directories
         COUPLER_options : dict
             PROTEUS options dictionary read from cfg file
-        helpfile_df : DataFrame
+        hf_all : DataFrame
             Helpfile contents loaded as a Pandas DataFrame object
         ini_method : int
             Method used to set abundances (0: const_mix homogeneous, 1: eqm chemistry with derived metallicities)
@@ -183,7 +154,8 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
         v_mx[g] = val
 
     # Read helpfile to get data for this year
-    helpfile_thisyear = helpfile_df.loc[helpfile_df['Time'] == year].iloc[0]
+    hf_row = hf_all.iloc[(hf_all['Time']-year).abs().argsort()[:1]]
+    hf_row = hf_row.to_dict(orient='records')[0]
 
     # Write specifics to config file
     with open(dirs["vulcan"]+"vulcan_cfg.py",'a') as vcf:
@@ -197,8 +169,17 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
         # Constant mixing ratios
         const_mix = "{"
         for v in v_mx.keys():
-            this_mx = max(float(v_mx[v]),mixing_ratio_floor)     
-            const_mix += " '%s' : %1.5e ," % (v,this_mx)
+            # check if this species includes a disallowed element 
+            allowed = True
+            for c in v:
+                if not c.isnumeric():
+                    if c not in elements:
+                        allowed = False 
+                        break 
+            # add gas to dict 
+            if allowed:
+                this_mx = max(float(v_mx[v]),mixing_ratio_floor)     
+                const_mix += " '%s' : %1.5e ," % (v,this_mx)
         const_mix = const_mix[:-1]+" }"
         vcf.write("const_mix = %s \n" % str(const_mix))
 
@@ -215,14 +196,16 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
             per = tot[e]/tot['H']
             vcf.write("%s_H = %1.8e \n" % (e,per))
 
+        # Set incl elements and chemical network 
+        vcf.write("atom_list = %s \n"%str(elements))
+        vcf.write("network = '%s' \n"%network)
+
         # Set initial abundances using selected method
         if ini_method == 0: 
             vcf.write("ini_mix = 'const_mix' \n")
         elif (ini_method == 1):
-            vcf.write("fastchem_met_scale = 1e-60 \n")  # Try to remove elements not set by method above
             vcf.write("use_solar = False \n")
             vcf.write("ini_mix = 'EQ' \n")
-            vcf.write("use_solar = False \n")
         else:
             raise Exception("ini_method = %d is invalid!" % ini_method)
 
@@ -255,12 +238,13 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
         vcf.write("sflux_file = 'output/%s_SF.txt' \n"%screen_name)
 
         # Stellar radius
-        vcf.write("r_star = %1.6e \n" %         float(helpfile_thisyear["R_star"]))
+        vcf.write("r_star = %1.6e \n" %         float(hf_row["R_star"]))
 
         # Other planet parameters
         vcf.write("Rp = %1.6e \n" %             float(COUPLER_options["radius"]*100.0))
-        vcf.write("gs = %1.6e \n" %             float(COUPLER_options["gravity"]*100.0))
+        vcf.write("gs = %1.6e \n" %             float(hf_row["gravity"]*100.0))
         vcf.write("sl_angle = %1.6e \n" %       float(COUPLER_options["zenith_angle"]*np.pi/180.0))
+        vcf.write("f_diurnal = %1.6e \n" %      float(COUPLER_options["asf_scalefactor"]))
         vcf.write("orbit_radius = %1.6e \n" %   float(COUPLER_options["mean_distance"]))
 
         vcf.flush()
@@ -271,13 +255,13 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
     shutil.copyfile(dirs["vulcan"]+"vulcan_cfg.py",this_results+"vulcan_cfg.py")
 
     # Copy a reasonable stellar flux file to the location where VULCAN will 
-    #   read it. This is scaled to the stellar surface
+    #   read it. This is then scaled to the stellar surface
     ls = glob.glob(dirs["output"]+"/data/*.sflux")
     years = [int(f.split("/")[-1].split(".")[0]) for f in ls]
-    sflux_near = dirs["output"]+"/data/%d.sflux"%years[find_nearest_idx(years,year)]
+    sflux_near = dirs["output"]+"/data/%d.sflux"%find_nearest(years,year)[0]
 
     sflux_read = np.loadtxt(sflux_near, skiprows=1).T
-    f_sf = float(helpfile_thisyear["R_star"]) * R_sun_cm / (COUPLER_options["mean_distance"] * AU_cm)
+    f_sf = float(hf_row["R_star"]) * R_sun_cm / (COUPLER_options["mean_distance"] * AU_cm)
     sflux_scaled = sflux_read[1] * f_sf * f_sf       # scale to surface of star 
 
     sflux_write = [sflux_read[0], sflux_scaled]
@@ -298,19 +282,18 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
     shutil.copyfile(dirs["vulcan"]+"output/%s_PT.txt"%screen_name, dirs["output"]+"offchem/%d/PT.txt"%year)
 
     # Run vulcan
-    # Note that the screen name ends with an 'x' so that accurate matching can be done with grep
     os.chdir(dirs["vulcan"])
     logfile = dirs["output"]+"offchem/%d/vulcan.log"%year
     vulcan_flag = " " if first_run else "-n"
-    vulcan_run = "screen -dmLS %s python3 vulcan.py %s" % (screen_name,vulcan_flag)
+    vulcan_run = "screen -d -m -L -Logfile %s -S %s python vulcan.py %s" % (logfile, screen_name,vulcan_flag)
     subprocess.run([vulcan_run], shell=True, check=True)
     os.chdir(dirs["coupler"])
 
     return success
 
 
-def parent(cfgfile, samples, threads, s_width, s_centre, 
-           mkfuncs=True, runtime_sleep=30, ini_method=1, mkplots=True, logterm=True):
+def parent(cfgfile, samples, threads, elements, network, mkfuncs, runtime_sleep, 
+           ini_method, mkplots, logterm):
     """Parent process for handing offline chemistry.
 
     Reads configuration from cfgfile, finds the files, takes samples, and dispatches 
@@ -318,10 +301,6 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
     screen sessions. Multiple instances of this script should not be run at 
     the same time because of inflexibilities in VULCAN.
     
-    Tries to take useful samples across the simulation time by using a 
-    distribution with a peak and width, which allows regions of interest to be 
-    better resolved. You might need to play with s_width and s_centre in order
-    to sample the part of the planet's evolution that you're interested in.
 
     Parameters
     ----------
@@ -333,11 +312,10 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
             requested, but beware of long runtimes in this case).
         threads : int
             Maximum number of threads to use when running offline chemistry.
-        s_width : float
-            Width of sampling function [years]
-        s_centre : float
-            Centre of sampling function [years]
-
+        elements : list 
+            Included elements 
+        network : str 
+            Path to chemical network
         mkfuncs : bool
             Compile VULCAN reaction functions from network on first run?
         runtime_sleep : float
@@ -358,7 +336,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
 
     # Set directories
     dirs = SetDirectories(COUPLER_options)
-    offchem_dir = dirs["output"]+"offchem/"
+    offchem_dir = os.path.join(dirs["output"], "offchem")
 
     # Delete old files
     if os.path.exists(offchem_dir):
@@ -375,24 +353,24 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
 
     # Set up logging
     logger_name = "logger_%d" % nrand.randint(low=1e9, high=9e9)
-    log_file = offchem_dir+"parent.log"
+    log_file =  os.path.join(offchem_dir, "parent.log")
     logger = setup_logger(logger_name,logpath=log_file,logterm=logterm)
 
     # Log info to user
     time_start = datetime.now()
     logger.info("Date: " +str(time_start.strftime("%Y-%m-%d")))
 
-    now = int(str(time_start.strftime("%H%M%S")))
-    logger.info("Time: %d"%now)
+    now = str(time_start.strftime("%H%M%S"))
+    logger.info("Time: %s"%now)
 
     logger.info(" ")
     logger.info("This program will generate several screen sessions")
-    logger.info("To kill all of them, run `pkill -f %d_offchem_`" % now)   # (from: https://stackoverflow.com/a/8987063)
+    logger.info("To kill all of them, run `pkill -f %s_offchem_`" % now)   # (from: https://stackoverflow.com/a/8987063)
     logger.info("Take care to avoid orphaned instances by using `screen -ls`")
     logger.info(" ")
 
     # Read helpfile
-    helpfile_df = pd.read_csv(dirs["output"]+"runtime_helpfile.csv",sep=r'\s+')
+    hf_all = pd.read_csv(dirs["output"]+"runtime_helpfile.csv",sep=r'\s+')
 
     # Find out which years we have both SPIDER and JANUS data for
     evolution_json = glob.glob(dirs["output"]+"/data/*.json")
@@ -426,8 +404,8 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         raise Exception("Too many threads requested! (More than %d)" % max_threads)
     
     # Select samples...
-    logger.info("Choosing sample years... (May take a while in some cases)")
-    years = get_sample_years(years_all, samples, s_centre, s_width)
+    logger.info("Choosing sample years...")
+    years = get_sample_years(years_all, samples)
     samples = len(years)
     logger.info("Years selected: " +str(years))
 
@@ -465,18 +443,24 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         for i in range(samples):
             y = years[i]
 
-            sname = "%d_offchem_%d" % (now,y)
-            running = bool(str("%sx"%sname) in screen_out)
+            sname = "%s_offchem_%d" % (now,y)
+            running = bool(str("%s"%sname) in screen_out)
             
             if running:
                 count_threads += 1
             
             # Currently tagged as running, but check if done
             if (not running) and (status[i] == 1):
-                to_copy = dirs["vulcan"]+"/output/%s.vul" % sname
+                to_copy =  os.path.join(dirs["vulcan"], "output", "%s.vul" % sname)
                 if os.path.exists(to_copy): # Is done?
                     status[i] = 2
-                    shutil.copyfile(to_copy, dirs["output"]+"/offchem/%d/output.vul"%y) # Copy output
+
+                    # this is horrible, but VULCAN does not allow absolute paths
+                    # so it is not possible to have it output to the folder we want, and 
+                    # instead we must copy the file after it has been written.
+                    shutil.copyfile(to_copy, 
+                                    os.path.join(dirs["output"],"offchem","%d"%y,"output.vul")
+                                    ) # Copy output
 
                 else:
                     status[i] = 3
@@ -522,8 +506,10 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
                 # Run new process
                 logger.info("Dispatching job %03d: %08d yrs..." % (i,y))
                 fr = bool( (count_dispatched == 0) and mkfuncs)
-                sname = "%d_offchem_%d" % (now,y)
-                this_success = run_once(logger, years[i], sname, fr, dirs, COUPLER_options, helpfile_df, ini_method)
+                sname = "%s_offchem_%d" % (now,y)
+                this_success = run_once(logger, years[i], sname, fr, dirs, 
+                                        COUPLER_options, hf_all, ini_method,
+                                        elements, network)
                 status[i] = 1
                 if this_success:
                     logger.info("\t (dispatched)")
@@ -540,7 +526,7 @@ def parent(cfgfile, samples, threads, s_width, s_centre,
         logger.info("         This could be because it timed-out or an error occurred.")
 
     # Tidy VULCAN output folder
-    for f in glob.glob(dirs["vulcan"]+"output/%d_offchem_*"%now): 
+    for f in glob.glob(dirs["vulcan"]+"output/%s_offchem_*"%now): 
         os.remove(f)
 
     time_end = datetime.now()
@@ -582,16 +568,16 @@ if __name__ == '__main__':
 
     # Parameters
     cfgfile =       "output/agni_mixed_hot/init_coupler.cfg"  # Config file used for PROTEUS
-    samples =       4                  # How many samples to use from output dir (set to -1 if all are requested)
-    threads =       4                  # How many threads to use
+    elements  =     ['H', 'O', 'C', 'N']
+    network  =      'thermo/NCHO_full_photo_network.txt' 
+    samples =       12                  # How many samples to use from output dir (set to -1 if all are requested)
+    threads =       12                  # How many threads to use
     mkfuncs =       True                # Compile reaction functions again?
     mkplots =       True                # make plots?
-    s_width =       1e7                 # Scale width of sampling distribution [yr]
-    s_centre =      8e5                 # Centre of sampling distribution [yr]
     runtime_sleep = 40                  # Sleep seconds per iter (required for VULCAN warm up periods to pass)
-    ini_method =    1                   # Method used to init VULCAN abundances  (0: const_mix, 1: eqm)
+    ini_method =    0                   # Method used to init VULCAN abundances  (0: const_mix, 1: eqm)
 
     # Do it
-    parent(cfgfile, samples, threads, s_width, s_centre, 
-           mkfuncs=mkfuncs, runtime_sleep=runtime_sleep, ini_method=ini_method, mkplots=mkplots)
+    parent(cfgfile, samples, threads, elements, network, 
+           mkfuncs, runtime_sleep, ini_method, mkplots, True)
     

@@ -4,13 +4,13 @@
 PROTEUS Main file
 """
 
-from utils.modules_ext import *
 import utils.constants
-
 from utils.constants import *
+
+from utils.modules_ext import *
 from utils.coupler import *
-from utils.spider import RunSPIDER
-from utils.surface_gases import *
+from utils.spider import RunSPIDER, ReadSPIDER
+from utils.surface_gases import get_target_from_params, get_target_from_pressures, equilibrium_atmosphere, CalculateMantleMass
 from utils.logs import SetupLogger, GetLogfilePath, GetCurrentLogfileIndex, StreamToLogger
 
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
@@ -27,7 +27,7 @@ def main():
 
     # Read in COUPLER input file
     cfgsrc = os.path.abspath(str(args["cfg"]))
-    COUPLER_options, time_dict = ReadInitFile( cfgsrc , verbose=False )
+    COUPLER_options = ReadInitFile( cfgsrc , verbose=False )
 
     # Set directories dictionary
     utils.constants.dirs = SetDirectories(COUPLER_options)
@@ -106,18 +106,21 @@ def main():
         hf_row = ZeroHelpfileRow()
 
         # Initial time 
-        hf_row["Time"] =    time_dict["planet"]
-        hf_row["age_star"]= time_dict["star"]
+        hf_row["Time"] =    0.0
+        hf_row["age_star"]= COUPLER_options["time_star"]
 
-        # Initial guess for values 
-        hf_row["T_magma"] = COUPLER_options["T_magma"]
-        hf_row["T_surf"]  = hf_row["T_magma"]
+        # Initial guess for flux 
         hf_row["F_atm"]   = COUPLER_options["F_atm"]
         hf_row["F_int"]   = hf_row["F_atm"]
 
-        # Calculate mantle mass (liquid + solid)
-        hf_row["M_mantle"] = CalculateMantleMass(COUPLER_options)
-        hf_row["gravity"] = const_G * COUPLER_options["mass"] / (COUPLER_options["radius"] * COUPLER_options["radius"])
+        # Planet size conversion, and calculate mantle mass (= liquid + solid)
+        hf_row["M_planet"] = COUPLER_options["mass"] * M_earth
+        hf_row["R_planet"] = COUPLER_options["radius"] * R_earth
+        hf_row["gravity"] = const_G * hf_row["M_planet"] / (hf_row["R_planet"]**2.0)
+        hf_row["M_mantle"] = CalculateMantleMass(hf_row["R_planet"], 
+                                                 hf_row["M_planet"], 
+                                                 COUPLER_options["planet_coresize"])
+
 
         # Store partial pressures and list of included volatiles
         log.info("Initial partial pressures:")
@@ -230,13 +233,13 @@ def main():
             star_struct_modern.CalcBandFluxes()
 
             # get best rotation percentile 
-            star_pctle, _ = mors.synthesis.FitModernProperties(star_struct_modern, 
-                                                               COUPLER_options["star_mass"], 
-                                                               COUPLER_options["star_age_modern"]/1e6)
+            # star_pctle, _ = mors.synthesis.FitModernProperties(star_struct_modern, 
+            #                                                    COUPLER_options["star_mass"], 
+            #                                                    COUPLER_options["star_age_modern"]/1e6)
 
             # modern properties 
             star_props_modern = mors.synthesis.GetProperties(COUPLER_options["star_mass"], 
-                                                             star_pctle, 
+                                                             COUPLER_options["star_rot_pctle"], 
                                                              COUPLER_options["star_age_modern"]/1e6)
 
         case 1:  # BARAFFE
@@ -341,8 +344,13 @@ def main():
 
             # Scale fluxes from 1 AU to TOA 
             fl *= (1.0 / COUPLER_options["mean_distance"])**2.0
-            mors_time = {"planet":hf_row["Time"], "star":hf_row["age_star"]}
-            mors.SpectrumWrite(mors_time, wl, fl, dirs['output']+'/data/')
+
+            # Save spectrum to file
+            header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at t_star = %.2e yr'%hf_row["age_star"]
+            np.savetxt(os.path.join(dirs["output"],"data","%d.sflux"%hf_row["Time"]), 
+                       np.array([wl,fl]).T, 
+                       header=header,comments='',fmt="%.8e",delimiter='\t')
+    
 
             # Prepare spectral file for JANUS 
             if COUPLER_options["atmosphere_model"] == 0:
@@ -378,14 +386,16 @@ def main():
 
         # Previous magma temperature 
         if loop_counter["init"] < loop_counter["init_loops"]:
-            prev_T_magma = COUPLER_options["T_magma"]
+            prev_T_magma = 9000.0
         else:
             prev_T_magma = hf_all.iloc[-1]["T_magma"]
 
         # Run SPIDER
         RunSPIDER( dirs, COUPLER_options, IC_INTERIOR, 
                         loop_counter, hf_all, hf_row )
-        sim_time, spider_result = ReadSPIDER(dirs, COUPLER_options, hf_row["Time"], prev_T_magma)
+        sim_time, spider_result = ReadSPIDER(dirs, COUPLER_options, 
+                                             hf_row["Time"], prev_T_magma, 
+                                             hf_row["R_planet"])
 
         for k in spider_result.keys():
             if k in hf_row.keys():
@@ -444,6 +454,8 @@ def main():
         solvevol_inp["T_magma"] =    hf_row["T_magma"]
         solvevol_inp["Phi_global"] = hf_row["Phi_global"]
         solvevol_inp["gravity"]  =   hf_row["gravity"]
+        solvevol_inp["mass"]  =      hf_row["M_planet"]
+        solvevol_inp["radius"]  =    hf_row["R_planet"]
 
         #    recalculate mass targets during init phase, since these will be adjusted 
         #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
@@ -484,10 +496,12 @@ def main():
         PrintHalfSeparator()
         if COUPLER_options["shallow_ocean_layer"] == 1:
             hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
+        else:
+            hf_row["T_surf"] = hf_row["T_magma"]
 
         if COUPLER_options["atmosphere_model"] == 0:
             # Run JANUS: 
-            # Use the general adiabat to create a PT profile, then calculate fluxes
+            hf_row["T_surf"] = hf_row["T_magma"]
             atm = StructAtm( dirs, hf_row, COUPLER_options )
             atm_output = RunJANUS( atm, hf_row["Time"], dirs, COUPLER_options, hf_all)
 
@@ -497,7 +511,8 @@ def main():
 
         elif COUPLER_options["atmosphere_model"] == 2:
             # Run dummy atmosphere model 
-            atm_output = RunDummyAtm(dirs, COUPLER_options, hf_row["T_magma"], hf_row["F_ins"])
+            atm_output = RunDummyAtm(dirs, COUPLER_options, 
+                                     hf_row["T_magma"], hf_row["F_ins"], hf_row["R_planet"])
             
         
         # Store atmosphere module output variables
@@ -608,7 +623,7 @@ def main():
             finished = True
 
         # Maximum time reached
-        if (hf_row["Time"] >= time_dict["target"]):
+        if (hf_row["Time"] >= COUPLER_options["time_target"]):
             UpdateStatusfile(dirs, 13)
             log.info("")
             log.info("===> Target time reached! <===")

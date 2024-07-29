@@ -64,6 +64,7 @@ def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0, 
             for ln in lines:
                 if "const_mix" in ln:
                     vol_data_str = ln.split("=")[1].replace("'",'"')
+                    break
 
         if vol_data_str == None:
             raise Exception("Could not parse vulcan cfg file!")

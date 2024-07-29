@@ -70,7 +70,7 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
     ax.set_yscale("log")
 
     # Colour mapping
-    norm = mpl.colors.Normalize(vmin=sorted_times[0], vmax=sorted_times[-1])
+    norm = mpl.colors.LogNorm(vmin=max(1,sorted_times[0]), vmax=sorted_times[-1])
     sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm) # 
     sm.set_array([])
 
@@ -110,7 +110,7 @@ def main():
     # Read in COUPLER input file
     log.info("Read cfg file")
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options, time_dict = ReadInitFile( cfg )
+    COUPLER_options = ReadInitFile( cfg )
 
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)

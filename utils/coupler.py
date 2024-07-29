@@ -98,8 +98,8 @@ def GetHelpfileKeys():
 
     # Basic keys
     keys = [
-            # Model tracking 
-            "Time", 
+            # Model tracking and basic parameters
+            "Time", "R_planet", "M_planet",
 
             # Temperatures 
             "T_surf", "T_magma", "T_eqm", "T_skin",
@@ -236,7 +236,6 @@ def ReadInitFile(init_file_passed:str, verbose=False):
 
     # Read in input file as dictionary
     COUPLER_options  = {}
-    time_dict       = {}
     if verbose: 
         log.info("Read in init file:" + init_file)
 
@@ -269,43 +268,30 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                 key = key.strip()
                 val = val.strip()
                 
-                # Standard options
-                if not line.startswith("time_"):
+                # Some parameters are int
+                if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop", 
+                            "escape_model", "atmosphere_surf_state", "water_cloud",
+                            "plot_iterfreq", "stellar_heating", "mixing_length", 
+                            "atmosphere_chemistry", "solvevol_use_params", 
+                            "tropopause", "F_atm_bc", 
+                            "dt_dynamic", "prevent_warming", "atmosphere_model", 
+                            "atmosphere_nlev", "rayleigh", 
+                            "shallow_ocean_layer"]:
+                    val = int(val)
 
-                    # Some parameters are int
-                    if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop", 
-                                "escape_model", "atmosphere_surf_state", "water_cloud",
-                                "plot_iterfreq", "stellar_heating", "mixing_length", 
-                                "atmosphere_chemistry", "solvevol_use_params", 
-                                "tropopause", "F_atm_bc", "atmosphere_solve_energy", 
-                                "dt_dynamic", "prevent_warming", "atmosphere_model", 
-                                "atmosphere_nlev", "insert_rscatter", 
-                                "shallow_ocean_layer", "SEPARATION"]:
-                        val = int(val)
-
-                    # Some are str
-                    elif key in [ 'star_spectrum', 'dir_output', 'plot_format',
-                                  'spectral_file' , 'log_level']:
-                        val = str(val)
-                        
-                    # Most are float
-                    else:
-                        val = float(val)
-
-                    # Set option
-                    COUPLER_options[key] = val
-
-
-                # Time options
-                elif line.startswith("time_"):
-
-                        line = line.split("_")[1]
-
-                        (key, val) = line.split("=")
+                # Some are str
+                elif key in [ 'star_spectrum', 'dir_output', 'plot_format',
+                                'spectral_file' , 'log_level']:
+                    val = str(val)
                     
-                        time_dict[str(key.strip())] = float(val.strip())
+                # Most are float
+                else:
+                    val = float(val)
 
-    return COUPLER_options, time_dict
+                # Set option
+                COUPLER_options[key] = val
+
+    return COUPLER_options 
 
 def ValidateInitFile(dirs:dict, COUPLER_options:dict):
     '''
@@ -321,12 +307,6 @@ def ValidateInitFile(dirs:dict, COUPLER_options:dict):
         if shutil.which("julia") is None:
             UpdateStatusfile(dirs, 20)
             raise Exception("Could not find Julia in current environment")
-        
-    if COUPLER_options["atmosphere_model"] == 2:
-        if COUPLER_options["atmosphere_solve_energy"] == 1:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Cannot solve for RCE with dummy_atmosphere")
-    
         
     if COUPLER_options["atmosphere_nlev"] < 15:
         UpdateStatusfile(dirs, 20)
@@ -355,7 +335,7 @@ def ValidateInitFile(dirs:dict, COUPLER_options:dict):
         
     return True
 
-def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
+def UpdatePlots( output_dir:str, COUPLER_options, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
     
     Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
@@ -368,15 +348,16 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
             Is this function being called at the end of the simulation?
     """
 
-
-
     # Check model configuration
     dummy_atm = bool(COUPLER_options["atmosphere_model"] == 2)
     escape    = bool(COUPLER_options["escape_model"] > 0)
 
-
     # Get all JSON files
     output_times = get_all_output_times( output_dir )
+
+    # Do not plot if there's insufficient data 
+    if np.amax(output_times) < 2:
+        return
 
     # Global properties for all timesteps
     if len(output_times) > 2:
@@ -386,7 +367,7 @@ def UpdatePlots( output_dir, COUPLER_options, end=False, num_snapshots=7):
         if escape:
             plot_elements(output_dir, COUPLER_options["plot_format"])
         
-    # Filter to JSON files with corresponding NetCDF files
+    # Filter to only include steps with corresponding NetCDF files
     if not dummy_atm:
         ncs = glob.glob(output_dir + "/data/*_atm.nc")
         nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
