@@ -81,7 +81,7 @@ Download the framework
 
         $   cd SOCRATES
         $   ./configure
-        $   ./build-code
+        $   ./build_code
         $   cd ..
 
 5. Setup atmosphere model (**JANUS**)
