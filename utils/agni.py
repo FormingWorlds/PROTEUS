@@ -6,6 +6,7 @@ from utils.constants import *
 from utils.logs import GetLogfilePath, GetCurrentLogfileIndex
 
 import tomlkit as toml
+from juliacall import Main as jl
 
 log = logging.getLogger("PROTEUS")
 

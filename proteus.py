@@ -174,7 +174,7 @@ def main():
         S_0 = hf_row["F_ins"]
         F_inst_prev = S_0
 
-        # Set volatile mass targets 
+        # Set volatile mass targets f
         solvevol_target = {}
         for e in element_list:
             if e == 'O': continue
@@ -184,7 +184,7 @@ def main():
     if COUPLER_options["atmosphere_model"] == 0:
         from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
     elif COUPLER_options["atmosphere_model"] == 1:
-        from utils.agni import RunAGNI
+        from utils.agni2 import RunAGNI, InitAtmos, UpdateProfile
     elif COUPLER_options["atmosphere_model"] == 2:
         from utils.dummy_atmosphere import RunDummyAtm
     else:
@@ -512,6 +512,10 @@ def main():
 
         elif COUPLER_options["atmosphere_model"] == 1:
             # Run AGNI 
+            atm_resume = bool(loop_counter["total"] <= 1)
+            if not atm_resume:
+                atm = InitAtmos(dirs, COUPLER_options, hf_row)
+            atm = UpdateProfile(atm, hf_row, COUPLER_options, atm_resume)
             atm_output = RunAGNI(loop_counter["total"], dirs, COUPLER_options, hf_row)
 
         elif COUPLER_options["atmosphere_model"] == 2:
