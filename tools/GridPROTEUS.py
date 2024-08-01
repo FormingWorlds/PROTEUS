@@ -462,8 +462,8 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","t1c_rce.cfg")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c"
+    cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","t1c.cfg")
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v2"
     pg = Pgrid("trappist1c", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
@@ -485,7 +485,7 @@ if __name__=='__main__':
     pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-2, 0, 4])
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-2, 0, 2, 4])
     
     # -----
     # Print state of parameter grid
@@ -499,7 +499,7 @@ if __name__=='__main__':
     # Start PROTEUS processes
     # -----
 
-    pg.run(7, test_run=False)
+    pg.run(10, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.

@@ -401,6 +401,11 @@ def main():
             if k in hf_row.keys():
                 hf_row[k] = spider_result[k]
 
+        # Do not allow melt fraction to increase
+        if (COUPLER_options["prevent_warming"] == 1) \
+            and (loop_counter["init"] >= loop_counter["init_loops"]):
+            hf_row["Phi_global"] = min(hf_row["Phi_global"], hf_all.iloc[-1]["Phi_global"])
+
         # Advance current time in main loop according to interior step
         dt = float(sim_time) - hf_row["Time"]
         hf_row["Time"]     += dt # in years 
