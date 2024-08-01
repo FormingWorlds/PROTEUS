@@ -184,7 +184,7 @@ def main():
     if COUPLER_options["atmosphere_model"] == 0:
         from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
     elif COUPLER_options["atmosphere_model"] == 1:
-        from utils.agni2 import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv
+        from utils.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv
         ActivateEnv(dirs["agni"])
     elif COUPLER_options["atmosphere_model"] == 2:
         from utils.dummy_atmosphere import RunDummyAtm
