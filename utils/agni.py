@@ -9,6 +9,22 @@ from juliacall import Main as jl
 
 log = logging.getLogger("PROTEUS")
 
+def SyncLogfiles(outdir:str):
+    # Logfile paths 
+    agni_logpath = os.path.join(outdir, "agni_recent.log")
+    logpath = GetLogfilePath(outdir, GetCurrentLogfileIndex(outdir))
+
+    # Copy logfile content
+    with open(logpath, "a") as outfile:
+        with open(agni_logpath, "r") as infile:
+            inlines = infile.readlines()
+            for line in inlines:
+                line.replace('\00', '')
+                outfile.write(line)
+            
+    # Remove logfile content
+    with open(agni_logpath, "w") as hdl:
+        hdl.write("")
 
 def ActivateEnv(dirs:dict):
     jl.seval("using Pkg")
@@ -192,25 +208,6 @@ def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict, first_iter:bool):
     return atmos
 
 
-def ResetLogfile(dirs):
-    '''
-    Copy content of AGNI logfile to PROTEUS logfile, and then empty it.
-    '''
-
-    # get paths
-    agni_logpath = os.path.join(dirs["output"], "agni_recent.log")
-    logpath = GetLogfilePath(dirs["output"], GetCurrentLogfileIndex(dirs["output"]))
-
-    # copy content
-    with open(logpath, "a") as outfile:
-        with open(agni_logpath, "r") as infile:
-            outfile.write(infile.read())
-
-    # remove file and create fresh
-    safe_rm(agni_logpath)
-    with open(agni_logpath, "w") as hdl:
-        hdl.write("")
-
 
 def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
     """Run AGNI atmosphere model.
@@ -295,8 +292,8 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
                             save_frames=False
                             )
 
-        # Remove logfile contents
-        ResetLogfile(dirs)
+        # Move AGNI logfile content into PROTEUS logfile
+        SyncLogfiles()
 
         # Model status check
         if agni_success:

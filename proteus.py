@@ -213,6 +213,9 @@ def main():
     if not os.path.exists(spectral_file_nostar):
         UpdateStatusfile(dirs, 20)
         raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
+    
+    # Runtime spectral file path
+    spfile_path = os.path.join(dirs["output"] , "runtime.sf")
 
     # Handle stellar spectrum...
 
@@ -331,7 +334,10 @@ def main():
             or (loop_counter["total"] == 0) ):
             
             sspec_prev = hf_row["Time"]
-            updated_sspec = True
+
+            # Remove old spectral file if it exists
+            safe_rm(spfile_path)
+            safe_rm(spfile_path+"_k")
 
             log.info("Updating stellar spectrum") 
             match COUPLER_options['star_model']: 
@@ -519,7 +525,7 @@ def main():
             # Run AGNI 
 
             # Initialise atmosphere struct
-            first_agni = bool(loop_counter["total"] == 0) or updated_sspec
+            first_agni = not os.path.exists(spfile_path)
             if first_agni:
                 log.debug("Initialise new atmosphere struct")
                 atm = InitAtmos(dirs, COUPLER_options, hf_row)
