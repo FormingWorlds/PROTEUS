@@ -185,7 +185,7 @@ def main():
         from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
     elif COUPLER_options["atmosphere_model"] == 1:
         from utils.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv
-        ActivateEnv(dirs["agni"])
+        ActivateEnv(dirs)
     elif COUPLER_options["atmosphere_model"] == 2:
         from utils.dummy_atmosphere import RunDummyAtm
     else:
@@ -280,6 +280,9 @@ def main():
         ############### STELLAR FLUX MANAGEMENT
         PrintHalfSeparator()
         log.info("Stellar flux management...")
+
+        # Stellar spectrum has been updated this iter?
+        updated_sspec = False
         
         # Calculate new instellation and radius
         if (abs( hf_row["Time"] - sinst_prev ) > COUPLER_options['sinst_dt_update']) \
@@ -328,6 +331,7 @@ def main():
             or (loop_counter["total"] == 0) ):
             
             sspec_prev = hf_row["Time"]
+            updated_sspec = True
 
             log.info("Updating stellar spectrum") 
             match COUPLER_options['star_model']: 
@@ -515,13 +519,13 @@ def main():
             # Run AGNI 
 
             # Initialise atmosphere struct
-            atm_resume = bool(loop_counter["total"] > 0)
-            if not atm_resume:
+            first_agni = bool(loop_counter["total"] == 0) or updated_sspec
+            if first_agni:
                 log.debug("Initialise new atmosphere struct")
                 atm = InitAtmos(dirs, COUPLER_options, hf_row)
             
             # Update profile 
-            atm = UpdateProfile(atm, hf_row, COUPLER_options, atm_resume)
+            atm = UpdateProfile(atm, hf_row, COUPLER_options, first_agni)
 
             # Run solver
             atm, atm_output = RunAGNI(atm, loop_counter["total"], dirs, COUPLER_options, hf_row)

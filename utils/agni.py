@@ -10,10 +10,15 @@ from juliacall import Main as jl
 log = logging.getLogger("PROTEUS")
 
 
-def ActivateEnv(agni_dir:str):
+def ActivateEnv(dirs:dict):
     jl.seval("using Pkg")
-    jl.Pkg.activate(agni_dir)
+    jl.Pkg.activate(dirs["agni"])
     jl.seval("using AGNI")
+
+    verbosity = 1
+    logpath = os.path.join(dirs["output"], "agni_recent.log")
+
+    jl.AGNI.setup_logging(logpath, verbosity)
 
 
 def ConstructVolDict(hf_row:dict, COUPLER_options:dict):
@@ -55,9 +60,6 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
 
     # Create atmos struct 
     atmos = jl.AGNI.atmosphere.Atmos_t()
-
-    spfile_name = "AGNI/res/spectral_files/Dayspring/48/Dayspring.sf"
-    star_file = "AGNI/res/stellar_spectra/sun.txt"
 
     # Stellar spectrum path
     sflux_files = glob.glob(dirs["output"]+"/data/*.sflux")
@@ -110,7 +112,7 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
             condensates.append(k)
 
     # Setup struct 
-    return_success = jl.AGNI.atmosphere.setup_b(atmos, 
+    jl.AGNI.atmosphere.setup_b(atmos, 
                                                 
                         dirs["agni"], dirs["output"], input_sf,
 
@@ -140,13 +142,13 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
                         )
 
     # Allocate arrays 
-    jl.AGNI.atmosphere.allocate_b(atmos,star_file)
+    jl.AGNI.atmosphere.allocate_b(atmos,input_star)
 
     return atmos
                                     
 
 
-def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict, resume:bool):
+def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict, first_iter:bool):
     """Update atmosphere struct.
     
     Sets the new surface boundary conditions and composition.
@@ -159,8 +161,8 @@ def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict, resume:bool):
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
-        resume : bool
-            Resume from previous temperature profile 
+        first_iter : bool
+            Is this the first AGNI call?
 
     Returns
     ----------
@@ -184,10 +186,30 @@ def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict, resume:bool):
     atmos.tmp_magma = hf_row["T_magma"]
 
     # Temperature profile 
-    if not resume:
+    if first_iter:
         jl.AGNI.setpt.isothermal_b(atmos, atmos.tmp_surf)
 
     return atmos
+
+
+def ResetLogfile(dirs):
+    '''
+    Copy content of AGNI logfile to PROTEUS logfile, and then empty it.
+    '''
+
+    # get paths
+    agni_logpath = os.path.join(dirs["output"], "agni_recent.log")
+    logpath = GetLogfilePath(dirs["output"], GetCurrentLogfileIndex(dirs["output"]))
+
+    # copy content
+    with open(logpath, "a") as outfile:
+        with open(agni_logpath, "r") as infile:
+            outfile.write(infile.read())
+
+    # remove file and create fresh
+    safe_rm(agni_logpath)
+    with open(agni_logpath, "w") as hdl:
+        hdl.write("")
 
 
 def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
@@ -248,14 +270,12 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
     # default run parameters
     linesearch = 2
     easy_start = False
-    resume_prev= True
     dx_max = 60.0
 
     # bootstrapping run parameters
-    if loops_total <= 1:
+    if loops_total == 0:
         linesearch = 2
         easy_start = True
-        resume_prev= False
         dx_max = 200.0
 
     # make attempts
@@ -269,13 +289,16 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
                             conduct=False, convect=True, latent=True, sens_heat=True, 
                             max_steps=200,
                             max_runtime=600.0, 
-                            conv_atol=1e-3, conv_rtol=5e-3, 
+                            conv_atol=1e-3, conv_rtol=1e-2, 
                             method=1, 
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
                             save_frames=False
                             )
 
+        # Remove logfile contents
+        ResetLogfile(dirs)
 
+        # Model status check
         if agni_success:
             # success
             log.info("Attempt %d succeeded" % attempts)
@@ -289,7 +312,6 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
                 # Try using a different linesearch method
                 linesearch = 1
                 dx_max     = 10.0
-                resume_prev= True
             else:
                 log.error("Maximum attempts when executing AGNI")
                 break
@@ -300,8 +322,9 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
 
     # Make plots 
     if make_plots:
-        flux_path = os.path.join(dirs["output"],"plot_fluxes_atmosphere.png")
-        jl.AGNI.plotting.plot_fluxes(atmos, flux_path)
+        jl.AGNI.plotting.plot_fluxes(atmos, os.path.join(dirs["output"],
+                                                  "plot_fluxes_atmosphere.png"))
+        jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"], "plot_vmr.png"))
 
     # ---------------------------
     # Read results
