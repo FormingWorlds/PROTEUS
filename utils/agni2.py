@@ -12,7 +12,7 @@ log = logging.getLogger("PROTEUS")
 
 def ActivateEnv(agni_dir:str):
     jl.seval("using Pkg")
-    jl.Pkg.activate("AGNI")
+    jl.Pkg.activate(agni_dir)
     jl.seval("using AGNI")
 
 
@@ -78,6 +78,7 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
    
     # Chemistry 
     chem_type = COUPLER_options["atmosphere_chemistry"]
+    include_all = False
     if chem_type == 1:
         # equilibrium
         include_all = True
@@ -128,14 +129,14 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
                         vol_dict, "",
 
                         flag_rayleigh=bool(COUPLER_options["rayleigh"] == 1),
-                        flag_cloud=bool(COUPLER_options["water_cloud"] == 1)
+                        flag_cloud=bool(COUPLER_options["water_cloud"] == 1),
                         
                         albedo_s=COUPLER_options["albedo_s"],
                         condensates=condensates,
-                        include_all=include_all,
+                        use_all_gases=include_all,
 
                         skin_d=COUPLER_options["skin_d"], skin_k=COUPLER_options["skin_k"],
-                        T_magma=hf_row["T_surf"]
+                        tmp_magma=hf_row["T_surf"]
                         )
 
     # Allocate arrays 
@@ -185,6 +186,8 @@ def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict, resume:bool):
     # Temperature profile 
     if not resume:
         jl.AGNI.setpt.isothermal_b(atmos, atmos.tmp_surf)
+
+    return atmos
 
 
 def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
@@ -265,10 +268,11 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
                             chem_type=chem_type, 
                             conduct=False, convect=True, latent=True, sens_heat=True, 
                             max_steps=200,
-                            max_runtime=600, 
-                            conv_atol=1e-3, conv_rtol=5e-2, 
+                            max_runtime=600.0, 
+                            conv_atol=1e-3, conv_rtol=5e-3, 
                             method=1, 
-                            dx_max=dx_max, ls_method=linesearch, easy_start=easy_start
+                            dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
+                            save_frames=False
                             )
 
 
@@ -338,5 +342,5 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
     output["T_surf"] = T_surf
     output["z_obs"]  = z_obs + radius
     
-    return output
+    return atmos, output
 

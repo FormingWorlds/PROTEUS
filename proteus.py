@@ -184,7 +184,8 @@ def main():
     if COUPLER_options["atmosphere_model"] == 0:
         from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
     elif COUPLER_options["atmosphere_model"] == 1:
-        from utils.agni2 import RunAGNI, InitAtmos, UpdateProfile
+        from utils.agni2 import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv
+        ActivateEnv(dirs["agni"])
     elif COUPLER_options["atmosphere_model"] == 2:
         from utils.dummy_atmosphere import RunDummyAtm
     else:
@@ -512,11 +513,18 @@ def main():
 
         elif COUPLER_options["atmosphere_model"] == 1:
             # Run AGNI 
-            atm_resume = bool(loop_counter["total"] <= 1)
+
+            # Initialise atmosphere struct
+            atm_resume = bool(loop_counter["total"] > 0)
             if not atm_resume:
+                log.debug("Initialise new atmosphere struct")
                 atm = InitAtmos(dirs, COUPLER_options, hf_row)
+            
+            # Update profile 
             atm = UpdateProfile(atm, hf_row, COUPLER_options, atm_resume)
-            atm_output = RunAGNI(loop_counter["total"], dirs, COUPLER_options, hf_row)
+
+            # Run solver
+            atm, atm_output = RunAGNI(atm, loop_counter["total"], dirs, COUPLER_options, hf_row)
 
         elif COUPLER_options["atmosphere_model"] == 2:
             # Run dummy atmosphere model 
@@ -664,6 +672,7 @@ def main():
         # Make plots if required and go to next iteration
         if (COUPLER_options["plot_iterfreq"] > 0) and (loop_counter["total"] % COUPLER_options["plot_iterfreq"] == 0) and (not finished):
             PrintHalfSeparator()
+            log.info("Making plots")
             UpdatePlots( dirs["output"], COUPLER_options )
 
         ############### / HOUSEKEEPING AND CONVERGENCE CHECK 
