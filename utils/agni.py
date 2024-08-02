@@ -285,6 +285,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
     linesearch = 2
     easy_start = False
     dx_max = 70.0
+    ls_increase = 1.08
 
     # bootstrapping run parameters
     if loops_total == 0:
@@ -303,8 +304,8 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
                             conduct=False, convect=True, latent=True, sens_heat=True, 
                             max_steps=200,
                             max_runtime=600.0, 
-                            conv_atol=1e-3, conv_rtol=1e-2, 
-                            method=1, 
+                            conv_atol=1e-3, conv_rtol=1e-3, 
+                            method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
                             save_frames=False
                             )
@@ -324,8 +325,9 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
 
             if attempts == 2:
                 # Try using a different linesearch method
-                linesearch = 1
-                dx_max     = 15.0
+                linesearch  = 1
+                dx_max      = 20.0
+                ls_increase = 0.99
             else:
                 log.error("Maximum attempts when executing AGNI")
                 break
@@ -342,11 +344,10 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
         jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"], "plot_vmr.png"))
 
     # ---------------------------
-    # Read results
+    # Parse results
     # ---------------------------
     
-    log.debug("Read results")
-    ds = nc.Dataset(os.path.join(dirs["output"],"data",time_str+"_atm.nc"))
+    log.debug("Parse results")
     net_flux =      np.array(atmos.flux_n)
     LW_flux_up =    np.array(atmos.flux_u_lw)
     SW_flux_up =    np.array(atmos.flux_u_sw)
@@ -354,7 +355,6 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
     arr_z =         np.array(atmos.z)
     radius =        float(atmos.rp)
     T_surf =        float(atmos.tmp_surf)
-    ds.close()
 
     # New flux from SOCRATES
     if (COUPLER_options["F_atm_bc"] == 0):
@@ -366,11 +366,11 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
     if (COUPLER_options["prevent_warming"] == 1):
         F_atm_new = max( 1e-8 , F_atm_new )
         
-    log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.3f, %.3f, %.3f W/m^2" % 
+    log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.2e, %.2e, %.2e  W m-2" % 
                                         (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
-    # find 1 mbar level 
-    idx = find_nearest(arr_p*1e5, 1e-3)[1]
+    # find 1 mbar (=100 Pa) level 
+    idx = find_nearest(arr_p, 1e2)[1]
     z_obs = arr_z[idx]
 
     output = {}

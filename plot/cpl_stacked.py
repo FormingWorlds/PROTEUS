@@ -12,7 +12,7 @@ def plot_stacked( output_dir:str, times:list, plot_format="pdf" ):
 
     log.info("Plot stacked")
 
-    scale = 1.1
+    scale = 1.0
     fig,(axt,axb) = plt.subplots(2,1, figsize=(5*scale,10*scale), sharex=True)
 
     norm = mpl.colors.LogNorm(vmin=max(1,times[0]), vmax=times[-1])

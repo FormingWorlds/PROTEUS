@@ -85,6 +85,34 @@ def main():
     # Config file paths
     cfgbak = os.path.join(dirs["output"],"init_coupler.cfg")
 
+    # Import the appropriate atmosphere module 
+    if COUPLER_options["atmosphere_model"] == 0:
+        from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
+        from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
+
+    elif COUPLER_options["atmosphere_model"] == 1:
+        from utils.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv, DeallocAtmos
+        ActivateEnv(dirs)
+        atm = None
+
+    elif COUPLER_options["atmosphere_model"] == 2:
+        from utils.dummy_atmosphere import RunDummyAtm
+        
+    else:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Invalid atmosphere model")
+    
+    # Import the appropriate escape module 
+    if COUPLER_options["escape_model"] == 0:
+        pass 
+    elif COUPLER_options["escape_model"] == 1:
+        from utils.escape import RunZEPHYRUS
+    elif COUPLER_options["escape_model"] == 2:
+        from utils.escape import RunDummyEsc
+    else:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Invalid escape model")
+
     # Is the model resuming from a previous state?
     if not resume:
         # New simulation
@@ -178,35 +206,6 @@ def main():
         for e in element_list:
             if e == 'O': continue
             solvevol_target[e] = hf_row[e+"_kg_total"]
-
-    # Import the appropriate atmosphere module 
-    if COUPLER_options["atmosphere_model"] == 0:
-        from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
-        from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
-
-    elif COUPLER_options["atmosphere_model"] == 1:
-        from utils.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv, DeallocAtmos
-        ActivateEnv(dirs)
-        atm = None
-
-    elif COUPLER_options["atmosphere_model"] == 2:
-        from utils.dummy_atmosphere import RunDummyAtm
-        
-    else:
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Invalid atmosphere model")
-    
-    # Import the appropriate escape module 
-    if COUPLER_options["escape_model"] == 0:
-        pass 
-    elif COUPLER_options["escape_model"] == 1:
-        from utils.escape import RunZEPHYRUS
-    elif COUPLER_options["escape_model"] == 2:
-        from utils.escape import RunDummyEsc
-    else:
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Invalid escape model")
-
 
     # Download all basic data.
     # (to be improved such that we only download the one we need)
