@@ -18,8 +18,11 @@ def SyncLogfiles(outdir:str):
     with open(logpath, "a") as outfile:
         with open(agni_logpath, "r") as infile:
             inlines = infile.readlines()
-            for line in inlines:
-                line.replace('\00', '')
+            for i,line in enumerate(inlines):
+                # first line has NULL chars at the start
+                if i == 0:
+                    line = "[" + line.split("[")[-1]
+                # copy the line
                 outfile.write(line)
             
     # Remove logfile content
@@ -28,8 +31,12 @@ def SyncLogfiles(outdir:str):
 
 def ActivateEnv(dirs:dict):
     jl.seval("using Pkg")
+
     jl.Pkg.activate(dirs["agni"])
     jl.seval("using AGNI")
+
+    jl.seval("using Plots")
+    jl.seval('default(label=nothing)')
 
     verbosity = 1
     logpath = os.path.join(dirs["output"], "agni_recent.log")
@@ -73,14 +80,14 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
 
     """
 
+    log.debug("New AGNI atmosphere")
 
-    # Create atmos struct 
     atmos = jl.AGNI.atmosphere.Atmos_t()
 
     # Stellar spectrum path
-    sflux_files = glob.glob(dirs["output"]+"/data/*.sflux")
+    sflux_files = glob.glob(os.path.join(dirs["output"], "data", "*.sflux"))
     sflux_times = [ int(s.split("/")[-1].split(".")[0]) for s in sflux_files]
-    sflux_path  = dirs["output"]+"/data/%d.sflux"%int(sorted(sflux_times)[-1])
+    sflux_path  = os.path.join(dirs["output"], "data", "%d.sflux"%int(sorted(sflux_times)[-1]))
 
     # Spectral file path
     try_spfile = os.path.join(dirs["output"] , "runtime.sf")
@@ -160,11 +167,33 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
     # Allocate arrays 
     jl.AGNI.atmosphere.allocate_b(atmos,input_star)
 
+    # Set temperature profile from old NetCDF if it exists
+    nc_files = glob.glob(os.path.join(dirs["output"],"data","*.nc"))
+    if len(nc_files) > 0:
+        log.debug("Load NetCDF profile")
+
+        nc_times = [ int(s.split("/")[-1].split("_")[0]) for s in nc_files]
+        nc_path  = os.path.join(dirs["output"], "data", "%d_atm.nc"%int(sorted(nc_times)[-1]))
+        jl.AGNI.setpt.fromncdf_b(atmos, nc_path)    
+
+    # Otherwise, set isothermal
+    else:
+        jl.AGNI.setpt.isothermal_b(atmos, hf_row["T_surf"])
+        
+    # Logging
+    SyncLogfiles(dirs["output"])
+
     return atmos
-                                    
 
 
-def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict, first_iter:bool):
+def DeallocAtmos(atmos):
+    """
+    Deallocate atmosphere struct
+    """                  
+    jl.AGNI.atmosphere.deallocate_b(atmos)
+
+
+def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict):
     """Update atmosphere struct.
     
     Sets the new surface boundary conditions and composition.
@@ -173,12 +202,10 @@ def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict, first_iter:bool):
     ----------
         atmos : atmosphere.Atmos_t
             Atmosphere struct 
-        COUPLER_options : dict
-            Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
-        first_iter : bool
-            Is this the first AGNI call?
+        COUPLER_options : dict
+            Configuration options and other variables
 
     Returns
     ----------
@@ -200,10 +227,6 @@ def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict, first_iter:bool):
     # Update surface temperature(s)
     atmos.tmp_surf  = hf_row["T_surf"]
     atmos.tmp_magma = hf_row["T_magma"]
-
-    # Temperature profile 
-    if first_iter:
-        jl.AGNI.setpt.isothermal_b(atmos, atmos.tmp_surf)
 
     return atmos
 
@@ -239,14 +262,6 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
 
     # Chemistry 
     chem_type = COUPLER_options["atmosphere_chemistry"]
-    if chem_type > 0:
-        if chem_type == 1:
-            # equilibrium
-            include_all = True
-
-        elif chem_type >= 2:
-            # kinetics 
-            raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
     
     # Solution type
     surf_state = int(COUPLER_options["atmosphere_surf_state"])
@@ -267,7 +282,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
     # default run parameters
     linesearch = 2
     easy_start = False
-    dx_max = 60.0
+    dx_max = 70.0
 
     # bootstrapping run parameters
     if loops_total == 0:
@@ -293,7 +308,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
                             )
 
         # Move AGNI logfile content into PROTEUS logfile
-        SyncLogfiles()
+        SyncLogfiles(dirs["output"])
 
         # Model status check
         if agni_success:
@@ -308,7 +323,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
             if attempts == 2:
                 # Try using a different linesearch method
                 linesearch = 1
-                dx_max     = 10.0
+                dx_max     = 15.0
             else:
                 log.error("Maximum attempts when executing AGNI")
                 break

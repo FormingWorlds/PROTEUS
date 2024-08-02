@@ -184,8 +184,9 @@ def main():
     if COUPLER_options["atmosphere_model"] == 0:
         from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
     elif COUPLER_options["atmosphere_model"] == 1:
-        from utils.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv
+        from utils.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv, DeallocAtmos
         ActivateEnv(dirs)
+        atm = None
     elif COUPLER_options["atmosphere_model"] == 2:
         from utils.dummy_atmosphere import RunDummyAtm
     else:
@@ -512,8 +513,6 @@ def main():
         PrintHalfSeparator()
         if COUPLER_options["shallow_ocean_layer"] == 1:
             hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
-        else:
-            hf_row["T_surf"] = hf_row["T_magma"]
 
         if COUPLER_options["atmosphere_model"] == 0:
             # Run JANUS: 
@@ -525,13 +524,24 @@ def main():
             # Run AGNI 
 
             # Initialise atmosphere struct
-            first_agni = not os.path.exists(spfile_path)
-            if first_agni:
+            no_spfile = not os.path.exists(spfile_path)
+            no_atm    = bool(atm == None)
+            if no_atm or no_spfile:
                 log.debug("Initialise new atmosphere struct")
+
+                # first run?
+                if no_atm:
+                    # surface temperature guess
+                    hf_row["T_surf"] = hf_row["T_magma"]
+                else:
+                    # deallocate old atmosphere 
+                    DeallocAtmos(atm)
+
+                # allocate new 
                 atm = InitAtmos(dirs, COUPLER_options, hf_row)
             
             # Update profile 
-            atm = UpdateProfile(atm, hf_row, COUPLER_options, first_agni)
+            atm = UpdateProfile(atm, hf_row, COUPLER_options)
 
             # Run solver
             atm, atm_output = RunAGNI(atm, loop_counter["total"], dirs, COUPLER_options, hf_row)
