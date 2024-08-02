@@ -150,13 +150,13 @@ def main():
 
 
         # Store partial pressures and list of included volatiles
-        log.info("Initial partial pressures:")
+        log.info("Input partial pressures:")
         inc_vols = []
         for s in volatile_species:
             key_pp = str(s+"_initial_bar")
             key_in = str(s+"_included")
 
-            log.info("    %-6s : %-8.2f bar (included = %s)"%(s, COUPLER_options[key_pp], 
+            log.info("    %-6s : %-5.2f bar (included = %s)"%(s, COUPLER_options[key_pp], 
                                                             str(COUPLER_options[key_in]>0)))
 
             if COUPLER_options[key_in] > 0:

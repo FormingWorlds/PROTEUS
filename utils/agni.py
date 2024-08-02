@@ -9,19 +9,23 @@ from juliacall import Main as jl
 
 log = logging.getLogger("PROTEUS")
 
+# Constant
+AGNI_LOGFILE_NAME="agni_recent.log"
+
 def SyncLogfiles(outdir:str):
     # Logfile paths 
-    agni_logpath = os.path.join(outdir, "agni_recent.log")
+    agni_logpath = os.path.join(outdir, AGNI_LOGFILE_NAME)
     logpath = GetLogfilePath(outdir, GetCurrentLogfileIndex(outdir))
 
     # Copy logfile content
-    with open(logpath, "a") as outfile:
-        with open(agni_logpath, "r") as infile:
-            inlines = infile.readlines()
+    with open(agni_logpath, "r") as infile:
+        inlines = infile.readlines()
+
+        with open(logpath, "a") as outfile:
             for i,line in enumerate(inlines):
-                # first line has NULL chars at the start
+                # First line of agni logfile has NULL chars at the start, for some reason
                 if i == 0:
-                    line = "[" + line.split("[")[-1]
+                    line = "[" + line.split("[", 1)[1]
                 # copy the line
                 outfile.write(line)
             
@@ -30,6 +34,8 @@ def SyncLogfiles(outdir:str):
         hdl.write("")
 
 def ActivateEnv(dirs:dict):
+
+    log.debug("Activating Julia environment")
     jl.seval("using Pkg")
 
     # Import AGNI
@@ -44,8 +50,10 @@ def ActivateEnv(dirs:dict):
     #    This handle will be kept open throughout the PROTEUS simulation, so the file 
     #    should not be deleted at runtime. However, it will be emptied when appropriate.
     verbosity = 1
-    logpath = os.path.join(dirs["output"], "agni_recent.log")
+    logpath = os.path.join(dirs["output"], AGNI_LOGFILE_NAME)
     jl.AGNI.setup_logging(logpath, verbosity)
+
+    log.debug("AGNI will log to '%s'"%logpath)
 
 
 def ConstructVolDict(hf_row:dict, COUPLER_options:dict):
@@ -279,31 +287,43 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
 
     # tracking
     agni_success = False  # success?
-    attempts = 1          # number of attempts so far
-
-    # default run parameters
-    linesearch = 2
-    easy_start = False
-    dx_max = 70.0
-    ls_increase = 1.08
-
-    # bootstrapping run parameters
-    if loops_total == 0:
-        linesearch = 2
-        easy_start = True
-        dx_max = 200.0
+    attempts = 0          # number of attempts so far
 
     # make attempts
     while not agni_success:
+        attempts += 1
         log.info("Attempt %d" % attempts)
+
+        # default parameters
+        linesearch = 2
+        easy_start = False
+        dx_max = 70.0
+        ls_increase = 1.08
+
+        # first iteration parameters
+        if loops_total == 0:
+            easy_start = True
+            dx_max = 200.0
+
+        # try different solver parameters if struggling
+        if attempts == 2:
+            linesearch  = 1
+            dx_max      = 20.0
+            ls_increase = 1.0
+
+
+        log.debug("Solver parameters:")
+        log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
+            linesearch, str(easy_start), dx_max, ls_increase
+        ))
 
         # Try solving temperature profile
         agni_success = jl.AGNI.solver.solve_energy_b(
                             atmos, sol_type=surf_state,
                             chem_type=chem_type, 
                             conduct=False, convect=True, latent=True, sens_heat=True, 
-                            max_steps=200,
-                            max_runtime=600.0, 
+                            max_steps=180,
+                            max_runtime=900.0, 
                             conv_atol=1e-3, conv_rtol=1e-3, 
                             method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
@@ -321,16 +341,11 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
         else:
             # failure
             log.warning("Attempt %d failed" % attempts)
-            attempts += 1
 
-            if attempts == 2:
-                # Try using a different linesearch method
-                linesearch  = 1
-                dx_max      = 20.0
-                ls_increase = 0.99
-            else:
-                log.error("Maximum attempts when executing AGNI")
-                break
+        # Max attempts
+        if attempts > 2:
+            log.error("Maximum attempts when executing AGNI")
+            break
    
     # Write output data 
     ncdf_path = os.path.join(dirs["output"],"data",time_str+"_atm.nc")
