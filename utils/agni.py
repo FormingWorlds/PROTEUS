@@ -32,15 +32,19 @@ def SyncLogfiles(outdir:str):
 def ActivateEnv(dirs:dict):
     jl.seval("using Pkg")
 
+    # Import AGNI
     jl.Pkg.activate(dirs["agni"])
     jl.seval("using AGNI")
 
+    # Plotting configuration
     jl.seval("using Plots")
     jl.seval('default(label=nothing)')
 
+    # Setup logging from AGNI
+    #    This handle will be kept open throughout the PROTEUS simulation, so the file 
+    #    should not be deleted at runtime. However, it will be emptied when appropriate.
     verbosity = 1
     logpath = os.path.join(dirs["output"], "agni_recent.log")
-
     jl.AGNI.setup_logging(logpath, verbosity)
 
 
@@ -272,8 +276,6 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
     # Inform
     log.info("Running AGNI...")
     time_str = "%d"%hf_row["Time"]
-    make_plots = (COUPLER_options["plot_iterfreq"] > 0) \
-                        and (loops_total % COUPLER_options["plot_iterfreq"] == 0)
 
     # tracking
     agni_success = False  # success?
@@ -333,7 +335,8 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
     jl.AGNI.dump.write_ncdf(atmos, ncdf_path)
 
     # Make plots 
-    if make_plots:
+    if (COUPLER_options["plot_iterfreq"] > 0) \
+            and (loops_total % COUPLER_options["plot_iterfreq"] == 0):
         jl.AGNI.plotting.plot_fluxes(atmos, os.path.join(dirs["output"],
                                                   "plot_fluxes_atmosphere.png"))
         jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"], "plot_vmr.png"))

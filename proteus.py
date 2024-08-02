@@ -13,9 +13,7 @@ from utils.spider import RunSPIDER, ReadSPIDER
 from utils.surface_gases import get_target_from_params, get_target_from_pressures, equilibrium_atmosphere, CalculateMantleMass
 from utils.logs import SetupLogger, GetLogfilePath, GetCurrentLogfileIndex, StreamToLogger
 
-from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
-
 import mors 
 
 #====================================================================
@@ -112,6 +110,7 @@ def main():
         # Initial guess for flux 
         hf_row["F_atm"]   = COUPLER_options["F_atm"]
         hf_row["F_int"]   = hf_row["F_atm"]
+        hf_row["T_eqm"]   = 2000.0
 
         # Planet size conversion, and calculate mantle mass (= liquid + solid)
         hf_row["M_planet"] = COUPLER_options["mass"] * M_earth
@@ -183,12 +182,16 @@ def main():
     # Import the appropriate atmosphere module 
     if COUPLER_options["atmosphere_model"] == 0:
         from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
+        from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
+
     elif COUPLER_options["atmosphere_model"] == 1:
         from utils.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv, DeallocAtmos
         ActivateEnv(dirs)
         atm = None
+
     elif COUPLER_options["atmosphere_model"] == 2:
         from utils.dummy_atmosphere import RunDummyAtm
+        
     else:
         UpdateStatusfile(dirs, 20)
         raise Exception("Invalid atmosphere model")
@@ -281,13 +284,44 @@ def main():
                  loop_counter["steady"],loop_counter["steady_loops"]
                  ))
 
+
+        ############### INTERIOR
+        PrintHalfSeparator()
+
+        # Previous magma temperature 
+        if loop_counter["init"] < loop_counter["init_loops"]:
+            prev_T_magma = 9000.0
+        else:
+            prev_T_magma = hf_all.iloc[-1]["T_magma"]
+
+        # Run SPIDER
+        RunSPIDER( dirs, COUPLER_options, IC_INTERIOR, 
+                        loop_counter, hf_all, hf_row )
+        sim_time, spider_result = ReadSPIDER(dirs, COUPLER_options, 
+                                             hf_row["Time"], prev_T_magma, 
+                                             hf_row["R_planet"])
+
+        for k in spider_result.keys():
+            if k in hf_row.keys():
+                hf_row[k] = spider_result[k]
+
+        # Do not allow melt fraction to increase
+        if (COUPLER_options["prevent_warming"] == 1) \
+            and (loop_counter["init"] >= loop_counter["init_loops"]):
+            hf_row["Phi_global"] = min(hf_row["Phi_global"], hf_all.iloc[-1]["Phi_global"])
+
+        # Advance current time in main loop according to interior step
+        dt = float(sim_time) - hf_row["Time"]
+        hf_row["Time"]     += dt # in years 
+        hf_row["age_star"] += dt # in years
+
+        ############### / INTERIOR
+
+
         ############### STELLAR FLUX MANAGEMENT
         PrintHalfSeparator()
         log.info("Stellar flux management...")
 
-        # Stellar spectrum has been updated this iter?
-        updated_sspec = False
-        
         # Calculate new instellation and radius
         if (abs( hf_row["Time"] - sinst_prev ) > COUPLER_options['sinst_dt_update']) \
             or (loop_counter["total"] == 0):
@@ -390,40 +424,6 @@ def main():
             log.info("New spectrum not required at this time")
 
         ############### / STELLAR FLUX MANAGEMENT
-
-
-
-        ############### INTERIOR
-        PrintHalfSeparator()
-
-        # Previous magma temperature 
-        if loop_counter["init"] < loop_counter["init_loops"]:
-            prev_T_magma = 9000.0
-        else:
-            prev_T_magma = hf_all.iloc[-1]["T_magma"]
-
-        # Run SPIDER
-        RunSPIDER( dirs, COUPLER_options, IC_INTERIOR, 
-                        loop_counter, hf_all, hf_row )
-        sim_time, spider_result = ReadSPIDER(dirs, COUPLER_options, 
-                                             hf_row["Time"], prev_T_magma, 
-                                             hf_row["R_planet"])
-
-        for k in spider_result.keys():
-            if k in hf_row.keys():
-                hf_row[k] = spider_result[k]
-
-        # Do not allow melt fraction to increase
-        if (COUPLER_options["prevent_warming"] == 1) \
-            and (loop_counter["init"] >= loop_counter["init_loops"]):
-            hf_row["Phi_global"] = min(hf_row["Phi_global"], hf_all.iloc[-1]["Phi_global"])
-
-        # Advance current time in main loop according to interior step
-        dt = float(sim_time) - hf_row["Time"]
-        hf_row["Time"]     += dt # in years 
-        hf_row["age_star"] += dt # in years
-
-        ############### / INTERIOR
 
 
         ############### ESCAPE
@@ -707,9 +707,15 @@ def main():
     # Plot conditions at the end
     UpdatePlots( dirs["output"], COUPLER_options, end=True)
     end_time = datetime.now()
-    run_time = end_time - start_time
     log.info("Simulation stopped at: "+end_time.strftime('%Y-%m-%d_%H:%M:%S'))
-    log.info("Total runtime: %.2f hours" % ( run_time.total_seconds()/(60.0 * 60.0)  ))
+
+    run_time = end_time - start_time 
+    run_time = run_time.total_seconds()/60 # minutes
+    if run_time > 60:
+        run_time /= 60 # hours
+        log.info("Total runtime: %.2f hours" % run_time )
+    else:
+        log.info("Total runtime: %.2f minutes" % run_time )
 
     # EXIT
     return

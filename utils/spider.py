@@ -314,7 +314,7 @@ def _try_spider( dirs:dict, COUPLER_options:dict,
 
     ### SPIDER base call sequence 
     call_sequence = [   
-                        dirs["spider"]+"/spider", 
+                        os.path.join(dirs["spider"],"spider"), 
                         "-options_file",           SPIDER_options_file, 
                         "-outputDirectory",        dirs["output"]+'data/',
                         "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
