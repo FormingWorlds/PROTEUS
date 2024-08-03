@@ -318,6 +318,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
         if loops_total == 0:
             easy_start = True
             dx_max = 200.0
+            ls_increase = 1.08
 
 
         log.debug("Solver parameters:")

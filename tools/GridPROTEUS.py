@@ -463,7 +463,7 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","t1c.cfg")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v2"
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v3"
     pg = Pgrid("trappist1c", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
