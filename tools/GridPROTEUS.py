@@ -6,8 +6,8 @@
 import os, itertools, time, subprocess, shutil, sys, multiprocessing, logging, gc
 from datetime import datetime
 import numpy as np
-COUPLER_DIR=os.getenv('COUPLER_DIR')
-if COUPLER_DIR == None:
+PROTEUS_DIR=os.getenv('PROTEUS_DIR')
+if PROTEUS_DIR == None:
     raise Exception("Environment is not activated or is setup incorrectly")
 
 
@@ -69,7 +69,7 @@ class Pgrid():
 
         # Pgrid's own name (for versioning, etc.)
         self.name = str(name).strip()
-        self.outdir = COUPLER_DIR+"/output/"+self.name+"/"
+        self.outdir = PROTEUS_DIR+"/output/"+self.name+"/"
         self.tmpdir = "/tmp/"+self.name+"/"
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
@@ -335,7 +335,7 @@ class Pgrid():
 
          # Thread targget
         def _thread_target(cfg_path):
-            proteus_py = os.path.join(COUPLER_DIR,"proteus.py")
+            proteus_py = os.path.join(PROTEUS_DIR,"proteus.py")
             if test_run:
                 command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
             else:
@@ -462,7 +462,7 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    cfg_base = os.path.join(os.getenv('COUPLER_DIR'),"input","t1c.cfg")
+    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","t1c.cfg")
     symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v2"
     pg = Pgrid("trappist1c", cfg_base, symlink_dir=symlink)
 

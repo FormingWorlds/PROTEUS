@@ -82,7 +82,7 @@ def parent(folder, samples, threads, s_width, s_centre,
     # These are 2D arrays, the first dimension being each grid point
     # and the second dimension being the samples within that grid point
 
-    grid_opts = []  # COUPLER_options
+    grid_opts = []  # OPTIONS
     grid_hfdf = []  # Helpfile dataframe
     grid_cfgf = []  # Config file
     grid_dirs = []  # Directories dict
@@ -99,10 +99,10 @@ def parent(folder, samples, threads, s_width, s_centre,
 
         # Read in PROTEUS config file
         cfgfile = gf+"/init_coupler.cfg"
-        COUPLER_options, _ = ReadInitFile( cfgfile )
+        OPTIONS, _ = ReadInitFile( cfgfile )
 
         # Set directories
-        dirs = SetDirectories(COUPLER_options)
+        dirs = SetDirectories(OPTIONS)
         offchem_dir = dirs["output"]+"offchem/"
 
         # Delete old files
@@ -152,7 +152,7 @@ def parent(folder, samples, threads, s_width, s_centre,
 
         # Save to grid-in-memory
         gpoints += 1
-        grid_opts.append( [ COUPLER_options ] * samples  ) 
+        grid_opts.append( [ OPTIONS ] * samples  ) 
         grid_hfdf.append( [ helpfile_df     ] * samples  )
         grid_cfgf.append( [ cfgfile         ] * samples  )
         grid_dirs.append( [ dirs            ] * samples  )

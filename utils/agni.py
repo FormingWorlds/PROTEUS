@@ -57,10 +57,10 @@ def ActivateEnv(dirs:dict):
     log.debug("AGNI will log to '%s'"%logpath)
 
 
-def ConstructVolDict(hf_row:dict, COUPLER_options:dict):
+def ConstructVolDict(hf_row:dict, OPTIONS:dict):
     vol_dict = {}
     for vol in volatile_species:
-        if COUPLER_options[vol+"_included"]:
+        if OPTIONS[vol+"_included"]:
             vmr = hf_row[vol+"_vmr"]
             if vmr > 1e-40:
                 vol_dict[vol] = vmr 
@@ -72,7 +72,7 @@ def ConstructVolDict(hf_row:dict, COUPLER_options:dict):
     return vol_dict
 
 
-def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
+def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
     """Initialise atmosphere struct for use by AGNI.
     
     Does not set the temperature profile.
@@ -81,7 +81,7 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
     ----------
         dirs : dict
             Dictionary containing paths to directories
-        COUPLER_options : dict
+        OPTIONS : dict
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
@@ -110,11 +110,11 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
         input_star =    ""   
     else:
         # doesn't exist => AGNI will copy it + modify as required
-        input_sf =      os.path.join(dirs["fwl"], COUPLER_options["spectral_file"])
+        input_sf =      os.path.join(dirs["fwl"], OPTIONS["spectral_file"])
         input_star =    sflux_path
 
     # composition
-    vol_dict = ConstructVolDict(hf_row, COUPLER_options)
+    vol_dict = ConstructVolDict(hf_row, OPTIONS)
     
     # set condensation
     condensates = []
@@ -136,7 +136,7 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
             condensates.append(k)
 
     # Chemistry 
-    chem_type = COUPLER_options["atmosphere_chemistry"]
+    chem_type = OPTIONS["atmosphere_chemistry"]
     include_all = False
     fc_dir = ""
     if chem_type == 1:
@@ -158,28 +158,28 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
                         dirs["agni"], dirs["output"], input_sf,
 
                         hf_row["F_ins"], 
-                        COUPLER_options["asf_scalefactor"], 
-                        COUPLER_options["albedo_pl"], 
-                        COUPLER_options["zenith_angle"],
+                        OPTIONS["asf_scalefactor"], 
+                        OPTIONS["albedo_pl"], 
+                        OPTIONS["zenith_angle"],
 
                         hf_row["T_surf"], 
                         hf_row["gravity"], hf_row["R_planet"],
                         
-                        int(COUPLER_options["atmosphere_nlev"]), 
+                        int(OPTIONS["atmosphere_nlev"]), 
                         hf_row["P_surf"], 
-                        COUPLER_options["P_top"],
+                        OPTIONS["P_top"],
 
                         vol_dict, "",
 
-                        flag_rayleigh=bool(COUPLER_options["rayleigh"] == 1),
-                        flag_cloud=bool(COUPLER_options["water_cloud"] == 1),
+                        flag_rayleigh=bool(OPTIONS["rayleigh"] == 1),
+                        flag_cloud=bool(OPTIONS["water_cloud"] == 1),
                         
-                        albedo_s=COUPLER_options["albedo_s"],
+                        albedo_s=OPTIONS["albedo_s"],
                         condensates=condensates,
                         use_all_gases=include_all,
                         fastchem_work = fc_dir,
 
-                        skin_d=COUPLER_options["skin_d"], skin_k=COUPLER_options["skin_k"],
+                        skin_d=OPTIONS["skin_d"], skin_k=OPTIONS["skin_k"],
                         tmp_magma=hf_row["T_surf"]
                         )
 
@@ -213,7 +213,7 @@ def DeallocAtmos(atmos):
     shutil.rmtree(str(jl.AGNI.atmosphere.fastchem_work))
 
 
-def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict):
+def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
     """Update atmosphere struct.
     
     Sets the new surface boundary conditions and composition.
@@ -224,7 +224,7 @@ def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict):
             Atmosphere struct 
         hf_row : dict
             Dictionary containing simulation variables for current iteration
-        COUPLER_options : dict
+        OPTIONS : dict
             Configuration options and other variables
 
     Returns
@@ -235,7 +235,7 @@ def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict):
     """
 
     # Update compositions
-    vol_dict = ConstructVolDict(hf_row, COUPLER_options)
+    vol_dict = ConstructVolDict(hf_row, OPTIONS)
     for g in vol_dict.keys():
         atmos.gas_vmr[g][:] = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]
@@ -252,7 +252,7 @@ def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict):
 
 
 
-def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict):
+def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
     """Run AGNI atmosphere model.
     
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -266,7 +266,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
             Model total loops counter.
         dirs : dict
             Dictionary containing paths to directories
-        COUPLER_options : dict
+        OPTIONS : dict
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
@@ -281,10 +281,10 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
     """
 
     # Chemistry 
-    chem_type = COUPLER_options["atmosphere_chemistry"]
+    chem_type = OPTIONS["atmosphere_chemistry"]
     
     # Solution type
-    surf_state = int(COUPLER_options["atmosphere_surf_state"])
+    surf_state = int(OPTIONS["atmosphere_surf_state"])
     if not (0 <= surf_state <= 3):
         UpdateStatusfile(dirs, 20)
         raise Exception("Invalid surface state %d" % surf_state)
@@ -360,10 +360,10 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
     jl.AGNI.dump.write_ncdf(atmos, ncdf_path)
 
     # Make plots 
-    if (COUPLER_options["plot_iterfreq"] > 0) \
-            and (loops_total % COUPLER_options["plot_iterfreq"] == 0):
+    if (OPTIONS["plot_iterfreq"] > 0) \
+            and (loops_total % OPTIONS["plot_iterfreq"] == 0):
 
-        fmt = COUPLER_options["plot_format"]
+        fmt = OPTIONS["plot_format"]
         jl.AGNI.plotting.plot_fluxes(atmos, os.path.join(dirs["output"],
                                                   "plot_fluxes_atmosphere.%s"%fmt))
         jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"], "plot_vmr.%s"%fmt))
@@ -382,13 +382,13 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
     T_surf =        float(atmos.tmp_surf)
 
     # New flux from SOCRATES
-    if (COUPLER_options["F_atm_bc"] == 0):
+    if (OPTIONS["F_atm_bc"] == 0):
         F_atm_new = net_flux[0] 
     else:
         F_atm_new = net_flux[-1]  
 
     # Require that the net flux must be upward (positive)
-    if (COUPLER_options["prevent_warming"] == 1):
+    if (OPTIONS["prevent_warming"] == 1):
         F_atm_new = max( 1e-8 , F_atm_new )
         
     log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.2e, %.2e, %.2e  W m-2" % 

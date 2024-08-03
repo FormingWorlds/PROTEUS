@@ -107,14 +107,14 @@ if __name__ == '__main__':
 
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options = ReadInitFile( cfg )
+    OPTIONS = ReadInitFile( cfg )
 
     # Species to make plots for
     species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4","HCN", "NH3", "N2", "NO"]
     # species = None
 
     # Set directories dictionary
-    dirs = SetDirectories(COUPLER_options)
+    dirs = SetDirectories(OPTIONS)
 
     # Load data
     ls = glob.glob(dirs["output"]+"offchem/*/output.vul")

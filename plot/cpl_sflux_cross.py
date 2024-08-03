@@ -144,14 +144,14 @@ if __name__ == '__main__':
    
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options = ReadInitFile( cfg )
+    OPTIONS = ReadInitFile( cfg )
 
     # Set directories dictionary
-    dirs = SetDirectories(COUPLER_options)
+    dirs = SetDirectories(OPTIONS)
 
     plot_sflux_cross(dirs['output'], wl_targets=wl_bins,
-                     modern_age=COUPLER_options["star_age_modern"], 
-                     plot_format=COUPLER_options["plot_format"])
+                     modern_age=OPTIONS["star_age_modern"], 
+                     plot_format=OPTIONS["plot_format"])
 
     print("Done!")
 
