@@ -266,7 +266,7 @@ def _try_spider( dirs:dict, COUPLER_options:dict,
                 speed_up = speed_up and ( phi_12   < dt_rtol*abs(phi_2  ) + dt_atol )
 
                 if speed_up:
-                    dtswitch = dtprev * 1.05
+                    dtswitch = dtprev * 1.1
                     log.info("Time-stepping intent: speed up")
                 else:
                     dtswitch = dtprev * 0.9

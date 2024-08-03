@@ -138,7 +138,7 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
     # Chemistry 
     chem_type = COUPLER_options["atmosphere_chemistry"]
     include_all = False
-    fc_dir = None
+    fc_dir = ""
     if chem_type == 1:
         # equilibrium
         include_all = True
