@@ -21,6 +21,14 @@ def natural_sort(l):
     alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
     return sorted(l, key = alphanum_key)
 
+# Create a temporary folder
+def create_tmp_folder():
+    tmp_dir = "/tmp/proteus_%d/" % np.random.randint(int(1e12),int(1e13-1))
+    if os.path.exists(tmp_dir):
+        shutil.rmtree(tmp_dir,ignore_errors=True)
+    os.makedirs(tmp_dir)
+    return tmp_dir
+
 def safe_rm(fpath:str):
     '''
     Safely remove a file 

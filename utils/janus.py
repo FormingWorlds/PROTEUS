@@ -152,8 +152,7 @@ def RunJANUS( atm, time:float, dirs:dict, COUPLER_options:dict, hf_all:pd.DataFr
     cwd = os.getcwd()
     tmp_dir = dirs["output"]
     if write_in_tmp_dir:
-        tmp_dir = "/tmp/socrates_%d/" % np.random.randint(int(100),int(1e13))
-        os.makedirs(tmp_dir)
+        tmp_dir = create_tmp_folder()
     log.debug("Will run socrates inside '%s'"%tmp_dir)
     os.chdir(tmp_dir)
 

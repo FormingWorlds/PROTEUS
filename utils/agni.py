@@ -37,14 +37,15 @@ def ActivateEnv(dirs:dict):
 
     log.debug("Activating Julia environment")
     jl.seval("using Pkg")
-
-    # Import AGNI
     jl.Pkg.activate(dirs["agni"])
-    jl.seval("using AGNI")
 
     # Plotting configuration
+    jl.seval('ENV["GKSwstype"] = "100"')
     jl.seval("using Plots")
     jl.seval('default(label=nothing)')
+
+    # Import AGNI
+    jl.seval("using AGNI")
 
     # Setup logging from AGNI
     #    This handle will be kept open throughout the PROTEUS simulation, so the file 
@@ -112,18 +113,6 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
         input_sf =      os.path.join(dirs["fwl"], COUPLER_options["spectral_file"])
         input_star =    sflux_path
 
-   
-    # Chemistry 
-    chem_type = COUPLER_options["atmosphere_chemistry"]
-    include_all = False
-    if chem_type == 1:
-        # equilibrium
-        include_all = True
-
-    elif chem_type >= 2:
-        # kinetics 
-        raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
-    
     # composition
     vol_dict = ConstructVolDict(hf_row, COUPLER_options)
     
@@ -146,6 +135,23 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
                 continue 
             condensates.append(k)
 
+    # Chemistry 
+    chem_type = COUPLER_options["atmosphere_chemistry"]
+    include_all = False
+    fc_dir = None
+    if chem_type == 1:
+        # equilibrium
+        include_all = True
+        condensates = []
+
+        # working folder for fastchem coupling
+        fc_dir = create_tmp_folder()
+        log.debug("Fastchem work folder: '%s'"%fc_dir)
+
+    elif chem_type >= 2:
+        # kinetics 
+        raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
+    
     # Setup struct 
     jl.AGNI.atmosphere.setup_b(atmos, 
                                                 
@@ -171,6 +177,7 @@ def InitAtmos(dirs:dict, COUPLER_options:dict, hf_row:dict):
                         albedo_s=COUPLER_options["albedo_s"],
                         condensates=condensates,
                         use_all_gases=include_all,
+                        fastchem_work = fc_dir,
 
                         skin_d=COUPLER_options["skin_d"], skin_k=COUPLER_options["skin_k"],
                         tmp_magma=hf_row["T_surf"]
@@ -203,6 +210,7 @@ def DeallocAtmos(atmos):
     Deallocate atmosphere struct
     """                  
     jl.AGNI.atmosphere.deallocate_b(atmos)
+    shutil.rmtree(str(jl.AGNI.atmosphere.fastchem_work))
 
 
 def UpdateProfile(atmos, hf_row:dict, COUPLER_options:dict):
@@ -300,16 +308,16 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
         dx_max = 70.0
         ls_increase = 1.08
 
-        # first iteration parameters
-        if loops_total == 0:
-            easy_start = True
-            dx_max = 200.0
-
         # try different solver parameters if struggling
         if attempts == 2:
             linesearch  = 1
             dx_max      = 20.0
             ls_increase = 1.0
+
+        # first iteration parameters
+        if loops_total == 0:
+            easy_start = True
+            dx_max = 200.0
 
 
         log.debug("Solver parameters:")
@@ -324,7 +332,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
                             conduct=False, convect=True, latent=True, sens_heat=True, 
                             max_steps=180,
                             max_runtime=900.0, 
-                            conv_atol=1e-3, conv_rtol=1e-3, 
+                            conv_atol=1e-3, conv_rtol=1e-2, 
                             method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
                             save_frames=False
@@ -342,11 +350,11 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
             # failure
             log.warning("Attempt %d failed" % attempts)
 
-        # Max attempts
-        if attempts > 2:
-            log.error("Maximum attempts when executing AGNI")
-            break
-   
+            # Max attempts
+            if attempts >= 2:
+                log.error("Maximum attempts when executing AGNI")
+                break
+        
     # Write output data 
     ncdf_path = os.path.join(dirs["output"],"data",time_str+"_atm.nc")
     jl.AGNI.dump.write_ncdf(atmos, ncdf_path)
@@ -354,9 +362,11 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, COUPLER_options:dict, hf_row:dict
     # Make plots 
     if (COUPLER_options["plot_iterfreq"] > 0) \
             and (loops_total % COUPLER_options["plot_iterfreq"] == 0):
+
+        fmt = COUPLER_options["plot_format"]
         jl.AGNI.plotting.plot_fluxes(atmos, os.path.join(dirs["output"],
-                                                  "plot_fluxes_atmosphere.png"))
-        jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"], "plot_vmr.png"))
+                                                  "plot_fluxes_atmosphere.%s"%fmt))
+        jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"], "plot_vmr.%s"%fmt))
 
     # ---------------------------
     # Parse results

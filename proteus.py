@@ -700,6 +700,10 @@ def main():
     # FINAL THINGS BEFORE EXIT
     PrintHalfSeparator()
 
+    # Deallocate atmosphere 
+    if COUPLER_options["atmosphere_model"] == 1:
+        DeallocAtmos(atm)
+
     # Clean up files
     safe_rm(keepalive_file)
 
