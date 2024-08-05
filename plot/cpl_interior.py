@@ -180,10 +180,10 @@ if __name__ == "__main__":
 
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options = ReadInitFile( cfg )
+    OPTIONS = ReadInitFile( cfg )
 
     # Set directories dictionary
-    dirs = SetDirectories(COUPLER_options)
+    dirs = SetDirectories(OPTIONS)
 
     output_list = get_all_output_times(dirs['output'])
 
@@ -196,4 +196,4 @@ if __name__ == "__main__":
         plot_list.append(output_list[-1])
     print("Snapshots:", plot_list)
 
-    plot_interior( dirs['output'], plot_list, plot_format=COUPLER_options["plot_format"] )
+    plot_interior( dirs['output'], plot_list, plot_format=OPTIONS["plot_format"] )

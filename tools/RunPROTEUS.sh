@@ -5,7 +5,7 @@
 echo "Start RunPROTEUS"
 
 # Check if the required globals are set
-if [[ -z $COUPLER_DIR ]]; then
+if [[ -z $PROTEUS_DIR ]]; then
     echo "ERROR: Required global variables have not been set"
     echo "       Did you source the env file yet?"
     sleep 1.0 
@@ -34,7 +34,7 @@ else
     ALIAS="$2"
     RESUME=$(echo "$3" | tr -d ' ' | tr '[:upper:]' '[:lower:]' | cut -c1-1)  # strip spaces, covert to lowercase, get first char
     DETACH=$(echo "$4" | tr -d ' ' | tr '[:upper:]' '[:lower:]' | cut -c1-1)  # strip spaces, covert to lowercase, get first char
-    EXECUTABLE="$COUPLER_DIR/proteus.py"
+    EXECUTABLE="$PROTEUS_DIR/proteus.py"
 
     # Clear dead screens
     screen -wipe > /dev/null

@@ -69,10 +69,10 @@ def main():
     # Read in COUPLER input file
     log.info("Read cfg file")
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options = ReadInitFile( cfg )
+    OPTIONS = ReadInitFile( cfg )
 
     # Set directories dictionary
-    dirs = SetDirectories(COUPLER_options)
+    dirs = SetDirectories(OPTIONS)
 
     files = glob.glob(os.path.join(dirs["output"], "data", "*_atm.nc"))
     times = [int(f.split("/")[-1].split("_")[0]) for f in files]
@@ -94,7 +94,7 @@ def main():
     print("Snapshots:", plot_times)
 
     # Plot fixed set from above
-    plot_atmosphere( output_dir=dirs["output"], times=plot_times, plot_format=COUPLER_options["plot_format"] )
+    plot_atmosphere( output_dir=dirs["output"], times=plot_times, plot_format=OPTIONS["plot_format"] )
 
 #====================================================================
 

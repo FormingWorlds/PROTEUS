@@ -12,7 +12,7 @@ def plot_stacked( output_dir:str, times:list, plot_format="pdf" ):
 
     log.info("Plot stacked")
 
-    scale = 1.1
+    scale = 1.0
     fig,(axt,axb) = plt.subplots(2,1, figsize=(5*scale,10*scale), sharex=True)
 
     norm = mpl.colors.LogNorm(vmin=max(1,times[0]), vmax=times[-1])
@@ -104,13 +104,13 @@ def main():
     else:
         cfg = 'init_coupler.cfg' 
 
-    # Read in COUPLER input file
-    log.info("Read cfg file")
+    # Read-in configuration file
+    log.info("Read configuration file")
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options = ReadInitFile( cfg )
+    OPTIONS = ReadInitFile( cfg )
 
     # Set directories dictionary
-    dirs = SetDirectories(COUPLER_options)
+    dirs = SetDirectories(OPTIONS)
 
     files = glob.glob(os.path.join(dirs["output"], "data", "*_atm.nc"))
     times = [int(f.split("/")[-1].split("_")[0]) for f in files]
@@ -135,7 +135,7 @@ def main():
     print("Snapshots:", plot_times)
 
     plot_stacked( output_dir=dirs["output"], times=plot_times, 
-                 plot_format=COUPLER_options["plot_format"] )
+                 plot_format=OPTIONS["plot_format"] )
 
 #====================================================================
 

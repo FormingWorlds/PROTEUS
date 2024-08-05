@@ -235,7 +235,7 @@ def ReadInitFile(init_file_passed:str, verbose=False):
     log.debug("Reading configuration file")
 
     # Read in input file as dictionary
-    COUPLER_options  = {}
+    OPTIONS  = {}
     if verbose: 
         log.info("Read in init file:" + init_file)
 
@@ -289,30 +289,35 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                     val = float(val)
 
                 # Set option
-                COUPLER_options[key] = val
+                OPTIONS[key] = val
 
-    return COUPLER_options 
+    return OPTIONS 
 
-def ValidateInitFile(dirs:dict, COUPLER_options:dict):
+def ValidateInitFile(dirs:dict, OPTIONS:dict):
     '''
     Validate configuration file, checking for invalid options
     '''
 
-    if COUPLER_options["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
-        if COUPLER_options["shallow_ocean_layer"] == 1:
+    if OPTIONS["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
+        if OPTIONS["shallow_ocean_layer"] == 1:
             UpdateStatusfile(dirs, 20)
             raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
         
-    if COUPLER_options["atmosphere_model"] == 1:  # Julia required for AGNI
+    surf_state = int(OPTIONS["atmosphere_surf_state"])
+    if not (0 <= surf_state <= 3):
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Invalid surface state %d" % surf_state)
+        
+    if OPTIONS["atmosphere_model"] == 1:  # Julia required for AGNI
         if shutil.which("julia") is None:
             UpdateStatusfile(dirs, 20)
             raise Exception("Could not find Julia in current environment")
         
-    if COUPLER_options["atmosphere_nlev"] < 15:
+    if OPTIONS["atmosphere_nlev"] < 15:
         UpdateStatusfile(dirs, 20)
         raise Exception("Atmosphere must have at least 15 levels")
     
-    if COUPLER_options["interior_nlev"] < 40:
+    if OPTIONS["interior_nlev"] < 40:
         UpdateStatusfile(dirs, 20)
         raise Exception("Interior must have at least 40 levels")
     
@@ -320,22 +325,22 @@ def ValidateInitFile(dirs:dict, COUPLER_options:dict):
     for s in volatile_species:
         key_pp = str(s+"_initial_bar")
         key_in = str(s+"_included")
-        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options[key_in] == 0):
+        if (OPTIONS[key_pp] > 0.0) and (OPTIONS[key_in] == 0):
             UpdateStatusfile(dirs, 20)
             raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
-        if (COUPLER_options[key_pp] > 0.0) and (COUPLER_options["solvevol_use_params"] > 0):
+        if (OPTIONS[key_pp] > 0.0) and (OPTIONS["solvevol_use_params"] > 0):
             UpdateStatusfile(dirs, 20)
             raise Exception("Volatile %s has non-zero pressure but outgassing parameters are enabled"%s)
 
     # Required vols
     for s in ["H2O","CO2","N2","S2"]:
-        if COUPLER_options[s+"_included"] == 0:
+        if OPTIONS[s+"_included"] == 0:
             UpdateStatusfile(dirs, 20)
             raise Exception("Missing required volatile '%s'"%s)
         
     return True
 
-def UpdatePlots( output_dir:str, COUPLER_options, end=False, num_snapshots=7):
+def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
     
     Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
@@ -344,13 +349,15 @@ def UpdatePlots( output_dir:str, COUPLER_options, end=False, num_snapshots=7):
     ----------
         output_dir : str
             Output directory containing simulation information
+        OPTIONS : dict 
+            PROTEUS options dictionary.
         end : bool
             Is this function being called at the end of the simulation?
     """
 
     # Check model configuration
-    dummy_atm = bool(COUPLER_options["atmosphere_model"] == 2)
-    escape    = bool(COUPLER_options["escape_model"] > 0)
+    dummy_atm = bool(OPTIONS["atmosphere_model"] == 2)
+    escape    = bool(OPTIONS["escape_model"] > 0)
 
     # Get all JSON files
     output_times = get_all_output_times( output_dir )
@@ -361,15 +368,15 @@ def UpdatePlots( output_dir:str, COUPLER_options, end=False, num_snapshots=7):
 
     # Global properties for all timesteps
     if len(output_times) > 2:
-        plot_global(output_dir, COUPLER_options)   
+        plot_global(output_dir, OPTIONS)   
 
         # Elemental mass inventory
         if escape:
-            plot_elements(output_dir, COUPLER_options["plot_format"])
+            plot_elements(output_dir, OPTIONS["plot_format"])
         
     # Filter to only include steps with corresponding NetCDF files
     if not dummy_atm:
-        ncs = glob.glob(output_dir + "/data/*_atm.nc")
+        ncs = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
         nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
         output_times = sorted(list(set(output_times) & set(nc_times)))
 
@@ -395,28 +402,28 @@ def UpdatePlots( output_dir:str, COUPLER_options, end=False, num_snapshots=7):
     log.debug("Snapshots to plot:" + str(plot_times))
 
     # Temperature profiles
-    plot_interior(output_dir, plot_times, COUPLER_options["plot_format"])     
+    plot_interior(output_dir, plot_times, OPTIONS["plot_format"])     
     if not dummy_atm:
-        plot_atmosphere(output_dir, plot_times, COUPLER_options["plot_format"])
-        plot_stacked(output_dir, plot_times, COUPLER_options["plot_format"])
+        plot_atmosphere(output_dir, plot_times, OPTIONS["plot_format"])
+        plot_stacked(output_dir, plot_times, OPTIONS["plot_format"])
 
-        if COUPLER_options["atmosphere_model"] != 1:
+        if OPTIONS["atmosphere_model"] != 1:
             # don't make this plot for AGNI, since it will do it itself
-            plot_fluxes_atmosphere(output_dir, COUPLER_options["plot_format"])
+            plot_fluxes_atmosphere(output_dir, OPTIONS["plot_format"])
 
     # Only at the end of the simulation
     if end:
-        plot_global(output_dir, COUPLER_options, logt=False)   
-        plot_interior_cmesh(output_dir, plot_format=COUPLER_options["plot_format"])
-        plot_sflux(output_dir, plot_format=COUPLER_options["plot_format"])
-        plot_sflux_cross(output_dir, plot_format=COUPLER_options["plot_format"])
-        plot_fluxes_global(output_dir, COUPLER_options)
-        plot_observables(output_dir, plot_format=COUPLER_options["plot_format"])
+        plot_global(output_dir, OPTIONS, logt=False)   
+        plot_interior_cmesh(output_dir, plot_format=OPTIONS["plot_format"])
+        plot_sflux(output_dir, plot_format=OPTIONS["plot_format"])
+        plot_sflux_cross(output_dir, plot_format=OPTIONS["plot_format"])
+        plot_fluxes_global(output_dir, OPTIONS)
+        plot_observables(output_dir, plot_format=OPTIONS["plot_format"])
  
     # Close all figures
     plt.close()
 
-def SetDirectories(COUPLER_options: dict):
+def SetDirectories(OPTIONS: dict):
     """Set directories dictionary
     
     Sets paths to the required directories, based on the configuration provided
@@ -424,7 +431,7 @@ def SetDirectories(COUPLER_options: dict):
 
     Parameters
     ----------
-        COUPLER_options : dict
+        OPTIONS : dict
             PROTEUS options dictionary
 
     Returns
@@ -433,20 +440,20 @@ def SetDirectories(COUPLER_options: dict):
             Dictionary of paths to important directories
     """
 
-    if os.environ.get('COUPLER_DIR') == None:
+    if os.environ.get('PROTEUS_DIR') == None:
         raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
-    coupler_dir = os.path.abspath(os.getenv('COUPLER_DIR'))
+    proteus_dir = os.path.abspath(os.getenv('PROTEUS_DIR'))
 
     # PROTEUS folders
     dirs = {
-            "output":   os.path.join(coupler_dir,"output",COUPLER_options['dir_output']), 
-            "input":    os.path.join(coupler_dir,"input"),
-            "coupler":  coupler_dir,
-            "janus":    os.path.join(coupler_dir,"JANUS"),
-            "agni":     os.path.join(coupler_dir,"AGNI"),
-            "vulcan":   os.path.join(coupler_dir,"VULCAN"),
-            "spider":   os.path.join(coupler_dir,"SPIDER"),
-            "utils":    os.path.join(coupler_dir,"utils")
+            "output":   os.path.join(proteus_dir,"output",OPTIONS['dir_output']), 
+            "input":    os.path.join(proteus_dir,"input"),
+            "proteus":  proteus_dir,
+            "janus":    os.path.join(proteus_dir,"JANUS"),
+            "agni":     os.path.join(proteus_dir,"AGNI"),
+            "vulcan":   os.path.join(proteus_dir,"VULCAN"),
+            "spider":   os.path.join(proteus_dir,"SPIDER"),
+            "utils":    os.path.join(proteus_dir,"utils")
             }
     
     # FWL data folder
@@ -460,7 +467,7 @@ def SetDirectories(COUPLER_options: dict):
     
 
     # SOCRATES directory
-    if COUPLER_options["atmosphere_model"] in [0,1]:
+    if OPTIONS["atmosphere_model"] in [0,1]:
         # needed for atmosphere models 0 and 1
         
         if os.environ.get('RAD_DIR') == None:

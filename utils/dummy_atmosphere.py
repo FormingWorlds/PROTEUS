@@ -7,7 +7,7 @@ from utils.constants import *
 log = logging.getLogger("PROTEUS")
 
 # Run the dummy atmosphere module
-def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float, R_planet:float):
+def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:float):
     log.info("Running dummy_atmosphere...")
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
@@ -18,15 +18,15 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float, R_
     gamma           = 0.7
 
     # Parameters 
-    zenith_angle    = COUPLER_options["zenith_angle"]
-    albedo_pl       = COUPLER_options["albedo_pl"]
-    inst_sf         = COUPLER_options["asf_scalefactor"]
-    albedo_s        = COUPLER_options["albedo_s"]
-    skin_d          = COUPLER_options["skin_d"]
-    skin_k          = COUPLER_options["skin_k"]
+    zenith_angle    = OPTIONS["zenith_angle"]
+    albedo_pl       = OPTIONS["albedo_pl"]
+    inst_sf         = OPTIONS["asf_scalefactor"]
+    albedo_s        = OPTIONS["albedo_s"]
+    skin_d          = OPTIONS["skin_d"]
+    skin_k          = OPTIONS["skin_k"]
 
     # Check configuration
-    if COUPLER_options["rayleigh"] == 1:
+    if OPTIONS["rayleigh"] == 1:
         log.warning("Rayleigh scattering is enabled but it will be neglected")
 
     log.info("Gamma = %.4f" % gamma)
@@ -49,13 +49,13 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float, R_
         return {"fl_U_LW":fl_U_LW, "fl_D_SW":fl_D_SW, "fl_U_SW":fl_U_SW, "fl_N":fl_N}
         
     # fixed T_Surf
-    if COUPLER_options["atmosphere_surf_state"] == 1:  
+    if OPTIONS["atmosphere_surf_state"] == 1:  
         log.info("Calculating fluxes with dummy atmosphere")
         T_surf_atm = T_magma
         fluxes = _calc_fluxes(T_surf_atm)
         
     # conductive lid
-    elif COUPLER_options["atmosphere_surf_state"] == 2: 
+    elif OPTIONS["atmosphere_surf_state"] == 2: 
         log.info("Calculating fluxes with dummy atmosphere and CBL")
         import scipy.optimize as optimise
 
@@ -83,7 +83,7 @@ def RunDummyAtm( dirs:dict, COUPLER_options:dict, T_magma:float, F_ins:float, R_
     
     # Require that the net flux must be upward
     F_atm_lim = fluxes["fl_N"]
-    if (COUPLER_options["prevent_warming"] == 1):
+    if (OPTIONS["prevent_warming"] == 1):
         F_atm_lim = max( 1.0e-8 , F_atm_lim )
 
     # Print if a limit was applied

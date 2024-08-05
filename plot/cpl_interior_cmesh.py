@@ -156,13 +156,13 @@ def main():
     # Read in COUPLER input file
     log.info("Read cfg file")
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options = ReadInitFile( cfg )
+    OPTIONS = ReadInitFile( cfg )
 
     # Set directories dictionary
-    dirs = SetDirectories(COUPLER_options)
+    dirs = SetDirectories(OPTIONS)
 
     # Plot fixed set from above
-    plot_interior_cmesh( output_dir=dirs["output"], plot_format=COUPLER_options["plot_format"])
+    plot_interior_cmesh( output_dir=dirs["output"], plot_format=OPTIONS["plot_format"])
 
 #====================================================================
 

@@ -7,7 +7,7 @@ from utils.spider import *
 
 log = logging.getLogger("PROTEUS")
 
-def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
+def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
 
     log.info("Plot global")
 
@@ -41,7 +41,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
         # Check vmr for presence
         this_vmr = np.array(hf_all[vol+"_vmr"])
         vol_present[vol] = True 
-        if (np.amax(this_vmr) < 1.0e-20) or (COUPLER_options[vol+"_included"] < 1):
+        if (np.amax(this_vmr) < 1.0e-20) or (OPTIONS[vol+"_included"] < 1):
             vol_present[vol] = False 
             continue 
         vol_vmr[vol] = this_vmr 
@@ -143,7 +143,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
 
     
     # PLOT ax_bl
-    ax_bl.axhline( y=COUPLER_options["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
+    ax_bl.axhline( y=OPTIONS["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
     ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
     ax_bl.plot( hf_all["Time"],     hf_all["Phi_global"], color=dict_colors["atm"], linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
     ax_bl.legend(loc='center left', **leg_kwargs)
@@ -188,7 +188,7 @@ def plot_global( output_dir , COUPLER_options, logt=True, tmin=1e1):
     else:
         plt_name += "_lin"
     
-    fig.savefig(output_dir+"/%s.%s"%(plt_name,COUPLER_options["plot_format"]), 
+    fig.savefig(output_dir+"/%s.%s"%(plt_name,OPTIONS["plot_format"]), 
                 bbox_inches='tight', dpi=200)
 
 #====================================================================
@@ -203,10 +203,10 @@ if __name__ == "__main__":
     # Read in COUPLER input file
     log.info("Read cfg file")
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options = ReadInitFile( cfg )
+    OPTIONS = ReadInitFile( cfg )
 
     # Set directories dictionary
-    dirs = SetDirectories(COUPLER_options)
+    dirs = SetDirectories(OPTIONS)
 
     for logt in [True,False]:
-        plot_global(dirs['output'],COUPLER_options, logt=logt, tmin=1e1)
+        plot_global(dirs['output'],OPTIONS, logt=logt, tmin=1e1)

@@ -7,7 +7,7 @@ from utils.plot import *
 log = logging.getLogger("PROTEUS")
 
 # Plotting fluxes
-def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
+def plot_fluxes_global(output_dir, OPTIONS, t0=100.0):
 
     log.info("Plot global fluxes")
 
@@ -18,7 +18,7 @@ def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
     time = np.array(hf_all["Time"] )
 
     F_net = np.array(hf_all["F_atm"])
-    F_asf = np.array(hf_all["F_ins"]) * COUPLER_options["asf_scalefactor"] * (1.0 - COUPLER_options["albedo_pl"]) * np.cos(COUPLER_options["zenith_angle"] * np.pi/180.0)
+    F_asf = np.array(hf_all["F_ins"]) * OPTIONS["asf_scalefactor"] * (1.0 - OPTIONS["albedo_pl"]) * np.cos(OPTIONS["zenith_angle"] * np.pi/180.0)
     F_olr = np.array(hf_all["F_olr"])
     F_upw = np.array(hf_all["F_olr"]) + np.array(hf_all["F_sct"]) 
     F_int = np.array(hf_all["F_int"])
@@ -57,7 +57,7 @@ def plot_fluxes_global(output_dir, COUPLER_options, t0=100.0):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_global.%s"%COUPLER_options["plot_format"], 
+    fig.savefig(output_dir+"/plot_fluxes_global.%s"%OPTIONS["plot_format"], 
                 bbox_inches='tight', dpi=200)
 
 if __name__ == '__main__':
@@ -69,10 +69,10 @@ if __name__ == '__main__':
 
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options = ReadInitFile( cfg )
+    OPTIONS = ReadInitFile( cfg )
 
     # Set directories dictionary
-    dirs = SetDirectories(COUPLER_options)
+    dirs = SetDirectories(OPTIONS)
 
-    plot_fluxes_global(dirs["output"], COUPLER_options)
+    plot_fluxes_global(dirs["output"], OPTIONS)
     

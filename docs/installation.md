@@ -52,6 +52,7 @@ conda install matplotlib numpy pandas scipy sympy natsort ipykernel pip tomlkit
 conda install conda-forge::f90nml
 conda install conda-forge::netcdf4
 conda install conda-forge::cmcrameri 
+pip install juliacall
 ```
 
 ## Download the framework

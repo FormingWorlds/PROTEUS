@@ -71,7 +71,7 @@ def get_sample_years(years_all:list,samples:int):
     return sorted(set(years))  # Ensure that there are no duplicates and sort ascending
 
 def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, dirs:dict, 
-             COUPLER_options:dict, hf_all:pd.DataFrame, 
+             OPTIONS:dict, hf_all:pd.DataFrame, 
              ini_method:int, elements:list, network:str) -> bool:
     """Run VULCAN once for a given PROTEUS output year
     
@@ -91,7 +91,7 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
             Is this the first time that VULCAN is run for this configuration?
         dirs : dict
             Dictionary of useful directories
-        COUPLER_options : dict
+        OPTIONS : dict
             PROTEUS options dictionary read from cfg file
         hf_all : DataFrame
             Helpfile contents loaded as a Pandas DataFrame object
@@ -241,11 +241,11 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
         vcf.write("r_star = %1.6e \n" %         float(hf_row["R_star"]))
 
         # Other planet parameters
-        vcf.write("Rp = %1.6e \n" %             float(COUPLER_options["radius"]*100.0))
+        vcf.write("Rp = %1.6e \n" %             float(OPTIONS["radius"]*100.0))
         vcf.write("gs = %1.6e \n" %             float(hf_row["gravity"]*100.0))
-        vcf.write("sl_angle = %1.6e \n" %       float(COUPLER_options["zenith_angle"]*np.pi/180.0))
-        vcf.write("f_diurnal = %1.6e \n" %      float(COUPLER_options["asf_scalefactor"]))
-        vcf.write("orbit_radius = %1.6e \n" %   float(COUPLER_options["mean_distance"]))
+        vcf.write("sl_angle = %1.6e \n" %       float(OPTIONS["zenith_angle"]*np.pi/180.0))
+        vcf.write("f_diurnal = %1.6e \n" %      float(OPTIONS["asf_scalefactor"]))
+        vcf.write("orbit_radius = %1.6e \n" %   float(OPTIONS["mean_distance"]))
 
         vcf.flush()
         os.fsync(vcf.fileno())
@@ -261,7 +261,7 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
     sflux_near = dirs["output"]+"/data/%d.sflux"%find_nearest(years,year)[0]
 
     sflux_read = np.loadtxt(sflux_near, skiprows=1).T
-    f_sf = float(hf_row["R_star"]) * R_sun_cm / (COUPLER_options["mean_distance"] * AU_cm)
+    f_sf = float(hf_row["R_star"]) * R_sun_cm / (OPTIONS["mean_distance"] * AU_cm)
     sflux_scaled = sflux_read[1] * f_sf * f_sf       # scale to surface of star 
 
     sflux_write = [sflux_read[0], sflux_scaled]
@@ -287,7 +287,7 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
     vulcan_flag = " " if first_run else "-n"
     vulcan_run = "screen -d -m -L -Logfile %s -S %s python vulcan.py %s" % (logfile, screen_name,vulcan_flag)
     subprocess.run([vulcan_run], shell=True, check=True)
-    os.chdir(dirs["coupler"])
+    os.chdir(dirs["proteus"])
 
     return success
 
@@ -332,10 +332,10 @@ def parent(cfgfile, samples, threads, elements, network, mkfuncs, runtime_sleep,
     """
 
     # Read in PROTEUS config file
-    COUPLER_options, _ = ReadInitFile( cfgfile )
+    OPTIONS, _ = ReadInitFile( cfgfile )
 
     # Set directories
-    dirs = SetDirectories(COUPLER_options)
+    dirs = SetDirectories(OPTIONS)
     offchem_dir = os.path.join(dirs["output"], "offchem")
 
     # Delete old files
@@ -508,7 +508,7 @@ def parent(cfgfile, samples, threads, elements, network, mkfuncs, runtime_sleep,
                 fr = bool( (count_dispatched == 0) and mkfuncs)
                 sname = "%s_offchem_%d" % (now,y)
                 this_success = run_once(logger, years[i], sname, fr, dirs, 
-                                        COUPLER_options, hf_all, ini_method,
+                                        OPTIONS, hf_all, ini_method,
                                         elements, network)
                 status[i] = 1
                 if this_success:
