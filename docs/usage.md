@@ -4,7 +4,7 @@
 
 You can directly run PROTEUS using the Python command:
 
-``` console
+```console
 python proteus.py --cfg [cfgfile]
 ```
 
@@ -15,7 +15,7 @@ order to resume the simulation from the disk.
 
 You can also run PROTEUS inside a Screen session using:
 
-``` console
+```console
 tools/RunPROTEUS.sh [cfgfile] [alias] [resume] [detach]
 ```
 
