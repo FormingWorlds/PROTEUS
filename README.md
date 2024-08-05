@@ -11,7 +11,7 @@ of the atmospheres and interiors of rocky planets.
 
 ## Installation instructions   
 
-See https://proteus-code.readthedocs.io/en/latest/installation.html for steps and troubleshooting advice.
+Click [here](https://proteus-code.readthedocs.io/en/latest/installation.html) for steps and troubleshooting advice.
 
 ## Run instructions
 
@@ -32,6 +32,7 @@ Run `git submodule update --recursive --remote`
 Tim Lichtenberg         | tim.lichtenberg[at]rug.nl | 
 Harrison Nicholls       | harrison.nicholls[at]physics.ox.ac.uk |
 Laurent Soucasse        | l.soucasse[at]esciencecenter.nl |
+Stef Smeets             | s.smeets[at]esciencecenter.nl |
 Dan J. Bower            | dbower[at]ethz.ch |
 Mark Hammond            | mark.hammond[at]physics.ox.ac.uk |
 Patrick Sanan           | patrick.sanan[at]gmail.com |
