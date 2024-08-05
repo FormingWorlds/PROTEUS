@@ -303,6 +303,11 @@ def ValidateInitFile(dirs:dict, OPTIONS:dict):
             UpdateStatusfile(dirs, 20)
             raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
         
+    surf_state = int(OPTIONS["atmosphere_surf_state"])
+    if not (0 <= surf_state <= 3):
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Invalid surface state %d" % surf_state)
+        
     if OPTIONS["atmosphere_model"] == 1:  # Julia required for AGNI
         if shutil.which("julia") is None:
             UpdateStatusfile(dirs, 20)

@@ -154,7 +154,6 @@ def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
     
     # Setup struct 
     jl.AGNI.atmosphere.setup_b(atmos, 
-                                                
                         dirs["agni"], dirs["output"], input_sf,
 
                         hf_row["F_ins"], 
@@ -280,15 +279,6 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
 
     """
 
-    # Chemistry 
-    chem_type = OPTIONS["atmosphere_chemistry"]
-    
-    # Solution type
-    surf_state = int(OPTIONS["atmosphere_surf_state"])
-    if not (0 <= surf_state <= 3):
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Invalid surface state %d" % surf_state)
-
     # Inform
     log.info("Running AGNI...")
     time_str = "%d"%hf_row["Time"]
@@ -303,23 +293,22 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
         log.info("Attempt %d" % attempts)
 
         # default parameters
-        linesearch = 2
+        linesearch = 1
         easy_start = False
-        dx_max = 70.0
-        ls_increase = 1.08
+        dx_max = OPTIONS["tsurf_poststep_change"]+1.0
+        ls_increase = 0.1
 
         # try different solver parameters if struggling
         if attempts == 2:
-            linesearch  = 1
-            dx_max      = 20.0
-            ls_increase = 1.0
+            linesearch  = 2
+            dx_max     *= 2.0
+            ls_increase = 1.1
 
         # first iteration parameters
         if loops_total == 0:
             linesearch  = 2
             easy_start  = True
             dx_max      = 200.0
-            ls_increase = 1.09
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -327,16 +316,19 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
         ))
 
         # Try solving temperature profile
-        agni_success = jl.AGNI.solver.solve_energy_b(
-                            atmos, sol_type=surf_state,
-                            chem_type=chem_type, 
+        agni_success = jl.AGNI.solver.solve_energy_b(atmos, 
+                            sol_type=OPTIONS["atmosphere_surf_state"],
+                            chem_type=OPTIONS["atmosphere_chemistry"], 
+
                             conduct=False, convect=True, latent=True, sens_heat=True, 
-                            max_steps=180,
-                            max_runtime=900.0, 
+
+                            max_steps=130, max_runtime=900.0, 
                             conv_atol=1e-3, conv_rtol=1e-2, 
+
                             method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
-                            save_frames=False
+                            
+                            save_frames=False, modplot=0
                             )
 
         # Move AGNI logfile content into PROTEUS logfile
