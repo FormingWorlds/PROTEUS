@@ -1,23 +1,32 @@
-## PROTEUS Framework for Planetary Evolution
-[![Documentation Status](https://readthedocs.org/projects/proteus-code/badge/?version=latest)](https://proteus-code.readthedocs.io/en/latest/?badge=latest) [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Documentation Status](https://readthedocs.org/projects/proteus-code/badge/?version=latest)](https://proteus-code.readthedocs.io/en/latest/?badge=latest) 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-### Documentation
-https://proteus-code.readthedocs.io
+![PROTEUS banner](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/mkdocs/docs/images/PROTEUS_white.png#gh-light-mode-only)
+![PROTEUS banner](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/mkdocs/docs/images/PROTEUS_black.png#gh-dark-mode-only)
 
-### Installation instructions   
+# PROTEUS Framework for Planetary Evolution
+
+**PROTEUS** is a Python framework that simulates the coupled evolution
+of the atmospheres and interiors of rocky planets.
+
+## Installation instructions   
+
 See https://proteus-code.readthedocs.io/en/latest/installation.html for steps and troubleshooting advice.
 
-### Run instructions
+## Run instructions
+
 Only attempt to run PROTEUS after you have followed all of the installation instructions.    
 If using a fresh shell, it is necessary to perform the following steps:     
 1. `conda activate proteus` (if using Anaconda/Miniconda)     
 2. `source PROTEUS.env`      
 Then you can start the model by running: `proteus.py`. See the ReadTheDocs pages for more information.    
 
-### Updating the code
+## Updating the code
+
 Run `git submodule update --recursive --remote`
 
-### Contributors
+## Contributors
+
 | Name  | Email address |
 | -     | -             |
 Tim Lichtenberg         | tim.lichtenberg[at]rug.nl | 
@@ -31,7 +40,8 @@ Ryan Boukrouche         | ryan.boukrouche[at]astro.su.se |
 Shang-Min Tsai          | shangmin.tsai[at]ucr.edu |
 Hamish Innes            | hamish.innes[at]fu-berlin.de |
 
-### Repository structure
+## Repository structure
+
 | Object                | Description                                               |
 | -                     | -                                                         |
 | `proteus.py`          | Main PROTEUS Python script                                |
@@ -49,5 +59,3 @@ Hamish Innes            | hamish.innes[at]fu-berlin.de |
 | `input/`              | Input folder (e.g. stellar spectra, example configs)      |
 | `docs/`			    | Documentation source files                                |
 | `examples/`           | Example cases that the model should be able to reproduce     |
-
-
