@@ -31,11 +31,27 @@ def create_tmp_folder():
 
 def safe_rm(fpath:str):
     '''
-    Safely remove a file 
+    Safely remove a file or folder
     '''
+
+    if fpath=="":
+        log.warning("Could not remove file at empty path")
+        return
+
     fpath = os.path.abspath(fpath)
     if os.path.exists(fpath):
-        os.remove(fpath)
+        if os.path.isfile(fpath):
+            os.remove(fpath)
+
+        elif os.path.isdir(fpath):
+            subfolders = [ f.path.split("/")[-1] for f in os.scandir(fpath) if f.is_dir() ]
+            if ".git" in subfolders:
+                log.warning("Not emptying directory '%s' as it contains a Git repository"%fpath)
+                return
+            shutil.rmtree(fpath)
+            
+        else:
+            log.warning("Cannot remove unhandled path '%s'"%fpath)
 
 def CommentFromStatus(status:int):
     '''

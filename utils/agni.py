@@ -138,7 +138,7 @@ def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
     # Chemistry 
     chem_type = OPTIONS["atmosphere_chemistry"]
     include_all = False
-    fc_dir = ""
+    fc_dir = "_unset"
     if chem_type == 1:
         # equilibrium
         include_all = True
@@ -210,7 +210,7 @@ def DeallocAtmos(atmos):
     Deallocate atmosphere struct
     """                  
     jl.AGNI.atmosphere.deallocate_b(atmos)
-    shutil.rmtree(str(jl.AGNI.atmosphere.fastchem_work))
+    safe_rm(str(atmos.fastchem_work))
 
 
 def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
@@ -316,10 +316,10 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
 
         # first iteration parameters
         if loops_total == 0:
-            easy_start = True
-            dx_max = 200.0
-            ls_increase = 1.08
-
+            linesearch  = 2
+            easy_start  = True
+            dx_max      = 200.0
+            ls_increase = 1.09
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
