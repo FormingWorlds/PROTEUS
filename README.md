@@ -1,4 +1,4 @@
-[![Documentation Status](https://readthedocs.org/projects/proteus-code/badge/?version=latest)](https://proteus-code.readthedocs.io/en/latest/?badge=latest) 
+[![Documentation Status](https://readthedocs.org/projects/fwl-proteus/badge/?version=latest)](https://fwl-proteus.readthedocs.io/en/latest/?badge=latest) 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ![PROTEUS banner](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/mkdocs/docs/images/PROTEUS_white.png#gh-light-mode-only)
@@ -11,7 +11,7 @@ of the atmospheres and interiors of rocky planets.
 
 ## Installation instructions   
 
-Click [here](https://proteus-code.readthedocs.io/en/latest/installation.html) for steps and troubleshooting advice.
+Click [here](https://fwl-proteus.readthedocs.io/en/latest/installation.html) for steps and troubleshooting advice.
 
 ## Run instructions
 
