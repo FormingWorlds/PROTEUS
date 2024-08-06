@@ -1,0 +1,6 @@
+# fwl-janus
+# fwl-mors
+matplotlib
+netCDF4
+numpy
+pandas
