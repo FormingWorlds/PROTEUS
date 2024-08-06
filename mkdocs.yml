@@ -8,6 +8,8 @@ nav:
   - Installation: installation.md
   - Usage: usage.md
   - Troubleshooting: troubleshooting.md
+  - MORS: https://fwl-proteus.readthedocs.io/projects/mors/
+  - JANUS: https://fwl-proteus.readthedocs.io/projects/janus/
   - Contact: contact.md
   - Contributing: CONTRIBUTING.md
   - Code of Conduct: CODE_OF_CONDUCT.md
