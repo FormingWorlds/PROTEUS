@@ -2,6 +2,32 @@
 
 ## Development
 
+*PROTEUS* targets Python 3.10 or newer.
+
+Clone the repository into the `proteus` directory:
+
+```console
+git clone https://github.com/FormingWorlds/PROTEUS proteus
+```
+
+Install using `virtualenv`:
+
+```console
+cd gemdat
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -e .[develop]
+```
+
+Alternatively, install using Conda:
+
+```console
+cd proteus
+conda create -n proteus python=3.10
+conda activate proteus
+pip install -e .[develop]
+```
+
 ### Building the documentation
 
 The documentation is written in [markdown](https://www.markdownguide.org/basic-syntax/), and uses [mkdocs](https://www.mkdocs.org/) to generate the pages.
