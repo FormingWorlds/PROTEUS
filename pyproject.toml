@@ -33,10 +33,13 @@ classifiers = [
 dependencies = [
     # "fwl-janus",
     # "fwl-mors",
+    "cmcrameri",
+    "juliacall",
     "matplotlib",
     "netCDF4",
     "numpy",
     "pandas",
+    "scipy",
 ]
 
 [project.urls]
