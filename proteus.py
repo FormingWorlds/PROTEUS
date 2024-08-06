@@ -225,7 +225,7 @@ def main():
     match COUPLER_options['star_model']:
         case 0: # SPADA (MORS)
             # download evolution track data if not present
-            mors.DownloadEvolutionTracks("/Spada")
+            mors.DownloadEvolutionTracks("Spada")
 
             # load modern spectrum 
             star_struct_modern = mors.spec.Spectrum()
