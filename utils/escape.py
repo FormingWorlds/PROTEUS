@@ -116,7 +116,7 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
     ax2.set_ylim((ylims[0]/ s2yr) / M_earth,(ylims[1] / s2yr) / M_earth)
     ax2.set_yscale('log')
     ax2.set_ylabel(r'Mass loss rate [$M_{\oplus}$ $yr^{-1}$]', fontsize=15)
-    plt.savefig('test_escape_step_1.png', dpi=180)
+    plt.savefig('/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/output/test_escape/test_escape_step_1.png', dpi=180)
     log.info('Plot test 1 : ok')
 
 
@@ -159,20 +159,16 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
 
     # Plot to verify the output 
     fig, ax1 = plt.subplots(figsize=(10, 8))
-    # Plot the mass loss rate
-    #ax1.loglog(age_star, mlr, '-', color='orange', label='Total MLR')
+    # Plot the mass ratio for each element
+    for e, emr_data in mass_ratio_data.items():
+        ax1.loglog(age_star, emr_data, label=f'{e} mass ratio')
     ax1.set_xlabel('Time [Myr]', fontsize=15)
     ax1.set_ylabel(r'Inventory [kg]', fontsize=15)
     ax1.set_title('Zephyrus : EL escape for Sun-Earth system', fontsize=15)
     ax1.grid(alpha=0.4)
-    ax1.legend()
     ax1.set_yscale('log')
-    # Plot the mass ratio for each element
-    for e, emr_data in mass_ratio_data.items():
-        ax1.loglog(age_star, emr_data, label=f'{e} mass ratio')
-    # Add legend for elements
     ax1.legend()
-    plt.savefig('test_escape_step_2.png', dpi=180)
+    plt.savefig('/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/output/test_escape/test_escape_step_2.png', dpi=180)
     log.info('Plot test 2 : ok')
 
 
