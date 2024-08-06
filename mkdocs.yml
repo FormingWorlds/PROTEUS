@@ -1,5 +1,5 @@
 site_name: PROTEUS
-site_url: https://proteus-code.readthedocs.io
+site_url: https://fwl-proteus.readthedocs.io
 repo_url: https://github.com/FormingWorlds/PROTEUS
 repo_name: GitHub
 
@@ -8,6 +8,8 @@ nav:
   - Installation: installation.md
   - Usage: usage.md
   - Troubleshooting: troubleshooting.md
+  - MORS: https://fwl-proteus.readthedocs.io/projects/mors/
+  - JANUS: https://fwl-proteus.readthedocs.io/projects/janus/
   - Contact: contact.md
   - Contributing: CONTRIBUTING.md
   - Code of Conduct: CODE_OF_CONDUCT.md
