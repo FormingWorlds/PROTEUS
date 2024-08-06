@@ -10,7 +10,7 @@ def EL_escape(tidal_contribution,a,e,Mp,Ms,epsilon,Rp,Rxuv,Fxuv):
     Based on the formula from Lopez, Fortney & Miller, 2012 (Equation 2,3,4).
     
     Inputs :
-        - tidal_contribution : 'yes'or 'no' -> K_tide = tidal correction factor (0 < K_tide < 1)                                           [dimensionless]
+        - tidal_contribution : 0 (None) or 1 (yes) -> K_tide = tidal correction factor (0 < K_tide < 1)                                    [dimensionless]
         - a                  : planetary semi-major axis                                                                                   [m]
         - e                  : planetary eccentricty                                                                                       [dimensionless]
         - Mp                 : planetary mass                                                                                              [kg]
@@ -25,7 +25,7 @@ def EL_escape(tidal_contribution,a,e,Mp,Ms,epsilon,Rp,Rxuv,Fxuv):
     Output : Mass-loss rate for EL escape [kg s-1]
     '''
     # Tidal contribution
-    if tidal_contribution == 'yes':                 # Take into account tidal contributions : Ktide
+    if tidal_contribution == 1:                 # Take into account tidal contributions : Ktide
         Rhill = a * (1-e) * (Mp/(3*Ms))**(1/3)
         ksi = Rhill/Rxuv
         K_tide = 1 - (3/(2*ksi)) + (1/(2*(ksi**3)))

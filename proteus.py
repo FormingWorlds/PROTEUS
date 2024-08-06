@@ -225,7 +225,7 @@ def main():
     match COUPLER_options['star_model']:
         case 0: # SPADA (MORS)
             # download evolution track data if not present
-            mors.DownloadEvolutionTracks("Spada")
+            mors.DownloadEvolutionTracks("/Spada")
 
             # load modern spectrum 
             star_struct_modern = mors.spec.Spectrum()
@@ -417,7 +417,16 @@ def main():
             PrintHalfSeparator()
 
             if COUPLER_options["escape_model"] == 1:
-                esc_result = RunZEPHYRUS()
+                esc_result = RunZEPHYRUS(hf_row, dt,
+                                         COUPLER_options['star_mass'], 
+                                         COUPLER_options['star_omega'], 
+                                         COUPLER_options['escape_el_tidal_correction'], 
+                                         COUPLER_options['mean_distance']*AU, 
+                                         COUPLER_options["eccentricity"], 
+                                         hf_row["M_planet"], 
+                                         COUPLER_options["escape_el_rate"], 
+                                         hf_row["R_planet"], 
+                                         hf_row["R_planet"])
 
             elif COUPLER_options["escape_model"] == 2:
                 esc_result = RunDummyEsc(hf_row, dt, COUPLER_options["escape_dummy_rate"])
@@ -425,7 +434,7 @@ def main():
             # store total escape rate 
             hf_row["esc_rate_total"] = esc_result["rate_bulk"]
             log.info("Bulk escape rate: %.2e kg yr-1"%(hf_row["esc_rate_total"] * secs_per_year))
-
+            log.info("Bulk escape rate: %.2e kg s-1"%(hf_row["esc_rate_total"]))
             # update elemental mass targets
             for e in element_list:
                 if e=='O': continue

@@ -5,7 +5,8 @@ from utils.constants import *
 from utils.helper import *
 
 import mors
-from zephyrus import EL_escape
+
+from utils.zephyrus import EL_escape
 
 log = logging.getLogger("PROTEUS")
 
@@ -57,17 +58,21 @@ def RunDummyEsc(hf_row:dict, dt:float, phi_bulk:float):
     return out
 
 
-def RunZEPHYRUS(M_star,Omega_star,tidal_contribution, semi_major_axis, eccentricity, M_planet, epsilon, R_earth, Rxuv):
+def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axis, eccentricity, M_planet, epsilon, R_earth, Rxuv):
     """Run energy-limited escape (for now) model. 
 
     Parameters
     ----------
+        hf_row : dict 
+            Dictionary of helpfile variables, at this iteration only
+        dt : float 
+            Time interval over which escape is occuring [yr]
         M_star : float  
             Stellar mass in solar mass                  [M_sun, kg]
         Omega_star : float
             Stellar rotation rate                       [rad s-1]
-        tidal_contribution  : string 
-            Tidal correction factor ('yes' or 'no')     [dimensionless]
+        tidal_contribution  : float 
+            Tidal correction factor (0:None or 1:yes)   [dimensionless]
         semi_major_axis : float
             Planetary semi-major axis                   [m]
         eccentricity : float
@@ -90,6 +95,8 @@ def RunZEPHYRUS(M_star,Omega_star,tidal_contribution, semi_major_axis, eccentric
     log.info("Running EL escape (ZEPHYRUS) ...")
 
     ## Step 1 : Load stellar evolution track + compute EL escape 
+    log.info("Step 1 : Load stellar evolution track + compute EL escape ")
+
     star            = mors.Star(Mstar=M_star, Omega=Omega_star)                                                                              # Load the stellar evolution track from MORS
     age_star        = star.Tracks['Age']                                                                                                     # Stellar age                          [Myr]
     Fxuv_star_SI    = ((star.Tracks['Lx']+star.Tracks['Leuv'])/(4*np.pi*(semi_major_axis*1e2)**2)) * ergcm2stoWm2                            # XUV flux                             [erg s-1]
@@ -109,34 +116,66 @@ def RunZEPHYRUS(M_star,Omega_star,tidal_contribution, semi_major_axis, eccentric
     ax2.set_ylim((ylims[0]/ s2yr) / M_earth,(ylims[1] / s2yr) / M_earth)
     ax2.set_yscale('log')
     ax2.set_ylabel(r'Mass loss rate [$M_{\oplus}$ $yr^{-1}$]', fontsize=15)
-    plt.savefig('test_escape.png', dpi=180)
+    plt.savefig('test_escape_step_1.png', dpi=180)
+    log.info('Plot test 1 : ok')
+
+
 
     ## Step 2 : Updated total elemental mass inventories
-    # store value
+    log.info("Step 2 : Updated total elemental mass inventories")
 
-    out = {}
-    out["rate_bulk"] = mlr
+    # Dictionary to store mass ratio data for each element
+    mass_ratio_data = {e: [] for e in element_list if e != 'O'}
 
-    # calculate total mass of volatiles (except oxygen, which is set by fO2)
-    M_vols = 0.0
-    for e in element_list:
-        if e=='O': continue 
-        M_vols += hf_row[e+"_kg_total"]
+    for time in range(len(age_star)) :
+
+        # store value
+        out = {}
+        out["rate_bulk"] = mlr[time]
+
+        # calculate total mass of volatiles (except oxygen, which is set by fO2)
+        M_vols = 0.0
+        for e in element_list:
+            if e=='O': continue 
+            M_vols += hf_row[e+"_kg_total"]
 
 
-    # for each elem, calculate new total inventory while
-    # maintaining a constant mass mixing ratio
-    for e in element_list:
-        if e=='O': continue
+        # for each elem, calculate new total inventory while
+        # maintaining a constant mass mixing ratio
 
-        # current elemental mass ratio in total 
-        emr = hf_row[e+"_kg_total"]/M_vols
+        for e in element_list:
+            if e=='O': continue
 
-        log.debug("    %s mass ratio = %.2e "%(e,emr))
+            # current elemental mass ratio in total 
+            emr = hf_row[e+"_kg_total"]/M_vols
 
-        # new total mass of element e, keeping a constant mixing ratio of that element 
-        out[e+"_kg_total"] = emr * (M_vols - phi_bulk * dt * secs_per_year)
+            log.debug("    %s mass ratio = %.2e "%(e,emr))
 
-    return mlr,out
+            # Append the current mass ratio to the dictionary
+            mass_ratio_data[e].append(emr)
+
+            # new total mass of element e, keeping a constant mixing ratio of that element 
+            out[e+"_kg_total"] = emr * (M_vols - mlr[time] * (time*1e6) * secs_per_year)
+
+    # Plot to verify the output 
+    fig, ax1 = plt.subplots(figsize=(10, 8))
+    # Plot the mass loss rate
+    #ax1.loglog(age_star, mlr, '-', color='orange', label='Total MLR')
+    ax1.set_xlabel('Time [Myr]', fontsize=15)
+    ax1.set_ylabel(r'Inventory [kg]', fontsize=15)
+    ax1.set_title('Zephyrus : EL escape for Sun-Earth system', fontsize=15)
+    ax1.grid(alpha=0.4)
+    ax1.legend()
+    ax1.set_yscale('log')
+    # Plot the mass ratio for each element
+    for e, emr_data in mass_ratio_data.items():
+        ax1.loglog(age_star, emr_data, label=f'{e} mass ratio')
+    # Add legend for elements
+    ax1.legend()
+    plt.savefig('test_escape_step_2.png', dpi=180)
+    log.info('Plot test 2 : ok')
+
+
+    return out
 
 

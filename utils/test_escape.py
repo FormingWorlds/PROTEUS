@@ -3,7 +3,7 @@
 from utils.modules_ext import *
 from utils.constants import *
 
-from escape import RunZEPHYRUS
+from utils.escape import RunZEPHYRUS
 
 ########################### Initialization #####################################
 
@@ -11,7 +11,7 @@ M_star                   = 1.0              # Star mass in solar mass           
 Omega_star               = 1.0              # Star rotation rate                     [Omega_sun, rad s-1]
 semi_major_axis_cm       = 1.0*AU_cm        # Planetary semi-major axis              [cm]
 
-tidal_contribution       = 'no'             # Tidal correction factor                [dimensionless]
+tidal_contribution       = 0                # Tidal correction factor                [dimensionless]
 semi_major_axis          = 1.0*AU           # Planetary semi-major axis              [m]
 eccentricity             = e_earth          # Planetary eccentricity                 [dimensionless]
 M_planet                 = M_earth          # Planetary mass                         [kg]
