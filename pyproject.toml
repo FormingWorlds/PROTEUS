@@ -67,7 +67,7 @@ include-package-data = true
 
 [tool.coverage.run]
 branch = true
-source = "proteus"
+source = ["proteus"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
