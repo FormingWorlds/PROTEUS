@@ -5,10 +5,7 @@ from utils.constants import *
 from utils.helper import *
 
 import mors
-
 from utils.zephyrus import EL_escape
-
-from utils.coupler import *
 
 log = logging.getLogger("PROTEUS")
 
@@ -90,13 +87,11 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
 
     Returns
     ----------
-        mlr : float                          
-            Total mass loss rate for energy-limited escape    [kg s-1]
+        out : dict 
+            Dictionary of updated total elemental mass inventories [kg]
     """
 
     log.info("Running EL escape (ZEPHYRUS) ...")
-
-    path_to_save_plots = '/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/plot_test_escape/'
 
     ## Step 1 : Load stellar evolution track + compute EL escape 
     log.info("Step 1 : Load stellar evolution track + compute EL escape ")
@@ -105,23 +100,6 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
     age_star        = star.Tracks['Age']                                                                                                     # Stellar age                          [Myr]
     Fxuv_star_SI    = ((star.Tracks['Lx']+star.Tracks['Leuv'])/(4*np.pi*(semi_major_axis*1e2)**2)) * ergcm2stoWm2                            # XUV flux                             [erg s-1]
     mlr             = EL_escape(tidal_contribution, semi_major_axis, eccentricity, M_planet, M_star, epsilon, R_earth, Rxuv, Fxuv_star_SI)   # Compute EL escape                    [kg s-1]
-
-    # Plot to validate the output 
-    fig, ax1 = plt.subplots(figsize=(10, 8))
-    ax1.loglog(age_star, mlr, '-', color='gold', label=r'MORS : $M_{*}$ = 1.0 $M_{\odot}$, $\Omega$ = 1.0 $\Omega_{\odot}$')
-    ax1.set_xlabel('Time [Myr]', fontsize=15)
-    ax1.set_ylabel(r'Mass loss rate [kg $s^{-1}$]', fontsize=15)
-    ax1.set_title('Zephyrus : EL escape for Sun-Earth system', fontsize=15)
-    ax1.grid(alpha=0.4)
-    ax1.legend()
-    ax1.set_yscale('log')
-    ax2 = ax1.twinx()
-    ylims = ax1.get_ylim()
-    ax2.set_ylim((ylims[0]/ s2yr) / M_earth,(ylims[1] / s2yr) / M_earth)
-    ax2.set_yscale('log')
-    ax2.set_ylabel(r'Mass loss rate [$M_{\oplus}$ $yr^{-1}$]', fontsize=15)
-    plt.savefig(path_to_save_plots+'test_escape_step_1.png', dpi=180)
-
 
     ## Step 2 : Updated total elemental mass inventories
     log.info("Step 2 : Updated total elemental mass inventories")
@@ -158,45 +136,7 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
             # Append the current mass ratio to the dictionary for each elements
             mass_ratio_data[e].append(out[e+"_kg_total"])
 
-
-    # Plot to verify the output 
-    fig, ax1 = plt.subplots(figsize=(10, 8))
-    # Plot the mass ratio for each element
-    for e, emr_data in mass_ratio_data.items():
-        ax1.loglog(age_star, emr_data, label=f'{e} mass ratio')
-    ax1.set_xlabel('Time [Myr]', fontsize=15)
-    ax1.set_ylabel(r'Inventory [kg]', fontsize=15)
-    ax1.set_title('Zephyrus : EL escape for Sun-Earth system', fontsize=15)
-    ax1.grid(alpha=0.4)
-    ax1.set_yscale('log')
-    ax1.legend()
-
-######## from proteus.py ###########
-    # Parse console arguments
-    args = parse_console_arguments()
-    resume = bool(args["resume"])
-    # Read in COUPLER input file
-    cfgsrc = os.path.abspath(str(args["cfg"]))
-    COUPLER_options = ReadInitFile( cfgsrc , verbose=False )
-#####################################
-    
-    # Adding a textbox with initial partial pressures
-    textbox_content = (
-        f"Initial partial pressure : \n"
-        f"$P_{{H_2O}}$ = {COUPLER_options['H2O_initial_bar']} bar \n"
-        f"$P_{{CO_2}}$ = {COUPLER_options['CO2_initial_bar']} bar \n"
-        f"$P_{{N_2}}$ = {COUPLER_options['N2_initial_bar']} bar \n"
-        f"$P_{{S_2}}$ = {COUPLER_options['S2_initial_bar']} bar"
-    )
-    props = dict(boxstyle='round', facecolor='white',)
-    ax1.text(1.1e0, 1e21, textbox_content, fontsize=10,
-            verticalalignment='top', bbox=props)
-
-
-    plt.savefig(path_to_save_plots+'test_escape_step_2.png', dpi=180)
-
     log.info('Escape computation done :)')
-
 
     return out
 
