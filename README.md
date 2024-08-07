@@ -1,3 +1,5 @@
+[![Tests for PROTEUS](https://github.com/FormingWorlds/actions/workflows/tests.yaml/badge.svg)](https://github.com/FormingWorlds/actions/workflows/tests.yaml)
+![Coverage](https://gist.githubusercontent.com/stefsmeets/b4ee7dab92e20644bcb3a5ad09f71165/raw/covbadge.svg)
 [![Documentation Status](https://readthedocs.org/projects/fwl-proteus/badge/?version=latest)](https://fwl-proteus.readthedocs.io/en/latest/?badge=latest)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
