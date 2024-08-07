@@ -96,6 +96,8 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
 
     log.info("Running EL escape (ZEPHYRUS) ...")
 
+    path_to_save_plots = '/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/plot_test_escape/'
+
     ## Step 1 : Load stellar evolution track + compute EL escape 
     log.info("Step 1 : Load stellar evolution track + compute EL escape ")
 
@@ -118,7 +120,7 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
     ax2.set_ylim((ylims[0]/ s2yr) / M_earth,(ylims[1] / s2yr) / M_earth)
     ax2.set_yscale('log')
     ax2.set_ylabel(r'Mass loss rate [$M_{\oplus}$ $yr^{-1}$]', fontsize=15)
-    plt.savefig('/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/output/test_escape/test_escape_step_1.png', dpi=180)
+    plt.savefig(path_to_save_plots+'test_escape_step_1.png', dpi=180)
 
 
     ## Step 2 : Updated total elemental mass inventories
@@ -156,9 +158,6 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
             # Append the current mass ratio to the dictionary for each elements
             mass_ratio_data[e].append(out[e+"_kg_total"])
 
-        print('out = ',out )
-            
-    print('mass_ratio_data = ', mass_ratio_data)
 
     # Plot to verify the output 
     fig, ax1 = plt.subplots(figsize=(10, 8))
@@ -194,7 +193,7 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
             verticalalignment='top', bbox=props)
 
 
-    plt.savefig('/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/output/test_escape/test_escape_step_2.png', dpi=180)
+    plt.savefig(path_to_save_plots+'test_escape_step_2.png', dpi=180)
 
     log.info('Escape computation done :)')
 
