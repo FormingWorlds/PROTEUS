@@ -64,3 +64,10 @@ docs = [
 [tool.setuptools]
 package-dir = {"proteus" = "src/proteus" }
 include-package-data = true
+
+[tool.coverage.run]
+branch = true
+source = "proteus"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
