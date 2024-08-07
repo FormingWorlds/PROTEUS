@@ -104,37 +104,30 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
     ## Step 2 : Updated total elemental mass inventories
     log.info("Step 2 : Updated total elemental mass inventories")
 
-    # Dictionary to store mass ratio data for each element at each time step
-    mass_ratio_data = {e: [] for e in element_list if e != 'O'}
+    # store value
+    out = {}
+    out["rate_bulk"] = mlr
 
-    for time in range(len(age_star)) :
+    # calculate total mass of volatiles (except oxygen, which is set by fO2)
+    M_vols = 0.0
+    for e in element_list:
+        if e=='O': continue 
+        M_vols += hf_row[e+"_kg_total"]
 
-        # store value
-        out = {}
-        out["rate_bulk"] = mlr[time]
+    # for each elem, calculate new total inventory while
+    # maintaining a constant mass mixing ratio
 
-        # calculate total mass of volatiles (except oxygen, which is set by fO2)
-        M_vols = 0.0
-        for e in element_list:
-            if e=='O': continue 
-            M_vols += hf_row[e+"_kg_total"]
+    for e in element_list:
+        if e=='O': continue
 
-        # for each elem, calculate new total inventory while
-        # maintaining a constant mass mixing ratio
+        # current elemental mass ratio in total 
+        emr = hf_row[e+"_kg_total"]/M_vols
 
-        for e in element_list:
-            if e=='O': continue
+        log.debug("    %s mass ratio = %.2e "%(e,emr))
 
-            # current elemental mass ratio in total 
-            emr = hf_row[e+"_kg_total"]/M_vols
+        # new total mass of element e, keeping a constant mixing ratio of that element 
+        out[e+"_kg_total"] = emr * (M_vols - mlr * dt * secs_per_year)
 
-            log.debug("    %s mass ratio = %.2e "%(e,emr))
-
-            # new total mass of element e, keeping a constant mixing ratio of that element 
-            out[e+"_kg_total"] = emr * (M_vols - mlr[time] * (time*1e6) * secs_per_year)
-
-            # Append the current mass ratio to the dictionary for each elements
-            mass_ratio_data[e].append(out[e+"_kg_total"])
 
     log.info('Escape computation done :)')
 
