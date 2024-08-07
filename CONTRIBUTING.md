@@ -13,7 +13,7 @@ git clone https://github.com/FormingWorlds/PROTEUS proteus
 Install using `virtualenv`:
 
 ```console
-cd gemdat
+cd proteus
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -e .[develop]
