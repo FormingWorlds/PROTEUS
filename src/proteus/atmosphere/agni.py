@@ -1,9 +1,9 @@
 # Functions used to handle atmosphere temperature structure (running AGNI, etc.)
 
-from utils.modules_ext import *
-from utils.helper import *
-from utils.constants import *
-from utils.logs import GetLogfilePath, GetCurrentLogfileIndex
+from proteus.utils.modules_ext import *
+from proteus.utils.helper import *
+from proteus.utils.constants import *
+from proteus.utils.logs import GetLogfilePath, GetCurrentLogfileIndex
 
 from juliacall import Main as jl
 

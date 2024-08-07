@@ -1,8 +1,8 @@
 # Functions used to handle atmosphere thermodynamics (running JANUS, etc.)
 
-from utils.modules_ext import *
-from utils.helper import *
-from utils.logs import StreamToLogger
+from proteus.utils.modules_ext import *
+from proteus.utils.helper import *
+from proteus.utils.logs import StreamToLogger
 
 log = logging.getLogger("PROTEUS")
 

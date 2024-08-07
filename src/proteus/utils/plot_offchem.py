@@ -1,11 +1,11 @@
 # Variables and functions to help with offline chemistry plotting functions
 # These do not do the plotting themselves
 
-from utils.modules_ext import *
-from utils.constants import *
-from utils.helper import *
-from utils.plot import *
-from utils.coupler import ReadInitFile
+from proteus.utils.modules_ext import *
+from proteus.utils.constants import *
+from proteus.utils.helper import *
+from proteus.utils.plot import *
+from proteus.utils.coupler import ReadInitFile
 
 
 def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0, read_const=False):

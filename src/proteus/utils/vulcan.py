@@ -1,8 +1,8 @@
 # Function used to run VULCAN in online mode
 
-from utils.coupler import *
-from utils.modules_ext import *
-from utils.helper import *
+from proteus.utils.coupler import *
+from proteus.utils.modules_ext import *
+from proteus.utils.helper import *
 
 def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):
     '''

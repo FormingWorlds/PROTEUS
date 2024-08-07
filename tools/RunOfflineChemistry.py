@@ -15,12 +15,12 @@ import logging
 import pandas as pd
 
 # Import PROTEUS stuff
-from utils.coupler import *
-from utils.plot_offchem import offchem_read_year
-from plot.cpl_offchem_species import *
-from plot.cpl_offchem_time import *
-from plot.cpl_offchem_year import *
-from utils.constants import R_sun_cm, AU_cm
+from proteus.utils.coupler import *
+from proteus.utils.plot_offchem import offchem_read_year
+from proteus.plot.cpl_offchem_species import *
+from proteus.plot.cpl_offchem_time import *
+from proteus.plot.cpl_offchem_year import *
+from proteus.utils.constants import R_sun_cm, AU_cm
 
 
 # Custom logger instance 

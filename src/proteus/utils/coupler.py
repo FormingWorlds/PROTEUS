@@ -1,10 +1,10 @@
 # Functions used to help run PROTEUS which are mostly submodule agnostic.
 
 # Import utils-specific modules
-from utils.modules_ext import *
-from utils.constants import *
-from utils.spider import *
-from utils.helper import *
+from proteus.utils.modules_ext import *
+from proteus.utils.constants import *
+from proteus.utils.spider import *
+from proteus.utils.helper import *
 
 log = logging.getLogger("PROTEUS")
 

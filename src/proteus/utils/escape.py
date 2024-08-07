@@ -1,8 +1,8 @@
 # Functions used to handle escape
 
-from utils.modules_ext import *
-from utils.constants import *
-from utils.helper import *
+from proteus.utils.modules_ext import *
+from proteus.utils.constants import *
+from proteus.utils.helper import *
 
 log = logging.getLogger("PROTEUS")
 

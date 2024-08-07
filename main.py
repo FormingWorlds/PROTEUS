@@ -4,14 +4,14 @@
 PROTEUS Main file
 """
 
-import utils.constants
-from utils.constants import *
+import proteus.utils.constants
+from proteus.utils.constants import *
 
-from utils.modules_ext import *
-from utils.coupler import *
-from utils.spider import RunSPIDER, ReadSPIDER
-from utils.surface_gases import get_target_from_params, get_target_from_pressures, equilibrium_atmosphere, CalculateMantleMass
-from utils.logs import SetupLogger, GetLogfilePath, GetCurrentLogfileIndex, StreamToLogger
+from proteus.utils.modules_ext import *
+from proteus.utils.coupler import *
+from proteus.utils.spider import RunSPIDER, ReadSPIDER
+from proteus.utils.surface_gases import get_target_from_params, get_target_from_pressures, equilibrium_atmosphere, CalculateMantleMass
+from proteus.utils.logs import SetupLogger, GetLogfilePath, GetCurrentLogfileIndex, StreamToLogger
 
 from proteus.atmosphere import RunAtmosphere
 

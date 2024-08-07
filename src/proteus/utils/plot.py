@@ -1,9 +1,9 @@
 # Variables and functions to help with plotting functions
 # These do not do the plotting themselves
 
-from utils.modules_ext import *
-from utils.constants import *
-from utils.helper import *
+from proteus.utils.modules_ext import *
+from proteus.utils.constants import *
+from proteus.utils.helper import *
 
 vol_zorder  = {
     "H2O"            : 11,

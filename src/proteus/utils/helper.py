@@ -3,7 +3,7 @@
 
 import numpy as np
 import os, shutil, re, glob, logging
-from utils.constants import *
+from proteus.utils.constants import *
 
 log = logging.getLogger("PROTEUS")
 

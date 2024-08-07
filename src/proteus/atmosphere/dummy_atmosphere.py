@@ -1,8 +1,8 @@
 # Dummy atmosphere module 
 
-from utils.modules_ext import *
-from utils.helper import *
-from utils.constants import *
+from proteus.utils.modules_ext import *
+from proteus.utils.helper import *
+from proteus.utils.constants import *
 
 log = logging.getLogger("PROTEUS")
 

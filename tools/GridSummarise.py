@@ -4,7 +4,7 @@
 
 import sys, os, glob
 import numpy as np
-from utils.helper import CommentFromStatus
+from proteus.utils.helper import CommentFromStatus
 
 def summarise(pgrid_dir:str, opts:list):
     if (not os.path.exists(pgrid_dir)) or (not os.path.isdir(pgrid_dir)):

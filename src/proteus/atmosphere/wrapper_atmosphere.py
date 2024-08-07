@@ -1,6 +1,6 @@
 #Generic atmosphere wrapper
-from utils.modules_ext import *
-from utils.helper import *
+from proteus.utils.modules_ext import *
+from proteus.utils.helper import *
 
 #We should make the import dependent of the chosen atmospheric submodule
 from proteus.atmosphere.janus import RunJANUS, StructAtm

@@ -15,7 +15,7 @@ import logging
 import pandas as pd
 
 # Import PROTEUS stuff
-from utils.coupler import *
+from proteus.utils.coupler import *
 from plot.cpl_offchem_species import *
 from plot.cpl_offchem_time import *
 from plot.cpl_offchem_year import *
