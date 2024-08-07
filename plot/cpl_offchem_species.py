@@ -5,7 +5,7 @@
 # Import things
 import matplotlib as mpl
 mpl.use("Agg")
-from utils.plot_offchem import *
+from proteus.utils.plot_offchem import *
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 

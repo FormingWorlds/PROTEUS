@@ -2,10 +2,10 @@
 
 # Plots stellar flux from output directory for a set of wavelength bins
 
-from utils.modules_ext import *
-from utils.constants import *
-from utils.plot import *
-from utils.helper import natural_sort
+from proteus.utils.modules_ext import *
+from proteus.utils.constants import *
+from proteus.utils.plot import *
+from proteus.utils.helper import natural_sort
 
 log = logging.getLogger("PROTEUS")
 

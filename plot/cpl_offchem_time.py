@@ -4,8 +4,8 @@
 
 # Import things
 import matplotlib as mpl
-from utils.plot_offchem import *
-from utils.helper import find_nearest
+from proteus.utils.plot_offchem import *
+from proteus.utils.helper import find_nearest
 import sys
 
 

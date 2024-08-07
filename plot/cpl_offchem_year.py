@@ -5,7 +5,7 @@
 # Import things
 import matplotlib as mpl
 mpl.use("Agg")
-from utils.plot_offchem import *
+from proteus.utils.plot_offchem import *
 
 
 def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):

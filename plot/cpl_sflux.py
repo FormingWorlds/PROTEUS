@@ -2,9 +2,9 @@
 
 # Plots stellar flux from `output/` versus time (colorbar)
 
-from utils.modules_ext import *
-from utils.constants import *
-from utils.helper import natural_sort
+from proteus.utils.modules_ext import *
+from proteus.utils.constants import *
+from proteus.utils.helper import natural_sort
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 log = logging.getLogger("PROTEUS")
