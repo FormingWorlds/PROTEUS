@@ -64,31 +64,6 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, hf_all:dict, hf_row:dict):
 
     return
 
-def InitAtmosphere(OPTIONS:dict):
-
-    if OPTIONS["atmosphere_model"] in [0,1]:
-        log.info("SOCRATES dir: " + dirs["rad"])
-    log.info(" ")
-
-    # Import the appropriate atmosphere module 
-    if OPTIONS["atmosphere_model"] == 0:
-        from atmosphere.janus import RunJANUS, StructAtm
-        from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
-
-    elif OPTIONS["atmosphere_model"] == 1:
-        from atmosphere.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv, DeallocAtmos
-        ActivateEnv(dirs)
-        atm = None
-
-    elif OPTIONS["atmosphere_model"] == 2:
-        from atmosphere.dummy_atmosphere import RunDummyAtm
-        
-    else:
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Invalid atmosphere model")
-
-    return
-
 def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
 
     # This scheme is not typically used, but it maintained here from legacy code
