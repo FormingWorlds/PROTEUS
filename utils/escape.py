@@ -8,6 +8,8 @@ import mors
 
 from utils.zephyrus import EL_escape
 
+from utils.coupler import *
+
 log = logging.getLogger("PROTEUS")
 
 
@@ -101,10 +103,10 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
     age_star        = star.Tracks['Age']                                                                                                     # Stellar age                          [Myr]
     Fxuv_star_SI    = ((star.Tracks['Lx']+star.Tracks['Leuv'])/(4*np.pi*(semi_major_axis*1e2)**2)) * ergcm2stoWm2                            # XUV flux                             [erg s-1]
     mlr             = EL_escape(tidal_contribution, semi_major_axis, eccentricity, M_planet, M_star, epsilon, R_earth, Rxuv, Fxuv_star_SI)   # Compute EL escape                    [kg s-1]
-    
-    # Plot to verify the output 
+
+    # Plot to validate the output 
     fig, ax1 = plt.subplots(figsize=(10, 8))
-    ax1.loglog(age_star, mlr, '-', color='orange', label='MORS stellar evolution tracks')
+    ax1.loglog(age_star, mlr, '-', color='gold', label=r'MORS : $M_{*}$ = 1.0 $M_{\odot}$, $\Omega$ = 1.0 $\Omega_{\odot}$')
     ax1.set_xlabel('Time [Myr]', fontsize=15)
     ax1.set_ylabel(r'Mass loss rate [kg $s^{-1}$]', fontsize=15)
     ax1.set_title('Zephyrus : EL escape for Sun-Earth system', fontsize=15)
@@ -117,14 +119,12 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
     ax2.set_yscale('log')
     ax2.set_ylabel(r'Mass loss rate [$M_{\oplus}$ $yr^{-1}$]', fontsize=15)
     plt.savefig('/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/output/test_escape/test_escape_step_1.png', dpi=180)
-    log.info('Plot test 1 : ok')
-
 
 
     ## Step 2 : Updated total elemental mass inventories
     log.info("Step 2 : Updated total elemental mass inventories")
 
-    # Dictionary to store mass ratio data for each element
+    # Dictionary to store mass ratio data for each element at each time step
     mass_ratio_data = {e: [] for e in element_list if e != 'O'}
 
     for time in range(len(age_star)) :
@@ -139,7 +139,6 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
             if e=='O': continue 
             M_vols += hf_row[e+"_kg_total"]
 
-
         # for each elem, calculate new total inventory while
         # maintaining a constant mass mixing ratio
 
@@ -151,11 +150,15 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
 
             log.debug("    %s mass ratio = %.2e "%(e,emr))
 
-            # Append the current mass ratio to the dictionary
-            mass_ratio_data[e].append(emr)
-
             # new total mass of element e, keeping a constant mixing ratio of that element 
             out[e+"_kg_total"] = emr * (M_vols - mlr[time] * (time*1e6) * secs_per_year)
+
+            # Append the current mass ratio to the dictionary for each elements
+            mass_ratio_data[e].append(out[e+"_kg_total"])
+
+        print('out = ',out )
+            
+    print('mass_ratio_data = ', mass_ratio_data)
 
     # Plot to verify the output 
     fig, ax1 = plt.subplots(figsize=(10, 8))
@@ -168,8 +171,32 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
     ax1.grid(alpha=0.4)
     ax1.set_yscale('log')
     ax1.legend()
+
+######## from proteus.py ###########
+    # Parse console arguments
+    args = parse_console_arguments()
+    resume = bool(args["resume"])
+    # Read in COUPLER input file
+    cfgsrc = os.path.abspath(str(args["cfg"]))
+    COUPLER_options = ReadInitFile( cfgsrc , verbose=False )
+#####################################
+    
+    # Adding a textbox with initial partial pressures
+    textbox_content = (
+        f"Initial partial pressure : \n"
+        f"$P_{{H_2O}}$ = {COUPLER_options['H2O_initial_bar']} bar \n"
+        f"$P_{{CO_2}}$ = {COUPLER_options['CO2_initial_bar']} bar \n"
+        f"$P_{{N_2}}$ = {COUPLER_options['N2_initial_bar']} bar \n"
+        f"$P_{{S_2}}$ = {COUPLER_options['S2_initial_bar']} bar"
+    )
+    props = dict(boxstyle='round', facecolor='white',)
+    ax1.text(1.1e0, 1e21, textbox_content, fontsize=10,
+            verticalalignment='top', bbox=props)
+
+
     plt.savefig('/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/output/test_escape/test_escape_step_2.png', dpi=180)
-    log.info('Plot test 2 : ok')
+
+    log.info('Escape computation done :)')
 
 
     return out

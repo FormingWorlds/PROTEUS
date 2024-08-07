@@ -54,10 +54,9 @@ element_list     = [ "H", "O", "C", "N", "S" ]
 
 dirs = {}  # Modified by coupler.py: SetDirectories().
 
-# Constant from Zephyrus
+## Constant from Zephyrus
 ergcm2stoWm2  = 1e-3                  # convert [erg s-1 cm-2] to [W m-2]
 s2yr          = 1/(3600*24*365)       # convert [seconds]      to [years]
-
 # Sun parameters 
 Rs      = 6.957e8                      # Solar radius                          [m]
 Ms      = 1.98847e30                   # Solar mass                            [kg]
