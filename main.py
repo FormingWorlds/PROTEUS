@@ -16,6 +16,7 @@ from utils.logs import SetupLogger, GetLogfilePath, GetCurrentLogfileIndex, Stre
 from proteus.atmosphere import RunAtmosphere
 
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
+from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
 import mors 
 
 #====================================================================
@@ -87,23 +88,6 @@ def main():
     # Config file paths
     cfgbak = os.path.join(dirs["output"],"init_coupler.cfg")
 
-    # Import the appropriate atmosphere module 
-    if OPTIONS["atmosphere_model"] == 0:
-        from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
-        from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
-
-    elif OPTIONS["atmosphere_model"] == 1:
-        from utils.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv, DeallocAtmos
-        ActivateEnv(dirs)
-        atm = None
-
-    elif OPTIONS["atmosphere_model"] == 2:
-        from utils.dummy_atmosphere import RunDummyAtm
-        
-    else:
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Invalid atmosphere model")
-    
     # Import the appropriate escape module 
     if OPTIONS["escape_model"] == 0:
         pass 

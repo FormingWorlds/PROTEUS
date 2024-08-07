@@ -1,2 +1,2 @@
 
-from .wrapper_atmosphere import InitAtmosphere, RunAtmosphere
+from .wrapper_atmosphere import RunAtmosphere

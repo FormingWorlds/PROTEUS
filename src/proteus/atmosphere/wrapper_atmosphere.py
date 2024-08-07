@@ -2,11 +2,18 @@
 from utils.modules_ext import *
 from utils.helper import *
 
+#We should make the import dependent of the chosen atmospheric submodule
+from proteus.atmosphere.janus import RunJANUS, StructAtm
+from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
+from proteus.atmosphere.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv, DeallocAtmos
+atm = None
+from proteus.atmosphere.dummy_atmosphere import RunDummyAtm
+
 log = logging.getLogger("PROTEUS")
 
 def RunAtmosphere(OPTIONS:dict, dirs:dict, hf_all:dict, hf_row:dict):
 
-#Warning! Find a way to store atm object
+    #Warning! Find a way to store atm object for AGNI
 
     PrintHalfSeparator()
     if OPTIONS["shallow_ocean_layer"] == 1:
@@ -29,6 +36,7 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, hf_all:dict, hf_row:dict):
 
             # first run?
             if no_atm:
+                ActivateEnv(dirs)
                 # surface temperature guess
                 hf_row["T_surf"] = hf_row["T_magma"]
             else:
