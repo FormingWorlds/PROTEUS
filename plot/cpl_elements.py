@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-from utils.modules_ext import *
-from utils.plot import *
+from proteus.utils.modules_ext import *
+from proteus.utils.plot import *
 
 log = logging.getLogger("PROTEUS")
 
