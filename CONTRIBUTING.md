@@ -28,6 +28,23 @@ conda activate proteus
 pip install -e .[develop]
 ```
 
+### Running tests
+
+PROTEUS uses [pytest](https://docs.pytest.org/en/latest/) to run the tests.
+You can run the tests for yourself using:
+
+```console
+pytest
+```
+
+To check coverage:
+
+```console
+coverage run -m pytest
+coverage report  # to output to terminal
+coverage html    # to generate html report
+```
+
 ### Building the documentation
 
 The documentation is written in [markdown](https://www.markdownguide.org/basic-syntax/), and uses [mkdocs](https://www.mkdocs.org/) to generate the pages.
