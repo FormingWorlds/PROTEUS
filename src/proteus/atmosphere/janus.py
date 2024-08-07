@@ -6,42 +6,6 @@ from utils.logs import StreamToLogger
 
 log = logging.getLogger("PROTEUS")
 
-def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
-        
-        # This scheme is not typically used, but it maintained here from legacy code
-        # We could consider removing it in the future.
-
-        log.info(">>>>>>>>>> Flux convergence scheme <<<<<<<<<<<")
-
-        # For SI conversion
-        yr          = 3.154e+7      # s
-
-        # Last T_surf and time from atmosphere, K
-        t_cur  = hf_cur["Time"]*yr
-        t_pre  = hf_pre["Time"]*yr
-        Ts_pre = hf_pre["T_surf"]
-
-        # Properties of the shallow mixed ocean layer
-        c_p_layer   = 1000          # J kg-1 K-1
-        rho_layer   = 3000          # kg m-3
-        depth_layer = 1000          # m
-
-        def ocean_evolution(t, y): 
-            # Specific heat of mixed ocean layer
-            mu      = c_p_layer * rho_layer * depth_layer # J K-1 m-2
-            # RHS of ODE
-            RHS     = - hf_cur["F_net"] / mu
-            return RHS
-
-        # Solve ODE
-        sol_curr  = solve_ivp(ocean_evolution, [t_pre, t_cur], [Ts_pre])
-
-        # New current surface temperature from shallow mixed layer
-        Ts_cur = sol_curr.y[0][-1] # K
-
-
-        return Ts_cur
-
 # Generate atmosphere from input files
 def StructAtm( dirs:dict, hf_row:dict, OPTIONS:dict ):
 

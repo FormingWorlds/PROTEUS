@@ -13,6 +13,8 @@ from utils.spider import RunSPIDER, ReadSPIDER
 from utils.surface_gases import get_target_from_params, get_target_from_pressures, equilibrium_atmosphere, CalculateMantleMass
 from utils.logs import SetupLogger, GetLogfilePath, GetCurrentLogfileIndex, StreamToLogger
 
+from proteus import InitAmosphere, RunAtmosphere
+
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
 import mors 
 
@@ -61,8 +63,6 @@ def main():
     log.info("Config file : " + cfgsrc)
     log.info("Output dir  : " + dirs["output"])
     log.info("FWL data dir: " + dirs["fwl"])
-    if OPTIONS["atmosphere_model"] in [0,1]:
-        log.info("SOCRATES dir: " + dirs["rad"])
     log.info(" ")
 
     # Count iterations
@@ -85,23 +85,9 @@ def main():
     # Config file paths
     cfgbak = os.path.join(dirs["output"],"init_coupler.cfg")
 
-    # Import the appropriate atmosphere module 
-    if OPTIONS["atmosphere_model"] == 0:
-        from utils.janus import RunJANUS, StructAtm, ShallowMixedOceanLayer
-        from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
+    # Import the appropriate atmosphere module
+    InitAtmosphere(OPTIONS)
 
-    elif OPTIONS["atmosphere_model"] == 1:
-        from utils.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv, DeallocAtmos
-        ActivateEnv(dirs)
-        atm = None
-
-    elif OPTIONS["atmosphere_model"] == 2:
-        from utils.dummy_atmosphere import RunDummyAtm
-        
-    else:
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Invalid atmosphere model")
-    
     # Import the appropriate escape module 
     if OPTIONS["escape_model"] == 0:
         pass 
@@ -509,61 +495,7 @@ def main():
         
 
         ############### ATMOSPHERE SUB-LOOP
-        PrintHalfSeparator()
-        if OPTIONS["shallow_ocean_layer"] == 1:
-            hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
-
-        if OPTIONS["atmosphere_model"] == 0:
-            # Run JANUS: 
-            hf_row["T_surf"] = hf_row["T_magma"]
-            atm = StructAtm( dirs, hf_row, OPTIONS )
-            atm_output = RunJANUS( atm, hf_row["Time"], dirs, OPTIONS, hf_all)
-
-        elif OPTIONS["atmosphere_model"] == 1:
-            # Run AGNI 
-
-            # Initialise atmosphere struct
-            no_spfile = not os.path.exists(spfile_path)
-            no_atm    = bool(atm == None)
-            if no_atm or no_spfile:
-                log.debug("Initialise new atmosphere struct")
-
-                # first run?
-                if no_atm:
-                    # surface temperature guess
-                    hf_row["T_surf"] = hf_row["T_magma"]
-                else:
-                    # deallocate old atmosphere 
-                    DeallocAtmos(atm)
-
-                # allocate new 
-                atm = InitAtmos(dirs, OPTIONS, hf_row)
-            
-            # Update profile 
-            atm = UpdateProfile(atm, hf_row, OPTIONS)
-
-            # Run solver
-            atm, atm_output = RunAGNI(atm, loop_counter["total"], dirs, OPTIONS, hf_row)
-
-        elif OPTIONS["atmosphere_model"] == 2:
-            # Run dummy atmosphere model 
-            atm_output = RunDummyAtm(dirs, OPTIONS, 
-                                     hf_row["T_magma"], hf_row["F_ins"], hf_row["R_planet"])
-            
-        
-        # Store atmosphere module output variables
-        hf_row["z_obs"]  = atm_output["z_obs"] 
-        hf_row["F_atm"]  = atm_output["F_atm"] 
-        hf_row["F_olr"]  = atm_output["F_olr"] 
-        hf_row["F_sct"]  = atm_output["F_sct"] 
-        hf_row["T_surf"] = atm_output["T_surf"]
-        hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
-
-        # Calculate observables (measured at infinite distance)
-        hf_row["transit_depth"] =  (hf_row["z_obs"] / hf_row["R_star"])**2.0
-        hf_row["contrast_ratio"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
-                                     (hf_row["z_obs"] / (OPTIONS["mean_distance"]*AU))**2.0
-
+        RunAtmosphere(OPTIONS, dirs, hf_all, hf_row)
 
         ############### HOUSEKEEPING AND CONVERGENCE CHECK 
 
