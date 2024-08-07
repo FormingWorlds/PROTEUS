@@ -1,8 +1,8 @@
 [![Documentation Status](https://readthedocs.org/projects/fwl-proteus/badge/?version=latest)](https://fwl-proteus.readthedocs.io/en/latest/?badge=latest) 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![PROTEUS banner](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/mkdocs/docs/images/PROTEUS_white.png#gh-light-mode-only)
-![PROTEUS banner](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/mkdocs/docs/images/PROTEUS_black.png#gh-dark-mode-only)
+![PROTEUS banner](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/master/docs/images/PROTEUS_white.png#gh-light-mode-only)
+![PROTEUS banner](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/master/docs/images/PROTEUS_black.png#gh-dark-mode-only)
 
 # PROTEUS Framework for Planetary Evolution
 
