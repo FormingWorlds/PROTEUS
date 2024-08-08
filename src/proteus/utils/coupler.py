@@ -443,6 +443,7 @@ def SetDirectories(OPTIONS: dict):
     if os.environ.get('PROTEUS_DIR') == None:
         raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
     proteus_dir = os.path.abspath(os.getenv('PROTEUS_DIR'))
+    proteus_src = os.path.join(proteus_dir,"src/proteus")
 
     # PROTEUS folders
     dirs = {
@@ -453,7 +454,7 @@ def SetDirectories(OPTIONS: dict):
             "agni":     os.path.join(proteus_dir,"AGNI"),
             "vulcan":   os.path.join(proteus_dir,"VULCAN"),
             "spider":   os.path.join(proteus_dir,"SPIDER"),
-            "utils":    os.path.join(proteus_dir,"utils")
+            "utils":    os.path.join(proteus_src,"utils")
             }
     
     # FWL data folder

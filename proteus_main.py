@@ -31,8 +31,8 @@ def main():
     OPTIONS = ReadInitFile( cfgsrc , verbose=False )
 
     # Set directories dictionary
-    utils.constants.dirs = SetDirectories(OPTIONS)
-    from utils.constants import dirs
+    proteus.utils.constants.dirs = SetDirectories(OPTIONS)
+    from proteus.utils.constants import dirs
     UpdateStatusfile(dirs, 0)
 
     # Validate options
@@ -92,9 +92,9 @@ def main():
     if OPTIONS["escape_model"] == 0:
         pass 
     elif OPTIONS["escape_model"] == 1:
-        from utils.escape import RunZEPHYRUS
+        from proteus.utils.escape import RunZEPHYRUS
     elif OPTIONS["escape_model"] == 2:
-        from utils.escape import RunDummyEsc
+        from proteus.utils.escape import RunDummyEsc
     else:
         UpdateStatusfile(dirs, 20)
         raise Exception("Invalid escape model")
