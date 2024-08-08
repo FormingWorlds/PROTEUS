@@ -430,7 +430,7 @@ def main():
 
             elif COUPLER_options["escape_model"] == 2:
                 esc_result = RunDummyEsc(hf_row, dt, COUPLER_options["escape_dummy_rate"])
-            
+
             # store total escape rate 
             hf_row["esc_rate_total"] = esc_result["rate_bulk"]
             log.info("Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1" % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"]))
