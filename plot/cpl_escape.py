@@ -5,13 +5,13 @@ from utils.plot import *
 
 log = logging.getLogger("PROTEUS")
 
-def plot_escape(output_dir, t0, escape_model, plot_format="pdf") :
+def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
 
     log.info("Plot escape")
 
     hf_all = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=r"\s+")
 
-    time = np.array(hf_all["Time"] )
+    time = np.array(hf_all["Time"])
     if len(time) < 3:
         log.warning("Cannot make plot with less than 3 samples")
         return
@@ -30,7 +30,7 @@ def plot_escape(output_dir, t0, escape_model, plot_format="pdf") :
         escape_model_label = 'Dummy escape'
     
     y = hf_all['esc_rate_total']
-    l = ax.plot(time, y, lw=lw, ls='solid', label=f'Energy-limited escape ({escape_model_label})')
+    l = ax.plot(time, y, lw=lw, ls='solid', label=f'{escape_model_label}')
 
 
     # decorate 
@@ -40,7 +40,7 @@ def plot_escape(output_dir, t0, escape_model, plot_format="pdf") :
     ax.set_xscale("log")
     ax.set_xlim(left=t0, right=np.amax(time))
     ax.grid(alpha=0.2)
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.legend()
 
     plt.close()
     plt.ioff()
@@ -64,7 +64,7 @@ def main():
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
 
-    plot_escape( output_dir=dirs["output"], t0=COUPLER_options['time_star'], escape_model=COUPLER_options['escape_model'], plot_format=COUPLER_options["plot_format"])
+    plot_escape(output_dir=dirs["output"], escape_model=COUPLER_options['escape_model'], plot_format=COUPLER_options["plot_format"])
 
 #====================================================================
 

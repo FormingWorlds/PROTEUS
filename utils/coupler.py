@@ -19,6 +19,7 @@ from plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
 from plot.cpl_interior_cmesh import plot_interior_cmesh
 from plot.cpl_observables import plot_observables
 from plot.cpl_elements import plot_elements
+from plot.cpl_escape import plot_escape
 
 def GitRevision(dir:str) -> str:
     '''
@@ -366,7 +367,8 @@ def UpdatePlots( output_dir:str, COUPLER_options, end=False, num_snapshots=7):
         # Elemental mass inventory
         if escape:
             plot_elements(output_dir, COUPLER_options["plot_format"])
-        
+            plot_escape(output_dir, escape_model=COUPLER_options['escape_model'], plot_format=COUPLER_options["plot_format"])
+
     # Filter to only include steps with corresponding NetCDF files
     if not dummy_atm:
         ncs = glob.glob(output_dir + "/data/*_atm.nc")

@@ -98,12 +98,17 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
 
     # Get the age of the star at time t to compute XUV flux at that time 
     age_star        = hf_row["age_star"]                                                # [years] -> value Time (column 0) in runtime_helpfile.csv = time of the simulation = age of the star
-    star            = mors.Star(Mstar=M_star, Age=age_star/1e6, Omega=Omega_star)       # Load the stellar evolution track from MORS
-    age_star_mors   = star.Tracks['Age']
+    
+    #star            = mors.Star(Mstar=M_star, Age=age_star/1e6, Omega=Omega_star)       # Load the stellar evolution track from MORS
+    #age_star_mors   = star.Tracks['Age']
 
     # Interpolating the XUV flux at the age of the star
-    Fxuv_star_SI_full   = ((star.Tracks['Lx'] + star.Tracks['Leuv']) / (4 * np.pi * (semi_major_axis * 1e2)**2)) * ergcm2stoWm2
-    Fxuv_star_SI        = np.interp(age_star, age_star_mors * 1e6, Fxuv_star_SI_full)                                                            # Interpolate to get Fxuv at age_star
+    Lx                  = mors.Value(M_star, hf_row["age_star"]/1e6, 'Lx')
+    Leuv                = mors.Value(M_star, hf_row["age_star"]/1e6, 'Leuv')
+    Fxuv_star_SI        = ((Lx + Leuv) / (4 * np.pi * (semi_major_axis * 1e2)**2)) * ergcm2stoWm2
+    
+    #Fxuv_star_SI_full   = ((star.Tracks['Lx'] + star.Tracks['Leuv']) / (4 * np.pi * (semi_major_axis * 1e2)**2)) * ergcm2stoWm2
+    #Fxuv_star_SI        = np.interp(age_star, age_star_mors * 1e6, Fxuv_star_SI_full)                                                            # Interpolate to get Fxuv at age_star
     log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} years is {Fxuv_star_SI}")
     
     # Compute energy-limited escape                    
