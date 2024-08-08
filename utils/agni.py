@@ -240,17 +240,17 @@ def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
         atmos.gas_ovmr[g][:] = vol_dict[g]
 
     # Store old/current log-pressure vs temperature arrays 
-    p_old = list(atmos.pl)
-    t_old = list(atmos.tmpl)
+    p_old = list(atmos.p)
+    t_old = list(atmos.tmp)
     nlev_c = len(p_old)
 
     #    extend to lower pressures 
-    p_old = [p_old[0]/3].extend(p_old)
-    t_old = [t_old[0]].extend(t_old)
+    p_old = [p_old[0]/10] + p_old
+    t_old = [t_old[0]]    + t_old
 
     #    extend to higher pressures 
-    p_old = p_old.extend([p_old[-1]*3])
-    t_old = t_old.extend([t_old[-1]])
+    p_old = p_old + [p_old[-1]*10]
+    t_old = t_old + [t_old[-1]]
 
     #    create interpolator
     itp = PchipInterpolator(np.log10(p_old), t_old)
@@ -265,9 +265,9 @@ def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
 
     # Set temperatures at all levels 
     for i in range(nlev_c):
-        atmos.tmp[i]  = itp(np.log10(atmos.p[i]))
-        atmos.tmpl[i] = itp(np.log10(atmos.pl[i]))
-    atmos.tmpl[-1] = itp(np.log10(atmos.pl[-1]))
+        atmos.tmp[i]  = float( itp(np.log10(atmos.p[i]))  )
+        atmos.tmpl[i] = float( itp(np.log10(atmos.pl[i])) )
+    atmos.tmpl[-1]    = float( itp(np.log10(atmos.pl[-1])))
 
     return atmos
 
