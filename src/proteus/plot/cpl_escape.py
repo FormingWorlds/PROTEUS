@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-from utils.modules_ext import *
-from utils.plot import *
-from utils.constants import M_earth
+from proteus.utils.modules_ext import *
+from proteus.utils.plot import *
+from proteus.utils.constants import M_earth
 
 log = logging.getLogger("PROTEUS")
 

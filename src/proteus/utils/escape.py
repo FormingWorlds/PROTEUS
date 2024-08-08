@@ -5,7 +5,7 @@ from proteus.utils.constants import *
 from proteus.utils.helper import *
 
 import mors
-from utils.zephyrus import EL_escape
+from proteus.utils.zephyrus import EL_escape
 
 log = logging.getLogger("PROTEUS")
 
