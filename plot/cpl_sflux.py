@@ -159,12 +159,12 @@ if __name__ == '__main__':
     from utils.coupler import ReadInitFile, SetDirectories
 
     # Read in COUPLER input file
-    COUPLER_options = ReadInitFile( cfg )
+    OPTIONS = ReadInitFile( cfg )
 
     # Set directories dictionary
-    dirs = SetDirectories(COUPLER_options)
+    dirs = SetDirectories(OPTIONS)
 
-    plot_sflux(dirs['output'], plot_format=COUPLER_options["plot_format"])
+    plot_sflux(dirs['output'], plot_format=OPTIONS["plot_format"])
 
     print("Done!")
 

@@ -93,7 +93,7 @@ def offchem_read_grid(grid_dir):
         years : np.ndarray
             Array of years in the grid [gpoints, nyears]
         opts : np.ndarray
-            Array of COUPLER_options dicts in the grid [gpoints]
+            Array of OPTIONS dicts in the grid [gpoints]
         data : np.ndarray
             Array of ReadOfflineChemistry output dicts [gpoints, nyears]
 
@@ -108,7 +108,7 @@ def offchem_read_grid(grid_dir):
 
     # Read grid point-by-point
     grid_years  = []  # For each gp, get years
-    grid_opts   = []  # For each gp, read-in COUPLER_options
+    grid_opts   = []  # For each gp, read-in OPTIONS
     grid_data   = []  # For each gp, for each year, get offchem data
     for i in range(gpoints):
         fol         = point_folders[i]        # folder
@@ -119,7 +119,7 @@ def offchem_read_grid(grid_dir):
         gp_years = sorted([ ytoint(y) for y in years_read ])
         grid_years.append(gp_years)  
 
-        # COUPLER_options dictionary
+        # OPTIONS dictionary
         gp_opts = dict(ReadInitFile(fol + "/init_coupler.cfg",verbose=False)[0])
         grid_opts.append(gp_opts)
 
@@ -154,7 +154,7 @@ def offchem_slice_grid(years, opts, data, cvar_filter):
         years : np.ndarray
             Array of years in the grid [gpoints, nyears]
         opts : np.ndarray
-            Array of COUPLER_options dicts in the grid [gpoints]
+            Array of OPTIONS dicts in the grid [gpoints]
         data : np.ndarray
             Array of `offchem_read_year` output dicts [gpoints, nyears]
         cvar_filter : dict
@@ -165,7 +165,7 @@ def offchem_slice_grid(years, opts, data, cvar_filter):
         slice_years : np.ndarray
             Sliced array of years in the grid [sgpoints, nyears]
         slice_opts : np.ndarray
-            Sliced array of COUPLER_options dicts in the grid [sgpoints]
+            Sliced array of OPTIONS dicts in the grid [sgpoints]
         slice_data : np.ndarray
             Sliced array of ReadOfflineChemistry output dicts [sgpoints, nyears]
     """
@@ -190,7 +190,7 @@ def offchem_slice_grid(years, opts, data, cvar_filter):
 
             # Mismatching keys (this can just be ignored I think?)
             if k not in gp_opts.keys():
-                print("WARNING: filter key '%s' is not present in COUPLER_options" % k)
+                print("WARNING: filter key '%s' is not present in OPTIONS" % k)
                 continue 
 
             # Does not match

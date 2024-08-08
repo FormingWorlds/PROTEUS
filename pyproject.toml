@@ -1,8 +1,73 @@
 [build-system]
-requires = ["flit_core >=3.2,<4"]
-build-backend = "flit_core.buildapi"
+requires = ["setuptools>=61.2"]
+build-backend = "setuptools.build_meta"
 
+# https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
-name = "lumache"
-authors = [{name = "Graziella", email = "graziella@lumache"}]
-dynamic = ["version", "description"]
+name = "PROTEUS"
+version = "24.07.25"
+description = "Coupled atmosphere-interior framework to simulate the temporal evolution of rocky planets"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+	{name = "Tim Lichtenberg", email = "tim.lichtenberg@rug.nl"},
+]
+keywords = [
+    "Astronomy",
+    "Exoplanets",
+    "Model-coupling",
+]
+license = {text = "Apache 2.0 License"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+dependencies = [
+    # "fwl-janus",
+    # "fwl-mors",
+    "cmcrameri",
+    "juliacall",
+    "matplotlib",
+    "netCDF4",
+    "numpy",
+    "pandas",
+    "scipy",
+]
+
+[project.urls]
+homepage = "https://github.com/FormingWorlds/PROTEUS"
+issues = "https://github.com/FormingWorlds/PROTEUS/issues"
+documentation = "https://fwl-proteus.readthedocs.io"
+changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
+
+[project.optional-dependencies]
+develop = [
+    "coverage[toml]",
+    "pytest >= 8.1",
+]
+
+docs = [
+    "markdown-include",
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+]
+
+[tool.setuptools]
+package-dir = {"proteus" = "src/proteus" }
+include-package-data = true
+
+[tool.coverage.run]
+branch = true
+source = ["proteus"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

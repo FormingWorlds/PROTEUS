@@ -1,0 +1,71 @@
+site_name: PROTEUS
+site_url: https://fwl-proteus.readthedocs.io
+repo_url: https://github.com/FormingWorlds/PROTEUS
+repo_name: GitHub
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Usage: usage.md
+  - Troubleshooting: troubleshooting.md
+  - MORS: https://fwl-proteus.readthedocs.io/projects/mors/
+  - JANUS: https://fwl-proteus.readthedocs.io/projects/janus/
+  - Contact: contact.md
+  - Contributing: CONTRIBUTING.md
+  - Code of Conduct: CODE_OF_CONDUCT.md
+  - 🔗 Source code: https://github.com/FormingWorlds/PROTEUS
+  - 🔗 Issues: https://github.com/FormingWorlds/PROTEUS/issues
+
+theme:
+  name: material
+  palette:
+    primary: black
+    accent: deep orange
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - markdown_include.include:
+      base_path: docs
+  - pymdownx.extra
+  - pymdownx.arithmatex:
+      generic: true
+
+extra_javascript:
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+plugins:
+- search
+- mkdocstrings:
+    # https://mkdocstrings.github.io/usage/
+    handlers:
+      python:
+        paths: [src]
+        import:
+        - https://installer.readthedocs.io/en/stable/objects.inv
+        - https://numpy.org/doc/stable/objects.inv
+        - https://docs.scipy.org/doc/scipy/objects.inv
+        - https://pandas.pydata.org/docs/objects.inv
+        - https://matplotlib.org/stable/objects.inv
+        options:
+          docstring_style: numpy
+          docstring_options:
+            ignore_init_summary: yes
+          show_submodules: no
+          show_source: true
+          show_root_heading: false
+          show_root_full_path: false
+          docstring_section_style: list
+          members_order: alphabetical
+          merge_init_into_class: yes
+          filters: ["!^_"]
+
+watch:
+  - docs/
+  - README.md
+  - CONTRIBUTING.md
+  - CODE_OF_CONDUCT.md

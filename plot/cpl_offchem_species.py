@@ -132,7 +132,7 @@ if __name__ == '__main__':
 
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options = ReadInitFile( cfg )
+    OPTIONS = ReadInitFile( cfg )
 
     # Species to make plots for
     species = ["H2", "H2O", "H", "OH", "O3", "O2",
@@ -140,7 +140,7 @@ if __name__ == '__main__':
                "HCN", "NH3", "NH2", "N2", "NO"]
 
     # Set directories dictionary
-    dirs = SetDirectories(COUPLER_options)
+    dirs = SetDirectories(OPTIONS)
 
     # Call plotting function
     for s in species:
