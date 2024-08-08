@@ -2,6 +2,7 @@
 
 from utils.modules_ext import *
 from utils.plot import *
+from utils.constants import M_earth
 
 log = logging.getLogger("PROTEUS")
 
@@ -20,7 +21,7 @@ def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
     lw = 1.2
     al = 0.5
     scale = 1.1
-    fig,ax = plt.subplots(1,1, figsize=(7*scale,4*scale))
+    fig,ax1 = plt.subplots(1,1, figsize=(7*scale,4*scale))
 
     if escape_model == 0 :
         escape_model_label = 'No escape'
@@ -30,17 +31,22 @@ def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
         escape_model_label = 'Dummy escape'
     
     y = hf_all['esc_rate_total']
-    l = ax.plot(time, y, lw=lw, ls='solid', label=f'{escape_model_label}')
+    l = ax1.plot(time, y, lw=lw, ls='solid', label=f'{escape_model_label}')
 
 
     # decorate 
-    ax.set_ylabel(r'Mass loss rate [kg $s^{-1}$]')
-    ax.set_yscale("log")
-    ax.set_xlabel("Time [yr]")
-    ax.set_xscale("log")
-    ax.set_xlim(left=t0, right=np.amax(time))
-    ax.grid(alpha=0.2)
-    ax.legend()
+    ax1.set_ylabel(r'Mass loss rate [kg $s^{-1}$]')
+    ax1.set_yscale("log")
+    ax1.set_xlabel("Time [yr]")
+    ax1.set_xscale("log")
+    ax1.set_xlim(left=t0, right=np.amax(time))
+    ax1.grid(alpha=0.2)
+    ax1.legend()
+    ax2 = ax1.twinx()
+    ylims = ax1.get_ylim()
+    ax2.set_ylim((ylims[0]/ s2yr) / M_earth,(ylims[1] / s2yr) / M_earth)
+    ax2.set_yscale('log')
+    ax2.set_ylabel(r'Mass loss rate [$M_{\oplus}$ $yr^{-1}$]')
 
     plt.close()
     plt.ioff()
