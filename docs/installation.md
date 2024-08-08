@@ -129,23 +129,7 @@ pip install -e .
     cd ../
     ```
 
-9. Setup environment variables
-
-    This can be done using the PROTEUS environment file
-
-    ```console
-    source PROTEUS.env
-    ```
-
-    Additionally, you need to set up the environment variable `FWL_DATA` to indicate in which folder the input data need to be stored
-
-    ```console
-    export FWL_DATA=/your_local_path
-    ```
-
-    **IF** you want to be able to start PROTEUS immediately from a new shell every time, add `source PROTEUS.env`,     `export FWL_DATA=...` (and potentially `conda activate proteus`) to your shell rc file.
-
-10. Setup interior evolution model (**SPIDER**)
+9. Setup interior evolution model (**SPIDER**)
 
     ```console
     cd SPIDER
@@ -154,6 +138,28 @@ pip install -e .
     make test      # accept all default values when prompted
     cd ..
     ```
+
+10. Setup PROTEUS coupled framework
+
+    - Run install command
+
+    ```console
+    pip install -e .
+    ```
+
+    - Set up environment variables. This can be done using the PROTEUS environment file
+
+    ```console
+    source PROTEUS.env
+    ```
+
+    - Additionally, set up the environment variable `FWL_DATA` to indicate in which folder the input data need to be stored
+
+    ```console
+    export FWL_DATA=/your_local_path
+    ```
+
+    **IF** you want to be able to start PROTEUS immediately from a new shell every time, add `source PROTEUS.env`,     `export FWL_DATA=...` (and potentially `conda activate proteus`) to your shell rc file.
 
 11. Done! 🚀
 

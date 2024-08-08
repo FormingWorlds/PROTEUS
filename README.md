@@ -19,7 +19,7 @@ Only attempt to run PROTEUS after you have followed all of the installation inst
 If using a fresh shell, it is necessary to perform the following steps:     
 1. `conda activate proteus` (if using Anaconda/Miniconda)     
 2. `source PROTEUS.env`      
-Then you can start the model by running: `proteus.py`. See the ReadTheDocs pages for more information.    
+Then you can start the model by running: `proteus_main.py`. See the ReadTheDocs pages for more information.    
 
 ## Updating the code
 
@@ -45,18 +45,19 @@ Hamish Innes            | hamish.innes[at]fu-berlin.de |
 
 | Object                | Description                                               |
 | -                     | -                                                         |
-| `proteus.py`          | Main PROTEUS Python script                                |
+| `proteus_main.py`     | Main PROTEUS Python script                                |
 | `README.md`           | Overview file                                             |
 | `pyproject.toml`	    | Documentation file                                        |
 | `CODE_OF_CONDUCT.md`	| Project code of conduct                                   |
 | `LICENSE.txt`         | Project license                                           |
-| `JANUS/`              | Submodule JANUS                                          |
+| `JANUS/`              | Submodule JANUS                                           |
 | `SPIDER/`             | Submodule SPIDER                                          |
 | `VULCAN/`             | Submodule VULCAN                                          |
 | `Mors/`               | Submodule Mors                                            |
-| `utils/`              | Code used for running PROTEUS and its submodules          |
-| `plot/`               | Code used for plotting results                            |
+| `src/atmosphere/`     | Code used for interfacing with atmosphere submodules      |
+| `src/utils/`          | Code used for running PROTEUS and its submodules          |
+| `src/plot/`           | Code used for plotting results                            |
 | `output/`             | Output folder with subfolders for each model run          |
 | `input/`              | Input folder (e.g. stellar spectra, example configs)      |
 | `docs/`			    | Documentation source files                                |
-| `examples/`           | Example cases that the model should be able to reproduce     |
+| `examples/`           | Example cases that the model should be able to reproduce  |
