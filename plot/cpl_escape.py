@@ -65,12 +65,12 @@ def main():
     # Read in COUPLER input file
     log.info("Read cfg file")
     from utils.coupler import ReadInitFile, SetDirectories
-    COUPLER_options = ReadInitFile( cfg )
+    OPTIONS = ReadInitFile( cfg )
 
     # Set directories dictionary
-    dirs = SetDirectories(COUPLER_options)
+    dirs = SetDirectories(OPTIONS)
 
-    plot_escape(output_dir=dirs["output"], escape_model=COUPLER_options['escape_model'], plot_format=COUPLER_options["plot_format"])
+    plot_escape(output_dir=dirs["output"], escape_model=OPTIONS['escape_model'], plot_format=OPTIONS["plot_format"])
 
 #====================================================================
 
