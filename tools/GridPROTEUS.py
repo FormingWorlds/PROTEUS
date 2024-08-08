@@ -11,14 +11,14 @@ if PROTEUS_DIR == None:
     raise Exception("Environment is not activated or is setup incorrectly")
 
 
-# Custom logger instance 
+# Custom logger instance
 def setup_logger(logpath:str="new.log",level=1,logterm=True):
 
     # https://stackoverflow.com/a/61457119
 
     custom_logger = logging.getLogger()
     custom_logger.handlers.clear()
-    
+
     if os.path.exists(logpath):
         os.remove(logpath)
 
@@ -31,8 +31,8 @@ def setup_logger(logpath:str="new.log",level=1,logterm=True):
         case 2:
             level_code = logging.WARNING
         case 3:
-            level_code = logging.ERROR 
-        case 4: 
+            level_code = logging.ERROR
+        case 4:
             level_code = logging.CRITICAL
 
     # Add terminal output to logger
@@ -58,8 +58,8 @@ def setup_logger(logpath:str="new.log",level=1,logterm=True):
             return
         custom_logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
     sys.excepthook = handle_exception
-    
-    return 
+
+    return
 
 
 # Object for handling the parameter grid
@@ -74,15 +74,15 @@ class Pgrid():
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
             raise Exception("Base config file '%s' does not exist!" % self.conf)
-        
+
         self.symlink_dir = symlink_dir
         if self.symlink_dir == "":
             raise Exception("Symlinked directory is set to a blank path")
-        
+
         # Paths
         self.outdir = os.path.abspath(self.outdir)
         self.tmpdir = os.path.abspath(self.tmpdir)
-        
+
         # Remove old output location
         if os.path.exists(self.outdir):
             if os.path.islink(self.outdir):
@@ -94,7 +94,7 @@ class Pgrid():
                     raise Exception("Not emptying directory - it contains a Git repository!")
                 time.sleep(2.0)
                 shutil.rmtree(self.outdir)
-        
+
         # Create new output location
         if (self.symlink_dir == "_UNSET"):
             # Not using symlink
@@ -131,22 +131,22 @@ class Pgrid():
         self.dim_param = []     # Dimension parameter of interest ('_hyper' for hypervariables)
 
         # Dimension variables (incl hypervariables)
-        self.dim_avars = {}  
+        self.dim_avars = {}
 
         # Flattened pgrid
         self.flat = []   # List of grid points, each is a dictionary
         self.size = 0    # Total size of grid
-    
+
     # Add a new empty dimension to the pgrid
     def add_dimension(self,name:str):
         if name in self.dim_names:
             raise Exception("Dimension '%s' cannot be added twice" % name)
-        
+
         log.info("Added new dimension '%s' " % name)
         self.dim_names.append(name)
         self.dim_param.append("_empty")
         self.dim_avars[name] = None
-        
+
     def _get_idx(self,name:str):
         if name not in self.dim_names:
             raise Exception("Dimension '%s' is not initialised" % name)
@@ -177,7 +177,7 @@ class Pgrid():
         the_list = list(set(values))  # remove duplicates
         if not isinstance(values[0],str): # sort if numeric
             the_list = sorted(the_list)
-        self.dim_avars[name] = the_list 
+        self.dim_avars[name] = the_list
 
     # Set a dimension to take hypervariables
     def set_dimension_hyper(self,name:str):
@@ -189,7 +189,7 @@ class Pgrid():
 
     # Add a new hypervariable to a _hyper dimension
     # This allows multiple variables to be considered as one
-    # e.g. Earth and Mars are two cases of the 'planet' hypervariable, but 
+    # e.g. Earth and Mars are two cases of the 'planet' hypervariable, but
     #      each contains their own sub-variables like mass, radius, etc.
     def append_dimension_hyper(self,name:str,value:dict):
         idx = self._get_idx(name)
@@ -205,7 +205,7 @@ class Pgrid():
         log.info(" ")
         for name in self.dim_names:
             idx = self._get_idx(name)
-            
+
             log.info(" -- dimension: %s" % name)
             log.info("    parameter: %s" % self.dim_param[idx])
             log.info("    values   : %s" % self.dim_avars[name])
@@ -226,10 +226,10 @@ class Pgrid():
         # Validate
         if len(self.dim_avars) == 0:
             raise Exception("pgrid is empty")
-        
+
         # Dimension count
         log.info("    %d dimensions" % len(self.dim_names))
-        
+
         # Calculate total pgrid size
         values = list(self.dim_avars.values())
         self.size = 1
@@ -237,7 +237,7 @@ class Pgrid():
             self.size *= len(v)
         log.info("    %d points expected" % self.size)
 
-        # Create flattened parameter grid 
+        # Create flattened parameter grid
         flat_values = list(itertools.product(*values))
         log.info("    created %d grid points" % len(flat_values))
 
@@ -288,7 +288,7 @@ class Pgrid():
                 log.info("    %d " % i)
                 time.sleep(1.0)
             log.info(" ")
-        
+
         # Print more often if this is a test
         else:
             check_interval = 1.0
@@ -300,22 +300,22 @@ class Pgrid():
 
         # Loop over grid points to write config files
         log.info("Writing config files")
-        for i,gp in enumerate(self.flat):  
+        for i,gp in enumerate(self.flat):
 
             cfgfile = os.path.join(self.tmpdir,"case_%05d.cfg" % i)
             gp["dir_output"] = self.name+"/case_%05d"%i
 
             # Create config file for this case
             with open(cfgfile, 'w') as hdl:
-                
+
                 hdl.write("# GridPROTEUS config file \n")
                 hdl.write("# gp_index = %d \n" % i)
 
                 # Write lines
                 for l in base_config:
-                    if ('=' not in l): 
+                    if ('=' not in l):
                         continue
-                    
+
                     l = l.split('#')[0]
                     key = l.split('=')[0].strip()
 
@@ -329,13 +329,13 @@ class Pgrid():
 
                 # Ensure data is written to disk
                 hdl.flush()
-                os.fsync(hdl.fileno()) 
+                os.fsync(hdl.fileno())
         gc.collect()
 
 
          # Thread targget
         def _thread_target(cfg_path):
-            proteus_py = os.path.join(PROTEUS_DIR,"proteus.py")
+            proteus_py = os.path.join(PROTEUS_DIR,"start_proteus.py")
             if test_run:
                 command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
             else:
@@ -350,7 +350,7 @@ class Pgrid():
             cfg_path = os.path.join(self.tmpdir,"case_%05d.cfg" % i)
             # Check cfg exists
             cfgexists = False
-            waitfor   = 4.0 
+            waitfor   = 4.0
             for _ in range(int(waitfor*100)):  # do n=100*wait_for checks
                 time.sleep(0.01)
                 if os.path.exists(cfgfile):
@@ -405,9 +405,9 @@ class Pgrid():
 
             # Done?
             if np.count_nonzero(status == 2) == self.size:
-                done = True 
+                done = True
                 log.info("Grid is complete")
-                break 
+                break
 
             # Start new?
             start_new = np.count_nonzero(status == 1) < num_threads
@@ -416,9 +416,9 @@ class Pgrid():
                     if status[i] == 0:
                         status[i] = 1
                         start_new = False
-                        threads[i].start() 
+                        threads[i].start()
                         break
-            
+
             # Short sleeps while doing initial dispatch
             if step < num_threads:
                 time.sleep(2.0)
@@ -449,7 +449,7 @@ class Pgrid():
                 log.warning("Case %05d has status=running but it is not alive. Setting status=died."%i)
                 with open(status_path,'x') as hdl:
                     hdl.write("25\n")
-                    hdl.write("Error (died)\n")         
+                    hdl.write("Error (died)\n")
 
         time_end = datetime.now()
         log.info("All processes finished at: "+str(time_end.strftime('%Y-%m-%d_%H:%M:%S')))
@@ -486,7 +486,7 @@ if __name__=='__main__':
 
     pg.add_dimension("Redox state")
     pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-2, 0, 2, 4])
-    
+
     # -----
     # Print state of parameter grid
     # -----
