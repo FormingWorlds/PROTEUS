@@ -495,7 +495,7 @@ def main():
         
 
         ############### ATMOSPHERE SUB-LOOP
-        RunAtmosphere(OPTIONS, dirs, hf_all, hf_row)
+        RunAtmosphere(OPTIONS, dirs, loop_counter, spfile_path, hf_all, hf_row)
 
         ############### HOUSEKEEPING AND CONVERGENCE CHECK 
 

@@ -11,9 +11,32 @@ from proteus.atmosphere.dummy_atmosphere import RunDummyAtm
 
 log = logging.getLogger("PROTEUS")
 
-def RunAtmosphere(OPTIONS:dict, dirs:dict, hf_all:dict, hf_row:dict):
+def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
+                  spfile_path:str, hf_all:pd.DataFrame, hf_row:dict):
+    """Run Atmosphere submodule.
+
+    Generic function to run an atmospheric simulation with either JANUS, AGNI or dummy.
+    Writes into the hf_row generic variable passed as an arguement.
+
+    Parameters
+    ----------
+        OPTIONS : dict
+            Configuration options and other variables
+        dirs : dict
+            Dictionary containing paths to directories
+        loop_counter : dict
+            Dictionary containing iteration information
+        spfile_path : str
+            Spectral file path
+        hf_all : pd.DataFrame
+            Dataframe containing simulation variables (now and historic)
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
+
+    """
 
     #Warning! Find a way to store atm object for AGNI
+    global atm
 
     PrintHalfSeparator()
     if OPTIONS["shallow_ocean_layer"] == 1:
