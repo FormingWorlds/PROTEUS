@@ -419,15 +419,23 @@ def main():
             PrintHalfSeparator()
 
             if OPTIONS["escape_model"] == 1:
-                esc_result = RunZEPHYRUS()
+                esc_result = RunZEPHYRUS(hf_row, dt,
+                                         OPTIONS['star_mass'], 
+                                         OPTIONS['star_omega'], 
+                                         OPTIONS['escape_el_tidal_correction'], 
+                                         OPTIONS['mean_distance']*AU, 
+                                         OPTIONS["eccentricity"], 
+                                         hf_row["M_planet"], 
+                                         OPTIONS["escape_el_rate"], 
+                                         hf_row["R_planet"], 
+                                         hf_row["R_planet"])
 
             elif OPTIONS["escape_model"] == 2:
                 esc_result = RunDummyEsc(hf_row, dt, OPTIONS["escape_dummy_rate"])
-            
+
             # store total escape rate 
             hf_row["esc_rate_total"] = esc_result["rate_bulk"]
-            log.info("Bulk escape rate: %.2e kg yr-1"%(hf_row["esc_rate_total"] * secs_per_year))
-
+            log.info("Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1" % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"]))
             # update elemental mass targets
             for e in element_list:
                 if e=='O': continue

@@ -13,7 +13,7 @@ git clone https://github.com/FormingWorlds/PROTEUS proteus
 Install using `virtualenv`:
 
 ```console
-cd gemdat
+cd proteus
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -e .[develop]
@@ -26,6 +26,23 @@ cd proteus
 conda create -n proteus python=3.10
 conda activate proteus
 pip install -e .[develop]
+```
+
+### Running tests
+
+PROTEUS uses [pytest](https://docs.pytest.org/en/latest/) to run the tests.
+You can run the tests for yourself using:
+
+```console
+pytest
+```
+
+To check coverage:
+
+```console
+coverage run -m pytest
+coverage report  # to output to terminal
+coverage html    # to generate html report
 ```
 
 ### Building the documentation

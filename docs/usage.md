@@ -5,7 +5,7 @@
 You can directly run PROTEUS using the Python command:
 
 ```console
-python proteus.py --cfg [cfgfile]
+python start_proteus.py --cfg [cfgfile]
 ```
 
 Where `[cfgfile]` is the path to the required configuration file. If
@@ -49,23 +49,23 @@ Evolution model to use for star
 
 #### **star_rot_percentile**
 
-The percentile used to find rotation rate of star from a distribution when the Mors evolution model is selected.  
+The percentile used to find rotation rate of star from a distribution when the Mors evolution model is selected.
 
 - Deprecated: False
-- Type: Float 
+- Type: Float
 - Domain: 0 to 100.
 
 #### **star_mass**
 
-Mass of the host star, in units of solar masses.  
+Mass of the host star, in units of solar masses.
 
 - Deprecated: False
-- Type: Float 
+- Type: Float
 - Domain: Valid range depends on the stellar model used. For the Mors model, it should be between 0.1 and 1.25 solar masses. Values outside of the valid range will be clipped.
 
 #### **star_radius_modern**
 
-Assumed radius of the host star as observed today, in units of solar radii.  
+Assumed radius of the host star as observed today, in units of solar radii.
 
 - Deprecated: False
 - Type: Float
@@ -73,7 +73,7 @@ Assumed radius of the host star as observed today, in units of solar radii.
 
 #### **star_luminosity_modern**
 
-Assumed luminosity of the host star as observed today, in units of solar luminosities.  
+Assumed luminosity of the host star as observed today, in units of solar luminosities.
 
 - Deprecated: False
 - Type: Float
@@ -81,7 +81,7 @@ Assumed luminosity of the host star as observed today, in units of solar luminos
 
 #### **star_temperature_modern**
 
-Assumed temperature of the host star as observed today, in units of kelvin.  
+Assumed temperature of the host star as observed today, in units of kelvin.
 
 - Deprecated: False
 - Type: Float
@@ -89,7 +89,7 @@ Assumed temperature of the host star as observed today, in units of kelvin.
 
 #### **star_age_modern**
 
-Estimated age of the host star as observed today, in units of years.  
+Estimated age of the host star as observed today, in units of years.
 
 - Deprecated: False
 - Type: Float
@@ -97,7 +97,7 @@ Estimated age of the host star as observed today, in units of years.
 
 #### **star_rot_pctle**
 
-Rotation rate percentile for the star, relative to other stars of the same mass. 
+Rotation rate percentile for the star, relative to other stars of the same mass.
 
 - Deprecated: False
 - Type: Float
@@ -105,7 +105,7 @@ Rotation rate percentile for the star, relative to other stars of the same mass.
 
 #### **star_spectrum**
 
-The spectrum of the host star as observed today. These files may be obtained using the ``GetStellarSpectrum`` tool.  
+The spectrum of the host star as observed today. These files may be obtained using the ``GetStellarSpectrum`` tool.
 
 - Deprecated: False
 - Type: String
@@ -113,7 +113,7 @@ The spectrum of the host star as observed today. These files may be obtained usi
 
 #### **mean_distance**
 
-Distance between the planet and its host star, in units of AU.  
+Distance between the planet and its host star, in units of AU.
 
 - Deprecated: False
 - Type: Float
@@ -125,19 +125,19 @@ Mass of the planet, in units of Earth mass.
 
 - Deprecated: False
 - Type: Float
-- Domain: Greater than zero. 
+- Domain: Greater than zero.
 
 #### **radius**
 
-Radius of the planet at the surface, in units of Earth radius.  
+Radius of the planet at the surface, in units of Earth radius.
 
 - Deprecated: False
-- Type: Float 
+- Type: Float
 - Domain: Greater than zero.
 
 #### **zenith_angle**
 
-Angle of the incoming stellar radiation relative to the zenith, in units of degrees.    
+Angle of the incoming stellar radiation relative to the zenith, in units of degrees.
 
 - Deprecated: False
 - Type: Float
@@ -145,7 +145,7 @@ Angle of the incoming stellar radiation relative to the zenith, in units of degr
 
 #### **asf_scalefactor**
 
-Scale factor for the absorbed stellar flux (ASF), used in combination with ``zenith_angle``; see Cronin+14 for a discussion on this.    
+Scale factor for the absorbed stellar flux (ASF), used in combination with ``zenith_angle``; see Cronin+14 for a discussion on this.
 
 - Deprecated: False
 - Type: Float
@@ -153,7 +153,7 @@ Scale factor for the absorbed stellar flux (ASF), used in combination with ``zen
 
 #### **albedo_s**
 
-Albedo of the surface of the planet.    
+Albedo of the surface of the planet.
 
 - Deprecated: False
 - Type: Float
@@ -161,7 +161,7 @@ Albedo of the surface of the planet.
 
 #### **albedo_pl**
 
-Bond albedo of the planet.  
+Bond albedo of the planet.
 
 - Deprecated: False
 - Type: Float
@@ -169,7 +169,7 @@ Bond albedo of the planet.
 
 #### **P_top**
 
-Pressure at the top of the atmosphere, in units of bar.   
+Pressure at the top of the atmosphere, in units of bar.
 
 - Deprecated: False
 - Type: Float
@@ -177,7 +177,7 @@ Pressure at the top of the atmosphere, in units of bar.
 
 #### **dir_output**
 
-Name of the directory which will store the model output files. This includes data, plots, temporary files, and config information.  
+Name of the directory which will store the model output files. This includes data, plots, temporary files, and config information.
 
 - Deprecated: False
 - Type: String
@@ -185,7 +185,7 @@ Name of the directory which will store the model output files. This includes dat
 
 #### **time_star**
 
-Age of the star at the start of the simulation, in units of years.   
+Age of the star at the start of the simulation, in units of years.
 
 - Deprecated: False
 - Type: Float
@@ -193,7 +193,7 @@ Age of the star at the start of the simulation, in units of years.
 
 #### **time_target**
 
-Simulation time at which to stop the model, if it hasn't stopped already, in units of years.  
+Simulation time at which to stop the model, if it hasn't stopped already, in units of years.
 
 - Deprecated: False
 - Type: Float
@@ -201,7 +201,7 @@ Simulation time at which to stop the model, if it hasn't stopped already, in uni
 
 #### **spectral_file**
 
-Spectral file to use when running SOCRATES.   
+Spectral file to use when running SOCRATES.
 
 - Deprecated: False
 - Type: String
@@ -209,7 +209,7 @@ Spectral file to use when running SOCRATES.
 
 #### **stellar_heating**
 
-Flag to toggle stellar heating, including the downward shortwave stream.  
+Flag to toggle stellar heating, including the downward shortwave stream.
 
 - Deprecated: False
 - Type: Integer
@@ -217,15 +217,15 @@ Flag to toggle stellar heating, including the downward shortwave stream.
 
 #### **plot_iterfreq**
 
-Iteration frequency at which to make (or update) the plots. Plots can be generated during the simulation to follow  its progress and status.   
+Iteration frequency at which to make (or update) the plots. Plots can be generated during the simulation to follow  its progress and status.
 
 - Deprecated: False
 - Type: Integer
-- Domain: 0: Do not make plots until the simulation is complete. Values greater than 0: make plots every ``plot_iterfreq`` iterations. 
+- Domain: 0: Do not make plots until the simulation is complete. Values greater than 0: make plots every ``plot_iterfreq`` iterations.
 
 #### **sspec_dt_update**
 
-Time period at which to update the stellar spectrum using the stellar evolution model of choice, in units of years.   
+Time period at which to update the stellar spectrum using the stellar evolution model of choice, in units of years.
 
 - Deprecated: False
 - Type: Float
@@ -233,7 +233,7 @@ Time period at which to update the stellar spectrum using the stellar evolution 
 
 #### **sinst_dt_update**
 
-Period at which to update the instellation flux and the stellar radius using the stellar evolution model of choice, in units of years.    
+Period at which to update the instellation flux and the stellar radius using the stellar evolution model of choice, in units of years.
 
 - Deprecated: False
 - Type: Float
@@ -241,7 +241,7 @@ Period at which to update the instellation flux and the stellar radius using the
 
 #### **dt_maximum**
 
-Maximum allowable time-step for the model, in units of years.    
+Maximum allowable time-step for the model, in units of years.
 
 - Deprecated: False
 - Type: Float
@@ -249,7 +249,7 @@ Maximum allowable time-step for the model, in units of years.
 
 #### **dt_minimum**
 
-Minimum allowable time-step for the model once the start-up phase has completed. Units of years.     
+Minimum allowable time-step for the model once the start-up phase has completed. Units of years.
 
 - Deprecated: False
 - Type: Float
@@ -257,35 +257,35 @@ Minimum allowable time-step for the model once the start-up phase has completed.
 
 #### **dt_method**
 
-Method to be used for calculating the time-step once the start-up phase has completed. Units of years. 'Proportional' sets ``dt`` to be some small fraction of the simulation time. 'Adapative' dynamically adjusts ``dt`` according to how rapidly the upward energy fluxes are changing. 'Maximum' sets ``dt`` to always be equal to ``dt_maximum``.  
+Method to be used for calculating the time-step once the start-up phase has completed. Units of years. 'Proportional' sets ``dt`` to be some small fraction of the simulation time. 'Adapative' dynamically adjusts ``dt`` according to how rapidly the upward energy fluxes are changing. 'Maximum' sets ``dt`` to always be equal to ``dt_maximum``.
 
 - Deprecated: False
 - Type: Integer
-- Domain: 0: Proportional, 1: Adaptive, 2: Maximum.    
+- Domain: 0: Proportional, 1: Adaptive, 2: Maximum.
 
 #### **dt_propconst**
 
-Proportionality constant when using ``dt_method=0``. Time step is set by ``dt = t/dt_propconst``, so larger values mean smaller steps.   
+Proportionality constant when using ``dt_method=0``. Time step is set by ``dt = t/dt_propconst``, so larger values mean smaller steps.
 
 - Deprecated: False
 - Type: Float
-- Domain: Greater than zero.    
+- Domain: Greater than zero.
 
 #### **dt_atol**
 
-Absolute tolerance on change in flux and melt fraction for each iteration.   
+Absolute tolerance on change in flux and melt fraction for each iteration.
 
 - Deprecated: False
 - Type: Float
-- Domain: Greater than zero.    
+- Domain: Greater than zero.
 
 #### **dt_rtol**
 
-Relative tolerance on change in flux and melt fraction for each iteration.   
+Relative tolerance on change in flux and melt fraction for each iteration.
 
 - Deprecated: False
 - Type: Float
-- Domain: Greater than zero.    
+- Domain: Greater than zero.
 
 #### **dt_initial**
 
@@ -293,11 +293,11 @@ Intial step size when using ``dt_method=1``, years.
 
 - Deprecated: False
 - Type: Float
-- Domain: Greater than zero.  
+- Domain: Greater than zero.
 
 #### **shallow_ocean_layer**
 
-Legacy method for converging atmospheric and interior upward fluxes. 
+Legacy method for converging atmospheric and interior upward fluxes.
 
 - Deprecated: True
 - Type: Integer
@@ -305,11 +305,11 @@ Legacy method for converging atmospheric and interior upward fluxes.
 
 #### **F_atm_bc**
 
-Boundary condition to use for calculating `F_atm`. Can be set to either the top of the atmosphere or the bottom.     
+Boundary condition to use for calculating `F_atm`. Can be set to either the top of the atmosphere or the bottom.
 
 - Deprecated: False
 - Type: Integer
-- Domain: 0: Top of atmosphere, 1: Bottom of atmosphere.    
+- Domain: 0: Top of atmosphere, 1: Bottom of atmosphere.
 
 #### **F_crit**
 
@@ -317,7 +317,7 @@ Critical flux. Once the upward net flux at the top of the atmosphere drops below
 
 - Deprecated: False
 - Type: Float
-- Domain: Greater than or equal to 0. Set to 0 to disable.    
+- Domain: Greater than or equal to 0. Set to 0 to disable.
 
 #### **escape_model**
 
@@ -325,7 +325,7 @@ Escape model to be used.
 
 - Deprecated: False
 - Type: Integer
-- Domain: 0: None, 1: ZEPHYRUS, 2: Dummy 
+- Domain: 0: None, 1: ZEPHYRUS, 2: Dummy
 
 #### **escape_stop**
 
@@ -345,7 +345,7 @@ Bulk escape rate for dummy escape model [kg s-1]
 
 #### **prevent_warming**
 
-Flag to ensure that the net upward energy flux is always positive, which prevents the star from causing net heating inside the planet.   
+Flag to ensure that the net upward energy flux is always positive, which prevents the star from causing net heating inside the planet.
 
 - Deprecated: False
 - Type: Integer
@@ -353,7 +353,7 @@ Flag to ensure that the net upward energy flux is always positive, which prevent
 
 #### **atmosphere_model**
 
-Atmosphere model used to set T(p) and T_surf.    
+Atmosphere model used to set T(p) and T_surf.
 
 - Deprecated: False
 - Type: Integer
@@ -361,7 +361,7 @@ Atmosphere model used to set T(p) and T_surf.
 
 #### **atmosphere_surf_state**
 
-Surface boundary condition; e.g. T_surf set by conductive heat transport.   
+Surface boundary condition; e.g. T_surf set by conductive heat transport.
 
 - Deprecated: False
 - Type: Integer
@@ -373,7 +373,7 @@ Conductive skin thickness, parameterising a thin layer at the surface.
 
 - Deprecated: False
 - Type: Float
-- Domain: Greater than zero, metres.       
+- Domain: Greater than zero, metres.
 
 #### **skin_k``**
 
@@ -381,35 +381,35 @@ Conductive skin thermal conductivity.
 
 - Deprecated: False
 - Type: Float
-- Domain: Greater than zero, [W m-1 K-1].    
+- Domain: Greater than zero, [W m-1 K-1].
 
 #### **atmosphere_nlev**
 
-Number of atmosphere model levels, measured at cell-centres.     
+Number of atmosphere model levels, measured at cell-centres.
 
 - Deprecated: False
-- Type: Integer 
+- Type: Integer
 - Domain: Greater than 15.
 
 #### **solid_stop**
 
-Flag to toggle the solidification break condition.  
+Flag to toggle the solidification break condition.
 
 - Deprecated: False
-- Type: Integer 
+- Type: Integer
 - Domain: 0: Disabled, 1: Enabled.
 
 #### **phi_crit**
 
-Value used for solidification break condition; stop the model once the global melt fraction drops below this value. This indiciates that the planet has solidified. Only applies when ``solid_stop`` is enabled.       
+Value used for solidification break condition; stop the model once the global melt fraction drops below this value. This indiciates that the planet has solidified. Only applies when ``solid_stop`` is enabled.
 
 - Deprecated: False
 - Type: Float
-- Domain: Values between zero and unity.    
+- Domain: Values between zero and unity.
 
 #### **steady_stop**
 
-Flag to toggle the steady-state break condition.  
+Flag to toggle the steady-state break condition.
 
 - Deprecated: False
 - Type: Integer
@@ -417,11 +417,11 @@ Flag to toggle the steady-state break condition.
 
 #### **steady_flux**
 
-Steady-state break condition, requiring that ``F_atm < steady_flux``.    
+Steady-state break condition, requiring that ``F_atm < steady_flux``.
 
 - Deprecated: False
 - Type: Float
-- Domain: Values between zero and unity.    
+- Domain: Values between zero and unity.
 
 #### **steady_dprel**
 
@@ -429,27 +429,27 @@ Steady-state break condition, requiring that ``dphi/dt < steady_dprel``.
 
 - Deprecated: False
 - Type: Float
-- Domain: Values between zero and unity.  
+- Domain: Values between zero and unity.
 
 #### **min_temperature**
 
-Temperature floor. The temperature of the atmosphere is prevented from dropping below this value. Units of kelvin.    
+Temperature floor. The temperature of the atmosphere is prevented from dropping below this value. Units of kelvin.
 
 - Deprecated: False
 - Type: Float
-- Domain: Greater than 0.   
+- Domain: Greater than 0.
 
 #### **max_temperature**
 
-Temperature ceiling. The temperature of the atmosphere is prevented from reaching above this value. Units of kelvin.  
+Temperature ceiling. The temperature of the atmosphere is prevented from reaching above this value. Units of kelvin.
 
 - Deprecated: False
 - Type: Float
-- Domain: Greater than ``min_temperature``.  
+- Domain: Greater than ``min_temperature``.
 
 #### **tropopause**
 
-Model of tropopause to be used before, or in the absence of, a time-stepped solution to the temperature structure. 'None' means no tropopause is applied. 'Skin' means that the tropopause will be set to the radiative skin temperature.  'Flux' dynamically sets the tropopause based on the heating rate. 
+Model of tropopause to be used before, or in the absence of, a time-stepped solution to the temperature structure. 'None' means no tropopause is applied. 'Skin' means that the tropopause will be set to the radiative skin temperature.  'Flux' dynamically sets the tropopause based on the heating rate.
 
 - Deprecated: False
 - Type: Integer
@@ -513,7 +513,7 @@ Mixing length parameterisation to use in SPIDER. Can be constant or variable wit
 
 #### **solver_tolerance**
 
-Tolerance to provide to SPIDER when it calls its numerical solver.  
+Tolerance to provide to SPIDER when it calls its numerical solver.
 
 - Deprecated: False
 - Type: Float
@@ -521,7 +521,7 @@ Tolerance to provide to SPIDER when it calls its numerical solver.
 
 #### **tsurf_poststep_change**
 
-Maximum allowed change in surface temperature calculated by SPIDER before it quits, to hand back to the other modules. Units of kelvin.   
+Maximum allowed change in surface temperature calculated by SPIDER before it quits, to hand back to the other modules. Units of kelvin.
 
 - Deprecated: False
 - Type: Float
@@ -529,7 +529,7 @@ Maximum allowed change in surface temperature calculated by SPIDER before it qui
 
 #### **tsurf_poststep_change_frac**
 
-Maximum allowed relative change in surface temperature calculated by SPIDER before it quits, to hand back to the other modules.   
+Maximum allowed relative change in surface temperature calculated by SPIDER before it quits, to hand back to the other modules.
 
 - Deprecated: False
 - Type: Float
@@ -537,11 +537,11 @@ Maximum allowed relative change in surface temperature calculated by SPIDER befo
 
 #### **planet_coresize**
 
-Size of the planet's core as a fraction of its total interior radius.   
+Size of the planet's core as a fraction of its total interior radius.
 
 - Deprecated: False
 - Type: Float
-- Domain: Between zero and unity, exclusive.  
+- Domain: Between zero and unity, exclusive.
 
 #### **ic_adiabat_entropy**
 
@@ -561,7 +561,7 @@ Entropy gradient for intialising a SPIDER at the start of the run, in units of  
 
 #### **F_atm**
 
-Initial guess for net upward flux `F_atm`.  
+Initial guess for net upward flux `F_atm`.
 
 - Deprecated: False
 - Type: Float
@@ -569,7 +569,7 @@ Initial guess for net upward flux `F_atm`.
 
 #### **fO2_shift_IW**
 
-Oxygen fugacity of the interior, measured in log10 units relative to the iron-wustite buffer. Positive values are oxidising, negative are reducing.   
+Oxygen fugacity of the interior, measured in log10 units relative to the iron-wustite buffer. Positive values are oxidising, negative are reducing.
 
 - Deprecated: False
 - Type: Float
@@ -577,7 +577,7 @@ Oxygen fugacity of the interior, measured in log10 units relative to the iron-wu
 
 #### **solvevol_use_params**
 
-Flag to enable solving for initial partial pressures subject to interior parameters, rather than using provided initial pressures. 
+Flag to enable solving for initial partial pressures subject to interior parameters, rather than using provided initial pressures.
 
 - Deprecated: False
 - Type: Integer
@@ -585,7 +585,7 @@ Flag to enable solving for initial partial pressures subject to interior paramet
 
 #### **Phi_global**
 
-Initial guess for mantle melt fraction.    
+Initial guess for mantle melt fraction.
 
 - Deprecated: False
 - Type: Float
@@ -593,7 +593,7 @@ Initial guess for mantle melt fraction.
 
 #### **CH_ratio**
 
-Required total-planet C/H mass ratio. Used when ``solvevol_use_params == 1``.    
+Required total-planet C/H mass ratio. Used when ``solvevol_use_params == 1``.
 
 - Deprecated: False
 - Type: Float
@@ -601,7 +601,7 @@ Required total-planet C/H mass ratio. Used when ``solvevol_use_params == 1``.
 
 #### **hydrogen_earth_oceans**
 
-Total hydrogen inventory of the planet. Used when when ``solvevol_use_params == 1``. Units of Earth oceans equivalent.  
+Total hydrogen inventory of the planet. Used when when ``solvevol_use_params == 1``. Units of Earth oceans equivalent.
 
 - Deprecated: False
 - Type: Float
@@ -609,15 +609,15 @@ Total hydrogen inventory of the planet. Used when when ``solvevol_use_params == 
 
 #### **nitrogen_ppmw**
 
-Nitrogen concentration. Used when ``solvevol_use_params == 1``. Parts per million of total mantle mass.  
+Nitrogen concentration. Used when ``solvevol_use_params == 1``. Parts per million of total mantle mass.
 
 - Deprecated: False
 - Type: Float
-- Domain: Greater than zero. 
+- Domain: Greater than zero.
 
 #### **sulfur_ppmw**
 
-Sulfur concentration. Used when ``solvevol_use_params == 1``. Parts per million of total mantle mass.  
+Sulfur concentration. Used when ``solvevol_use_params == 1``. Parts per million of total mantle mass.
 
 - Deprecated: False
 - Type: Float
@@ -633,7 +633,7 @@ Flag to include X in the model. For some (H2O, CO2, N2, S2) this will always equ
 
 #### **X_initial_bar**
 
-Initial partial pressure of X. Used when ``solvepp_enabled == 0``.    
+Initial partial pressure of X. Used when ``solvepp_enabled == 0``.
 
 - Deprecated: False
 - Type: Float
