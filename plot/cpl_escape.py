@@ -5,7 +5,7 @@ from utils.plot import *
 
 log = logging.getLogger("PROTEUS")
 
-def plot_escaep(output_dir, plot_format="pdf", t0=100.0):
+def plot_escape(output_dir, t0, escape_model, plot_format="pdf") :
 
     log.info("Plot escape")
 
@@ -22,16 +22,15 @@ def plot_escaep(output_dir, plot_format="pdf", t0=100.0):
     scale = 1.1
     fig,ax = plt.subplots(1,1, figsize=(7*scale,4*scale))
 
-
-    if COUPLER_options['escape_model'] == 0 :
-        escape_model = 'No escape'
-    elif COUPLER_options['escape_model'] == 1 :
-        escape_model = 'Energy-limited escape (Zephyrus)'
-    elif COUPLER_options['escape_model'] == 2 :
-        escape_model = 'Dummy escape'
+    if escape_model == 0 :
+        escape_model_label = 'No escape'
+    elif escape_model == 1 :
+        escape_model_label = 'Energy-limited escape (Zephyrus)'
+    elif escape_model == 2 :
+        escape_model_label = 'Dummy escape'
     
     y = hf_all['esc_rate_total']
-    l = ax.plot(time, y, lw=lw, ls='solid', label=f'Energy-limited escape ({escape_model})')
+    l = ax.plot(time, y, lw=lw, ls='solid', label=f'Energy-limited escape ({escape_model_label})')
 
 
     # decorate 
@@ -65,7 +64,7 @@ def main():
     # Set directories dictionary
     dirs = SetDirectories(COUPLER_options)
 
-    plot_escape( output_dir=dirs["output"], plot_format=COUPLER_options["plot_format"] )
+    plot_escape( output_dir=dirs["output"], t0=COUPLER_options['time_star'], escape_model=COUPLER_options['escape_model'], plot_format=COUPLER_options["plot_format"])
 
 #====================================================================
 
