@@ -440,7 +440,7 @@ def main():
                                          OPTIONS['mean_distance']*AU, 
                                          OPTIONS["eccentricity"], 
                                          hf_row["M_planet"], 
-                                         OPTIONS["escape_el_rate"], 
+                                         OPTIONS["efficiency_factor"], 
                                          hf_row["R_planet"], 
                                          hf_row["R_planet"])
 
