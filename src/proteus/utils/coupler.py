@@ -8,17 +8,17 @@ from proteus.utils.helper import *
 
 log = logging.getLogger("PROTEUS")
 
-from plot.cpl_atmosphere import plot_atmosphere
-from plot.cpl_global import plot_global
-from plot.cpl_stacked import plot_stacked
-from plot.cpl_interior import plot_interior
-from plot.cpl_sflux import plot_sflux
-from plot.cpl_sflux_cross import plot_sflux_cross
-from plot.cpl_fluxes_global import plot_fluxes_global
-from plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
-from plot.cpl_interior_cmesh import plot_interior_cmesh
-from plot.cpl_observables import plot_observables
-from plot.cpl_elements import plot_elements
+from proteus.plot.cpl_atmosphere import plot_atmosphere
+from proteus.plot.cpl_global import plot_global
+from proteus.plot.cpl_stacked import plot_stacked
+from proteus.plot.cpl_interior import plot_interior
+from proteus.plot.cpl_sflux import plot_sflux
+from proteus.plot.cpl_sflux_cross import plot_sflux_cross
+from proteus.plot.cpl_fluxes_global import plot_fluxes_global
+from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
+from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
+from proteus.plot.cpl_observables import plot_observables
+from proteus.plot.cpl_elements import plot_elements
 
 def GitRevision(dir:str) -> str:
     '''

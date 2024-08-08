@@ -16,9 +16,9 @@ import pandas as pd
 
 # Import PROTEUS stuff
 from proteus.utils.coupler import *
-from plot.cpl_offchem_species import *
-from plot.cpl_offchem_time import *
-from plot.cpl_offchem_year import *
+from proteus.plot.cpl_offchem_species import *
+from proteus.plot.cpl_offchem_time import *
+from proteus.plot.cpl_offchem_year import *
 import tools.RunOfflineChemistry as ROC
 
 # ------------------------------------------------------------------------------------------------
