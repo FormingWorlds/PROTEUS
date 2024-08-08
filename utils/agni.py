@@ -239,13 +239,35 @@ def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
         atmos.gas_vmr[g][:] = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]
 
-    # Update pressure grid 
+    # Store old/current log-pressure vs temperature arrays 
+    p_old = list(atmos.pl)
+    t_old = list(atmos.tmpl)
+    nlev_c = len(p_old)
+
+    #    extend to lower pressures 
+    p_old = [p_old[0]/3].extend(p_old)
+    t_old = [t_old[0]].extend(t_old)
+
+    #    extend to higher pressures 
+    p_old = p_old.extend([p_old[-1]*3])
+    t_old = t_old.extend([t_old[-1]])
+
+    #    create interpolator
+    itp = PchipInterpolator(np.log10(p_old), t_old)
+
+    # Update surface pressure [Pa] and generate new grid
     atmos.p_boa = 1.0e5 * hf_row["P_surf"]
     jl.AGNI.atmosphere.generate_pgrid_b(atmos)
 
     # Update surface temperature(s)
     atmos.tmp_surf  = hf_row["T_surf"]
     atmos.tmp_magma = hf_row["T_magma"]
+
+    # Set temperatures at all levels 
+    for i in range(nlev_c):
+        atmos.tmp[i]  = itp(np.log10(atmos.p[i]))
+        atmos.tmpl[i] = itp(np.log10(atmos.pl[i]))
+    atmos.tmpl[-1] = itp(np.log10(atmos.pl[-1]))
 
     return atmos
 
@@ -293,15 +315,15 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
         log.info("Attempt %d" % attempts)
 
         # default parameters
-        linesearch = 1
+        linesearch = 2
         easy_start = False
         dx_max = OPTIONS["tsurf_poststep_change"]+1.0
-        ls_increase = 0.1
+        ls_increase = 1.01
 
         # try different solver parameters if struggling
         if attempts == 2:
-            linesearch  = 2
-            dx_max     *= 2.0
+            linesearch  = 1
+            dx_max     *= 3.0
             ls_increase = 1.1
 
         # first iteration parameters
@@ -309,6 +331,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
             linesearch  = 2
             easy_start  = True
             dx_max      = 200.0
+            ls_increase = 1.1
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -328,7 +351,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
                             method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
                             
-                            save_frames=False, modplot=0
+                            save_frames=False, modplot=2
                             )
 
         # Move AGNI logfile content into PROTEUS logfile

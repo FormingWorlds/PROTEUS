@@ -232,7 +232,7 @@ def main():
     match OPTIONS['star_model']:
         case 0: # SPADA (MORS)
             # download evolution track data if not present
-            mors.DownloadEvolutionTracks("/Spada")
+            mors.DownloadEvolutionTracks("Spada")
 
             # load modern spectrum 
             star_struct_modern = mors.spec.Spectrum()
@@ -253,7 +253,7 @@ def main():
             modern_wl, modern_fl = mors.ModernSpectrumLoad(star_modern_path, 
                                                            dirs['output']+'/-1.sflux') 
 
-            mors.DownloadEvolutionTracks("/Baraffe")
+            mors.DownloadEvolutionTracks("Baraffe")
             baraffe = mors.BaraffeTrack(OPTIONS["star_mass"])
 
         case _:
