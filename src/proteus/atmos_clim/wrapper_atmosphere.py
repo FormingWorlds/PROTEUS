@@ -3,11 +3,11 @@ from proteus.utils.modules_ext import *
 from proteus.utils.helper import *
 
 #We should make the import dependent of the chosen atmospheric submodule
-from proteus.atmosphere.janus import RunJANUS, StructAtm
+from proteus.atmos_clim.janus import RunJANUS, StructAtm
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
-from proteus.atmosphere.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv, DeallocAtmos
+from proteus.atmos_clim.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv, DeallocAtmos
 atm = None
-from proteus.atmosphere.dummy_atmosphere import RunDummyAtm
+from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
 
 log = logging.getLogger("PROTEUS")
 

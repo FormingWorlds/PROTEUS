@@ -13,7 +13,7 @@ from proteus.utils.spider import RunSPIDER, ReadSPIDER
 from proteus.utils.surface_gases import get_target_from_params, get_target_from_pressures, equilibrium_atmosphere, CalculateMantleMass
 from proteus.utils.logs import SetupLogger, GetLogfilePath, GetCurrentLogfileIndex, StreamToLogger
 
-from proteus.atmosphere import RunAtmosphere
+from proteus.atmos_clim import RunAtmosphere
 
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
 from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
