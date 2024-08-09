@@ -3,7 +3,7 @@
 from utils.modules_ext import *
 from utils.plot import *
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("FWL")
 
 def plot_elements( output_dir, plot_format="pdf", t0=100.0):
 

@@ -1,5 +1,13 @@
 {
     "editor.tabSize": 4,
     "editor.rulers": [ 92 ],
-    "python.analysis.extraPaths": ["JANUS","Mors"]
+    "python.analysis.extraPaths": [
+        "JANUS",
+        "Mors"
+    ],
+    "python.testing.pytestArgs": [
+        "JANUS"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
 }

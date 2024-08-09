@@ -46,7 +46,7 @@ def main():
     
     # Switch to logger 
     SetupLogger(logpath=logpath, logterm=True, level=OPTIONS["log_level"])
-    log = logging.getLogger("PROTEUS")
+    log = logging.getLogger("FWL")
 
     # Print information to logger
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")

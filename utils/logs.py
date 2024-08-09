@@ -1,6 +1,8 @@
 # Setup logger for PROTEUS
 
-import logging, sys, os
+import logging
+import sys
+import os
 
 # Fake file-like stream object that redirects writes to a logger instance.
 class StreamToLogger(object):
@@ -53,11 +55,11 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 # Custom logger instance 
-def SetupLogger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
+def SetupLogger(logpath:str="new.log",level:str="INFO",logterm:bool=True, name:str="FWL"):
 
     # https://stackoverflow.com/a/61457119
 
-    custom_logger = logging.getLogger("PROTEUS")
+    custom_logger = logging.getLogger(name)
     custom_logger.handlers.clear()
 
     if os.path.exists(logpath):

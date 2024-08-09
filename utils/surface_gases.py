@@ -2,7 +2,7 @@ from utils.modules_ext import *
 from utils.constants import *
 from utils.helper import *
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("FWL")
 
 # Solve partial pressures functions
 # Originally formulated by Dan Bower

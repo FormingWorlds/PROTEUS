@@ -6,7 +6,7 @@ from utils.constants import *
 from utils.spider import *
 from utils.helper import *
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("FWL")
 
 from plot.cpl_atmosphere import plot_atmosphere
 from plot.cpl_global import plot_global

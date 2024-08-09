@@ -4,7 +4,7 @@ from utils.modules_ext import *
 from utils.helper import *
 from utils.constants import *
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("FWL")
 
 # Run the dummy atmosphere module
 def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:float):

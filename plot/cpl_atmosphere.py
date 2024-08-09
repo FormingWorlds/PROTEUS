@@ -4,7 +4,7 @@
 from utils.modules_ext import *
 from utils.plot import *
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("FWL")
 
 #====================================================================
 def plot_atmosphere( output_dir:str, times:list, plot_format="pdf"):

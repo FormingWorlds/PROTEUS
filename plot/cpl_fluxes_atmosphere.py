@@ -4,7 +4,7 @@
 from utils.modules_ext import *
 from utils.plot import *
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("FWL")
 
 # Plotting fluxes
 def plot_fluxes_atmosphere(output_dir, plot_format="pdf"):

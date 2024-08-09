@@ -7,7 +7,7 @@ from utils.logs import GetLogfilePath, GetCurrentLogfileIndex
 
 from juliacall import Main as jl
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("FWL")
 
 # Constant
 AGNI_LOGFILE_NAME="agni_recent.log"

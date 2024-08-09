@@ -5,7 +5,7 @@ import numpy as np
 import os, shutil, re, glob, logging
 from utils.constants import *
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("FWL")
 
 def PrintSeparator():
     log.info("===================================================")

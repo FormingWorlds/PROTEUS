@@ -7,7 +7,7 @@ from utils.constants import *
 from utils.plot import *
 from utils.helper import natural_sort
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("FWL")
 
 
 # Planck function value at stellar surface
