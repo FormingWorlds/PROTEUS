@@ -605,7 +605,7 @@ def main():
 
         # Stop simulation when flux is small
         if (OPTIONS["emit_stop"] == 1) and (loop_counter["total"] > loop_counter["init_loops"]+1) \
-            and ( abs(hf_row["F_atm"]) <= OPTIONS["F_crit"]):
+            and ( hf_row["F_atm"] <= OPTIONS["F_crit"]):
             UpdateStatusfile(dirs, 14)
             log.info("")
             log.info("===> Planet no longer cooling! <===")

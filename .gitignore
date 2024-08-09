@@ -34,6 +34,7 @@ atm_chemistry.pdf
 MORS/fs255_grid*
 screenlog.0
 nogit_*
+.ruff_cache
 
 
 # From Read the Docs

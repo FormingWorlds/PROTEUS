@@ -215,7 +215,7 @@ def DeallocAtmos(atmos):
 def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
     """Update atmosphere struct.
     
-    Sets the new surface boundary conditions and composition.
+    Sets the new boundary conditions and composition.
 
     Parameters
     ----------
@@ -233,12 +233,14 @@ def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
 
     """
 
+    # ---------------------
     # Update compositions
     vol_dict = ConstructVolDict(hf_row, OPTIONS)
     for g in vol_dict.keys():
-        atmos.gas_vmr[g][:] = vol_dict[g]
+        atmos.gas_vmr[g][:]  = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]
-
+    
+    # ---------------------
     # Store old/current log-pressure vs temperature arrays 
     p_old = list(atmos.p)
     t_old = list(atmos.tmp)
@@ -255,19 +257,26 @@ def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
     #    create interpolator
     itp = PchipInterpolator(np.log10(p_old), t_old)
 
+    # ---------------------
     # Update surface pressure [Pa] and generate new grid
-    atmos.p_boa = 1.0e5 * hf_row["P_surf"]
+    atmos.p_boa = 1.0e5 * float(hf_row["P_surf"])
     jl.AGNI.atmosphere.generate_pgrid_b(atmos)
 
+    # ---------------------
     # Update surface temperature(s)
-    atmos.tmp_surf  = hf_row["T_surf"]
-    atmos.tmp_magma = hf_row["T_magma"]
+    atmos.tmp_surf  = float(hf_row["T_surf"] )
+    atmos.tmp_magma = float(hf_row["T_magma"])
 
+    # ---------------------
     # Set temperatures at all levels 
     for i in range(nlev_c):
         atmos.tmp[i]  = float( itp(np.log10(atmos.p[i]))  )
         atmos.tmpl[i] = float( itp(np.log10(atmos.pl[i])) )
     atmos.tmpl[-1]    = float( itp(np.log10(atmos.pl[-1])))
+
+    # ---------------------
+    # Update instellation flux 
+    atmos.instellation = float(hf_row["F_ins"])
 
     return atmos
 
@@ -317,7 +326,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
         # default parameters
         linesearch = 2
         easy_start = False
-        dx_max = OPTIONS["tsurf_poststep_change"]+1.0
+        dx_max = OPTIONS["tsurf_poststep_change"]+5.0
         ls_increase = 1.01
 
         # try different solver parameters if struggling
@@ -346,7 +355,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
                             conduct=False, convect=True, latent=True, sens_heat=True, 
 
                             max_steps=130, max_runtime=900.0, 
-                            conv_atol=1e-3, conv_rtol=1e-2, 
+                            conv_atol=1e-3, conv_rtol=2e-2, 
 
                             method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
