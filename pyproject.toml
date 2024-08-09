@@ -4,13 +4,25 @@ build-backend = "setuptools.build_meta"
 
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
-name = "PROTEUS"
+name = "fwl-proteus"
 version = "24.07.25"
 description = "Coupled atmosphere-interior framework to simulate the temporal evolution of rocky planets"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
 	{name = "Tim Lichtenberg", email = "tim.lichtenberg@rug.nl"},
+	{name = "Harrison Nicholls, email = harrison.nicholls@physics.ox.ac.uk"},
+	{name = "Laurent Soucasse", email = "l.soucasse@esciencecenter.nl"},
+	{name = "Stef Smeets", email = "s.smeets@esciencecenter.nl"},
+	{name = "Dan J. Bower", email = "dbower@ethz.ch"},
+	{name = "Mariana V. Sastre", email = "m.c.villamil.sastre@rug.nl"},
+	{name = "Emma Postolec", email = "e.n.postolec@rug.nl"},
+	{name = "Mark Hammond", email = "mark.hammond@physics.ox.ac.uk"},
+	{name = "Patrick Sanan", email = "patrick.sanan@gmail.com"},
+	{name = "Raymond Pierrehumbert", email = "raymond.pierrehumbert@physics.ox.ac.uk"},
+	{name = "Ryan Boukrouche", email = "ryan.boukrouche@astro.su.se"},
+	{name = "Shang-Min Tsai", email = "shangmin.tsai@ucr.edu"},
+	{name = "Hamish Innes", email = "hamish.innes@fu-berlin.de"},
 ]
 keywords = [
     "Astronomy",

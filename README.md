@@ -36,6 +36,8 @@ Harrison Nicholls       | harrison.nicholls[at]physics.ox.ac.uk |
 Laurent Soucasse        | l.soucasse[at]esciencecenter.nl |
 Stef Smeets             | s.smeets[at]esciencecenter.nl |
 Dan J. Bower            | dbower[at]ethz.ch |
+Mariana V. Sastre       | m.c.villamil.sastre[at]rug.nl |
+Emma Postolec           | e.n.postolec[at]rug.nl |
 Mark Hammond            | mark.hammond[at]physics.ox.ac.uk |
 Patrick Sanan           | patrick.sanan[at]gmail.com |
 Raymond Pierrehumbert   | raymond.pierrehumbert[at]physics.ox.ac.uk |
@@ -57,8 +59,6 @@ Hamish Innes            | hamish.innes[at]fu-berlin.de |
 | `SPIDER/`             | Submodule SPIDER                                          |
 | `VULCAN/`             | Submodule VULCAN                                          |
 | `Mors/`               | Submodule Mors                                            |
-| `utils/`              | Code used for running PROTEUS and its submodules          |
-| `plot/`               | Code used for plotting results                            |
 | `output/`             | Output folder with subfolders for each model run          |
 | `input/`              | Input folder (e.g. stellar spectra, example configs)      |
 | `docs/`			          | Documentation source files                                |
