@@ -36,6 +36,8 @@ Harrison Nicholls       | harrison.nicholls[at]physics.ox.ac.uk |
 Laurent Soucasse        | l.soucasse[at]esciencecenter.nl |
 Stef Smeets             | s.smeets[at]esciencecenter.nl |
 Dan J. Bower            | dbower[at]ethz.ch |
+Mariana V. Sastre       | m.c.villamil.sastre[at]rug.nl |
+Emma Postolec           | e.n.postolec[at]rug.nl |
 Mark Hammond            | mark.hammond[at]physics.ox.ac.uk |
 Patrick Sanan           | patrick.sanan[at]gmail.com |
 Raymond Pierrehumbert   | raymond.pierrehumbert[at]physics.ox.ac.uk |
