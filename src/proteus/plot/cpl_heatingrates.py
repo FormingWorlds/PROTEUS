@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-
-# Import utils- and plot-specific modulesimport argparse
 from __future__ import annotations
 
 import logging

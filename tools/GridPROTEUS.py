@@ -2,10 +2,21 @@
 
 # Run PROTEUS for a grid of parameters
 
-# Prepare
-import os, itertools, time, subprocess, shutil, sys, multiprocessing, logging, gc
+from __future__ import annotations
+
+import gc
+import itertools
+import logging
+import multiprocessing
+import os
+import shutil
+import subprocess
+import sys
+import time
 from datetime import datetime
+
 import numpy as np
+
 PROTEUS_DIR=os.getenv('PROTEUS_DIR')
 if PROTEUS_DIR == None:
     raise Exception("Environment is not activated or is setup incorrectly")

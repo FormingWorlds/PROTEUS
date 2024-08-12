@@ -5,32 +5,33 @@ Code for running offline chemistry based on PROTEUS output.
 Configuration options are near the bottom of this file.
 """
 
-# Import libraries
-import numpy as np
-import netCDF4 as nc
-import os, glob, shutil, subprocess, time, pathlib
+from __future__ import annotations
+
+import glob
+import os
+import pathlib
+import shutil
+import subprocess
+import time
 from datetime import datetime
+
+import numpy as np
 import numpy.random as nrand
-import logging
 import pandas as pd
 
-# Import PROTEUS stuff
-from proteus.utils.coupler import *
-from proteus.plot.cpl_offchem_species import *
-from proteus.plot.cpl_offchem_time import *
-from proteus.plot.cpl_offchem_year import *
 import tools.RunOfflineChemistry as ROC
+from proteus.utils.coupler import ReadInitFile, SetDirectories
 
 # ------------------------------------------------------------------------------------------------
 
 
-def parent(folder, samples, threads, s_width, s_centre, 
+def parent(folder, samples, threads, s_width, s_centre,
            mkfuncs=True, runtime_sleep=30, ini_method=1, mkplots=True, logterm=True):
     """Parent process for handing a grid of offline chemistry runs.
 
     Runs offline chemistry for each point in the GridPROTEUS output, searching
-    and sampling with each folder. Allows processes to be run in-parallel inside 
-    screen sessions. Multiple instances of this script should NOT be run at 
+    and sampling with each folder. Allows processes to be run in-parallel inside
+    screen sessions. Multiple instances of this script should NOT be run at
     the same time because of inflexibilities in VULCAN.
 
     Parameters
@@ -87,12 +88,12 @@ def parent(folder, samples, threads, s_width, s_centre,
     grid_cfgf = []  # Config file
     grid_dirs = []  # Directories dict
     grid_syrs = []  # Sample years
-    grid_stat = []  # Status of each run 
+    grid_stat = []  # Status of each run
 
     gpoints = 0 # number of grid points
 
     grid_folders = glob.glob(folder+"case_*")
-    
+
     for gi,gf in enumerate(grid_folders):
 
         logger.info("Reading gridpoint %d" % gi)
@@ -133,7 +134,7 @@ def parent(folder, samples, threads, s_width, s_centre,
 
         years_all = []
         for y in json_years:
-            if y in nc_years: 
+            if y in nc_years:
                 years_all.append(y)
 
         # All requested
@@ -141,9 +142,9 @@ def parent(folder, samples, threads, s_width, s_centre,
             samples = len(years_all)
 
         if samples < 1:
-            raise Exception("Too few samples requested! (Less than zero)") 
+            raise Exception("Too few samples requested! (Less than zero)")
         if samples > len(years_all):
-            raise Exception("Too many samples requested! (Duplicates expected)") 
+            raise Exception("Too many samples requested! (Duplicates expected)")
 
         # Select samples...
         years = ROC.get_sample_years(years_all, samples, s_centre, s_width)
@@ -152,7 +153,7 @@ def parent(folder, samples, threads, s_width, s_centre,
 
         # Save to grid-in-memory
         gpoints += 1
-        grid_opts.append( [ OPTIONS ] * samples  ) 
+        grid_opts.append( [ OPTIONS ] * samples  )
         grid_hfdf.append( [ helpfile_df     ] * samples  )
         grid_cfgf.append( [ cfgfile         ] * samples  )
         grid_dirs.append( [ dirs            ] * samples  )
@@ -205,11 +206,11 @@ def parent(folder, samples, threads, s_width, s_centre,
 
         for gi in range(gpoints):
             for i,y in enumerate(grid_syrs[gi]):
-                
+
                 sname = "%d_offchem_%d_%d" % (now,gi,y)
 
                 running = bool(str(sname) in screen_out)
-                
+
                 if running:
                     count_threads += 1
 
@@ -265,16 +266,16 @@ def parent(folder, samples, threads, s_width, s_centre,
                 if breakout:
                     break
 
-            y  = use_y 
+            y  = use_y
             gi = use_gi
-            i  = use_i 
-            
+            i  = use_i
+
             # Did we find one?
             if (y > -1):
-                
+
                 # Wait for VULCAN to finish making the network py file
                 if mkfuncs and (count_dispatched == 1):
-                    time.sleep(60.0)  
+                    time.sleep(60.0)
 
                 grid_stat[gi][i] = 1
 
@@ -294,7 +295,7 @@ def parent(folder, samples, threads, s_width, s_centre,
         done = bool(count_completed == tot_runs)
         if done:
             print(grid_stat)
-        
+
     # Check if exited early
     if not done:
         logger.info("WARNING: Master process loop terminated early!")
@@ -302,7 +303,7 @@ def parent(folder, samples, threads, s_width, s_centre,
 
     # Tidy VULCAN output folder
     # doesn't matter which 'dirs' is used, because VULCAN is always in the same place
-    for f in glob.glob(dirs["vulcan"]+"output/%d_offchem_*"%now): 
+    for f in glob.glob(dirs["vulcan"]+"output/%d_offchem_*"%now):
         os.remove(f)
 
     time_end = datetime.now()
@@ -327,6 +328,5 @@ if __name__ == '__main__':
     ini_method =    1                   # Method used to init VULCAN abundances  (0: const_mix, 1: eqm)
 
     # Do it
-    parent(folder, samples, threads, s_width, s_centre, 
+    parent(folder, samples, threads, s_width, s_centre,
            mkfuncs=mkfuncs, runtime_sleep=runtime_sleep, ini_method=ini_method)
-    

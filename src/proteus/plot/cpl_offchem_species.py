@@ -6,11 +6,11 @@
 from __future__ import annotations
 
 import matplotlib as mpl
-
-mpl.use("Agg")
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from proteus.utils.plot_offchem import offchem_read_year
+
+mpl.use("Agg")
 
 
 def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=False):

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-# Import utils- and plot-specific modules
 from __future__ import annotations
 
 import glob
