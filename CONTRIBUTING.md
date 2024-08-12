@@ -28,9 +28,41 @@ conda activate proteus
 pip install -e .[develop]
 ```
 
+### Linting
+
+Linting is a term for static code analysis to flag programming errors,
+bugs, stylistic errors and [suspicious constructs](https://en.wikipedia.org/wiki/Lint_(software)).
+PROTEUS uses [`ruff`](https://astral.sh/ruff) for linting.
+The linting [rules](https://docs.astral.sh/ruff/rules/) are defined in [`pyproject.toml`](https://github.com/FormingWorlds/PROTEUS/blob/master/pyproject.toml).
+
+This check are run automatically via a Github Action: [codestyle](https://github.com/FormingWorlds/PROTEUS/blob/master/.github/workflows/codestyle.yaml).
+
+You can `ruff` on locally using one of these commands:
+
+```console
+ruff check start_proteus.py  # single file
+ruff check src/proteus       # directory
+ruff check .                 # everything
+```
+
+If you prepend `--fix`, it can also fix some issues for you:
+
+```console
+ruff check . --fix
+```
+
+You can also use [pre-commit](https://pre-commit.com/#usage) to automatically run `ruff` on every commit, e.g.:
+
+```console
+pre-commit install
+```
+
 ### Running tests
 
 PROTEUS uses [pytest](https://docs.pytest.org/en/latest/) to run the tests.
+
+The tests are run automatically via a Github Action: [tests](https://github.com/FormingWorlds/PROTEUS/blob/master/.github/workflows/tests.yaml).
+
 You can run the tests for yourself using:
 
 ```console
