@@ -2,10 +2,15 @@
 
 # Plot a cross-section of the GridOfflineChemistry output
 
-# Import things
+
 from __future__ import annotations
 
+import os
+
+import cmcrameri as cm
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from proteus.utils.plot_offchem import offchem_read_grid, offchem_slice_grid

@@ -10,6 +10,7 @@ from scipy.integrate import solve_ivp
 from proteus.atmos_clim.agni import ActivateEnv, DeallocAtmos, InitAtmos, RunAGNI, UpdateProfile
 from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
 from proteus.atmos_clim.janus import RunJANUS, StructAtm
+from proteus.utils.constants import AU
 from proteus.utils.helper import PrintHalfSeparator
 
 atm = None

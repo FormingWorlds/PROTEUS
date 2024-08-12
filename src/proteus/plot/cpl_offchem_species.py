@@ -2,8 +2,10 @@
 
 # Plot evolution of mixing ratios over time, for a single species, versus pressure
 
-# Import things
+
 from __future__ import annotations
+
+import sys
 
 import matplotlib as mpl
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -122,7 +124,6 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
 
 
 
-# If executed directly
 if __name__ == '__main__':
     print("Plotting offline chemistry (species vs pressure)...")
 

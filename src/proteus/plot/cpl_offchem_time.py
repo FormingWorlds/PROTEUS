@@ -2,7 +2,7 @@
 
 # Plot evolution of offline mixing ratios over time, for a set of species
 
-# Import things
+
 from __future__ import annotations
 
 import sys

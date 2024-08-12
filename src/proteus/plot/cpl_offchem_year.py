@@ -2,13 +2,17 @@
 
 # Plot evolution of mixing ratios over time, for a single species, versus pressure
 
-# Import things
+
 from __future__ import annotations
+
+import glob
+import sys
 
 import matplotlib as mpl
 
-mpl.use("Agg")
 from proteus.utils.plot_offchem import offchem_read_year
+
+mpl.use("Agg")
 
 
 def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
