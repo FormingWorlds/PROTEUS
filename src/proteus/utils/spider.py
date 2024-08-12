@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import *
-from proteus.utils.helper import *
+from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 
 log = logging.getLogger("PROTEUS")
 

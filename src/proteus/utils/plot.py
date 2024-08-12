@@ -8,7 +8,6 @@ import numpy as np
 from cmcrameri import cm
 
 from proteus.utils.constants import *
-from proteus.utils.helper import *
 
 vol_zorder  = {
     "H2O"            : 11,

@@ -10,7 +10,6 @@ import subprocess
 import numpy as np
 
 from proteus.utils.coupler import *
-from proteus.utils.helper import *
 
 
 def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):

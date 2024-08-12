@@ -6,7 +6,7 @@ import logging
 import numpy as np
 
 from proteus.utils.constants import *
-from proteus.utils.helper import *
+from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("PROTEUS")
 

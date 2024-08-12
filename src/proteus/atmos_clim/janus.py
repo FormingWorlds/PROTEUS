@@ -10,7 +10,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from proteus.utils.helper import *
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest
 from proteus.utils.logs import StreamToLogger
 
 log = logging.getLogger("PROTEUS")

@@ -9,7 +9,7 @@ import numpy as np
 from juliacall import Main as jl
 
 from proteus.utils.constants import *
-from proteus.utils.helper import *
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 log = logging.getLogger("PROTEUS")

@@ -10,7 +10,6 @@ import numpy as np
 
 from proteus.utils.constants import *
 from proteus.utils.coupler import ReadInitFile
-from proteus.utils.helper import *
 from proteus.utils.plot import *
 
 

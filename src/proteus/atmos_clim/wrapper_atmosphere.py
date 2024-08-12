@@ -11,7 +11,7 @@ from proteus.atmos_clim.agni import ActivateEnv, DeallocAtmos, InitAtmos, RunAGN
 
 #We should make the import dependent of the chosen atmospheric submodule
 from proteus.atmos_clim.janus import RunJANUS, StructAtm
-from proteus.utils.helper import *
+from proteus.utils.helper import PrintHalfSeparator
 
 atm = None
 from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
