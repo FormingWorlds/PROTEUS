@@ -95,7 +95,13 @@ select = [
 	# "F",  # Pyflakes
 	# "E",  # pycodestyle (error)
 	# "W",  # pycodestyle (warning)
-    "I",  # isort
+    "I",    # isort
+    "F401", # {name} imported but unused
+    "F402", # from __future__ imports must occur at the beginning of the file
+    "F403", # from {name} import * only allowed at module level
+    "F404", # from {name} import * only allowed at module level
+    "E401", # Multiple imports on one line
+    "E402", # Module level import not at top of cell
 ]
 
 [tool.ruff.lint.isort]

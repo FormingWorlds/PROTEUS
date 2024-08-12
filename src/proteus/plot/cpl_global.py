@@ -3,35 +3,14 @@
 # Import utils- and plot-specific modules
 from __future__ import annotations
 
-import argparse
-import copy
-import glob
-import json
 import logging
 import os
-import pathlib
-import pickle as pkl
-import re
-import shutil
-import subprocess
 import sys
-import warnings
-from datetime import datetime
 
-import matplotlib as mpl
-import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import netCDF4 as nc
 import numpy as np
 import pandas as pd
-from cmcrameri import cm
-from matplotlib.ticker import LinearLocator, LogLocator, MultipleLocator
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-from scipy.integrate import solve_ivp
-from scipy.interpolate import PchipInterpolator
-from scipy.optimize import fsolve
 
 from proteus.utils.plot import *
 from proteus.utils.spider import *
