@@ -15,12 +15,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import *
-from proteus.utils.helper import *
-from proteus.utils.spider import *
-
-log = logging.getLogger("PROTEUS")
-
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements
 from proteus.plot.cpl_escape import plot_escape
@@ -33,6 +27,11 @@ from proteus.plot.cpl_observables import plot_observables
 from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_stacked import plot_stacked
+from proteus.utils.constants import *
+from proteus.utils.helper import *
+from proteus.utils.spider import get_all_output_times
+
+log = logging.getLogger("PROTEUS")
 
 
 def GitRevision(dir:str) -> str:

@@ -11,7 +11,7 @@ import numpy as np
 from cmcrameri import cm
 
 from proteus.utils.plot import *
-from proteus.utils.spider import *
+from proteus.utils.spider import MyJSON, get_all_output_times
 
 log = logging.getLogger("PROTEUS")
 

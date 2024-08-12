@@ -16,6 +16,8 @@ from proteus.utils.constants import *
 from proteus.utils.helper import *
 
 log = logging.getLogger("PROTEUS")
+
+
 class MyJSON( object ):
 
     '''load and access json data'''

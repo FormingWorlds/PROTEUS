@@ -15,7 +15,7 @@ from cmcrameri import cm
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from proteus.utils.plot import *
-from proteus.utils.spider import *
+from proteus.utils.spider import MyJSON
 
 log = logging.getLogger("PROTEUS")
 

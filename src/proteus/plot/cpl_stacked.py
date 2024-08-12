@@ -16,7 +16,7 @@ from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
 from proteus.utils.plot import *
-from proteus.utils.spider import *
+from proteus.utils.spider import MyJSON
 
 log = logging.getLogger("PROTEUS")
 

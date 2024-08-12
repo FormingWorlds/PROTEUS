@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.plot import *
-from proteus.utils.spider import *
 
 log = logging.getLogger("PROTEUS")
 
