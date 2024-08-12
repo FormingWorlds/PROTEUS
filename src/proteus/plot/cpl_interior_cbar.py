@@ -1,7 +1,35 @@
 #!/usr/bin/env python3
 
 # Import utils- and plot-specific modules
-from proteus.utils.modules_ext import *
+import argparse
+import logging
+import pathlib
+import json
+import subprocess
+import os, sys, glob, shutil, re
+from datetime import datetime
+import copy
+import warnings
+
+import matplotlib as mpl
+
+import matplotlib.pyplot as plt
+
+import matplotlib.ticker as ticker
+from cmcrameri import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.font_manager as fm
+
+import netCDF4 as nc
+import numpy as np
+import pandas as pd
+import pickle as pkl
+from scipy.interpolate import PchipInterpolator
+from scipy.integrate import solve_ivp
+from scipy.optimize import fsolve
+
 from proteus.utils.plot import *
 from proteus.utils.spider import *
 
@@ -41,7 +69,7 @@ def plot_interior_cbar(output_dir, plot_format="pdf"):
 
     # Colour mapping
     norm = mpl.colors.Normalize(vmin=1.0, vmax=np.amax(output_times))
-    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm) # 
+    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm) #
     sm.set_array([])
 
     # Loop through years
@@ -65,9 +93,9 @@ def plot_interior_cbar(output_dir, plot_format="pdf"):
         xx_radius_s = myjson_o.get_dict_values(['data','radius_s']) * 1.0E-3
         xx_depth_s = xx_radius_s[0] - xx_radius_s
 
-        MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' ) 
-        MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' ) 
-        MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' ) 
+        MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' )
+        MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' )
+        MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' )
 
         y_tmp = myjson_o.get_dict_values(['data','temp_b'])
         y_phi = myjson_o.get_dict_values(['data','phi_b'])
@@ -87,9 +115,9 @@ def plot_interior_cbar(output_dir, plot_format="pdf"):
 
 
     # Plot colourbar
-    cax = inset_axes(ax1, width="10%", height="40%", loc='lower left', borderpad=1.0) 
-    cbar = fig.colorbar(sm, cax=cax, orientation='vertical') 
-    cbar.set_label("Time [yr]") 
+    cax = inset_axes(ax1, width="10%", height="40%", loc='lower left', borderpad=1.0)
+    cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
+    cbar.set_label("Time [yr]")
 
     # Save plot
     fname = os.path.join(output_dir,"plot_interior_cbar.%s"%plot_format)
@@ -102,7 +130,7 @@ def main():
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     log.info("Read cfg file")

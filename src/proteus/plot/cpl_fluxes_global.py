@@ -1,7 +1,35 @@
 #!/usr/bin/env python3
 
 # Import utils- and plot-specific modules
-from proteus.utils.modules_ext import *
+import argparse
+import logging
+import pathlib
+import json
+import subprocess
+import os, sys, glob, shutil, re
+from datetime import datetime
+import copy
+import warnings
+
+import matplotlib as mpl
+
+import matplotlib.pyplot as plt
+
+import matplotlib.ticker as ticker
+from cmcrameri import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.font_manager as fm
+
+import netCDF4 as nc
+import numpy as np
+import pandas as pd
+import pickle as pkl
+from scipy.interpolate import PchipInterpolator
+from scipy.integrate import solve_ivp
+from scipy.optimize import fsolve
+
 from proteus.utils.plot import *
 
 log = logging.getLogger("PROTEUS")
@@ -20,7 +48,7 @@ def plot_fluxes_global(output_dir, OPTIONS, t0=100.0):
     F_net = np.array(hf_all["F_atm"])
     F_asf = np.array(hf_all["F_ins"]) * OPTIONS["asf_scalefactor"] * (1.0 - OPTIONS["albedo_pl"]) * np.cos(OPTIONS["zenith_angle"] * np.pi/180.0)
     F_olr = np.array(hf_all["F_olr"])
-    F_upw = np.array(hf_all["F_olr"]) + np.array(hf_all["F_sct"]) 
+    F_upw = np.array(hf_all["F_olr"]) + np.array(hf_all["F_sct"])
     F_int = np.array(hf_all["F_int"])
 
     if len(time) < 3:
@@ -57,7 +85,7 @@ def plot_fluxes_global(output_dir, OPTIONS, t0=100.0):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_global.%s"%OPTIONS["plot_format"], 
+    fig.savefig(output_dir+"/plot_fluxes_global.%s"%OPTIONS["plot_format"],
                 bbox_inches='tight', dpi=200)
 
 if __name__ == '__main__':
@@ -65,7 +93,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
@@ -75,4 +103,3 @@ if __name__ == '__main__':
     dirs = SetDirectories(OPTIONS)
 
     plot_fluxes_global(dirs["output"], OPTIONS)
-    

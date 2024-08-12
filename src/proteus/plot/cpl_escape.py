@@ -1,6 +1,34 @@
 #!/usr/bin/env python3
 
-from proteus.utils.modules_ext import *
+import argparse
+import logging
+import pathlib
+import json
+import subprocess
+import os, sys, glob, shutil, re
+from datetime import datetime
+import copy
+import warnings
+
+import matplotlib as mpl
+
+import matplotlib.pyplot as plt
+
+import matplotlib.ticker as ticker
+from cmcrameri import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.font_manager as fm
+
+import netCDF4 as nc
+import numpy as np
+import pandas as pd
+import pickle as pkl
+from scipy.interpolate import PchipInterpolator
+from scipy.integrate import solve_ivp
+from scipy.optimize import fsolve
+
 from proteus.utils.plot import *
 from proteus.utils.constants import M_earth
 
@@ -29,12 +57,12 @@ def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
         escape_model_label = 'Energy-limited escape (Zephyrus)'
     elif escape_model == 2 :
         escape_model_label = 'Dummy escape'
-    
+
     y = hf_all['esc_rate_total']
     l = ax1.plot(time, y, lw=lw, ls='solid', label=f'{escape_model_label}')
 
 
-    # decorate 
+    # decorate
     ax1.set_ylabel(r'Mass loss rate [kg $s^{-1}$]')
     ax1.set_yscale("log")
     ax1.set_xlabel("Time [yr]")
@@ -60,7 +88,7 @@ def main():
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     log.info("Read cfg file")

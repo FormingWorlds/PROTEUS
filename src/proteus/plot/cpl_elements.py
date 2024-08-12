@@ -1,6 +1,34 @@
 #!/usr/bin/env python3
 
-from proteus.utils.modules_ext import *
+import argparse
+import logging
+import pathlib
+import json
+import subprocess
+import os, sys, glob, shutil, re
+from datetime import datetime
+import copy
+import warnings
+
+import matplotlib as mpl
+
+import matplotlib.pyplot as plt
+
+import matplotlib.ticker as ticker
+from cmcrameri import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.font_manager as fm
+
+import netCDF4 as nc
+import numpy as np
+import pandas as pd
+import pickle as pkl
+from scipy.interpolate import PchipInterpolator
+from scipy.integrate import solve_ivp
+from scipy.optimize import fsolve
+
 from proteus.utils.plot import *
 
 log = logging.getLogger("PROTEUS")
@@ -33,11 +61,11 @@ def plot_elements( output_dir, plot_format="pdf", t0=100.0):
         # c = l.get_color()
         # ax.plot(time, hf_all[e+"_kg_liquid"], lw=lw, color=c, alpha=al, ls='dashed')  # in magma ocean
         # ax.plot(time, hf_all[e+"_kg_atm"],    lw=lw, color=c, alpha=al, ls='dotted')  # in atmosphere
-    
+
     ax.plot(time, total,           lw=lw, ls='solid',  label='Total',  c='k')
     ax.plot(time, hf_all["M_atm"], lw=lw, ls='dotted', label='Atmos.', c='k')
 
-    # decorate 
+    # decorate
     ax.set_ylabel("Inventory [kg]")
     ax.set_yscale("log")
     ax.set_xlabel("Time [yr]")
@@ -58,7 +86,7 @@ def main():
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     log.info("Read cfg file")

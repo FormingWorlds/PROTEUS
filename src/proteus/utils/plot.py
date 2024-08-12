@@ -1,7 +1,35 @@
 # Variables and functions to help with plotting functions
 # These do not do the plotting themselves
 
-from proteus.utils.modules_ext import *
+import argparse
+import logging
+import pathlib
+import json
+import subprocess
+import os, sys, glob, shutil, re
+from datetime import datetime
+import copy
+import warnings
+
+import matplotlib as mpl
+
+import matplotlib.pyplot as plt
+
+import matplotlib.ticker as ticker
+from cmcrameri import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.font_manager as fm
+
+import netCDF4 as nc
+import numpy as np
+import pandas as pd
+import pickle as pkl
+from scipy.interpolate import PchipInterpolator
+from scipy.integrate import solve_ivp
+from scipy.optimize import fsolve
+
 from proteus.utils.constants import *
 from proteus.utils.helper import *
 
@@ -233,7 +261,7 @@ class FigureData( object ):
         dd['outname'] = outname
 
         self.cmap = cm.imola
-            
+
         self.set_properties( nrows, ncols, width, height )
 
     def get_color( self, frac ):
@@ -328,7 +356,7 @@ class FigureData( object ):
         self.make_figure()
 
     def set_myaxes( self, ax, title='', xlabel='', xticks='',
-                        ylabel='', yticks='', yrotation='', fmt='', xfmt='', 
+                        ylabel='', yticks='', yrotation='', fmt='', xfmt='',
                         xmin='', xmax='', ymin='', ymax='' ):
         if title:
             self.set_mytitle( ax, title )
@@ -346,7 +374,7 @@ class FigureData( object ):
         fontsize = self.data_d['fontsize_legend']
         # FIXME
         if not TITLE:
-            legend = ax.legend(handles=handles, loc=loc, ncol=ncol, 
+            legend = ax.legend(handles=handles, loc=loc, ncol=ncol,
                                fontsize=fontsize, **kwargs )
             #units = dd['time_units']
             #title = r'Time ({0})'.format( units )

@@ -1,5 +1,33 @@
 #Generic atmosphere wrapper
-from proteus.utils.modules_ext import *
+import argparse
+import logging
+import pathlib
+import json
+import subprocess
+import os, sys, glob, shutil, re
+from datetime import datetime
+import copy
+import warnings
+
+import matplotlib as mpl
+
+import matplotlib.pyplot as plt
+
+import matplotlib.ticker as ticker
+from cmcrameri import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.font_manager as fm
+
+import netCDF4 as nc
+import numpy as np
+import pandas as pd
+import pickle as pkl
+from scipy.interpolate import PchipInterpolator
+from scipy.integrate import solve_ivp
+from scipy.optimize import fsolve
+
 from proteus.utils.helper import *
 
 #We should make the import dependent of the chosen atmospheric submodule
@@ -43,13 +71,13 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
         hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
     if OPTIONS["atmosphere_model"] == 0:
-        # Run JANUS: 
+        # Run JANUS:
         hf_row["T_surf"] = hf_row["T_magma"]
         atm = StructAtm( dirs, hf_row, OPTIONS )
         atm_output = RunJANUS( atm, hf_row["Time"], dirs, OPTIONS, hf_all)
 
     elif OPTIONS["atmosphere_model"] == 1:
-        # Run AGNI 
+        # Run AGNI
 
         # Initialise atmosphere struct
         no_spfile = not os.path.exists(spfile_path)
@@ -63,28 +91,28 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
                 # surface temperature guess
                 hf_row["T_surf"] = hf_row["T_magma"]
             else:
-                # deallocate old atmosphere 
+                # deallocate old atmosphere
                 DeallocAtmos(atm)
 
-            # allocate new 
+            # allocate new
             atm = InitAtmos(dirs, OPTIONS, hf_row)
 
-        # Update profile 
+        # Update profile
         atm = UpdateProfile(atm, hf_row, OPTIONS)
 
         # Run solver
         atm, atm_output = RunAGNI(atm, loop_counter["total"], dirs, OPTIONS, hf_row)
 
     elif OPTIONS["atmosphere_model"] == 2:
-        # Run dummy atmosphere model 
-        atm_output = RunDummyAtm(dirs, OPTIONS, 
+        # Run dummy atmosphere model
+        atm_output = RunDummyAtm(dirs, OPTIONS,
                                  hf_row["T_magma"], hf_row["F_ins"], hf_row["R_planet"])
 
     # Store atmosphere module output variables
-    hf_row["z_obs"]  = atm_output["z_obs"] 
-    hf_row["F_atm"]  = atm_output["F_atm"] 
-    hf_row["F_olr"]  = atm_output["F_olr"] 
-    hf_row["F_sct"]  = atm_output["F_sct"] 
+    hf_row["z_obs"]  = atm_output["z_obs"]
+    hf_row["F_atm"]  = atm_output["F_atm"]
+    hf_row["F_olr"]  = atm_output["F_olr"]
+    hf_row["F_sct"]  = atm_output["F_sct"]
     hf_row["T_surf"] = atm_output["T_surf"]
     hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
 
@@ -115,7 +143,7 @@ def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
     rho_layer   = 3000          # kg m-3
     depth_layer = 1000          # m
 
-    def ocean_evolution(t, y): 
+    def ocean_evolution(t, y):
         # Specific heat of mixed ocean layer
         mu      = c_p_layer * rho_layer * depth_layer # J K-1 m-2
         # RHS of ODE

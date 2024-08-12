@@ -1,7 +1,35 @@
 #!/usr/bin/env python3
 
 # Import utils- and plot-specific modules
-from proteus.utils.modules_ext import *
+import argparse
+import logging
+import pathlib
+import json
+import subprocess
+import os, sys, glob, shutil, re
+from datetime import datetime
+import copy
+import warnings
+
+import matplotlib as mpl
+
+import matplotlib.pyplot as plt
+
+import matplotlib.ticker as ticker
+from cmcrameri import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.font_manager as fm
+
+import netCDF4 as nc
+import numpy as np
+import pandas as pd
+import pickle as pkl
+from scipy.interpolate import PchipInterpolator
+from scipy.integrate import solve_ivp
+from scipy.optimize import fsolve
+
 from proteus.utils.plot import *
 from proteus.utils.spider import *
 
@@ -17,7 +45,7 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
     fig_ratio=(3,2)
     fig_scale=4.0
     leg_kwargs = {
-        "frameon":1, 
+        "frameon":1,
         "fancybox":True,
         "framealpha":0.9
     }
@@ -29,7 +57,7 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
 
     #    Volatile parameters (keys=vols, vals=quantites_over_time)
     vol_present = {} # Is present ever? (true/false)
-    vol_vmr     = {} # Volume mixing ratio 
+    vol_vmr     = {} # Volume mixing ratio
     vol_bars    = {} # Surface partial pressure [bar]
     vol_mol_atm = {} # Moles in atmosphere
     vol_mol_int = {} # Moles in interior
@@ -40,12 +68,12 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
     for vol in volatile_species:
         # Check vmr for presence
         this_vmr = np.array(hf_all[vol+"_vmr"])
-        vol_present[vol] = True 
+        vol_present[vol] = True
         if (np.amax(this_vmr) < 1.0e-20) or (OPTIONS[vol+"_included"] < 1):
-            vol_present[vol] = False 
-            continue 
-        vol_vmr[vol] = this_vmr 
-        
+            vol_present[vol] = False
+            continue
+        vol_vmr[vol] = this_vmr
+
         # Do other variables
         vol_bars[vol]    = np.array(hf_all[vol+"_bar"])
         vol_mol_atm[vol] = np.array(hf_all[vol+"_mol_atm"])
@@ -56,19 +84,19 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
 
     # Init plot
     fig,axs = plt.subplots(3,2, figsize=(fig_ratio[0]*fig_scale, fig_ratio[1]*fig_scale), sharex=True)
-    ax_tl = axs[0][0] 
-    ax_cl = axs[1][0] 
-    ax_bl = axs[2][0] 
-    ax_tr = axs[0][1] 
-    ax_cr = axs[1][1] 
-    ax_br = axs[2][1] 
+    ax_tl = axs[0][0]
+    ax_cl = axs[1][0]
+    ax_bl = axs[2][0]
+    ax_tr = axs[0][1]
+    ax_cr = axs[1][1]
+    ax_br = axs[2][1]
     axs = (ax_tl, ax_cl, ax_bl, ax_tr, ax_cr, ax_br) # flatten
 
     # Set y-labels
-    ax_tl.set_ylabel('Upward flux [W m$^{-2}$]')  
-    ax_cl.set_ylabel(r'$T_\mathrm{s}$ [K]')  
-    ax_bl.set_ylabel('Planet fraction')  
-    ax_tr.set_ylabel(r'$p_{\mathrm{i}}$ [bar]')  
+    ax_tl.set_ylabel('Upward flux [W m$^{-2}$]')
+    ax_cl.set_ylabel(r'$T_\mathrm{s}$ [K]')
+    ax_bl.set_ylabel('Planet fraction')
+    ax_tr.set_ylabel(r'$p_{\mathrm{i}}$ [bar]')
     ax_cr.set_ylabel(r'$\chi^{\mathrm{atm}}_{\mathrm{i}}$ [%]')
     ax_br.set_ylabel(r'$m^{\mathrm{int}}_{\mathrm{i}}/m^{\mathrm{tot}}_{\mathrm{i}}$ [%]')
 
@@ -76,7 +104,7 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
     for ax in (ax_bl, ax_br):
         ax.set_xlabel("Time [yr]")
 
-    # Set titles 
+    # Set titles
     ax_titles = [
         "A) Net heat flux to space",
         "B) Surface temperature",
@@ -96,11 +124,11 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
                 )
 
     # Move right subplots y-axes to right side
-    for ax in (ax_tr, ax_cr, ax_br): 
+    for ax in (ax_tr, ax_cr, ax_br):
         ax.yaxis.set_label_position("right")
         ax.yaxis.tick_right()
 
-    # Percentage plots 
+    # Percentage plots
     for ax in (ax_cr, ax_br):
         ax.yaxis.set_major_locator(ticker.MultipleLocator(20))
         ax.yaxis.set_minor_locator(ticker.MultipleLocator(10))
@@ -122,7 +150,7 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
         xlim = (1.0, xmax)
     for ax in axs:
         ax.set_xlim(xlim[0],  max(xlim[1], xlim[0]+1))
-    
+
 
     # ------------------------------------------------------------------------
 
@@ -141,7 +169,7 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
     ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="-",      lw=lw, alpha=al, color=dict_colors["atm"])
     ax_cl.set_ylim(min(1000.0,min_temp-25) , max(3500.0,max_temp+25))
 
-    
+
     # PLOT ax_bl
     ax_bl.axhline( y=OPTIONS["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
     ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
@@ -156,7 +184,7 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
     bar_max = max(bar_max, np.amax(hf_all["P_surf"]))
     for vol in volatile_species:
         if not vol_present[vol]:
-            continue 
+            continue
         ax_tr.plot( hf_all["Time"], vol_bars[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
         bar_min = min(bar_min, np.amin(vol_bars[vol]))
     ax_tr.set_ylim(max(1.0e-7,min(bar_min, 1.0e-1)), bar_max * 2.0)
@@ -165,18 +193,18 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
     # PLOT ax_cr
     for vol in volatile_species:
         if not vol_present[vol]:
-            continue 
+            continue
         ax_cr.plot( hf_all["Time"], vol_vmr[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
     ax_cr.set_ylim(0, 101)
 
     # PLOT ax_br
     for vol in volatile_species:
         if not vol_present[vol]:
-            continue 
+            continue
         ax_br.plot( hf_all["Time"], vol_intpart[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
     ax_br.set_ylim(0,101)
     ax_br.legend(loc='center left', ncol=2, **leg_kwargs).set_zorder(20)
-    
+
 
     # ------------------------------------------------------------------------
 
@@ -187,8 +215,8 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
         plt_name += "_log"
     else:
         plt_name += "_lin"
-    
-    fig.savefig(output_dir+"/%s.%s"%(plt_name,OPTIONS["plot_format"]), 
+
+    fig.savefig(output_dir+"/%s.%s"%(plt_name,OPTIONS["plot_format"]),
                 bbox_inches='tight', dpi=200)
 
 #====================================================================
@@ -198,7 +226,7 @@ if __name__ == "__main__":
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     log.info("Read cfg file")

@@ -1,7 +1,35 @@
 # Functions used to help run PROTEUS which are mostly submodule agnostic.
 
 # Import utils-specific modules
-from proteus.utils.modules_ext import *
+import argparse
+import logging
+import pathlib
+import json
+import subprocess
+import os, sys, glob, shutil, re
+from datetime import datetime
+import copy
+import warnings
+
+import matplotlib as mpl
+
+import matplotlib.pyplot as plt
+
+import matplotlib.ticker as ticker
+from cmcrameri import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.font_manager as fm
+
+import netCDF4 as nc
+import numpy as np
+import pandas as pd
+import pickle as pkl
+from scipy.interpolate import PchipInterpolator
+from scipy.integrate import solve_ivp
+from scipy.optimize import fsolve
+
 from proteus.utils.constants import *
 from proteus.utils.spider import *
 from proteus.utils.helper import *
@@ -25,16 +53,16 @@ def GitRevision(dir:str) -> str:
     '''
     Get git hash for repository in `dir`.
     '''
-    # change dir 
+    # change dir
     cwd = os.getcwd()
     os.chdir(dir)
 
     # get hash (https://stackoverflow.com/a/21901260)
     hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
 
-    # change dir back 
+    # change dir back
     os.chdir(cwd)
-    
+
     return hash
 
 def CalculateEqmTemperature(I_0, ASF_sf, A_B):
@@ -50,7 +78,7 @@ def parse_console_arguments()->dict:
     '''
     parser = argparse.ArgumentParser(description='PROTEUS command line arguments')
 
-    parser.add_argument('--cfg', type=str, 
+    parser.add_argument('--cfg', type=str,
                         default="input/default.cfg", help='Path to configuration file')
     parser.add_argument('--resume', action='store_true', help='Resume simulation from disk')
 
@@ -79,7 +107,7 @@ def PrintCurrentState(hf_row:dict):
     log.info("    Phi_global   :   %.2e   "      % float(hf_row["Phi_global"]))
     log.info("    Instellation :   %.2e   W m-2" % float(hf_row["F_ins"]))
     log.info("    F_int        :   %.2e   W m-2" % float(hf_row["F_int"]))
-    log.info("    F_atm        :   %.2e   W m-2" % float(hf_row["F_atm"])) 
+    log.info("    F_atm        :   %.2e   W m-2" % float(hf_row["F_atm"]))
     log.info("    |F_net|      :   %.2e   W m-2" % abs(float(hf_row["F_net"])))
 
 def CreateLockFile(output_dir:str):
@@ -102,69 +130,69 @@ def GetHelpfileKeys():
             # Model tracking and basic parameters
             "Time", "R_planet", "M_planet",
 
-            # Temperatures 
+            # Temperatures
             "T_surf", "T_magma", "T_eqm", "T_skin",
 
-            # Energy fluxes 
+            # Energy fluxes
             "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins",
 
             # Interior properties
-            "gravity", "Phi_global", "RF_depth", 
+            "gravity", "Phi_global", "RF_depth",
             "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid",
 
-            # Stellar 
+            # Stellar
             "R_star", "age_star",
 
-            # Observational 
+            # Observational
             "z_obs", "transit_depth", "contrast_ratio", # observed from infinity
 
-            # Escape 
-            "esc_rate_total", 
-            
+            # Escape
+            "esc_rate_total",
+
             # Atmospheric composition
             "M_atm", "P_surf", "atm_kg_per_mol", # more keys added below
             ]
-    
+
     # gases
     for s in volatile_species:
-        keys.append(s+"_mol_atm")   
-        keys.append(s+"_mol_solid") 
+        keys.append(s+"_mol_atm")
+        keys.append(s+"_mol_solid")
         keys.append(s+"_mol_liquid")
-        keys.append(s+"_mol_total") 
-        keys.append(s+"_kg_atm")   
-        keys.append(s+"_kg_solid") 
+        keys.append(s+"_mol_total")
+        keys.append(s+"_kg_atm")
+        keys.append(s+"_kg_solid")
         keys.append(s+"_kg_liquid")
-        keys.append(s+"_kg_total") 
-        keys.append(s+"_vmr") 
-        keys.append(s+"_bar") 
+        keys.append(s+"_kg_total")
+        keys.append(s+"_vmr")
+        keys.append(s+"_bar")
 
     # element masses
     for e in element_list:
-        keys.append(e+"_kg_atm")   
-        keys.append(e+"_kg_solid") 
+        keys.append(e+"_kg_atm")
+        keys.append(e+"_kg_solid")
         keys.append(e+"_kg_liquid")
-        keys.append(e+"_kg_total") 
+        keys.append(e+"_kg_total")
 
     # elemental ratios
     for e1 in element_list:
         for e2 in element_list:
             if e1==e2:
-                continue 
-            
+                continue
+
             # reversed ratio
             k = "%s/%s_atm"%(e2,e1)
             if k in keys:
-                # skip this, since it's redundant to store (for example) the 
+                # skip this, since it's redundant to store (for example) the
                 # ratio of H/C when we already have C/H.
-                continue 
-            
+                continue
+
             # intended ratio to be stored
             k = "%s/%s_atm"%(e1,e2)
             if k in keys:
-                continue 
+                continue
             keys.append(k)
-        
-    return keys 
+
+    return keys
 
 def CreateHelpfileFromDict(d:dict):
     '''
@@ -187,36 +215,36 @@ def ExtendHelpfile(current_hf:pd.DataFrame, new_row:dict):
     Extend helpfile with new row of variables
     '''
     log.debug("Extending helpfile with new row")
-    
-    # validate keys 
+
+    # validate keys
     missing_keys = set(GetHelpfileKeys()) - set(new_row.keys())
     if len(missing_keys)>0:
         raise Exception("There are mismatched keys in helpfile: %s"%missing_keys)
-    
-    # convert row to df 
+
+    # convert row to df
     new_row = pd.DataFrame([new_row], columns=GetHelpfileKeys(), dtype=float)
 
     # concatenate and return
-    return pd.concat([current_hf, new_row], ignore_index=True) 
+    return pd.concat([current_hf, new_row], ignore_index=True)
 
 
 def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
     '''
-    Write helpfile to a CSV file 
+    Write helpfile to a CSV file
     '''
     log.debug("Writing helpfile to CSV file")
 
-    # check for invalid or missing keys 
-    difference = set(GetHelpfileKeys()) - set(current_hf.keys()) 
+    # check for invalid or missing keys
+    difference = set(GetHelpfileKeys()) - set(current_hf.keys())
     if len(difference) > 0:
         raise Exception("There are mismatched keys in helpfile: "+str(difference))
 
-    # remove old file 
+    # remove old file
     fpath = os.path.join(output_dir , "runtime_helpfile.csv")
     if os.path.exists(fpath):
         os.remove(fpath)
 
-    # write new file 
+    # write new file
     current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.6e")
     return fpath
 
@@ -237,27 +265,27 @@ def ReadInitFile(init_file_passed:str, verbose=False):
 
     # Read in input file as dictionary
     OPTIONS  = {}
-    if verbose: 
+    if verbose:
         log.info("Read in init file:" + init_file)
 
     if os.path.isfile(init_file_passed):
         init_file = init_file_passed
-    else: 
+    else:
         raise Exception("Init file provided is not a file or does not exist (%s)" % init_file_passed)
 
     if verbose: log.info("Settings:")
 
     # Open file and fill dict
     with open(init_file) as f:
-        
+
         # Filter blank lines
         lines = list(filter(None, (line.rstrip() for line in f)))
-        
+
         for line in lines:
-            
+
             # Skip comments
             if not line.startswith("#"):
-                
+
                 # Skip inline comments
                 line = line.split("#")[0]
                 line = line.split(",")[0]
@@ -268,15 +296,15 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                 (key, val) = line.split("=")
                 key = key.strip()
                 val = val.strip()
-                
+
                 # Some parameters are int
-                if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop", 
+                if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop",
                             "escape_model", "atmosphere_surf_state", "water_cloud",
-                            "plot_iterfreq", "stellar_heating", "mixing_length", 
-                            "atmosphere_chemistry", "solvevol_use_params", 
-                            "tropopause", "F_atm_bc", 
-                            "dt_dynamic", "prevent_warming", "atmosphere_model", 
-                            "atmosphere_nlev", "rayleigh", 
+                            "plot_iterfreq", "stellar_heating", "mixing_length",
+                            "atmosphere_chemistry", "solvevol_use_params",
+                            "tropopause", "F_atm_bc",
+                            "dt_dynamic", "prevent_warming", "atmosphere_model",
+                            "atmosphere_nlev", "rayleigh",
                             "shallow_ocean_layer"]:
                     val = int(val)
 
@@ -284,7 +312,7 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                 elif key in [ 'star_spectrum', 'dir_output', 'plot_format',
                                 'spectral_file' , 'log_level']:
                     val = str(val)
-                    
+
                 # Most are float
                 else:
                     val = float(val)
@@ -292,7 +320,7 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                 # Set option
                 OPTIONS[key] = val
 
-    return OPTIONS 
+    return OPTIONS
 
 def ValidateInitFile(dirs:dict, OPTIONS:dict):
     '''
@@ -303,25 +331,25 @@ def ValidateInitFile(dirs:dict, OPTIONS:dict):
         if OPTIONS["shallow_ocean_layer"] == 1:
             UpdateStatusfile(dirs, 20)
             raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
-        
+
     surf_state = int(OPTIONS["atmosphere_surf_state"])
     if not (0 <= surf_state <= 3):
         UpdateStatusfile(dirs, 20)
         raise Exception("Invalid surface state %d" % surf_state)
-        
+
     if OPTIONS["atmosphere_model"] == 1:  # Julia required for AGNI
         if shutil.which("julia") is None:
             UpdateStatusfile(dirs, 20)
             raise Exception("Could not find Julia in current environment")
-        
+
     if OPTIONS["atmosphere_nlev"] < 15:
         UpdateStatusfile(dirs, 20)
         raise Exception("Atmosphere must have at least 15 levels")
-    
+
     if OPTIONS["interior_nlev"] < 40:
         UpdateStatusfile(dirs, 20)
         raise Exception("Interior must have at least 40 levels")
-    
+
     # Ensure that all volatiles are all tracked
     for s in volatile_species:
         key_pp = str(s+"_initial_bar")
@@ -338,19 +366,19 @@ def ValidateInitFile(dirs:dict, OPTIONS:dict):
         if OPTIONS[s+"_included"] == 0:
             UpdateStatusfile(dirs, 20)
             raise Exception("Missing required volatile '%s'"%s)
-        
+
     return True
 
 def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
-    
+
     Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
 
     Parameters
     ----------
         output_dir : str
             Output directory containing simulation information
-        OPTIONS : dict 
+        OPTIONS : dict
             PROTEUS options dictionary.
         end : bool
             Is this function being called at the end of the simulation?
@@ -363,13 +391,13 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
     # Get all JSON files
     output_times = get_all_output_times( output_dir )
 
-    # Do not plot if there's insufficient data 
+    # Do not plot if there's insufficient data
     if np.amax(output_times) < 2:
         return
 
     # Global properties for all timesteps
     if len(output_times) > 2:
-        plot_global(output_dir, OPTIONS)   
+        plot_global(output_dir, OPTIONS)
 
         # Elemental mass inventory
         if escape:
@@ -389,10 +417,10 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
         plot_times = []
         tmin = max(1,np.amin(output_times))
         tmax = max(tmin+1, np.amax(output_times))
-    
+
         for s in np.logspace(np.log10(tmin),np.log10(tmax),num_snapshots): # Sample on log-scale
 
-            remaining = list(set(output_times) - set(plot_times)) 
+            remaining = list(set(output_times) - set(plot_times))
             if len(remaining) == 0:
                 break
 
@@ -403,7 +431,7 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
     log.debug("Snapshots to plot:" + str(plot_times))
 
     # Temperature profiles
-    plot_interior(output_dir, plot_times, OPTIONS["plot_format"])     
+    plot_interior(output_dir, plot_times, OPTIONS["plot_format"])
     if not dummy_atm:
         plot_atmosphere(output_dir, plot_times, OPTIONS["plot_format"])
         plot_stacked(output_dir, plot_times, OPTIONS["plot_format"])
@@ -414,21 +442,21 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
 
     # Only at the end of the simulation
     if end:
-        plot_global(output_dir, OPTIONS, logt=False)   
+        plot_global(output_dir, OPTIONS, logt=False)
         plot_interior_cmesh(output_dir, plot_format=OPTIONS["plot_format"])
         plot_sflux(output_dir, plot_format=OPTIONS["plot_format"])
         plot_sflux_cross(output_dir, plot_format=OPTIONS["plot_format"])
         plot_fluxes_global(output_dir, OPTIONS)
         plot_observables(output_dir, plot_format=OPTIONS["plot_format"])
- 
+
     # Close all figures
     plt.close()
 
 def SetDirectories(OPTIONS: dict):
     """Set directories dictionary
-    
+
     Sets paths to the required directories, based on the configuration provided
-    by the options dictionary. 
+    by the options dictionary.
 
     Parameters
     ----------
@@ -448,7 +476,7 @@ def SetDirectories(OPTIONS: dict):
 
     # PROTEUS folders
     dirs = {
-            "output":   os.path.join(proteus_dir,"output",OPTIONS['dir_output']), 
+            "output":   os.path.join(proteus_dir,"output",OPTIONS['dir_output']),
             "input":    os.path.join(proteus_dir,"input"),
             "proteus":  proteus_dir,
             "janus":    os.path.join(proteus_dir,"JANUS"),
@@ -457,7 +485,7 @@ def SetDirectories(OPTIONS: dict):
             "spider":   os.path.join(proteus_dir,"SPIDER"),
             "utils":    os.path.join(proteus_src,"utils")
             }
-    
+
     # FWL data folder
     if os.environ.get('FWL_DATA') == None:
         UpdateStatusfile(dirs, 20)
@@ -466,18 +494,18 @@ def SetDirectories(OPTIONS: dict):
                         "Did you source PROTEUS.env?")
     else:
         dirs["fwl"] = os.environ.get('FWL_DATA')
-    
+
 
     # SOCRATES directory
     if OPTIONS["atmosphere_model"] in [0,1]:
         # needed for atmosphere models 0 and 1
-        
+
         if os.environ.get('RAD_DIR') == None:
             UpdateStatusfile(dirs, 20)
             raise Exception("The RAD_DIR environment variable has not been set")
         else:
             dirs["rad"] = os.environ.get('RAD_DIR')
-    
+
     # Get abspaths
     for key in dirs.keys():
         dirs[key] = os.path.abspath(dirs[key])+"/"

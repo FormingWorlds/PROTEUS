@@ -1,6 +1,34 @@
-# Dummy atmosphere module 
+# Dummy atmosphere module
 
-from proteus.utils.modules_ext import *
+import argparse
+import logging
+import pathlib
+import json
+import subprocess
+import os, sys, glob, shutil, re
+from datetime import datetime
+import copy
+import warnings
+
+import matplotlib as mpl
+
+import matplotlib.pyplot as plt
+
+import matplotlib.ticker as ticker
+from cmcrameri import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.font_manager as fm
+
+import netCDF4 as nc
+import numpy as np
+import pandas as pd
+import pickle as pkl
+from scipy.interpolate import PchipInterpolator
+from scipy.integrate import solve_ivp
+from scipy.optimize import fsolve
+
 from proteus.utils.helper import *
 from proteus.utils.constants import *
 
@@ -11,13 +39,13 @@ def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:f
     log.info("Running dummy_atmosphere...")
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
-    # It represents a measure of the radiating temperature of the atmosphere above the 
+    # It represents a measure of the radiating temperature of the atmosphere above the
     #    surface, relative to the surface temperature itself
     # Setting this to 0 will result in an entirely transparent atmosphere
     # Setting this to 1 will result in an OLR of zero
     gamma           = 0.7
 
-    # Parameters 
+    # Parameters
     zenith_angle    = OPTIONS["zenith_angle"]
     albedo_pl       = OPTIONS["albedo_pl"]
     inst_sf         = OPTIONS["asf_scalefactor"]
@@ -45,17 +73,17 @@ def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:f
 
         # net flux at surface
         fl_N = fl_U_LW + fl_U_SW - fl_D_SW
-        
+
         return {"fl_U_LW":fl_U_LW, "fl_D_SW":fl_D_SW, "fl_U_SW":fl_U_SW, "fl_N":fl_N}
-        
+
     # fixed T_Surf
-    if OPTIONS["atmosphere_surf_state"] == 1:  
+    if OPTIONS["atmosphere_surf_state"] == 1:
         log.info("Calculating fluxes with dummy atmosphere")
         T_surf_atm = T_magma
         fluxes = _calc_fluxes(T_surf_atm)
-        
+
     # conductive lid
-    elif OPTIONS["atmosphere_surf_state"] == 2: 
+    elif OPTIONS["atmosphere_surf_state"] == 2:
         log.info("Calculating fluxes with dummy atmosphere and CBL")
         import scipy.optimize as optimise
 
@@ -66,7 +94,7 @@ def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:f
             _f = _calc_fluxes(x)
             return _f["fl_N"] - F_skn
 
-        r = optimise.root_scalar(_resid, method='secant', x0=T_magma, x1=T_magma-10.0, 
+        r = optimise.root_scalar(_resid, method='secant', x0=T_magma, x1=T_magma-10.0,
                                         xtol=1.0e-7, maxiter=40)
         T_surf_atm = float(r.root)
         fluxes = _calc_fluxes(T_surf_atm)
@@ -80,7 +108,7 @@ def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:f
     else:
         UpdateStatusfile(dirs, 20)
         raise Exception("Invalid surface state chosen for dummy_atmosphere")
-    
+
     # Require that the net flux must be upward
     F_atm_lim = fluxes["fl_N"]
     if (OPTIONS["prevent_warming"] == 1):
@@ -104,5 +132,5 @@ def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:f
     output["F_olr"] =  fluxes["fl_U_LW"]     # OLR
     output["F_sct"] =  fluxes["fl_U_SW"]     # Scattered SW flux
     output["z_obs"] =  R_planet
-    
+
     return output

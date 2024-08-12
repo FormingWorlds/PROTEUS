@@ -1,7 +1,35 @@
 # Variables and functions to help with offline chemistry plotting functions
 # These do not do the plotting themselves
 
-from proteus.utils.modules_ext import *
+import argparse
+import logging
+import pathlib
+import json
+import subprocess
+import os, sys, glob, shutil, re
+from datetime import datetime
+import copy
+import warnings
+
+import matplotlib as mpl
+
+import matplotlib.pyplot as plt
+
+import matplotlib.ticker as ticker
+from cmcrameri import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import matplotlib.font_manager as fm
+
+import netCDF4 as nc
+import numpy as np
+import pandas as pd
+import pickle as pkl
+from scipy.interpolate import PchipInterpolator
+from scipy.integrate import solve_ivp
+from scipy.optimize import fsolve
+
 from proteus.utils.constants import *
 from proteus.utils.helper import *
 from proteus.utils.plot import *
@@ -12,7 +40,7 @@ def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0, 
     """Read PT profile, VULCAN output file, and optionally runtime mixing ratios.
 
     Given the path to an offline chemistry output folder, containing year
-    subfolders, this function reads data from a given year. It optionally 
+    subfolders, this function reads data from a given year. It optionally
     reads the mixing ratios calculated by SPIDER at runtime, and also applies
     a clip to the mixing ratios.
 
@@ -68,7 +96,7 @@ def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0, 
 
         if vol_data_str == None:
             raise Exception("Could not parse vulcan cfg file!")
-        
+
         vol_data = json.loads(vol_data_str)
         for vol in vol_data:
             mv_mx = float(vol_data[vol])
@@ -80,7 +108,7 @@ def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0, 
 def offchem_read_grid(grid_dir):
     """Read-in all information from a GridOfflineChemistry output folder.
 
-    Given the path to a grid folder, containing case_* subfolders, this 
+    Given the path to a grid folder, containing case_* subfolders, this
     function reads all of the data required to process and plot the grid output.
 
     Parameters
@@ -117,7 +145,7 @@ def offchem_read_grid(grid_dir):
         # years as integers
         ytoint = lambda ypath : int(str(ypath).split("/")[-2])
         gp_years = sorted([ ytoint(y) for y in years_read ])
-        grid_years.append(gp_years)  
+        grid_years.append(gp_years)
 
         # OPTIONS dictionary
         gp_opts = dict(ReadInitFile(fol + "/init_coupler.cfg",verbose=False)[0])
@@ -128,7 +156,7 @@ def offchem_read_grid(grid_dir):
         for i,y in enumerate(gp_years):
             year_data = offchem_read_year(fol, y, read_const = True )
             gp_data.append(year_data)
-        grid_data.append(gp_data) 
+        grid_data.append(gp_data)
 
     # Convert to numpy arrays and assert types
     years = np.array(grid_years, dtype=int)
@@ -169,11 +197,11 @@ def offchem_slice_grid(years, opts, data, cvar_filter):
         slice_data : np.ndarray
             Sliced array of ReadOfflineChemistry output dicts [sgpoints, nyears]
     """
-    
+
     # Subgrid slice
-    slice_years  = [] 
-    slice_opts   = [] 
-    slice_data   = [] 
+    slice_years  = []
+    slice_opts   = []
+    slice_data   = []
 
     gpoints = len(opts)
 
@@ -181,17 +209,17 @@ def offchem_slice_grid(years, opts, data, cvar_filter):
     # check their options to see they each match cvar_filter or not
     for gi in range(gpoints):
 
-        gp_opts = opts[gi] 
+        gp_opts = opts[gi]
 
         exclude = False  # exclude this grid point from slice?
-        
+
         # For each filter key
         for k in cvar_filter.keys():
 
             # Mismatching keys (this can just be ignored I think?)
             if k not in gp_opts.keys():
                 print("WARNING: filter key '%s' is not present in OPTIONS" % k)
-                continue 
+                continue
 
             # Does not match
             if cvar_filter[k] != gp_opts[k]:
@@ -212,4 +240,3 @@ def offchem_slice_grid(years, opts, data, cvar_filter):
         print("WARNING: No grid points left after slicing")
 
     return slice_years, slice_opts, slice_data
-
