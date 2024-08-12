@@ -12,8 +12,6 @@ import matplotlib.pyplot as plt
 import netCDF4 as nc
 import numpy as np
 
-from proteus.utils.plot import *
-
 log = logging.getLogger("PROTEUS")
 
 # Plotting fluxes

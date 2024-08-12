@@ -13,8 +13,6 @@ from cmcrameri import cm
 from matplotlib.ticker import LogLocator, MultipleLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from proteus.utils.plot import *
-
 #====================================================================
 
 # Helper function

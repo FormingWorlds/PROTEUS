@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import M_earth
-from proteus.utils.plot import *
 
 log = logging.getLogger("PROTEUS")
 

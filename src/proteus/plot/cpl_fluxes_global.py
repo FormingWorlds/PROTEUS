@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.plot import *
+from proteus.utils.plot import dict_colors
 
 log = logging.getLogger("PROTEUS")
 

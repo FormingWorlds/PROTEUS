@@ -9,7 +9,6 @@ import pickle as pkl
 import numpy as np
 
 from proteus.utils.coupler import ReadInitFile
-from proteus.utils.plot import *
 
 
 def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0, read_const=False):

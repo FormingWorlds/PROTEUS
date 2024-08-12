@@ -8,8 +8,6 @@ import logging
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-from proteus.utils.plot import *
-
 log = logging.getLogger("PROTEUS")
 
 def cpl_heatingrates(output_dir, atm, comp=[]):

@@ -12,7 +12,7 @@ import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 
-from proteus.utils.plot import *
+from proteus.utils.plot import dict_colors, vol_latex, vol_zorder
 
 log = logging.getLogger("PROTEUS")
 

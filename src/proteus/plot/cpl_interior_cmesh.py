@@ -14,7 +14,6 @@ import numpy as np
 from cmcrameri import cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from proteus.utils.plot import *
 from proteus.utils.spider import MyJSON
 
 log = logging.getLogger("PROTEUS")

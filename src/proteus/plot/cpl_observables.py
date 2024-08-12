@@ -9,8 +9,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.plot import *
-
 log = logging.getLogger("PROTEUS")
 
 def plot_observables( output_dir, plot_format="pdf", t0=100.0):
