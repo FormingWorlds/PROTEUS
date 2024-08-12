@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
 name = "fwl-proteus"
-version = "24.7.25"
+version = "24.07.25"
 description = "Coupled atmosphere-interior framework to simulate the temporal evolution of rocky planets"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -88,19 +88,19 @@ testpaths = ["tests"]
 
 [tool.bumpversion]
 # https://callowayproject.github.io/bump-my-version/howtos/calver/
-current_version = "24.7.25"
-parse = """(?x)                     # Verbose mode
-    (?P<release>                    # The release part
-        (?:[1-9][0-9])\\.           # YY.
-        (?:1[0-2]|[1-9])\\.         # MM.
-        (?:3[0-1]|[1-2][0-9]|[1-9]) # DD
+current_version = "24.07.25"
+parse = """(?x)                      # Verbose mode
+    (?P<release>                     # The release part
+        (?:[1-9][0-9])\\.            # YY.
+        (?:1[0-2]|0[1-9])\\.         # MM.
+        (?:3[0-1]|[1-2][0-9]|0[1-9]) # DD
     )
     (?:\\.(?P<patch>\\d+))?         # .patch, optional
 """
 serialize = ["{release}.{patch}", "{release}"]
 
 [tool.bumpversion.parts.release]
-calver_format = "{YY}.{MM}.{DD}"
+calver_format = "{YY}.{0M}.{0D}"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"

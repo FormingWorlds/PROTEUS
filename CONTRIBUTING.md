@@ -76,11 +76,11 @@ pip-compile -o requirements_full.txt pyproject.toml
 
 ```console
 bump-my-version release
-# 24.8.12
+# 24.08.12
 ```
 
 2. Commit and push your changes.
 
-3. Make a new [release](https://github.com/FormingWorlds/PROTEUS/releases). Make sure to set the tag to the specified version, e.g. `24.8.12`.
+3. Make a new [release](https://github.com/FormingWorlds/PROTEUS/releases). Make sure to set the tag to the specified version, e.g. `24.08.12`.
 
 4. The [upload to pypi](https://pypi.org/project/fwl-proteus) is triggered when a release is published and handled by [this workflow](https://github.com/FormingWorlds/PROTEUS/actions/workflows/publish.yaml).
