@@ -8,7 +8,7 @@ import os
 import numpy as np
 from juliacall import Main as jl
 
-from proteus.utils.constants import *
+from proteus.utils.constants import dirs, volatile_species
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 

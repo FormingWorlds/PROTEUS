@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from cmcrameri import cm
 
-from proteus.utils.constants import *
+from proteus.utils.constants import const_c, const_h, const_k, dirs
 from proteus.utils.helper import natural_sort
 from proteus.utils.plot import *
 

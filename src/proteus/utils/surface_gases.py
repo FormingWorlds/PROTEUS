@@ -5,7 +5,13 @@ import logging
 import numpy as np
 from scipy.optimize import fsolve
 
-from proteus.utils.constants import *
+from proteus.utils.constants import (
+    dirs,
+    element_list,
+    molar_mass,
+    ocean_moles,
+    volatile_species,
+)
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("PROTEUS")

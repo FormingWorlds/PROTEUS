@@ -7,8 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from cmcrameri import cm
 
-from proteus.utils.constants import *
-
 vol_zorder  = {
     "H2O"            : 11,
     "CO2"            : 10,

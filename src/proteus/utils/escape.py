@@ -6,7 +6,7 @@ import logging
 import mors
 import numpy as np
 
-from proteus.utils.constants import *
+from proteus.utils.constants import element_list, ergcm2stoWm2, secs_per_year
 from proteus.utils.zephyrus import EL_escape
 
 log = logging.getLogger("PROTEUS")

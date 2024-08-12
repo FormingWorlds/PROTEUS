@@ -27,7 +27,11 @@ from proteus.plot.cpl_observables import plot_observables
 from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_stacked import plot_stacked
-from proteus.utils.constants import *
+from proteus.utils.constants import (
+    const_sigma,
+    element_list,
+    volatile_species,
+)
 from proteus.utils.helper import UpdateStatusfile, find_nearest, safe_rm
 from proteus.utils.spider import get_all_output_times
 

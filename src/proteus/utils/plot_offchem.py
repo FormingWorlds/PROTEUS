@@ -8,7 +8,6 @@ import pickle as pkl
 
 import numpy as np
 
-from proteus.utils.constants import *
 from proteus.utils.coupler import ReadInitFile
 from proteus.utils.plot import *
 
