@@ -3,10 +3,14 @@
 # Plot evolution of offline mixing ratios over time, for a set of species
 
 # Import things
-import matplotlib as mpl
-from proteus.utils.plot_offchem import *
-from proteus.utils.helper import find_nearest
+from __future__ import annotations
+
 import sys
+
+import matplotlib as mpl
+
+from proteus.utils.helper import find_nearest
+from proteus.utils.plot_offchem import *
 
 
 def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=None):

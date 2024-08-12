@@ -1,8 +1,15 @@
 # Small helper functions that can be used universally
 # This file should not depend on too many other files, as this can cause circular import issues
+from __future__ import annotations
+
+import glob
+import logging
+import os
+import re
+import shutil
 
 import numpy as np
-import os, shutil, re, glob, logging
+
 from proteus.utils.constants import *
 
 log = logging.getLogger("PROTEUS")

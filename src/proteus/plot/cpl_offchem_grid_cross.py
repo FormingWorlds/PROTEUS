@@ -3,10 +3,15 @@
 # Plot a cross-section of the GridOfflineChemistry output
 
 # Import things
+from __future__ import annotations
+
 import matplotlib as mpl
+
 mpl.use("Agg")
-from proteus.utils.plot_offchem import *
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+from proteus.utils.plot_offchem import *
+
 
 def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_dict:dict={}, 
                             contour:bool=True, labelcontrols:bool=False):

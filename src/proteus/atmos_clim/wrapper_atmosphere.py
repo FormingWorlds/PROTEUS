@@ -1,39 +1,43 @@
 #Generic atmosphere wrapper
+from __future__ import annotations
+
 import argparse
-import logging
-import pathlib
-import json
-import subprocess
-import os, sys, glob, shutil, re
-from datetime import datetime
 import copy
+import glob
+import json
+import logging
+import os
+import pathlib
+import pickle as pkl
+import re
+import shutil
+import subprocess
+import sys
 import warnings
+from datetime import datetime
 
 import matplotlib as mpl
-
-import matplotlib.pyplot as plt
-
-import matplotlib.ticker as ticker
-from cmcrameri import cm
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.font_manager as fm
-
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import netCDF4 as nc
 import numpy as np
 import pandas as pd
-import pickle as pkl
-from scipy.interpolate import PchipInterpolator
+from cmcrameri import cm
+from janus.utils.StellarSpectrum import InsertStellarSpectrum, PrepareStellarSpectrum
+from matplotlib.ticker import LinearLocator, LogLocator, MultipleLocator
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from scipy.integrate import solve_ivp
+from scipy.interpolate import PchipInterpolator
 from scipy.optimize import fsolve
 
-from proteus.utils.helper import *
+from proteus.atmos_clim.agni import ActivateEnv, DeallocAtmos, InitAtmos, RunAGNI, UpdateProfile
 
 #We should make the import dependent of the chosen atmospheric submodule
 from proteus.atmos_clim.janus import RunJANUS, StructAtm
-from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
-from proteus.atmos_clim.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv, DeallocAtmos
+from proteus.utils.helper import *
+
 atm = None
 from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
 

@@ -1,53 +1,57 @@
 # Functions used to help run PROTEUS which are mostly submodule agnostic.
 
 # Import utils-specific modules
+from __future__ import annotations
+
 import argparse
-import logging
-import pathlib
-import json
-import subprocess
-import os, sys, glob, shutil, re
-from datetime import datetime
 import copy
+import glob
+import json
+import logging
+import os
+import pathlib
+import pickle as pkl
+import re
+import shutil
+import subprocess
+import sys
 import warnings
+from datetime import datetime
 
 import matplotlib as mpl
-
-import matplotlib.pyplot as plt
-
-import matplotlib.ticker as ticker
-from cmcrameri import cm
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib.ticker import LogLocator, LinearLocator, MultipleLocator
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import matplotlib.font_manager as fm
-
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import netCDF4 as nc
 import numpy as np
 import pandas as pd
-import pickle as pkl
-from scipy.interpolate import PchipInterpolator
+from cmcrameri import cm
+from matplotlib.ticker import LinearLocator, LogLocator, MultipleLocator
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from scipy.integrate import solve_ivp
+from scipy.interpolate import PchipInterpolator
 from scipy.optimize import fsolve
 
 from proteus.utils.constants import *
-from proteus.utils.spider import *
 from proteus.utils.helper import *
+from proteus.utils.spider import *
 
 log = logging.getLogger("PROTEUS")
 
 from proteus.plot.cpl_atmosphere import plot_atmosphere
-from proteus.plot.cpl_global import plot_global
-from proteus.plot.cpl_stacked import plot_stacked
-from proteus.plot.cpl_interior import plot_interior
-from proteus.plot.cpl_sflux import plot_sflux
-from proteus.plot.cpl_sflux_cross import plot_sflux_cross
-from proteus.plot.cpl_fluxes_global import plot_fluxes_global
-from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
-from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
-from proteus.plot.cpl_observables import plot_observables
 from proteus.plot.cpl_elements import plot_elements
 from proteus.plot.cpl_escape import plot_escape
+from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
+from proteus.plot.cpl_fluxes_global import plot_fluxes_global
+from proteus.plot.cpl_global import plot_global
+from proteus.plot.cpl_interior import plot_interior
+from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
+from proteus.plot.cpl_observables import plot_observables
+from proteus.plot.cpl_sflux import plot_sflux
+from proteus.plot.cpl_sflux_cross import plot_sflux_cross
+from proteus.plot.cpl_stacked import plot_stacked
+
 
 def GitRevision(dir:str) -> str:
     '''

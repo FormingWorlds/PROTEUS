@@ -5,6 +5,8 @@
 
 # ====== Setting up paths and filenames for the input and output files  ======
 # input:
+from __future__ import annotations
+
 use_lowT_limit_rates = False
 gibbs_text = 'thermo/gibbs_text.txt' # (all the nasa9 files must be placed in the folder: thermo/NASA9/)
 cross_folder = 'thermo/photo_cross/'
