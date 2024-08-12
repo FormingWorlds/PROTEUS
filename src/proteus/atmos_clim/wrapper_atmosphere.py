@@ -8,14 +8,11 @@ import pandas as pd
 from scipy.integrate import solve_ivp
 
 from proteus.atmos_clim.agni import ActivateEnv, DeallocAtmos, InitAtmos, RunAGNI, UpdateProfile
-
-#We should make the import dependent of the chosen atmospheric submodule
+from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
 from proteus.atmos_clim.janus import RunJANUS, StructAtm
 from proteus.utils.helper import PrintHalfSeparator
 
 atm = None
-from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
-
 log = logging.getLogger("PROTEUS")
 
 def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
