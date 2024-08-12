@@ -10,14 +10,14 @@ import matplotlib as mpl
 mpl.use("Agg")
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from proteus.utils.plot_offchem import *
+from proteus.utils.plot_offchem import offchem_read_year
 
 
 def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=False):
     """Plot evolution of a single component according to offline VULCAN output
-    
+
     Reads-in the data from output_dir for a single species. Can also
-    include JANUS/SPIDER mixing ratios as dashed lines, which were used to 
+    include JANUS/SPIDER mixing ratios as dashed lines, which were used to
     initialise each VULCAN run.
 
     Parameters
@@ -28,7 +28,7 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
             Which species to plot? (e.g. H2O)
         tmin : float
             Initial year to include (-1 for start of data)
-        tmax : float 
+        tmax : float
             Final year to include (-1 for end of data)
         plot_init_mx : bool
             Include initial mixing ratios for each VULCAN run in plot?
@@ -68,30 +68,30 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
         cb_vmin = tmin
     else:
         cb_vmin = max(years_data[1]["year"],1.0)
-        
-    
+
+
     if (tmax > 0):
         cb_vmax = tmax
     else:
         cb_vmax = max(years_data[-1]["year"],2.0)
-        
+
 
     norm = mpl.colors.LogNorm(vmin=cb_vmin, vmax=cb_vmax)
     sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)
     sm.set_array([])
     cbar = fig.colorbar(sm, cax=cax, orientation='vertical')  #, ticks=np.linspace(0,2,N), boundaries=np.arange(-0.05,2.1,.1))
-    cbar.set_label("Time [yr]") 
-    
+    cbar.set_label("Time [yr]")
+
     min_mix = 5e-1
-    
+
     for i, yd in enumerate(years_data):
 
         if (tmin > -1) and (yd["year"] < tmin):
-            continue 
-        
+            continue
+
         if (tmax > -1) and (yd["year"] > tmax):
-            continue 
-        
+            continue
+
         if (tmin == -1) and (i == 0):
             color = 'blue'
         else:
@@ -113,13 +113,13 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
             if key in yd.keys():
                 ax1.scatter(yd[key],p[0], s=40,color='grey')
                 ax1.scatter(yd[key],p[0], s=20,color=color)
-            
+
     ax1.set_xlim([min_mix,1])
 
     fig.tight_layout()
     fig.savefig(output_dir+"plot_offchem_species_%s.pdf"%sp)
     plt.close('all')
-    
+
 
 
 # If executed directly
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     plot_janus_result = True
 
