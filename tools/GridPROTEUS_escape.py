@@ -65,11 +65,22 @@ def setup_logger(logpath:str="new.log",level=1,logterm=True):
 # Object for handling the parameter grid
 class Pgrid():
 
+    # Thread targget
+    def _thread_target(cfg_path):
+        proteus_py = os.path.join(PROTEUS_DIR,"start_proteus.py")
+        if test_run:
+            command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
+        else:
+            command = ["python",proteus_py,"--cfg",cfg_path]
+        subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
+
+
     def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
 
         # Pgrid's own name (for versioning, etc.)
         self.name = str(name).strip()
-        self.outdir = PROTEUS_DIR+"/output/simulation_grid/"+self.name+"/"
+        self.outdir = PROTEUS_DIR+"/output/"+self.name+"/"
         self.tmpdir = "/tmp/"+self.name+"/"
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
@@ -332,17 +343,6 @@ class Pgrid():
                 os.fsync(hdl.fileno())
         gc.collect()
 
-
-         # Thread targget
-        def _thread_target(cfg_path):
-            proteus_py = os.path.join(PROTEUS_DIR,"start_proteus.py")
-            if test_run:
-                command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
-            else:
-                command = ["python",proteus_py,"--cfg",cfg_path]
-            subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
-
         # Setup threads
         threads = []
         for i in range(self.size):
@@ -359,8 +359,8 @@ class Pgrid():
             if not cfgexists:
                raise Exception("Config file could not be found for case %d!" % i)
             # Add thread
-            # threads.append(threading.Thread(target=_thread_target, args=(cfg_path,)))
-            threads.append(multiprocessing.Process(target=_thread_target, args=(cfg_path,)))
+            #threads.append(threading.Thread(target=_thread_target, args=(cfg_path,)))
+            threads.append(multiprocessing.Process(target=self._thread_target, args=(cfg_path,)))
 
         # Track statuses
         # 0: queued
@@ -456,6 +456,7 @@ class Pgrid():
         log.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
 if __name__=='__main__':
+    multiprocessing.set_start_method('spawn')
     print("Start GridPROTEUS")
 
     # -----
@@ -463,8 +464,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","dummy2.cfg")
-    symlink  = "../output/simulation_grid"
-    pg = Pgrid("grid_escape", cfg_base, symlink_dir=symlink)
+    symlink  = "/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/output/grid_simulations/"
+    pg = Pgrid("grid_dummy_escape", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -481,16 +482,14 @@ if __name__=='__main__':
     # pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 5.0, 10.0])
 
 
-    # pg.add_dimension("Model")
-    # pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
+    pg.add_dimension("Model")
+    pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
 
     # pg.add_dimension("Redox state")
     # pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-2, 0, 2, 4])
 
-
-    pg.add_dimension("Escape")
-    pg.set_dimension_direct("Escape", "escape_dummy_rate", [4.15145e3, 4.15e3, 4.148e3, 4.147e3])
-
+    # pg.add_dimension("Escape")
+    # pg.set_dimension_direct("Escape", "escape_dummy_rate", [4.15145e3, 4.15e3, 4.148e3, 4.147e3])
 
     # -----
     # Print state of parameter grid

@@ -2,15 +2,16 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 path_to_csv = '/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/output/'
+csv_file    = 'runtime_helpfile.csv'
 
 # Load .csv files
-escape_csv            = 'runtime_helpfile.csv'
-df_escape             = pd.read_csv(path_to_csv+'escape/'+escape_csv, delimiter='\t')   # Zephyrus escape
+escape_dir            = 'escape/'
+df_escape             = pd.read_csv(path_to_csv+escape_dir+csv_file, delimiter='\t')   # Zephyrus escape
 time_column_e         = df_escape['Time']
 escape_rate_column_e  = df_escape['esc_rate_total']
 
-dummy_csv             = 'runtime_helpfile.csv'
-df_dummy              = pd.read_csv(path_to_csv+'dummy/'+dummy_csv, delimiter='\t')    # Dummy escape
+dummy_dir             = 'dummy/'
+df_dummy              = pd.read_csv(path_to_csv+dummy_dir+csv_file, delimiter='\t')    # Dummy escape
 time_column_d         = df_dummy['Time']
 escape_rate_column_d  = df_dummy['esc_rate_total']
 
