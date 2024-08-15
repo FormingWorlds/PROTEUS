@@ -55,7 +55,93 @@ plt.title('Comparison of All Escape Rates')
 plt.legend()
 plt.grid(alpha=0.5)
 plt.savefig(os.path.join(plot_dir, 'comparison_all.png'), dpi=180)
-plt.show()
+#plt.show()
+
+
+# Plot Inventory (kg_total_column) for all simulations
+plt.figure(figsize=(12, 8))
+for i, (directory, label) in enumerate(directory_labels.items()):
+    full_path = os.path.join(path_to_csv, directory, csv_file)
+
+    if os.path.isfile(full_path):
+        df = pd.read_csv(full_path, delimiter='\t')
+        time_column = df['Time']
+        
+        # Compute the total inventory
+        df['_kg_total'] = df[['H2O_kg_total', 'CO2_kg_total', 'H2_kg_total', 'CH4_kg_total', 'CO_kg_total', 
+                              'N2_kg_total', 'S2_kg_total', 'SO2_kg_total', 'H_kg_total', 'O_kg_total', 
+                              'C_kg_total', 'N_kg_total', 'S_kg_total']].sum(axis=1)
+        
+        kg_total_column = df['_kg_total']
+        
+        # Plot kg_total_column
+        plt.loglog(time_column, kg_total_column, linestyle='-', color=color_list[i], label=label)
+
+    else:
+        print(f"Warning: {full_path} does not exist.")
+
+plt.xlabel('Time [years]')
+plt.ylabel(r'Inventory [kg]')
+plt.title('Total Inventory Across All Simulations')
+plt.legend(loc='best')
+plt.grid(alpha=0.5)
+plt.savefig(os.path.join(plot_dir, 'total_inventory_all_simulations.png'), dpi=180)
+#plt.show()
+
+plt.figure(figsize=(12, 8))
+for i, (directory, label) in enumerate(directory_labels.items()):
+    full_path = os.path.join(path_to_csv, directory, csv_file)
+
+    if os.path.isfile(full_path):
+        df = pd.read_csv(full_path, delimiter='\t')
+        time_column = df['Time']
+        m_atm = df['M_atm']
+        
+        # Plot M_atm
+        plt.loglog(time_column, m_atm, linestyle=':', color=color_list[i],label=label)
+
+    else:
+        print(f"Warning: {full_path} does not exist.")
+
+plt.xlabel('Time [years]')
+plt.ylabel(r'Inventory [kg]')
+plt.title('M_atm Across All Simulations')
+plt.legend(loc='best')
+plt.grid(alpha=0.5)
+plt.savefig(os.path.join(plot_dir, 'm_atm_all_simulations.png'), dpi=180)
+#plt.show()
+
+# Plot M_atm + total_kg
+plt.figure(figsize=(12, 8))
+for i, (directory, label) in enumerate(directory_labels.items()):
+    full_path = os.path.join(path_to_csv, directory, csv_file)
+
+    if os.path.isfile(full_path):
+        df = pd.read_csv(full_path, delimiter='\t')
+        time_column = df['Time']
+        df['_kg_total'] = df[['H2O_kg_total', 'CO2_kg_total', 'H2_kg_total', 'CH4_kg_total', 'CO_kg_total', 
+                              'N2_kg_total', 'S2_kg_total', 'SO2_kg_total', 'H_kg_total', 'O_kg_total', 
+                              'C_kg_total', 'N_kg_total', 'S_kg_total']].sum(axis=1)
+        
+        kg_total_column = df['_kg_total']
+        m_atm = df['M_atm']
+        
+        # Plot M_atm
+        plt.loglog(time_column, m_atm, linestyle=':', color=color_list[i],label=label+' : M_atm')
+        plt.loglog(time_column, kg_total_column, linestyle='-', color=color_list[i], label=label+' : Total')
+
+
+    else:
+        print(f"Warning: {full_path} does not exist.")
+
+plt.xlabel('Time [years]')
+plt.ylabel(r'Inventory [kg]')
+plt.title('M_atm + Total Inventory Across All Simulations')
+plt.legend(loc='best')
+plt.grid(alpha=0.5)
+plt.savefig(os.path.join(plot_dir, 'm_atm_and_total_inventory_all_simulations.png'), dpi=180)
+#plt.show()
+
 
 # Plot dummy_escape_rate datasets
 plt.figure(figsize=(12, 8))
@@ -78,7 +164,7 @@ plt.title('Comparison of Dummy Escape Rates')
 plt.legend()
 plt.grid(alpha=0.5)
 plt.savefig(os.path.join(plot_dir, 'comparison_dummy_escape.png'), dpi=180)
-plt.show()
+#plt.show()
 
 # Plot el_escape_eps datasets
 path_to_csv = '/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/output/'
@@ -175,7 +261,7 @@ for i, (zoom_range, (directory, label)) in enumerate(zip(zoom_ranges, directory_
 # Adjust layout
 plt.tight_layout()
 plt.savefig(os.path.join(plot_dir, 'comparison_el_escape_with_zoom_column_best_legend.png'), dpi=180)
-plt.show()
+#plt.show()
 
 # Plot each el_escape_eps dataset individually
 for i, (directory, label) in enumerate(directory_labels.items()):
@@ -195,6 +281,7 @@ for i, (directory, label) in enumerate(directory_labels.items()):
             plt.legend()
             plt.grid(alpha=0.5)
             plt.savefig(os.path.join(plot_dir, f'plot_{directory}.png'), dpi=180)
-            plt.show()
+            #plt.show()
         else:
             print(f"Warning: {full_path} does not exist.")
+
