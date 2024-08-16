@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
@@ -57,37 +58,115 @@ plt.grid(alpha=0.5)
 plt.savefig(os.path.join(plot_dir, 'comparison_all.png'), dpi=180)
 #plt.show()
 
-
-# Plot Inventory (kg_total_column) for all simulations
+# Plot Inventory (kg_total_column) for all simulations with a zoom panel for elements
 plt.figure(figsize=(12, 8))
+
+# Main plot axes (reduced width)
+main_ax = plt.axes([0.1, 0.2, 0.6, 0.5])
+
 for i, (directory, label) in enumerate(directory_labels.items()):
     full_path = os.path.join(path_to_csv, directory, csv_file)
 
     if os.path.isfile(full_path):
         df = pd.read_csv(full_path, delimiter='\t')
-        time_column = df['Time']
+        time_column = df['Time'].astype(float)
+        df['_kg_total'] = df[['H_kg_total', 'O_kg_total', 'C_kg_total', 'N_kg_total', 'S_kg_total']].sum(axis=1)
+        kg_total_column = df['_kg_total'].replace(0, np.nan).astype(float)
         
-        # Compute the total inventory
-        df['_kg_total'] = df[['H2O_kg_total', 'CO2_kg_total', 'H2_kg_total', 'CH4_kg_total', 'CO_kg_total', 
-                              'N2_kg_total', 'S2_kg_total', 'SO2_kg_total', 'H_kg_total', 'O_kg_total', 
-                              'C_kg_total', 'N_kg_total', 'S_kg_total']].sum(axis=1)
-        
-        kg_total_column = df['_kg_total']
-        
-        # Plot kg_total_column
-        plt.loglog(time_column, kg_total_column, linestyle='-', color=color_list[i], label=label)
+        main_ax.loglog(time_column, kg_total_column, linestyle='-', color=color_list[i], label=label)
 
     else:
         print(f"Warning: {full_path} does not exist.")
 
-plt.xlabel('Time [years]')
-plt.ylabel(r'Inventory [kg]')
-plt.title('Total Inventory Across All Simulations')
-plt.legend(loc='best')
-plt.grid(alpha=0.5)
-plt.savefig(os.path.join(plot_dir, 'total_inventory_all_simulations.png'), dpi=180)
+# Zoom plot axes (further right)
+zoom_ax = plt.axes([0.8, 0.2, 0.15, 0.5])
+
+for i, (directory, label) in enumerate(directory_labels.items()):
+    full_path = os.path.join(path_to_csv, directory, csv_file)
+
+    if os.path.isfile(full_path):
+        df = pd.read_csv(full_path, delimiter='\t')
+        time_column = df['Time'].astype(float)
+        df['_kg_total'] = df[['H_kg_total', 'O_kg_total', 
+                              'C_kg_total', 'N_kg_total', 'S_kg_total']].sum(axis=1)
+        
+        kg_total_column = df['_kg_total'].replace(0, np.nan).astype(float)
+        
+        zoom_ax.loglog(time_column, kg_total_column, linestyle='-', color=color_list[i], label=label)
+
+    else:
+        print(f"Warning: {full_path} does not exist.")
+
+# Adjusted zoom limits as requested
+zoom_ax.set_xlim(1e3, 1e7)
+zoom_ax.set_ylim(1.2545e22, 1.2554e22)
+zoom_ax.grid(alpha=0.5)
+
+main_ax.set_xlabel('Time [years]')
+main_ax.set_ylabel(r'Inventory [kg]')
+main_ax.set_title('Total Inventory Across All Simulations : Elements H,O,C,N,S')
+main_ax.legend(loc='best')
+main_ax.grid(alpha=0.5)
+
+plt.savefig(os.path.join(plot_dir, 'total_inventory_all_simulations_with_zoom_elements.png'), dpi=180)
 #plt.show()
 
+
+# Plot Inventory (kg_total_column) for all simulations with a zoom panel for volatiles
+plt.figure(figsize=(12, 8))
+
+# Main plot axes (reduced width)
+main_ax = plt.axes([0.1, 0.2, 0.6, 0.5])
+
+for i, (directory, label) in enumerate(directory_labels.items()):
+    full_path = os.path.join(path_to_csv, directory, csv_file)
+
+    if os.path.isfile(full_path):
+        df = pd.read_csv(full_path, delimiter='\t')
+        time_column = df['Time'].astype(float)
+        df['_kg_total'] = df[['H_kg_total', 'O_kg_total', 'C_kg_total', 'N_kg_total', 'S_kg_total']].sum(axis=1)
+        kg_total_column = df['_kg_total'].replace(0, np.nan).astype(float)
+        
+        main_ax.loglog(time_column, kg_total_column, linestyle='-', color=color_list[i], label=label)
+
+    else:
+        print(f"Warning: {full_path} does not exist.")
+
+# Zoom plot axes (further right)
+zoom_ax = plt.axes([0.8, 0.2, 0.15, 0.5])
+
+for i, (directory, label) in enumerate(directory_labels.items()):
+    full_path = os.path.join(path_to_csv, directory, csv_file)
+
+    if os.path.isfile(full_path):
+        df = pd.read_csv(full_path, delimiter='\t')
+        time_column = df['Time'].astype(float)
+        df['_kg_total'] = df[['H2O_kg_total', 'CO2_kg_total', 'H2_kg_total', 'CH4_kg_total', 'CO_kg_total', 
+                              'N2_kg_total', 'S2_kg_total', 'SO2_kg_total']].sum(axis=1)
+        
+        kg_total_column = df['_kg_total'].replace(0, np.nan).astype(float)
+        
+        zoom_ax.loglog(time_column, kg_total_column, linestyle='-', color=color_list[i], label=label)
+
+    else:
+        print(f"Warning: {full_path} does not exist.")
+
+# Adjusted zoom limits as requested
+zoom_ax.set_xlim(1e3, 1e7)
+zoom_ax.set_ylim(1.242e22, 1.335e22)
+zoom_ax.grid(alpha=0.5)
+
+main_ax.set_xlabel('Time [years]')
+main_ax.set_ylabel(r'Inventory [kg]')
+main_ax.set_title('Total Inventory Across All Simulations : Volatiles H2O,CO2,H2,CH4,CO,N2,S2,SO2')
+main_ax.legend(loc='best')
+main_ax.grid(alpha=0.5)
+
+plt.savefig(os.path.join(plot_dir, 'total_inventory_all_simulations_with_zoom_volatile.png'), dpi=180)
+#plt.show()
+
+
+# Plot M_atm vs time 
 plt.figure(figsize=(12, 8))
 for i, (directory, label) in enumerate(directory_labels.items()):
     full_path = os.path.join(path_to_csv, directory, csv_file)
@@ -119,8 +198,7 @@ for i, (directory, label) in enumerate(directory_labels.items()):
     if os.path.isfile(full_path):
         df = pd.read_csv(full_path, delimiter='\t')
         time_column = df['Time']
-        df['_kg_total'] = df[['H2O_kg_total', 'CO2_kg_total', 'H2_kg_total', 'CH4_kg_total', 'CO_kg_total', 
-                              'N2_kg_total', 'S2_kg_total', 'SO2_kg_total', 'H_kg_total', 'O_kg_total', 
+        df['_kg_total'] = df[['H_kg_total', 'O_kg_total', 
                               'C_kg_total', 'N_kg_total', 'S_kg_total']].sum(axis=1)
         
         kg_total_column = df['_kg_total']
@@ -263,25 +341,25 @@ plt.tight_layout()
 plt.savefig(os.path.join(plot_dir, 'comparison_el_escape_with_zoom_column_best_legend.png'), dpi=180)
 #plt.show()
 
-# Plot each el_escape_eps dataset individually
-for i, (directory, label) in enumerate(directory_labels.items()):
-    if 'el_escape_eps' in directory:
-        plt.figure(figsize=(12, 8))
-        full_path = os.path.join(path_to_csv, directory, csv_file)
+# # Plot each el_escape_eps dataset individually
+# for i, (directory, label) in enumerate(directory_labels.items()):
+#     if 'el_escape_eps' in directory:
+#         plt.figure(figsize=(12, 8))
+#         full_path = os.path.join(path_to_csv, directory, csv_file)
         
-        if os.path.isfile(full_path):
-            df = pd.read_csv(full_path, delimiter='\t')
-            time_column = df['Time']
-            escape_rate_column = df['esc_rate_total']
+#         if os.path.isfile(full_path):
+#             df = pd.read_csv(full_path, delimiter='\t')
+#             time_column = df['Time']
+#             escape_rate_column = df['esc_rate_total']
             
-            plt.loglog(time_column, escape_rate_column, linestyle='-', color=color_list[i], label=label)
-            plt.xlabel('Time [years]')
-            plt.ylabel(r'Total Escape Rate [kg s$^{-1}$]')
-            plt.title(f'{label}')
-            plt.legend()
-            plt.grid(alpha=0.5)
-            plt.savefig(os.path.join(plot_dir, f'plot_{directory}.png'), dpi=180)
-            #plt.show()
-        else:
-            print(f"Warning: {full_path} does not exist.")
+#             plt.loglog(time_column, escape_rate_column, linestyle='-', color=color_list[i], label=label)
+#             plt.xlabel('Time [years]')
+#             plt.ylabel(r'Total Escape Rate [kg s$^{-1}$]')
+#             plt.title(f'{label}')
+#             plt.legend()
+#             plt.grid(alpha=0.5)
+#             plt.savefig(os.path.join(plot_dir, f'plot_{directory}.png'), dpi=180)
+#             #plt.show()
+#         else:
+#             print(f"Warning: {full_path} does not exist.")
 
