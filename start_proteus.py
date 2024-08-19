@@ -20,6 +20,7 @@ from janus.utils.StellarSpectrum import InsertStellarSpectrum, PrepareStellarSpe
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
+from proteus.atmos_clim.agni import DeallocAtmos
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -45,6 +46,13 @@ from proteus.utils.coupler import (
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
     parse_console_arguments,
+)
+from proteus.utils.helper import (
+    CleanDir,
+    PrintHalfSeparator,
+    PrintSeparator,
+    safe_rm,
+    UpdateStatusfile,
 )
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
