@@ -51,8 +51,8 @@ from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
     PrintSeparator,
-    safe_rm,
     UpdateStatusfile,
+    safe_rm,
 )
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
