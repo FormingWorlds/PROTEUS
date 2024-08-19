@@ -46,6 +46,13 @@ from proteus.utils.coupler import (
     ZeroHelpfileRow,
     parse_console_arguments,
 )
+from proteus.utils.helper import (
+    CleanDir,
+    PrintHalfSeparator,
+    PrintSeparator,
+    safe_rm,
+    UpdateStatusfile,
+)
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
