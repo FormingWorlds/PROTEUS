@@ -1,10 +1,22 @@
 # Function and classes used to run SPIDER
+from __future__ import annotations
 
-from proteus.utils.modules_ext import *
-from proteus.utils.constants import *
-from proteus.utils.helper import *
+import glob
+import json
+import logging
+import os
+import shutil
+import subprocess
+import sys
+
+import numpy as np
+import pandas as pd
+
+from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 
 log = logging.getLogger("PROTEUS")
+
+
 class MyJSON( object ):
 
     '''load and access json data'''
@@ -77,7 +89,7 @@ class MyJSON( object ):
         # MIX = MIX * 1.0 # convert to float array
         # MIX[MIX==0] = np.nan  # set false region to nan to prevent plotting
         return MIX
-    
+
     def get_melt_phase_boolean_array( self, nodes='basic' ):
         '''this array enables us to plot different linestyles for
            melt phase regions'''
@@ -91,7 +103,7 @@ class MyJSON( object ):
         # MELT = MELT * 1.0 # convert to float array
         # MELT[MELT==0] = np.nan # set false region to nan to prevent plotting
         return MELT
-    
+
     def get_solid_phase_boolean_array( self, nodes='basic' ):
         '''this array enables us to plot different linestyles for
            solid phase regions'''
@@ -112,7 +124,7 @@ def get_all_output_times( odir='output' ):
     '''
     Get all times (in yr) from the json files located in the output directory
     '''
-    
+
     odir = odir+'/data/'
 
     # locate times to process based on files located in odir/
@@ -123,7 +135,7 @@ def get_all_output_times( odir='output' ):
     time_l = [fname for fname in file_l]
     time_l = list(filter(lambda a: a.endswith('json'), time_l))
     time_l = [int(time.split('.json')[0]) for time in time_l]
-    
+
     # ascending order
     time_l = sorted( time_l, key=int)
     time_a = np.array( time_l )
@@ -191,9 +203,9 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
     return np.array(data_l)
 
 #====================================================================
-def _try_spider( dirs:dict, OPTIONS:dict, 
-                IC_INTERIOR:int, loop_counter:dict, 
-                hf_all:pd.DataFrame, hf_row:dict, 
+def _try_spider( dirs:dict, OPTIONS:dict,
+                IC_INTERIOR:int, loop_counter:dict,
+                hf_all:pd.DataFrame, hf_row:dict,
                 step_sf:float, atol_sf:float ):
     '''
     Try to run spider with the current configuration.
@@ -212,7 +224,7 @@ def _try_spider( dirs:dict, OPTIONS:dict,
         shutil.copy(SPIDER_options_file_orig,SPIDER_options_file)
 
     # Recalculate time stepping
-    if IC_INTERIOR == 2:  
+    if IC_INTERIOR == 2:
 
         # Current step number
         json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(hf_row["Time"])) )
@@ -242,25 +254,25 @@ def _try_spider( dirs:dict, OPTIONS:dict,
                     dtprev = OPTIONS["dt_initial"]
                 log.debug("Previous step size: %.2e yr"%dtprev)
 
-                # Change in F_int 
+                # Change in F_int
                 F_int_2  = hf_all.iloc[-2]["F_int"]
                 F_int_1  = hf_all.iloc[-1]["F_int"]
-                F_int_12 = abs(F_int_1 - F_int_2) 
+                F_int_12 = abs(F_int_1 - F_int_2)
 
                 # Change in F_atm
                 F_atm_2  = hf_all.iloc[-2]["F_atm"]
                 F_atm_1  = hf_all.iloc[-1]["F_atm"]
-                F_atm_12 = abs(F_atm_1 - F_atm_2)  
+                F_atm_12 = abs(F_atm_1 - F_atm_2)
 
                 # Change in global melt fraction
                 phi_2  = hf_all.iloc[-2]["Phi_global"]
                 phi_1  = hf_all.iloc[-1]["Phi_global"]
-                phi_12 = abs(phi_1 - phi_2)  
+                phi_12 = abs(phi_1 - phi_2)
 
                 # Determine new time-step given the tolerances
                 dt_rtol = OPTIONS["dt_rtol"]
                 dt_atol = OPTIONS["dt_atol"]
-                speed_up = True 
+                speed_up = True
                 speed_up = speed_up and ( F_int_12 < dt_rtol*abs(F_int_2) + dt_atol )
                 speed_up = speed_up and ( F_atm_12 < dt_rtol*abs(F_atm_2) + dt_atol )
                 speed_up = speed_up and ( phi_12   < dt_rtol*abs(phi_2  ) + dt_atol )
@@ -303,7 +315,7 @@ def _try_spider( dirs:dict, OPTIONS:dict,
         # Number of total steps until currently desired switch/end time
         nstepsmacro = step + nsteps
 
-        log.debug("Time options in RunSPIDER: dt=%.2e yrs in %d steps (at i=%d)" % 
+        log.debug("Time options in RunSPIDER: dt=%.2e yrs in %d steps (at i=%d)" %
                                                     (dtmacro, nsteps, nstepsmacro))
 
     # For init loop
@@ -312,20 +324,20 @@ def _try_spider( dirs:dict, OPTIONS:dict,
         dtmacro     = 0
         dtswitch    = 0
 
-    ### SPIDER base call sequence 
-    call_sequence = [   
-                        os.path.join(dirs["spider"],"spider"), 
-                        "-options_file",           SPIDER_options_file, 
+    ### SPIDER base call sequence
+    call_sequence = [
+                        os.path.join(dirs["spider"],"spider"),
+                        "-options_file",           SPIDER_options_file,
                         "-outputDirectory",        dirs["output"]+'data/',
                         "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
                         "-OXYGEN_FUGACITY_offset", "%.6e"%(OPTIONS["fO2_shift_IW"]),  # Relative to the specified buffer
-                        "-surface_bc_value",       "%.6e"%(hf_row["F_atm"]), 
-                        "-teqm",                   "%.6e"%(hf_row["T_eqm"]), 
+                        "-surface_bc_value",       "%.6e"%(hf_row["F_atm"]),
+                        "-teqm",                   "%.6e"%(hf_row["T_eqm"]),
                         "-n",                      "%d"  %(OPTIONS["interior_nlev"]),
-                        "-nstepsmacro",            "%d"  %(nstepsmacro), 
-                        "-dtmacro",                "%.6e"%(dtmacro), 
-                        "-radius",                 "%.6e"%(hf_row["R_planet"]), 
-                        "-gravity",                "%.6e"%(-1.0 * hf_row["gravity"]), 
+                        "-nstepsmacro",            "%d"  %(nstepsmacro),
+                        "-dtmacro",                "%.6e"%(dtmacro),
+                        "-radius",                 "%.6e"%(hf_row["R_planet"]),
+                        "-gravity",                "%.6e"%(-1.0 * hf_row["gravity"]),
                         "-coresize",               "%.6e"%(OPTIONS["planet_coresize"]),
                         "-grain",                  "%.6e"%(OPTIONS["grain_size"]),
                     ]
@@ -340,12 +352,12 @@ def _try_spider( dirs:dict, OPTIONS:dict,
 
     # Initial condition
     if IC_INTERIOR == 2:
-        # get last JSON File 
+        # get last JSON File
         last_filename = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
         last_filename = os.path.join(dirs["output"], "data", last_filename)
-        call_sequence.extend([ 
+        call_sequence.extend([
                                 "-ic_interior_filename", str(last_filename),
-                                "-activate_poststep", 
+                                "-activate_poststep",
                                 "-activate_rollback"
                              ])
     else:
@@ -380,8 +392,8 @@ def _try_spider( dirs:dict, OPTIONS:dict,
     return bool(proc.returncode == 0)
 
 
-def RunSPIDER( dirs:dict, OPTIONS:dict, 
-              IC_INTERIOR:int, loop_counter:dict, 
+def RunSPIDER( dirs:dict, OPTIONS:dict,
+              IC_INTERIOR:int, loop_counter:dict,
               hf_all:pd.DataFrame, hf_row:dict ):
     '''
     Wrapper function for running SPIDER.
@@ -420,9 +432,9 @@ def RunSPIDER( dirs:dict, OPTIONS:dict,
                 break
             else:
                 # try again (change tolerance and step size)
-                step_sf *= 0.5 
+                step_sf *= 0.5
                 atol_sf *= 4.0
-    
+
     # check status
     if spider_success:
         # success after some attempts
@@ -473,7 +485,7 @@ def ReadSPIDER(dirs:dict, OPTIONS:dict, time:float, prev_T_magma:float, R_planet
     if (OPTIONS["prevent_warming"]) and (time > 5.0):
         output["T_magma"] = min(output["T_magma"], prev_T_magma)
 
-   
+
     # Manually calculate heat flux at near-surface from energy gradient
     json_file   = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
     Etot        = json_file.get_dict_values(['data','Etot_b'])
@@ -492,4 +504,3 @@ def ReadSPIDER(dirs:dict, OPTIONS:dict, time:float, prev_T_magma:float, R_planet
         raise Exception("Magma ocean temperature is NaN")
 
     return sim_time, output
-

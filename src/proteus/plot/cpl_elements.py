@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 
-from proteus.utils.modules_ext import *
-from proteus.utils.plot import *
+import logging
+import os
+import sys
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 log = logging.getLogger("PROTEUS")
 
@@ -33,11 +39,11 @@ def plot_elements( output_dir, plot_format="pdf", t0=100.0):
         # c = l.get_color()
         # ax.plot(time, hf_all[e+"_kg_liquid"], lw=lw, color=c, alpha=al, ls='dashed')  # in magma ocean
         # ax.plot(time, hf_all[e+"_kg_atm"],    lw=lw, color=c, alpha=al, ls='dotted')  # in atmosphere
-    
+
     ax.plot(time, total,           lw=lw, ls='solid',  label='Total',  c='k')
     ax.plot(time, hf_all["M_atm"], lw=lw, ls='dotted', label='Atmos.', c='k')
 
-    # decorate 
+    # decorate
     ax.set_ylabel("Inventory [kg]")
     ax.set_yscale("log")
     ax.set_xlabel("Time [yr]")
@@ -58,7 +64,7 @@ def main():
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     log.info("Read cfg file")

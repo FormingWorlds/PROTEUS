@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 
-# Import utils- and plot-specific modules
-from proteus.utils.modules_ext import *
-from proteus.utils.plot import *
+import logging
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 log = logging.getLogger("PROTEUS")
 
 def cpl_heatingrates(output_dir, atm, comp=[]):
     """Plot temperature structure and corresponding heating rates versus pressure
-    
-    Reads the temperature for each pressure level in atm, and plots it alongside 
+
+    Reads the temperature for each pressure level in atm, and plots it alongside
     the heating rates on the same pressure y-axis. Can also plot the temperature
     structure from another atmos object for comparison.
 

@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 
-from proteus.utils.modules_ext import *
-from proteus.utils.plot import *
+import logging
+import os
+import sys
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
 from proteus.utils.constants import M_earth
 
 log = logging.getLogger("PROTEUS")
@@ -29,12 +36,12 @@ def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
         escape_model_label = 'Energy-limited escape (Zephyrus)'
     elif escape_model == 2 :
         escape_model_label = 'Dummy escape'
-    
+
     y = hf_all['esc_rate_total']
     l = ax1.plot(time, y, lw=lw, ls='solid', label=f'{escape_model_label}')
 
 
-    # decorate 
+    # decorate
     ax1.set_ylabel(r'Mass loss rate [kg $s^{-1}$]')
     ax1.set_yscale("log")
     ax1.set_xlabel("Time [yr]")
@@ -60,7 +67,7 @@ def main():
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     log.info("Read cfg file")

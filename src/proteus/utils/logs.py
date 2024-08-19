@@ -1,6 +1,10 @@
 # Setup logger for PROTEUS
+from __future__ import annotations
 
-import logging, sys, os
+import logging
+import os
+import sys
+
 
 # Fake file-like stream object that redirects writes to a logger instance.
 class StreamToLogger(object):

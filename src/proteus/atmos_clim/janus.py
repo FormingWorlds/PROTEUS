@@ -1,7 +1,17 @@
 # Functions used to handle atmosphere thermodynamics (running JANUS, etc.)
+from __future__ import annotations
 
-from proteus.utils.modules_ext import *
-from proteus.utils.helper import *
+import glob
+import logging
+import os
+import shutil
+import sys
+
+import numpy as np
+import pandas as pd
+
+from proteus.utils.constants import volatile_species
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest
 from proteus.utils.logs import StreamToLogger
 
 log = logging.getLogger("PROTEUS")
@@ -9,13 +19,12 @@ log = logging.getLogger("PROTEUS")
 # Generate atmosphere from input files
 def StructAtm( dirs:dict, hf_row:dict, OPTIONS:dict ):
 
-    from janus.utils import atmos
-    from janus.utils import ReadBandEdges
+    from janus.utils import ReadBandEdges, atmos
 
     # Create atmosphere object and set parameters
     pl_radius = hf_row["R_planet"]
     pl_mass   = hf_row["M_planet"]
-    
+
     vol_list = {}
     for vol in volatile_species:
         vol_list[vol] = hf_row[vol+"_vmr"]
@@ -34,18 +43,18 @@ def StructAtm( dirs:dict, hf_row:dict, OPTIONS:dict ):
     # Spectral bands
     band_edges = ReadBandEdges(dirs["output"]+"star.sf")
 
-    # Cloud properties 
+    # Cloud properties
     re   = 1.0e-5 # Effective radius of the droplets [m] (drizzle forms above 20 microns)
     lwm  = 0.8    # Liquid water mass fraction [kg/kg] - how much liquid vs. gas is there upon cloud formation? 0 : saturated water vapor does not turn liquid ; 1 : the entire mass of the cell contributes to the cloud
     clfr = 0.8    # Water cloud fraction - how much of the current cell turns into cloud? 0 : clear sky cell ; 1 : the cloud takes over the entire area of the cell (just leave at 1 for 1D runs)
     do_cloud = bool(OPTIONS["water_cloud"] == 1)
     alpha_cloud = float(OPTIONS["alpha_cloud"])
 
-    # Make object 
-    atm = atmos(hf_row["T_surf"], hf_row["P_surf"]*1e5, 
+    # Make object
+    atm = atmos(hf_row["T_surf"], hf_row["P_surf"]*1e5,
                 OPTIONS["P_top"]*1e5, pl_radius, pl_mass,
                 band_edges,
-                vol_mixing=vol_list, 
+                vol_mixing=vol_list,
                 minT = OPTIONS["min_temperature"],
                 maxT = OPTIONS["max_temperature"],
                 trppT=trppT,
@@ -69,7 +78,7 @@ def StructAtm( dirs:dict, hf_row:dict, OPTIONS:dict ):
 def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
              write_in_tmp_dir=True, search_method=0, rtol=1.0e-4):
     """Run JANUS.
-    
+
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
     Stores the new flux boundary condition to be provided to SPIDER. Limits flux
     change if required.
@@ -120,7 +129,7 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
     log.debug("Will run socrates inside '%s'"%tmp_dir)
     os.chdir(tmp_dir)
 
-    # Prepare to calculate temperature structure w/ General Adiabat 
+    # Prepare to calculate temperature structure w/ General Adiabat
     trppD = bool(OPTIONS["tropopause"] == 2 )
     rscatter = bool(OPTIONS["rayleigh"] == 1)
 
@@ -133,7 +142,7 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
         from janus.modules import MCPA_CBL
 
         T_surf_max = -1
-        T_surf_old = -1 
+        T_surf_old = -1
         atol       = 1.0e-5
 
         # Done with initial loops
@@ -154,11 +163,11 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
         # run JANUS
         atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=tol,
                         atm_bc=int(OPTIONS["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.5, T_surf_max=float(T_surf_max))
-        
+
     else:
         UpdateStatusfile(dirs, 20)
         raise Exception("Invalid surface state chosen for JANUS")
-    
+
     # Clean up run directory
     for file in glob.glob(tmp_dir+"/current??.????"):
         os.remove(file)
@@ -170,7 +179,7 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
 
     any_cloud = np.any(np.array(atm.clfr) > 1.0e-20)
     log.info("Water clouds have formed = %s"%(str(any_cloud)))
-    log.info("SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2" % 
+    log.info("SOCRATES fluxes (net@surf, net@TOA, OLR): %.5e, %.5e, %.5e W m-2" %
              (atm.net_flux[-1], atm.net_flux[0] , atm.LW_flux_up[0]))
 
     # Save atm data to disk
@@ -184,9 +193,9 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
 
     # Store new flux
     if (OPTIONS["F_atm_bc"] == 0):
-        F_atm_new = atm.net_flux[0]  
+        F_atm_new = atm.net_flux[0]
     else:
-        F_atm_new = atm.net_flux[-1]  
+        F_atm_new = atm.net_flux[-1]
 
     # Require that the net flux must be upward
     F_atm_lim = F_atm_new
@@ -201,10 +210,10 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
     # Restore stdout
     sys.stdout , sys.stderr = old_stdout , old_stderr
 
-    # find 1 mbar level 
+    # find 1 mbar level
     idx = find_nearest(atm.p*1e5, 1e-3)[1]
     z_obs = atm.z[idx]
-    
+
     output["T_surf"] = atm.ts            # Surface temperature [K]
     output["F_atm"]  = F_atm_lim         # Net flux at TOA
     output["F_olr"]  = atm.LW_flux_up[0] # OLR
@@ -212,4 +221,3 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
     output["z_obs"]  = z_obs + atm.planet_radius
 
     return output
-

@@ -3,6 +3,8 @@
 # Avoid importing from any of the files within utils/
 
 # Astronomical constants
+from __future__ import annotations
+
 L_sun           = 3.828e+26             # W, IAU definition
 R_sun_cm        = 6.957e+10             # cm
 AU              = 1.495978707e+11       # m

@@ -2,13 +2,23 @@
 
 # Plot a cross-section of the GridOfflineChemistry output
 
-# Import things
+
+from __future__ import annotations
+
+import os
+
+import cmcrameri as cm
 import matplotlib as mpl
-mpl.use("Agg")
-from proteus.utils.plot_offchem import *
+import matplotlib.pyplot as plt
+import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_dict:dict={}, 
+from proteus.utils.plot_offchem import offchem_read_grid, offchem_slice_grid
+
+mpl.use("Agg")
+
+
+def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_dict:dict={},
                             contour:bool=True, labelcontrols:bool=False):
     """Plot a cross-section of the GridOfflineChemistry output.
 
@@ -43,8 +53,8 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
             _ = float(opts[0][v])
         except ValueError:
             raise Exception("Independent variable is not a scalar quantity")
-    
-    # Slice grid 
+
+    # Slice grid
     if len(cvar_dict.keys()) > 0:
         years, opts, data = offchem_slice_grid(years, opts, data, cvar_dict)
     gpoints = np.shape(opts)[0]
@@ -67,21 +77,21 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
     for gi in range(gpoints):
 
         # Get data at last time-sample for now (think about this later)
-        
+
         y = years[gi][-1]
         d = data[gi][-1]
 
         x_arr.append(float(opts[gi][x_var]))
         y_arr.append(float(opts[gi][y_var]))
 
-        # handle possible z_var values 
+        # handle possible z_var values
         z_this = None
 
         if z_var == 'p_toa':
             z_this = d['pressure'][-1]
             z_scale = 'log'
             z_label = 'Total pressure (TOA) [bar]'
-        
+
         elif z_var == 'p_boa':
             z_this = d['pressure'][0]
             z_scale = 'log'
@@ -117,14 +127,14 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
                         z_this = d[k]
                         z_scale = 'log'
                         z_label = '%s MVE mole fraction' % sp
-            
+
         elif z_var == 'lifetime': # magma ocean lifetime
             z_this = y
             z_label = 'Magma ocean liftime [yr]'
 
         else:
             raise Exception("Invalid dependent variable '%s'" % z_var)
-        
+
         if z_this == None:
             raise Exception("Could not read dependent variable '%s' from grid" % z_var)
 
@@ -138,10 +148,10 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
 
     ax.set_xlabel(x_var)
     ax.set_xscale(x_scale)
-    
+
     if cb_vmin == None:
         cb_vmin = np.amin(z_arr)
-    
+
     if cb_vmax == None:
         cb_vmax = np.amax(z_arr)
 
@@ -157,7 +167,7 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
     divider = make_axes_locatable(ax)
     cax = divider.append_axes('right', size='5%', pad=0.05)
 
-    cbar = fig.colorbar(sm, cax=cax, orientation='vertical') 
+    cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
     cbar.ax.set_ylabel(z_label)
 
     if contour:
@@ -179,7 +189,7 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
 
     fig.tight_layout()
     fig.savefig(grid_dir+"/plot_offchem_grid_cross_[%s]_[%s]_[%s].pdf"%(x_var, y_var, z_var))
-    plt.close('all') 
+    plt.close('all')
 
 
 # If executed directly
@@ -209,7 +219,5 @@ if __name__ == '__main__':
     print("    f: %s" % cf)
 
     plot_offchem_grid_cross(os.path.abspath(fol), xv, yv, zv, cf, contour, lctrl)
-    
+
     print("Done!")
-
-

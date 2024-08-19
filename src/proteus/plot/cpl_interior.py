@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 
-# Import utils- and plot-specific modules
-from proteus.utils.modules_ext import *
-from proteus.utils.plot import *
-from proteus.utils.spider import *
+from __future__ import annotations
+
+import logging
+import sys
+
+import matplotlib.pyplot as plt
+import numpy as np
+from cmcrameri import cm
+
+from proteus.utils.plot import FigureData, MyFuncFormatter, latex_float
+from proteus.utils.spider import MyJSON, get_all_output_times
 
 log = logging.getLogger("PROTEUS")
 
@@ -68,9 +75,9 @@ def plot_interior( output_dir, times, plot_format="pdf"):
         color = fig_o.get_color( 1.0*nn/len(fig_o.time) )
 
         # use melt fraction to determine mixed region
-        MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' ) 
-        MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' ) 
-        MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' ) 
+        MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' )
+        MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' )
+        MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' )
         MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
         # label = fig_o.get_legend_label( time )
@@ -176,7 +183,7 @@ if __name__ == "__main__":
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories

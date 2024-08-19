@@ -1,7 +1,10 @@
 # Functions to compute escape from the Zephyrus module
+from __future__ import annotations
 
 import numpy as np
+
 from proteus.utils.constants import const_G
+
 
 def EL_escape(tidal_contribution,a,e,Mp,Ms,epsilon,Rp,Rxuv,Fxuv):
 

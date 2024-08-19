@@ -1,6 +1,18 @@
-from proteus.utils.modules_ext import *
-from proteus.utils.constants import *
-from proteus.utils.helper import *
+from __future__ import annotations
+
+import logging
+
+import numpy as np
+from scipy.optimize import fsolve
+
+from proteus.utils.constants import (
+    dirs,
+    element_list,
+    molar_mass,
+    ocean_moles,
+    volatile_species,
+)
+from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("PROTEUS")
 
@@ -16,13 +28,13 @@ log = logging.getLogger("PROTEUS")
 
 def CalculateMantleMass(radius:float, mass:float, corefrac:float)->float:
     '''
-    A very simple interior structure model. 
+    A very simple interior structure model.
 
-    This calculates mantle mass given planetary mass, radius, and core fraction. This 
-    assumes a core density equal to that of Earth's, and that the planet mass is simply 
+    This calculates mantle mass given planetary mass, radius, and core fraction. This
+    assumes a core density equal to that of Earth's, and that the planet mass is simply
     the sum of mantle and core.
     '''
-    
+
     earth_fr = 0.55     # earth core radius fraction
     earth_fm = 0.325    # earth core mass fraction  (https://arxiv.org/pdf/1708.08718.pdf)
     earth_m  = 5.97e24  # kg
@@ -33,12 +45,12 @@ def CalculateMantleMass(radius:float, mass:float, corefrac:float)->float:
 
     # Calculate mantle mass by subtracting core from total
     core_mass = core_rho * 4.0/3.0 * np.pi * (radius * corefrac )**3.0
-    mantle_mass = mass - core_mass 
+    mantle_mass = mass - core_mass
     log.info("Total mantle mass = %.2e kg" % mantle_mass)
     if (mantle_mass <= 0.0):
         UpdateStatusfile(dirs, 20)
         raise Exception("Something has gone wrong (mantle mass is negative)")
-    
+
     return mantle_mass
 
 
@@ -56,7 +68,7 @@ class OxygenFugacity:
         '''Fischer et al. (2011) IW'''
         return 6.94059 -28.1808*1E3/T
 
-    def oneill(self, T): 
+    def oneill(self, T):
         '''O'Neill and Eggins (2002) IW'''
         return 2*(-244118+115.559*T-8.474*T*np.log(T))/(np.log(10)*8.31441*T)
 
@@ -73,31 +85,31 @@ class ModifiedKeq:
         Geq = 10**(Keq-fO2_stoich*fO2)
         return Geq
 
-    def schaefer_CH4(self, T): 
+    def schaefer_CH4(self, T):
         '''Schaefer log10Keq for CO2 + 2H2 = CH4 + fO2'''
         # second argument returns stoichiometry of O2
         return (-16276/T - 5.4738, 1)
 
-    def schaefer_C(self, T): 
+    def schaefer_C(self, T):
         '''Schaefer log10Keq for CO2 = CO + 0.5 fO2'''
-        return (-14787/T + 4.5472, 0.5) 
+        return (-14787/T + 4.5472, 0.5)
 
-    def schaefer_H(self, T): 
+    def schaefer_H(self, T):
         '''Schaefer log10Keq for H2O = H2 + 0.5 fO2'''
-        return (-12794/T + 2.7768, 0.5) 
+        return (-12794/T + 2.7768, 0.5)
 
-    def janaf_C(self, T): 
+    def janaf_C(self, T):
         '''JANAF log10Keq, 1500 < K < 3000 for CO2 = CO + 0.5 fO2'''
-        return (-14467.511400133637/T + 4.348135473316284, 0.5) 
+        return (-14467.511400133637/T + 4.348135473316284, 0.5)
 
-    def janaf_H(self, T): 
+    def janaf_H(self, T):
         '''JANAF log10Keq, 1500 < K < 3000 for H2O = H2 + 0.5 fO2'''
-        return (-13152.477779978302/T + 3.038586383273608, 0.5) 
-    
-    def janaf_S(self, T): 
+        return (-13152.477779978302/T + 3.038586383273608, 0.5)
+
+    def janaf_S(self, T):
         # JANAF log10Keq, 900 < K < 2000 for 0.5 S2 + O2 = SO2
         # https://doi.org/10.1016/j.gca.2022.08.032
-        return (18887.0/T - 3.8064, 1) 
+        return (18887.0/T - 3.8064, 1)
 
 class Solubility:
     """Solubility base class.  All p in bar"""
@@ -111,7 +123,7 @@ class Solubility:
     def __call__(self, p, *args):
         '''Dissolved concentration in ppmw in the melt'''
         return self.callmodel(p, *args)
-    
+
 class SolubilityH2O(Solubility):
     """H2O solubility models"""
 
@@ -164,9 +176,9 @@ class SolubilityS2(Solubility):
 
         # calculate log(Ss)
         out = 13.8426 - 26.476e3/temp + 0.124*x_FeO + 0.5*np.log(p/fO2)
-        
+
         # convert to concentration ppmw
-        out = np.exp(out) #* 10000.0 
+        out = np.exp(out) #* 10000.0
 
         return out
 
@@ -200,12 +212,12 @@ class SolubilityN2(Solubility):
         '''Libourel et al. (2003)'''
         ppmw = self.power_law(p, 0.0611, 1.0)
         return ppmw
-    
+
     def dasgupta(self, p, ptot, temp, fO2_shift):
         '''Dasgupta et al. (2022)'''
-        
+
         # convert bar to GPa
-        pb_N2  = p * 1.0e-4  
+        pb_N2  = p * 1.0e-4
         pb_tot = ptot * 1.0e-4
 
         pb_tot = max(pb_tot, 1e-15)
@@ -214,7 +226,7 @@ class SolubilityN2(Solubility):
         ppmw  = pb_N2**0.5 * np.exp(5908.0 * pb_tot**0.5/temp - 1.6*fO2_shift)
         ppmw += pb_N2 * self.dasfac_2
 
-        return ppmw 
+        return ppmw
 
 class SolubilityCH4(Solubility):
     """CH4 solubility models"""
@@ -228,7 +240,7 @@ class SolubilityCH4(Solubility):
         p *= 1e-4 # Convert to GPa
         ppmw = p*np.exp(4.93 - (0.000193 * p_total))
         return ppmw
-    
+
 
 class SolubilityCO(Solubility):
     """CO solubility models"""
@@ -273,7 +285,7 @@ def get_partial_pressures(pin, ddict):
         gamma = ModifiedKeq('janaf_C')
         gamma = gamma(ddict['T_magma'], fO2_shift)
         p_d['CO'] = gamma*pin["CO2"]
-    
+
     # CH4
     if is_included("H2",ddict) and is_included("CH4",ddict):
         gamma = ModifiedKeq('schaefer_CH4')
@@ -283,11 +295,11 @@ def get_partial_pressures(pin, ddict):
     # N2
     p_d['N2']  = pin['N2']
 
-    # O2 
-    fO2_model = OxygenFugacity() 
+    # O2
+    fO2_model = OxygenFugacity()
     p_d['O2'] = 10.0**fO2_model(ddict['T_magma'], fO2_shift)
 
-    # S2 
+    # S2
     p_d['S2'] = pin['S2']
 
     # SO2
@@ -363,7 +375,7 @@ def atmosphere_mass(pin, ddict):
     # below converts moles of O to mass of O
     mass_atm_d['O'] *= molar_mass['O']
 
-    # total mass of S 
+    # total mass of S
     mass_atm_d['S'] = mass_atm_d['S2'] / molar_mass['S2']
     if is_included("SO2", ddict):
         mass_atm_d['S'] += mass_atm_d['SO2'] / molar_mass['SO2']
@@ -418,14 +430,14 @@ def dissolved_mass(pin, ddict):
     mass_int_d['S2'] = prefactor*ppmw_S2
 
     # now get totals of H, C, N, O, S
-    mass_int_d['H'] = mass_int_d['H2O']*2/molar_mass['H2O'] 
+    mass_int_d['H'] = mass_int_d['H2O']*2/molar_mass['H2O']
     if is_included("CH4", ddict):
         mass_int_d['H'] += mass_int_d['CH4']*4/molar_mass["CH4"]
     mass_int_d['H'] *= molar_mass['H']
-    
+
     mass_int_d['C'] = mass_int_d['CO2']/molar_mass['CO2']
     if is_included("CO", ddict):
-        mass_int_d['C'] += mass_int_d['CO']/molar_mass['CO'] 
+        mass_int_d['C'] += mass_int_d['CO']/molar_mass['CO']
     if is_included("CH4", ddict):
         mass_int_d['C'] += mass_int_d['CH4']/molar_mass['CH4']
     mass_int_d['C'] *= molar_mass['C']
@@ -457,7 +469,7 @@ def func(pin_arr, ddict, mass_target_d):
 
     # get (molten) mantle masses
     mass_int_d = dissolved_mass(pin_dict, ddict)
-    
+
     # compute residuals
     res_l = []
     for vol in ['H','C','N','S']:
@@ -524,7 +536,7 @@ def get_target_from_params(ddict):
     return target_d
 
 def get_target_from_pressures(ddict):
-    
+
     target_d = {}
 
     # store partial pressures for included gases
@@ -596,7 +608,7 @@ def equilibrium_atmosphere(target_d, ddict):
         x0 = get_initial_pressures(target_d)
         sol, info, ier, msg = fsolve(func, x0, args=(ddict, target_d), full_output=True)
         count += 1
-        
+
         # if any negative pressures, report ier!=1
         if any(sol<0):
             # sometimes, a solution exists with negative pressures, which is clearly non-physical.  Here, assert we must have positive pressures.
@@ -630,11 +642,11 @@ def equilibrium_atmosphere(target_d, ddict):
     # Residuals [relative]
     res_l      = func(sol, ddict, target_d)
     log.debug("    Residuals: %s"%res_l)
-    
-    # Output dict 
+
+    # Output dict
     outdict = {"M_atm":0.0}
 
-    # Initialise and store partial pressures 
+    # Initialise and store partial pressures
     outdict["P_surf"] = 0.0
     for s in volatile_species:
 
@@ -656,7 +668,7 @@ def equilibrium_atmosphere(target_d, ddict):
     for s in volatile_species:
         outdict[s+"_vmr"] = outdict[s+"_bar"]/outdict["P_surf"]
 
-        log.info("    %-6s : %-8.2f bar (%.2e VMR)" % (s,outdict[s+"_bar"], outdict[s+"_vmr"])) 
+        log.info("    %-6s : %-8.2f bar (%.2e VMR)" % (s,outdict[s+"_bar"], outdict[s+"_vmr"]))
 
     # Store masses of both gases and elements
     all = [s for s in volatile_species]
@@ -675,11 +687,11 @@ def equilibrium_atmosphere(target_d, ddict):
 
         outdict[s+"_kg_total"] = tot_kg
 
-    # Total atmosphere mass 
+    # Total atmosphere mass
     for s in volatile_species:
         outdict["M_atm"] += outdict[s+"_kg_atm"]
 
-    # Store moles of gases and atmosphere total mmw 
+    # Store moles of gases and atmosphere total mmw
     outdict["atm_kg_per_mol"] = 0.0
     for s in volatile_species:
         outdict[s+"_mol_atm"]    = outdict[s+"_kg_atm"] / molar_mass[s]
@@ -688,23 +700,22 @@ def equilibrium_atmosphere(target_d, ddict):
         outdict[s+"_mol_total"]  = outdict[s+"_mol_atm"] + outdict[s+"_mol_solid"] + outdict[s+"_mol_liquid"]
 
         outdict["atm_kg_per_mol"] += outdict[s+"_vmr"] * molar_mass[s]
-        
+
     # Calculate elemental ratios (by mass)
     for e1 in element_list:
         for e2 in element_list:
             if e1==e2:
-                continue 
+                continue
             em1 = outdict[e1+"_kg_atm"]
             em2 = outdict[e2+"_kg_atm"]
             if em2 == 0:
                 continue  # avoid division by zero
             outdict["%s/%s_atm"%(e1,e2)] = em1/em2
 
-    # Store residuals 
+    # Store residuals
     outdict["H_res"] = res_l[0]
     outdict["C_res"] = res_l[1]
     outdict["N_res"] = res_l[2]
     outdict["S_res"] = res_l[3]
 
     return outdict
-

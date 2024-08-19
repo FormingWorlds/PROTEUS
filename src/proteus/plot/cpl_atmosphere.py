@@ -1,8 +1,19 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 
-# Import utils- and plot-specific modules
-from proteus.utils.modules_ext import *
-from proteus.utils.plot import *
+import glob
+import logging
+import os
+import sys
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import netCDF4 as nc
+import numpy as np
+from cmcrameri import cm
+from matplotlib.ticker import LogLocator
+
+from proteus.utils.plot import latex_float
 
 log = logging.getLogger("PROTEUS")
 
@@ -12,7 +23,7 @@ def plot_atmosphere( output_dir:str, times:list, plot_format="pdf"):
     log.info("Plot atmosphere temperatures")
 
     norm = mpl.colors.LogNorm(vmin=max(times[0],1), vmax=times[-1])
-    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)  
+    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)
     sm.set_array([])
 
     scale = 1.2
@@ -30,7 +41,7 @@ def plot_atmosphere( output_dir:str, times:list, plot_format="pdf"):
 
         label = latex_float(t)+" yr"
         color = sm.to_rgba(t)
-        
+
         ax0.plot( tmp, z, '-', color=color, label=label, lw=1.5)
 
         # Atmosphere T-P
@@ -64,7 +75,7 @@ def main():
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     log.info("Read cfg file")
@@ -83,7 +94,7 @@ def main():
 
     for s in np.logspace(np.log10(tmin),np.log10(tmax),8): # Sample on log-scale
 
-        remaining = list(set(times) - set(plot_times)) 
+        remaining = list(set(times) - set(plot_times))
         if len(remaining) == 0:
             break
 

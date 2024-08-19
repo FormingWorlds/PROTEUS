@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 
-# Import utils- and plot-specific modules
-from proteus.utils.modules_ext import *
-from proteus.utils.plot import *
+import glob
+import os
+import sys
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import netCDF4 as nc
+import numpy as np
+from cmcrameri import cm
+from matplotlib.ticker import LogLocator, MultipleLocator
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 #====================================================================
 
@@ -57,8 +66,8 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
     for i in range(0,len(sorted_files),stride):
         p,t,z = _read_nc(sorted_files[i])
         sorted_p.append(p / 1.0e5)  # Convert Pa -> bar
-        sorted_t.append(t ) 
-        sorted_z.append(z / 1.0e3)  # Convert m -> km    
+        sorted_t.append(t )
+        sorted_z.append(z / 1.0e3)  # Convert m -> km
     nfiles = len(sorted_p)
 
     # Initialise plot
@@ -71,7 +80,7 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
 
     # Colour mapping
     norm = mpl.colors.LogNorm(vmin=max(1,sorted_times[0]), vmax=sorted_times[-1])
-    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm) # 
+    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm) #
     sm.set_array([])
 
     # Plot data
@@ -91,9 +100,9 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
     # Plot colourbar
     divider = make_axes_locatable(ax)
     cax = divider.append_axes('right', size='5%', pad=0.05)
-    cbar = fig.colorbar(sm, cax=cax, orientation='vertical') 
+    cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
     cbar.ax.set_yticks([round(v,1) for v in np.linspace(sorted_times[0] , sorted_times[-1], 8)])
-    cbar.set_label("Time [Myr]") 
+    cbar.set_label("Time [Myr]")
 
     # Save plot
     fname = os.path.join(output_dir,"plot_atmosphere_cbar.%s"%plot_format)
@@ -105,7 +114,7 @@ def main():
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     log.info("Read cfg file")

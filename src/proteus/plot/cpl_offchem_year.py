@@ -2,17 +2,24 @@
 
 # Plot evolution of mixing ratios over time, for a single species, versus pressure
 
-# Import things
+
+from __future__ import annotations
+
+import glob
+import sys
+
 import matplotlib as mpl
+
+from proteus.utils.plot_offchem import offchem_read_year
+
 mpl.use("Agg")
-from proteus.utils.plot_offchem import *
 
 
 def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
     """Plot a set of species in the atmosphere, for a single year only
-    
+
     Reads-in the data from output_dir for a single year. Can also
-    include JANUS/SPIDER mixing ratios as dashed lines, which were used to 
+    include JANUS/SPIDER mixing ratios as dashed lines, which were used to
     initialise each VULCAN run.
 
     Parameters
@@ -23,7 +30,7 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
             Which species to plot? (e.g. H2O) If none, then plot all.
         tmin : float
             Initial year to include [yr]
-        tmax : float 
+        tmax : float
             Final yeat to include [yr]
         plot_init_mx : bool
             Include initial mixing ratios for each VULCAN run in plot?
@@ -33,7 +40,7 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
         species = []
         for k in year_dict.keys():
             if "_" not in k:
-                continue 
+                continue
             species.append(k.split("_")[1])
 
     lw = 2
@@ -48,7 +55,7 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
     ax0.invert_yaxis()
     ax0.set_yscale("log")
     ax0.set_xlabel("Temperature [K]")
-   
+
     ax0.plot(year_dict["temperature"],year_dict["pressure"],color='black',lw=lw)
 
     # Mixing ratios
@@ -77,21 +84,21 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
             l = ax1.plot(year_dict[key],year_dict["pressure"],label=pretty,ls=ls,lw=lw,color=color)[0]
             color = l.get_color()
             min_mix = min(min_mix,np.amin(year_dict[key]))
-            
+
         # JANUS result
         if plot_init_mx:
             key = str("mv_"+s)
             if key in year_dict.keys():
                 ax1.scatter([year_dict[key]],[np.amax(year_dict["pressure"])],color=color)
-            
+
     ax1.set_xlim([min_mix,1])
     ax1.legend(loc="lower left")
 
     fig.tight_layout()
     fig.savefig(output_dir+"plot_offchem_year_%d.pdf"%year_dict["year"])
     plt.close(fig)
-    
-    
+
+
 # If executed directly
 if __name__ == '__main__':
     print("Plotting offline chemistry for each year (mixing ratios vs pressure)...")
@@ -99,7 +106,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
 
     plot_janus = True

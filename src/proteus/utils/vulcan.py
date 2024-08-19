@@ -1,12 +1,18 @@
 # Function used to run VULCAN in online mode
+from __future__ import annotations
 
-from proteus.utils.coupler import *
-from proteus.utils.modules_ext import *
-from proteus.utils.helper import *
+import os
+import pickle as pkl
+import re
+import shutil
+import subprocess
+
+import numpy as np
+
 
 def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):
     '''
-    Run online atmospheric chemistry via VULCAN kinetics 
+    Run online atmospheric chemistry via VULCAN kinetics
 
     This function is deprecated.
     '''
@@ -60,29 +66,29 @@ def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):
         vcf.write("use_live_plot  = %s \n"  % str(bool(OPTIONS["plot_iterfreq"] > 0)))
 
         # Make copy of element_list as a set, since it'll be used a lot in the code below
-        set_elem_list = set(element_list)  
+        set_elem_list = set(element_list)
 
         # Rayleigh scattering gases
         rayleigh_candidates = ['N2','O2', 'H2']
         rayleigh_str = ""
-        for rc in rayleigh_candidates:  
+        for rc in rayleigh_candidates:
             if set(re.sub('[1-9]', '', rc)).issubset(set_elem_list):  # Remove candidates which aren't supported by elem_list
                 rayleigh_str += "'%s',"%rc
         rayleigh_str = rayleigh_str[:-1]
         vcf.write("scat_sp = [%s] \n" % rayleigh_str)
 
-        # Gases for diffusion-limit escape at TOA      
+        # Gases for diffusion-limit escape at TOA
         # escape_candidates = ['H2','H']
         # escape_str = ""
-        # for ec in escape_candidates:  
+        # for ec in escape_candidates:
         #     if set(re.sub('[1-9]', '', ec)).issubset(set_elem_list):  # Remove candidates which aren't supported by elem_list
         #         escape_str += "'%s',"%ec
         # escape_str = escape_str[:-1]
         # vcf.write("diff_esc = [%s] \n" % escape_str)
 
-        # Atom list     
+        # Atom list
         atom_str = ""
-        for elem in element_list:  
+        for elem in element_list:
             atom_str += "'%s',"%elem
         atom_str = atom_str[:-1]
         vcf.write("atom_list  = [%s] \n" % atom_str)
@@ -91,34 +97,34 @@ def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):
         oxidising = False
 
         for inert in ['He','Xe','Ar','Ne','Kr']:  # Remove inert elements from list, since they don't matter for reactions
-            set_elem_list.discard(inert) 
+            set_elem_list.discard(inert)
 
         if set_elem_list == {'H','C','O'}:
             net_str = 'thermo/CHO_photo_network.txt'
-            plt_spe = ['H2', 'H', 'H2O', 'C2H2', 'CH4', 'CO2'] 
+            plt_spe = ['H2', 'H', 'H2O', 'C2H2', 'CH4', 'CO2']
 
         elif set_elem_list == {'N','H','C','O'}:
             if oxidising:
                 net_str = 'thermo/NCHO_full_photo_network.txt'
-                plt_spe = ['N2', 'O2', 'H2', 'H2O', 'NH3', 'CH4', 'CO', 'O3'] 
+                plt_spe = ['N2', 'O2', 'H2', 'H2O', 'NH3', 'CH4', 'CO', 'O3']
             else:
                 net_str = 'thermo/NCHO_photo_network.txt'
-                plt_spe = ['H2', 'H', 'H2O', 'OH', 'CH4', 'HCN', 'N2', 'NH3'] 
-            
+                plt_spe = ['H2', 'H', 'H2O', 'OH', 'CH4', 'HCN', 'N2', 'NH3']
+
         elif set_elem_list == {'S','N','H','C','O'}:
             if oxidising:
                 net_str = 'thermo/SNCHO_full_photo_network.txt'
-                plt_spe = ['O2', 'N2', 'O3', 'H2', 'H2O', 'NH3', 'CH4', 'SO2', 'S'] 
+                plt_spe = ['O2', 'N2', 'O3', 'H2', 'H2O', 'NH3', 'CH4', 'SO2', 'S']
             else:
                 net_str = 'thermo/SNCHO_photo_network.txt'
-                plt_spe = ['N2', 'H2', 'S', 'H', 'OH', 'NH3', 'CH4', 'HCN'] 
+                plt_spe = ['N2', 'H2', 'S', 'H', 'OH', 'NH3', 'CH4', 'HCN']
 
         vcf.write("network  = '%s' \n" % net_str)
         plt_str = ""
         for spe in plt_spe:
             plt_str += "'%s'," % spe
         vcf.write("plot_spec = [%s] \n" % plt_str[:-1])
-        
+
         # Bottom boundary mixing ratios are fixed according to SPIDER (??)
         # fix_bb_mr = "{"
         # for v in volatile_species:
@@ -154,7 +160,7 @@ def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):
             # vcf.write("ini_mix = 'vulcan_ini' \n")
             # vcf.write("vul_ini = 'output/PROTEUS_MX_input.vul' \n")
             # ! WRITE ABUNDANCES HERE
-            
+
 
         vcf.write("# </ PROTEUS INSERT > \n")
         vcf.write(" ")
@@ -176,7 +182,7 @@ def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):
 
 
     # Switch to VULCAN directory, run VULCAN, switch back to main directory
-    vulcan_run_cmd = "python vulcan.py"  
+    vulcan_run_cmd = "python vulcan.py"
     if (loop_counter["atm"] > 0):      # If not first run, skip building chem_funcs
         vulcan_run_cmd += " -n"
 
@@ -195,7 +201,7 @@ def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):
     # Read in data from VULCAN output
     with (open(vulcan_recent, "rb")) as vof:
         vul_data = pkl.load(vof)
-        
+
     print(vul_data)
 
     return atm

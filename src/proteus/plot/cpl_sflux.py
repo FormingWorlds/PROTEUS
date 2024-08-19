@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 
 # Plots stellar flux from `output/` versus time (colorbar)
+from __future__ import annotations
 
-from proteus.utils.modules_ext import *
-from proteus.utils.constants import *
-from proteus.utils.helper import natural_sort
+import glob
+import logging
+import sys
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+from proteus.utils.constants import const_c, const_h, const_k, dirs
+from proteus.utils.helper import natural_sort
 
 log = logging.getLogger("PROTEUS")
 
@@ -15,9 +23,9 @@ log = logging.getLogger("PROTEUS")
 def planck_function(lam, T):
 
     x = lam * 1.0e-9   # convert nm -> m
-    hc_by_kT = const_h*const_c / (const_k*T) 
+    hc_by_kT = const_h*const_c / (const_k*T)
 
-    planck_func = 1.0/( (x ** 5.0) * ( np.exp( hc_by_kT/ x) - 1.0 ) )  
+    planck_func = 1.0/( (x ** 5.0) * ( np.exp( hc_by_kT/ x) - 1.0 ) )
     planck_func *= 2 * const_h * const_c * const_c #  w m-2 sr-1 s-1 m-1
     planck_func *= np.pi * 1.0e3 * 1.0e-9  # erg s-1 cm-2 nm-1
 
@@ -37,7 +45,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, plot_format="pdf"):
         wl_max : float
             Upper limit of wavelength axis [nm]
 
-    """ 
+    """
 
     mpl.use('Agg')
     star_cmap = plt.get_cmap('Spectral')
@@ -68,7 +76,7 @@ def plot_sflux(output_dir, wl_max = 6000.0, plot_format="pdf"):
     for f in files:
         # Load data
         X = np.loadtxt(f,skiprows=1,delimiter='\t').T
-        
+
         # Parse data
         time = int(f.split('/')[-1].split('.')[0])
         if time < 0: continue
@@ -101,8 +109,8 @@ def plot_sflux(output_dir, wl_max = 6000.0, plot_format="pdf"):
         norm = mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
         sm = plt.cm.ScalarMappable(cmap=star_cmap, norm=norm)
         sm.set_array([])
-        cbar = fig.colorbar(sm, cax=cax, orientation='vertical') 
-        cbar.set_label("Time [yr]") 
+        cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
+        cbar.set_label("Time [yr]")
     else:
         print("Only one spectrum was found")
 
@@ -131,18 +139,18 @@ def plot_sflux(output_dir, wl_max = 6000.0, plot_format="pdf"):
     # Calculate planck function
     # Tstar = 3274.3578960897644
     # Rstar_cm = 36292459156.77782
-    # AU_cm = 1.496e+13 
+    # AU_cm = 1.496e+13
     # sf = Rstar_cm / AU_cm
-    # planck_fl = [] 
+    # planck_fl = []
     # for w in wave_t[4]:
-    #     planck_fl.append(planck_function(w,Tstar) * sf * sf) 
+    #     planck_fl.append(planck_function(w,Tstar) * sf * sf)
     # ax.plot(wave_t[4],planck_fl,color='green',lw=1.5)
 
     ax.legend()
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_sflux.%s"%plot_format, 
+    fig.savefig(output_dir+"/plot_sflux.%s"%plot_format,
                 bbox_inches='tight', dpi=200)
 
 
@@ -154,7 +162,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     from utils.coupler import ReadInitFile, SetDirectories
 

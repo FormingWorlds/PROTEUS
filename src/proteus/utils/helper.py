@@ -1,9 +1,14 @@
 # Small helper functions that can be used universally
 # This file should not depend on too many other files, as this can cause circular import issues
+from __future__ import annotations
+
+import glob
+import logging
+import os
+import re
+import shutil
 
 import numpy as np
-import os, shutil, re, glob, logging
-from proteus.utils.constants import *
 
 log = logging.getLogger("PROTEUS")
 
@@ -16,9 +21,9 @@ def PrintHalfSeparator():
     pass
 
 # String sorting inspired by natsorted
-def natural_sort(l): 
-    convert = lambda text: int(text) if text.isdigit() else text.lower() 
-    alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ] 
+def natural_sort(l):
+    convert = lambda text: int(text) if text.isdigit() else text.lower()
+    alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ]
     return sorted(l, key = alphanum_key)
 
 # Create a temporary folder
@@ -49,7 +54,7 @@ def safe_rm(fpath:str):
                 log.warning("Not emptying directory '%s' as it contains a Git repository"%fpath)
                 return
             shutil.rmtree(fpath)
-            
+
         else:
             log.warning("Cannot remove unhandled path '%s'"%fpath)
 
@@ -87,7 +92,7 @@ def UpdateStatusfile(dirs:dict, status:int):
     Update the status file with the current state of the program
     '''
 
-    # Path to status file 
+    # Path to status file
     stsfold = os.path.abspath(dirs["output"])
     stsfile = os.path.join(stsfold,"status")
 
@@ -190,4 +195,3 @@ def recursive_get(d, keys):
     if len(keys) == 1:
         return d[keys[0]]
     return recursive_get(d[keys[0]], keys[1:])
-

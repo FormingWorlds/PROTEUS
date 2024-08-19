@@ -1,14 +1,19 @@
 #Generic atmosphere wrapper
-from proteus.utils.modules_ext import *
-from proteus.utils.helper import *
+from __future__ import annotations
 
-#We should make the import dependent of the chosen atmospheric submodule
-from proteus.atmos_clim.janus import RunJANUS, StructAtm
-from janus.utils.StellarSpectrum import PrepareStellarSpectrum,InsertStellarSpectrum
-from proteus.atmos_clim.agni import RunAGNI, InitAtmos, UpdateProfile, ActivateEnv, DeallocAtmos
-atm = None
+import logging
+import os
+
+import pandas as pd
+from scipy.integrate import solve_ivp
+
+from proteus.atmos_clim.agni import ActivateEnv, DeallocAtmos, InitAtmos, RunAGNI, UpdateProfile
 from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
+from proteus.atmos_clim.janus import RunJANUS, StructAtm
+from proteus.utils.constants import AU
+from proteus.utils.helper import PrintHalfSeparator
 
+atm = None
 log = logging.getLogger("PROTEUS")
 
 def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
@@ -43,13 +48,13 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
         hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
     if OPTIONS["atmosphere_model"] == 0:
-        # Run JANUS: 
+        # Run JANUS:
         hf_row["T_surf"] = hf_row["T_magma"]
         atm = StructAtm( dirs, hf_row, OPTIONS )
         atm_output = RunJANUS( atm, hf_row["Time"], dirs, OPTIONS, hf_all)
 
     elif OPTIONS["atmosphere_model"] == 1:
-        # Run AGNI 
+        # Run AGNI
 
         # Initialise atmosphere struct
         no_spfile = not os.path.exists(spfile_path)
@@ -63,28 +68,28 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
                 # surface temperature guess
                 hf_row["T_surf"] = hf_row["T_magma"]
             else:
-                # deallocate old atmosphere 
+                # deallocate old atmosphere
                 DeallocAtmos(atm)
 
-            # allocate new 
+            # allocate new
             atm = InitAtmos(dirs, OPTIONS, hf_row)
 
-        # Update profile 
+        # Update profile
         atm = UpdateProfile(atm, hf_row, OPTIONS)
 
         # Run solver
         atm, atm_output = RunAGNI(atm, loop_counter["total"], dirs, OPTIONS, hf_row)
 
     elif OPTIONS["atmosphere_model"] == 2:
-        # Run dummy atmosphere model 
-        atm_output = RunDummyAtm(dirs, OPTIONS, 
+        # Run dummy atmosphere model
+        atm_output = RunDummyAtm(dirs, OPTIONS,
                                  hf_row["T_magma"], hf_row["F_ins"], hf_row["R_planet"])
 
     # Store atmosphere module output variables
-    hf_row["z_obs"]  = atm_output["z_obs"] 
-    hf_row["F_atm"]  = atm_output["F_atm"] 
-    hf_row["F_olr"]  = atm_output["F_olr"] 
-    hf_row["F_sct"]  = atm_output["F_sct"] 
+    hf_row["z_obs"]  = atm_output["z_obs"]
+    hf_row["F_atm"]  = atm_output["F_atm"]
+    hf_row["F_olr"]  = atm_output["F_olr"]
+    hf_row["F_sct"]  = atm_output["F_sct"]
     hf_row["T_surf"] = atm_output["T_surf"]
     hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
 
@@ -115,7 +120,7 @@ def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
     rho_layer   = 3000          # kg m-3
     depth_layer = 1000          # m
 
-    def ocean_evolution(t, y): 
+    def ocean_evolution(t, y):
         # Specific heat of mixed ocean layer
         mu      = c_p_layer * rho_layer * depth_layer # J K-1 m-2
         # RHS of ODE

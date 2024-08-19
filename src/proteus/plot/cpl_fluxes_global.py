@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 
-# Import utils- and plot-specific modules
-from proteus.utils.modules_ext import *
-from proteus.utils.plot import *
+from __future__ import annotations
+
+import logging
+import sys
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from proteus.utils.plot import dict_colors
 
 log = logging.getLogger("PROTEUS")
 
@@ -20,7 +28,7 @@ def plot_fluxes_global(output_dir, OPTIONS, t0=100.0):
     F_net = np.array(hf_all["F_atm"])
     F_asf = np.array(hf_all["F_ins"]) * OPTIONS["asf_scalefactor"] * (1.0 - OPTIONS["albedo_pl"]) * np.cos(OPTIONS["zenith_angle"] * np.pi/180.0)
     F_olr = np.array(hf_all["F_olr"])
-    F_upw = np.array(hf_all["F_olr"]) + np.array(hf_all["F_sct"]) 
+    F_upw = np.array(hf_all["F_olr"]) + np.array(hf_all["F_sct"])
     F_int = np.array(hf_all["F_int"])
 
     if len(time) < 3:
@@ -57,7 +65,7 @@ def plot_fluxes_global(output_dir, OPTIONS, t0=100.0):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_global.%s"%OPTIONS["plot_format"], 
+    fig.savefig(output_dir+"/plot_fluxes_global.%s"%OPTIONS["plot_format"],
                 bbox_inches='tight', dpi=200)
 
 if __name__ == '__main__':
@@ -65,7 +73,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
@@ -75,4 +83,3 @@ if __name__ == '__main__':
     dirs = SetDirectories(OPTIONS)
 
     plot_fluxes_global(dirs["output"], OPTIONS)
-    

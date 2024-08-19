@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
 
-# Import utils- and plot-specific modules
-from proteus.utils.modules_ext import *
-from proteus.utils.spider import *
-from proteus.utils.plot import *
+from __future__ import annotations
+
+import glob
+import logging
+import os
+import sys
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import netCDF4 as nc
+import numpy as np
+from cmcrameri import cm
+from matplotlib.ticker import MultipleLocator
+
+from proteus.utils.plot import dict_colors, latex_float
+from proteus.utils.spider import MyJSON
 
 log = logging.getLogger("PROTEUS")
 
@@ -16,7 +28,7 @@ def plot_stacked( output_dir:str, times:list, plot_format="pdf" ):
     fig,(axt,axb) = plt.subplots(2,1, figsize=(5*scale,10*scale), sharex=True)
 
     norm = mpl.colors.LogNorm(vmin=max(1,times[0]), vmax=times[-1])
-    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)  
+    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)
     sm.set_array([])
 
     # limits
@@ -25,13 +37,13 @@ def plot_stacked( output_dir:str, times:list, plot_format="pdf" ):
     # loop over times
     for time in times:
 
-        # Get atmosphere data for this time 
+        # Get atmosphere data for this time
         atm_file = os.path.join(output_dir, "data", "%d_atm.nc"%time)
         ds = nc.Dataset(atm_file)
         tmp =   np.array(ds.variables["tmpl"][:])
         z   =   np.array(ds.variables["zl"][:]) * 1e-3  # convert to km
         ds.close()
-        
+
         # Get interior data for this time
         int_file = os.path.join(output_dir, "data", "%d.json"%time)
         myjson_o = MyJSON(int_file)
@@ -41,11 +53,11 @@ def plot_stacked( output_dir:str, times:list, plot_format="pdf" ):
         xx_depth = xx_radius[0] - xx_radius
 
         # use melt fraction to determine mixed region
-        MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' ) 
-        MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' ) 
-        MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' ) 
+        MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' )
+        MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' )
+        MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' )
 
-        # overlap lines by 1 node 
+        # overlap lines by 1 node
         for m in (MASK_MI, MASK_ME, MASK_SO):
             m_new = m[:]
             for i in range(2,len(MASK_MI)-2,1):
@@ -64,21 +76,21 @@ def plot_stacked( output_dir:str, times:list, plot_format="pdf" ):
         axb.plot( temperature_interior[MASK_MI], xx_depth[MASK_MI], linestyle='dashed', color=color, lw=1.5 )
         axb.plot( temperature_interior[MASK_ME], xx_depth[MASK_ME], linestyle='dotted', color=color, lw=1.5 )
 
-        # update limits 
+        # update limits
         y_height = max(y_height, np.amax(z))
         y_depth  = max(y_depth,  np.amax(xx_depth))
 
 
     ytick_spacing = 100.0 # km
 
-    # Decorate top plot 
+    # Decorate top plot
     axt.set(ylabel="Atmosphere height [km]")
     axt.set_ylim(bottom=0.0, top=y_height)
     axt.legend()
     axt.yaxis.set_minor_locator(MultipleLocator(ytick_spacing))
     axt.set_facecolor(dict_colors["atm_bkg"] )
 
-    # Decorate bottom plot 
+    # Decorate bottom plot
     axb.set(ylabel="Interior depth [km]", xlabel="Temperature [K]")
     axb.invert_yaxis()
     axb.set_ylim(top=0.0, bottom=y_depth)
@@ -102,7 +114,7 @@ def main():
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read-in configuration file
     log.info("Read configuration file")
@@ -124,7 +136,7 @@ def main():
 
         for s in np.logspace(np.log10(tmin),np.log10(tmax),8): # Sample on log-scale
 
-            remaining = list(set(times) - set(plot_times)) 
+            remaining = list(set(times) - set(plot_times))
             if len(remaining) == 0:
                 break
 
@@ -134,7 +146,7 @@ def main():
 
     print("Snapshots:", plot_times)
 
-    plot_stacked( output_dir=dirs["output"], times=plot_times, 
+    plot_stacked( output_dir=dirs["output"], times=plot_times,
                  plot_format=OPTIONS["plot_format"] )
 
 #====================================================================

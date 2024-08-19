@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 
 # Check the status of a PROTEUS parameter grid's cases
+from __future__ import annotations
 
-import sys, os, glob
+import glob
+import os
+import sys
+
 import numpy as np
+
 from proteus.utils.helper import CommentFromStatus
+
 
 def summarise(pgrid_dir:str, opts:list):
     if (not os.path.exists(pgrid_dir)) or (not os.path.isdir(pgrid_dir)):

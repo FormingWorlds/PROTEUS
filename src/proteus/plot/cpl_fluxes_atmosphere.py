@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 
-# Import utils- and plot-specific modules
-from proteus.utils.modules_ext import *
-from proteus.utils.plot import *
+from __future__ import annotations
+
+import glob
+import logging
+import os
+import sys
+
+import matplotlib.pyplot as plt
+import netCDF4 as nc
+import numpy as np
 
 log = logging.getLogger("PROTEUS")
 
@@ -53,7 +60,7 @@ def plot_fluxes_atmosphere(output_dir, plot_format="pdf"):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_atmosphere.%s"%plot_format, 
+    fig.savefig(output_dir+"/plot_fluxes_atmosphere.%s"%plot_format,
                 bbox_inches='tight', dpi=200)
 
 if __name__ == '__main__':
@@ -61,7 +68,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
@@ -71,4 +78,3 @@ if __name__ == '__main__':
     dirs = SetDirectories(OPTIONS)
 
     plot_fluxes_atmosphere(dirs["output"], plot_format=OPTIONS["plot_format"])
-    

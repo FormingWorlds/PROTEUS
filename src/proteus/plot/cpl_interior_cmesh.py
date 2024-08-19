@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 
-# Import utils- and plot-specific modules
-from proteus.utils.modules_ext import *
-from proteus.utils.plot import *
-from proteus.utils.spider import *
+from __future__ import annotations
+
+import glob
+import logging
+import os
+import sys
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+from cmcrameri import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+from proteus.utils.spider import MyJSON
 
 log = logging.getLogger("PROTEUS")
 
@@ -92,7 +102,7 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5, p
     else:
         cf = ax1.pcolormesh(sorted_times, arr_yb, arr_z1.T, cmap=cmap, norm=norm, rasterized=True)
     cb = fig.colorbar(cf, cax=cax, orientation='vertical')
-    cb.set_label("Temperature [K]") 
+    cb.set_label("Temperature [K]")
     cb.set_ticks([float(round(v, -2)) for v in np.linspace(np.amin(arr_z1), np.amax(arr_z1), numticks)])
 
 
@@ -123,10 +133,10 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5, p
     else:
         cf = ax3.pcolormesh(sorted_times, arr_yb, arr_z3.T, cmap=cmap, norm=norm, rasterized=True)
     cb = fig.colorbar(cf, cax=cax, orientation='vertical')
-    cb.set_label("Viscosity [Pa s]") 
+    cb.set_label("Viscosity [Pa s]")
     # if len(cb.get_ticks()) > numticks:
     #     cb.set_ticks(sorted(list(set(cbticks))))
-    
+
     # Plot entropy
     cmap = cm.acton
     cax = make_axes_locatable(ax4).append_axes('right', size='5%', pad=0.05)
@@ -151,7 +161,7 @@ def main():
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     log.info("Read cfg file")

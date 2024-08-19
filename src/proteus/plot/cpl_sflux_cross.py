@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 
 # Plots stellar flux from output directory for a set of wavelength bins
+from __future__ import annotations
 
-from proteus.utils.modules_ext import *
-from proteus.utils.constants import *
-from proteus.utils.plot import *
-from proteus.utils.helper import natural_sort
+import glob
+import logging
+import sys
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+from cmcrameri import cm
+
+from proteus.utils.constants import const_c, const_h, const_k, dirs
+from proteus.utils.helper import find_nearest, natural_sort
 
 log = logging.getLogger("PROTEUS")
 
@@ -16,9 +24,9 @@ log = logging.getLogger("PROTEUS")
 def planck_function(lam, T):
 
     x = lam * 1.0e-9   # convert nm -> m
-    hc_by_kT = const_h*const_c / (const_k*T) 
+    hc_by_kT = const_h*const_c / (const_k*T)
 
-    planck_func = 1.0/( (x ** 5.0) * ( np.exp( hc_by_kT/ x) - 1.0 ) )  
+    planck_func = 1.0/( (x ** 5.0) * ( np.exp( hc_by_kT/ x) - 1.0 ) )
     planck_func *= 2 * const_h * const_c * const_c #  w m-2 sr-1 s-1 m-1
     planck_func *= np.pi * 1.0e3 * 1.0e-9  # erg s-1 cm-2 nm-1
 
@@ -39,7 +47,7 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], modern_age:float=-1, plot_f
             List of wavelengths to plot [nm]
         modern_age : float
             Current age of star. If not provided, then won't be plotted
-    """ 
+    """
 
     mpl.use('Agg')
 
@@ -65,7 +73,7 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], modern_age:float=-1, plot_f
     for f in files:
         # Load data
         X = np.loadtxt(f,skiprows=1,delimiter='\t').T
-        
+
         # Parse data
         time = int(f.split('/')[-1].split('.')[0])
         if (time < 0): continue
@@ -107,7 +115,7 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], modern_age:float=-1, plot_f
     # Load modern spectrum
     X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
 
-    # Plot bins over time 
+    # Plot bins over time
     for i in range(N):
 
         fl = flux_t.T[wl_iarr[i]]
@@ -126,7 +134,7 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], modern_age:float=-1, plot_f
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_sflux_cross.%s"%plot_format, 
+    fig.savefig(output_dir+"/plot_sflux_cross.%s"%plot_format,
                 bbox_inches="tight", dpi=200)
 
 
@@ -140,8 +148,8 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
-   
+        cfg = 'init_coupler.cfg'
+
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
     OPTIONS = ReadInitFile( cfg )
@@ -150,7 +158,7 @@ if __name__ == '__main__':
     dirs = SetDirectories(OPTIONS)
 
     plot_sflux_cross(dirs['output'], wl_targets=wl_bins,
-                     modern_age=OPTIONS["star_age_modern"], 
+                     modern_age=OPTIONS["star_age_modern"],
                      plot_format=OPTIONS["plot_format"])
 
     print("Done!")

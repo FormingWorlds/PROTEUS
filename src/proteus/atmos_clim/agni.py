@@ -1,11 +1,16 @@
 # Functions used to handle atmosphere temperature structure (running AGNI, etc.)
+from __future__ import annotations
 
-from proteus.utils.modules_ext import *
-from proteus.utils.helper import *
-from proteus.utils.constants import *
-from proteus.utils.logs import GetLogfilePath, GetCurrentLogfileIndex
+import glob
+import logging
+import os
 
+import numpy as np
 from juliacall import Main as jl
+
+from proteus.utils.constants import dirs, volatile_species
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest, safe_rm
+from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 log = logging.getLogger("PROTEUS")
 
@@ -13,7 +18,7 @@ log = logging.getLogger("PROTEUS")
 AGNI_LOGFILE_NAME="agni_recent.log"
 
 def SyncLogfiles(outdir:str):
-    # Logfile paths 
+    # Logfile paths
     agni_logpath = os.path.join(outdir, AGNI_LOGFILE_NAME)
     logpath = GetLogfilePath(outdir, GetCurrentLogfileIndex(outdir))
 
@@ -28,7 +33,7 @@ def SyncLogfiles(outdir:str):
                     line = "[" + line.split("[", 1)[1]
                 # copy the line
                 outfile.write(line)
-            
+
     # Remove logfile content
     with open(agni_logpath, "w") as hdl:
         hdl.write("")
@@ -48,7 +53,7 @@ def ActivateEnv(dirs:dict):
     jl.seval("using AGNI")
 
     # Setup logging from AGNI
-    #    This handle will be kept open throughout the PROTEUS simulation, so the file 
+    #    This handle will be kept open throughout the PROTEUS simulation, so the file
     #    should not be deleted at runtime. However, it will be emptied when appropriate.
     verbosity = 1
     logpath = os.path.join(dirs["output"], AGNI_LOGFILE_NAME)
@@ -63,18 +68,18 @@ def ConstructVolDict(hf_row:dict, OPTIONS:dict):
         if OPTIONS[vol+"_included"]:
             vmr = hf_row[vol+"_vmr"]
             if vmr > 1e-40:
-                vol_dict[vol] = vmr 
-    
+                vol_dict[vol] = vmr
+
     if len(vol_dict) == 0:
         UpdateStatusfile(dirs, 20)
         raise Exception("All volatiles have a volume mixing ratio of zero")
-    
+
     return vol_dict
 
 
 def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
     """Initialise atmosphere struct for use by AGNI.
-    
+
     Does not set the temperature profile.
 
     Parameters
@@ -89,7 +94,7 @@ def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
     Returns
     ----------
         atmos : atmosphere.Atmos_t
-            Atmosphere struct 
+            Atmosphere struct
 
     """
 
@@ -107,7 +112,7 @@ def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
     if os.path.exists(try_spfile):
         # exists => don't modify it
         input_sf =      try_spfile
-        input_star =    ""   
+        input_star =    ""
     else:
         # doesn't exist => AGNI will copy it + modify as required
         input_sf =      os.path.join(dirs["fwl"], OPTIONS["spectral_file"])
@@ -115,27 +120,27 @@ def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
 
     # composition
     vol_dict = ConstructVolDict(hf_row, OPTIONS)
-    
+
     # set condensation
     condensates = []
     if len(vol_dict) == 1:
         # single-gas case
         condensates = list(vol_dict.keys())
     else:
-        # get gas with smallest volume mixing ratio 
+        # get gas with smallest volume mixing ratio
         vmr_min = 2.0
         gas_min = ""
         for k in vol_dict.keys():
             if vol_dict[k] < vmr_min:
                 vmr_min = vol_dict[k]
                 gas_min = k
-        # set all gases as condensates, except the least abundant gas 
+        # set all gases as condensates, except the least abundant gas
         for k in vol_dict.keys():
             if k == gas_min:
-                continue 
+                continue
             condensates.append(k)
 
-    # Chemistry 
+    # Chemistry
     chem_type = OPTIONS["atmosphere_chemistry"]
     include_all = False
     fc_dir = "_unset"
@@ -149,30 +154,30 @@ def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
         log.debug("Fastchem work folder: '%s'"%fc_dir)
 
     elif chem_type >= 2:
-        # kinetics 
+        # kinetics
         raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
-    
-    # Setup struct 
-    jl.AGNI.atmosphere.setup_b(atmos, 
+
+    # Setup struct
+    jl.AGNI.atmosphere.setup_b(atmos,
                         dirs["agni"], dirs["output"], input_sf,
 
-                        hf_row["F_ins"], 
-                        OPTIONS["asf_scalefactor"], 
-                        OPTIONS["albedo_pl"], 
+                        hf_row["F_ins"],
+                        OPTIONS["asf_scalefactor"],
+                        OPTIONS["albedo_pl"],
                         OPTIONS["zenith_angle"],
 
-                        hf_row["T_surf"], 
+                        hf_row["T_surf"],
                         hf_row["gravity"], hf_row["R_planet"],
-                        
-                        int(OPTIONS["atmosphere_nlev"]), 
-                        hf_row["P_surf"], 
+
+                        int(OPTIONS["atmosphere_nlev"]),
+                        hf_row["P_surf"],
                         OPTIONS["P_top"],
 
                         vol_dict, "",
 
                         flag_rayleigh=bool(OPTIONS["rayleigh"] == 1),
                         flag_cloud=bool(OPTIONS["water_cloud"] == 1),
-                        
+
                         albedo_s=OPTIONS["albedo_s"],
                         condensates=condensates,
                         use_all_gases=include_all,
@@ -182,7 +187,7 @@ def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
                         tmp_magma=hf_row["T_surf"]
                         )
 
-    # Allocate arrays 
+    # Allocate arrays
     jl.AGNI.atmosphere.allocate_b(atmos,input_star)
 
     # Set temperature profile from old NetCDF if it exists
@@ -192,12 +197,12 @@ def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
 
         nc_times = [ int(s.split("/")[-1].split("_")[0]) for s in nc_files]
         nc_path  = os.path.join(dirs["output"], "data", "%d_atm.nc"%int(sorted(nc_times)[-1]))
-        jl.AGNI.setpt.fromncdf_b(atmos, nc_path)    
+        jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
 
     # Otherwise, set isothermal
     else:
         jl.AGNI.setpt.isothermal_b(atmos, hf_row["T_surf"])
-        
+
     # Logging
     SyncLogfiles(dirs["output"])
 
@@ -207,20 +212,20 @@ def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
 def DeallocAtmos(atmos):
     """
     Deallocate atmosphere struct
-    """                  
+    """
     jl.AGNI.atmosphere.deallocate_b(atmos)
     safe_rm(str(atmos.fastchem_work))
 
 
 def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
     """Update atmosphere struct.
-    
+
     Sets the new surface boundary conditions and composition.
 
     Parameters
     ----------
         atmos : atmosphere.Atmos_t
-            Atmosphere struct 
+            Atmosphere struct
         hf_row : dict
             Dictionary containing simulation variables for current iteration
         OPTIONS : dict
@@ -229,7 +234,7 @@ def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
     Returns
     ----------
         atmos : atmosphere.Atmos_t
-            Atmosphere struct 
+            Atmosphere struct
 
     """
 
@@ -239,7 +244,7 @@ def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
         atmos.gas_vmr[g][:] = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]
 
-    # Update pressure grid 
+    # Update pressure grid
     atmos.p_boa = 1.0e5 * hf_row["P_surf"]
     jl.AGNI.atmosphere.generate_pgrid_b(atmos)
 
@@ -253,15 +258,15 @@ def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
 
 def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
     """Run AGNI atmosphere model.
-    
+
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
-    Stores the new flux boundary condition to be provided to SPIDER. 
+    Stores the new flux boundary condition to be provided to SPIDER.
 
     Parameters
     ----------
         atmos : atmosphere.Atmos_t
             Atmosphere struct
-        loops_total : int 
+        loops_total : int
             Model total loops counter.
         dirs : dict
             Dictionary containing paths to directories
@@ -316,18 +321,18 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
         ))
 
         # Try solving temperature profile
-        agni_success = jl.AGNI.solver.solve_energy_b(atmos, 
+        agni_success = jl.AGNI.solver.solve_energy_b(atmos,
                             sol_type=OPTIONS["atmosphere_surf_state"],
-                            chem_type=OPTIONS["atmosphere_chemistry"], 
+                            chem_type=OPTIONS["atmosphere_chemistry"],
 
-                            conduct=False, convect=True, latent=True, sens_heat=True, 
+                            conduct=False, convect=True, latent=True, sens_heat=True,
 
-                            max_steps=130, max_runtime=900.0, 
-                            conv_atol=1e-3, conv_rtol=1e-2, 
+                            max_steps=130, max_runtime=900.0,
+                            conv_atol=1e-3, conv_rtol=1e-2,
 
                             method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
-                            
+
                             save_frames=False, modplot=0
                             )
 
@@ -347,12 +352,12 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
             if attempts >= 2:
                 log.error("Maximum attempts when executing AGNI")
                 break
-        
-    # Write output data 
+
+    # Write output data
     ncdf_path = os.path.join(dirs["output"],"data",time_str+"_atm.nc")
     jl.AGNI.dump.write_ncdf(atmos, ncdf_path)
 
-    # Make plots 
+    # Make plots
     if (OPTIONS["plot_iterfreq"] > 0) \
             and (loops_total % OPTIONS["plot_iterfreq"] == 0):
 
@@ -364,7 +369,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
     # ---------------------------
     # Parse results
     # ---------------------------
-    
+
     log.debug("Parse results")
     net_flux =      np.array(atmos.flux_n)
     LW_flux_up =    np.array(atmos.flux_u_lw)
@@ -376,18 +381,18 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
 
     # New flux from SOCRATES
     if (OPTIONS["F_atm_bc"] == 0):
-        F_atm_new = net_flux[0] 
+        F_atm_new = net_flux[0]
     else:
-        F_atm_new = net_flux[-1]  
+        F_atm_new = net_flux[-1]
 
     # Require that the net flux must be upward (positive)
     if (OPTIONS["prevent_warming"] == 1):
         F_atm_new = max( 1e-8 , F_atm_new )
-        
-    log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.2e, %.2e, %.2e  W m-2" % 
+
+    log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.2e, %.2e, %.2e  W m-2" %
                                         (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
-    # find 1 mbar (=100 Pa) level 
+    # find 1 mbar (=100 Pa) level
     idx = find_nearest(arr_p, 1e2)[1]
     z_obs = arr_z[idx]
 
@@ -397,6 +402,5 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
     output["F_sct"]  = SW_flux_up[0]
     output["T_surf"] = T_surf
     output["z_obs"]  = z_obs + radius
-    
-    return atmos, output
 
+    return atmos, output

@@ -2,19 +2,23 @@
 
 # Plot evolution of offline mixing ratios over time, for a set of species
 
-# Import things
-import matplotlib as mpl
-from proteus.utils.plot_offchem import *
-from proteus.utils.helper import find_nearest
+
+from __future__ import annotations
+
 import sys
+
+import matplotlib as mpl
+
+from proteus.utils.helper import find_nearest
+from proteus.utils.plot_offchem import offchem_read_year
 
 
 def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=None):
     """Plot evolution of chemistry according to offline VULCAN output.
-    
+
     Reads-in the data from output_dir for a set of provided species. Can also
-    include JANUS/SPIDER mixing ratios as dashed lines, which were used to 
-    initialise each VULCAN run. Mixing ratios are averaged over the provided 
+    include JANUS/SPIDER mixing ratios as dashed lines, which were used to
+    initialise each VULCAN run. Mixing ratios are averaged over the provided
     pressure range.
 
     Parameters
@@ -98,7 +102,7 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
                     vmin,vmax = vmax,vmin
                 mean_mx = np.mean(clean_mx[vimin:vimax])
 
-            mean_mx = np.mean(clean_mx)           
+            mean_mx = np.mean(clean_mx)
             mx_vul.append(float(mean_mx))
 
         pretty = sp
@@ -110,7 +114,7 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
             if str("mv_"+sp) in years_data[0].keys():
                 for yd in years_data:
                     clean_mx = np.nan_to_num(yd["mv_"+sp])
-                    mean_mx = np.mean(clean_mx)   
+                    mean_mx = np.mean(clean_mx)
                     mx_aeo.append(float(mean_mx))
 
                 ax.plot(times,mx_aeo,color=color,linestyle='--',lw=lw,zorder=2)
@@ -141,7 +145,7 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         cfg = sys.argv[1]
     else:
-        cfg = 'init_coupler.cfg' 
+        cfg = 'init_coupler.cfg'
 
     # Read in COUPLER input file
     from utils.coupler import ReadInitFile, SetDirectories
@@ -158,4 +162,3 @@ if __name__ == '__main__':
     plot_offchem_time(dirs["output"],species,tmin=1e3,prange=prange)
 
     print("Done!")
-

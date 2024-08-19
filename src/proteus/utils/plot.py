@@ -1,9 +1,11 @@
 # Variables and functions to help with plotting functions
 # These do not do the plotting themselves
+from __future__ import annotations
 
-from proteus.utils.modules_ext import *
-from proteus.utils.constants import *
-from proteus.utils.helper import *
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+from cmcrameri import cm
 
 vol_zorder  = {
     "H2O"            : 11,
@@ -233,7 +235,7 @@ class FigureData( object ):
         dd['outname'] = outname
 
         self.cmap = cm.imola
-            
+
         self.set_properties( nrows, ncols, width, height )
 
     def get_color( self, frac ):
@@ -328,7 +330,7 @@ class FigureData( object ):
         self.make_figure()
 
     def set_myaxes( self, ax, title='', xlabel='', xticks='',
-                        ylabel='', yticks='', yrotation='', fmt='', xfmt='', 
+                        ylabel='', yticks='', yrotation='', fmt='', xfmt='',
                         xmin='', xmax='', ymin='', ymax='' ):
         if title:
             self.set_mytitle( ax, title )
@@ -346,7 +348,7 @@ class FigureData( object ):
         fontsize = self.data_d['fontsize_legend']
         # FIXME
         if not TITLE:
-            legend = ax.legend(handles=handles, loc=loc, ncol=ncol, 
+            legend = ax.legend(handles=handles, loc=loc, ncol=ncol,
                                fontsize=fontsize, **kwargs )
             #units = dd['time_units']
             #title = r'Time ({0})'.format( units )
