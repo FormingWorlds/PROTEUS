@@ -1,5 +1,3 @@
 from __future__ import annotations
 
-
-def hello_world():
-    print('hello world')
+__version__ = '24.07.25'

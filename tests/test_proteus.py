@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from proteus import hello_world
+from proteus import __version__
 
-
-def test_hello_world():
-    hello_world()
+def test_version():
+    assert __version__
