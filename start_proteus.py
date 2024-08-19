@@ -20,6 +20,7 @@ from janus.utils.StellarSpectrum import InsertStellarSpectrum, PrepareStellarSpe
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
+from proteus.atmos_clim.agni import DeallocAtmos
 from proteus.utils.constants import (
     AU,
     L_sun,
