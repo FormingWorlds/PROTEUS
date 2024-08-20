@@ -16,14 +16,31 @@ from proteus.utils.logs import StreamToLogger
 
 log = logging.getLogger("PROTEUS")
 
+def InitJANUS(dirs:dict, wl:list, fl:list, spectral_file_nostar):
+
+    from janus.utils import InsertStellarSpectrum, PrepareStellarSpectrum
+
+    # Generate a new SOCRATES spectral file containing this new spectrum
+    star_spec_src = dirs["output"]+"socrates_star.txt"
+    #    Update stdout
+    old_stdout , old_stderr = sys.stdout , sys.stderr
+    sys.stdout = StreamToLogger(log, logging.INFO)
+    sys.stderr = StreamToLogger(log, logging.ERROR)
+    #    Spectral file stuff
+    PrepareStellarSpectrum(wl,fl,star_spec_src)
+    InsertStellarSpectrum(spectral_file_nostar,
+                          star_spec_src,
+                          dirs["output"]
+                          )
+    os.remove(star_spec_src)
+    #    Restore stdout
+    sys.stdout , sys.stderr = old_stdout , old_stderr
+    return
+
 # Generate atmosphere from input files
 def StructAtm( dirs:dict, hf_row:dict, OPTIONS:dict ):
 
     from janus.utils import ReadBandEdges, atmos
-
-    # Create atmosphere object and set parameters
-    pl_radius = hf_row["R_planet"]
-    pl_mass   = hf_row["M_planet"]
 
     vol_list = {}
     for vol in volatile_species:
@@ -43,30 +60,30 @@ def StructAtm( dirs:dict, hf_row:dict, OPTIONS:dict ):
     # Spectral bands
     band_edges = ReadBandEdges(dirs["output"]+"star.sf")
 
-    # Cloud properties
-    re   = 1.0e-5 # Effective radius of the droplets [m] (drizzle forms above 20 microns)
-    lwm  = 0.8    # Liquid water mass fraction [kg/kg] - how much liquid vs. gas is there upon cloud formation? 0 : saturated water vapor does not turn liquid ; 1 : the entire mass of the cell contributes to the cloud
-    clfr = 0.8    # Water cloud fraction - how much of the current cell turns into cloud? 0 : clear sky cell ; 1 : the cloud takes over the entire area of the cell (just leave at 1 for 1D runs)
-    do_cloud = bool(OPTIONS["water_cloud"] == 1)
-    alpha_cloud = float(OPTIONS["alpha_cloud"])
-
     # Make object
-    atm = atmos(hf_row["T_surf"], hf_row["P_surf"]*1e5,
-                OPTIONS["P_top"]*1e5, pl_radius, pl_mass,
+    atm = atmos(hf_row["T_surf"],
+                hf_row["P_surf"]*1e5,
+                OPTIONS["P_top"]*1e5,
+                hf_row["R_planet"],
+                hf_row["M_planet"],
                 band_edges,
-                vol_mixing=vol_list,
+                vol_mixing = vol_list,
+                req_levels = OPTIONS["atmosphere_nlev"],
+                water_lookup = False,
+                alpha_cloud=float(OPTIONS["alpha_cloud"]),
+                trppT = trppT,
                 minT = OPTIONS["min_temperature"],
                 maxT = OPTIONS["max_temperature"],
-                trppT=trppT,
-                water_lookup=False,
-                req_levels=OPTIONS["atmosphere_nlev"], alpha_cloud=alpha_cloud,
-                re=re, lwm=lwm, clfr=clfr, do_cloud=do_cloud
+                do_cloud = bool(OPTIONS["water_cloud"] == 1),
+                re = 1.0e-5, # Effective radius of the droplets [m] (drizzle forms above 20 microns)
+                lwm = 0.8, # Liquid water mass fraction [kg/kg]
+                clfr = 0.8, # Water cloud fraction
+                albedo_s = OPTIONS["albedo_s"],
+                albedo_pl = OPTIONS["albedo_pl"],
+                zenith_angle = OPTIONS["zenith_angle"],
                 )
 
-    atm.zenith_angle    = OPTIONS["zenith_angle"]
-    atm.albedo_pl       = OPTIONS["albedo_pl"]
     atm.inst_sf         = OPTIONS["asf_scalefactor"]
-    atm.albedo_s        = OPTIONS["albedo_s"]
     atm.skin_d          = OPTIONS["skin_d"]
     atm.skin_k          = OPTIONS["skin_k"]
 
