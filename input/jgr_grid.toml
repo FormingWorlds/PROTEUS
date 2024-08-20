@@ -4,12 +4,12 @@
 
 star_model                  = 0                 # Evolution model to use for star (0: Spada, 1: Baraffe)
 star_mass                   = 1                 # M_sun, mass of star
-star_radius_modern          = 1                 # R_sun, radius of star (TODAY)  
+star_radius_modern          = 1                 # R_sun, radius of star (TODAY)
 star_temperature_modern     = 5772.0            # K, temperature of star (TODAY)
 star_luminosity_modern      = 1                 # L_sun, luminosity of star (TODAY) used for Baraffe model
 star_age_modern             = 4.567e9             # yr, age of star (TODAY)
 star_rot_pctle              = 60.0
-star_spectrum               = stellar_spectra/Named/sun.txt   # Stellar spectrum file at 1 AU (TODAY)
+star_spectrum               = 'stellar_spectra/Named/sun.txt'   # Stellar spectrum file at 1 AU (TODAY)
 
 ##### Planet configuration
 mean_distance               = 1         # AU, star-planet distance
@@ -26,24 +26,24 @@ P_top                       = 1.0e-5    # bar, Pressure at TOA
 ##### PROTEUS settings
 
 iter_max                    = 9000
-log_level                   = INFO
+log_level                   = 'INFO'
 
 # Output subdirectory name (relative to output folder)
-dir_output                  = grid_template
+dir_output                  = 'grid_template'
 
 # Choose times
 time_star                   = 100.0e6  	# yr, time since star formation
 time_target                 = 4.567e+9  # yr, target time for MO evolution
 
 # SOCRATES spectral file to use (relative to FWL_DATA folder)
-spectral_file               = spectral_files/Dayspring/256/Dayspring.sf
+spectral_file               = 'spectral_files/Dayspring/256/Dayspring.sf'
 
 # Stellar heating toggle, 0: disabled | 1: enabled
 stellar_heating             = 1
 
 # Time-stepping stuff
 plot_iterfreq               = 25     # Plotting frequency, 0: wait until completion | n: every n iterations
-plot_format                 = png  # Plotting image file format
+plot_format                 = 'png'  # Plotting image file format
 sspec_dt_update             = 1e6    # Time intervals at which to re-calculate the stellar spectrum
 sinst_dt_update             = 1e2    # Time intervals at which to re-calculate the instellation
 dt_maximum                  = 3e5    # Maximum time-step
@@ -74,7 +74,7 @@ steady_dprel                = 1.0e-9     # Percentage change in melt fraction ov
 emit_stop                   = 1         # Enable this break condition
 F_crit                      = 0.2       # Model will terminate when |F_atm| < F_crit
 
-# Atmospheric escape 
+# Atmospheric escape
 escape_model                = 0         # Escape model to be used, 0: None | 1: ZEPHYRUS | 2: Dummy
 escape_stop                 = 3e-4      # Terminate when atm mass drops below this fraction of its initial mass
 escape_dummy_rate           = 0.0       # Bulk escape rate for dummy escape model [kg s-1]
@@ -87,8 +87,8 @@ atmosphere_surf_state       = 2         # Atmosphere bottom edge boundary condit
 atmosphere_nlev             = 200
 
 # Temperature limits throughout atmosphere [K]
-min_temperature             = 0.5   
-max_temperature             = 5000.0  
+min_temperature             = 0.5
+max_temperature             = 5000.0
 
 # Clouds
 water_cloud                 = 0         # enable water cloud radiative effects? (1: yes, 0: no)
@@ -98,10 +98,10 @@ alpha_cloud                 = 0.0       # condensate retention fraction (1 -> fu
 tropopause                  = 1
 
 # Rayleigh scattering, 0: Disabled | 1: Enabled
-rayleigh                    = 1  
+rayleigh                    = 1
 
 # Atmospheric chemistry, 0: Disabled | 1: Equilibrium | 2: Kinetics
-atmosphere_chemistry       = 0  
+atmosphere_chemistry       = 0
 
 ##### SPIDER-specific settings
 
@@ -115,7 +115,7 @@ mixing_length               = 2
 solver_tolerance            = 1.0e-10
 
 # Maximum absolute surface temperature change [K]
-tsurf_poststep_change       = 20.0  
+tsurf_poststep_change       = 20.0
 
 # Maximum fractional surface temperature change [fraction]
 tsurf_poststep_change_frac  = 0.009
