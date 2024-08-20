@@ -77,7 +77,13 @@ class Proteus:
         self.config = read_config(config_path)
 
     def start(self, *, resume: bool = False):
-        """Run PROTEUS code"""
+        """Start PROTEUS simulation.
+
+        Parameters
+        ----------
+        resume : bool
+            If True, continue from previous simulation
+        """
 
         # Set directories dictionary
         proteus.utils.constants.dirs = SetDirectories(self.config)
@@ -111,7 +117,7 @@ class Proteus:
         log.info("Hostname    : " + str(os.uname()[1]))
         log.info("PROTEUS hash: " + GitRevision(dirs["proteus"]))
         log.info("Py version  : " + sys.version.split(" ")[0])
-        # log.info("Config file : " + self.config_path)
+        log.info("Config file : " + str(self.config_path))
         log.info("Output dir  : " + dirs["output"])
         log.info("FWL data dir: " + dirs["fwl"])
         if self.config["atmosphere_model"] in [0, 1]:
@@ -134,7 +140,7 @@ class Proteus:
         finished = False
 
         # Config file paths
-        config_path_backup = os.path.join(dirs["output"], "init_coupler.cfg")
+        config_path_backup = os.path.join(dirs["output"], "init_coupler.toml")
 
         # Import the appropriate escape module
         if self.config["escape_model"] == 0:

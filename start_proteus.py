@@ -1,5 +1,5 @@
 """
-PROTEUS Main file
+PROTEUS run script
 """
 from __future__ import annotations
 
