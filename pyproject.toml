@@ -77,6 +77,9 @@ docs = [
     "mkdocstrings[python]",
 ]
 
+[project.scripts]
+proteus = "proteus.cli:cli"
+
 [tool.setuptools]
 package-dir = {"proteus" = "src/proteus" }
 include-package-data = true
