@@ -1,4 +1,4 @@
-[![Tests for PROTEUS](https://github.com/FormingWorlds/actions/workflows/tests.yaml/badge.svg)](https://github.com/FormingWorlds/actions/workflows/tests.yaml)
+[![Tests for PROTEUS](https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml/badge.svg)](https://github.com/FormingWorlds/PROTEUS/actions/workflows/tests.yaml)
 ![Coverage](https://gist.githubusercontent.com/stefsmeets/b4ee7dab92e20644bcb3a5ad09f71165/raw/covbadge.svg)
 [![Documentation Status](https://readthedocs.org/projects/fwl-proteus/badge/?version=latest)](https://fwl-proteus.readthedocs.io/en/latest/?badge=latest)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -36,6 +36,8 @@ Harrison Nicholls       | harrison.nicholls[at]physics.ox.ac.uk |
 Laurent Soucasse        | l.soucasse[at]esciencecenter.nl |
 Stef Smeets             | s.smeets[at]esciencecenter.nl |
 Dan J. Bower            | dbower[at]ethz.ch |
+Mariana V. Sastre       | m.c.villamil.sastre[at]rug.nl |
+Emma Postolec           | e.n.postolec[at]rug.nl |
 Mark Hammond            | mark.hammond[at]physics.ox.ac.uk |
 Patrick Sanan           | patrick.sanan[at]gmail.com |
 Raymond Pierrehumbert   | raymond.pierrehumbert[at]physics.ox.ac.uk |
@@ -57,8 +59,6 @@ Hamish Innes            | hamish.innes[at]fu-berlin.de |
 | `SPIDER/`             | Submodule SPIDER                                          |
 | `VULCAN/`             | Submodule VULCAN                                          |
 | `Mors/`               | Submodule Mors                                            |
-| `utils/`              | Code used for running PROTEUS and its submodules          |
-| `plot/`               | Code used for plotting results                            |
 | `output/`             | Output folder with subfolders for each model run          |
 | `input/`              | Input folder (e.g. stellar spectra, example configs)      |
 | `docs/`			          | Documentation source files                                |

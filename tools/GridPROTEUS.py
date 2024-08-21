@@ -2,10 +2,21 @@
 
 # Run PROTEUS for a grid of parameters
 
-# Prepare
-import os, itertools, time, subprocess, shutil, sys, multiprocessing, logging, gc
+from __future__ import annotations
+
+import gc
+import itertools
+import logging
+import multiprocessing
+import os
+import shutil
+import subprocess
+import sys
+import time
 from datetime import datetime
+
 import numpy as np
+
 PROTEUS_DIR=os.getenv('PROTEUS_DIR')
 if PROTEUS_DIR == None:
     raise Exception("Environment is not activated or is setup incorrectly")
@@ -69,7 +80,7 @@ class Pgrid():
 
         # Pgrid's own name (for versioning, etc.)
         self.name = str(name).strip()
-        self.outdir = PROTEUS_DIR+"/output/simulation_grid/"+self.name+"/"
+        self.outdir = PROTEUS_DIR+"/output/"+self.name+"/"
         self.tmpdir = "/tmp/"+self.name+"/"
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
@@ -462,9 +473,9 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","dummy2.cfg")
-    symlink  = "../output/simulation_grid"
-    pg = Pgrid("grid_escape", cfg_base, symlink_dir=symlink)
+    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","t1c.cfg")
+    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v3"
+    pg = Pgrid("trappist1c", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -481,16 +492,11 @@ if __name__=='__main__':
     # pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 5.0, 10.0])
 
 
-    # pg.add_dimension("Model")
-    # pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
+    pg.add_dimension("Model")
+    pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
 
-    # pg.add_dimension("Redox state")
-    # pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-2, 0, 2, 4])
-
-
-    pg.add_dimension("Escape")
-    pg.set_dimension_direct("Escape", "escape_dummy_rate", [4.15145e3, 4.15e3, 4.148e3, 4.147e3])
-
+    pg.add_dimension("Redox state")
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-2, 0, 2, 4])
 
     # -----
     # Print state of parameter grid
