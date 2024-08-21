@@ -497,10 +497,6 @@ def main():
                 # update total elemental inventory
                 solvevol_target[e] = esc_m
 
-                # print info to user
-                log.debug("    escape %s: m=%.2e kg,  dm=%.2e (%.3f%%)"%
-                                    (e, esc_m, esc_dm, 100*esc_dm/esc_m))
-
                 # do not allow negative masses
                 solvevol_target[e] = max(0.0, solvevol_target[e])
 
