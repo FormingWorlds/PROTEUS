@@ -11,7 +11,6 @@ from pathlib import Path
 
 import mors
 import numpy as np
-import tomllib
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
 from janus.utils.StellarSpectrum import InsertStellarSpectrum, PrepareStellarSpectrum
 
@@ -63,10 +62,15 @@ from proteus.utils.surface_gases import (
     get_target_from_pressures,
 )
 
+if sys.version_info <= (3, 10):
+    import toml as tomllib
+else:
+    import tomllib
+
 
 def read_config(path: Path | str) -> dict:
     """Read config file from path"""
-    with open(path, "rb") as f:
+    with open(path, 'rb') as f:
         config = tomllib.load(f)
     return config
 

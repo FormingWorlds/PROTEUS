@@ -52,7 +52,7 @@ dependencies = [
     "numpy",
     "pandas",
     "scipy",
-    "tomllib; python_version<='3.10'",
+    "toml; python_version<='3.10'",
 ]
 
 [project.urls]
