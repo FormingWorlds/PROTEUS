@@ -470,14 +470,14 @@ def main():
 
             if OPTIONS["escape_model"] == 1:
                 esc_result = RunZEPHYRUS(hf_row, dt,
-                                         OPTIONS['star_mass'], 
-                                         OPTIONS['star_omega'], 
-                                         OPTIONS['escape_el_tidal_correction'], 
-                                         OPTIONS['mean_distance']*AU, 
-                                         OPTIONS["eccentricity"], 
-                                         hf_row["M_planet"], 
-                                         OPTIONS["efficiency_factor"], 
-                                         hf_row["R_planet"], 
+                                         OPTIONS['star_mass'],
+                                         OPTIONS['star_omega'],
+                                         OPTIONS['escape_el_tidal_correction'],
+                                         OPTIONS['mean_distance']*AU,
+                                         OPTIONS["eccentricity"],
+                                         hf_row["M_planet"],
+                                         OPTIONS["efficiency_factor"],
+                                         hf_row["R_planet"],
                                          hf_row["R_planet"])
 
             elif OPTIONS["escape_model"] == 2:
@@ -498,8 +498,8 @@ def main():
                 solvevol_target[e] = esc_m
 
                 # print info to user
-                #log.debug("    escape %s: m=%.2e kg,  dm=%.2e (%.3f%%)"%
-                                    #(e, esc_m, esc_dm, 100*esc_dm/esc_m))
+                log.debug("    escape %s: m=%.2e kg,  dm=%.2e (%.3f%%)"%
+                                    (e, esc_m, esc_dm, 100*esc_dm/esc_m))
 
                 # do not allow negative masses
                 solvevol_target[e] = max(0.0, solvevol_target[e])
