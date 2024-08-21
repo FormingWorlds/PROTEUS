@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from itertools import chain
-from pathlib import Path
 
 import pytest
+from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
-
-PROTEUS_ROOT = Path(__file__).parents[1]
 
 PATHS = chain(
     (PROTEUS_ROOT / 'input').glob('*.toml'),
