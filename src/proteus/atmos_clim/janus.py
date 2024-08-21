@@ -92,6 +92,35 @@ def StructAtm( dirs:dict, hf_row:dict, OPTIONS:dict ):
 
     return atm
 
+def UpdateStateAtm(atm, hf_row:dict, trppT:int)
+    """UpdateStateAtm
+
+    Update the atm object state with current iteration variables
+
+    Parameters
+    ----------
+        atm : atmos
+            Atmosphere object
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
+    """
+
+    atm.setSurfaceTemperature(atm, hf_row["T_surf"])
+    atm.setSurfacePressure(atm, hf_row["P_surf"]*1e5)
+    atm.setPlanetProperties(atm, hf_row["R_planet"], hf_row["M_planet"])
+
+    vol_mixing = {}
+    for vol in volatile_species:
+        vol_mixing[vol] = hf_row[vol+"_vmr"]
+    atm.setVolatiles(atm, vol_mixing)
+
+    atm.instellation = hf_row["F_ins"]
+    atm.tmp_magma = hf_row["T_magma"]
+    if (trppT == 1):
+        atm.trppT = hf_row["T_skin"]
+
+    return
+
 def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
              write_in_tmp_dir=True, search_method=0, rtol=1.0e-4):
     """Run JANUS.
