@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -63,21 +62,11 @@ def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
 
 #====================================================================
 def main():
+    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
 
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
+    options, dirs = get_options_dirs_from_argv()
 
-    # Read in COUPLER input file
-    log.info("Read cfg file")
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
-
-    plot_escape(output_dir=dirs["output"], escape_model=OPTIONS['escape_model'], plot_format=OPTIONS["plot_format"])
+    plot_escape(output_dir=dirs["output"], escape_model=options['escape_model'], plot_format=options["plot_format"])
 
 #====================================================================
 

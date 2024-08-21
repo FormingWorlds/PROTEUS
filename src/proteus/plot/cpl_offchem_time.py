@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-import sys
-
 import matplotlib as mpl
 
 from proteus.utils.helper import find_nearest
@@ -142,20 +140,12 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
 if __name__ == '__main__':
     print("Plotting offline chemistry (mixing ratios vs time)...")
 
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
+    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
 
-    # Read in COUPLER input file
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
+    options, dirs = get_options_dirs_from_argv()
 
     # Species to plot
     species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
 
     # Call plotting function
     prange = [1e0,1e-4]

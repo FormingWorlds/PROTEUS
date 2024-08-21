@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -15,7 +14,7 @@ from proteus.utils.plot import dict_colors, vol_latex, vol_zorder
 
 log = logging.getLogger("PROTEUS")
 
-def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
+def plot_global( output_dir , options, logt=True, tmin=1e1):
 
     log.info("Plot global")
 
@@ -49,7 +48,7 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
         # Check vmr for presence
         this_vmr = np.array(hf_all[vol+"_vmr"])
         vol_present[vol] = True
-        if (np.amax(this_vmr) < 1.0e-20) or (OPTIONS[vol+"_included"] < 1):
+        if (np.amax(this_vmr) < 1.0e-20) or (options[vol+"_included"] < 1):
             vol_present[vol] = False
             continue
         vol_vmr[vol] = this_vmr
@@ -151,7 +150,7 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
 
 
     # PLOT ax_bl
-    ax_bl.axhline( y=OPTIONS["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
+    ax_bl.axhline( y=options["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
     ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
     ax_bl.plot( hf_all["Time"],     hf_all["Phi_global"], color=dict_colors["atm"], linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
     ax_bl.legend(loc='center left', **leg_kwargs)
@@ -196,25 +195,15 @@ def plot_global( output_dir , OPTIONS, logt=True, tmin=1e1):
     else:
         plt_name += "_lin"
 
-    fig.savefig(output_dir+"/%s.%s"%(plt_name,OPTIONS["plot_format"]),
+    fig.savefig(output_dir+"/%s.%s"%(plt_name,options["plot_format"]),
                 bbox_inches='tight', dpi=200)
 
 #====================================================================
 
 if __name__ == "__main__":
+    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
 
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
-
-    # Read in COUPLER input file
-    log.info("Read cfg file")
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
+    options, dirs = get_options_dirs_from_argv()
 
     for logt in [True,False]:
-        plot_global(dirs['output'],OPTIONS, logt=logt, tmin=1e1)
+        plot_global(dirs['output'],options, logt=logt, tmin=1e1)

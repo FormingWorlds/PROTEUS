@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import glob
 import logging
-import sys
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -159,20 +158,11 @@ if __name__ == '__main__':
 
     print("Plotting stellar flux over time (colorbar)...")
 
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
+    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
 
-    from utils.coupler import ReadInitFile, SetDirectories
+    options, dirs = get_options_dirs_from_argv()
 
-    # Read in COUPLER input file
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
-
-    plot_sflux(dirs['output'], plot_format=OPTIONS["plot_format"])
+    plot_sflux(dirs['output'], plot_format=options["plot_format"])
 
     print("Done!")
 

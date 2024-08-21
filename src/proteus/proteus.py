@@ -64,7 +64,7 @@ from proteus.utils.surface_gases import (
 )
 
 
-def read_config(path: Path) -> dict:
+def read_config(path: Path | str) -> dict:
     """Read config file from path"""
     with open(path, "rb") as f:
         config = tomllib.load(f)
@@ -72,9 +72,19 @@ def read_config(path: Path) -> dict:
 
 
 class Proteus:
-    def __init__(self, *, config_path: Path) -> None:
+    def __init__(self, *, config_path: Path | str) -> None:
         self.config_path = config_path
         self.config = read_config(config_path)
+
+        self.init_directories()
+
+    def init_directories(self):
+        """Initialize directories dictionary"""
+        self.directories = SetDirectories(self.config)
+
+        # Keep `constants.dirs` around for compatibility with other parts of the code
+        # At some point, they should all reference `Proteus.directories`
+        proteus.utils.constants.dirs = self.directories
 
     def start(self, *, resume: bool = False):
         """Start PROTEUS simulation.
@@ -84,24 +94,19 @@ class Proteus:
         resume : bool
             If True, continue from previous simulation
         """
-
-        # Set directories dictionary
-        proteus.utils.constants.dirs = SetDirectories(self.config)
-        from proteus.utils.constants import dirs
-
-        UpdateStatusfile(dirs, 0)
+        UpdateStatusfile(self.directories, 0)
 
         # Validate options
-        ValidateInitFile(dirs, self.config)
+        ValidateInitFile(self.directories, self.config)
 
         # Clean output directory
         if not resume:
-            CleanDir(dirs["output"])
-            CleanDir(os.path.join(dirs["output"], "data"))
+            CleanDir(self.directories["output"])
+            CleanDir(os.path.join(self.directories["output"], "data"))
 
         # Get next logfile path
-        logindex = 1 + GetCurrentLogfileIndex(dirs["output"])
-        logpath = GetLogfilePath(dirs["output"], logindex)
+        logindex = 1 + GetCurrentLogfileIndex(self.directories["output"])
+        logpath = GetLogfilePath(self.directories["output"], logindex)
 
         # Switch to logger
         SetupLogger(logpath=logpath, logterm=True, level=self.config["log_level"])
@@ -115,13 +120,13 @@ class Proteus:
         start_time = datetime.now()
         log.info("Current time: " + start_time.strftime("%Y-%m-%d_%H:%M:%S"))
         log.info("Hostname    : " + str(os.uname()[1]))
-        log.info("PROTEUS hash: " + GitRevision(dirs["proteus"]))
+        log.info("PROTEUS hash: " + GitRevision(self.directories["proteus"]))
         log.info("Py version  : " + sys.version.split(" ")[0])
         log.info("Config file : " + str(self.config_path))
-        log.info("Output dir  : " + dirs["output"])
-        log.info("FWL data dir: " + dirs["fwl"])
+        log.info("Output dir  : " + self.directories["output"])
+        log.info("FWL data dir: " + self.directories["fwl"])
         if self.config["atmosphere_model"] in [0, 1]:
-            log.info("SOCRATES dir: " + dirs["rad"])
+            log.info("SOCRATES dir: " + self.directories["rad"])
         log.info(" ")
 
         # Count iterations
@@ -140,7 +145,7 @@ class Proteus:
         finished = False
 
         # Config file paths
-        config_path_backup = os.path.join(dirs["output"], "init_coupler.toml")
+        config_path_backup = os.path.join(self.directories["output"], "init_coupler.toml")
 
         # Import the appropriate escape module
         if self.config["escape_model"] == 0:
@@ -150,7 +155,7 @@ class Proteus:
         elif self.config["escape_model"] == 2:
             from proteus.utils.escape import RunDummyEsc
         else:
-            UpdateStatusfile(dirs, 20)
+            UpdateStatusfile(self.directories, 20)
             raise Exception("Invalid escape model")
 
         # Is the model resuming from a previous state?
@@ -225,7 +230,7 @@ class Proteus:
             IC_INTERIOR = 2
 
             # Read helpfile from disk
-            hf_all = ReadHelpfileFromCSV(dirs["output"])
+            hf_all = ReadHelpfileFromCSV(self.directories["output"])
 
             # Check length
             if len(hf_all) <= loop_counter["init_loops"] + 1:
@@ -254,21 +259,21 @@ class Proteus:
         DownloadSpectralFiles()
         DownloadStellarSpectra()
 
-        spectral_file_nostar = os.path.join(dirs["fwl"], self.config["spectral_file"])
+        spectral_file_nostar = os.path.join(self.directories["fwl"], self.config["spectral_file"])
         if not os.path.exists(spectral_file_nostar):
-            UpdateStatusfile(dirs, 20)
+            UpdateStatusfile(self.directories, 20)
             raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
 
         # Runtime spectral file path
-        spfile_path = os.path.join(dirs["output"], "runtime.sf")
+        spfile_path = os.path.join(self.directories["output"], "runtime.sf")
 
         # Handle stellar spectrum...
 
         # Store copy of modern spectrum in memory (1 AU)
         sspec_prev = -np.inf
         sinst_prev = -np.inf
-        star_modern_path = os.path.join(dirs["fwl"], self.config["star_spectrum"])
-        shutil.copyfile(star_modern_path, os.path.join(dirs["output"], "-1.sflux"))
+        star_modern_path = os.path.join(self.directories["fwl"], self.config["star_spectrum"])
+        shutil.copyfile(star_modern_path, os.path.join(self.directories["output"], "-1.sflux"))
 
         # Prepare stellar models
         match self.config["star_model"]:
@@ -290,21 +295,21 @@ class Proteus:
 
             case 1:  # BARAFFE
                 modern_wl, modern_fl = mors.ModernSpectrumLoad(
-                    star_modern_path, dirs["output"] + "/-1.sflux"
+                    star_modern_path, self.directories["output"] + "/-1.sflux"
                 )
 
                 mors.DownloadEvolutionTracks("/Baraffe")
                 baraffe = mors.BaraffeTrack(self.config["star_mass"])
 
             case _:
-                UpdateStatusfile(dirs, 20)
+                UpdateStatusfile(self.directories, 20)
                 raise Exception("Invalid stellar model '%d'" % self.config["star_model"])
 
         # Create lockfile
-        keepalive_file = CreateLockFile(dirs["output"])
+        keepalive_file = CreateLockFile(self.directories["output"])
 
         # Main loop
-        UpdateStatusfile(dirs, 1)
+        UpdateStatusfile(self.directories, 1)
         while not finished:
             # New rows
             if loop_counter["total"] > 0:
@@ -338,9 +343,9 @@ class Proteus:
                 prev_T_magma = hf_all.iloc[-1]["T_magma"]
 
             # Run SPIDER
-            RunSPIDER(dirs, self.config, IC_INTERIOR, loop_counter, hf_all, hf_row)
+            RunSPIDER(self.directories, self.config, IC_INTERIOR, loop_counter, hf_all, hf_row)
             sim_time, spider_result = ReadSPIDER(
-                dirs, self.config, hf_row["Time"], prev_T_magma, hf_row["R_planet"]
+                self.directories, self.config, hf_row["Time"], prev_T_magma, hf_row["R_planet"]
             )
 
             for k in spider_result.keys():
@@ -452,7 +457,7 @@ class Proteus:
                     % hf_row["age_star"]
                 )
                 np.savetxt(
-                    os.path.join(dirs["output"], "data", "%d.sflux" % hf_row["Time"]),
+                    os.path.join(self.directories["output"], "data", "%d.sflux" % hf_row["Time"]),
                     np.array([wl, fl]).T,
                     header=header,
                     comments="",
@@ -463,14 +468,14 @@ class Proteus:
                 # Prepare spectral file for JANUS
                 if self.config["atmosphere_model"] == 0:
                     # Generate a new SOCRATES spectral file containing this new spectrum
-                    star_spec_src = dirs["output"] + "socrates_star.txt"
+                    star_spec_src = self.directories["output"] + "socrates_star.txt"
                     #    Update stdout
                     old_stdout, old_stderr = sys.stdout, sys.stderr
                     sys.stdout = StreamToLogger(log, logging.INFO)
                     sys.stderr = StreamToLogger(log, logging.ERROR)
                     #    Spectral file stuff
                     PrepareStellarSpectrum(wl, fl, star_spec_src)
-                    InsertStellarSpectrum(spectral_file_nostar, star_spec_src, dirs["output"])
+                    InsertStellarSpectrum(spectral_file_nostar, star_spec_src, self.directories["output"])
                     os.remove(star_spec_src)
                     #    Restore stdout
                     sys.stdout, sys.stderr = old_stdout, old_stderr
@@ -582,7 +587,7 @@ class Proteus:
             ############### / OUTGASSING
 
             ############### ATMOSPHERE SUB-LOOP
-            RunAtmosphere(self.config, dirs, loop_counter, spfile_path, hf_all, hf_row)
+            RunAtmosphere(self.config, self.directories, loop_counter, spfile_path, hf_all, hf_row)
 
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
@@ -609,14 +614,14 @@ class Proteus:
                 hf_all = CreateHelpfileFromDict(hf_row)
 
             # Write helpfile to disk
-            WriteHelpfileToCSV(dirs["output"], hf_all)
+            WriteHelpfileToCSV(self.directories["output"], hf_all)
 
             # Print info to terminal and log file
             PrintCurrentState(hf_row)
 
             # Stop simulation when planet is completely solidified
             if (self.config["solid_stop"] == 1) and (hf_row["Phi_global"] <= self.config["phi_crit"]):
-                UpdateStatusfile(dirs, 10)
+                UpdateStatusfile(self.directories, 10)
                 log.info("")
                 log.info("===> Planet solidified! <===")
                 log.info("")
@@ -628,7 +633,7 @@ class Proteus:
                 and (loop_counter["total"] > loop_counter["init_loops"] + 1)
                 and (abs(hf_row["F_atm"]) <= self.config["F_crit"])
             ):
-                UpdateStatusfile(dirs, 14)
+                UpdateStatusfile(self.directories, 14)
                 log.info("")
                 log.info("===> Planet no longer cooling! <===")
                 log.info("")
@@ -671,7 +676,7 @@ class Proteus:
                 if loop_counter["steady"] <= loop_counter["steady_loops"]:
                     loop_counter["steady"] += 1
                 else:
-                    UpdateStatusfile(dirs, 11)
+                    UpdateStatusfile(self.directories, 11)
                     log.info("")
                     log.info("===> Planet entered a steady state! <===")
                     log.info("")
@@ -679,7 +684,7 @@ class Proteus:
 
             # Atmosphere has escaped
             if hf_row["M_atm"] <= self.config["escape_stop"] * hf_all.iloc[0]["M_atm"]:
-                UpdateStatusfile(dirs, 15)
+                UpdateStatusfile(self.directories, 15)
                 log.info("")
                 log.info("===> Atmosphere has escaped! <===")
                 log.info("")
@@ -687,7 +692,7 @@ class Proteus:
 
             # Maximum time reached
             if hf_row["Time"] >= self.config["time_target"]:
-                UpdateStatusfile(dirs, 13)
+                UpdateStatusfile(self.directories, 13)
                 log.info("")
                 log.info("===> Target time reached! <===")
                 log.info("")
@@ -695,7 +700,7 @@ class Proteus:
 
             # Maximum loops reached
             if loop_counter["total"] > loop_counter["total_loops"]:
-                UpdateStatusfile(dirs, 12)
+                UpdateStatusfile(self.directories, 12)
                 log.info("")
                 log.info("===> Maximum number of iterations reached! <===")
                 log.info("")
@@ -705,11 +710,11 @@ class Proteus:
             if finished and (loop_counter["total"] < loop_counter["total_min"]):
                 log.info("Minimum number of iterations not yet attained; continuing...")
                 finished = False
-                UpdateStatusfile(dirs, 1)
+                UpdateStatusfile(self.directories, 1)
 
             # Check if keepalive file has been removed - this means that the model should exit ASAP
             if not os.path.exists(keepalive_file):
-                UpdateStatusfile(dirs, 25)
+                UpdateStatusfile(self.directories, 25)
                 log.info("")
                 log.info("===> Model exit was requested! <===")
                 log.info("")
@@ -723,7 +728,7 @@ class Proteus:
             ):
                 PrintHalfSeparator()
                 log.info("Making plots")
-                UpdatePlots(dirs["output"], self.config)
+                UpdatePlots(self.directories["output"], self.config)
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
@@ -738,7 +743,7 @@ class Proteus:
         safe_rm(keepalive_file)
 
         # Plot conditions at the end
-        UpdatePlots(dirs["output"], self.config, end=True)
+        UpdatePlots(self.directories["output"], self.config, end=True)
         end_time = datetime.now()
         log.info("Simulation stopped at: " + end_time.strftime("%Y-%m-%d_%H:%M:%S"))
 
