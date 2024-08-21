@@ -50,8 +50,7 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
     if OPTIONS["atmosphere_model"] == 0:
         # Run JANUS:
         hf_row["T_surf"] = hf_row["T_magma"]
-        atm = StructAtm( dirs, hf_row, OPTIONS )
-        atm_output = RunJANUS( atm, hf_row["Time"], dirs, OPTIONS, hf_all)
+        atm_output = RunJANUS(atm, dirs, OPTIONS, hf_row, hf_all)
 
     elif OPTIONS["atmosphere_model"] == 1:
         # Run AGNI
