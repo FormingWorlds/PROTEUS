@@ -87,7 +87,6 @@ vol_latex = {
     "HCN"     : r"HCN",
     "NH3"     : r"NH$_3$",
     "He"      : r"He",
-    "NH3"     : r"NH$_3$",
     "H2O-CO2" : r"H$_2$O-CO$_2$",
     "H2O-H2"  : r"H$_2$O-H$_2$",
     "H2O-CO"  : r"H$_2$O-CO",
@@ -222,7 +221,7 @@ class FigureData( object ):
 
         mpl.use('Agg')  # Prevent plots popping up (it's very annoying)
 
-        if (type(times) == float) or (type(times) == int):
+        if isinstance(times, (float, int)):
             times = np.array([times])
 
         if len(times) > 0:

@@ -60,10 +60,10 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
     title_str = "Mixing ratio versus time "
 
     prange_mode = -1
-    if prange == None:
+    if prange is None:
         prange_mode = 0
         title_str += "(whole column)"
-    elif type(prange) == float:
+    elif isinstance(prange, float):
         prange_mode = 1
         title_str += str("(p ≈ %1.1e bar)" % prange)
     elif len(prange) == 2:

@@ -460,7 +460,7 @@ def SetDirectories(OPTIONS: dict):
             Dictionary of paths to important directories
     """
 
-    if os.environ.get('PROTEUS_DIR') == None:
+    if os.environ.get('PROTEUS_DIR') is None:
         raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
     proteus_dir = os.path.abspath(os.getenv('PROTEUS_DIR'))
     proteus_src = os.path.join(proteus_dir,"src/proteus")
@@ -478,7 +478,7 @@ def SetDirectories(OPTIONS: dict):
             }
 
     # FWL data folder
-    if os.environ.get('FWL_DATA') == None:
+    if os.environ.get('FWL_DATA') is None:
         UpdateStatusfile(dirs, 20)
         raise Exception("The FWL_DATA environment variable where spectral"
                         "and evolution tracks data will be downloaded needs to be set up!"
@@ -491,7 +491,7 @@ def SetDirectories(OPTIONS: dict):
     if OPTIONS["atmosphere_model"] in [0,1]:
         # needed for atmosphere models 0 and 1
 
-        if os.environ.get('RAD_DIR') == None:
+        if os.environ.get('RAD_DIR') is None:
             UpdateStatusfile(dirs, 20)
             raise Exception("The RAD_DIR environment variable has not been set")
         else:

@@ -135,7 +135,7 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
         else:
             raise Exception("Invalid dependent variable '%s'" % z_var)
 
-        if z_this == None:
+        if z_this is None:
             raise Exception("Could not read dependent variable '%s' from grid" % z_var)
 
         z_arr.append(float(z_this))
@@ -149,10 +149,10 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
     ax.set_xlabel(x_var)
     ax.set_xscale(x_scale)
 
-    if cb_vmin == None:
+    if cb_vmin is None:
         cb_vmin = np.amin(z_arr)
 
-    if cb_vmax == None:
+    if cb_vmax is None:
         cb_vmax = np.amax(z_arr)
 
     if z_scale == 'log':

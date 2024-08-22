@@ -42,12 +42,21 @@ def plot_interior_cbar(output_dir, plot_format="pdf"):
 
     # Initialise plot
     fig,(ax1,ax2,ax3,ax4) = plt.subplots(1,4, sharey=True, figsize=(10,5))
+
     ax1.set_ylabel("Interior pressure, $P$ [GPa]")
     ax1.invert_yaxis()
-    ax1.set_xlabel("$T$ [K]"); ax1.set_title("(a) Temperature")
-    ax2.set_xlabel(r"$\phi$"); ax2.set_title("(b) Melt fraction")
-    ax3.set_xlabel(r"$\eta$ [Pa s]"); ax3.set_title("(c) Viscosity"); ax3.set_xscale("log")
-    ax4.set_xlabel("$S$ [J K$^{-1}$ kg$^{-1}$]"); ax4.set_title("(d) Specific entropy")
+    ax1.set_xlabel("$T$ [K]")
+    ax1.set_title("(a) Temperature")
+
+    ax2.set_xlabel(r"$\phi$")
+    ax2.set_title("(b) Melt fraction")
+
+    ax3.set_xlabel(r"$\eta$ [Pa s]")
+    ax3.set_title("(c) Viscosity")
+    ax3.set_xscale("log")
+
+    ax4.set_xlabel("$S$ [J K$^{-1}$ kg$^{-1}$]")
+    ax4.set_title("(d) Specific entropy")
 
     # Colour mapping
     norm = mpl.colors.Normalize(vmin=1.0, vmax=np.amax(output_times))

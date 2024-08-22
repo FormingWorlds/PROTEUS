@@ -21,10 +21,12 @@ def PrintHalfSeparator():
     pass
 
 # String sorting inspired by natsorted
-def natural_sort(l):
-    convert = lambda text: int(text) if text.isdigit() else text.lower()
-    alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ]
-    return sorted(l, key = alphanum_key)
+def natural_sort(lst):
+    def convert(text):
+        return int(text) if text.isdigit() else text.lower()
+    def alphanum_key(key):
+        return [convert(c) for c in re.split("([0-9]+)", key)]
+    return sorted(lst, key = alphanum_key)
 
 # Create a temporary folder
 def create_tmp_folder():

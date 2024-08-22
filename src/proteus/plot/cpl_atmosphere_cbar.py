@@ -36,10 +36,16 @@ def _read_nc(nc_fpath):
     arr_p = [pl[0]]
     arr_t = [tl[0]]
     arr_z = [zl[0]]
+
     for i in range(nlev):
-        arr_p.append(p[i]); arr_p.append(pl[i+1])
-        arr_t.append(t[i]); arr_t.append(tl[i+1])
-        arr_z.append(z[i]); arr_z.append(zl[i+1])
+        arr_p.append(p[i])
+        arr_p.append(pl[i+1])
+
+        arr_t.append(t[i])
+        arr_t.append(tl[i+1])
+
+        arr_z.append(z[i])
+        arr_z.append(zl[i+1])
 
     ds.close()
 

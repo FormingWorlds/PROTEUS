@@ -2,6 +2,18 @@
 # See https://pre-commit.com/hooks.html for more hooks
 ---
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-case-conflict
+      - id: check-docstring-first
+      - id: check-builtin-literals
+      - id: check-ast
+      - id: check-merge-conflict
+      - id: debug-statements
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.6.1
     hooks:
