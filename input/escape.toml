@@ -29,17 +29,17 @@ P_top                       = 1.0e-5    # bar, Pressure at TOA
 ##### PROTEUS settings
 
 iter_max                    = 9000
-log_level                   = 'INFO'
+log_level                   = 'DEBUG'
 
 # Output subdirectory name (relative to output folder)
-dir_output                  = 'earth_demo'
+dir_output                  = 'escape'
 
 # Choose times
 time_star                   = 100.0e6  	# yr, time since star formation
 time_target                 = 4.567e+9  # yr, target time for MO evolution
 
 # SOCRATES spectral file to use (relative to FWL_DATA folder)
-spectral_file               = 'spectral_files/Frostflow/256/Frostflow.sf'
+spectral_file               = 'spectral_files/Frostflow/48/Frostflow.sf'
 
 # Stellar heating toggle, 0: disabled | 1: enabled
 stellar_heating             = 1
@@ -80,8 +80,7 @@ F_crit                      = 0.2       # Critical flux, below which the model w
 # Atmospheric escape
 escape_model                = 1         # Escape model to be used, 0: None | 1: ZEPHYRUS | 2: Dummy
 escape_stop                 = 3e-4      # Terminate when atm mass drops below this fraction of its initial mass
-escape_dummy_rate           = 0.0       # Bulk escape rate for dummy escape model [kg s-1]
-escape_el_rate              = 0.15      # Efficiency factor for energy-limited escape (varies typically 0.1 < epsilon < 0.6) [dimensionless]
+efficiency_factor           = 0.50      # Efficiency factor for energy-limited escape (varies typically 0.1 < epsilon < 0.6) [dimensionless]
 escape_el_tidal_correction  = 0         # Tidal correction factor, 0: None | 1: yes [dimensionless]
 
 
@@ -140,7 +139,7 @@ F_atm                       = 8.0E4
 fO2_shift_IW                = 4
 
 # Enable solving for initial partial pressures (0: off | 1: on)
-solvevol_use_params          = 0
+solvevol_use_params          = 1
 
 # Parameters used to solve for initial partial pressures (when solvepp_use_params = 1)
 Phi_global                  = 1.0       # Mantle melt fraction initial guess
@@ -152,16 +151,16 @@ sulfur_ppmw                 = 200.0     # Sulfur inventory in ppmw relative to m
 # Prescribed injected partial pressures [bar]
 # Summed with solvepp results when solvepp_enabled = 1
 H2O_included                = 1
-H2O_initial_bar             = 30.0
+H2O_initial_bar             = 0.0
 
 CO2_included                = 1
-CO2_initial_bar             = 30.0
+CO2_initial_bar             = 0.0
 
 N2_included                 = 1
-N2_initial_bar              = 30.0
+N2_initial_bar              = 0.0
 
 S2_included                 = 1
-S2_initial_bar              = 30.0
+S2_initial_bar              = 0.0
 
 SO2_included                = 0
 SO2_initial_bar             = 0.0
