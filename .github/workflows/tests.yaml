@@ -54,6 +54,7 @@ jobs:
         run: |
           source PROTEUS.env
           export FWL_DATA="/home/runner/work/fwl_data"
+          export RAD_DIR="./SOCRATES"
           coverage run -m pytest
 
       - name: Report coverage
