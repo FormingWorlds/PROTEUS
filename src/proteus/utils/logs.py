@@ -56,7 +56,7 @@ class CustomFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
 
-# Custom logger instance 
+# Custom logger instance
 def SetupLogger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
 
     # https://stackoverflow.com/a/61457119
@@ -66,7 +66,7 @@ def SetupLogger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
 
     if os.path.exists(logpath):
         os.remove(logpath)
-    
+
     level = str(level).strip().upper()
     if level not in ["INFO", "DEBUG", "ERROR", "WARNING"]:
         level = "INFO"
@@ -96,8 +96,8 @@ def SetupLogger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
             return
         custom_logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
     sys.excepthook = handle_exception
-    
-    return 
+
+    return
 
 def GetCurrentLogfileIndex(output_dir:str):
     '''
@@ -113,8 +113,8 @@ def GetCurrentLogfileIndex(output_dir:str):
             j=i
             i += 1
         else:
-            break 
-        
+            break
+
     return j
 
 def GetLogfilePath(output_dir:str, j:int):
@@ -125,6 +125,6 @@ def GetLogfilePath(output_dir:str, j:int):
     if j>99:
         raise Exception("Cannot create logfile - too many in output folder already")
 
-    return os.path.join(output_dir, "proteus_%02d.log"%j) 
-    
+    return os.path.join(output_dir, "proteus_%02d.log"%j)
+
 

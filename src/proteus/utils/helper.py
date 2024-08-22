@@ -145,7 +145,7 @@ def CleanDir(directory, keep_stdlog=False):
                 shutil.rmtree(p)
             else:
                 # Remove all files EXCEPT logfiles in topmost dir
-                if not (".log" in p):
+                if ".log" not in p:
                     os.remove(p)
     else:
         os.makedirs(directory)
