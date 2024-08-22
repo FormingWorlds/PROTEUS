@@ -59,7 +59,7 @@ from proteus.utils.surface_gases import (
     get_target_from_pressures,
 )
 
-if sys.version_info <= (3, 10):
+if sys.version_info < (3, 11):
     import toml as tomllib
 else:
     import tomllib
