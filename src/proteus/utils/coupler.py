@@ -262,7 +262,8 @@ def ReadInitFile(init_file_passed:str, verbose=False):
     else:
         raise Exception("Init file provided is not a file or does not exist (%s)" % init_file_passed)
 
-    if verbose: log.info("Settings:")
+    if verbose:
+        log.info("Settings:")
 
     # Open file and fill dict
     with open(init_file) as f:
@@ -279,7 +280,8 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                 line = line.split("#")[0]
                 line = line.split(",")[0]
 
-                if verbose: log.info(line)
+                if verbose:
+                    log.info(line)
 
                 # Assign key and value
                 (key, val) = line.split("=")

@@ -65,22 +65,36 @@ def CommentFromStatus(status:int):
     desc = ""
     match status:
         # Running cases
-        case 0:  desc = "Started"
-        case 1:  desc = "Running"
+        case 0:
+            desc = "Started"
+        case 1:
+            desc = "Running"
         # Successful cases
-        case 10: desc = "Completed (solidified)"
-        case 11: desc = "Completed (steady-state)"
-        case 12: desc = "Completed (maximum iterations)"
-        case 13: desc = "Completed (target time)"
-        case 14: desc = "Completed (net flux is small)"
-        case 15: desc = "Completed (atmosphere escaped)"
+        case 10:
+            desc = "Completed (solidified)"
+        case 11:
+            desc = "Completed (steady-state)"
+        case 12:
+            desc = "Completed (maximum iterations)"
+        case 13:
+            desc = "Completed (target time)"
+        case 14:
+            desc = "Completed (net flux is small)"
+        case 15:
+            desc = "Completed (atmosphere escaped)"
         # Error cases
-        case 20: desc = "Error (generic case, or configuration issue)"
-        case 21: desc = "Error (Interior model)"
-        case 22: desc = "Error (Atmosphere model)"
-        case 23: desc = "Error (Stellar evolution model)"
-        case 24: desc = "Error (Kinetics model)"
-        case 25: desc = "Error (died, or exit requested by user)"
+        case 20:
+            desc = "Error (generic case, or configuration issue)"
+        case 21:
+            desc = "Error (Interior model)"
+        case 22:
+            desc = "Error (Atmosphere model)"
+        case 23:
+            desc = "Error (Stellar evolution model)"
+        case 24:
+            desc = "Error (Kinetics model)"
+        case 25:
+            desc = "Error (died, or exit requested by user)"
         # Default case
         case _:
             desc = "UNHANDLED STATUS (%d)" % status

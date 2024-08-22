@@ -43,14 +43,16 @@ def RunDummyEsc(hf_row:dict, dt:float, phi_bulk:float):
     # calculate total mass of volatiles (except oxygen, which is set by fO2)
     M_vols = 0.0
     for e in element_list:
-        if e=='O': continue
+        if e=='O':
+            continue
         M_vols += hf_row[e+"_kg_total"]
 
 
     # for each elem, calculate new total inventory while
     # maintaining a constant mass mixing ratio
     for e in element_list:
-        if e=='O': continue
+        if e=='O':
+            continue
 
         # current elemental mass ratio in total
         emr = hf_row[e+"_kg_total"]/M_vols
@@ -129,14 +131,16 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
     # calculate total mass of volatiles (except oxygen, which is set by fO2)
     M_vols = 0.0
     for e in element_list:
-        if e=='O': continue
+        if e=='O':
+            continue
         M_vols += hf_row[e+"_kg_total"]
 
     # for each elem, calculate new total inventory while
     # maintaining a constant mass mixing ratio
 
     for e in element_list:
-        if e=='O': continue
+        if e=='O':
+            continue
 
         # current elemental mass ratio in total
         emr = hf_row[e+"_kg_total"]/M_vols

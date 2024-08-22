@@ -386,8 +386,10 @@ class FigureData( object ):
                 mpl.ticker.FuncFormatter(fmt))
         ax.set_xticks( xticks)
         # set x limits to match extent of ticks
-        if not xmax: xmax=xticks[-1]
-        if not xmin: xmin=xticks[0]
+        if not xmax:
+            xmax=xticks[-1]
+        if not xmin:
+            xmin=xticks[0]
         ax.set_xlim( xmin, xmax )
 
     def set_myyticks( self, ax, yticks, ymin, ymax, fmt ):
@@ -398,6 +400,8 @@ class FigureData( object ):
                 mpl.ticker.FuncFormatter(fmt))
         ax.set_yticks( yticks)
         # set y limits to match extent of ticks
-        if not ymax: ymax=yticks[-1]
-        if not ymin: ymin=yticks[0]
+        if not ymax:
+            ymax=yticks[-1]
+        if not ymin:
+            ymin=yticks[0]
         ax.set_ylim( ymin, ymax )

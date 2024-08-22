@@ -79,7 +79,8 @@ def plot_sflux(output_dir, wl_max = 6000.0, plot_format="pdf"):
 
         # Parse data
         time = int(f.split('/')[-1].split('.')[0])
-        if time < 0: continue
+        if time < 0:
+            continue
 
         wave = X[0]
         flux = X[1]
