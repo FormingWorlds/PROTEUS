@@ -46,6 +46,7 @@ jobs:
 
       - name: Test with pytest
         run: |
+          source PROTEUS.env
           coverage run -m pytest
 
       - name: Report coverage
