@@ -9,10 +9,7 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 
-import mors
 import numpy as np
-from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
-from janus.utils.StellarSpectrum import InsertStellarSpectrum, PrepareStellarSpectrum
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
@@ -98,6 +95,10 @@ class Proteus:
         resume : bool
             If True, continue from previous simulation
         """
+        import mors
+        from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
+        from janus.utils.StellarSpectrum import InsertStellarSpectrum, PrepareStellarSpectrum
+
         UpdateStatusfile(self.directories, 0)
 
         # Validate options
