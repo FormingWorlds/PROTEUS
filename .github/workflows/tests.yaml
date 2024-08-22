@@ -44,9 +44,16 @@ jobs:
         run: |
           python -m pip install -e .[develop]
 
+      - uses: actions/cache@v3
+        id: cache-fwl-data
+        with:
+          path: /home/runner/work/fwl_data
+          key: fwl-data-1
+
       - name: Test with pytest
         run: |
           source PROTEUS.env
+          export FWL_DATA="/home/runner/work/fwl_data"
           coverage run -m pytest
 
       - name: Report coverage
