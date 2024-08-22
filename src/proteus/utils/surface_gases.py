@@ -395,8 +395,6 @@ def dissolved_mass(pin, ddict):
 
     prefactor = 1E-6*ddict['M_mantle']*ddict['Phi_global']
 
-    keys = list(p_d.keys())
-
     # H2O
     sol_H2O = SolubilityH2O() # gets the default solubility model
     ppmw_H2O = sol_H2O(p_d['H2O'])

@@ -244,7 +244,6 @@ class FigureData( object ):
     def get_legend_label( self, time ):
         dd = self.data_d
         units = dd['time_units']
-        dp = dd['time_decimal_places']
         age = float(time)
         if units == 'yr':
             age = round( age, 0 )
@@ -258,8 +257,8 @@ class FigureData( object ):
         elif units == 'Byr' or units == 'Gyr':
             age /= 1.0E9
             label = '%0.2f'
-        #label = '%0.{}e'.format( dp )
-        #label = '%0.{}f'.format( dp )
+        else:
+            raise ValueError(f'Unknown units: {units}')
         label = label % age
         return label
 
@@ -344,7 +343,6 @@ class FigureData( object ):
             self.set_myyticks( ax, yticks, ymin, ymax, fmt )
 
     def set_mylegend( self, ax, handles, loc=4, ncol=1, TITLE=None, **kwargs ):
-        dd = self.data_d
         fontsize = self.data_d['fontsize_legend']
         # FIXME
         if not TITLE:
@@ -379,7 +377,6 @@ class FigureData( object ):
         ax.set_ylabel( label, fontsize=fontsize, rotation=yrotation )
 
     def set_myxticks( self, ax, xticks, xmin, xmax, fmt ):
-        dd = self.data_d
         if fmt:
             xticks = fmt.ascale( np.array(xticks) )
             ax.xaxis.set_major_formatter(
@@ -393,7 +390,6 @@ class FigureData( object ):
         ax.set_xlim( xmin, xmax )
 
     def set_myyticks( self, ax, yticks, ymin, ymax, fmt ):
-        dd = self.data_d
         if fmt:
             yticks = fmt.ascale( np.array(yticks) )
             ax.yaxis.set_major_formatter(

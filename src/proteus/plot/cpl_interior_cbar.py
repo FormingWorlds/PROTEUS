@@ -69,12 +69,6 @@ def plot_interior_cbar(output_dir, plot_format="pdf"):
         xx_pres = myjson_o.get_dict_values(['data','pressure_b']) * 1.0E-9
         xx_pres_s = myjson_o.get_dict_values(['data','pressure_s']) * 1.0E-9
 
-        xx_radius = myjson_o.get_dict_values(['data','radius_b']) * 1.0E-3
-        xx_depth = xx_radius[0] - xx_radius
-
-        xx_radius_s = myjson_o.get_dict_values(['data','radius_s']) * 1.0E-3
-        xx_depth_s = xx_radius_s[0] - xx_radius_s
-
         MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' )
         MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' )
         MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' )
