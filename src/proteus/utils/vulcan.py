@@ -9,6 +9,8 @@ import subprocess
 
 import numpy as np
 
+from proteus.utils.constants import element_list, volatile_species
+
 
 def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):
     '''

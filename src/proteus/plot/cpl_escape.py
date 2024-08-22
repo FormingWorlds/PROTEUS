@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import M_earth
+from proteus.utils.constants import M_earth, s2yr
 
 log = logging.getLogger("PROTEUS")
 

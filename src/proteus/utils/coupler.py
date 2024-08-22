@@ -255,7 +255,7 @@ def ReadInitFile(init_file_passed:str, verbose=False):
     # Read in input file as dictionary
     OPTIONS  = {}
     if verbose:
-        log.info("Read in init file:" + init_file)
+        log.info("Read in init file:" + init_file_passed)
 
     if os.path.isfile(init_file_passed):
         init_file = init_file_passed

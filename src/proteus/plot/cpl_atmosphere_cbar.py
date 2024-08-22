@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import glob
+import logging
 import os
 import sys
 
@@ -12,6 +13,9 @@ import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import LogLocator, MultipleLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+log = logging.getLogger("PROTEUS")
+
 
 #====================================================================
 

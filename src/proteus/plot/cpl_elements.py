@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from proteus.utils.constants import element_list
+
 log = logging.getLogger("PROTEUS")
 
 def plot_elements( output_dir, plot_format="pdf", t0=100.0):
