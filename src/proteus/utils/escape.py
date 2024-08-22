@@ -11,6 +11,10 @@ from proteus.utils.zephyrus import EL_escape
 
 log = logging.getLogger("PROTEUS")
 
+# Define global variables
+Fxuv_star_SI_full   = None
+age_star_mors       = None
+
 
 def RunDummyEsc(hf_row:dict, dt:float, phi_bulk:float):
     """Run dummy escape model.
@@ -92,19 +96,23 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
         out : dict
             Dictionary of updated total elemental mass inventories [kg]
     """
+    global Fxuv_star_SI_full
+    global age_star_mors
 
     log.info("Running EL escape (ZEPHYRUS) ...")
 
     ## Step 1 : Load stellar evolution track + compute EL escape
     log.info("Step 1 : Load stellar evolution track + compute EL escape ")
 
-    # Get the age of the star at time t to compute XUV flux at that time
-    age_star        = hf_row["age_star"]                                                # [years]
-    star            = mors.Star(Mstar=M_star, Age=age_star/1e6, Omega=Omega_star)       # Load the stellar evolution track from MORS
-    age_star_mors   = star.Tracks['Age']                                                # [Myrs]
+    # Get the age of the star at time t to compute XUV flux at that time 
+    age_star        = hf_row["age_star"]                                                # [years] 
+
+    if (Fxuv_star_SI_full is None):
+        star                = mors.Star(Mstar=M_star, Age=age_star/1e6, Omega=Omega_star) 
+        age_star_mors       = star.Tracks['Age']
+        Fxuv_star_SI_full   = ((star.Tracks['Lx'] + star.Tracks['Leuv']) / (4 * np.pi * (semi_major_axis * 1e2)**2)) * ergcm2stoWm2
 
     # Interpolating the XUV flux at the age of the star
-    Fxuv_star_SI_full   = ((star.Tracks['Lx'] + star.Tracks['Leuv']) / (4 * np.pi * (semi_major_axis * 1e2)**2)) * ergcm2stoWm2
     Fxuv_star_SI        = np.interp(age_star, age_star_mors * 1e6, Fxuv_star_SI_full)                                            # Interpolate to get Fxuv at age_star
     log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} years is {Fxuv_star_SI}")
 
