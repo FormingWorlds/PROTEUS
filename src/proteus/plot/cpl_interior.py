@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -174,18 +173,9 @@ def plot_interior( output_dir, times, plot_format="pdf"):
 #====================================================================
 
 if __name__ == "__main__":
+    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
 
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
-
-    # Read in COUPLER input file
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
+    options, dirs = get_options_dirs_from_argv()
 
     output_list = get_all_output_times(dirs['output'])
 
@@ -198,4 +188,4 @@ if __name__ == "__main__":
         plot_list.append(output_list[-1])
     print("Snapshots:", plot_list)
 
-    plot_interior( dirs['output'], plot_list, plot_format=OPTIONS["plot_format"] )
+    plot_interior( dirs['output'], plot_list, plot_format=options["plot_format"] )

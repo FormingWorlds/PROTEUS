@@ -4,7 +4,6 @@ from __future__ import annotations
 import glob
 import logging
 import os
-import sys
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -72,19 +71,9 @@ def plot_atmosphere( output_dir:str, times:list, plot_format="pdf"):
 
 #====================================================================
 def main():
+    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
 
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
-
-    # Read in COUPLER input file
-    log.info("Read cfg file")
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
+    options, dirs = get_options_dirs_from_argv()
 
     files = glob.glob(os.path.join(dirs["output"], "data", "*_atm.nc"))
     times = [int(f.split("/")[-1].split("_")[0]) for f in files]
@@ -106,7 +95,7 @@ def main():
     print("Snapshots:", plot_times)
 
     # Plot fixed set from above
-    plot_atmosphere( output_dir=dirs["output"], times=plot_times, plot_format=OPTIONS["plot_format"] )
+    plot_atmosphere( output_dir=dirs["output"], times=plot_times, plot_format=options["plot_format"] )
 
 #====================================================================
 

@@ -3,7 +3,6 @@
 # Import utils-specific modules
 from __future__ import annotations
 
-import argparse
 import glob
 import logging
 import os
@@ -61,18 +60,6 @@ def CalculateEqmTemperature(I_0, ASF_sf, A_B):
     '''
     return (I_0 * ASF_sf * (1.0 - A_B) / const_sigma)**(1.0/4.0)
 
-def parse_console_arguments()->dict:
-    '''
-    Handle command line arguments for PROTEUS
-    '''
-    parser = argparse.ArgumentParser(description='PROTEUS command line arguments')
-
-    parser.add_argument('--cfg', type=str,
-                        default="input/default.cfg", help='Path to configuration file')
-    parser.add_argument('--resume', action='store_true', help='Resume simulation from disk')
-
-    args = vars(parser.parse_args())
-    return args
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
 def latex_float(f):
@@ -246,72 +233,6 @@ def ReadHelpfileFromCSV(output_dir:str):
         raise Exception("Cannot find helpfile at '%s'"%fpath)
     return pd.read_csv(fpath, sep=r"\s+")
 
-def ReadInitFile(init_file_passed:str, verbose=False):
-    '''
-    Read configuration file into a dictionary
-    '''
-    log.debug("Reading configuration file")
-
-    # Read in input file as dictionary
-    OPTIONS  = {}
-    if verbose:
-        log.info("Read in init file:" + init_file_passed)
-
-    if os.path.isfile(init_file_passed):
-        init_file = init_file_passed
-    else:
-        raise Exception("Init file provided is not a file or does not exist (%s)" % init_file_passed)
-
-    if verbose:
-        log.info("Settings:")
-
-    # Open file and fill dict
-    with open(init_file) as f:
-
-        # Filter blank lines
-        lines = list(filter(None, (line.rstrip() for line in f)))
-
-        for line in lines:
-
-            # Skip comments
-            if not line.startswith("#"):
-
-                # Skip inline comments
-                line = line.split("#")[0]
-                line = line.split(",")[0]
-
-                if verbose:
-                    log.info(line)
-
-                # Assign key and value
-                (key, val) = line.split("=")
-                key = key.strip()
-                val = val.strip()
-
-                # Some parameters are int
-                if key in [ "solid_stop", "steady_stop", "iter_max", "emit_stop",
-                            "escape_model", "atmosphere_surf_state", "water_cloud",
-                            "plot_iterfreq", "stellar_heating", "mixing_length",
-                            "atmosphere_chemistry", "solvevol_use_params",
-                            "tropopause", "F_atm_bc",
-                            "dt_dynamic", "prevent_warming", "atmosphere_model",
-                            "atmosphere_nlev", "rayleigh",
-                            "shallow_ocean_layer"]:
-                    val = int(val)
-
-                # Some are str
-                elif key in [ 'star_spectrum', 'dir_output', 'plot_format',
-                                'spectral_file' , 'log_level']:
-                    val = str(val)
-
-                # Most are float
-                else:
-                    val = float(val)
-
-                # Set option
-                OPTIONS[key] = val
-
-    return OPTIONS
 
 def ValidateInitFile(dirs:dict, OPTIONS:dict):
     '''

@@ -8,7 +8,7 @@ import pickle as pkl
 
 import numpy as np
 
-from proteus.utils.coupler import ReadInitFile
+from proteus.proteus import read_config
 
 
 def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0, read_const=False):
@@ -124,7 +124,9 @@ def offchem_read_grid(grid_dir):
         grid_years.append(gp_years)
 
         # OPTIONS dictionary
-        gp_opts = dict(ReadInitFile(fol + "/init_coupler.cfg",verbose=False)[0])
+        options = read_config(fol + "/init_coupler.cfg")
+
+        gp_opts = dict(options[0])
         grid_opts.append(gp_opts)
 
         # offchem data

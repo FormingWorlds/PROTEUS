@@ -1,7 +1,20 @@
 from __future__ import annotations
 
-from proteus import __version__
+from itertools import chain
+
+import pytest
+from helpers import PROTEUS_ROOT
+
+from proteus import Proteus
+
+PATHS = chain(
+    (PROTEUS_ROOT / 'input').glob('*.toml'),
+    (PROTEUS_ROOT / 'examples').glob('*/*.toml'),
+)
 
 
-def test_version():
-    assert __version__
+@pytest.mark.parametrize('path', PATHS)
+def test_proteus_init(path):
+    runner = Proteus(config_path=path)
+
+    assert 'star_model' in runner.config
