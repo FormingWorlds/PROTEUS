@@ -23,6 +23,11 @@ jobs:
       matrix:
         python-version: ['3.10']
 
+    env:
+      FWL_DATA: /home/runner/work/fwl_data
+      RAD_DIR: ./SOCRATES
+      SOCRATES: ./SOCRATES  # https://github.com/FormingWorlds/JANUS/issues/51
+
     steps:
       - uses: actions/checkout@v3
         with:
@@ -49,46 +54,44 @@ jobs:
           python -m pip install git+https://github.com/FormingWorlds/MORS
           python -m pip install git+https://github.com/FormingWorlds/JANUS
 
-      # - name: Setup system for SOCRATES
-      #   run: |
-      #     sudo apt-get update
-      #     sudo apt-get install libnetcdff-dev netcdf-bin
+      - name: Setup system for SOCRATES
+        run: |
+          sudo apt-get update
+          sudo apt-get install libnetcdff-dev netcdf-bin
 
-      # - name: Get SOCRATES
-      #   uses: actions/checkout@v4
-      #   with:
-      #     repository: 'FormingWorlds/SOCRATES'
-      #     path: 'SOCRATES'
+      - name: Get SOCRATES
+        uses: actions/checkout@v4
+        with:
+          repository: 'FormingWorlds/SOCRATES'
+          path: 'SOCRATES'
 
-      # - uses: actions/cache@v3
-      #   id: cache-socrates
-      #   with:
-      #     path: |
-      #       SOCRATES/bin
-      #       SOCRATES/sbin
-      #       SOCRATES/set_rad_env
-      #     key: socrates-${{ hashFiles('SOCRATES/version') }}
+      - uses: actions/cache@v3
+        id: cache-socrates
+        with:
+          path: |
+            SOCRATES/bin
+            SOCRATES/sbin
+            SOCRATES/set_rad_env
+          key: socrates-${{ hashFiles('SOCRATES/version') }}
 
-      # - name: Build SOCRATES
-      #   if: steps.cache-socrates.outputs.cache-hit != 'true'
-      #   run: |
-      #     export LD_LIBRARY_PATH=""
-      #     cd SOCRATES
-      #     ./configure
-      #     ./build_code
-      #     cd ..
+      - name: Build SOCRATES
+        if: steps.cache-socrates.outputs.cache-hit != 'true'
+        run: |
+          export LD_LIBRARY_PATH=""
+          cd SOCRATES
+          ./configure
+          ./build_code
+          cd ..
 
       - uses: actions/cache@v3
         id: cache-fwl-data
         with:
-          path: /home/runner/work/fwl_data
+          path: $FWL_DATA
           key: fwl-data-2
 
       - name: Install dependencies
         if: steps.cache-fwl-data.cache-hit != 'true'
         run: |
-          export FWL_DATA="/home/runner/work/fwl_data"
-
           mors download all
           janus download stellar
           janus download spectral
@@ -96,11 +99,7 @@ jobs:
 
       - name: Test with pytest
         run: |
-          export FWL_DATA="/home/runner/work/fwl_data"
-          export RAD_DIR="./SOCRATES"
-          export SOCRATES="./SOCRATES"  # https://github.com/FormingWorlds/JANUS/issues/51
           source PROTEUS.env
-
           coverage run -m pytest
 
       - name: Report coverage
