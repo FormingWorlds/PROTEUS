@@ -8,10 +8,8 @@ You can directly run PROTEUS using the Python command:
 proteus start --config [cfgfile]
 ```
 
-Where `[cfgfile]` is the path to the required configuration file. If
-`--config [cfgfile]` is not provided, then the default configuration
-located at `input/default.toml` will be used. Pass the flag `--resume` in
-order to resume the simulation from the disk.
+Where `[cfgfile]` is the path to the required configuration file.
+Pass the flag `--resume` in to resume the simulation from the disk.
 
 You can also run PROTEUS inside a Screen session using:
 
