@@ -49,6 +49,11 @@ jobs:
           python -m pip install git+https://github.com/FormingWorlds/JANUS
           python -m pip install git+https://github.com/FormingWorlds/MORS
 
+      - name: Setup system for SOCRATES
+        run: |
+          sudo apt-get update
+          sudo apt-get install libnetcdff-dev netcdf-bin
+
       - uses: actions/cache@v3
         id: cache-socrates
         with:
