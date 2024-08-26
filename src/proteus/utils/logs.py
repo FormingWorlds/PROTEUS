@@ -126,5 +126,3 @@ def GetLogfilePath(output_dir:str, j:int):
         raise Exception("Cannot create logfile - too many in output folder already")
 
     return os.path.join(output_dir, "proteus_%02d.log"%j)
-
-

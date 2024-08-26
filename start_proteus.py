@@ -21,6 +21,7 @@ from janus.utils.StellarSpectrum import InsertStellarSpectrum, PrepareStellarSpe
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.atmos_clim.agni import DeallocAtmos
+from proteus.atmos_clim.wrapper_atmosphere import atm
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -240,7 +241,8 @@ def main():
         # Set volatile mass targets f
         solvevol_target = {}
         for e in element_list:
-            if e == 'O': continue
+            if e == 'O':
+                continue
             solvevol_target[e] = hf_row[e+"_kg_total"]
 
     # Download all basic data.
@@ -488,11 +490,11 @@ def main():
             log.info("Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1" % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"]))
             # update elemental mass targets
             for e in element_list:
-                if e=='O': continue
+                if e=='O':
+                    continue
 
                 # store change, for statistics
                 esc_m  = esc_result[e+"_kg_total"]
-                esc_dm = esc_m - solvevol_target[e]
 
                 # update total elemental inventory
                 solvevol_target[e] = esc_m
@@ -501,7 +503,6 @@ def main():
                 solvevol_target[e] = max(0.0, solvevol_target[e])
 
         ############### / ESCAPE
-
 
         ############### OUTGASSING
         PrintHalfSeparator()
@@ -610,7 +611,8 @@ def main():
             arr_p = np.array(hf_all["Phi_global"])
 
             # Time samples
-            t1 = arr_t[lb1]; t2 = arr_t[lb2]
+            t1 = arr_t[lb1]
+            t2 = arr_t[lb2]
 
             # Flux samples
             flx_m = max(abs(arr_f[lb1]),abs(arr_f[lb2]))
