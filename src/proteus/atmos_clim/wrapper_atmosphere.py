@@ -9,15 +9,15 @@ from scipy.integrate import solve_ivp
 
 from proteus.atmos_clim.agni import ActivateEnv, DeallocAtmos, InitAtmos, RunAGNI, UpdateProfile
 from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
-from proteus.atmos_clim.janus import RunJANUS, StructAtm
+from proteus.atmos_clim.janus import RunJANUS, InitStellarSpectrum, InitAtm
 from proteus.utils.constants import AU
-from proteus.utils.helper import PrintHalfSeparator
+from proteus.utils.helper import PrintHalfSeparator, UpdateStatusfile, safe_rm
 
 atm = None
 log = logging.getLogger("PROTEUS")
 
 def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
-                  spfile_path:str, hf_all:pd.DataFrame, hf_row:dict):
+                  update_stellar_spectrum:bool, hf_all:pd.DataFrame, hf_row:dict):
     """Run Atmosphere submodule.
 
     Generic function to run an atmospheric simulation with either JANUS, AGNI or dummy.
@@ -31,7 +31,7 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
             Dictionary containing paths to directories
         loop_counter : dict
             Dictionary containing iteration information
-        spfile_path : str
+        update_stellar_spectrum : bool
             Spectral file path
         hf_all : pd.DataFrame
             Dataframe containing simulation variables (now and historic)
@@ -49,6 +49,16 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
 
     if OPTIONS["atmosphere_model"] == 0:
         # Run JANUS:
+
+        no_atm = bool(atm == None)
+        if no_atm or update_stellar_spectrum:
+            spectral_file_nostar = os.path.join(dirs["fwl"] , OPTIONS["spectral_file"])
+            if not os.path.exists(spectral_file_nostar):
+                UpdateStatusfile(dirs, 20)
+                raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
+            InitStellarSpectrum(dirs, hf_row["wl"], hf_row["fl"], spectral_file_nostar)
+            atm = InitAtm(dirs, OPTIONS)
+
         hf_row["T_surf"] = hf_row["T_magma"]
         atm_output = RunJANUS(atm, dirs, OPTIONS, hf_row, hf_all)
 
@@ -56,9 +66,9 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
         # Run AGNI
 
         # Initialise atmosphere struct
-        no_spfile = not os.path.exists(spfile_path)
-        no_atm    = bool(atm == None)
-        if no_atm or no_spfile:
+        spfile_path = os.path.join(dirs["output"] , "runtime.sf")
+        no_atm = bool(atm == None)
+        if no_atm or update_stellar_spectrum:
             log.debug("Initialise new atmosphere struct")
 
             # first run?
@@ -67,6 +77,9 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
                 # surface temperature guess
                 hf_row["T_surf"] = hf_row["T_magma"]
             else:
+                # Remove old spectral file if it exists
+                safe_rm(spfile_path)
+                safe_rm(spfile_path+"_k")
                 # deallocate old atmosphere
                 DeallocAtmos(atm)
 

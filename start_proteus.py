@@ -16,7 +16,6 @@ from datetime import datetime
 import mors
 import numpy as np
 from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
-from janus.utils.StellarSpectrum import InsertStellarSpectrum, PrepareStellarSpectrum
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
@@ -253,9 +252,6 @@ def main():
         UpdateStatusfile(dirs, 20)
         raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
 
-    # Runtime spectral file path
-    spfile_path = os.path.join(dirs["output"] , "runtime.sf")
-
     # Handle stellar spectrum...
 
     # Store copy of modern spectrum in memory (1 AU)
@@ -356,6 +352,7 @@ def main():
         ############### STELLAR FLUX MANAGEMENT
         PrintHalfSeparator()
         log.info("Stellar flux management...")
+        update_stellar_spectrum = False
 
         # Calculate new instellation and radius
         if (abs( hf_row["Time"] - sinst_prev ) > OPTIONS['sinst_dt_update']) \
@@ -404,10 +401,7 @@ def main():
             or (loop_counter["total"] == 0) ):
 
             sspec_prev = hf_row["Time"]
-
-            # Remove old spectral file if it exists
-            safe_rm(spfile_path)
-            safe_rm(spfile_path+"_k")
+            update_stellar_spectrum = True
 
             log.info("Updating stellar spectrum")
             match OPTIONS['star_model']:
@@ -415,45 +409,22 @@ def main():
                     synthetic = mors.synthesis.CalcScaledSpectrumFromProps(star_struct_modern,
                                                                            star_props_modern,
                                                                            hf_row["age_star"]/1e6)
-                    fl = synthetic.fl   # at 1 AU
-                    wl = synthetic.wl
+                    hf_row["fl"] = synthetic.fl   # at 1 AU
+                    hf_row["wl"] = synthetic.wl
                 case 1:
-                    fl = baraffe.BaraffeSpectrumCalc(hf_row["age_star"],
+                    hf_row["fl"] = baraffe.BaraffeSpectrumCalc(hf_row["age_star"],
                                                      OPTIONS["star_luminosity_modern"],
                                                      modern_fl)
-                    wl = modern_wl
+                    hf_row["wl"] = modern_wl
 
             # Scale fluxes from 1 AU to TOA
-            fl *= (1.0 / OPTIONS["mean_distance"])**2.0
+            hf_row["fl"] *= (1.0 / OPTIONS["mean_distance"])**2.0
 
             # Save spectrum to file
             header = '# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at t_star = %.2e yr'%hf_row["age_star"]
             np.savetxt(os.path.join(dirs["output"],"data","%d.sflux"%hf_row["Time"]),
-                       np.array([wl,fl]).T,
+                       np.array([hf_row["wl"],hf_row["fl"]]).T,
                        header=header,comments='',fmt="%.8e",delimiter='\t')
-
-
-            # Prepare spectral file for JANUS
-            if OPTIONS["atmosphere_model"] == 0:
-                # Generate a new SOCRATES spectral file containing this new spectrum
-                star_spec_src = dirs["output"]+"socrates_star.txt"
-                #    Update stdout
-                old_stdout , old_stderr = sys.stdout , sys.stderr
-                sys.stdout = StreamToLogger(log, logging.INFO)
-                sys.stderr = StreamToLogger(log, logging.ERROR)
-                #    Spectral file stuff
-                PrepareStellarSpectrum(wl,fl,star_spec_src)
-                InsertStellarSpectrum(  spectral_file_nostar,
-                                        star_spec_src,
-                                        dirs["output"]
-                                    )
-                os.remove(star_spec_src)
-                #    Restore stdout
-                sys.stdout , sys.stderr = old_stdout , old_stderr
-
-            # Other cases...
-            #  - AGNI will prepare the file itself
-            #  - dummy_atmosphere does not require this file
 
         else:
             log.info("New spectrum not required at this time")
@@ -553,7 +524,7 @@ def main():
 
 
         ############### ATMOSPHERE SUB-LOOP
-        RunAtmosphere(OPTIONS, dirs, loop_counter, spfile_path, hf_all, hf_row)
+        RunAtmosphere(OPTIONS, dirs, loop_counter, update_stellar_spectrum, hf_all, hf_row)
 
         ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
