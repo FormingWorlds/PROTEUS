@@ -83,6 +83,12 @@ jobs:
           ./build_code
           cd ..
 
+      - name: Get SPIDER
+        uses: actions/checkout@v4
+        with:
+          repository: 'djbower/SPIDER'
+          path: 'SPIDER'
+
       - uses: actions/cache@v3
         id: cache-fwl-data
         with:
