@@ -16,3 +16,5 @@ PATHS = chain(
 @pytest.mark.parametrize('path', PATHS)
 def test_proteus_init(path):
     runner = Proteus(config_path=path)
+
+    assert 'star_model' in runner.config

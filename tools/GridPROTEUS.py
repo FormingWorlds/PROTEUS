@@ -18,7 +18,7 @@ from datetime import datetime
 import numpy as np
 
 PROTEUS_DIR=os.getenv('PROTEUS_DIR')
-if PROTEUS_DIR == None:
+if PROTEUS_DIR is None:
     raise Exception("Environment is not activated or is setup incorrectly")
 
 
@@ -323,12 +323,12 @@ class Pgrid():
                 hdl.write("# gp_index = %d \n" % i)
 
                 # Write lines
-                for l in base_config:
-                    if ('=' not in l):
+                for line in base_config:
+                    if ('=' not in line):
                         continue
 
-                    l = l.split('#')[0]
-                    key = l.split('=')[0].strip()
+                    line = line.split('#')[0]
+                    key = line.split('=')[0].strip()
 
                     # Give priority to pgrid parameters
                     if key in gp.keys():
@@ -336,7 +336,7 @@ class Pgrid():
 
                     # Otherwise, use default value
                     else:
-                        hdl.write(str(l) + "\n")
+                        hdl.write(str(line) + "\n")
 
                 # Ensure data is written to disk
                 hdl.flush()

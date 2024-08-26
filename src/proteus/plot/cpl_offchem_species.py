@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import glob
-import sys
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt

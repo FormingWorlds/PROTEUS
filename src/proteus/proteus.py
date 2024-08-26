@@ -14,6 +14,7 @@ import numpy as np
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.atmos_clim.agni import DeallocAtmos
+from proteus.atmos_clim.wrapper_atmosphere import atm
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -533,7 +534,6 @@ class Proteus:
 
                     # store change, for statistics
                     esc_m = esc_result[e + "_kg_total"]
-                    esc_dm = esc_m - solvevol_target[e]
 
                     # update total elemental inventory
                     solvevol_target[e] = esc_m
