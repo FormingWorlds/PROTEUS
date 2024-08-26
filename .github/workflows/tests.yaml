@@ -44,6 +44,29 @@ jobs:
         run: |
           python -m pip install -e .[develop]
 
+      - name: Install JANUS+MORS
+        run: |
+          python -m pip install git+https://github.com/FormingWorlds/JANUS
+          python -m pip install git+https://github.com/FormingWorlds/MORS
+
+      - uses: actions/cache@v3
+        id: cache-socrates
+        with:
+          path: |
+            SOCRATES/bin
+            SOCRATES/sbin
+            SOCRATES/set_rad_env
+          key: socrates-${{ hashFiles('SOCRATES/version') }}
+
+      - name: Build SOCRATES
+        if: steps.cache-socrates.outputs.cache-hit != 'true'
+        run: |
+          export LD_LIBRARY_PATH=""
+          cd SOCRATES
+          ./configure
+          ./build_code
+          cd ..
+
       - uses: actions/cache@v3
         id: cache-fwl-data
         with:
@@ -55,6 +78,7 @@ jobs:
           source PROTEUS.env
           export FWL_DATA="/home/runner/work/fwl_data"
           export RAD_DIR="./SOCRATES"
+          export SOCRATES="./SOCRATES"  # https://github.com/FormingWorlds/JANUS/issues/51
           coverage run -m pytest
 
       - name: Report coverage
