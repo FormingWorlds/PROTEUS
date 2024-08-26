@@ -5,9 +5,16 @@
 
 from __future__ import annotations
 
+import glob
+import sys
+
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+from cmcrameri import cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from proteus.utils.plot import vol_latex
 from proteus.utils.plot_offchem import offchem_read_year
 
 mpl.use("Agg")

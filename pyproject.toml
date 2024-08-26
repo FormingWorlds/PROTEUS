@@ -99,16 +99,13 @@ extend-exclude = ["*ipynb"]
 
 [tool.ruff.lint]
 select = [
-	# "F",  # Pyflakes
-	# "E",  # pycodestyle (error)
-	# "W",  # pycodestyle (warning)
+	"F",  # Pyflakes
+	"E",  # pycodestyle (error)
+	"W",  # pycodestyle (warning)
     "I",    # isort
-    "F401", # {name} imported but unused
-    "F402", # from __future__ imports must occur at the beginning of the file
-    "F403", # from {name} import * only allowed at module level
-    "F404", # from {name} import * only allowed at module level
-    "E401", # Multiple imports on one line
-    "E402", # Module level import not at top of cell
+]
+ignore = [
+    "E501", # Line too long
 ]
 
 [tool.ruff.lint.isort]

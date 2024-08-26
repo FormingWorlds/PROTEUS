@@ -69,7 +69,7 @@ def offchem_read_year(output_dir, year_int, mx_clip_min=1e-30, mx_clip_max=1.0, 
                     vol_data_str = ln.split("=")[1].replace("'",'"')
                     break
 
-        if vol_data_str == None:
+        if vol_data_str is None:
             raise Exception("Could not parse vulcan cfg file!")
 
         vol_data = json.loads(vol_data_str)
@@ -118,7 +118,8 @@ def offchem_read_grid(grid_dir):
         years_read  = glob.glob(fol + "/offchem/*/")  # years as file paths
 
         # years as integers
-        ytoint = lambda ypath : int(str(ypath).split("/")[-2])
+        def ytoint(ypath):
+            return int(str(ypath).split("/")[-2])
         gp_years = sorted([ ytoint(y) for y in years_read ])
         grid_years.append(gp_years)
 

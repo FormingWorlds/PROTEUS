@@ -78,7 +78,8 @@ def plot_sflux(output_dir, wl_max = 6000.0, plot_format="pdf"):
 
         # Parse data
         time = int(f.split('/')[-1].split('.')[0])
-        if time < 0: continue
+        if time < 0:
+            continue
 
         wave = X[0]
         flux = X[1]
@@ -125,11 +126,11 @@ def plot_sflux(output_dir, wl_max = 6000.0, plot_format="pdf"):
     for i in range(N):
         if justone:
             c = 'tab:blue'
-            l = "%.2e yr"%(time_t[i])
+            label = "%.2e yr"%(time_t[i])
         else:
             c = sm.to_rgba(time_t[i])
-            l = None
-        ax.plot(wave_t[i],flux_t[i],color=c,lw=0.7,alpha=0.6, label=l)
+            label = None
+        ax.plot(wave_t[i],flux_t[i],color=c,lw=0.7,alpha=0.6, label=label)
 
     # Plot current spectrum (use the copy made in the output directory)
     X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T

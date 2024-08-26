@@ -58,7 +58,7 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
 
         # Initialise atmosphere struct
         no_spfile = not os.path.exists(spfile_path)
-        no_atm    = bool(atm == None)
+        no_atm    = bool(atm is None)
         if no_atm or no_spfile:
             log.debug("Initialise new atmosphere struct")
 

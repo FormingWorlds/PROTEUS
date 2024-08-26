@@ -8,7 +8,10 @@ from __future__ import annotations
 import glob
 
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
 
+from proteus.utils.plot import dict_colors, vol_latex
 from proteus.utils.plot_offchem import offchem_read_year
 
 mpl.use("Agg")
@@ -35,7 +38,7 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
             Include initial mixing ratios for each VULCAN run in plot?
     """
 
-    if species == None:
+    if species is None:
         species = []
         for k in year_dict.keys():
             if "_" not in k:
@@ -80,8 +83,8 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
         # VULCAN result
         key = str("mx_"+s)
         if key in year_dict.keys():
-            l = ax1.plot(year_dict[key],year_dict["pressure"],label=pretty,ls=ls,lw=lw,color=color)[0]
-            color = l.get_color()
+            line = ax1.plot(year_dict[key],year_dict["pressure"],label=pretty,ls=ls,lw=lw,color=color)[0]
+            color = line.get_color()
             min_mix = min(min_mix,np.amin(year_dict[key]))
 
         # JANUS result

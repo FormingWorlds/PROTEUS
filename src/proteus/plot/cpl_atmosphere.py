@@ -12,6 +12,7 @@ import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import LogLocator
 
+from proteus.utils.helper import find_nearest
 from proteus.utils.plot import latex_float
 
 log = logging.getLogger("PROTEUS")

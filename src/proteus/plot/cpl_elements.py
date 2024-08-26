@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from proteus.utils.constants import element_list
+
 log = logging.getLogger("PROTEUS")
 
 def plot_elements( output_dir, plot_format="pdf", t0=100.0):
@@ -23,7 +25,6 @@ def plot_elements( output_dir, plot_format="pdf", t0=100.0):
 
     # make plot
     lw = 1.2
-    al = 0.5
     scale = 1.1
     fig,ax = plt.subplots(1,1, figsize=(7*scale,4*scale))
 
@@ -31,13 +32,9 @@ def plot_elements( output_dir, plot_format="pdf", t0=100.0):
     total = np.zeros(len(time))
     for e in element_list:
         y = hf_all[e+"_kg_total"]
-        l = ax.plot(time, y, lw=lw, ls='solid', label="Total "+e)[0]
+        ax.plot(time, y, lw=lw, ls='solid', label="Total "+e)[0]
 
         total += y
-
-        # c = l.get_color()
-        # ax.plot(time, hf_all[e+"_kg_liquid"], lw=lw, color=c, alpha=al, ls='dashed')  # in magma ocean
-        # ax.plot(time, hf_all[e+"_kg_atm"],    lw=lw, color=c, alpha=al, ls='dotted')  # in atmosphere
 
     ax.plot(time, total,           lw=lw, ls='solid',  label='Total',  c='k')
     ax.plot(time, hf_all["M_atm"], lw=lw, ls='dotted', label='Atmos.', c='k')

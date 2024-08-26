@@ -21,10 +21,12 @@ def PrintHalfSeparator():
     pass
 
 # String sorting inspired by natsorted
-def natural_sort(l):
-    convert = lambda text: int(text) if text.isdigit() else text.lower()
-    alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key) ]
-    return sorted(l, key = alphanum_key)
+def natural_sort(lst):
+    def convert(text):
+        return int(text) if text.isdigit() else text.lower()
+    def alphanum_key(key):
+        return [convert(c) for c in re.split("([0-9]+)", key)]
+    return sorted(lst, key = alphanum_key)
 
 # Create a temporary folder
 def create_tmp_folder():
@@ -65,22 +67,36 @@ def CommentFromStatus(status:int):
     desc = ""
     match status:
         # Running cases
-        case 0:  desc = "Started"
-        case 1:  desc = "Running"
+        case 0:
+            desc = "Started"
+        case 1:
+            desc = "Running"
         # Successful cases
-        case 10: desc = "Completed (solidified)"
-        case 11: desc = "Completed (steady-state)"
-        case 12: desc = "Completed (maximum iterations)"
-        case 13: desc = "Completed (target time)"
-        case 14: desc = "Completed (net flux is small)"
-        case 15: desc = "Completed (atmosphere escaped)"
+        case 10:
+            desc = "Completed (solidified)"
+        case 11:
+            desc = "Completed (steady-state)"
+        case 12:
+            desc = "Completed (maximum iterations)"
+        case 13:
+            desc = "Completed (target time)"
+        case 14:
+            desc = "Completed (net flux is small)"
+        case 15:
+            desc = "Completed (atmosphere escaped)"
         # Error cases
-        case 20: desc = "Error (generic case, or configuration issue)"
-        case 21: desc = "Error (Interior model)"
-        case 22: desc = "Error (Atmosphere model)"
-        case 23: desc = "Error (Stellar evolution model)"
-        case 24: desc = "Error (Kinetics model)"
-        case 25: desc = "Error (died, or exit requested by user)"
+        case 20:
+            desc = "Error (generic case, or configuration issue)"
+        case 21:
+            desc = "Error (Interior model)"
+        case 22:
+            desc = "Error (Atmosphere model)"
+        case 23:
+            desc = "Error (Stellar evolution model)"
+        case 24:
+            desc = "Error (Kinetics model)"
+        case 25:
+            desc = "Error (died, or exit requested by user)"
         # Default case
         case _:
             desc = "UNHANDLED STATUS (%d)" % status
@@ -145,7 +161,7 @@ def CleanDir(directory, keep_stdlog=False):
                 shutil.rmtree(p)
             else:
                 # Remove all files EXCEPT logfiles in topmost dir
-                if not (".log" in p):
+                if ".log" not in p:
                     os.remove(p)
     else:
         os.makedirs(directory)
