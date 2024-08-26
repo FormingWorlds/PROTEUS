@@ -86,10 +86,10 @@ jobs:
       - uses: actions/cache@v3
         id: cache-fwl-data
         with:
-          path: $FWL_DATA
+          path: ${{ env.FWL_DATA }}
           key: fwl-data-2
 
-      - name: Install dependencies
+      - name: Pre-download fwl data
         if: steps.cache-fwl-data.cache-hit != 'true'
         run: |
           mors download all
