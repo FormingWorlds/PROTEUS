@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -15,7 +14,7 @@ from proteus.utils.plot import dict_colors
 log = logging.getLogger("PROTEUS")
 
 # Plotting fluxes
-def plot_fluxes_global(output_dir, OPTIONS, t0=100.0):
+def plot_fluxes_global(output_dir, options, t0=100.0):
 
     log.info("Plot global fluxes")
 
@@ -26,7 +25,7 @@ def plot_fluxes_global(output_dir, OPTIONS, t0=100.0):
     time = np.array(hf_all["Time"] )
 
     F_net = np.array(hf_all["F_atm"])
-    F_asf = np.array(hf_all["F_ins"]) * OPTIONS["asf_scalefactor"] * (1.0 - OPTIONS["albedo_pl"]) * np.cos(OPTIONS["zenith_angle"] * np.pi/180.0)
+    F_asf = np.array(hf_all["F_ins"]) * options["asf_scalefactor"] * (1.0 - options["albedo_pl"]) * np.cos(options["zenith_angle"] * np.pi/180.0)
     F_olr = np.array(hf_all["F_olr"])
     F_upw = np.array(hf_all["F_olr"]) + np.array(hf_all["F_sct"])
     F_int = np.array(hf_all["F_int"])
@@ -65,21 +64,12 @@ def plot_fluxes_global(output_dir, OPTIONS, t0=100.0):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_global.%s"%OPTIONS["plot_format"],
+    fig.savefig(output_dir+"/plot_fluxes_global.%s"%options["plot_format"],
                 bbox_inches='tight', dpi=200)
 
 if __name__ == '__main__':
+    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
 
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
+    options, dirs = get_options_dirs_from_argv()
 
-    # Read in COUPLER input file
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
-
-    plot_fluxes_global(dirs["output"], OPTIONS)
+    plot_fluxes_global(dirs["output"], options=options)

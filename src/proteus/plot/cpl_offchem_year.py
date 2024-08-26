@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import glob
-import sys
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -106,25 +105,15 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
 if __name__ == '__main__':
     print("Plotting offline chemistry for each year (mixing ratios vs pressure)...")
 
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
+    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
 
+    options, dirs = get_options_dirs_from_argv()
 
     plot_janus = True
-
-
-    # Read in COUPLER input file
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
 
     # Species to make plots for
     species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4","HCN", "NH3", "N2", "NO"]
     # species = None
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
 
     # Load data
     ls = glob.glob(dirs["output"]+"offchem/*/output.vul")

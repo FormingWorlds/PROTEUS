@@ -13,6 +13,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import time
 from datetime import datetime
 
@@ -21,11 +22,13 @@ import numpy as np
 import numpy.random as nrand
 import pandas as pd
 
+from proteus import Proteus
 from proteus.plot.cpl_offchem_species import plot_offchem_species
 from proteus.plot.cpl_offchem_time import plot_offchem_time
 from proteus.plot.cpl_offchem_year import plot_offchem_year
-from proteus.utils.constants import AU_cm, R_sun_cm
-from proteus.utils.coupler import ReadInitFile, SetDirectories
+from proteus.utils.constants import AU_cm, R_sun_cm, element_list
+from proteus.utils.coupler import SetDirectories
+from proteus.utils.helper import find_nearest, mol_to_ele
 from proteus.utils.plot_offchem import offchem_read_year
 
 
@@ -154,7 +157,7 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
     p_bot   = np.max(pl)
     p_top   = np.min(pl)
 
-    v_mx    = dict()      # Mixing ratios
+    v_mx    = {}      # Mixing ratios
     for i,g in enumerate(gases):
         val = float(x_gas[g][-1])
         v_mx[g] = val
@@ -338,7 +341,8 @@ def parent(cfgfile, samples, threads, elements, network, mkfuncs, runtime_sleep,
     """
 
     # Read in PROTEUS config file
-    OPTIONS, _ = ReadInitFile( cfgfile )
+    handler = Proteus(cfgfile)
+    OPTIONS = handler.config
 
     # Set directories
     dirs = SetDirectories(OPTIONS)
