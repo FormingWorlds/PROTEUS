@@ -302,7 +302,7 @@ class FigureData( object ):
         # Set main font properties
         font_d = {
             'size': 10.0,
-            'family': ['Arial','sans-serif']
+            'family': ['sans-serif']
             }
 
         # fonts  = fm.findSystemFonts(fontpaths=None, fontext='ttf')
