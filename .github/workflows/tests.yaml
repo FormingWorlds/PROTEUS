@@ -91,10 +91,10 @@ jobs:
           export RAD_DIR="./SOCRATES"
           export SOCRATES="./SOCRATES"  # https://github.com/FormingWorlds/JANUS/issues/51
 
-          mors download all
-          janus download stellar
-          janus download spectral
-          janus download spectral -n Frostflow -b 48
+          python -m mors download all
+          python -m janus download stellar
+          python -m janus download spectral
+          python -m janus download spectral -n Frostflow -b 48
 
           ls $FWL_DATA
 
