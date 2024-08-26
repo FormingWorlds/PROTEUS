@@ -41,7 +41,7 @@ def InitStellarSpectrum(dirs:dict, wl:list, fl:list, spectral_file_nostar):
 
     return
 
-def InitAtm(dirs:dict, OPTIONS:dict)
+def InitAtm(dirs:dict, OPTIONS:dict):
 
     from janus.utils import ReadBandEdges, atmos
 
@@ -93,7 +93,7 @@ def InitAtm(dirs:dict, OPTIONS:dict)
 
     return atm
 
-def UpdateStateAtm(atm, hf_row:dict, trppT:int)
+def UpdateStateAtm(atm, hf_row:dict, trppT:int):
     """UpdateStateAtm
 
     Update the atm object state with current iteration variables
@@ -106,14 +106,14 @@ def UpdateStateAtm(atm, hf_row:dict, trppT:int)
             Dictionary containing simulation variables for current iteration
     """
 
-    atm.setSurfaceTemperature(atm, hf_row["T_surf"])
-    atm.setSurfacePressure(atm, hf_row["P_surf"]*1e5)
-    atm.setPlanetProperties(atm, hf_row["R_planet"], hf_row["M_planet"])
+    atm.setSurfaceTemperature(hf_row["T_surf"])
+    atm.setSurfacePressure(hf_row["P_surf"]*1e5)
+    atm.setPlanetProperties(hf_row["R_planet"], hf_row["M_planet"])
 
     vol_mixing = {}
     for vol in volatile_species:
         vol_mixing[vol] = hf_row[vol+"_vmr"]
-    atm.setVolatiles(atm, vol_mixing)
+    atm.setVolatiles(vol_mixing)
 
     atm.instellation = hf_row["F_ins"]
     atm.tmp_magma = hf_row["T_magma"]
