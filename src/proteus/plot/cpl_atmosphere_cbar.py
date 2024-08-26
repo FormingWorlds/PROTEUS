@@ -4,7 +4,6 @@ from __future__ import annotations
 import glob
 import logging
 import os
-import sys
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -120,22 +119,12 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
 
 #====================================================================
 def main():
+    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
 
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
-
-    # Read in COUPLER input file
-    log.info("Read cfg file")
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
+    options, dirs = get_options_dirs_from_argv()
 
     # Plot fixed set from above
-    plot_atmosphere_cbar( output_dir=dirs["output"], plot_format=OPTIONS["plot_format"])
+    plot_atmosphere_cbar( output_dir=dirs["output"], plot_format=options["plot_format"])
 
 #====================================================================
 

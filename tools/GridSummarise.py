@@ -15,7 +15,7 @@ from proteus.utils.helper import CommentFromStatus
 def summarise(pgrid_dir:str, opts:list):
     if (not os.path.exists(pgrid_dir)) or (not os.path.isdir(pgrid_dir)):
         raise Exception("Invalid path '%s'" % pgrid_dir)
-    
+
 
     # Find folders
     pgrid_dir = os.path.abspath(pgrid_dir)
@@ -35,13 +35,13 @@ def summarise(pgrid_dir:str, opts:list):
             lines = hdl.readlines()
         status[i] = int(lines[0])
         cmmnts[i] = str(lines[1])
-    
+
     # Statistics
     print("Statistics:")
     for i in range(-1,100):
         count = np.count_nonzero(status == i)
         if count == 0:
-            continue 
+            continue
         if i == -1:
             comment = "Uncategorised"
         else:
@@ -99,7 +99,7 @@ def summarise(pgrid_dir:str, opts:list):
             print("Invalid status category '%s'" % o)
 
 def print_help():
-   
+
     print("Command usage: GridSummarise.py [fold] (opt1) (opt2) (opt3) ...")
     print("    [fold] = path to Pgrid output folder, required")
     print("    [optN] = status categories to print, optional")
@@ -116,12 +116,12 @@ if __name__ == "__main__":
     if  (len(sys.argv) == 2) and (sys.argv[1].strip().lower() == "help"):
         print_help()
         exit(0)
-    
-    # Grid folder 
+
+    # Grid folder
     fold = sys.argv[1]
 
     # Extra requested status categories
-    opts = []  
+    opts = []
     if len(sys.argv) > 2:
         for o in sys.argv[2:]:
             opts.append(str(o))
