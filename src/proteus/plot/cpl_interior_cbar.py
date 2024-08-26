@@ -42,12 +42,21 @@ def plot_interior_cbar(output_dir, plot_format="pdf"):
 
     # Initialise plot
     fig,(ax1,ax2,ax3,ax4) = plt.subplots(1,4, sharey=True, figsize=(10,5))
+
     ax1.set_ylabel("Interior pressure, $P$ [GPa]")
     ax1.invert_yaxis()
-    ax1.set_xlabel("$T$ [K]"); ax1.set_title("(a) Temperature")
-    ax2.set_xlabel(r"$\phi$"); ax2.set_title("(b) Melt fraction")
-    ax3.set_xlabel(r"$\eta$ [Pa s]"); ax3.set_title("(c) Viscosity"); ax3.set_xscale("log")
-    ax4.set_xlabel("$S$ [J K$^{-1}$ kg$^{-1}$]"); ax4.set_title("(d) Specific entropy")
+    ax1.set_xlabel("$T$ [K]")
+    ax1.set_title("(a) Temperature")
+
+    ax2.set_xlabel(r"$\phi$")
+    ax2.set_title("(b) Melt fraction")
+
+    ax3.set_xlabel(r"$\eta$ [Pa s]")
+    ax3.set_title("(c) Viscosity")
+    ax3.set_xscale("log")
+
+    ax4.set_xlabel("$S$ [J K$^{-1}$ kg$^{-1}$]")
+    ax4.set_title("(d) Specific entropy")
 
     # Colour mapping
     norm = mpl.colors.Normalize(vmin=1.0, vmax=np.amax(output_times))
@@ -68,12 +77,6 @@ def plot_interior_cbar(output_dir, plot_format="pdf"):
         # Process data
         xx_pres = myjson_o.get_dict_values(['data','pressure_b']) * 1.0E-9
         xx_pres_s = myjson_o.get_dict_values(['data','pressure_s']) * 1.0E-9
-
-        xx_radius = myjson_o.get_dict_values(['data','radius_b']) * 1.0E-3
-        xx_depth = xx_radius[0] - xx_radius
-
-        xx_radius_s = myjson_o.get_dict_values(['data','radius_s']) * 1.0E-3
-        xx_depth_s = xx_radius_s[0] - xx_radius_s
 
         MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' )
         MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' )

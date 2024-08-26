@@ -255,14 +255,15 @@ def ReadInitFile(init_file_passed:str, verbose=False):
     # Read in input file as dictionary
     OPTIONS  = {}
     if verbose:
-        log.info("Read in init file:" + init_file)
+        log.info("Read in init file:" + init_file_passed)
 
     if os.path.isfile(init_file_passed):
         init_file = init_file_passed
     else:
         raise Exception("Init file provided is not a file or does not exist (%s)" % init_file_passed)
 
-    if verbose: log.info("Settings:")
+    if verbose:
+        log.info("Settings:")
 
     # Open file and fill dict
     with open(init_file) as f:
@@ -279,7 +280,8 @@ def ReadInitFile(init_file_passed:str, verbose=False):
                 line = line.split("#")[0]
                 line = line.split(",")[0]
 
-                if verbose: log.info(line)
+                if verbose:
+                    log.info(line)
 
                 # Assign key and value
                 (key, val) = line.split("=")
@@ -458,7 +460,7 @@ def SetDirectories(OPTIONS: dict):
             Dictionary of paths to important directories
     """
 
-    if os.environ.get('PROTEUS_DIR') == None:
+    if os.environ.get('PROTEUS_DIR') is None:
         raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
     proteus_dir = os.path.abspath(os.getenv('PROTEUS_DIR'))
     proteus_src = os.path.join(proteus_dir,"src/proteus")
@@ -476,7 +478,7 @@ def SetDirectories(OPTIONS: dict):
             }
 
     # FWL data folder
-    if os.environ.get('FWL_DATA') == None:
+    if os.environ.get('FWL_DATA') is None:
         UpdateStatusfile(dirs, 20)
         raise Exception("The FWL_DATA environment variable where spectral"
                         "and evolution tracks data will be downloaded needs to be set up!"
@@ -489,7 +491,7 @@ def SetDirectories(OPTIONS: dict):
     if OPTIONS["atmosphere_model"] in [0,1]:
         # needed for atmosphere models 0 and 1
 
-        if os.environ.get('RAD_DIR') == None:
+        if os.environ.get('RAD_DIR') is None:
             UpdateStatusfile(dirs, 20)
             raise Exception("The RAD_DIR environment variable has not been set")
         else:

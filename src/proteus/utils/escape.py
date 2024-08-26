@@ -43,14 +43,16 @@ def RunDummyEsc(hf_row:dict, dt:float, phi_bulk:float):
     # calculate total mass of volatiles (except oxygen, which is set by fO2)
     M_vols = 0.0
     for e in element_list:
-        if e=='O': continue
+        if e=='O':
+            continue
         M_vols += hf_row[e+"_kg_total"]
 
 
     # for each elem, calculate new total inventory while
     # maintaining a constant mass mixing ratio
     for e in element_list:
-        if e=='O': continue
+        if e=='O':
+            continue
 
         # current elemental mass ratio in total
         emr = hf_row[e+"_kg_total"]/M_vols
@@ -104,11 +106,11 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
     ## Step 1 : Load stellar evolution track + compute EL escape
     log.info("Step 1 : Load stellar evolution track + compute EL escape ")
 
-    # Get the age of the star at time t to compute XUV flux at that time 
-    age_star        = hf_row["age_star"]                                                # [years] 
+    # Get the age of the star at time t to compute XUV flux at that time
+    age_star        = hf_row["age_star"]                                                # [years]
 
     if (Fxuv_star_SI_full is None):
-        star                = mors.Star(Mstar=M_star, Age=age_star/1e6, Omega=Omega_star) 
+        star                = mors.Star(Mstar=M_star, Age=age_star/1e6, Omega=Omega_star)
         age_star_mors       = star.Tracks['Age']
         Fxuv_star_SI_full   = ((star.Tracks['Lx'] + star.Tracks['Leuv']) / (4 * np.pi * (semi_major_axis * 1e2)**2)) * ergcm2stoWm2
 
@@ -129,14 +131,16 @@ def RunZEPHYRUS(hf_row, dt, M_star,Omega_star,tidal_contribution, semi_major_axi
     # calculate total mass of volatiles (except oxygen, which is set by fO2)
     M_vols = 0.0
     for e in element_list:
-        if e=='O': continue
+        if e=='O':
+            continue
         M_vols += hf_row[e+"_kg_total"]
 
     # for each elem, calculate new total inventory while
     # maintaining a constant mass mixing ratio
 
     for e in element_list:
-        if e=='O': continue
+        if e=='O':
+            continue
 
         # current elemental mass ratio in total
         emr = hf_row[e+"_kg_total"]/M_vols

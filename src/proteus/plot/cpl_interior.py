@@ -61,7 +61,6 @@ def plot_interior( output_dir, times, plot_format="pdf"):
     xx_depth = xx_radius[0] - xx_radius
     xx_radius_s = myjson_o.get_dict_values(['data','radius_s'])
     xx_radius_s *= 1.0E-3
-    xx_depth_s = xx_radius_s[0] - xx_radius_s
 
     handle_l = [] # handles for legend
 
@@ -78,7 +77,6 @@ def plot_interior( output_dir, times, plot_format="pdf"):
         MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' )
         MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' )
         MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' )
-        MIX_s = myjson_o.get_mixed_phase_boolean_array( 'staggered' )
 
         # label = fig_o.get_legend_label( time )
         label = latex_float(time)+" yr"
@@ -104,10 +102,7 @@ def plot_interior( output_dir, times, plot_format="pdf"):
         # plot staggered, since this is where entropy is defined
         # cell-wise and we can easily see the CMB boundary condition
         yy = myjson_o.get_dict_values(['data','S_s'])
-        # yy = myjson_o.get_dict_values(['data','S_b'])
         ax3.plot( yy, xx_pres_s, '-', color=color, lw=1.5 )
-        # print(yy, xx_pres)
-        # ax3.plot( yy*MIX_s, xx_pres_s*MIX_s, '-', color=color, label=label )
 
         # legend
         handle_l.append( handle )

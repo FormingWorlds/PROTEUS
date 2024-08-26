@@ -76,7 +76,8 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], modern_age:float=-1, plot_f
 
         # Parse data
         time = int(f.split('/')[-1].split('.')[0])
-        if (time < 0): continue
+        if (time < 0):
+            continue
         wave = X[0]
         flux = X[1]
 

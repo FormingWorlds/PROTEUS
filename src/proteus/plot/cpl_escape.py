@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import M_earth
+from proteus.utils.constants import M_earth, s2yr
 
 log = logging.getLogger("PROTEUS")
 
@@ -26,7 +26,6 @@ def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
 
     # make plot
     lw = 1.2
-    al = 0.5
     scale = 1.1
     fig,ax1 = plt.subplots(1,1, figsize=(7*scale,4*scale))
 
@@ -38,8 +37,7 @@ def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
         escape_model_label = 'Dummy escape'
 
     y = hf_all['esc_rate_total']
-    l = ax1.plot(time, y, lw=lw, ls='solid', label=f'{escape_model_label}')
-
+    ax1.plot(time, y, lw=lw, ls='solid', label=f'{escape_model_label}')
 
     # decorate
     ax1.set_ylabel(r'Mass loss rate [kg $s^{-1}$]')
