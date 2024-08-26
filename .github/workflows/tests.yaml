@@ -46,8 +46,8 @@ jobs:
 
       - name: Install JANUS+MORS
         run: |
-          python -m pip install git+https://github.com/FormingWorlds/JANUS
           python -m pip install git+https://github.com/FormingWorlds/MORS
+          python -m pip install git+https://github.com/FormingWorlds/JANUS
 
       # - name: Setup system for SOCRATES
       #   run: |
@@ -78,14 +78,11 @@ jobs:
       #     ./build_code
       #     cd ..
 
-      - name: Sanity check
-        run: which mors
-
       - uses: actions/cache@v3
         id: cache-fwl-data
         with:
           path: /home/runner/work/fwl_data
-          key: fwl-data-1
+          key: fwl-data-2
 
       - name: Install dependencies
         if: steps.cache-fwl-data.cache-hit != 'true'
