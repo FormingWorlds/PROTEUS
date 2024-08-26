@@ -100,7 +100,7 @@ jobs:
         # if: steps.cache-spider.outputs.cache-hit != 'true'
         run: |
           cd SPIDER
-          export PETSC_DIR="/usr/lib/petscdir"
+          export PETSC_DIR="/usr/lib/petsc"
           export PETSC_ARCH="arch-linux-c-opt"
           make -j
           cd ..
