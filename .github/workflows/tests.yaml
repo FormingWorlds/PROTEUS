@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          submodules: 'true'
+          submodules: 'false'
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
@@ -53,6 +53,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install libnetcdff-dev netcdf-bin
+
+      - name: Get SOCRATES
+        uses: actions/checkout@v4
+        with:
+          repository: 'FormingWorlds/SOCRATES'
+          path: 'SOCRATES'
 
       - uses: actions/cache@v3
         id: cache-socrates
