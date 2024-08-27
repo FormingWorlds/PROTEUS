@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
+import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
+
+if os.getenv('CI'):
+    pytest.skip(reason='No way of currently testing this on the CI.')
 
 
 def test_dummy_run():

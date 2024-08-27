@@ -54,56 +54,33 @@ jobs:
           python -m pip install git+https://github.com/FormingWorlds/MORS
           python -m pip install git+https://github.com/FormingWorlds/JANUS
 
-      - name: Setup system for SOCRATES/SPIDER
+      - name: Setup system for SOCRATES
         run: |
           sudo apt-get update
-          sudo apt-get install libnetcdff-dev netcdf-bin petsc-dev
+          sudo apt-get install libnetcdff-dev netcdf-bin
 
-      # - name: Get SOCRATES
-      #   uses: actions/checkout@v4
-      #   with:
-      #     repository: 'FormingWorlds/SOCRATES'
-      #     path: 'SOCRATES'
-
-      # - uses: actions/cache@v3
-      #   id: cache-socrates
-      #   with:
-      #     path: |
-      #       SOCRATES/bin
-      #       SOCRATES/sbin
-      #       SOCRATES/set_rad_env
-      #     key: socrates-${{ hashFiles('SOCRATES/version') }}
-
-      # - name: Build SOCRATES
-      #   if: steps.cache-socrates.outputs.cache-hit != 'true'
-      #   run: |
-      #     export LD_LIBRARY_PATH=""
-      #     cd SOCRATES
-      #     ./configure
-      #     ./build_code
-      #     cd ..
-
-      - name: Get SPIDER
+      - name: Get SOCRATES
         uses: actions/checkout@v4
         with:
-          repository: 'djbower/SPIDER'
-          path: 'SPIDER'
+          repository: 'FormingWorlds/SOCRATES'
+          path: 'SOCRATES'
 
-      # - uses: actions/cache@v3
-      #   id: cache-spider
-      #   with:
-      #     path: |
-      #       ...
-      #     key: spider-${{ hashFiles('SPIDER/version') }}
+      - uses: actions/cache@v3
+        id: cache-socrates
+        with:
+          path: |
+            SOCRATES/bin
+            SOCRATES/sbin
+            SOCRATES/set_rad_env
+          key: socrates-${{ hashFiles('SOCRATES/version') }}
 
-      - name: Build SPIDER
-        # if: steps.cache-spider.outputs.cache-hit != 'true'
+      - name: Build SOCRATES
+        if: steps.cache-socrates.outputs.cache-hit != 'true'
         run: |
-          cd SPIDER
-          sed -i 's/clean ::/clean :/g' Makefile
-          export PETSC_DIR="/usr/lib/petsc"
-          export PETSC_ARCH="arch-linux-c-opt"
-          make -j
+          export LD_LIBRARY_PATH=""
+          cd SOCRATES
+          ./configure
+          ./build_code
           cd ..
 
       - uses: actions/cache@v3
