@@ -13,6 +13,7 @@ config_option = click.option(
     'config_path',
     type=click.Path(exists=True, dir_okay=False, path_type=Path, resolve_path=True),
     help='Path to config file',
+    required=True,
 )
 
 
@@ -29,25 +30,32 @@ def version():
     print(__version__)
 
 
+def list_plots(ctx, param, value):
+    if not value or ctx.resilient_parsing:
+        return
+
+    from .plot import plot_dispatch
+
+    click.echo('Available plots:')
+    click.echo(' '.join(plot_dispatch))
+    sys.exit()
+
+
 @click.command()
 @click.argument('plots', nargs=-1)
 @config_option
 @click.option(
     '-l',
     '--list',
-    'list_plots',
     is_flag=True,
     default=False,
     help='List available plots and exit',
+    is_eager=True,
+    expose_value=False,
+    callback=list_plots,
 )
-def plot(plots: str, config_path: Path, list_plots: bool):
+def plot(plots: str, config_path: Path):
     from .plot import plot_dispatch
-
-    if list_plots:
-        click.echo('Available plots:')
-        click.echo(' '.join(plot_dispatch))
-        sys.exit(0)
-
     click.echo(f'Config: {config_path}')
 
     handler = Proteus(config_path=config_path)
