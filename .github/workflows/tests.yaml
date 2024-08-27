@@ -100,6 +100,7 @@ jobs:
         # if: steps.cache-spider.outputs.cache-hit != 'true'
         run: |
           cd SPIDER
+          sed -i 's/clean ::/clean :/g' Makefile
           export PETSC_DIR="/usr/lib/petsc"
           export PETSC_ARCH="arch-linux-c-opt"
           make -j
