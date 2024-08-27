@@ -15,6 +15,7 @@ import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.atmos_clim.agni import DeallocAtmos
 from proteus.atmos_clim.wrapper_atmosphere import atm
+from proteus.config import read_config
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -59,19 +60,6 @@ from proteus.utils.surface_gases import (
     get_target_from_params,
     get_target_from_pressures,
 )
-
-if sys.version_info < (3, 11):
-    import toml
-
-    read_config = toml.load
-else:
-    import tomllib
-
-    def read_config(path: Path | str) -> dict:
-        """Read config file from path"""
-        with open(path, 'rb') as f:
-            config = tomllib.load(f)
-        return config
 
 
 class Proteus:
