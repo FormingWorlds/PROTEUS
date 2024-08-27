@@ -12,12 +12,3 @@ def get_handler_from_argv(default: str = 'init_coupler.toml') -> Proteus:
     handler = Proteus(config_path=config_path)
 
     return handler
-
-
-def get_options_dirs_from_argv(default: str = 'init_coupler.toml') -> tuple[dict, dict]:
-    """Attempts to get config from argv, otherwise defaults to default
-
-    Returns config dict and directories
-    """
-    handler = get_handler_from_argv()
-    return handler.config, handler.directories
