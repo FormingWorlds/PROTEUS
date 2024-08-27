@@ -9,7 +9,7 @@ from helpers import PROTEUS_ROOT
 from proteus import Proteus
 
 if os.getenv('CI'):
-    pytest.skip(reason='No way of currently testing this on the CI.')
+    pytest.skip(reason='No way of currently testing this on the CI.', allow_module_level=True)
 
 
 def test_dummy_run():
