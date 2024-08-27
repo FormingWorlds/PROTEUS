@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("PROTEUS")
 
-def plot_global(*, output_dir: str , options: dict, logt: bool=True, tmin: float=1e1):
+def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e1):
 
     log.info("Plot global")
 

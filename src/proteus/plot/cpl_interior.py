@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("PROTEUS")
 
 
-def plot_interior(*, output_dir: str, times: list | np.ndarray, plot_format: str="pdf"):
+def plot_interior(output_dir: str, times: list | np.ndarray, plot_format: str="pdf"):
 
     log.info("Plot interior")
 
