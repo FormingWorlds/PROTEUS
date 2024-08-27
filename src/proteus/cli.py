@@ -18,16 +18,9 @@ config_option = click.option(
 
 
 @click.group()
+@click.version_option(package_name='fwl-proteus')
 def cli():
     pass
-
-
-@click.command()
-def version():
-    """Print version and exit"""
-    from . import __version__
-
-    print(__version__)
 
 
 def list_plots(ctx, param, value):
@@ -55,7 +48,9 @@ def list_plots(ctx, param, value):
     callback=list_plots,
 )
 def plot(plots: str, config_path: Path):
+    """(Re-)generate plots from completed run"""
     from .plot import plot_dispatch
+
     click.echo(f'Config: {config_path}')
 
     handler = Proteus(config_path=config_path)
@@ -83,7 +78,6 @@ def start(config_path: Path, resume: bool):
 
 cli.add_command(plot)
 cli.add_command(start)
-cli.add_command(version)
 
 
 if __name__ == '__main__':
