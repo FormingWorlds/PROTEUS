@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
 import glob
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import netCDF4 as nc
@@ -12,9 +11,12 @@ import numpy as np
 
 from proteus.utils.helper import natural_sort
 
+if TYPE_CHECKING:
+    from proteus import Proteus
+
 log = logging.getLogger("PROTEUS")
 
-# Plotting fluxes
+
 def plot_fluxes_atmosphere(output_dir, plot_format="pdf"):
 
     log.info("Plot atmosphere fluxes")
@@ -64,9 +66,15 @@ def plot_fluxes_atmosphere(output_dir, plot_format="pdf"):
     fig.savefig(output_dir+"/plot_fluxes_atmosphere.%s"%plot_format,
                 bbox_inches='tight', dpi=200)
 
+
+def plot_fluxes_atmosphere_entry(handler: Proteus):
+    plot_fluxes_atmosphere(
+        output_dir=handler.directories["output"],
+        plot_format=handler.config["plot_format"],
+    )
+
+
 if __name__ == '__main__':
-    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
-
-    options, dirs = get_options_dirs_from_argv()
-
-    plot_fluxes_atmosphere(dirs["output"], plot_format=options["plot_format"])
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_fluxes_atmosphere_entry(handler)

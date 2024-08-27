@@ -1,11 +1,7 @@
-#!/usr/bin/env python3
-
-# Plot evolution of offline mixing ratios over time, for a set of species
-
-
 from __future__ import annotations
 
 import glob
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -15,8 +11,17 @@ from proteus.utils.helper import find_nearest
 from proteus.utils.plot import dict_colors, vol_latex
 from proteus.utils.plot_offchem import offchem_read_year
 
+if TYPE_CHECKING:
+    from proteus import Proteus
 
-def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=None):
+
+def plot_offchem_time(
+        output_dir: str,
+        species: list,
+        plot_init_mx: bool=False,
+        tmin: int=-1,
+        prange: list | float | None=None
+    ):
     """Plot evolution of chemistry according to offline VULCAN output.
 
     Reads-in the data from output_dir for a set of provided species. Can also
@@ -26,16 +31,16 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
 
     Parameters
     ----------
-        output_dir : str
-            Output directory that was specified in the PROTEUS cfg file
-        species : list
-            List of species to plot
-        prange : list(2) or float or None
-            Minimum and maximum pressures (bar) to average over. If None, then whole column is used. If float, then single layer is used.
-        plot_init_mx : bool
-            Include initial mixing ratios for each VULCAN run in plot?
-        tmin : float
-            Initial plotting time (-1 for start of data)
+    output_dir : str
+        Output directory that was specified in the PROTEUS cfg file
+    species : list
+        List of species to plot
+    prange : list(2) or float or None
+        Minimum and maximum pressures (bar) to average over. If None, then whole column is used. If float, then single layer is used.
+    plot_init_mx : bool
+        Include initial mixing ratios for each VULCAN run in plot?
+    tmin : float
+        Initial plotting time (-1 for start of data)
     """
 
     mpl.use("Agg")
@@ -141,19 +146,25 @@ def plot_offchem_time(output_dir, species, plot_init_mx=False, tmin=-1, prange=N
     plt.close('all')
 
 
-# If executed directly
-if __name__ == '__main__':
-    print("Plotting offline chemistry (mixing ratios vs time)...")
-
-    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
-
-    options, dirs = get_options_dirs_from_argv()
-
+def plot_offchem_time_entry(handler: Proteus):
     # Species to plot
     species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4", "HCN", "NH3", "N2", "NO"]
 
     # Call plotting function
-    prange = [1e0,1e-4]
-    plot_offchem_time(dirs["output"],species,tmin=1e3,prange=prange)
+    prange = [1e0, 1e-4]
+    plot_offchem_time(
+        output_dir=handler.config["output"],
+        species=species,
+        tmin=1e3,
+        prange=prange,
+    )
+
+
+if __name__ == '__main__':
+    print("Plotting offline chemistry (mixing ratios vs time)...")
+
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_offchem_time_entry(handler)
 
     print("Done!")

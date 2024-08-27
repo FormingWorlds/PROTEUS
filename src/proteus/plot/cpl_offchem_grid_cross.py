@@ -1,11 +1,7 @@
-#!/usr/bin/env python3
-
-# Plot a cross-section of the GridOfflineChemistry output
-
-
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 import cmcrameri as cm
 import matplotlib as mpl
@@ -14,6 +10,9 @@ import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from proteus.utils.plot_offchem import offchem_read_grid, offchem_slice_grid
+
+if TYPE_CHECKING:
+    pass
 
 mpl.use("Agg")
 

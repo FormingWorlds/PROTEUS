@@ -1,11 +1,7 @@
-#!/usr/bin/env python3
-
-# Plot evolution of mixing ratios over time, for a single species, versus pressure
-
-
 from __future__ import annotations
 
 import glob
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -15,6 +11,9 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from proteus.utils.plot import vol_latex
 from proteus.utils.plot_offchem import offchem_read_year
+
+if TYPE_CHECKING:
+    pass
 
 mpl.use("Agg")
 
