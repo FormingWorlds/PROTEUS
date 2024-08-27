@@ -9,6 +9,7 @@ from helpers import PROTEUS_ROOT
 from proteus import Proteus
 
 if os.getenv('CI'):
+    # https://github.com/FormingWorlds/PROTEUS/pull/149
     pytest.skip(reason='No way of currently testing this on the CI.', allow_module_level=True)
 
 
