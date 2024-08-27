@@ -12,32 +12,38 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from proteus.utils.plot_offchem import offchem_read_grid, offchem_slice_grid
 
 if TYPE_CHECKING:
-    pass
+    from proteus import Proteus
 
 mpl.use("Agg")
 
 
-def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_dict:dict={},
-                            contour:bool=True, labelcontrols:bool=False):
+def plot_offchem_grid_cross(
+        grid_dir:str,
+        x_var:str,
+        y_var:str,
+        z_var:str,
+        cvar_dict:dict={},
+        contour:bool=True,
+    labelcontrols:bool=False,
+    ):
     """Plot a cross-section of the GridOfflineChemistry output.
 
     Parameters
     ----------
-        grid_dir : str
-            Path to grid output folder
-        x_var : str
-            Independent variable on the x-axis
-        y_var : str
-            Independent variable on the y-axis
-        z_var : str
-            Dependent variable on the z-axis (colour bar)
-
-        cvar_dict : dict
-            Control variable filter dictionary (see `offchem_slice_grid` for more info)
-        contour : bool
-            Plot using contours instead of scatter points.
-        labelcontrols : bool
-            Write the control variables on the plot
+    grid_dir : str
+        Path to grid output folder
+    x_var : str
+        Independent variable on the x-axis
+    y_var : str
+        Independent variable on the y-axis
+    z_var : str
+        Dependent variable on the z-axis (colour bar)
+    cvar_dict : dict
+        Control variable filter dictionary (see `offchem_slice_grid` for more info)
+    contour : bool
+        Plot using contours instead of scatter points.
+    labelcontrols : bool
+        Write the control variables on the plot
 
     """
 
@@ -191,7 +197,12 @@ def plot_offchem_grid_cross(grid_dir:str, x_var:str, y_var:str, z_var:str, cvar_
     plt.close('all')
 
 
-# If executed directly
+def plot_offchem_grid_cross_entry(handler: Proteus):
+    raise NotImplementedError(
+        "`plot_offchem_grid_cross()` does not support command-line execution."
+    )
+
+
 if __name__ == '__main__':
     print("Plotting offchem grid (crossection)...")
 
