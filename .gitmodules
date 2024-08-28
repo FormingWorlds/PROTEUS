@@ -16,6 +16,3 @@
 [submodule "MORS"]
 	path = Mors
 	url = https://github.com/FormingWorlds/MORS
-[submodule "SOCRATES"]
-	path = SOCRATES
-	url = https://github.com/FormingWorlds/SOCRATES
