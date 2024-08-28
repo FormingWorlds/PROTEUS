@@ -305,7 +305,7 @@ class Proteus:
                     star_modern_path, self.directories["output"] + "/-1.sflux"
                 )
 
-                mors.DownloadEvolutionTracks("/Baraffe")
+                mors.DownloadEvolutionTracks("Baraffe")
                 baraffe = mors.BaraffeTrack(self.config["star_mass"])
 
             case _:

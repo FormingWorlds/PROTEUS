@@ -11,7 +11,7 @@
 	url = git@github.com:FormingWorlds/JANUS.git
 [submodule "MORS"]
 	path = Mors
-	url = https://github.com/FormingWorlds/MORS
+	url = git@github.com:FormingWorlds/MORS.git
 [submodule "SOCRATES"]
 	path = SOCRATES
 	url = git@github.com:nichollsh/SOCRATES
