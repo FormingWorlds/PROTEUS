@@ -90,21 +90,7 @@ pip install -e .
     cd ..
     ```
 
-6. Setup atmosphere kinetics model (**VULCAN**)
-
-    ```console
-    cd VULCAN/fastchem_vulcan
-    ```
-
-    On MacOS you will need to edit `make.globaloptions` to reflect  a GNU-compatible `g++` executable, not the Apple one (see
-     [Troubleshooting](./troubleshooting.md) if the next step results in an error.
-
-    ```console
-    make
-    cd ../../
-    ```
-
-7. Setup stellar evolution model (**MORS**)
+6. Setup stellar evolution model (**MORS**)
 
     ```console
     cd Mors 
@@ -112,7 +98,7 @@ pip install -e .
     cd ../
     ```
 
-8. Setup numerical computing library (**PETSc**)
+7. Setup numerical computing library (**PETSc**)
 
     - Configure step
 
@@ -129,7 +115,7 @@ pip install -e .
     cd ../
     ```
 
-9. Setup interior evolution model (**SPIDER**)
+8. Setup interior evolution model (**SPIDER**)
 
     ```console
     cd SPIDER
@@ -139,7 +125,7 @@ pip install -e .
     cd ..
     ```
 
-10. Setup PROTEUS coupled framework
+9. Setup PROTEUS coupled framework
 
     - Run install command
 
@@ -161,7 +147,7 @@ pip install -e .
 
     **IF** you want to be able to start PROTEUS immediately from a new shell every time, add `source PROTEUS.env`,     `export FWL_DATA=...` (and potentially `conda activate proteus`) to your shell rc file.
 
-11. Done! 🚀
+10. Done! 🚀
 
 ## Step-by-step (optional modules)
 
@@ -203,3 +189,31 @@ They are
     ```
 
 Consult the AGNI wiki if you encouter issues.
+
+### Chemical kinetics atmosphere model (**VULCAN**)
+
+1. Clone the model
+
+    ```console
+    git clone git@github.com:exoclime/VULCAN.git
+    cd VULCAN 
+    ```
+2. Compile the FastChem extension
+
+    ```console
+    cd fastchem_vulcan
+    ```
+
+    On MacOS you will need to edit `make.globaloptions` to reflect  a GNU-compatible `g++` executable, not the Apple one (see
+     [Troubleshooting](./troubleshooting.md) if the next step results in an error.
+
+    ```console
+    make
+    cd ../../
+    ```
+3. Install Python dependencies
+
+    ```console 
+    pip install sympy
+    ```
+    
