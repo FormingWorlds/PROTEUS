@@ -56,10 +56,6 @@ def plot_observables( output_dir: str, plot_format: str="pdf", t0: float=100.0):
 
 
 def plot_observables_entry(handler: Proteus):
-    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
-
-    options, dirs = get_options_dirs_from_argv()
-
     plot_observables(
         output_dir=handler.directories["output"],
         plot_format=handler.config["plot_format"],

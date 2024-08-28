@@ -153,7 +153,7 @@ def plot_offchem_time_entry(handler: Proteus):
     # Call plotting function
     prange = [1e0, 1e-4]
     plot_offchem_time(
-        output_dir=handler.config["output"],
+        output_dir=handler.directories["output"],
         species=species,
         tmin=1e3,
         prange=prange,

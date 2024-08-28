@@ -29,7 +29,6 @@ def list_plots(ctx, param, value):
 
     from .plot import plot_dispatch
 
-    click.echo('Available plots:')
     click.echo(' '.join(plot_dispatch))
     sys.exit()
 
