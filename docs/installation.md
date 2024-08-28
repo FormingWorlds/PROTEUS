@@ -83,17 +83,13 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 6. Setup stellar evolution model (**MORS**)
 
     ```console
-    cd Mors 
-    pip install -e .
-    cd ..
+    pip install -e Mors/.
     ```
 
 7. Setup atmosphere model (**JANUS**)
 
     ```console
-    cd JANUS
-    pip install -e .
-    cd ..
+    pip install -e JANUS/.
     ```
 
 8. Setup numerical computing library (**PETSc**)
