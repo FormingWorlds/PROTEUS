@@ -14,7 +14,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from proteus.utils.constants import const_c, const_h, const_k, dirs
 from proteus.utils.helper import natural_sort
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 # Planck function value at stellar surface
 # lam in nm

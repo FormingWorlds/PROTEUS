@@ -12,7 +12,7 @@ import numpy as np
 
 from proteus.utils.helper import natural_sort
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 # Plotting fluxes
 def plot_fluxes_atmosphere(output_dir, plot_format="pdf"):

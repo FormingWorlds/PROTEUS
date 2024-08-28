@@ -11,7 +11,7 @@ import pandas as pd
 
 from proteus.utils.plot import dict_colors
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 # Plotting fluxes
 def plot_fluxes_global(output_dir, options, t0=100.0):

@@ -6,7 +6,7 @@ import logging
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 def cpl_heatingrates(output_dir, atm, comp=[]):
     """Plot temperature structure and corresponding heating rates versus pressure

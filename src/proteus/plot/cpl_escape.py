@@ -10,7 +10,7 @@ import pandas as pd
 
 from proteus.utils.constants import M_earth, s2yr
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
 

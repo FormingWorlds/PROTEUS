@@ -13,7 +13,7 @@ import pandas as pd
 from proteus.utils.constants import volatile_species
 from proteus.utils.plot import dict_colors, vol_latex, vol_zorder
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 def plot_global( output_dir , options, logt=True, tmin=1e1):
 

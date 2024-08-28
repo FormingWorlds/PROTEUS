@@ -57,19 +57,22 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 # Custom logger instance
-def SetupLogger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
+def setup_logger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
+
+    logger_name = "fwl"
 
     # https://stackoverflow.com/a/61457119
+    print("Setup logger as %s"%str(logger_name))
 
-    custom_logger = logging.getLogger("PROTEUS")
-    custom_logger.handlers.clear()
+    custom_logger = logging.getLogger(logger_name)
+    # custom_logger.handlers.clear()
 
     if os.path.exists(logpath):
         os.remove(logpath)
 
     level = str(level).strip().upper()
     if level not in ["INFO", "DEBUG", "ERROR", "WARNING"]:
-        level = "INFO"
+        raise Exception("Invalid log level '%s'"%level)
     level_code = logging.getLevelName(level)
 
     # Add terminal output to logger
@@ -97,7 +100,7 @@ def SetupLogger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
         custom_logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
     sys.excepthook = handle_exception
 
-    return
+    return custom_logger
 
 def GetCurrentLogfileIndex(output_dir:str):
     '''

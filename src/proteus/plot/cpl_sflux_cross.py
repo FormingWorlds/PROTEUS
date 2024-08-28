@@ -14,7 +14,7 @@ from cmcrameri import cm
 from proteus.utils.constants import const_c, const_h, const_k, dirs
 from proteus.utils.helper import find_nearest, natural_sort
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 # Planck function value at stellar surface

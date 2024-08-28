@@ -17,7 +17,7 @@ from proteus.utils.helper import find_nearest
 from proteus.utils.plot import dict_colors, latex_float
 from proteus.utils.spider import MyJSON
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 #====================================================================
 def plot_stacked( output_dir:str, times:list, plot_format="pdf" ):

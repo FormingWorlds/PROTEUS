@@ -14,7 +14,7 @@ from proteus.utils.constants import volatile_species
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest
 from proteus.utils.logs import StreamToLogger
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 # Generate atmosphere from input files
 def StructAtm( dirs:dict, hf_row:dict, OPTIONS:dict ):

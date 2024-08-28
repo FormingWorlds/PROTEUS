@@ -15,7 +15,7 @@ from matplotlib.ticker import LogLocator
 from proteus.utils.helper import find_nearest
 from proteus.utils.plot import latex_float
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 #====================================================================
 def plot_atmosphere( output_dir:str, times:list, plot_format="pdf"):

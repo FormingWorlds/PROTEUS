@@ -14,7 +14,7 @@ from proteus.utils.constants import AU
 from proteus.utils.helper import PrintHalfSeparator
 
 atm = None
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
                   spfile_path:str, hf_all:pd.DataFrame, hf_row:dict):
