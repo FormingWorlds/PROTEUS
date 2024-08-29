@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
 import glob
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -14,12 +13,19 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from proteus.utils.spider import MyJSON
 
+if TYPE_CHECKING:
+    from proteus import Proteus
+
 log = logging.getLogger("PROTEUS")
 
-#====================================================================
 
-# Plotting function
-def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5, plot_format="pdf"):
+def plot_interior_cmesh(
+        output_dir: str,
+        use_contour: bool=True,
+        cblevels: int=24,
+        numticks: int=5,
+        plot_format: str="pdf"
+    ):
 
     log.info("Plot interior colourmesh")
 
@@ -154,16 +160,16 @@ def plot_interior_cmesh(output_dir, use_contour=True, cblevels=24, numticks=5, p
     fig.subplots_adjust(top=0.98, bottom=0.07, right=0.85, left=0.13, hspace=0.11)
     fig.savefig(fname, dpi=200)
 
-#====================================================================
-def main():
-    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
 
-    options, dirs = get_options_dirs_from_argv()
-
+def plot_interior_cmesh_entry(handler: Proteus):
     # Plot fixed set from above
-    plot_interior_cmesh( output_dir=dirs["output"], plot_format=options["plot_format"])
+    plot_interior_cmesh(
+        output_dir=handler.directories["output"],
+        plot_format=handler.config["plot_format"],
+    )
 
-#====================================================================
 
 if __name__ == "__main__":
-    main()
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_interior_cmesh_entry(handler)
