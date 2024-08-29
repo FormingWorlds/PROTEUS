@@ -1,7 +1,0 @@
-Replaces the spectral file called Legacy.
-Contains major absorbers and corresponding continuua. Notably, includes H2O self-broadening.
-Does not include N2-H2O broadening. Derived from the HITRAN database.
-
-Contains cloud scattering properties.
-
-
