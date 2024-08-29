@@ -51,6 +51,11 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
         # Run JANUS:
 
         no_atm = bool(atm is None)
+        #Enforce surface temperature at first iteration
+        if no_atm:
+            hf_row["T_surf"] = hf_row["T_magma"]
+
+        #Init atm object if first iteration or change in stellar spectrum
         if no_atm or update_stellar_spectrum:
             spectral_file_nostar = os.path.join(dirs["fwl"] , OPTIONS["spectral_file"])
             if not os.path.exists(spectral_file_nostar):
@@ -59,7 +64,6 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
             InitStellarSpectrum(dirs, hf_row["wl"], hf_row["fl"], spectral_file_nostar)
             atm = InitAtm(dirs, OPTIONS)
 
-        hf_row["T_surf"] = hf_row["T_magma"]
         atm_output = RunJANUS(atm, dirs, OPTIONS, hf_row, hf_all)
 
     elif OPTIONS["atmosphere_model"] == 1:
