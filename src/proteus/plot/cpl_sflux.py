@@ -117,7 +117,7 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0, plot_format: str="pdf"):
         cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
         cbar.set_label("Time [yr]")
     else:
-        print("Only one spectrum was found")
+        log.warning("Only one spectrum was found")
 
     ax.set_yscale("log")
     ax.set_ylabel("Flux [erg s-1 cm-2 nm-1]")
