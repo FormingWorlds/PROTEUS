@@ -116,11 +116,6 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
 
     output={}
 
-    # Update stdout
-    old_stdout , old_stderr = sys.stdout , sys.stderr
-    sys.stdout = StreamToLogger(log, logging.INFO)
-    sys.stderr = StreamToLogger(log, logging.ERROR)
-
     # Change dir
     cwd = os.getcwd()
     tmp_dir = dirs["output"]
@@ -206,9 +201,6 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
     if not np.isclose(F_atm_lim , F_atm_new ):
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
-
-    # Restore stdout
-    sys.stdout , sys.stderr = old_stdout , old_stderr
 
     # find 1 mbar level
     idx = find_nearest(atm.p*1e5, 1e-3)[1]
