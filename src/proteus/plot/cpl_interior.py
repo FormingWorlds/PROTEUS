@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,17 +10,15 @@ from cmcrameri import cm
 from proteus.utils.plot import FigureData, MyFuncFormatter, latex_float
 from proteus.utils.spider import MyJSON, get_all_output_times
 
+if TYPE_CHECKING:
+    from proteus import Proteus
+    
 log = logging.getLogger("fwl."+__name__)
 
-#====================================================================
-def plot_interior( output_dir, times, plot_format="pdf"):
+
+def plot_interior(output_dir: str, times: list | np.ndarray, plot_format: str="pdf"):
 
     log.info("Plot interior")
-
-    # article class text width is 4.7747 inches
-    # http://tex.stackexchange.com/questions/39383/determine-text-width
-
-    # logger.info( 'building mantle_evolution' )
 
     width = 12.00 #* 3.0/2.0
     height = 6.0
@@ -39,17 +36,6 @@ def plot_interior( output_dir, times, plot_format="pdf"):
 
     myjson_o = MyJSON( output_dir+'/data/{}.json'.format(time) )
 
-    # print(myjson_o.data_d)
-    # TIMEYRS = myjson_o.data_d['nstep']
-
-    # hack to compute some average properties for Bower et al. (2018)
-    #xx_liq, yy_liq = fig_o.get_xy_data( 'liquidus_rho', time )
-    #xx_sol, yy_sol = fig_o.get_xy_data( 'solidus_rho', time )
-    #diff = (yy_liq - yy_sol) / yy_sol * 100.0
-    #print diff[40:]
-    #print np.mean(diff[40:])
-    #sys.exit(1)
-
     xx_pres = myjson_o.get_dict_values(['data','pressure_b'])
     xx_pres *= 1.0E-9
     xx_pres_s = myjson_o.get_dict_values(['data','pressure_s'])
@@ -61,9 +47,9 @@ def plot_interior( output_dir, times, plot_format="pdf"):
     xx_radius_s = myjson_o.get_dict_values(['data','radius_s'])
     xx_radius_s *= 1.0E-3
 
-    handle_l = [] # handles for legend
+    handle_l = []
 
-    fig_o.set_cmap(cm.batlowK_r) # "magma_r"
+    fig_o.set_cmap(cm.batlowK_r)
 
     for nn, time in enumerate( fig_o.time ):
 
@@ -153,39 +139,32 @@ def plot_interior( output_dir, times, plot_format="pdf"):
     ax3b.yaxis.set_label_coords(1.30,0.55)
     ax3b.invert_yaxis()
 
-    # if 0:
-    #     # add sol and liq text boxes to mark solidus and liquidus
-    #     # these have to manually adjusted according to the solidus
-    #     # and liquidus used for the model
-    #     prop_d = {'boxstyle':'round', 'facecolor':'white', 'linewidth': 0}
-    #     ax0.text(120, 2925, r'liq', fontsize=8, bbox=prop_d )
-    #     ax0.text(120, 2075, r'sol', fontsize=8, bbox=prop_d )
-    #     # DJB commented out for now, below labels 0.2 melt fraction
-    #     # so the reader knows that dashed white lines denote melt
-    #     # fraction contours
-    #     ax0.text(110, 2275, r'$\phi=0.2$', fontsize=6 )
-
     plt.close()
     plt.ioff()
     fig_o.savefig(1, plot_format)
 
 
-#====================================================================
-
-if __name__ == "__main__":
-    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
-
-    options, dirs = get_options_dirs_from_argv()
-
-    output_list = get_all_output_times(dirs['output'])
+def plot_interior_entry(handler: Proteus):
+    output_list = get_all_output_times(handler.directories['output'])
 
     if len(output_list) <= 8:
-        plot_list = output_list
+        times = output_list
     else:
-        plot_list = [ output_list[0] ]
+        times = [ output_list[0] ]
         for f in [15,25,33,50,66,75]:
-            plot_list.append(output_list[int(round(len(output_list)*(float(f)/100.)))])
-        plot_list.append(output_list[-1])
-    print("Snapshots:", plot_list)
+            times.append(output_list[int(round(len(output_list)*(float(f)/100.)))])
+        times.append(output_list[-1])
 
-    plot_interior( dirs['output'], plot_list, plot_format=options["plot_format"] )
+        print("Snapshots:", times)
+
+    plot_interior(
+        output_dir=handler.directories['output'],
+        times=times,
+        plot_format=handler.config["plot_format"],
+    )
+
+
+if __name__ == "__main__":
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_interior_entry(handler)

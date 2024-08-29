@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,6 +10,9 @@ import pandas as pd
 
 from proteus.utils.constants import element_list
 
+if TYPE_CHECKING:
+    from proteus import Proteus
+    
 log = logging.getLogger("fwl."+__name__)
 
 def plot_elements( output_dir, plot_format="pdf", t0=100.0):
@@ -54,16 +57,15 @@ def plot_elements( output_dir, plot_format="pdf", t0=100.0):
     fpath = os.path.join(output_dir, "plot_elements.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
-#====================================================================
-def main():
-    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
 
-    options, dirs = get_options_dirs_from_argv()
+def plot_elements_entry(handler: Proteus):
+    plot_elements(
+        output_dir=handler.directories["output"],
+        plot_format=handler.config["plot_format"],
+    )
 
-    plot_elements( output_dir=dirs["output"], plot_format=options["plot_format"] )
-
-#====================================================================
 
 if __name__ == "__main__":
-
-    main()
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_elements_entry(handler)

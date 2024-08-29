@@ -1,25 +1,29 @@
-#!/usr/bin/env python3
-
-# Plots stellar flux from `output/` versus time (colorbar)
 from __future__ import annotations
 
 import glob
 import logging
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from proteus.utils.constants import const_c, const_h, const_k, dirs
+from proteus.utils.constants import const_c, const_h, const_k
 from proteus.utils.helper import natural_sort
 
+if TYPE_CHECKING:
+    from proteus import Proteus
+    
 log = logging.getLogger("fwl."+__name__)
 
-# Planck function value at stellar surface
-# lam in nm
-# erg s-1 cm-2 nm-1
 def planck_function(lam, T):
+    """Plots stellar flux from `output/` versus time (colorbar)
+
+    Planck function value at stellar surface
+    lam in nm
+    erg s-1 cm-2 nm-1
+    """
 
     x = lam * 1.0e-9   # convert nm -> m
     hc_by_kT = const_h*const_c / (const_k*T)
@@ -30,7 +34,8 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux(output_dir, wl_max = 6000.0, plot_format="pdf"):
+
+def plot_sflux(output_dir: str, wl_max: float = 6000.0, plot_format: str="pdf"):
     """Plots stellar flux vs time for all wavelengths
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -38,11 +43,11 @@ def plot_sflux(output_dir, wl_max = 6000.0, plot_format="pdf"):
 
     Parameters
     ----------
-        output_dir : str
-            Directory for both reading from and saving to.
+    output_dir : str
+        Directory for both reading from and saving to.
 
-        wl_max : float
-            Upper limit of wavelength axis [nm]
+    wl_max : float
+        Upper limit of wavelength axis [nm]
 
     """
 
@@ -136,16 +141,6 @@ def plot_sflux(output_dir, wl_max = 6000.0, plot_format="pdf"):
     X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
     ax.plot(X[0],X[1],color='black',label='Modern',lw=0.8,alpha=0.9)
 
-    # Calculate planck function
-    # Tstar = 3274.3578960897644
-    # Rstar_cm = 36292459156.77782
-    # AU_cm = 1.496e+13
-    # sf = Rstar_cm / AU_cm
-    # planck_fl = []
-    # for w in wave_t[4]:
-    #     planck_fl.append(planck_function(w,Tstar) * sf * sf)
-    # ax.plot(wave_t[4],planck_fl,color='green',lw=1.5)
-
     ax.legend()
 
     plt.close()
@@ -154,18 +149,18 @@ def plot_sflux(output_dir, wl_max = 6000.0, plot_format="pdf"):
                 bbox_inches='tight', dpi=200)
 
 
-# Run directly
-if __name__ == '__main__':
+def plot_sflux_entry(handler: Proteus):
+    plot_sflux(
+        output_dir=handler.directories['output'],
+        plot_format=handler.config["plot_format"],
+    )
 
+
+if __name__ == '__main__':
     print("Plotting stellar flux over time (colorbar)...")
 
-    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
-
-    options, dirs = get_options_dirs_from_argv()
-
-    plot_sflux(dirs['output'], plot_format=options["plot_format"])
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_sflux_entry(handler)
 
     print("Done!")
-
-
-# End of file

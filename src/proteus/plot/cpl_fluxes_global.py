@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -11,10 +10,12 @@ import pandas as pd
 
 from proteus.utils.plot import dict_colors
 
+if TYPE_CHECKING:
+    from proteus import Proteus
+    
 log = logging.getLogger("fwl."+__name__)
 
-# Plotting fluxes
-def plot_fluxes_global(output_dir, options, t0=100.0):
+def plot_fluxes_global(output_dir: str, options: dict, t0: float=100.0):
 
     log.info("Plot global fluxes")
 
@@ -67,9 +68,15 @@ def plot_fluxes_global(output_dir, options, t0=100.0):
     fig.savefig(output_dir+"/plot_fluxes_global.%s"%options["plot_format"],
                 bbox_inches='tight', dpi=200)
 
+
+def plot_fluxes_global_entry(handler: Proteus):
+    plot_fluxes_global(
+        output_dir=handler.directories["output"],
+        options=handler.config,
+    )
+
+
 if __name__ == '__main__':
-    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
-
-    options, dirs = get_options_dirs_from_argv()
-
-    plot_fluxes_global(dirs["output"], options=options)
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_fluxes_global_entry(handler)

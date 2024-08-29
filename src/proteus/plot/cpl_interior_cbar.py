@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
 import glob
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -14,11 +13,12 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from proteus.utils.spider import MyJSON
 
+if TYPE_CHECKING:
+    from proteus import Proteus
+    
 log = logging.getLogger("fwl."+__name__)
 
-#====================================================================
 
-# Plotting function
 def plot_interior_cbar(output_dir, plot_format="pdf"):
 
     log.info("Plot interior colourbar")
@@ -108,16 +108,15 @@ def plot_interior_cbar(output_dir, plot_format="pdf"):
     fig.subplots_adjust(top=0.94, bottom=0.11, right=0.99, left=0.07, wspace=0.1)
     fig.savefig(fname, dpi=200)
 
-#====================================================================
-def main():
-    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
-
-    options, dirs = get_options_dirs_from_argv()
-
+def plot_interior_cbar_entry(handler: Proteus):
     # Plot fixed set from above
-    plot_interior_cbar( output_dir=dirs["output"], plot_format=options["plot_format"])
+    plot_interior_cbar(
+        output_dir=handler.directories["output"],
+        plot_format=handler.config["plot_format"],
+    )
 
-#====================================================================
 
 if __name__ == "__main__":
-    main()
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_interior_cbar_entry(handler)
