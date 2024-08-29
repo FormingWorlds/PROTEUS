@@ -50,8 +50,8 @@ from proteus.utils.helper import (
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
-    setup_logger,
     StreamToLogger,
+    setup_logger,
 )
 from proteus.utils.spider import ReadSPIDER, RunSPIDER
 from proteus.utils.surface_gases import (

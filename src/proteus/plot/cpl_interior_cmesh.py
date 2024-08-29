@@ -15,7 +15,7 @@ from proteus.utils.spider import MyJSON
 
 if TYPE_CHECKING:
     from proteus import Proteus
-    
+
 log = logging.getLogger("fwl."+__name__)
 
 

@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 if TYPE_CHECKING:
     from proteus import Proteus
-    
+
 log = logging.getLogger("fwl."+__name__)
 
 def plot_heatingrates(output_dir: str, atm, comp: list=[]):

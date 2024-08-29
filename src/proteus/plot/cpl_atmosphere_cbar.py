@@ -15,7 +15,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 if TYPE_CHECKING:
     from proteus import Proteus
-    
+
 log = logging.getLogger("fwl."+__name__)
 
 

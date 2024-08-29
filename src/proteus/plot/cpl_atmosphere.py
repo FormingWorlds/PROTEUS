@@ -17,7 +17,7 @@ from proteus.utils.plot import latex_float
 
 if TYPE_CHECKING:
     from proteus import Proteus
-    
+
 log = logging.getLogger("fwl."+__name__)
 
 

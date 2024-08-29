@@ -10,7 +10,7 @@ import pandas as pd
 
 if TYPE_CHECKING:
     from proteus import Proteus
-    
+
 log = logging.getLogger("fwl."+__name__)
 
 
