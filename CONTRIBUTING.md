@@ -107,7 +107,7 @@ pip-compile -o requirements_full.txt pyproject.toml
 1. Bump the version (`release`/`patch`) as needed
 
 ```console
-bump-my-version release
+bump-my-version bump release
 # 24.08.12
 ```
 
