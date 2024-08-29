@@ -14,7 +14,7 @@ import pandas as pd
 
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 class MyJSON( object ):

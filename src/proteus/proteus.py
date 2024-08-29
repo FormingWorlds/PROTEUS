@@ -50,8 +50,7 @@ from proteus.utils.helper import (
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
-    SetupLogger,
-    StreamToLogger,
+    setup_logger,
 )
 from proteus.utils.spider import ReadSPIDER, RunSPIDER
 from proteus.utils.surface_gases import (
@@ -103,8 +102,8 @@ class Proteus:
         logpath = GetLogfilePath(self.directories["output"], logindex)
 
         # Switch to logger
-        SetupLogger(logpath=logpath, logterm=True, level=self.config["log_level"])
-        log = logging.getLogger("PROTEUS")
+        setup_logger(logpath=logpath, logterm=True, level=self.config["log_level"])
+        log = logging.getLogger("fwl."+__name__)
 
         # Print information to logger
         log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
@@ -289,7 +288,7 @@ class Proteus:
                     star_modern_path, self.directories["output"] + "/-1.sflux"
                 )
 
-                mors.DownloadEvolutionTracks("/Baraffe")
+                mors.DownloadEvolutionTracks("Baraffe")
                 baraffe = mors.BaraffeTrack(self.config["star_mass"])
 
             case _:

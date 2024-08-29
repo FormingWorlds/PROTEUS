@@ -13,7 +13,7 @@ from proteus.utils.plot import dict_colors
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 def plot_fluxes_global(output_dir: str, options: dict, t0: float=100.0):
 

@@ -15,8 +15,7 @@ from proteus.utils.plot import dict_colors, vol_latex, vol_zorder
 if TYPE_CHECKING:
     from proteus import Proteus
 
-
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e1):
 

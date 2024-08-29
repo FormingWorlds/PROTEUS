@@ -5,16 +5,14 @@ import glob
 import logging
 import os
 import shutil
-import sys
 
 import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import volatile_species
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest
-from proteus.utils.logs import StreamToLogger
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 def InitStellarSpectrum(dirs:dict, wl:list, fl:list, spectral_file_nostar):
 
@@ -163,11 +161,6 @@ def RunJANUS(atm, dirs:dict, OPTIONS:dict, hf_row:dict, hf_all:pd.DataFrame,
 
     output={}
 
-    # Update stdout
-    old_stdout , old_stderr = sys.stdout , sys.stderr
-    sys.stdout = StreamToLogger(log, logging.INFO)
-    sys.stderr = StreamToLogger(log, logging.ERROR)
-
     #Update atmosphere with current variables
     UpdateStateAtm(atm, hf_row, OPTIONS["tropopause"])
 
@@ -256,9 +249,6 @@ def RunJANUS(atm, dirs:dict, OPTIONS:dict, hf_row:dict, hf_all:pd.DataFrame,
     if not np.isclose(F_atm_lim , F_atm_new ):
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
-
-    # Restore stdout
-    sys.stdout , sys.stderr = old_stdout , old_stderr
 
     # find 1 mbar level
     idx = find_nearest(atm.p*1e5, 1e-3)[1]

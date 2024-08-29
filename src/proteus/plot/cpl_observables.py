@@ -11,7 +11,7 @@ import pandas as pd
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 def plot_observables( output_dir: str, plot_format: str="pdf", t0: float=100.0):
