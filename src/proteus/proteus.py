@@ -50,8 +50,7 @@ from proteus.utils.helper import (
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
-    SetupLogger,
-    StreamToLogger,
+    setup_logger,
 )
 from proteus.utils.spider import ReadSPIDER, RunSPIDER
 from proteus.utils.surface_gases import (
@@ -104,8 +103,8 @@ class Proteus:
         logpath = GetLogfilePath(self.directories["output"], logindex)
 
         # Switch to logger
-        SetupLogger(logpath=logpath, logterm=True, level=self.config["log_level"])
-        log = logging.getLogger("PROTEUS")
+        setup_logger(logpath=logpath, logterm=True, level=self.config["log_level"])
+        log = logging.getLogger("fwl."+__name__)
 
         # Print information to logger
         log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
@@ -293,7 +292,7 @@ class Proteus:
                     star_modern_path, self.directories["output"] + "/-1.sflux"
                 )
 
-                mors.DownloadEvolutionTracks("/Baraffe")
+                mors.DownloadEvolutionTracks("Baraffe")
                 baraffe = mors.BaraffeTrack(self.config["star_mass"])
 
             case _:
@@ -464,16 +463,10 @@ class Proteus:
                 if self.config["atmosphere_model"] == 0:
                     # Generate a new SOCRATES spectral file containing this new spectrum
                     star_spec_src = self.directories["output"] + "socrates_star.txt"
-                    #    Update stdout
-                    old_stdout, old_stderr = sys.stdout, sys.stderr
-                    sys.stdout = StreamToLogger(log, logging.INFO)
-                    sys.stderr = StreamToLogger(log, logging.ERROR)
                     #    Spectral file stuff
                     PrepareStellarSpectrum(wl, fl, star_spec_src)
                     InsertStellarSpectrum(spectral_file_nostar, star_spec_src, self.directories["output"])
                     os.remove(star_spec_src)
-                    #    Restore stdout
-                    sys.stdout, sys.stderr = old_stdout, old_stderr
 
                 # Other cases...
                 #  - AGNI will prepare the file itself

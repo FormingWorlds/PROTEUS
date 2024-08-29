@@ -18,7 +18,7 @@ from proteus.utils.plot import latex_float
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 def plot_atmosphere( output_dir:str, times:list, plot_format="pdf"):

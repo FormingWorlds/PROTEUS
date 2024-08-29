@@ -19,7 +19,7 @@ from proteus.utils.spider import MyJSON
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 def plot_stacked(output_dir: str, times: list, plot_format: str="pdf"):

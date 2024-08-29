@@ -15,7 +15,7 @@ from proteus.utils.helper import find_nearest, natural_sort
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 def planck_function(lam, T):

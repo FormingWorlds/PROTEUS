@@ -1,5 +1,7 @@
 {
     "editor.tabSize": 4,
     "editor.rulers": [ 92 ],
-    "python.analysis.extraPaths": ["JANUS","Mors"]
+    "python.analysis.extraPaths": ["JANUS","Mors"],
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true
 }
