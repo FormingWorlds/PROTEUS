@@ -5,14 +5,14 @@ from unittest.mock import patch
 
 from helpers import PROTEUS_ROOT
 
-from proteus.plot._cpl_helpers import get_options_dirs_from_argv
+from proteus.plot._cpl_helpers import get_handler_from_argv
 
 
-def test_get_options_dirs_from_argv():
+def test_get_handler_from_argv():
     config_path = str(PROTEUS_ROOT / 'input' / 'default.toml')
 
     with patch.object(sys, 'argv', [None, config_path]):
-        options, dirs = get_options_dirs_from_argv()
+        handler = get_handler_from_argv()
 
-    assert 'star_model' in options
-    assert 'output' in dirs
+    assert 'star_model' in handler.config
+    assert 'output' in handler.directories
