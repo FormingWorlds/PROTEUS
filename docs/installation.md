@@ -20,14 +20,14 @@ xcode-select --install
     you
 
 ```console
-brew install netcdf  
-brew install netcdf-fortran    
+brew install netcdf
+brew install netcdf-fortran
 ```
 
 Or
 
 ```console
-sudo port install netcdf-fortran +gcc8   
+sudo port install netcdf-fortran +gcc8
 ```
 
 ## System configuration (Linux)
@@ -159,8 +159,8 @@ They are also reproduced below.
 2. Clone the model
 
     ```console
-    git clone git@github.com:nichollsh/AGNI.git 
-    cd AGNI 
+    git clone git@github.com:nichollsh/AGNI.git
+    cd AGNI
     ```
 
 3. Setup SOCRATES
@@ -189,7 +189,7 @@ Consult the AGNI wiki if you encouter issues.
 
     ```console
     git clone git@github.com:exoclime/VULCAN.git
-    cd VULCAN 
+    cd VULCAN
     ```
 2. Compile the FastChem extension
 
@@ -206,6 +206,6 @@ Consult the AGNI wiki if you encouter issues.
     ```
 3. Install Python dependencies
 
-    ```console 
+    ```console
     pip install sympy
     ```
