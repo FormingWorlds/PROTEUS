@@ -50,7 +50,6 @@ from proteus.utils.helper import (
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
-    StreamToLogger,
     setup_logger,
 )
 from proteus.utils.spider import ReadSPIDER, RunSPIDER
@@ -464,16 +463,10 @@ class Proteus:
                 if self.config["atmosphere_model"] == 0:
                     # Generate a new SOCRATES spectral file containing this new spectrum
                     star_spec_src = self.directories["output"] + "socrates_star.txt"
-                    #    Update stdout
-                    old_stdout, old_stderr = sys.stdout, sys.stderr
-                    sys.stdout = StreamToLogger(log, logging.INFO)
-                    sys.stderr = StreamToLogger(log, logging.ERROR)
                     #    Spectral file stuff
                     PrepareStellarSpectrum(wl, fl, star_spec_src)
                     InsertStellarSpectrum(spectral_file_nostar, star_spec_src, self.directories["output"])
                     os.remove(star_spec_src)
-                    #    Restore stdout
-                    sys.stdout, sys.stderr = old_stdout, old_stderr
 
                 # Other cases...
                 #  - AGNI will prepare the file itself

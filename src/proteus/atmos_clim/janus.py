@@ -5,14 +5,12 @@ import glob
 import logging
 import os
 import shutil
-import sys
 
 import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import volatile_species
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest
-from proteus.utils.logs import StreamToLogger
 
 log = logging.getLogger("fwl."+__name__)
 
