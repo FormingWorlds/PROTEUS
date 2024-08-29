@@ -65,7 +65,6 @@ def setup_logger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
     print("Setup logger as %s"%str(logger_name))
 
     custom_logger = logging.getLogger(logger_name)
-    # custom_logger.handlers.clear()
 
     if os.path.exists(logpath):
         os.remove(logpath)
