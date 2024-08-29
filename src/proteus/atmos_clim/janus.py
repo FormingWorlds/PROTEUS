@@ -65,7 +65,7 @@ def InitAtm(dirs:dict, OPTIONS:dict):
                 req_levels = OPTIONS["atmosphere_nlev"],
                 water_lookup = False,
                 alpha_cloud=float(OPTIONS["alpha_cloud"]),
-                trppT = 0.0, #var if tropopause option is set to 1
+                trppT, #var if tropopause option is set to 1
                 minT = OPTIONS["min_temperature"],
                 maxT = OPTIONS["max_temperature"],
                 do_cloud = bool(OPTIONS["water_cloud"] == 1),

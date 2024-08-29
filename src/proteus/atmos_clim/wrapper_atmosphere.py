@@ -9,7 +9,7 @@ from scipy.integrate import solve_ivp
 
 from proteus.atmos_clim.agni import ActivateEnv, DeallocAtmos, InitAtmos, RunAGNI, UpdateProfile
 from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
-from proteus.atmos_clim.janus import RunJANUS, InitStellarSpectrum, InitAtm
+from proteus.atmos_clim.janus import InitAtm, InitStellarSpectrum, RunJANUS
 from proteus.utils.constants import AU
 from proteus.utils.helper import PrintHalfSeparator, UpdateStatusfile, safe_rm
 
@@ -50,7 +50,7 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
     if OPTIONS["atmosphere_model"] == 0:
         # Run JANUS:
 
-        no_atm = bool(atm == None)
+        no_atm = bool(atm is None)
         if no_atm or update_stellar_spectrum:
             spectral_file_nostar = os.path.join(dirs["fwl"] , OPTIONS["spectral_file"])
             if not os.path.exists(spectral_file_nostar):
