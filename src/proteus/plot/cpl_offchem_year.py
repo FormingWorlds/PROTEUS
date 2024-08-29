@@ -1,21 +1,27 @@
-#!/usr/bin/env python3
-
-# Plot evolution of mixing ratios over time, for a single species, versus pressure
-
-
 from __future__ import annotations
 
 import glob
-import sys
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
 
+from proteus.utils.plot import dict_colors, vol_latex
 from proteus.utils.plot_offchem import offchem_read_year
+
+if TYPE_CHECKING:
+    from proteus import Proteus
 
 mpl.use("Agg")
 
 
-def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
+def plot_offchem_year(
+        output_dir: str,
+        year_dict: dict,
+        species: list,
+        plot_init_mx: bool=False,
+    ):
     """Plot a set of species in the atmosphere, for a single year only
 
     Reads-in the data from output_dir for a single year. Can also
@@ -24,19 +30,19 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
 
     Parameters
     ----------
-        output_dir : str
-            Output directory that was specified in the PROTEUS cfg file
-        species : list
-            Which species to plot? (e.g. H2O) If none, then plot all.
-        tmin : float
-            Initial year to include [yr]
-        tmax : float
-            Final yeat to include [yr]
-        plot_init_mx : bool
-            Include initial mixing ratios for each VULCAN run in plot?
+    output_dir : str
+        Output directory that was specified in the PROTEUS cfg file
+    species : list
+        Which species to plot? (e.g. H2O) If none, then plot all.
+    tmin : float
+        Initial year to include [yr]
+    tmax : float
+        Final yeat to include [yr]
+    plot_init_mx : bool
+        Include initial mixing ratios for each VULCAN run in plot?
     """
 
-    if species == None:
+    if species is None:
         species = []
         for k in year_dict.keys():
             if "_" not in k:
@@ -81,8 +87,8 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
         # VULCAN result
         key = str("mx_"+s)
         if key in year_dict.keys():
-            l = ax1.plot(year_dict[key],year_dict["pressure"],label=pretty,ls=ls,lw=lw,color=color)[0]
-            color = l.get_color()
+            line = ax1.plot(year_dict[key],year_dict["pressure"],label=pretty,ls=ls,lw=lw,color=color)[0]
+            color = line.get_color()
             min_mix = min(min_mix,np.amin(year_dict[key]))
 
         # JANUS result
@@ -99,34 +105,16 @@ def plot_offchem_year(output_dir, year_dict, species, plot_init_mx=False):
     plt.close(fig)
 
 
-# If executed directly
-if __name__ == '__main__':
-    print("Plotting offline chemistry for each year (mixing ratios vs pressure)...")
-
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
-
-
+def plot_offchem_year_entry(handler: Proteus, **kwargs):
     plot_janus = True
-
-
-    # Read in COUPLER input file
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
 
     # Species to make plots for
     species = ["H2", "H2O", "H", "OH", "CO2", "CO", "CH4","HCN", "NH3", "N2", "NO"]
-    # species = None
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
 
     # Load data
-    ls = glob.glob(dirs["output"]+"offchem/*/output.vul")
+    ls = glob.glob(handler.directories["output"]+"offchem/*/output.vul")
     years = [int(f.split("/")[-2]) for f in ls]
-    years_data = [offchem_read_year(dirs["output"],y,read_const=plot_janus) for y in years]
+    years_data = [offchem_read_year(handler.directories["output"],y,read_const=plot_janus) for y in years]
 
     if len(years) == 0:
         raise Exception('No VULCAN output files found')
@@ -134,6 +122,19 @@ if __name__ == '__main__':
     # Call plotting function
     for yd in years_data:
         print("Year = %d" % yd["year"])
-        plot_offchem_year(dirs["output"],yd,species,plot_init_mx=plot_janus)
+        plot_offchem_year(
+            output_dir=handler.directories["output"],
+            year_dict=yd,
+            species=species,
+            plot_init_mx=plot_janus,
+        )
+
+
+if __name__ == '__main__':
+    print("Plotting offline chemistry for each year (mixing ratios vs pressure)...")
+
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_offchem_year_entry(handler)
 
     print("Done!")

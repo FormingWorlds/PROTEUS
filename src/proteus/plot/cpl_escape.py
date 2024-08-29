@@ -1,15 +1,17 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import logging
 import os
-import sys
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import M_earth
+from proteus.utils.constants import M_earth, s2yr
+
+if TYPE_CHECKING:
+    from proteus import Proteus
 
 log = logging.getLogger("PROTEUS")
 
@@ -26,7 +28,6 @@ def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
 
     # make plot
     lw = 1.2
-    al = 0.5
     scale = 1.1
     fig,ax1 = plt.subplots(1,1, figsize=(7*scale,4*scale))
 
@@ -38,8 +39,7 @@ def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
         escape_model_label = 'Dummy escape'
 
     y = hf_all['esc_rate_total']
-    l = ax1.plot(time, y, lw=lw, ls='solid', label=f'{escape_model_label}')
-
+    ax1.plot(time, y, lw=lw, ls='solid', label=f'{escape_model_label}')
 
     # decorate
     ax1.set_ylabel(r'Mass loss rate [kg $s^{-1}$]')
@@ -61,26 +61,16 @@ def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
     fpath = os.path.join(output_dir, "plot_escape.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
-#====================================================================
-def main():
 
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
+def plot_escape_entry(handler: Proteus):
+    plot_escape(
+        output_dir=handler.directories["output"],
+        escape_model=handler.config['escape_model'],
+        plot_format=handler.config["plot_format"],
+    )
 
-    # Read in COUPLER input file
-    log.info("Read cfg file")
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
-
-    plot_escape(output_dir=dirs["output"], escape_model=OPTIONS['escape_model'], plot_format=OPTIONS["plot_format"])
-
-#====================================================================
 
 if __name__ == "__main__":
-
-    main()
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_escape_entry(handler)

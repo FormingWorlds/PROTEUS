@@ -1,11 +1,9 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
 import glob
 import logging
 import os
-import sys
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -14,13 +12,17 @@ import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
+from proteus.utils.helper import find_nearest
 from proteus.utils.plot import dict_colors, latex_float
 from proteus.utils.spider import MyJSON
 
+if TYPE_CHECKING:
+    from proteus import Proteus
+
 log = logging.getLogger("PROTEUS")
 
-#====================================================================
-def plot_stacked( output_dir:str, times:list, plot_format="pdf" ):
+
+def plot_stacked(output_dir: str, times: list, plot_format: str="pdf"):
 
     log.info("Plot stacked")
 
@@ -108,23 +110,8 @@ def plot_stacked( output_dir:str, times:list, plot_format="pdf" ):
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 
-#====================================================================
-def main():
-
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
-
-    # Read-in configuration file
-    log.info("Read configuration file")
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
-
-    files = glob.glob(os.path.join(dirs["output"], "data", "*_atm.nc"))
+def plot_stacked_entry(handler: Proteus):
+    files = glob.glob(os.path.join(handler.directories["output"], "data", "*_atm.nc"))
     times = [int(f.split("/")[-1].split("_")[0]) for f in files]
 
     if len(times) <= 8:
@@ -146,11 +133,14 @@ def main():
 
     print("Snapshots:", plot_times)
 
-    plot_stacked( output_dir=dirs["output"], times=plot_times,
-                 plot_format=OPTIONS["plot_format"] )
+    plot_stacked(
+        output_dir=handler.directories["output"],
+        times=plot_times,
+        plot_format=handler.config["plot_format"],
+    )
 
-#====================================================================
 
 if __name__ == "__main__":
-
-    main()
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_stacked_entry(handler)

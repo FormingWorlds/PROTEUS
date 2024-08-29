@@ -11,7 +11,7 @@ def EL_escape(tidal_contribution,a,e,Mp,Ms,epsilon,Rp,Rxuv,Fxuv):
     ''''
     Compute the mass-loss rate for Energy-Limited (EL) escape.
     Based on the formula from Lopez, Fortney & Miller, 2012 (Equation 2,3,4).
-    
+
     Inputs :
         - tidal_contribution : 0 (None) or 1 (yes) -> K_tide = tidal correction factor (0 < K_tide < 1)                                    [dimensionless]
         - a                  : planetary semi-major axis                                                                                   [m]
@@ -23,7 +23,7 @@ def EL_escape(tidal_contribution,a,e,Mp,Ms,epsilon,Rp,Rxuv,Fxuv):
         - Rxuv               : planetary radius at which XUV radiation are opticaly thick (defined at 20 mbar in Baumeister et  al. 2023)  [m]
         - Fxuv               : XUV incident flux received on the planet from the host star                                                 [W m-2]
     Constants :
-        - G                  : gravitational constant                                                                                      [m3 kg-1 s-2] 
+        - G                  : gravitational constant                                                                                      [m3 kg-1 s-2]
 
     Output : Mass-loss rate for EL escape [kg s-1]
     '''

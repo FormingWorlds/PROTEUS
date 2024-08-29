@@ -5,13 +5,11 @@
 You can directly run PROTEUS using the Python command:
 
 ```console
-python start_proteus.py --cfg [cfgfile]
+proteus start --config [cfgfile]
 ```
 
-Where `[cfgfile]` is the path to the required configuration file. If
-`--cfg [cfgfile]` is not provided, then the default configuration
-located at `input/default.cfg` will be used. Pass the flag `--resume` in
-order to resume the simulation from the disk.
+Where `[cfgfile]` is the path to the required configuration file.
+Pass the flag `--resume` in to resume the simulation from the disk.
 
 You can also run PROTEUS inside a Screen session using:
 
@@ -25,6 +23,11 @@ the model whether to resume from a previous state. The `[detach]`
 parameter (y/n) tells the session whether to immediately detach or not.
 This allows multiple instances of the model to be dispatched easily and
 safely.
+
+## CLI
+
+Proteus has a command-line interface that can be accessed by running `proteus` on the command line.
+Try `proteus --help` to see the available commands!
 
 ## Configuration file
 

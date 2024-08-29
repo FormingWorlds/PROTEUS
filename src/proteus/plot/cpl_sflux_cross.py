@@ -1,27 +1,30 @@
-#!/usr/bin/env python3
-
-# Plots stellar flux from output directory for a set of wavelength bins
 from __future__ import annotations
 
 import glob
 import logging
-import sys
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from cmcrameri import cm
 
-from proteus.utils.constants import const_c, const_h, const_k, dirs
+from proteus.utils.constants import const_c, const_h, const_k
 from proteus.utils.helper import find_nearest, natural_sort
+
+if TYPE_CHECKING:
+    from proteus import Proteus
 
 log = logging.getLogger("PROTEUS")
 
 
-# Planck function value at stellar surface
-# lam in nm
-# erg s-1 cm-2 nm-1
 def planck_function(lam, T):
+    """Plots stellar flux from output directory for a set of wavelength bins
+
+    Planck function value at stellar surface
+    lam in nm
+    erg s-1 cm-2 nm-1
+    """
 
     x = lam * 1.0e-9   # convert nm -> m
     hc_by_kT = const_h*const_c / (const_k*T)
@@ -32,7 +35,13 @@ def planck_function(lam, T):
 
     return planck_func
 
-def plot_sflux_cross(output_dir, wl_targets:list=[], modern_age:float=-1, plot_format="pdf"):
+
+def plot_sflux_cross(
+        output_dir: str,
+        wl_targets: list | None=None,
+        modern_age: float=-1,
+        plot_format="pdf",
+    ):
     """Plots stellar flux vs time, for a set of wavelengths.
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -40,19 +49,18 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], modern_age:float=-1, plot_f
 
     Parameters
     ----------
-        output_dir : str
-            Directory for both reading from and saving to.
-
-        wl_targets : list
-            List of wavelengths to plot [nm]
-        modern_age : float
-            Current age of star. If not provided, then won't be plotted
+    output_dir : str
+        Directory for both reading from and saving to.
+    wl_targets : list | None
+        List of wavelengths to plot [nm]
+    modern_age : float
+        Current age of star. If not provided, then won't be plotted
     """
 
     mpl.use('Agg')
 
     # Wavelength targets default value
-    if len(wl_targets) < 1:
+    if not wl_targets:
         wl_targets = [1.0, 12.0, 50.0, 121.0, 200.0, 400.0, 500.0, 2000.0]
 
     # Find and sort files
@@ -76,7 +84,8 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], modern_age:float=-1, plot_f
 
         # Parse data
         time = int(f.split('/')[-1].split('.')[0])
-        if (time < 0): continue
+        if (time < 0):
+            continue
         wave = X[0]
         flux = X[1]
 
@@ -138,30 +147,22 @@ def plot_sflux_cross(output_dir, wl_targets:list=[], modern_age:float=-1, plot_f
                 bbox_inches="tight", dpi=200)
 
 
-# Run directly
-if __name__ == '__main__':
+def plot_sflux_cross_entry(handler: Proteus):
+    wl_targets = [1.0, 12.0, 50.0, 121.0, 200.0, 400.0, 500.0, 2000.0]
 
+    plot_sflux_cross(
+        output_dir=handler.directories['output'],
+        wl_targets=wl_targets,
+        modern_age=handler.config["star_age_modern"],
+        plot_format=handler.config["plot_format"],
+    )
+
+
+if __name__ == '__main__':
     print("Plotting stellar flux over time (bins)...")
 
-    wl_bins = [1.0, 12.0, 50.0, 121.0, 200.0, 400.0, 500.0, 2000.0]
-
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
-
-    # Read in COUPLER input file
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
-
-    plot_sflux_cross(dirs['output'], wl_targets=wl_bins,
-                     modern_age=OPTIONS["star_age_modern"],
-                     plot_format=OPTIONS["plot_format"])
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_sflux_cross_entry(handler)
 
     print("Done!")
-
-
-# End of file

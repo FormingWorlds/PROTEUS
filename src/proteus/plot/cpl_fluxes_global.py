@@ -1,9 +1,7 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
 import logging
-import sys
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -12,10 +10,12 @@ import pandas as pd
 
 from proteus.utils.plot import dict_colors
 
+if TYPE_CHECKING:
+    from proteus import Proteus
+
 log = logging.getLogger("PROTEUS")
 
-# Plotting fluxes
-def plot_fluxes_global(output_dir, OPTIONS, t0=100.0):
+def plot_fluxes_global(output_dir: str, options: dict, t0: float=100.0):
 
     log.info("Plot global fluxes")
 
@@ -26,7 +26,7 @@ def plot_fluxes_global(output_dir, OPTIONS, t0=100.0):
     time = np.array(hf_all["Time"] )
 
     F_net = np.array(hf_all["F_atm"])
-    F_asf = np.array(hf_all["F_ins"]) * OPTIONS["asf_scalefactor"] * (1.0 - OPTIONS["albedo_pl"]) * np.cos(OPTIONS["zenith_angle"] * np.pi/180.0)
+    F_asf = np.array(hf_all["F_ins"]) * options["asf_scalefactor"] * (1.0 - options["albedo_pl"]) * np.cos(options["zenith_angle"] * np.pi/180.0)
     F_olr = np.array(hf_all["F_olr"])
     F_upw = np.array(hf_all["F_olr"]) + np.array(hf_all["F_sct"])
     F_int = np.array(hf_all["F_int"])
@@ -65,21 +65,18 @@ def plot_fluxes_global(output_dir, OPTIONS, t0=100.0):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_global.%s"%OPTIONS["plot_format"],
+    fig.savefig(output_dir+"/plot_fluxes_global.%s"%options["plot_format"],
                 bbox_inches='tight', dpi=200)
 
+
+def plot_fluxes_global_entry(handler: Proteus):
+    plot_fluxes_global(
+        output_dir=handler.directories["output"],
+        options=handler.config,
+    )
+
+
 if __name__ == '__main__':
-
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
-
-    # Read in COUPLER input file
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
-
-    plot_fluxes_global(dirs["output"], OPTIONS)
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_fluxes_global_entry(handler)

@@ -67,7 +67,7 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
 
         # Initialise atmosphere struct
         spfile_path = os.path.join(dirs["output"] , "runtime.sf")
-        no_atm = bool(atm == None)
+        no_atm = bool(atm is None)
         if no_atm or update_stellar_spectrum:
             log.debug("Initialise new atmosphere struct")
 

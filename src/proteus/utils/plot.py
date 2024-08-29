@@ -87,7 +87,6 @@ vol_latex = {
     "HCN"     : r"HCN",
     "NH3"     : r"NH$_3$",
     "He"      : r"He",
-    "NH3"     : r"NH$_3$",
     "H2O-CO2" : r"H$_2$O-CO$_2$",
     "H2O-H2"  : r"H$_2$O-H$_2$",
     "H2O-CO"  : r"H$_2$O-CO",
@@ -222,7 +221,7 @@ class FigureData( object ):
 
         mpl.use('Agg')  # Prevent plots popping up (it's very annoying)
 
-        if (type(times) == float) or (type(times) == int):
+        if isinstance(times, (float, int)):
             times = np.array([times])
 
         if len(times) > 0:
@@ -244,7 +243,6 @@ class FigureData( object ):
     def get_legend_label( self, time ):
         dd = self.data_d
         units = dd['time_units']
-        dp = dd['time_decimal_places']
         age = float(time)
         if units == 'yr':
             age = round( age, 0 )
@@ -258,8 +256,8 @@ class FigureData( object ):
         elif units == 'Byr' or units == 'Gyr':
             age /= 1.0E9
             label = '%0.2f'
-        #label = '%0.{}e'.format( dp )
-        #label = '%0.{}f'.format( dp )
+        else:
+            raise ValueError(f'Unknown units: {units}')
         label = label % age
         return label
 
@@ -304,7 +302,7 @@ class FigureData( object ):
         # Set main font properties
         font_d = {
             'size': 10.0,
-            'family': ['Arial','sans-serif']
+            'family': ['sans-serif']
             }
 
         # fonts  = fm.findSystemFonts(fontpaths=None, fontext='ttf')
@@ -344,7 +342,6 @@ class FigureData( object ):
             self.set_myyticks( ax, yticks, ymin, ymax, fmt )
 
     def set_mylegend( self, ax, handles, loc=4, ncol=1, TITLE=None, **kwargs ):
-        dd = self.data_d
         fontsize = self.data_d['fontsize_legend']
         # FIXME
         if not TITLE:
@@ -379,25 +376,27 @@ class FigureData( object ):
         ax.set_ylabel( label, fontsize=fontsize, rotation=yrotation )
 
     def set_myxticks( self, ax, xticks, xmin, xmax, fmt ):
-        dd = self.data_d
         if fmt:
             xticks = fmt.ascale( np.array(xticks) )
             ax.xaxis.set_major_formatter(
                 mpl.ticker.FuncFormatter(fmt))
         ax.set_xticks( xticks)
         # set x limits to match extent of ticks
-        if not xmax: xmax=xticks[-1]
-        if not xmin: xmin=xticks[0]
+        if not xmax:
+            xmax=xticks[-1]
+        if not xmin:
+            xmin=xticks[0]
         ax.set_xlim( xmin, xmax )
 
     def set_myyticks( self, ax, yticks, ymin, ymax, fmt ):
-        dd = self.data_d
         if fmt:
             yticks = fmt.ascale( np.array(yticks) )
             ax.yaxis.set_major_formatter(
                 mpl.ticker.FuncFormatter(fmt))
         ax.set_yticks( yticks)
         # set y limits to match extent of ticks
-        if not ymax: ymax=yticks[-1]
-        if not ymin: ymin=yticks[0]
+        if not ymax:
+            ymax=yticks[-1]
+        if not ymin:
+            ymin=yticks[0]
         ax.set_ylim( ymin, ymax )

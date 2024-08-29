@@ -34,7 +34,6 @@ else
     ALIAS="$2"
     RESUME=$(echo "$3" | tr -d ' ' | tr '[:upper:]' '[:lower:]' | cut -c1-1)  # strip spaces, covert to lowercase, get first char
     DETACH=$(echo "$4" | tr -d ' ' | tr '[:upper:]' '[:lower:]' | cut -c1-1)  # strip spaces, covert to lowercase, get first char
-    EXECUTABLE="$PROTEUS_DIR/start_proteus.py"
 
     # Clear dead screens
     screen -wipe > /dev/null
@@ -54,7 +53,7 @@ else
     # Dispatch screen session with PROTEUS inside
     echo "    Dispatching screen session..."
 
-    COMMAND="python $EXECUTABLE --cfg $CFGFILE"
+    COMMAND="proteus start --config $CFGFILE"
     if [[ "$RESUME" == "y" ]]; then
         COMMAND="$COMMAND --resume"
     fi

@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import glob
+import logging
 import os
-import sys
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -13,9 +13,12 @@ from cmcrameri import cm
 from matplotlib.ticker import LogLocator, MultipleLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-#====================================================================
+if TYPE_CHECKING:
+    from proteus import Proteus
 
-# Helper function
+log = logging.getLogger("PROTEUS")
+
+
 def _read_nc(nc_fpath):
     ds = nc.Dataset(nc_fpath)
 
@@ -32,17 +35,22 @@ def _read_nc(nc_fpath):
     arr_p = [pl[0]]
     arr_t = [tl[0]]
     arr_z = [zl[0]]
+
     for i in range(nlev):
-        arr_p.append(p[i]); arr_p.append(pl[i+1])
-        arr_t.append(t[i]); arr_t.append(tl[i+1])
-        arr_z.append(z[i]); arr_z.append(zl[i+1])
+        arr_p.append(p[i])
+        arr_p.append(pl[i+1])
+
+        arr_t.append(t[i])
+        arr_t.append(tl[i+1])
+
+        arr_z.append(z[i])
+        arr_z.append(zl[i+1])
 
     ds.close()
 
     return np.array(arr_p), np.array(arr_t), np.array(arr_z)
 
 
-# Plotting function
 def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
 
     print("Plot atmosphere temperatures colourbar")
@@ -108,26 +116,15 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
     fname = os.path.join(output_dir,"plot_atmosphere_cbar.%s"%plot_format)
     fig.savefig(fname, bbox_inches='tight', dpi=200)
 
-#====================================================================
-def main():
 
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
-
-    # Read in COUPLER input file
-    log.info("Read cfg file")
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
-
+def plot_atmosphere_cbar_entry(handler: Proteus):
     # Plot fixed set from above
-    plot_atmosphere_cbar( output_dir=dirs["output"], plot_format=OPTIONS["plot_format"])
+    plot_atmosphere_cbar(
+        output_dir=handler.directories["output"],
+        plot_format=handler.config["plot_format"])
 
-#====================================================================
 
 if __name__ == "__main__":
-    main()
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_atmosphere_cbar_entry(handler)

@@ -1,17 +1,20 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import logging
 import os
-import sys
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+if TYPE_CHECKING:
+    from proteus import Proteus
+
 log = logging.getLogger("PROTEUS")
 
-def plot_observables( output_dir, plot_format="pdf", t0=100.0):
+
+def plot_observables( output_dir: str, plot_format: str="pdf", t0: float=100.0):
 
     log.info("Plot observables")
 
@@ -51,26 +54,15 @@ def plot_observables( output_dir, plot_format="pdf", t0=100.0):
     fpath = os.path.join(output_dir, "plot_observables.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
-#====================================================================
-def main():
 
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
+def plot_observables_entry(handler: Proteus):
+    plot_observables(
+        output_dir=handler.directories["output"],
+        plot_format=handler.config["plot_format"],
+    )
 
-    # Read in COUPLER input file
-    log.info("Read cfg file")
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
-
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
-
-    plot_observables( output_dir=dirs["output"], plot_format=OPTIONS["plot_format"] )
-
-#====================================================================
 
 if __name__ == "__main__":
-
-    main()
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_observables_entry(handler)

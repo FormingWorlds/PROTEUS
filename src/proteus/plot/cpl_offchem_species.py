@@ -1,21 +1,30 @@
-#!/usr/bin/env python3
-
-# Plot evolution of mixing ratios over time, for a single species, versus pressure
-
-
 from __future__ import annotations
 
-import sys
+import glob
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+from cmcrameri import cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from proteus.utils.plot import vol_latex
 from proteus.utils.plot_offchem import offchem_read_year
+
+if TYPE_CHECKING:
+    from proteus import Proteus
 
 mpl.use("Agg")
 
 
-def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=False):
+def plot_offchem_species(
+        output_dir: str,
+        specie: str,
+        tmin: float=-1.0,
+        tmax: float=-1.0,
+        plot_init_mx: bool=False
+    ):
     """Plot evolution of a single component according to offline VULCAN output
 
     Reads-in the data from output_dir for a single species. Can also
@@ -24,16 +33,16 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
 
     Parameters
     ----------
-        output_dir : str
-            Output directory that was specified in the PROTEUS cfg file
-        sp : list
-            Which species to plot? (e.g. H2O)
-        tmin : float
-            Initial year to include (-1 for start of data)
-        tmax : float
-            Final year to include (-1 for end of data)
-        plot_init_mx : bool
-            Include initial mixing ratios for each VULCAN run in plot?
+    output_dir : str
+        Output directory that was specified in the PROTEUS cfg file
+    specie : str
+        Which species to plot? (e.g. H2O)
+    tmin : float
+        Initial year to include (-1 for start of data)
+    tmax : float
+        Final year to include (-1 for end of data)
+    plot_init_mx : bool
+        Include initial mixing ratios for each VULCAN run in plot?
     """
 
     mpl.use("Agg")
@@ -56,9 +65,9 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
     ax0.set_xlabel("Temperature [K]")
     ax0.set_title("Evolution of $T(p)$")
 
-    pretty = sp
-    if sp in vol_latex.keys():
-        pretty = vol_latex[sp]
+    pretty = specie
+    if specie in vol_latex.keys():
+        pretty = vol_latex[specie]
     ax1.set_title("Evolution of "+pretty)
     ax1.set_xlabel("Mole fraction")
     ax1.set_xscale("log")
@@ -105,13 +114,13 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
         ax0.plot(yd["temperature"],p,color=color,lw=lw,alpha=alpha,label="%1.2e"%yd["year"])
 
         # Mixing ratios
-        key = str("mx_"+sp)
-        ax1.plot(yd[key],p,label=sp,color=color,lw=lw,alpha=alpha)
+        key = str("mx_"+specie)
+        ax1.plot(yd[key],p,label=specie,color=color,lw=lw,alpha=alpha)
 
         min_mix = min(min_mix,np.amin(yd[key]))
 
         if plot_init_mx:
-            key = str("mv_"+sp)
+            key = str("mv_"+specie)
             if key in yd.keys():
                 ax1.scatter(yd[key],p[0], s=40,color='grey')
                 ax1.scatter(yd[key],p[0], s=20,color=color)
@@ -119,37 +128,34 @@ def plot_offchem_species(output_dir, sp, tmin=-1.0, tmax=-1.0, plot_init_mx=Fals
     ax1.set_xlim([min_mix,1])
 
     fig.tight_layout()
-    fig.savefig(output_dir+"plot_offchem_species_%s.pdf"%sp)
+    fig.savefig(output_dir+"plot_offchem_species_{specie}.pdf")
     plt.close('all')
 
 
-
-if __name__ == '__main__':
-    print("Plotting offline chemistry (species vs pressure)...")
-
-    if len(sys.argv) == 2:
-        cfg = sys.argv[1]
-    else:
-        cfg = 'init_coupler.cfg'
-
+def plot_offchem_species_entry(handler: Proteus):
     plot_janus_result = True
-
-
-    # Read in COUPLER input file
-    from utils.coupler import ReadInitFile, SetDirectories
-    OPTIONS = ReadInitFile( cfg )
 
     # Species to make plots for
     species = ["H2", "H2O", "H", "OH", "O3", "O2",
                "CO2", "CO", "CH4", "C2H2",
                "HCN", "NH3", "NH2", "N2", "NO"]
 
-    # Set directories dictionary
-    dirs = SetDirectories(OPTIONS)
-
     # Call plotting function
-    for s in species:
-        print("Species = %s" % s)
-        plot_offchem_species(dirs["output"],s,tmin=-1, plot_init_mx=plot_janus_result)
+    for specie in species:
+        print(f"Species = {specie}")
+        plot_offchem_species(
+            output_dir=handler.directories["output"],
+            specie=specie,
+            tmin=-1,
+            plot_init_mx=plot_janus_result,
+        )
+
+
+if __name__ == '__main__':
+    print("Plotting offline chemistry (species vs pressure)...")
+
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_offchem_species_entry(handler)
 
     print("Done!")
