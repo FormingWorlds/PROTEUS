@@ -21,11 +21,6 @@ def InitStellarSpectrum(dirs:dict, wl:list, fl:list, spectral_file_nostar):
     # Generate a new SOCRATES spectral file containing this new spectrum
     star_spec_src = dirs["output"]+"socrates_star.txt"
 
-    # Update stdout
-    old_stdout , old_stderr = sys.stdout , sys.stderr
-    sys.stdout = StreamToLogger(log, logging.INFO)
-    sys.stderr = StreamToLogger(log, logging.ERROR)
-
     # Spectral file stuff
     PrepareStellarSpectrum(wl,fl,star_spec_src)
     InsertStellarSpectrum(spectral_file_nostar,
@@ -33,9 +28,6 @@ def InitStellarSpectrum(dirs:dict, wl:list, fl:list, spectral_file_nostar):
                           dirs["output"]
                           )
     os.remove(star_spec_src)
-
-    # Restore stdout
-    sys.stdout , sys.stderr = old_stdout , old_stderr
 
     return
 
