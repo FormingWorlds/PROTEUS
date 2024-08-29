@@ -3,9 +3,5 @@
     "editor.rulers": [ 92 ],
     "python.analysis.extraPaths": ["JANUS","Mors"],
     "files.trimTrailingWhitespace": true,
-    "python.testing.pytestArgs": [
-        "tests"
-    ],
-    "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "files.insertFinalNewline": true
 }
