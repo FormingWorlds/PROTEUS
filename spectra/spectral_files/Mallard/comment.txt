@@ -1,0 +1,5 @@
+Contains major volatiles of interest for MO simulations, neglecting sulfur species.
+H2O, H2, CO2, CO, CH4, O2, N2, He.
+Also contains continuum combinations thereof.
+
+

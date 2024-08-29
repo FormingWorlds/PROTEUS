@@ -136,6 +136,9 @@ fO2_shift_IW                = 4
 # Enable solving for initial partial pressures (0: off | 1: on)
 solvevol_use_params          = 0
 
+# Enable solving solidus water dependent (0: off | 1: on)
+solidus_water_depend        =1
+
 # Parameters used to solve for initial partial pressures (when solvepp_use_params = 1)
 Phi_global                  = 1.0       # Mantle melt fraction initial guess
 CH_ratio                    = 1.0       # C/H ratio

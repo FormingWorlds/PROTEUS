@@ -372,6 +372,16 @@ def _try_spider( dirs:dict, OPTIONS:dict,
     call_sequence.extend(["-ts_sundials_atol", str(OPTIONS["solver_tolerance"] * atol_sf)])
     call_sequence.extend(["-ts_sundials_rtol", str(OPTIONS["solver_tolerance"] * atol_sf)])
 
+
+    if OPTIONS["solidus_water_depend"] and (loop_counter["total"] > 1):
+        solidus_path = str("../output/"+OPTIONS["dir_output"]+"/solidus_A11_depression_H13.dat")
+        call_sequence.extend(["-solid_phase_boundary_filename_rel_to_src", solidus_path])
+        log.info('Test passed the condition on spider.py for solidus recomp.')
+    else:
+        call_sequence.extend(["-solid_phase_boundary_filename_rel_to_src", str("lookup_data/1TPa-dK09-elec-free/solidus_A11_H13.dat")])
+        log.info('Test using dry solidus')
+
+
     # Runtime info
     flags = ""
     for flag in call_sequence:

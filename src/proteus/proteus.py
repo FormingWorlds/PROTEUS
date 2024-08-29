@@ -15,6 +15,7 @@ import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.atmos_clim.agni import DeallocAtmos
 from proteus.atmos_clim.wrapper_atmosphere import atm
+from proteus.utils.solidus_depression import katz2003
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -604,6 +605,23 @@ class Proteus:
 
             # Adjust total iteration counters
             loop_counter["total"] += 1
+
+
+            log.info('AMOUNT OF WATER AVAILABLE IN KG: ' + str(hf_row["H2O_kg_liquid"]))
+            log.info('AMOUNT OF MELT IN KG:'+ str(hf_row["M_mantle_liquid"]))               
+            wt=100*hf_row["H2O_kg_liquid"]/(hf_row["M_mantle_liquid"]+hf_row["H2O_kg_liquid"])
+            log.info('WT FOR SOLIDUS DEPRESSION:' + str(wt))
+
+            if self.config["solidus_water_depend"]==1:
+                katz2003(wt,self.directories["output"],'solidus_A11_depression_H13.dat')
+                log.info('RE-COMPUTATION OF SOLIDUS FOLLOWING KATZ+2003 DONE')
+
+            else:
+                print('Simulation without solidus depression')
+
+            # if COUPLER_options["solidus_water_depend"]==1 and loop_counter["total"]==1:
+            #     katz2003(wt,dirs['output'],'solidus'+str(loop_counter["total"])+'.dat')
+
 
             # Update full helpfile
             if loop_counter["total"] > 1:
