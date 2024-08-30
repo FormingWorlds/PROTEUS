@@ -3,9 +3,9 @@
 
 # Check SSH access to GitHub
 ssh -T git@github.com
-if [ $? -eq 1 ]; then 
+if [ $? -eq 1 ]; then
     use_ssh=true
-else 
+else
     use_ssh=false
 fi
 
@@ -16,7 +16,7 @@ if [ "$use_ssh" = true ]; then
     git clone git@github.com:nichollsh/SOCRATES.git "$socpath"
 else
     git clone https://github.com/nichollsh/SOCRATES.git "$socpath"
-fi 
+fi
 
 # Compile SOCRATES
 cd "$socpath"
@@ -27,4 +27,3 @@ cd "$socpath"
 source ./set_rad_env
 export LD_LIBRARY_PATH=""
 cd ..
-

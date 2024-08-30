@@ -57,7 +57,7 @@ jobs:
       - name: Get SOCRATES
         uses: actions/checkout@v4
         with:
-          repository: 'FormingWorlds/SOCRATES'
+          repository: 'nichollsh/SOCRATES'
           path: 'SOCRATES'
 
       - uses: actions/cache@v3
