@@ -43,8 +43,8 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
-    # "fwl-janus",
-    # "fwl-mors",
+    "fwl-janus==24.8.29",
+    "fwl-mors==24.8.29",
     "cmcrameri",
     "juliacall",
     "matplotlib",

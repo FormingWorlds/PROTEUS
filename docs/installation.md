@@ -74,25 +74,10 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 5. Setup radiative transfer code (**SOCRATES**)
 
     ```console
-    cd SOCRATES
-    ./configure
-    ./build_code
-    cd ..
+    source get_socrates.sh
     ```
 
-6. Setup stellar evolution model (**MORS**)
-
-    ```console
-    pip install -e Mors/.
-    ```
-
-7. Setup atmosphere model (**JANUS**)
-
-    ```console
-    pip install -e JANUS/.
-    ```
-
-8. Setup numerical computing library (**PETSc**)
+6. Setup numerical computing library (**PETSc**)
 
     - Configure step
 
@@ -108,7 +93,7 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     cd ..
     ```
 
-9. Setup PROTEUS coupled framework
+7. Setup PROTEUS coupled framework
 
     - Get the remaining Python dependencies
 
@@ -130,7 +115,7 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 
     **IF** you want to be able to start PROTEUS immediately from a new shell every time, add `source PROTEUS.env`, `export FWL_DATA`, and the venv activate command to your shell rc file.
 
-10. Setup interior evolution model (**SPIDER**)
+8. Setup interior evolution model (**SPIDER**)
 
     ```console
     cd SPIDER
@@ -139,7 +124,7 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     cd ..
     ```
 
-11. Done! 🚀
+9. Done! 🚀
 
 Any remaining dependencies will be downloaded when the model is first run.
 
@@ -163,19 +148,13 @@ They are also reproduced below.
     cd AGNI
     ```
 
-3. Setup SOCRATES
-
-    ```console
-    source get_socrates.sh
-    ```
-
-4. Build AGNI
+3. Build AGNI
 
     ```console
     julia -e 'using Pkg; Pkg.activate("."); Pkg.build()'
     ```
 
-5. Go back to the PROTEUS directory
+4. Go back to the PROTEUS directory
 
     ```console
     cd ../

@@ -86,7 +86,6 @@ class Proteus:
         """
         import mors
         from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
-        from janus.utils.StellarSpectrum import InsertStellarSpectrum, PrepareStellarSpectrum
 
         UpdateStatusfile(self.directories, 0)
 
@@ -258,9 +257,6 @@ class Proteus:
             UpdateStatusfile(self.directories, 20)
             raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
 
-        # Runtime spectral file path
-        spfile_path = os.path.join(self.directories["output"], "runtime.sf")
-
         # Handle stellar spectrum...
 
         # Store copy of modern spectrum in memory (1 AU)
@@ -362,6 +358,7 @@ class Proteus:
             ############### STELLAR FLUX MANAGEMENT
             PrintHalfSeparator()
             log.info("Stellar flux management...")
+            update_stellar_spectrum = False
 
             # Calculate new instellation and radius
             if (abs(hf_row["Time"] - sinst_prev) > self.config["sinst_dt_update"]) or (
@@ -423,10 +420,7 @@ class Proteus:
                 loop_counter["total"] == 0
             ):
                 sspec_prev = hf_row["Time"]
-
-                # Remove old spectral file if it exists
-                safe_rm(spfile_path)
-                safe_rm(spfile_path + "_k")
+                update_stellar_spectrum = True
 
                 log.info("Updating stellar spectrum")
                 match self.config["star_model"]:
@@ -458,19 +452,6 @@ class Proteus:
                     fmt="%.8e",
                     delimiter="\t",
                 )
-
-                # Prepare spectral file for JANUS
-                if self.config["atmosphere_model"] == 0:
-                    # Generate a new SOCRATES spectral file containing this new spectrum
-                    star_spec_src = self.directories["output"] + "socrates_star.txt"
-                    #    Spectral file stuff
-                    PrepareStellarSpectrum(wl, fl, star_spec_src)
-                    InsertStellarSpectrum(spectral_file_nostar, star_spec_src, self.directories["output"])
-                    os.remove(star_spec_src)
-
-                # Other cases...
-                #  - AGNI will prepare the file itself
-                #  - dummy_atmosphere does not require this file
 
             else:
                 log.info("New spectrum not required at this time")
@@ -568,7 +549,7 @@ class Proteus:
             ############### / OUTGASSING
 
             ############### ATMOSPHERE SUB-LOOP
-            RunAtmosphere(self.config, self.directories, loop_counter, spfile_path, hf_all, hf_row)
+            RunAtmosphere(self.config, self.directories, loop_counter, wl, fl, update_stellar_spectrum, hf_all, hf_row)
 
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
