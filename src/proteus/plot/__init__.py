@@ -3,6 +3,7 @@ from __future__ import annotations
 from proteus.plot.cpl_atmosphere import plot_atmosphere_entry
 from proteus.plot.cpl_atmosphere_cbar import plot_atmosphere_cbar_entry
 from proteus.plot.cpl_elements import plot_elements_entry
+from proteus.plot.cpl_emission import plot_emission_entry
 from proteus.plot.cpl_escape import plot_escape_entry
 from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere_entry
 from proteus.plot.cpl_fluxes_global import plot_fluxes_global_entry
@@ -40,4 +41,5 @@ plot_dispatch = {
     'sflux': plot_sflux_entry,
     'sflux_cross': plot_sflux_cross_entry,
     'stacked': plot_stacked_entry,
+    'emission': plot_emission_entry,
 }

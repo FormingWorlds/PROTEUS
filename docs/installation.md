@@ -51,33 +51,42 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     - <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account>
     - <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection>
 
-2. Download PROTEUS base
+2. Setup environment variables
+
+    The environment variable `FWL_DATA` points to the folder where input data are stored.
+    This variable must always be set, so it is best to add this line to your shell rc file.
+
+    ```console
+    export FWL_DATA=/your/local/path/
+    ```
+
+3. Download PROTEUS base
 
     ```console
     git clone git@github.com:FormingWorlds/PROTEUS.git
     ```
 
-3. Get dependencies
+4. Get dependencies
 
     ```console
     cd PROTEUS
     git submodule update --init --recursive
     ```
 
-4. Create a virtual environment
+5. Create a virtual environment
 
     ```console
     python -m venv .venv
     source .venv/bin/activate
     ```
 
-5. Setup radiative transfer code (**SOCRATES**)
+6. Setup radiative transfer code (**SOCRATES**)
 
     ```console
     source get_socrates.sh
     ```
 
-6. Setup numerical computing library (**PETSc**)
+7. Setup numerical computing library (**PETSc**)
 
     - Configure step
 
@@ -93,7 +102,26 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     cd ..
     ```
 
-7. Setup PROTEUS coupled framework
+8. **Optional** developer installation steps
+
+    Follow the steps in this section if you want to create editable installations of these submodules.
+    Otherwise, go to the next step section.
+
+    - MORS stellar evolution model
+
+        ```console
+        git clone git@github.com:FormingWorlds/MORS
+        pip install -e MORS/.
+        ```
+
+    - JANUS atmosphere model
+
+        ```console
+        git clone git@github.com:FormingWorlds/JANUS
+        pip install -e JANUS/.
+        ```
+
+9. Setup PROTEUS coupled framework
 
     - Get the remaining Python dependencies
 
@@ -101,21 +129,14 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
         pip install -e .
         ```
 
-    - Set up environment variables. This can be done using the PROTEUS environment file
+    - Set remaining environment variables
+        This file needs to be sourced for each new shell. This line can also be added to your shell rc file.
 
         ```console
         source PROTEUS.env
         ```
 
-    - Set up the environment variable `FWL_DATA` to indicate in which folder the input data need to be stored
-
-        ```console
-        export FWL_DATA=/your/local/path/
-        ```
-
-    **IF** you want to be able to start PROTEUS immediately from a new shell every time, add `source PROTEUS.env`, `export FWL_DATA`, and the venv activate command to your shell rc file.
-
-8. Setup interior evolution model (**SPIDER**)
+10. Setup interior evolution model (**SPIDER**)
 
     ```console
     cd SPIDER
@@ -124,11 +145,11 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     cd ..
     ```
 
-9. Done! 🚀
+11. Done! 🚀
 
 Any remaining dependencies will be downloaded when the model is first run.
 
-## Step-by-step (optional modules)
+## Optional modules
 
 ### Radiative-convective atmosphere model (**AGNI**)
 

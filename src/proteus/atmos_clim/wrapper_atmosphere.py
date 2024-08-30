@@ -7,7 +7,13 @@ import os
 import pandas as pd
 from scipy.integrate import solve_ivp
 
-from proteus.atmos_clim.agni import ActivateEnv, DeallocAtmos, InitAtmos, RunAGNI, UpdateProfile
+from proteus.atmos_clim.agni import (
+    activate_julia,
+    deallocate_atmos,
+    init_agni_atmos,
+    run_agni,
+    update_agni_atmos,
+)
 from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
 from proteus.atmos_clim.janus import InitAtm, InitStellarSpectrum, RunJANUS
 from proteus.utils.constants import AU
@@ -82,7 +88,7 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
 
             # first run?
             if no_atm:
-                ActivateEnv(dirs)
+                activate_julia(dirs)
                 # surface temperature guess
                 hf_row["T_surf"] = hf_row["T_magma"]
             else:
@@ -90,16 +96,16 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
                 safe_rm(spfile_path)
                 safe_rm(spfile_path+"_k")
                 # deallocate old atmosphere
-                DeallocAtmos(atm)
+                deallocate_atmos(atm)
 
             # allocate new
-            atm = InitAtmos(dirs, OPTIONS, hf_row)
+            atm = init_agni_atmos(dirs, OPTIONS, hf_row)
 
         # Update profile
-        atm = UpdateProfile(atm, hf_row, OPTIONS)
+        atm = update_agni_atmos(atm, hf_row, OPTIONS)
 
         # Run solver
-        atm, atm_output = RunAGNI(atm, loop_counter["total"], dirs, OPTIONS, hf_row)
+        atm, atm_output = run_agni(atm, loop_counter["total"], dirs, OPTIONS, hf_row)
 
     elif OPTIONS["atmosphere_model"] == 2:
         # Run dummy atmosphere model

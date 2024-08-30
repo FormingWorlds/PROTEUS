@@ -2,10 +2,17 @@
 # These do not do the plotting themselves
 from __future__ import annotations
 
+import glob
+import os
+from typing import TYPE_CHECKING
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from cmcrameri import cm
+
+if TYPE_CHECKING:
+    from proteus import Proteus
 
 vol_zorder  = {
     "H2O"            : 11,
@@ -142,6 +149,53 @@ def latex_float(f):
         return r"${0} \times 10^{{{1}}}$".format(base, int(exponent))
     else:
         return float_str
+
+def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0):
+    from proteus.utils.helper import find_nearest
+
+    # get all files
+    files = glob.glob(os.path.join(handler.directories["output"], "data", "*."+ftype))
+    if len(files) < 1:
+        return []
+
+    # get times
+    times = [int(f.split("/")[-1].split("_")[0]) for f in files]
+
+    # do not allow t=0
+    times = [x for x in times if x > 0]
+
+    # lower limit
+    tmin = max(tmin,np.amin(times))
+    tmin = min(tmin, np.amax(times))
+    tmin = max(tmin, 1.0)
+    # upper limit
+    tmax = max(tmin+1, np.amax(times))
+
+    nsamp = 8
+
+    # get samples on log-time scale
+    sample_t = []
+    sample_f = []
+    for s in np.logspace(np.log10(tmin),np.log10(tmax),nsamp): # Sample on log-scale
+
+        remaining = list(set(times) - set(sample_t))
+        if len(remaining) == 0:
+            break
+
+        _,idx = find_nearest(remaining,s) # Find next new sample
+
+        sample_t.append(int(times[idx]))
+        sample_f.append(str(files[idx]))
+
+    # sort output
+    mask = np.argsort(sample_t)
+    out_t, out_f = [], []
+    for i in mask:
+        out_t.append(sample_t[i])
+        out_f.append(sample_f[i])
+
+    # return times and file paths
+    return out_t, out_f
 
 #===================================================================
 class MyFuncFormatter( object ):
