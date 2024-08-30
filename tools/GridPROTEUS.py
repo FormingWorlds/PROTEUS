@@ -170,6 +170,17 @@ class Pgrid():
             raise Exception("Dimension '%s' cannot be set twice" % name)
         self.dim_param[idx] = var
         self.dim_avars[name] = list(np.linspace(start,stop,count))
+        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+
+    # Set a dimension by arange (inclusive of endpoint)
+    def set_dimension_arange(self,name:str,var:str,start:float,stop:float,step:float):
+        idx = self._get_idx(name)
+        if self.dim_param[idx] != "_empty":
+            raise Exception("Dimension '%s' cannot be set twice" % name)
+        self.dim_param[idx] = var
+        self.dim_avars[name] = list(np.arange(start,stop,step))
+        self.dim_avars[name].append(stop)
+        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
 
     # Set a dimension by logspace
     def set_dimension_logspace(self,name:str,var:str,start:float,stop:float,count:int):
@@ -178,6 +189,7 @@ class Pgrid():
             raise Exception("Dimension '%s' cannot be set twice" % name)
         self.dim_param[idx] = var
         self.dim_avars[name] = list(np.logspace( np.log10(start) , np.log10(stop) , count))
+        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
 
     # Set a dimension directly
     def set_dimension_direct(self,name:str,var:str,values:list):
@@ -500,7 +512,7 @@ if __name__=='__main__':
     pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-2, 0, 2, 4])
+    pg.set_dimension_arange("Redox state", "fO2_shift_IW", -2, 5, 1)
 
     # -----
     # Print state of parameter grid
