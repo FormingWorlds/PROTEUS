@@ -428,16 +428,16 @@ class Proteus:
                         synthetic = mors.synthesis.CalcScaledSpectrumFromProps(
                             star_struct_modern, star_props_modern, hf_row["age_star"] / 1e6
                         )
-                        hf_row["fl"] = synthetic.fl  # at 1 AU
-                        hf_row["wl"] = synthetic.wl
+                        fl = synthetic.fl  # at 1 AU
+                        wl = synthetic.wl
                     case 1:
-                        hf_row["fl"] = baraffe.BaraffeSpectrumCalc(
+                        fl = baraffe.BaraffeSpectrumCalc(
                             hf_row["age_star"], self.config["star_luminosity_modern"], modern_fl
                         )
-                        hf_row["wl"] = modern_wl
+                        wl = modern_wl
 
                 # Scale fluxes from 1 AU to TOA
-                hf_row["fl"] *= (1.0 / self.config["mean_distance"]) ** 2.0
+                fl *= (1.0 / self.config["mean_distance"]) ** 2.0
 
                 # Save spectrum to file
                 header = (
@@ -446,7 +446,7 @@ class Proteus:
                 )
                 np.savetxt(
                     os.path.join(self.directories["output"], "data", "%d.sflux" % hf_row["Time"]),
-                    np.array([hf_row["wl"], hf_row["fl"]]).T,
+                    np.array([wl, fl]).T,
                     header=header,
                     comments="",
                     fmt="%.8e",
@@ -549,7 +549,7 @@ class Proteus:
             ############### / OUTGASSING
 
             ############### ATMOSPHERE SUB-LOOP
-            RunAtmosphere(self.config, self.directories, loop_counter, update_stellar_spectrum, hf_all, hf_row)
+            RunAtmosphere(self.config, self.directories, loop_counter, wl, fl, update_stellar_spectrum, hf_all, hf_row)
 
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 

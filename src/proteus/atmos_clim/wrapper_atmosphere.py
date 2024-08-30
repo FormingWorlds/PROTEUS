@@ -17,6 +17,7 @@ atm = None
 log = logging.getLogger("fwl."+__name__)
 
 def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
+                  wl: list, fl:list,
                   update_stellar_spectrum:bool, hf_all:pd.DataFrame, hf_row:dict):
     """Run Atmosphere submodule.
 
@@ -31,6 +32,10 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
             Dictionary containing paths to directories
         loop_counter : dict
             Dictionary containing iteration information
+        wl : list
+            Wavelength [nm]
+        fl : list
+            Flux at 1 AU [erg s-1 cm-2 nm-1]
         update_stellar_spectrum : bool
             Spectral file path
         hf_all : pd.DataFrame
@@ -61,7 +66,7 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
             if not os.path.exists(spectral_file_nostar):
                 UpdateStatusfile(dirs, 20)
                 raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
-            InitStellarSpectrum(dirs, hf_row["wl"], hf_row["fl"], spectral_file_nostar)
+            InitStellarSpectrum(dirs, wl, fl, spectral_file_nostar)
             atm = InitAtm(dirs, OPTIONS)
 
         atm_output = RunJANUS(atm, dirs, OPTIONS, hf_row, hf_all)
