@@ -49,11 +49,6 @@ jobs:
         run: |
           python -m pip install -e .[develop]
 
-      - name: Install JANUS+MORS
-        run: |
-          python -m pip install git+https://github.com/FormingWorlds/MORS
-          python -m pip install git+https://github.com/FormingWorlds/JANUS
-
       - name: Setup system for SOCRATES
         run: |
           sudo apt-get update
@@ -62,7 +57,7 @@ jobs:
       - name: Get SOCRATES
         uses: actions/checkout@v4
         with:
-          repository: 'FormingWorlds/SOCRATES'
+          repository: 'nichollsh/SOCRATES'
           path: 'SOCRATES'
 
       - uses: actions/cache@v3
