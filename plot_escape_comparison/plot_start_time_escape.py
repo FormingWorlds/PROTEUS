@@ -27,12 +27,13 @@ for i, (directory, label) in enumerate(directory_labels.items()):
         time_column = df['Time']
         escape_rate_column = df['esc_rate_total']
         
-        plt.loglog(time_column, escape_rate_column, label=label)
+        plt.plot(time_column, escape_rate_column, label=label)
     else:
         print(f"Warning: {full_path} does not exist.")
 
 plt.xlabel('Time [years]')
 plt.ylabel(r'Total Escape Rate [kg s$^{-1}$]')
+plt.yscale('log')
 # plt.xlim(left=1e6)  # Set x-axis to start at 
 # plt.xlim(right=3.4e6)  # Set x-axis to stop at
 plt.legend(loc='best')
