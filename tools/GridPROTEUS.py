@@ -334,7 +334,7 @@ class Pgrid():
                     if key in gp.keys():
                         # check if is meant to be a string
                         val = gp[key]
-                        if type(val) == str:
+                        if type(val) is str:
                             val = "'%s'"%val
                         hdl.write("%s = %s     # this value set by grid\n" % (key,val))
 
