@@ -34,7 +34,7 @@ from proteus.utils.constants import (
 from proteus.utils.helper import UpdateStatusfile, find_nearest, safe_rm
 from proteus.utils.spider import get_all_output_times
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 def GitRevision(dir:str) -> str:

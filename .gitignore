@@ -17,7 +17,6 @@ output/*
 output.link
 output
 AGNI
-SOCRATES
 
 # misc
 ######
@@ -193,3 +192,5 @@ dmypy.json
 cython_debug/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
+
+.ruff_cache

@@ -12,7 +12,7 @@ from proteus.utils.constants import dirs, volatile_species
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 # Constant
 AGNI_LOGFILE_NAME="agni_recent.log"

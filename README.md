@@ -13,7 +13,7 @@ of the atmospheres and interiors of rocky planets.
 
 ## Installation instructions
 
-Click [here](https://fwl-proteus.readthedocs.io/en/latest/installation.html) for steps and troubleshooting advice.
+Click [here](https://fwl-proteus.readthedocs.io/en/latest/installation/) for steps and troubleshooting advice.
 
 ## Run instructions
 

@@ -13,7 +13,7 @@ from proteus.utils.constants import element_list
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 def plot_elements( output_dir, plot_format="pdf", t0=100.0):
 

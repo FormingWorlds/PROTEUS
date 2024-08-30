@@ -13,7 +13,7 @@ from proteus.utils.spider import MyJSON, get_all_output_times
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 def plot_interior(output_dir: str, times: list | np.ndarray, plot_format: str="pdf"):

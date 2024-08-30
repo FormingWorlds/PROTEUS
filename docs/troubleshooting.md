@@ -23,7 +23,7 @@ MPID_nem_tcp_init(377).............: gethostbyname failed, localhost (errno 3)
 This is actually a network configuration issue. To fix it, you need to add the following to `/etc/hosts`, where `computername` is your hostname:
 
 ```console
-127.0.0.1   computername.local  
+127.0.0.1   computername.local
 127.0.0.1   computername
 ```
 And then also enable Remote Login in your Sharing settings and add your user to the *allowed access* list.
@@ -36,15 +36,15 @@ and try again.
 
 ## Linux: `ksh` not found when running SOCRATES
 
-Most Linux distributions do not come with `ksh` installed, while MacOS seems to. If you get an error relating to `ksh` not being found, check that you did all of the installation steps. 
+Most Linux distributions do not come with `ksh` installed, while MacOS seems to. If you get an error relating to `ksh` not being found, check that you did all of the installation steps.
 
 One step under *Setup SOCRATES* involves replacing `ksh` with `bash` in all of the SOCRATES executables.
 
 ## MacOS: The FastChem code distributed with VULCAN won\'t compile
 
-With the new Apple Silicon hardware (M1/M2), the option `-march=native` sometimes causes issues. 
+With the new Apple Silicon hardware (M1/M2), the option `-march=native` sometimes causes issues.
 
-To avoid this, you need to make sure to use the GNU version of `g++`, not the Apple one. The Apple one located at `/usr/bin/gcc` is actually a wrapped around `clang`. 
+To avoid this, you need to make sure to use the GNU version of `g++`, not the Apple one. The Apple one located at `/usr/bin/gcc` is actually a wrapped around `clang`.
 
 We found that using the Homebrew version located at `/opt/homebrew/bin/` works well.
 
@@ -63,8 +63,8 @@ brew install openssl
 Follow the instructions at the end of the `openssl` installation (replace `USERNAME` with your own system username):
 
 ```console
-echo 'export PATH="/usr/local/opt/openssl@3/bin:$PATH"' >> /Users/USERNAME/.bash_profile  
-echo 'export LDFLAGS="-L/usr/local/opt/openssl@3/lib"' >>/Users/USERNAME/.bash_profile  
+echo 'export PATH="/usr/local/opt/openssl@3/bin:$PATH"' >> /Users/USERNAME/.bash_profile
+echo 'export LDFLAGS="-L/usr/local/opt/openssl@3/lib"' >>/Users/USERNAME/.bash_profile
 echo 'export CPPFLAGS="-I/usr/local/opt/openssl@3/include"' >>/Users/USERNAME/.bash_profile
 ln -s /usr/local/opt/openssl/lib/libcrypto.3.dylib /Users/USERNAME/opt/anaconda3/envs/proteus/lib/python3.10/site-packages/netCDF4/../../../
 ln -s /usr/local/opt/openssl/lib/libssl.3.dylib /Users/USERNAME/opt/anaconda3/envs/proteus/lib/python3.10/site-packages/netCDF4/../../../
