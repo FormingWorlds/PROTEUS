@@ -7,7 +7,7 @@ import os
 import pandas as pd
 from scipy.integrate import solve_ivp
 
-from proteus.atmos_clim.agni import activate_julia, dealloc_atmos, init_atmos, run_agni, update_profile
+from proteus.atmos_clim.agni import activate_julia, deallocate_atmos, init_agni_atmos, run_agni, update_agni_atmos
 from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
 from proteus.atmos_clim.janus import RunJANUS, StructAtm
 from proteus.utils.constants import AU
@@ -69,13 +69,13 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
                 hf_row["T_surf"] = hf_row["T_magma"]
             else:
                 # deallocate old atmosphere
-                dealloc_atmos(atm)
+                deallocate_atmos(atm)
 
             # allocate new
-            atm = init_atmos(dirs, OPTIONS, hf_row)
+            atm = init_agni_atmos(dirs, OPTIONS, hf_row)
 
         # Update profile
-        atm = update_profile(atm, hf_row, OPTIONS)
+        atm = update_agni_atmos(atm, hf_row, OPTIONS)
 
         # Run solver
         atm, atm_output = run_agni(atm, loop_counter["total"], dirs, OPTIONS, hf_row)

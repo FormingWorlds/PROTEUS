@@ -13,7 +13,7 @@ import numpy as np
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
-from proteus.atmos_clim.agni import dealloc_atmos
+from proteus.atmos_clim.agni import deallocate_atmos
 from proteus.atmos_clim.wrapper_atmosphere import atm
 from proteus.config import read_config
 from proteus.utils.constants import (
@@ -717,8 +717,8 @@ class Proteus:
         PrintHalfSeparator()
 
         # Deallocate atmosphere
-        if self.config["atmosphere_model"] == 1:
-            dealloc_atmos(atm)
+        # if self.config["atmosphere_model"] == 1:
+        #     deallocate_atmos(atm)
 
         # Clean up files
         safe_rm(keepalive_file)

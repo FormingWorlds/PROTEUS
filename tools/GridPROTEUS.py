@@ -313,7 +313,7 @@ class Pgrid():
         log.info("Writing config files")
         for i,gp in enumerate(self.flat):
 
-            cfgfile = os.path.join(self.tmpdir,"case_%05d.cfg" % i)
+            cfgfile = os.path.join(self.tmpdir,"case_%05d.toml" % i)
             gp["dir_output"] = self.name+"/case_%05d"%i
 
             # Create config file for this case
@@ -346,11 +346,10 @@ class Pgrid():
 
          # Thread targget
         def _thread_target(cfg_path):
-            proteus_py = os.path.join(PROTEUS_DIR,"start_proteus.py")
             if test_run:
                 command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
             else:
-                command = ["python",proteus_py,"--cfg",cfg_path]
+                command = ["proteus","start","--config",cfg_path]
             subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
 
@@ -358,7 +357,7 @@ class Pgrid():
         threads = []
         for i in range(self.size):
             # Case paths
-            cfg_path = os.path.join(self.tmpdir,"case_%05d.cfg" % i)
+            cfg_path = os.path.join(self.tmpdir,"case_%05d.toml" % i)
             # Check cfg exists
             cfgexists = False
             waitfor   = 4.0
@@ -473,7 +472,7 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","t1c.cfg")
+    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","t1c.toml")
     symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v3"
     pg = Pgrid("trappist1c", cfg_base, symlink_dir=symlink)
 

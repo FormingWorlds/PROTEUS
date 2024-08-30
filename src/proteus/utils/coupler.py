@@ -327,6 +327,8 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
         plot_times = output_times
 
     else:
+        output_times = [x for x in output_times if x > 0]
+
         plot_times = []
         tmin = max(1,np.amin(output_times))
         tmax = max(tmin+1, np.amax(output_times))
