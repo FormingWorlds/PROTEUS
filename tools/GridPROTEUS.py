@@ -87,7 +87,7 @@ class Pgrid():
             raise Exception("Base config file '%s' does not exist!" % self.conf)
 
         self.symlink_dir = symlink_dir
-        if self.symlink_dir == "":
+        if self.symlink_dir in ["","."]:
             raise Exception("Symlinked directory is set to a blank path")
 
         # Paths
@@ -107,7 +107,7 @@ class Pgrid():
                 shutil.rmtree(self.outdir)
 
         # Create new output location
-        if (self.symlink_dir == "_UNSET"):
+        if self.symlink_dir in ["_UNSET", None]:
             # Not using symlink
             self.using_symlink = False
             os.makedirs(self.outdir)
@@ -135,7 +135,7 @@ class Pgrid():
         global log
         log = logging.getLogger(__name__)
 
-        log.info("Grid '%s' says hello!" % self.name)
+        log.info("Grid '%s' initialised empty" % self.name)
 
         # List of dimension names and parameter names
         self.dim_names = []     # String
@@ -332,7 +332,11 @@ class Pgrid():
 
                     # Give priority to pgrid parameters
                     if key in gp.keys():
-                        hdl.write("%s = %s # this value set by grid\n" % (key,gp[key]))
+                        # check if is meant to be a string
+                        val = gp[key]
+                        if type(val) == str:
+                            val = "'%s'"%val
+                        hdl.write("%s = %s     # this value set by grid\n" % (key,val))
 
                     # Otherwise, use default value
                     else:
@@ -473,7 +477,8 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","t1c.toml")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v3"
+    # symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v3"
+    symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/t1c_v4"
     pg = Pgrid("trappist1c", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
