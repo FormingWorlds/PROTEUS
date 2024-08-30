@@ -1,7 +1,3 @@
-[submodule "VULCAN"]
-	path = VULCAN
-	url = git@github.com:exoclime/VULCAN.git
-	branch = master
 [submodule "SPIDER"]
 	path = SPIDER
 	url = git@github.com:djbower/spider.git
@@ -10,12 +6,3 @@
 	path = petsc
 	url = https://gitlab.com/petsc/petsc.git
 	branch = release
-[submodule "JANUS"]
-	path = JANUS
-	url = git@github.com:FormingWorlds/JANUS.git
-[submodule "MORS"]
-	path = Mors
-	url = https://github.com/FormingWorlds/MORS
-[submodule "SOCRATES"]
-	path = SOCRATES
-	url = https://github.com/FormingWorlds/SOCRATES

@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
-
 from __future__ import annotations
 
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -13,9 +12,12 @@ import pandas as pd
 from proteus.utils.constants import volatile_species
 from proteus.utils.plot import dict_colors, vol_latex, vol_zorder
 
-log = logging.getLogger("PROTEUS")
+if TYPE_CHECKING:
+    from proteus import Proteus
 
-def plot_global( output_dir , options, logt=True, tmin=1e1):
+log = logging.getLogger("fwl."+__name__)
+
+def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e1):
 
     log.info("Plot global")
 
@@ -30,8 +32,6 @@ def plot_global( output_dir , options, logt=True, tmin=1e1):
         "framealpha":0.9
     }
 
-    # Read data
-    #    Helpfiles...
     fpath = os.path.join(output_dir , "runtime_helpfile.csv")
     hf_all = pd.read_csv(fpath, sep=r"\s+")
 
@@ -132,15 +132,12 @@ def plot_global( output_dir , options, logt=True, tmin=1e1):
         ax.set_xlim(xlim[0],  max(xlim[1], xlim[0]+1))
 
 
-    # ------------------------------------------------------------------------
-
     # PLOT ax_tl
     ax_tl.plot( hf_all["Time"], hf_all["F_int"], color=dict_colors["int"], lw=lw, alpha=al,  label="Int.",zorder=3, linestyle='dashed')
     ax_tl.plot( hf_all["Time"], hf_all["F_atm"], color=dict_colors["atm"], lw=lw, alpha=al,  label="Atm.",zorder=3)
     ax_tl.plot( hf_all["Time"], hf_all["F_olr"], color=dict_colors["OLR"], lw=lw, alpha=al,  label="OLR", zorder=2)
     ax_tl.legend(loc='center left', **leg_kwargs)
     ax_tl.set_ylim(0.0, np.amax(hf_all["F_olr"]*2.0))
-
 
     # PLOT ax_cl
     min_temp = np.amin(hf_all["T_surf"])
@@ -149,14 +146,12 @@ def plot_global( output_dir , options, logt=True, tmin=1e1):
     ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="-",      lw=lw, alpha=al, color=dict_colors["atm"])
     ax_cl.set_ylim(min(1000.0,min_temp-25) , max(3500.0,max_temp+25))
 
-
     # PLOT ax_bl
     ax_bl.axhline( y=options["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
     ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
     ax_bl.plot( hf_all["Time"],     hf_all["Phi_global"], color=dict_colors["atm"], linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
     ax_bl.legend(loc='center left', **leg_kwargs)
     ax_bl.set_ylim(0.0,1.01)
-
 
     # PLOT ax_tr
     ax_tr.plot( hf_all["Time"], hf_all["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
@@ -185,9 +180,6 @@ def plot_global( output_dir , options, logt=True, tmin=1e1):
     ax_br.set_ylim(0,101)
     ax_br.legend(loc='center left', ncol=2, **leg_kwargs).set_zorder(20)
 
-
-    # ------------------------------------------------------------------------
-
     # Save plot
     fig.subplots_adjust(wspace=0.05,hspace=0.1)
     plt_name = "plot_global"
@@ -199,12 +191,18 @@ def plot_global( output_dir , options, logt=True, tmin=1e1):
     fig.savefig(output_dir+"/%s.%s"%(plt_name,options["plot_format"]),
                 bbox_inches='tight', dpi=200)
 
-#====================================================================
+
+def plot_global_entry(handler: Proteus):
+    for logt in [True,False]:
+        plot_global(
+            output_dir=handler.directories['output'],
+            options=handler.config,
+            logt=logt,
+            tmin=1e1,
+        )
+
 
 if __name__ == "__main__":
-    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
-
-    options, dirs = get_options_dirs_from_argv()
-
-    for logt in [True,False]:
-        plot_global(dirs['output'],options, logt=logt, tmin=1e1)
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_global_entry(handler)

@@ -14,7 +14,7 @@ from proteus.utils.constants import (
 )
 from proteus.utils.helper import UpdateStatusfile
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 # Solve partial pressures functions
 # Originally formulated by Dan Bower

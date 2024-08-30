@@ -17,7 +17,6 @@ output/*
 output.link
 output
 AGNI
-SOCRATES
 
 # misc
 ######
@@ -35,6 +34,7 @@ MORS/fs255_grid*
 screenlog.0
 nogit_*
 fwl_data
+socrates
 
 # From Read the Docs
 ####################
@@ -193,3 +193,5 @@ dmypy.json
 cython_debug/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
+
+.ruff_cache

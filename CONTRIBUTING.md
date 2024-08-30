@@ -33,9 +33,9 @@ pip install -e .[develop]
 Linting is a term for static code analysis to flag programming errors,
 bugs, stylistic errors and [suspicious constructs](https://en.wikipedia.org/wiki/Lint_(software)).
 PROTEUS uses [`ruff`](https://astral.sh/ruff) for linting.
-The linting [rules](https://docs.astral.sh/ruff/rules/) are defined in [`pyproject.toml`](https://github.com/FormingWorlds/PROTEUS/blob/master/pyproject.toml).
+The linting [rules](https://docs.astral.sh/ruff/rules/) are defined in [`pyproject.toml`](https://github.com/FormingWorlds/PROTEUS/blob/main/pyproject.toml).
 
-This check are run automatically via a Github Action: [codestyle](https://github.com/FormingWorlds/PROTEUS/blob/master/.github/workflows/codestyle.yaml).
+This check are run automatically via a Github Action: [codestyle](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/workflows/codestyle.yaml).
 
 You can `ruff` on locally using one of these commands:
 
@@ -61,7 +61,7 @@ pre-commit install
 
 PROTEUS uses [pytest](https://docs.pytest.org/en/latest/) to run the tests.
 
-The tests are run automatically via a Github Action: [tests](https://github.com/FormingWorlds/PROTEUS/blob/master/.github/workflows/tests.yaml).
+The tests are run automatically via a Github Action: [tests](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/workflows/tests.yaml).
 
 You can run the tests for yourself using:
 
@@ -88,8 +88,8 @@ pip install -e .[docs]
 mkdocs serve
 ```
 
-You can find the documentation source in the [docs](https://github.com/FormingWorlds/PROTEUS/tree/master/docs) directory.
-If you are adding new pages, make sure to update the listing in the [`mkdocs.yml`](https://github.com/FormingWorlds/PROTEUS/blob/master/mkdocs.yml) under the `nav` entry.
+You can find the documentation source in the [docs](https://github.com/FormingWorlds/PROTEUS/tree/main/docs) directory.
+If you are adding new pages, make sure to update the listing in the [`mkdocs.yml`](https://github.com/FormingWorlds/PROTEUS/blob/main/mkdocs.yml) under the `nav` entry.
 
 The documentation is hosted on [readthedocs](https://readthedocs.io/projects/fwl-proteus).
 
@@ -107,7 +107,7 @@ pip-compile -o requirements_full.txt pyproject.toml
 1. Bump the version (`release`/`patch`) as needed
 
 ```console
-bump-my-version release
+bump-my-version bump release
 # 24.08.12
 ```
 

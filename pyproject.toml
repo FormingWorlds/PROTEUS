@@ -43,8 +43,8 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
-    # "fwl-janus",
-    # "fwl-mors",
+    "fwl-janus==24.8.29",
+    "fwl-mors==24.8.29",
     "cmcrameri",
     "juliacall",
     "matplotlib",
@@ -141,3 +141,8 @@ replace = "__version__ = '{new_version}'"
 filename = "pyproject.toml"
 search = "version = \"{current_version}\""
 replace = "version = \"{new_version}\""
+
+[[tool.bumpversion.files]]
+filename = "CITATION.cff"
+search = "version: {current_version}"
+replace = "version: {new_version}"

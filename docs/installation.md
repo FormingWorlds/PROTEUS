@@ -20,14 +20,14 @@ xcode-select --install
     you
 
 ```console
-brew install netcdf  
-brew install netcdf-fortran    
+brew install netcdf
+brew install netcdf-fortran
 ```
 
 Or
 
 ```console
-sudo port install netcdf-fortran +gcc8   
+sudo port install netcdf-fortran +gcc8
 ```
 
 ## System configuration (Linux)
@@ -40,16 +40,7 @@ sudo apt install libnetcdff-dev
 
 ## Python environment
 
-1. Download the appropriate Miniconda installer from
-<https://docs.conda.io/en/latest/miniconda.html#id36>
-
-2. Create a conda environment for PROTEUS:
-
-```console
-conda create -n proteus python=3.12   
-conda activate proteus
-pip install -e .
-```
+You will need to setup Python (>=3.10) on your system. This can be done via brew on MacOS, or with your package manager on Linux. Alternatively, you can use [miniforge](https://github.com/conda-forge/miniforge) or [pyenv](https://github.com/pyenv/pyenv).
 
 ## Download the framework
 
@@ -66,53 +57,27 @@ pip install -e .
     git clone git@github.com:FormingWorlds/PROTEUS.git
     ```
 
-3. Enter into PROTEUS folder and ensure that submodules are up to date
+3. Get dependencies
 
     ```console
     cd PROTEUS
     git submodule update --init --recursive
     ```
 
-4. Setup radiative transfer code (**SOCRATES**)
+4. Create a virtual environment
 
     ```console
-    cd SOCRATES
-    ./configure
-    ./build_code
-    cd ..
+    python -m venv .venv
+    source .venv/bin/activate
     ```
 
-5. Setup atmosphere model (**JANUS**)
+5. Setup radiative transfer code (**SOCRATES**)
 
     ```console
-    cd JANUS
-    pip install -e .
-    cd ..
+    source get_socrates.sh
     ```
 
-6. Setup atmosphere kinetics model (**VULCAN**)
-
-    ```console
-    cd VULCAN/fastchem_vulcan
-    ```
-
-    On MacOS you will need to edit `make.globaloptions` to reflect  a GNU-compatible `g++` executable, not the Apple one (see
-     [Troubleshooting](./troubleshooting.md) if the next step results in an error.
-
-    ```console
-    make
-    cd ../../
-    ```
-
-7. Setup stellar evolution model (**MORS**)
-
-    ```console
-    cd Mors 
-    pip install -e .
-    cd ../
-    ```
-
-8. Setup numerical computing library (**PETSc**)
+6. Setup numerical computing library (**PETSc**)
 
     - Configure step
 
@@ -123,53 +88,52 @@ pip install -e .
 
     - Run the exact `make all` command provided at the end of the configure step
     - Run the exact `make check` command provided at the end of the `make all` step
-    - Return to PROTEUS directory
 
     ```console
-    cd ../
+    cd ..
     ```
 
-9. Setup interior evolution model (**SPIDER**)
+7. Setup PROTEUS coupled framework
+
+    - Get the remaining Python dependencies
+
+        ```console
+        pip install -e .
+        ```
+
+    - Set up environment variables. This can be done using the PROTEUS environment file
+
+        ```console
+        source PROTEUS.env
+        ```
+
+    - Set up the environment variable `FWL_DATA` to indicate in which folder the input data need to be stored
+
+        ```console
+        export FWL_DATA=/your/local/path/
+        ```
+
+    **IF** you want to be able to start PROTEUS immediately from a new shell every time, add `source PROTEUS.env`, `export FWL_DATA`, and the venv activate command to your shell rc file.
+
+8. Setup interior evolution model (**SPIDER**)
 
     ```console
     cd SPIDER
     make clean
     make -j
-    make test      # accept all default values when prompted
     cd ..
     ```
 
-10. Setup PROTEUS coupled framework
+9. Done! 🚀
 
-    - Run install command
-
-    ```console
-    pip install -e .
-    ```
-
-    - Set up environment variables. This can be done using the PROTEUS environment file
-
-    ```console
-    source PROTEUS.env
-    ```
-
-    - Additionally, set up the environment variable `FWL_DATA` to indicate in which folder the input data need to be stored
-
-    ```console
-    export FWL_DATA=/your_local_path
-    ```
-
-    **IF** you want to be able to start PROTEUS immediately from a new shell every time, add `source PROTEUS.env`,     `export FWL_DATA=...` (and potentially `conda activate proteus`) to your shell rc file.
-
-11. Done! 🚀
+Any remaining dependencies will be downloaded when the model is first run.
 
 ## Step-by-step (optional modules)
 
 ### Radiative-convective atmosphere model (**AGNI**)
 
 Installation steps can be found at the [AGNI wiki](https://nichollsh.github.io/AGNI/dev/setup/).
-They are
-     also reproduced below.
+They are also reproduced below.
 
 1. Setup Julia
 
@@ -180,26 +144,47 @@ They are
 2. Clone the model
 
     ```console
-    git clone git@github.com:nichollsh/AGNI.git 
-    cd AGNI 
+    git clone git@github.com:nichollsh/AGNI.git
+    cd AGNI
     ```
 
-3. Setup SOCRATES
-
-    ```console
-    source get_socrates.sh
-    ```
-
-4. Build AGNI
+3. Build AGNI
 
     ```console
     julia -e 'using Pkg; Pkg.activate("."); Pkg.build()'
     ```
 
-5. Go back to the PROTEUS directory
+4. Go back to the PROTEUS directory
 
     ```console
     cd ../
     ```
 
 Consult the AGNI wiki if you encouter issues.
+
+### Chemical kinetics atmosphere model (**VULCAN**)
+
+1. Clone the model
+
+    ```console
+    git clone git@github.com:exoclime/VULCAN.git
+    cd VULCAN
+    ```
+2. Compile the FastChem extension
+
+    ```console
+    cd fastchem_vulcan
+    ```
+
+    On MacOS you will need to edit `make.globaloptions` to reflect  a GNU-compatible `g++` executable, not the Apple one (see
+     [Troubleshooting](./troubleshooting.md) if the next step results in an error.
+
+    ```console
+    make
+    cd ../../
+    ```
+3. Install Python dependencies
+
+    ```console
+    pip install sympy
+    ```

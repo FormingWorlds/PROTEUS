@@ -1,14 +1,17 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-log = logging.getLogger("PROTEUS")
+if TYPE_CHECKING:
+    from proteus import Proteus
 
-def cpl_heatingrates(output_dir, atm, comp=[]):
+log = logging.getLogger("fwl."+__name__)
+
+def plot_heatingrates(output_dir: str, atm, comp: list=[]):
     """Plot temperature structure and corresponding heating rates versus pressure
 
     Reads the temperature for each pressure level in atm, and plots it alongside
@@ -59,6 +62,14 @@ def cpl_heatingrates(output_dir, atm, comp=[]):
     plt.ioff()
     fig.savefig(output_dir+"/plot_heatingrates.pdf")
 
+
+def plot_heatingrates_entry(handler: Proteus):
+    raise NotImplementedError(
+        "`plot_heatingrates()` does not support command-line execution."
+    )
+
+
 if __name__ == '__main__':
-    print("cpl_heatingrates does not support command-line execution.")
-    exit(1)
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_heatingrates_entry(handler)

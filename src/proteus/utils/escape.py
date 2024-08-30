@@ -9,7 +9,7 @@ import numpy as np
 from proteus.utils.constants import element_list, ergcm2stoWm2, secs_per_year
 from proteus.utils.zephyrus import EL_escape
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 # Define global variables
 Fxuv_star_SI_full   = None
