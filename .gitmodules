@@ -6,6 +6,3 @@
 	path = petsc
 	url = https://gitlab.com/petsc/petsc.git
 	branch = release
-[submodule "SOCRATES"]
-	path = SOCRATES
-	url = git@github.com:nichollsh/SOCRATES
