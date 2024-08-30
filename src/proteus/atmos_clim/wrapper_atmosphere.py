@@ -7,7 +7,13 @@ import os
 import pandas as pd
 from scipy.integrate import solve_ivp
 
-from proteus.atmos_clim.agni import activate_julia, deallocate_atmos, init_agni_atmos, run_agni, update_agni_atmos
+from proteus.atmos_clim.agni import (
+    activate_julia,
+    deallocate_atmos,
+    init_agni_atmos,
+    run_agni,
+    update_agni_atmos,
+)
 from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
 from proteus.atmos_clim.janus import InitAtm, InitStellarSpectrum, RunJANUS
 from proteus.utils.constants import AU

@@ -2,13 +2,14 @@
 # These do not do the plotting themselves
 from __future__ import annotations
 
+import glob
+import os
+from typing import TYPE_CHECKING
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from cmcrameri import cm
-import glob
-import os
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from proteus import Proteus

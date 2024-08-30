@@ -16,6 +16,7 @@ import pandas as pd
 
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements
+from proteus.plot.cpl_emission import plot_emission
 from proteus.plot.cpl_escape import plot_escape
 from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
 from proteus.plot.cpl_fluxes_global import plot_fluxes_global
@@ -26,7 +27,6 @@ from proteus.plot.cpl_observables import plot_observables
 from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_stacked import plot_stacked
-from proteus.plot.cpl_emission import plot_emission
 from proteus.utils.constants import (
     const_sigma,
     element_list,

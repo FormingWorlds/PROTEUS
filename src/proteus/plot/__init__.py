@@ -3,6 +3,7 @@ from __future__ import annotations
 from proteus.plot.cpl_atmosphere import plot_atmosphere_entry
 from proteus.plot.cpl_atmosphere_cbar import plot_atmosphere_cbar_entry
 from proteus.plot.cpl_elements import plot_elements_entry
+from proteus.plot.cpl_emission import plot_emission_entry
 from proteus.plot.cpl_escape import plot_escape_entry
 from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere_entry
 from proteus.plot.cpl_fluxes_global import plot_fluxes_global_entry
@@ -19,7 +20,6 @@ from proteus.plot.cpl_offchem_year import plot_offchem_year_entry
 from proteus.plot.cpl_sflux import plot_sflux_entry
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross_entry
 from proteus.plot.cpl_stacked import plot_stacked_entry
-from proteus.plot.cpl_emission import plot_emission_entry
 
 plot_dispatch = {
     'atmosphere': plot_atmosphere_entry,

@@ -13,8 +13,6 @@ import numpy as np
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
-from proteus.atmos_clim.agni import deallocate_atmos
-from proteus.atmos_clim.wrapper_atmosphere import atm
 from proteus.config import read_config
 from proteus.utils.constants import (
     AU,
