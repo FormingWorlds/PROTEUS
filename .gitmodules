@@ -6,12 +6,6 @@
 	path = petsc
 	url = https://gitlab.com/petsc/petsc.git
 	branch = release
-[submodule "JANUS"]
-	path = JANUS
-	url = git@github.com:FormingWorlds/JANUS.git
-[submodule "MORS"]
-	path = Mors
-	url = git@github.com:FormingWorlds/MORS.git
 [submodule "SOCRATES"]
 	path = SOCRATES
 	url = git@github.com:nichollsh/SOCRATES
