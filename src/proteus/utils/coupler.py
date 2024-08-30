@@ -26,6 +26,7 @@ from proteus.plot.cpl_observables import plot_observables
 from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_stacked import plot_stacked
+from proteus.plot.cpl_emission import plot_emission
 from proteus.utils.constants import (
     const_sigma,
     element_list,
@@ -354,12 +355,13 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
 
     # Only at the end of the simulation
     if end:
-        plot_global(output_dir, OPTIONS, logt=False)
+        plot_global(output_dir,         OPTIONS, logt=False)
         plot_interior_cmesh(output_dir, plot_format=OPTIONS["plot_format"])
-        plot_sflux(output_dir, plot_format=OPTIONS["plot_format"])
-        plot_sflux_cross(output_dir, plot_format=OPTIONS["plot_format"])
-        plot_fluxes_global(output_dir, OPTIONS)
-        plot_observables(output_dir, plot_format=OPTIONS["plot_format"])
+        plot_sflux(output_dir,          plot_format=OPTIONS["plot_format"])
+        plot_sflux_cross(output_dir,    plot_format=OPTIONS["plot_format"])
+        plot_fluxes_global(output_dir,  OPTIONS)
+        plot_observables(output_dir,    plot_format=OPTIONS["plot_format"])
+        plot_emission(output_dir,       plot_times, plot_format=OPTIONS["plot_format"])
 
     # Close all figures
     plt.close()

@@ -19,6 +19,7 @@ from proteus.plot.cpl_offchem_year import plot_offchem_year_entry
 from proteus.plot.cpl_sflux import plot_sflux_entry
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross_entry
 from proteus.plot.cpl_stacked import plot_stacked_entry
+from proteus.plot.cpl_emission import plot_emission_entry
 
 plot_dispatch = {
     'atmosphere': plot_atmosphere_entry,
@@ -40,4 +41,5 @@ plot_dispatch = {
     'sflux': plot_sflux_entry,
     'sflux_cross': plot_sflux_cross_entry,
     'stacked': plot_stacked_entry,
+    'emission': plot_emission_entry,
 }
