@@ -211,9 +211,16 @@ def _try_spider( dirs:dict, OPTIONS:dict,
     Try to run spider with the current configuration.
     '''
 
+    # Check that SPIDER can be found
+    spider_exec = os.path.join(dirs["spider"],"spider")
+    if not os.path.isfile(spider_exec):
+        raise Exception("SPIDER executable could not be found at '%s'"%spider_exec)
+
+    # Bounds on tolereances
     step_sf = min(1.0, max(1.0e-10, step_sf))
     atol_sf = min(1.0e10, max(1.0e-10, atol_sf))
 
+    # Configuration file for SPIDER containing default values
     SPIDER_options_file      = os.path.join(dirs["output"], "init_spider.opts")
     SPIDER_options_file_orig = os.path.join(dirs["utils"], "templates", "init_spider.opts")
 
@@ -326,7 +333,7 @@ def _try_spider( dirs:dict, OPTIONS:dict,
 
     ### SPIDER base call sequence
     call_sequence = [
-                        os.path.join(dirs["spider"],"spider"),
+                        spider_exec,
                         "-options_file",           SPIDER_options_file,
                         "-outputDirectory",        dirs["output"]+'data/',
                         "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),

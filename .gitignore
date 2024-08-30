@@ -12,21 +12,26 @@ socrates_star.txt
 radiation_code.lock
 screenlog.0
 
-# Specific subfolders
+# Output folders
 old/
 output/*
 output.link
 output
 
+# Development installations
 fwl_data
 FWL_DATA
 socrates
+Socrates
 SOCRATES
 mors
+Mors
 MORS
 janus
+Janus
 JANUS
 agni
+Agni
 AGNI
 
 # misc
