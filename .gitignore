@@ -10,30 +10,32 @@ runtime.sf*
 star.sf*
 socrates_star.txt
 radiation_code.lock
+screenlog.0
 
 # Specific subfolders
 old/
 output/*
 output.link
 output
+
+fwl_data
+FWL_DATA
+socrates
+SOCRATES
+mors
+MORS
+janus
+JANUS
+agni
 AGNI
 
 # misc
 ######
 *_lbl.nc
-Tprofile.pdf
 .DS_Store
 __pycache__
 !output/.gitkeep
-atmosphere.pdf
-volatiles_out.dat
-surfaceT.dat
-out.dat
-atm_chemistry.pdf
-MORS/fs255_grid*
-screenlog.0
 nogit_*
-fwl_data
 
 # From Read the Docs
 ####################
