@@ -7,6 +7,7 @@ import os
 
 import numpy as np
 from juliacall import Main as jl
+from scipy.interpolate import PchipInterpolator
 
 from proteus.utils.constants import dirs, volatile_species
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest, safe_rm
@@ -17,7 +18,7 @@ log = logging.getLogger("fwl."+__name__)
 # Constant
 AGNI_LOGFILE_NAME="agni_recent.log"
 
-def SyncLogfiles(outdir:str):
+def sync_log_files(outdir:str):
     # Logfile paths
     agni_logpath = os.path.join(outdir, AGNI_LOGFILE_NAME)
     logpath = GetLogfilePath(outdir, GetCurrentLogfileIndex(outdir))
@@ -38,7 +39,7 @@ def SyncLogfiles(outdir:str):
     with open(agni_logpath, "w") as hdl:
         hdl.write("")
 
-def ActivateEnv(dirs:dict):
+def activate_julia(dirs:dict):
 
     log.debug("Activating Julia environment")
     jl.seval("using Pkg")
@@ -62,7 +63,7 @@ def ActivateEnv(dirs:dict):
     log.debug("AGNI will log to '%s'"%logpath)
 
 
-def ConstructVolDict(hf_row:dict, OPTIONS:dict):
+def _construct_voldict(hf_row:dict, OPTIONS:dict):
     vol_dict = {}
     for vol in volatile_species:
         if OPTIONS[vol+"_included"]:
@@ -77,7 +78,7 @@ def ConstructVolDict(hf_row:dict, OPTIONS:dict):
     return vol_dict
 
 
-def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
+def init_agni_atmos(dirs:dict, OPTIONS:dict, hf_row:dict):
     """Initialise atmosphere struct for use by AGNI.
 
     Does not set the temperature profile.
@@ -119,7 +120,7 @@ def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
         input_star =    sflux_path
 
     # composition
-    vol_dict = ConstructVolDict(hf_row, OPTIONS)
+    vol_dict = _construct_voldict(hf_row, OPTIONS)
 
     # set condensation
     condensates = []
@@ -204,12 +205,12 @@ def InitAtmos(dirs:dict, OPTIONS:dict, hf_row:dict):
         jl.AGNI.setpt.isothermal_b(atmos, hf_row["T_surf"])
 
     # Logging
-    SyncLogfiles(dirs["output"])
+    sync_log_files(dirs["output"])
 
     return atmos
 
 
-def DeallocAtmos(atmos):
+def deallocate_atmos(atmos):
     """
     Deallocate atmosphere struct
     """
@@ -217,10 +218,10 @@ def DeallocAtmos(atmos):
     safe_rm(str(atmos.fastchem_work))
 
 
-def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
+def update_agni_atmos(atmos, hf_row:dict, OPTIONS:dict):
     """Update atmosphere struct.
 
-    Sets the new surface boundary conditions and composition.
+    Sets the new boundary conditions and composition.
 
     Parameters
     ----------
@@ -238,25 +239,56 @@ def UpdateProfile(atmos, hf_row:dict, OPTIONS:dict):
 
     """
 
+    # ---------------------
     # Update compositions
-    vol_dict = ConstructVolDict(hf_row, OPTIONS)
+    vol_dict = _construct_voldict(hf_row, OPTIONS)
     for g in vol_dict.keys():
-        atmos.gas_vmr[g][:] = vol_dict[g]
+        atmos.gas_vmr[g][:]  = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]
 
-    # Update pressure grid
-    atmos.p_boa = 1.0e5 * hf_row["P_surf"]
+    # ---------------------
+    # Store old/current log-pressure vs temperature arrays
+    p_old = list(atmos.p)
+    t_old = list(atmos.tmp)
+    nlev_c = len(p_old)
+
+    #    extend to lower pressures
+    p_old = [p_old[0]/10] + p_old
+    t_old = [t_old[0]]    + t_old
+
+    #    extend to higher pressures
+    p_old = p_old + [p_old[-1]*10]
+    t_old = t_old + [t_old[-1]]
+
+    #    create interpolator
+    itp = PchipInterpolator(np.log10(p_old), t_old)
+
+    # ---------------------
+    # Update surface pressure [Pa] and generate new grid
+    atmos.p_boa = 1.0e5 * float(hf_row["P_surf"])
     jl.AGNI.atmosphere.generate_pgrid_b(atmos)
 
+    # ---------------------
     # Update surface temperature(s)
-    atmos.tmp_surf  = hf_row["T_surf"]
-    atmos.tmp_magma = hf_row["T_magma"]
+    atmos.tmp_surf  = float(hf_row["T_surf"] )
+    atmos.tmp_magma = float(hf_row["T_magma"])
+
+    # ---------------------
+    # Set temperatures at all levels
+    for i in range(nlev_c):
+        atmos.tmp[i]  = float( itp(np.log10(atmos.p[i]))  )
+        atmos.tmpl[i] = float( itp(np.log10(atmos.pl[i])) )
+    atmos.tmpl[-1]    = float( itp(np.log10(atmos.pl[-1])))
+
+    # ---------------------
+    # Update instellation flux
+    atmos.instellation = float(hf_row["F_ins"])
 
     return atmos
 
 
 
-def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
+def run_agni(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
     """Run AGNI atmosphere model.
 
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -298,15 +330,15 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
         log.info("Attempt %d" % attempts)
 
         # default parameters
-        linesearch = 1
+        linesearch = 2
         easy_start = False
-        dx_max = OPTIONS["tsurf_poststep_change"]+1.0
-        ls_increase = 0.1
+        dx_max = OPTIONS["tsurf_poststep_change"]+5.0
+        ls_increase = 1.01
 
         # try different solver parameters if struggling
         if attempts == 2:
-            linesearch  = 2
-            dx_max     *= 2.0
+            linesearch  = 1
+            dx_max     *= 3.0
             ls_increase = 1.1
 
         # first iteration parameters
@@ -314,6 +346,7 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
             linesearch  = 2
             easy_start  = True
             dx_max      = 200.0
+            ls_increase = 1.1
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -328,16 +361,16 @@ def RunAGNI(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
                             conduct=False, convect=True, latent=True, sens_heat=True,
 
                             max_steps=130, max_runtime=900.0,
-                            conv_atol=1e-3, conv_rtol=1e-2,
+                            conv_atol=1e-3, conv_rtol=2e-2,
 
                             method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
 
-                            save_frames=False, modplot=0
+                            save_frames=False, modplot=2
                             )
 
         # Move AGNI logfile content into PROTEUS logfile
-        SyncLogfiles(dirs["output"])
+        sync_log_files(dirs["output"])
 
         # Model status check
         if agni_success:
