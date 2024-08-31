@@ -6,7 +6,9 @@
     "files.insertFinalNewline": true,
     "git.ignoreLimitWarning": true,
     "git.ignoredRepositories": [
-        "petsc",
-        "SPIDER"
+        "petsc", "SPIDER"
     ],
+    "python.analysis.exclude": [
+        "**/__pycache__", "petsc", ".git", "SPIDER"
+    ]
 }
