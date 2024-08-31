@@ -138,7 +138,7 @@ def plot_sflux_cross(
             ax.scatter(modern_age,X[1][wl_iarr[i]],marker='o',color=c, s=40, zorder=4, edgecolors='white')
 
     leg = ax.legend(title=r"$\lambda$ [nm]", loc='center left',bbox_to_anchor=(1.02, 0.5))
-    for legobj in leg.legendHandles:
+    for legobj in leg.legend_handles:
         legobj.set_linewidth(4.0)
 
     plt.close()
