@@ -474,29 +474,11 @@ if __name__=='__main__':
     # -----
 
     cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","t1c.cfg")
-    symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v3"
+    symlink  = "/dataserver/users/formingworlds/sastre/PROTEUS/output/fO2_test"
     pg = Pgrid("trappist1c", cfg_base, symlink_dir=symlink)
 
-    # pg.add_dimension("Planet")
-    # pg.set_dimension_hyper("Planet")
-    # pg.append_dimension_hyper("Planet", {   "#case": "TRAPPIST-1b",
-    #                                         "mean_distance": 0.01154,  # AU, star-planet distance
-    #                                         "mass"         : 8.21e+24, # kg, planet mass
-    #                                         "radius"       : 7.118e+6  # m, planet surface radius
-    #                                     })
-
-    # pg.add_dimension("C/H ratio")
-    # pg.set_dimension_logspace("C/H ratio", "CH_ratio", 0.01, 2.0, 7)
-
-    # pg.add_dimension("Hydrogen")
-    # pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 5.0, 10.0])
-
-
-    pg.add_dimension("Model")
-    pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
-
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-2, 0, 2, 4])
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-3, -2, -1, 0, 1, 2])
 
     # -----
     # Print state of parameter grid

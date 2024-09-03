@@ -16,6 +16,7 @@ from proteus.atmos_clim import RunAtmosphere
 from proteus.atmos_clim.agni import DeallocAtmos
 from proteus.atmos_clim.wrapper_atmosphere import atm
 from proteus.utils.solidus_depression import katz2003
+from proteus.utils.solidus_depression import lin2024
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -613,11 +614,19 @@ class Proteus:
             log.info('WT FOR SOLIDUS DEPRESSION:' + str(wt))
 
             if self.config["solidus_water_depend"]==1:
-                katz2003(wt,self.directories["output"],'solidus_A11_depression_H13.dat')
+                katz2003(wt,self.directories['output'],'solidus_A11_depression_H13.dat')
                 log.info('RE-COMPUTATION OF SOLIDUS FOLLOWING KATZ+2003 DONE')
 
             else:
                 print('Simulation without solidus depression')
+
+            
+            if self.config["solidus_fO2_depend"]==1:
+                lin2024(self.config["fO2_shift_IW"],self.directories['output'],'solidus_A11_depression_H13.dat')
+                log.info('fO2 addition of the solidus done')
+
+            else:
+                print('Simulation without fO2 addition')
 
             # if COUPLER_options["solidus_water_depend"]==1 and loop_counter["total"]==1:
             #     katz2003(wt,dirs['output'],'solidus'+str(loop_counter["total"])+'.dat')
