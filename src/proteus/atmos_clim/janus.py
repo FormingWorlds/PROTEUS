@@ -12,6 +12,8 @@ import pandas as pd
 from proteus.utils.constants import volatile_species
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest
 
+import janus.set_socrates_env
+
 log = logging.getLogger("fwl."+__name__)
 
 def InitStellarSpectrum(dirs:dict, wl:list, fl:list, spectral_file_nostar):

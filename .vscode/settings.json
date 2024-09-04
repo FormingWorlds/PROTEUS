@@ -1,7 +1,7 @@
 {
     "editor.tabSize": 4,
     "editor.rulers": [ 92 ],
-    "python.analysis.extraPaths": ["JANUS","Mors"],
+    "python.analysis.extraPaths": ["JANUS/src/","MORS/src/"],
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
     "git.ignoreLimitWarning": true,
