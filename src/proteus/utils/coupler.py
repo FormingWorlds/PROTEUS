@@ -16,6 +16,7 @@ import pandas as pd
 
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements
+from proteus.plot.cpl_emission import plot_emission
 from proteus.plot.cpl_escape import plot_escape
 from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
 from proteus.plot.cpl_fluxes_global import plot_fluxes_global
@@ -34,7 +35,7 @@ from proteus.utils.constants import (
 from proteus.utils.helper import UpdateStatusfile, find_nearest, safe_rm
 from proteus.utils.spider import get_all_output_times
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 def GitRevision(dir:str) -> str:
@@ -326,6 +327,8 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
         plot_times = output_times
 
     else:
+        output_times = [x for x in output_times if x > 0]
+
         plot_times = []
         tmin = max(1,np.amin(output_times))
         tmax = max(tmin+1, np.amax(output_times))
@@ -354,12 +357,13 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
 
     # Only at the end of the simulation
     if end:
-        plot_global(output_dir, OPTIONS, logt=False)
+        plot_global(output_dir,         OPTIONS, logt=False)
         plot_interior_cmesh(output_dir, plot_format=OPTIONS["plot_format"])
-        plot_sflux(output_dir, plot_format=OPTIONS["plot_format"])
-        plot_sflux_cross(output_dir, plot_format=OPTIONS["plot_format"])
-        plot_fluxes_global(output_dir, OPTIONS)
-        plot_observables(output_dir, plot_format=OPTIONS["plot_format"])
+        plot_sflux(output_dir,          plot_format=OPTIONS["plot_format"])
+        plot_sflux_cross(output_dir,    plot_format=OPTIONS["plot_format"])
+        plot_fluxes_global(output_dir,  OPTIONS)
+        plot_observables(output_dir,    plot_format=OPTIONS["plot_format"])
+        plot_emission(output_dir,       plot_times, plot_format=OPTIONS["plot_format"])
 
     # Close all figures
     plt.close()

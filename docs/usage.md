@@ -24,6 +24,11 @@ parameter (y/n) tells the session whether to immediately detach or not.
 This allows multiple instances of the model to be dispatched easily and
 safely.
 
+## CLI
+
+Proteus has a command-line interface that can be accessed by running `proteus` on the command line.
+Try `proteus --help` to see the available commands!
+
 ## Configuration file
 
 PROTEUS accepts config files containing parameters in the format

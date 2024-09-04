@@ -14,7 +14,12 @@ authors:
   given-names: "Laurent"
   orcid: "https://orcid.org/0000-0002-5422-8794"
 
-- family-names: "Saste"
+- given-names: "Stef"
+  family-names: "Smeets"
+  affiliation: "Netherlands eScience Center"
+  orcid: "https://orcid.org/0000-0001-5107-3531"
+
+- family-names: "Sastre"
   given-names: "Mariana"
   orcid: "https://orcid.org/0000-0000-0000-0000"
 
@@ -27,7 +32,7 @@ authors:
   orcid: "https://orcid.org/0000-0002-0673-4860"
 
 title: "PROTEUS"
-version: 0.1
+version: 24.07.25
 doi: 10.xx/xx.xx
 date-released: 2024-07-19
 url: "https://github.com/FormingWorlds/PROTEUS"

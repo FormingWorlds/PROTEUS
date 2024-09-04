@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
-import glob
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -12,12 +11,14 @@ import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import LogLocator
 
-from proteus.utils.helper import find_nearest
-from proteus.utils.plot import latex_float
+from proteus.utils.plot import latex_float, sample_output
 
-log = logging.getLogger("PROTEUS")
+if TYPE_CHECKING:
+    from proteus import Proteus
 
-#====================================================================
+log = logging.getLogger("fwl."+__name__)
+
+
 def plot_atmosphere( output_dir:str, times:list, plot_format="pdf"):
 
     log.info("Plot atmosphere temperatures")
@@ -69,36 +70,20 @@ def plot_atmosphere( output_dir:str, times:list, plot_format="pdf"):
     fpath = os.path.join(output_dir, "plot_atmosphere.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
-#====================================================================
-def main():
-    from proteus.plot._cpl_helpers import get_options_dirs_from_argv
 
-    options, dirs = get_options_dirs_from_argv()
-
-    files = glob.glob(os.path.join(dirs["output"], "data", "*_atm.nc"))
-    times = [int(f.split("/")[-1].split("_")[0]) for f in files]
-
-    plot_times = []
-    tmin = max(1,np.amin(times))
-    tmax = max(tmin+1, np.amax(times))
-
-    for s in np.logspace(np.log10(tmin),np.log10(tmax),8): # Sample on log-scale
-
-        remaining = list(set(times) - set(plot_times))
-        if len(remaining) == 0:
-            break
-
-        v,_ = find_nearest(remaining,s) # Find next new sample
-        plot_times.append(int(v))
-
-    plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
+def plot_atmosphere_entry(handler: Proteus):
+    plot_times, _ = sample_output(handler, tmin=1000.0)
     print("Snapshots:", plot_times)
 
     # Plot fixed set from above
-    plot_atmosphere( output_dir=dirs["output"], times=plot_times, plot_format=options["plot_format"] )
+    plot_atmosphere(
+        output_dir=handler.directories["output"],
+        times=plot_times,
+        plot_format=handler.config["plot_format"],
+   )
 
-#====================================================================
 
 if __name__ == "__main__":
-
-    main()
+    from proteus.plot._cpl_helpers import get_handler_from_argv
+    handler = get_handler_from_argv()
+    plot_atmosphere_entry(handler)

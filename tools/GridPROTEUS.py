@@ -87,7 +87,7 @@ class Pgrid():
             raise Exception("Base config file '%s' does not exist!" % self.conf)
 
         self.symlink_dir = symlink_dir
-        if self.symlink_dir == "":
+        if self.symlink_dir in ["","."]:
             raise Exception("Symlinked directory is set to a blank path")
 
         # Paths
@@ -107,7 +107,7 @@ class Pgrid():
                 shutil.rmtree(self.outdir)
 
         # Create new output location
-        if (self.symlink_dir == "_UNSET"):
+        if self.symlink_dir in ["_UNSET", None]:
             # Not using symlink
             self.using_symlink = False
             os.makedirs(self.outdir)
@@ -133,9 +133,9 @@ class Pgrid():
         # Setup logging
         setup_logger(logpath=os.path.join(self.outdir,"manager.log"), logterm=True, level=1)
         global log
-        log = logging.getLogger("PROTEUS")
+        log = logging.getLogger(__name__)
 
-        log.info("Grid '%s' says hello!" % self.name)
+        log.info("Grid '%s' initialised empty" % self.name)
 
         # List of dimension names and parameter names
         self.dim_names = []     # String
@@ -170,6 +170,17 @@ class Pgrid():
             raise Exception("Dimension '%s' cannot be set twice" % name)
         self.dim_param[idx] = var
         self.dim_avars[name] = list(np.linspace(start,stop,count))
+        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
+
+    # Set a dimension by arange (inclusive of endpoint)
+    def set_dimension_arange(self,name:str,var:str,start:float,stop:float,step:float):
+        idx = self._get_idx(name)
+        if self.dim_param[idx] != "_empty":
+            raise Exception("Dimension '%s' cannot be set twice" % name)
+        self.dim_param[idx] = var
+        self.dim_avars[name] = list(np.arange(start,stop,step))
+        self.dim_avars[name].append(stop)
+        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
 
     # Set a dimension by logspace
     def set_dimension_logspace(self,name:str,var:str,start:float,stop:float,count:int):
@@ -178,6 +189,7 @@ class Pgrid():
             raise Exception("Dimension '%s' cannot be set twice" % name)
         self.dim_param[idx] = var
         self.dim_avars[name] = list(np.logspace( np.log10(start) , np.log10(stop) , count))
+        self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
 
     # Set a dimension directly
     def set_dimension_direct(self,name:str,var:str,values:list):
@@ -313,7 +325,7 @@ class Pgrid():
         log.info("Writing config files")
         for i,gp in enumerate(self.flat):
 
-            cfgfile = os.path.join(self.tmpdir,"case_%05d.cfg" % i)
+            cfgfile = os.path.join(self.tmpdir,"case_%05d.toml" % i)
             gp["dir_output"] = self.name+"/case_%05d"%i
 
             # Create config file for this case
@@ -332,7 +344,11 @@ class Pgrid():
 
                     # Give priority to pgrid parameters
                     if key in gp.keys():
-                        hdl.write("%s = %s # this value set by grid\n" % (key,gp[key]))
+                        # check if is meant to be a string
+                        val = gp[key]
+                        if type(val) is str:
+                            val = "'%s'"%val
+                        hdl.write("%s = %s     # this value set by grid\n" % (key,val))
 
                     # Otherwise, use default value
                     else:
@@ -346,11 +362,10 @@ class Pgrid():
 
          # Thread targget
         def _thread_target(cfg_path):
-            proteus_py = os.path.join(PROTEUS_DIR,"start_proteus.py")
             if test_run:
                 command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
             else:
-                command = ["python",proteus_py,"--cfg",cfg_path]
+                command = ["proteus","start","--config",cfg_path]
             subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
 
@@ -358,7 +373,7 @@ class Pgrid():
         threads = []
         for i in range(self.size):
             # Case paths
-            cfg_path = os.path.join(self.tmpdir,"case_%05d.cfg" % i)
+            cfg_path = os.path.join(self.tmpdir,"case_%05d.toml" % i)
             # Check cfg exists
             cfgexists = False
             waitfor   = 4.0
@@ -473,11 +488,31 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","default.toml")
-    pg = Pgrid("fO2_solidus", cfg_base)
+    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","t1c.toml")
+    # symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v3"
+    symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/t1c_v4"
+    pg = Pgrid("trappist1c", cfg_base, symlink_dir=symlink)
+
+    # pg.add_dimension("Planet")
+    # pg.set_dimension_hyper("Planet")
+    # pg.append_dimension_hyper("Planet", {   "#case": "TRAPPIST-1b",
+    #                                         "mean_distance": 0.01154,  # AU, star-planet distance
+    #                                         "mass"         : 8.21e+24, # kg, planet mass
+    #                                         "radius"       : 7.118e+6  # m, planet surface radius
+    #                                     })
+
+    # pg.add_dimension("C/H ratio")
+    # pg.set_dimension_logspace("C/H ratio", "CH_ratio", 0.01, 2.0, 7)
+
+    # pg.add_dimension("Hydrogen")
+    # pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 5.0, 10.0])
+
+
+    pg.add_dimension("Model")
+    pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6])
+    pg.set_dimension_arange("Redox state", "fO2_shift_IW", -2, 5, 1)
 
     # -----
     # Print state of parameter grid
@@ -491,7 +526,7 @@ if __name__=='__main__':
     # Start PROTEUS processes
     # -----
 
-    pg.run(10, test_run=False)
+    pg.run(30, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.

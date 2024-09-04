@@ -13,10 +13,10 @@ import numpy as np
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
-from proteus.atmos_clim.agni import DeallocAtmos
 from proteus.atmos_clim.wrapper_atmosphere import atm
 from proteus.utils.solidus_depression import katz2003
 from proteus.utils.solidus_depression import lin2024
+from proteus.config import read_config
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -51,8 +51,7 @@ from proteus.utils.helper import (
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
-    SetupLogger,
-    StreamToLogger,
+    setup_logger,
 )
 from proteus.utils.spider import ReadSPIDER, RunSPIDER
 from proteus.utils.surface_gases import (
@@ -61,19 +60,6 @@ from proteus.utils.surface_gases import (
     get_target_from_params,
     get_target_from_pressures,
 )
-
-if sys.version_info < (3, 11):
-    import toml
-
-    read_config = toml.load
-else:
-    import tomllib
-
-    def read_config(path: Path | str) -> dict:
-        """Read config file from path"""
-        with open(path, 'rb') as f:
-            config = tomllib.load(f)
-        return config
 
 
 class Proteus:
@@ -101,7 +87,6 @@ class Proteus:
         """
         import mors
         from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
-        from janus.utils.StellarSpectrum import InsertStellarSpectrum, PrepareStellarSpectrum
 
         UpdateStatusfile(self.directories, 0)
 
@@ -118,8 +103,8 @@ class Proteus:
         logpath = GetLogfilePath(self.directories["output"], logindex)
 
         # Switch to logger
-        SetupLogger(logpath=logpath, logterm=True, level=self.config["log_level"])
-        log = logging.getLogger("PROTEUS")
+        setup_logger(logpath=logpath, logterm=True, level=self.config["log_level"])
+        log = logging.getLogger("fwl."+__name__)
 
         # Print information to logger
         log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
@@ -273,9 +258,6 @@ class Proteus:
             UpdateStatusfile(self.directories, 20)
             raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
 
-        # Runtime spectral file path
-        spfile_path = os.path.join(self.directories["output"], "runtime.sf")
-
         # Handle stellar spectrum...
 
         # Store copy of modern spectrum in memory (1 AU)
@@ -307,7 +289,7 @@ class Proteus:
                     star_modern_path, self.directories["output"] + "/-1.sflux"
                 )
 
-                mors.DownloadEvolutionTracks("/Baraffe")
+                mors.DownloadEvolutionTracks("Baraffe")
                 baraffe = mors.BaraffeTrack(self.config["star_mass"])
 
             case _:
@@ -377,6 +359,7 @@ class Proteus:
             ############### STELLAR FLUX MANAGEMENT
             PrintHalfSeparator()
             log.info("Stellar flux management...")
+            update_stellar_spectrum = False
 
             # Calculate new instellation and radius
             if (abs(hf_row["Time"] - sinst_prev) > self.config["sinst_dt_update"]) or (
@@ -438,10 +421,7 @@ class Proteus:
                 loop_counter["total"] == 0
             ):
                 sspec_prev = hf_row["Time"]
-
-                # Remove old spectral file if it exists
-                safe_rm(spfile_path)
-                safe_rm(spfile_path + "_k")
+                update_stellar_spectrum = True
 
                 log.info("Updating stellar spectrum")
                 match self.config["star_model"]:
@@ -473,25 +453,6 @@ class Proteus:
                     fmt="%.8e",
                     delimiter="\t",
                 )
-
-                # Prepare spectral file for JANUS
-                if self.config["atmosphere_model"] == 0:
-                    # Generate a new SOCRATES spectral file containing this new spectrum
-                    star_spec_src = self.directories["output"] + "socrates_star.txt"
-                    #    Update stdout
-                    old_stdout, old_stderr = sys.stdout, sys.stderr
-                    sys.stdout = StreamToLogger(log, logging.INFO)
-                    sys.stderr = StreamToLogger(log, logging.ERROR)
-                    #    Spectral file stuff
-                    PrepareStellarSpectrum(wl, fl, star_spec_src)
-                    InsertStellarSpectrum(spectral_file_nostar, star_spec_src, self.directories["output"])
-                    os.remove(star_spec_src)
-                    #    Restore stdout
-                    sys.stdout, sys.stderr = old_stdout, old_stderr
-
-                # Other cases...
-                #  - AGNI will prepare the file itself
-                #  - dummy_atmosphere does not require this file
 
             else:
                 log.info("New spectrum not required at this time")
@@ -589,7 +550,7 @@ class Proteus:
             ############### / OUTGASSING
 
             ############### ATMOSPHERE SUB-LOOP
-            RunAtmosphere(self.config, self.directories, loop_counter, spfile_path, hf_all, hf_row)
+            RunAtmosphere(self.config, self.directories, loop_counter, wl, fl, update_stellar_spectrum, hf_all, hf_row)
 
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
@@ -760,8 +721,8 @@ class Proteus:
         PrintHalfSeparator()
 
         # Deallocate atmosphere
-        if self.config["atmosphere_model"] == 1:
-            DeallocAtmos(atm)
+        # if self.config["atmosphere_model"] == 1:
+        #     deallocate_atmos(atm)
 
         # Clean up files
         safe_rm(keepalive_file)

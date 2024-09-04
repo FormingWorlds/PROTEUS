@@ -10,7 +10,7 @@ import shutil
 
 import numpy as np
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 def PrintSeparator():
     log.info("===================================================")

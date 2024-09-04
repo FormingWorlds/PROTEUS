@@ -8,7 +8,7 @@ import numpy as np
 from proteus.utils.constants import const_sigma
 from proteus.utils.helper import UpdateStatusfile
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 # Run the dummy atmosphere module
 def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:float):
