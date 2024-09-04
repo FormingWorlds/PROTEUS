@@ -6,13 +6,12 @@ import logging
 import os
 import shutil
 
+import janus.set_socrates_env  # noqa
 import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import volatile_species
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest
-
-import janus.set_socrates_env
 
 log = logging.getLogger("fwl."+__name__)
 
