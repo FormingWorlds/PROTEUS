@@ -1,0 +1,29 @@
+A new set of stellar tracks and isochrones for LOW MASS STARS is available
+(see Spada, F.,Demarque, P.,Kim, Y.-C. & Sills, A. 2013, ApJ, 776, 87)   
+
+Evolutionary tracks for models in the range 0.10--1.25 Msun, with various 
+values of the mixing length parameter alpha_MLT = 0.5, 1.0, 1.875, 3.0, 
+and various chemical composition ([Fe/H] = +0.3, 0.0, -0.5, -1.0, -1.5, 
+enrichment parameter Delta Y /Delta Z = 1.48, alpha-enhancement 
+[alpha/Fe] = 0; the Grevesse & Sauval 1998 (Z/X)_sun = 0.0230 is assumed) 
+are available. Diffusion of helium and of the heavy elements is taken into 
+account; core overshooting is ignored. The evolutionary tracks cover the 
+PMS and the post-MS up to 13 Gyr and/or the sub giant phase (if present). 
+
+Along with the standard input physics incorporated in the non-rotational 
+version of YREC (see Demarque et al., 2008, for details), 
+these new calculations feature two major improvements which are especially 
+relevant to models of mass lower than 0.6 Msun:
+
+(1) to take care of the (relatively) low temperatures and high densities in 
+the atmospheres of such stars, the SCVH equation of state (Saumon et al. 1995) 
+is ramped with the OPAL 2005 equation of state below 5000 K;
+
+(2) as the grey atmosphere approximation becomes increasingly inadequate at 
+about 0.6 Msun and moving towards lower masses, the surface boundary 
+conditions have been specified based on the BT-Settl PHOENIX non-grey 
+atmospheric models (Allard et al., 2011).  
+
+Theoretical isochrones, along with synthetic magnitudes obtained from the 
+color--effective temperature transformations of Lejeune et al. (1998) and 
+VandenBerg & Clem (2003), are also available.

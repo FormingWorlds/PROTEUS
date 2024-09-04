@@ -473,12 +473,11 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","t1c.cfg")
-    symlink  = "/dataserver/users/formingworlds/sastre/PROTEUS/output/fO2_test"
-    pg = Pgrid("trappist1c", cfg_base, symlink_dir=symlink)
+    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","default.toml")
+    pg = Pgrid("fO2_solidus", cfg_base)
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-3, -2, -1, 0, 1, 2])
+    pg.set_dimension_direct("Redox state", "fO2_shift_IW", [-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6])
 
     # -----
     # Print state of parameter grid

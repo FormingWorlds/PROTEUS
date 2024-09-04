@@ -52,7 +52,7 @@ def lin2024(fO2,directory,file_name):
     gamma=0.75
     K=43
     data = np.loadtxt('/dataserver/users/formingworlds/sastre/PROTEUS/src/proteus/utils/Entropy-Temperature_interpolation.dat') 
-    deltaT=(340/3.2)*np.log(2-fO2)
+    deltaT=(340/3.2)*(2-fO2)
     T_new=data[:,0]+deltaT
     solid=np.genfromtxt('SPIDER/lookup_data/1TPa-dK09-elec-free/temperature_solid_test.dat')
     scaling_solid=solid[0]

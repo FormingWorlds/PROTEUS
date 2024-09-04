@@ -628,9 +628,6 @@ class Proteus:
             else:
                 print('Simulation without fO2 addition')
 
-            # if COUPLER_options["solidus_water_depend"]==1 and loop_counter["total"]==1:
-            #     katz2003(wt,dirs['output'],'solidus'+str(loop_counter["total"])+'.dat')
-
 
             # Update full helpfile
             if loop_counter["total"] > 1:
