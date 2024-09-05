@@ -488,10 +488,10 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","t1c.toml")
+    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","hd63433d.toml")
     # symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v3"
-    symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/t1c_v4"
-    pg = Pgrid("trappist1c", cfg_base, symlink_dir=symlink)
+    symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/hd63433d_v2"
+    pg = Pgrid("hd63433d_v2", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
