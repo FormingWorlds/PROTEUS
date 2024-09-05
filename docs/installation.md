@@ -82,6 +82,8 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 
 6. Setup radiative transfer code (**SOCRATES**)
 
+    The code can be setup in `./socrates/` using the following script.
+
     ```console
     source get_socrates.sh
     ```
@@ -90,10 +92,10 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 
     - Configure step
 
-    ```console
-    cd petsc
-    ./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --download-f2cblaslapack --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"
-    ```
+        ```console
+        cd petsc
+        ./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --download-f2cblaslapack --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"
+        ```
 
     - Run the exact `make all` command provided at the end of the configure step
     - Run the exact `make check` command provided at the end of the `make all` step
@@ -129,12 +131,16 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
         pip install -e .
         ```
 
-    - Set remaining environment variables
-        This file needs to be sourced for each new shell. This line can also be added to your shell rc file.
+    - Configure environment variables
 
-        ```console
-        source PROTEUS.env
-        ```
+        - The variable `RAD_DIR` must point to the SOCRATES installation path. It is best to add this to your shell rc file.
+
+        - Setup other variables
+
+            ```console
+            source PROTEUS.env
+            ```
+            This file can also be added to your shell rc file.
 
 10. Setup interior evolution model (**SPIDER**)
 

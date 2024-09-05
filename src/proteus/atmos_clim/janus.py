@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 
+import janus.set_socrates_env  # noqa
 import numpy as np
 import pandas as pd
 

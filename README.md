@@ -13,19 +13,12 @@ of the atmospheres and interiors of rocky planets.
 
 ## Installation instructions
 
-Click [here](https://fwl-proteus.readthedocs.io/en/latest/installation/) for steps and troubleshooting advice.
+See the [installation guide](https://fwl-proteus.readthedocs.io/en/latest/installation/) for steps and troubleshooting advice.
 
 ## Run instructions
 
 Only attempt to run PROTEUS after you have followed all of the installation instructions.
-If using a fresh shell, it is necessary to perform the following steps:
-1. `conda activate proteus` (if using Anaconda/Miniconda)
-2. `source PROTEUS.env`
-Then you can start the model by running: `start_proteus.py`. See the ReadTheDocs pages for more information.
-
-## Updating the code
-
-Run `git submodule update --recursive --remote`
+See the [usage guide](https://fwl-proteus.readthedocs.io/en/latest/usage/) for more information.
 
 ## Contributors
 
@@ -55,11 +48,8 @@ Hamish Innes            | hamish.innes[at]fu-berlin.de |
 | `CODE_OF_CONDUCT.md`	| Project code of conduct                                   |
 | `LICENSE.txt`         | Project license                                           |
 | `src/proteus`         | Source code for PROTEUS                                   |
-| `JANUS/`              | Submodule JANUS                                           |
 | `SPIDER/`             | Submodule SPIDER                                          |
-| `VULCAN/`             | Submodule VULCAN                                          |
-| `Mors/`               | Submodule Mors                                            |
 | `output/`             | Output folder with subfolders for each model run          |
 | `input/`              | Input folder (e.g. stellar spectra, example configs)      |
-| `docs/`			          | Documentation source files                                |
+| `docs/`			    | Documentation source files                                |
 | `examples/`           | Example cases that the model should be able to reproduce  |
