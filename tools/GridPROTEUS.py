@@ -296,7 +296,10 @@ class Pgrid():
             log.info("Symlink target: '%s'" % self.symlink_dir)
 
         check_interval = 30.0 # seconds
-        print_interval = 10   # step interval at which to print (30*10 seconds = 5 minutes)
+        print_interval = 20   # step interval at which to print (30*20 seconds = 10 minutes)
+
+        # do not need more threads than there are points
+        num_threads = min(num_threads, self.size)
 
         # Print warning
         if not test_run:
@@ -487,11 +490,9 @@ if __name__=='__main__':
     # -----
     # Define parameter grid
     # -----
-
     cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","hd63433d.toml")
-    # symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v3"
     symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/hd63433d_v3"
-    pg = Pgrid("hd63433d_v2", cfg_base, symlink_dir=symlink)
+    pg = Pgrid("hd63433d_v3", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -507,7 +508,6 @@ if __name__=='__main__':
     # pg.add_dimension("Hydrogen")
     # pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 5.0, 10.0])
 
-
     pg.add_dimension("Model")
     pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
 
@@ -517,7 +517,6 @@ if __name__=='__main__':
     # -----
     # Print state of parameter grid
     # -----
-
     pg.print_setup()
     pg.generate()
     pg.print_grid()
@@ -525,7 +524,6 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-
     pg.run(30, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
