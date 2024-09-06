@@ -1,5 +1,5 @@
 #!/bin/bash
-# Generate example from model output 
+# Generate example from model output
 
 # Check vars
 if [[ -z $PROTEUS_DIR ]]; then
@@ -14,7 +14,7 @@ fi
 # Inform
 echo "Making example of '$1'"
 
-# Paths 
+# Paths
 EXA_DIR="$PROTEUS_DIR/examples/$1/"
 OUT_DIR="$PROTEUS_DIR/output/$1/"
 
@@ -27,8 +27,8 @@ if [ -d "$EXA_DIR" ]; then
   rm -r $EXA_DIR
 fi
 
-# Make example folder 
-mkdir $EXA_DIR 
+# Make example folder
+mkdir $EXA_DIR
 
 # Prepare to copy
 shopt -s nullglob
@@ -41,11 +41,11 @@ for i in *.png *.pdf; do
     fi
 done
 
-# Copy logs 
+# Copy logs
 for i in proteus*.log; do
     cp $i $EXA_DIR
 done
 
-# Copy data 
+# Copy data
 cp runtime_helpfile.csv $EXA_DIR
-cp init_coupler.cfg $EXA_DIR
+cp init_coupler.toml $EXA_DIR
