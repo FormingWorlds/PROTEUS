@@ -26,7 +26,7 @@ P_top                       = 1.0e-6    # bar, Pressure at TOA
 ##### PROTEUS settings
 
 iter_max                    = 9000
-log_level                   = 'DEBUG'
+log_level                   = 'INFO'
 
 # Output subdirectory name (relative to output folder)
 dir_output                  = 'dummy'

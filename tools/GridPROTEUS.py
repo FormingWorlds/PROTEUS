@@ -490,7 +490,7 @@ if __name__=='__main__':
 
     cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","hd63433d.toml")
     # symlink  = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/t1c_v3"
-    symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/hd63433d_v2"
+    symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/hd63433d_v3"
     pg = Pgrid("hd63433d_v2", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
@@ -512,7 +512,7 @@ if __name__=='__main__':
     pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_arange("Redox state", "fO2_shift_IW", -2, 5, 1)
+    pg.set_dimension_arange("Redox state", "fO2_shift_IW", -5, 5, 2)
 
     # -----
     # Print state of parameter grid

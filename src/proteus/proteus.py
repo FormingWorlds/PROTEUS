@@ -250,11 +250,6 @@ class Proteus:
         DownloadSpectralFiles()
         DownloadStellarSpectra()
 
-        spectral_file_nostar = os.path.join(self.directories["fwl"], self.config["spectral_file"])
-        if not os.path.exists(spectral_file_nostar):
-            UpdateStatusfile(self.directories, 20)
-            raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
-
         # Handle stellar spectrum...
 
         # Store copy of modern spectrum in memory (1 AU)
