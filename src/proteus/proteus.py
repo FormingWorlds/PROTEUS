@@ -390,7 +390,11 @@ class Proteus:
                                 / (4.0 * np.pi * AU * AU * self.config["mean_distance"] ** 2.0)
                             )
                         case 1:
-                            hf_row["R_star"] = baraffe.BaraffeStellarRadius(hf_row["age_star"])
+                            hf_row["R_star"] = (
+                                baraffe.BaraffeStellarRadius(hf_row["age_star"])
+                                * mors.const.Rsun
+                                * 1.0e-2
+                            )
                             S_0 = baraffe.BaraffeSolarConstant(
                                 hf_row["age_star"], self.config["mean_distance"]
                             )
