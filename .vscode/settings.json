@@ -10,5 +10,6 @@
     ],
     "python.analysis.exclude": [
         "**/__pycache__", "petsc", ".git", "SPIDER"
-    ]
+    ],
+    "julia.environmentPath": "${workspaceFolder}/AGNI"
 }
