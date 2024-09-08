@@ -491,8 +491,8 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
     cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","hd63433d.toml")
-    symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/hd63433d_v3"
-    pg = Pgrid("hd63433d_v3", cfg_base, symlink_dir=symlink)
+    symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/hd63433d_v4"
+    pg = Pgrid("hd63433d_v4", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -512,7 +512,7 @@ if __name__=='__main__':
     pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
 
     pg.add_dimension("Redox state")
-    pg.set_dimension_arange("Redox state", "fO2_shift_IW", -5, 5, 2)
+    pg.set_dimension_arange("Redox state", "fO2_shift_IW", -5, 5, 1)
 
     # -----
     # Print state of parameter grid
@@ -524,7 +524,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(30, test_run=False)
+    pg.run(40, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.

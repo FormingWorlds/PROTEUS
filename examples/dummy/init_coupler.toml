@@ -2,57 +2,57 @@
 
 ##### Star configuration
 
-star_model                  = 1                 # Evolution model to use for star (0: Spada, 1: Baraffe)
-star_mass                   = 0.99                # M_sun, mass of star
-star_radius_modern          = 0.912                 # R_sun, radius of star (TODAY)
-star_temperature_modern     = 5640.0             # K, temperature of star (TODAY)
-star_luminosity_modern      = 0.753                 # L_sun, luminosity of star (TODAY) used for Baraffe model
-star_age_modern             = 4.14e8             # yr, age of star (TODAY)
+star_model                  = 0                 # Evolution model to use for star (0: Spada, 1: Baraffe)
+star_mass                   = 1                 # M_sun, mass of star
+star_radius_modern          = 1                 # R_sun, radius of star (TODAY)
+star_temperature_modern     = 5772.0            # K, temperature of star (TODAY)
+star_luminosity_modern      = 1                 # L_sun, luminosity of star (TODAY) used for Baraffe model
+star_age_modern             = 4.567e9             # yr, age of star (TODAY)
 star_rot_pctle              = 50.0
 star_spectrum               = 'stellar_spectra/Named/sun.txt'   # Stellar spectrum file at 1 AU (TODAY)
 
 ##### Planet configuration
-mean_distance               = 0.0503       # AU, star-planet distance
-mass                        = 1.0         # M_earth
-radius                      = 1.073         # R_earth
+mean_distance               = 1         # AU, star-planet distance
+mass                        = 1         # M_earth
+radius                      = 1         # R_earth
 
-zenith_angle                = 54.74    # Tidally locked [Hamano+15,  acos(1/sqrt(3)) ]
-asf_scalefactor             = 0.25     # absorbed solar flux scale factor = 1/4
-albedo_s                    = 0.2 		# surface albedo
-albedo_pl                   = 0.0   	# Bond albedo (scattering)
+zenith_angle                = 48.19     # Cronin+14 Earth-like case with clear sky [arccos(2/3)]
+asf_scalefactor             = 0.375     # absorbed solar flux scale factor = 3/8
+albedo_s                    = 0.1 		# surface albedo
+albedo_pl                   = 0.1   	# Bond albedo (scattering)
 
-P_top                       = 1.0e-5    # bar, Pressure at TOA
+P_top                       = 1.0e-6    # bar, Pressure at TOA
 
 ##### PROTEUS settings
 
 iter_max                    = 9000
-log_level                   = 'DEBUG'
+log_level                   = 'INFO'
 
 # Output subdirectory name (relative to output folder)
-dir_output                  = 'hd63433d'
+dir_output                  = 'dummy'
 
 # Choose times
-time_star                   = 50.0e6  	# yr, time since star formation
+time_star                   = 100.0e6  	# yr, time since star formation
 time_target                 = 4.567e+9  # yr, target time for MO evolution
 
 # SOCRATES spectral file to use (relative to FWL_DATA folder)
-spectral_file               = 'spectral_files/Honeyside/256/Honeyside.sf'
+spectral_file               = 'spectral_files/Frostflow/48/Frostflow.sf'
 
 # Stellar heating toggle, 0: disabled | 1: enabled
 stellar_heating             = 1
 
 # Time-stepping stuff
-plot_iterfreq               = 1     # Plotting frequency, 0: wait until completion | n: every n iterations
+plot_iterfreq               = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
 plot_format                 = 'png'  # Plotting image file format
-sspec_dt_update             = 3e6    # Time intervals at which to re-calculate the stellar spectrum
-sinst_dt_update             = 1e2    # Time intervals at which to re-calculate the instellation
-dt_maximum                  = 1e7    # Maximum time-step
-dt_minimum                  = 3e2    # Minimum time-step
+sspec_dt_update             = 1e9    # Time intervals at which to re-calculate the stellar spectrum
+sinst_dt_update             = 1e1    # Time intervals at which to re-calculate the instellation
+dt_maximum                  = 3e7    # Maximum time-step
+dt_minimum                  = 1e2    # Minimum time-step
 dt_method                   = 1      # Time-stepping method, 0: proportional | 1: adaptive | 2: maximum
 dt_propconst                = 52.0   # Proportionality constant for dt_method=0
-dt_atol                     = 0.02  # Step size atol
-dt_rtol                     = 0.07   # Step size rtol
-dt_initial                  = 1e3    # Inital step size
+dt_atol                     = 0.02   # Step size atol
+dt_rtol                     = 0.10   # Step size rtol
+dt_initial                  = 1e2    # Inital step size
 
 # Flux convergence scheme and tolerances for surface equilibration
 shallow_ocean_layer         = 0         # 0: off | 1: on
@@ -62,27 +62,26 @@ skin_k                      = 2.0       # W m-1 K-1
 prevent_warming             = 1         # Require that the planet only cool down over time, 0: disabled | 1: enabled
 
 # Break at solidification?
-solid_stop                  = 1
+solid_stop                  = 0
 phi_crit                    = 0.005     # melt fraction
 
 # Break at steady state?
-steady_stop                 = 1
+steady_stop                 = 0
 steady_flux                 = 0.8        # Maximum absolute value of F_atm allowed for convergence
-steady_dprel                = 3.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
+steady_dprel                = 1.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
 
 # Break at small flux?
-emit_stop                   = 1         # Enable this break condition
-F_crit                      = 0.1       # Model will terminate when |F_atm| < F_crit
+emit_stop                   = 0         # Enable this break condition
+F_crit                      = 0.2       # Model will terminate when |F_atm| < F_crit
 
 # Atmospheric escape
-escape_model                = 0         # Escape model to be used, 0: None | 1: ZEPHYRUS | 2: Dummy
+escape_model                = 2         # Escape model to be used, 0: None | 1: ZEPHYRUS | 2: Dummy
 escape_stop                 = 3e-4      # Terminate when atm mass drops below this fraction of its initial mass
-escape_dummy_rate           = 0.0       # Bulk escape rate for dummy escape model [kg s-1]
-
+escape_dummy_rate           = 2e7       # Bulk escape rate for dummy escape model [kg s-1]
 
 # Method for solving for T(p) profile
-atmosphere_model            = 1         # Atmosphere model to be used, 0: JANUS | 1: AGNI
-atmosphere_surf_state       = 2         # Atmosphere bottom edge boundary condition, 0: free | 1: fixed at T_surf | 2: conductive skin
+atmosphere_model            = 2         # Atmosphere model to be used, 0: JANUS | 1: AGNI | 2: Dummy
+atmosphere_surf_state       = 1        # Atmosphere bottom edge boundary condition, 0: free | 1: fixed at T_surf | 2: conductive skin
 
 # Number of levels
 atmosphere_nlev             = 40
@@ -96,7 +95,7 @@ water_cloud                 = 0         # enable water cloud radiative effects? 
 alpha_cloud                 = 0.0       # condensate retention fraction (1 -> fully retained)
 
 # Tropopause type, 0: none | 1: skin temperature | 2: dynamic
-tropopause                  = 1
+tropopause                  = 0
 
 # Rayleigh scattering, 0: Disabled | 1: Enabled
 rayleigh                    = 1
@@ -106,7 +105,7 @@ atmosphere_chemistry       = 0
 
 ##### SPIDER-specific settings
 
-interior_nlev               = 290
+interior_nlev               = 220
 grain_size                  = 0.1
 
 # Mixing length parameterization: 1: variable | 2: constant
@@ -116,23 +115,23 @@ mixing_length               = 2
 solver_tolerance            = 1.0e-10
 
 # Maximum absolute surface temperature change [K]
-tsurf_poststep_change       = 20.0
+tsurf_poststep_change       = 30.0
 
 # Maximum fractional surface temperature change [fraction]
-tsurf_poststep_change_frac  = 0.01
+tsurf_poststep_change_frac  = 0.02
 
 # Fractional core radius
 planet_coresize             = 0.55
 
 # Initial entropy conditions for interior
-ic_adiabat_entropy          = 3200.0
+ic_adiabat_entropy          = 2700.0
 ic_dsdr                     = -4.698e-06
 
 # Atmosphere heat flux start guess, adjusted during runtime [W/m^2]
-F_atm                       = 1e5
+F_atm                       = 1e6
 
 # Oxygen fugacity offset relative to the IW buffer (log10 units)
-fO2_shift_IW                = 0
+fO2_shift_IW                = 2
 
 # Enable solving for initial partial pressures (0: off | 1: on)
 solvevol_use_params          = 1
@@ -140,11 +139,12 @@ solvevol_use_params          = 1
 # Parameters used to solve for initial partial pressures (when solvepp_use_params = 1)
 Phi_global                  = 1.0       # Mantle melt fraction initial guess
 CH_ratio                    = 1.0       # C/H ratio
-hydrogen_earth_oceans       = 8.0       # Hydrogen inventory in units of equivalent Earth oceans
-nitrogen_ppmw               = 2.01      # Nitrogen inventory in ppmw relative to mantle mass
-sulfur_ppmw                 = 235.0     # Sulfur inventory in ppmw relative to mass of melt
+hydrogen_earth_oceans       = 6.0       # Hydrogen inventory in units of equivalent Earth oceans
+nitrogen_ppmw               = 2.0       # Nitrogen inventory in ppmw relative to mantle mass
+sulfur_ppmw                 = 200.0     # Sulfur inventory in ppmw relative to mass of melt
 
 # Prescribed injected partial pressures [bar]
+# Summed with solvepp results when solvepp_enabled = 1
 H2O_included                = 1
 H2O_initial_bar             = 0.0
 
