@@ -123,6 +123,13 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
         pip install -e JANUS/.
         ```
 
+    - CALLIOPE outgassing model
+
+        ```console
+        git clone git@github.com:FormingWorlds/CALLIOPE
+        pip install -e CALLIOPE/.
+        ```
+
 9. Setup PROTEUS coupled framework
 
     - Get the remaining Python dependencies
