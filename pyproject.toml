@@ -45,6 +45,7 @@ classifiers = [
 dependencies = [
     "fwl-janus>=24.8.29",
     "fwl-mors>=24.8.29",
+    "fwl-calliope",
     "cmcrameri",
     "juliacall",
     "matplotlib",

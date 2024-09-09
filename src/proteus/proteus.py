@@ -5,11 +5,16 @@ import logging
 import os
 import shutil
 import sys
-import warnings
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+from calliope.solve import (
+    equilibrium_atmosphere,
+    get_target_from_params,
+    get_target_from_pressures,
+)
+from calliope.structure import calculate_mantle_mass
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
@@ -51,12 +56,6 @@ from proteus.utils.logs import (
     setup_logger,
 )
 from proteus.utils.spider import ReadSPIDER, RunSPIDER
-from proteus.utils.surface_gases import (
-    CalculateMantleMass,
-    equilibrium_atmosphere,
-    get_target_from_params,
-    get_target_from_pressures,
-)
 
 
 class Proteus:
@@ -180,7 +179,7 @@ class Proteus:
             hf_row["M_planet"] = self.config["mass"] * M_earth
             hf_row["R_planet"] = self.config["radius"] * R_earth
             hf_row["gravity"] = const_G * hf_row["M_planet"] / (hf_row["R_planet"] ** 2.0)
-            hf_row["M_mantle"] = CalculateMantleMass(
+            hf_row["M_mantle"] = calculate_mantle_mass(
                 hf_row["R_planet"], hf_row["M_planet"], self.config["planet_coresize"]
             )
 
@@ -526,13 +525,8 @@ class Proteus:
                     if solvevol_target[key] < 1.0e4:
                         solvevol_target[key] = 0.0
 
-            #   do calculation
-            with warnings.catch_warnings():
-                # Suppress warnings from surface_gases solver, since they are triggered when
-                # the model makes a poor guess for the composition. These are then discarded,
-                # so the warning should not propagate anywhere. Errors are still printed.
-                warnings.filterwarnings("ignore", category=RuntimeWarning)
-                solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
+            # solve for atmosphere composition
+            solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
 
             #    store results
             for k in solvevol_result.keys():
