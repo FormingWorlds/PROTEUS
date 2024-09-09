@@ -74,11 +74,11 @@ end
 function main(output_dir::String, stride::Int)
 
     # use high resolution file
-    # spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
-    # star_file = joinpath(output_dir, "data", "0.sflux")
+    spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
+    star_file = joinpath(output_dir, "data", "0.sflux")
 
-    spectral_file = joinpath(output_dir, "runtime.sf")
-    star_file = ""
+    # spectral_file = joinpath(output_dir, "runtime.sf")
+    # star_file = ""
 
     if !ispath(spectral_file)
         error("Cannot find spectral file $spectral_file")
@@ -197,8 +197,6 @@ function main(output_dir::String, stride::Int)
 
         # write data to file
         fpath = replace(fpath, "_atm.nc" => "_ppr.nc")
-        # println("Writing to $fpath")
-        # display(atmos.tmp)
         dump.write_ncdf(atmos, fpath)
     end
 
