@@ -29,6 +29,7 @@ vol_zorder  = {
     "NH3"            : 1,
 }
 
+# Standard plotting colours
 dict_colors  = {
     # From Julia's default colours
     "H2O": "#027FB1",
@@ -41,39 +42,13 @@ dict_colors  = {
     "SO2": "#00008B",
     "He" : "#30FF71",
     "NH3": "#675200",
-    # Misc colours
-    "qgray"          : "#768E95",
-    "qgray2"         : "#888888",
-    "qblue"          : "#4283A9", # http://www.color-hex.com/color/4283a9
-    "qgreen"         : "#62B4A9", # http://www.color-hex.com/color/62b4a9
-    "qred"           : "#E6767A",
-    "qturq"          : "#2EC0D1",
-    "qorange"        : "#ff7f0e",
-    "qmagenta"       : "#9A607F",
-    "qyellow"        : "#EBB434",
-    "qgray_dark"     : "#465559",
-    "qblue_dark"     : "#274e65",
-    "qgreen_dark"    : "#3a6c65",
-    "qred_dark"      : "#b85e61",
-    "qturq_dark"     : "#2499a7",
-    "qmagenta_dark"  : "#4d303f",
-    "qyellow_dark"   : "#a47d24",
-    "qgray_light"    : "#acbbbf",
-    "qblue_light"    : "#8db4cb",
-    "qgreen_light"   : "#a0d2cb",
-    "qred_light"     : "#eb9194",
-    "qturq_light"    : "#57ccda",
-    "qmagenta_light" : "#c29fb2",
-    "qyellow_light"  : "#f1ca70",
 }
-
-# Additional aliases
 dict_colors["OLR"] = "crimson"
 dict_colors["ASF"] = "royalblue"
 dict_colors["sct"] = "seagreen" # for scattering
-dict_colors["atm"] = dict_colors["qgray"]
-dict_colors["int"] = dict_colors["qorange"]
-
+dict_colors["atm"] = dict_colors["#768E95"]
+dict_colors["int"] = dict_colors["#ff7f0e"]
+dict_colors["core"] = dict_colors["#4d303f"]
 dict_colors["atm_bkg"] = (0.95, 0.98, 1.0)
 dict_colors["int_bkg"] = (1.0, 0.98, 0.95)
 
@@ -139,6 +114,54 @@ vol_latex = {
     "O2-CH4" : r"O$_2$-CH$_4$",
     "O2-N2"  : r"O$_2$-N$_2$",
     "O2-O2"  : r"O$_2$-O$_2$",
+}
+
+# Bandpasses for instrumentation of interest [units of microns, um]
+observer_bands = {
+
+    # https://jwst-docs.stsci.edu/jwst-mid-infrared-instrument/miri-instrumentation/miri-filters-and-dispersers
+    "MIRI" : {
+        "F560W":   [5.054, 6.171],
+        "F770W":   [6.581, 8.687],
+        "F1000W":  [9.023, 10.891],
+        "F1130W":  [10.953, 11.667],
+        "F1280W":  [11.588, 14.115],
+        "F1500W":  [13.527, 16.64],
+        "F1800W":  [16.519, 19.502],
+        "F2100W":  [18.477, 23.159],
+        "F2550W":  [23.301, 26.733],
+        "F2550WR": [23.301, 26.733],
+        "FND":     [8.456, 15.473],
+    },
+
+    # https://jwst-docs.stsci.edu/jwst-near-infrared-spectrograph/nirspec-instrumentation/nirspec-dispersers-and-filters#
+    "NIRSpec" : {
+        "G140M/F070LP": [0.70,1.27],
+        "G140M/F100LP": [0.97,1.84],
+        "G235M/F170LP": [1.66,3.07],
+        "G395M/F290LP": [2.87,5.10],
+        "G140H/F070LP": [0.81,1.27],
+        "G140H/F100LP": [0.97,1.82],
+        "G235H/F170LP": [1.66,3.05],
+        "G395H/F290LP": [2.87,5.14],
+        "PRISM/CLEAR" : [0.60,5.30],
+    },
+
+    # https://jwst-docs.stsci.edu/jwst-near-infrared-imager-and-slitless-spectrograph/niriss-instrumentation/niriss-filters
+    "NIRISS" : {
+        "F090W": [0.796 , 1.005],
+        "F115W": [1.013 , 1.283],
+        "F150W": [1.33  , 1.671],
+        "F200W": [1.751 , 2.226],
+        "F277W": [2.413 , 3.143],
+        "F356W": [3.14  , 4.068],
+        "F444W": [3.88  , 5.023],
+        "F140M": [1.331 , 1.48 ],
+        "F158M": [1.488 , 1.688],
+        "F380M": [3.726 , 3.931],
+        "F430M": [4.182 , 4.395],
+        "F480M": [4.668 , 4.971],
+    }
 }
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python

@@ -213,7 +213,8 @@ function main(output_dir::String, nsamples::Int)
     for i in 1:nsamples
 
         # progress
-        @info @sprintf("%3d /%3d = %.1f%% \n", i, length(files), i*100.0/length(files))
+        @info @sprintf("%3d /%3d = %.1f%%  \t t=%.1e yr\n",
+                        i, length(files), i*100.0/length(files), years[i])
 
         # set new composition and structure
         update_atmos_from_nc!(atmos, files[i])
@@ -251,8 +252,8 @@ function main(output_dir::String, nsamples::Int)
         ds.attrib["date"]               = Dates.format(now(), "yyyy-u-dd HH:MM:SS")
         ds.attrib["hostname"]           = gethostname()
         ds.attrib["username"]           = ENV["USER"]
-        ds.attrib["AGNI_version"]      = atmos.AGNI_VERSION
-        ds.attrib["SOCRATES_version"]  = atmos.SOCRATES_VERSION
+        ds.attrib["AGNI_version"]       = atmos.AGNI_VERSION
+        ds.attrib["SOCRATES_version"]   = atmos.SOCRATES_VERSION
 
         plat::String = "Generic"
         if Sys.isapple()
@@ -289,8 +290,8 @@ function main(output_dir::String, nsamples::Int)
         var_time[:] = years[:]
 
         # Write band edges
-        var_bmin[:] =   atmos.bands_min
-        var_bmax[:] =   atmos.bands_max
+        var_bmin[:] = atmos.bands_min
+        var_bmax[:] = atmos.bands_max
 
         # Write spectral fluxes
         for i in 1:nsamples
