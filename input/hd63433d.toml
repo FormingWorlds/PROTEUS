@@ -2,7 +2,7 @@
 
 ##### Star configuration
 
-star_model                  = 0                 # Evolution model to use for star (0: Spada, 1: Baraffe)
+star_model                  = 1                 # Evolution model to use for star (0: Spada, 1: Baraffe)
 star_mass                   = 0.99                # M_sun, mass of star
 star_radius_modern          = 0.912                 # R_sun, radius of star (TODAY)
 star_temperature_modern     = 5640.0             # K, temperature of star (TODAY)
@@ -36,7 +36,7 @@ time_star                   = 50.0e6  	# yr, time since star formation
 time_target                 = 4.567e+9  # yr, target time for MO evolution
 
 # SOCRATES spectral file to use (relative to FWL_DATA folder)
-spectral_file               = 'spectral_files/Dayspring/48/Dayspring.sf'
+spectral_file               = 'spectral_files/Honeyside/256/Honeyside.sf'
 
 # Stellar heating toggle, 0: disabled | 1: enabled
 stellar_heating             = 1
@@ -44,7 +44,7 @@ stellar_heating             = 1
 # Time-stepping stuff
 plot_iterfreq               = 1     # Plotting frequency, 0: wait until completion | n: every n iterations
 plot_format                 = 'png'  # Plotting image file format
-sspec_dt_update             = 1e6    # Time intervals at which to re-calculate the stellar spectrum
+sspec_dt_update             = 3e6    # Time intervals at which to re-calculate the stellar spectrum
 sinst_dt_update             = 1e2    # Time intervals at which to re-calculate the instellation
 dt_maximum                  = 1e7    # Maximum time-step
 dt_minimum                  = 3e2    # Minimum time-step
@@ -59,7 +59,7 @@ shallow_ocean_layer         = 0         # 0: off | 1: on
 F_atm_bc                    = 0         # Boundary condition choice for F_atm, 0: TOA | 1: Surface
 skin_d                      = 0.01      # m
 skin_k                      = 2.0       # W m-1 K-1
-prevent_warming             = 0         # Require that the planet only cool down over time, 0: disabled | 1: enabled
+prevent_warming             = 1         # Require that the planet only cool down over time, 0: disabled | 1: enabled
 
 # Break at solidification?
 solid_stop                  = 1
@@ -140,9 +140,9 @@ solvevol_use_params          = 1
 # Parameters used to solve for initial partial pressures (when solvepp_use_params = 1)
 Phi_global                  = 1.0       # Mantle melt fraction initial guess
 CH_ratio                    = 1.0       # C/H ratio
-hydrogen_earth_oceans       = 8.0      # Hydrogen inventory in units of equivalent Earth oceans
-nitrogen_ppmw               = 2.0       # Nitrogen inventory in ppmw relative to mantle mass
-sulfur_ppmw                 = 300.0     # Sulfur inventory in ppmw relative to mass of melt
+hydrogen_earth_oceans       = 8.0       # Hydrogen inventory in units of equivalent Earth oceans
+nitrogen_ppmw               = 2.01      # Nitrogen inventory in ppmw relative to mantle mass
+sulfur_ppmw                 = 235.0     # Sulfur inventory in ppmw relative to mass of melt
 
 # Prescribed injected partial pressures [bar]
 H2O_included                = 1

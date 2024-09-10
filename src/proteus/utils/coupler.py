@@ -363,7 +363,8 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
         plot_sflux_cross(output_dir,    plot_format=OPTIONS["plot_format"])
         plot_fluxes_global(output_dir,  OPTIONS)
         plot_observables(output_dir,    plot_format=OPTIONS["plot_format"])
-        plot_emission(output_dir,       plot_times, plot_format=OPTIONS["plot_format"])
+        if not dummy_atm:
+            plot_emission(output_dir,       plot_times, plot_format=OPTIONS["plot_format"])
 
     # Close all figures
     plt.close()

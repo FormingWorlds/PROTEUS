@@ -200,9 +200,10 @@ def init_agni_atmos(dirs:dict, OPTIONS:dict, hf_row:dict):
         nc_path  = os.path.join(dirs["output"], "data", "%d_atm.nc"%int(sorted(nc_times)[-1]))
         jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
 
-    # Otherwise, set isothermal
+    # Otherwise, set to log-linear
     else:
-        jl.AGNI.setpt.isothermal_b(atmos, hf_row["T_surf"])
+        # jl.AGNI.setpt.isothermal_b(atmos, hf_row["T_surf"])
+        jl.AGNI.setpt.loglinear_b(atmos, min(900.0, hf_row["T_surf"]))
 
     # Logging
     sync_log_files(dirs["output"])
