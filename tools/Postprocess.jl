@@ -86,6 +86,7 @@ function postproc(output_dir::String, nsamples::Int)
     # spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
     # star_file = joinpath(output_dir, "data", "0.sflux")
 
+    # use existing spectral file
     spectral_file = joinpath(output_dir, "runtime.sf")
     star_file = ""
 
@@ -93,6 +94,10 @@ function postproc(output_dir::String, nsamples::Int)
         @error("Cannot find spectral file $spectral_file")
         exit(1)
     end
+
+    # remove old ppr files
+    ppr_fpath = joinpath(output_dir, "ppr.nc")
+    rm(ppr_fpath, force=true)
 
     # read model output
     all_files = glob("*_atm.nc", joinpath(output_dir , "data"))
@@ -113,17 +118,32 @@ function postproc(output_dir::String, nsamples::Int)
     all_files = all_files[mask]
 
     # re-sample files
-    years = Int[]
-    files = String[]
-    stride::Int = Int(ceil(nfiles/(nsamples-1)))
-    for i in range(start=1, step=stride, stop=nfiles)
-        push!(years, all_years[i])
-        push!(files, all_files[i])
+    if nsamples <= 2
+        years = Int[all_years[1], all_years[end]]
+        files = String[all_files[1], all_files[end]]
+        nsamples = 2
+        @info @sprintf("Sampled down to %d files \n", nsamples)
+        @debug repr(years)
+
+    elseif nsamples < nfiles
+        years = Int[]
+        files = String[]
+        stride::Int = Int(ceil(nfiles/(nsamples-1)))
+        for i in range(start=1, step=stride, stop=nfiles)
+            push!(years, all_years[i])
+            push!(files, all_files[i])
+        end
+        push!(years, all_years[end])
+        push!(files, all_files[end])
+        @info @sprintf("Sampled down to %d files \n", nsamples)
+        @debug repr(years)
+
+    else
+        @info "Processing all files"
+        years = copy(all_years)
+        files = copy(all_files)
+        nsamples = nfiles
     end
-    push!(years, all_years[end])
-    push!(files, all_files[end])
-    @info @sprintf("Sampled down to %d files \n", nsamples)
-    @debug repr(years)
 
     # Setup initial atmos struct...
     ref_fpath = files[1]
@@ -172,7 +192,7 @@ function postproc(output_dir::String, nsamples::Int)
     try
         input_flag_rayleigh = Bool(ds["flag_rayleigh"][1] == 'y')
     catch e
-        @debug "Using rscatter = true"
+        @warn "Assuming rscatter = true"
     end
 
     # thermo funcs
@@ -180,7 +200,7 @@ function postproc(output_dir::String, nsamples::Int)
     try
         input_flag_thermo = Bool(ds["thermo_funct"][1] == 'y')
     catch e
-        @debug "Using thermo_funct = true"
+        @warn "Assuming thermo_funct = true"
     end
 
     # continuum absorption
@@ -188,8 +208,18 @@ function postproc(output_dir::String, nsamples::Int)
     try
         input_flag_continuum = Bool(ds["flag_continuum"][1] == 'y')
     catch e
-        @debug "Using continuum = true"
+        @warn "Assuming continuum = true"
     end
+
+    # original atmosphere model
+    original_model::String = "UNKNOWN"
+    attribs = keys(ds.attrib)
+    if "JANUS_version" in attribs
+        original_model = "JANUS"
+    elseif "AGNI_version" in attribs
+        original_model = "AGNI"
+    end
+    @debug "Original model was $original_model"
 
     # Close file
     close(ds);
@@ -257,7 +287,6 @@ function postproc(output_dir::String, nsamples::Int)
     end
 
     # Write to netcdf file
-    ppr_fpath = joinpath(output_dir, "ppr.nc")
     @info "Writing post-processed fluxes to $ppr_fpath"
 
     # Absorb output from these calls, because they spam the Debug logger
@@ -273,6 +302,7 @@ function postproc(output_dir::String, nsamples::Int)
         ds.attrib["username"]           = ENV["USER"]
         ds.attrib["AGNI_version"]       = atmos.AGNI_VERSION
         ds.attrib["SOCRATES_version"]   = atmos.SOCRATES_VERSION
+        ds.attrib["original_model"]     = original_model
 
         plat::String = "Generic"
         if Sys.isapple()

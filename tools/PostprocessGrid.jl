@@ -16,7 +16,7 @@ using LoggingExtras
 function once(dir::String, Nsamp::Int)
     execpath::String = joinpath(ENV["PROTEUS_DIR"], "tools", "Postprocess.jl")
 
-    @info "Processing $dir"
+    @info "Start processing $dir..."
     logfile = joinpath(dir, "ppr.log")
     run(pipeline(`$execpath $dir $Nsamp`, stdout=logfile, stderr=logfile))
 
