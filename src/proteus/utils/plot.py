@@ -45,10 +45,10 @@ dict_colors  = {
 }
 dict_colors["OLR"] = "crimson"
 dict_colors["ASF"] = "royalblue"
-dict_colors["sct"] = "seagreen" # for scattering
-dict_colors["atm"] = dict_colors["#768E95"]
-dict_colors["int"] = dict_colors["#ff7f0e"]
-dict_colors["core"] = dict_colors["#4d303f"]
+dict_colors["sct"] = "seagreen"
+dict_colors["atm"] = "#768E95"
+dict_colors["int"] = "#ff7f0e"
+dict_colors["core"] = "#4d303f"
 dict_colors["atm_bkg"] = (0.95, 0.98, 1.0)
 dict_colors["int_bkg"] = (1.0, 0.98, 0.95)
 
@@ -130,7 +130,6 @@ observer_bands = {
         "F1800W":  [16.519, 19.502],
         "F2100W":  [18.477, 23.159],
         "F2550W":  [23.301, 26.733],
-        "F2550WR": [23.301, 26.733],
         "FND":     [8.456, 15.473],
     },
 
