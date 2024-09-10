@@ -1,6 +1,9 @@
 #!/usr/bin/env -S julia
 
 # Activate environment
+if !haskey(ENV, "PROTEUS_DIR")
+    error("The PROTEUS_DIR environment variable has not been set")
+end
 ROOT_DIR = abspath( ENV["PROTEUS_DIR"] , "AGNI/")
 using Pkg
 Pkg.activate(ROOT_DIR)
@@ -71,7 +74,7 @@ function update_atmos_from_nc!(atmos, fpath)
 
 end
 
-function main(output_dir::String, stride::Int)
+function main(output_dir::String, nsamples::Int)
 
     # use high resolution file
     spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
@@ -85,26 +88,30 @@ function main(output_dir::String, stride::Int)
     end
 
     # read model output
-    files = glob("*_atm.nc", joinpath(output_dir , "data"))
-    nfiles = length(files)
+    all_files = glob("*_atm.nc", joinpath(output_dir , "data"))
+    nfiles = length(all_files)
     @info @sprintf("Found %d files in output folder \n", nfiles)
 
     # get years
-    years = Int[]
-    for f in files
+    all_years = Int[]
+    for f in all_files
         s = split(f,"/")
         s = split(s[end],"_")[1]
-        push!(years, parse(Int, s))
+        push!(all_years, parse(Int, s))
     end
 
     # get sorting mask
-    mask = sortperm(years)
-    years = years[mask]
-    files = files[mask]
+    mask = sortperm(all_years)
+    all_years = all_years[mask]
+    all_files = all_files[mask]
 
     # re-sample files
-    years = years[1:stride:end]
-    files = files[1:stride:end]
+    years = Int[]
+    files = String[]
+    for i in range(start=1, stop=nfiles, length=nsamples)
+        push!(years, all_years[i])
+        push!(files, all_files[i])
+    end
     nfiles = length(files)
     @info @sprintf("Sampled down to %d files \n", nfiles)
 
@@ -204,16 +211,16 @@ end
 
 # validate CLI
 if length(ARGS) != 2
-    error("Invalid arguments. Most provide output path (str) and sampling stride (int).")
+    error("Invalid arguments. Most provide output path (str) and sampling count (int).")
 end
 output_dir = abspath(ARGS[1])
 if !isdir(output_dir)
     error("Path does not exist '$output_dir'")
 end
 if isnothing(tryparse(Int, ARGS[2]))
-    error("Invalid stride; must be an integer")
+    error("Invalid Nsamp; must be an integer")
 end
-stride = parse(Int, ARGS[2])
+Nsamp = parse(Int, ARGS[2])
 
 # run model
-main(output_dir, stride)
+main(output_dir, Nsamp)
