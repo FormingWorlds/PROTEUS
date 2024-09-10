@@ -1,5 +1,10 @@
 #!/usr/bin/env -S julia
 
+# This Julia script post-processes PROTEUS output data with a high resolution radiative
+# transfer configuration (using AGNI, so you must install it first). By default it uses
+# the Honeyside4096 spectral file to do this. The resultant data are stored in a a new
+# file called ppr.nc, in the PROTEUS run output folder.
+
 # Activate environment
 if !haskey(ENV, "PROTEUS_DIR")
     error("The PROTEUS_DIR environment variable has not been set")
@@ -371,16 +376,16 @@ function main()::Int
 
     # validate CLI
     if length(ARGS) != 2
-        @error("Invalid arguments. Most provide output path (str) and sampling count (int).")
+        @error("Invalid arguments. Must provide output path (str) and sampling count (int).")
         return 1
     end
     target_dir = abspath(ARGS[1])
     if !isdir(target_dir)
-        @error("Path does not exist '$target_dir'")
+        @error("Path does not exist: $target_dir")
         return 1
     end
     if isnothing(tryparse(Int, ARGS[2]))
-        @error("Invalid Nsamp; must be an integer")
+        @error("Nsamp is not an integer: $(ARGS[2])")
         return 1
     end
     Nsamp = parse(Int, ARGS[2])

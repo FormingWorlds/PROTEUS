@@ -1,5 +1,9 @@
 #!/usr/bin/env -S julia
 
+# This Julia script is used to parallelise postprocessing performed by `Postprocess.jl` for
+# instances where PROTEUS has been executed across a grid. All grid points will be processed
+# in parallel, using one thread each. See the content of `Postprocess.jl` for more info.
+
 # Activate environment
 if !haskey(ENV, "PROTEUS_DIR")
     error("The PROTEUS_DIR environment variable has not been set")
@@ -28,7 +32,7 @@ function main()::Int
 
     # validate CLI
     if length(ARGS) != 2
-        @error("Invalid arguments. Most provide output path (str) and sampling count (int).")
+        @error("Invalid arguments. Must provide output path (str) and sampling count (int).")
         return 1
     end
     target_dir = abspath(ARGS[1])
@@ -45,7 +49,7 @@ function main()::Int
     # find case dirs
     case_dirs = glob("case_*", target_dir)
     if isempty(case_dirs)
-        @error "No case dirs found in $target_dir"
+        @error "No case subdirectories found"
         return 1
     end
 
