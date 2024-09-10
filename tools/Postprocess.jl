@@ -78,7 +78,7 @@ function update_atmos_from_nc!(atmos::atmosphere.Atmos_t, fpath::String)
     return nothing
 end
 
-function main(output_dir::String, nsamples::Int)
+function postproc(output_dir::String, nsamples::Int)
 
     @info "Working in $output_dir"
 
@@ -167,10 +167,29 @@ function main(output_dir::String, nsamples::Int)
     input_albedo::Float64 = ds["bond_albedo"][1]
     input_zenith::Float64 = ds["zenith_angle"][1]
 
-    # flags
-    input_flag_rayleigh::Bool  = Bool(ds["flag_rayleigh"][1] == 'y')
-    input_flag_thermo::Bool    = Bool(ds["thermo_funct"][1] == 'y')
-    input_flag_continuum::Bool = Bool(ds["flag_continuum"][1] == 'y')
+    # rscatter
+    input_flag_rayleigh::Bool = true
+    try
+        input_flag_rayleigh = Bool(ds["flag_rayleigh"][1] == 'y')
+    catch e
+        @debug "Using rscatter = true"
+    end
+
+    # thermo funcs
+    input_flag_thermo::Bool = true
+    try
+        input_flag_thermo = Bool(ds["thermo_funct"][1] == 'y')
+    catch e
+        @debug "Using thermo_funct = true"
+    end
+
+    # continuum absorption
+    input_flag_continuum::Bool = true
+    try
+        input_flag_continuum = Bool(ds["flag_continuum"][1] == 'y')
+    catch e
+        @debug "Using continuum = true"
+    end
 
     # Close file
     close(ds);
@@ -238,7 +257,7 @@ function main(output_dir::String, nsamples::Int)
     end
 
     # Write to netcdf file
-    ppr_fpath = joinpath(output_dir, "radfluxes_ppr.nc")
+    ppr_fpath = joinpath(output_dir, "ppr.nc")
     @info "Writing post-processed fluxes to $ppr_fpath"
 
     # Absorb output from these calls, because they spam the Debug logger
@@ -317,23 +336,32 @@ function main(output_dir::String, nsamples::Int)
     return nothing
 end
 
-# validate CLI
-if length(ARGS) != 2
-    @error("Invalid arguments. Most provide output path (str) and sampling count (int).")
-    exit(1)
+# Main function
+function main()::Int
+
+    # validate CLI
+    if length(ARGS) != 2
+        @error("Invalid arguments. Most provide output path (str) and sampling count (int).")
+        return 1
+    end
+    target_dir = abspath(ARGS[1])
+    if !isdir(target_dir)
+        @error("Path does not exist '$target_dir'")
+        return 1
+    end
+    if isnothing(tryparse(Int, ARGS[2]))
+        @error("Invalid Nsamp; must be an integer")
+        return 1
+    end
+    Nsamp = parse(Int, ARGS[2])
+
+    # run postprocessing
+    postproc(target_dir, Nsamp)
+
+    # done
+    @info "Done"
+    return 0
 end
-output_dir = abspath(ARGS[1])
-if !isdir(output_dir)
-    @error("Path does not exist '$output_dir'")
-    exit(1)
-end
-if isnothing(tryparse(Int, ARGS[2]))
-    @error("Invalid Nsamp; must be an integer")
-    exit(1)
-end
-Nsamp = parse(Int, ARGS[2])
 
 # run model
-main(output_dir, Nsamp)
-@info "Done"
-exit(0)
+exit(main())
