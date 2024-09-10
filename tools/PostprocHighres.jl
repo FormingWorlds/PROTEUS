@@ -12,8 +12,11 @@ Pkg.activate(ROOT_DIR)
 using Printf
 using Plots
 using LaTeXStrings
+using LoggingExtras
 using NCDatasets
 using Glob
+using Dates
+using DataStructures
 
 # Import AGNI
 using AGNI
@@ -24,7 +27,7 @@ import AGNI.plotting as plotting
 import AGNI.setpt as setpt
 
 
-function update_atmos_from_nc!(atmos, fpath)
+function update_atmos_from_nc!(atmos::atmosphere.Atmos_t, fpath::String)
 
     ds = Dataset(fpath,"r")
 
@@ -50,7 +53,6 @@ function update_atmos_from_nc!(atmos, fpath)
         input_vmrs_scalar[g] = input_vmrs[g][end]
     end
 
-
     # Update the struct with new values
     atmos.instellation =  ds["instellation"][1]
 
@@ -65,32 +67,37 @@ function update_atmos_from_nc!(atmos, fpath)
 
     for g in input_gases
         atmos.gas_vmr[g][:] .= input_vmrs[g]
+        # @debug "$g = $(atmos.gas_vmr[g][end]*100)%"
     end
 
     atmosphere.calc_layer_props!(atmos)
 
     # Close file
-    close(ds);
+    close(ds)
 
+    return nothing
 end
 
 function main(output_dir::String, nsamples::Int)
 
-    # use high resolution file
-    spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
-    star_file = joinpath(output_dir, "data", "0.sflux")
+    @info "Working in $output_dir"
 
-    # spectral_file = joinpath(output_dir, "runtime.sf")
-    # star_file = ""
+    # use high resolution file
+    # spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
+    # star_file = joinpath(output_dir, "data", "0.sflux")
+
+    spectral_file = joinpath(output_dir, "runtime.sf")
+    star_file = ""
 
     if !ispath(spectral_file)
-        error("Cannot find spectral file $spectral_file")
+        @error("Cannot find spectral file $spectral_file")
+        exit(1)
     end
 
     # read model output
     all_files = glob("*_atm.nc", joinpath(output_dir , "data"))
     nfiles = length(all_files)
-    @info @sprintf("Found %d files in output folder \n", nfiles)
+    @info @sprintf("Found %d atm files \n", nfiles)
 
     # get years
     all_years = Int[]
@@ -108,18 +115,22 @@ function main(output_dir::String, nsamples::Int)
     # re-sample files
     years = Int[]
     files = String[]
-    for i in range(start=1, stop=nfiles, length=nsamples)
+    stride::Int = Int(ceil(nfiles/(nsamples-1)))
+    for i in range(start=1, step=stride, stop=nfiles)
         push!(years, all_years[i])
         push!(files, all_files[i])
     end
-    nfiles = length(files)
-    @info @sprintf("Sampled down to %d files \n", nfiles)
+    push!(years, all_years[end])
+    push!(files, all_files[end])
+    @info @sprintf("Sampled down to %d files \n", nsamples)
+    @debug repr(years)
 
     # Setup initial atmos struct...
-    fpath = files[1]
-    @info @sprintf("Setup atmos from %s \n", fpath)
+    ref_fpath = files[1]
+    @info @sprintf("Setup atmos from %s \n", ref_fpath)
 
-    ds = Dataset(fpath,"r")
+    # Read reference file
+    ds = Dataset(ref_fpath,"r")
 
     # Get all of the information that we need
     nlev_c::Int = length(ds["p"][:])
@@ -180,20 +191,32 @@ function main(output_dir::String, nsamples::Int)
                             )
     code = atmosphere.allocate!(atmos, star_file)
     if !code
-        error("Failed to allocate atmosphere")
+        @error("Failed to allocate atmosphere")
+        exit(1)
     end
 
+    # Setup matricies for output fluxes
+    @debug "Allocate output matricies"
+    band_u_lw = zeros(Float64, (nsamples, atmos.nbands))
+    band_d_lw = copy(band_u_lw)
+    band_n_lw = copy(band_u_lw)
+    band_u_sw = copy(band_u_lw)
+    band_d_sw = copy(band_u_lw)
+    band_n_sw = copy(band_u_lw)
+
+    # Which level are we storing fluxes at?
+    lvl::Int = 1
+
+    # Loop over netcdfs and post-process them
     @info(" ")
     @info("Performing radiative transfer calculations...")
-    # Loop over netcdfs and post-process them
-    for i in 1:length(files)
+    for i in 1:nsamples
 
         # progress
         @info @sprintf("%3d /%3d = %.1f%% \n", i, length(files), i*100.0/length(files))
 
         # set new composition and structure
-        fpath = files[i]
-        update_atmos_from_nc!(atmos, fpath)
+        update_atmos_from_nc!(atmos, files[i])
 
         # set fluxes to zero
         energy.reset_fluxes!(atmos)
@@ -202,25 +225,114 @@ function main(output_dir::String, nsamples::Int)
         energy.radtrans!(atmos, true)   # LW
         energy.radtrans!(atmos, false)  # SW
 
-        # write data to file
-        fpath = replace(fpath, "_atm.nc" => "_ppr.nc")
-        dump.write_ncdf(atmos, fpath)
+        # store data in matrix
+        #    lw
+        band_u_lw[i, :] .= atmos.band_u_lw[lvl, :]
+        band_d_lw[i, :] .= atmos.band_d_lw[lvl, :]
+        band_n_lw[i, :] .= atmos.band_n_lw[lvl, :]
+        #    sw
+        band_u_sw[i, :] .= atmos.band_u_sw[lvl, :]
+        band_d_sw[i, :] .= atmos.band_d_sw[lvl, :]
+        band_n_sw[i, :] .= atmos.band_n_sw[lvl, :]
     end
 
+    # Write to netcdf file
+    ppr_fpath = joinpath(output_dir, "radfluxes_ppr.nc")
+    @info "Writing post-processed fluxes to $ppr_fpath"
+
+    # Absorb output from these calls, because they spam the Debug logger
+    @debug "ALL DEBUG SUPPRESSED"
+    with_logger(MinLevelLogger(current_logger(), Logging.Info-200)) do
+
+        ds = Dataset(ppr_fpath,"c")
+
+        # Global attributes
+        ds.attrib["description"]        = "Post-processed PROTEUS fluxes"
+        ds.attrib["date"]               = Dates.format(now(), "yyyy-u-dd HH:MM:SS")
+        ds.attrib["hostname"]           = gethostname()
+        ds.attrib["username"]           = ENV["USER"]
+        ds.attrib["AGNI_version"]      = atmos.AGNI_VERSION
+        ds.attrib["SOCRATES_version"]  = atmos.SOCRATES_VERSION
+
+        plat::String = "Generic"
+        if Sys.isapple()
+            plat = "Darwin"
+        elseif Sys.iswindows()
+            plat = "Windows"
+        elseif Sys.islinux()
+            plat = "Linux"
+        end
+        ds.attrib["platform"] = plat
+
+        #     Create dimensions
+        defDim(ds, "nbands", atmos.nbands)  # Number of spectral bands
+        defDim(ds, "nsamps", nsamples)      # Number of samples that were calculated
+
+        #     Scalar quantities
+        var_specfile =  defVar(ds, "specfile" ,String, ())     # Path to spectral file when read
+        var_starfile =  defVar(ds, "starfile" ,String, ())     # Path to star file when read
+        var_specfile[1] = atmos.spectral_file
+        var_starfile[1] = atmos.star_file
+
+        #    Create variables
+        var_time = defVar(ds, "time",      Float64, ("nsamps",), attrib = OrderedDict("units" => "yr"))
+        var_bmin = defVar(ds, "bandmin",   Float64, ("nbands",), attrib = OrderedDict("units" => "m"))
+        var_bmax = defVar(ds, "bandmax",   Float64, ("nbands",), attrib = OrderedDict("units" => "m"))
+        var_bdl =  defVar(ds, "ba_D_LW",   Float64, ("nbands","nsamps"), attrib = OrderedDict("units" => "W m-2"))
+        var_bul =  defVar(ds, "ba_U_LW",   Float64, ("nbands","nsamps"), attrib = OrderedDict("units" => "W m-2"))
+        var_bnl =  defVar(ds, "ba_N_LW",   Float64, ("nbands","nsamps"), attrib = OrderedDict("units" => "W m-2"))
+        var_bds =  defVar(ds, "ba_D_SW",   Float64, ("nbands","nsamps"), attrib = OrderedDict("units" => "W m-2"))
+        var_bus =  defVar(ds, "ba_U_SW",   Float64, ("nbands","nsamps"), attrib = OrderedDict("units" => "W m-2"))
+        var_bns =  defVar(ds, "ba_N_SW",   Float64, ("nbands","nsamps"), attrib = OrderedDict("units" => "W m-2"))
+
+        # Write years
+        var_time[:] = years[:]
+
+        # Write band edges
+        var_bmin[:] =   atmos.bands_min
+        var_bmax[:] =   atmos.bands_max
+
+        # Write spectral fluxes
+        for i in 1:nsamples
+            for ba in 1:atmos.nbands
+                var_bul[ba, i] = band_u_lw[i, ba]
+                var_bdl[ba, i] = band_d_lw[i, ba]
+                var_bnl[ba, i] = band_n_lw[i, ba]
+                var_bus[ba, i] = band_u_sw[i, ba]
+                var_bds[ba, i] = band_d_sw[i, ba]
+                var_bns[ba, i] = band_n_sw[i, ba]
+            end
+        end
+
+        close(ds)
+
+    end # suppress output
+    @debug "ALL DEBUG RESTORED"
+
+    # Done with atmos struct
+    @debug "Deallocate atmos"
+    atmosphere.deallocate!(atmos)
+
+    return nothing
 end
 
 # validate CLI
 if length(ARGS) != 2
-    error("Invalid arguments. Most provide output path (str) and sampling count (int).")
+    @error("Invalid arguments. Most provide output path (str) and sampling count (int).")
+    exit(1)
 end
 output_dir = abspath(ARGS[1])
 if !isdir(output_dir)
-    error("Path does not exist '$output_dir'")
+    @error("Path does not exist '$output_dir'")
+    exit(1)
 end
 if isnothing(tryparse(Int, ARGS[2]))
-    error("Invalid Nsamp; must be an integer")
+    @error("Invalid Nsamp; must be an integer")
+    exit(1)
 end
 Nsamp = parse(Int, ARGS[2])
 
 # run model
 main(output_dir, Nsamp)
+@info "Done"
+exit(0)
