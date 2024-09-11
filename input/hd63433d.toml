@@ -26,7 +26,7 @@ P_top                       = 1.0e-5    # bar, Pressure at TOA
 ##### PROTEUS settings
 
 iter_max                    = 9000
-log_level                   = 'DEBUG'
+log_level                   = 'INFO'
 
 # Output subdirectory name (relative to output folder)
 dir_output                  = 'hd63433d'
@@ -85,7 +85,7 @@ atmosphere_model            = 1         # Atmosphere model to be used, 0: JANUS 
 atmosphere_surf_state       = 2         # Atmosphere bottom edge boundary condition, 0: free | 1: fixed at T_surf | 2: conductive skin
 
 # Number of levels
-atmosphere_nlev             = 40
+atmosphere_nlev             = 60
 
 # Temperature limits throughout atmosphere [K]
 min_temperature             = 0.5
