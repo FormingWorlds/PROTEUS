@@ -401,6 +401,18 @@ def run_agni(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
         jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"], "plot_vmr.%s"%fmt))
 
     # ---------------------------
+    # Calculate observables
+    # ---------------------------
+
+    # radius
+    idx = find_nearest(arr_p, float(atmos.transspec_p))[1]
+    z_obs = arr_z[idx]
+
+    # density
+    jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
+    rho_obs = float(atmos.transspec_rho)
+
+    # ---------------------------
     # Parse results
     # ---------------------------
 
@@ -426,15 +438,12 @@ def run_agni(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
     log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.2e, %.2e, %.2e  W m-2" %
                                         (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
-    # find 1 mbar (=100 Pa) level
-    idx = find_nearest(arr_p, 1e2)[1]
-    z_obs = arr_z[idx]
-
     output = {}
     output["F_atm"]  = F_atm_new
     output["F_olr"]  = LW_flux_up[0]
     output["F_sct"]  = SW_flux_up[0]
     output["T_surf"] = T_surf
     output["z_obs"]  = z_obs + radius
+    output["rho_obs"]= rho_obs
 
     return atmos, output
