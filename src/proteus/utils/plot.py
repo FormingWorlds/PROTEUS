@@ -151,6 +151,12 @@ observer_bands = {
         "F356W": [3.14  , 4.068],
         "F444W": [3.88  , 5.023],
         "GR700XD": [0.6, 2.8]
+    },
+
+    # https://www.esa.int/Science_Exploration/Space_Science/Ariel/Ariel_s_instruments
+    "ARIEL" : {
+        "AIRS0": [1.95, 3.9],
+        "AIRS1": [3.9, 7.8]
     }
 }
 
