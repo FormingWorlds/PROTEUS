@@ -130,20 +130,15 @@ observer_bands = {
         "F1800W":  [16.519, 19.502],
         "F2100W":  [18.477, 23.159],
         "F2550W":  [23.301, 26.733],
-        "FND":     [8.456, 15.473],
     },
 
     # https://jwst-docs.stsci.edu/jwst-near-infrared-spectrograph/nirspec-instrumentation/nirspec-dispersers-and-filters#
     "NIRSpec" : {
-        "G140M/F070LP": [0.70,1.27],
-        "G140M/F100LP": [0.97,1.84],
-        "G235M/F170LP": [1.66,3.07],
-        "G395M/F290LP": [2.87,5.10],
-        "G140H/F070LP": [0.81,1.27],
-        "G140H/F100LP": [0.97,1.82],
-        "G235H/F170LP": [1.66,3.05],
-        "G395H/F290LP": [2.87,5.14],
-        "PRISM/CLEAR" : [0.60,5.30],
+        "F070LP": [0.70,1.27],
+        "F100LP": [0.97,1.84],
+        "F170LP": [1.66,3.07],
+        "F290LP": [2.87,5.10],
+        "PRISM" : [0.60,5.30],
     },
 
     # https://jwst-docs.stsci.edu/jwst-near-infrared-imager-and-slitless-spectrograph/niriss-instrumentation/niriss-filters
@@ -155,11 +150,7 @@ observer_bands = {
         "F277W": [2.413 , 3.143],
         "F356W": [3.14  , 4.068],
         "F444W": [3.88  , 5.023],
-        "F140M": [1.331 , 1.48 ],
-        "F158M": [1.488 , 1.688],
-        "F380M": [3.726 , 3.931],
-        "F430M": [4.182 , 4.395],
-        "F480M": [4.668 , 4.971],
+        "GR700XD": [0.6, 2.8]
     }
 }
 
