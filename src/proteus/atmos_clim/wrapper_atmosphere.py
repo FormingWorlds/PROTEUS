@@ -95,7 +95,8 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
                 # Remove old spectral file if it exists
                 safe_rm(spfile_path)
                 safe_rm(spfile_path+"_k")
-                # deallocate old atmosphereq
+
+                # deallocate old atmosphere
                 deallocate_atmos(atm)
 
             # allocate new
