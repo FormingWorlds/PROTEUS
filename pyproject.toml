@@ -43,7 +43,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
-    "fwl-janus>=24.8.29",
+    "fwl-janus>=24.9.12",
     "fwl-mors>=24.8.29",
     "fwl-calliope>=24.9.10",
     "cmcrameri",
