@@ -56,6 +56,7 @@ from proteus.utils.logs import (
     setup_logger,
 )
 from proteus.utils.spider import ReadSPIDER, RunSPIDER
+from proteus.utils.data import download_basic
 
 
 class Proteus:
@@ -82,7 +83,7 @@ class Proteus:
             If True, continue from previous simulation
         """
         import mors
-        from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
+
 
         UpdateStatusfile(self.directories, 0)
 
@@ -244,10 +245,8 @@ class Proteus:
                     continue
                 solvevol_target[e] = hf_row[e + "_kg_total"]
 
-        # Download all basic data.
-        # (to be improved such that we only download the one we need)
-        DownloadSpectralFiles()
-        DownloadStellarSpectra()
+        # Download basic data
+        download_basic()
 
         # Handle stellar spectrum...
 
