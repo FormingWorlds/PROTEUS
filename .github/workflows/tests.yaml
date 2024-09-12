@@ -38,7 +38,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         id: cache-virtualenv
         with:
           path: ${{ env.pythonLocation }}
@@ -60,7 +60,7 @@ jobs:
           repository: 'nichollsh/SOCRATES'
           path: 'SOCRATES'
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         id: cache-socrates
         with:
           path: |
@@ -78,7 +78,7 @@ jobs:
           ./build_code
           cd ..
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         id: cache-fwl-data
         with:
           path: ${{ env.FWL_DATA }}
