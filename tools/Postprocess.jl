@@ -72,7 +72,6 @@ function update_atmos_from_nc!(atmos::atmosphere.Atmos_t, fpath::String)
 
     for g in input_gases
         atmos.gas_vmr[g][:] .= input_vmrs[g]
-        # @debug "$g = $(atmos.gas_vmr[g][end]*100)%"
     end
 
     atmosphere.calc_layer_props!(atmos)
