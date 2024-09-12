@@ -43,6 +43,7 @@ from proteus.utils.coupler import (
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
 )
+from proteus.utils.data import download_basic
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -56,7 +57,6 @@ from proteus.utils.logs import (
     setup_logger,
 )
 from proteus.utils.spider import ReadSPIDER, RunSPIDER
-from proteus.utils.data import download_basic
 
 
 class Proteus:

@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from osfclient.api import OSF
-
 import logging
-log = logging.getLogger("fwl."+__name__)
 
 from janus.utils.data import (
     DownloadSpectralFiles,
     DownloadStellarSpectra,
     GetFWLData,
-    download_folder
+    download_folder,
 )
+from osfclient.api import OSF
+
+log = logging.getLogger("fwl."+__name__)
 
 def DownloadSurfaceAlbedos():
     """

@@ -10,7 +10,7 @@ from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
 from proteus.utils.constants import dirs, volatile_species
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest, safe_rm
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 log = logging.getLogger("fwl."+__name__)
