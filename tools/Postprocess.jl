@@ -82,79 +82,12 @@ function update_atmos_from_nc!(atmos::atmosphere.Atmos_t, fpath::String)
     return nothing
 end
 
-function postproc(output_dir::String, nsamples::Int)
+function setup_atmos_from_nc!(output_dir::String, ncfile::String, spfile::String, stfile::String)
 
-    @info "Working in $output_dir"
-
-    # use high resolution file
-    # spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
-    # star_file = joinpath(output_dir, "data", "0.sflux")
-
-    # use existing spectral file
-    spectral_file = joinpath(output_dir, "runtime.sf")
-    star_file = ""
-
-    if !ispath(spectral_file)
-        @error("Cannot find spectral file $spectral_file")
-        exit(1)
-    end
-
-    # remove old ppr files
-    ppr_fpath = joinpath(output_dir, "ppr.nc")
-    rm(ppr_fpath, force=true)
-
-    # read model output
-    all_files = glob("*_atm.nc", joinpath(output_dir , "data"))
-    nfiles = length(all_files)
-    @info @sprintf("Found %d atm files \n", nfiles)
-
-    # get years
-    all_years = Int[]
-    for f in all_files
-        s = split(f,"/")
-        s = split(s[end],"_")[1]
-        push!(all_years, parse(Int, s))
-    end
-
-    # get sorting mask
-    mask = sortperm(all_years)
-    all_years = all_years[mask]
-    all_files = all_files[mask]
-
-    # re-sample files
-    if nsamples <= 2
-        years = Int[all_years[1], all_years[end]]
-        files = String[all_files[1], all_files[end]]
-        nsamples = 2
-        @info @sprintf("Sampled down to %d files \n", nsamples)
-        @debug repr(years)
-
-    elseif nsamples < nfiles
-        years = Int[]
-        files = String[]
-        stride::Int = Int(ceil(nfiles/(nsamples-1)))
-        for i in range(start=1, step=stride, stop=nfiles)
-            push!(years, all_years[i])
-            push!(files, all_files[i])
-        end
-        push!(years, all_years[end])
-        push!(files, all_files[end])
-        @info @sprintf("Sampled down to %d files \n", nsamples)
-        @debug repr(years)
-
-    else
-        @info "Processing all files"
-        years = copy(all_years)
-        files = copy(all_files)
-        nsamples = nfiles
-    end
-
-    # Setup initial atmos struct...
-    ref_fpath = files[1]
-    @info @sprintf("Setup atmos from %s \n", ref_fpath)
+    @info @sprintf("Setup atmos from %s \n", ncfile)
 
     # Read reference file
-    ds = Dataset(ref_fpath,"r")
+    ds = Dataset(ncfile,"r")
 
     # Get all of the information that we need
     nlev_c::Int = length(ds["p"][:])
@@ -228,10 +161,15 @@ function postproc(output_dir::String, nsamples::Int)
     # Close file
     close(ds);
 
+    if !ispath(spfile)
+        @error("Cannot find spectral file $spfile")
+        exit(1)
+    end
+
     # Setup atmosphere
     atmos = atmosphere.Atmos_t()
     atmosphere.setup!(atmos, ROOT_DIR, output_dir,
-                            spectral_file,
+                            spfile,
                             input_inst, input_s0fact, input_albedo, input_zenith,
                             input_tsurf,
                             input_gravity, input_radius,
@@ -242,11 +180,88 @@ function postproc(output_dir::String, nsamples::Int)
                             thermo_functions=input_flag_thermo,
                             overlap_method=2
                             )
-    code = atmosphere.allocate!(atmos, star_file)
+    code = atmosphere.allocate!(atmos, stfile)
     if !code
         @error("Failed to allocate atmosphere")
         exit(1)
     end
+
+    return atmos, original_model
+end
+
+function postproc(output_dir::String, nsamples::Int)
+
+    @info "Working in $output_dir"
+
+    # remove old ppr files
+    ppr_fpath = joinpath(output_dir, "ppr.nc")
+    rm(ppr_fpath, force=true)
+
+    # read model output
+    all_files = glob("*_atm.nc", joinpath(output_dir , "data"))
+    nfiles = length(all_files)
+    @info @sprintf("Found %d atm files \n", nfiles)
+
+    # get years
+    all_years = Int[]
+    for f in all_files
+        s = split(split(f,"/")[end],"_")[1]
+        push!(all_years, parse(Int, s))
+    end
+
+    # get sorting mask
+    mask = sortperm(all_years)
+    all_years = all_years[mask]
+    all_files = all_files[mask]
+
+    # re-sample files
+    if nsamples <= 2
+        years = Int[all_years[1], all_years[end]]
+        files = String[all_files[1], all_files[end]]
+        nsamples = 2
+        @info @sprintf("Sampled down to %d files \n", nsamples)
+        @debug repr(years)
+
+    elseif nsamples < nfiles
+        years = Int[]
+        files = String[]
+        stride::Int = Int(ceil(nfiles/(nsamples-1)))
+        for i in range(start=1, step=stride, stop=nfiles)
+            push!(years, all_years[i])
+            push!(files, all_files[i])
+        end
+        push!(years, all_years[end])
+        push!(files, all_files[end])
+        @info @sprintf("Sampled down to %d files \n", nsamples)
+        @debug repr(years)
+
+    else
+        @info "Processing all files"
+        years = copy(all_years)
+        files = copy(all_files)
+        nsamples = nfiles
+    end
+
+    # get years at which stellar spectrum was updated
+    star_files = glob("*.sflux", joinpath(output_dir , "data"))
+    star_years = Int[]
+    for f in star_files
+        s = split(split(f,"/")[end],".")[1]
+        push!(star_years, parse(Int, s))
+    end
+    sort!(star_years)
+    display(star_years)
+
+    # use high resolution file
+    spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
+    star_file = joinpath(output_dir, "data", "0.sflux")
+
+    # use existing spectral file
+    # spectral_file = joinpath(output_dir, "runtime.sf")
+    # star_file = ""
+
+    # Setup initial atmos struct...
+    atmos, original_model = setup_atmos_from_nc!(output_dir, files[1], spectral_file, star_file)
 
     # Setup matricies for output fluxes
     @debug "Allocate output matricies"
@@ -293,6 +308,15 @@ function postproc(output_dir::String, nsamples::Int)
     # Write to netcdf file
     @info "Writing post-processed fluxes to $ppr_fpath"
 
+    plat::String = "Generic"
+    if Sys.isapple()
+        plat = "Darwin"
+    elseif Sys.iswindows()
+        plat = "Windows"
+    elseif Sys.islinux()
+        plat = "Linux"
+    end
+
     # Absorb output from these calls, because they spam the Debug logger
     @debug "ALL DEBUG SUPPRESSED"
     with_logger(MinLevelLogger(current_logger(), Logging.Info-200)) do
@@ -307,15 +331,6 @@ function postproc(output_dir::String, nsamples::Int)
         ds.attrib["AGNI_version"]       = atmos.AGNI_VERSION
         ds.attrib["SOCRATES_version"]   = atmos.SOCRATES_VERSION
         ds.attrib["original_model"]     = original_model
-
-        plat::String = "Generic"
-        if Sys.isapple()
-            plat = "Darwin"
-        elseif Sys.iswindows()
-            plat = "Windows"
-        elseif Sys.islinux()
-            plat = "Linux"
-        end
         ds.attrib["platform"] = plat
 
         #     Create dimensions
