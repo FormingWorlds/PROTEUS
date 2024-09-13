@@ -250,11 +250,10 @@ function postproc(output_dir::String, nsamples::Int)
         push!(star_years, parse(Int, s))
     end
     sort!(star_years)
-    display(star_years)
 
     # use high resolution file
     spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
-    star_file = joinpath(output_dir, "data", "0.sflux")
+    star_file = joinpath(output_dir, "data", "$(star_years[1]).sflux")
 
     # use existing spectral file
     # spectral_file = joinpath(output_dir, "runtime.sf")
@@ -275,14 +274,43 @@ function postproc(output_dir::String, nsamples::Int)
     # Which level are we storing fluxes at?
     lvl::Int = 1
 
+    # Years
+    star_idx::Int = 1
+    current_time::Int = years[1]
+
     # Loop over netcdfs and post-process them
     @info(" ")
     @info("Performing radiative transfer calculations...")
     for i in 1:nsamples
 
+        # track time
+        current_time = years[i]
+
         # progress
         @info @sprintf("%3d /%3d = %.1f%%  \t t=%.1e yr\n",
-                        i, length(files), i*100.0/length(files), years[i])
+                        i, length(files), i*100.0/length(files), current_time)
+
+
+        # update stellar spectrum?
+        if star_idx < length(star_years)
+            if current_time >= star_years[star_idx+1]
+                # needs updating...
+                @info "    stellar spectrum needs updating"
+
+                # Iterate counter
+                star_idx += 1
+
+                # Set new target path
+                star_file = joinpath(output_dir, "data", "$(star_years[star_idx]).sflux")
+                @debug "    using $star_file"
+
+                # deallocate old atmos struct
+                atmosphere.deallocate!(atmos)
+
+                # create new atmos struct with updated stellar spectrum
+                atmos, original_model = setup_atmos_from_nc!(output_dir, files[i], spectral_file, star_file)
+            end
+        end
 
         # set new composition and structure
         update_atmos_from_nc!(atmos, files[i])
@@ -296,13 +324,13 @@ function postproc(output_dir::String, nsamples::Int)
 
         # store data in matrix
         #    lw
-        band_u_lw[i, :] .= atmos.band_u_lw[lvl, :]
-        band_d_lw[i, :] .= atmos.band_d_lw[lvl, :]
-        band_n_lw[i, :] .= atmos.band_n_lw[lvl, :]
+        @. band_u_lw[i, :] = atmos.band_u_lw[lvl, :]
+        @. band_d_lw[i, :] = atmos.band_d_lw[lvl, :]
+        @. band_n_lw[i, :] = atmos.band_n_lw[lvl, :]
         #    sw
-        band_u_sw[i, :] .= atmos.band_u_sw[lvl, :]
-        band_d_sw[i, :] .= atmos.band_d_sw[lvl, :]
-        band_n_sw[i, :] .= atmos.band_n_sw[lvl, :]
+        @. band_u_sw[i, :] = atmos.band_u_sw[lvl, :]
+        @. band_d_sw[i, :] = atmos.band_d_sw[lvl, :]
+        @. band_n_sw[i, :] = atmos.band_n_sw[lvl, :]
     end
 
     # Write to netcdf file
