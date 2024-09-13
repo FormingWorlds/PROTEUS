@@ -1,4 +1,4 @@
-#!/usr/bin/env -S julia
+#!/usr/bin/env -S julia --threads auto
 
 # This Julia script is used to parallelise postprocessing performed by `Postprocess.jl` for
 # instances where PROTEUS has been executed across a grid. All grid points will be processed
@@ -53,11 +53,21 @@ function main()::Int
         return 1
     end
 
+    # threads counter
+    @info "Will use up to $(Threads.nthreads()) threads"
+    sleep(3)
+
     # run postprocessing in parallel
+    tasks = Task[]
     @sync begin
         for d in case_dirs
-            @async once(d, Nsamp)
+            push!(tasks, @async once(d, Nsamp))
         end
+    end
+
+    # wait for tasks to finish
+    for t in tasks
+        wait(t)
     end
 
     # done
