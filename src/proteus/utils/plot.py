@@ -170,7 +170,26 @@ observer_bands = {
         "N": [7.5  , 14.5],
         "Q": [17.0 , 25.0],
         "Z": [28.0 , 40.0],
+    },
+
+    # https://link.springer.com/article/10.1007/s10686-020-09660-1
+    "PLATO" : {
+        "blue": [0.500, 0.675],
+        "red" : [0.675, 1.125]
+    },
+
+    # https://doi.org/10.1051/0004-6361/202140366
+    "LIFE" : {
+        "LIFE": [4.0, 18.5]
+    },
+
+    # https://ntrs.nasa.gov/api/citations/20240006497/downloads/HWO%20Engineering%20View%20Status%20Plans%20Opportunities.pdf
+    "HWO" : {
+        "Coronograph":      [0.4, 1.8],
+        "Highres imager":   [0.2, 2.5],
+        "Spectrograph":     [0.1, 1.0]
     }
+
 }
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
