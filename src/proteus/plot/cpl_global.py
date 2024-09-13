@@ -147,7 +147,7 @@ def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e
     ax_cl.set_ylim(min(1000.0,min_temp-25) , max(3500.0,max_temp+25))
 
     # PLOT ax_bl
-    ax_bl.axhline( y=options["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
+    ax_bl.axhline( y=options["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=dict_colors["core"], label=r'C-M boundary' )
     ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
     ax_bl.plot( hf_all["Time"],     hf_all["Phi_global"], color=dict_colors["atm"], linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
     ax_bl.legend(loc='center left', **leg_kwargs)

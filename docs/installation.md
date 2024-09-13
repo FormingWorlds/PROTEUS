@@ -204,6 +204,7 @@ Consult the AGNI wiki if you encouter issues.
     git clone git@github.com:exoclime/VULCAN.git
     cd VULCAN
     ```
+
 2. Compile the FastChem extension
 
     ```console

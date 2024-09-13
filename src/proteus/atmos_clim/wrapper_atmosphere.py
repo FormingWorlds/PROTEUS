@@ -95,11 +95,18 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
                 # Remove old spectral file if it exists
                 safe_rm(spfile_path)
                 safe_rm(spfile_path+"_k")
+
                 # deallocate old atmosphere
                 deallocate_atmos(atm)
 
             # allocate new
             atm = init_agni_atmos(dirs, OPTIONS, hf_row)
+
+            # Check allocation was ok
+            if not bool(atm.is_alloc):
+                log.error("Failed to allocate atmos struct")
+                UpdateStatusfile(dirs, 22)
+                exit(1)
 
         # Update profile
         atm = update_agni_atmos(atm, hf_row, OPTIONS)
@@ -113,6 +120,7 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
                                  hf_row["T_magma"], hf_row["F_ins"], hf_row["R_planet"])
 
     # Store atmosphere module output variables
+    hf_row["rho_obs"]= atm_output["rho_obs"]
     hf_row["z_obs"]  = atm_output["z_obs"]
     hf_row["F_atm"]  = atm_output["F_atm"]
     hf_row["F_olr"]  = atm_output["F_olr"]

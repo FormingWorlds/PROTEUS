@@ -121,7 +121,7 @@ def GetHelpfileKeys():
             "R_star", "age_star",
 
             # Observational
-            "z_obs", "transit_depth", "contrast_ratio", # observed from infinity
+            "z_obs", "rho_obs", "transit_depth", "contrast_ratio", # observed from infinity
 
             # Escape
             "esc_rate_total",
@@ -406,12 +406,10 @@ def SetDirectories(OPTIONS: dict):
     # FWL data folder
     if os.environ.get('FWL_DATA') is None:
         UpdateStatusfile(dirs, 20)
-        raise Exception("The FWL_DATA environment variable where spectral"
-                        "and evolution tracks data will be downloaded needs to be set up!"
+        raise Exception("The FWL_DATA environment variable needs to be set up!"
                         "Did you source PROTEUS.env?")
     else:
         dirs["fwl"] = os.environ.get('FWL_DATA')
-
 
     # SOCRATES directory
     if OPTIONS["atmosphere_model"] in [0,1]:

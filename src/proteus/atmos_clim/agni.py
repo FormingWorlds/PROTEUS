@@ -10,7 +10,7 @@ from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
 from proteus.utils.constants import dirs, volatile_species
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest, safe_rm
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 log = logging.getLogger("fwl."+__name__)
@@ -401,6 +401,15 @@ def run_agni(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
         jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"], "plot_vmr.%s"%fmt))
 
     # ---------------------------
+    # Calculate observables
+    # ---------------------------
+
+    # observed height and derived bulk density
+    jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
+    rho_obs = float(atmos.transspec_rho)
+    z_obs   = float(atmos.transspec_r)
+
+    # ---------------------------
     # Parse results
     # ---------------------------
 
@@ -408,9 +417,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
     net_flux =      np.array(atmos.flux_n)
     LW_flux_up =    np.array(atmos.flux_u_lw)
     SW_flux_up =    np.array(atmos.flux_u_sw)
-    arr_p =         np.array(atmos.p)
-    arr_z =         np.array(atmos.z)
-    radius =        float(atmos.rp)
     T_surf =        float(atmos.tmp_surf)
 
     # New flux from SOCRATES
@@ -426,15 +432,12 @@ def run_agni(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
     log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.2e, %.2e, %.2e  W m-2" %
                                         (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
-    # find 1 mbar (=100 Pa) level
-    idx = find_nearest(arr_p, 1e2)[1]
-    z_obs = arr_z[idx]
-
     output = {}
     output["F_atm"]  = F_atm_new
     output["F_olr"]  = LW_flux_up[0]
     output["F_sct"]  = SW_flux_up[0]
     output["T_surf"] = T_surf
-    output["z_obs"]  = z_obs + radius
+    output["z_obs"]  = z_obs
+    output["rho_obs"]= rho_obs
 
     return atmos, output

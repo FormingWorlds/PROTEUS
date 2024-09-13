@@ -29,6 +29,7 @@ vol_zorder  = {
     "NH3"            : 1,
 }
 
+# Standard plotting colours
 dict_colors  = {
     # From Julia's default colours
     "H2O": "#027FB1",
@@ -41,39 +42,13 @@ dict_colors  = {
     "SO2": "#00008B",
     "He" : "#30FF71",
     "NH3": "#675200",
-    # Misc colours
-    "qgray"          : "#768E95",
-    "qgray2"         : "#888888",
-    "qblue"          : "#4283A9", # http://www.color-hex.com/color/4283a9
-    "qgreen"         : "#62B4A9", # http://www.color-hex.com/color/62b4a9
-    "qred"           : "#E6767A",
-    "qturq"          : "#2EC0D1",
-    "qorange"        : "#ff7f0e",
-    "qmagenta"       : "#9A607F",
-    "qyellow"        : "#EBB434",
-    "qgray_dark"     : "#465559",
-    "qblue_dark"     : "#274e65",
-    "qgreen_dark"    : "#3a6c65",
-    "qred_dark"      : "#b85e61",
-    "qturq_dark"     : "#2499a7",
-    "qmagenta_dark"  : "#4d303f",
-    "qyellow_dark"   : "#a47d24",
-    "qgray_light"    : "#acbbbf",
-    "qblue_light"    : "#8db4cb",
-    "qgreen_light"   : "#a0d2cb",
-    "qred_light"     : "#eb9194",
-    "qturq_light"    : "#57ccda",
-    "qmagenta_light" : "#c29fb2",
-    "qyellow_light"  : "#f1ca70",
 }
-
-# Additional aliases
 dict_colors["OLR"] = "crimson"
 dict_colors["ASF"] = "royalblue"
-dict_colors["sct"] = "seagreen" # for scattering
-dict_colors["atm"] = dict_colors["qgray"]
-dict_colors["int"] = dict_colors["qorange"]
-
+dict_colors["sct"] = "seagreen"
+dict_colors["atm"] = "#768E95"
+dict_colors["int"] = "#ff7f0e"
+dict_colors["core"] = "#4d303f"
 dict_colors["atm_bkg"] = (0.95, 0.98, 1.0)
 dict_colors["int_bkg"] = (1.0, 0.98, 0.95)
 
@@ -139,6 +114,82 @@ vol_latex = {
     "O2-CH4" : r"O$_2$-CH$_4$",
     "O2-N2"  : r"O$_2$-N$_2$",
     "O2-O2"  : r"O$_2$-O$_2$",
+}
+
+# Bandpasses for instrumentation of interest [units of microns, um]
+observer_bands = {
+
+    # https://jwst-docs.stsci.edu/jwst-mid-infrared-instrument/miri-instrumentation/miri-filters-and-dispersers
+    "MIRI" : {
+        "F560W":   [5.054, 6.171],
+        "F770W":   [6.581, 8.687],
+        "F1000W":  [9.023, 10.891],
+        "F1130W":  [10.953, 11.667],
+        "F1280W":  [11.588, 14.115],
+        "F1500W":  [13.527, 16.64],
+        "F1800W":  [16.519, 19.502],
+        "F2100W":  [18.477, 23.159],
+        "F2550W":  [23.301, 26.733],
+    },
+
+    # https://jwst-docs.stsci.edu/jwst-near-infrared-spectrograph/nirspec-instrumentation/nirspec-dispersers-and-filters#
+    "NIRSpec" : {
+        "F070LP": [0.70,1.27],
+        "F100LP": [0.97,1.84],
+        "F170LP": [1.66,3.07],
+        "F290LP": [2.87,5.10],
+        "PRISM" : [0.60,5.30],
+    },
+
+    # https://jwst-docs.stsci.edu/jwst-near-infrared-imager-and-slitless-spectrograph/niriss-instrumentation/niriss-filters
+    "NIRISS" : {
+        "F090W": [0.796 , 1.005],
+        "F115W": [1.013 , 1.283],
+        "F150W": [1.33  , 1.671],
+        "F200W": [1.751 , 2.226],
+        "F277W": [2.413 , 3.143],
+        "F356W": [3.14  , 4.068],
+        "F444W": [3.88  , 5.023],
+        "GR700XD": [0.6, 2.8]
+    },
+
+    # https://www.esa.int/Science_Exploration/Space_Science/Ariel/Ariel_s_instruments
+    "ARIEL" : {
+        "AIRS0": [1.95, 3.9],
+        "AIRS1": [3.9, 7.8]
+    },
+
+    # https://en.wikipedia.org/wiki/Infrared_astronomy
+    "IR" : {
+        "R": [0.65 , 1.0 ],
+        "J": [1.1  , 1.4 ],
+        "H": [1.5  , 1.8 ],
+        "K": [2.0  , 2.4 ],
+        "L": [3.0  , 4.0 ],
+        "M": [4.6  , 5.0 ],
+        "N": [7.5  , 14.5],
+        "Q": [17.0 , 25.0],
+        "Z": [28.0 , 40.0],
+    },
+
+    # https://link.springer.com/article/10.1007/s10686-020-09660-1
+    "PLATO" : {
+        "blue": [0.500, 0.675],
+        "red" : [0.675, 1.125]
+    },
+
+    # https://doi.org/10.1051/0004-6361/202140366
+    "LIFE" : {
+        "LIFE": [4.0, 18.5]
+    },
+
+    # https://ntrs.nasa.gov/api/citations/20240006497/downloads/HWO%20Engineering%20View%20Status%20Plans%20Opportunities.pdf
+    "HWO" : {
+        "Coronograph":      [0.4, 1.8],
+        "Highres imager":   [0.2, 2.5],
+        "Spectrograph":     [0.1, 1.0]
+    }
+
 }
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python

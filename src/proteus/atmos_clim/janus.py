@@ -148,11 +148,12 @@ def RunJANUS(atm, dirs:dict, OPTIONS:dict, hf_row:dict, hf_all:pd.DataFrame,
 
     """
 
+    from janus.utils.observed_rho import calc_observed_rho
+
     # Runtime info
     log.info("Running JANUS...")
     time = hf_row["Time"]
 
-    output={}
 
     #Update atmosphere with current variables
     UpdateStateAtm(atm, hf_row, OPTIONS["tropopause"])
@@ -243,14 +244,23 @@ def RunJANUS(atm, dirs:dict, OPTIONS:dict, hf_row:dict, hf_all:pd.DataFrame,
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
-    # find 1 mbar level
-    idx = find_nearest(atm.p*1e5, 1e-3)[1]
-    z_obs = atm.z[idx]
+    # observables
+    z_obs = -1.0
+    rho_obs = -1.0
+    if not atm.height_error:
+        # find 1 mbar level
+        idx = find_nearest(atm.p, 1e2)[1]
+        z_obs = atm.z[idx] + atm.planet_radius
+        # calc observed density
+        rho_obs = calc_observed_rho(atm)
 
+    # final things to store
+    output={}
     output["T_surf"] = atm.ts            # Surface temperature [K]
     output["F_atm"]  = F_atm_lim         # Net flux at TOA
     output["F_olr"]  = atm.LW_flux_up[0] # OLR
     output["F_sct"]  = atm.SW_flux_up[0] # Scattered SW flux
-    output["z_obs"]  = z_obs + atm.planet_radius
+    output["z_obs"]  = z_obs
+    output["rho_obs"]= rho_obs
 
     return output
