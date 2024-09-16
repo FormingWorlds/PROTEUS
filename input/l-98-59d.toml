@@ -2,19 +2,19 @@
 
 ##### Star configuration
 
-star_model                  = 0                 # Evolution model to use for star (0: Spada, 1: Baraffe)
-star_mass                   = 0.65                # M_sun, mass of star
-star_radius_modern          = 0.68                 # R_sun, radius of star (TODAY)
-star_temperature_modern     = 4099.0             # K, temperature of star (TODAY)
-star_luminosity_modern      = 0.582                 # L_sun, luminosity of star (TODAY) used for Baraffe model
-star_age_modern             = 8e8             # yr, age of star (TODAY)
+star_model                  = 1                 # Evolution model to use for star (0: Spada, 1: Baraffe)
+star_mass                   = 0.273                # M_sun, mass of star
+star_radius_modern          = 0.303                 # R_sun, radius of star (TODAY)
+star_temperature_modern     = 3415.0             # K, temperature of star (TODAY)
+star_luminosity_modern      = 0.01128                 # L_sun, luminosity of star (TODAY) used for Baraffe model
+star_age_modern             = 0.8e9             # yr, age of star (TODAY)
 star_rot_pctle              = 50.0
-star_spectrum               = 'stellar_spectra/Named/eps-eri.txt'   # Stellar spectrum file at 1 AU (TODAY)
+star_spectrum               = 'stellar_spectra/Named/l-98-59.txt'   # Stellar spectrum file at 1 AU (TODAY)
 
 ##### Planet configuration
-mean_distance               = 0.1499       # AU, star-planet distance
-mass                        = 3.909         # M_earth
-radius                      = 1.646         # R_earth
+mean_distance               = 0.0486       # AU, star-planet distance
+mass                        = 1.94         # M_earth
+radius                      = 1.521         # R_earth
 
 zenith_angle                = 54.74    # Tidally locked [Hamano+15,  acos(1/sqrt(3)) ]
 asf_scalefactor             = 0.25     # absorbed solar flux scale factor = 1/4
@@ -26,13 +26,13 @@ P_top                       = 1.0e-5    # bar, Pressure at TOA
 ##### PROTEUS settings
 
 iter_max                    = 9000
-log_level                   = 'DEBUG'
+log_level                   = 'INFO'
 
 # Output subdirectory name (relative to output folder)
-dir_output                  = 'toi2411b'
+dir_output                  = 'l9859d'
 
 # Choose times
-time_star                   = 100.0e6  	# yr, time since star formation
+time_star                   = 50.0e6  	# yr, time since star formation
 time_target                 = 4.567e+9  # yr, target time for MO evolution
 
 # SOCRATES spectral file to use (relative to FWL_DATA folder)
@@ -44,7 +44,7 @@ stellar_heating             = 1
 # Time-stepping stuff
 plot_iterfreq               = 1     # Plotting frequency, 0: wait until completion | n: every n iterations
 plot_format                 = 'png'  # Plotting image file format
-sspec_dt_update             = 1e6    # Time intervals at which to re-calculate the stellar spectrum
+sspec_dt_update             = 3e6    # Time intervals at which to re-calculate the stellar spectrum
 sinst_dt_update             = 1e2    # Time intervals at which to re-calculate the instellation
 dt_maximum                  = 1e7    # Maximum time-step
 dt_minimum                  = 3e2    # Minimum time-step
@@ -81,11 +81,11 @@ escape_dummy_rate           = 0.0       # Bulk escape rate for dummy escape mode
 
 
 # Method for solving for T(p) profile
-atmosphere_model            = 0         # Atmosphere model to be used, 0: JANUS | 1: AGNI
+atmosphere_model            = 1         # Atmosphere model to be used, 0: JANUS | 1: AGNI
 atmosphere_surf_state       = 2         # Atmosphere bottom edge boundary condition, 0: free | 1: fixed at T_surf | 2: conductive skin
 
 # Number of levels
-atmosphere_nlev             = 40
+atmosphere_nlev             = 60
 
 # Temperature limits throughout atmosphere [K]
 min_temperature             = 0.5
@@ -140,9 +140,9 @@ solvevol_use_params          = 1
 # Parameters used to solve for initial partial pressures (when solvepp_use_params = 1)
 Phi_global                  = 1.0       # Mantle melt fraction initial guess
 CH_ratio                    = 1.0       # C/H ratio
-hydrogen_earth_oceans       = 8.0      # Hydrogen inventory in units of equivalent Earth oceans
-nitrogen_ppmw               = 2.0       # Nitrogen inventory in ppmw relative to mantle mass
-sulfur_ppmw                 = 300.0     # Sulfur inventory in ppmw relative to mass of melt
+hydrogen_earth_oceans       = 8.0       # Hydrogen inventory in units of equivalent Earth oceans
+nitrogen_ppmw               = 2.01      # Nitrogen inventory in ppmw relative to mantle mass
+sulfur_ppmw                 = 235.0     # Sulfur inventory in ppmw relative to mass of melt
 
 # Prescribed injected partial pressures [bar]
 H2O_included                = 1

@@ -153,6 +153,12 @@ observer_bands = {
         "GR700XD": [0.6, 2.8]
     },
 
+    # https://jwst-docs.stsci.edu/jwst-near-infrared-camera/nircam-instrumentation/nircam-filters
+    "NIRCam" : {
+        "Short": [0.6, 2.3],
+        "Long":  [2.4, 5.0],
+    },
+
     # https://www.esa.int/Science_Exploration/Space_Science/Ariel/Ariel_s_instruments
     "ARIEL" : {
         "AIRS0": [1.95, 3.9],
