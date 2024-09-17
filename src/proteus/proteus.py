@@ -142,9 +142,9 @@ class Proteus:
         if self.config["escape_model"] == 0:
             pass
         elif self.config["escape_model"] == 1:
-            from proteus.utils.escape import RunZEPHYRUS
+            from proteus.escape.wrapper_escape import RunZEPHYRUS
         elif self.config["escape_model"] == 2:
-            from proteus.utils.escape import RunDummyEsc
+            from proteus.escape.wrapper_escape import RunDummyEsc
         else:
             UpdateStatusfile(self.directories, 20)
             raise Exception("Invalid escape model")
