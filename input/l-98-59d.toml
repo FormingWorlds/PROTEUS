@@ -29,14 +29,14 @@ iter_max                    = 9000
 log_level                   = 'INFO'
 
 # Output subdirectory name (relative to output folder)
-dir_output                  = 'l9859d'
+dir_output                  = 'l-98-59d'
 
 # Choose times
-time_star                   = 50.0e6  	# yr, time since star formation
+time_star                   = 100.0e6  	# yr, time since star formation
 time_target                 = 4.567e+9  # yr, target time for MO evolution
 
 # SOCRATES spectral file to use (relative to FWL_DATA folder)
-spectral_file               = 'spectral_files/Dayspring/48/Dayspring.sf'
+spectral_file               = 'spectral_files/Honeyside/256/Honeyside.sf'
 
 # Stellar heating toggle, 0: disabled | 1: enabled
 stellar_heating             = 1
@@ -44,14 +44,14 @@ stellar_heating             = 1
 # Time-stepping stuff
 plot_iterfreq               = 1     # Plotting frequency, 0: wait until completion | n: every n iterations
 plot_format                 = 'png'  # Plotting image file format
-sspec_dt_update             = 3e6    # Time intervals at which to re-calculate the stellar spectrum
+sspec_dt_update             = 2e6    # Time intervals at which to re-calculate the stellar spectrum
 sinst_dt_update             = 1e2    # Time intervals at which to re-calculate the instellation
-dt_maximum                  = 1e7    # Maximum time-step
+dt_maximum                  = 3e6    # Maximum time-step
 dt_minimum                  = 3e2    # Minimum time-step
 dt_method                   = 1      # Time-stepping method, 0: proportional | 1: adaptive | 2: maximum
 dt_propconst                = 52.0   # Proportionality constant for dt_method=0
 dt_atol                     = 0.02  # Step size atol
-dt_rtol                     = 0.07   # Step size rtol
+dt_rtol                     = 0.06   # Step size rtol
 dt_initial                  = 1e3    # Inital step size
 
 # Flux convergence scheme and tolerances for surface equilibration
@@ -59,7 +59,7 @@ shallow_ocean_layer         = 0         # 0: off | 1: on
 F_atm_bc                    = 0         # Boundary condition choice for F_atm, 0: TOA | 1: Surface
 skin_d                      = 0.01      # m
 skin_k                      = 2.0       # W m-1 K-1
-prevent_warming             = 1         # Require that the planet only cool down over time, 0: disabled | 1: enabled
+prevent_warming             = 0         # Require that the planet only cool down over time, 0: disabled | 1: enabled
 
 # Break at solidification?
 solid_stop                  = 1
@@ -85,7 +85,7 @@ atmosphere_model            = 1         # Atmosphere model to be used, 0: JANUS 
 atmosphere_surf_state       = 2         # Atmosphere bottom edge boundary condition, 0: free | 1: fixed at T_surf | 2: conductive skin
 
 # Number of levels
-atmosphere_nlev             = 60
+atmosphere_nlev             = 55
 
 # Temperature limits throughout atmosphere [K]
 min_temperature             = 0.5
@@ -106,7 +106,7 @@ atmosphere_chemistry       = 0
 
 ##### SPIDER-specific settings
 
-interior_nlev               = 290
+interior_nlev               = 200
 grain_size                  = 0.1
 
 # Mixing length parameterization: 1: variable | 2: constant

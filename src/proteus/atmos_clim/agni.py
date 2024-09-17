@@ -128,18 +128,27 @@ def init_agni_atmos(dirs:dict, OPTIONS:dict, hf_row:dict):
         # single-gas case
         condensates = list(vol_dict.keys())
     else:
-        # get gas with smallest volume mixing ratio
+        # get gases with smallest and largest volume mixing ratios
         vmr_min = 2.0
         gas_min = ""
+        vmr_max = 0.0
+        gas_max = ""
         for k in vol_dict.keys():
             if vol_dict[k] < vmr_min:
                 vmr_min = vol_dict[k]
                 gas_min = k
+            if vol_dict[k] > vmr_min:
+                vmr_max = vol_dict[k]
+                gas_max = k
+
         # set all gases as condensates, except the least abundant gas
-        for k in vol_dict.keys():
-            if k == gas_min:
-                continue
-            condensates.append(k)
+        # for k in vol_dict.keys():
+        #     if k == gas_min:
+        #         continue
+        #     condensates.append(k)
+
+        # set gas with largest vmr to be the only condensate
+        condensates = [gas_max]
 
     # Chemistry
     chem_type = OPTIONS["atmosphere_chemistry"]

@@ -32,7 +32,7 @@ log_level                   = 'INFO'
 dir_output                  = 'hd63433d'
 
 # Choose times
-time_star                   = 50.0e6  	# yr, time since star formation
+time_star                   = 100.0e6  	# yr, time since star formation
 time_target                 = 4.567e+9  # yr, target time for MO evolution
 
 # SOCRATES spectral file to use (relative to FWL_DATA folder)
