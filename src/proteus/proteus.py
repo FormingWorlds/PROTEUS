@@ -19,6 +19,7 @@ from calliope.structure import calculate_mantle_mass
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config
+from proteus.escape.wrapper_escape import RunEscape
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -137,17 +138,6 @@ class Proteus:
 
         # Config file paths
         config_path_backup = os.path.join(self.directories["output"], "init_coupler.toml")
-
-        # Import the appropriate escape module
-        if self.config["escape_model"] == 0:
-            pass
-        elif self.config["escape_model"] == 1:
-            from proteus.escape.wrapper_escape import RunZEPHYRUS
-        elif self.config["escape_model"] == 2:
-            from proteus.escape.wrapper_escape import RunDummyEsc
-        else:
-            UpdateStatusfile(self.directories, 20)
-            raise Exception("Invalid escape model")
 
         # Is the model resuming from a previous state?
         if not resume:
@@ -455,48 +445,8 @@ class Proteus:
 
             ############### ESCAPE
 
-            if (loop_counter["total"] >= loop_counter["init_loops"]) and (
-                self.config["escape_model"] > 0
-            ):
-                PrintHalfSeparator()
-
-                if self.config["escape_model"] == 1:
-                    esc_result = RunZEPHYRUS(
-                        hf_row,
-                        dt,
-                        self.config["star_mass"],
-                        self.config["star_omega"],
-                        self.config["escape_el_tidal_correction"],
-                        self.config["mean_distance"] * AU,
-                        self.config["eccentricity"],
-                        hf_row["M_planet"],
-                        self.config["efficiency_factor"],
-                        hf_row["R_planet"],
-                        hf_row["R_planet"],
-                    )
-
-                elif self.config["escape_model"] == 2:
-                    esc_result = RunDummyEsc(hf_row, dt, self.config["escape_dummy_rate"])
-
-                # store total escape rate
-                hf_row["esc_rate_total"] = esc_result["rate_bulk"]
-                log.info(
-                    "Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1"
-                    % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"])
-                )
-                # update elemental mass targets
-                for e in element_list:
-                    if e == "O":
-                        continue
-
-                    # store change, for statistics
-                    esc_m = esc_result[e + "_kg_total"]
-
-                    # update total elemental inventory
-                    solvevol_target[e] = esc_m
-
-                    # do not allow negative masses
-                    solvevol_target[e] = max(0.0, solvevol_target[e])
+            if (loop_counter["total"] >= loop_counter["init_loops"]):
+                RunEscape(self.config, hf_row, dt, solvevol_target)
 
             ############### / ESCAPE
 
