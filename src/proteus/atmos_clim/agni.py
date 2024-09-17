@@ -137,7 +137,7 @@ def init_agni_atmos(dirs:dict, OPTIONS:dict, hf_row:dict):
             if vol_dict[k] < vmr_min:
                 vmr_min = vol_dict[k]
                 gas_min = k
-            if vol_dict[k] > vmr_min:
+            if vol_dict[k] > vmr_max:
                 vmr_max = vol_dict[k]
                 gas_max = k
 
