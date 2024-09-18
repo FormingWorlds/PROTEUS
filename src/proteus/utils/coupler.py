@@ -33,7 +33,7 @@ from proteus.utils.constants import (
     volatile_species,
 )
 from proteus.utils.helper import UpdateStatusfile, find_nearest, safe_rm
-from proteus.utils.spider import get_all_output_times
+from proteus.interior.spider import get_all_output_times
 
 log = logging.getLogger("fwl."+__name__)
 

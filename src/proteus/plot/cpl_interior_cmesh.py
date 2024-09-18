@@ -11,7 +11,7 @@ import numpy as np
 from cmcrameri import cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from proteus.utils.spider import MyJSON
+from proteus.interior.spider import MyJSON
 
 if TYPE_CHECKING:
     from proteus import Proteus

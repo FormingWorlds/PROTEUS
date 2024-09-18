@@ -14,7 +14,7 @@ from matplotlib.ticker import MultipleLocator
 
 from proteus.utils.helper import find_nearest
 from proteus.utils.plot import dict_colors, latex_float
-from proteus.utils.spider import MyJSON
+from proteus.interior.spider import MyJSON
 
 if TYPE_CHECKING:
     from proteus import Proteus

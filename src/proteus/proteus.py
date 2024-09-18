@@ -56,7 +56,7 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
-from proteus.utils.spider import ReadSPIDER, RunSPIDER
+from proteus.interior.spider import ReadSPIDER, RunSPIDER
 
 
 class Proteus:

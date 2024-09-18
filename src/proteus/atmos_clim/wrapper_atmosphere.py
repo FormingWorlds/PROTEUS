@@ -1,4 +1,4 @@
-#Generic atmosphere wrapper
+# Generic atmosphere wrapper
 from __future__ import annotations
 
 import logging
@@ -14,7 +14,7 @@ from proteus.atmos_clim.agni import (
     run_agni,
     update_agni_atmos,
 )
-from proteus.atmos_clim.dummy_atmosphere import RunDummyAtm
+from proteus.atmos_clim.dummy import RunDummyAtm
 from proteus.atmos_clim.janus import InitAtm, InitStellarSpectrum, RunJANUS
 from proteus.utils.constants import AU
 from proteus.utils.helper import PrintHalfSeparator, UpdateStatusfile, safe_rm

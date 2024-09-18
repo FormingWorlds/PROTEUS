@@ -8,7 +8,7 @@ import numpy as np
 from cmcrameri import cm
 
 from proteus.utils.plot import FigureData, MyFuncFormatter, latex_float
-from proteus.utils.spider import MyJSON, get_all_output_times
+from proteus.interior.spider import MyJSON, get_all_output_times
 
 if TYPE_CHECKING:
     from proteus import Proteus
