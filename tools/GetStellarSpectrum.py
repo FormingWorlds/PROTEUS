@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 # Python script to download and convert stellar spectra from online databases
+from __future__ import annotations
+
 import sys
 
 stars_online = {
@@ -30,7 +32,10 @@ def DownloadModernSpectrum(name, distance):
     print("Attempting to obtain spectrum")
 
     # Import required libraries
-    import requests, certifi, os
+    import os
+
+    import certifi
+    import requests
     from astropy.io import fits
 
     # Convert stellar parameters
@@ -111,7 +116,6 @@ def DownloadModernSpectrum(name, distance):
             # GJ436 is 31.8 light years away and has 0.42 solar radius
             # GJ1214 is 47.5 light years away and has 0.2064 solar radius
             # TRAPPIST-1 is 40.66209 ly away and has 0.1192 solar radius
-            hdulist = fits.open(database_spectrum)
             spec = fits.getdata(database_spectrum, 1)
 
             # WAVELENGTH : midpoint of the wavelength bin in Angstroms
