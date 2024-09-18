@@ -11,7 +11,7 @@ from proteus.utils.helper import UpdateStatusfile
 log = logging.getLogger("fwl."+__name__)
 
 # Run the dummy atmosphere module
-def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:float):
+def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:float, M_planet:float):
     log.info("Running dummy_atmosphere...")
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
@@ -103,10 +103,11 @@ def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:f
     log.info("    F_sct  =  %.3e  W m-2" % fluxes["fl_U_SW"])
 
     output = {}
-    output["T_surf"] = T_surf_atm
-    output["F_atm"] =  F_atm_lim             # Net flux at TOA
-    output["F_olr"] =  fluxes["fl_U_LW"]     # OLR
-    output["F_sct"] =  fluxes["fl_U_SW"]     # Scattered SW flux
-    output["z_obs"] =  R_planet
+    output["T_surf"]  = T_surf_atm
+    output["F_atm"]   =  F_atm_lim             # Net flux at TOA
+    output["F_olr"]   =  fluxes["fl_U_LW"]     # OLR
+    output["F_sct"]   =  fluxes["fl_U_SW"]     # Scattered SW flux
+    output["z_obs"]   =  R_planet
+    output["rho_obs"] =  3 * M_planet / (4*np.pi*R_planet**3)
 
     return output

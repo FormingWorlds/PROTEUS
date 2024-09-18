@@ -116,8 +116,8 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
 
     elif OPTIONS["atmosphere_model"] == 2:
         # Run dummy atmosphere model
-        atm_output = RunDummyAtm(dirs, OPTIONS,
-                                 hf_row["T_magma"], hf_row["F_ins"], hf_row["R_planet"])
+        atm_output = RunDummyAtm(dirs, OPTIONS, hf_row["T_magma"], hf_row["F_ins"],
+                                    hf_row["R_planet"], hf_row["M_planet"])
 
     # Store atmosphere module output variables
     hf_row["rho_obs"]= atm_output["rho_obs"]

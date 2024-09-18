@@ -64,6 +64,8 @@ def activate_julia(dirs:dict):
 
 
 def _construct_voldict(hf_row:dict, OPTIONS:dict):
+
+    # get from hf_row
     vol_dict = {}
     for vol in volatile_species:
         if OPTIONS[vol+"_included"]:
@@ -71,6 +73,7 @@ def _construct_voldict(hf_row:dict, OPTIONS:dict):
             if vmr > 1e-40:
                 vol_dict[vol] = vmr
 
+    # check values
     if len(vol_dict) == 0:
         UpdateStatusfile(dirs, 20)
         raise Exception("All volatiles have a volume mixing ratio of zero")
@@ -128,18 +131,14 @@ def init_agni_atmos(dirs:dict, OPTIONS:dict, hf_row:dict):
         # single-gas case
         condensates = list(vol_dict.keys())
     else:
-        # get gas with smallest volume mixing ratio
-        vmr_min = 2.0
-        gas_min = ""
-        for k in vol_dict.keys():
-            if vol_dict[k] < vmr_min:
-                vmr_min = vol_dict[k]
-                gas_min = k
+        # get sorted gases
+        vol_sorted = sorted(vol_dict.items(), key=lambda item: item[1])
+
         # set all gases as condensates, except the least abundant gas
-        for k in vol_dict.keys():
-            if k == gas_min:
-                continue
-            condensates.append(k)
+        # condensates = [v[0] for v in vol_sorted[1:]]
+
+        # set top two gases to be condensible
+        condensates = [v[0] for v in vol_sorted[-2:]]
 
     # Chemistry
     chem_type = OPTIONS["atmosphere_chemistry"]
