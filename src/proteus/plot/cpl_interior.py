@@ -121,8 +121,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, plot_format: str="p
         axs[2].set_xscale("log")
 
     title = '(d) Specific entropy'
-    xticks = [400,800,1600,2400,3200]
-    axs[3].set( title=title, xlabel=r'$S$ [J K$^{-1} $kg$^{-1}$]', xticks=xticks)
+    axs[3].set( title=title, xlabel=r'$S$ [J K$^{-1} $kg$^{-1}$]')
 
     # Pressure-depth conversion for y-axis
     ax3b = axs[3].twinx()

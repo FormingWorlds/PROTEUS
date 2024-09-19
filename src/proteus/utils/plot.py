@@ -236,8 +236,8 @@ def sample_times(times:list, nsamp:int, tmin:float=1.0):
         sample_t.append(int(val))
 
         # Get the index of this time in the original array
-        idx,_ = find_nearest(times,val)
-        sample_i.append(idx)
+        _,idx = find_nearest(times,val)
+        sample_i.append(int(idx))
 
     # sort output
     mask = np.argsort(sample_t)
