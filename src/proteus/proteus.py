@@ -56,7 +56,7 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
-from proteus.interior.spider import ReadSPIDER, RunSPIDER
+from proteus.interior import RunInterior
 
 
 class Proteus:
@@ -315,34 +315,13 @@ class Proteus:
             )
 
             ############### INTERIOR
-            PrintHalfSeparator()
 
-            # Previous magma temperature
-            if loop_counter["init"] < loop_counter["init_loops"]:
-                prev_T_magma = 9000.0
-            else:
-                prev_T_magma = hf_all.iloc[-1]["T_magma"]
-
-            # Run SPIDER
-            RunSPIDER(self.directories, self.config, IC_INTERIOR, loop_counter, hf_all, hf_row)
-            sim_time, spider_result = ReadSPIDER(
-                self.directories, self.config, hf_row["Time"], prev_T_magma, hf_row["R_planet"]
-            )
-
-            for k in spider_result.keys():
-                if k in hf_row.keys():
-                    hf_row[k] = spider_result[k]
-
-            # Do not allow melt fraction to increase
-            if (self.config["prevent_warming"] == 1) and (
-                loop_counter["init"] >= loop_counter["init_loops"]
-            ):
-                hf_row["Phi_global"] = min(hf_row["Phi_global"], hf_all.iloc[-1]["Phi_global"])
+            # Run interior model
+            dt = RunInterior(self.directories, self.config, loop_counter, IC_INTERIOR, hf_all,  hf_row)
 
             # Advance current time in main loop according to interior step
-            dt = float(sim_time) - hf_row["Time"]
-            hf_row["Time"] += dt  # in years
-            hf_row["age_star"] += dt  # in years
+            hf_row["Time"] += dt        # in years
+            hf_row["age_star"] += dt    # in years
 
             ############### / INTERIOR
 

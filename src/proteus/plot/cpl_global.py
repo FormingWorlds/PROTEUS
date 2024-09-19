@@ -32,8 +32,10 @@ def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e
         "framealpha":0.9
     }
 
-    fpath = os.path.join(output_dir , "runtime_helpfile.csv")
-    hf_all = pd.read_csv(fpath, sep=r"\s+")
+    hf_all = pd.read_csv(os.path.join(output_dir , "runtime_helpfile.csv"), sep=r"\s+")
+    if np.amax(hf_all["Time"]) < 2:
+        log.debug("Insufficient data to make plot_global")
+        return
 
     #    Volatile parameters (keys=vols, vals=quantites_over_time)
     vol_present = {} # Is present ever? (true/false)

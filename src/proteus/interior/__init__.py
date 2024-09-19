@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .wrapper_interior import RunInterior
+from .wrapper import RunInterior
 
 __all__ = [
     'RunInterior',

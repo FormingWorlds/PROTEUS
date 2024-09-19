@@ -452,7 +452,7 @@ def RunSPIDER( dirs:dict, OPTIONS:dict,
         raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
-def ReadSPIDER(dirs:dict, OPTIONS:dict, time:float, prev_T_magma:float, R_planet:float):
+def ReadSPIDER(dirs:dict, OPTIONS:dict, R_planet:float):
     '''
     Read variables from last SPIDER output JSON file into a dictionary
     '''
@@ -487,11 +487,6 @@ def ReadSPIDER(dirs:dict, OPTIONS:dict, time:float, prev_T_magma:float, R_planet
     output["Phi_global"]      = float(data_a[5])  # global melt fraction
     output["F_int"]           = float(data_a[6])  # Heat flux from interior
     output["RF_depth"]        = float(data_a[7])/R_planet  # depth of rheological front
-
-    # Do not allow warming after init stage has completed
-    if (OPTIONS["prevent_warming"]) and (time > 5.0):
-        output["T_magma"] = min(output["T_magma"], prev_T_magma)
-
 
     # Manually calculate heat flux at near-surface from energy gradient
     json_file   = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )

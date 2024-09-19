@@ -133,8 +133,6 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
     hf_row["contrast_ratio"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
                                  (hf_row["z_obs"] / (OPTIONS["mean_distance"]*AU))**2.0
 
-    return
-
 def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
 
     # This scheme is not typically used, but it maintained here from legacy code

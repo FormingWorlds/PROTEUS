@@ -299,28 +299,33 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
 
     # Check model configuration
     dummy_atm = bool(OPTIONS["atmosphere_model"] == 2)
+    dummy_int = bool(OPTIONS["interior_model"] == 2)
     escape    = bool(OPTIONS["escape_model"] > 0)
 
-    # Get all JSON files
-    output_times = get_all_output_times( output_dir )
-
-    # Do not plot if there's insufficient data
-    if np.amax(output_times) < 2:
-        return
+    # Get all output times
+    if dummy_int:
+        output_times = []
+    else:
+        output_times = get_all_output_times( output_dir )
 
     # Global properties for all timesteps
-    if len(output_times) > 2:
-        plot_global(output_dir, OPTIONS)
+    plot_global(output_dir, OPTIONS)
 
-        # Elemental mass inventory
-        if escape:
-            plot_elements(output_dir, OPTIONS["plot_format"])
-            plot_escape(output_dir, escape_model=OPTIONS['escape_model'], plot_format=OPTIONS["plot_format"])
-    # Filter to only include steps with corresponding NetCDF files
+    # Elemental mass inventory
+    if escape:
+        plot_elements(output_dir, OPTIONS["plot_format"])
+        plot_escape(output_dir, escape_model=OPTIONS['escape_model'], plot_format=OPTIONS["plot_format"])
+
+    # Which times do we have atmosphere data for?
     if not dummy_atm:
         ncs = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
         nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
-        output_times = sorted(list(set(output_times) & set(nc_times)))
+
+        # Check intersection of atmosphere and interior data
+        if dummy_int:
+            output_times = nc_times
+        else:
+            output_times = sorted(list(set(output_times) & set(nc_times)))
 
     # Work out which times we want to plot
     if len(output_times) <= num_snapshots:
@@ -345,26 +350,32 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
     plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
     log.debug("Snapshots to plot:" + str(plot_times))
 
-    # Temperature profiles
-    plot_interior(output_dir, plot_times, OPTIONS["plot_format"])
+    # Interior profiles
+    if not dummy_int:
+        plot_interior(output_dir, plot_times, OPTIONS["plot_format"])
+
+    # Atmosphere profiles
     if not dummy_atm:
         plot_atmosphere(output_dir, plot_times, OPTIONS["plot_format"])
         plot_stacked(output_dir, plot_times, OPTIONS["plot_format"])
 
-        if OPTIONS["atmosphere_model"] != 1:
-            # don't make this plot for AGNI, since it will do it itself
+        if OPTIONS["atmosphere_model"] == 0:
+            # only do this for JANUS
             plot_fluxes_atmosphere(output_dir, OPTIONS["plot_format"])
 
     # Only at the end of the simulation
     if end:
         plot_global(output_dir,         OPTIONS, logt=False)
-        plot_interior_cmesh(output_dir, plot_format=OPTIONS["plot_format"])
         plot_sflux(output_dir,          plot_format=OPTIONS["plot_format"])
         plot_sflux_cross(output_dir,    plot_format=OPTIONS["plot_format"])
         plot_fluxes_global(output_dir,  OPTIONS)
         plot_observables(output_dir,    plot_format=OPTIONS["plot_format"])
+
+        if not dummy_int:
+            plot_interior_cmesh(output_dir, plot_format=OPTIONS["plot_format"])
+
         if not dummy_atm:
-            plot_emission(output_dir,       plot_times, plot_format=OPTIONS["plot_format"])
+            plot_emission(output_dir, plot_times, plot_format=OPTIONS["plot_format"])
 
     # Close all figures
     plt.close()
