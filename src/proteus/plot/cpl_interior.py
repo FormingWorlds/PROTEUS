@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MultipleLocator
-import os
 import numpy as np
 from cmcrameri import cm
+from matplotlib.ticker import MultipleLocator
 
 from proteus.interior.spider import MyJSON
-from proteus.utils.plot import latex_float, MyFuncFormatter, sample_output
+from proteus.utils.plot import MyFuncFormatter, latex_float, sample_output
 
 if TYPE_CHECKING:
     from proteus import Proteus

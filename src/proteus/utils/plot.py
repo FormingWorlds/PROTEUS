@@ -6,10 +6,7 @@ import glob
 import os
 from typing import TYPE_CHECKING
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
-from cmcrameri import cm
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -253,7 +250,6 @@ def sample_times(times:list, nsamp:int, tmin:float=1.0):
 
 
 def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0, nsamp:int=8):
-    from proteus.utils.helper import find_nearest
 
     # get all files
     files = glob.glob(os.path.join(handler.directories["output"], "data", "*."+ftype))
@@ -338,4 +334,3 @@ class MyFuncFormatter( object ):
         y = self._invascale( x )
         fmt = self._sci_notation( y, 0 )
         return fmt
-

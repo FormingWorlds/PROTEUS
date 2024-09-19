@@ -13,8 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from typing import TYPE_CHECKING
-
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements
 from proteus.plot.cpl_emission import plot_emission
@@ -33,11 +31,8 @@ from proteus.utils.constants import (
     element_list,
     volatile_species,
 )
+from proteus.utils.helper import UpdateStatusfile, safe_rm
 from proteus.utils.plot import sample_times
-from proteus.utils.helper import UpdateStatusfile, find_nearest, safe_rm
-
-if TYPE_CHECKING:
-    from proteus import Proteus
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -332,13 +327,14 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
         else:
             output_times = sorted(list(set(output_times) & set(nc_times)))
 
-    # Get samples
-    nsamp = 7
-    tmin = 1.0
-    if np.amax(output_times) > 1e3:
-        tmin = 1e3
-    plot_times, _ = sample_times(output_times, nsamp, tmin=tmin)
-    log.debug("Snapshots to plot:" + str(plot_times))
+    # Samples for plotting profiles
+    if len(output_times) > 0:
+        nsamp = 7
+        tmin = 1.0
+        if np.amax(output_times) > 1e3:
+            tmin = 1e3
+        plot_times, _ = sample_times(output_times, nsamp, tmin=tmin)
+        log.debug("Snapshots to plot:" + str(plot_times))
 
     # Interior profiles
     if not dummy_int:
