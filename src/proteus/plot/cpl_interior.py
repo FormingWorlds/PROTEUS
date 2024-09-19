@@ -21,6 +21,10 @@ log = logging.getLogger("fwl."+__name__)
 
 def plot_interior(output_dir: str, times: list | np.ndarray, plot_format: str="pdf"):
 
+    if np.amax(times) < 2:
+        log.debug("Insufficient data to make plot_atmosphere")
+        return
+
     log.info("Plot interior")
 
     # Init figure

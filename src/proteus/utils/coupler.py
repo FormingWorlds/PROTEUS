@@ -333,7 +333,7 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
             output_times = sorted(list(set(output_times) & set(nc_times)))
 
     # Get samples
-    nsamp = 8
+    nsamp = 7
     tmin = 1.0
     if np.amax(output_times) > 1e3:
         tmin = 1e3
@@ -396,14 +396,13 @@ def SetDirectories(OPTIONS: dict):
     if os.environ.get('PROTEUS_DIR') is None:
         raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
     proteus_dir = os.path.abspath(os.getenv('PROTEUS_DIR'))
-    proteus_src = os.path.join(proteus_dir,"src/proteus")
+    proteus_src = os.path.join(proteus_dir,"src","proteus")
 
     # PROTEUS folders
     dirs = {
             "output":   os.path.join(proteus_dir,"output",OPTIONS['dir_output']),
             "input":    os.path.join(proteus_dir,"input"),
             "proteus":  proteus_dir,
-            "janus":    os.path.join(proteus_dir,"JANUS"),
             "agni":     os.path.join(proteus_dir,"AGNI"),
             "vulcan":   os.path.join(proteus_dir,"VULCAN"),
             "spider":   os.path.join(proteus_dir,"SPIDER"),

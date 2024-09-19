@@ -223,20 +223,23 @@ def sample_times(times:list, nsamp:int, tmin:float=1.0):
     tmax = max(tmin+1, np.amax(times))
 
     # do not allow times outside range
-    times = [x for x in times if tmin<=x<=tmax]
+    allowed_times = [int(x) for x in times if tmin<=x<=tmax]
 
     # get samples on log-time scale
     sample_t = []
     sample_i = []
     for s in np.logspace(np.log10(tmin),np.log10(tmax),nsamp): # Sample on log-scale
 
-        remaining = [int(v) for v in set(times) - set(sample_t)]
+        remaining = [int(v) for v in set(allowed_times) - set(sample_t)]
         if len(remaining) == 0:
             break
 
-        _,idx = find_nearest(remaining,s) # Find next new sample
+        # Get next nearest time
+        val,_ = find_nearest(remaining,s)
+        sample_t.append(int(val))
 
-        sample_t.append(int(remaining[idx]))
+        # Get the index of this time in the original array
+        idx,_ = find_nearest(times,val)
         sample_i.append(idx)
 
     # sort output
@@ -270,7 +273,6 @@ def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0, nsamp:in
     # return times and file paths
     return out_t, out_f
 
-#===================================================================
 class MyFuncFormatter( object ):
 
     '''the default function formatter from
@@ -337,193 +339,3 @@ class MyFuncFormatter( object ):
         fmt = self._sci_notation( y, 0 )
         return fmt
 
-
-#===================================================================
-class FigureData( object ):
-
-    def __init__( self, nrows, ncols, width, height, outname='fig',
-        times=[], units='kyr' ):
-        dd = {}
-        self.data_d = dd
-
-        mpl.use('Agg')  # Prevent plots popping up (it's very annoying)
-
-        if isinstance(times, (float, int)):
-            times = np.array([times])
-
-        if len(times) > 0:
-            dd['time_l'] = times
-            # self.process_time_list()
-
-        if units:
-            dd['time_units'] = units
-            dd['time_decimal_places'] = 2 # hard-coded
-        dd['outname'] = outname
-
-        self.cmap = cm.imola
-
-        self.set_properties( nrows, ncols, width, height )
-
-    def get_color( self, frac ):
-        return self.cmap(frac)
-
-    def get_legend_label( self, time ):
-        dd = self.data_d
-        units = dd['time_units']
-        age = float(time)
-        if units == 'yr':
-            age = round( age, 0 )
-            label = '%d'
-        elif units == 'kyr':
-            age /= 1.0E3
-            label = '%0.1f'
-        elif units == 'Myr':
-            age /= 1.0E6
-            label = '%0.2f'
-        elif units == 'Byr' or units == 'Gyr':
-            age /= 1.0E9
-            label = '%0.2f'
-        else:
-            raise ValueError(f'Unknown units: {units}')
-        label = label % age
-        return label
-
-    def process_time_list( self ):
-        dd = self.data_d
-        time_l = dd['time_l']
-        try:
-            time_l = [int(time_l)]
-        except ValueError:
-            time_l = [int(time) for time in time_l.split(',')]
-        self.time = time_l
-
-    def make_figure( self ):
-        dd = self.data_d
-        nrows = dd['nrows']
-        ncols = dd['ncols']
-        fig, ax = plt.subplots( nrows, ncols )
-        fig.subplots_adjust(wspace=0.3,hspace=0.3)
-        fig.set_size_inches( dd['width'], dd['height'] )
-        self.fig = fig
-        self.ax = ax
-
-    def savefig( self, num, fmt ):
-        dd = self.data_d
-        if dd['outname']:
-            outname = dd['outname'] + '.' + fmt
-        else:
-            outname = 'fig%d.'%num + fmt
-        self.fig.savefig(outname, bbox_inches='tight',
-            pad_inches=0.05, dpi=dd['dpi'])
-
-    def set_cmap( self, cmap_obj ):
-        self.cmap = cmap_obj
-
-    def set_properties( self, nrows, ncols, width, height ):
-        dd = self.data_d
-        dd['nrows'] = nrows
-        dd['ncols'] = ncols
-        dd['width'] = width # inches
-        dd['height'] = height # inches
-
-        # Set main font properties
-        font_d = {
-            'size': 10.0,
-            'family': ['sans-serif']
-            }
-
-        # fonts  = fm.findSystemFonts(fontpaths=None, fontext='ttf')
-        # Has arial?
-        # for f in fonts:
-        #     if 'Arial' in f:
-        #         font_d["family"]        = 'sans-serif'
-        #         font_d['serif']         = ['Arial']
-        #         font_d['sans-serif']    = ['Arial']
-        #         break
-        mpl.rc('font', **font_d)
-
-        # Do NOT use TeX font for labels etc.
-        plt.rc('text', usetex=False)
-
-        # Other params
-        dd['dpi'] = 200
-        dd['extension'] = 'png'
-        dd['fontsize_legend'] = 8
-        dd['fontsize_title'] = 10
-        dd['fontsize_xlabel'] = 10
-        dd['fontsize_ylabel'] = 10
-        self.make_figure()
-
-    def set_myaxes( self, ax, title='', xlabel='', xticks='',
-                        ylabel='', yticks='', yrotation='', fmt='', xfmt='',
-                        xmin='', xmax='', ymin='', ymax='' ):
-        if title:
-            self.set_mytitle( ax, title )
-        if xlabel:
-            self.set_myxlabel( ax, xlabel )
-        if xticks:
-            self.set_myxticks( ax, xticks, xmin, xmax, xfmt )
-        if ylabel:
-            self.set_myylabel( ax, ylabel, yrotation )
-        if yticks:
-            self.set_myyticks( ax, yticks, ymin, ymax, fmt )
-
-    def set_mylegend( self, ax, handles, loc=4, ncol=1, TITLE=None, **kwargs ):
-        fontsize = self.data_d['fontsize_legend']
-        # FIXME
-        if not TITLE:
-            legend = ax.legend(handles=handles, loc=loc, ncol=ncol,
-                               fontsize=fontsize, **kwargs )
-            #units = dd['time_units']
-            #title = r'Time ({0})'.format( units )
-        else:
-            title = TITLE
-            legend = ax.legend(title=title, handles=handles, loc=loc,
-                ncol=ncol, fontsize=fontsize, **kwargs)
-        plt.setp(legend.get_title(),fontsize=fontsize)
-
-    def set_mytitle( self, ax, title ):
-        dd = self.data_d
-        fontsize = dd['fontsize_title']
-        title = r'{}'.format( title )
-        ax.set_title( title, fontsize=fontsize )
-
-    def set_myxlabel( self, ax, label ):
-        dd = self.data_d
-        fontsize = dd['fontsize_xlabel']
-        label = r'{}'.format( label )
-        ax.set_xlabel( label, fontsize=fontsize )
-
-    def set_myylabel( self, ax, label, yrotation ):
-        dd = self.data_d
-        fontsize = dd['fontsize_ylabel']
-        if not yrotation:
-            yrotation = 'horizontal'
-        label = r'{}'.format( label )
-        ax.set_ylabel( label, fontsize=fontsize, rotation=yrotation )
-
-    def set_myxticks( self, ax, xticks, xmin, xmax, fmt ):
-        if fmt:
-            xticks = fmt.ascale( np.array(xticks) )
-            ax.xaxis.set_major_formatter(
-                mpl.ticker.FuncFormatter(fmt))
-        ax.set_xticks( xticks)
-        # set x limits to match extent of ticks
-        if not xmax:
-            xmax=xticks[-1]
-        if not xmin:
-            xmin=xticks[0]
-        ax.set_xlim( xmin, xmax )
-
-    def set_myyticks( self, ax, yticks, ymin, ymax, fmt ):
-        if fmt:
-            yticks = fmt.ascale( np.array(yticks) )
-            ax.yaxis.set_major_formatter(
-                mpl.ticker.FuncFormatter(fmt))
-        ax.set_yticks( yticks)
-        # set y limits to match extent of ticks
-        if not ymax:
-            ymax=yticks[-1]
-        if not ymin:
-            ymin=yticks[0]
-        ax.set_ylim( ymin, ymax )
