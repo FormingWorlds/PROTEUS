@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from typing import TYPE_CHECKING
+
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements
 from proteus.plot.cpl_emission import plot_emission
@@ -31,7 +33,11 @@ from proteus.utils.constants import (
     element_list,
     volatile_species,
 )
+from proteus.utils.plot import sample_times
 from proteus.utils.helper import UpdateStatusfile, find_nearest, safe_rm
+
+if TYPE_CHECKING:
+    from proteus import Proteus
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -326,27 +332,12 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
         else:
             output_times = sorted(list(set(output_times) & set(nc_times)))
 
-    # Work out which times we want to plot
-    if len(output_times) <= num_snapshots:
-        plot_times = output_times
-
-    else:
-        output_times = [x for x in output_times if x > 0]
-
-        plot_times = []
-        tmin = max(1,np.amin(output_times))
-        tmax = max(tmin+1, np.amax(output_times))
-
-        for s in np.logspace(np.log10(tmin),np.log10(tmax),num_snapshots): # Sample on log-scale
-
-            remaining = list(set(output_times) - set(plot_times))
-            if len(remaining) == 0:
-                break
-
-            v,_ = find_nearest(remaining,s) # Find next new sample
-            plot_times.append(int(v))
-
-    plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
+    # Get samples
+    nsamp = 8
+    tmin = 1.0
+    if np.amax(output_times) > 1e3:
+        tmin = 1e3
+    plot_times, _ = sample_times(output_times, nsamp, tmin=tmin)
     log.debug("Snapshots to plot:" + str(plot_times))
 
     # Interior profiles

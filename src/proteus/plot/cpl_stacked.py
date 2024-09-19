@@ -13,8 +13,7 @@ from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
 from proteus.interior.spider import MyJSON
-from proteus.utils.helper import find_nearest
-from proteus.utils.plot import dict_colors, latex_float
+from proteus.utils.plot import dict_colors, latex_float, sample_times
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -118,23 +117,7 @@ def plot_stacked_entry(handler: Proteus):
     files = glob.glob(os.path.join(handler.directories["output"], "data", "*_atm.nc"))
     times = [int(f.split("/")[-1].split("_")[0]) for f in files]
 
-    if len(times) <= 8:
-        plot_times = times
-    else:
-        plot_times = []
-        tmin = max(1,np.amin(times))
-        tmax = max(tmin+1, np.amax(times))
-
-        for s in np.logspace(np.log10(tmin),np.log10(tmax),8): # Sample on log-scale
-
-            remaining = list(set(times) - set(plot_times))
-            if len(remaining) == 0:
-                break
-
-            v,_ = find_nearest(remaining,s) # Find next new sample
-            plot_times.append(int(v))
-        plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
-
+    plot_times,_ = sample_times(times, 8)
     print("Snapshots:", plot_times)
 
     plot_stacked(

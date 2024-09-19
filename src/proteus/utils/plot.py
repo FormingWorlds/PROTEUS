@@ -207,19 +207,13 @@ def latex_float(f):
     else:
         return float_str
 
-def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0):
+def sample_times(times:list, nsamp:int, tmin:float=1.0):
     from proteus.utils.helper import find_nearest
 
-    # get all files
-    files = glob.glob(os.path.join(handler.directories["output"], "data", "*."+ftype))
-    if len(files) < 1:
-        return []
-
-    # get times
-    times = [int(f.split("/")[-1].split("_")[0]) for f in files]
-
-    # do not allow t=0
-    times = [x for x in times if x > 0]
+    # check count
+    if len(times) <= nsamp:
+        out_t, out_i = np.unique(times, return_index=True)
+        return list(out_t), list(out_i)
 
     # lower limit
     tmin = max(tmin,np.amin(times))
@@ -228,28 +222,50 @@ def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0):
     # upper limit
     tmax = max(tmin+1, np.amax(times))
 
-    nsamp = 8
+    # do not allow times outside range
+    times = [x for x in times if tmin<=x<=tmax]
 
     # get samples on log-time scale
     sample_t = []
-    sample_f = []
+    sample_i = []
     for s in np.logspace(np.log10(tmin),np.log10(tmax),nsamp): # Sample on log-scale
 
-        remaining = list(set(times) - set(sample_t))
+        remaining = [int(v) for v in set(times) - set(sample_t)]
         if len(remaining) == 0:
             break
 
         _,idx = find_nearest(remaining,s) # Find next new sample
 
-        sample_t.append(int(times[idx]))
-        sample_f.append(str(files[idx]))
+        sample_t.append(int(remaining[idx]))
+        sample_i.append(idx)
 
     # sort output
     mask = np.argsort(sample_t)
-    out_t, out_f = [], []
+    out_t, out_i = [], []
     for i in mask:
         out_t.append(sample_t[i])
-        out_f.append(sample_f[i])
+        out_i.append(sample_i[i])
+
+    return out_t, out_i
+
+
+def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0, nsamp:int=8):
+    from proteus.utils.helper import find_nearest
+
+    # get all files
+    files = glob.glob(os.path.join(handler.directories["output"], "data", "*."+ftype))
+    if len(files) < 1:
+        return []
+
+    # get times
+    if ftype == "nc":
+        dlm = "_"
+    else:
+        dlm = "."
+    times = [int(f.split("/")[-1].split(dlm)[0]) for f in files]
+
+    out_t, out_i = sample_times(times, nsamp, tmin=tmin)
+    out_f = [files[i] for i in out_i]
 
     # return times and file paths
     return out_t, out_f
