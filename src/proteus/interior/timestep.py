@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+
 import pandas as pd
 
 from proteus.utils.helper import UpdateStatusfile

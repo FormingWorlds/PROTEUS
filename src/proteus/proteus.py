@@ -19,6 +19,7 @@ from calliope.structure import calculate_mantle_mass
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config
+from proteus.interior import RunInterior
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -56,7 +57,6 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
-from proteus.interior import RunInterior
 
 
 class Proteus:

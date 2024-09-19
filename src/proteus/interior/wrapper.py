@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import logging
+
 import pandas as pd
 
-from proteus.utils.helper import PrintHalfSeparator, UpdateStatusfile, safe_rm
-from proteus.interior.spider import RunSPIDER, ReadSPIDER
 from proteus.interior.dummy import RunDummyInt
-
+from proteus.interior.spider import ReadSPIDER, RunSPIDER
+from proteus.utils.helper import PrintHalfSeparator
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -50,4 +50,3 @@ def RunInterior(dirs:dict, OPTIONS:dict, loop_counter:dict, IC_INTERIOR:int, hf_
 
     # Return timestep
     return dt
-

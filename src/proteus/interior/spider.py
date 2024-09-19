@@ -12,8 +12,8 @@ import sys
 import numpy as np
 import pandas as pd
 
-from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 from proteus.interior.timestep import next_step
+from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 
 log = logging.getLogger("fwl."+__name__)
 
