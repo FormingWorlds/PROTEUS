@@ -4,13 +4,15 @@ from __future__ import annotations
 import logging
 
 import numpy as np
+import pandas as pd 
 
+from proteus.interior.timestep import next_step
 from proteus.utils.constants import secs_per_year
 
 log = logging.getLogger("fwl."+__name__)
 
 # Run the dummy interior module
-def RunDummyInt(OPTIONS:dict, IC_INTERIOR:int, hf_row:dict):
+def RunDummyInt(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
     log.info("Running dummy interior...")
 
     # Output dictionary
@@ -48,7 +50,7 @@ def RunDummyInt(OPTIONS:dict, IC_INTERIOR:int, hf_row:dict):
         output["T_magma"] = tmp_init
         dt = 0.0
     else:
-        dt = OPTIONS["dt_initial"]
+        dt = next_step(OPTIONS, dirs, hf_row, hf_all, 1.0)
         output["T_magma"] = hf_row["T_magma"] - dTdt * dt * secs_per_year
 
     # Determine the new melt fraction

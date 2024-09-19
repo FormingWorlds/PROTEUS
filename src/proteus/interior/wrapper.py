@@ -30,7 +30,7 @@ def RunInterior(dirs:dict, OPTIONS:dict, loop_counter:dict, IC_INTERIOR:int, hf_
 
     elif OPTIONS["interior_model"] == 2:
         # Run dummy interior
-        sim_time, output = RunDummyInt(OPTIONS, IC_INTERIOR, hf_row)
+        sim_time, output = RunDummyInt(OPTIONS, dirs, IC_INTERIOR, hf_row, hf_all)
 
     # Read output
     for k in output.keys():
