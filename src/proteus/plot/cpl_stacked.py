@@ -24,6 +24,10 @@ log = logging.getLogger("fwl."+__name__)
 
 def plot_stacked(output_dir: str, times: list, plot_format: str="pdf"):
 
+    if np.amax(times) < 2:
+        log.debug("Insufficient data to make plot_stacked")
+        return
+
     log.info("Plot stacked")
 
     scale = 1.0

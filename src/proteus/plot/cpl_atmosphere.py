@@ -21,6 +21,10 @@ log = logging.getLogger("fwl."+__name__)
 
 def plot_atmosphere( output_dir:str, times:list, plot_format="pdf"):
 
+    if np.amax(times) < 2:
+        log.debug("Insufficient data to make plot_atmosphere")
+        return
+
     log.info("Plot atmosphere temperatures")
 
     norm = mpl.colors.LogNorm(vmin=max(times[0],1), vmax=times[-1])

@@ -33,7 +33,6 @@ from proteus.utils.constants import (
     volatile_species,
 )
 from proteus.utils.helper import UpdateStatusfile, find_nearest, safe_rm
-from proteus.interior.spider import get_all_output_times
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -243,25 +242,20 @@ def ValidateInitFile(dirs:dict, OPTIONS:dict):
     if OPTIONS["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
         if OPTIONS["shallow_ocean_layer"] == 1:
             UpdateStatusfile(dirs, 20)
-            raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
+            raise RuntimeError("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
 
     surf_state = int(OPTIONS["atmosphere_surf_state"])
     if not (0 <= surf_state <= 3):
         UpdateStatusfile(dirs, 20)
-        raise Exception("Invalid surface state %d" % surf_state)
-
-    if OPTIONS["atmosphere_model"] == 1:  # Julia required for AGNI
-        if shutil.which("julia") is None:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Could not find Julia in current environment")
+        raise RuntimeError("Invalid surface state %d" % surf_state)
 
     if OPTIONS["atmosphere_nlev"] < 15:
         UpdateStatusfile(dirs, 20)
-        raise Exception("Atmosphere must have at least 15 levels")
+        raise RuntimeError("Atmosphere must have at least 15 levels")
 
     if OPTIONS["interior_nlev"] < 40:
         UpdateStatusfile(dirs, 20)
-        raise Exception("Interior must have at least 40 levels")
+        raise RuntimeError("Interior must have at least 40 levels")
 
     # Ensure that all volatiles are all tracked
     for s in volatile_species:
@@ -269,16 +263,21 @@ def ValidateInitFile(dirs:dict, OPTIONS:dict):
         key_in = str(s+"_included")
         if (OPTIONS[key_pp] > 0.0) and (OPTIONS[key_in] == 0):
             UpdateStatusfile(dirs, 20)
-            raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
+            raise RuntimeError("Volatile %s has non-zero pressure but is disabled in cfg"%s)
         if (OPTIONS[key_pp] > 0.0) and (OPTIONS["solvevol_use_params"] > 0):
             UpdateStatusfile(dirs, 20)
-            raise Exception("Volatile %s has non-zero pressure but outgassing parameters are enabled"%s)
+            raise RuntimeError("Volatile %s has non-zero pressure but outgassing parameters are enabled"%s)
 
     # Required vols
     for s in ["H2O","CO2","N2","S2"]:
         if OPTIONS[s+"_included"] == 0:
             UpdateStatusfile(dirs, 20)
-            raise Exception("Missing required volatile '%s'"%s)
+            raise RuntimeError("Missing required volatile '%s'"%s)
+
+    # Eccentricity
+    if (OPTIONS["eccentricity"] < 1.0e-10) or (OPTIONS["eccentricity"] > 1.0 - 1e-10):
+        UpdateStatusfile(dirs, 20)
+        raise RuntimeError("Orbital eccentricity must be within range: 0 <= e < 1")
 
     return True
 
@@ -306,6 +305,7 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
     if dummy_int:
         output_times = []
     else:
+        from proteus.interior.spider import get_all_output_times
         output_times = get_all_output_times( output_dir )
 
     # Global properties for all timesteps
@@ -354,13 +354,19 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
     if not dummy_int:
         plot_interior(output_dir, plot_times, OPTIONS["plot_format"])
 
-    # Atmosphere profiles
+    # Temperature profiles
     if not dummy_atm:
-        plot_atmosphere(output_dir, plot_times, OPTIONS["plot_format"])
-        plot_stacked(output_dir, plot_times, OPTIONS["plot_format"])
 
+        # Atmosphere only
+        plot_atmosphere(output_dir, plot_times, OPTIONS["plot_format"])
+
+        # Atmosphere and interior, stacked
+        if not dummy_int:
+            plot_stacked(output_dir, plot_times, OPTIONS["plot_format"])
+
+        # Flux profiles
         if OPTIONS["atmosphere_model"] == 0:
-            # only do this for JANUS
+            # only do this for JANUS, AGNI does it automatically
             plot_fluxes_atmosphere(output_dir, OPTIONS["plot_format"])
 
     # Only at the end of the simulation

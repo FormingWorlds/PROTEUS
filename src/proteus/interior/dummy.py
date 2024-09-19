@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-import pandas as pd 
+import pandas as pd
 
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import secs_per_year
@@ -42,8 +42,6 @@ def RunDummyInt(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd
 
     # Rate of surface temperature change
     dTdt = output["F_int"] * area / (cp_m*output["M_mantle"] + cp_c*output["M_core"])
-
-    log.debug("dTdt = %.3e K/s"%dTdt)
 
     # Timestepping
     if IC_INTERIOR==1:

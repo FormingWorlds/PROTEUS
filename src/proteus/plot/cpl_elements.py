@@ -17,12 +17,12 @@ log = logging.getLogger("fwl."+__name__)
 
 def plot_elements( output_dir, plot_format="pdf", t0=100.0):
 
-    log.info("Plot elements")
-
     hf_all = pd.read_csv(os.path.join(output_dir , "runtime_helpfile.csv"), sep=r"\s+")
     if np.amax(hf_all["Time"]) < 2:
         log.debug("Insufficient data to make plot_elements")
         return
+
+    log.info("Plot elements")
 
     time = np.array(hf_all["Time"] )
 

@@ -31,7 +31,7 @@ iter_max                    = 9000
 log_level                   = 'INFO'
 
 # Output subdirectory name (relative to output folder)
-dir_output                  = 'earth_demo'
+dir_output                  = 'default'
 
 # Choose times
 time_star                   = 100.0e6  	# yr, time since star formation
