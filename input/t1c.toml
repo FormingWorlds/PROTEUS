@@ -21,6 +21,8 @@ asf_scalefactor             = 0.25     # absorbed solar flux scale factor = 1/4
 albedo_s                    = 0.2 		# surface albedo
 albedo_pl                   = 0.0   	# Bond albedo (scattering)
 
+eccentricity                = 0.017     # Earth eccentricity  [dimensionless]
+
 P_top                       = 1.0e-5    # bar, Pressure at TOA
 
 ##### PROTEUS settings
@@ -104,8 +106,9 @@ rayleigh                    = 1
 # Atmospheric chemistry, 0: Disabled | 1: Equilibrium | 2: Kinetics
 atmosphere_chemistry       = 0
 
-##### SPIDER-specific settings
+##### Interior-specific settings
 
+interior_model              = 0
 interior_nlev               = 280
 grain_size                  = 0.1
 
