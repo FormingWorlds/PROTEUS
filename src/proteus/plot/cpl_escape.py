@@ -17,14 +17,14 @@ log = logging.getLogger("fwl."+__name__)
 
 def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
 
-    log.info("Plot escape")
-
-    hf_all = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=r"\s+")
+    hf_all = pd.read_csv(os.path.join(output_dir , "runtime_helpfile.csv"), sep=r"\s+")
 
     time = np.array(hf_all["Time"])
-    if len(time) < 3:
-        log.warning("Cannot make plot with less than 3 samples")
+    if np.amax(time) < 2:
+        log.debug("Insufficient data to make plot_escape")
         return
+
+    log.info("Plot escape")
 
     # make plot
     lw = 1.2

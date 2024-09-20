@@ -39,7 +39,11 @@ def download_basic():
 
     log.debug("Downloading basic data")
 
-    # (to be improved such that we only download the one we need)
+    log.debug("    spectral files")
     DownloadSpectralFiles()
+
+    log.debug("    stellar spectra")
     DownloadStellarSpectra()
+
+    log.debug("    surface albedos")
     DownloadSurfaceAlbedos()

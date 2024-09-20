@@ -199,7 +199,7 @@ def RunJANUS(atm, dirs:dict, OPTIONS:dict, hf_row:dict, hf_all:pd.DataFrame,
 
         # run JANUS
         atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=tol,
-                        atm_bc=int(OPTIONS["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.5, T_surf_max=float(T_surf_max))
+                        atm_bc=int(OPTIONS["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.1, T_surf_max=float(T_surf_max))
 
     else:
         UpdateStatusfile(dirs, 20)

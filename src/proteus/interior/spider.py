@@ -12,6 +12,7 @@ import sys
 import numpy as np
 import pandas as pd
 
+from proteus.interior.timestep import next_step
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 
 log = logging.getLogger("fwl."+__name__)
@@ -86,8 +87,6 @@ class MyJSON( object ):
             phi = self.get_dict_values( ['data','phi_s'] )
         # define mixed phase by these threshold values
         MIX = (phi<0.95) & (phi>0.05)
-        # MIX = MIX * 1.0 # convert to float array
-        # MIX[MIX==0] = np.nan  # set false region to nan to prevent plotting
         return MIX
 
     def get_melt_phase_boolean_array( self, nodes='basic' ):
@@ -100,8 +99,6 @@ class MyJSON( object ):
         elif nodes == 'staggered':
             phi = self.get_dict_values( ['data','phi_s'] )
         MELT = (phi>0.95)
-        # MELT = MELT * 1.0 # convert to float array
-        # MELT[MELT==0] = np.nan # set false region to nan to prevent plotting
         return MELT
 
     def get_solid_phase_boolean_array( self, nodes='basic' ):
@@ -114,8 +111,6 @@ class MyJSON( object ):
         elif nodes == 'staggered':
             phi = self.get_dict_values( ['data','phi_s'] )
         SOLID = (phi<0.05)
-        # SOLID = SOLID * 1.0 # convert to float array
-        # SOLID[SOLID==0] = np.nan # set false region to nan to prevent plotting
         return SOLID
 
 #====================================================================
@@ -237,90 +232,13 @@ def _try_spider( dirs:dict, OPTIONS:dict,
         json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(hf_row["Time"])) )
         step        = json_file.get_dict(['step'])
 
-        # Time stepping adjustment
-        if hf_row["Time"] < 2.0:
-            # First year, use small step
-            dtmacro = 1.0
-            dtswitch = 1.0
-            nsteps = 1
-            log.info("Time-stepping intent: static")
-
-        else:
-            if (OPTIONS["dt_method"] == 0):
-                # Proportional time-step calculation
-                log.info("Time-stepping intent: proportional")
-                dtswitch = hf_row["Time"] / float(OPTIONS["dt_propconst"])
-
-            elif (OPTIONS["dt_method"] == 1):
-                # Dynamic time-step calculation
-
-                # Try to maintain a minimum step size of dt_initial at first
-                if hf_row["Time"] > OPTIONS["dt_initial"]:
-                    dtprev = float(hf_all.iloc[-1]["Time"] - hf_all.iloc[-2]["Time"])
-                else:
-                    dtprev = OPTIONS["dt_initial"]
-                log.debug("Previous step size: %.2e yr"%dtprev)
-
-                # Change in F_int
-                F_int_2  = hf_all.iloc[-2]["F_int"]
-                F_int_1  = hf_all.iloc[-1]["F_int"]
-                F_int_12 = abs(F_int_1 - F_int_2)
-
-                # Change in F_atm
-                F_atm_2  = hf_all.iloc[-2]["F_atm"]
-                F_atm_1  = hf_all.iloc[-1]["F_atm"]
-                F_atm_12 = abs(F_atm_1 - F_atm_2)
-
-                # Change in global melt fraction
-                phi_2  = hf_all.iloc[-2]["Phi_global"]
-                phi_1  = hf_all.iloc[-1]["Phi_global"]
-                phi_12 = abs(phi_1 - phi_2)
-
-                # Determine new time-step given the tolerances
-                dt_rtol = OPTIONS["dt_rtol"]
-                dt_atol = OPTIONS["dt_atol"]
-                speed_up = True
-                speed_up = speed_up and ( F_int_12 < dt_rtol*abs(F_int_2) + dt_atol )
-                speed_up = speed_up and ( F_atm_12 < dt_rtol*abs(F_atm_2) + dt_atol )
-                speed_up = speed_up and ( phi_12   < dt_rtol*abs(phi_2  ) + dt_atol )
-
-                if speed_up:
-                    dtswitch = dtprev * 1.1
-                    log.info("Time-stepping intent: speed up")
-                else:
-                    dtswitch = dtprev * 0.9
-                    log.info("Time-stepping intent: slow down")
-
-
-            elif (OPTIONS["dt_method"] == 2):
-                # Always use the maximum time-step, which can be adjusted in the cfg file
-                log.info("Time-stepping intent: maximum")
-                dtswitch = OPTIONS["dt_maximum"]
-
-            else:
-                UpdateStatusfile(dirs, 20)
-                raise Exception("Invalid time-stepping method '%d'" % OPTIONS["dt_method"])
-
-            # Step scale factor (is always <= 1.0)
-            dtswitch *= step_sf
-
-            # Step-size ceiling
-            dtswitch = min(dtswitch, OPTIONS["dt_maximum"] )                    # Absolute
-
-            # Step-size floor
-            dtswitch = max(dtswitch, hf_row["Time"]*0.0001)        # Relative
-            dtswitch = max(dtswitch, OPTIONS["dt_minimum"] )    # Absolute
-
-            # Calculate number of macro steps for SPIDER to perform within
-            # this time-step of PROTEUS, which sets the number of json files.
-            nsteps = 1
-            dtmacro = np.ceil(dtswitch / nsteps)   # Ensures that dtswitch is divisible by nsteps
-            dtswitch = nsteps * dtmacro
-
-            log.info("New time-step is %1.2e years" % dtswitch)
+        # Get new time-step
+        dtswitch = next_step(OPTIONS, dirs, hf_row, hf_all, step_sf)
 
         # Number of total steps until currently desired switch/end time
+        nsteps = 1
         nstepsmacro = step + nsteps
+        dtmacro = dtswitch
 
         log.debug("Time options in RunSPIDER: dt=%.2e yrs in %d steps (at i=%d)" %
                                                     (dtmacro, nsteps, nstepsmacro))
@@ -452,7 +370,7 @@ def RunSPIDER( dirs:dict, OPTIONS:dict,
         raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
-def ReadSPIDER(dirs:dict, OPTIONS:dict, time:float, prev_T_magma:float, R_planet:float):
+def ReadSPIDER(dirs:dict, OPTIONS:dict, R_planet:float):
     '''
     Read variables from last SPIDER output JSON file into a dictionary
     '''
@@ -487,11 +405,6 @@ def ReadSPIDER(dirs:dict, OPTIONS:dict, time:float, prev_T_magma:float, R_planet
     output["Phi_global"]      = float(data_a[5])  # global melt fraction
     output["F_int"]           = float(data_a[6])  # Heat flux from interior
     output["RF_depth"]        = float(data_a[7])/R_planet  # depth of rheological front
-
-    # Do not allow warming after init stage has completed
-    if (OPTIONS["prevent_warming"]) and (time > 5.0):
-        output["T_magma"] = min(output["T_magma"], prev_T_magma)
-
 
     # Manually calculate heat flux at near-surface from energy gradient
     json_file   = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )

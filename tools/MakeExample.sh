@@ -49,3 +49,5 @@ done
 # Copy data
 cp runtime_helpfile.csv $EXA_DIR
 cp init_coupler.toml $EXA_DIR
+
+echo "Done

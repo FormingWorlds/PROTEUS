@@ -6,10 +6,7 @@ import glob
 import os
 from typing import TYPE_CHECKING
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
-from cmcrameri import cm
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -207,19 +204,13 @@ def latex_float(f):
     else:
         return float_str
 
-def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0):
+def sample_times(times:list, nsamp:int, tmin:float=1.0):
     from proteus.utils.helper import find_nearest
 
-    # get all files
-    files = glob.glob(os.path.join(handler.directories["output"], "data", "*."+ftype))
-    if len(files) < 1:
-        return []
-
-    # get times
-    times = [int(f.split("/")[-1].split("_")[0]) for f in files]
-
-    # do not allow t=0
-    times = [x for x in times if x > 0]
+    # check count
+    if len(times) <= nsamp:
+        out_t, out_i = np.unique(times, return_index=True)
+        return list(out_t), list(out_i)
 
     # lower limit
     tmin = max(tmin,np.amin(times))
@@ -228,33 +219,56 @@ def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0):
     # upper limit
     tmax = max(tmin+1, np.amax(times))
 
-    nsamp = 8
+    # do not allow times outside range
+    allowed_times = [int(x) for x in times if tmin<=x<=tmax]
 
     # get samples on log-time scale
     sample_t = []
-    sample_f = []
+    sample_i = []
     for s in np.logspace(np.log10(tmin),np.log10(tmax),nsamp): # Sample on log-scale
 
-        remaining = list(set(times) - set(sample_t))
+        remaining = [int(v) for v in set(allowed_times) - set(sample_t)]
         if len(remaining) == 0:
             break
 
-        _,idx = find_nearest(remaining,s) # Find next new sample
+        # Get next nearest time
+        val,_ = find_nearest(remaining,s)
+        sample_t.append(int(val))
 
-        sample_t.append(int(times[idx]))
-        sample_f.append(str(files[idx]))
+        # Get the index of this time in the original array
+        _,idx = find_nearest(times,val)
+        sample_i.append(int(idx))
 
     # sort output
     mask = np.argsort(sample_t)
-    out_t, out_f = [], []
+    out_t, out_i = [], []
     for i in mask:
         out_t.append(sample_t[i])
-        out_f.append(sample_f[i])
+        out_i.append(sample_i[i])
+
+    return out_t, out_i
+
+
+def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0, nsamp:int=8):
+
+    # get all files
+    files = glob.glob(os.path.join(handler.directories["output"], "data", "*."+ftype))
+    if len(files) < 1:
+        return []
+
+    # get times
+    if ftype == "nc":
+        dlm = "_"
+    else:
+        dlm = "."
+    times = [int(f.split("/")[-1].split(dlm)[0]) for f in files]
+
+    out_t, out_i = sample_times(times, nsamp, tmin=tmin)
+    out_f = [files[i] for i in out_i]
 
     # return times and file paths
     return out_t, out_f
 
-#===================================================================
 class MyFuncFormatter( object ):
 
     '''the default function formatter from
@@ -320,194 +334,3 @@ class MyFuncFormatter( object ):
         y = self._invascale( x )
         fmt = self._sci_notation( y, 0 )
         return fmt
-
-
-#===================================================================
-class FigureData( object ):
-
-    def __init__( self, nrows, ncols, width, height, outname='fig',
-        times=[], units='kyr' ):
-        dd = {}
-        self.data_d = dd
-
-        mpl.use('Agg')  # Prevent plots popping up (it's very annoying)
-
-        if isinstance(times, (float, int)):
-            times = np.array([times])
-
-        if len(times) > 0:
-            dd['time_l'] = times
-            # self.process_time_list()
-
-        if units:
-            dd['time_units'] = units
-            dd['time_decimal_places'] = 2 # hard-coded
-        dd['outname'] = outname
-
-        self.cmap = cm.imola
-
-        self.set_properties( nrows, ncols, width, height )
-
-    def get_color( self, frac ):
-        return self.cmap(frac)
-
-    def get_legend_label( self, time ):
-        dd = self.data_d
-        units = dd['time_units']
-        age = float(time)
-        if units == 'yr':
-            age = round( age, 0 )
-            label = '%d'
-        elif units == 'kyr':
-            age /= 1.0E3
-            label = '%0.1f'
-        elif units == 'Myr':
-            age /= 1.0E6
-            label = '%0.2f'
-        elif units == 'Byr' or units == 'Gyr':
-            age /= 1.0E9
-            label = '%0.2f'
-        else:
-            raise ValueError(f'Unknown units: {units}')
-        label = label % age
-        return label
-
-    def process_time_list( self ):
-        dd = self.data_d
-        time_l = dd['time_l']
-        try:
-            time_l = [int(time_l)]
-        except ValueError:
-            time_l = [int(time) for time in time_l.split(',')]
-        self.time = time_l
-
-    def make_figure( self ):
-        dd = self.data_d
-        nrows = dd['nrows']
-        ncols = dd['ncols']
-        fig, ax = plt.subplots( nrows, ncols )
-        fig.subplots_adjust(wspace=0.3,hspace=0.3)
-        fig.set_size_inches( dd['width'], dd['height'] )
-        self.fig = fig
-        self.ax = ax
-
-    def savefig( self, num, fmt ):
-        dd = self.data_d
-        if dd['outname']:
-            outname = dd['outname'] + '.' + fmt
-        else:
-            outname = 'fig%d.'%num + fmt
-        self.fig.savefig(outname, bbox_inches='tight',
-            pad_inches=0.05, dpi=dd['dpi'])
-
-    def set_cmap( self, cmap_obj ):
-        self.cmap = cmap_obj
-
-    def set_properties( self, nrows, ncols, width, height ):
-        dd = self.data_d
-        dd['nrows'] = nrows
-        dd['ncols'] = ncols
-        dd['width'] = width # inches
-        dd['height'] = height # inches
-
-        # Set main font properties
-        font_d = {
-            'size': 10.0,
-            'family': ['sans-serif']
-            }
-
-        # fonts  = fm.findSystemFonts(fontpaths=None, fontext='ttf')
-        # Has arial?
-        # for f in fonts:
-        #     if 'Arial' in f:
-        #         font_d["family"]        = 'sans-serif'
-        #         font_d['serif']         = ['Arial']
-        #         font_d['sans-serif']    = ['Arial']
-        #         break
-        mpl.rc('font', **font_d)
-
-        # Do NOT use TeX font for labels etc.
-        plt.rc('text', usetex=False)
-
-        # Other params
-        dd['dpi'] = 200
-        dd['extension'] = 'png'
-        dd['fontsize_legend'] = 8
-        dd['fontsize_title'] = 10
-        dd['fontsize_xlabel'] = 10
-        dd['fontsize_ylabel'] = 10
-        self.make_figure()
-
-    def set_myaxes( self, ax, title='', xlabel='', xticks='',
-                        ylabel='', yticks='', yrotation='', fmt='', xfmt='',
-                        xmin='', xmax='', ymin='', ymax='' ):
-        if title:
-            self.set_mytitle( ax, title )
-        if xlabel:
-            self.set_myxlabel( ax, xlabel )
-        if xticks:
-            self.set_myxticks( ax, xticks, xmin, xmax, xfmt )
-        if ylabel:
-            self.set_myylabel( ax, ylabel, yrotation )
-        if yticks:
-            self.set_myyticks( ax, yticks, ymin, ymax, fmt )
-
-    def set_mylegend( self, ax, handles, loc=4, ncol=1, TITLE=None, **kwargs ):
-        fontsize = self.data_d['fontsize_legend']
-        # FIXME
-        if not TITLE:
-            legend = ax.legend(handles=handles, loc=loc, ncol=ncol,
-                               fontsize=fontsize, **kwargs )
-            #units = dd['time_units']
-            #title = r'Time ({0})'.format( units )
-        else:
-            title = TITLE
-            legend = ax.legend(title=title, handles=handles, loc=loc,
-                ncol=ncol, fontsize=fontsize, **kwargs)
-        plt.setp(legend.get_title(),fontsize=fontsize)
-
-    def set_mytitle( self, ax, title ):
-        dd = self.data_d
-        fontsize = dd['fontsize_title']
-        title = r'{}'.format( title )
-        ax.set_title( title, fontsize=fontsize )
-
-    def set_myxlabel( self, ax, label ):
-        dd = self.data_d
-        fontsize = dd['fontsize_xlabel']
-        label = r'{}'.format( label )
-        ax.set_xlabel( label, fontsize=fontsize )
-
-    def set_myylabel( self, ax, label, yrotation ):
-        dd = self.data_d
-        fontsize = dd['fontsize_ylabel']
-        if not yrotation:
-            yrotation = 'horizontal'
-        label = r'{}'.format( label )
-        ax.set_ylabel( label, fontsize=fontsize, rotation=yrotation )
-
-    def set_myxticks( self, ax, xticks, xmin, xmax, fmt ):
-        if fmt:
-            xticks = fmt.ascale( np.array(xticks) )
-            ax.xaxis.set_major_formatter(
-                mpl.ticker.FuncFormatter(fmt))
-        ax.set_xticks( xticks)
-        # set x limits to match extent of ticks
-        if not xmax:
-            xmax=xticks[-1]
-        if not xmin:
-            xmin=xticks[0]
-        ax.set_xlim( xmin, xmax )
-
-    def set_myyticks( self, ax, yticks, ymin, ymax, fmt ):
-        if fmt:
-            yticks = fmt.ascale( np.array(yticks) )
-            ax.yaxis.set_major_formatter(
-                mpl.ticker.FuncFormatter(fmt))
-        ax.set_yticks( yticks)
-        # set y limits to match extent of ticks
-        if not ymax:
-            ymax=yticks[-1]
-        if not ymin:
-            ymin=yticks[0]
-        ax.set_ylim( ymin, ymax )

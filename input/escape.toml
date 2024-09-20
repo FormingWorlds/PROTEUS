@@ -108,8 +108,9 @@ rayleigh                    = 1
 # Atmospheric chemistry, 0: Disabled | 1: Equilibrium | 2: Kinetics
 atmosphere_chemistry       = 0
 
-##### SPIDER-specific settings
+##### Interior-specific settings
 
+interior_model              = 0
 interior_nlev               = 220
 grain_size                  = 0.1
 
