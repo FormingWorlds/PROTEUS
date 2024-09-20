@@ -275,7 +275,7 @@ def ValidateInitFile(dirs:dict, OPTIONS:dict):
             raise RuntimeError("Missing required volatile '%s'"%s)
 
     # Eccentricity
-    if (OPTIONS["eccentricity"] < 1.0e-10) or (OPTIONS["eccentricity"] > 1.0 - 1e-10):
+    if (OPTIONS["eccentricity"] < 0.0) or (OPTIONS["eccentricity"] > 1.0 - 1e-10):
         UpdateStatusfile(dirs, 20)
         raise RuntimeError("Orbital eccentricity must be within range: 0 <= e < 1")
 

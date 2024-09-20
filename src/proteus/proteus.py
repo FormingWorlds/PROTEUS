@@ -4,6 +4,7 @@ import copy
 import logging
 import os
 import shutil
+import toml
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -156,8 +157,9 @@ class Proteus:
             # SPIDER initial condition
             IC_INTERIOR = 1
 
-            # Copy config file to output directory, for future reference
-            shutil.copyfile(self.config_path, config_path_backup)
+            # Write aggregate config to output directory, for future reference
+            with open(config_path_backup, "w") as toml_file:
+                toml.dump(self.config, toml_file)
 
             # No previous iterations to be stored. It is therefore important that the
             #    submodules do not try to read data from the 'past' iterations, since they do
@@ -208,14 +210,8 @@ class Proteus:
             log.info("Resuming the simulation from the disk")
 
             # Copy cfg file
-            if os.path.exists(config_path_backup):
-                if config_path_backup == self.config_path:
-                    # resuming from backed-up cfg file, not the original
-                    pass
-                else:
-                    # delete old and copy new
-                    safe_rm(config_path_backup)
-                    shutil.copyfile(self.config_path, config_path_backup)
+            with open(config_path_backup, "w") as toml_file:
+                toml.dump(self.config, toml_file)
 
             # SPIDER initial condition
             IC_INTERIOR = 2

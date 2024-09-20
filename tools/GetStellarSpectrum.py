@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+import numpy as np
 
 stars_online = {
     "muscles": ["gj1132", "gj1214", "gj15a", "gj163", "gj176", "gj436", "gj551", "gj581", "gj649", "gj667c", "gj674", "gj676a", "gj699", "gj729", "gj832", "gj832_synth", "gj849", "gj876", "hd40307", "hd85512", "hd97658", "l-980-5", "lhs-2686", "trappist-1", "v-eps-eri", "l-98-59"],
@@ -84,7 +85,7 @@ def DownloadModernSpectrum(name, distance):
             cert = certifi.where()
 
             if lowres:
-                resstr = "adapt"
+                resstr = "const"
             else:
                 resstr = "var"
 
@@ -125,21 +126,31 @@ def DownloadModernSpectrum(name, distance):
 
             negaflux = False
 
+            wl_arr = []
+            fl_arr = []
             for n,w in enumerate(spec['WAVELENGTH']):
                 wl = w * 0.1  # Convert å to nm
                 fl = float(spec['FLUX'][n])*10.0 * (distance / r_scale )**2  # Convert units and scale flux
 
                 negaflux = negaflux or (fl <= 0)
+                fl = max(0.0,fl)
+                wl_arr.append(wl)
+                fl_arr.append(fl)
 
-                fl_abs = max(0.0,fl)
+            # remove duplicate rows
+            _, mask = np.unique(wl_arr, return_index=True)
+            print(mask)
 
-                new_str += "%1.7e\t%1.7e \n" % (wl,fl_abs)
+            # convert to ascii
+            for i in mask:
+                new_str += "%1.7e\t%1.7e \n" % (wl_arr[i],fl_arr[i])
 
+            # write the file
             with open(plaintext_spectrum, 'w') as f:
                 f.write(new_str)
 
             if negaflux:
-                print("\t WARNING: The stellar spectrum contained flux value(s) <= 0.0 ! These were set to zero." % wl)
+                print("\tWARNING: The stellar spectrum contained flux value(s) <= 0.0 ! These were set to zero." % wl)
 
         case 'vpl':
             cert = False  # This is not good, but it will stay for now.

@@ -74,13 +74,13 @@ def plot_interior(output_dir: str, times: list | np.ndarray, plot_format: str="p
         color = sm.to_rgba(time)
 
         # Plot temperature
-        yy = myjson_o.get_dict_values(['data','temp_b'])
+        yy = myjson_o.get_dict_values(['data','temp_b']) / 1e3 # convert to kK
         axs[0].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',  c=color, lw=1.5, label=label )
         axs[0].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=1.5)
         axs[0].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=1.5)
 
         # Plot melt fraction
-        yy = myjson_o.get_dict_values(['data','phi_b'])
+        yy = myjson_o.get_dict_values(['data','phi_b']) * 100
         axs[1].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',  c=color, lw=1.5)
         axs[1].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=1.5)
         axs[1].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=1.5)
@@ -104,15 +104,15 @@ def plot_interior(output_dir: str, times: list | np.ndarray, plot_format: str="p
 
     # Decorate figure
     title = '(a) Temperature' #'(a) Temperature, {}'.format(units)
-    axs[0].set( title=title, xlabel='$T$ [K]', ylabel='$P$ [GPa]')
+    axs[0].set( title=title, xlabel=r'$T$ [kK]', ylabel=r'$P$ [GPa]')
     axs[0].set_ylim(top=np.amin(xx_pres), bottom=np.amax(xx_pres))
     axs[0].yaxis.set_minor_locator(MultipleLocator(10.0))
-    axs[0].xaxis.set_minor_locator(MultipleLocator(500.0))
+    axs[0].xaxis.set_minor_locator(MultipleLocator(0.5))
     axs[0].legend( fontsize=8, fancybox=True, framealpha=0.5, loc=3 )
 
     title = '(b) Melt fraction'
-    xticks = [0,0.2,0.4,0.6,0.8,1.0]
-    axs[1].set(title=title, xlabel=r'$\phi$', xticks=xticks )
+    xticks = [0,25,50,75,100]
+    axs[1].set(title=title, xlabel=r'$\phi$ [%]', xticks=xticks )
     axs[1].set_xlim(left=-0.05, right=1.05)
 
     title = '(c) Viscosity'
