@@ -59,4 +59,3 @@ def RunDummyInt(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd
 
     sim_time = hf_row["Time"] + dt
     return sim_time, output
-
