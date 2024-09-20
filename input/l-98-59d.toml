@@ -52,8 +52,8 @@ dt_maximum                  = 3e6    # Maximum time-step
 dt_minimum                  = 3e2    # Minimum time-step
 dt_method                   = 1      # Time-stepping method, 0: proportional | 1: adaptive | 2: maximum
 dt_propconst                = 52.0   # Proportionality constant for dt_method=0
-dt_atol                     = 0.02  # Step size atol
-dt_rtol                     = 0.06   # Step size rtol
+dt_atol                     = 0.02   # Step size atol
+dt_rtol                     = 0.07   # Step size rtol
 dt_initial                  = 1e3    # Inital step size
 
 # Flux convergence scheme and tolerances for surface equilibration
@@ -61,11 +61,11 @@ shallow_ocean_layer         = 0         # 0: off | 1: on
 F_atm_bc                    = 0         # Boundary condition choice for F_atm, 0: TOA | 1: Surface
 skin_d                      = 0.01      # m
 skin_k                      = 2.0       # W m-1 K-1
-prevent_warming             = 0         # Require that the planet only cool down over time, 0: disabled | 1: enabled
+prevent_warming             = 1         # Require that the planet only cool down over time, 0: disabled | 1: enabled
 
 # Break at solidification?
 solid_stop                  = 1
-phi_crit                    = 0.005     # melt fraction
+phi_crit                    = 0.01     # melt fraction
 
 # Break at steady state?
 steady_stop                 = 1
@@ -87,7 +87,7 @@ atmosphere_model            = 1         # Atmosphere model to be used, 0: JANUS 
 atmosphere_surf_state       = 2         # Atmosphere bottom edge boundary condition, 0: free | 1: fixed at T_surf | 2: conductive skin
 
 # Number of levels
-atmosphere_nlev             = 55
+atmosphere_nlev             = 50
 
 # Temperature limits throughout atmosphere [K]
 min_temperature             = 0.5
@@ -109,7 +109,7 @@ atmosphere_chemistry       = 0
 ##### Interior-specific settings
 
 interior_model              = 0
-interior_nlev               = 200
+interior_nlev               = 210
 grain_size                  = 0.1
 
 # Mixing length parameterization: 1: variable | 2: constant
