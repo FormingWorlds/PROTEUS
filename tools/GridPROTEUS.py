@@ -492,8 +492,8 @@ if __name__=='__main__':
     # -----
     cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","ltt3780b.toml")
     # symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/hd63433d_v4"
-    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/ltt3780b_v1"
-    pg = Pgrid("ltt3780b_v1", cfg_base, symlink_dir=symlink)
+    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/ltt3780b2"
+    pg = Pgrid("ltt3780b_v2", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
