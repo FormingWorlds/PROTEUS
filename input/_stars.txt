@@ -89,6 +89,3 @@ gj849
     Lum:   0.02887 solar
     M:     0.465 solar
     R:     0.464 solar
-
-
-

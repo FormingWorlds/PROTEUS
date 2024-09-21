@@ -320,6 +320,11 @@ def run_agni(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
     log.info("Running AGNI...")
     time_str = "%d"%hf_row["Time"]
 
+    # atmosphere solver plotting frequency
+    modplot = 0
+    if OPTIONS["log_level"] == "DEBUG":
+        modplot = 1
+
     # tracking
     agni_success = False  # success?
     attempts = 0          # number of attempts so far
@@ -366,7 +371,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
                             method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
 
-                            save_frames=False, modplot=2
+                            save_frames=False, modplot=modplot
                             )
 
         # Move AGNI logfile content into PROTEUS logfile
