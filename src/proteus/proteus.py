@@ -570,7 +570,6 @@ class Proteus:
             if (
                 (self.config["steady_stop"] == 1)
                 and (loop_counter["total"] > loop_counter["steady_check"] * 2 + 5)
-                and (loop_counter["steady"] == 0)
             ):
                 # How many iterations to look backwards
                 lb1 = -int(loop_counter["steady_check"])
