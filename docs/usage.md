@@ -164,11 +164,21 @@ Albedo of the surface of the planet.
 
 #### **albedo_pl**
 
-Bond albedo of the planet.
+Enforced bond albedo for the planet. Not physical.
 
 - Deprecated: False
 - Type: Float
 - Domain: Between zero and unity, inclusive.
+
+
+#### **eccentricity**
+
+Orbital eccentricity.
+
+- Deprecated: False
+- Type: Float
+- Domain: Greater than zero (inclusive), less than unity (exclusive).
+
 
 #### **P_top**
 
@@ -489,6 +499,14 @@ Type of atmospheric chemistry to apply at runtime. 'None' applies no chemistry. 
 - Deprecated: False
 - Type: Integer
 - Domain: 0: None, 1: Equilibrium, 2: Kinetics.
+
+#### **interior_model**
+
+The interior model to be used.
+
+- Deprecated: False
+- Type: Integer
+- Domain: 0: SPIDER, 1: Aragog, 2: Dummy
 
 #### **interior_nlev**
 

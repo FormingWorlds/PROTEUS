@@ -16,7 +16,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 def _read_nc(nc_fpath):
@@ -62,8 +62,8 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
     sorted_files = np.array(output_files)[sort_mask]
     sorted_times = np.array(output_times)[sort_mask] / 1e6
 
-    if len(sorted_times) < 3:
-        print("WARNING: Too few samples to make atmosphere_cbar plot")
+    if np.amax(sorted_times) < 2:
+        log.debug("Insufficient data to make plot_atmosphere_cbar")
         return
 
     # Parse NetCDF files

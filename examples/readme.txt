@@ -1,2 +1,2 @@
-This folder contains example model outputs. They are not test cases, and may 
-not represent the most up-to-date version of the code.
+This folder contains example outputs from the model. They are not test cases, and may
+not represent the latest version of the code.

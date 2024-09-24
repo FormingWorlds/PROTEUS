@@ -14,7 +14,7 @@ from proteus.utils.helper import natural_sort
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 def plot_fluxes_atmosphere(output_dir, plot_format="pdf"):

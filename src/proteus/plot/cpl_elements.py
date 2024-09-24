@@ -13,24 +13,23 @@ from proteus.utils.constants import element_list
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 def plot_elements( output_dir, plot_format="pdf", t0=100.0):
 
+    hf_all = pd.read_csv(os.path.join(output_dir , "runtime_helpfile.csv"), sep=r"\s+")
+    if np.amax(hf_all["Time"]) < 2:
+        log.debug("Insufficient data to make plot_elements")
+        return
+
     log.info("Plot elements")
 
-    hf_all = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=r"\s+")
-
     time = np.array(hf_all["Time"] )
-    if len(time) < 3:
-        log.warning("Cannot make plot with less than 3 samples")
-        return
 
     # make plot
     lw = 1.2
     scale = 1.1
     fig,ax = plt.subplots(1,1, figsize=(7*scale,4*scale))
-
 
     total = np.zeros(len(time))
     for e in element_list:

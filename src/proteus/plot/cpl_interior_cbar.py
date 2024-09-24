@@ -11,12 +11,12 @@ import numpy as np
 from cmcrameri import cm
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-from proteus.utils.spider import MyJSON
+from proteus.interior.spider import MyJSON
 
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 def plot_interior_cbar(output_dir, plot_format="pdf"):

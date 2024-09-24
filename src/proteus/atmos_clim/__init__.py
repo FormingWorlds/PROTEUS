@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .wrapper_atmosphere import RunAtmosphere
+from .wrapper import RunAtmosphere
 
 __all__ = [
     'RunAtmosphere',

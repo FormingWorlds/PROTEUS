@@ -11,19 +11,19 @@ import pandas as pd
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
 
 def plot_observables( output_dir: str, plot_format: str="pdf", t0: float=100.0):
 
-    log.info("Plot observables")
-
     hf_all = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=r"\s+")
 
     time = np.array(hf_all["Time"] )
-    if len(time) < 3:
-        log.warning("Cannot make plot with less than 3 samples")
+    if np.amax(time) < 2:
+        log.debug("Insufficient data to make plot_observables")
         return
+
+    log.info("Plot observables")
 
     # make plot
     lw = 1.2

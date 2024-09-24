@@ -5,37 +5,46 @@ import glob
 import logging
 import os
 import shutil
-import sys
 
+import janus.set_socrates_env  # noqa
 import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import volatile_species
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest
-from proteus.utils.logs import StreamToLogger
 
-log = logging.getLogger("PROTEUS")
+log = logging.getLogger("fwl."+__name__)
 
-# Generate atmosphere from input files
-def StructAtm( dirs:dict, hf_row:dict, OPTIONS:dict ):
+def InitStellarSpectrum(dirs:dict, wl:list, fl:list, spectral_file_nostar):
+
+    from janus.utils import InsertStellarSpectrum, PrepareStellarSpectrum
+
+    # Generate a new SOCRATES spectral file containing this new spectrum
+    star_spec_src = dirs["output"]+"socrates_star.txt"
+
+    # Spectral file stuff
+    PrepareStellarSpectrum(wl,fl,star_spec_src)
+    InsertStellarSpectrum(spectral_file_nostar,
+                          star_spec_src,
+                          dirs["output"]
+                          )
+    os.remove(star_spec_src)
+
+    return
+
+def InitAtm(dirs:dict, OPTIONS:dict):
 
     from janus.utils import ReadBandEdges, atmos
 
-    # Create atmosphere object and set parameters
-    pl_radius = hf_row["R_planet"]
-    pl_mass   = hf_row["M_planet"]
-
     vol_list = {}
     for vol in volatile_species:
-        vol_list[vol] = hf_row[vol+"_vmr"]
+        vol_list[vol] = 1.0/len(volatile_species)
 
     match OPTIONS["tropopause"]:
-        case 0:
-            trppT = 0.0  # none
-        case 1:
-            trppT = hf_row["T_skin"]  # skin temperature (grey stratosphere)
-        case 2:
-            trppT = OPTIONS["min_temperature"]  # dynamically, based on heating rate
+        case 0 | 1: # 0: none 1: skin temperature set in UpdateStateAtm
+            trppT = 0.0
+        case 2: # dynamically, based on heating rate
+            trppT = OPTIONS["min_temperature"]
         case _:
             UpdateStatusfile(dirs, 20)
             raise Exception("Invalid tropopause option '%d'" % OPTIONS["tropopause"])
@@ -43,39 +52,68 @@ def StructAtm( dirs:dict, hf_row:dict, OPTIONS:dict ):
     # Spectral bands
     band_edges = ReadBandEdges(dirs["output"]+"star.sf")
 
-    # Cloud properties
-    re   = 1.0e-5 # Effective radius of the droplets [m] (drizzle forms above 20 microns)
-    lwm  = 0.8    # Liquid water mass fraction [kg/kg] - how much liquid vs. gas is there upon cloud formation? 0 : saturated water vapor does not turn liquid ; 1 : the entire mass of the cell contributes to the cloud
-    clfr = 0.8    # Water cloud fraction - how much of the current cell turns into cloud? 0 : clear sky cell ; 1 : the cloud takes over the entire area of the cell (just leave at 1 for 1D runs)
-    do_cloud = bool(OPTIONS["water_cloud"] == 1)
-    alpha_cloud = float(OPTIONS["alpha_cloud"])
-
     # Make object
-    atm = atmos(hf_row["T_surf"], hf_row["P_surf"]*1e5,
-                OPTIONS["P_top"]*1e5, pl_radius, pl_mass,
+    # The var flag indicates variable parameters
+    # to be set at each PROTEUS iteration
+    # through the routine UpdateStateAtm
+    atm = atmos(0.0, #var
+                1e5, #var
+                OPTIONS["P_top"]*1e5,
+                6.371e6, #var
+                5.972e24, #var
                 band_edges,
-                vol_mixing=vol_list,
+                vol_mixing = vol_list, #var
+                req_levels = OPTIONS["atmosphere_nlev"],
+                water_lookup = False,
+                alpha_cloud=float(OPTIONS["alpha_cloud"]),
+                trppT = trppT, #var if tropopause option is set to 1
                 minT = OPTIONS["min_temperature"],
                 maxT = OPTIONS["max_temperature"],
-                trppT=trppT,
-                water_lookup=False,
-                req_levels=OPTIONS["atmosphere_nlev"], alpha_cloud=alpha_cloud,
-                re=re, lwm=lwm, clfr=clfr, do_cloud=do_cloud
+                do_cloud = bool(OPTIONS["water_cloud"] == 1),
+                re = 1.0e-5, # Effective radius of the droplets [m] (drizzle forms above 20 microns)
+                lwm = 0.8, # Liquid water mass fraction [kg/kg]
+                clfr = 0.8, # Water cloud fraction
+                albedo_s = OPTIONS["albedo_s"],
+                albedo_pl = OPTIONS["albedo_pl"],
+                zenith_angle = OPTIONS["zenith_angle"],
                 )
 
-    atm.zenith_angle    = OPTIONS["zenith_angle"]
-    atm.albedo_pl       = OPTIONS["albedo_pl"]
-    atm.inst_sf         = OPTIONS["asf_scalefactor"]
-    atm.albedo_s        = OPTIONS["albedo_s"]
-    atm.skin_d          = OPTIONS["skin_d"]
-    atm.skin_k          = OPTIONS["skin_k"]
-
-    atm.instellation    = hf_row["F_ins"]
-    atm.tmp_magma       = hf_row["T_magma"]
+    atm.inst_sf = OPTIONS["asf_scalefactor"]
+    atm.skin_d = OPTIONS["skin_d"]
+    atm.skin_k = OPTIONS["skin_k"]
 
     return atm
 
-def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
+def UpdateStateAtm(atm, hf_row:dict, trppT:int):
+    """UpdateStateAtm
+
+    Update the atm object state with current iteration variables
+
+    Parameters
+    ----------
+        atm : atmos
+            Atmosphere object
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
+    """
+
+    atm.setSurfaceTemperature(hf_row["T_surf"])
+    atm.setSurfacePressure(hf_row["P_surf"]*1e5)
+    atm.setPlanetProperties(hf_row["R_planet"], hf_row["M_planet"])
+
+    vol_mixing = {}
+    for vol in volatile_species:
+        vol_mixing[vol] = hf_row[vol+"_vmr"]
+    atm.setVolatiles(vol_mixing)
+
+    atm.instellation = hf_row["F_ins"]
+    atm.tmp_magma = hf_row["T_magma"]
+    if (trppT == 1):
+        atm.trppT = hf_row["T_skin"]
+
+    return
+
+def RunJANUS(atm, dirs:dict, OPTIONS:dict, hf_row:dict, hf_all:pd.DataFrame,
              write_in_tmp_dir=True, search_method=0, rtol=1.0e-4):
     """Run JANUS.
 
@@ -87,15 +125,14 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
     ----------
         atm : atmos
             Atmosphere object
-        time : float
-            Model time [yrs]
         dirs : dict
             Dictionary containing paths to directories
         OPTIONS : dict
             Configuration options and other variables
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
         hf_all : pd.DataFrame
             Dataframe containing simulation variables (now and historic)
-
         write_in_tmp_dir : bool
             Write temporary files in a local folder within /tmp, rather than in the output folder
         search_method : int
@@ -111,15 +148,15 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
 
     """
 
+    from janus.utils.observed_rho import calc_observed_rho
+
     # Runtime info
     log.info("Running JANUS...")
+    time = hf_row["Time"]
 
-    output={}
 
-    # Update stdout
-    old_stdout , old_stderr = sys.stdout , sys.stderr
-    sys.stdout = StreamToLogger(log, logging.INFO)
-    sys.stderr = StreamToLogger(log, logging.ERROR)
+    #Update atmosphere with current variables
+    UpdateStateAtm(atm, hf_row, OPTIONS["tropopause"])
 
     # Change dir
     cwd = os.getcwd()
@@ -130,7 +167,7 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
     os.chdir(tmp_dir)
 
     # Prepare to calculate temperature structure w/ General Adiabat
-    trppD = bool(OPTIONS["tropopause"] == 2 )
+    trppD = bool(OPTIONS["tropopause"] == 2)
     rscatter = bool(OPTIONS["rayleigh"] == 1)
 
     # Run JANUS
@@ -162,7 +199,7 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
 
         # run JANUS
         atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=tol,
-                        atm_bc=int(OPTIONS["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.5, T_surf_max=float(T_surf_max))
+                        atm_bc=int(OPTIONS["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.1, T_surf_max=float(T_surf_max))
 
     else:
         UpdateStatusfile(dirs, 20)
@@ -207,17 +244,23 @@ def RunJANUS( atm, time:float, dirs:dict, OPTIONS:dict, hf_all:pd.DataFrame,
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
-    # Restore stdout
-    sys.stdout , sys.stderr = old_stdout , old_stderr
+    # observables
+    z_obs = -1.0
+    rho_obs = -1.0
+    if not atm.height_error:
+        # find 1 mbar level
+        idx = find_nearest(atm.p, 1e2)[1]
+        z_obs = atm.z[idx] + atm.planet_radius
+        # calc observed density
+        rho_obs = calc_observed_rho(atm)
 
-    # find 1 mbar level
-    idx = find_nearest(atm.p*1e5, 1e-3)[1]
-    z_obs = atm.z[idx]
-
+    # final things to store
+    output={}
     output["T_surf"] = atm.ts            # Surface temperature [K]
     output["F_atm"]  = F_atm_lim         # Net flux at TOA
     output["F_olr"]  = atm.LW_flux_up[0] # OLR
     output["F_sct"]  = atm.SW_flux_up[0] # Scattered SW flux
-    output["z_obs"]  = z_obs + atm.planet_radius
+    output["z_obs"]  = z_obs
+    output["rho_obs"]= rho_obs
 
     return output

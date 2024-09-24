@@ -21,6 +21,8 @@ asf_scalefactor             = 0.25     # absorbed solar flux scale factor = 1/4
 albedo_s                    = 0.2 		# surface albedo
 albedo_pl                   = 0.0   	# Bond albedo (scattering)
 
+eccentricity                = 0.017     # Earth eccentricity  [dimensionless]
+
 P_top                       = 1.0e-5    # bar, Pressure at TOA
 
 ##### PROTEUS settings
@@ -44,7 +46,7 @@ stellar_heating             = 1
 # Time-stepping stuff
 plot_iterfreq               = 1     # Plotting frequency, 0: wait until completion | n: every n iterations
 plot_format                 = 'png'  # Plotting image file format
-sspec_dt_update             = 1e7    # Time intervals at which to re-calculate the stellar spectrum
+sspec_dt_update             = 1e6    # Time intervals at which to re-calculate the stellar spectrum
 sinst_dt_update             = 1e2    # Time intervals at which to re-calculate the instellation
 dt_maximum                  = 1e7    # Maximum time-step
 dt_minimum                  = 3e2    # Minimum time-step
@@ -104,8 +106,9 @@ rayleigh                    = 1
 # Atmospheric chemistry, 0: Disabled | 1: Equilibrium | 2: Kinetics
 atmosphere_chemistry       = 0
 
-##### SPIDER-specific settings
+##### Interior-specific settings
 
+interior_model              = 0
 interior_nlev               = 280
 grain_size                  = 0.1
 

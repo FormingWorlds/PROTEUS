@@ -10,31 +10,40 @@ runtime.sf*
 star.sf*
 socrates_star.txt
 radiation_code.lock
+screenlog.0
 
-# Specific subfolders
+# Output folders
 old/
 output/*
 output.link
 output
-AGNI
+
+# Development installations
+fwl_data
+FWL_DATA
+socrates
+Socrates
 SOCRATES
+mors
+Mors
+MORS
+janus
+Janus
+JANUS
+agni
+Agni
+AGNI
+calliope
+Calliope
+CALLIOPE
 
 # misc
 ######
 *_lbl.nc
-Tprofile.pdf
 .DS_Store
 __pycache__
 !output/.gitkeep
-atmosphere.pdf
-volatiles_out.dat
-surfaceT.dat
-out.dat
-atm_chemistry.pdf
-MORS/fs255_grid*
-screenlog.0
 nogit_*
-fwl_data
 
 # From Read the Docs
 ####################
@@ -193,3 +202,5 @@ dmypy.json
 cython_debug/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
+
+.ruff_cache

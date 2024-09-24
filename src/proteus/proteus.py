@@ -5,17 +5,21 @@ import logging
 import os
 import shutil
 import sys
-import warnings
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+from calliope.solve import (
+    equilibrium_atmosphere,
+    get_target_from_params,
+    get_target_from_pressures,
+)
+from calliope.structure import calculate_mantle_mass
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
-from proteus.atmos_clim.agni import DeallocAtmos
-from proteus.atmos_clim.wrapper_atmosphere import atm
 from proteus.config import read_config
+from proteus.interior import RunInterior
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -40,6 +44,7 @@ from proteus.utils.coupler import (
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
 )
+from proteus.utils.data import download_basic
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -50,15 +55,7 @@ from proteus.utils.helper import (
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
-    SetupLogger,
-    StreamToLogger,
-)
-from proteus.utils.spider import ReadSPIDER, RunSPIDER
-from proteus.utils.surface_gases import (
-    CalculateMantleMass,
-    equilibrium_atmosphere,
-    get_target_from_params,
-    get_target_from_pressures,
+    setup_logger,
 )
 
 
@@ -86,8 +83,7 @@ class Proteus:
             If True, continue from previous simulation
         """
         import mors
-        from janus.utils import DownloadSpectralFiles, DownloadStellarSpectra
-        from janus.utils.StellarSpectrum import InsertStellarSpectrum, PrepareStellarSpectrum
+
 
         UpdateStatusfile(self.directories, 0)
 
@@ -104,8 +100,8 @@ class Proteus:
         logpath = GetLogfilePath(self.directories["output"], logindex)
 
         # Switch to logger
-        SetupLogger(logpath=logpath, logterm=True, level=self.config["log_level"])
-        log = logging.getLogger("PROTEUS")
+        setup_logger(logpath=logpath, logterm=True, level=self.config["log_level"])
+        log = logging.getLogger("fwl."+__name__)
 
         # Print information to logger
         log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
@@ -184,7 +180,7 @@ class Proteus:
             hf_row["M_planet"] = self.config["mass"] * M_earth
             hf_row["R_planet"] = self.config["radius"] * R_earth
             hf_row["gravity"] = const_G * hf_row["M_planet"] / (hf_row["R_planet"] ** 2.0)
-            hf_row["M_mantle"] = CalculateMantleMass(
+            hf_row["M_mantle"] = calculate_mantle_mass(
                 hf_row["R_planet"], hf_row["M_planet"], self.config["planet_coresize"]
             )
 
@@ -249,18 +245,8 @@ class Proteus:
                     continue
                 solvevol_target[e] = hf_row[e + "_kg_total"]
 
-        # Download all basic data.
-        # (to be improved such that we only download the one we need)
-        DownloadSpectralFiles()
-        DownloadStellarSpectra()
-
-        spectral_file_nostar = os.path.join(self.directories["fwl"], self.config["spectral_file"])
-        if not os.path.exists(spectral_file_nostar):
-            UpdateStatusfile(self.directories, 20)
-            raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
-
-        # Runtime spectral file path
-        spfile_path = os.path.join(self.directories["output"], "runtime.sf")
+        # Download basic data
+        download_basic()
 
         # Handle stellar spectrum...
 
@@ -293,7 +279,7 @@ class Proteus:
                     star_modern_path, self.directories["output"] + "/-1.sflux"
                 )
 
-                mors.DownloadEvolutionTracks("/Baraffe")
+                mors.DownloadEvolutionTracks("Baraffe")
                 baraffe = mors.BaraffeTrack(self.config["star_mass"])
 
             case _:
@@ -329,40 +315,20 @@ class Proteus:
             )
 
             ############### INTERIOR
-            PrintHalfSeparator()
 
-            # Previous magma temperature
-            if loop_counter["init"] < loop_counter["init_loops"]:
-                prev_T_magma = 9000.0
-            else:
-                prev_T_magma = hf_all.iloc[-1]["T_magma"]
-
-            # Run SPIDER
-            RunSPIDER(self.directories, self.config, IC_INTERIOR, loop_counter, hf_all, hf_row)
-            sim_time, spider_result = ReadSPIDER(
-                self.directories, self.config, hf_row["Time"], prev_T_magma, hf_row["R_planet"]
-            )
-
-            for k in spider_result.keys():
-                if k in hf_row.keys():
-                    hf_row[k] = spider_result[k]
-
-            # Do not allow melt fraction to increase
-            if (self.config["prevent_warming"] == 1) and (
-                loop_counter["init"] >= loop_counter["init_loops"]
-            ):
-                hf_row["Phi_global"] = min(hf_row["Phi_global"], hf_all.iloc[-1]["Phi_global"])
+            # Run interior model
+            dt = RunInterior(self.directories, self.config, loop_counter, IC_INTERIOR, hf_all,  hf_row)
 
             # Advance current time in main loop according to interior step
-            dt = float(sim_time) - hf_row["Time"]
-            hf_row["Time"] += dt  # in years
-            hf_row["age_star"] += dt  # in years
+            hf_row["Time"] += dt        # in years
+            hf_row["age_star"] += dt    # in years
 
             ############### / INTERIOR
 
             ############### STELLAR FLUX MANAGEMENT
             PrintHalfSeparator()
             log.info("Stellar flux management...")
+            update_stellar_spectrum = False
 
             # Calculate new instellation and radius
             if (abs(hf_row["Time"] - sinst_prev) > self.config["sinst_dt_update"]) or (
@@ -396,7 +362,11 @@ class Proteus:
                                 / (4.0 * np.pi * AU * AU * self.config["mean_distance"] ** 2.0)
                             )
                         case 1:
-                            hf_row["R_star"] = baraffe.BaraffeStellarRadius(hf_row["age_star"])
+                            hf_row["R_star"] = (
+                                baraffe.BaraffeStellarRadius(hf_row["age_star"])
+                                * mors.const.Rsun
+                                * 1.0e-2
+                            )
                             S_0 = baraffe.BaraffeSolarConstant(
                                 hf_row["age_star"], self.config["mean_distance"]
                             )
@@ -424,10 +394,7 @@ class Proteus:
                 loop_counter["total"] == 0
             ):
                 sspec_prev = hf_row["Time"]
-
-                # Remove old spectral file if it exists
-                safe_rm(spfile_path)
-                safe_rm(spfile_path + "_k")
+                update_stellar_spectrum = True
 
                 log.info("Updating stellar spectrum")
                 match self.config["star_model"]:
@@ -459,25 +426,6 @@ class Proteus:
                     fmt="%.8e",
                     delimiter="\t",
                 )
-
-                # Prepare spectral file for JANUS
-                if self.config["atmosphere_model"] == 0:
-                    # Generate a new SOCRATES spectral file containing this new spectrum
-                    star_spec_src = self.directories["output"] + "socrates_star.txt"
-                    #    Update stdout
-                    old_stdout, old_stderr = sys.stdout, sys.stderr
-                    sys.stdout = StreamToLogger(log, logging.INFO)
-                    sys.stderr = StreamToLogger(log, logging.ERROR)
-                    #    Spectral file stuff
-                    PrepareStellarSpectrum(wl, fl, star_spec_src)
-                    InsertStellarSpectrum(spectral_file_nostar, star_spec_src, self.directories["output"])
-                    os.remove(star_spec_src)
-                    #    Restore stdout
-                    sys.stdout, sys.stderr = old_stdout, old_stderr
-
-                # Other cases...
-                #  - AGNI will prepare the file itself
-                #  - dummy_atmosphere does not require this file
 
             else:
                 log.info("New spectrum not required at this time")
@@ -555,13 +503,8 @@ class Proteus:
                     if solvevol_target[key] < 1.0e4:
                         solvevol_target[key] = 0.0
 
-            #   do calculation
-            with warnings.catch_warnings():
-                # Suppress warnings from surface_gases solver, since they are triggered when
-                # the model makes a poor guess for the composition. These are then discarded,
-                # so the warning should not propagate anywhere. Errors are still printed.
-                warnings.filterwarnings("ignore", category=RuntimeWarning)
-                solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
+            # solve for atmosphere composition
+            solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
 
             #    store results
             for k in solvevol_result.keys():
@@ -575,7 +518,7 @@ class Proteus:
             ############### / OUTGASSING
 
             ############### ATMOSPHERE SUB-LOOP
-            RunAtmosphere(self.config, self.directories, loop_counter, spfile_path, hf_all, hf_row)
+            RunAtmosphere(self.config, self.directories, loop_counter, wl, fl, update_stellar_spectrum, hf_all, hf_row)
 
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
@@ -724,8 +667,8 @@ class Proteus:
         PrintHalfSeparator()
 
         # Deallocate atmosphere
-        if self.config["atmosphere_model"] == 1:
-            DeallocAtmos(atm)
+        # if self.config["atmosphere_model"] == 1:
+        #     deallocate_atmos(atm)
 
         # Clean up files
         safe_rm(keepalive_file)
