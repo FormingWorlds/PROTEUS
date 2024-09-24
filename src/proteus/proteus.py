@@ -128,7 +128,7 @@ class Proteus:
             "total_loops": self.config["iter_max"],  # Maximum number of total loops
             "init": 0,  # Number of init iters performed
             "init_loops": 2,  # Maximum number of init iters
-            "steady": 0,  # Number of iterations passed since steady-state declared
+            "steady": -1,  # Number of iterations passed since steady-state declared
             "steady_loops": 3,  # Number of iterations to perform post-steady state
             "steady_check": 15,  # Number of iterations to look backwards when checking steady state
         }
@@ -570,6 +570,7 @@ class Proteus:
             if (
                 (self.config["steady_stop"] == 1)
                 and (loop_counter["total"] > loop_counter["steady_check"] * 2 + 5)
+                and (loop_counter["steady"] < 0)
             ):
                 # How many iterations to look backwards
                 lb1 = -int(loop_counter["steady_check"])
@@ -595,13 +596,16 @@ class Proteus:
                 # Stop when flux is small and melt fraction is unchanging
                 if (flx_m < self.config["steady_flux"]) and (phi_r < self.config["steady_dprel"]):
                     log.debug("Steady state declared")
-                    loop_counter["steady"] = 1
+                    loop_counter["steady"] = 0
 
             # Steady-state handling
-            if loop_counter["steady"] > 0:
-                if loop_counter["steady"] <= loop_counter["steady_loops"]:
-                    loop_counter["steady"] += 1
-                else:
+            if loop_counter["steady"] >= 0:
+                # Force the model to do N=steady_loops more iterations before stopping
+                # This is to make absolutely sure that it has reached a steady state.
+                loop_counter["steady"] += 1
+
+                # Stop now?
+                if loop_counter["steady"] >= loop_counter["steady_loops"]:
                     UpdateStatusfile(self.directories, 11)
                     log.info("")
                     log.info("===> Planet entered a steady state! <===")
