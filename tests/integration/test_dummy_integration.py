@@ -10,6 +10,7 @@ from pandas.testing import assert_frame_equal
 from proteus import Proteus
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
+@pytest.fixture
 def test_dummy_run():
     config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
     ref_output = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy' #/ 'runtime_helpfile.csv'
