@@ -337,8 +337,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
         # default parameters
         linesearch = 2
         easy_start = False
-        dx_max = OPTIONS["tsurf_poststep_change"]+5.0
-        ls_increase = 1.01
+        dx_max = OPTIONS["tsurf_poststep_change"]+10.0
+        ls_increase = 1.02
 
         # try different solver parameters if struggling
         if attempts == 2:
