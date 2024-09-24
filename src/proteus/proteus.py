@@ -299,7 +299,7 @@ class Proteus:
             log.info("Loop counters")
             log.info("init    total     steady")
             log.info(
-                "%1d/%1d   %04d/%04d   %02d/%02d"
+                "%1d/%1d   %04d/%04d   %1d/%1d"
                 % (
                     loop_counter["init"],
                     loop_counter["init_loops"],
@@ -310,10 +310,21 @@ class Proteus:
                 )
             )
 
+            ############### ORBIT AND TIDES
+
+            # Calculate time-averaged orbital separation
+            # https://physics.stackexchange.com/a/715749
+            hf_row["separation"] = self.config["mean_distance"] * \
+                                        (1 + 0.5 * self.config["eccentricity"]**2.0)
+
+
+            ############### / ORBIT AND TIDES
+
             ############### INTERIOR
 
             # Run interior model
-            dt = RunInterior(self.directories, self.config, loop_counter, IC_INTERIOR, hf_all,  hf_row)
+            dt = RunInterior(self.directories, self.config,
+                                loop_counter, IC_INTERIOR, hf_all,  hf_row)
 
             # Advance current time in main loop according to interior step
             hf_row["Time"] += dt        # in years
@@ -355,7 +366,7 @@ class Proteus:
                                     self.config["star_mass"], hf_row["age_star"] / 1e6, "Lbol"
                                 )
                                 * L_sun
-                                / (4.0 * np.pi * AU * AU * self.config["mean_distance"] ** 2.0)
+                                / (4.0 * np.pi * (AU*hf_row["separation"])**2.0 )
                             )
                         case 1:
                             hf_row["R_star"] = (
@@ -364,7 +375,7 @@ class Proteus:
                                 * 1.0e-2
                             )
                             S_0 = baraffe.BaraffeSolarConstant(
-                                hf_row["age_star"], self.config["mean_distance"]
+                                hf_row["age_star"], hf_row["separation"]
                             )
 
                     # Calculate new eqm temperature
@@ -407,7 +418,7 @@ class Proteus:
                         wl = modern_wl
 
                 # Scale fluxes from 1 AU to TOA
-                fl *= (1.0 / self.config["mean_distance"]) ** 2.0
+                fl *= (1.0 / hf_row["separation"]) ** 2.0
 
                 # Save spectrum to file
                 header = (
@@ -545,6 +556,8 @@ class Proteus:
 
             # Print info to terminal and log file
             PrintCurrentState(hf_row)
+
+            log.info("Check convergence criteria")
 
             # Stop simulation when planet is completely solidified
             if (self.config["solid_stop"] == 1) and (hf_row["Phi_global"] <= self.config["phi_crit"]):

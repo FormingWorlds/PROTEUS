@@ -44,7 +44,7 @@ spectral_file               = 'spectral_files/Honeyside/256/Honeyside.sf'
 stellar_heating             = 1
 
 # Time-stepping stuff
-plot_iterfreq               = 1     # Plotting frequency, 0: wait until completion | n: every n iterations
+plot_iterfreq               = 5     # Plotting frequency, 0: wait until completion | n: every n iterations
 plot_format                 = 'png'  # Plotting image file format
 sspec_dt_update             = 2e6    # Time intervals at which to re-calculate the stellar spectrum
 sinst_dt_update             = 1e2    # Time intervals at which to re-calculate the instellation
@@ -87,7 +87,7 @@ atmosphere_model            = 1         # Atmosphere model to be used, 0: JANUS 
 atmosphere_surf_state       = 2         # Atmosphere bottom edge boundary condition, 0: free | 1: fixed at T_surf | 2: conductive skin
 
 # Number of levels
-atmosphere_nlev             = 60
+atmosphere_nlev             = 48
 
 # Temperature limits throughout atmosphere [K]
 min_temperature             = 0.5
@@ -129,7 +129,7 @@ planet_coresize             = 0.55
 
 # Initial entropy conditions for interior
 ic_adiabat_entropy          = 3200.0
-ic_dsdr                     = -4.698e-06
+ic_dsdr                     = -4.698e-6
 
 # Atmosphere heat flux start guess, adjusted during runtime [W/m^2]
 F_atm                       = 1e5

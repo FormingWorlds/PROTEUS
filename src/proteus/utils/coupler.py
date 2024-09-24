@@ -104,7 +104,7 @@ def GetHelpfileKeys():
     # Basic keys
     keys = [
             # Model tracking and basic parameters
-            "Time", "R_planet", "M_planet",
+            "Time", "R_planet", "M_planet", "separation",
 
             # Temperatures
             "T_surf", "T_magma", "T_eqm", "T_skin",
