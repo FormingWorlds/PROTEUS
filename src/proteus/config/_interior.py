@@ -13,16 +13,18 @@ class Spider:
     ini_entropy: float
     ini_dsdr: float
 
+
 @define
 class Aragog:
     some_parameter: str
+
 
 @define
 class Interior:
     grain_size: float
     F_initial: float
 
-    module: str  = field(validator=validators.in_(("spider", "aragog")))
+    module: str = field(validator=validators.in_(('spider', 'aragog')))
 
     spider: Spider
     aragog: Aragog

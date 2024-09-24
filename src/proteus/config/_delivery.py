@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from attrs import define, field, validators
 
+from ._converters import none_if_none
+
 
 @define
 class Elements:
@@ -9,6 +11,7 @@ class Elements:
     H_oceans: float
     N_ppmw: float
     S_ppmw: float
+
 
 @define
 class Volatiles:
@@ -21,11 +24,12 @@ class Volatiles:
     CH4: float
     CO: float
 
+
 @define
 class Delivery:
-    initial: str = field(validator=validators.in_(("elements", "volatile")))
+    initial: str = field(validator=validators.in_(('elements', 'volatile')))
 
-    module: str = field(validator=validators.in_(("none",)))
+    module: str | None = field(validator=validators.in_((None,)), converter=none_if_none)
 
     elements: Elements
     volatiles: Volatiles

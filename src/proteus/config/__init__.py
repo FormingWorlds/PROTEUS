@@ -28,7 +28,7 @@ def read_config_object(path: Path | str) -> Config:
 
 
 __all__ = [
-    "Config",
-    "read_config_object",
-    "read_config",
+    'Config',
+    'read_config_object',
+    'read_config',
 ]

@@ -7,13 +7,15 @@ from attrs import define, field, validators
 class Zephyrus:
     some_parameter: str
 
+
 @define
 class EscapeDummy:
     rate: float
 
+
 @define
 class Escape:
-    module: str  = field(validator=validators.in_(("dummy", "zephyrus")))
+    module: str = field(validator=validators.in_(('dummy', 'zephyrus')))
 
     zephyrus: Zephyrus
     dummy: EscapeDummy

@@ -14,15 +14,17 @@ class Calliope:
     include_CH4: bool
     include_CO: bool
 
+
 @define
 class Atmodeller:
     some_parameter: str
+
 
 @define
 class Outgas:
     fO2_shift_IW: float
 
-    module: str  = field(validator=validators.in_(("calliope", "atmodeller")))
+    module: str = field(validator=validators.in_(('calliope', 'atmodeller')))
 
     calliope: Calliope
     atmodeller: Atmodeller
