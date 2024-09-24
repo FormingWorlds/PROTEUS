@@ -4,12 +4,12 @@ import copy
 import logging
 import os
 import shutil
-import toml
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import toml
 from calliope.solve import (
     equilibrium_atmosphere,
     get_target_from_params,
