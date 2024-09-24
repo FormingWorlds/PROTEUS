@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
-
-from attrs import define
+from attrs import define, field, validators
 
 
 @define
@@ -24,7 +22,7 @@ class Interior:
     grain_size: float
     F_initial: float
 
-    module: Literal["spider", "aragog"]
+    module: str  = field(validator=validators.in_(("spider", "aragog")))
 
     spider: Spider
     aragog: Aragog

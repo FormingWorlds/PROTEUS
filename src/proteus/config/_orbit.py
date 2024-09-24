@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
-
-from attrs import define
+from attrs import define, field, validators
 
 
 @define
@@ -12,4 +10,4 @@ class Orbit:
     zenith_angle: float
     s0_factor: float
 
-    module: Literal["none"]
+    module: str  = field(validator=validators.in_(("none",)))

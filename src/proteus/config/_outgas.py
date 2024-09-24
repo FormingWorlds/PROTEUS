@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
-
-from attrs import define
+from attrs import define, field, validators
 
 
 @define
@@ -24,7 +22,7 @@ class Atmodeller:
 class Outgas:
     fO2_shift_IW: float
 
-    module: Literal["calliope", "atmodeller"]
+    module: str  = field(validator=validators.in_(("calliope", "atmodeller")))
 
     calliope: Calliope
     atmodeller: Atmodeller

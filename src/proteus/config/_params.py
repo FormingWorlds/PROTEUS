@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from typing import Literal
-
-from attrs import define
+from attrs import define, field, validators
 
 
 @define
 class OutputParams:
     path: str
-    logging: Literal["INFO", "DEBUG", "ERROR", "WARNING"]
+    logging: str  = field(validator=validators.in_(("INFO", "DEBUG", "ERROR", "WARNING")))
     plot_mod: int
-    plot_fmt: Literal["pdf", "png"]
+    plot_fmt: str  = field(validator=validators.in_(("pdf", "png")))
 
 @define
 class DtProportional:
@@ -28,7 +26,7 @@ class TimeStepParams:
     initial: float
     starspec: float
     starinst: float
-    method: Literal["proportional","adaptive", "maximum"]
+    method: str  = field(validator=validators.in_(("proportional","adaptive", "maximum")))
     proportional: DtProportional
     adaptive: DtAdaptive
 

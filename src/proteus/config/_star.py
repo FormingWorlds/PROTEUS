@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-from attrs import define
+from attrs import define, field, validators
 
 
 @define
 class Mors:
-    tracks: Literal["spada", "baraffe"]
+    tracks: str = field(validator=validators.in_(("spada", "baraffe")))
     spec: str
 
 @define

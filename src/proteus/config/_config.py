@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
-
-from attrs import define
+from attrs import define, field, validators
 
 from ._atmos import Atmos
 from ._delivery import Delivery
@@ -17,7 +15,7 @@ from ._struct import Struct
 
 @define
 class Config:
-    version: Literal['2.0']
+    version: str = field(validator=validators.in_(('2.0',)))
     author: str
 
     params: Params

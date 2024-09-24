@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
-
-from attrs import define
+from attrs import define, field, validators
 
 
 @define
@@ -25,9 +23,9 @@ class Volatiles:
 
 @define
 class Delivery:
-    initial: Literal["elements", "volatile"]
+    initial: str = field(validator=validators.in_(("elements", "volatile")))
 
-    module: Literal["none"]
+    module: str = field(validator=validators.in_(("none",)))
 
     elements: Elements
     volatiles: Volatiles

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
-
-from attrs import define
+from attrs import define, field, validators
 
 
 @define
@@ -15,7 +13,7 @@ class EscapeDummy:
 
 @define
 class Escape:
-    module: Literal["dummy", "zephyrus"]
+    module: str  = field(validator=validators.in_(("dummy", "zephyrus")))
 
     zephyrus: Zephyrus
     dummy: EscapeDummy
