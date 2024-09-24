@@ -21,7 +21,7 @@ else:
         return config
 
 
-def load_config_object(path: Path | str) -> Config:
+def read_config_object(path: Path | str) -> Config:
     """Read and validate config into Config object."""
     cfg = read_config(path)
     return cattrs.structure(cfg, Config)
@@ -29,6 +29,6 @@ def load_config_object(path: Path | str) -> Config:
 
 __all__ = [
     "Config",
-    "load_config_object",
+    "read_config_object",
     "read_config",
 ]
