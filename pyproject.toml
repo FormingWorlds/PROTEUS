@@ -66,6 +66,7 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 develop = [
     "bump-my-version",
     "coverage[toml]",
+    "pillow",
     "pip-tools",
     "pytest >= 8.1",
     "pre-commit",

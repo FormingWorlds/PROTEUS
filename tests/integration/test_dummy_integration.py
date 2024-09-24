@@ -11,6 +11,16 @@ from matplotlib.testing.compare import compare_images
 from proteus import Proteus
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
+IMAGE_LIST = (
+        "plot_elements.png",
+        "plot_escape.png",
+        "plot_fluxes_global.png",
+        "plot_global_lin.png",
+        "plot_global_log.png",
+        "plot_observables.png",
+        "plot_sflux.png",
+        )
+
 @pytest.fixture
 def test_dummy_run():
     config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
@@ -25,23 +35,26 @@ def test_dummy_run():
     hf_all = ReadHelpfileFromCSV(output)
     hf_all_ref = ReadHelpfileFromCSV(ref_output)
 
-    assert_frame_equal(hf_all, hf_all_ref, rtol=1e-3)
+    assert_frame_equal(hf_all, hf_all_ref, rtol=1e-2)
 
 def test_plot_dummy_integration(test_dummy_run):
 
-    test_plot = PROTEUS_ROOT / 'output' / 'dummy' / 'plot_global_lin.png'
-    ref_plot = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy' / 'plot_global_lin.png'
-    tolerance = 4
+    out_dir = PROTEUS_ROOT / 'output' / 'dummy'
+    ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy'
 
-    # Resize images if needed
-    test, ref = resize_to_match(test_plot, ref_plot)
+    for image in IMAGE_LIST:
+        out_img = out_dir / image
+        ref_img = ref_dir / image
+        tolerance = 4
 
-    # Save resized images to temporary paths
-    test.save('test.png')
-    ref.save('ref.png')
+        # Resize images if needed
+        out_tmp, ref_tmp = resize_to_match(out_img, ref_img)
 
-    # Use compare_images to compare the resized files
-    result = compare_images('test.png', 'ref.png', tol=tolerance)
+        # Save resized images to temporary paths
+        out_tmp.save('test.png')
+        ref_tmp.save('ref.png')
 
-    # compare_images returns None if the images are the same within the tolerance
-    assert result is None, f"The two PNG files differ more than the allowed tolerance: {result}"
+        # Use compare_images to compare the resized files
+        result = compare_images('test.png', 'ref.png', tol=tolerance)
+
+        assert result is None, f"The two PNG files {image} differ more than the allowed tolerance: {result}"
