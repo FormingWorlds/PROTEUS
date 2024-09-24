@@ -13,7 +13,7 @@ star_spectrum               = 'stellar_spectra/Named/sun.txt'   # Stellar spectr
 star_omega                  = 1.0               # Star rotation rate [Omega_sun, rad s-1]
 
 ##### Planet configuration
-mean_distance               = 1         # AU, star-planet distance
+semimajoraxis               = 1         # AU, star-planet distance
 mass                        = 1         # M_earth
 radius                      = 1         # R_earth
 

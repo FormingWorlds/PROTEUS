@@ -498,7 +498,7 @@ if __name__=='__main__':
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
     # pg.append_dimension_hyper("Planet", {   "#case": "TRAPPIST-1b",
-    #                                         "mean_distance": 0.01154,  # AU, star-planet distance
+    #                                         "semimajoraxis": 0.01154,  # AU, star-planet distance
     #                                         "mass"         : 8.21e+24, # kg, planet mass
     #                                         "radius"       : 7.118e+6  # m, planet surface radius
     #                                     })

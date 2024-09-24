@@ -314,7 +314,7 @@ class Proteus:
 
             # Calculate time-averaged orbital separation
             # https://physics.stackexchange.com/a/715749
-            hf_row["separation"] = self.config["mean_distance"] * \
+            hf_row["separation"] = self.config["semimajoraxis"] * \
                                         (1 + 0.5 * self.config["eccentricity"]**2.0)
 
 
@@ -453,7 +453,7 @@ class Proteus:
                         self.config["star_mass"],
                         self.config["star_omega"],
                         self.config["escape_el_tidal_correction"],
-                        self.config["mean_distance"] * AU,
+                        self.config["semimajoraxis"] * AU,
                         self.config["eccentricity"],
                         hf_row["M_planet"],
                         self.config["efficiency_factor"],
