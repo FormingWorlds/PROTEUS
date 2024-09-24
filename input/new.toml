@@ -1,11 +1,11 @@
 # PROTEUS configuration file (version 2.0)
 
-# Root tables should be physical, with the exception of "exec"
+# Root tables should be physical, with the exception of "params"
 # Software related options should go within the appropriate physical table
 
 # The general structure is:
 #   [root]     metadata
-#   [exec]     code execution, output files, time-stepping, convergence
+#   [params]   parameters for code execution, output files, time-stepping, convergence
 #   [star]     stellar parameters, model selection
 #   [orbit]    planetary orbital parameters
 #   [struct]   planetary structure (mass, radius)
@@ -22,16 +22,16 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # ----------------------------------------------------
 # Parameters
-[exec]
+[params]
     # output files
-    [exec.out]
+    [params.out]
         path        = "new_config_test"
         logging     = "DEBUG"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping
-    [exec.dt]
+    [params.dt]
         minimum      = 1e2    # yr, minimum time-step
         maximum      = 3e7    # yr, maximum time-step
         initial      = 1e2    # yr, inital step size
@@ -39,45 +39,45 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         starinst     = 1e1    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
 
-        [exec.dt.proportional]
+        [params.dt.proportional]
             propconst    = 52.0   # Proportionality constant
 
-        [exec.dt.adaptive]
+        [params.dt.adaptive]
             atol         = 0.02   # Step size atol
             rtol         = 0.10   # Step size rtol
 
     # termination criteria
-    [exec.stop]
+    [params.stop]
 
         # required number of iterations
-        [exec.stop.iters]
+        [params.stop.iters]
             enabled = true
             minimum = 3
             maximum = 9000
 
         # required time constraints
-        [exec.stop.time]
+        [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
             maximum = 4.0e9     # yr, model will terminate when t > maximum
 
         # solidification
-        [exec.stop.solid]
+        [params.stop.solid]
             enabled  = true
             phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
-        [exec.stop.radeqm]
+        [params.stop.radeqm]
             enabled = true
             F_crit  = 0.2     # W m-2, model will terminate when |F_atm| < F_crit
 
         # steady state
-        [exec.stop.steady]
+        [params.stop.steady]
             enabled  = true
             F_crit   = 0.8        # Maximum absolute value of F_atm allowed for convergence
             dprel    = 1.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
 
-        [exec.stop.escape]
+        [params.stop.escape]
             enabled   = true
             mass_frac = 3e-4      # Stop when atm_mass < this frac of initial mass
 
@@ -210,6 +210,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # Which initial inventory to use?
     initial = 'elements'        # "elements" | "volatiles"
 
+    # No module for accretion as of yet
+    module = "none"
+
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
         CH_ratio    = 1.0       # C/H ratio in mantle/atmosphere system
@@ -227,6 +230,3 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         H2   = 0.0
         CH4  = 0.0
         CO   = 0.0
-
-    # No module for accretion as of yet
-    module = "none"
