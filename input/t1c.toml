@@ -21,7 +21,7 @@ asf_scalefactor             = 0.25     # absorbed solar flux scale factor = 1/4
 albedo_s                    = 0.2 		# surface albedo
 albedo_pl                   = 0.0   	# Bond albedo (scattering)
 
-eccentricity                = 0.0     # Earth eccentricity  [dimensionless]
+eccentricity                = 0.0     # Orbital eccentricity  [dimensionless]
 
 P_top                       = 1.0e-5    # bar, Pressure at TOA
 

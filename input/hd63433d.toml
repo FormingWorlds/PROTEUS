@@ -21,7 +21,7 @@ asf_scalefactor             = 0.25     # absorbed solar flux scale factor = 1/4
 albedo_s                    = 0.2 		# surface albedo
 albedo_pl                   = 0.0   	# Bond albedo (scattering)
 
-eccentricity                = 0.16     # Earth eccentricity  [dimensionless]
+eccentricity                = 0.16     # Eccentricity  [dimensionless]
 
 P_top                       = 1.0e-5    # bar, Pressure at TOA
 
@@ -69,8 +69,8 @@ phi_crit                    = 0.005     # melt fraction
 
 # Break at steady state?
 steady_stop                 = 1
-steady_flux                 = 0.8        # Maximum absolute value of F_atm allowed for convergence
-steady_dprel                = 3.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
+steady_flux                 = 1.8        # Maximum absolute value of F_atm allowed for convergence
+steady_dprel                = 3.0e-10     # Percentage change in melt fraction over time (dp/p)/dt*100
 
 # Break at small flux?
 emit_stop                   = 1         # Enable this break condition
@@ -109,7 +109,7 @@ atmosphere_chemistry       = 0
 ##### Interior-specific settings
 
 interior_model              = 0
-interior_nlev               = 290
+interior_nlev               = 220
 grain_size                  = 0.1
 
 # Mixing length parameterization: 1: variable | 2: constant
