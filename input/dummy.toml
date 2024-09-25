@@ -44,7 +44,7 @@ spectral_file               = 'spectral_files/Frostflow/48/Frostflow.sf'
 stellar_heating             = 1
 
 # Time-stepping stuff
-plot_iterfreq               = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
+plot_iterfreq               = 10      # Plotting frequency, 0: wait until completion | n: every n iterations
 plot_format                 = 'png'  # Plotting image file format
 sspec_dt_update             = 1e9    # Time intervals at which to re-calculate the stellar spectrum
 sinst_dt_update             = 1e1    # Time intervals at which to re-calculate the instellation
@@ -53,7 +53,7 @@ dt_minimum                  = 1e2    # Minimum time-step
 dt_method                   = 1      # Time-stepping method, 0: proportional | 1: adaptive | 2: maximum
 dt_propconst                = 52.0   # Proportionality constant for dt_method=0
 dt_atol                     = 0.02   # Step size atol
-dt_rtol                     = 0.10   # Step size rtol
+dt_rtol                     = 0.05   # Step size rtol
 dt_initial                  = 1e2    # Inital step size
 
 # Flux convergence scheme and tolerances for surface equilibration
@@ -61,7 +61,7 @@ shallow_ocean_layer         = 0         # 0: off | 1: on
 F_atm_bc                    = 0         # Boundary condition choice for F_atm, 0: TOA | 1: Surface
 skin_d                      = 0.01      # m
 skin_k                      = 2.0       # W m-1 K-1
-prevent_warming             = 1         # Require that the planet only cool down over time, 0: disabled | 1: enabled
+prevent_warming             = 0         # Require that the planet only cool down over time, 0: disabled | 1: enabled
 
 # Break at solidification?
 solid_stop                  = 0
@@ -79,7 +79,7 @@ F_crit                      = 0.2       # Model will terminate when |F_atm| < F_
 # Atmospheric escape
 escape_model                = 2         # Escape model to be used, 0: None | 1: ZEPHYRUS | 2: Dummy
 escape_stop                 = 3e-4      # Terminate when atm mass drops below this fraction of its initial mass
-escape_dummy_rate           = 2e7       # Bulk escape rate for dummy escape model [kg s-1]
+escape_dummy_rate           = 1e6       # Bulk escape rate for dummy escape model [kg s-1]
 
 # Method for solving for T(p) profile
 atmosphere_model            = 2         # Atmosphere model to be used, 0: JANUS | 1: AGNI | 2: Dummy
