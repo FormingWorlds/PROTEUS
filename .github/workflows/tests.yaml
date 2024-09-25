@@ -110,9 +110,6 @@ jobs:
             output/dummy/plot_global_log.png
             output/dummy/plot_observables.png
             output/dummy/plot_sflux.png
-            tests/integration/test.png
-            tests/integration/ref.png
-            tests/integration/ref-failed-diff.png
 
       - name: Report coverage
         run: |

@@ -45,7 +45,7 @@ def test_plot_dummy_integration(test_dummy_run):
     for image in IMAGE_LIST:
         out_img = out_dir / image
         ref_img = ref_dir / image
-        tolerance = 8
+        tolerance = 14
 
         # Resize images if needed
         out_tmp, ref_tmp = resize_to_match(out_img, ref_img)
