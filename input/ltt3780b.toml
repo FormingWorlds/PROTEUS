@@ -69,7 +69,7 @@ phi_crit                    = 0.005     # melt fraction
 
 # Break at steady state?
 steady_stop                 = 1
-steady_flux                 = 2.0        # Maximum absolute value of F_atm allowed for convergence
+steady_flux                 = 1.8        # Maximum absolute value of F_atm allowed for convergence
 steady_dprel                = 3.0e-10     # Percentage change in melt fraction over time (dp/p)/dt*100
 
 # Break at small flux?
@@ -87,7 +87,7 @@ atmosphere_model            = 1         # Atmosphere model to be used, 0: JANUS 
 atmosphere_surf_state       = 2         # Atmosphere bottom edge boundary condition, 0: free | 1: fixed at T_surf | 2: conductive skin
 
 # Number of levels
-atmosphere_nlev             = 48
+atmosphere_nlev             = 60
 
 # Temperature limits throughout atmosphere [K]
 min_temperature             = 0.5
