@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
 from helpers import PROTEUS_ROOT, resize_to_match
-from pandas.testing import assert_frame_equal
 from matplotlib.testing.compare import compare_images
+from pandas.testing import assert_frame_equal
 
 from proteus import Proteus
 from proteus.utils.coupler import ReadHelpfileFromCSV
