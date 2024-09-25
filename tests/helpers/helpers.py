@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from PIL import Image
-
 from pathlib import Path
+
+from PIL import Image
 
 PROTEUS_ROOT = Path(__file__).parents[2]
 
