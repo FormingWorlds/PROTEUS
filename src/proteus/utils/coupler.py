@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from proteus.atmos_clim.janus import read_ncdfs
+from proteus.interior.spider import read_jsons
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements
 from proteus.plot.cpl_emission import plot_emission
@@ -31,8 +33,6 @@ from proteus.utils.constants import (
     element_list,
     volatile_species,
 )
-from proteus.atmos_clim.janus import read_ncdfs
-from proteus.interior.spider import read_jsons
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 from proteus.utils.plot import sample_times
 

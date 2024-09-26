@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import netCDF4 as nc
 import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import LogLocator, MultipleLocator

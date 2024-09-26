@@ -6,13 +6,12 @@ from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import netCDF4 as nc
 import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import LogLocator
 
-from proteus.utils.plot import latex_float, sample_output
 from proteus.atmos_clim.janus import read_ncdfs
+from proteus.utils.plot import latex_float, sample_output
 
 if TYPE_CHECKING:
     from proteus import Proteus

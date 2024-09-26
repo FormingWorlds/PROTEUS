@@ -7,9 +7,9 @@ import os
 import shutil
 
 import janus.set_socrates_env  # noqa
+import netCDF4 as nc
 import numpy as np
 import pandas as pd
-import netCDF4 as nc
 
 from proteus.utils.constants import volatile_species
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest

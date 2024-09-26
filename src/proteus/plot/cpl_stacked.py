@@ -7,13 +7,12 @@ from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import netCDF4 as nc
 import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
-from proteus.interior.spider import read_jsons
 from proteus.atmos_clim.janus import read_ncdfs
+from proteus.interior.spider import read_jsons
 from proteus.utils.plot import dict_colors, latex_float, sample_times
 
 if TYPE_CHECKING:
