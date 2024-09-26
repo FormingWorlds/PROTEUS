@@ -10,7 +10,7 @@ import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
-from proteus.interior.spider import MyJSON
+from proteus.interior.spider import read_jsons
 from proteus.utils.plot import MyFuncFormatter, latex_float, sample_output
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 
-def plot_interior(output_dir: str, times: list | np.ndarray, plot_format: str="pdf"):
+def plot_interior(output_dir: str, times: list | np.ndarray, jsons: list, plot_format: str="pdf"):
 
     if np.amax(times) < 2:
         log.debug("Insufficient data to make plot_atmosphere")
@@ -39,10 +39,10 @@ def plot_interior(output_dir: str, times: list | np.ndarray, plot_format: str="p
     visc_min, visc_max = 0.1, 1.0
 
     # loop over times
-    for time in times:
+    for i,time in enumerate(times):
 
         # Get interior data for this time
-        myjson_o = MyJSON(os.path.join(output_dir, "data", "%d.json"%time))
+        myjson_o = jsons[i]
 
         # Pressure grid
         xx_pres = myjson_o.get_dict_values(['data','pressure_b'])
@@ -143,9 +143,11 @@ def plot_interior_entry(handler: Proteus):
     plot_times,_ = sample_output(handler, ftype='json')
     print("Snapshots:", plot_times)
 
+    jsons = read_jsons(handler.directories['output'], plot_times)
     plot_interior(
         output_dir=handler.directories['output'],
         times=plot_times,
+        jsons=jsons,
         plot_format=handler.config["plot_format"],
     )
 

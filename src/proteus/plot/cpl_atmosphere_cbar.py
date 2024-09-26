@@ -19,38 +19,6 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 
-def _read_nc(nc_fpath):
-    ds = nc.Dataset(nc_fpath)
-
-    p = np.array(ds.variables["p"][:])
-    pl = np.array(ds.variables["pl"][:])
-
-    t = np.array(ds.variables["tmp"][:])
-    tl = np.array(ds.variables["tmpl"][:])
-
-    z = np.array(ds.variables["z"][:])
-    zl = np.array(ds.variables["zl"][:])
-
-    nlev = len(p)
-    arr_p = [pl[0]]
-    arr_t = [tl[0]]
-    arr_z = [zl[0]]
-
-    for i in range(nlev):
-        arr_p.append(p[i])
-        arr_p.append(pl[i+1])
-
-        arr_t.append(t[i])
-        arr_t.append(tl[i+1])
-
-        arr_z.append(z[i])
-        arr_z.append(zl[i+1])
-
-    ds.close()
-
-    return np.array(arr_p), np.array(arr_t), np.array(arr_z)
-
-
 def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
 
     print("Plot atmosphere temperatures colourbar")

@@ -31,6 +31,8 @@ from proteus.utils.constants import (
     element_list,
     volatile_species,
 )
+from proteus.atmos_clim.janus import read_ncdfs
+from proteus.interior.spider import read_jsons
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 from proteus.utils.plot import sample_times
 
@@ -285,7 +287,7 @@ def ValidateInitFile(dirs:dict, OPTIONS:dict):
 
     return True
 
-def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
+def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
 
     Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
@@ -313,12 +315,12 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
         output_times = get_all_output_times( output_dir )
 
     # Global properties for all timesteps
-    plot_global(output_dir, OPTIONS)
+    plot_global(hf_all, output_dir, OPTIONS)
 
     # Elemental mass inventory
     if escape:
-        plot_elements(output_dir, OPTIONS["plot_format"])
-        plot_escape(output_dir, escape_model=OPTIONS['escape_model'], plot_format=OPTIONS["plot_format"])
+        plot_elements(hf_all, output_dir, OPTIONS["plot_format"])
+        plot_escape(hf_all, output_dir, escape_model=OPTIONS['escape_model'], plot_format=OPTIONS["plot_format"])
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:
@@ -342,17 +344,19 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
 
     # Interior profiles
     if not dummy_int:
-        plot_interior(output_dir, plot_times, OPTIONS["plot_format"])
+        jsons = read_jsons(output_dir, plot_times)
+        plot_interior(output_dir, plot_times, jsons, OPTIONS["plot_format"])
 
     # Temperature profiles
     if not dummy_atm:
+        ncdfs = read_ncdfs(handler.directories["output"], plot_times)
 
         # Atmosphere only
-        plot_atmosphere(output_dir, plot_times, OPTIONS["plot_format"])
+        plot_atmosphere(output_dir, plot_times, ncdfs, OPTIONS["plot_format"])
 
         # Atmosphere and interior, stacked
         if not dummy_int:
-            plot_stacked(output_dir, plot_times, OPTIONS["plot_format"])
+            plot_stacked(output_dir, plot_times, jsons, ncdfs, OPTIONS["plot_format"])
 
         # Flux profiles
         if OPTIONS["atmosphere_model"] == 0:
@@ -361,11 +365,11 @@ def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
 
     # Only at the end of the simulation
     if end:
-        plot_global(output_dir,         OPTIONS, logt=False)
+        plot_global(hf_all,         output_dir, OPTIONS, logt=False)
+        plot_fluxes_global(hf_all,  output_dir, OPTIONS)
+        plot_observables(hf_all,    output_dir, plot_format=OPTIONS["plot_format"])
         plot_sflux(output_dir,          plot_format=OPTIONS["plot_format"])
         plot_sflux_cross(output_dir,    plot_format=OPTIONS["plot_format"])
-        plot_fluxes_global(output_dir,  OPTIONS)
-        plot_observables(output_dir,    plot_format=OPTIONS["plot_format"])
 
         if not dummy_int:
             plot_interior_cmesh(output_dir, plot_format=OPTIONS["plot_format"])
