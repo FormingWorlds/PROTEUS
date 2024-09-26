@@ -13,6 +13,7 @@ from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
 from proteus.interior.spider import read_jsons
+from proteus.atmos_clim.janus import read_ncdfs
 from proteus.utils.plot import dict_colors, latex_float, sample_times
 
 if TYPE_CHECKING:
