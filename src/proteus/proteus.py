@@ -312,9 +312,9 @@ class Proteus:
 
             ############### ORBIT AND TIDES
 
-            # Calculate time-averaged orbital separation
+            # Calculate time-averaged orbital separation (and convert from AU to metres)
             # https://physics.stackexchange.com/a/715749
-            hf_row["separation"] = self.config["semimajoraxis"] * \
+            hf_row["separation"] = self.config["semimajoraxis"] * AU * \
                                         (1 + 0.5 * self.config["eccentricity"]**2.0)
 
 
@@ -356,17 +356,19 @@ class Proteus:
                         case 0:
                             hf_row["R_star"] = (
                                 mors.Value(
-                                    self.config["star_mass"], hf_row["age_star"] / 1e6, "Rstar"
+                                    self.config["star_mass"],
+                                    hf_row["age_star"] / 1e6,
+                                    "Rstar"
                                 )
                                 * mors.const.Rsun
                                 * 1.0e-2
                             )
                             S_0 = (
                                 mors.Value(
-                                    self.config["star_mass"], hf_row["age_star"] / 1e6, "Lbol"
-                                )
-                                * L_sun
-                                / (4.0 * np.pi * (AU*hf_row["separation"])**2.0 )
+                                    self.config["star_mass"],
+                                    hf_row["age_star"] / 1e6,
+                                    "Lbol"
+                                ) * L_sun  / (4.0 * np.pi * hf_row["separation"]**2.0 )
                             )
                         case 1:
                             hf_row["R_star"] = (
@@ -375,7 +377,7 @@ class Proteus:
                                 * 1.0e-2
                             )
                             S_0 = baraffe.BaraffeSolarConstant(
-                                hf_row["age_star"], hf_row["separation"]
+                                hf_row["age_star"], hf_row["separation"]/AU
                             )
 
                     # Calculate new eqm temperature
@@ -418,7 +420,7 @@ class Proteus:
                         wl = modern_wl
 
                 # Scale fluxes from 1 AU to TOA
-                fl *= (1.0 / hf_row["separation"]) ** 2.0
+                fl *= (AU / hf_row["separation"]) ** 2.0
 
                 # Save spectrum to file
                 header = (

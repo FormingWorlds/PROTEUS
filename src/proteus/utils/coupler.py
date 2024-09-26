@@ -98,35 +98,39 @@ def CreateLockFile(output_dir:str):
 
 def GetHelpfileKeys():
     '''
-    Variables to be held in the helpfile
+    Variables to be held in the helpfile.
+
+    All dimensional quantites should be stored in SI units, except those noted below.
+    * Pressure is in units of [bar].
+    * Time is in units of [years].
     '''
 
     # Basic keys
     keys = [
             # Model tracking and basic parameters
-            "Time", "R_planet", "M_planet", "separation",
+            "Time", "R_planet", "M_planet", "separation", # [yr], [m], [kg], [m]
 
             # Temperatures
-            "T_surf", "T_magma", "T_eqm", "T_skin",
+            "T_surf", "T_magma", "T_eqm", "T_skin", # all [K]
 
             # Energy fluxes
-            "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins",
+            "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins", # all [W m-2]
 
             # Interior properties
-            "gravity", "Phi_global", "RF_depth",
-            "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid",
+            "gravity", "Phi_global", "RF_depth", # [m s-2] , [1] , [1]
+            "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid", # all [kg]
 
             # Stellar
-            "R_star", "age_star",
+            "R_star", "age_star", # [m], [yr]
 
-            # Observational
-            "z_obs", "rho_obs", "transit_depth", "contrast_ratio", # observed from infinity
+            # Observational (from infinity)
+            "z_obs", "rho_obs", "transit_depth", "contrast_ratio", # [m], [kg m-3], [1], [1]
 
             # Escape
-            "esc_rate_total",
+            "esc_rate_total", # [kg s-1]
 
             # Atmospheric composition
-            "M_atm", "P_surf", "atm_kg_per_mol", # more keys added below
+            "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]
             ]
 
     # gases

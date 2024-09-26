@@ -44,7 +44,7 @@ spectral_file               = 'spectral_files/Frostflow/48/Frostflow.sf'
 stellar_heating             = 1
 
 # Time-stepping stuff
-plot_iterfreq               = 10      # Plotting frequency, 0: wait until completion | n: every n iterations
+plot_iterfreq               = 50      # Plotting frequency, 0: wait until completion | n: every n iterations
 plot_format                 = 'png'  # Plotting image file format
 sspec_dt_update             = 1e9    # Time intervals at which to re-calculate the stellar spectrum
 sinst_dt_update             = 1e1    # Time intervals at which to re-calculate the instellation
