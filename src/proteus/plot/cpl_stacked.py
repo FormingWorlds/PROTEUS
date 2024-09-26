@@ -44,6 +44,8 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
 
         # Get atmosphere data for this time
         prof = ncdfs[i]
+        atm_z = prof["z"]/1e3
+        atm_t = prof["t"]
 
         # Get interior data for this time
         myjson_o = jsons[i]
@@ -53,9 +55,9 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
         xx_depth = xx_radius[0] - xx_radius
 
         # use melt fraction to determine mixed region
-        MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' )
-        MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' )
-        MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' )
+        MASK_MI = myjson_o.get_mixed_phase_boolean_array('basic')
+        MASK_ME = myjson_o.get_melt_phase_boolean_array( 'basic')
+        MASK_SO = myjson_o.get_solid_phase_boolean_array('basic')
 
         # overlap lines by 1 node
         for m in (MASK_MI, MASK_ME, MASK_SO):
@@ -69,7 +71,7 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
         color = sm.to_rgba(time)
 
         # Plot atmosphere
-        axt.plot( prof["t"], prof["z"]/1e3, '-', color=color, label=label, lw=1.5)
+        axt.plot( atm_t, atm_z, color=color, label=label, lw=1.5)
 
         # Plot interior
         axb.plot( temperature_interior[MASK_SO], xx_depth[MASK_SO], linestyle='solid',  color=color, lw=1.5 )
@@ -77,7 +79,7 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
         axb.plot( temperature_interior[MASK_ME], xx_depth[MASK_ME], linestyle='dotted', color=color, lw=1.5 )
 
         # update limits
-        y_height = max(y_height, np.amax(z))
+        y_height = max(y_height, np.amax(atm_z))
         y_depth  = max(y_depth,  np.amax(xx_depth))
 
 

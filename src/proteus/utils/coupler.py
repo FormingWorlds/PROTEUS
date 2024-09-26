@@ -62,16 +62,6 @@ def CalculateEqmTemperature(I_0, ASF_sf, A_B):
     '''
     return (I_0 * ASF_sf * (1.0 - A_B) / const_sigma)**(1.0/4.0)
 
-
-# https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
-def latex_float(f):
-    float_str = "{0:.2g}".format(f)
-    if "e" in float_str:
-        base, exponent = float_str.split("e")
-        return r"${0} \times 10^{{{1}}}$".format(base, int(exponent))
-    else:
-        return float_str
-
 def PrintCurrentState(hf_row:dict):
     '''
     Print the current state of the model to the logger
@@ -349,7 +339,7 @@ def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, OPTIONS:dict, end=False, n
 
     # Temperature profiles
     if not dummy_atm:
-        ncdfs = read_ncdfs(handler.directories["output"], plot_times)
+        ncdfs = read_ncdfs(output_dir, plot_times)
 
         # Atmosphere only
         plot_atmosphere(output_dir, plot_times, ncdfs, OPTIONS["plot_format"])

@@ -38,7 +38,7 @@ time_star                   = 100.0e6  	# yr, time since star formation
 time_target                 = 4.567e+9  # yr, target time for MO evolution
 
 # SOCRATES spectral file to use (relative to FWL_DATA folder)
-spectral_file               = 'spectral_files/Frostflow/256/Frostflow.sf'
+spectral_file               = 'spectral_files/Frostflow/16/Frostflow.sf'
 
 # Stellar heating toggle, 0: disabled | 1: enabled
 stellar_heating             = 1
