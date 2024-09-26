@@ -97,6 +97,20 @@ jobs:
           source PROTEUS.env
           coverage run -m pytest
 
+      - name: Upload PNG plots as artifacts
+        if: failure()  # Only upload if tests fail
+        uses: actions/upload-artifact@v3
+        with:
+          name: png-plots
+          path: |
+            output/dummy/plot_elements.png
+            output/dummy/plot_escape.png
+            output/dummy/plot_fluxes_global.png
+            output/dummy/plot_global_lin.png
+            output/dummy/plot_global_log.png
+            output/dummy/plot_observables.png
+            output/dummy/plot_sflux.png
+
       - name: Report coverage
         run: |
           coverage json
