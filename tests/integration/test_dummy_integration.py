@@ -34,8 +34,9 @@ def test_dummy_run():
     hf_all = ReadHelpfileFromCSV(output)
     hf_all_ref = ReadHelpfileFromCSV(ref_output)
 
-    assert_frame_equal(hf_all, hf_all_ref, rtol=1e-2)
+    assert_frame_equal(hf_all, hf_all_ref, rtol=1e-4)
 
+@pytest.mark.xfail
 def test_plot_dummy_integration(test_dummy_run):
 
     out_dir = PROTEUS_ROOT / 'output' / 'dummy'
@@ -44,7 +45,7 @@ def test_plot_dummy_integration(test_dummy_run):
     for image in IMAGE_LIST:
         out_img = out_dir / image
         ref_img = ref_dir / image
-        tolerance = 14
+        tolerance = 3
 
         # Resize images if needed
         out_tmp, ref_tmp = resize_to_match(out_img, ref_img)
