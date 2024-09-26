@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import toml
 from calliope.solve import (
     equilibrium_atmosphere,
     get_target_from_params,
@@ -127,7 +128,7 @@ class Proteus:
             "total_loops": self.config["iter_max"],  # Maximum number of total loops
             "init": 0,  # Number of init iters performed
             "init_loops": 2,  # Maximum number of init iters
-            "steady": 0,  # Number of iterations passed since steady-state declared
+            "steady": -1,  # Number of iterations passed since steady-state declared
             "steady_loops": 3,  # Number of iterations to perform post-steady state
             "steady_check": 15,  # Number of iterations to look backwards when checking steady state
         }
@@ -156,8 +157,9 @@ class Proteus:
             # SPIDER initial condition
             IC_INTERIOR = 1
 
-            # Copy config file to output directory, for future reference
-            shutil.copyfile(self.config_path, config_path_backup)
+            # Write aggregate config to output directory, for future reference
+            with open(config_path_backup, "w") as toml_file:
+                toml.dump(self.config, toml_file)
 
             # No previous iterations to be stored. It is therefore important that the
             #    submodules do not try to read data from the 'past' iterations, since they do
@@ -208,14 +210,8 @@ class Proteus:
             log.info("Resuming the simulation from the disk")
 
             # Copy cfg file
-            if os.path.exists(config_path_backup):
-                if config_path_backup == self.config_path:
-                    # resuming from backed-up cfg file, not the original
-                    pass
-                else:
-                    # delete old and copy new
-                    safe_rm(config_path_backup)
-                    shutil.copyfile(self.config_path, config_path_backup)
+            with open(config_path_backup, "w") as toml_file:
+                toml.dump(self.config, toml_file)
 
             # SPIDER initial condition
             IC_INTERIOR = 2
@@ -303,7 +299,7 @@ class Proteus:
             log.info("Loop counters")
             log.info("init    total     steady")
             log.info(
-                "%1d/%1d   %04d/%04d   %02d/%02d"
+                "%1d/%1d   %04d/%04d   %1d/%1d"
                 % (
                     loop_counter["init"],
                     loop_counter["init_loops"],
@@ -314,10 +310,21 @@ class Proteus:
                 )
             )
 
+            ############### ORBIT AND TIDES
+
+            # Calculate time-averaged orbital separation (and convert from AU to metres)
+            # https://physics.stackexchange.com/a/715749
+            hf_row["separation"] = self.config["semimajoraxis"] * AU * \
+                                        (1 + 0.5 * self.config["eccentricity"]**2.0)
+
+
+            ############### / ORBIT AND TIDES
+
             ############### INTERIOR
 
             # Run interior model
-            dt = RunInterior(self.directories, self.config, loop_counter, IC_INTERIOR, hf_all,  hf_row)
+            dt = RunInterior(self.directories, self.config,
+                                loop_counter, IC_INTERIOR, hf_all,  hf_row)
 
             # Advance current time in main loop according to interior step
             hf_row["Time"] += dt        # in years
@@ -349,17 +356,19 @@ class Proteus:
                         case 0:
                             hf_row["R_star"] = (
                                 mors.Value(
-                                    self.config["star_mass"], hf_row["age_star"] / 1e6, "Rstar"
+                                    self.config["star_mass"],
+                                    hf_row["age_star"] / 1e6,
+                                    "Rstar"
                                 )
                                 * mors.const.Rsun
                                 * 1.0e-2
                             )
                             S_0 = (
                                 mors.Value(
-                                    self.config["star_mass"], hf_row["age_star"] / 1e6, "Lbol"
-                                )
-                                * L_sun
-                                / (4.0 * np.pi * AU * AU * self.config["mean_distance"] ** 2.0)
+                                    self.config["star_mass"],
+                                    hf_row["age_star"] / 1e6,
+                                    "Lbol"
+                                ) * L_sun  / (4.0 * np.pi * hf_row["separation"]**2.0 )
                             )
                         case 1:
                             hf_row["R_star"] = (
@@ -368,7 +377,7 @@ class Proteus:
                                 * 1.0e-2
                             )
                             S_0 = baraffe.BaraffeSolarConstant(
-                                hf_row["age_star"], self.config["mean_distance"]
+                                hf_row["age_star"], hf_row["separation"]/AU
                             )
 
                     # Calculate new eqm temperature
@@ -411,7 +420,7 @@ class Proteus:
                         wl = modern_wl
 
                 # Scale fluxes from 1 AU to TOA
-                fl *= (1.0 / self.config["mean_distance"]) ** 2.0
+                fl *= (AU / hf_row["separation"]) ** 2.0
 
                 # Save spectrum to file
                 header = (
@@ -446,7 +455,7 @@ class Proteus:
                         self.config["star_mass"],
                         self.config["star_omega"],
                         self.config["escape_el_tidal_correction"],
-                        self.config["mean_distance"] * AU,
+                        self.config["semimajoraxis"] * AU,
                         self.config["eccentricity"],
                         hf_row["M_planet"],
                         self.config["efficiency_factor"],
@@ -550,6 +559,8 @@ class Proteus:
             # Print info to terminal and log file
             PrintCurrentState(hf_row)
 
+            log.info("Check convergence criteria")
+
             # Stop simulation when planet is completely solidified
             if (self.config["solid_stop"] == 1) and (hf_row["Phi_global"] <= self.config["phi_crit"]):
                 UpdateStatusfile(self.directories, 10)
@@ -574,7 +585,7 @@ class Proteus:
             if (
                 (self.config["steady_stop"] == 1)
                 and (loop_counter["total"] > loop_counter["steady_check"] * 2 + 5)
-                and (loop_counter["steady"] == 0)
+                and (loop_counter["steady"] < 0)
             ):
                 # How many iterations to look backwards
                 lb1 = -int(loop_counter["steady_check"])
@@ -600,13 +611,16 @@ class Proteus:
                 # Stop when flux is small and melt fraction is unchanging
                 if (flx_m < self.config["steady_flux"]) and (phi_r < self.config["steady_dprel"]):
                     log.debug("Steady state declared")
-                    loop_counter["steady"] = 1
+                    loop_counter["steady"] = 0
 
             # Steady-state handling
-            if loop_counter["steady"] > 0:
-                if loop_counter["steady"] <= loop_counter["steady_loops"]:
-                    loop_counter["steady"] += 1
-                else:
+            if loop_counter["steady"] >= 0:
+                # Force the model to do N=steady_loops more iterations before stopping
+                # This is to make absolutely sure that it has reached a steady state.
+                loop_counter["steady"] += 1
+
+                # Stop now?
+                if loop_counter["steady"] >= loop_counter["steady_loops"]:
                     UpdateStatusfile(self.directories, 11)
                     log.info("")
                     log.info("===> Planet entered a steady state! <===")

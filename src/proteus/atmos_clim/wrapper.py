@@ -16,7 +16,6 @@ from proteus.atmos_clim.agni import (
 )
 from proteus.atmos_clim.dummy import RunDummyAtm
 from proteus.atmos_clim.janus import InitAtm, InitStellarSpectrum, RunJANUS
-from proteus.utils.constants import AU
 from proteus.utils.helper import PrintHalfSeparator, UpdateStatusfile, safe_rm
 
 atm = None
@@ -131,7 +130,7 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
     # Calculate observables (measured at infinite distance)
     hf_row["transit_depth"] =  (hf_row["z_obs"] / hf_row["R_star"])**2.0
     hf_row["contrast_ratio"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
-                                 (hf_row["z_obs"] / (OPTIONS["mean_distance"]*AU))**2.0
+                                 (hf_row["z_obs"] / hf_row["separation"])**2.0
 
 def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
 

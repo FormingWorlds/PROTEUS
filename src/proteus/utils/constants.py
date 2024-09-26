@@ -68,9 +68,5 @@ Me_atm            = 5.15e18            # Mass of the Earth atmopshere          [
 Fxuv_earth_10Myr  = 14.67              # Fxuv received on Earth at t = 10 Myr -> see Fig 9. Wordsworth+18 [W m-2]
 Fxuv_earth_today  = 4.64e-3            # Stellar flux received on Earth today  [W m-2]
 age_earth         = 4.543e9            # Age of the Earth                      [yr]
-e_earth           = 0.017              # Earth eccentricity                    [dimensionless]
+e_earth           = 0.0167             # Earth eccentricity                    [dimensionless]
 a_earth           = 1                  # Earth semi-major axis                 [au]
-
-
-
-# End of file

@@ -490,15 +490,15 @@ if __name__=='__main__':
     # -----
     # Define parameter grid
     # -----
-    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","l-98-59d.toml")
+    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","hd63433d.toml")
     # symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/hd63433d_v4"
-    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/l-98-59d_v3"
-    pg = Pgrid("l-98-59d_v3", cfg_base, symlink_dir=symlink)
+    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/hd63433d_v6"
+    pg = Pgrid("hd63433d_v6", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
     # pg.append_dimension_hyper("Planet", {   "#case": "TRAPPIST-1b",
-    #                                         "mean_distance": 0.01154,  # AU, star-planet distance
+    #                                         "semimajoraxis": 0.01154,  # AU, star-planet distance
     #                                         "mass"         : 8.21e+24, # kg, planet mass
     #                                         "radius"       : 7.118e+6  # m, planet surface radius
     #                                     })

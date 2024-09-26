@@ -60,7 +60,7 @@ def next_step(OPTIONS:dict, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_sf
                 dtswitch = dtprev * 1.1
                 log.info("Time-stepping intent: speed up")
             else:
-                dtswitch = dtprev * 0.9
+                dtswitch = dtprev * 0.75
                 log.info("Time-stepping intent: slow down")
 
 

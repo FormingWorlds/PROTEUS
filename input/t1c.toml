@@ -12,7 +12,7 @@ star_rot_pctle              = 50.0
 star_spectrum               = 'stellar_spectra/Named/trappist-1.txt'   # Stellar spectrum file at 1 AU (TODAY)
 
 ##### Planet configuration
-mean_distance               = 0.0158       # AU, star-planet distance
+semimajoraxis               = 0.0158       # AU, star-planet distance
 mass                        = 1.308         # M_earth
 radius                      = 1.097         # R_earth
 
@@ -21,7 +21,7 @@ asf_scalefactor             = 0.25     # absorbed solar flux scale factor = 1/4
 albedo_s                    = 0.2 		# surface albedo
 albedo_pl                   = 0.0   	# Bond albedo (scattering)
 
-eccentricity                = 0.017     # Earth eccentricity  [dimensionless]
+eccentricity                = 0.0     # Orbital eccentricity  [dimensionless]
 
 P_top                       = 1.0e-5    # bar, Pressure at TOA
 

@@ -114,9 +114,9 @@ The spectrum of the host star as observed today. These files may be obtained usi
 - Type: String
 - Domain: Path to file, measured relative to the FWL_DATA directory.
 
-#### **mean_distance**
+#### **semimajoraxis**
 
-Distance between the planet and its host star, in units of AU.
+Semi major axis of the planet's orbit, in AU
 
 - Deprecated: False
 - Type: Float
@@ -173,7 +173,7 @@ Enforced bond albedo for the planet. Not physical.
 
 #### **eccentricity**
 
-Orbital eccentricity.
+Eccentricity of the planet's orbit.
 
 - Deprecated: False
 - Type: Float
