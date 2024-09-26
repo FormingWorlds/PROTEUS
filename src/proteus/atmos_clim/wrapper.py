@@ -16,7 +16,6 @@ from proteus.atmos_clim.agni import (
 )
 from proteus.atmos_clim.dummy import RunDummyAtm
 from proteus.atmos_clim.janus import InitAtm, InitStellarSpectrum, RunJANUS
-from proteus.utils.constants import AU
 from proteus.utils.helper import PrintHalfSeparator, UpdateStatusfile, safe_rm
 
 atm = None
