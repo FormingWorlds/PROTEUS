@@ -78,8 +78,8 @@ F_crit                      = 0.2       # Model will terminate when |F_atm| < F_
 
 # Atmospheric escape
 escape_model                = 2         # Escape model to be used, 0: None | 1: ZEPHYRUS | 2: Dummy
-escape_stop                 = 3e-4      # Terminate when atm mass drops below this fraction of its initial mass
-escape_dummy_rate           = 2e4       # Bulk escape rate for dummy escape model [kg s-1]
+escape_stop                 = 1e-3      # Terminate when atm mass drops below this fraction of its initial mass
+escape_dummy_rate           = 1e5       # Bulk escape rate for dummy escape model [kg s-1]
 
 # Method for solving for T(p) profile
 atmosphere_model            = 2         # Atmosphere model to be used, 0: JANUS | 1: AGNI | 2: Dummy
@@ -100,7 +100,7 @@ alpha_cloud                 = 0.0       # condensate retention fraction (1 -> fu
 tropopause                  = 0
 
 # Rayleigh scattering, 0: Disabled | 1: Enabled
-rayleigh                    = 1
+rayleigh                    = 0
 
 # Atmospheric chemistry, 0: Disabled | 1: Equilibrium | 2: Kinetics
 atmosphere_chemistry       = 0
