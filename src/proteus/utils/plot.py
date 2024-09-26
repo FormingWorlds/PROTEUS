@@ -138,16 +138,11 @@ observer_bands = {
         "PRISM" : [0.60,5.30],
     },
 
-    # https://jwst-docs.stsci.edu/jwst-near-infrared-imager-and-slitless-spectrograph/niriss-instrumentation/niriss-filters
+    # https://jwst-docs.stsci.edu/jwst-near-infrared-imager-and-slitless-spectrograph#gsc.tab=0
     "NIRISS" : {
-        "F090W": [0.796 , 1.005],
-        "F115W": [1.013 , 1.283],
-        "F150W": [1.33  , 1.671],
-        "F200W": [1.751 , 2.226],
-        "F277W": [2.413 , 3.143],
-        "F356W": [3.14  , 4.068],
-        "F444W": [3.88  , 5.023],
-        "GR700XD": [0.6, 2.8]
+        "SOSS": [0.6, 2.8],
+        "WFSS": [0.8, 2.2],
+        "AMI":  [2.8, 4.8]
     },
 
     # https://jwst-docs.stsci.edu/jwst-near-infrared-camera/nircam-instrumentation/nircam-filters
@@ -163,12 +158,14 @@ observer_bands = {
     },
 
     # https://en.wikipedia.org/wiki/Infrared_astronomy
+    # https://www.eso.org/sci/facilities/paranal/instruments/crires/inst.html
+    # https://www.eso.org/sci/facilities/paranal/instruments/gravity/overview.html
     "IR" : {
         "R": [0.65 , 1.0 ],
-        "J": [1.1  , 1.4 ],
-        "H": [1.5  , 1.8 ],
-        "K": [2.0  , 2.4 ],
-        "L": [3.0  , 4.0 ],
+        "J": [1.115, 1.362 ],
+        "H": [1.423, 1.769],
+        "K": [1.972, 2.624],
+        "L": [2.869, 4.188],
         "M": [4.6  , 5.0 ],
         "N": [7.5  , 14.5],
         "Q": [17.0 , 25.0],
@@ -191,6 +188,42 @@ observer_bands = {
         "Coronograph":      [0.4, 1.8],
         "Highres imager":   [0.2, 2.5],
         "Spectrograph":     [0.1, 1.0]
+    },
+
+    # https://www.gemini.edu/instrumentation/maroon-x
+    # https://www.gemini.edu/instrumentation/igrins-2
+    "GEMINI-N" : {
+        "MAROON-X": [0.5, 0.92],
+        "IGRINS-2": [1.49, 2.46]
+    },
+
+    # https://www.eso.org/sci/facilities/paranal/instruments/sphere.html
+    # https://www.eso.org/sci/facilities/paranal/instruments/espresso/overview.html
+    "VLT" : {
+        "ESPRESSO": [0.38, 0.788],
+        "SPHERE": [0.95, 2.32]
+    },
+
+    # https://carmenes.caha.es/ext/instrument/index.html
+    "CARMENES": {
+        "CARMENES": [0.520, 1.710],
+    },
+
+    # https://www.tng.iac.es/instruments/harps/
+    "HARPS" : {
+        "HARPS-N":   [0.383, 0.690],
+    },
+
+    # https://noirlab.edu/public/programs/kitt-peak-national-observatory/wiyn-35m-telescope/neid/
+    "NEID" : {
+        "NEID": [0.38, 0.93],
+    },
+
+    # https://elt.eso.org/instrument/
+    "ELT" : {
+        "HARMONI": [0.47, 2.45],
+        "MICADO":  [0.8,  2.4],
+        "ANDES":   [0.40, 1.80]
     }
 
 }
