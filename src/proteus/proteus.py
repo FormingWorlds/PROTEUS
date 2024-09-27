@@ -45,7 +45,7 @@ from proteus.utils.coupler import (
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
 )
-from proteus.utils.data import download_basic
+from proteus.utils.data import download_sufficient
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -242,7 +242,7 @@ class Proteus:
                 solvevol_target[e] = hf_row[e + "_kg_total"]
 
         # Download basic data
-        download_basic()
+        download_sufficient()
 
         # Handle stellar spectrum...
 
