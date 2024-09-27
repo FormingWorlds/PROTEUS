@@ -162,6 +162,9 @@ def get_spider(dirs:dict):
     Download and install SPIDER
     """
 
+    # Need to install PETSc first
+    get_petsc(dirs)
+
     log.info("Setting up SPIDER")
 
     import subprocess as sp
