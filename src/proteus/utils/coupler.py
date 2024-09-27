@@ -400,7 +400,8 @@ def SetDirectories(OPTIONS: dict):
             "agni":     os.path.join(proteus_dir,"AGNI"),
             "vulcan":   os.path.join(proteus_dir,"VULCAN"),
             "spider":   os.path.join(proteus_dir,"SPIDER"),
-            "utils":    os.path.join(proteus_src,"utils")
+            "utils":    os.path.join(proteus_src,"utils"),
+            "tools":    os.path.join(proteus_src,"tools"),
             }
 
     # FWL data folder

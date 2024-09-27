@@ -45,7 +45,7 @@ from proteus.utils.coupler import (
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
 )
-from proteus.utils.data import download_sufficient
+from proteus.utils.data import download_sufficient_data
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -242,7 +242,7 @@ class Proteus:
                 solvevol_target[e] = hf_row[e + "_kg_total"]
 
         # Download basic data
-        download_sufficient()
+        download_sufficient_data()
 
         # Handle stellar spectrum...
 
@@ -255,9 +255,6 @@ class Proteus:
         # Prepare stellar models
         match self.config["star_model"]:
             case 0:  # SPADA (MORS)
-                # download evolution track data if not present
-                mors.DownloadEvolutionTracks("Spada")
-
                 # load modern spectrum
                 star_struct_modern = mors.spec.Spectrum()
                 star_struct_modern.LoadTSV(star_modern_path)
@@ -275,7 +272,6 @@ class Proteus:
                     star_modern_path, self.directories["output"] + "/-1.sflux"
                 )
 
-                mors.DownloadEvolutionTracks("Baraffe")
                 baraffe = mors.BaraffeTrack(self.config["star_mass"])
 
             case _:

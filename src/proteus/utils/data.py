@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import logging
-
+from pathlib import Path
+import os
+import platformdirs
 from osfclient.api import OSF
 
 log = logging.getLogger("fwl."+__name__)
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
-log.info(f'FWL data location: {FWL_DATA_DIR}')
+log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
 def download_folder(*, storage, folders: list[str], data_dir: Path):
     """
@@ -42,7 +44,6 @@ def download_albedos():
     Download surface optical properties
     """
     log.debug("Get surface albedos")
-    #project ID of the stellar spectra on OSF
     project_id = '2gcd9'
     folder_name = 'Hammond24'
 
@@ -73,16 +74,15 @@ def download_stellar_spectra():
     log.debug("Get stellar spectra")
     DownloadStellarSpectra()
 
-def download_evolution_tracks():
+def download_evolution_tracks(track:str):
     """
     Download evolution tracks
     """
     from mors.utils.data import DownloadEvolutionTracks
     log.debug("Get evolution tracks")
-    DownloadEvolutionTracks()
+    DownloadEvolutionTracks(track)
 
-
-def download_sufficient(OPTIONS:dict):
+def download_sufficient_data(OPTIONS:dict):
     """
     Download the required data based on the current options
     """
@@ -90,7 +90,10 @@ def download_sufficient(OPTIONS:dict):
     # Star stuff
     if OPTIONS["star_model"] in [0,1]:
         download_stellar_spectra()
-        download_evolution_tracks()
+        if OPTIONS["star_model"] == 0:
+            download_evolution_tracks("Spada")
+        else:
+            download_evolution_tracks("Baraffe")
 
     # Atmosphere stuff
     if OPTIONS["atmosphere_model"] in [0,1]:
@@ -98,4 +101,44 @@ def download_sufficient(OPTIONS:dict):
     if OPTIONS["atmosphere_model"] == 1:
         download_surface_albedos()
 
-    
+def get_socrates(dirs:dict):
+    """
+    Download and install SOCRATES
+    """
+
+    log.info("Setting up SOCRATES")
+
+    import subprocess as sp
+    import os
+
+    # Get path
+    workpath = os.path.join(dirs["proteus"], "SOCRATES")
+    workpath = os.path.abspath(workpath)
+    if os.path.isdir(workpath):
+        # already downloaded
+        return
+
+    # Download, configure, and build
+    log.debug("Running get_socrates.sh")
+    cmd = [os.path.join(dirs["tools"],"get_socrates.sh"), workpath]
+    out = os.path.join(dirs["proteus"], "nogit_setup_socrates.log")
+    log.debug("    logging to %s"%out)
+    with open(out,'w') as hdl:
+        sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
+
+    # Set environment
+    os.environ["RAD_DIR"] = workpath
+    log.debug("    done")
+
+def get_petsc():
+    """
+    Download and install PETSc
+    """
+
+    log.info("Setting up PETSc")
+
+    import subprocess as sp
+    import shutil
+    import os
+
+

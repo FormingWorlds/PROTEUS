@@ -1,5 +1,6 @@
 #!/bin/bash
 # Download and compile socrates
+# Pass folder as argument to use that as the download path
 
 # Check SSH access to GitHub
 ssh -T git@github.com
@@ -9,8 +10,13 @@ else
     use_ssh=false
 fi
 
-# Download (using SSH if possible)
+# Output path
 socpath="socrates"
+if [ -n "$1" ]; then
+    socpath=$1
+fi
+
+# Download (using SSH if possible)
 rm -rf "$socpath"
 if [ "$use_ssh" = true ]; then
     git clone git@github.com:nichollsh/SOCRATES.git "$socpath"
