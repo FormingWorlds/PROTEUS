@@ -673,7 +673,7 @@ class Proteus:
             ):
                 PrintHalfSeparator()
                 log.info("Making plots")
-                UpdatePlots(self.directories["output"], self.config)
+                UpdatePlots(hf_all, self.directories["output"], self.config)
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
@@ -688,7 +688,7 @@ class Proteus:
         safe_rm(keepalive_file)
 
         # Plot conditions at the end
-        UpdatePlots(self.directories["output"], self.config, end=True)
+        UpdatePlots(hf_all, self.directories["output"], self.config, end=True)
         end_time = datetime.now()
         log.info("Simulation stopped at: " + end_time.strftime("%Y-%m-%d_%H:%M:%S"))
 

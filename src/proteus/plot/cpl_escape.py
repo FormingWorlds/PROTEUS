@@ -15,9 +15,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
-
-    hf_all = pd.read_csv(os.path.join(output_dir , "runtime_helpfile.csv"), sep=r"\s+")
+def plot_escape(hf_all:pd.DataFrame, output_dir:str, escape_model, plot_format="pdf", t0=100.0) :
 
     time = np.array(hf_all["Time"])
     if np.amax(time) < 2:
@@ -63,7 +61,12 @@ def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
 
 
 def plot_escape_entry(handler: Proteus):
+    # read helpfile
+    hf_all = pd.read_csv(os.path.join(handler.directories['output'], "runtime_helpfile.csv"), sep=r"\s+")
+
+    # make plot
     plot_escape(
+        hf_all=hf_all,
         output_dir=handler.directories["output"],
         escape_model=handler.config['escape_model'],
         plot_format=handler.config["plot_format"],

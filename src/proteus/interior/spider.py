@@ -113,7 +113,8 @@ class MyJSON( object ):
         SOLID = (phi<0.05)
         return SOLID
 
-#====================================================================
+def read_jsons(output_dir:str, times:list):
+    return [MyJSON(os.path.join(output_dir, "data", "%d.json"%t)) for t in times]
 
 def get_all_output_times( odir='output' ):
     '''
