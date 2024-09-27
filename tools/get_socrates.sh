@@ -9,6 +9,7 @@ if [ $? -eq 1 ]; then
 else
     use_ssh=false
 fi
+set -e
 
 # Output path
 socpath="socrates"
@@ -17,14 +18,18 @@ if [ -n "$1" ]; then
 fi
 
 # Download (using SSH if possible)
-rm -rf "$socpath"
+echo "Cloning from GitHub"
 if [ "$use_ssh" = true ]; then
-    git clone git@github.com:nichollsh/SOCRATES.git "$socpath"
+    uri="git@github.com:nichollsh/SOCRATES.git"
 else
-    git clone https://github.com/nichollsh/SOCRATES.git "$socpath"
+    uri="https://github.com/nichollsh/SOCRATES.git"
 fi
+echo "    $uri -> $socpath"
+git clone "$uri" "$socpath"
+rm -rf "$socpath"
 
-# Compile SOCRATES
+# Configure and build SOCRATES
+olddir=$(pwd)
 cd "$socpath"
 ./configure
 ./build_code
@@ -32,4 +37,4 @@ cd "$socpath"
 # Environment
 source ./set_rad_env
 export LD_LIBRARY_PATH=""
-cd ..
+cd $olddir

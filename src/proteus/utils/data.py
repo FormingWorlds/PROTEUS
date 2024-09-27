@@ -39,7 +39,7 @@ def GetFWLData() -> Path:
     """
     return Path(FWL_DATA_DIR).absolute()
 
-def download_albedos():
+def download_surface_albedos():
     """
     Download surface optical properties
     """
@@ -130,7 +130,7 @@ def get_socrates(dirs:dict):
     os.environ["RAD_DIR"] = workpath
     log.debug("    done")
 
-def get_petsc():
+def get_petsc(dirs:dict):
     """
     Download and install PETSc
     """
@@ -138,7 +138,48 @@ def get_petsc():
     log.info("Setting up PETSc")
 
     import subprocess as sp
-    import shutil
     import os
 
+    # Get path
+    workpath = os.path.join(dirs["proteus"], "petsc")
+    workpath = os.path.abspath(workpath)
+    if os.path.isdir(workpath):
+        # already downloaded
+        return
 
+    # Download, configure, and build
+    log.debug("Running get_petsc.sh")
+    cmd = [os.path.join(dirs["tools"],"get_petsc.sh"), workpath]
+    out = os.path.join(dirs["proteus"], "nogit_setup_petsc.log")
+    log.debug("    logging to %s"%out)
+    with open(out,'w') as hdl:
+        sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
+
+    log.debug("    done")
+
+def get_spider(dirs:dict):
+    """
+    Download and install SPIDER
+    """
+
+    log.info("Setting up SPIDER")
+
+    import subprocess as sp
+    import os
+
+    # Get path
+    workpath = os.path.join(dirs["proteus"], "SPIDER")
+    workpath = os.path.abspath(workpath)
+    if os.path.isdir(workpath):
+        # already downloaded
+        return
+
+    # Download, configure, and build
+    log.debug("Running get_spider.sh")
+    cmd = [os.path.join(dirs["tools"],"get_spider.sh"), workpath]
+    out = os.path.join(dirs["proteus"], "nogit_setup_spider.log")
+    log.debug("    logging to %s"%out)
+    with open(out,'w') as hdl:
+        sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
+
+    log.debug("    done")
