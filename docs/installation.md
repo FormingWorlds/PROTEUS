@@ -44,7 +44,7 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 
 ## Download the framework
 
-2. Setup environment variables
+1. Setup environment variables
 
     The environment variable `FWL_DATA` points to the folder where input data are stored.
     This variable must always be set, so it is best to add this line to your shell rc file.
@@ -53,27 +53,27 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     export FWL_DATA=/your/local/path/
     ```
 
-3. Download PROTEUS base
+2. Download PROTEUS base
 
     ```console
     git clone git@github.com:FormingWorlds/PROTEUS.git
     ```
 
-4. Get dependencies
+3. Get dependencies
 
     ```console
     cd PROTEUS
     git submodule update --init --recursive
     ```
 
-5. Create a virtual environment
+4. Create a virtual environment
 
     ```console
     python -m venv .venv
     source .venv/bin/activate
     ```
 
-6. Setup radiative transfer code (**SOCRATES**)
+5. Setup radiative transfer code (**SOCRATES**)
 
     The code can be setup in `./socrates/` using the following script.
 
@@ -81,7 +81,7 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     source get_socrates.sh
     ```
 
-7. **Optional** developer installation steps
+6. **Optional** developer installation steps
 
     Follow the steps in this section if you want to create editable installations of these submodules.
     Otherwise, go to the next step section.
@@ -107,13 +107,13 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
         pip install -e CALLIOPE/.
         ```
 
-8. Setup numerical computing library (**PETSc**)
+7. Setup numerical computing library (**PETSc**)
 
     ```console
     ./tools/get_petsc.sh
     ```
 
-9. Setup PROTEUS coupled framework
+8. Setup PROTEUS coupled framework
 
     1. Get the remaining Python dependencies
 
@@ -132,13 +132,13 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
             ```
             This file can also be added to your shell rc file.
 
-10. Setup interior evolution model (**SPIDER**)
+9. Setup interior evolution model (**SPIDER**)
 
     ```console
     ./tools/get_spider.sh
     ```
 
-11. Done! 🚀
+10. Done! 🚀
     Any remaining dependencies will be downloaded when the model is first run.
 
 ## Optional modules

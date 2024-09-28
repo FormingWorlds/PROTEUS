@@ -6,6 +6,15 @@ encounter errors or other issue that you cannot solve via the standard
 step-by-step guide or the advice below contact the developers (see
 `contact`{.interpreted-text role="doc"}).
 
+## GitHub: Cannot clone module
+
+Have you added your SSH key to GitHub? See these pages for guidance:
+* https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys
+* https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
+* https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account
+* https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection
+
+
 ## MacOS: PETSc tests error
 
 Error when running the PETSc tests, looking like something along the lines of:
