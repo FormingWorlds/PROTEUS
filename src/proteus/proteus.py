@@ -20,7 +20,7 @@ from calliope.structure import calculate_mantle_mass
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config
-from proteus.interior import RunInterior
+from proteus.interior import run_interior
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -146,9 +146,6 @@ class Proteus:
             from proteus.utils.escape import RunZEPHYRUS
         elif self.config["escape_model"] == 2:
             from proteus.utils.escape import RunDummyEsc
-        else:
-            UpdateStatusfile(self.directories, 20)
-            raise Exception("Invalid escape model")
 
         # Is the model resuming from a previous state?
         if not resume:
@@ -319,7 +316,7 @@ class Proteus:
             ############### INTERIOR
 
             # Run interior model
-            dt = RunInterior(self.directories, self.config,
+            dt = run_interior(self.directories, self.config,
                                 loop_counter, IC_INTERIOR, hf_all,  hf_row)
 
             # Advance current time in main loop according to interior step

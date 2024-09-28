@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 import os
+from pathlib import Path
+
 import platformdirs
 from osfclient.api import OSF
 
@@ -108,8 +109,8 @@ def get_socrates(dirs:dict):
 
     log.info("Setting up SOCRATES")
 
-    import subprocess as sp
     import os
+    import subprocess as sp
 
     # Get path
     workpath = os.path.join(dirs["proteus"], "SOCRATES")
@@ -137,8 +138,8 @@ def get_petsc(dirs:dict):
 
     log.info("Setting up PETSc")
 
-    import subprocess as sp
     import os
+    import subprocess as sp
 
     # Get path
     workpath = os.path.join(dirs["proteus"], "petsc")
@@ -167,8 +168,8 @@ def get_spider(dirs:dict):
 
     log.info("Setting up SPIDER")
 
-    import subprocess as sp
     import os
+    import subprocess as sp
 
     # Get path
     workpath = os.path.join(dirs["proteus"], "SPIDER")
