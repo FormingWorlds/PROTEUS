@@ -37,6 +37,9 @@ else
 fi
 export PETSC_DIR=$workpath
 
+echo "Set PETSC_DIR=$PETSC_DIR"
+echo "Set PETSC_ARCH=$PETSC_ARCH"
+
 # Change dir
 olddir=$(pwd)
 cd $workpath

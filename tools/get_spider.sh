@@ -15,7 +15,7 @@ if [ -z $PETSC_DIR ]; then
 fi
 
 # Output path
-workpath="spider"
+workpath="SPIDER"
 if [ -n "$1" ]; then
     workpath=$1
 fi

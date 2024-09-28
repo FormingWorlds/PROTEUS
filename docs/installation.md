@@ -44,13 +44,6 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 
 ## Download the framework
 
-1. Register your public SSH key with Github:
-
-    - <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys>
-    - <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent>
-    - <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account>
-    - <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection>
-
 2. Setup environment variables
 
     The environment variable `FWL_DATA` points to the folder where input data are stored.
@@ -88,23 +81,7 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     source get_socrates.sh
     ```
 
-7. Setup numerical computing library (**PETSc**)
-
-    - Configure step
-
-        ```console
-        cd petsc
-        ./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --download-f2cblaslapack --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"
-        ```
-
-    - Run the exact `make all` command provided at the end of the configure step
-    - Run the exact `make check` command provided at the end of the `make all` step
-
-    ```console
-    cd ..
-    ```
-
-8. **Optional** developer installation steps
+7. **Optional** developer installation steps
 
     Follow the steps in this section if you want to create editable installations of these submodules.
     Otherwise, go to the next step section.
@@ -130,15 +107,21 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
         pip install -e CALLIOPE/.
         ```
 
+8. Setup numerical computing library (**PETSc**)
+
+    ```console
+    ./tools/get_petsc.sh
+    ```
+
 9. Setup PROTEUS coupled framework
 
-    - Get the remaining Python dependencies
+    1. Get the remaining Python dependencies
 
         ```console
         pip install -e .
         ```
 
-    - Configure environment variables
+    2. Configure environment variables
 
         - The variable `RAD_DIR` must point to the SOCRATES installation path. It is best to add this to your shell rc file.
 
@@ -152,15 +135,11 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 10. Setup interior evolution model (**SPIDER**)
 
     ```console
-    cd SPIDER
-    make clean
-    make -j
-    cd ..
+    ./tools/get_spider.sh
     ```
 
 11. Done! 🚀
-
-Any remaining dependencies will be downloaded when the model is first run.
+    Any remaining dependencies will be downloaded when the model is first run.
 
 ## Optional modules
 
