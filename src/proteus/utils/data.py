@@ -79,7 +79,7 @@ def download_evolution_tracks(track:str):
     """
     Download evolution tracks
     """
-    from mors.utils.data import DownloadEvolutionTracks
+    from mors.data import DownloadEvolutionTracks
     log.debug("Get evolution tracks")
     DownloadEvolutionTracks(track)
 

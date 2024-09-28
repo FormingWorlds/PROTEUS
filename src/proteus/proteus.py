@@ -239,7 +239,7 @@ class Proteus:
                 solvevol_target[e] = hf_row[e + "_kg_total"]
 
         # Download basic data
-        download_sufficient_data()
+        download_sufficient_data(self.config)
 
         # Handle stellar spectrum...
 
