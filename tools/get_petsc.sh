@@ -5,7 +5,7 @@
 set -e
 
 # Output path
-workpath="petsc_download"
+workpath="petsc"
 if [ -n "$1" ]; then
     workpath=$1
 fi
