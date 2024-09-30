@@ -33,7 +33,7 @@ from proteus.utils.constants import (
     element_list,
     volatile_species,
 )
-from proteus.utils.helper import UpdateStatusfile, safe_rm, get_proteus_dir
+from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
 
 log = logging.getLogger("fwl."+__name__)
