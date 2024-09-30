@@ -60,21 +60,75 @@ def download_surface_albedos():
         log.info(f"Downloading surface albedos to {data_dir}")
         download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
 
-def download_spectral_files():
+def download_spectral_files(fname: str="", nband: int=256):
     """
-    Download spectral files
+    Download spectral files data
+
+    Inputs :
+        - fname (optional) :    folder name, i.e. "/Dayspring"
+                                if not provided download all the basic list
+        - nband (optional) :    number of band = 16, 48, 256, 4096
+                                (only relevant for Dayspring, Frostflow and Honeyside)
     """
-    from janus.utils.data import DownloadSpectralFiles
     log.debug("Get spectral files")
-    DownloadSpectralFiles()
+
+    #project ID of the spectral files on OSF
+    project_id = 'vehxg'
+
+    #Create spectral file data repository if not existing
+    data_dir = GetFWLData() / "spectral_files"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    #Link with OSF project repository
+    osf = OSF()
+    project = osf.project(project_id)
+    storage = project.storage('osfstorage')
+
+    basic_list = (
+        "Dayspring/48"
+        "Dayspring/256",
+        "Frostflow/256",
+        "Honeyside/4096"
+        )
+
+    #If no folder specified download all basic list
+    if not fname:
+        folder_list = basic_list
+    elif fname in ("Dayspring", "Frostflow", "Honeyside"):
+        folder_list = [fname + "/" + str(nband)]
+    elif fname in ("Kynesgrove","Legacy","Mallard","Oak","Reach","stellar_spectra"):
+        folder_list = [fname]
+    else:
+        raise ValueError(f"Unrecognised folder name: {fname}")
+
+    folders = [folder for folder in folder_list if not (data_dir / folder).exists()]
+
+    if folders:
+        log.debug(f"    downloading spectral files to {data_dir}")
+        download_folder(storage=storage, folders=folders, data_dir=data_dir)
+
 
 def download_stellar_spectra():
     """
     Download stellar spectra
     """
-    from janus.utils.data import DownloadStellarSpectra
     log.debug("Get stellar spectra")
-    DownloadStellarSpectra()
+
+    #project ID of the stellar spectra on OSF
+    project_id = '8r2sw'
+    folder_name = 'Named'
+
+    osf = OSF()
+    project = osf.project(project_id)
+    storage = project.storage('osfstorage')
+
+    data_dir = GetFWLData() / "stellar_spectra"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    if not (data_dir / folder_name).exists():
+        print(f"Downloading stellar spectra to {data_dir}")
+        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
+
 
 def download_evolution_tracks(track:str):
     """

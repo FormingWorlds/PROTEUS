@@ -60,9 +60,9 @@ jobs:
         if: steps.cache-fwl-data.cache-hit != 'true'
         run: |
           mors download all
-          janus download stellar
-          janus download spectral
-          janus download spectral -n Frostflow -b 48
+          proteus get stellar
+          proteus get spectral
+          proteus get spectral -n Frostflow -b 48
 
       - name: Test with pytest
         run: |
