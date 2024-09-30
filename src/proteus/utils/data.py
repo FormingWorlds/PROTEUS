@@ -41,18 +41,23 @@ def GetFWLData() -> Path:
     """
     return Path(FWL_DATA_DIR).absolute()
 
+def get_osf(id:str):
+    """
+    Generate an object to access OSF storage
+    """
+    osf = OSF()
+    project = osf.project(id)
+    return project.storage('osfstorage')
+
+
 def download_surface_albedos():
     """
     Download surface optical properties
     """
     log.debug("Get surface albedos")
-    project_id = '2gcd9'
+    storage = get_osf('2gcd9')
+
     folder_name = 'Hammond24'
-
-    osf = OSF()
-    project = osf.project(project_id)
-    storage = project.storage('osfstorage')
-
     data_dir = GetFWLData() / "surface_albedos"
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -60,21 +65,66 @@ def download_surface_albedos():
         log.info(f"Downloading surface albedos to {data_dir}")
         download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
 
-def download_spectral_files():
+def download_spectral_files(fname: str="", nband: int=256):
     """
-    Download spectral files
+    Download spectral files data
+
+    Inputs :
+        - fname (optional) :    folder name, i.e. "/Dayspring"
+                                if not provided download all the basic list
+        - nband (optional) :    number of band = 16, 48, 256, 4096
+                                (only relevant for Dayspring, Frostflow and Honeyside)
     """
-    from janus.utils.data import DownloadSpectralFiles
     log.debug("Get spectral files")
-    DownloadSpectralFiles()
+
+
+    #Create spectral file data repository if not existing
+    data_dir = GetFWLData() / "spectral_files"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    #Link with OSF project repository
+    storage = get_osf('vehxg')
+
+    basic_list = (
+        "Dayspring/48"
+        "Dayspring/256",
+        "Frostflow/256",
+        "Honeyside/4096"
+        )
+
+    #If no folder specified download all basic list
+    if not fname:
+        folder_list = basic_list
+    elif fname in ("Dayspring", "Frostflow", "Honeyside"):
+        folder_list = [fname + "/" + str(nband)]
+    elif fname in ("Kynesgrove","Legacy","Mallard","Oak","Reach","stellar_spectra"):
+        folder_list = [fname]
+    else:
+        raise ValueError(f"Unrecognised folder name: {fname}")
+
+    folders = [folder for folder in folder_list if not (data_dir / folder).exists()]
+
+    if folders:
+        log.debug(f"    downloading spectral files to {data_dir}")
+        download_folder(storage=storage, folders=folders, data_dir=data_dir)
+
 
 def download_stellar_spectra():
     """
     Download stellar spectra
     """
-    from janus.utils.data import DownloadStellarSpectra
     log.debug("Get stellar spectra")
-    DownloadStellarSpectra()
+
+    folder_name = 'Named'
+    storage = get_osf('8r2sw')
+
+    data_dir = GetFWLData() / "stellar_spectra"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    if not (data_dir / folder_name).exists():
+        print(f"Downloading stellar spectra to {data_dir}")
+        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
+
 
 def download_evolution_tracks(track:str):
     """
@@ -103,12 +153,23 @@ def download_sufficient_data(OPTIONS:dict):
     if OPTIONS["atmosphere_model"] == 1:
         download_surface_albedos()
 
-def get_socrates(dirs:dict):
+def _none_dirs():
+    from proteus.utils.helper import get_proteus_dir
+
+    dirs = {"proteus":get_proteus_dir()}
+    dirs["tools"] = os.path.join(dirs["proteus"],"tools")
+    return dirs
+
+def get_socrates(dirs=None):
     """
     Download and install SOCRATES
     """
 
     log.info("Setting up SOCRATES")
+
+    # None dirs
+    if dirs is None:
+        dirs = _none_dirs()
 
     # Get path
     workpath = os.path.join(dirs["proteus"], "SOCRATES")
@@ -129,12 +190,15 @@ def get_socrates(dirs:dict):
     os.environ["RAD_DIR"] = workpath
     log.debug("    done")
 
-def get_petsc(dirs:dict):
+def get_petsc(dirs=None):
     """
     Download and install PETSc
     """
 
     log.info("Setting up PETSc")
+
+    if dirs is None:
+        dirs = _none_dirs()
 
     # Get path
     workpath = os.path.join(dirs["proteus"], "petsc")
@@ -154,10 +218,13 @@ def get_petsc(dirs:dict):
 
     log.debug("    done")
 
-def get_spider(dirs:dict):
+def get_spider(dirs=None):
     """
     Download and install SPIDER
     """
+
+    if dirs is None:
+        dirs = _none_dirs()
 
     # Need to install PETSc first
     get_petsc(dirs)

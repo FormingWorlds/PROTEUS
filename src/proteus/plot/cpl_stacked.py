@@ -11,7 +11,7 @@ import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
-from proteus.atmos_clim.janus import read_ncdfs
+from proteus.atmos_clim.common import read_ncdfs
 from proteus.interior.spider import read_jsons
 from proteus.utils.plot import dict_colors, latex_float, sample_times
 

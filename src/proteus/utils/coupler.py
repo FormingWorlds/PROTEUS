@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.janus import read_ncdfs
+from proteus.atmos_clim.common import read_ncdfs
 from proteus.interior.spider import read_jsons
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements
@@ -33,7 +33,7 @@ from proteus.utils.constants import (
     element_list,
     volatile_species,
 )
-from proteus.utils.helper import UpdateStatusfile, safe_rm
+from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
 
 log = logging.getLogger("fwl."+__name__)
@@ -387,9 +387,7 @@ def SetDirectories(OPTIONS: dict):
             Dictionary of paths to important directories
     """
 
-    if os.environ.get('PROTEUS_DIR') is None:
-        raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
-    proteus_dir = os.path.abspath(os.getenv('PROTEUS_DIR'))
+    proteus_dir = get_proteus_dir()
     proteus_src = os.path.join(proteus_dir,"src","proteus")
 
     # PROTEUS folders
@@ -401,7 +399,7 @@ def SetDirectories(OPTIONS: dict):
             "vulcan":   os.path.join(proteus_dir,"VULCAN"),
             "spider":   os.path.join(proteus_dir,"SPIDER"),
             "utils":    os.path.join(proteus_src,"utils"),
-            "tools":    os.path.join(proteus_src,"tools"),
+            "tools":    os.path.join(proteus_dir,"tools"),
             }
 
     # FWL data folder
