@@ -24,7 +24,7 @@ jobs:
         python-version: ['3.10', '3.12']
 
     env:
-      FWL_DATA: /home/runner/work/fwl_data
+      FWL_DATA: $HOME/work/fwl_data
       RAD_DIR: ./SOCRATES
       SOCRATES: ./SOCRATES  # https://github.com/FormingWorlds/JANUS/issues/51
 
