@@ -6,16 +6,6 @@ import os
 
 import pandas as pd
 from scipy.integrate import solve_ivp
-
-from proteus.atmos_clim.agni import (
-    activate_julia,
-    deallocate_atmos,
-    init_agni_atmos,
-    run_agni,
-    update_agni_atmos,
-)
-from proteus.atmos_clim.dummy import RunDummyAtm
-from proteus.atmos_clim.janus import InitAtm, InitStellarSpectrum, RunJANUS
 from proteus.utils.helper import PrintHalfSeparator, UpdateStatusfile, safe_rm
 
 atm = None
@@ -58,8 +48,10 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
         hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
     if OPTIONS["atmosphere_model"] == 0:
-        # Run JANUS:
+        # Import
+        from proteus.atmos_clim.janus import InitAtm, InitStellarSpectrum, RunJANUS
 
+        # Run JANUS
         no_atm = bool(atm is None)
         #Enforce surface temperature at first iteration
         if no_atm:
@@ -77,8 +69,16 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
         atm_output = RunJANUS(atm, dirs, OPTIONS, hf_row, hf_all)
 
     elif OPTIONS["atmosphere_model"] == 1:
-        # Run AGNI
+        # Import
+        from proteus.atmos_clim.agni import (
+            activate_julia,
+            deallocate_atmos,
+            init_agni_atmos,
+            run_agni,
+            update_agni_atmos,
+        )
 
+        # Run AGNI
         # Initialise atmosphere struct
         spfile_path = os.path.join(dirs["output"] , "runtime.sf")
         no_atm = bool(atm is None)
@@ -114,6 +114,9 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
         atm, atm_output = run_agni(atm, loop_counter["total"], dirs, OPTIONS, hf_row)
 
     elif OPTIONS["atmosphere_model"] == 2:
+        # Import
+        from proteus.atmos_clim.dummy import RunDummyAtm
+
         # Run dummy atmosphere model
         atm_output = RunDummyAtm(dirs, OPTIONS, hf_row["T_magma"], hf_row["F_ins"],
                                     hf_row["R_planet"], hf_row["M_planet"])
