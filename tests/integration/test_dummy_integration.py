@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from helpers import PROTEUS_ROOT, resize_to_match
 from matplotlib.testing.compare import compare_images
