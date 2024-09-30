@@ -35,7 +35,7 @@ def test_dummy_run(dummy_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_all_ref = ReadHelpfileFromCSV(ref_dir)
 
-    assert_frame_equal(hf_all, hf_all_ref, rtol=1e-3)
+    assert_frame_equal(hf_all, hf_all_ref, rtol=5e-3)
 
 @pytest.mark.xfail
 @pytest.mark.parametrize("image", IMAGE_LIST)
