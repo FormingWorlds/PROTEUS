@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.janus import read_ncdfs
+from proteus.atmos_clim.common import read_ncdfs
 from proteus.interior.spider import read_jsons
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements

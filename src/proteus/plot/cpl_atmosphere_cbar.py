@@ -12,7 +12,7 @@ from cmcrameri import cm
 from matplotlib.ticker import LogLocator, MultipleLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from proteus.atmos_clim.janus import read_ncdf_profile
+from proteus.atmos_clim.common import read_ncdf_profile
 
 if TYPE_CHECKING:
     from proteus import Proteus
