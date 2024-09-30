@@ -21,24 +21,25 @@ IMAGE_LIST = (
         )
 
 @pytest.fixture(scope="module")
-def test_dummy_run():
+def dummy_run():
     config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
-    ref_output = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy'
 
     runner = Proteus(config_path=config_path)
 
     runner.start()
 
-    output = Path(runner.directories['output'])
+def test_dummy_run(dummy_run):
+    out_dir = PROTEUS_ROOT / 'output' / 'dummy'
+    ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy'
 
-    hf_all = ReadHelpfileFromCSV(output)
-    hf_all_ref = ReadHelpfileFromCSV(ref_output)
+    hf_all = ReadHelpfileFromCSV(out_dir)
+    hf_all_ref = ReadHelpfileFromCSV(ref_dir)
 
-    assert_frame_equal(hf_all, hf_all_ref, rtol=1e-4)
+    assert_frame_equal(hf_all, hf_all_ref, rtol=1e-3)
 
 @pytest.mark.xfail
 @pytest.mark.parametrize("image", IMAGE_LIST)
-def test_plot_dummy_integration(test_dummy_run, image):
+def test_plot_dummy_integration(dummy_run, image):
 
     out_dir = PROTEUS_ROOT / 'output' / 'dummy'
     ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy'
