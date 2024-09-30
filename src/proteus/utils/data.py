@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess as sp
 from pathlib import Path
 
 import platformdirs
@@ -109,14 +110,11 @@ def get_socrates(dirs:dict):
 
     log.info("Setting up SOCRATES")
 
-    import os
-    import subprocess as sp
-
     # Get path
     workpath = os.path.join(dirs["proteus"], "SOCRATES")
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
-        # already downloaded
+        log.debug("    already set up")
         return
 
     # Download, configure, and build
@@ -138,14 +136,12 @@ def get_petsc(dirs:dict):
 
     log.info("Setting up PETSc")
 
-    import os
-    import subprocess as sp
-
     # Get path
     workpath = os.path.join(dirs["proteus"], "petsc")
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
         # already downloaded
+        log.debug("    already set up")
         return
 
     # Download, configure, and build
@@ -168,14 +164,12 @@ def get_spider(dirs:dict):
 
     log.info("Setting up SPIDER")
 
-    import os
-    import subprocess as sp
-
     # Get path
     workpath = os.path.join(dirs["proteus"], "SPIDER")
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
         # already downloaded
+        log.debug("    already set up")
         return
 
     # Download, configure, and build

@@ -9,11 +9,10 @@ step-by-step guide or the advice below contact the developers (see
 ## GitHub: Cannot clone module
 
 Have you added your SSH key to GitHub? See these pages for guidance:
-* https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys
-* https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent
-* https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account
-* https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection
-
+* [Checking for existing SSH keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys)
+* [Generating a new SSH key](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent)
+* [Adding a new SSH key to your Github account](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account)
+* [Testing your SSH connection](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection)
 
 ## MacOS: PETSc tests error
 
