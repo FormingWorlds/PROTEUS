@@ -18,9 +18,9 @@ jobs:
   test:
     if: github.event.pull_request.draft == false
     name: Run Coverage and Tests
-    runs-on: ubuntu-latest
     strategy:
       matrix:
+        os: ['ubuntu-latest', 'macos-latest']
         python-version: ['3.10', '3.12']
 
     env:
@@ -28,8 +28,9 @@ jobs:
       RAD_DIR: ./SOCRATES
       SOCRATES: ./SOCRATES  # https://github.com/FormingWorlds/JANUS/issues/51
 
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: 'false'
 
