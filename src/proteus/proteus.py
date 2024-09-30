@@ -20,7 +20,7 @@ from calliope.structure import calculate_mantle_mass
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config
-from proteus.interior import RunInterior
+from proteus.interior import run_interior
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -45,7 +45,7 @@ from proteus.utils.coupler import (
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
 )
-from proteus.utils.data import download_basic
+from proteus.utils.data import download_sufficient_data
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -146,9 +146,6 @@ class Proteus:
             from proteus.utils.escape import RunZEPHYRUS
         elif self.config["escape_model"] == 2:
             from proteus.utils.escape import RunDummyEsc
-        else:
-            UpdateStatusfile(self.directories, 20)
-            raise Exception("Invalid escape model")
 
         # Is the model resuming from a previous state?
         if not resume:
@@ -242,7 +239,7 @@ class Proteus:
                 solvevol_target[e] = hf_row[e + "_kg_total"]
 
         # Download basic data
-        download_basic()
+        download_sufficient_data(self.config)
 
         # Handle stellar spectrum...
 
@@ -255,9 +252,6 @@ class Proteus:
         # Prepare stellar models
         match self.config["star_model"]:
             case 0:  # SPADA (MORS)
-                # download evolution track data if not present
-                mors.DownloadEvolutionTracks("Spada")
-
                 # load modern spectrum
                 star_struct_modern = mors.spec.Spectrum()
                 star_struct_modern.LoadTSV(star_modern_path)
@@ -275,7 +269,6 @@ class Proteus:
                     star_modern_path, self.directories["output"] + "/-1.sflux"
                 )
 
-                mors.DownloadEvolutionTracks("Baraffe")
                 baraffe = mors.BaraffeTrack(self.config["star_mass"])
 
             case _:
@@ -323,7 +316,7 @@ class Proteus:
             ############### INTERIOR
 
             # Run interior model
-            dt = RunInterior(self.directories, self.config,
+            dt = run_interior(self.directories, self.config,
                                 loop_counter, IC_INTERIOR, hf_all,  hf_row)
 
             # Advance current time in main loop according to interior step

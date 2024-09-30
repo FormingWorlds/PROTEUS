@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 L_sun           = 3.828e+26             # W, IAU definition
-R_sun_cm        = 6.957e+10             # cm
+R_sun           = 6.957e8               # m
+R_sun_cm        = 100 * R_sun           # cm
+M_sun           = 1.988416e30           # kg
 AU              = 1.495978707e+11       # m
 AU_cm           = AU * 100.0            # cm
 R_gas           = 8.31446261815324      # J K−1 mol−1

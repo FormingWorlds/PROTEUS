@@ -44,14 +44,7 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 
 ## Download the framework
 
-1. Register your public SSH key with Github:
-
-    - <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys>
-    - <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent>
-    - <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account>
-    - <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection>
-
-2. Setup environment variables
+1. Setup environment variables
 
     The environment variable `FWL_DATA` points to the folder where input data are stored.
     This variable must always be set, so it is best to add this line to your shell rc file.
@@ -60,27 +53,27 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     export FWL_DATA=/your/local/path/
     ```
 
-3. Download PROTEUS base
+2. Download PROTEUS base
 
     ```console
     git clone git@github.com:FormingWorlds/PROTEUS.git
     ```
 
-4. Get dependencies
+3. Get dependencies
 
     ```console
     cd PROTEUS
     git submodule update --init --recursive
     ```
 
-5. Create a virtual environment
+4. Create a virtual environment
 
     ```console
     python -m venv .venv
     source .venv/bin/activate
     ```
 
-6. Setup radiative transfer code (**SOCRATES**)
+5. Setup radiative transfer code (**SOCRATES**)
 
     The code can be setup in `./socrates/` using the following script.
 
@@ -88,23 +81,7 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     source get_socrates.sh
     ```
 
-7. Setup numerical computing library (**PETSc**)
-
-    - Configure step
-
-        ```console
-        cd petsc
-        ./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --download-f2cblaslapack --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"
-        ```
-
-    - Run the exact `make all` command provided at the end of the configure step
-    - Run the exact `make check` command provided at the end of the `make all` step
-
-    ```console
-    cd ..
-    ```
-
-8. **Optional** developer installation steps
+6. **Optional** developer installation steps
 
     Follow the steps in this section if you want to create editable installations of these submodules.
     Otherwise, go to the next step section.
@@ -130,15 +107,21 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
         pip install -e CALLIOPE/.
         ```
 
-9. Setup PROTEUS coupled framework
+7. Setup numerical computing library (**PETSc**)
 
-    - Get the remaining Python dependencies
+    ```console
+    ./tools/get_petsc.sh
+    ```
+
+8. Setup PROTEUS coupled framework
+
+    1. Get the remaining Python dependencies
 
         ```console
         pip install -e .
         ```
 
-    - Configure environment variables
+    2. Configure environment variables
 
         - The variable `RAD_DIR` must point to the SOCRATES installation path. It is best to add this to your shell rc file.
 
@@ -149,18 +132,14 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
             ```
             This file can also be added to your shell rc file.
 
-10. Setup interior evolution model (**SPIDER**)
+9. Setup interior evolution model (**SPIDER**)
 
     ```console
-    cd SPIDER
-    make clean
-    make -j
-    cd ..
+    ./tools/get_spider.sh
     ```
 
-11. Done! 🚀
-
-Any remaining dependencies will be downloaded when the model is first run.
+10. Done! 🚀
+    Any remaining dependencies will be downloaded when the model is first run.
 
 ## Optional modules
 
