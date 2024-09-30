@@ -1,9 +1,11 @@
 # Common atmosphere climate model functions
 from __future__ import annotations
 
+import os
+
 import netCDF4 as nc
 import numpy as np
-import os
+
 
 def read_ncdf_profile(nc_fpath:str):
     # open file

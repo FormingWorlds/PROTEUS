@@ -6,6 +6,7 @@ import os
 
 import pandas as pd
 from scipy.integrate import solve_ivp
+
 from proteus.utils.helper import PrintHalfSeparator, UpdateStatusfile, safe_rm
 
 atm = None

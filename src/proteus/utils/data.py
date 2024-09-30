@@ -41,18 +41,23 @@ def GetFWLData() -> Path:
     """
     return Path(FWL_DATA_DIR).absolute()
 
+def get_osf(id:str):
+    """
+    Generate an object to access OSF storage
+    """
+    osf = OSF()
+    project = osf.project(id)
+    return project.storage('osfstorage')
+
+
 def download_surface_albedos():
     """
     Download surface optical properties
     """
     log.debug("Get surface albedos")
-    project_id = '2gcd9'
+    storage = get_osf('2gcd9')
+
     folder_name = 'Hammond24'
-
-    osf = OSF()
-    project = osf.project(project_id)
-    storage = project.storage('osfstorage')
-
     data_dir = GetFWLData() / "surface_albedos"
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -72,17 +77,13 @@ def download_spectral_files(fname: str="", nband: int=256):
     """
     log.debug("Get spectral files")
 
-    #project ID of the spectral files on OSF
-    project_id = 'vehxg'
 
     #Create spectral file data repository if not existing
     data_dir = GetFWLData() / "spectral_files"
     data_dir.mkdir(parents=True, exist_ok=True)
 
     #Link with OSF project repository
-    osf = OSF()
-    project = osf.project(project_id)
-    storage = project.storage('osfstorage')
+    storage = get_osf('vehxg')
 
     basic_list = (
         "Dayspring/48"
@@ -114,13 +115,8 @@ def download_stellar_spectra():
     """
     log.debug("Get stellar spectra")
 
-    #project ID of the stellar spectra on OSF
-    project_id = '8r2sw'
     folder_name = 'Named'
-
-    osf = OSF()
-    project = osf.project(project_id)
-    storage = project.storage('osfstorage')
+    storage = get_osf('8r2sw')
 
     data_dir = GetFWLData() / "stellar_spectra"
     data_dir.mkdir(parents=True, exist_ok=True)
