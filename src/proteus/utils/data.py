@@ -153,12 +153,23 @@ def download_sufficient_data(OPTIONS:dict):
     if OPTIONS["atmosphere_model"] == 1:
         download_surface_albedos()
 
-def get_socrates(dirs:dict):
+def _none_dirs():
+    from proteus.utils.helper import get_proteus_dir
+
+    dirs = {"proteus":get_proteus_dir()}
+    dirs["tools"] = os.path.join(dirs["proteus"],"tools")
+    return dirs
+
+def get_socrates(dirs=None):
     """
     Download and install SOCRATES
     """
 
     log.info("Setting up SOCRATES")
+
+    # None dirs
+    if dirs is None:
+        dirs = _none_dirs()
 
     # Get path
     workpath = os.path.join(dirs["proteus"], "SOCRATES")
@@ -179,12 +190,15 @@ def get_socrates(dirs:dict):
     os.environ["RAD_DIR"] = workpath
     log.debug("    done")
 
-def get_petsc(dirs:dict):
+def get_petsc(dirs=None):
     """
     Download and install PETSc
     """
 
     log.info("Setting up PETSc")
+
+    if dirs is None:
+        dirs = _none_dirs()
 
     # Get path
     workpath = os.path.join(dirs["proteus"], "petsc")
@@ -204,10 +218,13 @@ def get_petsc(dirs:dict):
 
     log.debug("    done")
 
-def get_spider(dirs:dict):
+def get_spider(dirs=None):
     """
     Download and install SPIDER
     """
+
+    if dirs is None:
+        dirs = _none_dirs()
 
     # Need to install PETSc first
     get_petsc(dirs)

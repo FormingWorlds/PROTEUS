@@ -16,6 +16,7 @@ socpath="socrates"
 if [ -n "$1" ]; then
     socpath=$1
 fi
+rm -rf "$socpath"
 
 # Download (using SSH if possible)
 echo "Cloning from GitHub"
@@ -26,7 +27,6 @@ else
 fi
 echo "    $uri -> $socpath"
 git clone "$uri" "$socpath"
-rm -rf "$socpath"
 
 # Configure and build SOCRATES
 olddir=$(pwd)
