@@ -59,7 +59,6 @@ jobs:
       - name: Pre-download fwl data
         if: steps.cache-fwl-data.cache-hit != 'true'
         run: |
-          mors download all
           proteus get stellar
           proteus get spectral
           proteus get spectral -n Frostflow -b 48
