@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from attrs import define, field, validators
 
-from ._atmos import Atmos
+from ._atmos_clim import AtmosClim
 from ._delivery import Delivery
 from ._escape import Escape
 from ._interior import Interior
@@ -23,7 +23,7 @@ class Config:
     star: Star
     orbit: Orbit
     struct: Struct
-    atmos: Atmos
+    atmos_clim: AtmosClim
     escape: Escape
     interior: Interior
     outgas: Outgas
