@@ -7,7 +7,7 @@ from proteus.config._converters import none_if_none
 
 
 def test_read_config_object():
-    path = PROTEUS_ROOT / 'input' / 'new.toml'
+    path = PROTEUS_ROOT / 'input_new' / 'dummy.toml'
     obj = read_config_object(path)
 
     assert isinstance(obj, Config)
