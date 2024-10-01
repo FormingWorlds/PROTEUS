@@ -33,33 +33,31 @@ def planck(Teff:float, wave:float):
 
     return flx
 
-def calc_luminosity(Teff:float):
-    '''
-    Calculate stellar luminosity
-    '''
-    return const_sigma * Teff**4
-
-def calc_instellation(Teff:float, dist:float):
-    """Get the solar constant at a given temperature and distance.
+def calc_instellation(Teff:float, sep:float, Rstar:float):
+    """Get the planetary instellation flux.
 
     Parameters
     ----------
         Teff : float
             Effective temperature [K]
-        dist : float
-            Planet-star separation [AU]
+        sep : float
+            Planet-star separation [m]
+        Rstar : float
+            Stellar radius [m]
 
     Returns
     ----------
         flux : float
-            Instellation flux [W m-2]
+            Bolometric instellation flux [W m-2]
     """
 
-    # Get the luminosity
-    L = calc_luminosity(Teff)
 
-    # Calculate solar constant
-    return L / (4 * np.pi * dist * dist)
+    # Get the flux at the stellar surface
+    F_surf = const_sigma * Teff**4
+
+    # Scale from stellar surface to planet
+    return F_surf * (Rstar / sep)**2
+
 
 def calc_spectrum(Teff:float, Rstar:float, bin_c:list):
     """Calculate stellar spectrum at 1 AU

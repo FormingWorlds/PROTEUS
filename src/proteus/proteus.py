@@ -57,8 +57,11 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
-from proteus.star.wrapper import write_spectrum
-
+from proteus.star.wrapper import (
+    write_spectrum,
+    calc_eqm_temperature,
+    calc_stellar_radius
+    )
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
@@ -345,33 +348,8 @@ class Proteus:
                 if self.config["stellar_heating"] > 0:
                     log.info("Updating instellation and radius")
 
-                    match self.config["star_model"]:
-                        case 0:
-                            hf_row["R_star"] = (
-                                mors.Value(
-                                    self.config["star_mass"],
-                                    hf_row["age_star"] / 1e6,
-                                    "Rstar"
-                                )
-                                * mors.const.Rsun
-                                * 1.0e-2
-                            )
-                            S_0 = (
-                                mors.Value(
-                                    self.config["star_mass"],
-                                    hf_row["age_star"] / 1e6,
-                                    "Lbol"
-                                ) * L_sun  / (4.0 * np.pi * hf_row["separation"]**2.0 )
-                            )
-                        case 1:
-                            hf_row["R_star"] = (
-                                baraffe.BaraffeStellarRadius(hf_row["age_star"])
-                                * mors.const.Rsun
-                                * 1.0e-2
-                            )
-                            S_0 = baraffe.BaraffeSolarConstant(
-                                hf_row["age_star"], hf_row["separation"]/AU
-                            )
+                   
+                    hf_row["R_star"] = calc_stellar_radius(self.config, hf_row["age_star"])
 
                     # Calculate new eqm temperature
                     T_eqm_new = calc_eqm_temperature(
