@@ -32,7 +32,6 @@ from proteus.utils.constants import (
     volatile_species,
 )
 from proteus.utils.coupler import (
-    CalculateEqmTemperature,
     CreateHelpfileFromDict,
     CreateLockFile,
     ExtendHelpfile,
@@ -58,6 +57,7 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
+from proteus.star.wrapper import write_spectrum
 
 
 class Proteus:
@@ -374,7 +374,7 @@ class Proteus:
                             )
 
                     # Calculate new eqm temperature
-                    T_eqm_new = CalculateEqmTemperature(
+                    T_eqm_new = calc_eqm_temperature(
                         S_0, self.config["asf_scalefactor"], self.config["albedo_pl"]
                     )
 
@@ -412,22 +412,7 @@ class Proteus:
                         )
                         wl = modern_wl
 
-                # Scale fluxes from 1 AU to TOA
-                fl *= (AU / hf_row["separation"]) ** 2.0
-
-                # Save spectrum to file
-                header = (
-                    "# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at t_star = %.2e yr"
-                    % hf_row["age_star"]
-                )
-                np.savetxt(
-                    os.path.join(self.directories["output"], "data", "%d.sflux" % hf_row["Time"]),
-                    np.array([wl, fl]).T,
-                    header=header,
-                    comments="",
-                    fmt="%.8e",
-                    delimiter="\t",
-                )
+                write spectrum
 
             else:
                 log.info("New spectrum not required at this time")

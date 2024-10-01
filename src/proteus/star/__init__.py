@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from .wrapper import run_star
+from .wrapper import write_spectrum
 
 __all__ = [
-    'run_star',
+    'write_spectrum',
 ]

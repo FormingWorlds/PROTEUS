@@ -55,13 +55,6 @@ def GitRevision(dir:str) -> str:
 
     return hash
 
-def CalculateEqmTemperature(I_0, ASF_sf, A_B):
-    '''
-    Calculate planetary equilibrium temperature.
-    Params: Stellar flux, ASF scale factor, and bond albedo.
-    '''
-    return (I_0 * ASF_sf * (1.0 - A_B) / const_sigma)**(1.0/4.0)
-
 def PrintCurrentState(hf_row:dict):
     '''
     Print the current state of the model to the logger
