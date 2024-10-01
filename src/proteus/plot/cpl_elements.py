@@ -15,9 +15,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_elements( output_dir, plot_format="pdf", t0=100.0):
+def plot_elements( hf_all:pd.DataFrame, output_dir:str, plot_format="pdf", t0=100.0):
 
-    hf_all = pd.read_csv(os.path.join(output_dir , "runtime_helpfile.csv"), sep=r"\s+")
     if np.amax(hf_all["Time"]) < 2:
         log.debug("Insufficient data to make plot_elements")
         return
@@ -58,7 +57,12 @@ def plot_elements( output_dir, plot_format="pdf", t0=100.0):
 
 
 def plot_elements_entry(handler: Proteus):
+    # read helpfile
+    hf_all = pd.read_csv(os.path.join(handler.directories['output'], "runtime_helpfile.csv"), sep=r"\s+")
+
+    # make plot
     plot_elements(
+        hf_all=hf_all,
         output_dir=handler.directories["output"],
         plot_format=handler.config["plot_format"],
     )

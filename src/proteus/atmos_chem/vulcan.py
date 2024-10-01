@@ -45,7 +45,7 @@ def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):
         vcf.write("Rp = %1.5e \n"           % (atm.planet_radius*100.0))        # Radius [cm]
         vcf.write("gs = %g \n"              % (atm.grav_s*100.0))               # Surface gravity [cm/s^2]
         vcf.write("sl_angle = %g \n"        % (atm.zenith_angle*3.141/180.0))   # Solar zenith angle [rad]
-        vcf.write("orbit_radius = %1.5e \n" % OPTIONS["mean_distance"]) # Semi major axis [AU]
+        vcf.write("orbit_radius = %1.5e \n" % OPTIONS["semimajoraxis"]) # Semi major axis [AU]
         vcf.write("r_star = %1.5e \n"       % OPTIONS["star_radius"])   # Star's radius [R_sun]
 
         # Set background gas based on gas with highest mixing ratio from list of options

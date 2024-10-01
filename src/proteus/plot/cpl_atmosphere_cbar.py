@@ -7,11 +7,12 @@ from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import netCDF4 as nc
 import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import LogLocator, MultipleLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+from proteus.atmos_clim.common import read_ncdf_profile
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -19,39 +20,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 
-def _read_nc(nc_fpath):
-    ds = nc.Dataset(nc_fpath)
-
-    p = np.array(ds.variables["p"][:])
-    pl = np.array(ds.variables["pl"][:])
-
-    t = np.array(ds.variables["tmp"][:])
-    tl = np.array(ds.variables["tmpl"][:])
-
-    z = np.array(ds.variables["z"][:])
-    zl = np.array(ds.variables["zl"][:])
-
-    nlev = len(p)
-    arr_p = [pl[0]]
-    arr_t = [tl[0]]
-    arr_z = [zl[0]]
-
-    for i in range(nlev):
-        arr_p.append(p[i])
-        arr_p.append(pl[i+1])
-
-        arr_t.append(t[i])
-        arr_t.append(tl[i+1])
-
-        arr_z.append(z[i])
-        arr_z.append(zl[i+1])
-
-    ds.close()
-
-    return np.array(arr_p), np.array(arr_t), np.array(arr_z)
-
-
-def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
+def plot_atmosphere_cbar(output_dir, plot_format="pdf", tmin=1e2):
 
     print("Plot atmosphere temperatures colourbar")
 
@@ -60,7 +29,10 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
     output_times = [ int(str(f).split('/')[-1].split('_')[0]) for f in output_files]
     sort_mask = np.argsort(output_times)
     sorted_files = np.array(output_files)[sort_mask]
-    sorted_times = np.array(output_times)[sort_mask] / 1e6
+    sorted_times = np.array(output_times)[sort_mask]
+
+    if np.amax(sorted_times) < tmin:
+        tmin = 1
 
     if np.amax(sorted_times) < 2:
         log.debug("Insufficient data to make plot_atmosphere_cbar")
@@ -71,11 +43,17 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
     sorted_p = []
     sorted_t = []
     sorted_z = []
+    sorted_y = []
     for i in range(0,len(sorted_files),stride):
-        p,t,z = _read_nc(sorted_files[i])
-        sorted_p.append(p / 1.0e5)  # Convert Pa -> bar
-        sorted_t.append(t )
-        sorted_z.append(z / 1.0e3)  # Convert m -> km
+        time = sorted_times[i]
+        if time < tmin:
+            continue
+        sorted_y.append(sorted_times[i])
+
+        prof = read_ncdf_profile(sorted_files[i])
+        sorted_p.append(prof["p"] / 1.0e5)  # Convert Pa -> bar
+        sorted_t.append(prof["t"])
+        sorted_z.append(prof["z"] / 1.0e3)  # Convert m -> km
     nfiles = len(sorted_p)
 
     # Initialise plot
@@ -87,14 +65,14 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
     ax.set_yscale("log")
 
     # Colour mapping
-    norm = mpl.colors.LogNorm(vmin=max(1,sorted_times[0]), vmax=sorted_times[-1])
-    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm) #
+    norm = mpl.colors.LogNorm(vmin=sorted_y[0], vmax=sorted_y[-1])
+    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)
     sm.set_array([])
 
     # Plot data
     for i in range(nfiles):
         a = 0.7
-        c = sm.to_rgba(sorted_times[i])
+        c = sm.to_rgba(sorted_y[i])
         ax.plot(sorted_t[i], sorted_p[i], color=c, alpha=a, zorder=3)
 
     # Grid
@@ -109,11 +87,11 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf"):
     divider = make_axes_locatable(ax)
     cax = divider.append_axes('right', size='5%', pad=0.05)
     cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
-    cbar.ax.set_yticks([round(v,1) for v in np.linspace(sorted_times[0] , sorted_times[-1], 8)])
-    cbar.set_label("Time [Myr]")
+    cbar.set_label("Time [yr]")
 
     # Save plot
     fname = os.path.join(output_dir,"plot_atmosphere_cbar.%s"%plot_format)
+    print(fname)
     fig.savefig(fname, bbox_inches='tight', dpi=200)
 
 

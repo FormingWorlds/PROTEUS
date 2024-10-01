@@ -135,10 +135,10 @@ def init_agni_atmos(dirs:dict, OPTIONS:dict, hf_row:dict):
         vol_sorted = sorted(vol_dict.items(), key=lambda item: item[1])
 
         # set all gases as condensates, except the least abundant gas
-        # condensates = [v[0] for v in vol_sorted[1:]]
+        condensates = [v[0] for v in vol_sorted[1:]]
 
         # set top two gases to be condensible
-        condensates = [v[0] for v in vol_sorted[-2:]]
+        # condensates = [v[0] for v in vol_sorted[-2:]]
 
     # Chemistry
     chem_type = OPTIONS["atmosphere_chemistry"]
@@ -184,7 +184,7 @@ def init_agni_atmos(dirs:dict, OPTIONS:dict, hf_row:dict):
                         fastchem_work = fc_dir,
 
                         skin_d=OPTIONS["skin_d"], skin_k=OPTIONS["skin_k"],
-                        tmp_magma=hf_row["T_surf"]
+                        tmp_magma=hf_row["T_surf"], tmp_floor=OPTIONS["min_temperature"]
                         )
 
     # Allocate arrays
@@ -320,6 +320,11 @@ def run_agni(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
     log.info("Running AGNI...")
     time_str = "%d"%hf_row["Time"]
 
+    # atmosphere solver plotting frequency
+    modplot = 0
+    if OPTIONS["log_level"] == "DEBUG":
+        modplot = 1
+
     # tracking
     agni_success = False  # success?
     attempts = 0          # number of attempts so far
@@ -332,8 +337,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
         # default parameters
         linesearch = 2
         easy_start = False
-        dx_max = OPTIONS["tsurf_poststep_change"]+5.0
-        ls_increase = 1.01
+        dx_max = OPTIONS["tsurf_poststep_change"]+10.0
+        ls_increase = 1.02
 
         # try different solver parameters if struggling
         if attempts == 2:
@@ -366,7 +371,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, OPTIONS:dict, hf_row:dict):
                             method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
 
-                            save_frames=False, modplot=2
+                            save_frames=False, modplot=modplot
                             )
 
         # Move AGNI logfile content into PROTEUS logfile

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import matplotlib as mpl
@@ -15,25 +16,22 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_fluxes_global(output_dir: str, options: dict, t0: float=100.0):
-
-    log.info("Plot global fluxes")
+def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, options: dict, t0: float=100.0):
 
     # Get values
-    hf_all = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=r"\s+")
-    hf_all = hf_all.loc[hf_all["Time"]>t0]
-
-    time = np.array(hf_all["Time"] )
-
-    F_net = np.array(hf_all["F_atm"])
-    F_asf = np.array(hf_all["F_ins"]) * options["asf_scalefactor"] * (1.0 - options["albedo_pl"]) * np.cos(options["zenith_angle"] * np.pi/180.0)
-    F_olr = np.array(hf_all["F_olr"])
-    F_upw = np.array(hf_all["F_olr"]) + np.array(hf_all["F_sct"])
-    F_int = np.array(hf_all["F_int"])
-
+    hf_crop = hf_all.loc[hf_all["Time"]>t0]
+    time = np.array(hf_crop["Time"])
     if len(time) < 3:
         log.warning("Cannot make plot with less than 3 samples")
         return
+
+    log.info("Plot global fluxes")
+
+    F_net = np.array(hf_crop["F_atm"])
+    F_asf = np.array(hf_crop["F_ins"]) * options["asf_scalefactor"] * (1.0 - options["albedo_pl"]) * np.cos(options["zenith_angle"] * np.pi/180.0)
+    F_olr = np.array(hf_crop["F_olr"])
+    F_upw = np.array(hf_crop["F_olr"]) + np.array(hf_crop["F_sct"])
+    F_int = np.array(hf_crop["F_int"])
 
     # Create plot
     mpl.use('Agg')
@@ -70,7 +68,12 @@ def plot_fluxes_global(output_dir: str, options: dict, t0: float=100.0):
 
 
 def plot_fluxes_global_entry(handler: Proteus):
+    # read helpfile
+    hf_all = pd.read_csv(os.path.join(handler.directories['output'], "runtime_helpfile.csv"), sep=r"\s+")
+
+    # make plot
     plot_fluxes_global(
+        hf_all=hf_all,
         output_dir=handler.directories["output"],
         options=handler.config,
     )

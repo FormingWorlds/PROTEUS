@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 L_sun           = 3.828e+26             # W, IAU definition
-R_sun_cm        = 6.957e+10             # cm
+R_sun           = 6.957e8               # m
+R_sun_cm        = 100 * R_sun           # cm
+M_sun           = 1.988416e30           # kg
 AU              = 1.495978707e+11       # m
 AU_cm           = AU * 100.0            # cm
 R_gas           = 8.31446261815324      # J K−1 mol−1
@@ -68,9 +70,5 @@ Me_atm            = 5.15e18            # Mass of the Earth atmopshere          [
 Fxuv_earth_10Myr  = 14.67              # Fxuv received on Earth at t = 10 Myr -> see Fig 9. Wordsworth+18 [W m-2]
 Fxuv_earth_today  = 4.64e-3            # Stellar flux received on Earth today  [W m-2]
 age_earth         = 4.543e9            # Age of the Earth                      [yr]
-e_earth           = 0.017              # Earth eccentricity                    [dimensionless]
+e_earth           = 0.0167             # Earth eccentricity                    [dimensionless]
 a_earth           = 1                  # Earth semi-major axis                 [au]
-
-
-
-# End of file

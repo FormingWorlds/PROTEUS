@@ -5,13 +5,11 @@ import logging
 
 import pandas as pd
 
-from proteus.interior.dummy import RunDummyInt
-from proteus.interior.spider import ReadSPIDER, RunSPIDER
 from proteus.utils.helper import PrintHalfSeparator
 
 log = logging.getLogger("fwl."+__name__)
 
-def RunInterior(dirs:dict, OPTIONS:dict, loop_counter:dict, IC_INTERIOR:int, hf_all:pd.DataFrame, hf_row:dict):
+def run_interior(dirs:dict, OPTIONS:dict, loop_counter:dict, IC_INTERIOR:int, hf_all:pd.DataFrame, hf_row:dict):
     '''
     Run interior model
     '''
@@ -20,6 +18,9 @@ def RunInterior(dirs:dict, OPTIONS:dict, loop_counter:dict, IC_INTERIOR:int, hf_
 
     # Use the appropriate interior model
     if OPTIONS["interior_model"] == 0:
+        # Import
+        from proteus.interior.spider import ReadSPIDER, RunSPIDER
+
         # Run SPIDER
         RunSPIDER(dirs, OPTIONS, IC_INTERIOR, loop_counter, hf_all, hf_row)
         sim_time, output = ReadSPIDER(dirs, OPTIONS, hf_row["R_planet"])
@@ -29,6 +30,9 @@ def RunInterior(dirs:dict, OPTIONS:dict, loop_counter:dict, IC_INTERIOR:int, hf_
         raise Exception("Aragog interface not yet implemented")
 
     elif OPTIONS["interior_model"] == 2:
+        # Import
+        from proteus.interior.dummy import RunDummyInt
+
         # Run dummy interior
         sim_time, output = RunDummyInt(OPTIONS, dirs, IC_INTERIOR, hf_row, hf_all)
 

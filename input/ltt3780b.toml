@@ -3,25 +3,25 @@
 ##### Star configuration
 
 star_model                  = 1                 # Evolution model to use for star (0: Spada, 1: Baraffe)
-star_mass                   = 0.273                # M_sun, mass of star
-star_radius_modern          = 0.303                 # R_sun, radius of star (TODAY)
-star_temperature_modern     = 3415.0             # K, temperature of star (TODAY)
-star_luminosity_modern      = 0.01128                 # L_sun, luminosity of star (TODAY) used for Baraffe model
-star_age_modern             = 0.8e9             # yr, age of star (TODAY)
-star_rot_pctle              = 50.0
-star_spectrum               = 'stellar_spectra/Named/l-98-59.txt'   # Stellar spectrum file at 1 AU (TODAY)
+star_mass                   = 0.401                # M_sun, mass of star
+star_radius_modern          = 0.374                 # R_sun, radius of star (TODAY)
+star_temperature_modern     = 3331.0             # K, temperature of star (TODAY)
+star_luminosity_modern      = 0.167                 # L_sun, luminosity of star (TODAY) used for Baraffe model
+star_age_modern             = 3.1e9             # yr, age of star (TODAY)
+star_rot_pctle              = 20.0
+star_spectrum               = 'stellar_spectra/Named/gj849.txt'   # Stellar spectrum file at 1 AU (TODAY)
 
 ##### Planet configuration
-mean_distance               = 0.0486       # AU, star-planet distance
-mass                        = 1.94         # M_earth
-radius                      = 1.521         # R_earth
+semimajoraxis               = 0.01203       # AU, star-planet distance
+mass                        = 2.34         # M_earth
+radius                      = 1.35         # R_earth
 
 zenith_angle                = 54.74    # Tidally locked [Hamano+15,  acos(1/sqrt(3)) ]
 asf_scalefactor             = 0.25     # absorbed solar flux scale factor = 1/4
 albedo_s                    = 0.2 		# surface albedo
 albedo_pl                   = 0.0   	# Bond albedo (scattering)
 
-eccentricity                = 0.017     # Earth eccentricity  [dimensionless]
+eccentricity                = 0.064     # Earth eccentricity  [dimensionless]
 
 P_top                       = 1.0e-5    # bar, Pressure at TOA
 
@@ -31,7 +31,7 @@ iter_max                    = 9000
 log_level                   = 'INFO'
 
 # Output subdirectory name (relative to output folder)
-dir_output                  = 'l-98-59d'
+dir_output                  = 'ltt3780b'
 
 # Choose times
 time_star                   = 100.0e6  	# yr, time since star formation
@@ -44,7 +44,7 @@ spectral_file               = 'spectral_files/Honeyside/256/Honeyside.sf'
 stellar_heating             = 1
 
 # Time-stepping stuff
-plot_iterfreq               = 1     # Plotting frequency, 0: wait until completion | n: every n iterations
+plot_iterfreq               = 5     # Plotting frequency, 0: wait until completion | n: every n iterations
 plot_format                 = 'png'  # Plotting image file format
 sspec_dt_update             = 2e6    # Time intervals at which to re-calculate the stellar spectrum
 sinst_dt_update             = 1e2    # Time intervals at which to re-calculate the instellation
@@ -65,12 +65,12 @@ prevent_warming             = 1         # Require that the planet only cool down
 
 # Break at solidification?
 solid_stop                  = 1
-phi_crit                    = 0.01     # melt fraction
+phi_crit                    = 0.005     # melt fraction
 
 # Break at steady state?
 steady_stop                 = 1
-steady_flux                 = 0.8        # Maximum absolute value of F_atm allowed for convergence
-steady_dprel                = 3.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
+steady_flux                 = 1.8        # Maximum absolute value of F_atm allowed for convergence
+steady_dprel                = 3.0e-10     # Percentage change in melt fraction over time (dp/p)/dt*100
 
 # Break at small flux?
 emit_stop                   = 1         # Enable this break condition
@@ -87,7 +87,7 @@ atmosphere_model            = 1         # Atmosphere model to be used, 0: JANUS 
 atmosphere_surf_state       = 2         # Atmosphere bottom edge boundary condition, 0: free | 1: fixed at T_surf | 2: conductive skin
 
 # Number of levels
-atmosphere_nlev             = 50
+atmosphere_nlev             = 60
 
 # Temperature limits throughout atmosphere [K]
 min_temperature             = 0.5
@@ -109,7 +109,7 @@ atmosphere_chemistry       = 0
 ##### Interior-specific settings
 
 interior_model              = 0
-interior_nlev               = 210
+interior_nlev               = 220
 grain_size                  = 0.1
 
 # Mixing length parameterization: 1: variable | 2: constant
@@ -129,7 +129,7 @@ planet_coresize             = 0.55
 
 # Initial entropy conditions for interior
 ic_adiabat_entropy          = 3200.0
-ic_dsdr                     = -4.698e-06
+ic_dsdr                     = -4.698e-6
 
 # Atmosphere heat flux start guess, adjusted during runtime [W/m^2]
 F_atm                       = 1e5

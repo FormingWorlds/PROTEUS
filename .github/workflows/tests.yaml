@@ -18,18 +18,19 @@ jobs:
   test:
     if: github.event.pull_request.draft == false
     name: Run Coverage and Tests
-    runs-on: ubuntu-latest
     strategy:
       matrix:
+        os: ['ubuntu-latest', 'macos-latest']
         python-version: ['3.10', '3.12']
 
     env:
-      FWL_DATA: /home/runner/work/fwl_data
+      FWL_DATA: $HOME/work/fwl_data
       RAD_DIR: ./SOCRATES
       SOCRATES: ./SOCRATES  # https://github.com/FormingWorlds/JANUS/issues/51
 
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: 'false'
 
@@ -45,38 +46,9 @@ jobs:
           key: ${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml') }}
 
       - name: Install dependencies
-        if: steps.cache-virtualenv.outputs.cache-hit != 'true'
+        # if: steps.cache-virtualenv.outputs.cache-hit != 'true'
         run: |
           python -m pip install -e .[develop]
-
-      - name: Setup system for SOCRATES
-        run: |
-          sudo apt-get update
-          sudo apt-get install libnetcdff-dev netcdf-bin
-
-      - name: Get SOCRATES
-        uses: actions/checkout@v4
-        with:
-          repository: 'nichollsh/SOCRATES'
-          path: 'SOCRATES'
-
-      - uses: actions/cache@v4
-        id: cache-socrates
-        with:
-          path: |
-            SOCRATES/bin
-            SOCRATES/sbin
-            SOCRATES/set_rad_env
-          key: socrates-${{ hashFiles('SOCRATES/version') }}
-
-      - name: Build SOCRATES
-        if: steps.cache-socrates.outputs.cache-hit != 'true'
-        run: |
-          export LD_LIBRARY_PATH=""
-          cd SOCRATES
-          ./configure
-          ./build_code
-          cd ..
 
       - uses: actions/cache@v4
         id: cache-fwl-data
@@ -87,15 +59,28 @@ jobs:
       - name: Pre-download fwl data
         if: steps.cache-fwl-data.cache-hit != 'true'
         run: |
-          mors download all
-          janus download stellar
-          janus download spectral
-          janus download spectral -n Frostflow -b 48
+          proteus get stellar
+          proteus get spectral
+          proteus get spectral -n Frostflow -b 48
 
       - name: Test with pytest
         run: |
           source PROTEUS.env
           coverage run -m pytest
+
+      - name: Upload PNG plots as artifacts
+        if: failure()  # Only upload if tests fail
+        uses: actions/upload-artifact@v3
+        with:
+          name: png-plots
+          path: |
+            output/dummy/plot_elements.png
+            output/dummy/plot_escape.png
+            output/dummy/plot_fluxes_global.png
+            output/dummy/plot_global_lin.png
+            output/dummy/plot_global_log.png
+            output/dummy/plot_observables.png
+            output/dummy/plot_sflux.png
 
       - name: Report coverage
         run: |

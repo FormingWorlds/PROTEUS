@@ -254,7 +254,7 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
         vcf.write("gs = %1.6e \n" %             float(hf_row["gravity"]*100.0))
         vcf.write("sl_angle = %1.6e \n" %       float(OPTIONS["zenith_angle"]*np.pi/180.0))
         vcf.write("f_diurnal = %1.6e \n" %      float(OPTIONS["asf_scalefactor"]))
-        vcf.write("orbit_radius = %1.6e \n" %   float(OPTIONS["mean_distance"]))
+        vcf.write("orbit_radius = %1.6e \n" %   float(OPTIONS["semimajoraxis"]))
 
         vcf.flush()
         os.fsync(vcf.fileno())
@@ -270,7 +270,7 @@ def run_once(logger:logging.Logger, year:int, screen_name:str, first_run:bool, d
     sflux_near = dirs["output"]+"/data/%d.sflux"%find_nearest(years,year)[0]
 
     sflux_read = np.loadtxt(sflux_near, skiprows=1).T
-    f_sf = float(hf_row["R_star"]) * R_sun_cm / (OPTIONS["mean_distance"] * AU_cm)
+    f_sf = float(hf_row["R_star"]) * R_sun_cm / (OPTIONS["semimajoraxis"] * AU_cm)
     sflux_scaled = sflux_read[1] * f_sf * f_sf       # scale to surface of star
 
     sflux_write = [sflux_read[0], sflux_scaled]

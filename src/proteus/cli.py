@@ -79,5 +79,64 @@ cli.add_command(plot)
 cli.add_command(start)
 
 
+@click.group()
+def get():
+    """Get data and modules"""
+    pass
+
+
+@click.command()
+@click.option('-n', '--name', 'fname', type=str, help='Name of the spectra')
+@click.option('-b', '--band', 'nband', type=int, help='Number of the band', default=256)
+def spectral(**kwargs):
+    """Get spectral files
+
+    By default, download all files.
+    """
+    from .utils.data import download_spectral_files
+    download_spectral_files(**kwargs)
+
+
+@click.command()
+def stellar():
+    """Get stellar spectra"""
+    from .utils.data import download_evolution_tracks, download_stellar_spectra
+
+    for track in ["Spada","Baraffe"]:
+        download_evolution_tracks(track)
+    download_stellar_spectra()
+
+@click.command()
+def surfaces():
+    """Get surface albedos"""
+    from .utils.data import download_surface_albedos
+    download_surface_albedos()
+
+
+@click.command()
+def socrates():
+    """Set up SOCRATES"""
+    from .utils.data import get_socrates
+    get_socrates()
+
+@click.command()
+def petsc():
+    """Set up PETSc"""
+    from .utils.data import get_petsc
+    get_petsc()
+
+@click.command()
+def spider():
+    """Set up SPIDER"""
+    from .utils.data import get_spider
+    get_spider()
+
+cli.add_command(get)
+get.add_command(spectral)
+get.add_command(stellar)
+get.add_command(socrates)
+get.add_command(petsc)
+get.add_command(spider)
+
 if __name__ == '__main__':
     cli()
