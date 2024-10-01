@@ -45,7 +45,7 @@ def _phi_global(config: Config):
     raise ValueError('No longer used')
 
 
-mapping = {
+COMPAT_MAPPING = {
     'star_model': ('star', 'mors', 'tracks'),
     'star_mass': ('star', 'mass'),
     'star_radius_modern': ('star', 'radius'),

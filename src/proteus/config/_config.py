@@ -28,3 +28,17 @@ class Config:
     interior: Interior
     outgas: Outgas
     delivery: Delivery
+
+    def __getitem__(self, key: str):
+        """This method adds a compatibility layer with the old-style dict."""
+        from ._compatibility import COMPAT_MAPPING
+        conv = COMPAT_MAPPING[key]
+
+        if callable(conv):
+            val = conv(self)
+        else:
+            val = self
+            for part in conv:
+                val = getattr(val, part)
+
+        return val
