@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import logging
+import os
 import mors
+import numpy as np
 from mors.baraffe import BaraffeSolarConstant, BaraffeStellarRadius
 from proteus.star.dummy import calc_instellation
-from proteus.utils.constants import R_sun, L_sun
+from proteus.utils.constants import R_sun, L_sun, AU, const_sigma
 
-def write_spectrum(fl:list, wl:list, sep:float, time:float):
+log = logging.getLogger("fwl."+__name__)
+
+def write_spectrum(output_dir:str, fl:list, wl:list, sep:float, time:float):
     """Write stellar spectrum to a file.
 
     Parameters
@@ -20,17 +25,18 @@ def write_spectrum(fl:list, wl:list, sep:float, time:float):
             Model time [yr]
 
     """
+    # File path
+    fpath = os.path.join(output_dir, "data", "%d.sflux" % time)
+
+    log.debug("Writing spectrum to '%s'"%fpath)
 
     # Scale fluxes from 1 AU to TOA
     fl *= (AU / sep) ** 2.0
 
     # Save spectrum to file
-    header = (
-        "# WL(nm)\t Flux(ergs/cm**2/s/nm)"
-        % hf_row["age_star"]
-    )
+    header = "# WL(nm)\t Flux(ergs/cm**2/s/nm"
     np.savetxt(
-        os.path.join(self.directories["output"], "data", "%d.sflux" % time),
+        fpath,
         np.array([wl, fl]).T,
         header=header,
         comments="",
@@ -83,6 +89,7 @@ def calc_stellar_radius(OPTIONS:dict, age_star:float):
         case 2:
             # Dummy
             # Get radius from config file
+            Rstar = OPTIONS["Rstar"]
 
     # Convert to metres and return
     Rstar *= R_sun
@@ -108,15 +115,15 @@ def calc_instellation(OPTIONS:dict, age_star:float, sep:float, Rstar:float):
             Bolometric flux [W m-2]
     """
 
-     match OPTIONS["star_model"]:
+    match OPTIONS["star_model"]:
         case 0:
             # MORS Spada
-            L_bol = mors.Value(OPTIONS["star_mass"],hf_row["age_star"] / 1e6,"Lbol")
+            L_bol = mors.Value(OPTIONS["star_mass"],age_star / 1e6,"Lbol")
             S_0   = L_bol * L_sun  / (4.0 * np.pi * sep*sep )
 
         case 1:
             # MORS Baraffe
-            S_0 = BaraffeSolarConstant(hf_row["age_star"], sep/AU)
+            S_0 = BaraffeSolarConstant(age_star, sep/AU)
 
         case 2:
             # Dummy

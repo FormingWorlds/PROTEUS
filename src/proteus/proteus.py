@@ -60,8 +60,9 @@ from proteus.utils.logs import (
 from proteus.star.wrapper import (
     write_spectrum,
     calc_eqm_temperature,
-    calc_stellar_radius
-    )
+    calc_stellar_radius,
+    calc_instellation
+)
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
@@ -345,21 +346,15 @@ class Proteus:
                 else:
                     F_inst_prev = 0.0
 
-                if self.config["stellar_heating"] > 0:
-                    log.info("Updating instellation and radius")
+                log.info("Updating instellation and radius")
 
-                   
-                    hf_row["R_star"] = calc_stellar_radius(self.config, hf_row["age_star"])
+                hf_row["R_star"] = calc_stellar_radius(self.config, hf_row["age_star"])
+                S_0 = calc_instellation(self.config, hf_row["age_star"], hf_row["separation"], hf_row["R_star"])
 
-                    # Calculate new eqm temperature
-                    T_eqm_new = calc_eqm_temperature(
-                        S_0, self.config["asf_scalefactor"], self.config["albedo_pl"]
-                    )
-
-                else:
-                    log.info("Stellar heating is disabled")
-                    T_eqm_new = 0.0
-                    S_0 = 0.0
+                # Calculate new eqm temperature
+                T_eqm_new = calc_eqm_temperature(
+                    S_0, self.config["asf_scalefactor"], self.config["albedo_pl"]
+                )
 
                 hf_row["F_ins"] = S_0  # instellation
                 hf_row["T_eqm"] = T_eqm_new
@@ -390,7 +385,8 @@ class Proteus:
                         )
                         wl = modern_wl
 
-                write spectrum
+                # Write new spectrum to file
+                write_spectrum(fl, wl, hf_row["separation"], hf_row["Time"])
 
             else:
                 log.info("New spectrum not required at this time")
