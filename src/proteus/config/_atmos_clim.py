@@ -45,6 +45,7 @@ class AtmosClim:
     cloud_alpha: float
     surf_state: str = field(validator=validators.in_(('mixed_layer', 'fixed', 'skin')))
     surf_albedo: float
+    albedo_pl: float
     rayleigh: float
 
     module: str = field(validator=validators.in_(('dummy', 'agni', 'janus')))
