@@ -27,7 +27,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "new_config_test"
         logging     = "DEBUG"
-        plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping
@@ -59,21 +59,21 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 4.567e+9     # yr, model will terminate when t > maximum
+            maximum = 4.0e9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
-            enabled  = false
+            enabled  = true
             phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
-            enabled = false
+            enabled = true
             F_crit  = 0.2     # W m-2, model will terminate when |F_atm| < F_crit
 
         # steady state
         [params.stop.steady]
-            enabled  = false
+            enabled  = true
             F_crit   = 0.8        # Maximum absolute value of F_atm allowed for convergence
             dprel    = 1.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
 
@@ -95,7 +95,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     age_now = 4.597     # Gyr, current age of star used for scaling
     age_ini = 0.100     # Gyr, model initialisation/start age
 
-
     module  = "mors"
     [star.mors]
         tracks  = "spada"   # evolution tracks: spada | baraffe
@@ -104,7 +103,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Orbital system
 [orbit]
     semimajoraxis   = 1.0       # AU
-    eccentricity    = 0.0       # dimensionless
+    eccentricity    = 0.017     # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
 
@@ -129,8 +128,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     cloud_enabled   = false     # enable water cloud radiative effects
     cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
     surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
-    surf_albedo     = 0.1       # path to file ("string") or grey quantity (float)
-    albedo_pl       = 0.1   	# Bond albedo (scattering)
+    surf_albedo     = 0.2       # path to file ("string") or grey quantity (float)
     rayleigh        = true      # enable rayleigh scattering
 
     module  = "dummy"           # Which atmosphere module to use
@@ -164,7 +162,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         some_parameter = "some_value"
 
     [escape.dummy]
-        rate = 2.0e4    #  Bulk unfractionated escape rate [kg s-1]
+        rate = 2.0e7    #  Bulk unfractionated escape rate [kg s-1]
 
 # Interior - physics table
 [interior]
@@ -224,7 +222,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [delivery.volatiles]
-        H2O  = 0.0         # partial pressure of H2O
+        H2O  = 30.0         # partial pressure of H2O
         CO2  = 0.0          # partial pressure of CO2
         N2   = 0.0          # etc
         S2   = 0.0
