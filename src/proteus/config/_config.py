@@ -15,6 +15,7 @@ from ._struct import Struct
 
 @define
 class Config:
+    """Root config"""
     version: str = field(validator=validators.in_(('2.0',)))
     author: str
 

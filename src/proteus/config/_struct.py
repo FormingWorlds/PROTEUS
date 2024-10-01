@@ -7,6 +7,7 @@ from ._converters import none_if_none
 
 @define
 class Struct:
+    """Planetary structure (mass, radius)"""
     mass: float
     radius: float
     corefrac: float

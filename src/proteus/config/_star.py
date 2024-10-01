@@ -13,6 +13,7 @@ class Mors:
 
 @define
 class Star:
+    """Stellar parameters, model selection"""
     mass: float
     radius: float
     Teff: float

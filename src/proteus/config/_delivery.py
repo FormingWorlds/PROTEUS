@@ -27,6 +27,7 @@ class Volatiles:
 
 @define
 class Delivery:
+    """Initial volatile inventory, and delivery model selection"""
     initial: str = field(validator=validators.in_(('elements', 'volatile')))
 
     module: str | None = field(validator=validators.in_((None,)), converter=none_if_none)

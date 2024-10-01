@@ -15,6 +15,7 @@ class EscapeDummy:
 
 @define
 class Escape:
+    """Escape parameters, model selection"""
     module: str = field(validator=validators.in_(('dummy', 'zephyrus')))
 
     zephyrus: Zephyrus

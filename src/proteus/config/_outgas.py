@@ -22,6 +22,7 @@ class Atmodeller:
 
 @define
 class Outgas:
+    """Outgassing parameters (fO2) and included volatiles"""
     fO2_shift_IW: float
 
     module: str = field(validator=validators.in_(('calliope', 'atmodeller')))

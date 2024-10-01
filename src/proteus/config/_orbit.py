@@ -7,6 +7,7 @@ from ._converters import none_if_none
 
 @define
 class Orbit:
+    """Planetary orbital parameters"""
     semimajoraxis: float
     eccentricity: float
     zenith_angle: float

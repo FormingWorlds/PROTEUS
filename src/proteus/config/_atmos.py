@@ -37,6 +37,7 @@ class Dummy:
 
 @define
 class Atmos:
+    """Atmosphere parameters, model selection"""
     prevent_warming: bool
     surface_d: float
     surface_k: float

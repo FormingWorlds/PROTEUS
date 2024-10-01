@@ -85,6 +85,7 @@ class StopParams:
 
 @define
 class Params:
+    """Parameters for code execution, output files, time-stepping, convergence"""
     out: OutputParams
     dt: TimeStepParams
     stop: StopParams

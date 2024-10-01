@@ -21,6 +21,7 @@ class Aragog:
 
 @define
 class Interior:
+    """Magma ocean model selection and parameters"""
     grain_size: float
     F_initial: float
 
