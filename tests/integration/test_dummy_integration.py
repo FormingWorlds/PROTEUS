@@ -35,7 +35,7 @@ def test_dummy_run(dummy_run):
 
     assert_frame_equal(hf_all, hf_all_ref, rtol=5e-3)
 
-@pytest.mark.xfail
+@pytest.mark.xfail(raises=AssertionError)
 @pytest.mark.parametrize("image", IMAGE_LIST)
 def test_plot_dummy_integration(dummy_run, image):
 
