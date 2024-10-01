@@ -121,7 +121,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "none"
 
 # Atmosphere - physics table
-[atmos]
+[atmos_clim]
     prevent_warming = true      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
@@ -133,7 +133,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     module  = "dummy"           # Which atmosphere module to use
 
-    [atmos.agni]
+    [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
@@ -141,7 +141,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         chemistry       = "none"        # "none" | "eq" | "kin"
         tmp_minimum     = 1.0           # temperature floor on solver
 
-    [atmos.janus]
+    [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
         spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
@@ -150,7 +150,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         tmp_minimum     = 0.2           # temperature floor on solver
         tropopause      = "skin"        # none | skin | dynamic
 
-    [atmos.dummy]
+    [atmos_clim.dummy]
         gamma           = 0.7           # atmosphere opacity between 0 and 1
 
 # Volatile escape - physics table
