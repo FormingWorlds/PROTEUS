@@ -84,7 +84,7 @@ COMPAT_MAPPING = {
     'shallow_ocean_layer': _shallow_ocean_layer,
     'F_atm_bc': ('atmos_clim', 'janus', 'F_atm_bc'),
     'skin_d': ('atmos_clim', 'surface_d'),
-    'skin_k': ('asmos', 'surface_k'),
+    'skin_k': ('atmos_clim', 'surface_k'),
     'prevent_warming': ('atmos_clim', 'prevent_warming'),
     'solid_stop': ('params', 'stop', 'solid', 'enabled'),
     'phi_crit': ('params', 'stop', 'solid', 'phi_crit'),

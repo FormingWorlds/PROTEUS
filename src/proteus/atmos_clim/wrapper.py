@@ -3,16 +3,20 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import TYPE_CHECKING
 
 import pandas as pd
 from scipy.integrate import solve_ivp
+
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 from proteus.utils.helper import PrintHalfSeparator, UpdateStatusfile, safe_rm
 
 atm = None
 log = logging.getLogger("fwl."+__name__)
 
-def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
+def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
                   wl: list, fl:list,
                   update_stellar_spectrum:bool, hf_all:pd.DataFrame, hf_row:dict):
     """Run Atmosphere submodule.
@@ -22,7 +26,7 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
 
     Parameters
     ----------
-        OPTIONS : dict
+        config : Config
             Configuration options and other variables
         dirs : dict
             Dictionary containing paths to directories
@@ -45,10 +49,10 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
     global atm
 
     PrintHalfSeparator()
-    if OPTIONS["shallow_ocean_layer"] == 1:
+    if config.atmos_clim.surf_state == 'mixed_layer':
         hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
-    if OPTIONS["atmosphere_model"] == 0:
+    if config["atmosphere_model"] == 'janus':
         # Import
         from proteus.atmos_clim.janus import InitAtm, InitStellarSpectrum, RunJANUS
 
@@ -60,16 +64,16 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
 
         #Init atm object if first iteration or change in stellar spectrum
         if no_atm or update_stellar_spectrum:
-            spectral_file_nostar = os.path.join(dirs["fwl"] , OPTIONS["spectral_file"])
+            spectral_file_nostar = os.path.join(dirs["fwl"] , config["spectral_file"])
             if not os.path.exists(spectral_file_nostar):
                 UpdateStatusfile(dirs, 20)
                 raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
             InitStellarSpectrum(dirs, wl, fl, spectral_file_nostar)
-            atm = InitAtm(dirs, OPTIONS)
+            atm = InitAtm(dirs, config)
 
-        atm_output = RunJANUS(atm, dirs, OPTIONS, hf_row, hf_all)
+        atm_output = RunJANUS(atm, dirs, config, hf_row, hf_all)
 
-    elif OPTIONS["atmosphere_model"] == 1:
+    elif config["atmosphere_model"] == 'agni':
         # Import
         from proteus.atmos_clim.agni import (
             activate_julia,
@@ -100,7 +104,7 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
                 deallocate_atmos(atm)
 
             # allocate new
-            atm = init_agni_atmos(dirs, OPTIONS, hf_row)
+            atm = init_agni_atmos(dirs, config, hf_row)
 
             # Check allocation was ok
             if not bool(atm.is_alloc):
@@ -109,17 +113,17 @@ def RunAtmosphere(OPTIONS:dict, dirs:dict, loop_counter:dict,
                 exit(1)
 
         # Update profile
-        atm = update_agni_atmos(atm, hf_row, OPTIONS)
+        atm = update_agni_atmos(atm, hf_row, config)
 
         # Run solver
-        atm, atm_output = run_agni(atm, loop_counter["total"], dirs, OPTIONS, hf_row)
+        atm, atm_output = run_agni(atm, loop_counter["total"], dirs, config, hf_row)
 
-    elif OPTIONS["atmosphere_model"] == 2:
+    elif config["atmosphere_model"] == 'dummy':
         # Import
         from proteus.atmos_clim.dummy import RunDummyAtm
 
         # Run dummy atmosphere model
-        atm_output = RunDummyAtm(dirs, OPTIONS, hf_row["T_magma"], hf_row["F_ins"],
+        atm_output = RunDummyAtm(dirs, config, hf_row["T_magma"], hf_row["F_ins"],
                                     hf_row["R_planet"], hf_row["M_planet"])
 
     # Store atmosphere module output variables
