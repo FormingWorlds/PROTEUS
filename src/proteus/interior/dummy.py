@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -9,10 +10,13 @@ import pandas as pd
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import secs_per_year
 
+if TYPE_CHECKING:
+    from proteus.config import Config
+
 log = logging.getLogger("fwl."+__name__)
 
 # Run the dummy interior module
-def RunDummyInt(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
+def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
     log.info("Running dummy interior...")
 
     # Output dictionary
@@ -48,14 +52,14 @@ def RunDummyInt(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd
         output["T_magma"] = tmp_init
         dt = 0.0
     else:
-        dt = next_step(OPTIONS, dirs, hf_row, hf_all, 1.0)
+        dt = next_step(config, dirs, hf_row, hf_all, 1.0)
         output["T_magma"] = hf_row["T_magma"] - dTdt * dt * secs_per_year
 
     # Determine the new melt fraction
     output["Phi_global"]        = _calc_phi(output["T_magma"])
     output["M_mantle_liquid"]   = output["M_mantle"] * output["Phi_global"]
     output["M_mantle_solid"]    = output["M_mantle"] - output["M_mantle_liquid"]
-    output["RF_depth"]          = output["Phi_global"] * (1- OPTIONS["planet_coresize"])
+    output["RF_depth"]          = output["Phi_global"] * (1- config["planet_coresize"])
 
     sim_time = hf_row["Time"] + dt
     return sim_time, output
