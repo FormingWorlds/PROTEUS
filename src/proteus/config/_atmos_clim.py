@@ -10,7 +10,7 @@ class Agni:
     p_top: float
     spectral_group: str
     spectral_bands: str
-    num_levels: int
+    num_levels: int = field(validator=validators.ge(15))
     chemistry: str | None = field(
         validator=validators.in_((None, 'eq', 'kin')), converter=none_if_none
     )
@@ -23,7 +23,7 @@ class Janus:
     spectral_group: str
     spectral_bands: str
     F_atm_bc: int = field(validator=validators.in_((0, 5)))
-    num_levels: int
+    num_levels: int = field(validator=validators.ge(15))
     tmp_minimum: float
     tropopause: str | None = field(
         validator=validators.in_((None, 'skin', 'dynamic')), converter=none_if_none

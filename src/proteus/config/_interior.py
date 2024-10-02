@@ -5,7 +5,7 @@ from attrs import define, field, validators
 
 @define
 class Spider:
-    num_levels: int
+    num_levels: int  = field(validator=validators.ge(40))
     mixing_length: int
     tolerance: float
     tsurf_atol: float

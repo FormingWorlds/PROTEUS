@@ -8,6 +8,7 @@ import logging
 import os
 import subprocess
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -35,6 +36,9 @@ from proteus.utils.constants import (
 )
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
+
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -230,50 +234,28 @@ def ReadHelpfileFromCSV(output_dir:str):
     return pd.read_csv(fpath, sep=r"\s+")
 
 
-def ValidateInitFile(dirs:dict, OPTIONS:dict):
+def ValidateInitFile(dirs:dict, config: Config):
     '''
     Validate configuration file, checking for invalid options
     '''
-
-    if OPTIONS["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
-        if OPTIONS["shallow_ocean_layer"] == 1:
-            UpdateStatusfile(dirs, 20)
-            raise RuntimeError("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
-
-    surf_state = int(OPTIONS["atmosphere_surf_state"])
-    if not (0 <= surf_state <= 3):
-        UpdateStatusfile(dirs, 20)
-        raise RuntimeError("Invalid surface state %d" % surf_state)
-
-    if OPTIONS["atmosphere_nlev"] < 15:
-        UpdateStatusfile(dirs, 20)
-        raise RuntimeError("Atmosphere must have at least 15 levels")
-
-    if OPTIONS["interior_nlev"] < 40:
-        UpdateStatusfile(dirs, 20)
-        raise RuntimeError("Interior must have at least 40 levels")
-
     # Ensure that all volatiles are all tracked
     for s in volatile_species:
         key_pp = str(s+"_initial_bar")
         key_in = str(s+"_included")
-        if (OPTIONS[key_pp] > 0.0) and (OPTIONS[key_in] == 0):
+
+        if (config[key_pp] > 0.0) and (config[key_in] == 0):
             UpdateStatusfile(dirs, 20)
-            raise RuntimeError("Volatile %s has non-zero pressure but is disabled in cfg"%s)
-        if (OPTIONS[key_pp] > 0.0) and (OPTIONS["solvevol_use_params"] > 0):
+            raise RuntimeError(f"Volatile {s} has non-zero pressure but is disabled in cfg")
+
+        if (config[key_pp] > 0.0) and (config["solvevol_use_params"] > 0):
             UpdateStatusfile(dirs, 20)
-            raise RuntimeError("Volatile %s has non-zero pressure but outgassing parameters are enabled"%s)
+            raise RuntimeError(f"Volatile {s} has non-zero pressure but outgassing parameters are enabled")
 
     # Required vols
     for s in ["H2O","CO2","N2","S2"]:
-        if OPTIONS[s+"_included"] == 0:
+        if config[s+"_included"] == 0:
             UpdateStatusfile(dirs, 20)
-            raise RuntimeError("Missing required volatile '%s'"%s)
-
-    # Eccentricity
-    if (OPTIONS["eccentricity"] < 0.0) or (OPTIONS["eccentricity"] > 1.0 - 1e-10):
-        UpdateStatusfile(dirs, 20)
-        raise RuntimeError("Orbital eccentricity must be within range: 0 <= e < 1")
+            raise RuntimeError(f"Missing required volatile {s}")
 
     return True
 
