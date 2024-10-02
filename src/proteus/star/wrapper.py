@@ -130,4 +130,3 @@ def calc_instellation(OPTIONS:dict, age_star:float, sep:float, Rstar:float):
             S_0 = calc_instellation(OPTIONS["star_teff"], sep, Rstar)
 
     return S_0
-

@@ -63,6 +63,7 @@ from proteus.star.wrapper import (
     calc_stellar_radius,
     calc_instellation
 )
+from proteus.star.dummy import calc_spectrum
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
@@ -384,6 +385,9 @@ class Proteus:
                             hf_row["age_star"], self.config["star_luminosity_modern"], modern_fl
                         )
                         wl = modern_wl
+                    case 2:
+                        wl = modern_wl
+                        fl = calc_spectrum(OPTIONS["star_temperature_modern"], hf_row["R_star"], wl)
 
                 # Write new spectrum to file
                 write_spectrum(fl, wl, hf_row["separation"], hf_row["Time"])
