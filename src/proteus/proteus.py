@@ -340,46 +340,40 @@ class Proteus:
                 else:
                     F_inst_prev = 0.0
 
-                if self.config["stellar_heating"] > 0:
-                    log.info("Updating instellation and radius")
+                log.info("Updating instellation and radius")
 
-                    match self.config["star_model"]:
-                        case 0:
-                            hf_row["R_star"] = (
-                                mors.Value(
-                                    self.config["star_mass"],
-                                    hf_row["age_star"] / 1e6,
-                                    "Rstar"
-                                )
-                                * mors.const.Rsun
-                                * 1.0e-2
+                match self.config["star_model"]:
+                    case 'spada':
+                        hf_row["R_star"] = (
+                            mors.Value(
+                                self.config["star_mass"],
+                                hf_row["age_star"] * 1000,
+                                "Rstar"
                             )
-                            S_0 = (
-                                mors.Value(
-                                    self.config["star_mass"],
-                                    hf_row["age_star"] / 1e6,
-                                    "Lbol"
-                                ) * L_sun  / (4.0 * np.pi * hf_row["separation"]**2.0 )
-                            )
-                        case 1:
-                            hf_row["R_star"] = (
-                                baraffe.BaraffeStellarRadius(hf_row["age_star"])
-                                * mors.const.Rsun
-                                * 1.0e-2
-                            )
-                            S_0 = baraffe.BaraffeSolarConstant(
-                                hf_row["age_star"], hf_row["separation"]/AU
-                            )
+                            * mors.const.Rsun
+                            * 1.0e-2
+                        )
+                        S_0 = (
+                            mors.Value(
+                                self.config["star_mass"],
+                                hf_row["age_star"] * 1000,
+                                "Lbol"
+                            ) * L_sun  / (4.0 * np.pi * hf_row["separation"]**2.0 )
+                        )
+                    case 'baraffe':
+                        hf_row["R_star"] = (
+                            baraffe.BaraffeStellarRadius(hf_row["age_star"]) * 1e9
+                            * mors.const.Rsun
+                            * 1.0e-2
+                        )
+                        S_0 = baraffe.BaraffeSolarConstant(
+                            hf_row["age_star"] * 1e9, hf_row["separation"]/AU
+                        )
 
-                    # Calculate new eqm temperature
-                    T_eqm_new = CalculateEqmTemperature(
-                        S_0, self.config["asf_scalefactor"], self.config["albedo_pl"]
-                    )
-
-                else:
-                    log.info("Stellar heating is disabled")
-                    T_eqm_new = 0.0
-                    S_0 = 0.0
+                # Calculate new eqm temperature
+                T_eqm_new = CalculateEqmTemperature(
+                    S_0, self.config["asf_scalefactor"], self.config["albedo_pl"]
+                )
 
                 hf_row["F_ins"] = S_0  # instellation
                 hf_row["T_eqm"] = T_eqm_new
