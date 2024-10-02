@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import toml
+from attrs import asdict
 from calliope.solve import (
     equilibrium_atmosphere,
     get_target_from_params,
@@ -19,7 +20,7 @@ from calliope.structure import calculate_mantle_mass
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
-from proteus.config import read_config
+from proteus.config import read_config_object
 from proteus.interior import run_interior
 from proteus.utils.constants import (
     AU,
@@ -63,9 +64,10 @@ from proteus.utils.logs import (
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
         self.config_path = config_path
-        self.config = read_config(config_path)
+        self.config = read_config_object(config_path)
 
         self.init_directories()
+
 
     def init_directories(self):
         """Initialize directories dictionary"""
@@ -156,7 +158,7 @@ class Proteus:
 
             # Write aggregate config to output directory, for future reference
             with open(config_path_backup, "w") as toml_file:
-                toml.dump(self.config, toml_file)
+                toml.dump(asdict(self.config), toml_file)
 
             # No previous iterations to be stored. It is therefore important that the
             #    submodules do not try to read data from the 'past' iterations, since they do
@@ -251,7 +253,7 @@ class Proteus:
 
         # Prepare stellar models
         match self.config["star_model"]:
-            case 0:  # SPADA (MORS)
+            case 'spada':
                 # load modern spectrum
                 star_struct_modern = mors.spec.Spectrum()
                 star_struct_modern.LoadTSV(star_modern_path)
@@ -261,19 +263,15 @@ class Proteus:
                 star_props_modern = mors.synthesis.GetProperties(
                     self.config["star_mass"],
                     self.config["star_rot_pctle"],
-                    self.config["star_age_modern"] / 1e6,
+                    self.config["star_age_modern"] * 1000,
                 )
 
-            case 1:  # BARAFFE
+            case 'baraffe':
                 modern_wl, modern_fl = mors.ModernSpectrumLoad(
                     star_modern_path, self.directories["output"] + "/-1.sflux"
                 )
 
                 baraffe = mors.BaraffeTrack(self.config["star_mass"])
-
-            case _:
-                UpdateStatusfile(self.directories, 20)
-                raise Exception("Invalid stellar model '%d'" % self.config["star_model"])
 
         # Create lockfile
         keepalive_file = CreateLockFile(self.directories["output"])
