@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import logging
 import os
 import shutil
@@ -392,15 +391,15 @@ class Proteus:
 
                 log.info("Updating stellar spectrum")
                 match self.config["star_model"]:
-                    case 0:
+                    case 'spada':
                         synthetic = mors.synthesis.CalcScaledSpectrumFromProps(
-                            star_struct_modern, star_props_modern, hf_row["age_star"] / 1e6
+                            star_struct_modern, star_props_modern, hf_row["age_star"] * 1000
                         )
                         fl = synthetic.fl  # at 1 AU
                         wl = synthetic.wl
-                    case 1:
+                    case 'baraffe':
                         fl = baraffe.BaraffeSpectrumCalc(
-                            hf_row["age_star"], self.config["star_luminosity_modern"], modern_fl
+                            hf_row["age_star"] * 1e9, self.config["star_luminosity_modern"], modern_fl
                         )
                         wl = modern_wl
 
@@ -475,19 +474,28 @@ class Proteus:
 
             ############### OUTGASSING
             PrintHalfSeparator()
-            solvevol_inp = copy.deepcopy(self.config)
+            solvevol_inp = {}
             solvevol_inp["M_mantle"] = hf_row["M_mantle"]
             solvevol_inp["T_magma"] = hf_row["T_magma"]
             solvevol_inp["Phi_global"] = hf_row["Phi_global"]
             solvevol_inp["gravity"] = hf_row["gravity"]
             solvevol_inp["mass"] = hf_row["M_planet"]
             solvevol_inp["radius"] = hf_row["R_planet"]
+            solvevol_inp['radius'] = self.config['radius']
+            solvevol_inp['fO2_shift_IW'] = self.config['fO2_shift_IW']
+            solvevol_inp['hydrogen_earth_oceans'] = self.config['hydrogen_earth_oceans']
+            solvevol_inp['CH_ratio'] = self.config['CH_ratio']
+            solvevol_inp['nitrogen_ppmw'] = self.config['nitrogen_ppmw']
+            solvevol_inp['sulfur_ppmw'] = self.config['sulfur_ppmw']
+            for s in ('H2O', 'CO2', 'N2', 'S2', 'SO2', 'H2', 'CH4', 'CO'):
+                solvevol_inp[f'{s}_initial_bar'] = self.config[f'{s}_initial_bar']
+                solvevol_inp[f'{s}_included'] = self.config[f'{s}_included']
 
             #    recalculate mass targets during init phase, since these will be adjusted
             #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
             if loop_counter["init"] < loop_counter["init_loops"]:
                 # calculate target mass of atoms (except O, which is derived from fO2)
-                if self.config["solvevol_use_params"] > 0:
+                if self.config.delivery.initial == 'elements':
                     solvevol_target = get_target_from_params(solvevol_inp)
                 else:
                     solvevol_target = get_target_from_pressures(solvevol_inp)
