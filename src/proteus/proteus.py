@@ -63,6 +63,7 @@ from proteus.star.wrapper import (
     calc_stellar_radius,
     calc_instellation
 )
+from mors import BaraffeTrack
 from proteus.star.dummy import calc_spectrum
 
 class Proteus:

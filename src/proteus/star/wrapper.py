@@ -4,7 +4,6 @@ import logging
 import os
 import mors
 import numpy as np
-from mors.baraffe import BaraffeSolarConstant, BaraffeStellarRadius
 from proteus.star.dummy import calc_instellation
 from proteus.utils.constants import R_sun, L_sun, AU, const_sigma
 
