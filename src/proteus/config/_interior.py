@@ -25,7 +25,7 @@ class Interior:
     grain_size: float
     F_initial: float
 
-    module: str = field(validator=validators.in_(('spider', 'aragog')))
+    module: str = field(validator=validators.in_(('spider', 'aragog', 'dummy')))
 
     spider: Spider
     aragog: Aragog

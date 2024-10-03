@@ -427,12 +427,10 @@ class Proteus:
 
             ############### ESCAPE
 
-            if (loop_counter["total"] >= loop_counter["init_loops"]) and (
-                self.config["escape_model"] > 0
-            ):
+            if (loop_counter["total"] >= loop_counter["init_loops"]) and self.config["escape_model"]:
                 PrintHalfSeparator()
 
-                if self.config["escape_model"] == 1:
+                if self.config["escape_model"] == 'zephyrus':
                     esc_result = RunZEPHYRUS(
                         hf_row,
                         dt,
@@ -447,7 +445,7 @@ class Proteus:
                         hf_row["R_planet"],
                     )
 
-                elif self.config["escape_model"] == 2:
+                elif self.config["escape_model"] == 'dummy':
                     esc_result = RunDummyEsc(hf_row, dt, self.config["escape_dummy_rate"])
 
                 # store total escape rate
