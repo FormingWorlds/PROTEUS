@@ -9,7 +9,10 @@ from ._converters import none_if_none
 class Orbit:
     """Planetary orbital parameters"""
     semimajoraxis: float
-    eccentricity: float
+    eccentricity: float = field(validator=[
+        validators.ge(0),
+        validators.le(1),
+    ])
     zenith_angle: float
     s0_factor: float
 

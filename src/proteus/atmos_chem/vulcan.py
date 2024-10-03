@@ -6,13 +6,17 @@ import pickle as pkl
 import re
 import shutil
 import subprocess
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from proteus.utils.constants import element_list, volatile_species
 
+if TYPE_CHECKING:
+    from proteus.config import Config
 
-def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):
+
+def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, config: Config ):
     '''
     Run online atmospheric chemistry via VULCAN kinetics
 
@@ -45,8 +49,8 @@ def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):
         vcf.write("Rp = %1.5e \n"           % (atm.planet_radius*100.0))        # Radius [cm]
         vcf.write("gs = %g \n"              % (atm.grav_s*100.0))               # Surface gravity [cm/s^2]
         vcf.write("sl_angle = %g \n"        % (atm.zenith_angle*3.141/180.0))   # Solar zenith angle [rad]
-        vcf.write("orbit_radius = %1.5e \n" % OPTIONS["semimajoraxis"]) # Semi major axis [AU]
-        vcf.write("r_star = %1.5e \n"       % OPTIONS["star_radius"])   # Star's radius [R_sun]
+        vcf.write("orbit_radius = %1.5e \n" % config["semimajoraxis"]) # Semi major axis [AU]
+        vcf.write("r_star = %1.5e \n"       % config["star_radius"])   # Star's radius [R_sun]
 
         # Set background gas based on gas with highest mixing ratio from list of options
         bg_gas = np.array([ 'H2', 'N2', 'O2', 'CO2' ])
@@ -62,10 +66,10 @@ def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, OPTIONS ):
 
         # Pressure grid limits
         vcf.write("P_b = %1.5e \n"          % float(hf_recent["P_surf"]*1.0e6))        # pressure at the bottom (dyne/cm^2)
-        vcf.write("P_t = %1.5e \n"          % float(OPTIONS["P_top"]*1.0e6))   # pressure at the top (dyne/cm^2)
+        vcf.write("P_t = %1.5e \n"          % float(config["P_top"]*1.0e6))   # pressure at the top (dyne/cm^2)
 
         # Plotting behaviour
-        vcf.write("use_live_plot  = %s \n"  % str(bool(OPTIONS["plot_iterfreq"] > 0)))
+        vcf.write("use_live_plot  = %s \n"  % str(bool(config["plot_iterfreq"] > 0)))
 
         # Make copy of element_list as a set, since it'll be used a lot in the code below
         set_elem_list = set(element_list)

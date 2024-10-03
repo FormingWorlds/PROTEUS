@@ -5,7 +5,7 @@ from attrs import define, field, validators
 
 @define
 class Spider:
-    num_levels: int
+    num_levels: int  = field(validator=validators.ge(40))
     mixing_length: int
     tolerance: float
     tsurf_atol: float
@@ -25,7 +25,7 @@ class Interior:
     grain_size: float
     F_initial: float
 
-    module: str = field(validator=validators.in_(('spider', 'aragog')))
+    module: str = field(validator=validators.in_(('spider', 'aragog', 'dummy')))
 
     spider: Spider
     aragog: Aragog
