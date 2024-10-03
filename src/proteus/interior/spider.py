@@ -322,7 +322,7 @@ def _try_spider( dirs:dict, config:Config,
     return bool(proc.returncode == 0)
 
 
-def RunSPIDER( dirs:dict, OPTIONS:dict,
+def RunSPIDER( dirs:dict, config:Config,
               IC_INTERIOR:int, loop_counter:dict,
               hf_all:pd.DataFrame, hf_row:dict ):
     '''
@@ -349,7 +349,7 @@ def RunSPIDER( dirs:dict, OPTIONS:dict,
         log.info("Attempt %d" % attempts)
 
         # run SPIDER
-        spider_success = _try_spider(dirs, OPTIONS, IC_INTERIOR, loop_counter, hf_all, hf_row, step_sf, atol_sf)
+        spider_success = _try_spider(dirs, config, IC_INTERIOR, loop_counter, hf_all, hf_row, step_sf, atol_sf)
 
         if spider_success:
             # success
@@ -375,7 +375,7 @@ def RunSPIDER( dirs:dict, OPTIONS:dict,
         raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
-def ReadSPIDER(dirs:dict, OPTIONS:dict, R_planet:float):
+def ReadSPIDER(dirs:dict, config:Config, R_planet:float):
     '''
     Read variables from last SPIDER output JSON file into a dictionary
     '''
@@ -421,7 +421,7 @@ def ReadSPIDER(dirs:dict, OPTIONS:dict, R_planet:float):
     log.debug(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, output["F_int"]) )
 
     # Limit F_int to positive values
-    if OPTIONS["prevent_warming"]:
+    if config["prevent_warming"]:
         output["F_int"] = max(1.0e-8, output["F_int"])
 
     # Check NaNs

@@ -4,9 +4,13 @@ import logging
 import os
 import subprocess as sp
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import platformdirs
 from osfclient.api import OSF
+
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -134,23 +138,23 @@ def download_evolution_tracks(track:str):
     log.debug("Get evolution tracks")
     DownloadEvolutionTracks(track)
 
-def download_sufficient_data(OPTIONS:dict):
+def download_sufficient_data(config:Config):
     """
     Download the required data based on the current options
     """
 
     # Star stuff
-    if OPTIONS["star_model"] in [0,1]:
+    if config["star_model"] in [0,1]:
         download_stellar_spectra()
-        if OPTIONS["star_model"] == 0:
+        if config["star_model"] == 0:
             download_evolution_tracks("Spada")
         else:
             download_evolution_tracks("Baraffe")
 
     # Atmosphere stuff
-    if OPTIONS["atmosphere_model"] in [0,1]:
+    if config["atmosphere_model"] in [0,1]:
         download_spectral_files()
-    if OPTIONS["atmosphere_model"] == 1:
+    if config["atmosphere_model"] == 1:
         download_surface_albedos()
 
 def _none_dirs():
