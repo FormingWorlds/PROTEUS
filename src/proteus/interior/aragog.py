@@ -21,18 +21,19 @@ from aragog.parser import (
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import R_earth
 
-aragog_parameters = None
+aragog_solver = None
 log = logging.getLogger("fwl."+__name__)
 
 # Run the Aragog interior module
 def RunAragog(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
 
-    global aragog_parameters
-    #Setup Aragog parameters from options at first iteration
-    if (aragog_parameters is None):
-        aragog_parameters = SetupAragogParameters(OPTIONS, hf_row)
-
-    # UpdateAragogParameters
+    global aragog_solver
+    # Setup Aragog parameters from options at first iteration
+    if (aragog_solver is None):
+        SetupAragogSolver(OPTIONS, hf_row)
+    # Else only update varying parameters
+    else:
+        UpdateAragogSolver()
 
     # Compute time step
     if IC_INTERIOR==1:
@@ -42,17 +43,18 @@ def RunAragog(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.D
         dt = next_step(OPTIONS, dirs, hf_row, hf_all, step_sf)
 
     # Run Aragog solver
-    solver: Solver = Solver(aragog_parameters)
-    solver.initialize()
-    solver.solve()
+    aragog_solver.initialize()
+    aragog_solver.solve()
 
     # Get Aragog output
-    output = GetAragogOutput(OPTIONS, hf_row, solver)
+    output = GetAragogOutput(OPTIONS, hf_row)
     sim_time = hf_row["Time"] + dt
 
     return sim_time, output
 
-def SetupAragogParameters(OPTIONS:dict, hf_row:dict):
+def SetupAragogSolver(OPTIONS:dict, hf_row:dict):
+
+    global aragog_solver
 
     scalings = _ScalingsParameters(
             radius = OPTIONS["radius"] * R_earth, #6371000
@@ -99,7 +101,7 @@ def SetupAragogParameters(OPTIONS:dict, hf_row:dict):
             tidal = False,
             )
 
-    initial_conditions = _InitialConditionParameters(
+    initial_condition = _InitialConditionParameters(
             surface_temperature = 3600,
             basal_temperature = 4000,
             )
@@ -145,7 +147,7 @@ def SetupAragogParameters(OPTIONS:dict, hf_row:dict):
     param = Parameters(
             boundary_conditions = boundary_conditions,
             energy = energy,
-            initial_condition = initial_conditions,
+            initial_condition = initial_condition,
             mesh = mesh,
             phase_solid = phase_solid,
             phase_liquid = phase_liquid,
@@ -155,9 +157,22 @@ def SetupAragogParameters(OPTIONS:dict, hf_row:dict):
             solver = solver,
             )
 
-    return param
+    aragog_solver = Solver(param)
 
-def GetAragogOutput(OPTIONS:dict, hf_row:dict, solver:Solver):
+def UpdateAragogSolver():
+
+    # Get output temperature field from previous run
+    Tfield: np.array = aragog_solver.temperature_staggered[:, -1]
+    # Make it dimensionless
+    Tfield = Tfield / aragog_solver.parameters.scalings.temperature
+
+    # Set the init field to previous result
+    aragog_solver.parameters.initial_condition.from_field = True
+    aragog_solver.parameters.initial_condition.init_temperature = Tfield
+
+    return
+
+def GetAragogOutput(OPTIONS:dict, hf_row:dict):
 
     output = {}
     output["M_mantle"] = hf_row["M_mantle"]
