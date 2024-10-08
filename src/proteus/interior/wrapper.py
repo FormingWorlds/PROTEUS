@@ -26,8 +26,11 @@ def run_interior(dirs:dict, OPTIONS:dict, loop_counter:dict, IC_INTERIOR:int, hf
         sim_time, output = ReadSPIDER(dirs, OPTIONS, hf_row["R_planet"])
 
     elif OPTIONS["interior_model"] == 1:
-        # Not supported
-        raise Exception("Aragog interface not yet implemented")
+        # Import
+        from proteus.interior.aragog import RunAragog
+
+        # Run Aragog
+        sim_time, output = RunAragog(OPTIONS, dirs, IC_INTERIOR, hf_row, hf_all)
 
     elif OPTIONS["interior_model"] == 2:
         # Import
