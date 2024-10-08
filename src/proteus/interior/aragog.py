@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 
 import pandas as pd
+
+from aragog import Solver
 from aragog.parser import (
     Parameters,
     _BoundaryConditionsParameters,
@@ -16,8 +18,8 @@ from aragog.parser import (
     _ScalingsParameters,
     _SolverParameters,
 )
-
 from proteus.interior.timestep import next_step
+from proteus.utils.constants import R_earth
 
 aragog_parameters = None
 log = logging.getLogger("fwl."+__name__)
@@ -26,7 +28,9 @@ log = logging.getLogger("fwl."+__name__)
 def RunAragog(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
 
     global aragog_parameters
-    aragog_parameters = SetupAragogParameters(OPTIONS)
+    #Setup Aragog parameters from options at first iteration
+    if (aragog_parameters is None):
+        aragog_parameters = SetupAragogParameters(OPTIONS, hf_row)
 
     # UpdateAragogParameters
 
@@ -37,16 +41,21 @@ def RunAragog(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.D
         step_sf = 1.0 # dt scale factor
         dt = next_step(OPTIONS, dirs, hf_row, hf_all, step_sf)
 
-    output = GetAragogOutput(OPTIONS, hf_row)
+    # Run Aragog solver
+    solver: Solver = Solver(aragog_parameters)
+    solver.initialize()
+    solver.solve()
 
+    # Get Aragog output
+    output = GetAragogOutput(OPTIONS, hf_row, solver)
     sim_time = hf_row["Time"] + dt
 
     return sim_time, output
 
-def SetupAragogParameters(OPTIONS:dict):
+def SetupAragogParameters(OPTIONS:dict, hf_row:dict):
 
     scalings = _ScalingsParameters(
-            radius = 6371000,
+            radius = OPTIONS["radius"] * R_earth, #6371000
             temperature = 4000,
             density = 4000,
             time = 3155760,
@@ -66,18 +75,18 @@ def SetupAragogParameters(OPTIONS:dict):
             inner_boundary_value = 0,
             emissivity = 1,
             equilibrium_temperature = 273,
-            core_radius = 3504050,
+            core_radius = OPTIONS["planet_coresize"] * OPTIONS["radius"] * R_earth, #3504050
             core_density = 10738.332568062382,
             core_heat_capacity = 880,
             )
 
     mesh = _MeshParameters(
-            outer_radius = 6371000,
+            outer_radius = OPTIONS["radius"] * R_earth, #6371000
             inner_radius = 5371000,
-            number_of_nodes = OPTIONS["interior_nlev"],
+            number_of_nodes = OPTIONS["interior_nlev"], #50
             mixing_length_profile = "constant",
             surface_density = 4090,
-            gravitational_acceleration = 9.81,
+            gravitational_acceleration = hf_row["gravity"], #9.81
             adiabatic_bulk_modulus = 260E9,
             )
 
@@ -117,11 +126,11 @@ def SetupAragogParameters(OPTIONS:dict):
             latent_heat_of_fusion = 4e6,
             rheological_transition_melt_fraction = 0.4,
             rheological_transition_width = 0.15,
-            solidus = "/Users/laurentsoucasse/Documents/eScience/projects/PROTEUS/aragog/data/test/solidus_1d_lookup.dat",
-            liquidus = "/Users/laurentsoucasse/Documents/eScience/projects/PROTEUS/aragog/data/test/liquidus_1d_lookup.dat",
+            solidus = "aragog/data/test/solidus_1d_lookup.dat",
+            liquidus = "aragog/data/test/liquidus_1d_lookup.dat",
             phase = "mixed",
             phase_transition_width = 0.1,
-            grain_size = 1.0E-3,
+            grain_size = OPTIONS["grain_size"],
             )
 
     radionuclides = _Radionuclide(
@@ -148,7 +157,7 @@ def SetupAragogParameters(OPTIONS:dict):
 
     return param
 
-def GetAragogOutput(OPTIONS:dict, hf_row:dict):
+def GetAragogOutput(OPTIONS:dict, hf_row:dict, solver:Solver):
 
     output = {}
     output["M_mantle"] = hf_row["M_mantle"]
