@@ -28,12 +28,6 @@ log = logging.getLogger("fwl."+__name__)
 def RunAragog(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
 
     global aragog_solver
-    # Setup Aragog parameters from options at first iteration
-    if (aragog_solver is None):
-        SetupAragogSolver(OPTIONS, hf_row)
-    # Else only update varying parameters
-    else:
-        UpdateAragogSolver()
 
     # Compute time step
     if IC_INTERIOR==1:
@@ -42,13 +36,20 @@ def RunAragog(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.D
         step_sf = 1.0 # dt scale factor
         dt = next_step(OPTIONS, dirs, hf_row, hf_all, step_sf)
 
+    # Setup Aragog parameters from options at first iteration
+    if (aragog_solver is None):
+        SetupAragogSolver(OPTIONS, hf_row)
+    # Else only update varying parameters
+    else:
+        UpdateAragogSolver(dt, hf_row)
+
     # Run Aragog solver
     aragog_solver.initialize()
     aragog_solver.solve()
 
     # Get Aragog output
     output = GetAragogOutput(OPTIONS, hf_row)
-    sim_time = hf_row["Time"] + dt
+    sim_time = aragog_solver.parameters.solver.end_time
 
     return sim_time, output
 
@@ -57,39 +58,39 @@ def SetupAragogSolver(OPTIONS:dict, hf_row:dict):
     global aragog_solver
 
     scalings = _ScalingsParameters(
-            radius = OPTIONS["radius"] * R_earth, #6371000
-            temperature = 4000,
-            density = 4000,
-            time = 3155760,
+            radius = R_earth, # scaling radius [m]
+            temperature = 4000, # scaling temperature [K]
+            density = 4000, # scaling density
+            time = 3155760, # scaling time (unit???)
             )
 
     solver = _SolverParameters(
             start_time = 0,
-            end_time = 200,
+            end_time = 0,
             atol = 1e-6,
             rtol = 1e-6,
             )
 
     boundary_conditions = _BoundaryConditionsParameters(
-            outer_boundary_condition = 1,
-            outer_boundary_value = 1500,
-            inner_boundary_condition = 2,
-            inner_boundary_value = 0,
-            emissivity = 1,
-            equilibrium_temperature = 273,
-            core_radius = OPTIONS["planet_coresize"] * OPTIONS["radius"] * R_earth, #3504050
-            core_density = 10738.332568062382,
-            core_heat_capacity = 880,
+            outer_boundary_condition = 4, # 4 = prescribed heat flux
+            outer_boundary_value = OPTIONS["F_atm"], # first guess surface heat flux [W/m2]
+            inner_boundary_condition = 3, # 3 = prescribed temperature
+            inner_boundary_value = 4000, # core temperature [K]
+            emissivity = 1, # only used in gray body BC, outer_boundary_condition = 1
+            equilibrium_temperature = 273, # only used in gray body BC, outer_boundary_condition = 1
+            core_radius = OPTIONS["planet_coresize"] * OPTIONS["radius"] * R_earth, # not used now
+            core_density = 10738.332568062382, # not used now
+            core_heat_capacity = 880, # not used now
             )
 
     mesh = _MeshParameters(
-            outer_radius = OPTIONS["radius"] * R_earth, #6371000
-            inner_radius = 5371000,
-            number_of_nodes = OPTIONS["interior_nlev"], #50
+            outer_radius = OPTIONS["radius"] * R_earth, # planet radius [m]
+            inner_radius = OPTIONS["planet_coresize"] * OPTIONS["radius"] * R_earth, # core radius [m]
+            number_of_nodes = OPTIONS["interior_nlev"], # 50
             mixing_length_profile = "constant",
             surface_density = 4090,
-            gravitational_acceleration = hf_row["gravity"], #9.81
-            adiabatic_bulk_modulus = 260E9,
+            gravitational_acceleration = hf_row["gravity"], # [m/s-2]
+            adiabatic_bulk_modulus = 260E9, # TO CLARIFY
             )
 
     energy = _EnergyParameters(
@@ -102,8 +103,8 @@ def SetupAragogSolver(OPTIONS:dict, hf_row:dict):
             )
 
     initial_condition = _InitialConditionParameters(
-            surface_temperature = 3600,
-            basal_temperature = 4000,
+            surface_temperature = 4000, # initial top temperature (K)
+            basal_temperature = 4000, # initial bottom temperature (K)
             )
 
     phase_liquid = _PhaseParameters(
@@ -159,16 +160,20 @@ def SetupAragogSolver(OPTIONS:dict, hf_row:dict):
 
     aragog_solver = Solver(param)
 
-def UpdateAragogSolver():
+def UpdateAragogSolver(dt:float, hf_row:dict):
 
-    # Get output temperature field from previous run
+    # Set solver time
+    aragog_solver.parameters.solver.start_time = hf_row["Time"]
+    aragog_solver.parameters.solver.end_time = hf_row["Time"] + dt
+
+    # Update initial condition (temperature field from previous run)
     Tfield: np.array = aragog_solver.temperature_staggered[:, -1]
-    # Make it dimensionless
     Tfield = Tfield / aragog_solver.parameters.scalings.temperature
-
-    # Set the init field to previous result
     aragog_solver.parameters.initial_condition.from_field = True
     aragog_solver.parameters.initial_condition.init_temperature = Tfield
+
+    # Update boundary conditions
+    aragog_solver.parameters.boundary_conditions.outer_boundary_value = hf_row["F_atm"]
 
     return
 
