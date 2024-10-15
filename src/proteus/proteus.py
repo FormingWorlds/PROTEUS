@@ -476,7 +476,6 @@ class Proteus:
             solvevol_inp["gravity"] = hf_row["gravity"]
             solvevol_inp["mass"] = hf_row["M_planet"]
             solvevol_inp["radius"] = hf_row["R_planet"]
-            solvevol_inp['radius'] = self.config['radius']
             solvevol_inp['fO2_shift_IW'] = self.config['fO2_shift_IW']
             solvevol_inp['hydrogen_earth_oceans'] = self.config['hydrogen_earth_oceans']
             solvevol_inp['CH_ratio'] = self.config['CH_ratio']
