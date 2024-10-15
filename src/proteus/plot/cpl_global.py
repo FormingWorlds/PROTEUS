@@ -17,7 +17,12 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e1):
+def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
+                logt: bool=True, tmin: float=1e1):
+
+    if np.amax(hf_all["Time"]) < 2:
+        log.debug("Insufficient data to make plot_global")
+        return
 
     log.info("Plot global")
 
@@ -32,8 +37,6 @@ def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e
         "framealpha":0.9
     }
 
-    fpath = os.path.join(output_dir , "runtime_helpfile.csv")
-    hf_all = pd.read_csv(fpath, sep=r"\s+")
 
     #    Volatile parameters (keys=vols, vals=quantites_over_time)
     vol_present = {} # Is present ever? (true/false)
@@ -193,14 +196,18 @@ def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e
 
 
 def plot_global_entry(handler: Proteus):
+    # read helpfile
+    hf_all = pd.read_csv(os.path.join(handler.directories['output'], "runtime_helpfile.csv"), sep=r"\s+")
+
+    # make plot
     for logt in [True,False]:
         plot_global(
+            hf_all=hf_all,
             output_dir=handler.directories['output'],
             options=handler.config,
             logt=logt,
             tmin=1e1,
         )
-
 
 if __name__ == "__main__":
     from proteus.plot._cpl_helpers import get_handler_from_argv

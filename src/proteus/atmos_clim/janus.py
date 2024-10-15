@@ -110,6 +110,7 @@ def UpdateStateAtm(atm, hf_row:dict, trppT:int):
     atm.tmp_magma = hf_row["T_magma"]
     if (trppT == 1):
         atm.trppT = hf_row["T_skin"]
+        log.debug("Setting stratosphere to T_skin=%.2f K"%atm.trppT)
 
     return
 
@@ -199,7 +200,7 @@ def RunJANUS(atm, dirs:dict, OPTIONS:dict, hf_row:dict, hf_all:pd.DataFrame,
 
         # run JANUS
         atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=tol,
-                        atm_bc=int(OPTIONS["F_atm_bc"]), T_surf_guess=float(T_surf_old)-0.5, T_surf_max=float(T_surf_max))
+                        atm_bc=int(OPTIONS["F_atm_bc"]), T_surf_guess=float(T_surf_old)-1.0, T_surf_max=float(T_surf_max))
 
     else:
         UpdateStatusfile(dirs, 20)

@@ -12,7 +12,7 @@ star_rot_pctle              = 50.0
 star_spectrum               = 'stellar_spectra/Named/sun.txt'   # Stellar spectrum file at 1 AU (TODAY)
 
 ##### Planet configuration
-mean_distance               = 0.0503       # AU, star-planet distance
+semimajoraxis               = 0.0503       # AU, star-planet distance
 mass                        = 1.0         # M_earth
 radius                      = 1.073         # R_earth
 
@@ -21,28 +21,30 @@ asf_scalefactor             = 0.25     # absorbed solar flux scale factor = 1/4
 albedo_s                    = 0.2 		# surface albedo
 albedo_pl                   = 0.0   	# Bond albedo (scattering)
 
+eccentricity                = 0.017     # Orbital eccentricity  [dimensionless]
+
 P_top                       = 1.0e-5    # bar, Pressure at TOA
 
 ##### PROTEUS settings
 
 iter_max                    = 9000
-log_level                   = 'DEBUG'
+log_level                   = 'INFO'
 
 # Output subdirectory name (relative to output folder)
 dir_output                  = 'hd63433d'
 
 # Choose times
-time_star                   = 50.0e6  	# yr, time since star formation
+time_star                   = 100.0e6  	# yr, time since star formation
 time_target                 = 4.567e+9  # yr, target time for MO evolution
 
 # SOCRATES spectral file to use (relative to FWL_DATA folder)
-spectral_file               = 'spectral_files/Dayspring/256/Dayspring.sf'
+spectral_file               = 'spectral_files/Honeyside/256/Honeyside.sf'
 
 # Stellar heating toggle, 0: disabled | 1: enabled
 stellar_heating             = 1
 
 # Time-stepping stuff
-plot_iterfreq               = 1     # Plotting frequency, 0: wait until completion | n: every n iterations
+plot_iterfreq               = 5     # Plotting frequency, 0: wait until completion | n: every n iterations
 plot_format                 = 'png'  # Plotting image file format
 sspec_dt_update             = 3e6    # Time intervals at which to re-calculate the stellar spectrum
 sinst_dt_update             = 1e2    # Time intervals at which to re-calculate the instellation
@@ -85,7 +87,7 @@ atmosphere_model            = 1         # Atmosphere model to be used, 0: JANUS 
 atmosphere_surf_state       = 2         # Atmosphere bottom edge boundary condition, 0: free | 1: fixed at T_surf | 2: conductive skin
 
 # Number of levels
-atmosphere_nlev             = 40
+atmosphere_nlev             = 60
 
 # Temperature limits throughout atmosphere [K]
 min_temperature             = 0.5
@@ -104,8 +106,9 @@ rayleigh                    = 1
 # Atmospheric chemistry, 0: Disabled | 1: Equilibrium | 2: Kinetics
 atmosphere_chemistry       = 0
 
-##### SPIDER-specific settings
+##### Interior-specific settings
 
+interior_model              = 0
 interior_nlev               = 290
 grain_size                  = 0.1
 
@@ -140,9 +143,9 @@ solvevol_use_params          = 1
 # Parameters used to solve for initial partial pressures (when solvepp_use_params = 1)
 Phi_global                  = 1.0       # Mantle melt fraction initial guess
 CH_ratio                    = 1.0       # C/H ratio
-hydrogen_earth_oceans       = 8.0      # Hydrogen inventory in units of equivalent Earth oceans
-nitrogen_ppmw               = 2.0       # Nitrogen inventory in ppmw relative to mantle mass
-sulfur_ppmw                 = 300.0     # Sulfur inventory in ppmw relative to mass of melt
+hydrogen_earth_oceans       = 8.0       # Hydrogen inventory in units of equivalent Earth oceans
+nitrogen_ppmw               = 2.01      # Nitrogen inventory in ppmw relative to mantle mass
+sulfur_ppmw                 = 235.0     # Sulfur inventory in ppmw relative to mass of melt
 
 # Prescribed injected partial pressures [bar]
 H2O_included                = 1

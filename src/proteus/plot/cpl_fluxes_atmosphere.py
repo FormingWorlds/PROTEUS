@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 
-def plot_fluxes_atmosphere(output_dir, plot_format="pdf"):
+def plot_fluxes_atmosphere(output_dir:str, plot_format="pdf"):
 
     log.info("Plot atmosphere fluxes")
 

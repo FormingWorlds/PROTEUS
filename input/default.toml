@@ -12,7 +12,7 @@ star_rot_pctle              = 50.0
 star_spectrum               = 'stellar_spectra/Named/sun.txt'   # Stellar spectrum file at 1 AU (TODAY)
 
 ##### Planet configuration
-mean_distance               = 1         # AU, star-planet distance
+semimajoraxis               = 1         # AU, star-planet distance
 mass                        = 1         # M_earth
 radius                      = 1         # R_earth
 
@@ -20,6 +20,8 @@ zenith_angle                = 48.19     # Cronin+14 Earth-like case with clear s
 asf_scalefactor             = 0.375     # absorbed solar flux scale factor = 3/8
 albedo_s                    = 0.1 		# surface albedo
 albedo_pl                   = 0.1   	# Bond albedo (scattering)
+
+eccentricity                = 0.0     # Orbital eccentricity  [dimensionless]
 
 P_top                       = 1.0e-5    # bar, Pressure at TOA
 
@@ -29,7 +31,7 @@ iter_max                    = 9000
 log_level                   = 'INFO'
 
 # Output subdirectory name (relative to output folder)
-dir_output                  = 'earth_demo'
+dir_output                  = 'default'
 
 # Choose times
 time_star                   = 100.0e6  	# yr, time since star formation
@@ -103,8 +105,9 @@ rayleigh                    = 1
 # Atmospheric chemistry, 0: Disabled | 1: Equilibrium | 2: Kinetics
 atmosphere_chemistry       = 0
 
-##### SPIDER-specific settings
+##### Interior-specific settings
 
+interior_model              = 0
 interior_nlev               = 220
 grain_size                  = 0.1
 

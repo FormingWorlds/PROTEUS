@@ -2,7 +2,7 @@
 
 ##### Star configuration
 
-star_model                  = 0                 # Evolution model to use for star (0: Spada, 1: Baraffe)
+star_model                  = 1                 # Evolution model to use for star (0: Spada, 1: Baraffe)
 star_mass                   = 1                 # M_sun, mass of star
 star_radius_modern          = 1                 # R_sun, radius of star (TODAY)
 star_temperature_modern     = 5772.0            # K, temperature of star (TODAY)
@@ -12,7 +12,7 @@ star_rot_pctle              = 50.0
 star_spectrum               = 'stellar_spectra/Named/sun.txt'   # Stellar spectrum file at 1 AU (TODAY)
 
 ##### Planet configuration
-mean_distance               = 1         # AU, star-planet distance
+semimajoraxis               = 1         # AU, star-planet distance
 mass                        = 1         # M_earth
 radius                      = 1         # R_earth
 
@@ -21,12 +21,14 @@ asf_scalefactor             = 0.375     # absorbed solar flux scale factor = 3/8
 albedo_s                    = 0.1 		# surface albedo
 albedo_pl                   = 0.1   	# Bond albedo (scattering)
 
+eccentricity                = 0.0     # Orbital eccentricity  [dimensionless]
+
 P_top                       = 1.0e-6    # bar, Pressure at TOA
 
 ##### PROTEUS settings
 
 iter_max                    = 9000
-log_level                   = 'INFO'
+log_level                   = 'DEBUG'
 
 # Output subdirectory name (relative to output folder)
 dir_output                  = 'dummy'
@@ -42,7 +44,7 @@ spectral_file               = 'spectral_files/Frostflow/48/Frostflow.sf'
 stellar_heating             = 1
 
 # Time-stepping stuff
-plot_iterfreq               = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
+plot_iterfreq               = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
 plot_format                 = 'png'  # Plotting image file format
 sspec_dt_update             = 1e9    # Time intervals at which to re-calculate the stellar spectrum
 sinst_dt_update             = 1e1    # Time intervals at which to re-calculate the instellation
@@ -77,7 +79,7 @@ F_crit                      = 0.2       # Model will terminate when |F_atm| < F_
 # Atmospheric escape
 escape_model                = 2         # Escape model to be used, 0: None | 1: ZEPHYRUS | 2: Dummy
 escape_stop                 = 3e-4      # Terminate when atm mass drops below this fraction of its initial mass
-escape_dummy_rate           = 2e7       # Bulk escape rate for dummy escape model [kg s-1]
+escape_dummy_rate           = 2e4       # Bulk escape rate for dummy escape model [kg s-1]
 
 # Method for solving for T(p) profile
 atmosphere_model            = 2         # Atmosphere model to be used, 0: JANUS | 1: AGNI | 2: Dummy
@@ -103,8 +105,9 @@ rayleigh                    = 1
 # Atmospheric chemistry, 0: Disabled | 1: Equilibrium | 2: Kinetics
 atmosphere_chemistry       = 0
 
-##### SPIDER-specific settings
+##### Interior-specific settings
 
+interior_model              = 2
 interior_nlev               = 220
 grain_size                  = 0.1
 

@@ -12,6 +12,11 @@ import numpy as np
 
 log = logging.getLogger("fwl."+__name__)
 
+def get_proteus_dir():
+    if os.environ.get('PROTEUS_DIR') is None:
+        raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
+    return os.path.abspath(os.getenv('PROTEUS_DIR'))
+
 def PrintSeparator():
     log.info("===================================================")
     pass

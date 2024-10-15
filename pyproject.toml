@@ -43,6 +43,8 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
+    "attrs",
+    "cattrs",
     "fwl-janus>=24.9.12",
     "fwl-mors>=24.8.29",
     "fwl-calliope>=24.9.10",
@@ -67,6 +69,7 @@ changelog = "https://github.com/FormingWorlds/PROTEUS/releases"
 develop = [
     "bump-my-version",
     "coverage[toml]",
+    "pillow",
     "pip-tools",
     "pytest >= 8.1",
     "pre-commit",

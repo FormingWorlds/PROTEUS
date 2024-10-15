@@ -15,22 +15,20 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_elements( output_dir, plot_format="pdf", t0=100.0):
+def plot_elements( hf_all:pd.DataFrame, output_dir:str, plot_format="pdf", t0=100.0):
+
+    if np.amax(hf_all["Time"]) < 2:
+        log.debug("Insufficient data to make plot_elements")
+        return
 
     log.info("Plot elements")
 
-    hf_all = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=r"\s+")
-
     time = np.array(hf_all["Time"] )
-    if len(time) < 3:
-        log.warning("Cannot make plot with less than 3 samples")
-        return
 
     # make plot
     lw = 1.2
     scale = 1.1
     fig,ax = plt.subplots(1,1, figsize=(7*scale,4*scale))
-
 
     total = np.zeros(len(time))
     for e in element_list:
@@ -59,7 +57,12 @@ def plot_elements( output_dir, plot_format="pdf", t0=100.0):
 
 
 def plot_elements_entry(handler: Proteus):
+    # read helpfile
+    hf_all = pd.read_csv(os.path.join(handler.directories['output'], "runtime_helpfile.csv"), sep=r"\s+")
+
+    # make plot
     plot_elements(
+        hf_all=hf_all,
         output_dir=handler.directories["output"],
         plot_format=handler.config["plot_format"],
     )

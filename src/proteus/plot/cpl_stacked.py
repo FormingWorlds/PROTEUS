@@ -7,14 +7,13 @@ from typing import TYPE_CHECKING
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import netCDF4 as nc
 import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
-from proteus.utils.helper import find_nearest
-from proteus.utils.plot import dict_colors, latex_float
-from proteus.utils.spider import MyJSON
+from proteus.atmos_clim.common import read_ncdfs
+from proteus.interior.spider import read_jsons
+from proteus.utils.plot import dict_colors, latex_float, sample_times
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -22,7 +21,11 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 
-def plot_stacked(output_dir: str, times: list, plot_format: str="pdf"):
+def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_format: str="pdf"):
+
+    if np.amax(times) < 2:
+        log.debug("Insufficient data to make plot_stacked")
+        return
 
     log.info("Plot stacked")
 
@@ -37,27 +40,24 @@ def plot_stacked(output_dir: str, times: list, plot_format: str="pdf"):
     y_depth, y_height = 100, 100
 
     # loop over times
-    for time in times:
+    for i,time in enumerate(times):
 
         # Get atmosphere data for this time
-        atm_file = os.path.join(output_dir, "data", "%d_atm.nc"%time)
-        ds = nc.Dataset(atm_file)
-        tmp =   np.array(ds.variables["tmpl"][:])
-        z   =   np.array(ds.variables["zl"][:]) * 1e-3  # convert to km
-        ds.close()
+        prof = ncdfs[i]
+        atm_z = prof["z"]/1e3
+        atm_t = prof["t"]
 
         # Get interior data for this time
-        int_file = os.path.join(output_dir, "data", "%d.json"%time)
-        myjson_o = MyJSON(int_file)
+        myjson_o = jsons[i]
         temperature_interior = myjson_o.get_dict_values(['data','temp_b'])
         xx_radius = myjson_o.get_dict_values(['data','radius_b'])
         xx_radius *= 1.0E-3
         xx_depth = xx_radius[0] - xx_radius
 
         # use melt fraction to determine mixed region
-        MASK_MI = myjson_o.get_mixed_phase_boolean_array( 'basic' )
-        MASK_ME = myjson_o.get_melt_phase_boolean_array(  'basic' )
-        MASK_SO = myjson_o.get_solid_phase_boolean_array( 'basic' )
+        MASK_MI = myjson_o.get_mixed_phase_boolean_array('basic')
+        MASK_ME = myjson_o.get_melt_phase_boolean_array( 'basic')
+        MASK_SO = myjson_o.get_solid_phase_boolean_array('basic')
 
         # overlap lines by 1 node
         for m in (MASK_MI, MASK_ME, MASK_SO):
@@ -71,7 +71,7 @@ def plot_stacked(output_dir: str, times: list, plot_format: str="pdf"):
         color = sm.to_rgba(time)
 
         # Plot atmosphere
-        axt.plot( tmp, z, '-', color=color, label=label, lw=1.5)
+        axt.plot( atm_t, atm_z, color=color, label=label, lw=1.5)
 
         # Plot interior
         axb.plot( temperature_interior[MASK_SO], xx_depth[MASK_SO], linestyle='solid',  color=color, lw=1.5 )
@@ -79,7 +79,7 @@ def plot_stacked(output_dir: str, times: list, plot_format: str="pdf"):
         axb.plot( temperature_interior[MASK_ME], xx_depth[MASK_ME], linestyle='dotted', color=color, lw=1.5 )
 
         # update limits
-        y_height = max(y_height, np.amax(z))
+        y_height = max(y_height, np.amax(atm_z))
         y_depth  = max(y_depth,  np.amax(xx_depth))
 
 
@@ -114,28 +114,14 @@ def plot_stacked_entry(handler: Proteus):
     files = glob.glob(os.path.join(handler.directories["output"], "data", "*_atm.nc"))
     times = [int(f.split("/")[-1].split("_")[0]) for f in files]
 
-    if len(times) <= 8:
-        plot_times = times
-    else:
-        plot_times = []
-        tmin = max(1,np.amin(times))
-        tmax = max(tmin+1, np.amax(times))
-
-        for s in np.logspace(np.log10(tmin),np.log10(tmax),8): # Sample on log-scale
-
-            remaining = list(set(times) - set(plot_times))
-            if len(remaining) == 0:
-                break
-
-            v,_ = find_nearest(remaining,s) # Find next new sample
-            plot_times.append(int(v))
-        plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
-
+    plot_times,_ = sample_times(times, 8)
     print("Snapshots:", plot_times)
 
+    jsons = read_jsons(handler.directories['output'], plot_times)
+    ncdfs = read_ncdfs(handler.directories["output"], plot_times)
     plot_stacked(
         output_dir=handler.directories["output"],
-        times=plot_times,
+        times=plot_times, jsons=jsons, ncdfs=ncdfs,
         plot_format=handler.config["plot_format"],
     )
 

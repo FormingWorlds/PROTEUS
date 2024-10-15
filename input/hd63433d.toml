@@ -12,7 +12,7 @@ star_rot_pctle              = 50.0
 star_spectrum               = 'stellar_spectra/Named/sun.txt'   # Stellar spectrum file at 1 AU (TODAY)
 
 ##### Planet configuration
-mean_distance               = 0.0503       # AU, star-planet distance
+semimajoraxis               = 0.0503       # AU, star-planet distance
 mass                        = 1.0         # M_earth
 radius                      = 1.073         # R_earth
 
@@ -20,6 +20,8 @@ zenith_angle                = 54.74    # Tidally locked [Hamano+15,  acos(1/sqrt
 asf_scalefactor             = 0.25     # absorbed solar flux scale factor = 1/4
 albedo_s                    = 0.2 		# surface albedo
 albedo_pl                   = 0.0   	# Bond albedo (scattering)
+
+eccentricity                = 0.16     # Eccentricity  [dimensionless]
 
 P_top                       = 1.0e-5    # bar, Pressure at TOA
 
@@ -32,7 +34,7 @@ log_level                   = 'INFO'
 dir_output                  = 'hd63433d'
 
 # Choose times
-time_star                   = 50.0e6  	# yr, time since star formation
+time_star                   = 100.0e6  	# yr, time since star formation
 time_target                 = 4.567e+9  # yr, target time for MO evolution
 
 # SOCRATES spectral file to use (relative to FWL_DATA folder)
@@ -67,8 +69,8 @@ phi_crit                    = 0.005     # melt fraction
 
 # Break at steady state?
 steady_stop                 = 1
-steady_flux                 = 0.8        # Maximum absolute value of F_atm allowed for convergence
-steady_dprel                = 3.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
+steady_flux                 = 1.8        # Maximum absolute value of F_atm allowed for convergence
+steady_dprel                = 3.0e-10     # Percentage change in melt fraction over time (dp/p)/dt*100
 
 # Break at small flux?
 emit_stop                   = 1         # Enable this break condition
@@ -104,9 +106,10 @@ rayleigh                    = 1
 # Atmospheric chemistry, 0: Disabled | 1: Equilibrium | 2: Kinetics
 atmosphere_chemistry       = 0
 
-##### SPIDER-specific settings
+##### Interior-specific settings
 
-interior_nlev               = 290
+interior_model              = 0
+interior_nlev               = 220
 grain_size                  = 0.1
 
 # Mixing length parameterization: 1: variable | 2: constant
