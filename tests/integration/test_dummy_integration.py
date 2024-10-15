@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from helpers import PROTEUS_ROOT, resize_to_match
 from matplotlib.testing.compare import compare_images
@@ -47,13 +49,19 @@ def test_plot_dummy_integration(dummy_run, image):
     tolerance = 3
 
     # Resize images if needed
-    out_tmp, ref_tmp = resize_to_match(out_img, ref_img)
+    out_img, ref_img = resize_to_match(out_img, ref_img)
+
+    results_dir = Path('result_images')
+    results_dir.mkdir(exist_ok=True, parents=True)
+
+    actual = results_dir / image
+    expected = results_dir / f'{actual.stem}-expected{actual.suffix}'
 
     # Save resized images to temporary paths
-    out_tmp.save('test.png')
-    ref_tmp.save('ref.png')
+    out_img.save(actual)
+    ref_img.save(expected)
 
     # Use compare_images to compare the resized files
-    result = compare_images('test.png', 'ref.png', tol=tolerance)
+    result = compare_images(actual=str(actual), expected=str(expected), tol=tolerance)
 
     assert result is None, f"The two PNG files {image} differ more than the allowed tolerance: {result}"
