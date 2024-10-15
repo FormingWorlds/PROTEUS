@@ -130,6 +130,13 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
         pip install -e CALLIOPE/.
         ```
 
+    - ZEPHYRUS escape model
+
+        ```console
+        git clone git@github.com:FormingWorlds/ZEPHYRUS
+        pip install -e ZEPHYRUS/.
+        ```
+
 9. Setup PROTEUS coupled framework
 
     - Get the remaining Python dependencies

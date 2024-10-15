@@ -46,6 +46,7 @@ dependencies = [
     "fwl-janus>=24.9.12",
     "fwl-mors>=24.8.29",
     "fwl-calliope>=24.9.10",
+    "fwl-zephyrus>=24.10.15",
     "cmcrameri",
     "juliacall",
     "matplotlib",
