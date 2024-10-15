@@ -19,7 +19,7 @@ from calliope.structure import calculate_mantle_mass
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config
-from proteus.escape.wrapper_escape import RunEscape
+from proteus.escape.wrapper import RunEscape
 from proteus.utils.constants import (
     AU,
     L_sun,
