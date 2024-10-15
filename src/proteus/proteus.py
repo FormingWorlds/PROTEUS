@@ -29,7 +29,6 @@ from proteus.utils.constants import (
     R_earth,
     const_G,
     element_list,
-    secs_per_year,
     volatile_species,
 )
 from proteus.utils.coupler import (
@@ -430,7 +429,7 @@ class Proteus:
             ############### ESCAPE
 
             if (loop_counter["total"] >= loop_counter["init_loops"]):
-                RunEscape(self.config, hf_row, dt, solvevol_target)
+                solvevol_target = RunEscape(self.config, hf_row, dt)
 
             ############### / ESCAPE
 
