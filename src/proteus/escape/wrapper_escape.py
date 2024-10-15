@@ -13,9 +13,7 @@ from zephyrus.escape import EL_escape
 log = logging.getLogger("fwl."+__name__)
 
 # Define global variables
-Fxuv_star_SI_full = None
-age_star_mors = None
-
+star = None
 
 def RunEscape(config, hf_row, dt, solvevol_target):
     """Run Escape submodule.
@@ -74,8 +72,7 @@ def RunZEPHYRUS(config, hf_row):
         mlr : float
             Bulk escape rate [kg s-1]
     """
-    global Fxuv_star_SI_full
-    global age_star_mors
+    global star
 
     log.info("Running EL escape (ZEPHYRUS) ...")
 
@@ -83,19 +80,16 @@ def RunZEPHYRUS(config, hf_row):
     log.info("Load stellar evolution track + compute EL escape ")
 
     # Get the age of the star at time t to compute XUV flux at that time
-    age_star = hf_row["age_star"] # [years]
+    age_star = hf_row["age_star"] / 1e6 # [years]
 
-    if (Fxuv_star_SI_full is None):
+    if (star is None):
         star = mors.Star(Mstar=config["star_mass"],
-                         Age=age_star/1e6,
                          Omega=config["star_omega"])
-        age_star_mors = star.Tracks['Age']
-        Fxuv_star_SI_full = ((star.Tracks['Lx'] + star.Tracks['Leuv'])
-                             / (4 * np.pi * (semi_major_axis * 1e2)**2)) * ergcm2stoWm2
 
     # Interpolating the XUV flux at the age of the star
-    Fxuv_star_SI = np.interp(age_star, age_star_mors * 1e6, Fxuv_star_SI_full)
-    log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} years is {Fxuv_star_SI}")
+    Fxuv_star_SI = ((star.Value(age_star, 'Lx') + star.Value(age_star, 'Leuv'))
+                             / (4 * np.pi * (semi_major_axis * 1e2)**2)) * ergcm2stoWm2
+    log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI}")
 
     # Compute energy-limited escape
     mlr = EL_escape(config["escape_el_tidal_correction"], #tidal contribution (True/False)
