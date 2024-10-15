@@ -22,12 +22,12 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
         log.info("Time-stepping intent: static")
 
     else:
-        if (config["dt_method"] == 0):
+        if config["dt_method"] == 'proportional':
             # Proportional time-step calculation
             log.info("Time-stepping intent: proportional")
             dtswitch = hf_row["Time"] / float(config["dt_propconst"])
 
-        elif (config["dt_method"] == 1):
+        elif config["dt_method"] == 'adaptive':
             # Dynamic time-step calculation
 
             # Try to maintain a minimum step size of dt_initial at first
@@ -68,14 +68,14 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
                 log.info("Time-stepping intent: slow down")
 
 
-        elif (config["dt_method"] == 2):
+        elif config["dt_method"] == 'maximum':
             # Always use the maximum time-step, which can be adjusted in the cfg file
             log.info("Time-stepping intent: maximum")
             dtswitch = config["dt_maximum"]
 
         else:
             UpdateStatusfile(dirs, 20)
-            raise Exception("Invalid time-stepping method '%d'" % config["dt_method"])
+            raise Exception(f"Invalid time-stepping method: {config['dt_method']}")
 
         # Step scale factor (is always <= 1.0)
         dtswitch *= step_sf

@@ -86,7 +86,6 @@ class Proteus:
         """
         import mors
 
-
         UpdateStatusfile(self.directories, 0)
 
         # Validate options
@@ -141,11 +140,9 @@ class Proteus:
         config_path_backup = os.path.join(self.directories["output"], "init_coupler.toml")
 
         # Import the appropriate escape module
-        if self.config["escape_model"] == 0:
-            pass
-        elif self.config["escape_model"] == 1:
+        if self.config["escape_model"] == 'zephyrus':
             from proteus.utils.escape import RunZEPHYRUS
-        elif self.config["escape_model"] == 2:
+        elif self.config["escape_model"] == 'dummy':
             from proteus.utils.escape import RunDummyEsc
 
         # Is the model resuming from a previous state?
@@ -169,7 +166,7 @@ class Proteus:
 
             # Initial time
             hf_row["Time"] = 0.0
-            hf_row["age_star"] = self.config["time_star"]
+            hf_row["age_star"] = self.config["time_star"] * 1e9
 
             # Initial guess for flux
             hf_row["F_atm"] = self.config["F_atm"]
@@ -346,7 +343,7 @@ class Proteus:
                         hf_row["R_star"] = (
                             mors.Value(
                                 self.config["star_mass"],
-                                hf_row["age_star"] * 1000,
+                                hf_row["age_star"] / 1e6,
                                 "Rstar"
                             )
                             * mors.const.Rsun
@@ -355,7 +352,7 @@ class Proteus:
                         S_0 = (
                             mors.Value(
                                 self.config["star_mass"],
-                                hf_row["age_star"] * 1000,
+                                hf_row["age_star"] / 1e6,
                                 "Lbol"
                             ) * L_sun  / (4.0 * np.pi * hf_row["separation"]**2.0 )
                         )
@@ -366,7 +363,7 @@ class Proteus:
                             * 1.0e-2
                         )
                         S_0 = baraffe.BaraffeSolarConstant(
-                            hf_row["age_star"] * 1e9, hf_row["separation"]/AU
+                            hf_row["age_star"], hf_row["separation"]/AU
                         )
 
                 # Calculate new eqm temperature
@@ -393,13 +390,13 @@ class Proteus:
                 match self.config["star_model"]:
                     case 'spada':
                         synthetic = mors.synthesis.CalcScaledSpectrumFromProps(
-                            star_struct_modern, star_props_modern, hf_row["age_star"] * 1000
+                            star_struct_modern, star_props_modern, hf_row["age_star"] / 1e6
                         )
                         fl = synthetic.fl  # at 1 AU
                         wl = synthetic.wl
                     case 'baraffe':
                         fl = baraffe.BaraffeSpectrumCalc(
-                            hf_row["age_star"] * 1e9, self.config["star_luminosity_modern"], modern_fl
+                            hf_row["age_star"], self.config["star_luminosity_modern"], modern_fl
                         )
                         wl = modern_wl
 
@@ -627,7 +624,7 @@ class Proteus:
                 finished = True
 
             # Maximum time reached
-            if hf_row["Time"] >= self.config["time_target"]:
+            if hf_row["Time"] >= self.config["time_target"] * 1e9:
                 UpdateStatusfile(self.directories, 13)
                 log.info("")
                 log.info("===> Target time reached! <===")
