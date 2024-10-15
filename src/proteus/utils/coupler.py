@@ -275,9 +275,9 @@ def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, config:Config, end=False, 
     """
 
     # Check model configuration
-    dummy_atm = bool(config["atmosphere_model"] == 2)
-    dummy_int = bool(config["interior_model"] == 2)
-    escape    = bool(config["escape_model"] > 0)
+    dummy_atm = config["atmosphere_model"] == 'dummy'
+    dummy_int = config["interior_model"] == 'dummy'
+    escape    = config["escape_model"] is not None
 
     # Get all output times
     if dummy_int:
