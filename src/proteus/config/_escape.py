@@ -18,8 +18,8 @@ class EscapeDummy:
 @define
 class Escape:
     """Escape parameters, model selection"""
-    module: str = field(
-        validator=validators.in_(('none', 'dummy', 'zephyrus')), converter=none_if_none
+    module: str | None = field(
+        validator=validators.in_((None, 'dummy', 'zephyrus')), converter=none_if_none
         )
 
     zephyrus: Zephyrus
