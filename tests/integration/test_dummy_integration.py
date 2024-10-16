@@ -22,7 +22,7 @@ IMAGE_LIST = (
 
 @pytest.fixture(scope="module")
 def dummy_run():
-    config_path = PROTEUS_ROOT / 'input_new' / 'dummy.toml'
+    config_path = PROTEUS_ROOT / 'input' / 'dummy.toml'
 
     runner = Proteus(config_path=config_path)
 

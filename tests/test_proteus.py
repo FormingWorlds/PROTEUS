@@ -6,6 +6,7 @@ import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus import Proteus
+from proteus.config import Config
 
 PATHS = chain(
     (PROTEUS_ROOT / 'input').glob('*.toml'),
@@ -17,4 +18,4 @@ PATHS = chain(
 def test_proteus_init(path):
     runner = Proteus(config_path=path)
 
-    assert 'star_model' in runner.config
+    assert isinstance(runner.config, Config)
