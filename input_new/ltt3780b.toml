@@ -27,16 +27,16 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "ltt3780b"
         logging     = "INFO"
-        plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping
     [params.dt]
-        minimum      = 1e2    # yr, minimum time-step
+        minimum      = 3e2    # yr, minimum time-step
         maximum      = 3e7    # yr, maximum time-step
-        initial      = 1e2    # yr, inital step size
+        initial      = 1e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
-        starinst     = 1e1    # yr, interval to re-calculate the instellation
+        starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
 
         [params.dt.proportional]
@@ -44,7 +44,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.dt.adaptive]
             atol         = 0.02   # Step size atol
-            rtol         = 0.10   # Step size rtol
+            rtol         = 0.07   # Step size rtol
 
     # termination criteria
     [params.stop]
@@ -63,17 +63,17 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         # solidification
         [params.stop.solid]
-            enabled  = false
+            enabled  = true
             phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
-            enabled = false
+            enabled = true
             F_crit  = 0.2     # W m-2, model will terminate when |F_atm| < F_crit
 
         # steady state
         [params.stop.steady]
-            enabled  = false
+            enabled  = true
             F_crit   = 0.8        # Maximum absolute value of F_atm allowed for convergence
             dprel    = 1.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
 
@@ -98,13 +98,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     module  = "mors"
     [star.mors]
-        tracks  = "spada"   # evolution tracks: spada | baraffe
+        tracks  = "baraffe"   # evolution tracks: spada | baraffe
         spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
 
 # Orbital system
 [orbit]
     semimajoraxis   = 1.0       # AU
-    eccentricity    = 0.0       # dimensionless
+    eccentricity    = 0.064     # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
 
@@ -137,19 +137,19 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
-        num_levels      = 50            # Number of atmospheric grid levels
+        num_levels      = 60            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq" | "kin"
-        tmp_minimum     = 1.0           # temperature floor on solver
+        tmp_minimum     = 0.5           # temperature floor on solver
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
-        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 120           # Number of atmospheric grid levels
-        tmp_minimum     = 0.2           # temperature floor on solver
+        num_levels      = 60            # Number of atmospheric grid levels
+        tmp_minimum     = 0.5           # temperature floor on solver
         tropopause      = "skin"        # none | skin | dynamic
 
     [atmos_clim.dummy]
@@ -158,7 +158,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
-    module = "dummy"    # Which escape module to use
+    module = "none"    # Which escape module to use
 
     [escape.zephyrus]
         some_parameter = "some_value"

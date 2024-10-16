@@ -32,7 +32,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # time-stepping
     [params.dt]
-        minimum      = 10     # yr, minimum time-step
+        minimum      = 3e2    # yr, minimum time-step
         maximum      = 3e7    # yr, maximum time-step
         initial      = 1e4    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
@@ -137,19 +137,19 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_group  = "Frostflow"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
-        num_levels      = 50            # Number of atmospheric grid levels
+        num_levels      = 250           # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq" | "kin"
-        tmp_minimum     = 1.0           # temperature floor on solver
+        tmp_minimum     = 0.5           # temperature floor on solver
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
-        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_group  = "Frostflow"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 120           # Number of atmospheric grid levels
-        tmp_minimum     = 0.2           # temperature floor on solver
+        num_levels      = 250           # Number of atmospheric grid levels
+        tmp_minimum     = 0.5           # temperature floor on solver
         tropopause      = "skin"        # none | skin | dynamic
 
     [atmos_clim.dummy]
