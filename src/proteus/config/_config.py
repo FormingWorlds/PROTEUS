@@ -48,7 +48,7 @@ class Config:
 
         message = (
             f"Calling `OPTIONS['{key}']` via OPTIONS is deprecated, "
-            f"please use the class-based config instead: {hint}."
+            f"please use the class-based config instead: {hint}. "
             "See https://github.com/FormingWorlds/PROTEUS/issues/74 for more info."
         )
         warnings.warn(message, DeprecationWarning)
