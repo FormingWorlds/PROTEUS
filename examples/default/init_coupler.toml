@@ -1,173 +1,234 @@
-########## PROTEUS configuration file
+# PROTEUS configuration file (version 2.0)
 
-##### Star configuration
+# Root tables should be physical, with the exception of "params"
+# Software related options should go within the appropriate physical table
 
-star_model                  = 0                 # Evolution model to use for star (0: Spada, 1: Baraffe)
-star_mass                   = 1                 # M_sun, mass of star
-star_radius_modern          = 1                 # R_sun, radius of star (TODAY)
-star_temperature_modern     = 5772.0            # K, temperature of star (TODAY)
-star_luminosity_modern      = 1                 # L_sun, luminosity of star (TODAY) used for Baraffe model
-star_age_modern             = 4.567e9             # yr, age of star (TODAY)
-star_rot_pctle              = 50.0
-star_spectrum               = 'stellar_spectra/Named/sun.txt'   # Stellar spectrum file at 1 AU (TODAY)
+# The general structure is:
+#   [root]     metadata
+#   [params]   parameters for code execution, output files, time-stepping, convergence
+#   [star]     stellar parameters, model selection
+#   [orbit]    planetary orbital parameters
+#   [struct]   planetary structure (mass, radius)
+#   [atmos]    atmosphere parameters, model selection
+#   [escape]   escape parameters, model selection
+#   [interior] magma ocean model selection and parameters
+#   [outgas]   outgassing parameters (fO2) and included volatiles
+#   [delivery] initial volatile inventory, and delivery model selection
 
-##### Planet configuration
-semimajoraxis               = 1         # AU, star-planet distance
-mass                        = 1         # M_earth
-radius                      = 1         # R_earth
+# ----------------------------------------------------
+# Metadata
+version = "2.0"
+author  = "Harrison Nicholls, Tim Lichtenberg"
 
-zenith_angle                = 48.19     # Cronin+14 Earth-like case with clear sky [arccos(2/3)]
-asf_scalefactor             = 0.375     # absorbed solar flux scale factor = 3/8
-albedo_s                    = 0.1 		# surface albedo
-albedo_pl                   = 0.1   	# Bond albedo (scattering)
+# ----------------------------------------------------
+# Parameters
+[params]
+    # output files
+    [params.out]
+        path        = "default"
+        logging     = "INFO"
+        plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
 
-eccentricity                = 0.017     # Orbital eccentricity  [dimensionless]
+    # time-stepping
+    [params.dt]
+        minimum      = 3e2    # yr, minimum time-step
+        maximum      = 3e7    # yr, maximum time-step
+        initial      = 1e4    # yr, inital step size
+        starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
+        starinst     = 100    # yr, interval to re-calculate the instellation
+        method       = "adaptive"  # proportional | adaptive | maximum
 
-P_top                       = 1.0e-5    # bar, Pressure at TOA
+        [params.dt.proportional]
+            propconst    = 52.0   # Proportionality constant
 
-##### PROTEUS settings
+        [params.dt.adaptive]
+            atol         = 0.02   # Step size atol
+            rtol         = 0.07   # Step size rtol
 
-iter_max                    = 9000
-log_level                   = 'INFO'
+    # termination criteria
+    [params.stop]
 
-# Output subdirectory name (relative to output folder)
-dir_output                  = 'default'
+        # required number of iterations
+        [params.stop.iters]
+            enabled = true
+            minimum = 3
+            maximum = 9000
 
-# Choose times
-time_star                   = 100.0e6  	# yr, time since star formation
-time_target                 = 4.567e+9  # yr, target time for MO evolution
+        # required time constraints
+        [params.stop.time]
+            enabled = true
+            minimum = 1.0e3     # yr, model will certainly run to t > minimum
+            maximum = 4.567e+9     # yr, model will terminate when t > maximum
 
-# SOCRATES spectral file to use (relative to FWL_DATA folder)
-spectral_file               = 'spectral_files/Frostflow/256/Frostflow.sf'
+        # solidification
+        [params.stop.solid]
+            enabled  = true
+            phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
 
-# Stellar heating toggle, 0: disabled | 1: enabled
-stellar_heating             = 1
+        # radiative equilibrium
+        [params.stop.radeqm]
+            enabled = true
+            F_crit  = 0.2     # W m-2, model will terminate when |F_atm| < F_crit
 
-# Time-stepping stuff
-plot_iterfreq               = 1     # Plotting frequency, 0: wait until completion | n: every n iterations
-plot_format                 = 'pdf'  # Plotting image file format
-sspec_dt_update             = 1e9    # Time intervals at which to re-calculate the stellar spectrum
-sinst_dt_update             = 1e2    # Time intervals at which to re-calculate the instellation
-dt_maximum                  = 3e7    # Maximum time-step
-dt_minimum                  = 3e2    # Minimum time-step
-dt_method                   = 1      # Time-stepping method, 0: proportional | 1: adaptive | 2: maximum
-dt_propconst                = 52.0   # Proportionality constant for dt_method=0
-dt_atol                     = 0.02  # Step size atol
-dt_rtol                     = 0.07   # Step size rtol
-dt_initial                  = 1e4    # Inital step size
+        # steady state
+        [params.stop.steady]
+            enabled  = true
+            F_crit   = 0.8        # Maximum absolute value of F_atm allowed for convergence
+            dprel    = 1.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
 
-# Flux convergence scheme and tolerances for surface equilibration
-shallow_ocean_layer         = 0         # 0: off | 1: on
-F_atm_bc                    = 0         # Boundary condition choice for F_atm, 0: TOA | 1: Surface
-skin_d                      = 0.01      # m
-skin_k                      = 2.0       # W m-1 K-1
-prevent_warming             = 1         # Require that the planet only cool down over time, 0: disabled | 1: enabled
+        [params.stop.escape]
+            enabled   = true
+            mass_frac = 3e-4      # Stop when atm_mass < this frac of initial mass
 
-# Break at solidification?
-solid_stop                  = 1         # Enable this break condition
-phi_crit                    = 0.005     # Model terminates with Phi_global < phi_crit
 
-# Break at steady state?
-steady_stop                 = 1         # Enable this break condition
-steady_flux                 = 0.8       # Maximum absolute value of F_atm allowed for convergence
-steady_dprel                = 1.0e-9   # Percentage change in melt fraction over time (dp/p)/dt*100
+# ----------------------------------------------------
+# Star
+[star]
 
-# Break at small flux?
-emit_stop                   = 1         # Enable this break condition
-F_crit                      = 0.2       # Critical flux, below which the model will terminate
+    # Physical parameters
+    mass    = 1.0       # M_sun
+    radius  = 1.0       # R_sun
+    Teff    = 5772.0    # K
+    Lbol    = 1.0       # L_sun
+    omega   = 50.0      # rotation percentile
+    age_now = 4.567     # Gyr, current age of star used for scaling
+    age_ini = 0.100     # Gyr, model initialisation/start age
 
-# Atmospheric escape
-escape_model                = 0         # Escape model to be used, 0: None | 1: ZEPHYRUS | 2: Dummy
-escape_stop                 = 3e-4      # Terminate when atm mass drops below this fraction of its initial mass
-escape_dummy_rate           = 0.0       # Bulk escape rate for dummy escape model [kg s-1]
 
-# Method for solving for T(p) profile
-atmosphere_model            = 0         # Atmosphere model to be used, 0: JANUS | 1: AGNI
-atmosphere_surf_state       = 2         # Atmosphere bottom edge boundary condition, 0: free | 1: fixed at T_surf | 2: conductive skin
+    module  = "mors"
+    [star.mors]
+        tracks  = "spada"   # evolution tracks: spada | baraffe
+        spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
 
-# Number of levels
-atmosphere_nlev             = 250
+# Orbital system
+[orbit]
+    semimajoraxis   = 1.0       # AU
+    eccentricity    = 0.017     # dimensionless
+    zenith_angle    = 48.19     # degrees
+    s0_factor       = 0.375     # dimensionless
 
-# Temperature limits throughout atmosphere [K]
-min_temperature             = 0.5
-max_temperature             = 5000.0
+    # No module specifically for tides / orbital dynamics
+    module  = "none"
 
-# Tropopause type, 0: none | 1: skin temperature | 2: dynamic
-tropopause                  = 1
 
-# Clouds
-water_cloud                 = 0         # enable water cloud radiative effects? (1: yes, 0: no)
-alpha_cloud                 = 0.0       # condensate retention fraction (1 -> fully retained)
+# Planetary structure - physics table
+[struct]
+    mass        = 1.0       # M_earth
+    radius      = 1.0       # R_earth
+    corefrac    = 0.55      # non-dim., radius fraction
 
-# Rayleigh scattering, 0: Disabled | 1: Enabled
-rayleigh                    = 1
+    # No module for specifically for internal structure
+    module  = "none"
 
-# Atmospheric chemistry, 0: Disabled | 1: Equilibrium | 2: Kinetics
-atmosphere_chemistry       = 0
+# Atmosphere - physics table
+[atmos_clim]
+    prevent_warming = true      # do not allow the planet to heat up
+    surface_d       = 0.01      # m, conductive skin thickness
+    surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
+    cloud_enabled   = false     # enable water cloud radiative effects
+    cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
+    surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
+    surf_albedo     = 0.1       # path to file ("string") or grey quantity (float)
+    albedo_pl       = 0.1   	# Bond albedo (scattering)
+    rayleigh        = true      # enable rayleigh scattering
 
-##### Interior-specific settings
+    module  = "janus"           # Which atmosphere module to use
 
-interior_model              = 0
-interior_nlev               = 220
-grain_size                  = 0.1
+    [atmos_clim.agni]
+        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+        spectral_group  = "Frostflow"   # which gas opacities to include
+        spectral_bands  = "256"         # how many spectral bands?
+        num_levels      = 250           # Number of atmospheric grid levels
+        chemistry       = "none"        # "none" | "eq" | "kin"
+        tmp_minimum     = 0.5           # temperature floor on solver
 
-# Mixing length parameterization: 1: variable | 2: constant
-mixing_length               = 2
+    [atmos_clim.janus]
+        p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
+        spectral_group  = "Frostflow"   # which gas opacities to include
+        spectral_bands  = "256"         # how many spectral bands?
+        F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
+        num_levels      = 250           # Number of atmospheric grid levels
+        tmp_minimum     = 0.5           # temperature floor on solver
+        tropopause      = "skin"        # none | skin | dynamic
 
-# Standard tolerance for solvers
-solver_tolerance            = 1.0e-10
+    [atmos_clim.dummy]
+        gamma           = 0.7           # atmosphere opacity between 0 and 1
 
-# Maximum absolute surface temperature change [K]
-tsurf_poststep_change       = 20.0
+# Volatile escape - physics table
+[escape]
 
-# Maximum fractional surface temperature change [fraction]
-tsurf_poststep_change_frac  = 0.01
+    module = "none"    # Which escape module to use
 
-# Fractional core radius
-planet_coresize             = 0.55
+    [escape.zephyrus]
+        some_parameter = "some_value"
 
-# Initial entropy conditions for interior
-ic_adiabat_entropy          = 2600.0
-ic_dsdr                     = -4.698e-06
+    [escape.dummy]
+        rate = 0.0     #  Bulk unfractionated escape rate [kg s-1]
 
-# Atmosphere heat flux start guess, adjusted during runtime [W/m^2]
-F_atm                       = 8.0E4
+# Interior - physics table
+[interior]
+    grain_size      = 0.1   # crystal settling grain size [m]
+    F_initial       = 8.0E4 # Initial heat flux guess [W m-2]
 
-# Oxygen fugacity offset relative to the IW buffer (log10 units)
-fO2_shift_IW                = 4
+    module = "spider"   # Which interior module to use
 
-# Enable solving for initial partial pressures (0: off | 1: on)
-solvevol_use_params          = 0
+    [interior.spider]
+        num_levels      = 220       # Number of SPIDER grid levels
+        mixing_length   = 2         # Mixing length parameterization
+        tolerance       = 1.0e-10   # solver tolerance
+        tsurf_atol      = 20.0      # tsurf_poststep_change
+        tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
+        ini_entropy     = 2600.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
-# Parameters used to solve for initial partial pressures (when solvepp_use_params = 1)
-Phi_global                  = 1.0       # Mantle melt fraction initial guess
-CH_ratio                    = 1.0       # C/H ratio
-hydrogen_earth_oceans       = 6.0       # Hydrogen inventory in units of equivalent Earth oceans
-nitrogen_ppmw               = 2.0       # Nitrogen inventory in ppmw relative to mass of melt
-sulfur_ppmw                 = 200.0     # Sulfur inventory in ppmw relative to mass of melt
+    [interior.aragog]
+        some_parameter = "some_value"
 
-# Prescribed injected partial pressures [bar]
-# Summed with solvepp results when solvepp_enabled = 1
-H2O_included                = 1
-H2O_initial_bar             = 30.0
+# Outgassing - physics table
+[outgas]
+    fO2_shift_IW    = 4         # log10(ΔIW), atmosphere/interior boundary oxidation state
 
-CO2_included                = 1
-CO2_initial_bar             = 0.0
+    module = "calliope"         # Which outgassing module to use
 
-N2_included                 = 1
-N2_initial_bar              = 0.0
+    [outgas.calliope]
+        include_H2O  = true     # Include H2O compound
+        include_CO2  = true     # Include CO2 compound
+        include_N2   = true     # Include N2 compound
+        include_S2   = true     # Include S2 compound
+        include_SO2  = false    # Include SO2 compound
+        include_H2   = false    # Include H2 compound
+        include_CH4  = false    # Include CH4 compound
+        include_CO   = false    # Include CO compound
 
-S2_included                 = 1
-S2_initial_bar              = 0.0
+    [outgas.atmodeller]
+        some_parameter = "some_value"
 
-SO2_included                = 0
-SO2_initial_bar             = 0.0
+# Volatile delivery - physics table
+[delivery]
 
-H2_included                 = 0
-H2_initial_bar              = 0.0
+    # [Settings here for accretion rate, etc.]
 
-CH4_included                = 0
-CH4_initial_bar             = 0.0
+    # Which initial inventory to use?
+    initial = 'elements'        # "elements" | "volatiles"
 
-CO_included                 = 0
-CO_initial_bar              = 0.0
+    # No module for accretion as of yet
+    module = "none"
+
+    # Set initial volatile inventory by planetary element abundances
+    [delivery.elements]
+        CH_ratio    = 1.0       # C/H ratio in mantle/atmosphere system
+        H_oceans    = 6.0       # Hydrogen inventory in units of equivalent Earth oceans, by mass
+        N_ppmw      = 2.0       # Nitrogen inventory in ppmw relative to mantle mass, by mass
+        S_ppmw      = 200.0     # Sulfur inventory in ppmw relative to mass of melt
+
+    # Set initial volatile inventory by partial pressures in atmosphere
+    [delivery.volatiles]
+        H2O  = 30.0         # partial pressure of H2O
+        CO2  = 0.0          # partial pressure of CO2
+        N2   = 0.0          # etc
+        S2   = 0.0
+        SO2  = 0.0
+        H2   = 0.0
+        CH4  = 0.0
+        CO   = 0.0
