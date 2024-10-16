@@ -38,19 +38,16 @@ def RunEscape(config, hf_row, dt):
 
     PrintHalfSeparator()
 
-    if config["escape_model"] == 0:
-        pass
-
-    elif config["escape_model"] == 1:
+    if config["escape_model"] == 'zephyrus':
         hf_row["esc_rate_total"] = RunZEPHYRUS(config, hf_row)
 
-    elif config["escape_model"] == 2:
+    elif config["escape_model"] == 'dummy':
         hf_row["esc_rate_total"] = config["escape_dummy_rate"]
 
     else:
         raise Exception("Invalid escape model")
 
-    if (config["escape_model"] ==1 or config["escape_model"] ==2):
+    if config["escape_model"]:
         log.info(
                 "Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1"
                 % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"])
