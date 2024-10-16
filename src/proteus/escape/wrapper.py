@@ -83,7 +83,7 @@ def RunZEPHYRUS(config, hf_row):
     log.info("Load stellar evolution track + compute EL escape ")
 
     # Get the age of the star at time t to compute XUV flux at that time
-    age_star = hf_row["age_star"] / 1e6 # [years]
+    age_star = hf_row["age_star"] / 1e6 # [Myrs]
 
     if (star is None):
         star = mors.Star(Mstar=config["star_mass"],
@@ -91,7 +91,8 @@ def RunZEPHYRUS(config, hf_row):
 
     # Interpolating the XUV flux at the age of the star
     Fxuv_star_SI = ((star.Value(age_star, 'Lx') + star.Value(age_star, 'Leuv'))
-                             / (4 * np.pi * (config["semimajoraxis"] * 1e2)**2)) * ergcm2stoWm2
+                             / (4 * np.pi * (config["semimajoraxis"] * AU * 1e2)**2)) * ergcm2stoWm2
+
     log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI}")
 
     # Compute energy-limited escape
