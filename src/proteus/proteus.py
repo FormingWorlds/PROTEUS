@@ -356,9 +356,10 @@ class Proteus:
                                 "Lbol"
                             ) * L_sun  / (4.0 * np.pi * hf_row["separation"]**2.0 )
                         )
+
                     case 'baraffe':
                         hf_row["R_star"] = (
-                            baraffe.BaraffeStellarRadius(hf_row["age_star"]) * 1e9
+                            baraffe.BaraffeStellarRadius(hf_row["age_star"])
                             * mors.const.Rsun
                             * 1.0e-2
                         )
