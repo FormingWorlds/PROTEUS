@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import warnings
+
 from attrs import define, field, validators
 
 from ._atmos_clim import AtmosClim
@@ -36,9 +38,19 @@ class Config:
 
         if callable(conv):
             val = conv(self)
+            hint = "`Proteus.config.xxx`."
         else:
             val = self
             for part in conv:
                 val = getattr(val, part)
+            new_key = '.'.join(conv)
+            hint = f"`Proteus.config.{new_key}`"
+
+        message = (
+            f"Calling `OPTIONS['{key}']` via OPTIONS is deprecated, "
+            f"please use the class-based config instead: {hint}."
+            "See https://github.com/FormingWorlds/PROTEUS/issues/74 for more info."
+        )
+        warnings.warn(message, DeprecationWarning)
 
         return val
