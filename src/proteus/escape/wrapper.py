@@ -38,15 +38,15 @@ def RunEscape(config, hf_row, dt):
 
     PrintHalfSeparator()
 
-    if not config.interior.module:
+    if not config.escape.module:
         # solvevol_target is undefined?
         pass
-    elif config.interior.module == 'zephyrus':
+    elif config.escape.module == 'zephyrus':
         hf_row["esc_rate_total"] = RunZEPHYRUS(config, hf_row)
-    elif config.interior.module == 'dummy':
+    elif config.escape.module == 'dummy':
         hf_row["esc_rate_total"] = config["escape_dummy_rate"]
     else:
-        raise Exception("Invalid escape model")
+        raise ValueError(f"Invalid escape model: {config.escape.module}")
 
     log.info(
         "Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1"
