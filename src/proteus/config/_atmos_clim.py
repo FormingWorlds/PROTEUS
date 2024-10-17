@@ -15,6 +15,11 @@ class Agni:
         validator=validators.in_((None, 'eq', 'kin')), converter=none_if_none
     )
 
+    @property
+    def chemistry_int(self) -> int:
+        """Return integer state for agni."""
+        return 1 if self.chemistry else 0
+
 
 @define
 class Janus:
@@ -44,7 +49,7 @@ class AtmosClim:
     surf_state: str = field(validator=validators.in_(('mixed_layer', 'fixed', 'skin')))
     surf_albedo: float
     albedo_pl: float
-    rayleigh: float
+    rayleigh: bool
     tmp_minimum: float
     tmp_maximum: float
 
@@ -53,3 +58,8 @@ class AtmosClim:
     agni: Agni
     janus: Janus
     dummy: Dummy
+
+    @property
+    def surf_state_int(self) -> int:
+        """Return integer state for agni."""
+        return ('mixed_layer', 'fixed', 'skin').index(self.surf_state)

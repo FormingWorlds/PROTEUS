@@ -364,8 +364,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
         # Try solving temperature profile
         agni_success = jl.AGNI.solver.solve_energy_b(atmos,
-                            sol_type=config.atmos_clim.surf_state,
-                            chem_type=config.atmos_clim.agni.chemistry,
+                            sol_type=config.atmos_clim.surf_state_int,
+                            chem_type=config.atmos_clim.agni.chemistry_int,
 
                             conduct=False, convect=True, latent=True, sens_heat=True,
 
