@@ -26,15 +26,15 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_planet:
     gamma           = 0.7
 
     # Parameters
-    zenith_angle    = config["zenith_angle"]
-    albedo_pl       = config["albedo_pl"]
+    zenith_angle    = config.orbit.zenith_angle
+    albedo_pl       = config.atmos_clim.albedo_pl
     inst_sf         = config["asf_scalefactor"]
-    albedo_s        = config["albedo_s"]
+    albedo_s        = config.atmos_clim.surf_albedo
     skin_d          = config["skin_d"]
     skin_k          = config["skin_k"]
 
     # Check configuration
-    if config["rayleigh"]:
+    if config.atmos_clim.rayleigh:
         log.warning("Rayleigh scattering is enabled but it will be neglected")
 
     log.info("Gamma = %.4f" % gamma)
@@ -57,13 +57,13 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_planet:
         return {"fl_U_LW":fl_U_LW, "fl_D_SW":fl_D_SW, "fl_U_SW":fl_U_SW, "fl_N":fl_N}
 
     # fixed T_Surf
-    if config["atmosphere_surf_state"] == 'fixed':
+    if config.atmos_clim.surf_state == 'fixed':
         log.info("Calculating fluxes with dummy atmosphere")
         T_surf_atm = T_magma
         fluxes = _calc_fluxes(T_surf_atm)
 
     # conductive lid
-    elif config["atmosphere_surf_state"] == 'skin':
+    elif config.atmos_clim.surf_state == 'skin':
         log.info("Calculating fluxes with dummy atmosphere and CBL")
         import scipy.optimize as optimise
 

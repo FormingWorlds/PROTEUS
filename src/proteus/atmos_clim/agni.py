@@ -167,8 +167,8 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
                         hf_row["F_ins"],
                         config["asf_scalefactor"],
-                        config["albedo_pl"],
-                        config["zenith_angle"],
+                        config.atmos_clim.albedo_pl,
+                        config.orbit.zenith_angle,
 
                         hf_row["T_surf"],
                         hf_row["gravity"], hf_row["R_planet"],
@@ -179,16 +179,16 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
                         vol_dict, "",
 
-                        flag_rayleigh = config["rayleigh"],
-                        flag_cloud= config["water_cloud"],
+                        flag_rayleigh = config.atmos_clim.rayleigh,
+                        flag_cloud= config.atmos_clim.cloud_enabled,
 
-                        albedo_s=config["albedo_s"],
+                        albedo_s=config.atmos_clim.surf_albedo,
                         condensates=condensates,
                         use_all_gases=include_all,
                         fastchem_work = fc_dir,
 
                         skin_d=config["skin_d"], skin_k=config["skin_k"],
-                        tmp_magma=hf_row["T_surf"], tmp_floor=config["min_temperature"]
+                        tmp_magma=hf_row["T_surf"], tmp_floor=config.atmos_clim.tmp_minimum
                         )
 
     # Allocate arrays
@@ -364,7 +364,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
         # Try solving temperature profile
         agni_success = jl.AGNI.solver.solve_energy_b(atmos,
-                            sol_type=config["atmosphere_surf_state"],
+                            sol_type=config.atmos_clim.surf_state,
                             chem_type=config["atmosphere_chemistry"],
 
                             conduct=False, convect=True, latent=True, sens_heat=True,
@@ -428,7 +428,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     T_surf =        float(atmos.tmp_surf)
 
     # New flux from SOCRATES
-    if (config["F_atm_bc"] == 0):
+    if (config.atmos_clim.janus.F_atm_bc == 0):
         F_atm_new = net_flux[0]
     else:
         F_atm_new = net_flux[-1]

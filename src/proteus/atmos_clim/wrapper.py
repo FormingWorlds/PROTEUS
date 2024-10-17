@@ -52,7 +52,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     if config.atmos_clim.surf_state == 'mixed_layer':
         hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
 
-    if config["atmosphere_model"] == 'janus':
+    if config.atmos_clim.module == 'janus':
         # Import
         from proteus.atmos_clim.janus import InitAtm, InitStellarSpectrum, RunJANUS
 
@@ -73,7 +73,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
 
         atm_output = RunJANUS(atm, dirs, config, hf_row, hf_all)
 
-    elif config["atmosphere_model"] == 'agni':
+    elif config.atmos_clim.module == 'agni':
         # Import
         from proteus.atmos_clim.agni import (
             activate_julia,
@@ -118,7 +118,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
         # Run solver
         atm, atm_output = run_agni(atm, loop_counter["total"], dirs, config, hf_row)
 
-    elif config["atmosphere_model"] == 'dummy':
+    elif config.atmos_clim.module == 'dummy':
         # Import
         from proteus.atmos_clim.dummy import RunDummyAtm
 

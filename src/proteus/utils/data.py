@@ -144,17 +144,17 @@ def download_sufficient_data(config:Config):
     """
 
     # Star stuff
-    if config["star_model"] in [0,1]:
+    if config.star.mors.tracks in ('spada', 'baraffe'):
         download_stellar_spectra()
-        if config["star_model"] == 0:
+        if config.star.mors.tracks == 'spada':
             download_evolution_tracks("Spada")
         else:
             download_evolution_tracks("Baraffe")
 
     # Atmosphere stuff
-    if config["atmosphere_model"] in [0,1]:
+    if config.atmos_clim.module in ('janus', 'agni'):
         download_spectral_files()
-    if config["atmosphere_model"] == 1:
+    if config.atmos_clim.module == 'agni':
         download_surface_albedos()
 
 def _none_dirs():

@@ -44,14 +44,14 @@ def InitAtm(dirs:dict, config:Config):
     for vol in volatile_species:
         vol_list[vol] = 1.0/len(volatile_species)
 
-    if config["tropopause"] in (None, 'skin'):
+    if config.atmos_clim.janus.tropopause in (None, 'skin'):
         trppT = 0.0
-    elif config["tropopause"] == 'dynamic':
+    elif config.atmos_clim.janus.tropopause == 'dynamic':
         # dynamically, based on heating rate
-        trppT = config["min_temperature"]
+        trppT = config.atmos_clim.tmp_minimum
     else:
         UpdateStatusfile(dirs, 20)
-        raise Exception("Invalid tropopause option '%d'" % config["tropopause"])
+        raise Exception("Invalid tropopause option '%d'" % config.atmos_clim.janus.tropopause)
 
     # Spectral bands
     band_edges = ReadBandEdges(dirs["output"]+"star.sf")
@@ -69,17 +69,17 @@ def InitAtm(dirs:dict, config:Config):
                 vol_mixing = vol_list, #var
                 req_levels = config["atmosphere_nlev"],
                 water_lookup = False,
-                alpha_cloud=float(config["alpha_cloud"]),
+                alpha_cloud=config.atmos_clim.cloud_alpha,
                 trppT = trppT, #var if tropopause option is set to 1
-                minT = config["min_temperature"],
-                maxT = config["max_temperature"],
-                do_cloud = bool(config["water_cloud"] == 1),
+                minT = config.atmos_clim.tmp_minimum,
+                maxT = config.atmos_clim.tmp_maximum,
+                do_cloud = config.atmos_clim.cloud_enabled,
                 re = 1.0e-5, # Effective radius of the droplets [m] (drizzle forms above 20 microns)
                 lwm = 0.8, # Liquid water mass fraction [kg/kg]
                 clfr = 0.8, # Water cloud fraction
-                albedo_s = config["albedo_s"],
-                albedo_pl = config["albedo_pl"],
-                zenith_angle = config["zenith_angle"],
+                albedo_s = config.atmos_clim.surf_albedo,
+                albedo_pl = config.atmos_clim.albedo_pl,
+                zenith_angle = config.orbit.zenith_angle,
                 )
 
     atm.inst_sf = config["asf_scalefactor"]
@@ -161,7 +161,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
 
 
     #Update atmosphere with current variables
-    UpdateStateAtm(atm, hf_row, config["tropopause"])
+    UpdateStateAtm(atm, hf_row, config.atmos_clim.janus.tropopause)
 
     # Change dir
     cwd = os.getcwd()
@@ -172,15 +172,15 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     os.chdir(tmp_dir)
 
     # Prepare to calculate temperature structure w/ General Adiabat
-    trppD = config["tropopause"] == 'dynamic'
-    rscatter = config["rayleigh"]
+    trppD = config.atmos_clim.janus.tropopause == 'dynamic'
+    rscatter = config.atmos_clim.rayleigh
 
     # Run JANUS
-    if config["atmosphere_surf_state"] == 'fixed':  # fixed T_Surf
+    if config.atmos_clim.surf_state == 'fixed':  # fixed T_Surf
         from janus.modules import MCPA
         atm = MCPA(dirs, atm, False, trppD, rscatter)
 
-    elif config["atmosphere_surf_state"] == 'skin': # conductive lid
+    elif config.atmos_clim.surf_state == 'skin': # conductive lid
         from janus.modules import MCPA_CBL
 
         T_surf_max = -1
@@ -204,7 +204,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
 
         # run JANUS
         atm = MCPA_CBL(dirs, atm, trppD, rscatter, method=search_method, atol=tol,
-                        atm_bc=int(config["F_atm_bc"]), T_surf_guess=float(T_surf_old)-1.0, T_surf_max=float(T_surf_max))
+                        atm_bc=int(config.atmos_clim.janus.F_atm_bc), T_surf_guess=float(T_surf_old)-1.0, T_surf_max=float(T_surf_max))
 
     else:
         UpdateStatusfile(dirs, 20)
@@ -234,7 +234,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         raise Exception("JANUS output array contains NaN or Inf values")
 
     # Store new flux
-    if (config["F_atm_bc"] == 0):
+    if (config.atmos_clim.janus.F_atm_bc == 0):
         F_atm_new = atm.net_flux[0]
     else:
         F_atm_new = atm.net_flux[-1]

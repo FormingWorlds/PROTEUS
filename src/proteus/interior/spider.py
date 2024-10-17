@@ -268,7 +268,7 @@ def _try_spider( dirs:dict, config:Config,
                         "-dtmacro",                "%.6e"%(dtmacro),
                         "-radius",                 "%.6e"%(hf_row["R_planet"]),
                         "-gravity",                "%.6e"%(-1.0 * hf_row["gravity"]),
-                        "-coresize",               "%.6e"%(config["planet_coresize"]),
+                        "-coresize",               "%.6e"%(config.struct.corefrac),
                         "-grain",                  "%.6e"%(config["grain_size"]),
                     ]
 

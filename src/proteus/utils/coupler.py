@@ -271,7 +271,7 @@ def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, config:Config, end=False, 
     """
 
     # Check model configuration
-    dummy_atm = config["atmosphere_model"] == 'dummy'
+    dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config["interior_model"] == 'dummy'
     escape    = config["escape_model"] is not None
 
@@ -327,7 +327,7 @@ def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, config:Config, end=False, 
             plot_stacked(output_dir, plot_times, jsons, ncdfs, config["plot_format"])
 
         # Flux profiles
-        if config["atmosphere_model"] == 0:
+        if config.atmos_clim.module == 'janus':
             # only do this for JANUS, AGNI does it automatically
             plot_fluxes_atmosphere(output_dir, config["plot_format"])
 
@@ -389,7 +389,7 @@ def SetDirectories(config: Config):
         dirs["fwl"] = os.environ.get('FWL_DATA')
 
     # SOCRATES directory
-    if config["atmosphere_model"] in [0,1]:
+    if config.atmos_clim.module in ('janus', 'agni'):
         # needed for atmosphere models 0 and 1
 
         if os.environ.get('RAD_DIR') is None:

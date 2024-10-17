@@ -117,7 +117,7 @@ class Proteus:
         log.info("Config file : " + str(self.config_path))
         log.info("Output dir  : " + self.directories["output"])
         log.info("FWL data dir: " + self.directories["fwl"])
-        if self.config["atmosphere_model"] in [0, 1]:
+        if self.config.atmos_clim.module in ['janus', 'agni']:
             log.info("SOCRATES dir: " + self.directories["rad"])
         log.info(" ")
 
@@ -125,7 +125,7 @@ class Proteus:
         loop_counter = {
             "total": 0,  # Total number of iters performed
             "total_min": 5,  # Minimum number of total loops
-            "total_loops": self.config["iter_max"],  # Maximum number of total loops
+            "total_loops": self.config.params.stop.iters.maximum,  # Maximum number of total loops
             "init": 0,  # Number of init iters performed
             "init_loops": 2,  # Maximum number of init iters
             "steady": -1,  # Number of iterations passed since steady-state declared
@@ -160,36 +160,36 @@ class Proteus:
 
             # Initial time
             hf_row["Time"] = 0.0
-            hf_row["age_star"] = self.config["time_star"] * 1e9
+            hf_row["age_star"] = self.config.star.age_ini * 1e9
 
             # Initial guess for flux
-            hf_row["F_atm"] = self.config["F_atm"]
+            hf_row["F_atm"] = self.config.interior.F_initial
             hf_row["F_int"] = hf_row["F_atm"]
             hf_row["T_eqm"] = 2000.0
 
             # Planet size conversion, and calculate mantle mass (= liquid + solid)
-            hf_row["M_planet"] = self.config["mass"] * M_earth
-            hf_row["R_planet"] = self.config["radius"] * R_earth
+            hf_row["M_planet"] = self.config.struct.mass * M_earth
+            hf_row["R_planet"] = self.config.struct.radius * R_earth
             hf_row["gravity"] = const_G * hf_row["M_planet"] / (hf_row["R_planet"] ** 2.0)
             hf_row["M_mantle"] = calculate_mantle_mass(
-                hf_row["R_planet"], hf_row["M_planet"], self.config["planet_coresize"]
+                hf_row["R_planet"], hf_row["M_planet"], self.config.struct.corefrac
             )
 
             # Store partial pressures and list of included volatiles
             log.info("Input partial pressures:")
             inc_vols = []
             for s in volatile_species:
-                key_pp = str(s + "_initial_bar")
-                key_in = str(s + "_included")
+                pp_val = getattr(self.config.delivery.volatiles, s)
+                include = getattr(self.config.outgas.calliope, f'include_{s}')
 
                 log.info(
                     "    %-6s : %-5.2f bar (included = %s)"
-                    % (s, self.config[key_pp], str(self.config[key_in] > 0))
+                    % (s, pp_val, include)
                 )
 
-                if self.config[key_in] > 0:
+                if include:
                     inc_vols.append(s)
-                    hf_row[s + "_bar"] = max(1.0e-30, float(self.config[key_pp]))
+                    hf_row[s + "_bar"] = max(1.0e-30, float(pp_val))
                 else:
                     hf_row[s + "_bar"] = 0.0
             log.info("Included volatiles: " + str(inc_vols))
@@ -242,7 +242,7 @@ class Proteus:
         shutil.copyfile(star_modern_path, os.path.join(self.directories["output"], "-1.sflux"))
 
         # Prepare stellar models
-        match self.config["star_model"]:
+        match self.config.star.mors.tracks:
             case 'spada':
                 # load modern spectrum
                 star_struct_modern = mors.spec.Spectrum()
@@ -332,7 +332,7 @@ class Proteus:
 
                 log.info("Updating instellation and radius")
 
-                match self.config["star_model"]:
+                match self.config.star.mors.tracks:
                     case 'spada':
                         hf_row["R_star"] = (
                             mors.Value(
@@ -363,7 +363,7 @@ class Proteus:
 
                 # Calculate new eqm temperature
                 T_eqm_new = CalculateEqmTemperature(
-                    S_0, self.config["asf_scalefactor"], self.config["albedo_pl"]
+                    S_0, self.config["asf_scalefactor"], self.config.atmos_clim.albedo_pl
                 )
 
                 hf_row["F_ins"] = S_0  # instellation
@@ -382,7 +382,7 @@ class Proteus:
                 update_stellar_spectrum = True
 
                 log.info("Updating stellar spectrum")
-                match self.config["star_model"]:
+                match self.config.star.mors.tracks:
                     case 'spada':
                         synthetic = mors.synthesis.CalcScaledSpectrumFromProps(
                             star_struct_modern, star_props_modern, hf_row["age_star"] / 1e6
@@ -622,10 +622,6 @@ class Proteus:
 
         # FINAL THINGS BEFORE EXIT
         PrintHalfSeparator()
-
-        # Deallocate atmosphere
-        # if self.config["atmosphere_model"] == 1:
-        #     deallocate_atmos(atm)
 
         # Clean up files
         safe_rm(keepalive_file)
