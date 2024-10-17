@@ -5,7 +5,7 @@ import logging
 
 import pandas as pd
 
-from aragog import Solver
+from aragog import Solver, Output
 from aragog.parser import (
     Parameters,
     _BoundaryConditionsParameters,
@@ -19,7 +19,7 @@ from aragog.parser import (
     _SolverParameters,
 )
 from proteus.interior.timestep import next_step
-from proteus.utils.constants import R_earth
+from proteus.utils.constants import R_earth, secs_per_year
 
 aragog_solver = None
 log = logging.getLogger("fwl."+__name__)
@@ -61,14 +61,14 @@ def SetupAragogSolver(OPTIONS:dict, hf_row:dict):
             radius = R_earth, # scaling radius [m]
             temperature = 4000, # scaling temperature [K]
             density = 4000, # scaling density
-            time = 3155760, # scaling time (unit???)
+            time = secs_per_year, # scaling time [sec]
             )
 
     solver = _SolverParameters(
             start_time = 0,
             end_time = 0,
-            atol = 1e-6,
-            rtol = 1e-6,
+            atol = OPTIONS["solver_tolerance"],
+            rtol = OPTIONS["solver_tolerance"],
             )
 
     boundary_conditions = _BoundaryConditionsParameters(
@@ -86,11 +86,11 @@ def SetupAragogSolver(OPTIONS:dict, hf_row:dict):
     mesh = _MeshParameters(
             outer_radius = OPTIONS["radius"] * R_earth, # planet radius [m]
             inner_radius = OPTIONS["planet_coresize"] * OPTIONS["radius"] * R_earth, # core radius [m]
-            number_of_nodes = OPTIONS["interior_nlev"], # 50
+            number_of_nodes = OPTIONS["interior_nlev"], # basic nodes
             mixing_length_profile = "constant",
-            surface_density = 4090,
+            surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration = hf_row["gravity"], # [m/s-2]
-            adiabatic_bulk_modulus = 260E9, # TO CLARIFY
+            adiabatic_bulk_modulus = 260E9, # AdamsWilliamsonEOS parameter [Pa]
             )
 
     energy = _EnergyParameters(
@@ -163,6 +163,7 @@ def SetupAragogSolver(OPTIONS:dict, hf_row:dict):
 def UpdateAragogSolver(dt:float, hf_row:dict):
 
     # Set solver time
+    # hf_row["Time"] is in yr so do not need to scale as long as scaling time is secs_per_year
     aragog_solver.parameters.solver.start_time = hf_row["Time"]
     aragog_solver.parameters.solver.end_time = hf_row["Time"] + dt
 
@@ -179,14 +180,18 @@ def UpdateAragogSolver(dt:float, hf_row:dict):
 
 def GetAragogOutput(OPTIONS:dict, hf_row:dict):
 
+    aragog_output: Output = Output(aragog_solver)
     output = {}
-    output["M_mantle"] = hf_row["M_mantle"]
-    output["M_core"] = hf_row["M_core"]
-    output["F_int"] = hf_row["F_atm"]
-    output["T_magma"] = 3500.0
-    output["Phi_global"] = 0.2
+
+    output["M_mantle"] = aragog_output.mantle_mass
+    output["T_magma"] = aragog_output.solution_top_temperature
+    output["Phi_global"] = float(aragog_output.melt_fraction_global[-1])
+
     output["M_mantle_liquid"] = output["M_mantle"] * output["Phi_global"]
     output["M_mantle_solid"] = output["M_mantle"] - output["M_mantle_liquid"]
     output["RF_depth"] = output["Phi_global"] * (1- OPTIONS["planet_coresize"])
+
+    output["M_core"] = hf_row["M_core"]
+    output["F_int"] = hf_row["F_atm"]
 
     return output
