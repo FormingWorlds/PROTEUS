@@ -14,7 +14,6 @@ class Agni:
     chemistry: str | None = field(
         validator=validators.in_((None, 'eq', 'kin')), converter=none_if_none
     )
-    tmp_minimum: float
 
 
 @define
@@ -24,7 +23,6 @@ class Janus:
     spectral_bands: str
     F_atm_bc: int = field(validator=validators.in_((0, 5)))
     num_levels: int = field(validator=validators.ge(15))
-    tmp_minimum: float
     tropopause: str | None = field(
         validator=validators.in_((None, 'skin', 'dynamic')), converter=none_if_none
     )
@@ -47,6 +45,8 @@ class AtmosClim:
     surf_albedo: float
     albedo_pl: float
     rayleigh: float
+    tmp_minimum: float
+    tmp_maximum: float
 
     module: str = field(validator=validators.in_(('dummy', 'agni', 'janus')))
 

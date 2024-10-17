@@ -99,7 +99,7 @@ COMPAT_MAPPING = {
     'atmosphere_model': ('atmos_clim', 'module'),
     'atmosphere_surf_state': ('atmos_clim', 'surf_state'),
     'atmosphere_nlev': _atmosphere_nlev,
-    'min_temperature': _min_temperature,
+    'min_temperature': ('atmos_clim', 'tmp_minimum'),
     'max_temperature': ('atmos_clim', 'tmp_maximum'),
     'water_cloud': ('atmos_clim', 'cloud_enabled'),
     'alpha_cloud': ('atmos_clim', 'cloud_alpha'),
