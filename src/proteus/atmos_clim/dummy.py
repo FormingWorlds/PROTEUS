@@ -91,7 +91,7 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_planet:
 
     # Require that the net flux must be upward
     F_atm_lim = fluxes["fl_N"]
-    if config["prevent_warming"]:
+    if config.atmos_clim.prevent_warming:
         F_atm_lim = max( 1.0e-8 , F_atm_lim )
 
     # Print if a limit was applied

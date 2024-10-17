@@ -263,22 +263,22 @@ def _try_spider( dirs:dict, config:Config,
                         "-OXYGEN_FUGACITY_offset", "%.6e"%(config["fO2_shift_IW"]),  # Relative to the specified buffer
                         "-surface_bc_value",       "%.6e"%(hf_row["F_atm"]),
                         "-teqm",                   "%.6e"%(hf_row["T_eqm"]),
-                        "-n",                      "%d"  %(config["interior_nlev"]),
+                        "-n",                      "%d"  %(config.interior.spider.num_levels),
                         "-nstepsmacro",            "%d"  %(nstepsmacro),
                         "-dtmacro",                "%.6e"%(dtmacro),
                         "-radius",                 "%.6e"%(hf_row["R_planet"]),
                         "-gravity",                "%.6e"%(-1.0 * hf_row["gravity"]),
                         "-coresize",               "%.6e"%(config.struct.corefrac),
-                        "-grain",                  "%.6e"%(config["grain_size"]),
+                        "-grain",                  "%.6e"%(config.interior.grain_size),
                     ]
 
     # Min of fractional and absolute Ts poststep change
     if hf_row["Time"] > 0:
         dTs_frac = float(config["tsurf_poststep_change_frac"]) * float(hf_all["T_surf"].iloc[-1])
-        dT_int_max = np.min([ float(config["tsurf_poststep_change"]), float(dTs_frac) ])
+        dT_int_max = np.min([ float(config.interior.spider.tsurf_atol), float(dTs_frac) ])
         call_sequence.extend(["-tsurf_poststep_change", str(dT_int_max)])
     else:
-        call_sequence.extend(["-tsurf_poststep_change", str(config["tsurf_poststep_change"])])
+        call_sequence.extend(["-tsurf_poststep_change", str(config.interior.spider.tsurf_atol)])
 
     # Initial condition
     if IC_INTERIOR == 2:
@@ -293,14 +293,14 @@ def _try_spider( dirs:dict, config:Config,
     else:
         # set to adiabat
         call_sequence.extend([
-                                "-ic_adiabat_entropy", str(config["ic_adiabat_entropy"]),
-                                "-ic_dsdr", str(config["ic_dsdr"]) # initial dS/dr everywhere
+                                "-ic_adiabat_entropy", str(config.interior.spider.ini_entropy),
+                                "-ic_dsdr", str(config.interior.spider.ini_dsdr) # initial dS/dr everywhere
                             ])
 
     # Mixing length parameterization: 1: variable | 2: constant
-    call_sequence.extend(["-mixing_length", str(config["mixing_length"])])
-    call_sequence.extend(["-ts_sundials_atol", str(config["solver_tolerance"] * atol_sf)])
-    call_sequence.extend(["-ts_sundials_rtol", str(config["solver_tolerance"] * atol_sf)])
+    call_sequence.extend(["-mixing_length", str(config.interior.spider.mixing_length)])
+    call_sequence.extend(["-ts_sundials_atol", str(config.interior.spider.tolerance * atol_sf)])
+    call_sequence.extend(["-ts_sundials_rtol", str(config.interior.spider.tolerance * atol_sf)])
 
     # Runtime info
     flags = ""
@@ -421,7 +421,7 @@ def ReadSPIDER(dirs:dict, config:Config, R_planet:float):
     log.debug(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, output["F_int"]) )
 
     # Limit F_int to positive values
-    if config["prevent_warming"]:
+    if config.atmos_clim.prevent_warming:
         output["F_int"] = max(1.0e-8, output["F_int"])
 
     # Check NaNs

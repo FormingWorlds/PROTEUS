@@ -295,8 +295,8 @@ class Proteus:
 
             # Calculate time-averaged orbital separation (and convert from AU to metres)
             # https://physics.stackexchange.com/a/715749
-            hf_row["separation"] = self.config["semimajoraxis"] * AU * \
-                                        (1 + 0.5 * self.config["eccentricity"]**2.0)
+            hf_row["separation"] = self.config.orbit.semimajoraxis * AU * \
+                                        (1 + 0.5 * self.config.orbit.eccentricity**2.0)
 
 
             ############### / ORBIT AND TIDES
@@ -319,7 +319,7 @@ class Proteus:
             update_stellar_spectrum = False
 
             # Calculate new instellation and radius
-            if (abs(hf_row["Time"] - sinst_prev) > self.config["sinst_dt_update"]) or (
+            if (abs(hf_row["Time"] - sinst_prev) > self.config.params.dt.starinst) or (
                 loop_counter["total"] == 0
             ):
                 sinst_prev = hf_row["Time"]
@@ -375,7 +375,7 @@ class Proteus:
                 log.debug("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
 
             # Calculate a new (historical) stellar spectrum
-            if (abs(hf_row["Time"] - sspec_prev) > self.config["sspec_dt_update"]) or (
+            if (abs(hf_row["Time"] - sspec_prev) > self.config.params.dt.starspec) or (
                 loop_counter["total"] == 0
             ):
                 sspec_prev = hf_row["Time"]
@@ -505,7 +505,7 @@ class Proteus:
             log.info("Check convergence criteria")
 
             # Stop simulation when planet is completely solidified
-            if (self.config["solid_stop"] == 1) and (hf_row["Phi_global"] <= self.config["phi_crit"]):
+            if self.config.params.stop.solid.enabled and (hf_row["Phi_global"] <= self.config.params.stop.solid.phi_crit):
                 UpdateStatusfile(self.directories, 10)
                 log.info("")
                 log.info("===> Planet solidified! <===")
@@ -514,7 +514,7 @@ class Proteus:
 
             # Stop simulation when flux is small
             if (
-                (self.config["emit_stop"] == 1)
+                self.config["emit_stop"]
                 and (loop_counter["total"] > loop_counter["init_loops"] + 1)
                 and (abs(hf_row["F_atm"]) <= self.config["F_crit"])
             ):
@@ -526,7 +526,7 @@ class Proteus:
 
             # Determine when the simulation enters a steady state
             if (
-                (self.config["steady_stop"] == 1)
+                self.config.params.stop.steady.enabled
                 and (loop_counter["total"] > loop_counter["steady_check"] * 2 + 5)
                 and (loop_counter["steady"] < 0)
             ):
@@ -571,7 +571,7 @@ class Proteus:
                     finished = True
 
             # Atmosphere has escaped
-            if hf_row["M_atm"] <= self.config["escape_stop"] * hf_all.iloc[0]["M_atm"]:
+            if hf_row["M_atm"] <= self.config.params.stop.escape.mass_frac * hf_all.iloc[0]["M_atm"]:
                 UpdateStatusfile(self.directories, 15)
                 log.info("")
                 log.info("===> Atmosphere has escaped! <===")
@@ -579,7 +579,7 @@ class Proteus:
                 finished = True
 
             # Maximum time reached
-            if hf_row["Time"] >= self.config["time_target"] * 1e9:
+            if hf_row["Time"] >= self.config.params.stop.time.maximum * 1e9:
                 UpdateStatusfile(self.directories, 13)
                 log.info("")
                 log.info("===> Target time reached! <===")
@@ -610,8 +610,8 @@ class Proteus:
 
             # Make plots if required and go to next iteration
             if (
-                (self.config["plot_iterfreq"] > 0)
-                and (loop_counter["total"] % self.config["plot_iterfreq"] == 0)
+                (self.config.params.out.plot_mod > 0)
+                and (loop_counter["total"] % self.config.params.out.plot_mod == 0)
                 and (not finished)
             ):
                 PrintHalfSeparator()

@@ -341,7 +341,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         # default parameters
         linesearch = 2
         easy_start = False
-        dx_max = config["tsurf_poststep_change"]+10.0
+        dx_max = config.interior.spider.tsurf_atol+10.0
         ls_increase = 1.02
 
         # try different solver parameters if struggling
@@ -400,10 +400,10 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     jl.AGNI.dump.write_ncdf(atmos, ncdf_path)
 
     # Make plots
-    if (config["plot_iterfreq"] > 0) \
-            and (loops_total % config["plot_iterfreq"] == 0):
+    if (config.params.out.plot_mod > 0) \
+            and (loops_total % config.params.out.plot_mod == 0):
 
-        fmt = config["plot_format"]
+        fmt = config.params.out.plot_fmt
         jl.AGNI.plotting.plot_fluxes(atmos, os.path.join(dirs["output"],
                                                   "plot_fluxes_atmosphere.%s"%fmt))
         jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"], "plot_vmr.%s"%fmt))
@@ -434,7 +434,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         F_atm_new = net_flux[-1]
 
     # Require that the net flux must be upward (positive)
-    if config["prevent_warming"]:
+    if config.atmos_clim.prevent_warming:
         F_atm_new = max( 1e-8 , F_atm_new )
 
     log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.2e, %.2e, %.2e  W m-2" %

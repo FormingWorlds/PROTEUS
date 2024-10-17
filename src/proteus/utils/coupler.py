@@ -272,8 +272,8 @@ def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, config:Config, end=False, 
 
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
-    dummy_int = config["interior_model"] == 'dummy'
-    escape    = config["escape_model"] is not None
+    dummy_int = config.interior.module == 'dummy'
+    escape    = config.interior.module is not None
 
     # Get all output times
     if dummy_int:
@@ -287,8 +287,8 @@ def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, config:Config, end=False, 
 
     # Elemental mass inventory
     if escape:
-        plot_elements(hf_all, output_dir, config["plot_format"])
-        plot_escape(hf_all, output_dir, escape_model=config['escape_model'], plot_format=config["plot_format"])
+        plot_elements(hf_all, output_dir, config.params.out.plot_fmt)
+        plot_escape(hf_all, output_dir, escape_model=config['escape_model'], plot_format=config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:
@@ -313,37 +313,37 @@ def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, config:Config, end=False, 
     # Interior profiles
     if not dummy_int:
         jsons = read_jsons(output_dir, plot_times)
-        plot_interior(output_dir, plot_times, jsons, config["plot_format"])
+        plot_interior(output_dir, plot_times, jsons, config.params.out.plot_fmt)
 
     # Temperature profiles
     if not dummy_atm:
         ncdfs = read_ncdfs(output_dir, plot_times)
 
         # Atmosphere only
-        plot_atmosphere(output_dir, plot_times, ncdfs, config["plot_format"])
+        plot_atmosphere(output_dir, plot_times, ncdfs, config.params.out.plot_fmt)
 
         # Atmosphere and interior, stacked
         if not dummy_int:
-            plot_stacked(output_dir, plot_times, jsons, ncdfs, config["plot_format"])
+            plot_stacked(output_dir, plot_times, jsons, ncdfs, config.params.out.plot_fmt)
 
         # Flux profiles
         if config.atmos_clim.module == 'janus':
             # only do this for JANUS, AGNI does it automatically
-            plot_fluxes_atmosphere(output_dir, config["plot_format"])
+            plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
 
     # Only at the end of the simulation
     if end:
         plot_global(hf_all,         output_dir, config, logt=False)
         plot_fluxes_global(hf_all,  output_dir, config)
-        plot_observables(hf_all,    output_dir, plot_format=config["plot_format"])
-        plot_sflux(output_dir,          plot_format=config["plot_format"])
-        plot_sflux_cross(output_dir,    plot_format=config["plot_format"])
+        plot_observables(hf_all,    output_dir, plot_format=config.params.out.plot_fmt)
+        plot_sflux(output_dir,          plot_format=config.params.out.plot_fmt)
+        plot_sflux_cross(output_dir,    plot_format=config.params.out.plot_fmt)
 
         if not dummy_int:
-            plot_interior_cmesh(output_dir, plot_format=config["plot_format"])
+            plot_interior_cmesh(output_dir, plot_format=config.params.out.plot_fmt)
 
         if not dummy_atm:
-            plot_emission(output_dir, plot_times, plot_format=config["plot_format"])
+            plot_emission(output_dir, plot_times, plot_format=config.params.out.plot_fmt)
 
     # Close all figures
     plt.close()

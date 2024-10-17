@@ -69,7 +69,7 @@ def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, config: Config )
         vcf.write("P_t = %1.5e \n"          % float(config["P_top"]*1.0e6))   # pressure at the top (dyne/cm^2)
 
         # Plotting behaviour
-        vcf.write("use_live_plot  = %s \n"  % str(bool(config["plot_iterfreq"] > 0)))
+        vcf.write("use_live_plot  = %s \n"  % str(bool(config.params.out.plot_mod > 0)))
 
         # Make copy of element_list as a set, since it'll be used a lot in the code below
         set_elem_list = set(element_list)
