@@ -370,7 +370,7 @@ def SetDirectories(config: Config):
 
     # PROTEUS folders
     dirs = {
-            "output":   os.path.join(proteus_dir,"output",config['dir_output']),
+            "output":   os.path.join(proteus_dir,"output",config.params.out.path),
             "input":    os.path.join(proteus_dir,"input"),
             "proteus":  proteus_dir,
             "agni":     os.path.join(proteus_dir,"AGNI"),

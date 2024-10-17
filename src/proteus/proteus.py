@@ -238,7 +238,7 @@ class Proteus:
         # Store copy of modern spectrum in memory (1 AU)
         sspec_prev = -np.inf
         sinst_prev = -np.inf
-        star_modern_path = os.path.join(self.directories["fwl"], self.config["star_spectrum"])
+        star_modern_path = os.path.join(self.directories["fwl"], self.config.star.mors.spec)
         shutil.copyfile(star_modern_path, os.path.join(self.directories["output"], "-1.sflux"))
 
         # Prepare stellar models
@@ -251,9 +251,9 @@ class Proteus:
 
                 # modern properties
                 star_props_modern = mors.synthesis.GetProperties(
-                    self.config["star_mass"],
-                    self.config["star_rot_pctle"],
-                    self.config["star_age_modern"] * 1000,
+                    self.config.star.mass,
+                    self.config.star.omega,
+                    self.config.star.age_now * 1000,
                 )
 
             case 'baraffe':
@@ -261,7 +261,7 @@ class Proteus:
                     star_modern_path, self.directories["output"] + "/-1.sflux"
                 )
 
-                baraffe = mors.BaraffeTrack(self.config["star_mass"])
+                baraffe = mors.BaraffeTrack(self.config.star.mass)
 
         # Create lockfile
         keepalive_file = CreateLockFile(self.directories["output"])
@@ -336,7 +336,7 @@ class Proteus:
                     case 'spada':
                         hf_row["R_star"] = (
                             mors.Value(
-                                self.config["star_mass"],
+                                self.config.star.mass,
                                 hf_row["age_star"] / 1e6,
                                 "Rstar"
                             )
@@ -345,7 +345,7 @@ class Proteus:
                         )
                         S_0 = (
                             mors.Value(
-                                self.config["star_mass"],
+                                self.config.star.mass,
                                 hf_row["age_star"] / 1e6,
                                 "Lbol"
                             ) * L_sun  / (4.0 * np.pi * hf_row["separation"]**2.0 )
@@ -514,7 +514,7 @@ class Proteus:
 
             # Stop simulation when flux is small
             if (
-                self.config["emit_stop"]
+                self.config.params.stop.radeqm.enabled
                 and (loop_counter["total"] > loop_counter["init_loops"] + 1)
                 and (abs(hf_row["F_atm"]) <= self.config["F_crit"])
             ):

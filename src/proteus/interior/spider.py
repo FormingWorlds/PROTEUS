@@ -260,7 +260,7 @@ def _try_spider( dirs:dict, config:Config,
                         "-options_file",           SPIDER_options_file,
                         "-outputDirectory",        dirs["output"]+'data/',
                         "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
-                        "-OXYGEN_FUGACITY_offset", "%.6e"%(config["fO2_shift_IW"]),  # Relative to the specified buffer
+                        "-OXYGEN_FUGACITY_offset", "%.6e"%(config.outgas.fO2_shift_IW),  # Relative to the specified buffer
                         "-surface_bc_value",       "%.6e"%(hf_row["F_atm"]),
                         "-teqm",                   "%.6e"%(hf_row["T_eqm"]),
                         "-n",                      "%d"  %(config.interior.spider.num_levels),

@@ -158,7 +158,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
-    module = "none"    # Which escape module to use
+    module = "dummy"    # Which escape module to use
 
     [escape.zephyrus]
         some_parameter = "some_value"
