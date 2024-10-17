@@ -154,7 +154,7 @@ def plot_sflux_cross_entry(handler: Proteus):
         output_dir=handler.directories['output'],
         wl_targets=wl_targets,
         modern_age=handler.config.star.age_now * 1000,
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
     )
 
 

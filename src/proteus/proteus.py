@@ -432,8 +432,8 @@ class Proteus:
             solvevol_inp["gravity"] = hf_row["gravity"]
             solvevol_inp["mass"] = hf_row["M_planet"]
             solvevol_inp["radius"] = hf_row["R_planet"]
-            solvevol_inp['fO2_shift_IW'] = self.config['fO2_shift_IW']
-            solvevol_inp['hydrogen_earth_oceans'] = self.config['hydrogen_earth_oceans']
+            solvevol_inp['fO2_shift_IW'] = self.config.outgas.fO2_shift_IW
+            solvevol_inp['hydrogen_earth_oceans'] = self.config.delivery.elements.H_oceans
             solvevol_inp['CH_ratio'] = self.config['CH_ratio']
             solvevol_inp['nitrogen_ppmw'] = self.config['nitrogen_ppmw']
             solvevol_inp['sulfur_ppmw'] = self.config['sulfur_ppmw']
@@ -516,7 +516,7 @@ class Proteus:
             if (
                 self.config.params.stop.radeqm.enabled
                 and (loop_counter["total"] > loop_counter["init_loops"] + 1)
-                and (abs(hf_row["F_atm"]) <= self.config["F_crit"])
+                and (abs(hf_row["F_atm"]) <= self.config.params.stop.radeqm.F_crit)
             ):
                 UpdateStatusfile(self.directories, 14)
                 log.info("")
