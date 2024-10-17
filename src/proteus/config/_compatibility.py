@@ -24,9 +24,9 @@ def _atmosphere_nlev(config: Config) -> str:
     return obj.num_levels
 
 
-def _min_temperature(config: Config) -> str:
+def _p_top(config: Config) -> float:
     obj = getattr(config.atmos_clim, config.atmos_clim.module)
-    return obj.tmp_minimum
+    return obj.p_top
 
 
 def _stellar_heating(config: Config):
@@ -62,7 +62,7 @@ COMPAT_MAPPING = {
     'albedo_s': ('atmos_clim', 'surf_albedo'),
     'albedo_pl': ('atmos_clim', 'albedo_pl'),
     'eccentricity': ('orbit', 'eccentricity'),
-    'P_top': ('atmos_clim', 'Config.atmos_clim.module', 'p_top'),
+    'P_top': _p_top,
     'iter_max': ('params', 'stop', 'iters', 'maximum'),
     'log_level': ('params', 'out', 'logging'),
     'dir_output': ('params', 'out', 'path'),

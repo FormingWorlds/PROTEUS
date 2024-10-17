@@ -44,14 +44,14 @@ def InitAtm(dirs:dict, config:Config):
     for vol in volatile_species:
         vol_list[vol] = 1.0/len(volatile_species)
 
-    match config["tropopause"]:
-        case 0 | 1: # 0: none 1: skin temperature set in UpdateStateAtm
-            trppT = 0.0
-        case 2: # dynamically, based on heating rate
-            trppT = config["min_temperature"]
-        case _:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Invalid tropopause option '%d'" % config["tropopause"])
+    if config["tropopause"] in (None, 'skin'):
+        trppT = 0.0
+    elif config["tropopause"] == 'dynamic':
+        # dynamically, based on heating rate
+        trppT = config["min_temperature"]
+    else:
+        UpdateStatusfile(dirs, 20)
+        raise Exception("Invalid tropopause option '%d'" % config["tropopause"])
 
     # Spectral bands
     band_edges = ReadBandEdges(dirs["output"]+"star.sf")
@@ -172,15 +172,15 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     os.chdir(tmp_dir)
 
     # Prepare to calculate temperature structure w/ General Adiabat
-    trppD = bool(config["tropopause"] == 2)
-    rscatter = bool(config["rayleigh"] == 1)
+    trppD = config["tropopause"] == 'dynamic'
+    rscatter = config["rayleigh"]
 
     # Run JANUS
-    if config["atmosphere_surf_state"] == 1:  # fixed T_Surf
+    if config["atmosphere_surf_state"] == 'fixed':  # fixed T_Surf
         from janus.modules import MCPA
         atm = MCPA(dirs, atm, False, trppD, rscatter)
 
-    elif config["atmosphere_surf_state"] == 2: # conductive lid
+    elif config["atmosphere_surf_state"] == 'skin': # conductive lid
         from janus.modules import MCPA_CBL
 
         T_surf_max = -1
@@ -194,7 +194,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
             T_surf_old = hf_all.iloc[-1]["T_surf"]
 
             # Prevent heating of the interior
-            if (config["prevent_warming"] == 1):
+            if config["prevent_warming"]:
                 T_surf_max = T_surf_old
 
             # calculate tolerance

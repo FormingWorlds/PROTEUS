@@ -179,8 +179,8 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
                         vol_dict, "",
 
-                        flag_rayleigh=bool(config["rayleigh"] == 1),
-                        flag_cloud=bool(config["water_cloud"] == 1),
+                        flag_rayleigh = config["rayleigh"],
+                        flag_cloud= config["water_cloud"],
 
                         albedo_s=config["albedo_s"],
                         condensates=condensates,
@@ -434,7 +434,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         F_atm_new = net_flux[-1]
 
     # Require that the net flux must be upward (positive)
-    if (config["prevent_warming"] == 1):
+    if config["prevent_warming"]:
         F_atm_new = max( 1e-8 , F_atm_new )
 
     log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.2e, %.2e, %.2e  W m-2" %

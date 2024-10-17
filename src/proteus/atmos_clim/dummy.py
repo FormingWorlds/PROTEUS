@@ -34,7 +34,7 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_planet:
     skin_k          = config["skin_k"]
 
     # Check configuration
-    if config["rayleigh"] == 1:
+    if config["rayleigh"]:
         log.warning("Rayleigh scattering is enabled but it will be neglected")
 
     log.info("Gamma = %.4f" % gamma)
@@ -91,7 +91,7 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_planet:
 
     # Require that the net flux must be upward
     F_atm_lim = fluxes["fl_N"]
-    if (config["prevent_warming"] == 1):
+    if config["prevent_warming"]:
         F_atm_lim = max( 1.0e-8 , F_atm_lim )
 
     # Print if a limit was applied

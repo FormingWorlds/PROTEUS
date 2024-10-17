@@ -38,22 +38,22 @@ def RunEscape(config, hf_row, dt):
 
     PrintHalfSeparator()
 
-    if config["escape_model"] == 'zephyrus':
+    if not config["escape_model"]:
+        # solvevol_target is undefined?
+        pass
+    elif config["escape_model"] == 'zephyrus':
         hf_row["esc_rate_total"] = RunZEPHYRUS(config, hf_row)
-
     elif config["escape_model"] == 'dummy':
         hf_row["esc_rate_total"] = config["escape_dummy_rate"]
-
     else:
         raise Exception("Invalid escape model")
 
-    if config["escape_model"]:
-        log.info(
-                "Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1"
-                % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"])
-                )
+    log.info(
+        "Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1"
+        % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"])
+        )
 
-        solvevol_target = SpeciesEscapeFromTotalEscape(hf_row, dt)
+    solvevol_target = SpeciesEscapeFromTotalEscape(hf_row, dt)
 
     return solvevol_target
 
