@@ -145,10 +145,10 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         # condensates = [v[0] for v in vol_sorted[-2:]]
 
     # Chemistry
-    chem_type = config["atmosphere_chemistry"]
+    chem_type = config.atmos_clim.agni.chemistry
     include_all = False
     fc_dir = "_unset"
-    if chem_type == 1:
+    if chem_type == 'eq':
         # equilibrium
         include_all = True
         condensates = []
@@ -157,7 +157,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         fc_dir = create_tmp_folder()
         log.debug("Fastchem work folder: '%s'"%fc_dir)
 
-    elif chem_type >= 2:
+    elif chem_type == 'kin':
         # kinetics
         raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
 
@@ -365,7 +365,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         # Try solving temperature profile
         agni_success = jl.AGNI.solver.solve_energy_b(atmos,
                             sol_type=config.atmos_clim.surf_state,
-                            chem_type=config["atmosphere_chemistry"],
+                            chem_type=config.atmos_clim.agni.chemistry,
 
                             conduct=False, convect=True, latent=True, sens_heat=True,
 
