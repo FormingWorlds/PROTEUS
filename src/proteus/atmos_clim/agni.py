@@ -326,7 +326,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
     # atmosphere solver plotting frequency
     modplot = 0
-    if config["log_level"] == "DEBUG":
+    if config.params.out.logging == "DEBUG":
         modplot = 1
 
     # tracking

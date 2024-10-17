@@ -194,7 +194,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
             T_surf_old = hf_all.iloc[-1]["T_surf"]
 
             # Prevent heating of the interior
-            if config["prevent_warming"]:
+            if config.atmos_clim.prevent_warming:
                 T_surf_max = T_surf_old
 
             # calculate tolerance
@@ -241,7 +241,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
 
     # Require that the net flux must be upward
     F_atm_lim = F_atm_new
-    if (config["prevent_warming"] == 1):
+    if config.atmos_clim.prevent_warming:
         F_atm_lim = max( 1.0e-8 , F_atm_new )
 
     # Print if a limit was applied

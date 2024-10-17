@@ -101,7 +101,7 @@ class Proteus:
         logpath = GetLogfilePath(self.directories["output"], logindex)
 
         # Switch to logger
-        setup_logger(logpath=logpath, logterm=True, level=self.config["log_level"])
+        setup_logger(logpath=logpath, logterm=True, level=self.config.params.out.logging)
         log = logging.getLogger("fwl."+__name__)
 
         # Print information to logger

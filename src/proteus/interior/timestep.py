@@ -22,19 +22,19 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
         log.info("Time-stepping intent: static")
 
     else:
-        if config["dt_method"] == 'proportional':
+        if config.params.dt.method == 'proportional':
             # Proportional time-step calculation
             log.info("Time-stepping intent: proportional")
             dtswitch = hf_row["Time"] / float(config["dt_propconst"])
 
-        elif config["dt_method"] == 'adaptive':
+        elif config.params.dt.method == 'adaptive':
             # Dynamic time-step calculation
 
             # Try to maintain a minimum step size of dt_initial at first
-            if hf_row["Time"] > config["dt_initial"]:
+            if hf_row["Time"] > config.params.dt.initial:
                 dtprev = float(hf_all.iloc[-1]["Time"] - hf_all.iloc[-2]["Time"])
             else:
-                dtprev = config["dt_initial"]
+                dtprev = config.params.dt.initial
             log.debug("Previous step size: %.2e yr"%dtprev)
 
             # Change in F_int
@@ -53,8 +53,8 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
             phi_12 = abs(phi_1 - phi_2)
 
             # Determine new time-step given the tolerances
-            dt_rtol = config["dt_rtol"]
-            dt_atol = config["dt_atol"]
+            dt_rtol = config.params.dt.adaptive.rtol
+            dt_atol = config.params.dt.adaptive.atol
             speed_up = True
             speed_up = speed_up and ( F_int_12 < dt_rtol*abs(F_int_2) + dt_atol )
             speed_up = speed_up and ( F_atm_12 < dt_rtol*abs(F_atm_2) + dt_atol )
@@ -68,10 +68,10 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
                 log.info("Time-stepping intent: slow down")
 
 
-        elif config["dt_method"] == 'maximum':
+        elif config.params.dt.method == 'maximum':
             # Always use the maximum time-step, which can be adjusted in the cfg file
             log.info("Time-stepping intent: maximum")
-            dtswitch = config["dt_maximum"]
+            dtswitch = config.params.dt.maximum
 
         else:
             UpdateStatusfile(dirs, 20)
@@ -81,11 +81,11 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
         dtswitch *= step_sf
 
         # Step-size ceiling
-        dtswitch = min(dtswitch, config["dt_maximum"] )    # Absolute
+        dtswitch = min(dtswitch, config.params.dt.maximum )    # Absolute
 
         # Step-size floor
         dtswitch = max(dtswitch, hf_row["Time"]*0.0001)     # Relative
-        dtswitch = max(dtswitch, config["dt_minimum"] )    # Absolute
+        dtswitch = max(dtswitch, config.params.dt.minimum )    # Absolute
 
     log.info("New time-step is %1.2e years" % dtswitch)
     return dtswitch

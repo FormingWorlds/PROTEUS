@@ -44,7 +44,7 @@ def RunEscape(config, hf_row, dt):
     elif config.escape.module == 'zephyrus':
         hf_row["esc_rate_total"] = RunZEPHYRUS(config, hf_row)
     elif config.escape.module == 'dummy':
-        hf_row["esc_rate_total"] = config["escape_dummy_rate"]
+        hf_row["esc_rate_total"] = config.escape.dummy.rate
     else:
         raise ValueError(f"Invalid escape model: {config.escape.module}")
 

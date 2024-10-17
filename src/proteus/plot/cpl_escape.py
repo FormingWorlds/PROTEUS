@@ -69,7 +69,7 @@ def plot_escape_entry(handler: Proteus):
         hf_all=hf_all,
         output_dir=handler.directories["output"],
         escape_model=handler.config['escape_model'],
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
     )
 
 

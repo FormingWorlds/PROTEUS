@@ -274,7 +274,7 @@ def _try_spider( dirs:dict, config:Config,
 
     # Min of fractional and absolute Ts poststep change
     if hf_row["Time"] > 0:
-        dTs_frac = float(config["tsurf_poststep_change_frac"]) * float(hf_all["T_surf"].iloc[-1])
+        dTs_frac = config.interior.spider.tsurf_rtol * float(hf_all["T_surf"].iloc[-1])
         dT_int_max = np.min([ float(config.interior.spider.tsurf_atol), float(dTs_frac) ])
         call_sequence.extend(["-tsurf_poststep_change", str(dT_int_max)])
     else:
