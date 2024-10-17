@@ -82,9 +82,9 @@ def InitAtm(dirs:dict, config:Config):
                 zenith_angle = config.orbit.zenith_angle,
                 )
 
-    atm.inst_sf = config["asf_scalefactor"]
-    atm.skin_d = config["skin_d"]
-    atm.skin_k = config["skin_k"]
+    atm.inst_sf = config.orbit.s0_factor
+    atm.skin_d = config.atmos_clim.surface_d
+    atm.skin_k = config.atmos_clim.surface_k
 
     return atm
 

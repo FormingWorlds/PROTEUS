@@ -363,7 +363,7 @@ class Proteus:
 
                 # Calculate new eqm temperature
                 T_eqm_new = CalculateEqmTemperature(
-                    S_0, self.config["asf_scalefactor"], self.config.atmos_clim.albedo_pl
+                    S_0, self.config.orbit.s0_factor, self.config.atmos_clim.albedo_pl
                 )
 
                 hf_row["F_ins"] = S_0  # instellation

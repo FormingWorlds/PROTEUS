@@ -28,10 +28,10 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_planet:
     # Parameters
     zenith_angle    = config.orbit.zenith_angle
     albedo_pl       = config.atmos_clim.albedo_pl
-    inst_sf         = config["asf_scalefactor"]
+    inst_sf         = config.orbit.s0_factor
     albedo_s        = config.atmos_clim.surf_albedo
-    skin_d          = config["skin_d"]
-    skin_k          = config["skin_k"]
+    skin_d          = config.atmos_clim.surface_d
+    skin_k          = config.atmos_clim.surface_k
 
     # Check configuration
     if config.atmos_clim.rayleigh:

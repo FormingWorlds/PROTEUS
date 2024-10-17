@@ -166,7 +166,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         dirs["agni"], dirs["output"], input_sf,
 
                         hf_row["F_ins"],
-                        config["asf_scalefactor"],
+                        config.orbit.s0_factor,
                         config.atmos_clim.albedo_pl,
                         config.orbit.zenith_angle,
 
@@ -187,7 +187,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         use_all_gases=include_all,
                         fastchem_work = fc_dir,
 
-                        skin_d=config["skin_d"], skin_k=config["skin_k"],
+                        skin_d=config.atmos_clim.surface_d, skin_k=config.atmos_clim.surface_k,
                         tmp_magma=hf_row["T_surf"], tmp_floor=config.atmos_clim.tmp_minimum
                         )
 
