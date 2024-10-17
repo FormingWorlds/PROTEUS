@@ -148,7 +148,7 @@ def plot_interior_entry(handler: Proteus):
         output_dir=handler.directories['output'],
         times=plot_times,
         jsons=jsons,
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
     )
 
 

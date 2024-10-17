@@ -165,7 +165,7 @@ def plot_interior_cmesh_entry(handler: Proteus):
     # Plot fixed set from above
     plot_interior_cmesh(
         output_dir=handler.directories["output"],
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
     )
 
 

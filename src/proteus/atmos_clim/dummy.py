@@ -2,16 +2,20 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from proteus.utils.constants import const_sigma
 from proteus.utils.helper import UpdateStatusfile
 
+if TYPE_CHECKING:
+    from proteus.config import Config
+
 log = logging.getLogger("fwl."+__name__)
 
 # Run the dummy atmosphere module
-def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:float, M_planet:float):
+def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_planet:float, M_planet:float):
     log.info("Running dummy atmosphere...")
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
@@ -22,15 +26,15 @@ def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:f
     gamma           = 0.7
 
     # Parameters
-    zenith_angle    = OPTIONS["zenith_angle"]
-    albedo_pl       = OPTIONS["albedo_pl"]
-    inst_sf         = OPTIONS["asf_scalefactor"]
-    albedo_s        = OPTIONS["albedo_s"]
-    skin_d          = OPTIONS["skin_d"]
-    skin_k          = OPTIONS["skin_k"]
+    zenith_angle    = config.orbit.zenith_angle
+    albedo_pl       = config.atmos_clim.albedo_pl
+    inst_sf         = config.orbit.s0_factor
+    albedo_s        = config.atmos_clim.surf_albedo
+    skin_d          = config.atmos_clim.surface_d
+    skin_k          = config.atmos_clim.surface_k
 
     # Check configuration
-    if OPTIONS["rayleigh"] == 1:
+    if config.atmos_clim.rayleigh:
         log.warning("Rayleigh scattering is enabled but it will be neglected")
 
     log.info("Gamma = %.4f" % gamma)
@@ -53,13 +57,13 @@ def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:f
         return {"fl_U_LW":fl_U_LW, "fl_D_SW":fl_D_SW, "fl_U_SW":fl_U_SW, "fl_N":fl_N}
 
     # fixed T_Surf
-    if OPTIONS["atmosphere_surf_state"] == 1:
+    if config.atmos_clim.surf_state == 'fixed':
         log.info("Calculating fluxes with dummy atmosphere")
         T_surf_atm = T_magma
         fluxes = _calc_fluxes(T_surf_atm)
 
     # conductive lid
-    elif OPTIONS["atmosphere_surf_state"] == 2:
+    elif config.atmos_clim.surf_state == 'skin':
         log.info("Calculating fluxes with dummy atmosphere and CBL")
         import scipy.optimize as optimise
 
@@ -87,7 +91,7 @@ def RunDummyAtm( dirs:dict, OPTIONS:dict, T_magma:float, F_ins:float, R_planet:f
 
     # Require that the net flux must be upward
     F_atm_lim = fluxes["fl_N"]
-    if (OPTIONS["prevent_warming"] == 1):
+    if config.atmos_clim.prevent_warming:
         F_atm_lim = max( 1.0e-8 , F_atm_lim )
 
     # Print if a limit was applied

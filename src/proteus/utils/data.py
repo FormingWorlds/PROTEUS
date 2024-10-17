@@ -4,9 +4,13 @@ import logging
 import os
 import subprocess as sp
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import platformdirs
 from osfclient.api import OSF
+
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -105,7 +109,7 @@ def download_spectral_files(fname: str="", nband: int=256):
     folders = [folder for folder in folder_list if not (data_dir / folder).exists()]
 
     if folders:
-        log.debug(f"    downloading spectral files to {data_dir}")
+        log.info(f"    downloading spectral files to {data_dir}")
         download_folder(storage=storage, folders=folders, data_dir=data_dir)
 
 
@@ -122,7 +126,7 @@ def download_stellar_spectra():
     data_dir.mkdir(parents=True, exist_ok=True)
 
     if not (data_dir / folder_name).exists():
-        print(f"Downloading stellar spectra to {data_dir}")
+        log.info(f"Downloading stellar spectra to {data_dir}")
         download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
 
 
@@ -134,23 +138,23 @@ def download_evolution_tracks(track:str):
     log.debug("Get evolution tracks")
     DownloadEvolutionTracks(track)
 
-def download_sufficient_data(OPTIONS:dict):
+def download_sufficient_data(config:Config):
     """
     Download the required data based on the current options
     """
 
     # Star stuff
-    if OPTIONS["star_model"] in [0,1]:
+    if config.star.mors.tracks in ('spada', 'baraffe'):
         download_stellar_spectra()
-        if OPTIONS["star_model"] == 0:
+        if config.star.mors.tracks == 'spada':
             download_evolution_tracks("Spada")
         else:
             download_evolution_tracks("Baraffe")
 
     # Atmosphere stuff
-    if OPTIONS["atmosphere_model"] in [0,1]:
+    if config.atmos_clim.module in ('janus', 'agni'):
         download_spectral_files()
-    if OPTIONS["atmosphere_model"] == 1:
+    if config.atmos_clim.module == 'agni':
         download_surface_albedos()
 
 def _none_dirs():

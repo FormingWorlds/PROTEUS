@@ -75,7 +75,7 @@ def plot_atmosphere_entry(handler: Proteus):
         output_dir=handler.directories["output"],
         times=plot_times,
         profiles=profiles,
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
    )
 
 

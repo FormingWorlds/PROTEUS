@@ -38,25 +38,22 @@ def RunEscape(config, hf_row, dt):
 
     PrintHalfSeparator()
 
-    if config["escape_model"] == 0:
+    if not config.escape.module:
+        # solvevol_target is undefined?
         pass
-
-    elif config["escape_model"] == 1:
+    elif config.escape.module == 'zephyrus':
         hf_row["esc_rate_total"] = RunZEPHYRUS(config, hf_row)
-
-    elif config["escape_model"] == 2:
-        hf_row["esc_rate_total"] = config["escape_dummy_rate"]
-
+    elif config.escape.module == 'dummy':
+        hf_row["esc_rate_total"] = config.escape.dummy.rate
     else:
-        raise Exception("Invalid escape model")
+        raise ValueError(f"Invalid escape model: {config.escape.module}")
 
-    if (config["escape_model"] ==1 or config["escape_model"] ==2):
-        log.info(
-                "Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1"
-                % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"])
-                )
+    log.info(
+        "Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1"
+        % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"])
+        )
 
-        solvevol_target = SpeciesEscapeFromTotalEscape(hf_row, dt)
+    solvevol_target = SpeciesEscapeFromTotalEscape(hf_row, dt)
 
     return solvevol_target
 
@@ -91,14 +88,14 @@ def RunZEPHYRUS(config, hf_row):
 
     # Interpolating the XUV flux at the age of the star
     Fxuv_star_SI = ((star.Value(age_star, 'Lx') + star.Value(age_star, 'Leuv'))
-                             / (4 * np.pi * (config["semimajoraxis"] * AU * 1e2)**2)) * ergcm2stoWm2
+                             / (4 * np.pi * (config.orbit.semimajoraxis * AU * 1e2)**2)) * ergcm2stoWm2
 
     log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI}")
 
     # Compute energy-limited escape
     mlr = EL_escape(config["escape_el_tidal_correction"], #tidal contribution (True/False)
-                    config["semimajoraxis"] * AU, #planetary semi-major axis [m]
-                    config["eccentricity"], #eccentricity
+                    config.orbit.semimajoraxis * AU, #planetary semi-major axis [m]
+                    config.orbit.eccentricity, #eccentricity
                     hf_row["M_planet"], #planetary mass [kg]
                     config["star_mass"], #stellar mass [kg]
                     config["efficiency_factor"], #efficiency factor

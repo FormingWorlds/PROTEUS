@@ -8,12 +8,16 @@ import os
 import shutil
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
 from proteus.interior.timestep import next_step
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
+
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -199,7 +203,7 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
     return np.array(data_l)
 
 #====================================================================
-def _try_spider( dirs:dict, OPTIONS:dict,
+def _try_spider( dirs:dict, config:Config,
                 IC_INTERIOR:int, loop_counter:dict,
                 hf_all:pd.DataFrame, hf_row:dict,
                 step_sf:float, atol_sf:float ):
@@ -234,7 +238,7 @@ def _try_spider( dirs:dict, OPTIONS:dict,
         step        = json_file.get_dict(['step'])
 
         # Get new time-step
-        dtswitch = next_step(OPTIONS, dirs, hf_row, hf_all, step_sf)
+        dtswitch = next_step(config, dirs, hf_row, hf_all, step_sf)
 
         # Number of total steps until currently desired switch/end time
         nsteps = 1
@@ -256,25 +260,25 @@ def _try_spider( dirs:dict, OPTIONS:dict,
                         "-options_file",           SPIDER_options_file,
                         "-outputDirectory",        dirs["output"]+'data/',
                         "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
-                        "-OXYGEN_FUGACITY_offset", "%.6e"%(OPTIONS["fO2_shift_IW"]),  # Relative to the specified buffer
+                        "-OXYGEN_FUGACITY_offset", "%.6e"%(config.outgas.fO2_shift_IW),  # Relative to the specified buffer
                         "-surface_bc_value",       "%.6e"%(hf_row["F_atm"]),
                         "-teqm",                   "%.6e"%(hf_row["T_eqm"]),
-                        "-n",                      "%d"  %(OPTIONS["interior_nlev"]),
+                        "-n",                      "%d"  %(config.interior.spider.num_levels),
                         "-nstepsmacro",            "%d"  %(nstepsmacro),
                         "-dtmacro",                "%.6e"%(dtmacro),
                         "-radius",                 "%.6e"%(hf_row["R_planet"]),
                         "-gravity",                "%.6e"%(-1.0 * hf_row["gravity"]),
-                        "-coresize",               "%.6e"%(OPTIONS["planet_coresize"]),
-                        "-grain",                  "%.6e"%(OPTIONS["grain_size"]),
+                        "-coresize",               "%.6e"%(config.struct.corefrac),
+                        "-grain",                  "%.6e"%(config.interior.grain_size),
                     ]
 
     # Min of fractional and absolute Ts poststep change
     if hf_row["Time"] > 0:
-        dTs_frac = float(OPTIONS["tsurf_poststep_change_frac"]) * float(hf_all["T_surf"].iloc[-1])
-        dT_int_max = np.min([ float(OPTIONS["tsurf_poststep_change"]), float(dTs_frac) ])
+        dTs_frac = config.interior.spider.tsurf_rtol * float(hf_all["T_surf"].iloc[-1])
+        dT_int_max = np.min([ float(config.interior.spider.tsurf_atol), float(dTs_frac) ])
         call_sequence.extend(["-tsurf_poststep_change", str(dT_int_max)])
     else:
-        call_sequence.extend(["-tsurf_poststep_change", str(OPTIONS["tsurf_poststep_change"])])
+        call_sequence.extend(["-tsurf_poststep_change", str(config.interior.spider.tsurf_atol)])
 
     # Initial condition
     if IC_INTERIOR == 2:
@@ -289,14 +293,14 @@ def _try_spider( dirs:dict, OPTIONS:dict,
     else:
         # set to adiabat
         call_sequence.extend([
-                                "-ic_adiabat_entropy", str(OPTIONS["ic_adiabat_entropy"]),
-                                "-ic_dsdr", str(OPTIONS["ic_dsdr"]) # initial dS/dr everywhere
+                                "-ic_adiabat_entropy", str(config.interior.spider.ini_entropy),
+                                "-ic_dsdr", str(config.interior.spider.ini_dsdr) # initial dS/dr everywhere
                             ])
 
     # Mixing length parameterization: 1: variable | 2: constant
-    call_sequence.extend(["-mixing_length", str(OPTIONS["mixing_length"])])
-    call_sequence.extend(["-ts_sundials_atol", str(OPTIONS["solver_tolerance"] * atol_sf)])
-    call_sequence.extend(["-ts_sundials_rtol", str(OPTIONS["solver_tolerance"] * atol_sf)])
+    call_sequence.extend(["-mixing_length", str(config.interior.spider.mixing_length)])
+    call_sequence.extend(["-ts_sundials_atol", str(config.interior.spider.tolerance * atol_sf)])
+    call_sequence.extend(["-ts_sundials_rtol", str(config.interior.spider.tolerance * atol_sf)])
 
     # Runtime info
     flags = ""
@@ -318,7 +322,7 @@ def _try_spider( dirs:dict, OPTIONS:dict,
     return bool(proc.returncode == 0)
 
 
-def RunSPIDER( dirs:dict, OPTIONS:dict,
+def RunSPIDER( dirs:dict, config:Config,
               IC_INTERIOR:int, loop_counter:dict,
               hf_all:pd.DataFrame, hf_row:dict ):
     '''
@@ -345,7 +349,7 @@ def RunSPIDER( dirs:dict, OPTIONS:dict,
         log.info("Attempt %d" % attempts)
 
         # run SPIDER
-        spider_success = _try_spider(dirs, OPTIONS, IC_INTERIOR, loop_counter, hf_all, hf_row, step_sf, atol_sf)
+        spider_success = _try_spider(dirs, config, IC_INTERIOR, loop_counter, hf_all, hf_row, step_sf, atol_sf)
 
         if spider_success:
             # success
@@ -371,7 +375,7 @@ def RunSPIDER( dirs:dict, OPTIONS:dict,
         raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
-def ReadSPIDER(dirs:dict, OPTIONS:dict, R_planet:float):
+def ReadSPIDER(dirs:dict, config:Config, R_planet:float):
     '''
     Read variables from last SPIDER output JSON file into a dictionary
     '''
@@ -417,7 +421,7 @@ def ReadSPIDER(dirs:dict, OPTIONS:dict, R_planet:float):
     log.debug(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, output["F_int"]) )
 
     # Limit F_int to positive values
-    if OPTIONS["prevent_warming"]:
+    if config.atmos_clim.prevent_warming:
         output["F_int"] = max(1.0e-8, output["F_int"])
 
     # Check NaNs

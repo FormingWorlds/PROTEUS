@@ -64,7 +64,7 @@ def plot_elements_entry(handler: Proteus):
     plot_elements(
         hf_all=hf_all,
         output_dir=handler.directories["output"],
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
     )
 
 

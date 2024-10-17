@@ -29,11 +29,11 @@ def plot_escape(hf_all:pd.DataFrame, output_dir:str, escape_model, plot_format="
     scale = 1.1
     fig,ax1 = plt.subplots(1,1, figsize=(7*scale,4*scale))
 
-    if escape_model == 0 :
+    if not escape_model:
         escape_model_label = 'No escape'
-    elif escape_model == 1 :
+    elif escape_model == 'zephyrus':
         escape_model_label = 'Energy-limited escape (Zephyrus)'
-    elif escape_model == 2 :
+    elif escape_model == 'dummy':
         escape_model_label = 'Dummy escape'
 
     y = hf_all['esc_rate_total']
@@ -69,7 +69,7 @@ def plot_escape_entry(handler: Proteus):
         hf_all=hf_all,
         output_dir=handler.directories["output"],
         escape_model=handler.config['escape_model'],
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
     )
 
 

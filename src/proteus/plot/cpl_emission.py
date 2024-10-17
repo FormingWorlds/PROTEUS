@@ -119,7 +119,7 @@ def plot_emission_entry(handler: Proteus):
     plot_emission(
         handler.directories["output"],
         plot_times,
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
    )
 
 

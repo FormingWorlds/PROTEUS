@@ -122,7 +122,7 @@ def plot_stacked_entry(handler: Proteus):
     plot_stacked(
         output_dir=handler.directories["output"],
         times=plot_times, jsons=jsons, ncdfs=ncdfs,
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
     )
 
 

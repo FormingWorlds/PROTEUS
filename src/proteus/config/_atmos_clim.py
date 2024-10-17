@@ -10,11 +10,15 @@ class Agni:
     p_top: float
     spectral_group: str
     spectral_bands: str
-    num_levels: int
+    num_levels: int = field(validator=validators.ge(15))
     chemistry: str | None = field(
         validator=validators.in_((None, 'eq', 'kin')), converter=none_if_none
     )
-    tmp_minimum: float
+
+    @property
+    def chemistry_int(self) -> int:
+        """Return integer state for agni."""
+        return 1 if self.chemistry else 0
 
 
 @define
@@ -23,8 +27,7 @@ class Janus:
     spectral_group: str
     spectral_bands: str
     F_atm_bc: int = field(validator=validators.in_((0, 5)))
-    num_levels: int
-    tmp_minimum: float
+    num_levels: int = field(validator=validators.ge(15))
     tropopause: str | None = field(
         validator=validators.in_((None, 'skin', 'dynamic')), converter=none_if_none
     )
@@ -45,10 +48,18 @@ class AtmosClim:
     cloud_alpha: float
     surf_state: str = field(validator=validators.in_(('mixed_layer', 'fixed', 'skin')))
     surf_albedo: float
-    rayleigh: float
+    albedo_pl: float
+    rayleigh: bool
+    tmp_minimum: float
+    tmp_maximum: float
 
     module: str = field(validator=validators.in_(('dummy', 'agni', 'janus')))
 
     agni: Agni
     janus: Janus
     dummy: Dummy
+
+    @property
+    def surf_state_int(self) -> int:
+        """Return integer state for agni."""
+        return ('mixed_layer', 'fixed', 'skin').index(self.surf_state)

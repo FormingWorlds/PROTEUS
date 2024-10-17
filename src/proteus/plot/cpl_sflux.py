@@ -152,7 +152,7 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0, plot_format: str="pdf"):
 def plot_sflux_entry(handler: Proteus):
     plot_sflux(
         output_dir=handler.directories['output'],
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
     )
 
 

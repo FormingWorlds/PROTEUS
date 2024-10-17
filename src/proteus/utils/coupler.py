@@ -8,6 +8,7 @@ import logging
 import os
 import subprocess
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -35,6 +36,9 @@ from proteus.utils.constants import (
 )
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
+
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -230,54 +234,28 @@ def ReadHelpfileFromCSV(output_dir:str):
     return pd.read_csv(fpath, sep=r"\s+")
 
 
-def ValidateInitFile(dirs:dict, OPTIONS:dict):
+def ValidateInitFile(dirs:dict, config: Config):
     '''
     Validate configuration file, checking for invalid options
     '''
-
-    if OPTIONS["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
-        if OPTIONS["shallow_ocean_layer"] == 1:
-            UpdateStatusfile(dirs, 20)
-            raise RuntimeError("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
-
-    surf_state = int(OPTIONS["atmosphere_surf_state"])
-    if not (0 <= surf_state <= 3):
-        UpdateStatusfile(dirs, 20)
-        raise RuntimeError("Invalid surface state %d" % surf_state)
-
-    if OPTIONS["atmosphere_nlev"] < 15:
-        UpdateStatusfile(dirs, 20)
-        raise RuntimeError("Atmosphere must have at least 15 levels")
-
-    if OPTIONS["interior_nlev"] < 40:
-        UpdateStatusfile(dirs, 20)
-        raise RuntimeError("Interior must have at least 40 levels")
-
     # Ensure that all volatiles are all tracked
     for s in volatile_species:
         key_pp = str(s+"_initial_bar")
         key_in = str(s+"_included")
-        if (OPTIONS[key_pp] > 0.0) and (OPTIONS[key_in] == 0):
+
+        if (config[key_pp] > 0.0) and (config[key_in] == 0):
             UpdateStatusfile(dirs, 20)
-            raise RuntimeError("Volatile %s has non-zero pressure but is disabled in cfg"%s)
-        if (OPTIONS[key_pp] > 0.0) and (OPTIONS["solvevol_use_params"] > 0):
-            UpdateStatusfile(dirs, 20)
-            raise RuntimeError("Volatile %s has non-zero pressure but outgassing parameters are enabled"%s)
+            raise RuntimeError(f"Volatile {s} has non-zero pressure but is disabled in cfg")
 
     # Required vols
     for s in ["H2O","CO2","N2","S2"]:
-        if OPTIONS[s+"_included"] == 0:
+        if config[s+"_included"] == 0:
             UpdateStatusfile(dirs, 20)
-            raise RuntimeError("Missing required volatile '%s'"%s)
-
-    # Eccentricity
-    if (OPTIONS["eccentricity"] < 0.0) or (OPTIONS["eccentricity"] > 1.0 - 1e-10):
-        UpdateStatusfile(dirs, 20)
-        raise RuntimeError("Orbital eccentricity must be within range: 0 <= e < 1")
+            raise RuntimeError(f"Missing required volatile {s}")
 
     return True
 
-def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
+def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, config:Config, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
 
     Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
@@ -286,16 +264,16 @@ def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, OPTIONS:dict, end=False, n
     ----------
         output_dir : str
             Output directory containing simulation information
-        OPTIONS : dict
+        config : Config
             PROTEUS options dictionary.
         end : bool
             Is this function being called at the end of the simulation?
     """
 
     # Check model configuration
-    dummy_atm = bool(OPTIONS["atmosphere_model"] == 2)
-    dummy_int = bool(OPTIONS["interior_model"] == 2)
-    escape    = bool(OPTIONS["escape_model"] > 0)
+    dummy_atm = config.atmos_clim.module == 'dummy'
+    dummy_int = config.interior.module == 'dummy'
+    escape    = config.interior.module is not None
 
     # Get all output times
     if dummy_int:
@@ -305,12 +283,12 @@ def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, OPTIONS:dict, end=False, n
         output_times = get_all_output_times( output_dir )
 
     # Global properties for all timesteps
-    plot_global(hf_all, output_dir, OPTIONS)
+    plot_global(hf_all, output_dir, config)
 
     # Elemental mass inventory
     if escape:
-        plot_elements(hf_all, output_dir, OPTIONS["plot_format"])
-        plot_escape(hf_all, output_dir, escape_model=OPTIONS['escape_model'], plot_format=OPTIONS["plot_format"])
+        plot_elements(hf_all, output_dir, config.params.out.plot_fmt)
+        plot_escape(hf_all, output_dir, escape_model=config['escape_model'], plot_format=config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:
@@ -335,42 +313,42 @@ def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, OPTIONS:dict, end=False, n
     # Interior profiles
     if not dummy_int:
         jsons = read_jsons(output_dir, plot_times)
-        plot_interior(output_dir, plot_times, jsons, OPTIONS["plot_format"])
+        plot_interior(output_dir, plot_times, jsons, config.params.out.plot_fmt)
 
     # Temperature profiles
     if not dummy_atm:
         ncdfs = read_ncdfs(output_dir, plot_times)
 
         # Atmosphere only
-        plot_atmosphere(output_dir, plot_times, ncdfs, OPTIONS["plot_format"])
+        plot_atmosphere(output_dir, plot_times, ncdfs, config.params.out.plot_fmt)
 
         # Atmosphere and interior, stacked
         if not dummy_int:
-            plot_stacked(output_dir, plot_times, jsons, ncdfs, OPTIONS["plot_format"])
+            plot_stacked(output_dir, plot_times, jsons, ncdfs, config.params.out.plot_fmt)
 
         # Flux profiles
-        if OPTIONS["atmosphere_model"] == 0:
+        if config.atmos_clim.module == 'janus':
             # only do this for JANUS, AGNI does it automatically
-            plot_fluxes_atmosphere(output_dir, OPTIONS["plot_format"])
+            plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
 
     # Only at the end of the simulation
     if end:
-        plot_global(hf_all,         output_dir, OPTIONS, logt=False)
-        plot_fluxes_global(hf_all,  output_dir, OPTIONS)
-        plot_observables(hf_all,    output_dir, plot_format=OPTIONS["plot_format"])
-        plot_sflux(output_dir,          plot_format=OPTIONS["plot_format"])
-        plot_sflux_cross(output_dir,    plot_format=OPTIONS["plot_format"])
+        plot_global(hf_all,         output_dir, config, logt=False)
+        plot_fluxes_global(hf_all,  output_dir, config)
+        plot_observables(hf_all,    output_dir, plot_format=config.params.out.plot_fmt)
+        plot_sflux(output_dir,          plot_format=config.params.out.plot_fmt)
+        plot_sflux_cross(output_dir,    plot_format=config.params.out.plot_fmt)
 
         if not dummy_int:
-            plot_interior_cmesh(output_dir, plot_format=OPTIONS["plot_format"])
+            plot_interior_cmesh(output_dir, plot_format=config.params.out.plot_fmt)
 
         if not dummy_atm:
-            plot_emission(output_dir, plot_times, plot_format=OPTIONS["plot_format"])
+            plot_emission(output_dir, plot_times, plot_format=config.params.out.plot_fmt)
 
     # Close all figures
     plt.close()
 
-def SetDirectories(OPTIONS: dict):
+def SetDirectories(config: Config):
     """Set directories dictionary
 
     Sets paths to the required directories, based on the configuration provided
@@ -378,7 +356,7 @@ def SetDirectories(OPTIONS: dict):
 
     Parameters
     ----------
-        OPTIONS : dict
+        config : Config
             PROTEUS options dictionary
 
     Returns
@@ -392,7 +370,7 @@ def SetDirectories(OPTIONS: dict):
 
     # PROTEUS folders
     dirs = {
-            "output":   os.path.join(proteus_dir,"output",OPTIONS['dir_output']),
+            "output":   os.path.join(proteus_dir,"output",config.params.out.path),
             "input":    os.path.join(proteus_dir,"input"),
             "proteus":  proteus_dir,
             "agni":     os.path.join(proteus_dir,"AGNI"),
@@ -411,7 +389,7 @@ def SetDirectories(OPTIONS: dict):
         dirs["fwl"] = os.environ.get('FWL_DATA')
 
     # SOCRATES directory
-    if OPTIONS["atmosphere_model"] in [0,1]:
+    if config.atmos_clim.module in ('janus', 'agni'):
         # needed for atmosphere models 0 and 1
 
         if os.environ.get('RAD_DIR') is None:
