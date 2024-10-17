@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import warnings
+import logging
 
 from attrs import define, field, validators
 
@@ -14,10 +14,13 @@ from ._params import Params
 from ._star import Star
 from ._struct import Struct
 
+log = logging.getLogger('fwl.' + __name__)
+
 
 @define
 class Config:
     """Root config"""
+
     version: str = field(validator=validators.in_(('2.0',)))
     author: str
 
@@ -34,23 +37,24 @@ class Config:
     def __getitem__(self, key: str):
         """This method adds a compatibility layer with the old-style dict."""
         from ._compatibility import COMPAT_MAPPING
+
         conv = COMPAT_MAPPING[key]
 
         if callable(conv):
             val = conv(self)
-            hint = "`Proteus.config.xxx`."
+            hint = '`config.xxx`.'
         else:
             val = self
             for part in conv:
                 val = getattr(val, part)
             new_key = '.'.join(conv)
-            hint = f"`Proteus.config.{new_key}`"
+            hint = f'`config.{new_key}`'
 
         message = (
-            f"Calling `OPTIONS['{key}']` via OPTIONS is deprecated, "
-            f"please use the class-based config instead: {hint}. "
-            "See https://github.com/FormingWorlds/PROTEUS/issues/74 for more info."
+            f'Calling `config["{key}"]` via OPTIONS is deprecated, '
+            f'please use the class-based config instead: {hint}. '
+            'See https://github.com/FormingWorlds/PROTEUS/issues/74 for more info.'
         )
-        warnings.warn(message, DeprecationWarning)
+        log.warn(message)
 
         return val
