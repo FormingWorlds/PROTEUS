@@ -247,10 +247,6 @@ def ValidateInitFile(dirs:dict, config: Config):
             UpdateStatusfile(dirs, 20)
             raise RuntimeError(f"Volatile {s} has non-zero pressure but is disabled in cfg")
 
-        if (config[key_pp] > 0.0) and (config["solvevol_use_params"] > 0):
-            UpdateStatusfile(dirs, 20)
-            raise RuntimeError(f"Volatile {s} has non-zero pressure but outgassing parameters are enabled")
-
     # Required vols
     for s in ["H2O","CO2","N2","S2"]:
         if config[s+"_included"] == 0:
