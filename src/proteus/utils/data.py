@@ -109,7 +109,7 @@ def download_spectral_files(fname: str="", nband: int=256):
     folders = [folder for folder in folder_list if not (data_dir / folder).exists()]
 
     if folders:
-        log.debug(f"    downloading spectral files to {data_dir}")
+        log.info(f"    downloading spectral files to {data_dir}")
         download_folder(storage=storage, folders=folders, data_dir=data_dir)
 
 
@@ -126,7 +126,7 @@ def download_stellar_spectra():
     data_dir.mkdir(parents=True, exist_ok=True)
 
     if not (data_dir / folder_name).exists():
-        print(f"Downloading stellar spectra to {data_dir}")
+        log.info(f"Downloading stellar spectra to {data_dir}")
         download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
 
 
