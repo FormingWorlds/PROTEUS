@@ -6,12 +6,9 @@ from typing import TYPE_CHECKING
 
 from proteus.utils.helper import PrintHalfSeparator
 from proteus.utils.constants import volatile_species, element_list
-from proteus.outgas.calliope import construct_options
-
-from calliope.solve import (
-    equilibrium_atmosphere,
-    get_target_from_params,
-    get_target_from_pressures,
+from proteus.outgas.calliope import (
+    calc_surface_pressures,
+    calc_target_masses
 )
 
 if TYPE_CHECKING:
@@ -20,50 +17,28 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 def calc_target_elemental_inventories(config:Config, hf_row:dict):
+    """
+    Calculate total amount of volatile elements in the planet
+    """
 
-    # make solvevol options
-    solvevol_inp = construct_options(config, hf_row)
-
-    # calculate target mass of atoms (except O, which is derived from fO2)
-    if config.delivery.initial == 'elements':
-        solvevol_target = get_target_from_params(solvevol_inp)
+    if config.outgas.module == 'calliope':
+        calc_target_masses(config, hf_row)
     else:
-        solvevol_target = get_target_from_pressures(solvevol_inp)
-
-    # prevent numerical issues
-    for key in solvevol_target.keys():
-        if solvevol_target[key] < 1.0e4:
-            solvevol_target[key] = 0.0
-
-    # store in hf_row as elements
-    for e in element_list:
-        if e == "O":
-            continue
-        hf_row[e + "_kg_total"] = solvevol_target[e]
+        raise Exception("Unsupported outgassing module selected!")
 
 
 def run_outgassing(config:Config, hf_row:dict):
     '''
-    Run volatile outgassing model
+    Run outgassing model to get new volatile surface pressures
     '''
 
-    # make solvevol options
-    solvevol_inp = construct_options(config, hf_row)
-
-    # convert masses to dict for calliope
-    solvevol_target = {}
-    for e in element_list:
-        if e == "O":
-            continue
-        solvevol_target[e] = hf_row[e + "_kg_total"]
-
-    # get atmospheric compositison
-    solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
-    for k in solvevol_result.keys():
-        if k in hf_row.keys():
-            hf_row[k] = solvevol_result[k]
+    if config.outgas.module == 'calliope':
+        calc_surface_pressures(config, hf_row)
+    else:
+        raise Exception("Unsupported outgassing module selected!")
 
     # calculate total atmosphere mass (from sum of volatile masses)
+    # this will need to be changed when rock vapours are included
     hf_row["M_atm"] = 0.0
     for s in volatile_species:
         hf_row["M_atm"] += hf_row[s + "_kg_atm"]

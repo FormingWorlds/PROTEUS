@@ -79,8 +79,7 @@ def download_spectral_files(fname: str="", nband: int=256):
         - nband (optional) :    number of band = 16, 48, 256, 4096
                                 (only relevant for Dayspring, Frostflow and Honeyside)
     """
-    log.debug("Get spectral files")
-
+    log.debug("Get spectral files?")
 
     #Create spectral file data repository if not existing
     data_dir = GetFWLData() / "spectral_files"
@@ -90,26 +89,23 @@ def download_spectral_files(fname: str="", nband: int=256):
     storage = get_osf('vehxg')
 
     basic_list = (
-        "Dayspring/48"
+        "Dayspring/48",
         "Dayspring/256",
         "Frostflow/256",
-        "Honeyside/4096"
+        "Honeyside/4096",
         )
 
     #If no folder specified download all basic list
     if not fname:
         folder_list = basic_list
-    elif fname in ("Dayspring", "Frostflow", "Honeyside"):
-        folder_list = [fname + "/" + str(nband)]
-    elif fname in ("Kynesgrove","Legacy","Mallard","Oak","Reach","stellar_spectra"):
-        folder_list = [fname]
     else:
-        raise ValueError(f"Unrecognised folder name: {fname}")
+        folder_list = [fname + "/" + str(nband)]
 
     folders = [folder for folder in folder_list if not (data_dir / folder).exists()]
 
     if folders:
-        log.info(f"    downloading spectral files to {data_dir}")
+        log.info(f"Downloading spectral files to {data_dir}")
+        log.debug("\t"+str(folders))
         download_folder(storage=storage, folders=folders, data_dir=data_dir)
 
 

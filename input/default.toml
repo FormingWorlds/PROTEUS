@@ -210,7 +210,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # [Settings here for accretion rate, etc.]
 
     # Which initial inventory to use?
-    initial = 'elements'        # "elements" | "volatiles"
+    initial = 'volatiles'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"
