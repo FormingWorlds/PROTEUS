@@ -90,7 +90,7 @@ def plot_population_mass_radius(hf_all:pd.DataFrame, output_dir: str, fwl_dir:st
 
 
 def plot_population_time_density(hf_all:pd.DataFrame, output_dir: str, fwl_dir:str,
-                                 plot_format:str, t0: float=100.0):
+                                 plot_format:str, t0: float=100.0, xmin:float=1e7):
     """
     Plot planetary evolution on population time-density diagram
     """
@@ -112,6 +112,10 @@ def plot_population_time_density(hf_all:pd.DataFrame, output_dir: str, fwl_dir:s
     exo_age_val = np.array(exo["Stellar Age [Gyr]"]   )  * 1e9    # yr
     exo_rho_val = np.array(exo["Planet Density [g/cm**3] - Computation"]) # g cm-3
     xmax = max(np.nanmax(exo_age_val), np.amax(time))
+
+    # Make sure that we actually plot the simulation data
+    if xmin > np.amax(time):
+        xmin = t0
 
     # Create plot
     scale = 1.0
@@ -139,7 +143,7 @@ def plot_population_time_density(hf_all:pd.DataFrame, output_dir: str, fwl_dir:s
     ax.set_yscale("log")
     ax.set_xlabel(r"Time [yr]")
     ax.set_xscale("log")
-    ax.set_xlim(left=time[0],right=xmax*1.2)
+    ax.set_xlim(left=xmin,right=xmax*1.2)
 
     ax.legend()
     plt.close()

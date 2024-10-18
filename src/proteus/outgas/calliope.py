@@ -67,6 +67,8 @@ def calc_target_masses(dirs:dict, config:Config, hf_row:dict):
 
     # store in hf_row as elements
     for e in element_list:
+        if e == "O":
+            continue
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
 def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):

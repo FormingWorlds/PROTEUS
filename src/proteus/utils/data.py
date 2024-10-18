@@ -168,6 +168,9 @@ def download_sufficient_data(config:Config):
     if config.atmos_clim.module == 'agni':
         download_surface_albedos()
 
+    # Exoplanet population data
+    download_exoplanet_data()
+
 def _none_dirs():
     from proteus.utils.helper import get_proteus_dir
 
