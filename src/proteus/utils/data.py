@@ -125,6 +125,21 @@ def download_stellar_spectra():
         log.info(f"Downloading stellar spectra to {data_dir}")
         download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
 
+def download_exoplanet_data():
+    """
+    Download exoplanet data
+    """
+    log.debug("Get exoplanet data?")
+
+    folder_name = 'Exoplanets'
+    storage = get_osf('fzwr4')
+
+    data_dir = GetFWLData() / "exoplanets"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    if not (data_dir / folder_name).exists():
+        log.info(f"Downloading exoplanet population data to {data_dir}")
+        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
 
 def download_evolution_tracks(track:str):
     """
