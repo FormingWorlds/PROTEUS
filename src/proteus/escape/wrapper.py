@@ -10,16 +10,19 @@ from zephyrus.escape import EL_escape
 from proteus.utils.constants import AU, element_list, ergcm2stoWm2, secs_per_year
 from proteus.utils.helper import PrintHalfSeparator
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from proteus.config import Config
+
 log = logging.getLogger("fwl."+__name__)
 
 # Define global variables
 star = None
 
-def RunEscape(config, hf_row, dt):
+def RunEscape(config:Config, hf_row:dict, dt:float):
     """Run Escape submodule.
 
     Generic function to run escape calculation using ZEPHYRUS or dummy.
-    Writes into the hf_row generic and solvevol_target variable passed as an arguement.
 
     Parameters
     ----------
@@ -29,11 +32,6 @@ def RunEscape(config, hf_row, dt):
             Dictionary of helpfile variables, at this iteration only
         dt : float
             Time interval over which escape is occuring [yr]
-
-    Output
-    ------
-        solvevol_target : dict
-            Dictionary of elemental mass inventories [kg]
     """
 
     PrintHalfSeparator()
@@ -55,7 +53,11 @@ def RunEscape(config, hf_row, dt):
 
     solvevol_target = SpeciesEscapeFromTotalEscape(hf_row, dt)
 
-    return solvevol_target
+    # store in hf_row as elements
+    for e in element_list:
+        if e == "O":
+            continue
+        hf_row[e + "_kg_total"] = solvevol_target[e]
 
 def RunZEPHYRUS(config, hf_row):
     """Run energy-limited escape (for now) model.

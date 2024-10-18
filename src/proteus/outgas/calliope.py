@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.utils.constants import volatile_species
+from proteus.utils.constants import volatile_species, element_list
 
 log = logging.getLogger("fwl."+__name__)
 
-def construct_options(config, hf_row):
+def construct_options(config:Config, hf_row:dict):
     """
     Construct CALLIOPE options dictionary
     """
