@@ -233,28 +233,6 @@ def ReadHelpfileFromCSV(output_dir:str):
         raise Exception("Cannot find helpfile at '%s'"%fpath)
     return pd.read_csv(fpath, sep=r"\s+")
 
-
-def ValidateInitFile(dirs:dict, config: Config):
-    '''
-    Validate configuration file, checking for invalid options
-    '''
-    # Ensure that all volatiles are all tracked
-    for s in volatile_species:
-        key_pp = str(s+"_initial_bar")
-        key_in = str(s+"_included")
-
-        if (config[key_pp] > 0.0) and (config[key_in] == 0):
-            UpdateStatusfile(dirs, 20)
-            raise RuntimeError(f"Volatile {s} has non-zero pressure but is disabled in cfg")
-
-    # Required vols
-    for s in ["H2O","CO2","N2","S2"]:
-        if config[s+"_included"] == 0:
-            UpdateStatusfile(dirs, 20)
-            raise RuntimeError(f"Missing required volatile {s}")
-
-    return True
-
 def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, config:Config, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
 
