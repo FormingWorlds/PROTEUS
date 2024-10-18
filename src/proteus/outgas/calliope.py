@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 from proteus.utils.constants import volatile_species, element_list
+from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -37,7 +38,13 @@ def construct_options(config:Config, hf_row:dict):
 
     # Volatile inventory
     for s in volatile_species:
-        solvevol_inp[f'{s}_initial_bar'] =  config[f'{s}_initial_bar']
-        solvevol_inp[f'{s}_included'] =     config[f'{s}_included']
+        solvevol_inp[f'{s}_initial_bar'] =  getattr(config.delivery.volatiles, s)
+
+        included = getattr(config.outgas.calliope, f'include_{s}')
+        solvevol_inp[f'{s}_included'] = 1 if included else 0
+
+        if (s in ["H2O","CO2","N2","S2"]) and not included:
+            UpdateStatusfile(dirs, 20)
+            raise RuntimeError(f"Missing required volatile {s}")
 
     return solvevol_inp

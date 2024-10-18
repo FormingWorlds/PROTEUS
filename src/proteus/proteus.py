@@ -38,7 +38,6 @@ from proteus.utils.coupler import (
     ReadHelpfileFromCSV,
     SetDirectories,
     UpdatePlots,
-    ValidateInitFile,
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
 )
@@ -84,9 +83,6 @@ class Proteus:
         import mors
 
         UpdateStatusfile(self.directories, 0)
-
-        # Validate options
-        ValidateInitFile(self.directories, self.config)
 
         # Clean output directory
         if not resume:
