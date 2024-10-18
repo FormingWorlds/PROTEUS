@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from proteus.utils.helper import PrintHalfSeparator
 from proteus.utils.constants import volatile_species, element_list
+from proteus.outgas.calliope import construct_options
 
 from calliope.solve import (
     equilibrium_atmosphere,
@@ -18,7 +19,11 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def calc_target_elemental_inventories(config:Config, solvevol_inp:dict, hf_row:dict):
+def calc_target_elemental_inventories(config:Config, hf_row:dict):
+
+    # make solvevol options
+    solvevol_inp = construct_options(config, hf_row)
+
     # calculate target mass of atoms (except O, which is derived from fO2)
     if config.delivery.initial == 'elements':
         solvevol_target = get_target_from_params(solvevol_inp)
@@ -37,27 +42,28 @@ def calc_target_elemental_inventories(config:Config, solvevol_inp:dict, hf_row:d
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
 
-def run_outgas(solvevol_inp, hf_row):
+def run_outgassing(config:Config, hf_row:dict):
     '''
     Run volatile outgassing model
     '''
 
-    PrintHalfSeparator()
+    # make solvevol options
+    solvevol_inp = construct_options(config, hf_row)
 
+    # convert masses to dict for calliope
     solvevol_target = {}
     for e in element_list:
         if e == "O":
             continue
         solvevol_target[e] = hf_row[e + "_kg_total"]
 
+    # get atmospheric compositison
     solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
-
-    #    store results
     for k in solvevol_result.keys():
         if k in hf_row.keys():
             hf_row[k] = solvevol_result[k]
 
-    #    calculate total atmosphere mass
+    # calculate total atmosphere mass (from sum of volatile masses)
     hf_row["M_atm"] = 0.0
     for s in volatile_species:
         hf_row["M_atm"] += hf_row[s + "_kg_atm"]
