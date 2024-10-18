@@ -192,7 +192,7 @@ class Proteus:
 
             # Copy cfg file
             with open(config_path_backup, "w") as toml_file:
-                toml.dump(self.config, toml_file)
+                toml.dump(asdict(self.config), toml_file)
 
             # SPIDER initial condition
             IC_INTERIOR = 2
