@@ -10,12 +10,9 @@ from pathlib import Path
 import numpy as np
 import toml
 from attrs import asdict
-from calliope.solve import (
-    equilibrium_atmosphere,
-    get_target_from_params,
-    get_target_from_pressures,
-)
 from calliope.structure import calculate_mantle_mass
+from proteus.outgas.calliope import construct_options
+from proteus.outgas.wrapper import get_target, run_outgas
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
@@ -418,55 +415,23 @@ class Proteus:
             ############### / STELLAR FLUX MANAGEMENT
 
             ############### ESCAPE
-
             if (loop_counter["total"] >= loop_counter["init_loops"]):
                 solvevol_target = RunEscape(self.config, hf_row, dt)
             ############### / ESCAPE
 
             ############### OUTGASSING
             PrintHalfSeparator()
-            solvevol_inp = {}
-            solvevol_inp["M_mantle"] = hf_row["M_mantle"]
-            solvevol_inp["T_magma"] = hf_row["T_magma"]
-            solvevol_inp["Phi_global"] = hf_row["Phi_global"]
-            solvevol_inp["gravity"] = hf_row["gravity"]
-            solvevol_inp["mass"] = hf_row["M_planet"]
-            solvevol_inp["radius"] = hf_row["R_planet"]
-            solvevol_inp['fO2_shift_IW'] = self.config.outgas.fO2_shift_IW
-            solvevol_inp['hydrogen_earth_oceans'] = self.config.delivery.elements.H_oceans
-            solvevol_inp['CH_ratio'] = self.config['CH_ratio']
-            solvevol_inp['nitrogen_ppmw'] = self.config['nitrogen_ppmw']
-            solvevol_inp['sulfur_ppmw'] = self.config['sulfur_ppmw']
-            for s in ('H2O', 'CO2', 'N2', 'S2', 'SO2', 'H2', 'CH4', 'CO'):
-                solvevol_inp[f'{s}_initial_bar'] = self.config[f'{s}_initial_bar']
-                solvevol_inp[f'{s}_included'] = self.config[f'{s}_included']
+
+            solvevol_inp = construct_options(self.config, hf_row)
 
             #    recalculate mass targets during init phase, since these will be adjusted
             #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
             if loop_counter["init"] < loop_counter["init_loops"]:
-                # calculate target mass of atoms (except O, which is derived from fO2)
-                if self.config.delivery.initial == 'elements':
-                    solvevol_target = get_target_from_params(solvevol_inp)
-                else:
-                    solvevol_target = get_target_from_pressures(solvevol_inp)
-
-                # prevent numerical issues
-                for key in solvevol_target.keys():
-                    if solvevol_target[key] < 1.0e4:
-                        solvevol_target[key] = 0.0
+                solvevol_target = get_target(self.config, solvevol_inp)
 
             # solve for atmosphere composition
-            solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
+            run_outgas(solvevol_target, solvevol_inp, hf_row)
 
-            #    store results
-            for k in solvevol_result.keys():
-                if k in hf_row.keys():
-                    hf_row[k] = solvevol_result[k]
-
-            #    calculate total atmosphere mass
-            hf_row["M_atm"] = 0.0
-            for s in volatile_species:
-                hf_row["M_atm"] += hf_row[s + "_kg_atm"]
             ############### / OUTGASSING
 
             ############### ATMOSPHERE SUB-LOOP
