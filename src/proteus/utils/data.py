@@ -58,7 +58,7 @@ def download_surface_albedos():
     """
     Download surface optical properties
     """
-    log.debug("Get surface albedos")
+    log.debug("Get surface albedos?")
     storage = get_osf('2gcd9')
 
     folder_name = 'Hammond24'
@@ -113,7 +113,7 @@ def download_stellar_spectra():
     """
     Download stellar spectra
     """
-    log.debug("Get stellar spectra")
+    log.debug("Get stellar spectra?")
 
     folder_name = 'Named'
     storage = get_osf('8r2sw')

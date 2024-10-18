@@ -11,14 +11,13 @@ import numpy as np
 import toml
 from attrs import asdict
 from calliope.structure import calculate_mantle_mass
-from proteus.outgas.calliope import construct_options
-from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
 from proteus.interior import run_interior
+from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 from proteus.utils.constants import (
     AU,
     L_sun,
@@ -421,10 +420,10 @@ class Proteus:
             #    recalculate mass targets during init phase, since these will be adjusted
             #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
             if loop_counter["init"] < loop_counter["init_loops"]:
-                calc_target_elemental_inventories(self.config, hf_row)
+                calc_target_elemental_inventories(self.directories, self.config, hf_row)
 
             # solve for atmosphere composition
-            run_outgassing(self.config, hf_row)
+            run_outgassing(self.directories, self.config, hf_row)
 
             ############### / OUTGASSING
 

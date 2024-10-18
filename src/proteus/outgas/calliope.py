@@ -7,18 +7,18 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.utils.constants import volatile_species, element_list
-from proteus.utils.helper import UpdateStatusfile
-
 from calliope.solve import (
+    equilibrium_atmosphere,
     get_target_from_params,
     get_target_from_pressures,
-    equilibrium_atmosphere
 )
+
+from proteus.utils.constants import element_list, volatile_species
+from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("fwl."+__name__)
 
-def construct_options(config:Config, hf_row:dict):
+def construct_options(dirs:dict, config:Config, hf_row:dict):
     """
     Construct CALLIOPE options dictionary
     """
@@ -56,9 +56,9 @@ def construct_options(config:Config, hf_row:dict):
     return solvevol_inp
 
 
-def calc_target_masses(config:Config, hf_row:dict):
+def calc_target_masses(dirs:dict, config:Config, hf_row:dict):
     # make solvevol options
-    solvevol_inp = construct_options(config, hf_row)
+    solvevol_inp = construct_options(dirs, config, hf_row)
 
     # calculate target mass of atoms (except O, which is derived from fO2)
     if config.delivery.initial == 'elements':
@@ -78,9 +78,9 @@ def calc_target_masses(config:Config, hf_row:dict):
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
 
-def calc_surface_pressures(config:Config, hf_row:dict):
+def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
     # make solvevol options
-    solvevol_inp = construct_options(config, hf_row)
+    solvevol_inp = construct_options(dirs, config, hf_row)
 
     # convert masses to dict for calliope
     solvevol_target = {}
