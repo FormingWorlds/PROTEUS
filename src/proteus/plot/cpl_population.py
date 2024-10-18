@@ -44,10 +44,6 @@ def plot_population_mass_radius(hf_all:pd.DataFrame, output_dir: str, fwl_dir:st
     sim_mas = np.array(hf_crop["M_planet"]) / M_earth
 
     # Get values from database
-    popfile = os.path.join(fwl_dir, "planet_reference", "Exoplanets", "DACE_PlanetS.csv")
-    exo = pd.read_csv(popfile,comment="#")
-
-    # filter database
     exo = _get_exo_data(fwl_dir)
     exo = exo.loc[exo["Planet Mass [Mjup]"] * M_jupiter / M_earth <= r_max]
 
@@ -112,17 +108,9 @@ def plot_population_time_density(hf_all:pd.DataFrame, output_dir: str, fwl_dir:s
     sim_rho = 3*sim_mas/(4*np.pi*sim_rad**3)  * 0.001
 
     # Get values from database
-    popfile = os.path.join(fwl_dir, "planet_reference", "Exoplanets", "DACE_PlanetS.csv")
-    exo = pd.read_csv(popfile,comment="#")
-
-    # filter database
     exo = _get_exo_data(fwl_dir)
-
-    exo_mas_val = np.array(exo["Planet Mass [Mjup]"]  )  * M_jupiter
-    exo_rad_val = np.array(exo["Planet Radius [Rjup]"])  * R_jupiter
     exo_age_val = np.array(exo["Stellar Age [Gyr]"]   )  * 1e9    # yr
-    exo_rho_val = 3*exo_mas_val/(4*np.pi*exo_rad_val**3) * 0.001  # g cm-3
-
+    exo_rho_val = np.array(exo["Planet Density [g/cm**3] - Computation"]) # g cm-3
     xmax = max(np.nanmax(exo_age_val), np.amax(time))
 
     # Create plot
