@@ -31,7 +31,7 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
     tmp_sol  = 1700.0    # Solidus
     cp_m     = 1792.0    # Mantle heat capacity, J kg-1 K-1
     cp_c     = 880.0     # Core heat capacity, J kg-1 K-1
-    area     = 4 * np.pi * hf_row["R_planet"]**2
+    area     = 4 * np.pi * hf_row["R_int"]**2
 
     # Get mantle melt fraction as a function of temperature
     def _calc_phi(tmp:float):

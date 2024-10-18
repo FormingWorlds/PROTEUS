@@ -160,11 +160,11 @@ class Proteus:
             hf_row["T_eqm"] = 2000.0
 
             # Planet size conversion, and calculate mantle mass (= liquid + solid)
-            hf_row["M_planet"] = self.config.struct.mass * M_earth
-            hf_row["R_planet"] = self.config.struct.radius * R_earth
-            hf_row["gravity"] = const_G * hf_row["M_planet"] / (hf_row["R_planet"] ** 2.0)
+            hf_row["M_int"] = self.config.struct.mass * M_earth
+            hf_row["R_int"] = self.config.struct.radius * R_earth
+            hf_row["gravity"] = const_G * hf_row["M_int"] / (hf_row["R_int"] ** 2.0)
             hf_row["M_mantle"] = calculate_mantle_mass(
-                hf_row["R_planet"], hf_row["M_planet"], self.config.struct.corefrac
+                hf_row["R_int"], hf_row["M_int"], self.config.struct.corefrac
             )
 
             # Store partial pressures and list of included volatiles
@@ -424,6 +424,9 @@ class Proteus:
 
             # solve for atmosphere composition
             run_outgassing(self.directories, self.config, hf_row)
+
+            # Add atmosphere mass to interior mass, to get total planet mass
+            hf_row["M_planet"] = hf_row["M_int"] + hf_row["M_atm"]
 
             ############### / OUTGASSING
 

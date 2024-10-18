@@ -28,7 +28,7 @@ def run_interior(dirs:dict, config:Config, loop_counter:dict, IC_INTERIOR:int, h
 
         # Run SPIDER
         RunSPIDER(dirs, config, IC_INTERIOR, loop_counter, hf_all, hf_row)
-        sim_time, output = ReadSPIDER(dirs, config, hf_row["R_planet"])
+        sim_time, output = ReadSPIDER(dirs, config, hf_row["R_int"])
 
     elif config.interior.module == 'aragog':
         # Not supported

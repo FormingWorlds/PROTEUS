@@ -114,6 +114,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
+
+    # Enclosed mass and radius at the atmosphere-interior interface
     mass        = 1.0       # M_earth
     radius      = 1.0       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction

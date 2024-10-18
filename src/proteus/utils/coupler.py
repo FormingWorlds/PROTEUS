@@ -104,7 +104,10 @@ def GetHelpfileKeys():
     # Basic keys
     keys = [
             # Model tracking and basic parameters
-            "Time", "R_planet", "M_planet", "separation", # [yr], [m], [kg], [m]
+            "Time", "separation", # [yr], [m]
+
+            # Input parameters (converted to SI)
+            "R_int", "M_int", # [m], [kg]
 
             # Temperatures
             "T_surf", "T_magma", "T_eqm", "T_skin", # all [K]
@@ -114,7 +117,8 @@ def GetHelpfileKeys():
 
             # Interior properties
             "gravity", "Phi_global", "RF_depth", # [m s-2] , [1] , [1]
-            "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid", # all [kg]
+            "M_core", "M_mantle", "M_planet",    # all [kg]
+            "M_mantle_solid", "M_mantle_liquid", # all [kg]
 
             # Stellar
             "R_star", "age_star", # [m], [yr]

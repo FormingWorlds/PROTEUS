@@ -17,7 +17,11 @@ R_earth         = 6.335439e6
 R_core_earth    = 3485000.0             # m
 M_core_earth    = 1.94E24               # kg
 mol             = 6.02214076e+23        # mol definition
-ocean_moles     = 7.68894973907177e+22 # moles of H2 (or H2O) in one present-day Earth ocean
+ocean_moles     = 7.68894973907177e+22  # moles of H2 (or H2O) in one present-day Earth ocean
+
+# https://nssdc.gsfc.nasa.gov/planetary/factsheet/
+M_jupiter       = 1.898e27              # kg
+R_jupiter       = 1.42984e8 / 2         # m
 
 # Time constants
 secs_per_year   = 365.25 * 24 * 60 * 60 # seconds per year

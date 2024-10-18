@@ -134,7 +134,7 @@ def download_exoplanet_data():
     folder_name = 'Exoplanets'
     storage = get_osf('fzwr4')
 
-    data_dir = GetFWLData() / "exoplanets"
+    data_dir = GetFWLData() / "planet_reference"
     data_dir.mkdir(parents=True, exist_ok=True)
 
     if not (data_dir / folder_name).exists():

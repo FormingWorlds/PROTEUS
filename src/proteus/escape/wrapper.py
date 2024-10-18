@@ -101,8 +101,8 @@ def RunZEPHYRUS(config, hf_row):
                     hf_row["M_planet"], #planetary mass [kg]
                     config["star_mass"], #stellar mass [kg]
                     config["efficiency_factor"], #efficiency factor
-                    hf_row["R_planet"], #planetary radius [m]
-                    hf_row["R_planet"], #XUV optically thick planetary radius [m]
+                    hf_row["R_int"], #planetary radius [m]
+                    hf_row["R_int"], #XUV optically thick planetary radius [m]
                     Fxuv_star_SI)   # [kg s-1]
 
     log.info('Zephyrus escape computation done :)')

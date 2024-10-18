@@ -29,8 +29,7 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     solvevol_inp["M_mantle"]    =   hf_row["M_mantle"]
     solvevol_inp["Phi_global"]  =   hf_row["Phi_global"]
     solvevol_inp["gravity"]     =   hf_row["gravity"]
-    solvevol_inp["mass"]        =   hf_row["M_planet"]
-    solvevol_inp["radius"]      =   hf_row["R_planet"]
+    solvevol_inp["radius"]      =   hf_row["R_int"]
 
     # Surface properties
     solvevol_inp["T_magma"]     =   hf_row["T_magma"]
