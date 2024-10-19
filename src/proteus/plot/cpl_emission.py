@@ -18,7 +18,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_emission(output_dir:str, times:list, plot_format="pdf", cumulative=False):
+def plot_emission(output_dir:str, times:list, plot_format="pdf",
+                cumulative=False, xmax=2e4):
 
     log.info("Plot emission spectrum")
 
@@ -35,9 +36,8 @@ def plot_emission(output_dir:str, times:list, plot_format="pdf", cumulative=Fals
     # plotting
     al = 0.9
     lw = 1.2
-    ymax = 1e2 # updated below
-    ymin = 1e1 # updated below
-    xmax = 1e4 # fixed, nm
+    ymax = 1e-20 # updated below
+    ymin = 1e20  # updated below
 
     for i, t in enumerate( times ):
 
