@@ -26,13 +26,13 @@ from proteus.plot.cpl_global import plot_global
 from proteus.plot.cpl_interior import plot_interior
 from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
 from proteus.plot.cpl_observables import plot_observables
+from proteus.plot.cpl_population import (
+    plot_population_mass_radius,
+    plot_population_time_density,
+)
 from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_stacked import plot_stacked
-from proteus.plot.cpl_population import (
-    plot_population_mass_radius,
-    plot_population_time_density
-)
 from proteus.utils.constants import (
     const_sigma,
     element_list,

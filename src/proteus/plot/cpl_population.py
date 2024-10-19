@@ -8,12 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import (
-    M_earth,
-    R_earth,
-    M_jupiter,
-    R_jupiter
-)
+from proteus.utils.constants import M_earth, M_jupiter, R_earth, R_jupiter
 
 if TYPE_CHECKING:
     from proteus import Proteus
