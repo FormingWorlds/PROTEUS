@@ -72,34 +72,35 @@ def plot_interior(output_dir: str, times: list | np.ndarray, jsons: list, plot_f
         # Get decorators
         label = latex_float(time)+" yr"
         color = sm.to_rgba(time)
+        lw=1.5
 
         # Plot temperature
         yy = myjson_o.get_dict_values(['data','temp_b']) / 1e3 # convert to kK
-        axs[0].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',  c=color, lw=1.5, label=label )
-        axs[0].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=1.5)
-        axs[0].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=1.5)
+        axs[0].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',  c=color, lw=lw, label=label )
+        axs[0].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
+        axs[0].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
 
         # Plot melt fraction
         yy = myjson_o.get_dict_values(['data','phi_b']) * 100
-        axs[1].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',  c=color, lw=1.5)
-        axs[1].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=1.5)
-        axs[1].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=1.5)
+        axs[1].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',  c=color, lw=lw)
+        axs[1].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
+        axs[1].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
 
         # Plot viscosity
         visc_const = 1 # this is used for the arcsinh scaling
         visc_fmt = MyFuncFormatter( visc_const )
         yy = myjson_o.get_dict_values(['data','visc_b'], visc_fmt)
-        axs[2].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',  c=color, lw=1.5)
-        axs[2].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=1.5)
-        axs[2].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=1.5)
+        axs[2].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',  c=color, lw=lw)
+        axs[2].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
+        axs[2].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
         visc_min = min(visc_min, np.amin(yy))
         visc_max = max(visc_max, np.amax(yy))
 
         # Plot entropy (at cell centres, rather than edges)
         yy = myjson_o.get_dict_values(['data','S_s'])
-        axs[3].plot( yy[MASK_SO[:-1]], xx_pres_s[MASK_SO[:-1]], ls='solid',  c=color, lw=1.5)
-        axs[3].plot( yy[MASK_MI[:-1]], xx_pres_s[MASK_MI[:-1]], ls='dashed', c=color, lw=1.5)
-        axs[3].plot( yy[MASK_ME[:-1]], xx_pres_s[MASK_ME[:-1]], ls='dotted', c=color, lw=1.5)
+        axs[3].plot( yy[MASK_SO[:-1]], xx_pres_s[MASK_SO[:-1]], ls='solid',  c=color, lw=lw)
+        axs[3].plot( yy[MASK_MI[:-1]], xx_pres_s[MASK_MI[:-1]], ls='dashed', c=color, lw=lw)
+        axs[3].plot( yy[MASK_ME[:-1]], xx_pres_s[MASK_ME[:-1]], ls='dotted', c=color, lw=lw)
 
 
     # Decorate figure
@@ -108,13 +109,18 @@ def plot_interior(output_dir: str, times: list | np.ndarray, jsons: list, plot_f
     axs[0].set_ylim(top=np.amin(xx_pres), bottom=np.amax(xx_pres))
     axs[0].yaxis.set_minor_locator(MultipleLocator(10.0))
     axs[0].xaxis.set_minor_locator(MultipleLocator(0.5))
-    axs[0].legend( fontsize=8, fancybox=True, framealpha=0.5, loc=3 )
+    axs[0].legend( fontsize=8, fancybox=True, framealpha=0.9, loc='lower left')
 
     title = '(b) Melt fraction'
     axs[1].set(title=title, xlabel=r'$\phi$ [%]')
     axs[1].set_xlim(left=-5, right=105)
     axs[1].xaxis.set_major_locator(MultipleLocator(25))
     axs[1].xaxis.set_minor_locator(MultipleLocator(5))
+
+    axs[1].plot([-100,-200],[-100,-200], ls='solid',  c='k', lw=lw, label="Solid")
+    axs[1].plot([-100,-200],[-100,-200], ls='dashed', c='k', lw=lw, label="Mush")
+    axs[1].plot([-100,-200],[-100,-200], ls='dotted', c='k', lw=lw, label="Melt")
+    axs[1].legend(fontsize=8, fancybox=True, framealpha=0.9, loc='lower left')
 
     title = '(c) Viscosity'
     axs[2].set( title=title, xlabel=r'$\eta$ [Pa s]')
@@ -144,7 +150,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, jsons: list, plot_f
 
 
 def plot_interior_entry(handler: Proteus):
-    plot_times,_ = sample_output(handler, ftype='json')
+    plot_times,_ = sample_output(handler, ftype='json', tmin=1e3)
     print("Snapshots:", plot_times)
 
     jsons = read_jsons(handler.directories['output'], plot_times)
