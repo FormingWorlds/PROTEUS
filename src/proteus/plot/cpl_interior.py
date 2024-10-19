@@ -111,9 +111,10 @@ def plot_interior(output_dir: str, times: list | np.ndarray, jsons: list, plot_f
     axs[0].legend( fontsize=8, fancybox=True, framealpha=0.5, loc=3 )
 
     title = '(b) Melt fraction'
-    xticks = [0,25,50,75,100]
-    axs[1].set(title=title, xlabel=r'$\phi$ [%]', xticks=xticks )
-    axs[1].set_xlim(left=-0.05, right=1.05)
+    axs[1].set(title=title, xlabel=r'$\phi$ [%]')
+    axs[1].set_xlim(left=-5, right=105)
+    axs[1].xaxis.set_major_locator(MultipleLocator(25))
+    axs[1].xaxis.set_minor_locator(MultipleLocator(5))
 
     title = '(c) Viscosity'
     axs[2].set( title=title, xlabel=r'$\eta$ [Pa s]')
@@ -122,6 +123,9 @@ def plot_interior(output_dir: str, times: list | np.ndarray, jsons: list, plot_f
 
     title = '(d) Specific entropy'
     axs[3].set( title=title, xlabel=r'$S$ [J K$^{-1} $kg$^{-1}$]')
+    axs[3].xaxis.set_major_locator(MultipleLocator(500))
+    axs[3].xaxis.set_minor_locator(MultipleLocator(100))
+
 
     # Pressure-depth conversion for y-axis
     ax3b = axs[3].twinx()
