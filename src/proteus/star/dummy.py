@@ -33,7 +33,7 @@ def generate_spectrum(wl_arr, tmp:float, R_star:float, lowbreak:float=0.0):
     Returns
     -----------
         fl_arr : list
-            Stellar spectral flux density [erg s-1 cm-2 nm-1]
+            Stellar spectral flux density at 1 AU from star [erg s-1 cm-2 nm-1]
     '''
 
     # Allocate zero array
@@ -58,7 +58,8 @@ def generate_spectrum(wl_arr, tmp:float, R_star:float, lowbreak:float=0.0):
 
 def calc_instellation_from_spectrum(wl_arr:list, fl_arr:list):
     '''
-    Calculate planet's instellation from incoming stellar spectrum.
+    Calculate planet's instellation from incoming stellar spectrum. Note that the fluxes
+    must be scale to the TOP OF THE ATMOSPHERE - not to 1 AU.
 
     This is done by integrating the stellar spectrum across the entire wavelength range.
 
