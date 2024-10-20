@@ -138,9 +138,13 @@ class Proteus:
             # SPIDER initial condition
             IC_INTERIOR = 1
 
-            # Write aggregate config to output directory, for future reference
-            with open(config_path_backup, "w") as toml_file:
-                toml.dump(asdict(self.config), toml_file)
+            # Write config to output directory, for future reference
+            # File is read into memory first, because it's possible that the original
+            #    file and the backup file are located at the same path.
+            with open(str(self.config_path), 'r') as hdl:
+                config_raw = hdl.readlines()
+            with open(config_path_backup, 'w') as hdl:
+                hdl.writelines(config_raw)
 
             # No previous iterations to be stored. It is therefore important that the
             #    submodules do not try to read data from the 'past' iterations, since they do
