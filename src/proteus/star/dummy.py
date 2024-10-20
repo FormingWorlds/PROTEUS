@@ -10,14 +10,12 @@ from proteus.utils.phys import planck_wav
 
 log = logging.getLogger("fwl."+__name__)
 
-def generate_spectrum(wl_arr, tmp:float, R_star:float):
+def generate_spectrum(tmp:float, R_star:float):
     '''
     Get stellar spectrum at 1 AU, assuming that the star emits like a blackbody.
 
     Parameters
     -----------
-        wl_arr : list | np.ndarray
-            Wavelengths [nm]
         tmp : float
             Temperature [K]
         R_star : float
@@ -25,11 +23,19 @@ def generate_spectrum(wl_arr, tmp:float, R_star:float):
 
     Returns
     -----------
+        wl_arr : list
+            Wavelength bin centres [nm]
         fl_arr : list
             Stellar spectral flux density at 1 AU from star [erg s-1 cm-2 nm-1]
     '''
 
-    # Allocate zero array
+    # Allocate wavelength array
+    wl_min = 1e-10 # 1 angstrom
+    wl_max = 1e-2  # 1 cm
+    wl_pts = 500   # number of points to sample
+    wl_arr = np.logspace(np.log10(wl_min), np.log10(wl_max), wl_pts)
+
+    # Allocate flux array
     fl_arr = np.zeros(np.shape(wl_arr))
 
     # Evaluate planck function in each bin
@@ -45,8 +51,11 @@ def generate_spectrum(wl_arr, tmp:float, R_star:float):
     # Convert W m-2 to erg s-1 cm-2
     fl_arr *= 1e3
 
-    # Return as list
-    return list(fl_arr)
+    # Convert wavelengths to nm
+    wl_arr *= 1e9
+
+    # Return as lists
+    return list(wl_arr), list(fl_arr)
 
 def calc_star_luminosity(tmp:float, R_star:float):
     '''

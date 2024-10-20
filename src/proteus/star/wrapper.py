@@ -14,6 +14,36 @@ log = logging.getLogger("fwl."+__name__)
 if TYPE_CHECKING:
     from proteus.config import Config
 
+def get_new_spectrum(t_star:float, R_star:float, config:Config,
+                     star_struct_modern=None, star_props_modern=None,
+                     baraffe_track=None, modern_wl=None, modern_fl=None):
+    '''
+    Get new stellar spectrum at 1 AU.
+    '''
+
+    # Dummy case
+    if config.star.module == 'dummy':
+        from proteus.star.dummy import generate_spectrum
+        wl, fl = generate_spectrum(config.star.Teff, R_star)
+
+    # Mors cases
+    elif config.star.module == 'mors':
+
+        import mors
+
+        match config.star.mors.tracks:
+            case 'spada':
+                synthetic = mors.synthesis.CalcScaledSpectrumFromProps(
+                    star_struct_modern, star_props_modern, t_star / 1e6)
+                fl = synthetic.fl
+                wl = synthetic.wl
+            case 'baraffe':
+                fl = baraffe_track.BaraffeSpectrumCalc(
+                        t_star, config.star.lum_now, modern_fl)
+                wl = modern_wl
+
+    return wl, fl
+
 def scale_spectrum_to_toa(fl_arr, sep:float):
     '''
     Scale stellar fluxes from 1 AU to top of atmosphere

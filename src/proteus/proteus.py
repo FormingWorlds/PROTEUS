@@ -19,6 +19,7 @@ from proteus.escape.wrapper import RunEscape
 from proteus.interior import run_interior
 from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 from proteus.star.wrapper import (
+    get_new_spectrum,
     scale_spectrum_to_toa,
     update_equilibrium_temperature,
     update_instellation,
@@ -67,8 +68,15 @@ class Proteus:
 
         self.init_directories()
 
-        # Default values for some variables
-        self.baraffe_track = None
+        # Default values for mors.spada cases
+        self.star_props  = None
+        self.star_struct = None
+
+        # Default values for mors.baraffe cases
+        self.baraffe_track  = None
+        self.star_modern_fl = None
+        self.star_modern_wl = None
+
 
 
     def init_directories(self):
@@ -248,19 +256,19 @@ class Proteus:
         match self.config.star.mors.tracks:
             case 'spada':
                 # load modern spectrum
-                star_struct_modern = mors.spec.Spectrum()
-                star_struct_modern.LoadTSV(star_modern_path)
-                star_struct_modern.CalcBandFluxes()
+                self.star_struct = mors.spec.Spectrum()
+                self.star_struct.LoadTSV(star_modern_path)
+                self.star_struct.CalcBandFluxes()
 
                 # modern properties
-                star_props_modern = mors.synthesis.GetProperties(
+                self.star_props = mors.synthesis.GetProperties(
                     self.config.star.mass,
                     self.config.star.omega,
                     self.config.star.age_now * 1000,
                 )
 
             case 'baraffe':
-                modern_wl, modern_fl = mors.ModernSpectrumLoad(
+                self.star_modern_wl, self.star_modern_fl = mors.ModernSpectrumLoad(
                     star_modern_path, self.directories["output"] + "/-1.sflux"
                 )
 
@@ -359,19 +367,19 @@ class Proteus:
                 sspec_prev = hf_row["Time"]
                 update_stellar_spectrum = True
 
+                # Get the new spectrum using the appropriate module
                 log.info("Updating stellar spectrum")
-                match self.config.star.mors.tracks:
-                    case 'spada':
-                        synthetic = mors.synthesis.CalcScaledSpectrumFromProps(
-                            star_struct_modern, star_props_modern, hf_row["age_star"] / 1e6
-                        )
-                        fl = synthetic.fl  # at 1 AU
-                        wl = synthetic.wl
-                    case 'baraffe':
-                        fl = self.baraffe_track.BaraffeSpectrumCalc(
-                            hf_row["age_star"], self.config.star.lum_now, modern_fl
-                        )
-                        wl = modern_wl
+                wl, fl = get_new_spectrum(hf_row["age_star"], hf_row["R_star"], self.config,
+
+                                          # variables needed for mors.spada
+                                          star_struct_modern=self.star_struct,
+                                          star_props_modern=self.star_props,
+
+                                          # variavles needed for mors.baraffe
+                                          baraffe_track=self.baraffe_track,
+                                          modern_wl=self.star_modern_wl,
+                                          modern_fl=self.star_modern_fl,
+                                          )
 
                 # Scale fluxes from 1 AU to TOA
                 fl = scale_spectrum_to_toa(fl, hf_row["separation"])
