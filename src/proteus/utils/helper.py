@@ -194,21 +194,6 @@ def find_nearest(array, target):
     close   = array[idx]
     return close, idx
 
-def mol_to_ele(mol:str):
-    '''
-    Return the number of each element within a given molecule, as a dictionary
-    '''
-    decomp = re.findall(r'([A-Z][a-z]?)(\d*)', mol)   # https://codereview.stackexchange.com/a/232664
-    elems = {}
-    for ev in decomp:
-        if ev[1] == '':
-            val = 1
-        else:
-            val = int(ev[1])
-        elems[str(ev[0])] = val
-    return elems
-
-
 def recursive_get(d, keys):
     '''
     Function to access nested dictionaries

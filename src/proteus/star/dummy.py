@@ -5,6 +5,6 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from proteus.config import Config
+    pass
 
 log = logging.getLogger("fwl."+__name__)
