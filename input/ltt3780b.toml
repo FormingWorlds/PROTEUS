@@ -100,9 +100,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         tracks  = "spada"   # evolution tracks: spada | baraffe
         spec    = "stellar_spectra/Named/gj849.txt" # stellar spectrum
 
-    [star.dummy]
-        lowbreak = 0.0
-
 # Orbital system
 [orbit]
     semimajoraxis   = 0.01203   # AU

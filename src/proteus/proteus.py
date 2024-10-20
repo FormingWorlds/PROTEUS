@@ -53,6 +53,13 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
+from proteus.star.wrapper import (
+    scale_spectrum_to_toa,
+    write_spectrum,
+    update_stellar_radius,
+    update_instellation,
+    update_equilibrium_temperature
+)
 
 
 class Proteus:
@@ -61,6 +68,9 @@ class Proteus:
         self.config = read_config_object(config_path)
 
         self.init_directories()
+
+        # Default values for some variables
+        self.baraffe_track = None
 
 
     def init_directories(self):
@@ -216,8 +226,7 @@ class Proteus:
             loop_counter["init"] = loop_counter["init_loops"] + 1
 
             # Set instellation
-            S_0 = hf_row["F_ins"]
-            F_inst_prev = S_0
+            F_inst_prev = hf_row["F_ins"]
 
             # Set volatile mass targets f
             solvevol_target = {}
@@ -257,7 +266,7 @@ class Proteus:
                     star_modern_path, self.directories["output"] + "/-1.sflux"
                 )
 
-                baraffe = mors.BaraffeTrack(self.config.star.mass)
+                self.baraffe_track = mors.BaraffeTrack(self.config.star.mass)
 
         # Create lockfile
         keepalive_file = CreateLockFile(self.directories["output"])
@@ -322,53 +331,28 @@ class Proteus:
 
                 # Get previous instellation
                 if loop_counter["total"] > 0:
-                    F_inst_prev = S_0
+                    F_inst_prev = hf_row["F_ins"]
                 else:
                     F_inst_prev = 0.0
 
-                log.info("Updating instellation and radius")
+                # Update value for star's radius
+                log.info("Update stellar radius")
+                update_stellar_radius(hf_row, self.config, baraffe_track=self.baraffe_track)
 
-                match self.config.star.mors.tracks:
-                    case 'spada':
-                        hf_row["R_star"] = (
-                            mors.Value(
-                                self.config.star.mass,
-                                hf_row["age_star"] / 1e6,
-                                "Rstar"
-                            )
-                            * mors.const.Rsun
-                            * 1.0e-2
-                        )
-                        S_0 = (
-                            mors.Value(
-                                self.config.star.mass,
-                                hf_row["age_star"] / 1e6,
-                                "Lbol"
-                            ) * L_sun  / (4.0 * np.pi * hf_row["separation"]**2.0 )
-                        )
-
-                    case 'baraffe':
-                        hf_row["R_star"] = (
-                            baraffe.BaraffeStellarRadius(hf_row["age_star"])
-                            * mors.const.Rsun
-                            * 1.0e-2
-                        )
-                        S_0 = baraffe.BaraffeSolarConstant(
-                            hf_row["age_star"], hf_row["separation"]/AU
-                        )
+                # Update value for instellation flux
+                log.info("Update instellation")
+                update_instellation(hf_row, self.config, baraffe_track=self.baraffe_track)
 
                 # Calculate new eqm temperature
-                T_eqm_new = CalculateEqmTemperature(
-                    S_0, self.config.orbit.s0_factor, self.config.atmos_clim.albedo_pl
-                )
+                log.info("Update equilibrium temperature")
+                update_equilibrium_temperature(hf_row, self.config)
 
-                hf_row["F_ins"] = S_0  # instellation
-                hf_row["T_eqm"] = T_eqm_new
-                hf_row["T_skin"] = (
-                    T_eqm_new * (0.5**0.25)
-                )  # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
+                # Calculate new skin temperature
+                # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
+                hf_row["T_skin"] = hf_row["T_eqm"] * (0.5**0.25)
 
-                log.debug("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
+                # Report the amount of instellation change [W m-2] in this step
+                log.debug("Instellation change: %+.4e W m-2 (to 4dp)" % abs(hf_row["F_ins"] - F_inst_prev))
 
             # Calculate a new (historical) stellar spectrum
             if (abs(hf_row["Time"] - sspec_prev) > self.config.params.dt.starspec) or (
@@ -386,27 +370,16 @@ class Proteus:
                         fl = synthetic.fl  # at 1 AU
                         wl = synthetic.wl
                     case 'baraffe':
-                        fl = baraffe.BaraffeSpectrumCalc(
-                            hf_row["age_star"], self.config["star_luminosity_modern"], modern_fl
+                        fl = self.baraffe_track.BaraffeSpectrumCalc(
+                            hf_row["age_star"], self.config.star.lum_now, modern_fl
                         )
                         wl = modern_wl
 
                 # Scale fluxes from 1 AU to TOA
-                fl *= (AU / hf_row["separation"]) ** 2.0
+                fl = scale_spectrum_to_toa(fl, hf_row["separation"])
 
                 # Save spectrum to file
-                header = (
-                    "# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at t_star = %.2e yr"
-                    % hf_row["age_star"]
-                )
-                np.savetxt(
-                    os.path.join(self.directories["output"], "data", "%d.sflux" % hf_row["Time"]),
-                    np.array([wl, fl]).T,
-                    header=header,
-                    comments="",
-                    fmt="%.8e",
-                    delimiter="\t",
-                )
+                write_spectrum(wl, fl, hf_row, self.directories["output"])
 
             else:
                 log.info("New spectrum not required at this time")

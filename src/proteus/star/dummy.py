@@ -4,19 +4,15 @@ from __future__ import annotations
 import logging
 
 import numpy as np
-from scipy.integrate import simpson
 
-from proteus.utils.constants import AU
+from proteus.utils.constants import AU, const_sigma
 from proteus.utils.phys import planck_wav
 
 log = logging.getLogger("fwl."+__name__)
 
-def generate_spectrum(wl_arr, tmp:float, R_star:float, lowbreak:float=0.0):
+def generate_spectrum(wl_arr, tmp:float, R_star:float):
     '''
-    Get stellar spectrum at 1 AU.
-
-    Can specify a short wavelength cutoff. Flux density is constant below this value,
-    to represent a toy model of the "Balmer break".
+    Get stellar spectrum at 1 AU, assuming that the star emits like a blackbody.
 
     Parameters
     -----------
@@ -26,9 +22,6 @@ def generate_spectrum(wl_arr, tmp:float, R_star:float, lowbreak:float=0.0):
             Temperature [K]
         R_star : float
             Stellar radius [m]
-
-        lowbreak : float
-            Short wavelength cutoff [nm]
 
     Returns
     -----------
@@ -41,7 +34,6 @@ def generate_spectrum(wl_arr, tmp:float, R_star:float, lowbreak:float=0.0):
 
     # Evaluate planck function in each bin
     for i,wav in enumerate(wl_arr):
-        wav = max(wav, lowbreak)
         fl_arr[i] = planck_wav(tmp, wav) # W m-2 m-1 at stellar surface
 
     # Scale from stellar surface to 1 AU
@@ -56,19 +48,27 @@ def generate_spectrum(wl_arr, tmp:float, R_star:float, lowbreak:float=0.0):
     # Return as list
     return list(fl_arr)
 
-def calc_instellation_from_spectrum(wl_arr:list, fl_arr:list):
+def calc_star_luminosity(tmp:float, R_star:float):
     '''
-    Calculate planet's instellation from incoming stellar spectrum. Note that the fluxes
-    must be scale to the TOP OF THE ATMOSPHERE - not to 1 AU.
+    Calculate star's bolometric luminosity.
 
-    This is done by integrating the stellar spectrum across the entire wavelength range.
+    Assumes that the star emits like a blackbody.
+    '''
+    return 4 * np.pi * R_star * R_star * const_sigma * (tmp**4)
+
+
+def calc_instellation(tmp:float, R_star:float, sep:float):
+    '''
+    Calculate planet's instellation based on the star's luminosity.
 
     Parameters
     -----------
-        wl_arr : list
-            Wavelengths [nm]
-        fl_arr : list
-            Spectral flux density at top-of-atmosphere [erg s-1 cm-2 nm-1]
+        tmp : float
+            Star's effective temperature
+        R_star : float
+            Star's radius [m]
+        sep : float
+            Planet-star separation [m]
 
     Returns
     -----------
@@ -76,17 +76,8 @@ def calc_instellation_from_spectrum(wl_arr:list, fl_arr:list):
             Instellation [W m-2]
     '''
 
-    # Make sure that wavelengths are ascending.
-    #    Otherwise we get a negative instellation by evaluating the integral.
-    mask = np.argsort(wl_arr)
-    wl_arr = np.array(wl_arr)[mask]
-    fl_arr = np.array(fl_arr)[mask]
+    # Get luminosity
+    L_bol = calc_star_luminosity(tmp, R_star)
 
-    # Integrate
-    S_0 = simpson(fl_arr, wl_arr) # returns [erg s-1 cm-2]
-
-    # Convert units to SI [W m-2]
-    S_0 /= 1e3
-
-    # Return
-    return S_0
+    # Return flux at planet-star distance
+    return L_bol / (4 * np.pi * sep * sep)
