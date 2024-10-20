@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 import numpy as np
+from scipy.integrate import simpson
 
 from proteus.utils.constants import AU
 from proteus.utils.phys import planck_wav
@@ -54,3 +55,37 @@ def generate_spectrum(wl_arr, tmp:float, R_star:float, lowcut:float=0.0):
 
     # Return as list
     return list(fl_arr)
+
+def calc_instellation_from_spectrum(wl_arr:list, fl_arr:list):
+    '''
+    Calculate planet's instellation from incoming stellar spectrum.
+
+    This is done by integrating the stellar spectrum across the entire wavelength range.
+
+    Parameters
+    -----------
+        wl_arr : list
+            Wavelengths [nm]
+        fl_arr : list
+            Spectral flux density at top-of-atmosphere [erg s-1 cm-2 nm-1]
+
+    Returns
+    -----------
+        S_0 : float
+            Instellation [W m-2]
+    '''
+
+    # Make sure that wavelengths are ascending.
+    #    Otherwise we get a negative instellation by evaluating the integral.
+    mask = np.argsort(wl_arr)
+    wl_arr = np.array(wl_arr)[mask]
+    fl_arr = np.array(fl_arr)[mask]
+
+    # Integrate
+    S_0 = simpson(fl_arr, wl_arr) # returns [erg s-1 cm-2]
+
+    # Convert units to SI [W m-2]
+    S_0 /= 1e3
+
+    # Return
+    return S_0

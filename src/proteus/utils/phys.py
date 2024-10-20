@@ -12,7 +12,6 @@ from proteus.utils.constants import const_c, const_h, const_k
 
 log = logging.getLogger("fwl."+__name__)
 
-
 def mol_to_ele(mol:str):
     '''
     Return the number of each element within a given molecule, as a dictionary
