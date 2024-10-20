@@ -34,7 +34,6 @@ from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_stacked import plot_stacked
 from proteus.utils.constants import (
-    const_sigma,
     element_list,
     volatile_species,
 )

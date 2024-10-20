@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import logging
 import os
-import numpy as np
 from typing import TYPE_CHECKING
 
-from proteus.utils.constants import AU, R_sun, L_sun, const_sigma
+import numpy as np
+
+from proteus.utils.constants import AU, L_sun, R_sun, const_sigma
 
 log = logging.getLogger("fwl."+__name__)
 

@@ -18,9 +18,15 @@ from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
 from proteus.interior import run_interior
 from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
+from proteus.star.wrapper import (
+    scale_spectrum_to_toa,
+    update_equilibrium_temperature,
+    update_instellation,
+    update_stellar_radius,
+    write_spectrum,
+)
 from proteus.utils.constants import (
     AU,
-    L_sun,
     M_earth,
     R_earth,
     const_G,
@@ -28,7 +34,6 @@ from proteus.utils.constants import (
     volatile_species,
 )
 from proteus.utils.coupler import (
-    CalculateEqmTemperature,
     CreateHelpfileFromDict,
     CreateLockFile,
     ExtendHelpfile,
@@ -52,13 +57,6 @@ from proteus.utils.logs import (
     GetCurrentLogfileIndex,
     GetLogfilePath,
     setup_logger,
-)
-from proteus.star.wrapper import (
-    scale_spectrum_to_toa,
-    write_spectrum,
-    update_stellar_radius,
-    update_instellation,
-    update_equilibrium_temperature
 )
 
 
@@ -407,7 +405,7 @@ class Proteus:
 
             ############### / OUTGASSING
 
-            ############### ATMOSPHERE SUB-LOOP
+            ############### ATMOSPHERE CLIMATE
             RunAtmosphere(self.config, self.directories, loop_counter, wl, fl, update_stellar_spectrum, hf_all, hf_row)
 
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
