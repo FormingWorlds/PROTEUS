@@ -8,6 +8,7 @@ from ._converters import none_if_none
 @define
 class Mors:
     tracks: str = field(validator=validators.in_(('spada', 'baraffe')))
+    mass: float
     spec: str
     Lbol: float
     omega: float
@@ -16,12 +17,11 @@ class Mors:
 
 @define
 class StarDummy:
-    rate: float
+    lowcutoff: float
 
 @define
 class Star:
     """Stellar parameters, model selection"""
-    mass: float
     radius: float
     Teff: float
 
