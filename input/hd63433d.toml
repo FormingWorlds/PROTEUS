@@ -87,19 +87,18 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [star]
 
     # Physical parameters
-    mass    = 0.99      # M_sun
     radius  = 0.912     # R_sun
     Teff    = 5640.0    # K
-    Lbol    = 0.753     # L_sun
-    omega   = 50.0      # rotation percentile
-    age_now = 4.140     # Gyr, current age of star used for scaling
-    age_ini = 0.100     # Gyr, model initialisation/start age
-
 
     module  = "mors"
     [star.mors]
         tracks  = "baraffe"   # evolution tracks: spada | baraffe
         spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
+        mass    = 0.99      # M_sun
+        Lbol    = 0.753     # L_sun
+        omega   = 50.0      # rotation percentile
+        age_now = 4.140     # Gyr, current age of star used for scaling
+        age_ini = 0.100     # Gyr, model initialisation/start age
 
 # Orbital system
 [orbit]
