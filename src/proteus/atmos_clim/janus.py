@@ -103,7 +103,7 @@ def UpdateStateAtm(atm, hf_row:dict, trppT:int):
 
     atm.setSurfaceTemperature(hf_row["T_surf"])
     atm.setSurfacePressure(hf_row["P_surf"]*1e5)
-    atm.setPlanetProperties(hf_row["R_planet"], hf_row["M_planet"])
+    atm.setPlanetProperties(hf_row["R_int"], hf_row["M_int"])
 
     vol_mixing = {}
     for vol in volatile_species:

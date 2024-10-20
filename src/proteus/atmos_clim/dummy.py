@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 # Run the dummy atmosphere module
-def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_planet:float, M_planet:float):
+def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:float, M_int:float):
     log.info("Running dummy atmosphere...")
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
@@ -111,7 +111,7 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_planet:
     output["F_atm"]   =  F_atm_lim             # Net flux at TOA
     output["F_olr"]   =  fluxes["fl_U_LW"]     # OLR
     output["F_sct"]   =  fluxes["fl_U_SW"]     # Scattered SW flux
-    output["z_obs"]   =  R_planet
-    output["rho_obs"] =  3 * M_planet / (4*np.pi*R_planet**3)
+    output["z_obs"]   =  R_int
+    output["rho_obs"] =  3 * M_int / (4*np.pi*R_int**3)
 
     return output

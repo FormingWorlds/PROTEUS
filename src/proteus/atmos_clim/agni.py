@@ -171,7 +171,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         config.orbit.zenith_angle,
 
                         hf_row["T_surf"],
-                        hf_row["gravity"], hf_row["R_planet"],
+                        hf_row["gravity"], hf_row["R_int"],
 
                         int(config["atmosphere_nlev"]),
                         hf_row["P_surf"],

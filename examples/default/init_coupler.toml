@@ -26,7 +26,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # output files
     [params.out]
         path        = "default"
-        logging     = "INFO"
+        logging     = "DEBUG"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
 
@@ -104,7 +104,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Orbital system
 [orbit]
     semimajoraxis   = 1.0       # AU
-    eccentricity    = 0.017     # dimensionless
+    eccentricity    = 0.0       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
 
@@ -114,6 +114,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
+
+    # Enclosed mass and radius at the atmosphere-interior interface
     mass        = 1.0       # M_earth
     radius      = 1.0       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
@@ -158,7 +160,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
-    module = "none"    # Which escape module to use
+    module = "dummy"    # Which escape module to use
 
     [escape.zephyrus]
         some_parameter = "some_value"
@@ -210,7 +212,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # [Settings here for accretion rate, etc.]
 
     # Which initial inventory to use?
-    initial = 'elements'        # "elements" | "volatiles"
+    initial = 'volatiles'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"

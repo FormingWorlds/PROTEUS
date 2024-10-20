@@ -38,6 +38,7 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
 
     # limits
     y_depth, y_height = 100, 100
+    lw = 1.5
 
     # loop over times
     for i,time in enumerate(times):
@@ -71,12 +72,12 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
         color = sm.to_rgba(time)
 
         # Plot atmosphere
-        axt.plot( atm_t, atm_z, color=color, label=label, lw=1.5)
+        axt.plot( atm_t, atm_z, color=color, label=label, lw=lw)
 
         # Plot interior
-        axb.plot( temperature_interior[MASK_SO], xx_depth[MASK_SO], linestyle='solid',  color=color, lw=1.5 )
-        axb.plot( temperature_interior[MASK_MI], xx_depth[MASK_MI], linestyle='dashed', color=color, lw=1.5 )
-        axb.plot( temperature_interior[MASK_ME], xx_depth[MASK_ME], linestyle='dotted', color=color, lw=1.5 )
+        axb.plot( temperature_interior[MASK_SO], xx_depth[MASK_SO], linestyle='solid',  color=color, lw=lw )
+        axb.plot( temperature_interior[MASK_MI], xx_depth[MASK_MI], linestyle='dashed', color=color, lw=lw )
+        axb.plot( temperature_interior[MASK_ME], xx_depth[MASK_ME], linestyle='dotted', color=color, lw=lw )
 
         # update limits
         y_height = max(y_height, np.amax(atm_z))
@@ -101,6 +102,11 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
     axb.xaxis.set_major_locator(MultipleLocator(1000))
     axb.xaxis.set_minor_locator(MultipleLocator(250))
 
+    axb.plot([1000,1001],[-100,-200], ls='solid',  c='k', lw=lw, label="Solid")
+    axb.plot([1000,1001],[-100,-200], ls='dashed', c='k', lw=lw, label="Mush")
+    axb.plot([1000,1001],[-100,-200], ls='dotted', c='k', lw=lw, label="Melt")
+    axb.legend(fancybox=True, framealpha=0.9, loc='lower left')
+
     fig.subplots_adjust(hspace=0)
 
     plt.close()
@@ -114,7 +120,7 @@ def plot_stacked_entry(handler: Proteus):
     files = glob.glob(os.path.join(handler.directories["output"], "data", "*_atm.nc"))
     times = [int(f.split("/")[-1].split("_")[0]) for f in files]
 
-    plot_times,_ = sample_times(times, 8)
+    plot_times,_ = sample_times(times, 8, tmin=1e3)
     print("Snapshots:", plot_times)
 
     jsons = read_jsons(handler.directories['output'], plot_times)

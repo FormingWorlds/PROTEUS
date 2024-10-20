@@ -138,9 +138,13 @@ class Proteus:
             # SPIDER initial condition
             IC_INTERIOR = 1
 
-            # Write aggregate config to output directory, for future reference
-            with open(config_path_backup, "w") as toml_file:
-                toml.dump(asdict(self.config), toml_file)
+            # Write config to output directory, for future reference
+            # File is read into memory first, because it's possible that the original
+            #    file and the backup file are located at the same path.
+            with open(str(self.config_path), 'r') as hdl:
+                config_raw = hdl.readlines()
+            with open(config_path_backup, 'w') as hdl:
+                hdl.writelines(config_raw)
 
             # No previous iterations to be stored. It is therefore important that the
             #    submodules do not try to read data from the 'past' iterations, since they do
@@ -160,11 +164,11 @@ class Proteus:
             hf_row["T_eqm"] = 2000.0
 
             # Planet size conversion, and calculate mantle mass (= liquid + solid)
-            hf_row["M_planet"] = self.config.struct.mass * M_earth
-            hf_row["R_planet"] = self.config.struct.radius * R_earth
-            hf_row["gravity"] = const_G * hf_row["M_planet"] / (hf_row["R_planet"] ** 2.0)
+            hf_row["M_int"] = self.config.struct.mass * M_earth
+            hf_row["R_int"] = self.config.struct.radius * R_earth
+            hf_row["gravity"] = const_G * hf_row["M_int"] / (hf_row["R_int"] ** 2.0)
             hf_row["M_mantle"] = calculate_mantle_mass(
-                hf_row["R_planet"], hf_row["M_planet"], self.config.struct.corefrac
+                hf_row["R_int"], hf_row["M_int"], self.config.struct.corefrac
             )
 
             # Store partial pressures and list of included volatiles
@@ -192,7 +196,7 @@ class Proteus:
 
             # Copy cfg file
             with open(config_path_backup, "w") as toml_file:
-                toml.dump(self.config, toml_file)
+                toml.dump(asdict(self.config), toml_file)
 
             # SPIDER initial condition
             IC_INTERIOR = 2
@@ -425,6 +429,9 @@ class Proteus:
             # solve for atmosphere composition
             run_outgassing(self.directories, self.config, hf_row)
 
+            # Add atmosphere mass to interior mass, to get total planet mass
+            hf_row["M_planet"] = hf_row["M_int"] + hf_row["M_atm"]
+
             ############### / OUTGASSING
 
             ############### ATMOSPHERE SUB-LOOP
@@ -574,7 +581,7 @@ class Proteus:
             ):
                 PrintHalfSeparator()
                 log.info("Making plots")
-                UpdatePlots(hf_all, self.directories["output"], self.config)
+                UpdatePlots(hf_all, self.directories, self.config)
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
@@ -585,7 +592,7 @@ class Proteus:
         safe_rm(keepalive_file)
 
         # Plot conditions at the end
-        UpdatePlots(hf_all, self.directories["output"], self.config, end=True)
+        UpdatePlots(hf_all, self.directories, self.config, end=True)
         end_time = datetime.now()
         log.info("Simulation stopped at: " + end_time.strftime("%Y-%m-%d_%H:%M:%S"))
 

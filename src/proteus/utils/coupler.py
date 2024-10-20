@@ -26,6 +26,10 @@ from proteus.plot.cpl_global import plot_global
 from proteus.plot.cpl_interior import plot_interior
 from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
 from proteus.plot.cpl_observables import plot_observables
+from proteus.plot.cpl_population import (
+    plot_population_mass_radius,
+    plot_population_time_density,
+)
 from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_stacked import plot_stacked
@@ -104,7 +108,10 @@ def GetHelpfileKeys():
     # Basic keys
     keys = [
             # Model tracking and basic parameters
-            "Time", "R_planet", "M_planet", "separation", # [yr], [m], [kg], [m]
+            "Time", "separation", # [yr], [m]
+
+            # Input parameters (converted to SI)
+            "R_int", "M_int", # [m], [kg]
 
             # Temperatures
             "T_surf", "T_magma", "T_eqm", "T_skin", # all [K]
@@ -114,7 +121,8 @@ def GetHelpfileKeys():
 
             # Interior properties
             "gravity", "Phi_global", "RF_depth", # [m s-2] , [1] , [1]
-            "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid", # all [kg]
+            "M_core", "M_mantle", "M_planet",    # all [kg]
+            "M_mantle_solid", "M_mantle_liquid", # all [kg]
 
             # Stellar
             "R_star", "age_star", # [m], [yr]
@@ -233,20 +241,24 @@ def ReadHelpfileFromCSV(output_dir:str):
         raise Exception("Cannot find helpfile at '%s'"%fpath)
     return pd.read_csv(fpath, sep=r"\s+")
 
-def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, config:Config, end=False, num_snapshots=7):
+def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
 
     Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
 
     Parameters
     ----------
-        output_dir : str
-            Output directory containing simulation information
+        dirs : dict
+            Directories dictionary
         config : Config
             PROTEUS options dictionary.
         end : bool
             Is this function being called at the end of the simulation?
     """
+
+    # Directories
+    output_dir = dirs["output"]
+    fwl_dir    = dirs["fwl"]
 
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
@@ -314,6 +326,8 @@ def UpdatePlots( hf_all:pd.DataFrame, output_dir:str, config:Config, end=False, 
         plot_global(hf_all,         output_dir, config, logt=False)
         plot_fluxes_global(hf_all,  output_dir, config)
         plot_observables(hf_all,    output_dir, plot_format=config.params.out.plot_fmt)
+        plot_population_mass_radius (hf_all, output_dir, fwl_dir, config.params.out.plot_fmt)
+        plot_population_time_density(hf_all, output_dir, fwl_dir, config.params.out.plot_fmt)
         plot_sflux(output_dir,          plot_format=config.params.out.plot_fmt)
         plot_sflux_cross(output_dir,    plot_format=config.params.out.plot_fmt)
 

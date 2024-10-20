@@ -74,8 +74,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # steady state
         [params.stop.steady]
             enabled  = true
-            F_crit   = 0.8        # Maximum absolute value of F_atm allowed for convergence
-            dprel    = 3.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
+            F_crit   = 1.8        # Maximum absolute value of F_atm allowed for convergence
+            dprel    = 3.0e-10     # Percentage change in melt fraction over time (dp/p)/dt*100
 
         [params.stop.escape]
             enabled   = true
@@ -104,7 +104,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Orbital system
 [orbit]
     semimajoraxis   = 0.0503    # AU
-    eccentricity    = 0.17      # dimensionless
+    eccentricity    = 0.16      # dimensionless
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 
@@ -174,7 +174,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 290       # Number of SPIDER grid levels
+        num_levels      = 220       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1.0e-10   # solver tolerance
         tsurf_atol      = 20.0      # tsurf_poststep_change
