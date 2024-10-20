@@ -89,16 +89,19 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # Physical parameters
     radius  = 0.1192    # R_sun
     Teff    = 2566.0    # K
+    mass    = 0.1       # M_sun
+    lum_now = 0.000553  # L_sun
+    omega   = 50.0      # rotation percentile
+    age_now = 7.6       # Gyr, current age of star used for scaling
+    age_ini = 0.100     # Gyr, model initialisation/start age
 
     module  = "mors"
     [star.mors]
         tracks  = "spada"   # evolution tracks: spada | baraffe
         spec    = "stellar_spectra/Named/trappist-1.txt" # stellar spectrum
-        mass    = 0.1       # M_sun
-        Lbol    = 0.000553  # L_sun
-        omega   = 50.0      # rotation percentile
-        age_now = 7.6       # Gyr, current age of star used for scaling
-        age_ini = 0.100     # Gyr, model initialisation/start age
+
+    [star.dummy]
+        lowbreak = 0.0
 
 # Orbital system
 [orbit]

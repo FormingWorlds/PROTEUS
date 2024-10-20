@@ -11,7 +11,7 @@ from proteus.utils.phys import planck_wav
 
 log = logging.getLogger("fwl."+__name__)
 
-def generate_spectrum(wl_arr, tmp:float, R_star:float, lowcut:float=0.0):
+def generate_spectrum(wl_arr, tmp:float, R_star:float, lowbreak:float=0.0):
     '''
     Get stellar spectrum at 1 AU.
 
@@ -27,7 +27,7 @@ def generate_spectrum(wl_arr, tmp:float, R_star:float, lowcut:float=0.0):
         R_star : float
             Stellar radius [m]
 
-        lowcut : float
+        lowbreak : float
             Short wavelength cutoff [nm]
 
     Returns
@@ -41,7 +41,7 @@ def generate_spectrum(wl_arr, tmp:float, R_star:float, lowcut:float=0.0):
 
     # Evaluate planck function in each bin
     for i,wav in enumerate(wl_arr):
-        wav = max(wav, lowcut)
+        wav = max(wav, lowbreak)
         fl_arr[i] = planck_wav(tmp, wav) # W m-2 m-1 at stellar surface
 
     # Scale from stellar surface to 1 AU

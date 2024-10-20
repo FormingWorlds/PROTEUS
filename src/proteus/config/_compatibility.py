@@ -50,7 +50,7 @@ COMPAT_MAPPING = {
     'star_mass': ('star', 'mass'),
     'star_radius_modern': ('star', 'radius'),
     'star_temperature_modern': ('star', 'Teff'),
-    'star_luminosity_modern': ('star', 'Lbol'),
+    'star_luminosity_modern': ('star', 'lum_now'),
     'star_age_modern': ('star', 'age_now'),
     'star_rot_pctle': ('star', 'omega'),
     'star_spectrum': ('star', 'mors', 'spec'),
