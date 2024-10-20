@@ -41,17 +41,17 @@ def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
         delimiter="\t",
     )
 
-def update_stellar_radius(hf_row:dict, config:Config, baraffe=None):
+def update_stellar_radius(hf_row:dict, config:Config, baraffe_track=None):
     '''
     Update stellar radius in hf_row, stored in SI units.
     '''
 
     # Dummy case
-    if config.outgas.module == 'dummy':
+    if config.star.module == 'dummy':
         R_star = config.star.radius
 
     # Mors cases
-    elif config.outgas.module == 'mors':
+    elif config.star.module == 'mors':
 
         import mors
 
@@ -60,7 +60,7 @@ def update_stellar_radius(hf_row:dict, config:Config, baraffe=None):
             case 'spada':
                 R_star = mors.Value(config.star.mass, hf_row["age_star"] / 1e6, "Rstar")
             case 'baraffe':
-                R_star = baraffe.BaraffeStellarRadius(hf_row["age_star"])
+                R_star = baraffe_track.BaraffeStellarRadius(hf_row["age_star"])
 
     # Dimensionalise and store in dictionary
     hf_row["R_star"] = R_star * R_sun
@@ -71,12 +71,12 @@ def update_instellation(hf_row:dict, config:Config, baraffe_track=None):
     '''
 
     # Dummy case
-    if config.outgas.module == 'dummy':
+    if config.star.module == 'dummy':
         from proteus.star.dummy import calc_instellation
         S_0 = calc_instellation(config.star.Teff, hf_row["R_star"], hf_row["separation"])
 
     # Mors cases
-    elif config.outgas.module == 'mors':
+    elif config.star.module == 'mors':
 
         import mors
 

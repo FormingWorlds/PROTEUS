@@ -12,10 +12,6 @@ class Mors:
 
 
 @define
-class StarDummy:
-    lowbreak: float
-
-@define
 class Star:
     """Stellar parameters, model selection"""
     radius: float
@@ -32,4 +28,3 @@ class Star:
     )
 
     mors: Mors
-    dummy: StarDummy
