@@ -77,7 +77,13 @@ class Proteus:
         self.star_modern_fl = None
         self.star_modern_wl = None
 
+        # Stellar spectrum at simulation time
+        self.star_wl = None
+        self.star_fl = None
 
+        # Time at which star stuff was last updated
+        self.sspec_prev = -np.inf   # spectrum
+        self.sinst_prev = -np.inf   # instellation and radius
 
     def init_directories(self):
         """Initialize directories dictionary"""
@@ -231,9 +237,6 @@ class Proteus:
             loop_counter["total"] = len(hf_all)
             loop_counter["init"] = loop_counter["init_loops"] + 1
 
-            # Set instellation
-            F_inst_prev = hf_row["F_ins"]
-
             # Set volatile mass targets f
             solvevol_target = {}
             for e in element_list:
@@ -247,8 +250,6 @@ class Proteus:
         # Handle stellar spectrum...
 
         # Store copy of modern spectrum in memory (1 AU)
-        sspec_prev = -np.inf
-        sinst_prev = -np.inf
         star_modern_path = os.path.join(self.directories["fwl"], self.config.star.mors.spec)
         shutil.copyfile(star_modern_path, os.path.join(self.directories["output"], "-1.sflux"))
 
@@ -330,16 +331,10 @@ class Proteus:
             update_stellar_spectrum = False
 
             # Calculate new instellation and radius
-            if (abs(hf_row["Time"] - sinst_prev) > self.config.params.dt.starinst) or (
+            if (abs(hf_row["Time"] - self.sinst_prev) > self.config.params.dt.starinst) or (
                 loop_counter["total"] == 0
             ):
-                sinst_prev = hf_row["Time"]
-
-                # Get previous instellation
-                if loop_counter["total"] > 0:
-                    F_inst_prev = hf_row["F_ins"]
-                else:
-                    F_inst_prev = 0.0
+                self.sinst_prev = hf_row["Time"]
 
                 # Update value for star's radius
                 log.info("Update stellar radius")
@@ -357,35 +352,36 @@ class Proteus:
                 # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
                 hf_row["T_skin"] = hf_row["T_eqm"] * (0.5**0.25)
 
-                # Report the amount of instellation change [W m-2] in this step
-                log.debug("Instellation change: %+.4e W m-2 (to 4dp)" % abs(hf_row["F_ins"] - F_inst_prev))
-
             # Calculate a new (historical) stellar spectrum
-            if (abs(hf_row["Time"] - sspec_prev) > self.config.params.dt.starspec) or (
+            if (abs(hf_row["Time"] - self.sspec_prev) > self.config.params.dt.starspec) or (
                 loop_counter["total"] == 0
             ):
-                sspec_prev = hf_row["Time"]
+                self.sspec_prev = hf_row["Time"]
                 update_stellar_spectrum = True
 
                 # Get the new spectrum using the appropriate module
                 log.info("Updating stellar spectrum")
-                wl, fl = get_new_spectrum(hf_row["age_star"], hf_row["R_star"], self.config,
+                self.star_wl, self.star_fl = get_new_spectrum(
 
-                                          # variables needed for mors.spada
-                                          star_struct_modern=self.star_struct,
-                                          star_props_modern=self.star_props,
+                                        # Required variables
+                                        hf_row["age_star"], hf_row["R_star"], self.config,
 
-                                          # variavles needed for mors.baraffe
-                                          baraffe_track=self.baraffe_track,
-                                          modern_wl=self.star_modern_wl,
-                                          modern_fl=self.star_modern_fl,
-                                          )
+                                        # Variables needed for mors.spada
+                                        star_struct_modern=self.star_struct,
+                                        star_props_modern=self.star_props,
+
+                                        # Variables needed for mors.baraffe
+                                        baraffe_track=self.baraffe_track,
+                                        modern_wl=self.star_modern_wl,
+                                        modern_fl=self.star_modern_fl,
+                                        )
 
                 # Scale fluxes from 1 AU to TOA
-                fl = scale_spectrum_to_toa(fl, hf_row["separation"])
+                self.star_fl = scale_spectrum_to_toa(self.star_fl, hf_row["separation"])
 
                 # Save spectrum to file
-                write_spectrum(wl, fl, hf_row, self.directories["output"])
+                write_spectrum(self.star_wl, self.star_fl,
+                                hf_row, self.directories["output"])
 
             else:
                 log.info("New spectrum not required at this time")
@@ -414,7 +410,9 @@ class Proteus:
             ############### / OUTGASSING
 
             ############### ATMOSPHERE CLIMATE
-            RunAtmosphere(self.config, self.directories, loop_counter, wl, fl, update_stellar_spectrum, hf_all, hf_row)
+            RunAtmosphere(self.config, self.directories, loop_counter,
+                                self.star_wl, self.star_fl, update_stellar_spectrum,
+                                hf_all, hf_row)
 
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
