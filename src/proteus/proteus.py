@@ -494,7 +494,8 @@ class Proteus:
                 phi_r = abs(phi_2 - phi_1) / (t2 - t1)
 
                 # Stop when flux is small and melt fraction is unchanging
-                if (flx_m < self.config["steady_flux"]) and (phi_r < self.config["steady_dprel"]):
+                if (flx_m < self.config.params.stop.steady.F_crit) \
+                    and (phi_r < self.config.params.stop.steady.dprel):
                     log.debug("Steady state declared")
                     loop_counter["steady"] = 0
 
@@ -521,7 +522,7 @@ class Proteus:
                 finished = True
 
             # Maximum time reached
-            if hf_row["Time"] >= self.config.params.stop.time.maximum * 1e9:
+            if hf_row["Time"] >= self.config.params.stop.time.maximum:
                 UpdateStatusfile(self.directories, 13)
                 log.info("")
                 log.info("===> Target time reached! <===")
