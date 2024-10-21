@@ -11,7 +11,6 @@ from proteus.config._converters import none_if_none
 
 PATHS = chain(
     (PROTEUS_ROOT / 'input').glob('*.toml'),
-    (PROTEUS_ROOT / 'examples').glob('*/*.toml'),
 )
 
 
