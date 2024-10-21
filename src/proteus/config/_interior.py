@@ -16,7 +16,8 @@ class Spider:
 
 @define
 class Aragog:
-    some_parameter: str
+    num_levels: int  = field(validator=validators.ge(40))
+    tolerance: float
 
 
 @define

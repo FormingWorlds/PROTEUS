@@ -256,10 +256,11 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config.interior.module == 'dummy'
+    spider = config.interior.module == 'spider'
     escape    = config.interior.module is not None
 
     # Get all output times
-    if dummy_int:
+    if not spider:
         output_times = []
     else:
         from proteus.interior.spider import get_all_output_times
@@ -279,7 +280,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
 
         # Check intersection of atmosphere and interior data
-        if dummy_int:
+        if not spider:
             output_times = nc_times
         else:
             output_times = sorted(list(set(output_times) & set(nc_times)))
@@ -294,7 +295,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         log.debug("Snapshots to plot:" + str(plot_times))
 
     # Interior profiles
-    if not dummy_int:
+    if spider:
         jsons = read_jsons(output_dir, plot_times)
         plot_interior(output_dir, plot_times, jsons, config.params.out.plot_fmt)
 
@@ -306,7 +307,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_atmosphere(output_dir, plot_times, ncdfs, config.params.out.plot_fmt)
 
         # Atmosphere and interior, stacked
-        if not dummy_int:
+        if spider:
             plot_stacked(output_dir, plot_times, jsons, ncdfs, config.params.out.plot_fmt)
 
         # Flux profiles
@@ -324,7 +325,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_sflux(output_dir,          plot_format=config.params.out.plot_fmt)
         plot_sflux_cross(output_dir,    plot_format=config.params.out.plot_fmt)
 
-        if not dummy_int:
+        if spider:
             plot_interior_cmesh(output_dir, plot_format=config.params.out.plot_fmt)
 
         if not dummy_atm:

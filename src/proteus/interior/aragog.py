@@ -49,7 +49,7 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
     aragog_solver.solve()
 
     # Get Aragog output
-    output = GetAragogOutput(config, hf_row)
+    output = GetAragogOutput(hf_row)
     sim_time = aragog_solver.parameters.solver.end_time
 
     return sim_time, output
@@ -68,26 +68,26 @@ def SetupAragogSolver(config:Config, hf_row:dict):
     solver = _SolverParameters(
             start_time = 0,
             end_time = 0,
-            atol = config["solver_tolerance"],
-            rtol = config["solver_tolerance"],
+            atol = config.interior.aragog.tolerance,
+            rtol = config.interior.aragog.tolerance,
             )
 
     boundary_conditions = _BoundaryConditionsParameters(
             outer_boundary_condition = 4, # 4 = prescribed heat flux
-            outer_boundary_value = config["F_atm"], # first guess surface heat flux [W/m2]
+            outer_boundary_value = hf_row["F_atm"], # first guess surface heat flux [W/m2]
             inner_boundary_condition = 3, # 3 = prescribed temperature
             inner_boundary_value = 4000, # core temperature [K]
             emissivity = 1, # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature = 273, # only used in gray body BC, outer_boundary_condition = 1
-            core_radius = config["planet_coresize"] * config["radius"] * R_earth, # not used now
+            core_radius = config.struct.corefrac * hf_row["R_int"], # not used now
             core_density = 10738.332568062382, # not used now
             core_heat_capacity = 880, # not used now
             )
 
     mesh = _MeshParameters(
-            outer_radius = config["radius"] * R_earth, # planet radius [m]
-            inner_radius = config["planet_coresize"] * config["radius"] * R_earth, # core radius [m]
-            number_of_nodes = config["interior_nlev"], # basic nodes
+            outer_radius = hf_row["R_int"], # planet radius [m]
+            inner_radius = config.struct.corefrac * hf_row["R_int"], # core radius [m]
+            number_of_nodes = config.interior.aragog.num_levels, # basic nodes
             mixing_length_profile = "constant",
             surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration = hf_row["gravity"], # [m/s-2]
@@ -134,7 +134,7 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             liquidus = "aragog/data/test/liquidus_1d_lookup.dat",
             phase = "mixed",
             phase_transition_width = 0.1,
-            grain_size = config["grain_size"],
+            grain_size = config.interior.grain_size,
             )
 
     radionuclides = _Radionuclide(
@@ -179,7 +179,7 @@ def UpdateAragogSolver(dt:float, hf_row:dict):
 
     return
 
-def GetAragogOutput(config:Config, hf_row:dict):
+def GetAragogOutput(hf_row:dict):
 
     aragog_output: Output = Output(aragog_solver)
     output = {}
