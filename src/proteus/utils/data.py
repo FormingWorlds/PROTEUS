@@ -155,7 +155,7 @@ def download_sufficient_data(config:Config):
     """
 
     # Star stuff
-    if config.star.mors.tracks in ('spada', 'baraffe'):
+    if config.star.module == "mors":
         download_stellar_spectra()
         if config.star.mors.tracks == 'spada':
             download_evolution_tracks("Spada")

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import re
+import warnings
 
 import numpy as np
 
@@ -50,9 +51,17 @@ def planck_wav(tmp:float, wav:float):
 
     # Calculate planck function value [W m-2 sr-1 m-1]
     # http://spiff.rit.edu/classes/phys317/lectures/planck.html
-    flx = 2.0 * hc * (const_c / wav5) / ( np.exp(hc / (wav * const_k * tmp)) - 1.0)
+    with warnings.catch_warnings():
+        # Catch overflow error, which can occur when evaluating at short wavelengths
+        try:
+            flx = 2.0 * hc * (const_c / wav5) / ( np.exp(hc / (wav * const_k * tmp)) - 1.0)
+        except Warning:
+            flx = 0.0
 
     # Integrate solid angle (hemisphere)
     flx = flx * np.pi
+
+    # Do not allow zero or near-zero fluxes
+    flx = max(flx, 1e-40)
 
     return flx

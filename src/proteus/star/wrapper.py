@@ -67,6 +67,8 @@ def get_new_spectrum(t_star:float, R_star:float, config:Config,
     Get new stellar spectrum at 1 AU.
     '''
 
+    log.debug("Get new stellar spectrum (star age = %g Gyr)"%(t_star/1e9))
+
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import generate_spectrum
@@ -100,6 +102,8 @@ def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
     '''
     Write stellar spectrum to file.
     '''
+
+    log.debug("Writing stellar spectrum to file")
 
     # Header information
     header = (

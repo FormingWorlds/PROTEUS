@@ -29,6 +29,8 @@ def generate_spectrum(tmp:float, R_star:float):
             Stellar spectral flux density at 1 AU from star [erg s-1 cm-2 nm-1]
     '''
 
+    log.debug("Generating stellar spectrum at Teff=%.0f K"%tmp)
+
     # Allocate wavelength array
     wl_min = 1e-10 # 1 angstrom
     wl_max = 1e-2  # 1 cm
