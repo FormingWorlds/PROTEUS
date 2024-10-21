@@ -8,6 +8,7 @@ nav:
   - Installation: installation.md
   - Usage: usage.md
   - Config: config.md
+  - config_old.md
   - Troubleshooting: troubleshooting.md
   - MORS: https://fwl-proteus.readthedocs.io/projects/mors/
   - JANUS: https://fwl-proteus.readthedocs.io/projects/janus/
@@ -58,10 +59,11 @@ plugins:
             ignore_init_summary: yes
           show_submodules: no
           show_source: true
+          show_symbol_type_heading: True
           show_root_heading: true
-          shol_root_toc_entry: true
+          show_root_toc_entry: true
           show_docstring_attributes: true
-          show_root_full_path: true
+          show_root_full_path: false
           docstring_section_style: list
           members_order: alphabetical
           merge_init_into_class: yes
