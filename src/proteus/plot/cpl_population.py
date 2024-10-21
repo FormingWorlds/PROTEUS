@@ -56,7 +56,7 @@ def plot_population_mass_radius(hf_all:pd.DataFrame, output_dir: str, fwl_dir:st
         return
 
     log.info("Plot population (mass-radius)")
-    sim_rad = np.array(hf_crop["z_obs"]    )/ R_earth
+    sim_rad = np.array(hf_crop["z_obs"]+hf_crop["R_int"])/ R_earth
     sim_mas = np.array(hf_crop["M_planet"]) / M_earth
 
     # Get exoplanet values from database
@@ -85,7 +85,7 @@ def plot_population_mass_radius(hf_all:pd.DataFrame, output_dir: str, fwl_dir:st
     # Exoplanets
     lbl = "Exoplanets"
     col = 'grey'
-    ms=8
+    ms=6
     if show_errors:
         ax.errorbar(exo_mas_val, exo_rad_val,
                     xerr=[exo_mas_low, exo_mas_upp],
@@ -99,7 +99,8 @@ def plot_population_mass_radius(hf_all:pd.DataFrame, output_dir: str, fwl_dir:st
 
     # Simulation
     col='k'
-    ax.plot(sim_mas, sim_rad, label="Simulation", color=col, lw=1.5, zorder=99)
+    ax.plot(sim_mas, sim_rad, label="Simulation", color=col, lw=1.5, zorder=98)
+    ax.scatter(sim_mas[-1], sim_rad[-1], color=col, s=ms, zorder=99)
 
     # Save figure
     ax.set_ylabel(r"Planet radius [$R_{\oplus}$]")
@@ -129,7 +130,7 @@ def plot_population_time_density(hf_all:pd.DataFrame, output_dir: str, fwl_dir:s
         return
 
     log.info("Plot population (time-density)")
-    sim_rad = np.array(hf_crop["z_obs"]    )
+    sim_rad = np.array(hf_crop["z_obs"]+hf_crop["R_int"])
     sim_mas = np.array(hf_crop["M_planet"])
     sim_rho = 3*sim_mas/(4*np.pi*sim_rad**3)  * 0.001
 

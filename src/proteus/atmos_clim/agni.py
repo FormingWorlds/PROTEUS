@@ -415,7 +415,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     # observed height and derived bulk density
     jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
     rho_obs = float(atmos.transspec_rho)
-    z_obs   = float(atmos.transspec_r)
+    z_obs   = float(atmos.transspec_r) - hf_row["R_int"] # because transspec_r = R_int + z_obs
 
     # ---------------------------
     # Parse results
