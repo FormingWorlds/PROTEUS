@@ -1,101 +1,118 @@
 # Reference data
 
 ## Stars
+
 ### Epsilon Eridani
 
-* file:  `eps-eri.txt`
-* url:   https://en.wikipedia.org/wiki/Epsilon_Eridani
-* type:  K2V
+* File name:  `eps-eri.txt`
+* URL:   https://en.wikipedia.org/wiki/Epsilon_Eridani
+* Spectral type:  K2V
 * Teff:  5049 K
-* age:   400-800 Myr
-* Lum:   0.32 solar
-* M:     0.82 solar
-* R:     0.738 solar
+* Age:   400-800 Myr
+* Luminosity:   0.32 solar
+* Mass:     0.82 solar
+* Radius:     0.738 solar
+* Source: MUSCLES
 
 ### GJ 1132
 
-* file:  `gj1132.txt`
-* url:   https://en.wikipedia.org/wiki/GJ_1132
-* type:  M4
+* File name:  `gj1132.txt`
+* URL:   https://en.wikipedia.org/wiki/GJ_1132
+* Spectral type:  M4
 * Teff:  3196 K
-* age:   ?
-* Lum:   0.00436 solar
-* M:     0.194 solar
-* R:     0.215 solar
+* Age:   ?
+* Luminosity:   0.00436 solar
+* Mass:     0.194 solar
+* Radius:     0.215 solar
+* Source: Mega-MUSCLES
 
 ### GJ 1214
 
-* file:  `gj1214.txt`
-* url:   https://en.wikipedia.org/wiki/GJ_1214
-* type:  M4.5
+* File name:  `gj1214.txt`
+* URL:   https://en.wikipedia.org/wiki/GJ_1214
+* Spectral type:  M4.5
 * Teff:  3111 K
-* age:   5-10 Gyr
-* Lum:   0.00351 solar
-* M:     0.181 solar
-* R:     0.204 solar
+* Age:   5-10 Gyr
+* Luminosity:   0.00351 solar
+* Mass:     0.181 solar
+* Radius:     0.204 solar
+* Source: MUSCLES
 
 ### HD 85512
 
-* file:  `hd85512.txt`
-* url:   https://en.wikipedia.org/wiki/HD_85512
-* type:  K6V
+* File name:  `hd85512.txt`
+* URL:   https://en.wikipedia.org/wiki/HD_85512
+* Spectral type:  K6V
 * Teff:  4404 K
-* age:   5.61 Gyr
-* Lum:   0.126 solar
-* M:     0.69  solar
-* R:     0.533 solar
+* Age:   5.61 Gyr
+* Luminosity:   0.126 solar
+* Mass:     0.69  solar
+* Radius:     0.533 solar
+* Source: MUSCLES
 
 ### HD 97658
 
-* file:  `hd97658.txt`
-* url:   https://en.wikipedia.org/wiki/HD_97658
-* type:  K1V
+* File name:  `hd97658.txt`
+* URL:   https://en.wikipedia.org/wiki/HD_97658
+* Spectral type:  K1V
 * Teff:  5212 K
-* age:   3.9 Gyr
-* Lum:   0.351 solar
-* M:     0.773 solar
-* R:     0.728 solar
+* Age:   3.9 Gyr
+* Luminosity:   0.351 solar
+* Mass:     0.773 solar
+* Radius:     0.728 solar
+* Source: MUSCLES
 
 ### L 98-59
 
-* file:  `l-98-59.txt`
-* url:   https://en.wikipedia.org/wiki/L_98-59
-* type:  M3V
+* File name:  `l-98-59.txt`
+* URL:   https://en.wikipedia.org/wiki/L_98-59
+* Spectral type:  M3V
 * Teff:  3415 K
-* age:   >800 Myr
-* Lum:   0.01128 solar
-* M:     0.273 solar
-* R:     0.303 solar
+* Age:   >800 Myr
+* Luminosity:   0.01128 solar
+* Mass:     0.273 solar
+* Radius:     0.303 solar
+* Source: Mega-MUSCLES
 
 ### The Sun
 
-* file:  `sun.txt`
-* url:   https://en.wikipedia.org/wiki/Sun
-* type:  G2V
+* File name:  `sun.txt`
+* URL:   https://en.wikipedia.org/wiki/Sun
+* Spectral type:  G2V
 * Teff:  5772 K
-* age:   4.6 Gyr
-* Lum:   1.0 solar
-* M:     1.0 solar
-* R:     1.0 solar
+* Age:   4.6 Gyr
+* Luminosity:   1.0 solar
+* Mass:     1.0 solar
+* Radius:     1.0 solar
+* Source: [Gueymard 2003](https://www.sciencedirect.com/science/article/pii/S0038092X03003967), [NREL](https://www.nrel.gov/grid/solar-resource/spectra.html)
 
 ### TRAPPIST-1
 
-* file:  `trappist-1.txt`
-* url:   https://en.wikipedia.org/wiki/TRAPPIST-1
-* type:  M8V
+* File name:  `trappist-1.txt`
+* URL:   https://en.wikipedia.org/wiki/TRAPPIST-1
+* Spectral type:  M8V
 * Teff:  2566 K
-* age:   7.6 Gyr
-* Lum:   0.000553 solar
-* M:     0.0898 solar
-* R:     0.1192 solar
+* Age:   7.6 Gyr
+* Luminosity:   0.000553 solar
+* Mass:     0.0898 solar
+* Radius:     0.1192 solar
+* Source: Mega-MUSCLES
 
-### GJ 846
+### GJ 849
 
-* file:  `gj849.txt`
-* url:   https://en.wikipedia.org/wiki/Gliese_849
-* type:  M3.5V
+* File name:  `gj849.txt`
+* URL:   https://en.wikipedia.org/wiki/Gliese_849
+* Spectral type:  M3.5V
 * Teff:  3467 K
-* age:   >3 Gyr
-* Lum:   0.02887 solar
-* M:     0.465 solar
-* R:     0.464 solar
+* Age:   >3 Gyr
+* Luminosity:   0.02887 solar
+* Mass:     0.465 solar
+* Radius:     0.464 solar
+* Source:   Mega-MUSCLES
+
+
+## Exoplanet population data
+These are obtained from the DACE PlanetS database ([Parc et al., 2024](https://arxiv.org/abs/2406.04311)).
+
+## Mass-radius relations
+These are obtained from [Zeng et al., 2019](https://iopscience.iop.org/article/10.3847/0004-637X/819/2/127/meta).
