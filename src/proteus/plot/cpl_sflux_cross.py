@@ -102,7 +102,7 @@ def plot_sflux_cross(
     fig,ax = plt.subplots(1,1)
 
     ax.set_yscale("log")
-    ax.set_ylabel("Flux [erg s$^{-1}$ cm$^{-2}$ nm$^{-1}$]")
+    ax.set_ylabel("Flux [erg / (s cm$^2$ nm)]")
 
     ax.set_xscale("log")
     ax.set_xlabel("Time [yr]")

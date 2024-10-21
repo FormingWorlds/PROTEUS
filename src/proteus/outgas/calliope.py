@@ -81,13 +81,8 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
         if e == "O":
             continue
 
-        # do not allow small values as they will prevent calliope from finding a solution
-        e_mass = hf_row[e + "_kg_total"]
-        if e_mass < 1.0e4:
-            e_mass = 0.0
-
         # save to dict
-        solvevol_target[e] = e_mass
+        solvevol_target[e] = hf_row[e + "_kg_total"]
 
     # get atmospheric compositison
     solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
