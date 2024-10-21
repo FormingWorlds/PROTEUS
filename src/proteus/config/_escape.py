@@ -12,11 +12,11 @@ class Escape:
     Attributes
     ----------
     module: str | None
-        Select module, choice None, 'dummy', 'zephyrus'.
+        Escape module to use. Choices: "none", "dummy", "zephyrus".
     zephyrus: Zephyrus
         Parameters for zephyrus module.
     dummy: EscapeDummy
-        Parameters for dummy module.
+        Parameters for dummy escape module.
     """
     module: str | None = field(
         validator=validators.in_((None, 'dummy', 'zephyrus')), converter=none_if_none

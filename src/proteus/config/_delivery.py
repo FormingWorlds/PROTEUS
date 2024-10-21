@@ -12,13 +12,13 @@ class Elements:
     Attributes
     ----------
     CH_ratio: float
-        C/H ratio in mantle/atmosphere system.
+        Volatile C/H nass ratio in combined mantle+atmosphere system.
     H_oceans: float
-        Hydrogen inventory in units of equivalent Earth oceans, by mass.
+        Bulk hydrogen inventory in units of equivalent Earth oceans.
     N_ppmw: float
-        Nitrogen inventory in ppmw relative to mantle mass, by mass.
+        Bulk nitrogen inventory in ppmw relative to mantle mass.
     S_ppmw: float
-        Sulfur inventory in ppmw relative to mass of melt.
+        Bulk sulfur inventory in ppmw relative to mantle mass.
     """
     CH_ratio: float
     H_oceans: float
@@ -28,26 +28,26 @@ class Elements:
 
 @define
 class Volatiles:
-    """Initial volatile inventory by partial pressures in atmosphere.
+    """Initial volatile inventory set by partial pressures in atmosphere.
 
     Attributes
     ----------
     H2O: float
-        Partial pressure of H2O.
+        Initial atmospheric partial surface pressure of H2O [bar].
     CO2: float
-        Partial pressure of CO2.
+        Initial atmospheric partial surface pressure of CO2 [bar].
     N2: float
-        Partial pressure of N2.
+        Initial atmospheric partial surface pressure of N2 [bar].
     S2: float
-        Partial pressure of S2.
+        Initial atmospheric partial surface pressure of S2 [bar].
     SO2: float
-        Partial pressure of SO2.
+        Initial atmospheric partial surface pressure of SO2 [bar].
     H2: float
-        Partial pressure of H2.
+        Initial atmospheric partial surface pressure of H2 [bar].
     CH4: float
-        Partial pressure of CH4.
+        Initial atmospheric partial surface pressure of CH4 [bar].
     CO: float
-        Partial pressure of CO.
+        Initial atmospheric partial surface pressure of CO [bar].
     """
     H2O: float = field(default=0)
     CO2: float = field(default=0)
@@ -66,13 +66,13 @@ class Delivery:
     Attributes
     ----------
     initial: str
-        Set initial inventory to use, choice 'volatiles', 'elements'.
+        Method by which to set the initial volatile inventory to use. Options: 'volatiles', 'elements'.
     module: str
         Delivery module to use (Not used as of yet).
     elements: Elements
-        Set initial volatile inventory by planetary element abundances.
+        Parameters used when setting volatile inventory by element abundances.
     volatiles: Volatiles
-        Set initial volatile inventory by partial pressures in atmosphere.
+        Parameters used when setting volatile inventory by partial pressures.
     """
     initial: str = field(validator=validators.in_(('elements', 'volatiles')))
 

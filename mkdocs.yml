@@ -10,13 +10,14 @@ nav:
   - Config: config.md
   - config_old.md
   - Troubleshooting: troubleshooting.md
-  - MORS: https://fwl-proteus.readthedocs.io/projects/mors/
-  - JANUS: https://fwl-proteus.readthedocs.io/projects/janus/
   - Contact: contact.md
   - Contributing: CONTRIBUTING.md
   - Code of Conduct: CODE_OF_CONDUCT.md
   - 🔗 Source code: https://github.com/FormingWorlds/PROTEUS
   - 🔗 Issues: https://github.com/FormingWorlds/PROTEUS/issues
+  - 🔗 MORS: https://fwl-proteus.readthedocs.io/projects/mors/
+  - 🔗 JANUS: https://fwl-proteus.readthedocs.io/projects/janus/
+  - 🔗 AGNI: https://nichollsh.github.io/AGNI/dev/
 
 theme:
   name: material

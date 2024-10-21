@@ -10,15 +10,15 @@ class Interior:
     Attributes
     ----------
     grain_size: float
-        Crystal settling grain size [m]
+        Crystal settling grain size [m].
     F_initial: float
-        Initial heat flux guess [W m-2]
+        Initial heat flux guess [W m-2].
     module: str
-        Select interior model, choices: 'spider', 'aragog', 'dummy'
+        Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
     spider: Spider
-        Parameters for spider module
+        Parameters for running the SPIDER module.
     aragog: Aragog
-        Parameters for aragog module
+        Parameters for running the aragog module.
     """
     grain_size: float
     F_initial: float
@@ -31,24 +31,24 @@ class Interior:
 
 @define
 class Spider:
-    """Parameters for Spider module.
+    """Parameters for SPIDER module.
 
     Attributes
     ----------
     num_levels: int
-        Number of SPIDER grid levels
+        Number of SPIDER grid levels.
     mixing_length: int
-        Mixing length parameterization
+        Parameterisation used to determine convective mixing length.
     tolerance: float
-        Solver tolerance
+        Solver tolerance.
     tsurf_atol: float
-        Tsurf_poststep_change
+        Absolute tolerance on change in T_mantle during a single interior iteration.
     tsurf_rtol: float
-        Tsurf_poststep_change_frac
+        Relative tolerance on change in T_mantle during a single interior iteration.
     ini_entropy: float
-        Surface entropy conditions [J K-1 kg-1]
+        Initial specific surface entropy [J K-1 kg-1].
     ini_dsdr: float
-        Interior entropy gradient [J K-1 kg-1 m-1]
+        Initial interior specific entropy gradient [J K-1 kg-1 m-1].
     """
     num_levels: int  = field(validator=validators.ge(40))
     mixing_length: int

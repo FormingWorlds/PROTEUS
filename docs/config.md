@@ -77,7 +77,7 @@ for ideas of how to set up your config in practice.
       show_root_toc_entry: False
       members_order: source
 
-## Planetary orbit
+## Star system and planetary orbit
 
 ::: proteus.config._orbit
     options:
@@ -95,7 +95,7 @@ for ideas of how to set up your config in practice.
       show_root_toc_entry: False
       members_order: source
 
-## Planetary atmosphere
+## Atmosphere climate
 
 ::: proteus.config._atmos_clim
     options:
@@ -104,7 +104,7 @@ for ideas of how to set up your config in practice.
       show_root_toc_entry: False
       members_order: source
 
-## Escape
+## Atmospheric escape
 
 ::: proteus.config._escape
     options:
@@ -113,7 +113,7 @@ for ideas of how to set up your config in practice.
       show_root_toc_entry: False
       members_order: source
 
-## Magma ocean and planet interior
+## Magma ocean / mantle
 
 ::: proteus.config._interior
     options:

@@ -12,23 +12,23 @@ class Star:
     Attributes
     ----------
     radius: float
-        R_sun
+        Observed radius [R_sun].
     Teff: float
-        K
+        Observed effective temperature [K].
     mass: float
-        M_sun
+        Stellar mass [M_sun]
     lum_now: float
-        L_sun
+        Observed bolometric luminosity [L_sun].
     omega: float
-        Rotation percentile
+        Rotation rate, as a percentile of stellar population with the same mass [%].
     age_now: float
-        Gyr, current age of star used for scaling
+        Observed estimated age of the star [Gyr].
     age_ini: float
-        Gyr, model initialisation/start age
+        Age of star at model initialisation [Gyr].
     module: str | None
         Select star module to use.
     mors: Mors
-        Parameters for MORS module
+        Parameters for MORS module.
     """
     radius: float
     mass: float
@@ -53,9 +53,9 @@ class Mors:
     Attributes
     ----------
     tracks: str
-        Name of evolution tracks, choice: 'spada', 'baraffe'
+        Stellar evolution track to be used. Choices: 'spada', 'baraffe'.
     spec: str
-        Path to stellar spectrum
+        Name of file containing stellar spectrum. See
     """
     tracks: str = field(validator=validators.in_(('spada', 'baraffe')))
     spec: str

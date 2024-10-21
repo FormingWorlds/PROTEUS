@@ -12,20 +12,20 @@ class Orbit:
     Attributes
     ----------
     semimajoraxis: float
-        AU
+        Semi-major axis of the planet's orbit [AU].
     eccentricity: float
-        Dimensionless
+        Eccentricity of the planet's orbit.
     zenith_angle: float
-        Degrees
+        Characteristic angle of incoming stellar radiation, relative to the zenith [deg].
     s0_factor: float
-        Dimensionless
+        Scale factor applies to incoming stellar radiation to represent planetary rotation and heat redistribution.
     module: str | None
         Select orbit module to use. Not used currently.
     """
     semimajoraxis: float
     eccentricity: float = field(validator=[
         validators.ge(0),
-        validators.le(1),
+        validators.lt(1),
     ])
     zenith_angle: float
     s0_factor: float

@@ -73,15 +73,15 @@ class Agni:
     Attributes
     ----------
     p_top: float
-        Bar, top of atmosphere grid pressure.
+        Top of atmosphere grid pressure [bar].
     spectral_group: str
-        Which gas opacities to include.
+        Spectral file codename defining the gas opacities to be included.
     spectral_bands: str
-        Number of spectral bands?
+        Number of wavenumer bands in k-table.
     num_levels: str
         Number of atmospheric grid levels.
     chemistry: str | None
-        Choices: None, "eq", "kin"
+        Treatment of self-consistent atmospheric chemsitry. Must be one of: "none", "eq", "kin"
     """
     p_top: float
     spectral_group: str

@@ -26,23 +26,23 @@ class Config:
     version: str
         Version of the configuration file.
     author: str
-        Authors of the configuration.
+        Authors of the configuration file.
     params: Params
         Parameters for code execution, output files, time-stepping, convergence.
     star: Star
         Stellar parameters, model selection.
     orbit: Orbit
-        Planetary orbital parameters.
+        Orbital and star-system parameters.
     struct: Struct
-        Planetary structure (mass, radius).
+        Planetary structure calculation (mass, radius).
     atmos_clim: AtmosClim
-        Atmosphere parameters, model selection.
+        Planetary atmosphere parameters, model selection.
     escape: Escape
-        Escape parameters, model selection.
+        Atmospheric escape parameters, model selection.
     interior: Interior
-        Magma ocean model selection and parameters.
+        Magma ocean / mantle model parameters, model selection.
     outgas: Outgas
-        Outgassing parameters (fO2) and included volatiles.
+        Outgassing parameters (fO2, etc) and included volatiles.
     delivery: Delivery
         Initial volatile inventory, and delivery model selection.
     """

@@ -13,11 +13,11 @@ class Params:
     Attributes
     ----------
     out: OutputParams
-        Parameters for data / logging output
+        Parameters for data / logging output.
     dt: TimeStepParams
-        Parameters for time-stepping
+        Parameters for time-stepping.
     stop: StopParams
-        Parameters for stopping criteria
+        Parameters for stopping criteria.
     """
     out: OutputParams
     dt: TimeStepParams
@@ -31,13 +31,13 @@ class OutputParams:
     Attributes
     ----------
     path: str
-        Path where to store output data
+        Path to output folder relative to `PROTEUS/output/`.
     logging: str
-        Set loglevel, choices: 'INFO', 'DEBUG', 'ERROR', 'WARNING'
+        Log verbosity. Choices: 'INFO', 'DEBUG', 'ERROR', 'WARNING'.
     plot_mod: int
-        Plotting frequency, 0: wait until completion | n: every n iterations
+        Plotting frequency. 0: wait until completion. n: every n iterations.
     plot_fmt: str
-        Plotting image file format, "png" or "pdf" recommended
+        Plotting output file format. Choices: "png", "pdf".
     """
     path: str
     logging: str = field(validator=validators.in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
@@ -52,21 +52,21 @@ class TimeStepParams:
     Attributes
     ----------
     minimum: float
-        yr, minimum time-step
+        Minimum time-step size [yr].
     maximum: float
-        yr, maximum time-step
+        Maximum time-step size [yr].
     initial: float
-        yr, inital step size
+        Initial time-step size [yr].
     starspec: float
-        yr, interval to re-calculate the stellar spectrum
+        Maximum interval at which to recalculate the stellar spectrum [yr].
     starinst: float
-        yr, interval to re-calculate the instellation
+        Maximum interval at which to recalculate instellation flux [yr].
     method: str
-        Time-stepping method, choices: 'proportional', 'adaptive', 'maximum'
+        Time-stepping method. Choices: 'proportional', 'adaptive', 'maximum'.
     proportional: DtProportional
-        Parameters for proportional method
+        Parameters used to configure the proportional time-stepping scheme.
     adaptive: DtAdaptive
-        Parameters for adaptive method
+        Parameters used to configure the adaptive time-stepping scheme.
     """
     minimum: float
     maximum: float
@@ -80,7 +80,7 @@ class TimeStepParams:
 
 @define
 class DtProportional:
-    """Parameters for proportional time-stepping
+    """Parameters used to configure the proportional time-stepping scheme.
 
     Attributes
     ----------
@@ -92,14 +92,14 @@ class DtProportional:
 
 @define
 class DtAdaptive:
-    """Parameters for adaptive time-stepping
+    """Parameters used to configure the adaptive time-stepping scheme.
 
     Attributes
     ----------
     atol: float
-        Step size absolute tolerance
+        Absolute tolerance on time-step size [yr].
     rtol: float
-        Step size relative tolerance
+        Relative tolerance on time-step size [dimensionless].
     """
     atol: float
     rtol: float
@@ -112,17 +112,17 @@ class StopParams:
     Attributes
     ----------
     iters: StopIters
-        Parameters for required number of iterations.
+        Parameters for iteration number criteria.
     time: StopTime
-        Parameters for required time constraints.
+        Parameters for maximum time criteria.
     solid: StopSolid
-        Parameters for solidification.
+        Parameters for solidification criteria.
     radeqm: StopRadeqm
-        Parameters for radiative equilibrium.
+        Parameters for radiative equilibrium criteria.
     steady: StopSteady
-        Parameters for steady state.
+        Parameters for steady state criteria.
     escape: StopEscape
-        Parameters for escape.
+        Parameters for escape criteria.
     """
     iters: StopIters
     time: StopTime
@@ -134,16 +134,16 @@ class StopParams:
 
 @define
 class StopIters:
-    """Parameters for iteration stopping criteria.
+    """Parameters for iteration number criteria.
 
     Attributes
     ----------
     enabled: bool
-        Enable criterium if True
+        Enable criteria if True
     minimum: int
-        Minimum number of iterations
+        Minimum number of iterations.
     maximum: int
-        Maximum number of iterations
+        Maximum number of iterations.
     """
     enabled: bool
     minimum: int
@@ -152,16 +152,16 @@ class StopIters:
 
 @define
 class StopTime:
-    """Parameters for time constraints stopping criteria.
+    """Parameters for maximum time criteria.
 
     Attributes
     ----------
     enabled: bool
-        Enable criterium if True
+        Enable criteria if True
     minimum: float
-        yr, model will certainly run to t > minimum
+        Model will absolutely not terminate until at least this time is reached [yr].
     maximum: float
-        yr, model will terminate when t > maximum
+        Model will terminate when this time is reached [yr].
     """
     enabled: bool
     minimum: float
@@ -170,14 +170,14 @@ class StopTime:
 
 @define
 class StopSolid:
-    """Parameters for solidification stopping criteria.
+    """Parameters for solidification criteria.
 
     Attributes
     ----------
     enabled: bool
-        Enable criterium if True.
+        Enable criteria if True.
     phi_crit: float
-        Non-dimensional, model will terminate when global melt fraction < phi_crit.
+        Model will terminate when global melt fraction is less than this value [dimensionless].
     """
     enabled: bool
     phi_crit: float
@@ -190,9 +190,9 @@ class StopRadeqm:
     Attributes
     ----------
     enabled: bool
-        Enable criterium if True
+        Enable criteria if True
     F_crit: float
-        W m-2, model will terminate when |F_atm| < F_crit
+        Model will terminate when absolute net outgoing flux is less than this value [W m-2].
     """
     enabled: bool
     F_crit: float
@@ -205,11 +205,11 @@ class StopSteady:
     Attributes
     ----------
     enabled: bool
-        Enable criterium if True
+        Enable criteria if True
     F_crit: float
-        Maximum absolute value of F_atm allowed for convergence
+        Necessary (not sufficient) condition on maximum absolute net outgoing flux [W m-2].
     dprel: float
-        Percentage change in melt fraction over time (dp/p)/dt*100
+        Necessary (not sufficient) condition maximum change in melt fraction over time `(dp/p)/dt*100` [yr-1].
     """
     enabled: bool
     F_crit: float
@@ -223,9 +223,9 @@ class StopEscape:
     Attributes
     ----------
     enabled: bool
-        Enable criterium if True
+        Enable criteria if True
     mass_frac: float
-        Stop when atm_mass < this frac of initial mass
+        Model will termiante when atmosphere mass is less than this fraction of the initial atmosphere mass [dimensionless].
     """
     enabled: bool
     mass_frac: float

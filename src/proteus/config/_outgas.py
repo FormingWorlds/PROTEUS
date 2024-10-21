@@ -10,11 +10,11 @@ class Outgas:
     Attributes
     ----------
     fO2_shift_IW: float
-        log10(ΔIW), atmosphere/interior boundary oxidation state.
+        Homogeneous oxygen fugacity in the magma ocean used to represent redox state (log10 units relative to Iron-Wustite).
     module: str
-        Which outgassing module to use, choices: 'calliope', 'atmodeller'.
+        Outgassing module to be used. Choices: 'calliope', 'atmodeller'.
     calliope: Calliope
-        Parameters for calliope module.
+        Parameters for CALLIOPE module.
     atmodeller: Atmodeller
         Parameters for atmodeller module.
     """
@@ -33,21 +33,21 @@ class Calliope:
     Attributes
     ----------
     include_H2O: bool
-        If True, include H2O compound.
+        If True, include H2O outgassing.
     include_CO2: bool
-        If True, include CO2 compound.
+        If True, include CO2 outgassing.
     include_N2: bool
-        If True, include N2 compound.
+        If True, include N2 outgassing.
     include_S2: bool
-        If True, include S2 compound.
+        If True, include S2 outgassing.
     include_SO2: bool
-        If True, include SO2 compound.
+        If True, include SO2 outgassing.
     include_H2: bool
-        If True, include H2 compound.
+        If True, include H2 outgassing.
     include_CH4: bool
-        If True, include CH4 compound.
+        If True, include CH4 outgassing.
     include_CO: bool
-        If True, include CO compound.
+        If True, include CO outgassing.
     """
     include_H2O: bool
     include_CO2: bool
