@@ -9,7 +9,7 @@ from ._converters import none_if_none
 class Star:
     """Stellar parameters, model selection.
 
-    You can find useful reference data in the documentation: https://fwl-proteus.readthedocs.io/en/latest/data/#stars
+    You can find useful reference data in the [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars).
 
     Attributes
     ----------
@@ -57,7 +57,7 @@ class Mors:
     tracks: str
         Stellar evolution track to be used. Choices: 'spada', 'baraffe'.
     spec: str
-        Name of file containing stellar spectrum. See documentation for potential file names: https://fwl-proteus.readthedocs.io/en/latest/data/#stars
+        Name of file containing stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars) for potential file names.
     """
     tracks: str = field(validator=validators.in_(('spada', 'baraffe')))
     spec: str

@@ -1,15 +1,14 @@
 # Configuration file
 
-PROTEUS accepts config files containing parameters in the format
-`key = value`. Proteus uses [toml](https://toml.io/en/) as the filetype for configuration.
+PROTEUS uses [TOML](https://toml.io/en/) to structure its configuration files.
 
 All of the parameters required to run the model are
 listed below with short explanations of their purpose and the values
 they accept. Configuration files can contain blank lines. Comments are
-indicated with a `#` symbol.
+indicated with a `#` symbol. Whitespace indentation is purely stylistic.
 
 Not all of these parameters will be used, depending on the
-configuration, but they must all be passed via the config file.
+configuration, but they must all be provided.
 
 ## Adding a new parameter
 
@@ -50,7 +49,7 @@ for more information how to work with attrs.
 Have a look at the [input configs](https://github.com/FormingWorlds/PROTEUS/tree/main/input)
 for ideas of how to set up your config in practice.
 
-## Root config
+## Root parameters
 
 ::: proteus.config._config
     options:
