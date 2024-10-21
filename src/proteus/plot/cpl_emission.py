@@ -18,7 +18,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_emission(output_dir:str, times:list, plot_format="pdf", cumulative=False):
+def plot_emission(output_dir:str, times:list, plot_format="pdf",
+                cumulative=False, xmax=2e4):
 
     log.info("Plot emission spectrum")
 
@@ -35,7 +36,8 @@ def plot_emission(output_dir:str, times:list, plot_format="pdf", cumulative=Fals
     # plotting
     al = 0.9
     lw = 1.2
-    ymax = 1e2
+    ymax = 1e-20 # updated below
+    ymin = 1e20  # updated below
 
     for i, t in enumerate( times ):
 
@@ -85,8 +87,16 @@ def plot_emission(output_dir:str, times:list, plot_format="pdf", cumulative=Fals
 
         ds.close()
 
+        # find maximum x value
+        imax = np.argmin(np.abs(x_arr-xmax)) + 1
+        imax = min(imax, len(x_arr))
+        x_arr = x_arr[:imax]
+        w_arr = w_arr[:imax]
+        y_arr = y_arr[:imax]
+
         ax.step(x_arr, y_arr, label=label, color=color, alpha=al, lw=lw, where='mid')
         ymax = max(ymax, np.amax(y_arr))
+        ymin = min(ymin, np.amin(y_arr))
 
     # Decorate
     ax.legend( fontsize=8, fancybox=True, framealpha=0.5 )
@@ -100,8 +110,8 @@ def plot_emission(output_dir:str, times:list, plot_format="pdf", cumulative=Fals
     ax.set_xlabel("Wavelength [nm]")
     ax.set_xscale("log")
 
-    ax.set_xlim(left=np.amin(x_arr)*0.8, right=1e4)
-    ax.set_ylim(bottom=1e-1, top=ymax*2)
+    ax.set_xlim(left=np.amin(x_arr), right=np.amax(x_arr))
+    ax.set_ylim(bottom=ymin/2, top=ymax*2)
 
     plt.close()
     plt.ioff()
@@ -119,7 +129,7 @@ def plot_emission_entry(handler: Proteus):
     plot_emission(
         handler.directories["output"],
         plot_times,
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
    )
 
 

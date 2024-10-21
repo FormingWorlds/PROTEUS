@@ -120,7 +120,7 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0, plot_format: str="pdf"):
         log.warning("Only one spectrum was found")
 
     ax.set_yscale("log")
-    ax.set_ylabel("Flux [erg s-1 cm-2 nm-1]")
+    ax.set_ylabel(r"Flux [erg / (s cm$^2$ nm)]")
 
     ax.set_xscale("log")
     ax.set_xlabel("Wavelength [nm]")
@@ -152,7 +152,7 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0, plot_format: str="pdf"):
 def plot_sflux_entry(handler: Proteus):
     plot_sflux(
         output_dir=handler.directories['output'],
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
     )
 
 

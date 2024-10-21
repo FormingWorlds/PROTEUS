@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from attrs import define, field, validators
 
+from ._converters import none_if_none
+
 
 @define
 class Zephyrus:
@@ -16,7 +18,9 @@ class EscapeDummy:
 @define
 class Escape:
     """Escape parameters, model selection"""
-    module: str = field(validator=validators.in_(('dummy', 'zephyrus')))
+    module: str | None = field(
+        validator=validators.in_((None, 'dummy', 'zephyrus')), converter=none_if_none
+        )
 
     zephyrus: Zephyrus
     dummy: EscapeDummy

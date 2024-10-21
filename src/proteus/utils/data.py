@@ -4,9 +4,13 @@ import logging
 import os
 import subprocess as sp
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import platformdirs
 from osfclient.api import OSF
+
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -54,7 +58,7 @@ def download_surface_albedos():
     """
     Download surface optical properties
     """
-    log.debug("Get surface albedos")
+    log.debug("Get surface albedos?")
     storage = get_osf('2gcd9')
 
     folder_name = 'Hammond24'
@@ -75,8 +79,7 @@ def download_spectral_files(fname: str="", nband: int=256):
         - nband (optional) :    number of band = 16, 48, 256, 4096
                                 (only relevant for Dayspring, Frostflow and Honeyside)
     """
-    log.debug("Get spectral files")
-
+    log.debug("Get spectral files?")
 
     #Create spectral file data repository if not existing
     data_dir = GetFWLData() / "spectral_files"
@@ -86,26 +89,23 @@ def download_spectral_files(fname: str="", nband: int=256):
     storage = get_osf('vehxg')
 
     basic_list = (
-        "Dayspring/48"
+        "Dayspring/48",
         "Dayspring/256",
         "Frostflow/256",
-        "Honeyside/4096"
+        "Honeyside/4096",
         )
 
     #If no folder specified download all basic list
     if not fname:
         folder_list = basic_list
-    elif fname in ("Dayspring", "Frostflow", "Honeyside"):
-        folder_list = [fname + "/" + str(nband)]
-    elif fname in ("Kynesgrove","Legacy","Mallard","Oak","Reach","stellar_spectra"):
-        folder_list = [fname]
     else:
-        raise ValueError(f"Unrecognised folder name: {fname}")
+        folder_list = [fname + "/" + str(nband)]
 
     folders = [folder for folder in folder_list if not (data_dir / folder).exists()]
 
     if folders:
-        log.debug(f"    downloading spectral files to {data_dir}")
+        log.info(f"Downloading spectral files to {data_dir}")
+        log.debug("\t"+str(folders))
         download_folder(storage=storage, folders=folders, data_dir=data_dir)
 
 
@@ -113,7 +113,7 @@ def download_stellar_spectra():
     """
     Download stellar spectra
     """
-    log.debug("Get stellar spectra")
+    log.debug("Get stellar spectra?")
 
     folder_name = 'Named'
     storage = get_osf('8r2sw')
@@ -122,9 +122,24 @@ def download_stellar_spectra():
     data_dir.mkdir(parents=True, exist_ok=True)
 
     if not (data_dir / folder_name).exists():
-        print(f"Downloading stellar spectra to {data_dir}")
+        log.info(f"Downloading stellar spectra to {data_dir}")
         download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
 
+def download_exoplanet_data():
+    """
+    Download exoplanet data
+    """
+    log.debug("Get exoplanet data?")
+
+    folder_name = 'Exoplanets'
+    storage = get_osf('fzwr4')
+
+    data_dir = GetFWLData() / "planet_reference"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    if not (data_dir / folder_name).exists():
+        log.info(f"Downloading exoplanet population data to {data_dir}")
+        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
 
 def download_evolution_tracks(track:str):
     """
@@ -134,24 +149,27 @@ def download_evolution_tracks(track:str):
     log.debug("Get evolution tracks")
     DownloadEvolutionTracks(track)
 
-def download_sufficient_data(OPTIONS:dict):
+def download_sufficient_data(config:Config):
     """
     Download the required data based on the current options
     """
 
     # Star stuff
-    if OPTIONS["star_model"] in [0,1]:
+    if config.star.module == "mors":
         download_stellar_spectra()
-        if OPTIONS["star_model"] == 0:
+        if config.star.mors.tracks == 'spada':
             download_evolution_tracks("Spada")
         else:
             download_evolution_tracks("Baraffe")
 
     # Atmosphere stuff
-    if OPTIONS["atmosphere_model"] in [0,1]:
+    if config.atmos_clim.module in ('janus', 'agni'):
         download_spectral_files()
-    if OPTIONS["atmosphere_model"] == 1:
+    if config.atmos_clim.module == 'agni':
         download_surface_albedos()
+
+    # Exoplanet population data
+    download_exoplanet_data()
 
 def _none_dirs():
     from proteus.utils.helper import get_proteus_dir

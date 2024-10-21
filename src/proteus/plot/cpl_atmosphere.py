@@ -66,7 +66,7 @@ def plot_atmosphere( output_dir:str, times:list, profiles:list, plot_format="pdf
 
 
 def plot_atmosphere_entry(handler: Proteus):
-    plot_times, _ = sample_output(handler)
+    plot_times, _ = sample_output(handler, tmin=1e4)
     print("Snapshots:", plot_times)
 
     # Plot fixed set from above
@@ -75,7 +75,7 @@ def plot_atmosphere_entry(handler: Proteus):
         output_dir=handler.directories["output"],
         times=plot_times,
         profiles=profiles,
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
    )
 
 

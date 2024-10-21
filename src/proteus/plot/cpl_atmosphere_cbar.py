@@ -99,7 +99,7 @@ def plot_atmosphere_cbar_entry(handler: Proteus):
     # Plot fixed set from above
     plot_atmosphere_cbar(
         output_dir=handler.directories["output"],
-        plot_format=handler.config["plot_format"])
+        plot_format=handler.config.params.out.plot_fmt)
 
 
 if __name__ == "__main__":

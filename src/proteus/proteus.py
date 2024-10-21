@@ -1,38 +1,40 @@
 from __future__ import annotations
 
-import copy
 import logging
 import os
-import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import toml
-from calliope.solve import (
-    equilibrium_atmosphere,
-    get_target_from_params,
-    get_target_from_pressures,
-)
+from attrs import asdict
 from calliope.structure import calculate_mantle_mass
 
 import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
-from proteus.config import read_config
+from proteus.config import read_config_object
+from proteus.escape.wrapper import RunEscape
 from proteus.interior import run_interior
+from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
+from proteus.star.wrapper import (
+    get_new_spectrum,
+    init_star,
+    scale_spectrum_to_toa,
+    update_equilibrium_temperature,
+    update_instellation,
+    update_stellar_radius,
+    write_spectrum,
+)
 from proteus.utils.constants import (
     AU,
-    L_sun,
     M_earth,
     R_earth,
     const_G,
     element_list,
-    secs_per_year,
     volatile_species,
 )
 from proteus.utils.coupler import (
-    CalculateEqmTemperature,
     CreateHelpfileFromDict,
     CreateLockFile,
     ExtendHelpfile,
@@ -41,7 +43,6 @@ from proteus.utils.coupler import (
     ReadHelpfileFromCSV,
     SetDirectories,
     UpdatePlots,
-    ValidateInitFile,
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
 )
@@ -62,10 +63,42 @@ from proteus.utils.logs import (
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
-        self.config_path = config_path
-        self.config = read_config(config_path)
 
+        # Read and parse configuration file
+        self.config_path = config_path
+        self.config = read_config_object(config_path)
+
+        # Setup directories dictionary
         self.init_directories()
+
+        # Helpfile variables for the current iteration
+        self.hf_row = None
+
+        # Helpfile variables from all previous iterations
+        self.hf_all = None
+
+        # Loop counters
+        self.loops = None
+
+        # Model has finished?
+        self.finished = False
+
+        # Default values for mors.spada cases
+        self.star_props  = None
+        self.star_struct = None
+
+        # Default values for mors.baraffe cases
+        self.baraffe_track  = None
+        self.star_modern_fl = None
+        self.star_modern_wl = None
+
+        # Stellar spectrum (wavelengths, fluxes)
+        self.star_wl = None
+        self.star_fl = None
+
+        # Time at which star was last updated
+        self.sspec_prev = -np.inf   # spectrum
+        self.sinst_prev = -np.inf   # instellation and radius
 
     def init_directories(self):
         """Initialize directories dictionary"""
@@ -83,13 +116,8 @@ class Proteus:
         resume : bool
             If True, continue from previous simulation
         """
-        import mors
-
 
         UpdateStatusfile(self.directories, 0)
-
-        # Validate options
-        ValidateInitFile(self.directories, self.config)
 
         # Clean output directory
         if not resume:
@@ -101,7 +129,7 @@ class Proteus:
         logpath = GetLogfilePath(self.directories["output"], logindex)
 
         # Switch to logger
-        setup_logger(logpath=logpath, logterm=True, level=self.config["log_level"])
+        setup_logger(logpath=logpath, logterm=True, level=self.config.params.out.logging)
         log = logging.getLogger("fwl."+__name__)
 
         # Print information to logger
@@ -117,15 +145,15 @@ class Proteus:
         log.info("Config file : " + str(self.config_path))
         log.info("Output dir  : " + self.directories["output"])
         log.info("FWL data dir: " + self.directories["fwl"])
-        if self.config["atmosphere_model"] in [0, 1]:
+        if self.config.atmos_clim.module in ['janus', 'agni']:
             log.info("SOCRATES dir: " + self.directories["rad"])
         log.info(" ")
 
         # Count iterations
-        loop_counter = {
+        self.loops = {
             "total": 0,  # Total number of iters performed
             "total_min": 5,  # Minimum number of total loops
-            "total_loops": self.config["iter_max"],  # Maximum number of total loops
+            "total_loops": self.config.params.stop.iters.maximum,  # Maximum number of total loops
             "init": 0,  # Number of init iters performed
             "init_loops": 2,  # Maximum number of init iters
             "steady": -1,  # Number of iterations passed since steady-state declared
@@ -133,19 +161,8 @@ class Proteus:
             "steady_check": 15,  # Number of iterations to look backwards when checking steady state
         }
 
-        # Model has completed?
-        finished = False
-
         # Config file paths
         config_path_backup = os.path.join(self.directories["output"], "init_coupler.toml")
-
-        # Import the appropriate escape module
-        if self.config["escape_model"] == 0:
-            pass
-        elif self.config["escape_model"] == 1:
-            from proteus.utils.escape import RunZEPHYRUS
-        elif self.config["escape_model"] == 2:
-            from proteus.utils.escape import RunDummyEsc
 
         # Is the model resuming from a previous state?
         if not resume:
@@ -154,52 +171,51 @@ class Proteus:
             # SPIDER initial condition
             IC_INTERIOR = 1
 
-            # Write aggregate config to output directory, for future reference
-            with open(config_path_backup, "w") as toml_file:
-                toml.dump(self.config, toml_file)
-
-            # No previous iterations to be stored. It is therefore important that the
-            #    submodules do not try to read data from the 'past' iterations, since they do
-            #    not yet exist.
-            hf_all = None
+            # Write config to output directory, for future reference
+            # File is read into memory first, because it's possible that the original
+            #    file and the backup file are located at the same path.
+            with open(str(self.config_path), 'r') as hdl:
+                config_raw = hdl.readlines()
+            with open(config_path_backup, 'w') as hdl:
+                hdl.writelines(config_raw)
 
             # Create an empty initial row for helpfile
-            hf_row = ZeroHelpfileRow()
+            self.hf_row = ZeroHelpfileRow()
 
             # Initial time
-            hf_row["Time"] = 0.0
-            hf_row["age_star"] = self.config["time_star"]
+            self.hf_row["Time"] = 0.0
+            self.hf_row["age_star"] = self.config.star.age_ini * 1e9
 
             # Initial guess for flux
-            hf_row["F_atm"] = self.config["F_atm"]
-            hf_row["F_int"] = hf_row["F_atm"]
-            hf_row["T_eqm"] = 2000.0
+            self.hf_row["F_atm"] = self.config.interior.F_initial
+            self.hf_row["F_int"] = self.hf_row["F_atm"]
+            self.hf_row["T_eqm"] = 2000.0
 
             # Planet size conversion, and calculate mantle mass (= liquid + solid)
-            hf_row["M_planet"] = self.config["mass"] * M_earth
-            hf_row["R_planet"] = self.config["radius"] * R_earth
-            hf_row["gravity"] = const_G * hf_row["M_planet"] / (hf_row["R_planet"] ** 2.0)
-            hf_row["M_mantle"] = calculate_mantle_mass(
-                hf_row["R_planet"], hf_row["M_planet"], self.config["planet_coresize"]
+            self.hf_row["M_int"] = self.config.struct.mass * M_earth
+            self.hf_row["R_int"] = self.config.struct.radius * R_earth
+            self.hf_row["gravity"] = const_G * self.hf_row["M_int"] / (self.hf_row["R_int"] ** 2.0)
+            self.hf_row["M_mantle"] = calculate_mantle_mass(
+                self.hf_row["R_int"], self.hf_row["M_int"], self.config.struct.corefrac
             )
 
             # Store partial pressures and list of included volatiles
             log.info("Input partial pressures:")
             inc_vols = []
             for s in volatile_species:
-                key_pp = str(s + "_initial_bar")
-                key_in = str(s + "_included")
+                pp_val = getattr(self.config.delivery.volatiles, s)
+                include = getattr(self.config.outgas.calliope, f'include_{s}')
 
                 log.info(
                     "    %-6s : %-5.2f bar (included = %s)"
-                    % (s, self.config[key_pp], str(self.config[key_in] > 0))
+                    % (s, pp_val, include)
                 )
 
-                if self.config[key_in] > 0:
+                if include:
                     inc_vols.append(s)
-                    hf_row[s + "_bar"] = max(1.0e-30, float(self.config[key_pp]))
+                    self.hf_row[s + "_bar"] = max(1.0e-30, float(pp_val))
                 else:
-                    hf_row[s + "_bar"] = 0.0
+                    self.hf_row[s + "_bar"] = 0.0
             log.info("Included volatiles: " + str(inc_vols))
 
         else:
@@ -208,84 +224,49 @@ class Proteus:
 
             # Copy cfg file
             with open(config_path_backup, "w") as toml_file:
-                toml.dump(self.config, toml_file)
+                toml.dump(asdict(self.config), toml_file)
 
             # SPIDER initial condition
             IC_INTERIOR = 2
 
             # Read helpfile from disk
-            hf_all = ReadHelpfileFromCSV(self.directories["output"])
+            self.hf_all = ReadHelpfileFromCSV(self.directories["output"])
 
             # Check length
-            if len(hf_all) <= loop_counter["init_loops"] + 1:
+            if len(self.hf_all) <= self.loops["init_loops"] + 1:
                 raise Exception("Simulation is too short to be resumed")
 
             # Get last row
-            hf_row = hf_all.iloc[-1].to_dict()
+            self.hf_row = self.hf_all.iloc[-1].to_dict()
 
             # Set loop counters
-            loop_counter["total"] = len(hf_all)
-            loop_counter["init"] = loop_counter["init_loops"] + 1
-
-            # Set instellation
-            S_0 = hf_row["F_ins"]
-            F_inst_prev = S_0
+            self.loops["total"] = len(self.hf_all)
+            self.loops["init"] = self.loops["init_loops"] + 1
 
             # Set volatile mass targets f
             solvevol_target = {}
             for e in element_list:
                 if e == "O":
                     continue
-                solvevol_target[e] = hf_row[e + "_kg_total"]
+                solvevol_target[e] = self.hf_row[e + "_kg_total"]
 
         # Download basic data
         download_sufficient_data(self.config)
 
-        # Handle stellar spectrum...
-
-        # Store copy of modern spectrum in memory (1 AU)
-        sspec_prev = -np.inf
-        sinst_prev = -np.inf
-        star_modern_path = os.path.join(self.directories["fwl"], self.config["star_spectrum"])
-        shutil.copyfile(star_modern_path, os.path.join(self.directories["output"], "-1.sflux"))
-
-        # Prepare stellar models
-        match self.config["star_model"]:
-            case 0:  # SPADA (MORS)
-                # load modern spectrum
-                star_struct_modern = mors.spec.Spectrum()
-                star_struct_modern.LoadTSV(star_modern_path)
-                star_struct_modern.CalcBandFluxes()
-
-                # modern properties
-                star_props_modern = mors.synthesis.GetProperties(
-                    self.config["star_mass"],
-                    self.config["star_rot_pctle"],
-                    self.config["star_age_modern"] / 1e6,
-                )
-
-            case 1:  # BARAFFE
-                modern_wl, modern_fl = mors.ModernSpectrumLoad(
-                    star_modern_path, self.directories["output"] + "/-1.sflux"
-                )
-
-                baraffe = mors.BaraffeTrack(self.config["star_mass"])
-
-            case _:
-                UpdateStatusfile(self.directories, 20)
-                raise Exception("Invalid stellar model '%d'" % self.config["star_model"])
+        # Prepare star stuff
+        init_star(self)
 
         # Create lockfile
         keepalive_file = CreateLockFile(self.directories["output"])
 
         # Main loop
         UpdateStatusfile(self.directories, 1)
-        while not finished:
+        while not self.finished:
             # New rows
-            if loop_counter["total"] > 0:
+            if self.loops["total"] > 0:
                 # Create new row to hold the updated variables. This will be
                 #    overwritten by the routines below.
-                hf_row = hf_all.iloc[-1].to_dict()
+                self.hf_row = self.hf_all.iloc[-1].to_dict()
 
             log.info(" ")
             PrintSeparator()
@@ -294,12 +275,12 @@ class Proteus:
             log.info(
                 "%1d/%1d   %04d/%04d   %1d/%1d"
                 % (
-                    loop_counter["init"],
-                    loop_counter["init_loops"],
-                    loop_counter["total"],
-                    loop_counter["total_loops"],
-                    loop_counter["steady"],
-                    loop_counter["steady_loops"],
+                    self.loops["init"],
+                    self.loops["init_loops"],
+                    self.loops["total"],
+                    self.loops["total_loops"],
+                    self.loops["steady"],
+                    self.loops["steady_loops"],
                 )
             )
 
@@ -307,8 +288,8 @@ class Proteus:
 
             # Calculate time-averaged orbital separation (and convert from AU to metres)
             # https://physics.stackexchange.com/a/715749
-            hf_row["separation"] = self.config["semimajoraxis"] * AU * \
-                                        (1 + 0.5 * self.config["eccentricity"]**2.0)
+            self.hf_row["separation"] = self.config.orbit.semimajoraxis * AU * \
+                                        (1 + 0.5 * self.config.orbit.eccentricity**2.0)
 
 
             ############### / ORBIT AND TIDES
@@ -317,11 +298,11 @@ class Proteus:
 
             # Run interior model
             dt = run_interior(self.directories, self.config,
-                                loop_counter, IC_INTERIOR, hf_all,  hf_row)
+                                self.loops, IC_INTERIOR, self.hf_all,  self.hf_row)
 
             # Advance current time in main loop according to interior step
-            hf_row["Time"] += dt        # in years
-            hf_row["age_star"] += dt    # in years
+            self.hf_row["Time"]     += dt    # in years
+            self.hf_row["age_star"] += dt    # in years
 
             ############### / INTERIOR
 
@@ -331,103 +312,57 @@ class Proteus:
             update_stellar_spectrum = False
 
             # Calculate new instellation and radius
-            if (abs(hf_row["Time"] - sinst_prev) > self.config["sinst_dt_update"]) or (
-                loop_counter["total"] == 0
+            if (abs(self.hf_row["Time"] - self.sinst_prev) > self.config.params.dt.starinst) or (
+                self.loops["total"] == 0
             ):
-                sinst_prev = hf_row["Time"]
+                self.sinst_prev = self.hf_row["Time"]
 
-                # Get previous instellation
-                if loop_counter["total"] > 0:
-                    F_inst_prev = S_0
-                else:
-                    F_inst_prev = 0.0
+                # Update value for star's radius
+                log.info("Update stellar radius")
+                update_stellar_radius(self.hf_row, self.config, baraffe_track=self.baraffe_track)
 
-                if self.config["stellar_heating"] > 0:
-                    log.info("Updating instellation and radius")
+                # Update value for instellation flux
+                log.info("Update instellation")
+                update_instellation(self.hf_row, self.config, baraffe_track=self.baraffe_track)
 
-                    match self.config["star_model"]:
-                        case 0:
-                            hf_row["R_star"] = (
-                                mors.Value(
-                                    self.config["star_mass"],
-                                    hf_row["age_star"] / 1e6,
-                                    "Rstar"
-                                )
-                                * mors.const.Rsun
-                                * 1.0e-2
-                            )
-                            S_0 = (
-                                mors.Value(
-                                    self.config["star_mass"],
-                                    hf_row["age_star"] / 1e6,
-                                    "Lbol"
-                                ) * L_sun  / (4.0 * np.pi * hf_row["separation"]**2.0 )
-                            )
-                        case 1:
-                            hf_row["R_star"] = (
-                                baraffe.BaraffeStellarRadius(hf_row["age_star"])
-                                * mors.const.Rsun
-                                * 1.0e-2
-                            )
-                            S_0 = baraffe.BaraffeSolarConstant(
-                                hf_row["age_star"], hf_row["separation"]/AU
-                            )
+                # Calculate new eqm temperature
+                log.info("Update equilibrium temperature")
+                update_equilibrium_temperature(self.hf_row, self.config)
 
-                    # Calculate new eqm temperature
-                    T_eqm_new = CalculateEqmTemperature(
-                        S_0, self.config["asf_scalefactor"], self.config["albedo_pl"]
-                    )
-
-                else:
-                    log.info("Stellar heating is disabled")
-                    T_eqm_new = 0.0
-                    S_0 = 0.0
-
-                hf_row["F_ins"] = S_0  # instellation
-                hf_row["T_eqm"] = T_eqm_new
-                hf_row["T_skin"] = (
-                    T_eqm_new * (0.5**0.25)
-                )  # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
-
-                log.debug("Instellation change: %+.4e W m-2 (to 4dp)" % abs(S_0 - F_inst_prev))
+                # Calculate new skin temperature
+                # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
+                self.hf_row["T_skin"] = self.hf_row["T_eqm"] * (0.5**0.25)
 
             # Calculate a new (historical) stellar spectrum
-            if (abs(hf_row["Time"] - sspec_prev) > self.config["sspec_dt_update"]) or (
-                loop_counter["total"] == 0
+            if (abs(self.hf_row["Time"] - self.sspec_prev) > self.config.params.dt.starspec) or (
+                self.loops["total"] == 0
             ):
-                sspec_prev = hf_row["Time"]
+                self.sspec_prev = self.hf_row["Time"]
                 update_stellar_spectrum = True
 
+                # Get the new spectrum using the appropriate module
                 log.info("Updating stellar spectrum")
-                match self.config["star_model"]:
-                    case 0:
-                        synthetic = mors.synthesis.CalcScaledSpectrumFromProps(
-                            star_struct_modern, star_props_modern, hf_row["age_star"] / 1e6
-                        )
-                        fl = synthetic.fl  # at 1 AU
-                        wl = synthetic.wl
-                    case 1:
-                        fl = baraffe.BaraffeSpectrumCalc(
-                            hf_row["age_star"], self.config["star_luminosity_modern"], modern_fl
-                        )
-                        wl = modern_wl
+                self.star_wl, self.star_fl = get_new_spectrum(
+
+                                        # Required variables
+                                        self.hf_row["age_star"], self.hf_row["R_star"], self.config,
+
+                                        # Variables needed for mors.spada
+                                        star_struct_modern=self.star_struct,
+                                        star_props_modern=self.star_props,
+
+                                        # Variables needed for mors.baraffe
+                                        baraffe_track=self.baraffe_track,
+                                        modern_wl=self.star_modern_wl,
+                                        modern_fl=self.star_modern_fl,
+                                        )
 
                 # Scale fluxes from 1 AU to TOA
-                fl *= (AU / hf_row["separation"]) ** 2.0
+                self.star_fl = scale_spectrum_to_toa(self.star_fl, self.hf_row["separation"])
 
                 # Save spectrum to file
-                header = (
-                    "# WL(nm)\t Flux(ergs/cm**2/s/nm)   Stellar flux at t_star = %.2e yr"
-                    % hf_row["age_star"]
-                )
-                np.savetxt(
-                    os.path.join(self.directories["output"], "data", "%d.sflux" % hf_row["Time"]),
-                    np.array([wl, fl]).T,
-                    header=header,
-                    comments="",
-                    fmt="%.8e",
-                    delimiter="\t",
-                )
+                write_spectrum(self.star_wl, self.star_fl,
+                                self.hf_row, self.directories["output"])
 
             else:
                 log.info("New spectrum not required at this time")
@@ -435,92 +370,30 @@ class Proteus:
             ############### / STELLAR FLUX MANAGEMENT
 
             ############### ESCAPE
-
-            if (loop_counter["total"] >= loop_counter["init_loops"]) and (
-                self.config["escape_model"] > 0
-            ):
-                PrintHalfSeparator()
-
-                if self.config["escape_model"] == 1:
-                    esc_result = RunZEPHYRUS(
-                        hf_row,
-                        dt,
-                        self.config["star_mass"],
-                        self.config["star_omega"],
-                        self.config["escape_el_tidal_correction"],
-                        self.config["semimajoraxis"] * AU,
-                        self.config["eccentricity"],
-                        hf_row["M_planet"],
-                        self.config["efficiency_factor"],
-                        hf_row["R_planet"],
-                        hf_row["R_planet"],
-                    )
-
-                elif self.config["escape_model"] == 2:
-                    esc_result = RunDummyEsc(hf_row, dt, self.config["escape_dummy_rate"])
-
-                # store total escape rate
-                hf_row["esc_rate_total"] = esc_result["rate_bulk"]
-                log.info(
-                    "Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1"
-                    % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"])
-                )
-                # update elemental mass targets
-                for e in element_list:
-                    if e == "O":
-                        continue
-
-                    # store change, for statistics
-                    esc_m = esc_result[e + "_kg_total"]
-
-                    # update total elemental inventory
-                    solvevol_target[e] = esc_m
-
-                    # do not allow negative masses
-                    solvevol_target[e] = max(0.0, solvevol_target[e])
-
+            if (self.loops["total"] >= self.loops["init_loops"]):
+                RunEscape(self.config, self.hf_row, dt)
             ############### / ESCAPE
 
             ############### OUTGASSING
             PrintHalfSeparator()
-            solvevol_inp = copy.deepcopy(self.config)
-            solvevol_inp["M_mantle"] = hf_row["M_mantle"]
-            solvevol_inp["T_magma"] = hf_row["T_magma"]
-            solvevol_inp["Phi_global"] = hf_row["Phi_global"]
-            solvevol_inp["gravity"] = hf_row["gravity"]
-            solvevol_inp["mass"] = hf_row["M_planet"]
-            solvevol_inp["radius"] = hf_row["R_planet"]
 
             #    recalculate mass targets during init phase, since these will be adjusted
             #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
-            if loop_counter["init"] < loop_counter["init_loops"]:
-                # calculate target mass of atoms (except O, which is derived from fO2)
-                if self.config["solvevol_use_params"] > 0:
-                    solvevol_target = get_target_from_params(solvevol_inp)
-                else:
-                    solvevol_target = get_target_from_pressures(solvevol_inp)
-
-                # prevent numerical issues
-                for key in solvevol_target.keys():
-                    if solvevol_target[key] < 1.0e4:
-                        solvevol_target[key] = 0.0
+            if self.loops["init"] < self.loops["init_loops"]:
+                calc_target_elemental_inventories(self.directories, self.config, self.hf_row)
 
             # solve for atmosphere composition
-            solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
+            run_outgassing(self.directories, self.config, self.hf_row)
 
-            #    store results
-            for k in solvevol_result.keys():
-                if k in hf_row.keys():
-                    hf_row[k] = solvevol_result[k]
+            # Add atmosphere mass to interior mass, to get total planet mass
+            self.hf_row["M_planet"] = self.hf_row["M_int"] + self.hf_row["M_atm"]
 
-            #    calculate total atmosphere mass
-            hf_row["M_atm"] = 0.0
-            for s in volatile_species:
-                hf_row["M_atm"] += hf_row[s + "_kg_atm"]
             ############### / OUTGASSING
 
-            ############### ATMOSPHERE SUB-LOOP
-            RunAtmosphere(self.config, self.directories, loop_counter, wl, fl, update_stellar_spectrum, hf_all, hf_row)
+            ############### ATMOSPHERE CLIMATE
+            RunAtmosphere(self.config, self.directories, self.loops,
+                                self.star_wl, self.star_fl, update_stellar_spectrum,
+                                self.hf_all, self.hf_row)
 
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
@@ -528,66 +401,66 @@ class Proteus:
 
             # Update init loop counter
             # Next init iter
-            if loop_counter["init"] < loop_counter["init_loops"]:
-                loop_counter["init"] += 1
-                hf_row["Time"] = 0.0
+            if self.loops["init"] < self.loops["init_loops"]:
+                self.loops["init"] += 1
+                self.hf_row["Time"] = 0.0
             # Reset restart flag once SPIDER has correct heat flux
-            if loop_counter["total"] >= loop_counter["init_loops"]:
+            if self.loops["total"] >= self.loops["init_loops"]:
                 IC_INTERIOR = 2
 
             # Adjust total iteration counters
-            loop_counter["total"] += 1
+            self.loops["total"] += 1
 
             # Update full helpfile
-            if loop_counter["total"] > 1:
+            if self.loops["total"] > 1:
                 # append row
-                hf_all = ExtendHelpfile(hf_all, hf_row)
+                self.hf_all = ExtendHelpfile(self.hf_all, self.hf_row)
             else:
                 # first iter => generate new HF from dict
-                hf_all = CreateHelpfileFromDict(hf_row)
+                self.hf_all = CreateHelpfileFromDict(self.hf_row)
 
             # Write helpfile to disk
-            WriteHelpfileToCSV(self.directories["output"], hf_all)
+            WriteHelpfileToCSV(self.directories["output"], self.hf_all)
 
             # Print info to terminal and log file
-            PrintCurrentState(hf_row)
+            PrintCurrentState(self.hf_row)
 
             log.info("Check convergence criteria")
 
             # Stop simulation when planet is completely solidified
-            if (self.config["solid_stop"] == 1) and (hf_row["Phi_global"] <= self.config["phi_crit"]):
+            if self.config.params.stop.solid.enabled and (self.hf_row["Phi_global"] <= self.config.params.stop.solid.phi_crit):
                 UpdateStatusfile(self.directories, 10)
                 log.info("")
                 log.info("===> Planet solidified! <===")
                 log.info("")
-                finished = True
+                self.finished = True
 
             # Stop simulation when flux is small
             if (
-                (self.config["emit_stop"] == 1)
-                and (loop_counter["total"] > loop_counter["init_loops"] + 1)
-                and (abs(hf_row["F_atm"]) <= self.config["F_crit"])
+                self.config.params.stop.radeqm.enabled
+                and (self.loops["total"] > self.loops["init_loops"] + 1)
+                and (abs(self.hf_row["F_atm"]) <= self.config.params.stop.radeqm.F_crit)
             ):
                 UpdateStatusfile(self.directories, 14)
                 log.info("")
                 log.info("===> Planet no longer cooling! <===")
                 log.info("")
-                finished = True
+                self.finished = True
 
             # Determine when the simulation enters a steady state
             if (
-                (self.config["steady_stop"] == 1)
-                and (loop_counter["total"] > loop_counter["steady_check"] * 2 + 5)
-                and (loop_counter["steady"] < 0)
+                self.config.params.stop.steady.enabled
+                and (self.loops["total"] > self.loops["steady_check"] * 2 + 5)
+                and (self.loops["steady"] < 0)
             ):
                 # How many iterations to look backwards
-                lb1 = -int(loop_counter["steady_check"])
+                lb1 = -int(self.loops["steady_check"])
                 lb2 = -1
 
                 # Get data
-                arr_t = np.array(hf_all["Time"])
-                arr_f = np.array(hf_all["F_atm"])
-                arr_p = np.array(hf_all["Phi_global"])
+                arr_t = np.array(self.hf_all["Time"])
+                arr_f = np.array(self.hf_all["F_atm"])
+                arr_p = np.array(self.hf_all["Phi_global"])
 
                 # Time samples
                 t1 = arr_t[lb1]
@@ -602,52 +475,53 @@ class Proteus:
                 phi_r = abs(phi_2 - phi_1) / (t2 - t1)
 
                 # Stop when flux is small and melt fraction is unchanging
-                if (flx_m < self.config["steady_flux"]) and (phi_r < self.config["steady_dprel"]):
+                if (flx_m < self.config.params.stop.steady.F_crit) \
+                    and (phi_r < self.config.params.stop.steady.dprel):
                     log.debug("Steady state declared")
-                    loop_counter["steady"] = 0
+                    self.loops["steady"] = 0
 
             # Steady-state handling
-            if loop_counter["steady"] >= 0:
+            if self.loops["steady"] >= 0:
                 # Force the model to do N=steady_loops more iterations before stopping
                 # This is to make absolutely sure that it has reached a steady state.
-                loop_counter["steady"] += 1
+                self.loops["steady"] += 1
 
                 # Stop now?
-                if loop_counter["steady"] >= loop_counter["steady_loops"]:
+                if self.loops["steady"] >= self.loops["steady_loops"]:
                     UpdateStatusfile(self.directories, 11)
                     log.info("")
                     log.info("===> Planet entered a steady state! <===")
                     log.info("")
-                    finished = True
+                    self.finished = True
 
             # Atmosphere has escaped
-            if hf_row["M_atm"] <= self.config["escape_stop"] * hf_all.iloc[0]["M_atm"]:
+            if self.hf_row["M_atm"] <= self.config.params.stop.escape.mass_frac * self.hf_all.iloc[0]["M_atm"]:
                 UpdateStatusfile(self.directories, 15)
                 log.info("")
                 log.info("===> Atmosphere has escaped! <===")
                 log.info("")
-                finished = True
+                self.finished = True
 
             # Maximum time reached
-            if hf_row["Time"] >= self.config["time_target"]:
+            if self.hf_row["Time"] >= self.config.params.stop.time.maximum:
                 UpdateStatusfile(self.directories, 13)
                 log.info("")
                 log.info("===> Target time reached! <===")
                 log.info("")
-                finished = True
+                self.finished = True
 
             # Maximum loops reached
-            if loop_counter["total"] > loop_counter["total_loops"]:
+            if self.loops["total"] > self.loops["total_loops"]:
                 UpdateStatusfile(self.directories, 12)
                 log.info("")
                 log.info("===> Maximum number of iterations reached! <===")
                 log.info("")
-                finished = True
+                self.finished = True
 
             # Check if the minimum number of loops have been performed
-            if finished and (loop_counter["total"] < loop_counter["total_min"]):
+            if self.finished and (self.loops["total"] < self.loops["total_min"]):
                 log.info("Minimum number of iterations not yet attained; continuing...")
-                finished = False
+                self.finished = False
                 UpdateStatusfile(self.directories, 1)
 
             # Check if keepalive file has been removed - this means that the model should exit ASAP
@@ -656,32 +530,28 @@ class Proteus:
                 log.info("")
                 log.info("===> Model exit was requested! <===")
                 log.info("")
-                finished = True
+                self.finished = True
 
             # Make plots if required and go to next iteration
             if (
-                (self.config["plot_iterfreq"] > 0)
-                and (loop_counter["total"] % self.config["plot_iterfreq"] == 0)
-                and (not finished)
+                (self.config.params.out.plot_mod > 0)
+                and (self.loops["total"] % self.config.params.out.plot_mod == 0)
+                and (not self.finished)
             ):
                 PrintHalfSeparator()
                 log.info("Making plots")
-                UpdatePlots(hf_all, self.directories["output"], self.config)
+                UpdatePlots(self.hf_all, self.directories, self.config)
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
         # FINAL THINGS BEFORE EXIT
         PrintHalfSeparator()
 
-        # Deallocate atmosphere
-        # if self.config["atmosphere_model"] == 1:
-        #     deallocate_atmos(atm)
-
         # Clean up files
         safe_rm(keepalive_file)
 
         # Plot conditions at the end
-        UpdatePlots(hf_all, self.directories["output"], self.config, end=True)
+        UpdatePlots(self.hf_all, self.directories, self.config, end=True)
         end_time = datetime.now()
         log.info("Simulation stopped at: " + end_time.strftime("%Y-%m-%d_%H:%M:%S"))
 

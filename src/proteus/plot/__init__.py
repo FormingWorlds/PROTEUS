@@ -17,29 +17,31 @@ from proteus.plot.cpl_offchem_grid_cross import plot_offchem_grid_cross_entry
 from proteus.plot.cpl_offchem_species import plot_offchem_species_entry
 from proteus.plot.cpl_offchem_time import plot_offchem_time_entry
 from proteus.plot.cpl_offchem_year import plot_offchem_year_entry
+from proteus.plot.cpl_population import plot_population_entry
 from proteus.plot.cpl_sflux import plot_sflux_entry
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross_entry
 from proteus.plot.cpl_stacked import plot_stacked_entry
 
 plot_dispatch = {
-    'atmosphere': plot_atmosphere_entry,
-    'atmosphere_cbar': plot_atmosphere_cbar_entry,
-    'elements': plot_elements_entry,
-    'escape': plot_escape_entry,
-    'fluxes_atmosphere': plot_fluxes_atmosphere_entry,
-    'fluxes_global': plot_fluxes_global_entry,
-    'global': plot_global_entry,
-    'heatingrates': plot_heatingrates_entry,
-    'interior': plot_interior_entry,
-    'interior_cbar': plot_interior_cbar_entry,
-    'interior_cmesh': plot_interior_cmesh_entry,
-    'observables': plot_observables_entry,
-    'offchem_grid_cross': plot_offchem_grid_cross_entry,
-    'offchem_species': plot_offchem_species_entry,
-    'offchem_time': plot_offchem_time_entry,
-    'offchem_year': plot_offchem_year_entry,
-    'sflux': plot_sflux_entry,
-    'sflux_cross': plot_sflux_cross_entry,
-    'stacked': plot_stacked_entry,
-    'emission': plot_emission_entry,
+    'atmosphere':           plot_atmosphere_entry,
+    'atmosphere_cbar':      plot_atmosphere_cbar_entry,
+    'elements':             plot_elements_entry,
+    'escape':               plot_escape_entry,
+    'fluxes_atmosphere':    plot_fluxes_atmosphere_entry,
+    'fluxes_global':        plot_fluxes_global_entry,
+    'global':               plot_global_entry,
+    'heatingrates':         plot_heatingrates_entry,
+    'interior':             plot_interior_entry,
+    'interior_cbar':        plot_interior_cbar_entry,
+    'interior_cmesh':       plot_interior_cmesh_entry,
+    'observables':          plot_observables_entry,
+    'offchem_grid_cross':   plot_offchem_grid_cross_entry,
+    'offchem_species':      plot_offchem_species_entry,
+    'offchem_time':         plot_offchem_time_entry,
+    'offchem_year':         plot_offchem_year_entry,
+    'sflux':                plot_sflux_entry,
+    'sflux_cross':          plot_sflux_cross_entry,
+    'stacked':              plot_stacked_entry,
+    'emission':             plot_emission_entry,
+    'population':           plot_population_entry,
 }

@@ -15,20 +15,20 @@ class Elements:
 
 @define
 class Volatiles:
-    H2O: float
-    CO2: float
-    N2: float
-    S2: float
-    SO2: float
-    H2: float
-    CH4: float
-    CO: float
+    H2O: float = field(default=0)
+    CO2: float = field(default=0)
+    N2: float = field(default=0)
+    S2: float = field(default=0)
+    SO2: float = field(default=0)
+    H2: float = field(default=0)
+    CH4: float = field(default=0)
+    CO: float = field(default=0)
 
 
 @define
 class Delivery:
     """Initial volatile inventory, and delivery model selection"""
-    initial: str = field(validator=validators.in_(('elements', 'volatile')))
+    initial: str = field(validator=validators.in_(('elements', 'volatiles')))
 
     module: str | None = field(validator=validators.in_((None,)), converter=none_if_none)
 

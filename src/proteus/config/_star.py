@@ -14,16 +14,16 @@ class Mors:
 @define
 class Star:
     """Stellar parameters, model selection"""
-    mass: float
     radius: float
+    mass: float
     Teff: float
-    Lbol: float
     omega: float
+    lum_now: float
     age_now: float
     age_ini: float
 
     module: str | None = field(
-        validator=validators.in_((None, 'mors')),
+        validator=validators.in_((None, 'mors', 'dummy')),
         converter=none_if_none,
     )
 
