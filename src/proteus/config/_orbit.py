@@ -7,7 +7,21 @@ from ._converters import none_if_none
 
 @define
 class Orbit:
-    """Planetary orbital parameters"""
+    """Planetary orbital parameters.
+
+    Attributes
+    ----------
+    semimajoraxis: float
+        AU
+    eccentricity: float
+        Dimensionless
+    zenith_angle: float
+        Degrees
+    s0_factor: float
+        Dimensionless
+    module: str | None
+        Select orbit module to use. Not used currently.
+    """
     semimajoraxis: float
     eccentricity: float = field(validator=[
         validators.ge(0),
