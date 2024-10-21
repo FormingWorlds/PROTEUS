@@ -49,6 +49,7 @@ plugins:
         paths: [src]
         import:
         - https://installer.readthedocs.io/en/stable/objects.inv
+        - https://docs.python.org/3/objects.inv
         - https://numpy.org/doc/stable/objects.inv
         - https://docs.scipy.org/doc/scipy/objects.inv
         - https://pandas.pydata.org/docs/objects.inv
