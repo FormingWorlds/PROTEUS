@@ -32,9 +32,9 @@ def generate_spectrum(tmp:float, R_star:float):
     log.debug("Generating stellar spectrum at Teff=%.0f K"%tmp)
 
     # Allocate wavelength array
-    wl_min = 1e-10 # 1 angstrom
-    wl_max = 1e-2  # 1 cm
-    wl_pts = 500   # number of points to sample
+    wl_min = 1e-10  # 0.1 nm
+    wl_max = 1e-1   # 10 cm
+    wl_pts = 600    # number of points to sample
     wl_arr = np.logspace(np.log10(wl_min), np.log10(wl_max), wl_pts)
 
     # Allocate flux array with zeros
