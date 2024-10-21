@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -12,7 +13,52 @@ from proteus.utils.constants import AU, L_sun, R_sun, const_sigma
 log = logging.getLogger("fwl."+__name__)
 
 if TYPE_CHECKING:
+    from proteus import Proteus
     from proteus.config import Config
+
+def init_star(handler:Proteus):
+    '''
+    Star-related things to be done when the simulation begins.
+    '''
+
+    # Path to the modern spectrum
+    #   i.e. that observed by a telescope, or derived from various observations.
+    #   This is what we download from OSF.
+    star_modern_path = os.path.join(handler.directories["fwl"],
+                                    handler.config.star.mors.spec)
+
+    # Copy modern spectrum to output folder, for posterity.
+    star_backup_path = os.path.join(handler.directories["output"], "-1.sflux")
+    shutil.copyfile(star_modern_path, star_backup_path)
+
+    # Dummy star modules does not require preparation
+
+    # Prepare MORS
+    if handler.config.star.module == 'mors':
+        import mors
+
+        match handler.config.star.mors.tracks:
+
+            case 'spada':
+                # load modern spectrum
+                # calculate band-integrated fluxes
+                handler.star_struct = mors.spec.Spectrum()
+                handler.star_struct.LoadTSV(star_modern_path)
+                handler.star_struct.CalcBandFluxes()
+
+                # calculate other properties from modern spectrum
+                handler.star_props = mors.synthesis.GetProperties(
+                    handler.config.star.mass,
+                    handler.config.star.omega,
+                    handler.config.star.age_now * 1000, # convert Gyr to Myr
+                )
+
+            case 'baraffe':
+                handler.star_modern_wl, handler.star_modern_fl = mors.ModernSpectrumLoad(
+                    star_modern_path, star_backup_path
+                )
+
+                handler.baraffe_track = mors.BaraffeTrack(handler.config.star.mass)
 
 def get_new_spectrum(t_star:float, R_star:float, config:Config,
                      star_struct_modern=None, star_props_modern=None,
