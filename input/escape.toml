@@ -87,14 +87,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [star]
 
     # Physical parameters
-    mass    = 1.0       # M_sun
     radius  = 1.0       # R_sun
     Teff    = 5772.0    # K
-    Lbol    = 1.0       # L_sun
+    mass    = 1.0       # M_sun
+    lum_now = 1.0       # L_sun
     omega   = 50.0      # rotation percentile
     age_now = 4.567     # Gyr, current age of star used for scaling
     age_ini = 0.100     # Gyr, model initialisation/start age
-
 
     module  = "mors"
     [star.mors]

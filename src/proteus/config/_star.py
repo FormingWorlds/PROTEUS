@@ -26,13 +26,13 @@ class Star:
 
     Attributes
     ----------
-    mass: float
-        M_sun
     radius: float
         R_sun
     Teff: float
         K
-    Lbol: float
+    mass: float
+        M_sun
+    lum_now: float
         L_sun
     omega: float
         Rotation percentile
@@ -45,16 +45,16 @@ class Star:
     mors: Mors
         Parameters for MORS module
     """
-    mass: float
     radius: float
+    mass: float
     Teff: float
-    Lbol: float
     omega: float
+    lum_now: float
     age_now: float
     age_ini: float
 
     module: str | None = field(
-        validator=validators.in_((None, 'mors')),
+        validator=validators.in_((None, 'mors', 'dummy')),
         converter=none_if_none,
     )
 

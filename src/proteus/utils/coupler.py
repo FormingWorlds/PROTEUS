@@ -34,7 +34,6 @@ from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_stacked import plot_stacked
 from proteus.utils.constants import (
-    const_sigma,
     element_list,
     volatile_species,
 )
@@ -63,12 +62,6 @@ def GitRevision(dir:str) -> str:
 
     return hash
 
-def CalculateEqmTemperature(I_0, ASF_sf, A_B):
-    '''
-    Calculate planetary equilibrium temperature.
-    Params: Stellar flux, ASF scale factor, and bond albedo.
-    '''
-    return (I_0 * ASF_sf * (1.0 - A_B) / const_sigma)**(1.0/4.0)
 
 def PrintCurrentState(hf_row:dict):
     '''

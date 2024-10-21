@@ -5,7 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
-from proteus.utils.constants import volatile_species
+from proteus.utils.constants import element_list, volatile_species
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -28,6 +28,14 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
     Run outgassing model to get new volatile surface pressures
     '''
 
+    # Floating point errors can be problematic here.
+    #    Ensure that zero mass values stay at zero by setting all element mass inventories
+    #    which are less than 10 kg equal to zero.
+    for e in element_list:
+        if hf_row[e + "_kg_total"] < 10.0:
+            hf_row[e + "_kg_total"] = 0.0
+
+    # Run outgassing calculation
     if config.outgas.module == 'calliope':
         calc_surface_pressures(dirs, config, hf_row)
     else:
