@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import logging
 
+import numpy as np
 import pandas as pd
 
-from aragog import Solver, Output
+from aragog import Output, Solver
 from aragog.parser import (
     Parameters,
     _BoundaryConditionsParameters,
@@ -25,7 +26,7 @@ aragog_solver = None
 log = logging.getLogger("fwl."+__name__)
 
 # Run the Aragog interior module
-def RunAragog(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
+def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
 
     global aragog_solver
 
@@ -34,11 +35,11 @@ def RunAragog(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.D
         dt = 0.0
     else:
         step_sf = 1.0 # dt scale factor
-        dt = next_step(OPTIONS, dirs, hf_row, hf_all, step_sf)
+        dt = next_step(config, dirs, hf_row, hf_all, step_sf)
 
     # Setup Aragog parameters from options at first iteration
     if (aragog_solver is None):
-        SetupAragogSolver(OPTIONS, hf_row)
+        SetupAragogSolver(config, hf_row)
     # Else only update varying parameters
     else:
         UpdateAragogSolver(dt, hf_row)
@@ -48,12 +49,12 @@ def RunAragog(OPTIONS:dict, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.D
     aragog_solver.solve()
 
     # Get Aragog output
-    output = GetAragogOutput(OPTIONS, hf_row)
+    output = GetAragogOutput(config, hf_row)
     sim_time = aragog_solver.parameters.solver.end_time
 
     return sim_time, output
 
-def SetupAragogSolver(OPTIONS:dict, hf_row:dict):
+def SetupAragogSolver(config:Config, hf_row:dict):
 
     global aragog_solver
 
@@ -67,26 +68,26 @@ def SetupAragogSolver(OPTIONS:dict, hf_row:dict):
     solver = _SolverParameters(
             start_time = 0,
             end_time = 0,
-            atol = OPTIONS["solver_tolerance"],
-            rtol = OPTIONS["solver_tolerance"],
+            atol = config["solver_tolerance"],
+            rtol = config["solver_tolerance"],
             )
 
     boundary_conditions = _BoundaryConditionsParameters(
             outer_boundary_condition = 4, # 4 = prescribed heat flux
-            outer_boundary_value = OPTIONS["F_atm"], # first guess surface heat flux [W/m2]
+            outer_boundary_value = config["F_atm"], # first guess surface heat flux [W/m2]
             inner_boundary_condition = 3, # 3 = prescribed temperature
             inner_boundary_value = 4000, # core temperature [K]
             emissivity = 1, # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature = 273, # only used in gray body BC, outer_boundary_condition = 1
-            core_radius = OPTIONS["planet_coresize"] * OPTIONS["radius"] * R_earth, # not used now
+            core_radius = config["planet_coresize"] * config["radius"] * R_earth, # not used now
             core_density = 10738.332568062382, # not used now
             core_heat_capacity = 880, # not used now
             )
 
     mesh = _MeshParameters(
-            outer_radius = OPTIONS["radius"] * R_earth, # planet radius [m]
-            inner_radius = OPTIONS["planet_coresize"] * OPTIONS["radius"] * R_earth, # core radius [m]
-            number_of_nodes = OPTIONS["interior_nlev"], # basic nodes
+            outer_radius = config["radius"] * R_earth, # planet radius [m]
+            inner_radius = config["planet_coresize"] * config["radius"] * R_earth, # core radius [m]
+            number_of_nodes = config["interior_nlev"], # basic nodes
             mixing_length_profile = "constant",
             surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration = hf_row["gravity"], # [m/s-2]
@@ -133,7 +134,7 @@ def SetupAragogSolver(OPTIONS:dict, hf_row:dict):
             liquidus = "aragog/data/test/liquidus_1d_lookup.dat",
             phase = "mixed",
             phase_transition_width = 0.1,
-            grain_size = OPTIONS["grain_size"],
+            grain_size = config["grain_size"],
             )
 
     radionuclides = _Radionuclide(
@@ -178,7 +179,7 @@ def UpdateAragogSolver(dt:float, hf_row:dict):
 
     return
 
-def GetAragogOutput(OPTIONS:dict, hf_row:dict):
+def GetAragogOutput(config:Config, hf_row:dict):
 
     aragog_output: Output = Output(aragog_solver)
     output = {}

@@ -35,7 +35,7 @@ def run_interior(dirs:dict, config:Config, loop_counter:dict, IC_INTERIOR:int, h
         from proteus.interior.aragog import RunAragog
 
         # Run Aragog
-        sim_time, output = RunAragog(OPTIONS, dirs, IC_INTERIOR, hf_row, hf_all)
+        sim_time, output = RunAragog(config, dirs, IC_INTERIOR, hf_row, hf_all)
 
     elif config.interior.module == 'dummy':
         # Import
