@@ -6,6 +6,67 @@ from ._converters import none_if_none
 
 
 @define
+class AtmosClim:
+    """Atmosphere parameters, model selection.
+
+    Attributes
+    ----------
+    prevent_warming: bool
+        Do not allow the planet to heat up.
+    surface_d: float
+        M, conductive skin thickness.
+    surface_k: float
+        W m-1 K-1, conductive skin thermal conductivity.
+    cloud_enabled: bool
+        Enable water cloud radiative effects.
+    cloud_alpha: float
+        Condensate retention fraction (1 -> fully retained).
+    surf_state: str
+        Surface scheme: "mixed_layer", "fixed", "skin".
+    surf_albedo: float
+        Path to file ("string") or grey quantity (float).
+    albedo_pl: float
+        Bond albedo (scattering).
+    rayleigh: bool
+        Enable rayleigh scattering.
+    tmp_minimum: float
+        Temperature floor on solver.
+    tmp_maximum: float
+        Temperature ceiling on solver.
+    module: str
+        Which atmosphere module to use.
+    agni: Agni
+        Config parameters for Agni atmosphere module
+    janus: Janus
+        Config parameters for Janus atmosphere module
+    dummy: Dummy
+        Config parameters for dummy atmosphere module
+    """
+    prevent_warming: bool
+    surface_d: float
+    surface_k: float
+    cloud_enabled: bool
+    cloud_alpha: float
+    surf_state: str = field(validator=validators.in_(('mixed_layer', 'fixed', 'skin')))
+    surf_albedo: float
+    albedo_pl: float
+    rayleigh: bool
+    tmp_minimum: float
+    tmp_maximum: float
+
+    module: str = field(validator=validators.in_(('dummy', 'agni', 'janus')))
+
+    agni: Agni
+    janus: Janus
+    dummy: Dummy
+
+    @property
+    def surf_state_int(self) -> int:
+        """Return integer state for agni."""
+        return ('mixed_layer', 'fixed', 'skin').index(self.surf_state)
+
+
+@define
 class Agni:
     """Agni atmosphere module.
 
@@ -75,64 +136,3 @@ class Dummy:
         Atmosphere opacity between 0 and 1.
     """
     gamma: float
-
-
-@define
-class AtmosClim:
-    """Atmosphere parameters, model selection.
-
-    Attributes
-    ----------
-    prevent_warming: bool
-        Do not allow the planet to heat up.
-    surface_d: float
-        M, conductive skin thickness.
-    surface_k: float
-        W m-1 K-1, conductive skin thermal conductivity.
-    cloud_enabled: bool
-        Enable water cloud radiative effects.
-    cloud_alpha: float
-        Condensate retention fraction (1 -> fully retained).
-    surf_state: str
-        Surface scheme: "mixed_layer", "fixed", "skin".
-    surf_albedo: float
-        Path to file ("string") or grey quantity (float).
-    albedo_pl: float
-        Bond albedo (scattering).
-    rayleigh: bool
-        Enable rayleigh scattering.
-    tmp_minimum: float
-        Temperature floor on solver.
-    tmp_maximum: float
-        Temperature ceiling on solver.
-    module: str
-        Which atmosphere module to use.
-    agni: Agni
-        Config parameters for Agni atmosphere module
-    janus: Janus
-        Config parameters for Janus atmosphere module
-    dummy: Dummy
-        Config parameters for dummy atmosphere module
-    """
-    prevent_warming: bool
-    surface_d: float
-    surface_k: float
-    cloud_enabled: bool
-    cloud_alpha: float
-    surf_state: str = field(validator=validators.in_(('mixed_layer', 'fixed', 'skin')))
-    surf_albedo: float
-    albedo_pl: float
-    rayleigh: bool
-    tmp_minimum: float
-    tmp_maximum: float
-
-    module: str = field(validator=validators.in_(('dummy', 'agni', 'janus')))
-
-    agni: Agni
-    janus: Janus
-    dummy: Dummy
-
-    @property
-    def surf_state_int(self) -> int:
-        """Return integer state for agni."""
-        return ('mixed_layer', 'fixed', 'skin').index(self.surf_state)

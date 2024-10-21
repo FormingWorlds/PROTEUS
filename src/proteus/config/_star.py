@@ -6,21 +6,6 @@ from ._converters import none_if_none
 
 
 @define
-class Mors:
-    """Module parameters for MORS module.
-
-    Attributes
-    ----------
-    tracks: str
-        Name of evolution tracks, choice: 'spada', 'baraffe'
-    spec: str
-        Path to stellar spectrum
-    """
-    tracks: str = field(validator=validators.in_(('spada', 'baraffe')))
-    spec: str
-
-
-@define
 class Star:
     """Stellar parameters, model selection.
 
@@ -59,3 +44,18 @@ class Star:
     )
 
     mors: Mors
+
+
+@define
+class Mors:
+    """Module parameters for MORS module.
+
+    Attributes
+    ----------
+    tracks: str
+        Name of evolution tracks, choice: 'spada', 'baraffe'
+    spec: str
+        Path to stellar spectrum
+    """
+    tracks: str = field(validator=validators.in_(('spada', 'baraffe')))
+    spec: str

@@ -19,12 +19,14 @@ log = logging.getLogger('fwl.' + __name__)
 
 @define
 class Config:
-    """Root config.
+    """Root config parameters.
 
     Attributes
     ----------
     version: str
+        Version of the configuration file.
     author: str
+        Authors of the configuration.
     params: Params
         Parameters for code execution, output files, time-stepping, convergence.
     star: Star

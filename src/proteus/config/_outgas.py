@@ -4,6 +4,29 @@ from attrs import define, field, validators
 
 
 @define
+class Outgas:
+    """Outgassing parameters (fO2) and included volatiles.
+
+    Attributes
+    ----------
+    fO2_shift_IW: float
+        log10(ΔIW), atmosphere/interior boundary oxidation state.
+    module: str
+        Which outgassing module to use, choices: 'calliope', 'atmodeller'.
+    calliope: Calliope
+        Parameters for calliope module.
+    atmodeller: Atmodeller
+        Parameters for atmodeller module.
+    """
+    fO2_shift_IW: float
+
+    module: str = field(validator=validators.in_(('calliope', 'atmodeller')))
+
+    calliope: Calliope
+    atmodeller: Atmodeller
+
+
+@define
 class Calliope:
     """Module parameters for Calliope.
 
@@ -46,26 +69,3 @@ class Atmodeller:
         Not used currently.
     """
     some_parameter: str
-
-
-@define
-class Outgas:
-    """Outgassing parameters (fO2) and included volatiles.
-
-    Attributes
-    ----------
-    fO2_shift_IW: float
-        log10(ΔIW), atmosphere/interior boundary oxidation state.
-    module: str
-        Which outgassing module to use, choices: 'calliope', 'atmodeller'.
-    calliope: Calliope
-        Parameters for calliope module.
-    atmodeller: Atmodeller
-        Parameters for atmodeller module.
-    """
-    fO2_shift_IW: float
-
-    module: str = field(validator=validators.in_(('calliope', 'atmodeller')))
-
-    calliope: Calliope
-    atmodeller: Atmodeller

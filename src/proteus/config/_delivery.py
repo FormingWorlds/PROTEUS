@@ -37,17 +37,17 @@ class Volatiles:
     CO2: float
         Partial pressure of CO2.
     N2: float
-       Partial pressure of N2.
+        Partial pressure of N2.
     S2: float
-       Partial pressure of S2.
+        Partial pressure of S2.
     SO2: float
         Partial pressure of SO2.
     H2: float
-       Partial pressure of H2.
+        Partial pressure of H2.
     CH4: float
         Partial pressure of CH4.
     CO: float
-       Partial pressure of CO.
+        Partial pressure of CO.
     """
     H2O: float = field(default=0)
     CO2: float = field(default=0)

@@ -1,6 +1,27 @@
+"""This module describes the parameters for the data location, data output, and logging.
+It also defines stopping criteria."""
+
 from __future__ import annotations
 
 from attrs import define, field, validators
+
+
+@define
+class Params:
+    """Parameters for code execution, output files, time-stepping, convergence.
+
+    Attributes
+    ----------
+    out: OutputParams
+        Parameters for data / logging output
+    dt: TimeStepParams
+        Parameters for time-stepping
+    stop: StopParams
+        Parameters for stopping criteria
+    """
+    out: OutputParams
+    dt: TimeStepParams
+    stop: StopParams
 
 
 @define
@@ -22,33 +43,6 @@ class OutputParams:
     logging: str = field(validator=validators.in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
     plot_mod: int
     plot_fmt: str = field(validator=validators.in_(('pdf', 'png')))
-
-
-@define
-class DtProportional:
-    """Parameters for proportional time-stepping
-
-    Attributes
-    ----------
-    propconst: float
-        Proportionality constant.
-    """
-    propconst: float
-
-
-@define
-class DtAdaptive:
-    """Parameters for adaptive time-stepping
-
-    Attributes
-    ----------
-    atol: float
-        Step size absolute tolerance
-    rtol: float
-        Step size relative tolerance
-    """
-    atol: float
-    rtol: float
 
 
 @define
@@ -82,6 +76,60 @@ class TimeStepParams:
     method: str = field(validator=validators.in_(('proportional', 'adaptive', 'maximum')))
     proportional: DtProportional
     adaptive: DtAdaptive
+
+
+@define
+class DtProportional:
+    """Parameters for proportional time-stepping
+
+    Attributes
+    ----------
+    propconst: float
+        Proportionality constant.
+    """
+    propconst: float
+
+
+@define
+class DtAdaptive:
+    """Parameters for adaptive time-stepping
+
+    Attributes
+    ----------
+    atol: float
+        Step size absolute tolerance
+    rtol: float
+        Step size relative tolerance
+    """
+    atol: float
+    rtol: float
+
+
+@define
+class StopParams:
+    """Parameters for termination criteria.
+
+    Attributes
+    ----------
+    iters: StopIters
+        Parameters for required number of iterations.
+    time: StopTime
+        Parameters for required time constraints.
+    solid: StopSolid
+        Parameters for solidification.
+    radeqm: StopRadeqm
+        Parameters for radiative equilibrium.
+    steady: StopSteady
+        Parameters for steady state.
+    escape: StopEscape
+        Parameters for escape.
+    """
+    iters: StopIters
+    time: StopTime
+    solid: StopSolid
+    radeqm: StopRadeqm
+    steady: StopSteady
+    escape: StopEscape
 
 
 @define
@@ -181,48 +229,3 @@ class StopEscape:
     """
     enabled: bool
     mass_frac: float
-
-
-@define
-class StopParams:
-    """Parameters for termination criteria.
-
-    Attributes
-    ----------
-    iters: StopIters
-        Parameters for required number of iterations.
-    time: StopTime
-        Parameters for required time constraints.
-    solid: StopSolid
-        Parameters for solidification.
-    radeqm: StopRadeqm
-        Parameters for radiative equilibrium.
-    steady: StopSteady
-        Parameters for steady state.
-    escape: StopEscape
-        Parameters for escape.
-    """
-    iters: StopIters
-    time: StopTime
-    solid: StopSolid
-    radeqm: StopRadeqm
-    steady: StopSteady
-    escape: StopEscape
-
-
-@define
-class Params:
-    """Parameters for code execution, output files, time-stepping, convergence.
-
-    Attributes
-    ----------
-    out: OutputParams
-        Parameters for data / logging output
-    dt: TimeStepParams
-        Parameters for time-stepping
-    stop: StopParams
-        Parameters for stopping criteria
-    """
-    out: OutputParams
-    dt: TimeStepParams
-    stop: StopParams

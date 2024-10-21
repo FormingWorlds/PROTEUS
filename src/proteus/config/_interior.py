@@ -4,6 +4,32 @@ from attrs import define, field, validators
 
 
 @define
+class Interior:
+    """Magma ocean model selection and parameters.
+
+    Attributes
+    ----------
+    grain_size: float
+        Crystal settling grain size [m]
+    F_initial: float
+        Initial heat flux guess [W m-2]
+    module: str
+        Select interior model, choices: 'spider', 'aragog', 'dummy'
+    spider: Spider
+        Parameters for spider module
+    aragog: Aragog
+        Parameters for aragog module
+    """
+    grain_size: float
+    F_initial: float
+
+    module: str = field(validator=validators.in_(('spider', 'aragog', 'dummy')))
+
+    spider: Spider
+    aragog: Aragog
+
+
+@define
 class Spider:
     """Parameters for Spider module.
 
@@ -43,29 +69,3 @@ class Aragog:
         Not used.
     """
     some_parameter: str
-
-
-@define
-class Interior:
-    """Magma ocean model selection and parameters.
-
-    Attributes
-    ----------
-    grain_size: float
-        Crystal settling grain size [m]
-    F_initial: float
-        Initial heat flux guess [W m-2]
-    module: str
-        Select interior model, choices: 'spider', 'aragog', 'dummy'
-    spider: Spider
-        Parameters for spider module
-    aragog: Aragog
-        Parameters for aragog module
-    """
-    grain_size: float
-    F_initial: float
-
-    module: str = field(validator=validators.in_(('spider', 'aragog', 'dummy')))
-
-    spider: Spider
-    aragog: Aragog

@@ -6,6 +6,27 @@ from ._converters import none_if_none
 
 
 @define
+class Escape:
+    """Escape parameters, model selection.
+
+    Attributes
+    ----------
+    module: str | None
+        Select module, choice None, 'dummy', 'zephyrus'.
+    zephyrus: Zephyrus
+        Parameters for zephyrus module.
+    dummy: EscapeDummy
+        Parameters for dummy module.
+    """
+    module: str | None = field(
+        validator=validators.in_((None, 'dummy', 'zephyrus')), converter=none_if_none
+        )
+
+    zephyrus: Zephyrus
+    dummy: EscapeDummy
+
+
+@define
 class Zephyrus:
     """Parameters for Zephyrus module.
 
@@ -27,24 +48,3 @@ class EscapeDummy:
         Bulk unfractionated escape rate [kg s-1]
     """
     rate: float
-
-
-@define
-class Escape:
-    """Escape parameters, model selection.
-
-    Attributes
-    ----------
-    module: str | None
-        Select module, choice None, 'dummy', 'zephyrus'.
-    zephyrus: Zephyrus
-        Parameters for zephyrus module.
-    dummy: EscapeDummy
-        Parameters for dummy module.
-    """
-    module: str | None = field(
-        validator=validators.in_((None, 'dummy', 'zephyrus')), converter=none_if_none
-        )
-
-    zephyrus: Zephyrus
-    dummy: EscapeDummy
