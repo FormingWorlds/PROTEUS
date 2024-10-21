@@ -75,7 +75,7 @@ class Agni:
     p_top: float
         Top of atmosphere grid pressure [bar].
     spectral_group: str
-        Spectral file codename defining the gas opacities to be included. See [documentation](See documentation: https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/spectral_files.pdf).
+        Spectral file codename defining the gas opacities to be included. See [documentation](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/spectral_files.pdf).
     spectral_bands: str
         Number of wavenumer bands in k-table. See documentation.
     num_levels: str
