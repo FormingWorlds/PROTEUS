@@ -35,21 +35,26 @@ def generate_spectrum(tmp:float, R_star:float):
     wl_pts = 500   # number of points to sample
     wl_arr = np.logspace(np.log10(wl_min), np.log10(wl_max), wl_pts)
 
-    # Allocate flux array
+    # Allocate flux array with zeros
     fl_arr = np.zeros(np.shape(wl_arr))
 
-    # Evaluate planck function in each bin
-    for i,wav in enumerate(wl_arr):
-        fl_arr[i] = planck_wav(tmp, wav) # W m-2 m-1 at stellar surface
+    # If Teff=0, keep fluxes at zero. This is equivalent to turning the star 'off'.
 
-    # Scale from stellar surface to 1 AU
-    fl_arr *= (R_star/AU)**2
+    # Else, for non-zero effective temperatures...
+    if tmp > 0.1:
 
-    # Convert m-1 to nm-1
-    fl_arr *= 1e-9
+        # Evaluate planck function in each bin
+        for i,wav in enumerate(wl_arr):
+            fl_arr[i] = planck_wav(tmp, wav) # W m-2 m-1 at stellar surface
 
-    # Convert W m-2 to erg s-1 cm-2
-    fl_arr *= 1e3
+        # Scale from stellar surface to 1 AU
+        fl_arr *= (R_star/AU)**2
+
+        # Convert m-1 to nm-1
+        fl_arr *= 1e-9
+
+        # Convert W m-2 to erg s-1 cm-2
+        fl_arr *= 1e3
 
     # Convert wavelengths to nm
     wl_arr *= 1e9
