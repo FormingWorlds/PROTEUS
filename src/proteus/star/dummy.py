@@ -10,6 +10,8 @@ from proteus.utils.phys import planck_wav
 
 log = logging.getLogger("fwl."+__name__)
 
+PLANCK_MIN_TEMPERATURE:float = 0.1
+
 def generate_spectrum(tmp:float, R_star:float):
     '''
     Get stellar spectrum at 1 AU, assuming that the star emits like a blackbody.
@@ -43,7 +45,7 @@ def generate_spectrum(tmp:float, R_star:float):
     # If Teff=0, keep fluxes at zero. This is equivalent to turning the star 'off'.
 
     # Else, for non-zero effective temperatures...
-    if tmp > 0.1:
+    if tmp > PLANCK_MIN_TEMPERATURE:
 
         # Evaluate planck function in each bin
         for i,wav in enumerate(wl_arr):
@@ -70,7 +72,13 @@ def calc_star_luminosity(tmp:float, R_star:float):
 
     Assumes that the star emits like a blackbody.
     '''
-    return 4 * np.pi * R_star * R_star * const_sigma * (tmp**4)
+
+    # Evaluate stefan-boltzmann law at Teff
+    lum = 0.0
+    if tmp > PLANCK_MIN_TEMPERATURE:
+        lum = 4 * np.pi * R_star * R_star * const_sigma * (tmp**4)
+
+    return lum
 
 
 def calc_instellation(tmp:float, R_star:float, sep:float):
