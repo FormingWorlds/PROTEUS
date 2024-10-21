@@ -3,8 +3,8 @@
 [![Documentation Status](https://readthedocs.org/projects/fwl-proteus/badge/?version=latest)](https://fwl-proteus.readthedocs.io/en/latest/?badge=latest)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![PROTEUS banner](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/images/PROTEUS_white.png#gh-light-mode-only)
-![PROTEUS banner](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/images/PROTEUS_black.png#gh-dark-mode-only)
+![PROTEUS banner](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/PROTEUS_white.png#gh-light-mode-only)
+![PROTEUS banner](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/PROTEUS_black.png#gh-dark-mode-only)
 
 # PROTEUS Framework for Planetary Evolution
 
@@ -42,13 +42,11 @@ Hamish Innes            | hamish.innes[at]fu-berlin.de |
 
 | Object                | Description                                               |
 | -                     | -                                                         |
-| `start_proteus.py`    | Main PROTEUS Python script                                |
 | `README.md`           | Overview file                                             |
 | `pyproject.toml`	    | Project configuration file                                |
 | `CODE_OF_CONDUCT.md`	| Project code of conduct                                   |
 | `LICENSE.txt`         | Project license                                           |
 | `src/proteus`         | Source code for PROTEUS                                   |
-| `SPIDER/`             | Submodule SPIDER                                          |
 | `output/`             | Output folder with subfolders for each model run          |
 | `input/`              | Input folder (e.g. stellar spectra, example configs)      |
 | `docs/`			    | Documentation source files                                |

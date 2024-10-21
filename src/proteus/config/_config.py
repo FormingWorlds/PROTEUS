@@ -19,7 +19,33 @@ log = logging.getLogger('fwl.' + __name__)
 
 @define
 class Config:
-    """Root config"""
+    """Root config parameters.
+
+    Attributes
+    ----------
+    version: str
+        Version of the configuration file.
+    author: str
+        Authors of the configuration file.
+    params: Params
+        Parameters for code execution, output files, time-stepping, convergence.
+    star: Star
+        Stellar parameters, model selection.
+    orbit: Orbit
+        Orbital and star-system parameters.
+    struct: Struct
+        Planetary structure calculation (mass, radius).
+    atmos_clim: AtmosClim
+        Planetary atmosphere parameters, model selection.
+    escape: Escape
+        Atmospheric escape parameters, model selection.
+    interior: Interior
+        Magma ocean / mantle model parameters, model selection.
+    outgas: Outgas
+        Outgassing parameters (fO2, etc) and included volatiles.
+    delivery: Delivery
+        Initial volatile inventory, and delivery model selection.
+    """
 
     version: str = field(validator=validators.in_(('2.0',)))
     author: str

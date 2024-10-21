@@ -7,7 +7,17 @@ from ._converters import none_if_none
 
 @define
 class Struct:
-    """Planetary structure (mass, radius)"""
+    """Planetary structure (mass, radius).
+
+    mass: float
+        M_earth
+    radius: float
+        R_earth
+    corefrac: float
+        Non-dimensional, radius fraction
+    module: str | None
+        Select internal structure module to use. Not used currently.
+    """
     mass: float
     radius: float
     corefrac: float
