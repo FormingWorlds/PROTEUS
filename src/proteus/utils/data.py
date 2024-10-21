@@ -141,6 +141,22 @@ def download_exoplanet_data():
         log.info(f"Downloading exoplanet population data to {data_dir}")
         download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
 
+def download_massradius_data():
+    """
+    Download mass-radius data
+    """
+    log.debug("Get mass-radius data?")
+
+    folder_name = 'Mass-radius'
+    storage = get_osf('fzwr4')
+
+    data_dir = GetFWLData() / "mass_radius"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    if not (data_dir / folder_name).exists():
+        log.info(f"Downloading mass-radius data to {data_dir}")
+        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
+
 def download_evolution_tracks(track:str):
     """
     Download evolution tracks
@@ -170,6 +186,9 @@ def download_sufficient_data(config:Config):
 
     # Exoplanet population data
     download_exoplanet_data()
+
+    # Mass-radius reference data
+    download_massradius_data()
 
 def _none_dirs():
     from proteus.utils.helper import get_proteus_dir
