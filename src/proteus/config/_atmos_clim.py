@@ -8,7 +8,7 @@ from ._converters import none_if_none
 
 def tmp_max_bigger_than_tmp_min(instance, attribute, value):
     if value <= instance.tmp_minimum:
-        raise ValueError("'tmp_maximum' has to be bigger than tmp_minimum.")
+        raise ValueError("'tmp_maximum' has to be bigger than 'tmp_minimum'.")
 
 @define
 class AtmosClim:
