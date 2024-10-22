@@ -74,7 +74,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # steady state
         [params.stop.steady]
             enabled  = true
-            F_crit   = 1.8        # Maximum absolute value of F_atm allowed for convergence
+            F_crit   = 0.8        # Maximum absolute value of F_atm allowed for convergence
             dprel    = 3.0e-10     # Percentage change in melt fraction over time (dp/p)/dt*100
 
         [params.stop.escape]

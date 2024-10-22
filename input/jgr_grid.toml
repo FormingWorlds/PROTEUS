@@ -219,7 +219,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         CH_ratio    = 1.0       # C/H ratio in mantle/atmosphere system
         H_oceans    = 6.0       # Hydrogen inventory in units of equivalent Earth oceans, by mass
         N_ppmw      = 2.0       # Nitrogen inventory in ppmw relative to mantle mass, by mass
-        S_ppmw      = 0.0       # Sulfur inventory in ppmw relative to mass of melt
+        S_ppmw      = 200.0     # Sulfur inventory in ppmw relative to mass of melt
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [delivery.volatiles]
