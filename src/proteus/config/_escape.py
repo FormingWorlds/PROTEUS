@@ -33,7 +33,7 @@ class Zephyrus:
     Attributes
     ----------
     Pxuv: float
-        Pressure related to the radius (Rxuv) at which the XUV radiation become opaque in the planetary atmosphere.
+        Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
     """
     Pxuv: float
 
