@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 import platformdirs
 from osfclient.api import OSF
 
+from proteus.atmos_clim.common import get_spfile_path
+
 if TYPE_CHECKING:
     from proteus.config import Config
 
@@ -69,15 +71,15 @@ def download_surface_albedos():
         log.info(f"Downloading surface albedos to {data_dir}")
         download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
 
-def download_spectral_files(fname: str="", nband: int=256):
+def download_spectral_file(name:str, bands:str):
     """
-    Download spectral files data
+    Download spectral file.
 
     Inputs :
-        - fname (optional) :    folder name, i.e. "/Dayspring"
-                                if not provided download all the basic list
-        - nband (optional) :    number of band = 16, 48, 256, 4096
-                                (only relevant for Dayspring, Frostflow and Honeyside)
+        - name : str
+            folder name (e.g. "Dayspring")
+        - bands : str
+            number of bands (e.g. "256")
     """
     log.debug("Get spectral files?")
 
@@ -88,25 +90,17 @@ def download_spectral_files(fname: str="", nband: int=256):
     #Link with OSF project repository
     storage = get_osf('vehxg')
 
-    basic_list = (
-        "Dayspring/48",
-        "Dayspring/256",
-        "Frostflow/256",
-        "Honeyside/4096",
-        )
+    # Spectral file folder
+    folder_name = name+"/"+bands
 
-    #If no folder specified download all basic list
-    if not fname:
-        folder_list = basic_list
-    else:
-        folder_list = [fname + "/" + str(nband)]
+    # Write path
+    writedir = os.path.join(data_dir,folder_name)
 
-    folders = [folder for folder in folder_list if not (data_dir / folder).exists()]
-
-    if folders:
-        log.info(f"Downloading spectral files to {data_dir}")
-        log.debug("\t"+str(folders))
-        download_folder(storage=storage, folders=folders, data_dir=data_dir)
+    # Download if not exists
+    if not os.path.isdir(writedir):
+        print("downloading")
+        log.info(f"Downloading {name}{bands} spectral file to {data_dir}")
+        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
 
 
 def download_stellar_spectra():
@@ -180,7 +174,9 @@ def download_sufficient_data(config:Config):
 
     # Atmosphere stuff
     if config.atmos_clim.module in ('janus', 'agni'):
-        download_spectral_files()
+        download_spectral_file("Frostflow","16")
+        download_spectral_file("Dayspring","256")
+        download_spectral_file("Honeyside","4096")
     if config.atmos_clim.module == 'agni':
         download_surface_albedos()
 
@@ -189,6 +185,7 @@ def download_sufficient_data(config:Config):
 
     # Mass-radius reference data
     download_massradius_data()
+
 
 def _none_dirs():
     from proteus.utils.helper import get_proteus_dir

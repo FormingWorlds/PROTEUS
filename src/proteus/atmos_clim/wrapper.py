@@ -65,7 +65,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
 
         #Init atm object if first iteration or change in stellar spectrum
         if no_atm or update_stellar_spectrum:
-            spectral_file_nostar = get_spfile_path(dirs, config)
+            spectral_file_nostar = get_spfile_path(dirs["fwl"], config)
             if not os.path.exists(spectral_file_nostar):
                 UpdateStatusfile(dirs, 20)
                 raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)

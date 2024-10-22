@@ -124,7 +124,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         input_star =    ""
     else:
         # doesn't exist => AGNI will copy it + modify as required
-        input_sf =      get_spfile_path(dirs, config)
+        input_sf =      get_spfile_path(dirs["fwl"], config)
         input_star =    sflux_path
 
     # composition

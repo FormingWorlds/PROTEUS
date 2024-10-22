@@ -86,15 +86,15 @@ def get():
 
 
 @click.command()
-@click.option('-n', '--name', 'fname', type=str, help='Name of the spectra')
-@click.option('-b', '--band', 'nband', type=int, help='Number of the band', default=256)
+@click.option('-n', '--name',  'name',  type=str, help='Name of spectral file group')
+@click.option('-b', '--bands', 'bands', type=str, help='Number of bands')
 def spectral(**kwargs):
     """Get spectral files
 
     By default, download all files.
     """
-    from .utils.data import download_spectral_files
-    download_spectral_files(**kwargs)
+    from .utils.data import download_spectral_file
+    download_spectral_file(kwargs["name"],kwargs["bands"])
 
 
 @click.command()

@@ -64,7 +64,7 @@ def read_ncdfs(output_dir:str, times:list):
         log.warning("No NetCDF files found in output folder")
     return profiles
 
-def get_spfile_path(dirs:dict, config:Config):
+def get_spfile_path(fwl_dir:str, config:Config):
     """
     Get path to spectral file, given name and bands.
     """
@@ -77,5 +77,5 @@ def get_spfile_path(dirs:dict, config:Config):
     group = obj.spectral_group
 
     # Construct file path
-    return os.path.join(dirs["fwl"],"spectral_files",group,bands,group)+".sf"
+    return os.path.join(fwl_dir,"spectral_files",group,bands,group)+".sf"
 
