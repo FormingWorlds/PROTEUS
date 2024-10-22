@@ -21,7 +21,7 @@ class Star:
         Stellar mass [M_sun]
     lum_now: float
         Observed bolometric luminosity [L_sun].
-    omega: float
+    rot_pctle: float
         Rotation rate, as a percentile of stellar population with the same mass [%].
     age_now: float
         Observed estimated age of the star [Gyr].
@@ -35,7 +35,7 @@ class Star:
     radius: float
     mass: float
     Teff: float
-    omega: float
+    rot_pctle: float
     lum_now: float
     age_now: float
     age_ini: float

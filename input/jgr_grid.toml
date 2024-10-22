@@ -91,7 +91,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     Teff    = 5772.0    # K
     mass    = 1.0       # M_sun
     lum_now = 1.0       # L_sun
-    omega   = 60.0      # rotation percentile
+    rot_pctle = 60.0    # rotation percentile
     age_now = 4.567     # Gyr, current age of star used for scaling
     age_ini = 0.100     # Gyr, model initialisation/start age
 

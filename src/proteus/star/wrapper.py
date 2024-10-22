@@ -49,7 +49,7 @@ def init_star(handler:Proteus):
                 # calculate other properties from modern spectrum
                 handler.star_props = mors.synthesis.GetProperties(
                     handler.config.star.mass,
-                    handler.config.star.omega,
+                    handler.config.star.rot_pctle,
                     handler.config.star.age_now * 1000, # convert Gyr to Myr
                 )
 
