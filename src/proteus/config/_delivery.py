@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from attrs import define, field, validators
+from attr.validators import gt, in_
+from attrs import define, field
 
 from ._converters import none_if_none
 
@@ -20,10 +21,10 @@ class Elements:
     S_ppmw: float
         Bulk sulfur inventory in ppmw relative to mantle mass.
     """
-    CH_ratio: float
-    H_oceans: float
-    N_ppmw: float
-    S_ppmw: float
+    CH_ratio: float = field(validator=gt(0))
+    H_oceans: float = field(validator=gt(0))
+    N_ppmw: float = field(validator=gt(0))
+    S_ppmw: float = field(validator=gt(0))
 
 
 @define
@@ -49,14 +50,14 @@ class Volatiles:
     CO: float
         Initial atmospheric partial surface pressure of CO [bar].
     """
-    H2O: float = field(default=0)
-    CO2: float = field(default=0)
-    N2: float = field(default=0)
-    S2: float = field(default=0)
-    SO2: float = field(default=0)
-    H2: float = field(default=0)
-    CH4: float = field(default=0)
-    CO: float = field(default=0)
+    H2O: float = field(default=0, validator=gt(0))
+    CO2: float = field(default=0, validator=gt(0))
+    N2: float = field(default=0, validator=gt(0))
+    S2: float = field(default=0, validator=gt(0))
+    SO2: float = field(default=0, validator=gt(0))
+    H2: float = field(default=0, validator=gt(0))
+    CH4: float = field(default=0, validator=gt(0))
+    CO: float = field(default=0, validator=gt(0))
 
 
 @define
@@ -74,9 +75,9 @@ class Delivery:
     volatiles: Volatiles
         Parameters used when setting volatile inventory by partial pressures.
     """
-    initial: str = field(validator=validators.in_(('elements', 'volatiles')))
+    initial: str = field(validator=in_(('elements', 'volatiles')))
 
-    module: str | None = field(validator=validators.in_((None,)), converter=none_if_none)
+    module: str | None = field(validator=in_((None,)), converter=none_if_none)
 
     elements: Elements
     volatiles: Volatiles

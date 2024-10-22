@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from attrs import define, field, validators
+from attrs import define, field
+from attrs.validators import ge, gt, in_, lt
 
 
 @define
@@ -20,10 +21,10 @@ class Interior:
     aragog: Aragog
         Parameters for running the aragog module.
     """
-    grain_size: float
-    F_initial: float
+    grain_size: float = field(validator=gt(0))
+    F_initial: float = field(validator=gt(0))
 
-    module: str = field(validator=validators.in_(('spider', 'aragog', 'dummy')))
+    module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
 
     spider: Spider
     aragog: Aragog
@@ -50,13 +51,13 @@ class Spider:
     ini_dsdr: float
         Initial interior specific entropy gradient [J K-1 kg-1 m-1].
     """
-    num_levels: int  = field(validator=validators.ge(40))
-    mixing_length: int
-    tolerance: float
-    tsurf_atol: float
-    tsurf_rtol: float
-    ini_entropy: float
-    ini_dsdr: float
+    num_levels: int  = field(validator=ge(40))
+    mixing_length: int  = field(validator=in_((1,2)))
+    tolerance: float = field(validator=gt(0))
+    tsurf_atol: float = field(validator=gt(0))
+    tsurf_rtol: float = field(validator=gt(0))
+    ini_entropy: float = field(validator=gt(0))
+    ini_dsdr: float = field(validator=lt(0))
 
 
 @define
