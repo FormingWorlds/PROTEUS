@@ -5,7 +5,7 @@
 ### Epsilon Eridani
 
 * File name:  `eps-eri.txt`
-* URL:   https://en.wikipedia.org/wiki/Epsilon_Eridani
+* URL:   [https://en.wikipedia.org/wiki/Epsilon_Eridani]()
 * Spectral type:  K2V
 * Teff:  5049 K
 * Age:   400-800 Myr
@@ -17,7 +17,7 @@
 ### GJ 1132
 
 * File name:  `gj1132.txt`
-* URL:   https://en.wikipedia.org/wiki/GJ_1132
+* URL:   [https://en.wikipedia.org/wiki/GJ_1132]()
 * Spectral type:  M4
 * Teff:  3196 K
 * Age:   ?
@@ -29,7 +29,7 @@
 ### GJ 1214
 
 * File name:  `gj1214.txt`
-* URL:   https://en.wikipedia.org/wiki/GJ_1214
+* URL:   [https://en.wikipedia.org/wiki/GJ_1214]()
 * Spectral type:  M4.5
 * Teff:  3111 K
 * Age:   5-10 Gyr
@@ -41,7 +41,7 @@
 ### HD 85512
 
 * File name:  `hd85512.txt`
-* URL:   https://en.wikipedia.org/wiki/HD_85512
+* URL:   [https://en.wikipedia.org/wiki/HD_85512]()
 * Spectral type:  K6V
 * Teff:  4404 K
 * Age:   5.61 Gyr
@@ -53,7 +53,7 @@
 ### HD 97658
 
 * File name:  `hd97658.txt`
-* URL:   https://en.wikipedia.org/wiki/HD_97658
+* URL:   [https://en.wikipedia.org/wiki/HD_97658]()
 * Spectral type:  K1V
 * Teff:  5212 K
 * Age:   3.9 Gyr
@@ -65,7 +65,7 @@
 ### L 98-59
 
 * File name:  `l-98-59.txt`
-* URL:   https://en.wikipedia.org/wiki/L_98-59
+* URL:   [https://en.wikipedia.org/wiki/L_98-59]()
 * Spectral type:  M3V
 * Teff:  3415 K
 * Age:   >800 Myr
@@ -77,7 +77,7 @@
 ### The Sun
 
 * File name:  `sun.txt`
-* URL:   https://en.wikipedia.org/wiki/Sun
+* URL:   [https://en.wikipedia.org/wiki/Sun]()
 * Spectral type:  G2V
 * Teff:  5772 K
 * Age:   4.6 Gyr
@@ -89,7 +89,7 @@
 ### TRAPPIST-1
 
 * File name:  `trappist-1.txt`
-* URL:   https://en.wikipedia.org/wiki/TRAPPIST-1
+* URL:   [https://en.wikipedia.org/wiki/TRAPPIST-1]()
 * Spectral type:  M8V
 * Teff:  2566 K
 * Age:   7.6 Gyr
@@ -101,7 +101,7 @@
 ### GJ 849
 
 * File name:  `gj849.txt`
-* URL:   https://en.wikipedia.org/wiki/Gliese_849
+* URL:   [https://en.wikipedia.org/wiki/Gliese_849]()
 * Spectral type:  M3.5V
 * Teff:  3467 K
 * Age:   >3 Gyr
