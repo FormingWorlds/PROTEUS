@@ -117,7 +117,7 @@ def plot_population_mass_radius(hf_all:pd.DataFrame, output_dir: str, fwl_dir:st
 
 
 def plot_population_time_density(hf_all:pd.DataFrame, output_dir: str, fwl_dir:str,
-                                 plot_format:str, t0: float=100.0, xmin:float=1e7):
+                                 plot_format:str, t0: float=100.0, xmin:float=1e5):
     """
     Plot planetary evolution on population time-density diagram
     """
@@ -142,7 +142,7 @@ def plot_population_time_density(hf_all:pd.DataFrame, output_dir: str, fwl_dir:s
 
     # Make sure that we actually plot the simulation data
     if xmin > np.amax(time):
-        xmin = t0
+        xmin = time[0]
 
     # Create plot
     scale = 1.0
@@ -163,12 +163,16 @@ def plot_population_time_density(hf_all:pd.DataFrame, output_dir: str, fwl_dir:s
 
     # Simulation
     col='k'
-    ax.plot([time[-1],1e13],[sim_rho[-1],sim_rho[-1]], color=col, lw=lw, ls='dotted', label="Extrapolated", zorder=98)
-    ax.plot(time, sim_rho, label="Simulation", color=col, lw=lw, zorder=99)
+    ax.plot([time[-1],1e13],[sim_rho[-1],sim_rho[-1]], color=col, lw=lw, ls='dotted', label="Extrapolated", zorder=97)
+    ax.plot(time, sim_rho, label="Simulation", color=col, lw=lw, zorder=98)
+    ax.scatter(time[-1], sim_rho[-1], color=col, s=ms, zorder=99)
+
 
     # Save figure
     ax.set_ylabel(r"Bulk density [g cm$^{-3}$]")
     ax.set_yscale("log")
+    ax.set_ylim(bottom=0.1, top=10)
+
     ax.set_xlabel(r"Time [yr]")
     ax.set_xscale("log")
     ax.set_xlim(left=xmin,right=xmax*1.2)
