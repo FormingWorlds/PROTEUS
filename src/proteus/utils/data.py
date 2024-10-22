@@ -104,7 +104,7 @@ def download_spectral_file(name:str, bands:str):
         log.info(f"Downloading {name}{bands} spectral file to {data_dir}")
         download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
     else:
-        log.debug("\t%s already exists"%folder_name)
+        log.debug("\t%s%s already exists"%(name,bands))
 
 
 def download_stellar_spectra():
@@ -174,6 +174,8 @@ def download_sufficient_data(config:Config):
     Download the required data based on the current options
     """
 
+    log.info("Getting physical and reference data")
+
     # Star stuff
     if config.star.module == "mors":
         download_stellar_spectra()
@@ -182,11 +184,18 @@ def download_sufficient_data(config:Config):
         else:
             download_evolution_tracks("Baraffe")
 
-    # Atmosphere stuff
+    # Spectral files
     if config.atmos_clim.module in ('janus', 'agni'):
-        download_spectral_file("Frostflow","16")
-        download_spectral_file("Dayspring","256")
+        # High-res file often used for post-processing
         download_spectral_file("Honeyside","4096")
+
+        # Get the spectral file we need for this simluation
+        from proteus.atmos_clim.common import get_spfile_name_and_bands
+        group, bands = get_spfile_name_and_bands(config)
+        download_spectral_file(group, bands)
+
+
+    # Surface single-scattering data
     if config.atmos_clim.module == 'agni':
         download_surface_albedos()
 
