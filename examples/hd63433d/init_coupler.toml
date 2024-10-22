@@ -161,7 +161,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "none"    # Which escape module to use
 
     [escape.zephyrus]
-        some_parameter = "some_value"
+        efficiency = 1.0   # Escape efficiency factor
+        tidal = false      # Tidal contribution enabled
 
     [escape.dummy]
         rate = 0.0    #  Bulk unfractionated escape rate [kg s-1]
