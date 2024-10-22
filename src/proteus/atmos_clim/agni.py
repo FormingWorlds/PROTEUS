@@ -13,6 +13,7 @@ from scipy.interpolate import PchipInterpolator
 from proteus.utils.constants import dirs, volatile_species
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
+from proteus.atmos_clim.common import get_spfile_path
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -123,7 +124,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         input_star =    ""
     else:
         # doesn't exist => AGNI will copy it + modify as required
-        input_sf =      os.path.join(dirs["fwl"], config["spectral_file"])
+        input_sf =      get_spfile_path(dirs, config)
         input_star =    sflux_path
 
     # composition
