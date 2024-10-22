@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from attr.validators import gt, in_
+from attr.validators import ge, gt, in_
 from attrs import define, field
 
 from ._converters import none_if_none
@@ -50,14 +50,14 @@ class Volatiles:
     CO: float
         Initial atmospheric partial surface pressure of CO [bar].
     """
-    H2O: float = field(default=0, validator=gt(0))
-    CO2: float = field(default=0, validator=gt(0))
-    N2: float = field(default=0, validator=gt(0))
-    S2: float = field(default=0, validator=gt(0))
-    SO2: float = field(default=0, validator=gt(0))
-    H2: float = field(default=0, validator=gt(0))
-    CH4: float = field(default=0, validator=gt(0))
-    CO: float = field(default=0, validator=gt(0))
+    H2O: float = field(default=0, validator=ge(0))
+    CO2: float = field(default=0, validator=ge(0))
+    N2: float = field(default=0, validator=ge(0))
+    S2: float = field(default=0, validator=ge(0))
+    SO2: float = field(default=0, validator=ge(0))
+    H2: float = field(default=0, validator=ge(0))
+    CH4: float = field(default=0, validator=ge(0))
+    CO: float = field(default=0, validator=ge(0))
 
 
 @define

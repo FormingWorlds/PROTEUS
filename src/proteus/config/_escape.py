@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import gt, in_
+from attrs.validators import ge, in_
 
 from ._converters import none_if_none
 
@@ -48,4 +48,4 @@ class EscapeDummy:
     rate: float
         Bulk unfractionated escape rate [kg s-1]
     """
-    rate: float = field(validator=gt(0))
+    rate: float = field(validator=ge(0))
