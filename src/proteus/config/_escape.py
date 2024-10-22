@@ -32,10 +32,13 @@ class Zephyrus:
 
     Attributes
     ----------
-    some_parameter: str
-        Not used.
+    efficiency: float
+        Escape efficiency factor
+    tidal: bool
+        Tidal contribution enabled
     """
-    some_parameter: str
+    efficiency: float
+    tidal: bool
 
 
 @define
