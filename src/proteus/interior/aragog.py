@@ -30,6 +30,8 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
 
     global aragog_solver
 
+    log.info("Running Aragog...")
+
     # Compute time step
     if IC_INTERIOR==1:
         dt = 0.0
