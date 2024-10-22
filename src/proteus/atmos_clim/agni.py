@@ -72,7 +72,7 @@ def _construct_voldict(hf_row:dict, config:Config):
     # get from hf_row
     vol_dict = {}
     for vol in volatile_species:
-        if config[vol+"_included"]:
+        if bool(getattr(config.outgas.calliope,"include_"+vol)):
             vmr = hf_row[vol+"_vmr"]
             if vmr > 1e-40:
                 vol_dict[vol] = vmr
@@ -173,9 +173,9 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         hf_row["T_surf"],
                         hf_row["gravity"], hf_row["R_int"],
 
-                        int(config["atmosphere_nlev"]),
+                        int(config.atmos_clim.agni.num_levels),
                         hf_row["P_surf"],
-                        config["P_top"],
+                        config.atmos_clim.agni.p_top,
 
                         vol_dict, "",
 
