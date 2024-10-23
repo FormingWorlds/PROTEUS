@@ -269,7 +269,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     if not atm.height_error:
         # find 1 mbar level
         idx = find_nearest(atm.p, 1e2)[1]
-        z_obs = atm.z[idx] + atm.planet_radius
+        z_obs = atm.z[idx]
         # calc observed density
         rho_obs = calc_observed_rho(atm)
 
