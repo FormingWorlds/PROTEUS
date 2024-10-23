@@ -14,7 +14,7 @@ log = logging.getLogger("fwl."+__name__)
 
 def mol_to_ele(mol:str):
     '''
-    Return the number of each element within a given molecule, as a dictionary
+    Return the number of atoms of each element in a given molecule, as a dictionary
     '''
     decomp = re.findall(r'([A-Z][a-z]?)(\d*)', mol)   # https://codereview.stackexchange.com/a/232664
     elems = {}
@@ -25,6 +25,23 @@ def mol_to_ele(mol:str):
             val = int(ev[1])
         elems[str(ev[0])] = val
     return elems
+
+def eval_molar_mass(mol:str):
+    '''
+    Evaluate the molar mass [kg mol-1] of a molecule or atom.
+
+    This neglects the mass associated with the binding energy.
+    '''
+
+    # Get atoms
+    atoms = mol_to_ele(mol)
+
+    # Add up atoms
+    mu = 0.0
+    for e in atoms.keys():
+        mu += atoms[e] * molar_mass[e]
+
+    return mu
 
 def planck_wav(tmp:float, wav:float):
     '''
