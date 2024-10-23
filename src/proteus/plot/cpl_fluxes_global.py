@@ -13,10 +13,11 @@ from proteus.utils.plot import dict_colors
 
 if TYPE_CHECKING:
     from proteus import Proteus
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, options: dict, t0: float=100.0):
+def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, config: Config, t0: float=100.0):
 
     # Get values
     hf_crop = hf_all.loc[hf_all["Time"]>t0]
@@ -28,7 +29,7 @@ def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, options: dict, t0: 
     log.info("Plot global fluxes")
 
     F_net = np.array(hf_crop["F_atm"])
-    F_asf = np.array(hf_crop["F_ins"]) * options["asf_scalefactor"] * (1.0 - options["albedo_pl"]) * np.cos(options["zenith_angle"] * np.pi/180.0)
+    F_asf = np.array(hf_crop["F_ins"]) * config.orbit.s0_factor * (1.0 - config.atmos_clim.albedo_pl) * np.cos(config.orbit.zenith_angle * np.pi/180.0)
     F_olr = np.array(hf_crop["F_olr"])
     F_upw = np.array(hf_crop["F_olr"]) + np.array(hf_crop["F_sct"])
     F_int = np.array(hf_crop["F_int"])
@@ -63,7 +64,7 @@ def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, options: dict, t0: 
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_global.%s"%options["plot_format"],
+    fig.savefig(output_dir+"/plot_fluxes_global.%s" % config.params.out.plot_fmt,
                 bbox_inches='tight', dpi=200)
 
 
@@ -75,7 +76,7 @@ def plot_fluxes_global_entry(handler: Proteus):
     plot_fluxes_global(
         hf_all=hf_all,
         output_dir=handler.directories["output"],
-        options=handler.config,
+        config=handler.config,
     )
 
 

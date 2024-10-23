@@ -58,6 +58,10 @@ class Calliope:
     include_CH4: bool
     include_CO: bool
 
+    def is_included(self, vol: str) -> bool:
+        """Helper method for getting flag if `vol` is included in outgassing."""
+        return getattr(self, f'include_{vol}')
+
 
 @define
 class Atmodeller:
