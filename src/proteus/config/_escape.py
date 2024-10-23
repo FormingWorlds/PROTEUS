@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import ge, in_
+from attrs.validators import ge, in_, le
 
 from ._converters import none_if_none
 
@@ -38,8 +38,8 @@ class Zephyrus:
     tidal: bool
         Tidal contribution enabled
     """
-    efficiency: float
-    tidal: bool
+    efficiency: float = field(default=1.0,validator=(ge(0.0), le(1.0)))
+    tidal: bool = field(default=False)
 
 
 @define
