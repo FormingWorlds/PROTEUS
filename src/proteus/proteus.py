@@ -86,7 +86,7 @@ class Proteus:
         self.star_struct = None
 
         # Default values for mors.baraffe cases
-        self.baraffe_track  = None
+        self.stellar_track  = None
         self.star_modern_fl = None
         self.star_modern_wl = None
 
@@ -315,7 +315,7 @@ class Proteus:
             ):
                 self.sinst_prev = self.hf_row["Time"]
 
-                update_stellar_quantities(self.hf_row, self.config, baraffe_track=self.baraffe_track)
+                update_stellar_quantities(self.hf_row, self.config, stellar_track=self.stellar_track)
 
             # Calculate a new (historical) stellar spectrum
             if (abs(self.hf_row["Time"] - self.sspec_prev) > self.config.params.dt.starspec) or (
@@ -336,7 +336,7 @@ class Proteus:
                                         star_props_modern=self.star_props,
 
                                         # Variables needed for mors.baraffe
-                                        baraffe_track=self.baraffe_track,
+                                        stellar_track=self.stellar_track,
                                         modern_wl=self.star_modern_wl,
                                         modern_fl=self.star_modern_fl,
                                         )

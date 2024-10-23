@@ -58,11 +58,11 @@ def init_star(handler:Proteus):
                     star_modern_path, star_backup_path
                 )
 
-                handler.baraffe_track = mors.BaraffeTrack(handler.config.star.mass)
+                handler.stellar_track = mors.BaraffeTrack(handler.config.star.mass)
 
 def get_new_spectrum(t_star:float, R_star:float, config:Config,
                      star_struct_modern=None, star_props_modern=None,
-                     baraffe_track=None, modern_wl=None, modern_fl=None):
+                     stellar_track=None, modern_wl=None, modern_fl=None):
     '''
     Get new stellar spectrum at 1 AU.
     '''
@@ -86,7 +86,7 @@ def get_new_spectrum(t_star:float, R_star:float, config:Config,
                 fl = synthetic.fl
                 wl = synthetic.wl
             case 'baraffe':
-                fl = baraffe_track.BaraffeSpectrumCalc(
+                fl = stellar_track.BaraffeSpectrumCalc(
                         t_star, config.star.lum_now, modern_fl)
                 wl = modern_wl
 
@@ -121,15 +121,15 @@ def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
         delimiter="\t",
     )
 
-def update_stellar_quantities(hf_row:dict, config:Config, baraffe_track=None):
+def update_stellar_quantities(hf_row:dict, config:Config, stellar_track=None):
 
     # Update value for star's radius
     log.info("Update stellar radius")
-    update_stellar_radius(hf_row, config, baraffe_track)
+    update_stellar_radius(hf_row, config, stellar_track)
 
     # Update value for instellation flux
     log.info("Update instellation")
-    update_instellation(hf_row, config, baraffe_track)
+    update_instellation(hf_row, config, stellar_track)
 
     # Calculate new eqm temperature
     log.info("Update equilibrium temperature")
@@ -139,7 +139,7 @@ def update_stellar_quantities(hf_row:dict, config:Config, baraffe_track=None):
     # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
     hf_row["T_skin"] = hf_row["T_eqm"] * (0.5**0.25)
 
-def update_stellar_radius(hf_row:dict, config:Config, baraffe_track=None):
+def update_stellar_radius(hf_row:dict, config:Config, stellar_track=None):
     '''
     Update stellar radius in hf_row, stored in SI units.
     '''
@@ -158,12 +158,12 @@ def update_stellar_radius(hf_row:dict, config:Config, baraffe_track=None):
             case 'spada':
                 R_star = mors.Value(config.star.mass, hf_row["age_star"] / 1e6, "Rstar")
             case 'baraffe':
-                R_star = baraffe_track.BaraffeStellarRadius(hf_row["age_star"])
+                R_star = stellar_track.BaraffeStellarRadius(hf_row["age_star"])
 
     # Dimensionalise and store in dictionary
     hf_row["R_star"] = R_star * R_sun
 
-def update_instellation(hf_row:dict, config:Config, baraffe_track=None):
+def update_instellation(hf_row:dict, config:Config, stellar_track=None):
     '''
     Update hf_row value of bolometric stellar flux impinging upon the planet.
     '''
@@ -185,7 +185,7 @@ def update_instellation(hf_row:dict, config:Config, baraffe_track=None):
                         * L_sun  / (4.0 * np.pi * hf_row["separation"]**2.0 )
 
             case 'baraffe':
-                S_0 = baraffe_track.BaraffeSolarConstant(hf_row["age_star"],
+                S_0 = stellar_track.BaraffeSolarConstant(hf_row["age_star"],
                                                     hf_row["separation"]/AU)
 
     # Update hf_row dictionary
