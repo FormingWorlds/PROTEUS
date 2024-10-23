@@ -128,7 +128,7 @@ vap_list = ["SiO", "SiO2", "MgO", "FeO2"]
 gas_list = vol_list + vap_list
 
 # Supported elements
-element_list = ["H", "O", "C", "N", "S", "Si", "Mg", "Fe"]
+element_list = ["H", "O", "C", "N", "S", "Si", "Mg", "Fe", "Na"]
 
 dirs = {}  # Modified by coupler.py: SetDirectories().
 
