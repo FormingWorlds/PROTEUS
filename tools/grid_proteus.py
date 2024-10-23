@@ -295,8 +295,8 @@ class Pgrid():
         if self.using_symlink:
             log.info("Symlink target: '%s'" % self.symlink_dir)
 
-        check_interval = 30.0 # seconds
-        print_interval = 20   # step interval at which to print (30*20 seconds = 10 minutes)
+        check_interval = 15.0 # seconds
+        print_interval = 8   # step interval at which to print (8*15 seconds = 2 minutes)
 
         # do not need more threads than there are points
         num_threads = min(num_threads, self.size)
@@ -329,7 +329,7 @@ class Pgrid():
         for i,gp in enumerate(self.flat):
 
             cfgfile = os.path.join(self.tmpdir,"case_%05d.toml" % i)
-            gp["dir_output"] = self.name+"/case_%05d"%i
+            gp["path"] = self.name+"/case_%05d"%i
 
             # Create config file for this case
             with open(cfgfile, 'w') as hdl:
@@ -339,7 +339,7 @@ class Pgrid():
 
                 # Write lines
                 for line in base_config:
-                    if ('=' not in line):
+                    if not ( ('=' in line) or ('[' in line)):
                         continue
 
                     line = line.split('#')[0]
@@ -490,10 +490,10 @@ if __name__=='__main__':
     # -----
     # Define parameter grid
     # -----
-    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","hd63433d.toml")
+    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","dummy.toml")
     # symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/hd63433d_v4"
-    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/hd63433d_v6"
-    pg = Pgrid("hd63433d_v6", cfg_base, symlink_dir=symlink)
+    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/dummy_grid"
+    pg = Pgrid("dummy_grid", cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("Planet")
     # pg.set_dimension_hyper("Planet")
@@ -509,8 +509,8 @@ if __name__=='__main__':
     # pg.add_dimension("Hydrogen")
     # pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 5.0, 10.0])
 
-    pg.add_dimension("Model")
-    pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
+    # pg.add_dimension("Model")
+    # pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
 
     pg.add_dimension("Redox state")
     pg.set_dimension_arange("Redox state", "fO2_shift_IW", -5, 5, 1)
