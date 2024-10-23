@@ -393,6 +393,13 @@ class Proteus:
             # Add atmosphere mass to interior mass, to get total planet mass
             self.hf_row["M_planet"] = self.hf_row["M_int"] + self.hf_row["M_atm"]
 
+            # Check for when atmosphere has escaped.
+            #    This will mean that the mixing ratios become undefined, so use value of 0.
+            if self.hf_row["P_surf"] < 1.0e-10:
+                for gas in gas_list:
+                    self.hf_row[gas+"_vmr"] = 0.0
+                self.hf_row["atm_kg_per_mol"] = 0.0
+
             ############### / OUTGASSING
 
             ############### ATMOSPHERE CLIMATE

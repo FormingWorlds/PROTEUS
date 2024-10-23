@@ -45,7 +45,6 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
     vol_mol_atm = {} # Moles in atmosphere
     vol_mol_int = {} # Moles in interior
     vol_mol_tot = {} # Moles in total
-    vol_atmpart = {} # Partitioning into atm
     vol_intpart = {} # Partitioning into int
 
     for vol in gas_list:
@@ -62,7 +61,12 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
         vol_mol_atm[vol] = np.array(hf_all[vol+"_mol_atm"])
         vol_mol_tot[vol] = np.array(hf_all[vol+"_mol_total"])
         vol_mol_int[vol] = vol_mol_tot[vol] - vol_mol_atm[vol]
-        vol_atmpart[vol] = vol_mol_atm[vol]/vol_mol_tot[vol]
+
+        # Volatile partitioning into the interior
+        # Requires special treatment for when moles=0, which occurs when atmosphere escapes.
+        mask = np.argwhere(vol_mol_tot[vol] < 1e-10) # mask of values where moles=0
+        vol_mol_int[vol][mask] = 0
+        vol_mol_tot[vol][mask] = 1
         vol_intpart[vol] = vol_mol_int[vol]/vol_mol_tot[vol]
 
     # Init plot
@@ -92,8 +96,8 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
         "A) Net heat flux to space",
         "B) Surface temperature",
         "C) Mantle evolution",
-        "D) Surface volatile partial pressure",
-        "E) Surface volatile mole fraction",
+        "D) Surface gas partial pressure",
+        "E) Surface gas mole fraction",
         "F) Interior volatile partitioning"
     ]
     for i,ax in enumerate(axs):
