@@ -329,7 +329,7 @@ class Proteus:
                 self.star_wl, self.star_fl = get_new_spectrum(
 
                                         # Required variables
-                                        self.hf_row["age_star"], self.hf_row["R_star"], self.config,
+                                        self.hf_row["age_star"], self.config,
 
                                         # Variables needed for mors.spada
                                         star_struct_modern=self.star_struct,

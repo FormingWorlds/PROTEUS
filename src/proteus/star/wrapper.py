@@ -63,8 +63,58 @@ def init_star(handler:Proteus):
                 )
 
                 handler.stellar_track = mors.BaraffeTrack(handler.config.star.mass)
+                handler.star_props = handler.stellar_track.BaraffeLuminosity(hf_row["age_star"])
 
-def get_new_spectrum(t_star:float, R_star:float, config:Config,
+def get_spada_synthesis_properties(spada_track):
+
+    """
+    # Get star radius [m]
+    Rstar = Value(Mstar, age, 'Rstar') * const.Rsun * 1.0e-2
+
+    # Get star temperature [K]
+    Tstar = Value(Mstar, age, 'Teff')
+
+    # Get rotation rate [Omega_sun]
+    Omega = Percentile(Mstar=Mstar, percentile=pctle)
+
+    # Get luminosities and fluxes
+    Ldict = Lxuv(Mstar=Mstar, Age=age, Omega=Omega)
+
+    # Output
+    out = {
+        "mass"   : Mstar,      # units of M_sun
+        "pctle"  : pctle,
+        "age"    : age,        # units of Myr
+        "radius" : Rstar,
+        "Teff"   : Tstar,
+    }
+
+    # Luminosities (erg s-1)
+    out["L_bo"] = spada_track.Value(age, "Lbol")
+    out["L_xr"] = Ldict["Lx"]
+    out["L_e1"] = Ldict["Leuv1"]
+    out["L_e2"] = Ldict["Leuv2"]
+
+    # Fluxes at 1 AU
+    area = (4.0 * const.Pi * const.AU * const.AU)
+    for k in ["bo","xr","e1","e2"]:
+        out["F_"+k] = out["L_"+k]/area
+
+    # Get flux from Planckian band
+    wl_pl = np.logspace(np.log10(spec.bands_limits["pl"][0]), np.log10(spec.bands_limits["pl"][1]), 1000)
+    fl_pl = spec.PlanckFunction_surf(wl_pl, Tstar)
+    fl_pl = spec.ScaleTo1AU(fl_pl, Rstar)
+    out["F_pl"] = np.trapz(fl_pl, wl_pl)
+    out["L_pl"] = out["F_pl"] * area
+
+    # Get flux of UV band from remainder
+    out["F_uv"] = out["F_bo"] - out["F_xr"] - out["F_e1"] - out["F_e2"] - out["F_pl"]
+    out["L_uv"] = out["F_uv"] * area
+
+    return out
+    """
+
+def get_new_spectrum(t_star:float, config:Config,
                      star_struct_modern=None, star_props_modern=None,
                      stellar_track=None, modern_wl=None, modern_fl=None):
     '''
@@ -75,8 +125,8 @@ def get_new_spectrum(t_star:float, R_star:float, config:Config,
 
     # Dummy case
     if config.star.module == 'dummy':
-        from proteus.star.dummy import generate_spectrum
-        wl, fl = generate_spectrum(config.star.Teff, R_star)
+       _ from proteus.star.dummy import generate_spectrum
+        wl, fl = generate_spectrum(config.star.dummy.Teff, config.star.dummy.radius)
 
     # Mors cases
     elif config.star.module == 'mors':
@@ -91,7 +141,7 @@ def get_new_spectrum(t_star:float, R_star:float, config:Config,
                 wl = synthetic.wl
             case 'baraffe':
                 fl = stellar_track.BaraffeSpectrumCalc(
-                        t_star, config.star.lum_now, modern_fl)
+                        t_star, star_props_modern, modern_fl)
                 wl = modern_wl
 
     return wl, fl
@@ -150,7 +200,7 @@ def update_stellar_radius(hf_row:dict, config:Config, stellar_track=None):
 
     # Dummy case
     if config.star.module == 'dummy':
-        R_star = config.star.radius
+        R_star = config.star.dummy.radius
 
     # Mors cases
     elif config.star.module == 'mors':
@@ -175,7 +225,7 @@ def update_instellation(hf_row:dict, config:Config, stellar_track=None):
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import calc_instellation
-        S_0 = calc_instellation(config.star.Teff, hf_row["R_star"], hf_row["separation"])
+        S_0 = calc_instellation(config.star.dummy.Teff, hf_row["R_star"], hf_row["separation"])
 
     # Mors cases
     elif config.star.module == 'mors':
