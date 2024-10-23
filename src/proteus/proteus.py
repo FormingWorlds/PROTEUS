@@ -21,9 +21,7 @@ from proteus.star.wrapper import (
     get_new_spectrum,
     init_star,
     scale_spectrum_to_toa,
-    update_equilibrium_temperature,
-    update_instellation,
-    update_stellar_radius,
+    update_stellar_quantities,
     write_spectrum,
 )
 from proteus.utils.constants import (
@@ -317,21 +315,7 @@ class Proteus:
             ):
                 self.sinst_prev = self.hf_row["Time"]
 
-                # Update value for star's radius
-                log.info("Update stellar radius")
-                update_stellar_radius(self.hf_row, self.config, baraffe_track=self.baraffe_track)
-
-                # Update value for instellation flux
-                log.info("Update instellation")
-                update_instellation(self.hf_row, self.config, baraffe_track=self.baraffe_track)
-
-                # Calculate new eqm temperature
-                log.info("Update equilibrium temperature")
-                update_equilibrium_temperature(self.hf_row, self.config)
-
-                # Calculate new skin temperature
-                # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
-                self.hf_row["T_skin"] = self.hf_row["T_eqm"] * (0.5**0.25)
+                update_stellar_quantities(self.hf_row, self.config, baraffe_track=self.baraffe_track)
 
             # Calculate a new (historical) stellar spectrum
             if (abs(self.hf_row["Time"] - self.sspec_prev) > self.config.params.dt.starspec) or (

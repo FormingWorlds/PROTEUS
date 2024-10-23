@@ -121,6 +121,24 @@ def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
         delimiter="\t",
     )
 
+def update_stellar_quantities(hf_row:dict, config:Config, baraffe_track=None):
+
+    # Update value for star's radius
+    log.info("Update stellar radius")
+    update_stellar_radius(hf_row, config, baraffe_track)
+
+    # Update value for instellation flux
+    log.info("Update instellation")
+    update_instellation(hf_row, config, baraffe_track)
+
+    # Calculate new eqm temperature
+    log.info("Update equilibrium temperature")
+    update_equilibrium_temperature(hf_row, config)
+
+    # Calculate new skin temperature
+    # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
+    hf_row["T_skin"] = hf_row["T_eqm"] * (0.5**0.25)
+
 def update_stellar_radius(hf_row:dict, config:Config, baraffe_track=None):
     '''
     Update stellar radius in hf_row, stored in SI units.
