@@ -33,10 +33,10 @@ class Zephyrus:
 
     Attributes
     ----------
-    some_parameter: str
-        Not used.
+    Pxuv: float
+        Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
     """
-    some_parameter: str
+    Pxuv: float
 
 
 @define
