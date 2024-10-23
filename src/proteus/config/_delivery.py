@@ -23,8 +23,8 @@ class Elements:
     """
     CH_ratio: float = field(validator=gt(0))
     H_oceans: float = field(validator=gt(0))
-    N_ppmw: float = field(validator=gt(0))
-    S_ppmw: float = field(validator=gt(0))
+    N_ppmw: float = field(validator=ge(0))
+    S_ppmw: float = field(validator=ge(0))
 
 
 @define

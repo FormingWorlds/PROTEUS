@@ -74,9 +74,9 @@ class TimeStepParams:
     adaptive: DtAdaptive
         Parameters used to configure the adaptive time-stepping scheme.
     """
-    minimum: float = field(validator=ge(0))
-    maximum: float = field(validator=ge(0))
-    initial: float = field(validator=ge(0))
+    minimum: float = field(validator=gt(0))
+    maximum: float = field(validator=gt(0))
+    initial: float = field(validator=gt(0))
     starspec: float = field(validator=ge(0))
     starinst: float = field(validator=ge(0))
     method: str = field(validator=in_(('proportional', 'adaptive', 'maximum')))
@@ -219,8 +219,8 @@ class StopSteady:
         Necessary (not sufficient) condition maximum change in melt fraction over time `(dp/p)/dt*100` [yr-1].
     """
     enabled: bool
-    F_crit: float = field(validator=(gt(0), lt(1)))
-    dprel: float = field(validator=(gt(0), lt(1)))
+    F_crit: float = field(validator=gt(0))
+    dprel: float = field(validator=gt(0))
 
 
 @define
