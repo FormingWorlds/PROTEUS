@@ -11,6 +11,7 @@ from scipy.integrate import solve_ivp
 if TYPE_CHECKING:
     from proteus.config import Config
 
+from proteus.atmos_clim.common import get_spfile_path
 from proteus.utils.helper import PrintHalfSeparator, UpdateStatusfile, safe_rm
 
 atm = None
@@ -64,7 +65,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
 
         #Init atm object if first iteration or change in stellar spectrum
         if no_atm or update_stellar_spectrum:
-            spectral_file_nostar = os.path.join(dirs["fwl"] , config["spectral_file"])
+            spectral_file_nostar = get_spfile_path(dirs["fwl"], config)
             if not os.path.exists(spectral_file_nostar):
                 UpdateStatusfile(dirs, 20)
                 raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)

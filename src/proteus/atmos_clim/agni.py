@@ -10,6 +10,7 @@ import numpy as np
 from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
+from proteus.atmos_clim.common import get_spfile_path
 from proteus.utils.constants import dirs, volatile_species
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
@@ -72,7 +73,7 @@ def _construct_voldict(hf_row:dict, config:Config):
     # get from hf_row
     vol_dict = {}
     for vol in volatile_species:
-        if config[vol+"_included"]:
+        if bool(getattr(config.outgas.calliope,"include_"+vol)):
             vmr = hf_row[vol+"_vmr"]
             if vmr > 1e-40:
                 vol_dict[vol] = vmr
@@ -123,7 +124,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         input_star =    ""
     else:
         # doesn't exist => AGNI will copy it + modify as required
-        input_sf =      os.path.join(dirs["fwl"], config["spectral_file"])
+        input_sf =      get_spfile_path(dirs["fwl"], config)
         input_star =    sflux_path
 
     # composition
@@ -173,9 +174,9 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         hf_row["T_surf"],
                         hf_row["gravity"], hf_row["R_int"],
 
-                        int(config["atmosphere_nlev"]),
+                        int(config.atmos_clim.agni.num_levels),
                         hf_row["P_surf"],
-                        config["P_top"],
+                        config.atmos_clim.agni.p_top,
 
                         vol_dict, "",
 

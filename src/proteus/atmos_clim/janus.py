@@ -62,12 +62,12 @@ def InitAtm(dirs:dict, config:Config):
     # through the routine UpdateStateAtm
     atm = atmos(0.0, #var
                 1e5, #var
-                config["P_top"]*1e5,
+                config.atmos_clim.janus.p_top*1e5,
                 6.371e6, #var
                 5.972e24, #var
                 band_edges,
                 vol_mixing = vol_list, #var
-                req_levels = config["atmosphere_nlev"],
+                req_levels = config.atmos_clim.janus.num_levels,
                 water_lookup = False,
                 alpha_cloud=config.atmos_clim.cloud_alpha,
                 trppT = trppT, #var if tropopause option is set to 1
