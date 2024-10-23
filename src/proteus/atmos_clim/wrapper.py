@@ -50,8 +50,16 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     global atm
 
     PrintHalfSeparator()
+
+    # Handle new surface temperature
     if config.atmos_clim.surf_state == 'mixed_layer':
         hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
+
+    elif config.atmos_clim.surf_state == 'fixed':
+        hf_row["T_surf"] = hf_row["T_magma"]
+
+    # elif surf_state=='skin':
+    #    Don't do anything here, because this will be handled by the atmosphere model.
 
     if config.atmos_clim.module == 'janus':
         # Import

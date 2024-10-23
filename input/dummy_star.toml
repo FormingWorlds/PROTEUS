@@ -134,13 +134,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     tmp_minimum     = 0.5           # temperature floor on solver
     tmp_maximum     = 5000.0        # temperature ceiling on solver
 
-    module  = "dummy"           # Which atmosphere module to use
+    module  = "agni"           # Which atmosphere module to use
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Frostflow"   # which gas opacities to include
-        spectral_bands  = "48"          # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
+        spectral_bands  = "16"          # how many spectral bands?
+        num_levels      = 38            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq" | "kin"
 
     [atmos_clim.janus]
