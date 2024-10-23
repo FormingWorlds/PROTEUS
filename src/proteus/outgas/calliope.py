@@ -13,7 +13,7 @@ from calliope.solve import (
     get_target_from_pressures,
 )
 
-from proteus.utils.constants import element_list, gas_list
+from proteus.utils.constants import element_list, vol_list
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("fwl."+__name__)
@@ -42,7 +42,7 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     solvevol_inp['sulfur_ppmw'] =           config.delivery.elements.S_ppmw
 
     # Volatile inventory
-    for s in gas_list:
+    for s in vol_list:
         solvevol_inp[f'{s}_initial_bar'] =  getattr(config.delivery.volatiles, s)
 
         included = getattr(config.outgas.calliope, f'include_{s}')

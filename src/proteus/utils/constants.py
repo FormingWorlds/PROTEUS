@@ -123,7 +123,9 @@ molar_mass = {  "H":   1.00800e-3 ,  # all in [kg mol-1]
         }
 
 # Supported gases
-gas_list = ["H2O", "CO2", "H2", "CH4", "CO", "N2", "S2", "SO2", "SiO", "SiO2", "MgO", "FeO2"]
+vol_list = ["H2O", "CO2", "H2", "CH4", "CO", "N2", "S2", "SO2"]
+vap_list = ["SiO", "SiO2", "MgO", "FeO2"]
+gas_list = vol_list + vap_list
 
 # Supported elements
 element_list = ["H", "O", "C", "N", "S", "Si", "Mg", "Fe"]

@@ -33,6 +33,8 @@ from proteus.utils.constants import (
     const_G,
     element_list,
     gas_list,
+    vap_list,
+    vol_list
 )
 from proteus.utils.coupler import (
     CreateHelpfileFromDict,
@@ -201,8 +203,8 @@ class Proteus:
 
             # Store partial pressures and list of included volatiles
             log.info("Input partial pressures:")
-            inc_vols = []
-            for s in gas_list:
+            inc_gases = []
+            for s in vol_list:
                 pp_val = getattr(self.config.delivery.volatiles, s)
                 include = getattr(self.config.outgas.calliope, f'include_{s}')
 
@@ -212,11 +214,14 @@ class Proteus:
                 )
 
                 if include:
-                    inc_vols.append(s)
+                    inc_gases.append(s)
                     self.hf_row[s + "_bar"] = max(1.0e-30, float(pp_val))
                 else:
                     self.hf_row[s + "_bar"] = 0.0
-            log.info("Included volatiles: " + str(inc_vols))
+            for s in vap_list:
+                inc_gases.append(s)
+                self.hf_row[s + "_bar"] = 0.0
+            log.info("Included gases: " + str(inc_gases))
 
         else:
             # Resuming from disk
