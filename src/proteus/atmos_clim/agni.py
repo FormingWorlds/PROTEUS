@@ -73,10 +73,9 @@ def _construct_voldict(hf_row:dict, config:Config):
     # get from hf_row
     vol_dict = {}
     for vol in gas_list:
-        if bool(getattr(config.outgas.calliope,"include_"+vol)):
-            vmr = hf_row[vol+"_vmr"]
-            if vmr > 1e-40:
-                vol_dict[vol] = vmr
+        vmr = hf_row[vol+"_vmr"]
+        if vmr > 1e-40:
+            vol_dict[vol] = vmr
 
     # check values
     if len(vol_dict) == 0:

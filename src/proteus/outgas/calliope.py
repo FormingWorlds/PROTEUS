@@ -26,14 +26,14 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     solvevol_inp = {}
 
     # Planet properties
-    solvevol_inp["M_mantle"]    =   hf_row["M_mantle"]
-    solvevol_inp["Phi_global"]  =   hf_row["Phi_global"]
-    solvevol_inp["gravity"]     =   hf_row["gravity"]
-    solvevol_inp["radius"]      =   hf_row["R_int"]
+    solvevol_inp["M_mantle"]    = hf_row["M_mantle"]
+    solvevol_inp["Phi_global"]  = hf_row["Phi_global"]
+    solvevol_inp["gravity"]     = hf_row["gravity"]
+    solvevol_inp["radius"]      = hf_row["R_int"]
 
     # Surface properties
-    solvevol_inp["T_magma"]     =   hf_row["T_magma"]
-    solvevol_inp['fO2_shift_IW'] =  config.outgas.fO2_shift_IW
+    solvevol_inp["T_magma"]     =  hf_row["T_magma"]
+    solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
 
     # Elemental inventory
     solvevol_inp['hydrogen_earth_oceans'] = config.delivery.elements.H_oceans
