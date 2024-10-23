@@ -9,8 +9,6 @@ from typing import TYPE_CHECKING
 import platformdirs
 from osfclient.api import OSF
 
-from proteus.atmos_clim.common import get_spfile_path
-
 if TYPE_CHECKING:
     from proteus.config import Config
 

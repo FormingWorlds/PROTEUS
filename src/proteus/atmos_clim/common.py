@@ -1,12 +1,13 @@
 # Common atmosphere climate model functions
 from __future__ import annotations
 
-import os
 import logging
+import os
+from typing import TYPE_CHECKING
+
 import netCDF4 as nc
 import numpy as np
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from proteus.config import Config
 
@@ -89,4 +90,3 @@ def get_spfile_path(fwl_dir:str, config:Config):
 
     # Construct file path
     return os.path.join(fwl_dir,"spectral_files",group,bands,group)+".sf"
-
