@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from attrs import define, field, validators
+from attrs import define, field
+from attrs.validators import ge, gt, in_, le
 
 from ._converters import none_if_none
 
@@ -18,7 +19,9 @@ class Star:
     Teff: float
         Observed effective temperature [K].
     mass: float
-        Stellar mass [M_sun]
+        Stellar mass [M_sun]. Note that for Mors,
+        it should be between 0.1 and 1.25 solar masses.
+        Values outside of the valid range will be clipped.
     lum_now: float
         Observed bolometric luminosity [L_sun].
     rot_pctle: float
@@ -32,16 +35,16 @@ class Star:
     mors: Mors
         Parameters for MORS module.
     """
-    radius: float
-    mass: float
-    Teff: float
-    rot_pctle: float
-    lum_now: float
-    age_now: float
-    age_ini: float
+    radius: float = field(validator=gt(0))
+    mass: float = field(validator=(ge(0.1), le(1.25)))
+    Teff: float = field(validator=gt(0))
+    rot_pctle: float = field(validator=(ge(0), le(100)))
+    lum_now: float = field(validator=gt(0))
+    age_now: float = field(validator=gt(0))
+    age_ini: float = field(validator=gt(0))
 
     module: str | None = field(
-        validator=validators.in_((None, 'mors', 'dummy')),
+        validator=in_((None, 'mors', 'dummy')),
         converter=none_if_none,
     )
 
@@ -59,5 +62,5 @@ class Mors:
     spec: str
         Name of file containing stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars) for potential file names.
     """
-    tracks: str = field(validator=validators.in_(('spada', 'baraffe')))
+    tracks: str = field(validator=in_(('spada', 'baraffe')))
     spec: str

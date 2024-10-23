@@ -3,7 +3,13 @@ It also defines stopping criteria."""
 
 from __future__ import annotations
 
-from attrs import define, field, validators
+from attrs import define, field
+from attrs.validators import ge, gt, in_, lt
+
+
+def max_bigger_than_min(instance, attribute, value):
+    if value <= instance.minimum:
+        raise ValueError("'maximum' has to be bigger than 'minimum'.")
 
 
 @define
@@ -40,9 +46,9 @@ class OutputParams:
         Plotting output file format. Choices: "png", "pdf".
     """
     path: str
-    logging: str = field(validator=validators.in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    plot_mod: int
-    plot_fmt: str = field(validator=validators.in_(('pdf', 'png')))
+    logging: str = field(validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
+    plot_mod: int = field(validator=ge(0))
+    plot_fmt: str = field(validator=in_(('pdf', 'png')))
 
 
 @define
@@ -68,12 +74,12 @@ class TimeStepParams:
     adaptive: DtAdaptive
         Parameters used to configure the adaptive time-stepping scheme.
     """
-    minimum: float
-    maximum: float
-    initial: float
-    starspec: float
-    starinst: float
-    method: str = field(validator=validators.in_(('proportional', 'adaptive', 'maximum')))
+    minimum: float = field(validator=gt(0))
+    maximum: float = field(validator=gt(0))
+    initial: float = field(validator=gt(0))
+    starspec: float = field(validator=ge(0))
+    starinst: float = field(validator=ge(0))
+    method: str = field(validator=in_(('proportional', 'adaptive', 'maximum')))
     proportional: DtProportional
     adaptive: DtAdaptive
 
@@ -87,7 +93,7 @@ class DtProportional:
     propconst: float
         Proportionality constant.
     """
-    propconst: float
+    propconst: float = field(validator=gt(0))
 
 
 @define
@@ -101,8 +107,8 @@ class DtAdaptive:
     rtol: float
         Relative tolerance on time-step size [dimensionless].
     """
-    atol: float
-    rtol: float
+    atol: float = field(validator=gt(0))
+    rtol: float = field(validator=gt(0))
 
 
 @define
@@ -146,8 +152,8 @@ class StopIters:
         Maximum number of iterations.
     """
     enabled: bool
-    minimum: int
-    maximum: int
+    minimum: int = field(validator=ge(0))
+    maximum: int = field(validator=max_bigger_than_min)
 
 
 @define
@@ -164,8 +170,8 @@ class StopTime:
         Model will terminate when this time is reached [yr].
     """
     enabled: bool
-    minimum: float
-    maximum: float
+    minimum: float = field(validator=ge(0))
+    maximum: float = field(validator=max_bigger_than_min)
 
 
 @define
@@ -180,7 +186,7 @@ class StopSolid:
         Model will terminate when global melt fraction is less than this value [dimensionless].
     """
     enabled: bool
-    phi_crit: float
+    phi_crit: float = field(validator=(gt(0), lt(1)))
 
 
 @define
@@ -193,9 +199,10 @@ class StopRadeqm:
         Enable criteria if True
     F_crit: float
         Model will terminate when absolute net outgoing flux is less than this value [W m-2].
+        Set to 0 to disable.
     """
     enabled: bool
-    F_crit: float
+    F_crit: float = field(validator=gt(0))
 
 
 @define
@@ -212,8 +219,8 @@ class StopSteady:
         Necessary (not sufficient) condition maximum change in melt fraction over time `(dp/p)/dt*100` [yr-1].
     """
     enabled: bool
-    F_crit: float
-    dprel: float
+    F_crit: float = field(validator=gt(0))
+    dprel: float = field(validator=gt(0))
 
 
 @define
@@ -228,4 +235,4 @@ class StopEscape:
         Model will termiante when atmosphere mass is less than this fraction of the initial atmosphere mass [dimensionless].
     """
     enabled: bool
-    mass_frac: float
+    mass_frac: float = field(validator=(gt(0), lt(1)))
