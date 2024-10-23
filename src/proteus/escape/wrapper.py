@@ -86,7 +86,7 @@ def RunZEPHYRUS(config, hf_row):
 
     if (star is None):
         star = mors.Star(Mstar=config.star.mass,
-                         Omega=config["star_omega"])
+                         percentile=config.star.rot_pctle)
 
     # Interpolating the XUV flux at the age of the star
     Fxuv_star_SI = ((star.Value(age_star, 'Lx') + star.Value(age_star, 'Leuv'))
