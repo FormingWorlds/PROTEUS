@@ -83,6 +83,12 @@ def download_spectral_file(name:str, bands:str):
     """
     log.debug("Get spectral files?")
 
+    # Check name and bands
+    if not isinstance(name, str) or (len(name) < 1):
+        raise Exception("Must provide name of spectral file")
+    if not isinstance(bands, str) or (len(bands) < 1):
+        raise Exception("Must provide number of bands in spectral file")
+
     #Create spectral file data repository if not existing
     data_dir = GetFWLData() / "spectral_files"
     data_dir.mkdir(parents=True, exist_ok=True)
