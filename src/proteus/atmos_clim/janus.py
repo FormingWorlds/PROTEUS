@@ -101,7 +101,7 @@ def UpdateStateAtm(atm, hf_row:dict, trppT:int):
             Dictionary containing simulation variables for current iteration
     """
 
-    atm.setSurfaceTemperature(hf_row["T_surf"])
+    atm.setSurfaceTemperature(hf_row["T_magma"])
     atm.setSurfacePressure(hf_row["P_surf"]*1e5)
     atm.setPlanetProperties(hf_row["R_int"], hf_row["M_int"])
 

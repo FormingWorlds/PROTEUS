@@ -113,10 +113,11 @@ def surfaces():
     download_surface_albedos()
 
 @click.command()
-def exoplanets():
-    """Get exoplanet population data"""
-    from .utils.data import download_exoplanet_data
+def reference():
+    """Get reference data (exoplanet populations, mass-radius curves, etc.)"""
+    from .utils.data import download_exoplanet_data, download_massradius_data
     download_exoplanet_data()
+    download_massradius_data()
 
 
 @click.command()
@@ -140,7 +141,7 @@ def spider():
 cli.add_command(get)
 get.add_command(spectral)
 get.add_command(surfaces)
-get.add_command(exoplanets)
+get.add_command(reference)
 get.add_command(stellar)
 get.add_command(socrates)
 get.add_command(petsc)
