@@ -32,7 +32,7 @@ from proteus.utils.constants import (
     R_earth,
     const_G,
     element_list,
-    volatile_species,
+    gas_list,
 )
 from proteus.utils.coupler import (
     CreateHelpfileFromDict,
@@ -202,7 +202,7 @@ class Proteus:
             # Store partial pressures and list of included volatiles
             log.info("Input partial pressures:")
             inc_vols = []
-            for s in volatile_species:
+            for s in gas_list:
                 pp_val = getattr(self.config.delivery.volatiles, s)
                 include = getattr(self.config.outgas.calliope, f'include_{s}')
 

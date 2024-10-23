@@ -11,7 +11,7 @@ import janus.set_socrates_env  # noqa
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import volatile_species
+from proteus.utils.constants import gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest
 
 if TYPE_CHECKING:
@@ -41,8 +41,8 @@ def InitAtm(dirs:dict, config:Config):
     from janus.utils import ReadBandEdges, atmos
 
     vol_list = {}
-    for vol in volatile_species:
-        vol_list[vol] = 1.0/len(volatile_species)
+    for vol in gas_list:
+        vol_list[vol] = 1.0/len(gas_list)
 
     if config.atmos_clim.janus.tropopause in (None, 'skin'):
         trppT = 0.0
@@ -106,7 +106,7 @@ def UpdateStateAtm(atm, hf_row:dict, trppT:int):
     atm.setPlanetProperties(hf_row["R_int"], hf_row["M_int"])
 
     vol_mixing = {}
-    for vol in volatile_species:
+    for vol in gas_list:
         vol_mixing[vol] = hf_row[vol+"_vmr"]
     atm.setVolatiles(vol_mixing)
 

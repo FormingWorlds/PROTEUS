@@ -9,8 +9,8 @@ import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import volatile_species
-from proteus.utils.plot import dict_colors, vol_latex, vol_zorder
+from proteus.utils.constants import gas_list
+from proteus.utils.plot import dict_colors, latexify
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -48,7 +48,7 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
     vol_atmpart = {} # Partitioning into atm
     vol_intpart = {} # Partitioning into int
 
-    for vol in volatile_species:
+    for vol in gas_list:
         # Check vmr for presence
         this_vmr = np.array(hf_all[vol+"_vmr"])
         vol_present[vol] = True
@@ -160,26 +160,26 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
     ax_tr.plot( hf_all["Time"], hf_all["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
     bar_min, bar_max = 0.1, 10.0
     bar_max = max(bar_max, np.amax(hf_all["P_surf"]))
-    for vol in volatile_species:
+    for vol in gas_list:
         if not vol_present[vol]:
             continue
-        ax_tr.plot( hf_all["Time"], vol_bars[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+        ax_tr.plot( hf_all["Time"], vol_bars[vol], color=dict_colors[vol], lw=lw, alpha=al, label=latexify(vol))
         bar_min = min(bar_min, np.amin(vol_bars[vol]))
     ax_tr.set_ylim(max(1.0e-7,min(bar_min, 1.0e-1)), bar_max * 2.0)
     ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
 
     # PLOT ax_cr
-    for vol in volatile_species:
+    for vol in gas_list:
         if not vol_present[vol]:
             continue
-        ax_cr.plot( hf_all["Time"], vol_vmr[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+        ax_cr.plot( hf_all["Time"], vol_vmr[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=latexify(vol))
     ax_cr.set_ylim(0, 101)
 
     # PLOT ax_br
-    for vol in volatile_species:
+    for vol in gas_list:
         if not vol_present[vol]:
             continue
-        ax_br.plot( hf_all["Time"], vol_intpart[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+        ax_br.plot( hf_all["Time"], vol_intpart[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=latexify(vol))
     ax_br.set_ylim(0,101)
     ax_br.legend(loc='center left', ncol=2, **leg_kwargs).set_zorder(20)
 

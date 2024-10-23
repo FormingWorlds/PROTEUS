@@ -5,7 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
-from proteus.utils.constants import element_list, volatile_species
+from proteus.utils.constants import element_list, gas_list
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -44,5 +44,5 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
     # calculate total atmosphere mass (from sum of volatile masses)
     # this will need to be changed when rock vapours are included
     hf_row["M_atm"] = 0.0
-    for s in volatile_species:
+    for s in gas_list:
         hf_row["M_atm"] += hf_row[s + "_kg_atm"]

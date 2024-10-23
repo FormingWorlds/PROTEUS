@@ -7,7 +7,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 
-from proteus.utils.plot import dict_colors, vol_latex
+from proteus.utils.plot import dict_colors, latexify
 from proteus.utils.plot_offchem import offchem_read_year
 
 if TYPE_CHECKING:
@@ -80,14 +80,10 @@ def plot_offchem_year(
             ls = 'dotted'
             print("Warning: could not find a defined colour for species '%s' " % s)
 
-        pretty = s
-        if s in vol_latex.keys():
-            pretty = vol_latex[s]
-
         # VULCAN result
         key = str("mx_"+s)
         if key in year_dict.keys():
-            line = ax1.plot(year_dict[key],year_dict["pressure"],label=pretty,ls=ls,lw=lw,color=color)[0]
+            line = ax1.plot(year_dict[key],year_dict["pressure"],label=latexify(s),ls=ls,lw=lw,color=color)[0]
             color = line.get_color()
             min_mix = min(min_mix,np.amin(year_dict[key]))
 

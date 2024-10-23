@@ -35,7 +35,7 @@ from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_stacked import plot_stacked
 from proteus.utils.constants import (
     element_list,
-    volatile_species,
+    gas_list,
 )
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -131,7 +131,7 @@ def GetHelpfileKeys():
             ]
 
     # gases
-    for s in volatile_species:
+    for s in gas_list:
         keys.append(s+"_mol_atm")
         keys.append(s+"_mol_solid")
         keys.append(s+"_mol_liquid")
