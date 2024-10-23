@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-from attrs import define, field, validators
+from attrs import define, field
+from attrs.validators import ge, gt, in_, le
 
 from ._converters import none_if_none
 
+
+def tmp_max_bigger_than_tmp_min(instance, attribute, value):
+    if value <= instance.tmp_minimum:
+        raise ValueError("'tmp_maximum' has to be bigger than 'tmp_minimum'.")
 
 @define
 class AtmosClim:
@@ -43,18 +48,18 @@ class AtmosClim:
         Config parameters for dummy atmosphere module
     """
     prevent_warming: bool
-    surface_d: float
-    surface_k: float
+    surface_d: float = field(validator=gt(0))
+    surface_k: float = field(validator=gt(0))
     cloud_enabled: bool
-    cloud_alpha: float
-    surf_state: str = field(validator=validators.in_(('mixed_layer', 'fixed', 'skin')))
-    surf_albedo: float
-    albedo_pl: float
+    cloud_alpha: float = field(validator=(ge(0), le(1)))
+    surf_state: str = field(validator=in_(('mixed_layer', 'fixed', 'skin')))
+    surf_albedo: float = field(validator=(ge(0), le(1)))
+    albedo_pl: float = field(validator=(ge(0), le(1)))
     rayleigh: bool
-    tmp_minimum: float
-    tmp_maximum: float
+    tmp_minimum: float = field(validator=gt(0))
+    tmp_maximum: float = field(validator=tmp_max_bigger_than_tmp_min)
 
-    module: str = field(validator=validators.in_(('dummy', 'agni', 'janus')))
+    module: str = field(validator=in_(('dummy', 'agni', 'janus')))
 
     agni: Agni
     janus: Janus
@@ -83,12 +88,12 @@ class Agni:
     chemistry: str | None
         Treatment of self-consistent atmospheric chemsitry. Choices: "none", "eq", "kin".
     """
-    p_top: float
+    p_top: float = field(validator=gt(0))
     spectral_group: str
     spectral_bands: str
-    num_levels: int = field(validator=validators.ge(15))
+    num_levels: int = field(validator=ge(15))
     chemistry: str | None = field(
-        validator=validators.in_((None, 'eq', 'kin')), converter=none_if_none
+        validator=in_((None, 'eq', 'kin')), converter=none_if_none
     )
 
     @property
@@ -116,13 +121,13 @@ class Janus:
     tropopause: str | None
         Scheme for determining tropopause location. Choices: "none", "skin", "dynamic".
     """
-    p_top: float
+    p_top: float = field(validator=gt(0))
     spectral_group: str
     spectral_bands: str
-    F_atm_bc: int = field(validator=validators.in_((0, 1)))
-    num_levels: int = field(validator=validators.ge(15))
+    F_atm_bc: int = field(validator=in_((0, 1)))
+    num_levels: int = field(validator=ge(15))
     tropopause: str | None = field(
-        validator=validators.in_((None, 'skin', 'dynamic')), converter=none_if_none
+        validator=in_((None, 'skin', 'dynamic')), converter=none_if_none
     )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from attrs import define, field, validators
+from attrs import define, field
+from attrs.validators import ge, gt, in_, lt
 
 from ._converters import none_if_none
 
@@ -22,12 +23,15 @@ class Orbit:
     module: str | None
         Select orbit module to use. Not used currently.
     """
-    semimajoraxis: float
-    eccentricity: float = field(validator=[
-        validators.ge(0),
-        validators.lt(1),
-    ])
-    zenith_angle: float
-    s0_factor: float
+    semimajoraxis: float = field(validator=gt(0))
+    eccentricity: float = field(validator=(
+        ge(0),
+        lt(1),
+    ))
+    zenith_angle: float  = field(validator=(
+        ge(0),
+        lt(90),
+    ))
+    s0_factor: float = field(validator=gt(0))
 
-    module: str | None = field(validator=validators.in_((None,)), converter=none_if_none)
+    module: str | None = field(validator=in_((None,)), converter=none_if_none)
