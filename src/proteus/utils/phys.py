@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import logging
+
 import numpy as np
+
 from proteus.utils.constants import const_c, const_h, const_k, molar_mass
 from proteus.utils.helper import mol_to_ele
 

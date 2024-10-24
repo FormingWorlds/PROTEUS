@@ -34,7 +34,7 @@ from proteus.utils.constants import (
     element_list,
     gas_list,
     vap_list,
-    vol_list
+    vol_list,
 )
 from proteus.utils.coupler import (
     CreateHelpfileFromDict,

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import glob
-import os
 import logging
+import os
 from typing import TYPE_CHECKING
 
-from proteus.utils.helper import mol_to_ele
 import numpy as np
+
+from proteus.utils.helper import mol_to_ele
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -31,12 +32,6 @@ _preset_colours  = {
     "SO2": "#00008B",
     "He" : "#30FF71",
     "NH3": "#675200",
-
-    # Vapourous gases
-    "SiO":  "#ff4444",
-    "SiO2": "#8833ff",
-    "MgO":  "#88ee22",
-    "FeO2": "#ffcc22",
 
     # Volatile elements
     "H": "#0000aa",
