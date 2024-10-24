@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-
-from attrs import define, field, validators
+import tomlkit
+from attrs import define, field, validators, asdict
 
 from ._atmos_clim import AtmosClim
 from ._delivery import Delivery
@@ -13,9 +13,9 @@ from ._outgas import Outgas
 from ._params import Params
 from ._star import Star
 from ._struct import Struct
+from ._converters import dict_replace_none
 
 log = logging.getLogger('fwl.' + __name__)
-
 
 @define
 class Config:
@@ -81,6 +81,23 @@ class Config:
             f'please use the class-based config instead: {hint}. '
             'See https://github.com/FormingWorlds/PROTEUS/issues/74 for more info.'
         )
-        log.warn(message)
+        log.warning(message)
 
         return val
+
+
+    def write(self, out:str):
+        """
+        Write configuration to a new TOML file.
+        """
+
+        # Convert to dictionary
+        cfg = dict(asdict(self))
+
+        # Replace None with "none"
+        cfg = dict_replace_none(cfg)
+
+        # Write to TOML file
+        with open(out,'w') as hdl:
+            tomlkit.dump(cfg, hdl)
+

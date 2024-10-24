@@ -8,7 +8,6 @@ from pathlib import Path
 
 import numpy as np
 import toml
-from attrs import asdict
 from calliope.structure import calculate_mantle_mass
 
 import proteus.utils.constants
@@ -163,8 +162,9 @@ class Proteus:
             "steady_check": 15,  # Number of iterations to look backwards when checking steady state
         }
 
-        # Config file paths
+        # Write config to output directory, for future reference
         config_path_backup = os.path.join(self.directories["output"], "init_coupler.toml")
+        self.config.write(config_path_backup)
 
         # Is the model resuming from a previous state?
         if not resume:
@@ -172,14 +172,6 @@ class Proteus:
 
             # SPIDER initial condition
             IC_INTERIOR = 1
-
-            # Write config to output directory, for future reference
-            # File is read into memory first, because it's possible that the original
-            #    file and the backup file are located at the same path.
-            with open(str(self.config_path), 'r') as hdl:
-                config_raw = hdl.readlines()
-            with open(config_path_backup, 'w') as hdl:
-                hdl.writelines(config_raw)
 
             # Create an empty initial row for helpfile
             self.hf_row = ZeroHelpfileRow()
@@ -226,10 +218,6 @@ class Proteus:
         else:
             # Resuming from disk
             log.info("Resuming the simulation from the disk")
-
-            # Copy cfg file
-            with open(config_path_backup, "w") as toml_file:
-                toml.dump(asdict(self.config), toml_file)
 
             # SPIDER initial condition
             IC_INTERIOR = 2
