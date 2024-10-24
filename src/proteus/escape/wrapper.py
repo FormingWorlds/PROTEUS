@@ -84,10 +84,6 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
     # Get the age of the star at time t to compute XUV flux at that time
     age_star = hf_row["age_star"] / 1e6 # [Myrs]
 
-    if (star is None):
-        star = mors.Star(Mstar=config.star.mass,
-                         percentile=config.star.rot_pctle)
-
     # Interpolating the XUV flux at the age of the star
     Fxuv_star_SI = ((stellar_track.Value(age_star, 'Lx') + stellar_track.Value(age_star, 'Leuv'))
                              / (4 * np.pi * (config.orbit.semimajoraxis * AU * 1e2)**2)) * ergcm2stoWm2
