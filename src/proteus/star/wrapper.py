@@ -53,19 +53,22 @@ def init_star(handler:Proteus):
                 handler.star_struct.CalcBandFluxes()
 
                 # calculate other properties from modern spectrum
-                handler.star_props = mors.synthesis.GetProperties(
-                    handler.config.star.mass,
-                    handler.config.star.rot_pctle,
-                    handler.config.star.age_now * 1000, # convert Gyr to Myr
+                handler.star_props = get_spada_synthesis_properties(
+                    handler.stellar_track,
+                    handler.config.star.mors.age_now * 1000, # convert Gyr to Myr
                 )
 
             case 'baraffe':
+                # creates track data
+                handler.stellar_track = mors.BaraffeTrack(handler.config.star.mass)
+
+                # load modern spectrum
                 handler.star_modern_wl, handler.star_modern_fl = mors.ModernSpectrumLoad(
                     star_modern_path, star_backup_path
                 )
 
-                handler.stellar_track = mors.BaraffeTrack(handler.config.star.mass)
-                handler.star_props = handler.stellar_track.BaraffeLuminosity(hf_row["age_star"])
+                # calculate other properties from modern spectrum (here bolometric luminosity only)
+                handler.star_props = handler.stellar_track.BaraffeLuminosity(handler.config.star.mors.age_now * 1e9)
 
 def get_spada_synthesis_properties(spada_track, age: float):
     """Calculate properties of star for spectrum synthesis
@@ -136,8 +139,9 @@ def get_new_spectrum(t_star:float, config:Config,
 
         match config.star.mors.tracks:
             case 'spada':
+                star_props_hist = get_spada_synthesis_properties(stellar_track, t_star/1e6)
                 synthetic = mors.synthesis.CalcScaledSpectrumFromProps(
-                    star_struct_modern, star_props_modern, t_star / 1e6)
+                    star_struct_modern, star_props_modern, star_props_hist)
                 fl = synthetic.fl
                 wl = synthetic.wl
             case 'baraffe':
