@@ -101,4 +101,3 @@ class Config:
         # Write to TOML file
         with open(out,'w') as hdl:
             tomlkit.dump(cfg, hdl)
-
