@@ -65,38 +65,38 @@ def init_star(handler:Proteus):
                 handler.stellar_track = mors.BaraffeTrack(handler.config.star.mass)
                 handler.star_props = handler.stellar_track.BaraffeLuminosity(hf_row["age_star"])
 
-def get_spada_synthesis_properties(spada_track):
+def get_spada_synthesis_properties(spada_track, age: float):
+    """Calculate properties of star for spectrum synthesis
+       Mimic the GetProperties function of mors synthesis module using whole track data.
 
+    Parameters
+    ----------
+        spada_track : star object
+            Star object containing track data.
+        age : float
+            Stellar age  [Myr]
+
+    Returns
+    ----------
+        out : dict
+            Dictionary of radius [m], Teff [K], and band fluxes at 1 AU [erg s-1 cm-2]
     """
-    # Get star radius [m]
-    Rstar = Value(Mstar, age, 'Rstar') * const.Rsun * 1.0e-2
 
-    # Get star temperature [K]
-    Tstar = Value(Mstar, age, 'Teff')
+    #import mors.spectrum as spec
 
-    # Get rotation rate [Omega_sun]
-    Omega = Percentile(Mstar=Mstar, percentile=pctle)
-
-    # Get luminosities and fluxes
-    Ldict = Lxuv(Mstar=Mstar, Age=age, Omega=Omega)
-
-    # Output
-    out = {
-        "mass"   : Mstar,      # units of M_sun
-        "pctle"  : pctle,
-        "age"    : age,        # units of Myr
-        "radius" : Rstar,
-        "Teff"   : Tstar,
-    }
+    out = {}
+    out["age"] = age
+    out["Rstar"] = spada_track.Value(age, "Rstar") * R_sun #[m]
+    out["Teff"] = spada_track.Value(age, "Teff") #[K]
 
     # Luminosities (erg s-1)
     out["L_bo"] = spada_track.Value(age, "Lbol")
-    out["L_xr"] = Ldict["Lx"]
-    out["L_e1"] = Ldict["Leuv1"]
-    out["L_e2"] = Ldict["Leuv2"]
+    out["L_xr"] = spada_track.Value(age, "Lx")
+    out["L_e1"] = spada_track.Value(age, "Leuv1")
+    out["L_e2"] = spada_track.Value(age, "Leuv2")
 
     # Fluxes at 1 AU
-    area = (4.0 * const.Pi * const.AU * const.AU)
+    area = (4.0 * np.pi * AU * AU)
     for k in ["bo","xr","e1","e2"]:
         out["F_"+k] = out["L_"+k]/area
 
@@ -112,7 +112,6 @@ def get_spada_synthesis_properties(spada_track):
     out["L_uv"] = out["F_uv"] * area
 
     return out
-    """
 
 def get_new_spectrum(t_star:float, config:Config,
                      star_struct_modern=None, star_props_modern=None,
