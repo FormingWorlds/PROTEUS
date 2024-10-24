@@ -13,12 +13,12 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime
 from copy import deepcopy
-
-from proteus.config import read_config_object, Config
+from datetime import datetime
 
 import numpy as np
+
+from proteus.config import Config, read_config_object
 
 PROTEUS_DIR=os.getenv('PROTEUS_DIR')
 if PROTEUS_DIR is None:
@@ -166,26 +166,22 @@ class Grid():
 
     # Set a dimension by linspace
     def set_dimension_linspace(self,name:str,start:float,stop:float,count:int):
-        idx = self._get_idx(name)
         self.dim_avars[name] = list(np.linspace(start,stop,count))
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
 
     # Set a dimension by arange (inclusive of endpoint)
     def set_dimension_arange(self,name:str,start:float,stop:float,step:float):
-        idx = self._get_idx(name)
         self.dim_avars[name] = list(np.arange(start,stop,step))
         self.dim_avars[name].append(stop)
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
 
     # Set a dimension by logspace
     def set_dimension_logspace(self,name:str,start:float,stop:float,count:int):
-        idx = self._get_idx(name)
         self.dim_avars[name] = list(np.logspace( np.log10(start) , np.log10(stop) , count))
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
 
     # Set a dimension directly
     def set_dimension_direct(self,name:str,values:list):
-        idx = self._get_idx(name)
         the_list = list(set(values))  # remove duplicates
         if not isinstance(values[0],str): # sort if numeric
             the_list = sorted(the_list)

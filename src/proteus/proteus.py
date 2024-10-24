@@ -7,10 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import toml
 from calliope.structure import calculate_mantle_mass
 
-import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
@@ -30,7 +28,6 @@ from proteus.utils.constants import (
     M_earth,
     R_earth,
     const_G,
-    element_list,
     gas_list,
     vap_list,
     vol_list,

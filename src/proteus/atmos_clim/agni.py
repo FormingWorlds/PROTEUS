@@ -68,7 +68,7 @@ def activate_julia(dirs:dict):
     log.debug("AGNI will log to '%s'"%logpath)
 
 
-def _construct_voldict(hf_row:dict, config:Config):
+def _construct_voldict(hf_row:dict, config:Config, dirs:dict):
 
     # get from hf_row
     vol_dict = {}
@@ -127,7 +127,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         input_star =    sflux_path
 
     # composition
-    vol_dict = _construct_voldict(hf_row, config)
+    vol_dict = _construct_voldict(hf_row, config, dirs)
 
     # set condensation
     condensates = []
@@ -222,7 +222,7 @@ def deallocate_atmos(atmos):
     safe_rm(str(atmos.fastchem_work))
 
 
-def update_agni_atmos(atmos, hf_row:dict, config:Config):
+def update_agni_atmos(atmos, hf_row:dict, config:Config, dirs:dict):
     """Update atmosphere struct.
 
     Sets the new boundary conditions and composition.
@@ -245,7 +245,7 @@ def update_agni_atmos(atmos, hf_row:dict, config:Config):
 
     # ---------------------
     # Update compositions
-    vol_dict = _construct_voldict(hf_row, config)
+    vol_dict = _construct_voldict(hf_row, config, dirs)
     for g in vol_dict.keys():
         atmos.gas_vmr[g][:]  = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]

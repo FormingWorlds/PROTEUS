@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+
 import tomlkit
-from attrs import define, field, validators, asdict
+from attrs import asdict, define, field, validators
 
 from ._atmos_clim import AtmosClim
+from ._converters import dict_replace_none
 from ._delivery import Delivery
 from ._escape import Escape
 from ._interior import Interior
@@ -13,7 +15,6 @@ from ._outgas import Outgas
 from ._params import Params
 from ._star import Star
 from ._struct import Struct
-from ._converters import dict_replace_none
 
 log = logging.getLogger('fwl.' + __name__)
 
