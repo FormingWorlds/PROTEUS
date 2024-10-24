@@ -18,6 +18,8 @@ IMAGE_LIST = (
         "plot_global_log.png",
         "plot_observables.png",
         "plot_sflux.png",
+        "plot_population_mass_radius.png",
+        "plot_population_time_density.png",
         )
 
 @pytest.fixture(scope="module")

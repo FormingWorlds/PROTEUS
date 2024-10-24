@@ -35,30 +35,13 @@ const_G = 6.67428e-11        #Gravitational constant (2006 measurements)
 const_N_avogadro = 6.022136736e23  #Avogadro's number
 const_R_gas = 8.31446261815324 # Universal gas constant, J.K-1.mol-1
 
-molar_mass  = {
-            "H"   : 0.001008,             # kg mol−1
-            "C"   : 0.012011,             # kg mol−1
-            "O"   : 0.015999,             # kg mol−1
-            "N"   : 0.014007,             # kg mol−1
-            "S"   : 0.03206,              # kg mol−1
-            "He"  : 0.0040026,            # kg mol−1
+# Supported gases
+vol_list = ["H2O", "CO2", "H2", "CH4", "CO", "N2", "S2", "SO2"]
+vap_list = ["SiO", "SiO2", "MgO", "FeO2"]
+gas_list = vol_list + vap_list
 
-            "H2O" : 0.01801528,           # kg mol−1
-            "CO2" : 0.04401,              # kg mol−1
-            "H2"  : 0.00201588,           # kg mol−1
-            "CH4" : 0.01604,              # kg mol−1
-            "CO"  : 0.02801,              # kg mol−1
-            "N2"  : 0.028014,             # kg mol−1
-            "O2"  : 0.031999,             # kg mol−1
-            "SO2" : 0.064066,             # kg mol−1
-            "H2S" : 0.0341,               # kg mol−1
-            "S2"  : 0.0641,               # kg mol-1
-            "NH3" : 0.017031,             # kg mol−1
-        }
-
-# Supported volatiles and elements
-volatile_species = [ "H2O", "CO2", "H2", "CH4", "CO", "N2", "S2", "SO2"]
-element_list     = [ "H", "O", "C", "N", "S" ]
+# Supported elements
+element_list = ["H", "O", "C", "N", "S", "Si", "Mg", "Fe", "Na"]
 
 dirs = {}  # Modified by coupler.py: SetDirectories().
 

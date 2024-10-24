@@ -30,7 +30,9 @@ from proteus.utils.constants import (
     R_earth,
     const_G,
     element_list,
-    volatile_species,
+    gas_list,
+    vap_list,
+    vol_list,
 )
 from proteus.utils.coupler import (
     CreateHelpfileFromDict,
@@ -199,8 +201,8 @@ class Proteus:
 
             # Store partial pressures and list of included volatiles
             log.info("Input partial pressures:")
-            inc_vols = []
-            for s in volatile_species:
+            inc_gases = []
+            for s in vol_list:
                 pp_val = getattr(self.config.delivery.volatiles, s)
                 include = getattr(self.config.outgas.calliope, f'include_{s}')
 
@@ -210,11 +212,14 @@ class Proteus:
                 )
 
                 if include:
-                    inc_vols.append(s)
+                    inc_gases.append(s)
                     self.hf_row[s + "_bar"] = max(1.0e-30, float(pp_val))
                 else:
                     self.hf_row[s + "_bar"] = 0.0
-            log.info("Included volatiles: " + str(inc_vols))
+            for s in vap_list:
+                inc_gases.append(s)
+                self.hf_row[s + "_bar"] = 0.0
+            log.info("Included gases: " + str(inc_gases))
 
         else:
             # Resuming from disk
@@ -371,6 +376,13 @@ class Proteus:
 
             # Add atmosphere mass to interior mass, to get total planet mass
             self.hf_row["M_planet"] = self.hf_row["M_int"] + self.hf_row["M_atm"]
+
+            # Check for when atmosphere has escaped.
+            #    This will mean that the mixing ratios become undefined, so use value of 0.
+            if self.hf_row["P_surf"] < 1.0e-10:
+                for gas in gas_list:
+                    self.hf_row[gas+"_vmr"] = 0.0
+                self.hf_row["atm_kg_per_mol"] = 0.0
 
             ############### / OUTGASSING
 

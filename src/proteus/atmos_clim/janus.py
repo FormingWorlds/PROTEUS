@@ -11,7 +11,7 @@ import janus.set_socrates_env  # noqa
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import volatile_species
+from proteus.utils.constants import vap_list, vol_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest
 
 if TYPE_CHECKING:
@@ -23,11 +23,15 @@ def InitStellarSpectrum(dirs:dict, wl:list, fl:list, spectral_file_nostar):
 
     from janus.utils import InsertStellarSpectrum, PrepareStellarSpectrum
 
+    log.debug("Prepare spectral file for JANUS")
+
     # Generate a new SOCRATES spectral file containing this new spectrum
     star_spec_src = dirs["output"]+"socrates_star.txt"
 
     # Spectral file stuff
     PrepareStellarSpectrum(wl,fl,star_spec_src)
+
+    log.debug("Insert stellar spectrum into spectral file")
     InsertStellarSpectrum(spectral_file_nostar,
                           star_spec_src,
                           dirs["output"]
@@ -40,9 +44,11 @@ def InitAtm(dirs:dict, config:Config):
 
     from janus.utils import ReadBandEdges, atmos
 
-    vol_list = {}
-    for vol in volatile_species:
-        vol_list[vol] = 1.0/len(volatile_species)
+    log.debug("Create new JANUS atmosphere object")
+
+    vol_dict = {}
+    for vol in vol_list:
+        vol_dict[vol] = 1.0/len(vol_list)
 
     if config.atmos_clim.janus.tropopause in (None, 'skin'):
         trppT = 0.0
@@ -66,7 +72,7 @@ def InitAtm(dirs:dict, config:Config):
                 6.371e6, #var
                 5.972e24, #var
                 band_edges,
-                vol_mixing = vol_list, #var
+                vol_mixing = vol_dict, #var
                 req_levels = config.atmos_clim.janus.num_levels,
                 water_lookup = False,
                 alpha_cloud=config.atmos_clim.cloud_alpha,
@@ -101,12 +107,20 @@ def UpdateStateAtm(atm, hf_row:dict, trppT:int):
             Dictionary containing simulation variables for current iteration
     """
 
-    atm.setSurfaceTemperature(hf_row["T_magma"])
+    atm.setSurfaceTemperature(hf_row["T_surf"])
     atm.setSurfacePressure(hf_row["P_surf"]*1e5)
     atm.setPlanetProperties(hf_row["R_int"], hf_row["M_int"])
 
+    # Warn about rock vapours
+    has_vapours = False
+    for gas in vap_list:
+        has_vapours = has_vapours or (hf_row[gas+"_vmr"] > 1e-5)
+    if has_vapours:
+        log.warning("Atmosphere contains rock vapours which will be neglected by JANUS")
+
+    # Store volatiles only
     vol_mixing = {}
-    for vol in volatile_species:
+    for vol in vol_list:
         vol_mixing[vol] = hf_row[vol+"_vmr"]
     atm.setVolatiles(vol_mixing)
 
@@ -255,7 +269,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     if not atm.height_error:
         # find 1 mbar level
         idx = find_nearest(atm.p, 1e2)[1]
-        z_obs = atm.z[idx] + atm.planet_radius
+        z_obs = atm.z[idx]
         # calc observed density
         rho_obs = calc_observed_rho(atm)
 
