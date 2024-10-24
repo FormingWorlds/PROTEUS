@@ -21,9 +21,7 @@ from proteus.star.wrapper import (
     get_new_spectrum,
     init_star,
     scale_spectrum_to_toa,
-    update_equilibrium_temperature,
-    update_instellation,
-    update_stellar_radius,
+    update_stellar_quantities,
     write_spectrum,
 )
 from proteus.utils.constants import (
@@ -90,7 +88,7 @@ class Proteus:
         self.star_struct = None
 
         # Default values for mors.baraffe cases
-        self.baraffe_track  = None
+        self.stellar_track  = None
         self.star_modern_fl = None
         self.star_modern_wl = None
 
@@ -322,21 +320,7 @@ class Proteus:
             ):
                 self.sinst_prev = self.hf_row["Time"]
 
-                # Update value for star's radius
-                log.info("Update stellar radius")
-                update_stellar_radius(self.hf_row, self.config, baraffe_track=self.baraffe_track)
-
-                # Update value for instellation flux
-                log.info("Update instellation")
-                update_instellation(self.hf_row, self.config, baraffe_track=self.baraffe_track)
-
-                # Calculate new eqm temperature
-                log.info("Update equilibrium temperature")
-                update_equilibrium_temperature(self.hf_row, self.config)
-
-                # Calculate new skin temperature
-                # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
-                self.hf_row["T_skin"] = self.hf_row["T_eqm"] * (0.5**0.25)
+                update_stellar_quantities(self.hf_row, self.config, stellar_track=self.stellar_track)
 
             # Calculate a new (historical) stellar spectrum
             if (abs(self.hf_row["Time"] - self.sspec_prev) > self.config.params.dt.starspec) or (
@@ -350,14 +334,14 @@ class Proteus:
                 self.star_wl, self.star_fl = get_new_spectrum(
 
                                         # Required variables
-                                        self.hf_row["age_star"], self.hf_row["R_star"], self.config,
+                                        self.hf_row["age_star"], self.config,
 
                                         # Variables needed for mors.spada
                                         star_struct_modern=self.star_struct,
                                         star_props_modern=self.star_props,
 
                                         # Variables needed for mors.baraffe
-                                        baraffe_track=self.baraffe_track,
+                                        stellar_track=self.stellar_track,
                                         modern_wl=self.star_modern_wl,
                                         modern_fl=self.star_modern_fl,
                                         )
@@ -376,7 +360,7 @@ class Proteus:
 
             ############### ESCAPE
             if (self.loops["total"] >= self.loops["init_loops"]):
-                RunEscape(self.config, self.hf_row, dt)
+                RunEscape(self.config, self.hf_row, dt, self.stellar_track)
             ############### / ESCAPE
 
             ############### OUTGASSING
