@@ -200,6 +200,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         include_H2   = true     # Include H2 compound
         include_CH4  = true     # Include CH4 compound
         include_CO   = true     # Include CO compound
+        T_floor      = 800.0    # Temperature floor applied to outgassing calculation [K].
 
     [outgas.atmodeller]
         some_parameter = "some_value"
