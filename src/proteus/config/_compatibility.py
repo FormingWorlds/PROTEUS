@@ -52,7 +52,7 @@ COMPAT_MAPPING = {
     'star_temperature_modern': ('star', 'Teff'),
     'star_luminosity_modern': ('star', 'lum_now'),
     'star_age_modern': ('star', 'age_now'),
-    'star_rot_pctle': ('star', 'omega'),
+    'star_rot_pctle': ('star', 'rot_pctle'),
     'star_spectrum': ('star', 'mors', 'spec'),
     'semimajoraxis': ('orbit', 'semimajoraxis'),
     'mass': ('struct', 'mass'),

@@ -85,8 +85,8 @@ def RunZEPHYRUS(config, hf_row):
     age_star = hf_row["age_star"] / 1e6 # [Myrs]
 
     if (star is None):
-        star = mors.Star(Mstar=config["star_mass"],
-                         Omega=config["star_omega"])
+        star = mors.Star(Mstar=config.star.mass,
+                         percentile=config.star.rot_pctle)
 
     # Interpolating the XUV flux at the age of the star
     Fxuv_star_SI = ((star.Value(age_star, 'Lx') + star.Value(age_star, 'Leuv'))
@@ -95,12 +95,12 @@ def RunZEPHYRUS(config, hf_row):
     log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI}")
 
     # Compute energy-limited escape
-    mlr = EL_escape(config["escape_el_tidal_correction"], #tidal contribution (True/False)
+    mlr = EL_escape(config.escape.zephyrus.tidal, #tidal contribution (True/False)
                     config.orbit.semimajoraxis * AU, #planetary semi-major axis [m]
                     config.orbit.eccentricity, #eccentricity
                     hf_row["M_planet"], #planetary mass [kg]
-                    config["star_mass"], #stellar mass [kg]
-                    config["efficiency_factor"], #efficiency factor
+                    config.star.mass, #stellar mass [kg]
+                    config.escape.zephyrus.efficiency, #efficiency factor
                     hf_row["R_int"], #planetary radius [m]
                     hf_row["R_int"], #XUV optically thick planetary radius [m]
                     Fxuv_star_SI)   # [kg s-1]
