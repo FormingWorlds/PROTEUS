@@ -27,7 +27,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "dummy_star"
         logging     = "DEBUG"
-        plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping
@@ -134,13 +134,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     tmp_minimum     = 0.5           # temperature floor on solver
     tmp_maximum     = 5000.0        # temperature ceiling on solver
 
-    module  = "janus"           # Which atmosphere module to use
+    module  = "dummy"           # Which atmosphere module to use
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Frostflow"   # which gas opacities to include
-        spectral_bands  = "48"          # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
+        spectral_bands  = "16"          # how many spectral bands?
+        num_levels      = 38            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq" | "kin"
 
     [atmos_clim.janus]

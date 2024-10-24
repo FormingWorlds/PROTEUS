@@ -50,8 +50,16 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     global atm
 
     PrintHalfSeparator()
+
+    # Handle new surface temperature
     if config.atmos_clim.surf_state == 'mixed_layer':
         hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
+
+    elif config.atmos_clim.surf_state == 'fixed':
+        hf_row["T_surf"] = hf_row["T_magma"]
+
+    # elif surf_state=='skin':
+    #    Don't do anything here, because this will be handled by the atmosphere model.
 
     if config.atmos_clim.module == 'janus':
         # Import
@@ -137,9 +145,10 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
 
     # Calculate observables (measured at infinite distance)
-    hf_row["transit_depth"] =  (hf_row["z_obs"] / hf_row["R_star"])**2.0
+    R_obs = hf_row["z_obs"] + hf_row["R_int"] # observed radius
+    hf_row["transit_depth"] =  ( R_obs / hf_row["R_star"])**2.0
     hf_row["contrast_ratio"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
-                                 (hf_row["z_obs"] / hf_row["separation"])**2.0
+                                 (R_obs / hf_row["separation"])**2.0
 
 def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
 

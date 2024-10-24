@@ -11,7 +11,7 @@ from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_spfile_path
-from proteus.utils.constants import dirs, volatile_species
+from proteus.utils.constants import dirs, gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
@@ -72,11 +72,10 @@ def _construct_voldict(hf_row:dict, config:Config):
 
     # get from hf_row
     vol_dict = {}
-    for vol in volatile_species:
-        if bool(getattr(config.outgas.calliope,"include_"+vol)):
-            vmr = hf_row[vol+"_vmr"]
-            if vmr > 1e-40:
-                vol_dict[vol] = vmr
+    for vol in gas_list:
+        vmr = hf_row[vol+"_vmr"]
+        if vmr > 1e-40:
+            vol_dict[vol] = vmr
 
     # check values
     if len(vol_dict) == 0:
