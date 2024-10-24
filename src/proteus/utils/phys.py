@@ -7,27 +7,9 @@ import logging
 
 import numpy as np
 
-from proteus.utils.constants import const_c, const_h, const_k, molar_mass
-from proteus.utils.helper import mol_to_ele
+from proteus.utils.constants import const_c, const_h, const_k
 
 log = logging.getLogger("fwl."+__name__)
-
-def eval_molar_mass(mol:str):
-    '''
-    Evaluate the molar mass [kg mol-1] of a molecule or atom.
-
-    This neglects the mass associated with the binding energy.
-    '''
-
-    # Get atoms
-    atoms = mol_to_ele(mol)
-
-    # Add up atoms
-    mu = 0.0
-    for e in atoms.keys():
-        mu += atoms[e] * molar_mass[e]
-
-    return mu
 
 def planck_wav(tmp:float, wav:float):
     '''
