@@ -26,7 +26,7 @@ R_jupiter       = 1.42984e8 / 2         # m
 # Time constants
 secs_per_year   = 365.25 * 24 * 60 * 60 # seconds per year
 
-# Values from phys.py
+# Values from Pierrehumbert (2010) workbook
 const_h = 6.626075540e-34    #Planck's constant
 const_c = 2.99792458e8       #Speed of light
 const_k =1.38065812e-23      #Boltzman thermodynamic constant
