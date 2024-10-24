@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import gas_list
-from proteus.utils.plot import dict_colors, latexify
+from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -140,23 +140,23 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
 
 
     # PLOT ax_tl
-    ax_tl.plot( hf_all["Time"], hf_all["F_int"], color=dict_colors["int"], lw=lw, alpha=al,  label="Int.",zorder=3, linestyle='dashed')
-    ax_tl.plot( hf_all["Time"], hf_all["F_atm"], color=dict_colors["atm"], lw=lw, alpha=al,  label="Atm.",zorder=3)
-    ax_tl.plot( hf_all["Time"], hf_all["F_olr"], color=dict_colors["OLR"], lw=lw, alpha=al,  label="OLR", zorder=2)
+    ax_tl.plot( hf_all["Time"], hf_all["F_int"], color=get_colour("int"), lw=lw, alpha=al,  label="Int.",zorder=3, linestyle='dashed')
+    ax_tl.plot( hf_all["Time"], hf_all["F_atm"], color=get_colour("atm"), lw=lw, alpha=al,  label="Atm.",zorder=3)
+    ax_tl.plot( hf_all["Time"], hf_all["F_olr"], color=get_colour("OLR"), lw=lw, alpha=al,  label="OLR", zorder=2)
     ax_tl.legend(loc='center left', **leg_kwargs)
     ax_tl.set_ylim(0.0, np.amax(hf_all["F_olr"]*2.0))
 
     # PLOT ax_cl
     min_temp = np.amin(hf_all["T_surf"])
     max_temp = np.amax(hf_all["T_surf"])
-    ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="dashed", lw=lw, alpha=al, color=dict_colors["int"])
-    ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="-",      lw=lw, alpha=al, color=dict_colors["atm"])
+    ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="dashed", lw=lw, alpha=al, color=get_colour("int"))
+    ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="-",      lw=lw, alpha=al, color=get_colour("atm"))
     ax_cl.set_ylim(min(1000.0,min_temp-25) , max(3500.0,max_temp+25))
 
     # PLOT ax_bl
-    ax_bl.axhline( y=options["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=dict_colors["core"], label=r'C-M boundary' )
-    ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
-    ax_bl.plot( hf_all["Time"],     hf_all["Phi_global"], color=dict_colors["atm"], linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
+    ax_bl.axhline( y=options["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=get_colour("core"), label=r'C-M boundary' )
+    ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=get_colour("int"), ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
+    ax_bl.plot( hf_all["Time"],     hf_all["Phi_global"], color=get_colour("atm"), linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
     ax_bl.legend(loc='center left', **leg_kwargs)
     ax_bl.set_ylim(0.0,1.01)
 
@@ -167,7 +167,7 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
     for vol in gas_list:
         if not vol_present[vol]:
             continue
-        ax_tr.plot( hf_all["Time"], vol_bars[vol], color=dict_colors[vol], lw=lw, alpha=al, label=latexify(vol))
+        ax_tr.plot( hf_all["Time"], vol_bars[vol], color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
         bar_min = min(bar_min, np.amin(vol_bars[vol]))
     ax_tr.set_ylim(max(1.0e-7,min(bar_min, 1.0e-1)), bar_max * 2.0)
     ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
@@ -176,14 +176,14 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
     for vol in gas_list:
         if not vol_present[vol]:
             continue
-        ax_cr.plot( hf_all["Time"], vol_vmr[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=latexify(vol))
+        ax_cr.plot( hf_all["Time"], vol_vmr[vol]*100.0, color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
     ax_cr.set_ylim(0, 101)
 
     # PLOT ax_br
     for vol in gas_list:
         if not vol_present[vol]:
             continue
-        ax_br.plot( hf_all["Time"], vol_intpart[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=latexify(vol))
+        ax_br.plot( hf_all["Time"], vol_intpart[vol]*100.0, color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
     ax_br.set_ylim(0,101)
     ax_br.legend(loc='center left', ncol=2, **leg_kwargs).set_zorder(20)
 

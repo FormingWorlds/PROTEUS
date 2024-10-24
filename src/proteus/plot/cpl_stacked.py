@@ -13,7 +13,7 @@ from matplotlib.ticker import MultipleLocator
 
 from proteus.atmos_clim.common import read_ncdfs
 from proteus.interior.spider import read_jsons
-from proteus.utils.plot import dict_colors, latex_float, sample_times
+from proteus.utils.plot import get_colour, latex_float, sample_times
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -91,14 +91,14 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
     axt.set_ylim(bottom=0.0, top=y_height)
     axt.legend()
     axt.yaxis.set_minor_locator(MultipleLocator(ytick_spacing))
-    axt.set_facecolor(dict_colors["atm_bkg"] )
+    axt.set_facecolor(get_colour("atm_bkg"))
 
     # Decorate bottom plot
     axb.set(ylabel="Interior depth [km]", xlabel="Temperature [K]")
     axb.invert_yaxis()
     axb.set_ylim(top=0.0, bottom=y_depth)
     axb.yaxis.set_minor_locator(MultipleLocator(ytick_spacing))
-    axb.set_facecolor(dict_colors["int_bkg"] )
+    axb.set_facecolor(get_colour("int_bkg"))
     axb.xaxis.set_major_locator(MultipleLocator(1000))
     axb.xaxis.set_minor_locator(MultipleLocator(250))
 

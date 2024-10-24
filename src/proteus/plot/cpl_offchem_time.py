@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from proteus.utils.helper import find_nearest
-from proteus.utils.plot import dict_colors, latexify
+from proteus.utils.plot import get_colour, latexify
 from proteus.utils.plot_offchem import offchem_read_year
 
 if TYPE_CHECKING:
@@ -79,10 +79,7 @@ def plot_offchem_time(
 
     for i,sp in enumerate(species):
 
-        if sp in dict_colors.keys():
-            color = dict_colors[sp]
-        else:
-            color = None
+        color = get_colour(sp)
 
         times =     []
         mx_vul =    []

@@ -7,7 +7,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 
-from proteus.utils.plot import dict_colors, latexify
+from proteus.utils.plot import get_colour, latexify
 from proteus.utils.plot_offchem import offchem_read_year
 
 if TYPE_CHECKING:
@@ -72,13 +72,8 @@ def plot_offchem_year(
     min_mix = 5e-1
     for i,s in enumerate(species):
 
-        if s in dict_colors.keys():
-            color = dict_colors[s]
-            ls = 'solid'
-        else:
-            color = None
-            ls = 'dotted'
-            print("Warning: could not find a defined colour for species '%s' " % s)
+        ls = 'solid'
+        color = get_colour(s)
 
         # VULCAN result
         key = str("mx_"+s)

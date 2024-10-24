@@ -4,16 +4,23 @@ from __future__ import annotations
 
 import glob
 import os
+import logging
 from typing import TYPE_CHECKING
 
+from proteus.utils.helper import mol_to_ele
 import numpy as np
+
+log = logging.getLogger("fwl."+__name__)
 
 if TYPE_CHECKING:
     from proteus import Proteus
 
 # Standard plotting colours
-dict_colors  = {
-    # From Julia's default colours
+_preset_colours  = {
+    # Default colour
+    "_fallback": "#ff00ff",
+
+    # Volatile gases
     "H2O": "#027FB1",
     "CO2": "#D24901",
     "H2" : "#008C01",
@@ -25,20 +32,96 @@ dict_colors  = {
     "He" : "#30FF71",
     "NH3": "#675200",
 
-    # More colours
+    # Vapourous gases
     "SiO":  "#ff4444",
     "SiO2": "#8833ff",
     "MgO":  "#88ee22",
-    "FeO2": "#ffcc22"
+    "FeO2": "#ffcc22",
+
+    # Volatile elements
+    "H": "#0000aa",
+    "C": "#ff0000",
+    "O": "#00dd00",
+    "N": "#ffaa00",
+    "S": "#ff22ff",
+    "P": "#33ccff",
+
+    # refractory elements
+    "Fe": "#888888",
+    "Si": "#aa2277",
+    "Mg": "#996633",
+
+    # Radiation
+    "OLR": "crimson",
+    "ASF": "royalblue",
+    "sct": "seagreen",
+
+    # Model components
+    "atm"     : "#768E95",
+    "int"     : "#ff7f0e",
+    "core"    : "#4d303f",
+    "atm_bkg" : "#f2faff",
+    "int_bkg" : "#fffaf2",
 }
-dict_colors["OLR"] = "crimson"
-dict_colors["ASF"] = "royalblue"
-dict_colors["sct"] = "seagreen"
-dict_colors["atm"] = "#768E95"
-dict_colors["int"] = "#ff7f0e"
-dict_colors["core"] = "#4d303f"
-dict_colors["atm_bkg"] = (0.95, 0.98, 1.0)
-dict_colors["int_bkg"] = (1.0, 0.98, 0.95)
+
+
+def _generate_colour(gas:str):
+    """
+    Systematically generate a colour for a gas, from its composition.
+
+    This method for mixing colours was taken from AGNI's phys.jl
+    """
+
+    # Break into atoms
+    try:
+        atoms = mol_to_ele(gas)
+    except ValueError:
+        log.warning(f"Using fallback colour for '{gas}'")
+        return _preset_colours["_fallback"]
+
+    # Red, green, blue components
+    red = 0.0
+    gre = 0.0
+    blu = 0.0
+
+    # For each atom, add the contriution of its rgb components
+    for e in atoms.keys():
+        red += int(_preset_colours[e][1:2],base=16)*atoms[e]
+        gre += int(_preset_colours[e][3:4],base=16)*atoms[e]
+        blu += int(_preset_colours[e][5:6],base=16)*atoms[e]
+
+    # Normalisation constant
+    norm = max((red,gre,blu))
+
+    # Prevent the colour getting too close to white, which is hard to see on a plot
+    if red+gre+blu > 705:
+        norm *= 255.0/235.0
+
+    # Normalise colours to 0-255
+    red = int(255*red/norm)
+    gre = int(255*gre/norm)
+    blu = int(255*blu/norm)
+
+    # Convert to hex string
+    colour = f"#{red:02x}{gre:02x}{blu:02x}"
+
+    return colour
+
+
+def get_colour(thing:str):
+    """
+    Get a colour for something which needs one (e.g. for plotting a particular gas)
+    """
+
+    # Try getting it from dictionary
+    try:
+        colour = _preset_colours[thing]
+
+    # Otherwise, generate it systematically
+    except KeyError:
+        colour = _generate_colour(thing)
+
+    return colour
 
 def latexify(gas:str):
     """
