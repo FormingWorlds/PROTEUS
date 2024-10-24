@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import AU, L_sun, R_sun, const_sigma
+from proteus.utils.constants import AU, R_sun, const_sigma
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -87,7 +87,7 @@ def get_spada_synthesis_properties(spada_track, age: float):
             Dictionary of radius [m], Teff [K], and band fluxes at 1 AU [erg s-1 cm-2]
     """
 
-    #import mors.spectrum as spec
+    import mors.spectrum as spec
 
     out = {}
     out["age"] = age
@@ -107,8 +107,8 @@ def get_spada_synthesis_properties(spada_track, age: float):
 
     # Get flux from Planckian band
     wl_pl = np.logspace(np.log10(spec.bands_limits["pl"][0]), np.log10(spec.bands_limits["pl"][1]), 1000)
-    fl_pl = spec.PlanckFunction_surf(wl_pl, Tstar)
-    fl_pl = spec.ScaleTo1AU(fl_pl, Rstar)
+    fl_pl = spec.PlanckFunction_surf(wl_pl, out["Teff"])
+    fl_pl = spec.ScaleTo1AU(fl_pl, out["Rstar"])
     out["F_pl"] = np.trapz(fl_pl, wl_pl)
     out["L_pl"] = out["F_pl"] * area
 
@@ -210,8 +210,6 @@ def update_stellar_radius(hf_row:dict, config:Config, stellar_track=None):
     # Mors cases
     elif config.star.module == 'mors':
 
-        import mors
-
         # which track?
         match config.star.mors.tracks:
             case 'spada':
@@ -234,8 +232,6 @@ def update_instellation(hf_row:dict, config:Config, stellar_track=None):
 
     # Mors cases
     elif config.star.module == 'mors':
-
-        import mors
 
         # which track?
         match config.star.mors.tracks:
