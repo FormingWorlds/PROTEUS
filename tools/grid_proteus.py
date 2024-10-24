@@ -428,7 +428,7 @@ class Grid():
             # if still marked as running, it must have died at some point
             if ( 0 <= this_stat <= 9 ):
                 log.warning("Case %05d has status=running but it is not alive. Setting status=died."%i)
-                with open(status_path,'x') as hdl:
+                with open(status_path,'w') as hdl:
                     hdl.write("25\n")
                     hdl.write("Error (died)\n")
 
