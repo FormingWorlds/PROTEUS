@@ -81,8 +81,13 @@ class Proteus:
         # Loop counters
         self.loops = None
 
+        # Interior
+        self.IC_INTERIOR = -1   # initial condition
+        self.dt = 1.0           # Time step variable [yr]
+
         # Model has finished?
         self.finished = False
+        self.lockfile = "/tmp/none"
 
         # Default values for mors.spada cases
         self.star_props  = None
@@ -104,10 +109,6 @@ class Proteus:
     def init_directories(self):
         """Initialize directories dictionary"""
         self.directories = SetDirectories(self.config)
-
-        # Keep `constants.dirs` around for compatibility with other parts of the code
-        # At some point, they should all reference `Proteus.directories`
-        proteus.utils.constants.dirs = self.directories
 
     def start(self, *, resume: bool = False):
         """Start PROTEUS simulation.
@@ -163,15 +164,14 @@ class Proteus:
         }
 
         # Write config to output directory, for future reference
-        config_path_backup = os.path.join(self.directories["output"], "init_coupler.toml")
-        self.config.write(config_path_backup)
+        self.config.write(os.path.join(self.directories["output"], "init_coupler.toml"))
 
         # Is the model resuming from a previous state?
         if not resume:
             # New simulation
 
             # SPIDER initial condition
-            IC_INTERIOR = 1
+            self.IC_INTERIOR = 1
 
             # Create an empty initial row for helpfile
             self.hf_row = ZeroHelpfileRow()
@@ -220,7 +220,7 @@ class Proteus:
             log.info("Resuming the simulation from the disk")
 
             # SPIDER initial condition
-            IC_INTERIOR = 2
+            self.IC_INTERIOR = 2
 
             # Read helpfile from disk
             self.hf_all = ReadHelpfileFromCSV(self.directories["output"])
@@ -236,21 +236,15 @@ class Proteus:
             self.loops["total"] = len(self.hf_all)
             self.loops["init"] = self.loops["init_loops"] + 1
 
-            # Set volatile mass targets f
-            solvevol_target = {}
-            for e in element_list:
-                if e == "O":
-                    continue
-                solvevol_target[e] = self.hf_row[e + "_kg_total"]
+
+        # Create lockfile for keeping simulation running
+        self.lockfile = CreateLockFile(self.directories["output"])
 
         # Download basic data
         download_sufficient_data(self.config)
 
         # Prepare star stuff
         init_star(self)
-
-        # Create lockfile
-        keepalive_file = CreateLockFile(self.directories["output"])
 
         # Main loop
         UpdateStatusfile(self.directories, 1)
@@ -290,12 +284,12 @@ class Proteus:
             ############### INTERIOR
 
             # Run interior model
-            dt = run_interior(self.directories, self.config,
-                                self.loops, IC_INTERIOR, self.hf_all,  self.hf_row)
+            self.dt = run_interior(self.directories, self.config,
+                                self.loops, self.IC_INTERIOR, self.hf_all,  self.hf_row)
 
             # Advance current time in main loop according to interior step
-            self.hf_row["Time"]     += dt    # in years
-            self.hf_row["age_star"] += dt    # in years
+            self.hf_row["Time"]     += self.dt    # in years
+            self.hf_row["age_star"] += self.dt    # in years
 
             ############### / INTERIOR
 
@@ -364,7 +358,7 @@ class Proteus:
 
             ############### ESCAPE
             if (self.loops["total"] >= self.loops["init_loops"]):
-                RunEscape(self.config, self.hf_row, dt)
+                RunEscape(self.config, self.hf_row, self.dt)
             ############### / ESCAPE
 
             ############### OUTGASSING
@@ -406,7 +400,7 @@ class Proteus:
                 self.hf_row["Time"] = 0.0
             # Reset restart flag once SPIDER has correct heat flux
             if self.loops["total"] >= self.loops["init_loops"]:
-                IC_INTERIOR = 2
+                self.IC_INTERIOR = 2
 
             # Adjust total iteration counters
             self.loops["total"] += 1
@@ -525,7 +519,7 @@ class Proteus:
                 UpdateStatusfile(self.directories, 1)
 
             # Check if keepalive file has been removed - this means that the model should exit ASAP
-            if not os.path.exists(keepalive_file):
+            if not os.path.exists(self.lockfile):
                 UpdateStatusfile(self.directories, 25)
                 log.info("")
                 log.info("===> Model exit was requested! <===")
@@ -548,7 +542,7 @@ class Proteus:
         PrintHalfSeparator()
 
         # Clean up files
-        safe_rm(keepalive_file)
+        safe_rm(self.lockfile)
 
         # Plot conditions at the end
         UpdatePlots(self.hf_all, self.directories, self.config, end=True)
