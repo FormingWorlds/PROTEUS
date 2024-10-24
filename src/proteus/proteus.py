@@ -355,7 +355,7 @@ class Proteus:
 
             ############### ESCAPE
             if (self.loops["total"] >= self.loops["init_loops"]):
-                RunEscape(self.config, self.hf_row, dt)
+                RunEscape(self.config, self.hf_row, dt, self.stellar_track)
             ############### / ESCAPE
 
             ############### OUTGASSING
