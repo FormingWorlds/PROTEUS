@@ -60,8 +60,7 @@ jobs:
         if: steps.cache-fwl-data.cache-hit != 'true'
         run: |
           proteus get stellar
-          proteus get spectral
-          proteus get spectral -n Frostflow -b 48
+          proteus get spectral --name Frostflow --bands 48
 
       - name: Test with pytest
         run: |

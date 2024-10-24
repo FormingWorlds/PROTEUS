@@ -21,6 +21,8 @@ def init_star(handler:Proteus):
     Star-related things to be done when the simulation begins.
     '''
 
+    log.debug("Prepare stellar models")
+
     # Path to the modern spectrum
     #   i.e. that observed by a telescope, or derived from various observations.
     #   This is what we download from OSF.
@@ -53,7 +55,7 @@ def init_star(handler:Proteus):
                 # calculate other properties from modern spectrum
                 handler.star_props = mors.synthesis.GetProperties(
                     handler.config.star.mass,
-                    handler.config.star.omega,
+                    handler.config.star.rot_pctle,
                     handler.config.star.age_now * 1000, # convert Gyr to Myr
                 )
 

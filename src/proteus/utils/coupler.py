@@ -271,7 +271,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Elemental mass inventory
     if escape:
         plot_elements(hf_all, output_dir, config.params.out.plot_fmt)
-        plot_escape(hf_all, output_dir, escape_model=config['escape_model'], plot_format=config.params.out.plot_fmt)
+        plot_escape(hf_all, output_dir, escape_model=config.escape.module, plot_format=config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:

@@ -51,14 +51,14 @@ class Mors:
 
     Attributes
     ----------
-    omega: float
+    rot_pctle: float
         Rotation rate, as a percentile of stellar population with the same mass [%].
     tracks: str
         Stellar evolution track to be used. Choices: 'spada', 'baraffe'.
     spec: str
         Name of file containing stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars) for potential file names.
     """
-    omega: float = field(validator=(ge(0), le(100)))
+    rot_pctle: float = field(validator=(ge(0), le(100)))
     tracks: str = field(validator=in_(('spada', 'baraffe')))
     spec: str
 
