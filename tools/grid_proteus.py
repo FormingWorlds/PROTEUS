@@ -446,22 +446,21 @@ if __name__=='__main__':
     # -----
     # Define parameter grid
     # -----
-    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","dummy.toml")
-    # symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/hd63433d_v4"
+    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","dummy_star.toml")
     symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/dummy_grid"
     pg = Grid("dummy_grid", cfg_base, symlink_dir=symlink)
 
-    pg.add_dimension("C/H ratio", "delivery.elements.CH_ratio")
-    pg.set_dimension_logspace("C/H ratio",  0.01, 2.0, 7)
+    # pg.add_dimension("C/H ratio", "delivery.elements.CH_ratio")
+    # pg.set_dimension_logspace("C/H ratio",  0.01, 2.0, 7)
 
-    # pg.add_dimension("Hydrogen", "hydrogen_earth_oceans")
-    # pg.set_dimension_direct("Hydrogen", [1.0, 5.0, 10.0])
+    # pg.add_dimension("Model", "atmos_clim.module")
+    # pg.set_dimension_direct("Model", ["janus", "agni"])
 
-    # pg.add_dimension("Model", "atmosphere_model")
-    # pg.set_dimension_direct("Model", [0, 1])
+    # pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
+    # pg.set_dimension_arange("Redox state", -5, 5, 1)
 
-    pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_arange("Redox state", -5, 5, 1)
+    pg.add_dimension("Star Teff", "star.Teff")
+    pg.set_dimension_arange("Star Teff", 2500, 6000, 500)
 
     # -----
     # Print state of parameter grid
@@ -473,7 +472,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(40, test_run=True)
+    pg.run(40, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.
