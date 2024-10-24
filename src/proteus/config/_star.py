@@ -24,7 +24,7 @@ class Star:
         Values outside of the valid range will be clipped.
     lum_now: float
         Observed bolometric luminosity [L_sun].
-    omega: float
+    rot_pctle: float
         Rotation rate, as a percentile of stellar population with the same mass [%].
     age_now: float
         Observed estimated age of the star [Gyr].
@@ -38,7 +38,7 @@ class Star:
     radius: float = field(validator=gt(0))
     mass: float = field(validator=(ge(0.1), le(1.25)))
     Teff: float = field(validator=gt(0))
-    omega: float = field(validator=(ge(0), le(100)))
+    rot_pctle: float = field(validator=(ge(0), le(100)))
     lum_now: float = field(validator=gt(0))
     age_now: float = field(validator=gt(0))
     age_ini: float = field(validator=gt(0))
