@@ -44,7 +44,7 @@ def init_star(handler:Proteus):
             case 'spada':
                 # creates track data
                 handler.stellar_track = mors.Star(Mstar = handler.config.star.mass,
-                                                  percentile = handler.config.star.rot_pctle)
+                                                  percentile = handler.config.star.mors.rot_pctle)
 
                 # load modern spectrum
                 # calculate band-integrated fluxes
@@ -236,7 +236,7 @@ def update_instellation(hf_row:dict, config:Config, stellar_track=None):
         # which track?
         match config.star.mors.tracks:
             case 'spada':
-                S_0 = stellar_track.Value(hf_row["age_star"] / 1e6, "Lbol") \
+                S_0 = stellar_track.Value(hf_row["age_star"] / 1e6, "Lbol") * 1e-7 \
                         / (4.0 * np.pi * hf_row["separation"]**2.0 )
 
             case 'baraffe':
