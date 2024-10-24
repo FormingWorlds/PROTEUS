@@ -48,6 +48,8 @@ class Calliope:
         If True, include CH4 outgassing.
     include_CO: bool
         If True, include CO outgassing.
+    T_floor: float
+        Temperature floor applied to outgassing calculation [K].
     """
     include_H2O: bool
     include_CO2: bool
@@ -57,6 +59,7 @@ class Calliope:
     include_H2: bool
     include_CH4: bool
     include_CO: bool
+    T_floor: float  = field(validator=validators.gt(0.0))
 
 
 @define
