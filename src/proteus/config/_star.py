@@ -18,10 +18,6 @@ class Star:
         Stellar mass [M_sun]. Note that for Mors,
         it should be between 0.1 and 1.25 solar masses.
         Values outside of the valid range will be clipped.
-    lum_now: float
-        Observed bolometric luminosity [L_sun].
-    age_now: float
-        Observed estimated age of the star [Gyr].
     age_ini: float
         Age of star at model initialisation [Gyr].
     module: str | None
@@ -32,8 +28,6 @@ class Star:
         Parameters for the dummy star module
     """
     mass: float = field(validator=(ge(0.1), le(1.25)))
-    lum_now: float = field(validator=gt(0))
-    age_now: float = field(validator=gt(0))
     age_ini: float = field(validator=gt(0))
 
     module: str | None = field(
@@ -55,14 +49,17 @@ class Mors:
         Rotation rate, as a percentile of stellar population with the same mass [%].
     tracks: str
         Stellar evolution track to be used. Choices: 'spada', 'baraffe'.
+    age_now: float
+        Observed estimated age of the star [Gyr].
     spec: str
         Name of file containing stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars) for potential file names.
     """
     rot_pctle: float = field(validator=(ge(0), le(100)))
     tracks: str = field(validator=in_(('spada', 'baraffe')))
+    age_now: float = field(validator=gt(0))
     spec: str
 
-
+@define
 class StarDummy:
     """Dummy star module.
 
