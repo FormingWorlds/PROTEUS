@@ -14,13 +14,15 @@ import subprocess
 import sys
 import time
 from datetime import datetime
+from copy import deepcopy
+
+from proteus.config import read_config_object, Config
 
 import numpy as np
 
 PROTEUS_DIR=os.getenv('PROTEUS_DIR')
 if PROTEUS_DIR is None:
     raise Exception("Environment is not activated or is setup incorrectly")
-
 
 # Custom logger instance
 def setup_logger(logpath:str="new.log",level=1,logterm=True):
@@ -72,13 +74,12 @@ def setup_logger(logpath:str="new.log",level=1,logterm=True):
 
     return
 
-
 # Object for handling the parameter grid
-class Pgrid():
+class Grid():
 
     def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
 
-        # Pgrid's own name (for versioning, etc.)
+        # Grid's own name (for versioning, etc.)
         self.name = str(name).strip()
         self.outdir = PROTEUS_DIR+"/output/"+self.name+"/"
         self.tmpdir = "/tmp/"+self.name+"/"
@@ -139,23 +140,23 @@ class Pgrid():
 
         # List of dimension names and parameter names
         self.dim_names = []     # String
-        self.dim_param = []     # Dimension parameter of interest ('_hyper' for hypervariables)
+        self.dim_param = []     # Dimension parameter of interest
 
         # Dimension variables (incl hypervariables)
         self.dim_avars = {}
 
-        # Flattened pgrid
+        # Flattened Grid
         self.flat = []   # List of grid points, each is a dictionary
         self.size = 0    # Total size of grid
 
-    # Add a new empty dimension to the pgrid
-    def add_dimension(self,name:str):
+    # Add a new empty dimension to the Grid
+    def add_dimension(self,name:str,var:str):
         if name in self.dim_names:
             raise Exception("Dimension '%s' cannot be added twice" % name)
 
         log.info("Added new dimension '%s' " % name)
         self.dim_names.append(name)
-        self.dim_param.append("_empty")
+        self.dim_param.append(var)
         self.dim_avars[name] = None
 
     def _get_idx(self,name:str):
@@ -164,66 +165,36 @@ class Pgrid():
         return int(self.dim_names.index(name))
 
     # Set a dimension by linspace
-    def set_dimension_linspace(self,name:str,var:str,start:float,stop:float,count:int):
+    def set_dimension_linspace(self,name:str,start:float,stop:float,count:int):
         idx = self._get_idx(name)
-        if self.dim_param[idx] != "_empty":
-            raise Exception("Dimension '%s' cannot be set twice" % name)
-        self.dim_param[idx] = var
         self.dim_avars[name] = list(np.linspace(start,stop,count))
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
 
     # Set a dimension by arange (inclusive of endpoint)
-    def set_dimension_arange(self,name:str,var:str,start:float,stop:float,step:float):
+    def set_dimension_arange(self,name:str,start:float,stop:float,step:float):
         idx = self._get_idx(name)
-        if self.dim_param[idx] != "_empty":
-            raise Exception("Dimension '%s' cannot be set twice" % name)
-        self.dim_param[idx] = var
         self.dim_avars[name] = list(np.arange(start,stop,step))
         self.dim_avars[name].append(stop)
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
 
     # Set a dimension by logspace
-    def set_dimension_logspace(self,name:str,var:str,start:float,stop:float,count:int):
+    def set_dimension_logspace(self,name:str,start:float,stop:float,count:int):
         idx = self._get_idx(name)
-        if self.dim_param[idx] != "_empty":
-            raise Exception("Dimension '%s' cannot be set twice" % name)
-        self.dim_param[idx] = var
         self.dim_avars[name] = list(np.logspace( np.log10(start) , np.log10(stop) , count))
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
 
     # Set a dimension directly
-    def set_dimension_direct(self,name:str,var:str,values:list):
+    def set_dimension_direct(self,name:str,values:list):
         idx = self._get_idx(name)
-        if self.dim_param[idx] != "_empty":
-            raise Exception("Dimension '%s' cannot be set twice" % name)
-        self.dim_param[idx] = var
         the_list = list(set(values))  # remove duplicates
         if not isinstance(values[0],str): # sort if numeric
             the_list = sorted(the_list)
         self.dim_avars[name] = the_list
 
-    # Set a dimension to take hypervariables
-    def set_dimension_hyper(self,name:str):
-        idx = self._get_idx(name)
-        if self.dim_param[idx] != "_empty":
-            raise Exception("Dimension '%s' cannot be set twice" % name)
-        self.dim_param[idx] = "_hyper"
-        self.dim_avars[name] = []
-
-    # Add a new hypervariable to a _hyper dimension
-    # This allows multiple variables to be considered as one
-    # e.g. Earth and Mars are two cases of the 'planet' hypervariable, but
-    #      each contains their own sub-variables like mass, radius, etc.
-    def append_dimension_hyper(self,name:str,value:dict):
-        idx = self._get_idx(name)
-        if self.dim_param[idx] != "_hyper":
-            raise Exception("Dimension '%s'is not ready to take new values" % name)
-        self.dim_avars[name].append(value)
-
     # Print current setup
     def print_setup(self):
 
-        log.info("Current setup")
+        log.info("Grid configuration")
         log.info(" -- name     : %s" % self.name)
         log.info(" ")
         for name in self.dim_names:
@@ -242,18 +213,21 @@ class Pgrid():
             log.info("    %d: %s" % (i,gp))
         log.info(" ")
 
-    # Generate the pgrid based on the current configuration
+    def _get_tmpcfg(self, idx:int):
+        return os.path.join(self.tmpdir,"case_%05d.toml" % idx)
+
+    # Generate the Grid based on the current configuration
     def generate(self):
         log.info("Generating parameter grid")
 
         # Validate
         if len(self.dim_avars) == 0:
-            raise Exception("pgrid is empty")
+            raise Exception("Grid is empty")
 
         # Dimension count
         log.info("    %d dimensions" % len(self.dim_names))
 
-        # Calculate total pgrid size
+        # Calculate total Grid size
         values = list(self.dim_avars.values())
         self.size = 1
         for v in values:
@@ -270,14 +244,7 @@ class Pgrid():
             gp = {}
 
             for i in range(len(fl)):
-                par = self.dim_param[i]
-                val = fl[i]
-
-                if par == "_hyper":
-                    for key,value in val.items():
-                        gp[key] = value
-                else:
-                    gp[par] = val
+                gp[self.dim_param[i]] = fl[i]
 
             self.flat.append(gp)
 
@@ -286,7 +253,7 @@ class Pgrid():
         log.info(" ")
 
 
-    # Run PROTEUS across this pgrid
+    # Run PROTEUS across this Grid
     def run(self,num_threads:int,test_run:bool=False):
         log.info("Running PROTEUS across parameter grid '%s'" % self.name)
 
@@ -321,49 +288,43 @@ class Pgrid():
             print_interval = 1
 
         # Read base config file
-        with open(self.conf, "r") as f:
-            base_config = f.readlines()
+        base_config = read_config_object(self.conf)
 
         # Loop over grid points to write config files
         log.info("Writing config files")
         for i,gp in enumerate(self.flat):
 
-            cfgfile = os.path.join(self.tmpdir,"case_%05d.toml" % i)
-            gp["path"] = self.name+"/case_%05d"%i
+            # Create new config
+            thisconf:Config = deepcopy(base_config)
 
-            # Create config file for this case
-            with open(cfgfile, 'w') as hdl:
+            # Set case dir relative to PROTEUS/output/
+            thisconf.params.out.path = self.name+"/case_%05d/"%i
 
-                hdl.write("# GridPROTEUS config file \n")
-                hdl.write("# gp_index = %d \n" % i)
+            # Set other parameters
+            for key in gp.keys():
+                val = gp[key]
+                bits = key.split(".")
+                depth = len(bits)-1
 
-                # Write lines
-                for line in base_config:
-                    if not ( ('=' in line) or ('[' in line)):
-                        continue
+                # Descend down attributes tree until we are setting the right value
+                #    This could be done with recursion, but we only ever go 2 layers deep
+                #    at most, so it can easily be handled by 'brute force' like this.
+                if depth == 0:
+                    setattr(thisconf,bits[0],val)
+                elif depth == 1:
+                    setattr(getattr(thisconf,bits[0]), bits[1],val)
+                elif depth == 2:
+                    setattr(   getattr( getattr(thisconf,bits[0]),  bits[1] ), bits[2],val)
+                else:
+                    raise Exception("Requested key is too deep for configuration tree")
 
-                    line = line.split('#')[0]
-                    key = line.split('=')[0].strip()
+            # Write this configuration file
+            thisconf.write(self._get_tmpcfg(i))
+            os.sync()
 
-                    # Give priority to pgrid parameters
-                    if key in gp.keys():
-                        # check if is meant to be a string
-                        val = gp[key]
-                        if type(val) is str:
-                            val = "'%s'"%val
-                        hdl.write("%s = %s     # this value set by grid\n" % (key,val))
-
-                    # Otherwise, use default value
-                    else:
-                        hdl.write(str(line) + "\n")
-
-                # Ensure data is written to disk
-                hdl.flush()
-                os.fsync(hdl.fileno())
         gc.collect()
 
-
-         # Thread targget
+        # Thread targget
         def _thread_target(cfg_path):
             if test_run:
                 command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
@@ -375,20 +336,20 @@ class Pgrid():
         # Setup threads
         threads = []
         for i in range(self.size):
-            # Case paths
-            cfg_path = os.path.join(self.tmpdir,"case_%05d.toml" % i)
+            cfg_path = self._get_tmpcfg(i)
+
             # Check cfg exists
             cfgexists = False
             waitfor   = 4.0
             for _ in range(int(waitfor*100)):  # do n=100*wait_for checks
                 time.sleep(0.01)
-                if os.path.exists(cfgfile):
+                if os.path.exists(cfg_path):
                     cfgexists = True
                     break
             if not cfgexists:
                raise Exception("Config file could not be found for case %d!" % i)
-            # Add thread
-            # threads.append(threading.Thread(target=_thread_target, args=(cfg_path,)))
+
+            # Add process
             threads.append(multiprocessing.Process(target=_thread_target, args=(cfg_path,)))
 
         # Track statuses
@@ -396,7 +357,7 @@ class Pgrid():
         # 1: running
         # 2: done
         status = np.zeros(self.size)
-        done = False                # All done?
+        done = False   # All done?
         log.info("Starting process manager (%d grid points, %d threads)" % (self.size,num_threads))
         step = 0
         while not done:
@@ -456,11 +417,6 @@ class Pgrid():
             step += 1
             # / end while loop
 
-        # join threads
-        # log.info("Joining threads")
-        # for t in threads:
-        #     t.join()
-
         # Check all cases' status files
         for i in range(self.size):
             # find file
@@ -493,27 +449,19 @@ if __name__=='__main__':
     cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","dummy.toml")
     # symlink = "/dataserver/users/formingworlds/nicholls/model_outputs/hd63433d_v4"
     symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/dummy_grid"
-    pg = Pgrid("dummy_grid", cfg_base, symlink_dir=symlink)
+    pg = Grid("dummy_grid", cfg_base, symlink_dir=symlink)
 
-    # pg.add_dimension("Planet")
-    # pg.set_dimension_hyper("Planet")
-    # pg.append_dimension_hyper("Planet", {   "#case": "TRAPPIST-1b",
-    #                                         "semimajoraxis": 0.01154,  # AU, star-planet distance
-    #                                         "mass"         : 8.21e+24, # kg, planet mass
-    #                                         "radius"       : 7.118e+6  # m, planet surface radius
-    #                                     })
+    pg.add_dimension("C/H ratio", "delivery.elements.CH_ratio")
+    pg.set_dimension_logspace("C/H ratio",  0.01, 2.0, 7)
 
-    # pg.add_dimension("C/H ratio")
-    # pg.set_dimension_logspace("C/H ratio", "CH_ratio", 0.01, 2.0, 7)
+    # pg.add_dimension("Hydrogen", "hydrogen_earth_oceans")
+    # pg.set_dimension_direct("Hydrogen", [1.0, 5.0, 10.0])
 
-    # pg.add_dimension("Hydrogen")
-    # pg.set_dimension_direct("Hydrogen", "hydrogen_earth_oceans", [1.0, 5.0, 10.0])
+    # pg.add_dimension("Model", "atmosphere_model")
+    # pg.set_dimension_direct("Model", [0, 1])
 
-    # pg.add_dimension("Model")
-    # pg.set_dimension_direct("Model", "atmosphere_model", [0, 1])
-
-    pg.add_dimension("Redox state")
-    pg.set_dimension_arange("Redox state", "fO2_shift_IW", -5, 5, 1)
+    pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
+    pg.set_dimension_arange("Redox state", -5, 5, 1)
 
     # -----
     # Print state of parameter grid
@@ -525,7 +473,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(40, test_run=False)
+    pg.run(40, test_run=True)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.
