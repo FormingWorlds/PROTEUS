@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import mors
 import numpy as np
 from zephyrus.escape import EL_escape
 
