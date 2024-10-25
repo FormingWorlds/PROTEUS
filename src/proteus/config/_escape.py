@@ -40,7 +40,7 @@ class Zephyrus:
     tidal: bool
         Tidal contribution enabled
     """
-    Pxuv: float
+    Pxuv: float = field(default=1e-2, validator=[ge(1e-5), le(1e5)])
     efficiency: float = field(default=1.0,validator=(ge(0.0), le(1.0)))
     tidal: bool = field(default=False)
 
