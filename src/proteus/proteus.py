@@ -7,11 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import toml
-from attrs import asdict
 from calliope.structure import calculate_mantle_mass
 
-import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
@@ -29,7 +26,6 @@ from proteus.utils.constants import (
     M_earth,
     R_earth,
     const_G,
-    element_list,
     gas_list,
     vap_list,
     vol_list,
@@ -80,8 +76,13 @@ class Proteus:
         # Loop counters
         self.loops = None
 
+        # Interior
+        self.IC_INTERIOR = -1   # initial condition
+        self.dt = 1.0           # Time step variable [yr]
+
         # Model has finished?
         self.finished = False
+        self.lockfile = "/tmp/none"
 
         # Default values for mors.spada cases
         self.star_props  = None
@@ -103,10 +104,6 @@ class Proteus:
     def init_directories(self):
         """Initialize directories dictionary"""
         self.directories = SetDirectories(self.config)
-
-        # Keep `constants.dirs` around for compatibility with other parts of the code
-        # At some point, they should all reference `Proteus.directories`
-        proteus.utils.constants.dirs = self.directories
 
     def start(self, *, resume: bool = False):
         """Start PROTEUS simulation.
@@ -161,23 +158,15 @@ class Proteus:
             "steady_check": 15,  # Number of iterations to look backwards when checking steady state
         }
 
-        # Config file paths
-        config_path_backup = os.path.join(self.directories["output"], "init_coupler.toml")
+        # Write config to output directory, for future reference
+        self.config.write(os.path.join(self.directories["output"], "init_coupler.toml"))
 
         # Is the model resuming from a previous state?
         if not resume:
             # New simulation
 
             # SPIDER initial condition
-            IC_INTERIOR = 1
-
-            # Write config to output directory, for future reference
-            # File is read into memory first, because it's possible that the original
-            #    file and the backup file are located at the same path.
-            with open(str(self.config_path), 'r') as hdl:
-                config_raw = hdl.readlines()
-            with open(config_path_backup, 'w') as hdl:
-                hdl.writelines(config_raw)
+            self.IC_INTERIOR = 1
 
             # Create an empty initial row for helpfile
             self.hf_row = ZeroHelpfileRow()
@@ -225,12 +214,8 @@ class Proteus:
             # Resuming from disk
             log.info("Resuming the simulation from the disk")
 
-            # Copy cfg file
-            with open(config_path_backup, "w") as toml_file:
-                toml.dump(asdict(self.config), toml_file)
-
             # SPIDER initial condition
-            IC_INTERIOR = 2
+            self.IC_INTERIOR = 2
 
             # Read helpfile from disk
             self.hf_all = ReadHelpfileFromCSV(self.directories["output"])
@@ -246,21 +231,15 @@ class Proteus:
             self.loops["total"] = len(self.hf_all)
             self.loops["init"] = self.loops["init_loops"] + 1
 
-            # Set volatile mass targets f
-            solvevol_target = {}
-            for e in element_list:
-                if e == "O":
-                    continue
-                solvevol_target[e] = self.hf_row[e + "_kg_total"]
+
+        # Create lockfile for keeping simulation running
+        self.lockfile = CreateLockFile(self.directories["output"])
 
         # Download basic data
         download_sufficient_data(self.config)
 
         # Prepare star stuff
         init_star(self)
-
-        # Create lockfile
-        keepalive_file = CreateLockFile(self.directories["output"])
 
         # Main loop
         UpdateStatusfile(self.directories, 1)
@@ -300,12 +279,12 @@ class Proteus:
             ############### INTERIOR
 
             # Run interior model
-            dt = run_interior(self.directories, self.config,
-                                self.loops, IC_INTERIOR, self.hf_all,  self.hf_row)
+            self.dt = run_interior(self.directories, self.config,
+                                self.loops, self.IC_INTERIOR, self.hf_all,  self.hf_row)
 
             # Advance current time in main loop according to interior step
-            self.hf_row["Time"]     += dt    # in years
-            self.hf_row["age_star"] += dt    # in years
+            self.hf_row["Time"]     += self.dt    # in years
+            self.hf_row["age_star"] += self.dt    # in years
 
             ############### / INTERIOR
 
@@ -360,7 +339,8 @@ class Proteus:
 
             ############### ESCAPE
             if (self.loops["total"] >= self.loops["init_loops"]):
-                RunEscape(self.config, self.hf_row, dt, self.stellar_track)
+                RunEscape(self.config, self.hf_row, self.dt, self.stellar_track)
+
             ############### / ESCAPE
 
             ############### OUTGASSING
@@ -402,7 +382,7 @@ class Proteus:
                 self.hf_row["Time"] = 0.0
             # Reset restart flag once SPIDER has correct heat flux
             if self.loops["total"] >= self.loops["init_loops"]:
-                IC_INTERIOR = 2
+                self.IC_INTERIOR = 2
 
             # Adjust total iteration counters
             self.loops["total"] += 1
@@ -521,7 +501,7 @@ class Proteus:
                 UpdateStatusfile(self.directories, 1)
 
             # Check if keepalive file has been removed - this means that the model should exit ASAP
-            if not os.path.exists(keepalive_file):
+            if not os.path.exists(self.lockfile):
                 UpdateStatusfile(self.directories, 25)
                 log.info("")
                 log.info("===> Model exit was requested! <===")
@@ -544,7 +524,7 @@ class Proteus:
         PrintHalfSeparator()
 
         # Clean up files
-        safe_rm(keepalive_file)
+        safe_rm(self.lockfile)
 
         # Plot conditions at the end
         UpdatePlots(self.hf_all, self.directories, self.config, end=True)

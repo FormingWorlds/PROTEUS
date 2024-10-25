@@ -26,8 +26,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # output files
     [params.out]
         path        = "dummy_star"
-        logging     = "DEBUG"
-        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
+        logging     = "INFO"
+        plot_mod    = 20      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping
@@ -99,7 +99,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [star.dummy]
         radius  = 1.0       # R_sun
-        Teff    = 5772.0    # K
+        Teff    = 2700.0    # K
 
 # Orbital system
 [orbit]
@@ -200,7 +200,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         include_SO2  = true     # Include SO2 compound
         include_H2   = true     # Include H2 compound
         include_CH4  = true     # Include CH4 compound
-        include_CO   = true     # Include CO compound
+        include_CO   = true     # Include CO
+        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
     [outgas.atmodeller]
         some_parameter = "some_value"

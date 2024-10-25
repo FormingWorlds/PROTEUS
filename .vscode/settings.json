@@ -1,7 +1,6 @@
 {
     "editor.tabSize": 4,
     "editor.rulers": [ 92 ],
-    "python.analysis.extraPaths": ["JANUS/src/","MORS/src/", "CALLIOPE/src/"],
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
     "git.ignoreLimitWarning": true,
@@ -9,7 +8,7 @@
         "petsc", "SPIDER"
     ],
     "python.analysis.exclude": [
-        "**/__pycache__", "petsc", ".git", "SPIDER"
+        "**/__pycache__", "petsc", ".git", "SPIDER", "output"
     ],
     "julia.environmentPath": "${workspaceFolder}/AGNI"
 }

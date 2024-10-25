@@ -84,6 +84,11 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
         # save to dict
         solvevol_target[e] = hf_row[e + "_kg_total"]
 
+    # Do not allow low temperatures
+    if solvevol_inp["T_magma"] < config.outgas.calliope.T_floor:
+        solvevol_inp["T_magma"] = config.outgas.calliope.T_floor
+        log.warning("Outgassing temperature clipped to %.1f K"%solvevol_inp["T_magma"])
+
     # get atmospheric compositison
     solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
     for k in solvevol_result.keys():
