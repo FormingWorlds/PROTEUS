@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import filecmp
 from pathlib import Path
 
 import pytest
-import filecmp
 from helpers import PROTEUS_ROOT, resize_to_match
 from matplotlib.testing.compare import compare_images
 from pandas.testing import assert_frame_equal
