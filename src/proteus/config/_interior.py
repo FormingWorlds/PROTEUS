@@ -71,5 +71,5 @@ class Aragog:
     tolerance: float
         Solver tolerance.
     """
-    num_levels: int  = field(validator=validators.ge(40))
+    num_levels: int  = field(validator=ge(40))
     tolerance: float

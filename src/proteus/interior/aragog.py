@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,9 @@ from aragog.parser import (
 )
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import R_earth, secs_per_year
+
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 aragog_solver = None
 log = logging.getLogger("fwl."+__name__)
