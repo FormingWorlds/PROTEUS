@@ -28,7 +28,8 @@ def test_dummy_run(dummy_run):
     assert_frame_equal(hf_all, hf_all_ref, rtol=5e-3)
 
     # Check statusfiles
-    assert filecmp.cmp(out_dir / 'status', ref_dir / 'status')
+    assert filecmp.cmp(out_dir / 'status', ref_dir / 'status', shallow=False)
 
     # Check stellar spectra
-    assert filecmp.cmp(out_dir / 'data' / '9002.sflux', ref_dir / '9002.sflux')
+    assert filecmp.cmp(out_dir / 'data' / '9002.sflux',
+                       ref_dir / '9002.sflux', shallow=False)
