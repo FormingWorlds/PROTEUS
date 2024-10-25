@@ -27,7 +27,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "dummy_aragog"
         logging     = "DEBUG"
-        plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping

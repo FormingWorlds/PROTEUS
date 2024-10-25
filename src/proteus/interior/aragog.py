@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import os
+import glob
 from aragog import Output, Solver
 from aragog.parser import (
     Parameters,
@@ -212,3 +213,12 @@ def GetAragogOutput(hf_row:dict):
     output["M_core"] = hf_row["M_core"]
 
     return output
+
+
+def get_all_output_times(output_dir:str):
+
+    files = glob.glob(output_dir+"/data/*_int.nc")
+    years = [int(f.split("/")[-1].split("_int")[0]) for f in files]
+    mask = np.argsort(years)
+
+    return [years[i] for i in mask]

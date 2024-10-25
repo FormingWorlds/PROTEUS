@@ -25,6 +25,7 @@ from proteus.plot.cpl_fluxes_global import plot_fluxes_global
 from proteus.plot.cpl_global import plot_global
 from proteus.plot.cpl_interior import plot_interior
 from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
+from proteus.plot.cpl_interior_aragog import plot_interior_aragog
 from proteus.plot.cpl_observables import plot_observables
 from proteus.plot.cpl_population import (
     plot_population_mass_radius,
@@ -255,14 +256,16 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
-    spider = config.interior.module == 'spider'
+    spider    = config.interior.module == 'spider'
+    aragog    = config.interior.module == 'aragog'
     escape    = config.escape.module is not None
 
     # Get all output times
-    if not spider:
-        output_times = []
-    else:
+    if spider:
         from proteus.interior.spider import get_all_output_times
+        output_times = get_all_output_times( output_dir )
+    if aragog:
+        from proteus.interior.aragog import get_all_output_times
         output_times = get_all_output_times( output_dir )
 
     # Global properties for all timesteps
@@ -297,6 +300,9 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     if spider:
         jsons = read_jsons(output_dir, plot_times)
         plot_interior(output_dir, plot_times, jsons, config.params.out.plot_fmt)
+
+    if aragog:
+        plot_interior_aragog(output_dir, plot_times, config.params.out.plot_fmt)
 
     # Temperature profiles
     if not dummy_atm:
