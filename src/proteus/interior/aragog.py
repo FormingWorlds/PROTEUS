@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+import os
 from aragog import Output, Solver
 from aragog.parser import (
     Parameters,
@@ -57,6 +58,9 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
     # Get Aragog output
     output = GetAragogOutput(hf_row)
     sim_time = aragog_solver.parameters.solver.end_time
+
+    # Write output to a file
+    WriteAragogOutput(dirs["output"],sim_time)
 
     return sim_time, output
 
@@ -184,6 +188,13 @@ def UpdateAragogSolver(dt:float, hf_row:dict):
     aragog_solver.parameters.boundary_conditions.outer_boundary_value = hf_row["F_atm"]
 
     return
+
+def WriteAragogOutput(output_dir:str, time:float):
+
+    aragog_output: Output = Output(aragog_solver)
+
+    fpath = os.path.join(output_dir,"data","%d_int.nc"%time)
+    aragog_output.write(fpath,-1)
 
 def GetAragogOutput(hf_row:dict):
 
