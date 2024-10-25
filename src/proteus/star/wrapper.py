@@ -118,7 +118,7 @@ def get_spada_synthesis_properties(spada_track, age: float):
 
     return out
 
-def get_new_spectrum(t_star:float, config:Config,
+def get_new_spectrum(t_star:float, config:Config, R_star:float,
                      star_struct_modern=None, star_props_modern=None,
                      stellar_track=None, modern_wl=None, modern_fl=None):
     '''
@@ -130,7 +130,7 @@ def get_new_spectrum(t_star:float, config:Config,
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import generate_spectrum
-        wl, fl = generate_spectrum(config.star.dummy.Teff, config.star.dummy.radius)
+        wl, fl = generate_spectrum(config.star.dummy.Teff, R_star)
 
     # Mors cases
     elif config.star.module == 'mors':

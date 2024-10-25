@@ -314,6 +314,7 @@ class Proteus:
 
                                         # Required variables
                                         self.hf_row["age_star"], self.config,
+                                        self.hf_row["R_star"],
 
                                         # Variables needed for mors.spada
                                         star_struct_modern=self.star_struct,

@@ -27,17 +27,17 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "dummy_star"
         logging     = "INFO"
-        plot_mod    = 20      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping
     [params.dt]
         minimum      = 1e2    # yr, minimum time-step
-        maximum      = 3e7    # yr, maximum time-step
+        maximum      = 1e3    # yr, maximum time-step
         initial      = 1e2    # yr, inital step size
-        starspec     = 1e7    # yr, interval to re-calculate the stellar spectrum
-        starinst     = 1e1    # yr, interval to re-calculate the instellation
-        method       = "adaptive"  # proportional | adaptive | maximum
+        starspec     = 1e3    # yr, interval to re-calculate the stellar spectrum
+        starinst     = 1e3    # yr, interval to re-calculate the instellation
+        method       = "maximum"  # proportional | adaptive | maximum
 
         [params.dt.proportional]
             propconst    = 52.0   # Proportionality constant
@@ -58,8 +58,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # required time constraints
         [params.stop.time]
             enabled = true
-            minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 4.567e+9     # yr, model will terminate when t > maximum
+            minimum = 1e1     # yr, model will certainly run to t > minimum
+            maximum = 1e4     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -99,7 +99,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [star.dummy]
         radius  = 1.0       # R_sun
-        Teff    = 2700.0    # K
+        Teff    = 5772.0     # K
 
 # Orbital system
 [orbit]
@@ -212,7 +212,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # [Settings here for accretion rate, etc.]
 
     # Which initial inventory to use?
-    initial = 'elements'        # "elements" | "volatiles"
+    initial = 'volatiles'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"
@@ -226,11 +226,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [delivery.volatiles]
-        H2O  = 0.0          # partial pressure of H2O
-        CO2  = 0.0          # partial pressure of CO2
-        N2   = 0.0          # etc
-        S2   = 0.0
-        SO2  = 0.0
+        H2O  = 3.0          # partial pressure of H2O
+        CO2  = 1.0          # partial pressure of CO2
+        N2   = 0.3          # etc
+        S2   = 0.2
+        SO2  = 0.1
         H2   = 0.0
         CH4  = 0.0
         CO   = 0.0

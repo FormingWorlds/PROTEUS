@@ -102,6 +102,8 @@ def plot_population_mass_radius(hf_all:pd.DataFrame, output_dir: str, fwl_dir:st
     ax.plot(sim_mas, sim_rad, label="Simulation", color=col, lw=1.5, zorder=98)
     ax.scatter(sim_mas[-1], sim_rad[-1], color=col, s=ms, zorder=99)
 
+    print(sim_mas[-1])
+
     # Save figure
     ax.set_ylabel(r"Planet radius [$R_{\oplus}$]")
     ax.set_ylim(bottom=0, top=max(np.amax(exo_rad_val), np.amax(sim_rad)))
