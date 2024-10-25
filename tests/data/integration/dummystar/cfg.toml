@@ -25,8 +25,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "dummy_star"
-        logging     = "INFO"
+        path        = "dummystar"
+        logging     = "ERROR"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
@@ -124,11 +124,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Atmosphere - physics table
 [atmos_clim]
     prevent_warming = true      # do not allow the planet to heat up
-    surface_d       = 0.01      # m, conductive skin thickness
+    surface_d       = 0.1      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
     cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
-    surf_state      = "fixed"    # surface scheme: "mixed_layer" | "fixed" | "skin"
+    surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
     surf_albedo     = 0.1       # path to file ("string") or grey quantity (float)
     albedo_pl       = 0.1   	# Bond albedo (scattering)
     rayleigh        = false      # enable rayleigh scattering
@@ -158,7 +158,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
-    module = "dummy"    # Which escape module to use
+    module = "none"    # Which escape module to use
 
     [escape.zephyrus]
         efficiency = 1.0   # Escape efficiency factor
