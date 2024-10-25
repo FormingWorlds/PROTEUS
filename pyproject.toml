@@ -46,7 +46,7 @@ dependencies = [
     "attrs",
     "cattrs",
     "fwl-janus>=24.9.12",
-    "fwl-mors>=24.8.29",
+    "fwl-mors>=24.10.25",
     "fwl-calliope>=24.9.10",
     "fwl-zephyrus>=24.10.15",
     "cmcrameri",
@@ -56,7 +56,6 @@ dependencies = [
     "numpy",
     "pandas",
     "scipy",
-    "toml; python_version<='3.10'",
 ]
 
 [project.urls]
