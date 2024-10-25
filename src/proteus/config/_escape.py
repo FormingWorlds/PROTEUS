@@ -33,7 +33,6 @@ class Zephyrus:
 
     Attributes
     ----------
-
     Pxuv: float
         Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
     efficiency: float
