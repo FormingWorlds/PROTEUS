@@ -1,13 +1,23 @@
 # Common atmosphere climate model functions
 from __future__ import annotations
 
+import logging
 import os
+from typing import TYPE_CHECKING
 
 import netCDF4 as nc
 import numpy as np
 
+if TYPE_CHECKING:
+    from proteus.config import Config
+
+log = logging.getLogger("fwl."+__name__)
 
 def read_ncdf_profile(nc_fpath:str):
+    """
+    Read temperature, pressure, height data from NetCDF file.
+    """
+
     # open file
     ds = nc.Dataset(nc_fpath)
 
@@ -47,4 +57,36 @@ def read_ncdf_profile(nc_fpath:str):
     return out
 
 def read_ncdfs(output_dir:str, times:list):
-    return [read_ncdf_profile(os.path.join(output_dir, "data", "%d_atm.nc"%t)) for t in times]
+    """
+    Read all p,t,z profiles from NetCDF files in a PROTEUS output folder.
+    """
+    profiles = [read_ncdf_profile(os.path.join(output_dir, "data", "%d_atm.nc"%t)) for t in times]
+    if len(profiles) < 1:
+        log.warning("No NetCDF files found in output folder")
+    return profiles
+
+def get_spfile_name_and_bands(config:Config):
+    """
+    Get spectral file name and bands from config
+    """
+
+    # Get table corresponding to the right atmosphere module
+    obj = getattr(config.atmos_clim, config.atmos_clim.module)
+
+    # Get bands and group name (strings)
+    bands = obj.spectral_bands
+    group = obj.spectral_group
+
+    return group, bands
+
+
+def get_spfile_path(fwl_dir:str, config:Config):
+    """
+    Get path to spectral file, given name and bands.
+    """
+
+    # Get group and bands (strings) from config
+    group, bands = get_spfile_name_and_bands(config)
+
+    # Construct file path
+    return os.path.join(fwl_dir,"spectral_files",group,bands,group)+".sf"

@@ -25,7 +25,7 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
         if config.params.dt.method == 'proportional':
             # Proportional time-step calculation
             log.info("Time-stepping intent: proportional")
-            dtswitch = hf_row["Time"] / float(config["dt_propconst"])
+            dtswitch = hf_row["Time"] / config.params.dt.proportional.propconst
 
         elif config.params.dt.method == 'adaptive':
             # Dynamic time-step calculation
@@ -75,7 +75,7 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
 
         else:
             UpdateStatusfile(dirs, 20)
-            raise Exception(f"Invalid time-stepping method: {config['dt_method']}")
+            raise Exception(f"Invalid time-stepping method: {config.params.dt.method}")
 
         # Step scale factor (is always <= 1.0)
         dtswitch *= step_sf

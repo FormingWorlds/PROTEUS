@@ -7,11 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import toml
-from attrs import asdict
 from calliope.structure import calculate_mantle_mass
 
-import proteus.utils.constants
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
@@ -21,9 +18,7 @@ from proteus.star.wrapper import (
     get_new_spectrum,
     init_star,
     scale_spectrum_to_toa,
-    update_equilibrium_temperature,
-    update_instellation,
-    update_stellar_radius,
+    update_stellar_quantities,
     write_spectrum,
 )
 from proteus.utils.constants import (
@@ -31,8 +26,9 @@ from proteus.utils.constants import (
     M_earth,
     R_earth,
     const_G,
-    element_list,
-    volatile_species,
+    gas_list,
+    vap_list,
+    vol_list,
 )
 from proteus.utils.coupler import (
     CreateHelpfileFromDict,
@@ -80,15 +76,20 @@ class Proteus:
         # Loop counters
         self.loops = None
 
+        # Interior
+        self.IC_INTERIOR = -1   # initial condition
+        self.dt = 1.0           # Time step variable [yr]
+
         # Model has finished?
         self.finished = False
+        self.lockfile = "/tmp/none"
 
         # Default values for mors.spada cases
         self.star_props  = None
         self.star_struct = None
 
         # Default values for mors.baraffe cases
-        self.baraffe_track  = None
+        self.stellar_track  = None
         self.star_modern_fl = None
         self.star_modern_wl = None
 
@@ -103,10 +104,6 @@ class Proteus:
     def init_directories(self):
         """Initialize directories dictionary"""
         self.directories = SetDirectories(self.config)
-
-        # Keep `constants.dirs` around for compatibility with other parts of the code
-        # At some point, they should all reference `Proteus.directories`
-        proteus.utils.constants.dirs = self.directories
 
     def start(self, *, resume: bool = False):
         """Start PROTEUS simulation.
@@ -161,23 +158,15 @@ class Proteus:
             "steady_check": 15,  # Number of iterations to look backwards when checking steady state
         }
 
-        # Config file paths
-        config_path_backup = os.path.join(self.directories["output"], "init_coupler.toml")
+        # Write config to output directory, for future reference
+        self.config.write(os.path.join(self.directories["output"], "init_coupler.toml"))
 
         # Is the model resuming from a previous state?
         if not resume:
             # New simulation
 
             # SPIDER initial condition
-            IC_INTERIOR = 1
-
-            # Write config to output directory, for future reference
-            # File is read into memory first, because it's possible that the original
-            #    file and the backup file are located at the same path.
-            with open(str(self.config_path), 'r') as hdl:
-                config_raw = hdl.readlines()
-            with open(config_path_backup, 'w') as hdl:
-                hdl.writelines(config_raw)
+            self.IC_INTERIOR = 1
 
             # Create an empty initial row for helpfile
             self.hf_row = ZeroHelpfileRow()
@@ -201,8 +190,8 @@ class Proteus:
 
             # Store partial pressures and list of included volatiles
             log.info("Input partial pressures:")
-            inc_vols = []
-            for s in volatile_species:
+            inc_gases = []
+            for s in vol_list:
                 pp_val = getattr(self.config.delivery.volatiles, s)
                 include = getattr(self.config.outgas.calliope, f'include_{s}')
 
@@ -212,22 +201,21 @@ class Proteus:
                 )
 
                 if include:
-                    inc_vols.append(s)
+                    inc_gases.append(s)
                     self.hf_row[s + "_bar"] = max(1.0e-30, float(pp_val))
                 else:
                     self.hf_row[s + "_bar"] = 0.0
-            log.info("Included volatiles: " + str(inc_vols))
+            for s in vap_list:
+                inc_gases.append(s)
+                self.hf_row[s + "_bar"] = 0.0
+            log.info("Included gases: " + str(inc_gases))
 
         else:
             # Resuming from disk
             log.info("Resuming the simulation from the disk")
 
-            # Copy cfg file
-            with open(config_path_backup, "w") as toml_file:
-                toml.dump(asdict(self.config), toml_file)
-
             # SPIDER initial condition
-            IC_INTERIOR = 2
+            self.IC_INTERIOR = 2
 
             # Read helpfile from disk
             self.hf_all = ReadHelpfileFromCSV(self.directories["output"])
@@ -243,21 +231,15 @@ class Proteus:
             self.loops["total"] = len(self.hf_all)
             self.loops["init"] = self.loops["init_loops"] + 1
 
-            # Set volatile mass targets f
-            solvevol_target = {}
-            for e in element_list:
-                if e == "O":
-                    continue
-                solvevol_target[e] = self.hf_row[e + "_kg_total"]
+
+        # Create lockfile for keeping simulation running
+        self.lockfile = CreateLockFile(self.directories["output"])
 
         # Download basic data
         download_sufficient_data(self.config)
 
         # Prepare star stuff
         init_star(self)
-
-        # Create lockfile
-        keepalive_file = CreateLockFile(self.directories["output"])
 
         # Main loop
         UpdateStatusfile(self.directories, 1)
@@ -297,12 +279,12 @@ class Proteus:
             ############### INTERIOR
 
             # Run interior model
-            dt = run_interior(self.directories, self.config,
-                                self.loops, IC_INTERIOR, self.hf_all,  self.hf_row)
+            self.dt = run_interior(self.directories, self.config,
+                                self.loops, self.IC_INTERIOR, self.hf_all,  self.hf_row)
 
             # Advance current time in main loop according to interior step
-            self.hf_row["Time"]     += dt    # in years
-            self.hf_row["age_star"] += dt    # in years
+            self.hf_row["Time"]     += self.dt    # in years
+            self.hf_row["age_star"] += self.dt    # in years
 
             ############### / INTERIOR
 
@@ -317,21 +299,7 @@ class Proteus:
             ):
                 self.sinst_prev = self.hf_row["Time"]
 
-                # Update value for star's radius
-                log.info("Update stellar radius")
-                update_stellar_radius(self.hf_row, self.config, baraffe_track=self.baraffe_track)
-
-                # Update value for instellation flux
-                log.info("Update instellation")
-                update_instellation(self.hf_row, self.config, baraffe_track=self.baraffe_track)
-
-                # Calculate new eqm temperature
-                log.info("Update equilibrium temperature")
-                update_equilibrium_temperature(self.hf_row, self.config)
-
-                # Calculate new skin temperature
-                # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
-                self.hf_row["T_skin"] = self.hf_row["T_eqm"] * (0.5**0.25)
+                update_stellar_quantities(self.hf_row, self.config, stellar_track=self.stellar_track)
 
             # Calculate a new (historical) stellar spectrum
             if (abs(self.hf_row["Time"] - self.sspec_prev) > self.config.params.dt.starspec) or (
@@ -345,14 +313,14 @@ class Proteus:
                 self.star_wl, self.star_fl = get_new_spectrum(
 
                                         # Required variables
-                                        self.hf_row["age_star"], self.hf_row["R_star"], self.config,
+                                        self.hf_row["age_star"], self.config,
 
                                         # Variables needed for mors.spada
                                         star_struct_modern=self.star_struct,
                                         star_props_modern=self.star_props,
 
                                         # Variables needed for mors.baraffe
-                                        baraffe_track=self.baraffe_track,
+                                        stellar_track=self.stellar_track,
                                         modern_wl=self.star_modern_wl,
                                         modern_fl=self.star_modern_fl,
                                         )
@@ -371,7 +339,8 @@ class Proteus:
 
             ############### ESCAPE
             if (self.loops["total"] >= self.loops["init_loops"]):
-                RunEscape(self.config, self.hf_row, dt)
+                RunEscape(self.config, self.hf_row, self.dt, self.stellar_track)
+
             ############### / ESCAPE
 
             ############### OUTGASSING
@@ -387,6 +356,13 @@ class Proteus:
 
             # Add atmosphere mass to interior mass, to get total planet mass
             self.hf_row["M_planet"] = self.hf_row["M_int"] + self.hf_row["M_atm"]
+
+            # Check for when atmosphere has escaped.
+            #    This will mean that the mixing ratios become undefined, so use value of 0.
+            if self.hf_row["P_surf"] < 1.0e-10:
+                for gas in gas_list:
+                    self.hf_row[gas+"_vmr"] = 0.0
+                self.hf_row["atm_kg_per_mol"] = 0.0
 
             ############### / OUTGASSING
 
@@ -406,7 +382,7 @@ class Proteus:
                 self.hf_row["Time"] = 0.0
             # Reset restart flag once SPIDER has correct heat flux
             if self.loops["total"] >= self.loops["init_loops"]:
-                IC_INTERIOR = 2
+                self.IC_INTERIOR = 2
 
             # Adjust total iteration counters
             self.loops["total"] += 1
@@ -525,7 +501,7 @@ class Proteus:
                 UpdateStatusfile(self.directories, 1)
 
             # Check if keepalive file has been removed - this means that the model should exit ASAP
-            if not os.path.exists(keepalive_file):
+            if not os.path.exists(self.lockfile):
                 UpdateStatusfile(self.directories, 25)
                 log.info("")
                 log.info("===> Model exit was requested! <===")
@@ -548,7 +524,7 @@ class Proteus:
         PrintHalfSeparator()
 
         # Clean up files
-        safe_rm(keepalive_file)
+        safe_rm(self.lockfile)
 
         # Plot conditions at the end
         UpdatePlots(self.hf_all, self.directories, self.config, end=True)

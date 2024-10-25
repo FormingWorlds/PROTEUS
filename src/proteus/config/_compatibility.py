@@ -48,11 +48,8 @@ def _phi_global(config: Config):
 COMPAT_MAPPING = {
     'star_model': ('star', 'mors', 'tracks'),
     'star_mass': ('star', 'mass'),
-    'star_radius_modern': ('star', 'radius'),
-    'star_temperature_modern': ('star', 'Teff'),
-    'star_luminosity_modern': ('star', 'lum_now'),
-    'star_age_modern': ('star', 'age_now'),
-    'star_rot_pctle': ('star', 'omega'),
+    'star_age_modern': ('star', 'mors', 'age_now'),
+    'star_rot_pctle': ('star', 'mors', 'rot_pctle'),
     'star_spectrum': ('star', 'mors', 'spec'),
     'semimajoraxis': ('orbit', 'semimajoraxis'),
     'mass': ('struct', 'mass'),

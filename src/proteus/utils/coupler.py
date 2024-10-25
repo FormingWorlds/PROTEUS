@@ -35,7 +35,7 @@ from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_stacked import plot_stacked
 from proteus.utils.constants import (
     element_list,
-    volatile_species,
+    gas_list,
 )
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -131,7 +131,7 @@ def GetHelpfileKeys():
             ]
 
     # gases
-    for s in volatile_species:
+    for s in gas_list:
         keys.append(s+"_mol_atm")
         keys.append(s+"_mol_solid")
         keys.append(s+"_mol_liquid")
@@ -256,7 +256,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config.interior.module == 'dummy'
-    escape    = config.interior.module is not None
+    escape    = config.escape.module is not None
 
     # Get all output times
     if dummy_int:
@@ -271,7 +271,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Elemental mass inventory
     if escape:
         plot_elements(hf_all, output_dir, config.params.out.plot_fmt)
-        plot_escape(hf_all, output_dir, escape_model=config['escape_model'], plot_format=config.params.out.plot_fmt)
+        plot_escape(hf_all, output_dir, escape_model=config.escape.module, plot_format=config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:

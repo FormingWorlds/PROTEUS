@@ -86,15 +86,15 @@ def get():
 
 
 @click.command()
-@click.option('-n', '--name', 'fname', type=str, help='Name of the spectra')
-@click.option('-b', '--band', 'nband', type=int, help='Number of the band', default=256)
+@click.option('-n', '--name',  'name',  type=str, help='Name of spectral file group')
+@click.option('-b', '--bands', 'bands', type=str, help='Number of bands')
 def spectral(**kwargs):
     """Get spectral files
 
     By default, download all files.
     """
-    from .utils.data import download_spectral_files
-    download_spectral_files(**kwargs)
+    from .utils.data import download_spectral_file
+    download_spectral_file(kwargs["name"],kwargs["bands"])
 
 
 @click.command()
@@ -113,10 +113,11 @@ def surfaces():
     download_surface_albedos()
 
 @click.command()
-def exoplanets():
-    """Get exoplanet population data"""
-    from .utils.data import download_exoplanet_data
+def reference():
+    """Get reference data (exoplanet populations, mass-radius curves, etc.)"""
+    from .utils.data import download_exoplanet_data, download_massradius_data
     download_exoplanet_data()
+    download_massradius_data()
 
 
 @click.command()
@@ -140,7 +141,7 @@ def spider():
 cli.add_command(get)
 get.add_command(spectral)
 get.add_command(surfaces)
-get.add_command(exoplanets)
+get.add_command(reference)
 get.add_command(stellar)
 get.add_command(socrates)
 get.add_command(petsc)

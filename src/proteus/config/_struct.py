@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from attrs import define, field, validators
+from attrs import define, field
+from attrs.validators import gt, in_, lt
 
 from ._converters import none_if_none
 
@@ -18,8 +19,8 @@ class Struct:
     module: str | None
         Select internal structure module to use. Not used currently.
     """
-    mass: float
-    radius: float
-    corefrac: float
+    mass: float = field(validator=gt(0))
+    radius: float  = field(validator=gt(0))
+    corefrac: float = field(validator=(gt(0), lt(1)))
 
-    module: str | None = field(validator=validators.in_((None,)), converter=none_if_none)
+    module: str | None = field(validator=in_((None,)), converter=none_if_none)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from attrs import define, field, validators
+from attrs import define, field
+from attrs.validators import ge, in_, le
 
 from ._converters import none_if_none
 
@@ -19,7 +20,7 @@ class Escape:
         Parameters for dummy escape module.
     """
     module: str | None = field(
-        validator=validators.in_((None, 'dummy', 'zephyrus')), converter=none_if_none
+        validator=in_((None, 'dummy', 'zephyrus')), converter=none_if_none
         )
 
     zephyrus: Zephyrus
@@ -32,10 +33,18 @@ class Zephyrus:
 
     Attributes
     ----------
+
     Pxuv: float
         Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
+    efficiency: float
+        Escape efficiency factor
+    tidal: bool
+        Tidal contribution enabled
     """
     Pxuv: float
+    efficiency: float = field(default=1.0,validator=(ge(0.0), le(1.0)))
+    tidal: bool = field(default=False)
+
 
 
 @define
@@ -47,4 +56,4 @@ class EscapeDummy:
     rate: float
         Bulk unfractionated escape rate [kg s-1]
     """
-    rate: float
+    rate: float = field(validator=ge(0))

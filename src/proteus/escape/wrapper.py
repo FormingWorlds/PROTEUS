@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import mors
 import numpy as np
 from zephyrus.escape import EL_escape
 
@@ -16,10 +15,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-# Define global variables
-star = None
-
-def RunEscape(config:Config, hf_row:dict, dt:float):
+def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
     """Run Escape submodule.
 
     Generic function to run escape calculation using ZEPHYRUS or dummy.
@@ -32,6 +28,8 @@ def RunEscape(config:Config, hf_row:dict, dt:float):
             Dictionary of helpfile variables, at this iteration only
         dt : float
             Time interval over which escape is occuring [yr]
+        stellar_track : mors star object
+            Mors star object storing spada track data.
     """
 
     PrintHalfSeparator()
@@ -40,7 +38,7 @@ def RunEscape(config:Config, hf_row:dict, dt:float):
         # solvevol_target is undefined?
         pass
     elif config.escape.module == 'zephyrus':
-        hf_row["esc_rate_total"] = RunZEPHYRUS(config, hf_row)
+        hf_row["esc_rate_total"] = RunZEPHYRUS(config, hf_row, stellar_track)
     elif config.escape.module == 'dummy':
         hf_row["esc_rate_total"] = config.escape.dummy.rate
     else:
@@ -59,7 +57,7 @@ def RunEscape(config:Config, hf_row:dict, dt:float):
             continue
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
-def RunZEPHYRUS(config, hf_row):
+def RunZEPHYRUS(config, hf_row, stellar_track):
     """Run energy-limited escape (for now) model.
 
     Parameters
@@ -68,13 +66,14 @@ def RunZEPHYRUS(config, hf_row):
             Dictionary of configuration options
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
+        stellar_track : mors star object
+            Mors star object storing spada track data.
 
     Returns
     -------
         mlr : float
             Bulk escape rate [kg s-1]
     """
-    global star
 
     log.info("Running EL escape (ZEPHYRUS) ...")
 
@@ -84,23 +83,19 @@ def RunZEPHYRUS(config, hf_row):
     # Get the age of the star at time t to compute XUV flux at that time
     age_star = hf_row["age_star"] / 1e6 # [Myrs]
 
-    if (star is None):
-        star = mors.Star(Mstar=config["star_mass"],
-                         Omega=config["star_omega"])
-
     # Interpolating the XUV flux at the age of the star
-    Fxuv_star_SI = ((star.Value(age_star, 'Lx') + star.Value(age_star, 'Leuv'))
+    Fxuv_star_SI = ((stellar_track.Value(age_star, 'Lx') + stellar_track.Value(age_star, 'Leuv'))
                              / (4 * np.pi * (config.orbit.semimajoraxis * AU * 1e2)**2)) * ergcm2stoWm2
 
     log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI}")
 
     # Compute energy-limited escape
-    mlr = EL_escape(config["escape_el_tidal_correction"], #tidal contribution (True/False)
+    mlr = EL_escape(config.escape.zephyrus.tidal, #tidal contribution (True/False)
                     config.orbit.semimajoraxis * AU, #planetary semi-major axis [m]
                     config.orbit.eccentricity, #eccentricity
                     hf_row["M_planet"], #planetary mass [kg]
-                    config["star_mass"], #stellar mass [kg]
-                    config["efficiency_factor"], #efficiency factor
+                    config.star.mass, #stellar mass [kg]
+                    config.escape.zephyrus.efficiency, #efficiency factor
                     hf_row["R_int"], #planetary radius [m]
                     hf_row["R_int"], #XUV optically thick planetary radius [m]
                     Fxuv_star_SI)   # [kg s-1]

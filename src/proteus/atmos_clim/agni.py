@@ -10,7 +10,8 @@ import numpy as np
 from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
-from proteus.utils.constants import dirs, volatile_species
+from proteus.atmos_clim.common import get_spfile_path
+from proteus.utils.constants import gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
@@ -67,15 +68,14 @@ def activate_julia(dirs:dict):
     log.debug("AGNI will log to '%s'"%logpath)
 
 
-def _construct_voldict(hf_row:dict, config:Config):
+def _construct_voldict(hf_row:dict, config:Config, dirs:dict):
 
     # get from hf_row
     vol_dict = {}
-    for vol in volatile_species:
-        if config[vol+"_included"]:
-            vmr = hf_row[vol+"_vmr"]
-            if vmr > 1e-40:
-                vol_dict[vol] = vmr
+    for vol in gas_list:
+        vmr = hf_row[vol+"_vmr"]
+        if vmr > 1e-40:
+            vol_dict[vol] = vmr
 
     # check values
     if len(vol_dict) == 0:
@@ -123,11 +123,11 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         input_star =    ""
     else:
         # doesn't exist => AGNI will copy it + modify as required
-        input_sf =      os.path.join(dirs["fwl"], config["spectral_file"])
+        input_sf =      get_spfile_path(dirs["fwl"], config)
         input_star =    sflux_path
 
     # composition
-    vol_dict = _construct_voldict(hf_row, config)
+    vol_dict = _construct_voldict(hf_row, config, dirs)
 
     # set condensation
     condensates = []
@@ -173,9 +173,9 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         hf_row["T_surf"],
                         hf_row["gravity"], hf_row["R_int"],
 
-                        int(config["atmosphere_nlev"]),
+                        int(config.atmos_clim.agni.num_levels),
                         hf_row["P_surf"],
-                        config["P_top"],
+                        config.atmos_clim.agni.p_top,
 
                         vol_dict, "",
 
@@ -222,7 +222,7 @@ def deallocate_atmos(atmos):
     safe_rm(str(atmos.fastchem_work))
 
 
-def update_agni_atmos(atmos, hf_row:dict, config:Config):
+def update_agni_atmos(atmos, hf_row:dict, config:Config, dirs:dict):
     """Update atmosphere struct.
 
     Sets the new boundary conditions and composition.
@@ -245,7 +245,7 @@ def update_agni_atmos(atmos, hf_row:dict, config:Config):
 
     # ---------------------
     # Update compositions
-    vol_dict = _construct_voldict(hf_row, config)
+    vol_dict = _construct_voldict(hf_row, config, dirs)
     for g in vol_dict.keys():
         atmos.gas_vmr[g][:]  = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]
@@ -415,7 +415,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     # observed height and derived bulk density
     jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
     rho_obs = float(atmos.transspec_rho)
-    z_obs   = float(atmos.transspec_r)
+    z_obs   = float(atmos.transspec_r) - hf_row["R_int"] # because transspec_r = R_int + z_obs
 
     # ---------------------------
     # Parse results

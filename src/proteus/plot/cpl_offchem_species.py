@@ -9,7 +9,7 @@ import numpy as np
 from cmcrameri import cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from proteus.utils.plot import vol_latex
+from proteus.utils.plot import latexify
 from proteus.utils.plot_offchem import offchem_read_year
 
 if TYPE_CHECKING:
@@ -65,10 +65,7 @@ def plot_offchem_species(
     ax0.set_xlabel("Temperature [K]")
     ax0.set_title("Evolution of $T(p)$")
 
-    pretty = specie
-    if specie in vol_latex.keys():
-        pretty = vol_latex[specie]
-    ax1.set_title("Evolution of "+pretty)
+    ax1.set_title("Evolution of "+latexify(specie))
     ax1.set_xlabel("Mole fraction")
     ax1.set_xscale("log")
 
