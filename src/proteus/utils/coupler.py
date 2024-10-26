@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.atmos_clim.common import read_ncdfs
-from proteus.interior.spider import read_jsons
+from proteus.interior.wrapper import read_interior_data
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements
 from proteus.plot.cpl_emission import plot_emission
@@ -297,12 +297,15 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         log.debug("Snapshots to plot:" + str(plot_times))
 
     # Interior profiles
-    if spider:
-        jsons = read_jsons(output_dir, plot_times)
-        plot_interior(output_dir, plot_times, jsons, config.params.out.plot_fmt)
+    if spider or aragog:
 
-    if aragog:
-        plot_interior_aragog(output_dir, plot_times, config.params.out.plot_fmt)
+        int_data = read_interior_data(output_dir, config.interior.module, plot_times)
+
+        if spider:
+            plot_interior(output_dir, plot_times, int_data, config.params.out.plot_fmt)
+
+        if aragog:
+            plot_interior_aragog(output_dir, plot_times, int_data, config.params.out.plot_fmt)
 
     # Temperature profiles
     if not dummy_atm:
@@ -313,7 +316,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
         # Atmosphere and interior, stacked
         if spider:
-            plot_stacked(output_dir, plot_times, jsons, ncdfs, config.params.out.plot_fmt)
+            plot_stacked(output_dir, plot_times, int_data, ncdfs, config.params.out.plot_fmt)
 
         # Flux profiles
         if config.atmos_clim.module == 'janus':

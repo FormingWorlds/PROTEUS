@@ -8,9 +8,9 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from cmcrameri import cm
-import netCDF4 as nc
 from matplotlib.ticker import MultipleLocator
 from proteus.utils.plot import latex_float, sample_output
+from proteus.interior.aragog import read_ncdfs
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -18,17 +18,17 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 
-def plot_interior_aragog(output_dir: str, times: list | np.ndarray, plot_format: str="pdf"):
+def plot_interior_aragog(output_dir: str, times: list | np.ndarray, data:list, plot_format: str="pdf"):
 
     if np.amax(times) < 2:
-        log.debug("Insufficient data to make plot_atmosphere")
+        log.debug("Insufficient data to make plot_interior")
         return
 
-    log.info("Plot interior (aragog)")
+    log.info("Plot interior")
 
     # Init figure
     scale = 1.0
-    fig,axs = plt.subplots(1,3, figsize=(8*scale,6*scale), sharey=True)
+    fig,axs = plt.subplots(1,4, figsize=(10*scale,6*scale), sharey=True)
 
     # Create colormapping stuff
     norm = mpl.colors.LogNorm(vmin=max(1,times[0]), vmax=times[-1])
@@ -40,7 +40,7 @@ def plot_interior_aragog(output_dir: str, times: list | np.ndarray, plot_format:
     lw=1.5
 
     # loop over times
-    for time in times:
+    for i,time in enumerate(times):
 
         # Get decorators
         label = latex_float(time)+" yr"
@@ -48,13 +48,13 @@ def plot_interior_aragog(output_dir: str, times: list | np.ndarray, plot_format:
 
         # Get interior data for this time
         fpath = os.path.join(output_dir,"data","%d_int.nc"%time)
-        ds = nc.Dataset(fpath)
+        ds = data[i]
 
         # Pressure [GPa] grid
-        xx_pres = ds["pres_b"][:]
+        xx_pres = ds["pres_b"]
 
         # Phase masks
-        yy = np.array(ds["phi_b"][:])
+        yy = np.array(ds["phi_b"])
         MASK_SO = yy < 0.05
         MASK_MI = (0.05 <= yy) & ( yy <= 0.95)
         MASK_ME = yy > 0.95
@@ -87,7 +87,11 @@ def plot_interior_aragog(output_dir: str, times: list | np.ndarray, plot_format:
         visc_min = min(visc_min, np.amin(yy))
         visc_max = max(visc_max, np.amax(yy))
 
-        ds.close()
+        # Plot convective flux
+        yy = ds["Fconv_b"][:]
+        axs[3].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',  c=color, lw=lw)
+        axs[3].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed',  c=color, lw=lw)
+        axs[3].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted',  c=color, lw=lw)
 
     # Decorate figure
     title = '(a) Temperature' #'(a) Temperature, {}'.format(units)
@@ -113,12 +117,16 @@ def plot_interior_aragog(output_dir: str, times: list | np.ndarray, plot_format:
     if visc_max > 100.0*visc_min:
         axs[2].set_xscale("log")
 
+    title = '(d) Convective flux'
+    axs[3].set( title=title, xlabel=r'$F_c$ [W m$^{-2}$]')
+    axs[3].set_xscale("symlog")
+
     # Pressure-depth conversion for y-axis
-    ax2b = axs[2].twinx()
-    ax2b.plot( yy, xx_depth, alpha=0.0)
-    ax2b.set_ylim(top=np.amin(xx_depth), bottom=np.amax(xx_depth))
-    ax2b.yaxis.set_minor_locator(MultipleLocator(100.0))
-    ax2b.set_ylabel( '$d$ [km]')
+    ax3b = axs[3].twinx()
+    ax3b.plot( yy, xx_depth, alpha=0.0)
+    ax3b.set_ylim(top=np.amin(xx_depth), bottom=np.amax(xx_depth))
+    ax3b.yaxis.set_minor_locator(MultipleLocator(100.0))
+    ax3b.set_ylabel( '$d$ [km]')
 
     # Save figure
     fig.subplots_adjust(wspace=0.05)
@@ -129,12 +137,15 @@ def plot_interior_aragog(output_dir: str, times: list | np.ndarray, plot_format:
 
 
 def plot_interior_aragog_entry(handler: Proteus):
-    plot_times,_ = sample_output(handler, ftype='nc', tmin=1e3)
+    plot_times,_ = sample_output(handler, extension='_int.nc', tmin=1e3)
     print("Snapshots:", plot_times)
+
+    ncdfs = read_ncdfs(handler.directories["output"],plot_times)
 
     plot_interior_aragog(
         output_dir=handler.directories['output'],
         times=plot_times,
+        data=ncdfs,
         plot_format=handler.config.params.out.plot_fmt,
     )
 

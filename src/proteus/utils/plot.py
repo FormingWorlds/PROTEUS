@@ -301,19 +301,15 @@ def sample_times(times:list, nsamp:int, tmin:float=1.0):
     return out_t, out_i
 
 
-def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0, nsamp:int=8):
+def sample_output(handler: Proteus, extension:str = ".nc", tmin:float = 1.0, nsamp:int=8):
 
     # get all files
-    files = glob.glob(os.path.join(handler.directories["output"], "data", "*."+ftype))
+    files = glob.glob(os.path.join(handler.directories["output"], "data", "*"+extension))
     if len(files) < 1:
         return []
 
     # get times
-    if ftype == "nc":
-        dlm = "_"
-    else:
-        dlm = "."
-    times = [int(f.split("/")[-1].split(dlm)[0]) for f in files]
+    times = [int(f.split("/")[-1].split(extension)[0]) for f in files]
 
     out_t, out_i = sample_times(times, nsamp, tmin=tmin)
     out_f = [files[i] for i in out_i]
