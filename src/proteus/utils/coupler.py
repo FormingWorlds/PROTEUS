@@ -25,7 +25,6 @@ from proteus.plot.cpl_fluxes_global import plot_fluxes_global
 from proteus.plot.cpl_global import plot_global
 from proteus.plot.cpl_interior import plot_interior
 from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
-from proteus.plot.cpl_interior_aragog import plot_interior_aragog
 from proteus.plot.cpl_observables import plot_observables
 from proteus.plot.cpl_population import (
     plot_population_mass_radius,
@@ -298,14 +297,9 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Interior profiles
     if spider or aragog:
-
         int_data = read_interior_data(output_dir, config.interior.module, plot_times)
-
-        if spider:
-            plot_interior(output_dir, plot_times, int_data, config.params.out.plot_fmt)
-
-        if aragog:
-            plot_interior_aragog(output_dir, plot_times, int_data, config.params.out.plot_fmt)
+        plot_interior(output_dir, plot_times, int_data,
+                              config.interior.module, config.params.out.plot_fmt)
 
     # Temperature profiles
     if not dummy_atm:
