@@ -1,14 +1,15 @@
 # Aragog interior module
 from __future__ import annotations
 
+import glob
 import logging
+import os
 from typing import TYPE_CHECKING
 
+import netCDF4 as nc
 import numpy as np
 import pandas as pd
-import os
-import netCDF4 as nc
-import glob
+
 from aragog import Output, Solver
 from aragog.parser import (
     Parameters,
@@ -22,7 +23,6 @@ from aragog.parser import (
     _ScalingsParameters,
     _SolverParameters,
 )
-
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import R_earth, secs_per_year
 
@@ -235,4 +235,3 @@ def read_ncdf(fpath:str):
 
 def read_ncdfs(output_dir:str, times:list):
     return [read_ncdf(os.path.join(output_dir, "data", "%d_int.nc"%t)) for t in times]
-

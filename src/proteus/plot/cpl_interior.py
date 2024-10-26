@@ -9,8 +9,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
-from proteus.utils.plot import latex_float, sample_output, MyFuncFormatter
+
 from proteus.interior.wrapper import read_interior_data
+from proteus.utils.plot import MyFuncFormatter, latex_float, sample_output
 
 if TYPE_CHECKING:
     from proteus import Proteus
