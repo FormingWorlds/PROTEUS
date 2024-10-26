@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.common import read_ncdfs
+from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.interior.wrapper import read_interior_data
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements
@@ -303,14 +303,15 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Temperature profiles
     if not dummy_atm:
-        ncdfs = read_ncdfs(output_dir, plot_times)
+        atm_data = read_atmosphere_data(output_dir, plot_times)
 
         # Atmosphere only
-        plot_atmosphere(output_dir, plot_times, ncdfs, config.params.out.plot_fmt)
+        plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
         # Atmosphere and interior, stacked
         if spider:
-            plot_stacked(output_dir, plot_times, int_data, ncdfs, config.params.out.plot_fmt)
+            plot_stacked(output_dir, plot_times, int_data, atm_data,
+                            config.params.out.plot_fmt)
 
         # Flux profiles
         if config.atmos_clim.module == 'janus':

@@ -11,7 +11,7 @@ import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
-from proteus.atmos_clim.common import read_ncdfs
+from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.interior.spider import read_jsons
 from proteus.utils.plot import get_colour, latex_float, sample_times
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 
-def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_format: str="pdf"):
+def plot_stacked(output_dir: str, times: list, int_data:list, atm_data:list, plot_format: str="pdf"):
 
     if np.amax(times) < 2:
         log.debug("Insufficient data to make plot_stacked")
@@ -44,12 +44,12 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
     for i,time in enumerate(times):
 
         # Get atmosphere data for this time
-        prof = ncdfs[i]
+        prof = atm_data[i]
         atm_z = prof["z"]/1e3
         atm_t = prof["t"]
 
         # Get interior data for this time
-        myjson_o = jsons[i]
+        myjson_o = int_data[i]
         temperature_interior = myjson_o.get_dict_values(['data','temp_b'])
         xx_radius = myjson_o.get_dict_values(['data','radius_b'])
         xx_radius *= 1.0E-3
@@ -123,11 +123,11 @@ def plot_stacked_entry(handler: Proteus):
     plot_times,_ = sample_times(times, 8, tmin=1e3)
     print("Snapshots:", plot_times)
 
-    jsons = read_jsons(handler.directories['output'], plot_times)
-    ncdfs = read_ncdfs(handler.directories["output"], plot_times)
+    int_data = read_jsons(handler.directories['output'], plot_times)
+    atm_data = read_atmosphere_data(handler.directories["output"], plot_times)
     plot_stacked(
         output_dir=handler.directories["output"],
-        times=plot_times, jsons=jsons, ncdfs=ncdfs,
+        times=plot_times, int_data=int_data, atm_data=atm_data,
         plot_format=handler.config.params.out.plot_fmt,
     )
 

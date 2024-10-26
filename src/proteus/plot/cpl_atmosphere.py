@@ -10,7 +10,7 @@ import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import LogLocator
 
-from proteus.atmos_clim.common import read_ncdfs
+from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.utils.plot import latex_float, sample_output
 
 if TYPE_CHECKING:
@@ -70,7 +70,7 @@ def plot_atmosphere_entry(handler: Proteus):
     print("Snapshots:", plot_times)
 
     # Plot fixed set from above
-    profiles = read_ncdfs(handler.directories["output"], plot_times)
+    profiles = read_atmosphere_data(handler.directories["output"], plot_times)
     plot_atmosphere(
         output_dir=handler.directories["output"],
         times=plot_times,
