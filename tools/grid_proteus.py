@@ -172,7 +172,8 @@ class Grid():
     # Set a dimension by arange (inclusive of endpoint)
     def set_dimension_arange(self,name:str,start:float,stop:float,step:float):
         self.dim_avars[name] = list(np.arange(start,stop,step))
-        self.dim_avars[name].append(stop)
+        if not np.isclose(self.dim_avars[name][-1],stop):
+            self.dim_avars[name].append(stop)
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
 
     # Set a dimension by logspace
@@ -442,12 +443,19 @@ if __name__=='__main__':
     # -----
     # Define parameter grid
     # -----
-    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","hd63433d.toml")
-    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/hd63433d_Teff"
-    pg = Grid("hd63433d_Teff", cfg_base, symlink_dir=symlink)
+
+    config = "hd63433d.toml"
+    folder = "hd63433d_inst"
+
+    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input",config)
+    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
+    pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("C/H ratio", "delivery.elements.CH_ratio")
     # pg.set_dimension_logspace("C/H ratio",  0.01, 1.0, 2)
+
+    pg.add_dimension("Distance", "orbit.semimajoraxis")
+    pg.set_dimension_arange("Distance",  0.04, 0.07, 0.01)
 
     # pg.add_dimension("Model", "atmos_clim.module")
     # pg.set_dimension_direct("Model", ["janus", "agni"])
@@ -455,8 +463,8 @@ if __name__=='__main__':
     # pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
     # pg.set_dimension_arange("Redox state", -5, 5, 1)
 
-    pg.add_dimension("Star Teff", "star.dummy.Teff")
-    pg.set_dimension_arange("Star Teff", 3500, 7500, 250)
+    # pg.add_dimension("Star Teff", "star.dummy.Teff")
+    # pg.set_dimension_arange("Star Teff", 3500, 7500, 250)
 
     # -----
     # Print state of parameter grid

@@ -172,8 +172,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
     else:
         # Empirical values
         log.debug(f"Using '{surface_material}' single-scattering surface properties")
-        surface_material = os.path.join(dirs["fwl"],
-                                        "surface_albedos", "Hammond24", surface_material)
+        surface_material = os.path.join(dirs["fwl"], surface_material)
         if not os.path.isfile(surface_material):
             raise FileNotFoundError(surface_material)
 
