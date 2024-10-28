@@ -260,6 +260,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     escape    = config.escape.module is not None
 
     # Get all output times
+    output_times = []
     if spider:
         from proteus.interior.spider import get_all_output_times
         output_times = get_all_output_times( output_dir )
@@ -309,9 +310,9 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
         # Atmosphere and interior, stacked
-        if spider:
+        if spider or aragog:
             plot_stacked(output_dir, plot_times, int_data, atm_data,
-                            config.params.out.plot_fmt)
+                            config.interior.module, config.params.out.plot_fmt)
 
         # Flux profiles
         if config.atmos_clim.module == 'janus':
@@ -328,8 +329,9 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_sflux(output_dir,          plot_format=config.params.out.plot_fmt)
         plot_sflux_cross(output_dir,    plot_format=config.params.out.plot_fmt)
 
-        if spider:
-            plot_interior_cmesh(output_dir, plot_format=config.params.out.plot_fmt)
+        if spider or aragog:
+            plot_interior_cmesh(output_dir, plot_times, int_data, config.interior.module,
+                                plot_format=config.params.out.plot_fmt)
 
         if not dummy_atm:
             plot_emission(output_dir, plot_times, plot_format=config.params.out.plot_fmt)
