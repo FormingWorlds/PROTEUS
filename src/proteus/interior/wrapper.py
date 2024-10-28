@@ -31,8 +31,11 @@ def run_interior(dirs:dict, config:Config, loop_counter:dict, IC_INTERIOR:int, h
         sim_time, output = ReadSPIDER(dirs, config, hf_row["R_int"])
 
     elif config.interior.module == 'aragog':
-        # Not supported
-        raise NotImplementedError("Aragog interface not yet implemented")
+        # Import
+        from proteus.interior.aragog import RunAragog
+
+        # Run Aragog
+        sim_time, output = RunAragog(config, dirs, IC_INTERIOR, hf_row, hf_all)
 
     elif config.interior.module == 'dummy':
         # Import
@@ -53,6 +56,8 @@ def run_interior(dirs:dict, config:Config, loop_counter:dict, IC_INTERIOR:int, h
 
     log.debug("    T_magma    = %.1f K"%hf_row["T_magma"])
     log.debug("    Phi_global = %.3f  "%hf_row["Phi_global"])
+    log.debug("    F_int      = %.2e" %hf_row["F_int"])
+    log.debug("    RF_depth   = %.2e" %hf_row["RF_depth"])
 
     # Time step size
     dt = float(sim_time) - hf_row["Time"]

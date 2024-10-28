@@ -107,6 +107,13 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
         pip install -e CALLIOPE/.
         ```
 
+    - ARAGOG interior model
+
+        ```console
+        git clone git@github.com:ExPlanetology/aragog.git
+        pip install -e aragog/.
+        ```
+
     - ZEPHYRUS escape model
 
         ```console

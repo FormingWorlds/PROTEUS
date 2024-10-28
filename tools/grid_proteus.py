@@ -442,12 +442,12 @@ if __name__=='__main__':
     # -----
     # Define parameter grid
     # -----
-    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","dummy_star.toml")
-    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/dummy_grid"
-    pg = Grid("dummy_grid", cfg_base, symlink_dir=symlink)
+    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input","hd63433d.toml")
+    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/hd63433d_Teff"
+    pg = Grid("hd63433d_Teff", cfg_base, symlink_dir=symlink)
 
-    pg.add_dimension("C/H ratio", "delivery.elements.CH_ratio")
-    pg.set_dimension_logspace("C/H ratio",  0.01, 1.0, 2)
+    # pg.add_dimension("C/H ratio", "delivery.elements.CH_ratio")
+    # pg.set_dimension_logspace("C/H ratio",  0.01, 1.0, 2)
 
     # pg.add_dimension("Model", "atmos_clim.module")
     # pg.set_dimension_direct("Model", ["janus", "agni"])
@@ -455,8 +455,8 @@ if __name__=='__main__':
     # pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
     # pg.set_dimension_arange("Redox state", -5, 5, 1)
 
-    pg.add_dimension("Star Teff", "star.Teff")
-    pg.set_dimension_arange("Star Teff", 2500, 6000, 250)
+    pg.add_dimension("Star Teff", "star.dummy.Teff")
+    pg.set_dimension_arange("Star Teff", 3500, 7500, 250)
 
     # -----
     # Print state of parameter grid
