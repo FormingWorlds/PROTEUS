@@ -151,7 +151,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
     title = '(d) Convective flux'
     axs[3].set( title=title, xlabel=r'$F_c$ [W m$^{-2}$]')
     if flux_max > 100.0*flux_min:
-        axs[3].set_xscale("log")
+        axs[3].set_xscale("symlog", linthresh=1.0)
 
     # Pressure-depth conversion for y-axis
     ax3b = axs[3].twinx()

@@ -10,7 +10,6 @@ from proteus.plot.cpl_fluxes_global import plot_fluxes_global_entry
 from proteus.plot.cpl_global import plot_global_entry
 from proteus.plot.cpl_heatingrates import plot_heatingrates_entry
 from proteus.plot.cpl_interior import plot_interior_entry
-from proteus.plot.cpl_interior_cbar import plot_interior_cbar_entry
 from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh_entry
 from proteus.plot.cpl_observables import plot_observables_entry
 from proteus.plot.cpl_offchem_grid_cross import plot_offchem_grid_cross_entry
@@ -32,7 +31,6 @@ plot_dispatch = {
     'global':               plot_global_entry,
     'heatingrates':         plot_heatingrates_entry,
     'interior':             plot_interior_entry,
-    'interior_cbar':        plot_interior_cbar_entry,
     'interior_cmesh':       plot_interior_cmesh_entry,
     'observables':          plot_observables_entry,
     'offchem_grid_cross':   plot_offchem_grid_cross_entry,
