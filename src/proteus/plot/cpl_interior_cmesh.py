@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import glob
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -10,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from cmcrameri import cm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 from proteus.interior.wrapper import read_interior_data
 from proteus.utils.plot import sample_output
 
