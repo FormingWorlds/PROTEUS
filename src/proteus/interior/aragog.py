@@ -1,9 +1,12 @@
 # Aragog interior module
 from __future__ import annotations
 
+import glob
 import logging
+import os
 from typing import TYPE_CHECKING
 
+import netCDF4 as nc
 import numpy as np
 import pandas as pd
 from aragog import Output, Solver
@@ -57,6 +60,9 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
     # Get Aragog output
     output = GetAragogOutput(hf_row)
     sim_time = aragog_solver.parameters.solver.end_time
+
+    # Write output to a file
+    WriteAragogOutput(dirs["output"],sim_time)
 
     return sim_time, output
 
@@ -185,6 +191,13 @@ def UpdateAragogSolver(dt:float, hf_row:dict):
 
     return
 
+def WriteAragogOutput(output_dir:str, time:float):
+
+    aragog_output: Output = Output(aragog_solver)
+
+    fpath = os.path.join(output_dir,"data","%d_int.nc"%time)
+    aragog_output.write_at_time(fpath,-1)
+
 def GetAragogOutput(hf_row:dict):
 
     aragog_output: Output = Output(aragog_solver)
@@ -201,3 +214,24 @@ def GetAragogOutput(hf_row:dict):
     output["M_core"] = hf_row["M_core"]
 
     return output
+
+
+def get_all_output_times(output_dir:str):
+    files = glob.glob(output_dir+"/data/*_int.nc")
+    years = [int(f.split("/")[-1].split("_int")[0]) for f in files]
+    mask = np.argsort(years)
+
+    return [years[i] for i in mask]
+
+def read_ncdf(fpath:str):
+    out = {}
+    ds = nc.Dataset(fpath)
+
+    for key in ds.variables.keys():
+        out[key] = ds.variables[key][:]
+
+    ds.close()
+    return out
+
+def read_ncdfs(output_dir:str, times:list):
+    return [read_ncdf(os.path.join(output_dir, "data", "%d_int.nc"%t)) for t in times]

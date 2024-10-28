@@ -56,7 +56,7 @@ def read_ncdf_profile(nc_fpath:str):
 
     return out
 
-def read_ncdfs(output_dir:str, times:list):
+def read_atmosphere_data(output_dir:str, times:list):
     """
     Read all p,t,z profiles from NetCDF files in a PROTEUS output folder.
     """

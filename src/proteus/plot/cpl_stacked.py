@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import glob
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -11,9 +10,9 @@ import numpy as np
 from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
-from proteus.atmos_clim.common import read_ncdfs
-from proteus.interior.spider import read_jsons
-from proteus.utils.plot import get_colour, latex_float, sample_times
+from proteus.atmos_clim.common import read_atmosphere_data
+from proteus.interior.wrapper import read_interior_data
+from proteus.utils.plot import get_colour, latex_float, sample_output
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -21,15 +20,19 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 
-def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_format: str="pdf"):
+def plot_stacked(output_dir: str, times: list, int_data:list, atm_data:list,
+                        module:str, plot_format: str="pdf"):
 
     if np.amax(times) < 2:
         log.debug("Insufficient data to make plot_stacked")
         return
+    if module not in ["spider","aragog"]:
+        log.warning(f"Cannot make stacked plot for interior module '{module}'")
+        return
 
     log.info("Plot stacked")
 
-    scale = 1.0
+    scale = 0.8
     fig,(axt,axb) = plt.subplots(2,1, figsize=(5*scale,10*scale), sharex=True)
 
     norm = mpl.colors.LogNorm(vmin=max(1,times[0]), vmax=times[-1])
@@ -44,28 +47,34 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
     for i,time in enumerate(times):
 
         # Get atmosphere data for this time
-        prof = ncdfs[i]
+        prof = atm_data[i]
         atm_z = prof["z"]/1e3
         atm_t = prof["t"]
 
-        # Get interior data for this time
-        myjson_o = jsons[i]
-        temperature_interior = myjson_o.get_dict_values(['data','temp_b'])
-        xx_radius = myjson_o.get_dict_values(['data','radius_b'])
-        xx_radius *= 1.0E-3
-        xx_depth = xx_radius[0] - xx_radius
+        # Get temperuture-depth interior data for this time
+        ds = int_data[i]
+        if module == "aragog":
+            temperature_interior = ds["temp_b"][:]
+            xx_radius = ds["radius_b"][:]
+            xx_depth = xx_radius[-1] - xx_radius
+        elif module == "spider":
+            temperature_interior = ds.get_dict_values(['data','temp_b'])
+            xx_radius = ds.get_dict_values(['data','radius_b']) * 1e-3
+            xx_depth = xx_radius[0] - xx_radius
 
-        # use melt fraction to determine mixed region
-        MASK_MI = myjson_o.get_mixed_phase_boolean_array('basic')
-        MASK_ME = myjson_o.get_melt_phase_boolean_array( 'basic')
-        MASK_SO = myjson_o.get_solid_phase_boolean_array('basic')
+        # Determine mixed phase region
+        if module == "aragog":
+            yy = np.array(ds["phi_b"])
+            MASK_SO = yy < 0.05
+            MASK_MI = (0.05 <= yy) & ( yy <= 0.95)
+            MASK_ME = yy > 0.95
+        elif module == "spider":
+            MASK_MI = ds.get_mixed_phase_boolean_array('basic')
+            MASK_ME = ds.get_melt_phase_boolean_array( 'basic')
+            MASK_SO = ds.get_solid_phase_boolean_array('basic')
 
         # overlap lines by 1 node
-        for m in (MASK_MI, MASK_ME, MASK_SO):
-            m_new = m[:]
-            for i in range(2,len(MASK_MI)-2,1):
-                m_new[i] = m[i] or m[i-1] or m[i+1]
-            m = m_new[:]
+        MASK_MI[2:-2] = MASK_MI[2:-2] | MASK_MI[1:-3] | MASK_MI[3:-1]
 
         # Plot decorators
         label = latex_float(time)+" yr"
@@ -90,7 +99,7 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
     axt.set(ylabel="Atmosphere height [km]")
     axt.set_ylim(bottom=0.0, top=y_height)
     axt.legend()
-    axt.yaxis.set_minor_locator(MultipleLocator(ytick_spacing))
+    axt.yaxis.set_major_locator(MultipleLocator(ytick_spacing))
     axt.set_facecolor(get_colour("atm_bkg"))
 
     # Decorate bottom plot
@@ -117,18 +126,18 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
 
 
 def plot_stacked_entry(handler: Proteus):
-    files = glob.glob(os.path.join(handler.directories["output"], "data", "*_atm.nc"))
-    times = [int(f.split("/")[-1].split("_")[0]) for f in files]
-
-    plot_times,_ = sample_times(times, 8, tmin=1e3)
+    plot_times,_ = sample_output(handler, extension="_atm.nc", tmin=1e3)
     print("Snapshots:", plot_times)
 
-    jsons = read_jsons(handler.directories['output'], plot_times)
-    ncdfs = read_ncdfs(handler.directories["output"], plot_times)
+    int_module = handler.config.interior.module
+    output_dir = handler.directories['output']
+
+    int_data = read_interior_data(output_dir, int_module, plot_times)
+    atm_data = read_atmosphere_data(output_dir, plot_times)
+
     plot_stacked(
-        output_dir=handler.directories["output"],
-        times=plot_times, jsons=jsons, ncdfs=ncdfs,
-        plot_format=handler.config.params.out.plot_fmt,
+        output_dir=output_dir, times=plot_times, int_data=int_data, atm_data=atm_data,
+        module=int_module, plot_format=handler.config.params.out.plot_fmt,
     )
 
 
