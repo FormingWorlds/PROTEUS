@@ -95,10 +95,10 @@ def RunZEPHYRUS(config, hf_row):
     log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI}")
 
     # Compute Rxuv
-    z_Pxuv  = find_nearest(array, config.escape.zephyrus.Pxuv) # Find the scale heigh z for the corresponding Pxuv
-    Rxuv    = hf_row["R_int"] + z_Pxuv
+    z_Pxuv  = find_nearest(array, config.escape.zephyrus.Pxuv)          # Find the scale heigh z for the corresponding Pxuv [m]
+    Rxuv    = hf_row["R_int"] + z_Pxuv                                  # XUV optically thick planetary radius              [m]
 
-    log.info(f"Rxuv = {Rxuv} [m]")
+    log.info(f"XUV optically thick planetary radius : Rxuv = {Rxuv} [m]")
 
     # Compute energy-limited escape
     mlr = EL_escape(config["escape_el_tidal_correction"], #tidal contribution (True/False)
