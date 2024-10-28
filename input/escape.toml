@@ -143,6 +143,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         spectral_bands  = "48"          # how many spectral bands?
         num_levels      = 250           # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq" | "kin"
+        surf_material   = "greybody"    # surface material file for scattering
+        solution_atol   = 1e-3          # solver absolute tolerance
+        solution_rtol   = 2e-2          # solver relative tolerance
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
