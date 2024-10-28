@@ -83,7 +83,7 @@ def InitAtm(dirs:dict, config:Config):
                 re = 1.0e-5, # Effective radius of the droplets [m] (drizzle forms above 20 microns)
                 lwm = 0.8, # Liquid water mass fraction [kg/kg]
                 clfr = 0.8, # Water cloud fraction
-                albedo_s = config.atmos_clim.surf_albedo,
+                albedo_s = config.atmos_clim.surf_greyalbedo,
                 albedo_pl = config.atmos_clim.albedo_pl,
                 zenith_angle = config.orbit.zenith_angle,
                 )

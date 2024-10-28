@@ -113,7 +113,8 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
     # Stellar spectrum path
     sflux_files = glob.glob(os.path.join(dirs["output"], "data", "*.sflux"))
     sflux_times = [ int(s.split("/")[-1].split(".")[0]) for s in sflux_files]
-    sflux_path  = os.path.join(dirs["output"], "data", "%d.sflux"%int(sorted(sflux_times)[-1]))
+    sflux_path  = os.path.join(dirs["output"],
+                                "data", "%d.sflux"%int(sorted(sflux_times)[-1]))
 
     # Spectral file path
     try_spfile = os.path.join(dirs["output"] , "runtime.sf")
@@ -162,9 +163,19 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
 
     # Surface single-scattering albedo
-    surface_material = os.path.join(dirs["fwl"],
-                                        "surface_albedos" , "Hammond24",
-                                        config.atmos_clim.agni.surf_material)
+    surface_material = config.atmos_clim.agni.surf_material
+    if "greybody" in str(surface_material).lower():
+        # Grey value
+        surface_material = "greybody"
+        log.debug("Using grey single-scattering surface properties")
+
+    else:
+        # Empirical values
+        log.debug(f"Using '{surface_material}' single-scattering surface properties")
+        surface_material = os.path.join(dirs["fwl"],
+                                        "surface_albedos", "Hammond24", surface_material)
+        if not os.path.isfile(surface_material):
+            raise FileNotFoundError(surface_material)
 
     # Setup struct
     jl.AGNI.atmosphere.setup_b(atmos,
@@ -187,12 +198,14 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         flag_rayleigh = config.atmos_clim.rayleigh,
                         flag_cloud= config.atmos_clim.cloud_enabled,
 
+                        albedo_s=config.atmos_clim.surf_greyalbedo,
                         surface_material=surface_material,
                         condensates=condensates,
                         use_all_gases=include_all,
                         fastchem_work = fc_dir,
 
-                        skin_d=config.atmos_clim.surface_d, skin_k=config.atmos_clim.surface_k,
+                        skin_d=config.atmos_clim.surface_d,
+                        skin_k=config.atmos_clim.surface_k,
                         tmp_magma=hf_row["T_surf"], tmp_floor=config.atmos_clim.tmp_minimum
                         )
 
@@ -205,7 +218,8 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         log.debug("Load NetCDF profile")
 
         nc_times = [ int(s.split("/")[-1].split("_")[0]) for s in nc_files]
-        nc_path  = os.path.join(dirs["output"], "data", "%d_atm.nc"%int(sorted(nc_times)[-1]))
+        nc_path  = os.path.join(dirs["output"],
+                                "data", "%d_atm.nc"%int(sorted(nc_times)[-1]))
         jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
 
     # Otherwise, set to log-linear
@@ -375,8 +389,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
                             conduct=False, convect=True, latent=True, sens_heat=True,
 
                             max_steps=130, max_runtime=900.0,
-                            conv_atol=config.atmos_clim.agni.solver_atol,
-                            conv_rtol=config.atmos_clim.agni.solver_rtol,
+                            conv_atol=config.atmos_clim.agni.solution_atol,
+                            conv_rtol=config.atmos_clim.agni.solution_rtol,
 
                             method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
@@ -421,7 +435,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     # observed height and derived bulk density
     jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
     rho_obs = float(atmos.transspec_rho)
-    z_obs   = float(atmos.transspec_r) - hf_row["R_int"] # because transspec_r = R_int + z_obs
+    z_obs   = float(atmos.transspec_r) - hf_row["R_int"] # transspec_r = R_int + z_obs
 
     # ---------------------------
     # Parse results

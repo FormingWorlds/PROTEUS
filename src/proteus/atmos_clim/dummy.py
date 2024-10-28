@@ -29,7 +29,7 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     zenith_angle    = config.orbit.zenith_angle
     albedo_pl       = config.atmos_clim.albedo_pl
     inst_sf         = config.orbit.s0_factor
-    albedo_s        = config.atmos_clim.surf_albedo
+    albedo_s        = config.atmos_clim.surf_greyalbedo
     skin_d          = config.atmos_clim.surface_d
     skin_k          = config.atmos_clim.surface_k
 

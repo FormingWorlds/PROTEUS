@@ -129,6 +129,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     cloud_enabled   = false     # enable water cloud radiative effects
     cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
     surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
+    surf_greyalbedo = 0.2       # surface grey albedo
     albedo_pl       = 0.0   	# Enforced Bond albedo (do not use with `rayleigh = true`)
     rayleigh        = true      # Enable rayleigh scattering
     tmp_minimum     = 0.5           # temperature floor on solver
@@ -138,19 +139,18 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "256"         # how many spectral bands?
-        surf_material   = "greybody"    # surface material type for scattering
+        spectral_group  = "Frostflow"   # which gas opacities to include
+        spectral_bands  = "16"         # how many spectral bands?
         num_levels      = 60            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq" | "kin"
-        solve_atol      = 1e-3          # solver absolute tolerance
-        solve_rtol      = 2e-2          # solver relative tolerance
+        surf_material   = "lunarmarebasalt.dat"    # surface material file for scattering
+        solution_atol   = 1e-3          # solver absolute tolerance
+        solution_rtol   = 2e-2          # solver relative tolerance
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
-        surf_albedo     = 0.2           # surface grey albedo
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
         num_levels      = 60            # Number of atmospheric grid levels
         tropopause      = "skin"        # none | skin | dynamic
