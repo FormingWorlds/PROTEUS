@@ -87,7 +87,7 @@ def plot_interior_cmesh(output_dir: str, times: list | np.ndarray, data: list,
         a = np.array(a,dtype=float)
 
     # Y-axis ticks
-    yticks = np.linspace(arr_yb[0],arr_yb[-1],4)
+    yticks = np.linspace(np.amin(arr_yb),np.amax(arr_yb),4)
     yticks = [round(v) for v in yticks]
     for ax in axs:
         ax.set_ylim([yticks[-1], yticks[0]])
