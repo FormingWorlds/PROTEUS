@@ -5,7 +5,6 @@ import glob
 import logging
 import os
 from typing import TYPE_CHECKING
-
 import netCDF4 as nc
 import numpy as np
 import pandas as pd
@@ -23,6 +22,7 @@ from aragog.parser import (
     _ScalingsParameters,
     _SolverParameters,
 )
+
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import R_earth, secs_per_year
 
