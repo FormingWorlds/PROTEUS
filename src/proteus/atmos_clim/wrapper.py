@@ -143,6 +143,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     hf_row["F_sct"]  = atm_output["F_sct"]
     hf_row["T_surf"] = atm_output["T_surf"]
     hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
+    hf_row["bond_albedo"]= atm_output["albedo"]
 
     # Calculate observables (measured at infinite distance)
     R_obs = hf_row["z_obs"] + hf_row["R_int"] # observed radius

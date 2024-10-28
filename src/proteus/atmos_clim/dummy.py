@@ -113,5 +113,6 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     output["F_sct"]   =  fluxes["fl_U_SW"]     # Scattered SW flux
     output["z_obs"]   =  0.0
     output["rho_obs"] =  3 * M_int / (4*np.pi*R_int**3)
+    output["albedo"]  = fluxes["fl_U_SW"]/fluxes["fl_D_SW"]
 
     return output

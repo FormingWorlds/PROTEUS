@@ -279,6 +279,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["F_atm"]  = F_atm_lim         # Net flux at TOA
     output["F_olr"]  = atm.LW_flux_up[0] # OLR
     output["F_sct"]  = atm.SW_flux_up[0] # Scattered SW flux
+    output["albedo"] = atm.SW_flux_up[0] / atm.SW_flux_down[0]
     output["z_obs"]  = z_obs
     output["rho_obs"]= rho_obs
 

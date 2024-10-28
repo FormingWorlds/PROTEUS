@@ -161,6 +161,11 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         # kinetics
         raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
 
+    # Surface single-scattering albedo
+    surface_material = os.path.join(dirs["fwl"],
+                                        "surface_albedos" , "Hammond24",
+                                        config.atmos_clim.agni.surf_material)
+
     # Setup struct
     jl.AGNI.atmosphere.setup_b(atmos,
                         dirs["agni"], dirs["output"], input_sf,
@@ -182,7 +187,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         flag_rayleigh = config.atmos_clim.rayleigh,
                         flag_cloud= config.atmos_clim.cloud_enabled,
 
-                        albedo_s=config.atmos_clim.surf_albedo,
+                        surface_material=surface_material,
                         condensates=condensates,
                         use_all_gases=include_all,
                         fastchem_work = fc_dir,
@@ -370,7 +375,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
                             conduct=False, convect=True, latent=True, sens_heat=True,
 
                             max_steps=130, max_runtime=900.0,
-                            conv_atol=1e-3, conv_rtol=2e-2,
+                            conv_atol=config.atmos_clim.agni.solver_atol,
+                            conv_rtol=config.atmos_clim.agni.solver_rtol,
 
                             method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
@@ -425,27 +431,29 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     net_flux =      np.array(atmos.flux_n)
     LW_flux_up =    np.array(atmos.flux_u_lw)
     SW_flux_up =    np.array(atmos.flux_u_sw)
+    SW_flux_down =  np.array(atmos.flux_d_sw)
     T_surf =        float(atmos.tmp_surf)
 
     # New flux from SOCRATES
-    if (config.atmos_clim.janus.F_atm_bc == 0):
-        F_atm_new = net_flux[0]
-    else:
-        F_atm_new = net_flux[-1]
+    F_atm_new = net_flux[0]
 
     # Require that the net flux must be upward (positive)
     if config.atmos_clim.prevent_warming:
-        F_atm_new = max( 1e-8 , F_atm_new )
+        F_atm_lim = max( 1e-8 , F_atm_new )
+    if not np.isclose(F_atm_lim , F_atm_new ):
+        log.warning("Change in F_atm [W m-2] limited in this step!")
+        log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
     log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.2e, %.2e, %.2e  W m-2" %
                                         (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
     output = {}
-    output["F_atm"]  = F_atm_new
+    output["F_atm"]  = F_atm_lim
     output["F_olr"]  = LW_flux_up[0]
     output["F_sct"]  = SW_flux_up[0]
     output["T_surf"] = T_surf
     output["z_obs"]  = z_obs
     output["rho_obs"]= rho_obs
+    output["albedo"] = SW_flux_up[0]/SW_flux_down[0]
 
     return atmos, output

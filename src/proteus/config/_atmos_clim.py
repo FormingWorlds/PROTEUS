@@ -28,8 +28,6 @@ class AtmosClim:
         Condensate retention fraction (0 => full rainout, 1 => fully retained).
     surf_state: str
         Surface energy balance scheme. Choices: "mixed_layer", "fixed", "skin".
-    surf_albedo: float
-        Grey albedo applied to the surface of the planet [dimensionless].
     albedo_pl: float
         Planetary/bold albedo used to emulate scattering [dimensionless].
     rayleigh: bool
@@ -53,7 +51,6 @@ class AtmosClim:
     cloud_enabled: bool
     cloud_alpha: float = field(validator=(ge(0), le(1)))
     surf_state: str = field(validator=in_(('mixed_layer', 'fixed', 'skin')))
-    surf_albedo: float = field(validator=(ge(0), le(1)))
     albedo_pl: float = field(validator=(ge(0), le(1)))
     rayleigh: bool
     tmp_minimum: float = field(validator=gt(0))
@@ -83,6 +80,8 @@ class Agni:
         Spectral file codename defining the gas opacities to be included. See [documentation](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/spectral_files.pdf).
     spectral_bands: str
         Number of wavenumer bands in k-table. See documentation.
+    surf_material : str
+        Surface material used to set empirical reflectivity and emissivity. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#surfaces) for potential options.
     num_levels: str
         Number of atmospheric grid levels.
     chemistry: str | None
@@ -95,6 +94,8 @@ class Agni:
     chemistry: str | None = field(
         validator=in_((None, 'eq', 'kin')), converter=none_if_none
     )
+    solver_atol: float = field(validator=gt(0))
+    solver_rtol: float = field(validator=gt(0))
 
     @property
     def chemistry_int(self) -> int:
@@ -114,6 +115,8 @@ class Janus:
         Spectral file codename defining the gas opacities to be included. See [documentation](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/spectral_files.pdf).
     spectral_bands: str
         Number of wavenumer bands in k-table. See documentation.
+    surf_albedo: float
+        Grey albedo applied to the surface of the planet [dimensionless].
     F_atm_bc: int
         Measure outgoing flux using value at TOA (0) or surface (1).
     num_levels: int
@@ -124,6 +127,7 @@ class Janus:
     p_top: float = field(validator=gt(0))
     spectral_group: str
     spectral_bands: str
+    surf_albedo:float = field(validator=(ge(0),le(1)))
     F_atm_bc: int = field(validator=in_((0, 1)))
     num_levels: int = field(validator=ge(15))
     tropopause: str | None = field(
