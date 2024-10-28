@@ -94,11 +94,11 @@ def plot_interior_cmesh(output_dir: str, times: list | np.ndarray, data: list,
         ax.set_yticks(yticks)
 
     # Plot panel label
-    panel_labels = ['A)','B)','C)','D)']
+    panel_labels = ['(a)','(b)','(c)','(d)']
     for i in range(4):
-        axt = axs[i].text(0.03,0.94, panel_labels[i], transform=axs[i].transAxes, verticalalignment="top", horizontalalignment="left",
-                    fontsize=12)
-        axt.set_bbox(dict(facecolor='white', alpha=0.5, linewidth=0))
+        axs[i].text(0.015,0.97, panel_labels[i], transform=axs[i].transAxes,
+                    verticalalignment="top", horizontalalignment="left", fontsize=12,
+                    bbox=dict(boxstyle='square,pad=0.1',fc='white', alpha=0.4, linewidth=0))
 
     # Plot temperature
     cmap = cm.lajolla

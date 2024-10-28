@@ -93,15 +93,15 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
 
     # Set titles
     ax_titles = [
-        "A) Net heat flux to space",
-        "B) Surface temperature",
-        "C) Mantle evolution",
-        "D) Surface gas partial pressure",
-        "E) Surface gas mole fraction",
-        "F) Interior volatile partitioning"
+        "(a) Net heat flux to space",
+        "(c) Surface temperature",
+        "(e) Mantle evolution",
+        "(b) Surface gas partial pressure",
+        "(d) Surface gas mole fraction",
+        "(f) Interior volatile partitioning"
     ]
     for i,ax in enumerate(axs):
-        ax.text(0.015, 0.015, ax_titles[i],
+        ax.text(0.011, 0.015, ax_titles[i],
                 transform=ax.transAxes,
                 horizontalalignment='left',
                 verticalalignment='bottom',
