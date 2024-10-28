@@ -91,4 +91,3 @@ def read_interior_data(output_dir:str, model:str, times:list):
 
     else:
         return []
-
