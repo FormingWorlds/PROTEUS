@@ -33,10 +33,6 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     skin_d          = config.atmos_clim.surface_d
     skin_k          = config.atmos_clim.surface_k
 
-    # Check configuration
-    if config.atmos_clim.rayleigh:
-        log.warning("Rayleigh scattering is enabled but it will be neglected")
-
     log.info("Gamma = %.4f" % gamma)
     if not (0.0 <= gamma <= 1.0):
         log.warning("Gamma value is out of bounds; expect unreasonable fluxes")

@@ -192,8 +192,8 @@ class Proteus:
             log.info("Input partial pressures:")
             inc_gases = []
             for s in vol_list:
-                pp_val = getattr(self.config.delivery.volatiles, s)
-                include = getattr(self.config.outgas.calliope, f'include_{s}')
+                pp_val = self.config.delivery.volatiles.get_pressure(s)
+                include = self.config.outgas.calliope.is_included(s)
 
                 log.info(
                     "    %-6s : %-5.2f bar (included = %s)"

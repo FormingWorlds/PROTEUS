@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import subprocess as sp
@@ -45,7 +46,9 @@ def GetFWLData() -> Path:
     """
     return Path(FWL_DATA_DIR).absolute()
 
-def get_osf(id:str):
+
+@functools.cache
+def get_osf(id: str):
     """
     Generate an object to access OSF storage
     """
@@ -54,22 +57,52 @@ def get_osf(id:str):
     return project.storage('osfstorage')
 
 
+def download(
+    *,
+    folder: str,
+    target: str,
+    osf_id: str,
+    desc: str
+
+):
+    """
+    Generic download function.
+
+    Attributes
+    ----------
+    folder: str
+        Filename to download
+    target: str
+        name of target directory
+    osf_id: str
+        OSF project id
+    desc: str
+        Description for logging
+    """
+    log.debug(f"Get {desc}?")
+
+    data_dir = GetFWLData() / target
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    if not (data_dir / folder).exists():
+        storage = get_osf(osf_id)
+        log.info(f"Downloading {desc} to {data_dir}")
+        download_folder(storage=storage, folders=[folder], data_dir=data_dir)
+    else:
+        log.debug(f"\t{desc} already exists")
+
+
 def download_surface_albedos():
     """
     Download surface optical properties
     """
-    log.debug("Get surface albedos?")
-    storage = get_osf('2gcd9')
+    download(
+        folder = 'Hammond24',
+        target = "surface_albedos",
+        osf_id = '2gcd9',
+        desc = 'surface albedos'
+    )
 
-    folder_name = 'Hammond24'
-    data_dir = GetFWLData() / "surface_albedos"
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    if not (data_dir / folder_name).exists():
-        log.info(f"Downloading surface albedos to {data_dir}")
-        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
-    else:
-        log.debug("\talready exists")
 
 def download_spectral_file(name:str, bands:str):
     """
@@ -81,89 +114,55 @@ def download_spectral_file(name:str, bands:str):
         - bands : str
             number of bands (e.g. "256")
     """
-    log.debug("Get spectral files?")
-
     # Check name and bands
     if not isinstance(name, str) or (len(name) < 1):
         raise Exception("Must provide name of spectral file")
     if not isinstance(bands, str) or (len(bands) < 1):
         raise Exception("Must provide number of bands in spectral file")
 
-    #Create spectral file data repository if not existing
-    data_dir = GetFWLData() / "spectral_files"
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    #Link with OSF project repository
-    storage = get_osf('vehxg')
-
-    # Spectral file folder
-    folder_name = name+"/"+bands
-
-    # Write path
-    writedir = os.path.join(data_dir,folder_name)
-
-    # Download if not exists
-    if not os.path.isdir(writedir):
-        print("downloading")
-        log.info(f"Downloading {name}{bands} spectral file to {data_dir}")
-        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
-    else:
-        log.debug("\t%s%s already exists"%(name,bands))
+    download(
+        folder = f'{name}/{bands}',
+        target = "spectral_files",
+        osf_id = 'vehxg',
+        desc = f'{name}{bands} spectral file',
+    )
 
 
 def download_stellar_spectra():
     """
     Download stellar spectra
     """
-    log.debug("Get stellar spectra?")
+    download(
+        folder = 'Named',
+        target = "stellar_spectra",
+        osf_id = '8r2sw',
+        desc = 'stellar spectra'
+    )
 
-    folder_name = 'Named'
-    storage = get_osf('8r2sw')
-
-    data_dir = GetFWLData() / "stellar_spectra"
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    if not (data_dir / folder_name).exists():
-        log.info(f"Downloading stellar spectra to {data_dir}")
-        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
-    else:
-        log.debug("\talready exists")
 
 def download_exoplanet_data():
     """
     Download exoplanet data
     """
-    log.debug("Get exoplanet data?")
+    download(
+        folder = 'Exoplanets',
+        target = "planet_reference",
+        osf_id = 'fzwr4',
+        desc = 'exoplanet data'
+    )
 
-    folder_name = 'Exoplanets'
-    storage = get_osf('fzwr4')
-
-    data_dir = GetFWLData() / "planet_reference"
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    if not (data_dir / folder_name).exists():
-        log.info(f"Downloading exoplanet population data to {data_dir}")
-        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
-    else:
-        log.debug("\talready exists")
 
 def download_massradius_data():
     """
     Download mass-radius data
     """
-    log.debug("Get mass-radius data?")
+    download(
+        folder = 'Mass-radius',
+        target = "mass_radius",
+        osf_id = 'fzwr4',
+        desc = 'mass radius data'
+    )
 
-    folder_name = 'Mass-radius'
-    storage = get_osf('fzwr4')
-
-    data_dir = GetFWLData() / "mass_radius"
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    if not (data_dir / folder_name).exists():
-        log.info(f"Downloading mass-radius data to {data_dir}")
-        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
-    else:
-        log.debug("\talready exists")
 
 def download_evolution_tracks(track:str):
     """
@@ -172,6 +171,7 @@ def download_evolution_tracks(track:str):
     from mors.data import DownloadEvolutionTracks
     log.debug("Get evolution tracks")
     DownloadEvolutionTracks(track)
+
 
 def download_sufficient_data(config:Config):
     """
@@ -217,6 +217,7 @@ def _none_dirs():
     dirs["tools"] = os.path.join(dirs["proteus"],"tools")
     return dirs
 
+
 def get_socrates(dirs=None):
     """
     Download and install SOCRATES
@@ -247,6 +248,7 @@ def get_socrates(dirs=None):
     os.environ["RAD_DIR"] = workpath
     log.debug("\tdone")
 
+
 def get_petsc(dirs=None):
     """
     Download and install PETSc
@@ -274,6 +276,7 @@ def get_petsc(dirs=None):
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 
     log.debug("\tdone")
+
 
 def get_spider(dirs=None):
     """

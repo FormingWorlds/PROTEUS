@@ -1,14 +1,24 @@
 from __future__ import annotations
 
+import logging
+
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le
 
 from ._converters import none_if_none
 
+log = logging.getLogger('fwl.' + __name__)
+
 
 def tmp_max_bigger_than_tmp_min(instance, attribute, value):
     if value <= instance.tmp_minimum:
         raise ValueError("'tmp_maximum' has to be bigger than 'tmp_minimum'.")
+
+
+def warn_if_dummy(instance, attribute, value):
+    if instance.module == 'dummy':
+        log.warning('Rayleigh scattering is enabled but it will be neglected')
+
 
 @define
 class AtmosClim:
@@ -47,6 +57,7 @@ class AtmosClim:
     dummy: Dummy
         Config parameters for dummy atmosphere module
     """
+
     prevent_warming: bool
     surface_d: float = field(validator=gt(0))
     surface_k: float = field(validator=gt(0))
@@ -55,7 +66,7 @@ class AtmosClim:
     surf_state: str = field(validator=in_(('mixed_layer', 'fixed', 'skin')))
     surf_greyalbedo:float = field(validator=(ge(0),le(1)))
     albedo_pl: float = field(validator=(ge(0), le(1)))
-    rayleigh: bool
+    rayleigh: bool = field(validator=warn_if_dummy)
     tmp_minimum: float = field(validator=gt(0))
     tmp_maximum: float = field(validator=tmp_max_bigger_than_tmp_min)
 
@@ -94,14 +105,12 @@ class Agni:
     solution_rtol: float
         Relative tolerance on the atmosphere solution.
     """
+
     p_top: float = field(validator=gt(0))
     spectral_group: str
     spectral_bands: str
     surf_material: str
     num_levels: int = field(validator=ge(15))
-    chemistry: str | None = field(
-        validator=in_((None, 'eq', 'kin')), converter=none_if_none
-    )
     solution_atol: float = field(validator=gt(0))
     solution_rtol: float = field(validator=gt(0))
 
@@ -130,6 +139,7 @@ class Janus:
     tropopause: str | None
         Scheme for determining tropopause location. Choices: "none", "skin", "dynamic".
     """
+
     p_top: float = field(validator=gt(0))
     spectral_group: str
     spectral_bands: str
@@ -149,4 +159,5 @@ class Dummy:
     gamma: float
         Atmosphere opacity between 0 and 1.
     """
+
     gamma: float
