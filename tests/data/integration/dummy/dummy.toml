@@ -129,7 +129,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     cloud_enabled   = false     # enable water cloud radiative effects
     cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
     surf_state      = "fixed"    # surface scheme: "mixed_layer" | "fixed" | "skin"
-    surf_albedo     = 0.1       # path to file ("string") or grey quantity (float)
+    surf_greyalbedo = 0.1       # path to file ("string") or grey quantity (float)
     albedo_pl       = 0.1   	# Bond albedo (scattering)
     rayleigh        = true      # enable rayleigh scattering
     tmp_minimum     = 0.5           # temperature floor on solver
@@ -142,7 +142,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         spectral_group  = "Frostflow"   # which gas opacities to include
         spectral_bands  = "48"          # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
-        chemistry       = "none"        # "none" | "eq" | "kin"
+        chemistry       = "none"        # "none" | "eq"
+        surf_material   = "greybody"    # surface material file for scattering
+        solution_atol   = 1e-3          # solver absolute tolerance
+        solution_rtol   = 2e-2          # solver relative tolerance
+
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure

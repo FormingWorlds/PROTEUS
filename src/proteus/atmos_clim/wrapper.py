@@ -51,6 +51,15 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
 
     PrintHalfSeparator()
 
+    # Warnings
+    if config.atmos_clim.albedo_pl > 1.0e-9:
+        if config.atmos_clim.rayleigh:
+            log.warning("Physically inconsistent options selected: "
+                        "`albedo_pl > 0` and `rayleigh = True`")
+        if config.atmos_clim.cloud_enabled:
+            log.warning("Physically inconsistent options selected: "
+                        "`albedo_pl > 0` and `cloud_enabled = True`")
+
     # Handle new surface temperature
     if config.atmos_clim.surf_state == 'mixed_layer':
         hf_row["T_surf"] = ShallowMixedOceanLayer(hf_all.iloc[-1].to_dict(), hf_row)
@@ -143,6 +152,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     hf_row["F_sct"]  = atm_output["F_sct"]
     hf_row["T_surf"] = atm_output["T_surf"]
     hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
+    hf_row["bond_albedo"]= atm_output["albedo"]
 
     # Calculate observables (measured at infinite distance)
     R_obs = hf_row["z_obs"] + hf_row["R_int"] # observed radius

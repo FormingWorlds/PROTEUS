@@ -90,15 +90,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     mass    = 0.99      # M_sun
     age_ini = 0.100     # Gyr, model initialisation/start age
 
-    module  = "dummy"
+    module  = "mors"
     [star.mors]
         rot_pctle = 50.0    # rotation percentile
         tracks  = "baraffe" # evolution tracks: spada | baraffe
-        age_now = 4.140     # Gyr, current age of star used for scaling
+        age_now = 0.414     # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
 
     [star.dummy]
-        radius  = 1.0       # R_sun
+        radius  = 0.912     # R_sun
         Teff    = 5772.0    # K
 
 # Orbital system
@@ -129,9 +129,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     cloud_enabled   = false     # enable water cloud radiative effects
     cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
     surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
-    surf_albedo     = 0.2       # path to file ("string") or grey quantity (float)
-    albedo_pl       = 0.0   	# Bond albedo (scattering)
-    rayleigh        = true      # enable rayleigh scattering
+    surf_greyalbedo = 0.2       # surface grey albedo
+    albedo_pl       = 0.0   	# Enforced Bond albedo (do not use with `rayleigh = true`)
+    rayleigh        = true      # Enable rayleigh scattering
     tmp_minimum     = 0.5           # temperature floor on solver
     tmp_maximum     = 5000.0        # temperature ceiling on solver
 
@@ -139,17 +139,20 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "256"         # how many spectral bands?
-        num_levels      = 60            # Number of atmospheric grid levels
-        chemistry       = "none"        # "none" | "eq" | "kin"
+        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_bands  = "16"         # how many spectral bands?
+        num_levels      = 55            # Number of atmospheric grid levels
+        chemistry       = "eq"        # "none" | "eq"
+        surf_material   = "greybody"    # surface material file for scattering
+        solution_atol   = 2e-3          # solver absolute tolerance
+        solution_rtol   = 5e-2          # solver relative tolerance
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 60            # Number of atmospheric grid levels
+        num_levels      = 80            # Number of atmospheric grid levels
         tropopause      = "skin"        # none | skin | dynamic
 
     [atmos_clim.dummy]

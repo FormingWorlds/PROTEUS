@@ -121,7 +121,10 @@ def GetHelpfileKeys():
             "R_star", "age_star", # [m], [yr]
 
             # Observational (from infinity)
-            "z_obs", "rho_obs", "transit_depth", "contrast_ratio", # [m], [kg m-3], [1], [1]
+            "z_obs", # observed height relative to R_int [m]
+            "rho_obs", # observed bulk density [kg m-3]
+            "transit_depth", "contrast_ratio", # [1], [1]
+            "bond_albedo", # bond albedo [1]
 
             # Escape
             "esc_rate_total", # [kg s-1]

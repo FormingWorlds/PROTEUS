@@ -1,6 +1,8 @@
 # Reference data
 
 ## Stars
+Data taken primarily from MUSCLES and NREL.
+Available options can be found by running `ls $FWL_DATA/stellar_spectra/Named`.
 
 ### Epsilon Eridani
 
@@ -110,6 +112,10 @@
 * Radius:     0.464 solar
 * Source:   Mega-MUSCLES
 
+
+## Surfaces
+Single-scattering albedo data taken from Hammond et al., (2024): [Zenodo data](https://zenodo.org/records/13691960).
+Available options can be found by running the command `ls $FWL_DATA/surface_albedos/Hammond24`
 
 ## Exoplanet population data
 These are obtained from the DACE PlanetS database ([Parc et al., 2024](https://arxiv.org/abs/2406.04311)).

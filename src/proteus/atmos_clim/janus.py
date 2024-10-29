@@ -50,15 +50,6 @@ def InitAtm(dirs:dict, config:Config):
     for vol in vol_list:
         vol_dict[vol] = 1.0/len(vol_list)
 
-    if config.atmos_clim.janus.tropopause in (None, 'skin'):
-        trppT = 0.0
-    elif config.atmos_clim.janus.tropopause == 'dynamic':
-        # dynamically, based on heating rate
-        trppT = config.atmos_clim.tmp_minimum
-    else:
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Invalid tropopause option '%d'" % config.atmos_clim.janus.tropopause)
-
     # Spectral bands
     band_edges = ReadBandEdges(dirs["output"]+"star.sf")
 
@@ -76,14 +67,14 @@ def InitAtm(dirs:dict, config:Config):
                 req_levels = config.atmos_clim.janus.num_levels,
                 water_lookup = False,
                 alpha_cloud=config.atmos_clim.cloud_alpha,
-                trppT = trppT, #var if tropopause option is set to 1
+                trppT = config.atmos_clim.tmp_minimum,
                 minT = config.atmos_clim.tmp_minimum,
                 maxT = config.atmos_clim.tmp_maximum,
                 do_cloud = config.atmos_clim.cloud_enabled,
                 re = 1.0e-5, # Effective radius of the droplets [m] (drizzle forms above 20 microns)
                 lwm = 0.8, # Liquid water mass fraction [kg/kg]
                 clfr = 0.8, # Water cloud fraction
-                albedo_s = config.atmos_clim.surf_albedo,
+                albedo_s = config.atmos_clim.surf_greyalbedo,
                 albedo_pl = config.atmos_clim.albedo_pl,
                 zenith_angle = config.orbit.zenith_angle,
                 )
@@ -94,7 +85,7 @@ def InitAtm(dirs:dict, config:Config):
 
     return atm
 
-def UpdateStateAtm(atm, hf_row:dict, trppT:int):
+def UpdateStateAtm(atm, hf_row:dict, tropopause):
     """UpdateStateAtm
 
     Update the atm object state with current iteration variables
@@ -105,6 +96,8 @@ def UpdateStateAtm(atm, hf_row:dict, trppT:int):
             Atmosphere object
         hf_row : dict
             Dictionary containing simulation variables for current iteration
+        tropopause
+            Tropopause type (None, "skin", "dynamic")
     """
 
     atm.setSurfaceTemperature(hf_row["T_surf"])
@@ -126,9 +119,11 @@ def UpdateStateAtm(atm, hf_row:dict, trppT:int):
 
     atm.instellation = hf_row["F_ins"]
     atm.tmp_magma = hf_row["T_magma"]
-    if (trppT == 1):
+    if tropopause == "skin":
         atm.trppT = hf_row["T_skin"]
-        log.debug("Setting stratosphere to T_skin=%.2f K"%atm.trppT)
+    else:
+        atm.trppT = 0.5
+    log.debug("Setting stratosphere to %.2f K"%atm.trppT)
 
     return
 
@@ -279,6 +274,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["F_atm"]  = F_atm_lim         # Net flux at TOA
     output["F_olr"]  = atm.LW_flux_up[0] # OLR
     output["F_sct"]  = atm.SW_flux_up[0] # Scattered SW flux
+    output["albedo"] = atm.SW_flux_up[0] / atm.SW_flux_down[0]
     output["z_obs"]  = z_obs
     output["rho_obs"]= rho_obs
 
