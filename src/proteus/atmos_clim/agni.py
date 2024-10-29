@@ -158,10 +158,6 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         fc_dir = create_tmp_folder()
         log.debug("Fastchem work folder: '%s'"%fc_dir)
 
-    elif chem_type == 'kin':
-        # kinetics
-        raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
-
     # Surface single-scattering albedo
     surface_material = config.atmos_clim.agni.surf_material
     if "greybody" in str(surface_material).lower():

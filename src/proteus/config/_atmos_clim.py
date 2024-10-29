@@ -99,7 +99,7 @@ class Agni:
     num_levels: str
         Number of atmospheric grid levels.
     chemistry: str | None
-        Treatment of self-consistent atmospheric chemsitry. Choices: "none", "eq", "kin".
+        Treatment of self-consistent atmospheric chemsitry. Choices: "none", "eq".
     solution_atol: float
         Absolute tolerance on the atmosphere solution.
     solution_rtol: float
@@ -111,6 +111,7 @@ class Agni:
     spectral_bands: str
     surf_material: str
     num_levels: int = field(validator=ge(15))
+    chemistry: str = field(validator=in_((None, "eq")), converter=none_if_none)
     solution_atol: float = field(validator=gt(0))
     solution_rtol: float = field(validator=gt(0))
 
