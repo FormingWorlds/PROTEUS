@@ -8,6 +8,7 @@ from helpers import PROTEUS_ROOT
 from proteus import Proteus
 from proteus.config import Config, read_config_object
 from proteus.config._converters import none_if_none
+from proteus.config._delivery import Volatiles
 from proteus.config._outgas import Calliope
 
 PATHS = chain(
@@ -53,7 +54,7 @@ def test_proteus_init(path):
     assert isinstance(runner.config, Config)
 
 
-def test_calliope_converter():
+def test_calliope_is_included():
     conf = Calliope(
         T_floor=0.1,
         include_CO=False,
@@ -63,3 +64,12 @@ def test_calliope_converter():
     assert conf.is_included('H2')
     with pytest.raises(AttributeError):
         conf.is_included('fails')
+
+
+def test_delivery_get_pressure():
+    conf = Volatiles(
+        N2 = 123.0
+    )
+    assert conf.get_pressure('N2') == 123.0
+    with pytest.raises(AttributeError):
+        conf.get_pressure('fails')
