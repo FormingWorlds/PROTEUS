@@ -93,20 +93,26 @@ def plot_stacked(output_dir: str, times: list, int_data:list, atm_data:list,
         y_depth  = max(y_depth,  np.amax(xx_depth))
 
 
-    ytick_spacing = 100.0 # km
+    ytick_minor = 200.0 # km
+    if y_height > 2*ytick_minor:
+        ytick_major = 2*ytick_minor
+    else:
+        ytick_major = ytick_minor
 
     # Decorate top plot
     axt.set(ylabel="Atmosphere height [km]")
     axt.set_ylim(bottom=0.0, top=y_height)
     axt.legend()
-    axt.yaxis.set_major_locator(MultipleLocator(ytick_spacing))
+    axt.yaxis.set_minor_locator(MultipleLocator(ytick_minor))
+    axt.yaxis.set_major_locator(MultipleLocator(ytick_major))
     axt.set_facecolor(get_colour("atm_bkg"))
 
     # Decorate bottom plot
     axb.set(ylabel="Interior depth [km]", xlabel="Temperature [K]")
     axb.invert_yaxis()
     axb.set_ylim(top=0.0, bottom=y_depth)
-    axb.yaxis.set_minor_locator(MultipleLocator(ytick_spacing))
+    axb.yaxis.set_minor_locator(MultipleLocator(ytick_minor))
+    axb.yaxis.set_major_locator(MultipleLocator(ytick_minor*2))
     axb.set_facecolor(get_colour("int_bkg"))
     axb.xaxis.set_major_locator(MultipleLocator(1000))
     axb.xaxis.set_minor_locator(MultipleLocator(250))
