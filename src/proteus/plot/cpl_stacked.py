@@ -40,6 +40,9 @@ def plot_stacked(output_dir: str, times: list, jsons:list, ncdfs:list, plot_form
     y_depth, y_height = 100, 100
     lw = 1.5
 
+
+    log.info('ncdfs =', ncdfs)
+
     # loop over times
     for i,time in enumerate(times):
 

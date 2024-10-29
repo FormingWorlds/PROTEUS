@@ -339,7 +339,7 @@ class Proteus:
 
             ############### ESCAPE
             if (self.loops["total"] >= self.loops["init_loops"]):
-                RunEscape(self.config, self.hf_row, self.dt, self.stellar_track)
+                RunEscape(self.config, self.hf_row, self.hf_all, self.dt, self.stellar_track)
 
             ############### / ESCAPE
 
