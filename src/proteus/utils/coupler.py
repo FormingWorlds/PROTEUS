@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.common import read_ncdfs
-from proteus.interior.spider import read_jsons
+from proteus.atmos_clim.common import read_atmosphere_data
+from proteus.interior.wrapper import read_interior_data
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements
 from proteus.plot.cpl_emission import plot_emission
@@ -35,7 +35,7 @@ from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_stacked import plot_stacked
 from proteus.utils.constants import (
     element_list,
-    volatile_species,
+    gas_list,
 )
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -131,7 +131,7 @@ def GetHelpfileKeys():
             ]
 
     # gases
-    for s in volatile_species:
+    for s in gas_list:
         keys.append(s+"_mol_atm")
         keys.append(s+"_mol_solid")
         keys.append(s+"_mol_liquid")
@@ -255,14 +255,17 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
-    dummy_int = config.interior.module == 'dummy'
-    escape    = config.interior.module is not None
+    spider    = config.interior.module == 'spider'
+    aragog    = config.interior.module == 'aragog'
+    escape    = config.escape.module is not None
 
     # Get all output times
-    if dummy_int:
-        output_times = []
-    else:
+    output_times = []
+    if spider:
         from proteus.interior.spider import get_all_output_times
+        output_times = get_all_output_times( output_dir )
+    if aragog:
+        from proteus.interior.aragog import get_all_output_times
         output_times = get_all_output_times( output_dir )
 
     # Global properties for all timesteps
@@ -279,7 +282,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
 
         # Check intersection of atmosphere and interior data
-        if dummy_int:
+        if not spider:
             output_times = nc_times
         else:
             output_times = sorted(list(set(output_times) & set(nc_times)))
@@ -294,20 +297,22 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         log.debug("Snapshots to plot:" + str(plot_times))
 
     # Interior profiles
-    if not dummy_int:
-        jsons = read_jsons(output_dir, plot_times)
-        plot_interior(output_dir, plot_times, jsons, config.params.out.plot_fmt)
+    if spider or aragog:
+        int_data = read_interior_data(output_dir, config.interior.module, plot_times)
+        plot_interior(output_dir, plot_times, int_data,
+                              config.interior.module, config.params.out.plot_fmt)
 
     # Temperature profiles
     if not dummy_atm:
-        ncdfs = read_ncdfs(output_dir, plot_times)
+        atm_data = read_atmosphere_data(output_dir, plot_times)
 
         # Atmosphere only
-        plot_atmosphere(output_dir, plot_times, ncdfs, config.params.out.plot_fmt)
+        plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
         # Atmosphere and interior, stacked
-        if not dummy_int:
-            plot_stacked(output_dir, plot_times, jsons, ncdfs, config.params.out.plot_fmt)
+        if spider or aragog:
+            plot_stacked(output_dir, plot_times, int_data, atm_data,
+                            config.interior.module, config.params.out.plot_fmt)
 
         # Flux profiles
         if config.atmos_clim.module == 'janus':
@@ -324,8 +329,9 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_sflux(output_dir,          plot_format=config.params.out.plot_fmt)
         plot_sflux_cross(output_dir,    plot_format=config.params.out.plot_fmt)
 
-        if not dummy_int:
-            plot_interior_cmesh(output_dir, plot_format=config.params.out.plot_fmt)
+        if spider or aragog:
+            plot_interior_cmesh(output_dir, plot_times, int_data, config.interior.module,
+                                plot_format=config.params.out.plot_fmt)
 
         if not dummy_atm:
             plot_emission(output_dir, plot_times, plot_format=config.params.out.plot_fmt)

@@ -88,18 +88,18 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Physical parameters
     mass    = 0.99      # M_sun
-    radius  = 0.912     # R_sun
-    Teff    = 5640.0    # K
-    lum_now = 0.753     # L_sun
-    omega   = 50.0      # rotation percentile
-    age_now = 4.140     # Gyr, current age of star used for scaling
     age_ini = 0.100     # Gyr, model initialisation/start age
-
 
     module  = "mors"
     [star.mors]
-        tracks  = "baraffe"   # evolution tracks: spada | baraffe
+        rot_pctle = 50.0    # rotation percentile
+        tracks  = "baraffe" # evolution tracks: spada | baraffe
+        age_now = 4.140     # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
+
+    [star.dummy]
+        radius  = 0.912     # R_sun
+        Teff    = 5640.0    # K
 
 # Orbital system
 [orbit]
@@ -161,7 +161,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "none"    # Which escape module to use
 
     [escape.zephyrus]
-        some_parameter = "some_value"
+        efficiency = 1.0   # Escape efficiency factor
+        tidal = false      # Tidal contribution enabled
 
     [escape.dummy]
         rate = 0.0    #  Bulk unfractionated escape rate [kg s-1]
@@ -183,7 +184,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        some_parameter = "some_value"
+        num_levels      = 220       # Number of Aragog grid levels
+        tolerance       = 1.0e-10   # solver tolerance
 
 # Outgassing - physics table
 [outgas]

@@ -66,7 +66,10 @@ class Aragog:
 
     Attributes
     ----------
-    some_parameter: str
-        Not used.
+    num_levels: int
+        Number of Aragog grid levels (basic mesh).
+    tolerance: float
+        Solver tolerance.
     """
-    some_parameter: str
+    num_levels: int  = field(validator=ge(40))
+    tolerance: float

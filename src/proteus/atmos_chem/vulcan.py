@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import element_list, volatile_species
+from proteus.utils.constants import element_list, gas_list
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -133,7 +133,7 @@ def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, config: Config )
 
         # Bottom boundary mixing ratios are fixed according to SPIDER (??)
         # fix_bb_mr = "{"
-        # for v in volatile_species:
+        # for v in gas_list:
         #     fix_bb_mr += " '%s' : %1.5e ," % (v,hf_recent["%s_mr"%v])
         # fix_bb_mr = fix_bb_mr[:-1]+" }"
         # vcf.write("use_fix_sp_bot = %s \n"   % str(fix_bb_mr))
@@ -150,7 +150,7 @@ def RunVULCAN( atm, time, loop_counter, dirs, runtime_helpfile, config: Config )
             # Abundances
             vcf.write("ini_mix = 'const_mix' \n")  # other options: 'EQ', 'table', 'vulcan_ini'
             const_mix = "{"
-            for v in volatile_species:
+            for v in gas_list:
                 const_mix += " '%s' : %1.5e ," % (v,hf_recent["%s_mr"%v])
             const_mix = const_mix[:-1]+" }"
             vcf.write("const_mix = %s \n"   % str(const_mix))

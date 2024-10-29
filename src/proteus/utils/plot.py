@@ -3,32 +3,25 @@
 from __future__ import annotations
 
 import glob
+import logging
 import os
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from proteus.utils.helper import mol_to_ele
+
+log = logging.getLogger("fwl."+__name__)
+
 if TYPE_CHECKING:
     from proteus import Proteus
 
-vol_zorder  = {
-    "H2O"            : 11,
-    "CO2"            : 10,
-    "H2"             : 9,
-    "CH4"            : 8,
-    "N2"             : 7,
-    "O2"             : 5,
-    "CO"             : 4,
-    "S"              : 3,
-    "S2"             : 3,
-    "SO2"            : 3,
-    "He"             : 2,
-    "NH3"            : 1,
-}
-
 # Standard plotting colours
-dict_colors  = {
-    # From Julia's default colours
+_preset_colours  = {
+    # Default colour
+    "_fallback": "#ff00ff",
+
+    # Volatile gases
     "H2O": "#027FB1",
     "CO2": "#D24901",
     "H2" : "#008C01",
@@ -39,79 +32,105 @@ dict_colors  = {
     "SO2": "#00008B",
     "He" : "#30FF71",
     "NH3": "#675200",
-}
-dict_colors["OLR"] = "crimson"
-dict_colors["ASF"] = "royalblue"
-dict_colors["sct"] = "seagreen"
-dict_colors["atm"] = "#768E95"
-dict_colors["int"] = "#ff7f0e"
-dict_colors["core"] = "#4d303f"
-dict_colors["atm_bkg"] = (0.95, 0.98, 1.0)
-dict_colors["int_bkg"] = (1.0, 0.98, 0.95)
 
-# Volatile Latex names
-vol_latex = {
-    "H2O"     : r"H$_2$O",
-    "CO2"     : r"CO$_2$",
-    "H2"      : r"H$_2$" ,
-    "CH4"     : r"CH$_4$",
-    "CO"      : r"CO",
-    "N2"      : r"N$_2$",
-    "S"       : r"S",
-    "S2"      : r"S$_2$",
-    "SO2"     : r"SO$_2$",
-    "O2"      : r"O$_2$",
-    "O3"      : r"O$_3$",
-    "OH"      : r"OH",
-    "HCN"     : r"HCN",
-    "NH3"     : r"NH$_3$",
-    "He"      : r"He",
-    "H2O-CO2" : r"H$_2$O-CO$_2$",
-    "H2O-H2"  : r"H$_2$O-H$_2$",
-    "H2O-CO"  : r"H$_2$O-CO",
-    "H2O-CH4" : r"H$_2$O-CH$_4$",
-    "H2O-N2"  : r"H$_2$O-N$_2$",
-    "H2O-O2"  : r"H$_2$O-O$_2$",
-    "H2-H2O"  : r"H$_2$-H$_2$O",
-    "H2-CO"   : r"H$_2$-CO",
-    "H2-CH4"  : r"H$_2$-CH$_4$",
-    "H2-CO2"  : r"H$_2$-CO$_2$",
-    "H2-N2"   : r"H$_2$-N$_2$",
-    "H2-O2"   : r"H$_2$-O$_2$",
-    "CO2-N2"  : r"CO$_2$-N$_2$",
-    "CO2-H2O" : r"CO$_2$-H$_2$O",
-    "CO2-CO"  : r"CO$_2$-CO",
-    "CO2-CH4"  : r"CO$_2$-CH$_4$",
-    "CO2-O2"  : r"CO$_2$-O$_2$",
-    "CO2-H2"  : r"CO$_2$-H$_2$",
-    "CO-H2O" : r"CO-H$_2$O",
-    "CO-CO2" : r"CO-CO$_2$",
-    "CO-H2"  : r"CO-H$_2$",
-    "CO-CH4" : r"CO-CH$_4$",
-    "CO-N2"  : r"CO-N$_2$",
-    "CO-O2"  : r"CO-O$_2$",
-    "CH4-H2O" : r"CH$_4$-H$_2$O",
-    "CH4-CO2" : r"CH$_4$-CO$_2$",
-    "CH4-H2"  : r"CH$_4$-H$_2$",
-    "CH4-CO"  : r"CH$_4$-CO",
-    "CH4-CH4" : r"CH$_4$-CH$_4$",
-    "CH4-N2"  : r"CH$_4$-N$_2$",
-    "CH4-O2"  : r"CH$_4$-O$_2$",
-    "N2-H2O" : r"N$_2$-H$_2$O",
-    "N2-CO2" : r"N$_2$-CO$_2$",
-    "N2-H2"  : r"N$_2$-H$_2$",
-    "N2-CO"  : r"N$_2$-CO",
-    "N2-CH4" : r"N$_2$-CH$_4$",
-    "N2-N2"  : r"N$_2$-N$_2$",
-    "N2-O2"  : r"N$_2$-O$_2$",
-    "O2-H2O" : r"O$_2$-H$_2$O",
-    "O2-CO2" : r"O$_2$-CO$_2$",
-    "O2-H2"  : r"O$_2$-H$_2$",
-    "O2-CO"  : r"O$_2$-CO",
-    "O2-CH4" : r"O$_2$-CH$_4$",
-    "O2-N2"  : r"O$_2$-N$_2$",
-    "O2-O2"  : r"O$_2$-O$_2$",
+    # Volatile elements
+    "H": "#0000aa",
+    "C": "#ff0000",
+    "O": "#00dd00",
+    "N": "#ffaa00",
+    "S": "#ff22ff",
+    "P": "#33ccff",
+
+    # refractory elements
+    "Fe": "#888888",
+    "Si": "#aa2277",
+    "Mg": "#996633",
+
+    # Radiation
+    "OLR": "crimson",
+    "ASF": "royalblue",
+    "sct": "seagreen",
+
+    # Model components
+    "atm"     : "#768E95",
+    "int"     : "#ff7f0e",
+    "core"    : "#4d303f",
+    "atm_bkg" : "#f2faff",
+    "int_bkg" : "#fffaf2",
 }
+
+
+def _generate_colour(gas:str):
+    """
+    Systematically generate a colour for a gas, from its composition.
+
+    This method for mixing colours was taken from AGNI's phys.jl
+    """
+
+    # Break into atoms
+    try:
+        atoms = mol_to_ele(gas)
+    except ValueError:
+        log.warning(f"Using fallback colour for '{gas}'")
+        return _preset_colours["_fallback"]
+
+    # Red, green, blue components
+    red = 0.0
+    gre = 0.0
+    blu = 0.0
+
+    # For each atom, add the contriution of its rgb components
+    for e in atoms.keys():
+        red += int(_preset_colours[e][1:2],base=16)*atoms[e]
+        gre += int(_preset_colours[e][3:4],base=16)*atoms[e]
+        blu += int(_preset_colours[e][5:6],base=16)*atoms[e]
+
+    # Normalisation constant
+    norm = max((red,gre,blu))
+
+    # Prevent the colour getting too close to white, which is hard to see on a plot
+    if red+gre+blu > 705:
+        norm *= 255.0/235.0
+
+    # Normalise colours to 0-255
+    red = int(255*red/norm)
+    gre = int(255*gre/norm)
+    blu = int(255*blu/norm)
+
+    # Convert to hex string
+    colour = f"#{red:02x}{gre:02x}{blu:02x}"
+
+    return colour
+
+
+def get_colour(thing:str):
+    """
+    Get a colour for something which needs one (e.g. for plotting a particular gas)
+    """
+
+    # Try getting it from dictionary
+    try:
+        colour = _preset_colours[thing]
+
+    # Otherwise, generate it systematically
+    except KeyError:
+        colour = _generate_colour(thing)
+
+    return colour
+
+def latexify(gas:str):
+    """
+    Convert gas name to latex-formatted string
+    """
+
+    out = ""
+    for c in gas:
+        c = str(c)
+        if c.isnumeric():
+            out += r"$_%s$"%c
+        else:
+            out += c
+    return out
 
 # Bandpasses for instrumentation of interest [units of microns, um]
 observer_bands = {
@@ -282,19 +301,15 @@ def sample_times(times:list, nsamp:int, tmin:float=1.0):
     return out_t, out_i
 
 
-def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0, nsamp:int=8):
+def sample_output(handler: Proteus, extension:str = ".nc", tmin:float = 1.0, nsamp:int=8):
 
     # get all files
-    files = glob.glob(os.path.join(handler.directories["output"], "data", "*."+ftype))
+    files = glob.glob(os.path.join(handler.directories["output"], "data", "*"+extension))
     if len(files) < 1:
         return []
 
     # get times
-    if ftype == "nc":
-        dlm = "_"
-    else:
-        dlm = "."
-    times = [int(f.split("/")[-1].split(dlm)[0]) for f in files]
+    times = [int(f.split("/")[-1].split(extension)[0]) for f in files]
 
     out_t, out_i = sample_times(times, nsamp, tmin=tmin)
     out_f = [files[i] for i in out_i]

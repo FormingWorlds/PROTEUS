@@ -4,27 +4,12 @@
 from __future__ import annotations
 
 import logging
-import re
 
 import numpy as np
 
 from proteus.utils.constants import const_c, const_h, const_k
 
 log = logging.getLogger("fwl."+__name__)
-
-def mol_to_ele(mol:str):
-    '''
-    Return the number of each element within a given molecule, as a dictionary
-    '''
-    decomp = re.findall(r'([A-Z][a-z]?)(\d*)', mol)   # https://codereview.stackexchange.com/a/232664
-    elems = {}
-    for ev in decomp:
-        if ev[1] == '':
-            val = 1
-        else:
-            val = int(ev[1])
-        elems[str(ev[0])] = val
-    return elems
 
 def planck_wav(tmp:float, wav:float):
     '''

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.plot import dict_colors
+from proteus.utils.plot import get_colour
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -45,11 +45,11 @@ def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, config: Config, t0:
     ax.axhline(y=280.0, color='black', lw=lw, linestyle='dashed', label="S-N limit", zorder=1)
 
     # Plot fluxes
-    ax.plot(time, F_int, lw=lw, alpha=al, zorder=2, color=dict_colors["int"], label="Net (int.)")
-    ax.plot(time, F_net, lw=lw, alpha=al, zorder=2, color=dict_colors["atm"], label="Net (atm.)")
-    ax.plot(time, F_olr, lw=lw, alpha=al, zorder=2, color=dict_colors["OLR"], label="OLR")
-    ax.plot(time, F_upw, lw=lw, alpha=al, zorder=3, color=dict_colors["sct"], label="OLR + Scat.")
-    ax.plot(time, F_asf, lw=lw, alpha=al, zorder=3, color=dict_colors["ASF"], label="ASF", linestyle='dotted')
+    ax.plot(time, F_int, lw=lw, alpha=al, zorder=2, color=get_colour("int"), label="Net (int.)")
+    ax.plot(time, F_net, lw=lw, alpha=al, zorder=2, color=get_colour("atm"), label="Net (atm.)")
+    ax.plot(time, F_olr, lw=lw, alpha=al, zorder=2, color=get_colour("OLR"), label="OLR")
+    ax.plot(time, F_upw, lw=lw, alpha=al, zorder=3, color=get_colour("sct"), label="OLR + Scat.")
+    ax.plot(time, F_asf, lw=lw, alpha=al, zorder=3, color=get_colour("ASF"), label="ASF", linestyle='dotted')
 
     # Configure plot
     ax.set_yscale("symlog")

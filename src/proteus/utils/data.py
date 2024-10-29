@@ -68,18 +68,26 @@ def download_surface_albedos():
     if not (data_dir / folder_name).exists():
         log.info(f"Downloading surface albedos to {data_dir}")
         download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
+    else:
+        log.debug("\talready exists")
 
-def download_spectral_files(fname: str="", nband: int=256):
+def download_spectral_file(name:str, bands:str):
     """
-    Download spectral files data
+    Download spectral file.
 
     Inputs :
-        - fname (optional) :    folder name, i.e. "/Dayspring"
-                                if not provided download all the basic list
-        - nband (optional) :    number of band = 16, 48, 256, 4096
-                                (only relevant for Dayspring, Frostflow and Honeyside)
+        - name : str
+            folder name (e.g. "Dayspring")
+        - bands : str
+            number of bands (e.g. "256")
     """
     log.debug("Get spectral files?")
+
+    # Check name and bands
+    if not isinstance(name, str) or (len(name) < 1):
+        raise Exception("Must provide name of spectral file")
+    if not isinstance(bands, str) or (len(bands) < 1):
+        raise Exception("Must provide number of bands in spectral file")
 
     #Create spectral file data repository if not existing
     data_dir = GetFWLData() / "spectral_files"
@@ -88,25 +96,19 @@ def download_spectral_files(fname: str="", nband: int=256):
     #Link with OSF project repository
     storage = get_osf('vehxg')
 
-    basic_list = (
-        "Dayspring/48",
-        "Dayspring/256",
-        "Frostflow/256",
-        "Honeyside/4096",
-        )
+    # Spectral file folder
+    folder_name = name+"/"+bands
 
-    #If no folder specified download all basic list
-    if not fname:
-        folder_list = basic_list
+    # Write path
+    writedir = os.path.join(data_dir,folder_name)
+
+    # Download if not exists
+    if not os.path.isdir(writedir):
+        print("downloading")
+        log.info(f"Downloading {name}{bands} spectral file to {data_dir}")
+        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
     else:
-        folder_list = [fname + "/" + str(nband)]
-
-    folders = [folder for folder in folder_list if not (data_dir / folder).exists()]
-
-    if folders:
-        log.info(f"Downloading spectral files to {data_dir}")
-        log.debug("\t"+str(folders))
-        download_folder(storage=storage, folders=folders, data_dir=data_dir)
+        log.debug("\t%s%s already exists"%(name,bands))
 
 
 def download_stellar_spectra():
@@ -124,6 +126,8 @@ def download_stellar_spectra():
     if not (data_dir / folder_name).exists():
         log.info(f"Downloading stellar spectra to {data_dir}")
         download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
+    else:
+        log.debug("\talready exists")
 
 def download_exoplanet_data():
     """
@@ -140,6 +144,26 @@ def download_exoplanet_data():
     if not (data_dir / folder_name).exists():
         log.info(f"Downloading exoplanet population data to {data_dir}")
         download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
+    else:
+        log.debug("\talready exists")
+
+def download_massradius_data():
+    """
+    Download mass-radius data
+    """
+    log.debug("Get mass-radius data?")
+
+    folder_name = 'Mass-radius'
+    storage = get_osf('fzwr4')
+
+    data_dir = GetFWLData() / "mass_radius"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    if not (data_dir / folder_name).exists():
+        log.info(f"Downloading mass-radius data to {data_dir}")
+        download_folder(storage=storage, folders=[folder_name], data_dir=data_dir)
+    else:
+        log.debug("\talready exists")
 
 def download_evolution_tracks(track:str):
     """
@@ -154,6 +178,8 @@ def download_sufficient_data(config:Config):
     Download the required data based on the current options
     """
 
+    log.info("Getting physical and reference data")
+
     # Star stuff
     if config.star.module == "mors":
         download_stellar_spectra()
@@ -162,14 +188,27 @@ def download_sufficient_data(config:Config):
         else:
             download_evolution_tracks("Baraffe")
 
-    # Atmosphere stuff
+    # Spectral files
     if config.atmos_clim.module in ('janus', 'agni'):
-        download_spectral_files()
+        # High-res file often used for post-processing
+        download_spectral_file("Honeyside","4096")
+
+        # Get the spectral file we need for this simluation
+        from proteus.atmos_clim.common import get_spfile_name_and_bands
+        group, bands = get_spfile_name_and_bands(config)
+        download_spectral_file(group, bands)
+
+
+    # Surface single-scattering data
     if config.atmos_clim.module == 'agni':
         download_surface_albedos()
 
     # Exoplanet population data
     download_exoplanet_data()
+
+    # Mass-radius reference data
+    download_massradius_data()
+
 
 def _none_dirs():
     from proteus.utils.helper import get_proteus_dir
@@ -193,7 +232,7 @@ def get_socrates(dirs=None):
     workpath = os.path.join(dirs["proteus"], "SOCRATES")
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
-        log.debug("    already set up")
+        log.debug("\talready set up")
         return
 
     # Download, configure, and build
@@ -206,7 +245,7 @@ def get_socrates(dirs=None):
 
     # Set environment
     os.environ["RAD_DIR"] = workpath
-    log.debug("    done")
+    log.debug("\tdone")
 
 def get_petsc(dirs=None):
     """
@@ -223,18 +262,18 @@ def get_petsc(dirs=None):
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
         # already downloaded
-        log.debug("    already set up")
+        log.debug("\talready set up")
         return
 
     # Download, configure, and build
     log.debug("Running get_petsc.sh")
     cmd = [os.path.join(dirs["tools"],"get_petsc.sh"), workpath]
     out = os.path.join(dirs["proteus"], "nogit_setup_petsc.log")
-    log.debug("    logging to %s"%out)
+    log.debug("\tlogging to %s"%out)
     with open(out,'w') as hdl:
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 
-    log.debug("    done")
+    log.debug("\tdone")
 
 def get_spider(dirs=None):
     """
@@ -254,15 +293,15 @@ def get_spider(dirs=None):
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
         # already downloaded
-        log.debug("    already set up")
+        log.debug("\talready set up")
         return
 
     # Download, configure, and build
     log.debug("Running get_spider.sh")
     cmd = [os.path.join(dirs["tools"],"get_spider.sh"), workpath]
     out = os.path.join(dirs["proteus"], "nogit_setup_spider.log")
-    log.debug("    logging to %s"%out)
+    log.debug("\tlogging to %s"%out)
     with open(out,'w') as hdl:
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 
-    log.debug("    done")
+    log.debug("\tdone")

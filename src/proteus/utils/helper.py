@@ -25,6 +25,33 @@ def PrintHalfSeparator():
     log.info("---------------------------------------------------")
     pass
 
+def mol_to_ele(mol:str):
+    '''
+    Return the number of atoms of each element in a given molecule, as a dictionary
+
+    https://codereview.stackexchange.com/a/232664
+    '''
+
+    # Validate
+    if not str(mol[0]).isupper:
+        raise ValueError(f"Molecule name '{mol}' is invalid")
+
+    # Get atoms
+    decomp = re.findall(r'([A-Z][a-z]?)(\d*)', mol)
+    elems = {}
+    for ev in decomp:
+        if ev[1] == '':
+            val = 1
+        else:
+            val = int(ev[1])
+        elems[str(ev[0])] = val
+
+    # Check that what we got is reasonable
+    if not elems:
+        raise ValueError(f"Could not decompose molecule '{mol}'")
+
+    return elems
+
 # String sorting inspired by natsorted
 def natural_sort(lst):
     def convert(text):
