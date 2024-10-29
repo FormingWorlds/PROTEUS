@@ -140,8 +140,10 @@ def get_new_spectrum(t_star:float, config:Config,
         match config.star.mors.tracks:
             case 'spada':
                 star_props_hist = get_spada_synthesis_properties(stellar_track, t_star/1e6)
+                assert star_struct_modern
+                assert star_props_modern
                 synthetic = mors.synthesis.CalcScaledSpectrumFromProps(
-                    star_struct_modern, star_props_modern, star_props_hist)
+                    modern_spec=star_struct_modern, modern_dict=star_props_modern, historical_dict=star_props_hist)
                 fl = synthetic.fl
                 wl = synthetic.wl
             case 'baraffe':
