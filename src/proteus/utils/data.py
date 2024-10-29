@@ -79,17 +79,17 @@ def download(
     desc: str
         Description for logging
     """
-    print(f"Get {desc}?")
+    log.debug(f"Get {desc}?")
 
     data_dir = GetFWLData() / target
     data_dir.mkdir(parents=True, exist_ok=True)
 
     if not (data_dir / folder).exists():
         storage = get_osf(osf_id)
-        print(f"Downloading {desc} to {data_dir}")
+        log.info(f"Downloading {desc} to {data_dir}")
         download_folder(storage=storage, folders=[folder], data_dir=data_dir)
     else:
-        print(f"\t{desc} already exists")
+        log.debug(f"\t{desc} already exists")
 
 
 def download_surface_albedos():
