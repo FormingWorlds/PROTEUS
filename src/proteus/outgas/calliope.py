@@ -43,12 +43,12 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
 
     # Volatile inventory
     for s in vol_list:
-        solvevol_inp[f'{s}_initial_bar'] =  getattr(config.delivery.volatiles, s)
+        solvevol_inp[f'{s}_initial_bar'] = config.delivery.volatiles.get_pressure(s)
 
-        included = getattr(config.outgas.calliope, f'include_{s}')
-        solvevol_inp[f'{s}_included'] = 1 if included else 0
+        included = config.outgas.calliope.is_included(s)
+        solvevol_inp[f'{s}_included'] = int(included)
 
-        if (s in ["H2O","CO2","N2","S2"]) and not included:
+        if (s in ("H2O","CO2","N2","S2")) and not included:
             UpdateStatusfile(dirs, 20)
             raise RuntimeError(f"Missing required volatile {s}")
 
