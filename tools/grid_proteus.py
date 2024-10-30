@@ -444,8 +444,8 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "nogit_trappist1b.toml"
-    folder = "trappist1b_oxfu"
+    config = "trappist1c.toml"
+    folder = "trappist1c_oxfu"
 
     cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input",config)
     symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder

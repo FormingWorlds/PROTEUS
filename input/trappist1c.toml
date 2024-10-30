@@ -25,7 +25,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "hd63433d"
+        path        = "trappist1c"
         logging     = "INFO"
         plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -87,24 +87,24 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [star]
 
     # Physical parameters
-    mass    = 0.99      # M_sun
+    mass    = 0.1      # M_sun
     age_ini = 0.100     # Gyr, model initialisation/start age
 
     module  = "mors"
     [star.mors]
         rot_pctle = 50.0    # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
-        age_now = 0.414     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
+        age_now = 7.6     # Gyr, current age of star used for scaling
+        spec    = "stellar_spectra/Named/trappist-1.txt" # stellar spectrum
 
     [star.dummy]
-        radius  = 0.912     # R_sun
+        radius  = 1.0       # R_sun
         Teff    = 5772.0    # K
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.0503    # AU
-    eccentricity    = 0.16      # dimensionless
+    semimajoraxis   = 0.01580    # AU
+    eccentricity    = 0.00654      # dimensionless
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 
@@ -114,8 +114,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    mass        = 1.0       # M_earth
-    radius      = 1.073     # R_earth
+    mass        = 1.308       # M_earth
+    radius      = 1.097     # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
     # No module for specifically for internal structure
