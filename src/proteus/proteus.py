@@ -34,7 +34,9 @@ from proteus.utils.coupler import (
     CreateHelpfileFromDict,
     CreateLockFile,
     ExtendHelpfile,
-    GitRevision,
+    print_header,
+    print_module_configuration,
+    print_system_configuration,
     PrintCurrentState,
     ReadHelpfileFromCSV,
     SetDirectories,
@@ -114,6 +116,8 @@ class Proteus:
             If True, continue from previous simulation
         """
 
+        # First things
+        start_time = datetime.now()
         UpdateStatusfile(self.directories, 0)
 
         # Clean output directory
@@ -129,22 +133,15 @@ class Proteus:
         setup_logger(logpath=logpath, logterm=True, level=self.config.params.out.logging)
         log = logging.getLogger("fwl."+__name__)
 
-        # Print information to logger
-        log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-        log.info("            PROTEUS framework (version 0.1)            ")
-        log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-        log.info(" ")
-        start_time = datetime.now()
-        log.info("Current time: " + start_time.strftime("%Y-%m-%d_%H:%M:%S"))
-        log.info("Hostname    : " + str(os.uname()[1]))
-        log.info("PROTEUS hash: " + GitRevision(self.directories["proteus"]))
-        log.info("Py version  : " + sys.version.split(" ")[0])
-        log.info("Config file : " + str(self.config_path))
-        log.info("Output dir  : " + self.directories["output"])
-        log.info("FWL data dir: " + self.directories["fwl"])
-        if self.config.atmos_clim.module in ['janus', 'agni']:
-            log.info("SOCRATES dir: " + self.directories["rad"])
-        log.info(" ")
+        # Print header
+        print_header()
+
+        # Print system configuration
+        print_system_configuration(self.directories)
+
+        # Print module configuration
+        print_module_configuration(self.directories, self.config, self.config_path)
+        PrintHalfSeparator()
 
         # Count iterations
         self.loops = {
