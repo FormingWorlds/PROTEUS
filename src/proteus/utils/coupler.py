@@ -100,6 +100,7 @@ def print_system_configuration(dirs:dict):
     '''
     import sys
     import pwd
+    import platform
 
     # Try to get the login name using os.getlogin()
     try:
@@ -107,11 +108,12 @@ def print_system_configuration(dirs:dict):
     except OSError:
         username = pwd.getpwuid(os.getuid()).pw_name
 
-    log.info("Current time:     " + _get_current_time())
-    log.info("Python version:   " + sys.version.split(" ")[0])
-    log.info("System hostname:  " + str(os.uname()[1]))
-    log.info("System username:  " + str(username))
-    log.info("FWL data path:    " + dirs["fwl"])
+    log.info("Current time      " + _get_current_time())
+    log.info("Python version    " + sys.version.split(" ")[0])
+    log.info("System hostname   " + str(os.uname()[1]))
+    log.info("System username   " + str(username))
+    log.info("Platform type     " + str(platform.system()))
+    log.info("FWL data path     " + dirs["fwl"])
     log.info(" ")
 
 def print_module_configuration(dirs:dict, config:Config, config_path:str):
@@ -121,63 +123,61 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
 
     # PROTEUS
     from proteus import __version__ as proteus_version
-    log.info("PROTEUS version:  " + proteus_version)
-    log.info("PROTEUS git hash: " + _get_git_revision(dirs["proteus"]))
-    log.info("Config file:      " + str(config_path))
-    log.info("Output path:      " + dirs["output"])
+    log.info("PROTEUS version   " + proteus_version)
+    log.info("PROTEUS git hash  " + _get_git_revision(dirs["proteus"]))
+    log.info("Config file       " + str(config_path))
+    log.info("Output path       " + dirs["output"])
     log.info(" ")
 
     # Interior module
-    log.info("Interior module: '%s'" % config.interior.module)
+    write = "Interior module   %s" % config.interior.module
     match config.interior.module:
         case 'spider':
-            log.info("\tSPIDER version: " + _get_spider_version())
+            write += " version " + _get_spider_version()
         case 'aragog':
             from aragog import __version__ as aragog_version
-            log.info("\tAragog version: " + aragog_version)
-    log.info(" ")
+            write += " version " + aragog_version
+    log.info(write)
 
     # Structure module
-    log.info("Structure module: '%s'" % config.struct.module)
-    log.info(" ")
+    log.info("Structure module  %s" % config.struct.module)
 
     # Atmosphere module
-    log.info("Atmos_clim module: '%s'" % config.atmos_clim.module)
+    write = "Atmos_clim module %s" % config.atmos_clim.module
     match config.atmos_clim.module:
         case 'janus':
             from janus import __version__ as janus_version
-            log.info("\tJANUS version: " + janus_version)
+            write += " version " + janus_version
         case 'agni':
-            log.info("\tAGNI version: " + _get_agni_version(dirs))
+            write += " version " + _get_agni_version(dirs)
+    log.info(write)
     if config.atmos_clim.module in ['janus', 'agni']:
-        log.info("\tSOCRATES path: " + dirs["rad"])
-        log.info("\tSOCRATES version: " + _get_socrates_version())
-    log.info(" ")
+        log.info("  - SOCRATES      version %s at %s" %(_get_socrates_version(), dirs["rad"]))
 
     # Outgassing module
-    log.info("Outgas module: '%s'" % config.outgas.module)
+    write = "Outgas module     %s" % config.outgas.module
     if config.outgas.module == 'calliope':
         from calliope import __version__ as calliope_version
-        log.info("\tCALLIOPE version: " + calliope_version)
-    log.info(" ")
+        write += " version " + calliope_version
+    log.info(write)
 
     # Escape module
-    log.info("Escape module: '%s'" % config.escape.module)
-    log.info(" ")
+    log.info("Escape module     %s" % config.escape.module)
 
     # Star module
-    log.info("Star module: '%s'" % config.star.module)
+    write = "Star module       %s" % config.star.module
     if config.star.module == 'mors':
         from mors import __version__ as mors_version
-        log.info("\tMORS version: " + mors_version)
-    log.info(" ")
+        write += " version " + mors_version
+    log.info(write)
 
     # Orbit module
-    log.info("Orbit module: '%s'" % config.orbit.module)
-    log.info(" ")
+    log.info("Orbit module      %s" % config.orbit.module)
 
     # Delivery module
-    log.info("Delivery module: '%s'" % config.delivery.module)
+    log.info("Delivery module   %s" % config.delivery.module)
+
+    # End spacer
     log.info(" ")
 
 
