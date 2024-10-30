@@ -62,6 +62,13 @@ def GitRevision(dir:str) -> str:
 
     return hash
 
+def PrintModuleConfiguration(config:Config):
+    '''
+    Print the current module configuration, with versions.
+    '''
+
+    
+
 
 def PrintCurrentState(hf_row:dict):
     '''
