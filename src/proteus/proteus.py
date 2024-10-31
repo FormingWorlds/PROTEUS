@@ -186,16 +186,10 @@ class Proteus:
             )
 
             # Store partial pressures and list of included volatiles
-            log.info("Input partial pressures:")
             inc_gases = []
             for s in vol_list:
                 pp_val = self.config.delivery.volatiles.get_pressure(s)
                 include = self.config.outgas.calliope.is_included(s)
-
-                log.info(
-                    "    %-6s : %-5.2f bar (included = %s)"
-                    % (s, pp_val, include)
-                )
 
                 if include:
                     inc_gases.append(s)
@@ -205,8 +199,15 @@ class Proteus:
             for s in vap_list:
                 inc_gases.append(s)
                 self.hf_row[s + "_bar"] = 0.0
-            log.info("Included gases: " + str(inc_gases))
 
+            # Inform user
+            log.info("Initial inventory set by '%s'"%self.config.delivery.initial)
+            log.info("Included gases")
+            for s in inc_gases:
+                log.info("    %s  %-8s : %6.2f bar" %
+                            ("vapour  " if s in vap_list else "volatile", s,
+                            self.hf_row[s + "_bar"])
+                        )
         else:
             # Resuming from disk
             log.info("Resuming the simulation from the disk")
@@ -227,7 +228,7 @@ class Proteus:
             # Set loop counters
             self.loops["total"] = len(self.hf_all)
             self.loops["init"] = self.loops["init_loops"] + 1
-
+        log.info(" ")
 
         # Create lockfile for keeping simulation running
         self.lockfile = CreateLockFile(self.directories["output"])

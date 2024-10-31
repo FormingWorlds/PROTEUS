@@ -84,6 +84,14 @@ def _get_spider_version():
     # This is the only one that we use, and it won't be updated in the future.
     return "0.2.0"
 
+def _get_petsc_version():
+    '''
+    Get the installed PETSc version.
+    '''
+
+    # Like SPIDER, this is the only one that we use
+    return "1.3.19.0"
+
 def _get_agni_version(dirs:dict):
     '''
     Get the installed AGNI version
@@ -93,6 +101,11 @@ def _get_agni_version(dirs:dict):
         agni_meta = tomlload(hdl)
     return agni_meta["version"]
 
+def _get_julia_version():
+    '''
+    Get the installed Julia version
+    '''
+    return subprocess.check_output(["julia","--version"]).decode("utf-8").split()[-1]
 
 def print_system_configuration(dirs:dict):
     '''
@@ -139,6 +152,8 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
             from aragog import __version__ as aragog_version
             write += " version " + aragog_version
     log.info(write)
+    if config.interior.module == "spider":
+        log.info("  - PETSc         version " + _get_petsc_version())
 
     # Structure module
     log.info("Structure module  %s" % config.struct.module)
@@ -154,6 +169,8 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     log.info(write)
     if config.atmos_clim.module in ['janus', 'agni']:
         log.info("  - SOCRATES      version %s at %s" %(_get_socrates_version(), dirs["rad"]))
+        if config.atmos_clim.module == 'agni':
+            log.info("  - Julia         version " + _get_julia_version())
 
     # Outgassing module
     write = "Outgas module     %s" % config.outgas.module
@@ -180,8 +197,6 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
 
     # End spacer
     log.info(" ")
-
-
 
 
 def print_header():
