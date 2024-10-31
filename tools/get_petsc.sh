@@ -5,11 +5,22 @@
 set -e
 
 # Output path
-workpath="petsc"
-if [ -n "$1" ]; then
-    workpath=$1
+workpath=$(realpath petsc) # petsc doesn't like relative paths
+
+# Set environment
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    export PETSC_ARCH=arch-linux-c-opt
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    export PETSC_ARCH=arch-darwin-c-opt
+else
+    echo "ERROR: Unknown OS type '$OSTYPE' "
+    exit 1
 fi
-workpath=$(realpath $workpath) # petsc doesn't like relative paths
+export PETSC_DIR=$workpath
+
+echo "Set PETSC_DIR=$PETSC_DIR"
+echo "Set PETSC_ARCH=$PETSC_ARCH"
+
 rm -rf $workpath
 mkdir $workpath
 
@@ -25,20 +36,6 @@ curl -LsS $url > $zip
 echo "Decompressing"
 unzip -qq $zip -d $workpath
 rm $zip
-
-# Set environment
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    export PETSC_ARCH=arch-linux-c-opt
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-    export PETSC_ARCH=arch-darwin-c-opt
-else
-    echo "ERROR: Unknown OS type '$OSTYPE' "
-    exit 1
-fi
-export PETSC_DIR=$workpath
-
-echo "Set PETSC_DIR=$PETSC_DIR"
-echo "Set PETSC_ARCH=$PETSC_ARCH"
 
 # Change dir
 olddir=$(pwd)

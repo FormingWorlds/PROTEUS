@@ -139,13 +139,6 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 
         - The variable `RAD_DIR` must point to the SOCRATES installation path. It is best to add this to your shell rc file.
 
-        - Setup other variables
-
-            ```console
-            source PROTEUS.env
-            ```
-            This file can also be added to your shell rc file.
-
 9. Setup interior evolution model (**SPIDER**)
 
     ```console

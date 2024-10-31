@@ -5,14 +5,23 @@
 set -e
 
 # Check environment
-if [ -z $PETSC_ARCH ]; then
-    echo "ERROR: You need to set PETSC_ARCH before compiling SPIDER"
-    exit 1
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    PETSC_ARCH=arch-linux-c-opt
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    PETSC_ARCH=arch-darwin-c-opt
+else
+    echo "ERROR: Unknown OS type '$OSTYPE' "
 fi
-if [ -z $PETSC_DIR ]; then
-    echo "ERROR: You need to set PETSC_DIR before compiling SPIDER"
-    exit 1
-fi
+
+# PETSc install folder
+PETSC_DIR=$(realpath petsc)
+
+# Export if needed
+export PETSC_ARCH
+export PETSC_DIR
+
+echo "Using PETSC_DIR=$PETSC_DIR"
+echo "Using PETSC_ARCH=$PETSC_ARCH"
 
 # Output path
 workpath="SPIDER"
