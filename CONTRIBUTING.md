@@ -23,7 +23,7 @@ Alternatively, install using Conda:
 
 ```console
 cd proteus
-conda create -n proteus python=3.10
+conda create -n proteus python=3.12
 conda activate proteus
 pip install -e .[develop]
 ```

@@ -7,14 +7,17 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - Usage: usage.md
+  - Config: config.md
+  - Data: data.md
   - Troubleshooting: troubleshooting.md
-  - MORS: https://fwl-proteus.readthedocs.io/projects/mors/
-  - JANUS: https://fwl-proteus.readthedocs.io/projects/janus/
   - Contact: contact.md
   - Contributing: CONTRIBUTING.md
   - Code of Conduct: CODE_OF_CONDUCT.md
   - 🔗 Source code: https://github.com/FormingWorlds/PROTEUS
   - 🔗 Issues: https://github.com/FormingWorlds/PROTEUS/issues
+  - 🔗 MORS: https://fwl-proteus.readthedocs.io/projects/mors/
+  - 🔗 JANUS: https://fwl-proteus.readthedocs.io/projects/janus/
+  - 🔗 AGNI: https://nichollsh.github.io/AGNI/dev/
 
 theme:
   name: material
@@ -47,6 +50,7 @@ plugins:
         paths: [src]
         import:
         - https://installer.readthedocs.io/en/stable/objects.inv
+        - https://docs.python.org/3/objects.inv
         - https://numpy.org/doc/stable/objects.inv
         - https://docs.scipy.org/doc/scipy/objects.inv
         - https://pandas.pydata.org/docs/objects.inv
@@ -57,7 +61,10 @@ plugins:
             ignore_init_summary: yes
           show_submodules: no
           show_source: true
-          show_root_heading: false
+          show_symbol_type_heading: True
+          show_root_heading: true
+          show_root_toc_entry: true
+          show_docstring_attributes: true
           show_root_full_path: false
           docstring_section_style: list
           members_order: alphabetical

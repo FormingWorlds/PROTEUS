@@ -6,14 +6,16 @@ from __future__ import annotations
 import glob
 import logging
 import os
-import shutil
 import subprocess
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from proteus.atmos_clim.common import read_atmosphere_data
+from proteus.interior.wrapper import read_interior_data
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements
 from proteus.plot.cpl_emission import plot_emission
@@ -24,21 +26,32 @@ from proteus.plot.cpl_global import plot_global
 from proteus.plot.cpl_interior import plot_interior
 from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
 from proteus.plot.cpl_observables import plot_observables
+from proteus.plot.cpl_population import (
+    plot_population_mass_radius,
+    plot_population_time_density,
+)
 from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_stacked import plot_stacked
 from proteus.utils.constants import (
-    const_sigma,
     element_list,
-    volatile_species,
+    gas_list,
 )
-from proteus.utils.helper import UpdateStatusfile, find_nearest, safe_rm
-from proteus.utils.spider import get_all_output_times
+from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
+from proteus.utils.plot import sample_times
+
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
+def _get_current_time():
+    '''
+    Get the current system time as a formatted string.
+    '''
+    return str(datetime.now().strftime('%Y-%m-%d %H:%M:%S %Z'))
 
-def GitRevision(dir:str) -> str:
+def _get_git_revision(dir:str) -> str:
     '''
     Get git hash for repository in `dir`.
     '''
@@ -54,29 +67,151 @@ def GitRevision(dir:str) -> str:
 
     return hash
 
-def CalculateEqmTemperature(I_0, ASF_sf, A_B):
+def _get_socrates_version():
     '''
-    Calculate planetary equilibrium temperature.
-    Params: Stellar flux, ASF scale factor, and bond albedo.
+    Get the installed SOCRATES version.
     '''
-    return (I_0 * ASF_sf * (1.0 - A_B) / const_sigma)**(1.0/4.0)
+    verpath = os.path.join(os.environ.get("RAD_DIR"),"version")
+    with open(verpath, 'r') as hdl:
+        ver = hdl.read().replace("\n","")
+    return str(ver)
+
+def _get_spider_version():
+    '''
+    Get the installed SPIDER version.
+    '''
+
+    # This is the only one that we use, and it won't be updated in the future.
+    return "0.2.0"
+
+def _get_petsc_version():
+    '''
+    Get the installed PETSc version.
+    '''
+
+    # Like SPIDER, this is the only one that we use
+    return "1.3.19.0"
+
+def _get_agni_version(dirs:dict):
+    '''
+    Get the installed AGNI version
+    '''
+    from tomllib import load as tomlload
+    with open(os.path.join(dirs["agni"],"Project.toml"),'rb') as hdl:
+        agni_meta = tomlload(hdl)
+    return agni_meta["version"]
+
+def _get_julia_version():
+    '''
+    Get the installed Julia version
+    '''
+    return subprocess.check_output(["julia","--version"]).decode("utf-8").split()[-1]
+
+def print_system_configuration(dirs:dict):
+    '''
+    Print the current system configuration.
+    '''
+    import platform
+    import pwd
+    import sys
+
+    # Try to get the login name using os.getlogin()
+    try:
+        username = os.getlogin()
+    except OSError:
+        username = pwd.getpwuid(os.getuid()).pw_name
+
+    log.info("Current time      " + _get_current_time())
+    log.info("Python version    " + sys.version.split(" ")[0])
+    log.info("System hostname   " + str(os.uname()[1]))
+    log.info("System username   " + str(username))
+    log.info("Platform type     " + str(platform.system()))
+    log.info("FWL data path     " + dirs["fwl"])
+    log.info(" ")
+
+def print_module_configuration(dirs:dict, config:Config, config_path:str):
+    '''
+    Print the current module configuration, with versions.
+    '''
+
+    # PROTEUS
+    from proteus import __version__ as proteus_version
+    log.info("PROTEUS version   " + proteus_version)
+    log.info("PROTEUS location  " + dirs["proteus"])
+    log.info("PROTEUS git hash  " + _get_git_revision(dirs["proteus"]))
+    log.info("Config file       " + str(config_path))
+    log.info("Output path       " + dirs["output"])
+    log.info(" ")
+
+    # Interior module
+    write = "Interior module   %s" % config.interior.module
+    match config.interior.module:
+        case 'spider':
+            write += " version " + _get_spider_version()
+        case 'aragog':
+            from aragog import __version__ as aragog_version
+            write += " version " + aragog_version
+    log.info(write)
+    if config.interior.module == "spider":
+        log.info("  - PETSc         version " + _get_petsc_version())
+
+    # Structure module
+    log.info("Structure module  %s" % config.struct.module)
+
+    # Atmosphere module
+    write = "Atmos_clim module %s" % config.atmos_clim.module
+    match config.atmos_clim.module:
+        case 'janus':
+            from janus import __version__ as janus_version
+            write += " version " + janus_version
+        case 'agni':
+            write += " version " + _get_agni_version(dirs)
+    log.info(write)
+    if config.atmos_clim.module in ['janus', 'agni']:
+        log.info("  - SOCRATES      version %s at %s" %(_get_socrates_version(), dirs["rad"]))
+        if config.atmos_clim.module == 'agni':
+            log.info("  - Julia         version " + _get_julia_version())
+
+    # Outgassing module
+    write = "Outgas module     %s" % config.outgas.module
+    if config.outgas.module == 'calliope':
+        from calliope import __version__ as calliope_version
+        write += " version " + calliope_version
+    log.info(write)
+
+    # Escape module
+    log.info("Escape module     %s" % config.escape.module)
+
+    # Star module
+    write = "Star module       %s" % config.star.module
+    if config.star.module == 'mors':
+        from mors import __version__ as mors_version
+        write += " version " + mors_version
+    log.info(write)
+
+    # Orbit module
+    log.info("Orbit module      %s" % config.orbit.module)
+
+    # Delivery module
+    log.info("Delivery module   %s" % config.delivery.module)
+
+    # End spacer
+    log.info(" ")
 
 
-# https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
-def latex_float(f):
-    float_str = "{0:.2g}".format(f)
-    if "e" in float_str:
-        base, exponent = float_str.split("e")
-        return r"${0} \times 10^{{{1}}}$".format(base, int(exponent))
-    else:
-        return float_str
+def print_header():
+    log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    log.info("                   PROTEUS framework                   ")
+    log.info("                   by Forming Worlds                   ")
+    log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    log.info(" ")
 
 def PrintCurrentState(hf_row:dict):
     '''
     Print the current state of the model to the logger
     '''
     log.info("Runtime info...")
-    log.info("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
+    log.info("    System time  :   %s  "         % _get_current_time())
     log.info("    Model time   :   %.2e   yr"    % float(hf_row["Time"]))
     log.info("    T_surf       :   %4.3f   K"    % float(hf_row["T_surf"]))
     log.info("    T_magma      :   %4.3f   K"    % float(hf_row["T_magma"]))
@@ -99,39 +234,50 @@ def CreateLockFile(output_dir:str):
 
 def GetHelpfileKeys():
     '''
-    Variables to be held in the helpfile
+    Variables to be held in the helpfile.
+
+    All dimensional quantites should be stored in SI units, except those noted below.
+    * Pressure is in units of [bar].
+    * Time is in units of [years].
     '''
 
     # Basic keys
     keys = [
             # Model tracking and basic parameters
-            "Time", "R_planet", "M_planet",
+            "Time", "separation", # [yr], [m]
+
+            # Input parameters (converted to SI)
+            "R_int", "M_int", # [m], [kg]
 
             # Temperatures
-            "T_surf", "T_magma", "T_eqm", "T_skin",
+            "T_surf", "T_magma", "T_eqm", "T_skin", # all [K]
 
             # Energy fluxes
-            "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins",
+            "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins", # all [W m-2]
 
             # Interior properties
-            "gravity", "Phi_global", "RF_depth",
-            "M_core", "M_mantle", "M_mantle_solid", "M_mantle_liquid",
+            "gravity", "Phi_global", "RF_depth", # [m s-2] , [1] , [1]
+            "M_core", "M_mantle", "M_planet",    # all [kg]
+            "M_mantle_solid", "M_mantle_liquid", # all [kg]
 
             # Stellar
-            "R_star", "age_star",
+            "R_star", "age_star", # [m], [yr]
 
-            # Observational
-            "z_obs", "transit_depth", "contrast_ratio", # observed from infinity
+            # Observational (from infinity)
+            "z_obs", # observed height relative to R_int [m]
+            "rho_obs", # observed bulk density [kg m-3]
+            "transit_depth", "contrast_ratio", # [1], [1]
+            "bond_albedo", # bond albedo [1]
 
             # Escape
-            "esc_rate_total",
+            "esc_rate_total", # [kg s-1]
 
             # Atmospheric composition
-            "M_atm", "P_surf", "atm_kg_per_mol", # more keys added below
+            "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]
             ]
 
     # gases
-    for s in volatile_species:
+    for s in gas_list:
         keys.append(s+"_mol_atm")
         keys.append(s+"_mol_solid")
         keys.append(s+"_mol_liquid")
@@ -234,141 +380,112 @@ def ReadHelpfileFromCSV(output_dir:str):
         raise Exception("Cannot find helpfile at '%s'"%fpath)
     return pd.read_csv(fpath, sep=r"\s+")
 
-
-def ValidateInitFile(dirs:dict, OPTIONS:dict):
-    '''
-    Validate configuration file, checking for invalid options
-    '''
-
-    if OPTIONS["atmosphere_surf_state"] == 2: # Not all surface treatments are mutually compatible
-        if OPTIONS["shallow_ocean_layer"] == 1:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Shallow mixed layer scheme is incompatible with the conductive lid scheme! Turn one of them off")
-
-    surf_state = int(OPTIONS["atmosphere_surf_state"])
-    if not (0 <= surf_state <= 3):
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Invalid surface state %d" % surf_state)
-
-    if OPTIONS["atmosphere_model"] == 1:  # Julia required for AGNI
-        if shutil.which("julia") is None:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Could not find Julia in current environment")
-
-    if OPTIONS["atmosphere_nlev"] < 15:
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Atmosphere must have at least 15 levels")
-
-    if OPTIONS["interior_nlev"] < 40:
-        UpdateStatusfile(dirs, 20)
-        raise Exception("Interior must have at least 40 levels")
-
-    # Ensure that all volatiles are all tracked
-    for s in volatile_species:
-        key_pp = str(s+"_initial_bar")
-        key_in = str(s+"_included")
-        if (OPTIONS[key_pp] > 0.0) and (OPTIONS[key_in] == 0):
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Volatile %s has non-zero pressure but is disabled in cfg"%s)
-        if (OPTIONS[key_pp] > 0.0) and (OPTIONS["solvevol_use_params"] > 0):
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Volatile %s has non-zero pressure but outgassing parameters are enabled"%s)
-
-    # Required vols
-    for s in ["H2O","CO2","N2","S2"]:
-        if OPTIONS[s+"_included"] == 0:
-            UpdateStatusfile(dirs, 20)
-            raise Exception("Missing required volatile '%s'"%s)
-
-    return True
-
-def UpdatePlots( output_dir:str, OPTIONS:dict, end=False, num_snapshots=7):
+def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
 
     Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
 
     Parameters
     ----------
-        output_dir : str
-            Output directory containing simulation information
-        OPTIONS : dict
+        dirs : dict
+            Directories dictionary
+        config : Config
             PROTEUS options dictionary.
         end : bool
             Is this function being called at the end of the simulation?
     """
 
+    # Directories
+    output_dir = dirs["output"]
+    fwl_dir    = dirs["fwl"]
+
     # Check model configuration
-    dummy_atm = bool(OPTIONS["atmosphere_model"] == 2)
-    escape    = bool(OPTIONS["escape_model"] > 0)
+    dummy_atm = config.atmos_clim.module == 'dummy'
+    spider    = config.interior.module == 'spider'
+    aragog    = config.interior.module == 'aragog'
+    escape    = config.escape.module is not None
 
-    # Get all JSON files
-    output_times = get_all_output_times( output_dir )
-
-    # Do not plot if there's insufficient data
-    if np.amax(output_times) < 2:
-        return
+    # Get all output times
+    output_times = []
+    if spider:
+        from proteus.interior.spider import get_all_output_times
+        output_times = get_all_output_times( output_dir )
+    if aragog:
+        from proteus.interior.aragog import get_all_output_times
+        output_times = get_all_output_times( output_dir )
 
     # Global properties for all timesteps
-    if len(output_times) > 2:
-        plot_global(output_dir, OPTIONS)
+    plot_global(hf_all, output_dir, config)
 
-        # Elemental mass inventory
-        if escape:
-            plot_elements(output_dir, OPTIONS["plot_format"])
-            plot_escape(output_dir, escape_model=OPTIONS['escape_model'], plot_format=OPTIONS["plot_format"])
-    # Filter to only include steps with corresponding NetCDF files
+    # Elemental mass inventory
+    if escape:
+        plot_elements(hf_all, output_dir, config.params.out.plot_fmt)
+        plot_escape(hf_all, output_dir, escape_model=config.escape.module, plot_format=config.params.out.plot_fmt)
+
+    # Which times do we have atmosphere data for?
     if not dummy_atm:
         ncs = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
         nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
-        output_times = sorted(list(set(output_times) & set(nc_times)))
 
-    # Work out which times we want to plot
-    if len(output_times) <= num_snapshots:
-        plot_times = output_times
+        # Check intersection of atmosphere and interior data
+        if not spider:
+            output_times = nc_times
+        else:
+            output_times = sorted(list(set(output_times) & set(nc_times)))
 
-    else:
-        output_times = [x for x in output_times if x > 0]
+    # Samples for plotting profiles
+    if len(output_times) > 0:
+        nsamp = 7
+        tmin = 1.0
+        if np.amax(output_times) > 1e3:
+            tmin = 1e3
+        plot_times, _ = sample_times(output_times, nsamp, tmin=tmin)
+        log.debug("Snapshots to plot:" + str(plot_times))
 
-        plot_times = []
-        tmin = max(1,np.amin(output_times))
-        tmax = max(tmin+1, np.amax(output_times))
-
-        for s in np.logspace(np.log10(tmin),np.log10(tmax),num_snapshots): # Sample on log-scale
-
-            remaining = list(set(output_times) - set(plot_times))
-            if len(remaining) == 0:
-                break
-
-            v,_ = find_nearest(remaining,s) # Find next new sample
-            plot_times.append(int(v))
-
-    plot_times = sorted(set(plot_times)) # Remove any duplicates + resort
-    log.debug("Snapshots to plot:" + str(plot_times))
+    # Interior profiles
+    if spider or aragog:
+        int_data = read_interior_data(output_dir, config.interior.module, plot_times)
+        plot_interior(output_dir, plot_times, int_data,
+                              config.interior.module, config.params.out.plot_fmt)
 
     # Temperature profiles
-    plot_interior(output_dir, plot_times, OPTIONS["plot_format"])
     if not dummy_atm:
-        plot_atmosphere(output_dir, plot_times, OPTIONS["plot_format"])
-        plot_stacked(output_dir, plot_times, OPTIONS["plot_format"])
+        atm_data = read_atmosphere_data(output_dir, plot_times)
 
-        if OPTIONS["atmosphere_model"] != 1:
-            # don't make this plot for AGNI, since it will do it itself
-            plot_fluxes_atmosphere(output_dir, OPTIONS["plot_format"])
+        # Atmosphere only
+        plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
+
+        # Atmosphere and interior, stacked
+        if spider or aragog:
+            plot_stacked(output_dir, plot_times, int_data, atm_data,
+                            config.interior.module, config.params.out.plot_fmt)
+
+        # Flux profiles
+        if config.atmos_clim.module == 'janus':
+            # only do this for JANUS, AGNI does it automatically
+            plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
 
     # Only at the end of the simulation
     if end:
-        plot_global(output_dir,         OPTIONS, logt=False)
-        plot_interior_cmesh(output_dir, plot_format=OPTIONS["plot_format"])
-        plot_sflux(output_dir,          plot_format=OPTIONS["plot_format"])
-        plot_sflux_cross(output_dir,    plot_format=OPTIONS["plot_format"])
-        plot_fluxes_global(output_dir,  OPTIONS)
-        plot_observables(output_dir,    plot_format=OPTIONS["plot_format"])
-        plot_emission(output_dir,       plot_times, plot_format=OPTIONS["plot_format"])
+        plot_global(hf_all,         output_dir, config, logt=False)
+        plot_fluxes_global(hf_all,  output_dir, config)
+        plot_observables(hf_all,    output_dir, plot_format=config.params.out.plot_fmt)
+        plot_population_mass_radius (hf_all, output_dir, fwl_dir, config.params.out.plot_fmt)
+        plot_population_time_density(hf_all, output_dir, fwl_dir, config.params.out.plot_fmt)
+        plot_sflux(output_dir,          plot_format=config.params.out.plot_fmt)
+        plot_sflux_cross(output_dir,    plot_format=config.params.out.plot_fmt)
+
+        if spider or aragog:
+            plot_interior_cmesh(output_dir, plot_times, int_data, config.interior.module,
+                                plot_format=config.params.out.plot_fmt)
+
+        if not dummy_atm:
+            plot_emission(output_dir, plot_times, plot_format=config.params.out.plot_fmt)
 
     # Close all figures
     plt.close()
 
-def SetDirectories(OPTIONS: dict):
+def SetDirectories(config: Config):
     """Set directories dictionary
 
     Sets paths to the required directories, based on the configuration provided
@@ -376,7 +493,7 @@ def SetDirectories(OPTIONS: dict):
 
     Parameters
     ----------
-        OPTIONS : dict
+        config : Config
             PROTEUS options dictionary
 
     Returns
@@ -385,35 +502,31 @@ def SetDirectories(OPTIONS: dict):
             Dictionary of paths to important directories
     """
 
-    if os.environ.get('PROTEUS_DIR') is None:
-        raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
-    proteus_dir = os.path.abspath(os.getenv('PROTEUS_DIR'))
-    proteus_src = os.path.join(proteus_dir,"src/proteus")
+    proteus_dir = get_proteus_dir()
+    proteus_src = os.path.join(proteus_dir,"src","proteus")
 
     # PROTEUS folders
     dirs = {
-            "output":   os.path.join(proteus_dir,"output",OPTIONS['dir_output']),
+            "output":   os.path.join(proteus_dir,"output",config.params.out.path),
             "input":    os.path.join(proteus_dir,"input"),
             "proteus":  proteus_dir,
-            "janus":    os.path.join(proteus_dir,"JANUS"),
             "agni":     os.path.join(proteus_dir,"AGNI"),
             "vulcan":   os.path.join(proteus_dir,"VULCAN"),
             "spider":   os.path.join(proteus_dir,"SPIDER"),
-            "utils":    os.path.join(proteus_src,"utils")
+            "utils":    os.path.join(proteus_src,"utils"),
+            "tools":    os.path.join(proteus_dir,"tools"),
             }
 
     # FWL data folder
     if os.environ.get('FWL_DATA') is None:
         UpdateStatusfile(dirs, 20)
-        raise Exception("The FWL_DATA environment variable where spectral"
-                        "and evolution tracks data will be downloaded needs to be set up!"
+        raise Exception("The FWL_DATA environment variable needs to be set up!"
                         "Did you source PROTEUS.env?")
     else:
         dirs["fwl"] = os.environ.get('FWL_DATA')
 
-
     # SOCRATES directory
-    if OPTIONS["atmosphere_model"] in [0,1]:
+    if config.atmos_clim.module in ('janus', 'agni'):
         # needed for atmosphere models 0 and 1
 
         if os.environ.get('RAD_DIR') is None:

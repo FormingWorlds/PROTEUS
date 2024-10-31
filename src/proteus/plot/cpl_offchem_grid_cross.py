@@ -217,7 +217,7 @@ if __name__ == '__main__':
     zv  = "T_surf"
 
     # Filter
-    cf = {"mean_distance":0.01154}
+    cf = {"semimajoraxis":0.01154}
 
     # Plotting options
     contour = False

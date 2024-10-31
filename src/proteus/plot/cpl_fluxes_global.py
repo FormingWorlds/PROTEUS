@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import matplotlib as mpl
@@ -8,32 +9,30 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.plot import dict_colors
+from proteus.utils.plot import get_colour
 
 if TYPE_CHECKING:
     from proteus import Proteus
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_fluxes_global(output_dir: str, options: dict, t0: float=100.0):
-
-    log.info("Plot global fluxes")
+def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, config: Config, t0: float=100.0):
 
     # Get values
-    hf_all = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=r"\s+")
-    hf_all = hf_all.loc[hf_all["Time"]>t0]
-
-    time = np.array(hf_all["Time"] )
-
-    F_net = np.array(hf_all["F_atm"])
-    F_asf = np.array(hf_all["F_ins"]) * options["asf_scalefactor"] * (1.0 - options["albedo_pl"]) * np.cos(options["zenith_angle"] * np.pi/180.0)
-    F_olr = np.array(hf_all["F_olr"])
-    F_upw = np.array(hf_all["F_olr"]) + np.array(hf_all["F_sct"])
-    F_int = np.array(hf_all["F_int"])
-
+    hf_crop = hf_all.loc[hf_all["Time"]>t0]
+    time = np.array(hf_crop["Time"])
     if len(time) < 3:
         log.warning("Cannot make plot with less than 3 samples")
         return
+
+    log.info("Plot global fluxes")
+
+    F_net = np.array(hf_crop["F_atm"])
+    F_asf = np.array(hf_crop["F_ins"]) * config.orbit.s0_factor * (1.0 - config.atmos_clim.albedo_pl) * np.cos(config.orbit.zenith_angle * np.pi/180.0)
+    F_olr = np.array(hf_crop["F_olr"])
+    F_upw = np.array(hf_crop["F_olr"]) + np.array(hf_crop["F_sct"])
+    F_int = np.array(hf_crop["F_int"])
 
     # Create plot
     mpl.use('Agg')
@@ -46,11 +45,11 @@ def plot_fluxes_global(output_dir: str, options: dict, t0: float=100.0):
     ax.axhline(y=280.0, color='black', lw=lw, linestyle='dashed', label="S-N limit", zorder=1)
 
     # Plot fluxes
-    ax.plot(time, F_int, lw=lw, alpha=al, zorder=2, color=dict_colors["int"], label="Net (int.)")
-    ax.plot(time, F_net, lw=lw, alpha=al, zorder=2, color=dict_colors["atm"], label="Net (atm.)")
-    ax.plot(time, F_olr, lw=lw, alpha=al, zorder=2, color=dict_colors["OLR"], label="OLR")
-    ax.plot(time, F_upw, lw=lw, alpha=al, zorder=3, color=dict_colors["sct"], label="OLR + Scat.")
-    ax.plot(time, F_asf, lw=lw, alpha=al, zorder=3, color=dict_colors["ASF"], label="ASF", linestyle='dotted')
+    ax.plot(time, F_int, lw=lw, alpha=al, zorder=2, color=get_colour("int"), label="Net (int.)")
+    ax.plot(time, F_net, lw=lw, alpha=al, zorder=2, color=get_colour("atm"), label="Net (atm.)")
+    ax.plot(time, F_olr, lw=lw, alpha=al, zorder=2, color=get_colour("OLR"), label="OLR")
+    ax.plot(time, F_upw, lw=lw, alpha=al, zorder=3, color=get_colour("sct"), label="OLR + Scat.")
+    ax.plot(time, F_asf, lw=lw, alpha=al, zorder=3, color=get_colour("ASF"), label="ASF", linestyle='dotted')
 
     # Configure plot
     ax.set_yscale("symlog")
@@ -65,14 +64,19 @@ def plot_fluxes_global(output_dir: str, options: dict, t0: float=100.0):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_global.%s"%options["plot_format"],
+    fig.savefig(output_dir+"/plot_fluxes_global.%s" % config.params.out.plot_fmt,
                 bbox_inches='tight', dpi=200)
 
 
 def plot_fluxes_global_entry(handler: Proteus):
+    # read helpfile
+    hf_all = pd.read_csv(os.path.join(handler.directories['output'], "runtime_helpfile.csv"), sep=r"\s+")
+
+    # make plot
     plot_fluxes_global(
+        hf_all=hf_all,
         output_dir=handler.directories["output"],
-        options=handler.config,
+        config=handler.config,
     )
 
 

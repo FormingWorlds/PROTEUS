@@ -12,6 +12,25 @@ import numpy as np
 
 log = logging.getLogger("fwl."+__name__)
 
+def get_proteus_dir():
+    '''
+    Get absolute path to PROTEUS directory.
+
+    This should be a directory containing `pyproject.toml`.
+    '''
+
+    # Assuming that this file is in `PROTEUS/src/proteus/utils/`
+    utils = os.path.dirname(os.path.abspath(__file__))
+
+    # Work upwards from utils
+    root = os.path.abspath(os.path.join(utils,"..","..",".."))
+
+    # Check that this path is reasonable
+    if "pyproject.toml" not in os.listdir(root):
+        raise EnvironmentError(f"Cannot locate PROTEUS directory. Tried '{root}' ")
+
+    return root
+
 def PrintSeparator():
     log.info("===================================================")
     pass
@@ -19,6 +38,33 @@ def PrintSeparator():
 def PrintHalfSeparator():
     log.info("---------------------------------------------------")
     pass
+
+def mol_to_ele(mol:str):
+    '''
+    Return the number of atoms of each element in a given molecule, as a dictionary
+
+    https://codereview.stackexchange.com/a/232664
+    '''
+
+    # Validate
+    if not str(mol[0]).isupper:
+        raise ValueError(f"Molecule name '{mol}' is invalid")
+
+    # Get atoms
+    decomp = re.findall(r'([A-Z][a-z]?)(\d*)', mol)
+    elems = {}
+    for ev in decomp:
+        if ev[1] == '':
+            val = 1
+        else:
+            val = int(ev[1])
+        elems[str(ev[0])] = val
+
+    # Check that what we got is reasonable
+    if not elems:
+        raise ValueError(f"Could not decompose molecule '{mol}'")
+
+    return elems
 
 # String sorting inspired by natsorted
 def natural_sort(lst):
@@ -188,21 +234,6 @@ def find_nearest(array, target):
     idx     = (np.abs(array - target)).argmin()
     close   = array[idx]
     return close, idx
-
-def mol_to_ele(mol:str):
-    '''
-    Return the number of each element within a given molecule, as a dictionary
-    '''
-    decomp = re.findall(r'([A-Z][a-z]?)(\d*)', mol)   # https://codereview.stackexchange.com/a/232664
-    elems = {}
-    for ev in decomp:
-        if ev[1] == '':
-            val = 1
-        else:
-            val = int(ev[1])
-        elems[str(ev[0])] = val
-    return elems
-
 
 def recursive_get(d, keys):
     '''

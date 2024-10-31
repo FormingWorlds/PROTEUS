@@ -33,6 +33,25 @@ JANUS
 agni
 Agni
 AGNI
+calliope
+Calliope
+CALLIOPE
+petsc
+Petsc
+PETSc
+PETSC
+spider
+Spider
+SPIDER
+aragog
+Aragog
+ARAGOG
+atmodeller
+ATMODELLER
+Atmodeller
+zephyrus
+ZEPHYRUS
+Zephyrus
 
 # misc
 ######
@@ -115,6 +134,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+result_images/
 
 # Translations
 *.mo

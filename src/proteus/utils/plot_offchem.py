@@ -151,8 +151,8 @@ def offchem_slice_grid(years, opts, data, cvar_filter):
     variable filter. It returns a subset of the total grid, in which every
     grid point matches the required control variable arguments.
 
-    For example, if `cvar_filter = {"mean_distance": 0.1}`, then it would only
-    return grid points which ran with a `mean_distance` of `0.1` exactly. All
+    For example, if `cvar_filter = {"semimajoraxis": 0.1}`, then it would only
+    return grid points which ran with a `semimajoraxis` of `0.1` exactly. All
     other grid points are excluded from the return value.
 
     Parameters

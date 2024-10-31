@@ -15,27 +15,25 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
-
-    log.info("Plot escape")
-
-    hf_all = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=r"\s+")
+def plot_escape(hf_all:pd.DataFrame, output_dir:str, escape_model, plot_format="pdf", t0=100.0) :
 
     time = np.array(hf_all["Time"])
-    if len(time) < 3:
-        log.warning("Cannot make plot with less than 3 samples")
+    if np.amax(time) < 2:
+        log.debug("Insufficient data to make plot_escape")
         return
+
+    log.info("Plot escape")
 
     # make plot
     lw = 1.2
     scale = 1.1
     fig,ax1 = plt.subplots(1,1, figsize=(7*scale,4*scale))
 
-    if escape_model == 0 :
+    if not escape_model:
         escape_model_label = 'No escape'
-    elif escape_model == 1 :
+    elif escape_model == 'zephyrus':
         escape_model_label = 'Energy-limited escape (Zephyrus)'
-    elif escape_model == 2 :
+    elif escape_model == 'dummy':
         escape_model_label = 'Dummy escape'
 
     y = hf_all['esc_rate_total']
@@ -63,10 +61,15 @@ def plot_escape(output_dir, escape_model, plot_format="pdf", t0=100.0) :
 
 
 def plot_escape_entry(handler: Proteus):
+    # read helpfile
+    hf_all = pd.read_csv(os.path.join(handler.directories['output'], "runtime_helpfile.csv"), sep=r"\s+")
+
+    # make plot
     plot_escape(
+        hf_all=hf_all,
         output_dir=handler.directories["output"],
-        escape_model=handler.config['escape_model'],
-        plot_format=handler.config["plot_format"],
+        escape_model=handler.config.escape.module,
+        plot_format=handler.config.params.out.plot_fmt,
     )
 
 

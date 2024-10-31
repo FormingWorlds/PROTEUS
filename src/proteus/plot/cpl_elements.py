@@ -8,48 +8,55 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import element_list
+from proteus.utils.constants import M_earth, element_list
 
 if TYPE_CHECKING:
     from proteus import Proteus
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_elements( output_dir, plot_format="pdf", t0=100.0):
+def plot_elements( hf_all:pd.DataFrame, output_dir:str, plot_format="pdf", t0=100.0):
+
+    if np.amax(hf_all["Time"]) < 2:
+        log.debug("Insufficient data to make plot_elements")
+        return
 
     log.info("Plot elements")
 
-    hf_all = pd.read_csv(output_dir+"/runtime_helpfile.csv", sep=r"\s+")
-
     time = np.array(hf_all["Time"] )
-    if len(time) < 3:
-        log.warning("Cannot make plot with less than 3 samples")
-        return
 
     # make plot
-    lw = 1.2
+    lw = 2
     scale = 1.1
-    fig,ax = plt.subplots(1,1, figsize=(7*scale,4*scale))
+    fig,ax = plt.subplots(1,1, figsize=(6*scale,4*scale))
 
-
+    # By element
     total = np.zeros(len(time))
     for e in element_list:
-        y = hf_all[e+"_kg_total"]
-        ax.plot(time, y, lw=lw, ls='solid', label="Total "+e)[0]
 
+        # Plot planetary inventory of this element
+        y = np.array(hf_all[e+"_kg_total"])/M_earth
         total += y
+        line = ax.plot(time, y, lw=lw, ls='solid',  label=e)[0]
 
-    ax.plot(time, total,           lw=lw, ls='solid',  label='Total',  c='k')
-    ax.plot(time, hf_all["M_atm"], lw=lw, ls='dotted', label='Atmos.', c='k')
+        # Plot atmospheric inventory of this element
+        y = np.array(hf_all[e+"_kg_atm"])/M_earth
+        ax.plot(time, y, lw=lw*1.5, ls='dotted', color=line.get_color())
+
+    # Planetary element sum inventory
+    ax.plot(time, total, lw=lw, ls='solid',  label='Total',  c='k')
+
+    # Atmosphere mass
+    M_atm = np.array(hf_all["M_atm"])/M_earth
+    ax.plot(time, M_atm, lw=lw*1.5, ls='dotted', label='Atmosphere', c='k')
 
     # decorate
-    ax.set_ylabel("Inventory [kg]")
+    ax.set_ylabel(r"Mass [M$_\oplus$]")
     ax.set_yscale("log")
     ax.set_xlabel("Time [yr]")
     ax.set_xscale("log")
-    ax.set_xlim(left=t0, right=np.amax(time))
-    ax.grid(alpha=0.2)
-    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    ax.set_xlim(left=t0, right=np.amax(time)*1.1)
+    ax.legend(loc='lower center', bbox_to_anchor=(0.5, 1.01), ncol=4)
 
     plt.close()
     plt.ioff()
@@ -59,9 +66,14 @@ def plot_elements( output_dir, plot_format="pdf", t0=100.0):
 
 
 def plot_elements_entry(handler: Proteus):
+    # read helpfile
+    hf_all = pd.read_csv(os.path.join(handler.directories['output'], "runtime_helpfile.csv"), sep=r"\s+")
+
+    # make plot
     plot_elements(
+        hf_all=hf_all,
         output_dir=handler.directories["output"],
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
     )
 
 

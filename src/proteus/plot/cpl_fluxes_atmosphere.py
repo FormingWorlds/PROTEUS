@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 
-def plot_fluxes_atmosphere(output_dir, plot_format="pdf"):
+def plot_fluxes_atmosphere(output_dir:str, plot_format="pdf"):
 
     log.info("Plot atmosphere fluxes")
 
@@ -70,7 +70,7 @@ def plot_fluxes_atmosphere(output_dir, plot_format="pdf"):
 def plot_fluxes_atmosphere_entry(handler: Proteus):
     plot_fluxes_atmosphere(
         output_dir=handler.directories["output"],
-        plot_format=handler.config["plot_format"],
+        plot_format=handler.config.params.out.plot_fmt,
     )
 
 

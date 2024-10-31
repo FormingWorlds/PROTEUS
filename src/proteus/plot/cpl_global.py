@@ -9,15 +9,21 @@ import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import volatile_species
-from proteus.utils.plot import dict_colors, vol_latex, vol_zorder
+from proteus.utils.constants import gas_list
+from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
     from proteus import Proteus
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e1):
+def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
+                logt: bool=True, tmin: float=1e1):
+
+    if np.amax(hf_all["Time"]) < 2:
+        log.debug("Insufficient data to make plot_global")
+        return
 
     log.info("Plot global")
 
@@ -32,8 +38,6 @@ def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e
         "framealpha":0.9
     }
 
-    fpath = os.path.join(output_dir , "runtime_helpfile.csv")
-    hf_all = pd.read_csv(fpath, sep=r"\s+")
 
     #    Volatile parameters (keys=vols, vals=quantites_over_time)
     vol_present = {} # Is present ever? (true/false)
@@ -42,14 +46,14 @@ def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e
     vol_mol_atm = {} # Moles in atmosphere
     vol_mol_int = {} # Moles in interior
     vol_mol_tot = {} # Moles in total
-    vol_atmpart = {} # Partitioning into atm
     vol_intpart = {} # Partitioning into int
 
-    for vol in volatile_species:
+    for vol in gas_list:
         # Check vmr for presence
         this_vmr = np.array(hf_all[vol+"_vmr"])
         vol_present[vol] = True
-        if (np.amax(this_vmr) < 1.0e-20) or (options[vol+"_included"] < 1):
+
+        if (np.amax(this_vmr) < 1.0e-20) or not config.outgas.calliope.is_included(vol):
             vol_present[vol] = False
             continue
         vol_vmr[vol] = this_vmr
@@ -59,7 +63,12 @@ def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e
         vol_mol_atm[vol] = np.array(hf_all[vol+"_mol_atm"])
         vol_mol_tot[vol] = np.array(hf_all[vol+"_mol_total"])
         vol_mol_int[vol] = vol_mol_tot[vol] - vol_mol_atm[vol]
-        vol_atmpart[vol] = vol_mol_atm[vol]/vol_mol_tot[vol]
+
+        # Volatile partitioning into the interior
+        # Requires special treatment for when moles=0, which occurs when atmosphere escapes.
+        mask = np.argwhere(vol_mol_tot[vol] < 1e-10) # mask of values where moles=0
+        vol_mol_int[vol][mask] = 0
+        vol_mol_tot[vol][mask] = 1
         vol_intpart[vol] = vol_mol_int[vol]/vol_mol_tot[vol]
 
     # Init plot
@@ -86,15 +95,15 @@ def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e
 
     # Set titles
     ax_titles = [
-        "A) Net heat flux to space",
-        "B) Surface temperature",
-        "C) Mantle evolution",
-        "D) Surface volatile partial pressure",
-        "E) Surface volatile mole fraction",
-        "F) Interior volatile partitioning"
+        "(a) Net heat flux to space",
+        "(c) Surface temperature",
+        "(e) Mantle evolution",
+        "(b) Surface gas partial pressure",
+        "(d) Surface gas mole fraction",
+        "(f) Interior volatile partitioning"
     ]
     for i,ax in enumerate(axs):
-        ax.text(0.015, 0.015, ax_titles[i],
+        ax.text(0.011, 0.015, ax_titles[i],
                 transform=ax.transAxes,
                 horizontalalignment='left',
                 verticalalignment='bottom',
@@ -133,23 +142,24 @@ def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e
 
 
     # PLOT ax_tl
-    ax_tl.plot( hf_all["Time"], hf_all["F_int"], color=dict_colors["int"], lw=lw, alpha=al,  label="Int.",zorder=3, linestyle='dashed')
-    ax_tl.plot( hf_all["Time"], hf_all["F_atm"], color=dict_colors["atm"], lw=lw, alpha=al,  label="Atm.",zorder=3)
-    ax_tl.plot( hf_all["Time"], hf_all["F_olr"], color=dict_colors["OLR"], lw=lw, alpha=al,  label="OLR", zorder=2)
+    ax_tl.plot( hf_all["Time"], hf_all["F_int"], color=get_colour("int"), lw=lw, alpha=al,  label="Int.",zorder=3, linestyle='dashed')
+    ax_tl.plot( hf_all["Time"], hf_all["F_atm"], color=get_colour("atm"), lw=lw, alpha=al,  label="Atm.",zorder=3)
+    ax_tl.plot( hf_all["Time"], hf_all["F_olr"], color=get_colour("OLR"), lw=lw, alpha=al,  label="OLR", zorder=2)
     ax_tl.legend(loc='center left', **leg_kwargs)
     ax_tl.set_ylim(0.0, np.amax(hf_all["F_olr"]*2.0))
 
     # PLOT ax_cl
     min_temp = np.amin(hf_all["T_surf"])
     max_temp = np.amax(hf_all["T_surf"])
-    ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="dashed", lw=lw, alpha=al, color=dict_colors["int"])
-    ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="-",      lw=lw, alpha=al, color=dict_colors["atm"])
+    ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="dashed", lw=lw, alpha=al, color=get_colour("int"))
+    ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="-",      lw=lw, alpha=al, color=get_colour("atm"))
     ax_cl.set_ylim(min(1000.0,min_temp-25) , max(3500.0,max_temp+25))
 
     # PLOT ax_bl
-    ax_bl.axhline( y=options["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=dict_colors["qmagenta_dark"], label=r'C-M boundary' )
-    ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=dict_colors["int"], ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
-    ax_bl.plot( hf_all["Time"],     hf_all["Phi_global"], color=dict_colors["atm"], linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
+    ax_bl.axhline( y=config.struct.corefrac,     ls='dashed', lw=lw*1.5, alpha=al, color=get_colour("core"), label=r'C-M boundary' )
+    ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=get_colour("int"), ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
+    ax_bl.plot( hf_all["Time"],     hf_all["Phi_global"], color=get_colour("atm"), linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
+
     ax_bl.legend(loc='center left', **leg_kwargs)
     ax_bl.set_ylim(0.0,1.01)
 
@@ -157,26 +167,26 @@ def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e
     ax_tr.plot( hf_all["Time"], hf_all["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
     bar_min, bar_max = 0.1, 10.0
     bar_max = max(bar_max, np.amax(hf_all["P_surf"]))
-    for vol in volatile_species:
+    for vol in gas_list:
         if not vol_present[vol]:
             continue
-        ax_tr.plot( hf_all["Time"], vol_bars[vol], color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+        ax_tr.plot( hf_all["Time"], vol_bars[vol], color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
         bar_min = min(bar_min, np.amin(vol_bars[vol]))
     ax_tr.set_ylim(max(1.0e-7,min(bar_min, 1.0e-1)), bar_max * 2.0)
     ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
 
     # PLOT ax_cr
-    for vol in volatile_species:
+    for vol in gas_list:
         if not vol_present[vol]:
             continue
-        ax_cr.plot( hf_all["Time"], vol_vmr[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+        ax_cr.plot( hf_all["Time"], vol_vmr[vol]*100.0, color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
     ax_cr.set_ylim(0, 101)
 
     # PLOT ax_br
-    for vol in volatile_species:
+    for vol in gas_list:
         if not vol_present[vol]:
             continue
-        ax_br.plot( hf_all["Time"], vol_intpart[vol]*100.0, color=dict_colors[vol], lw=lw, alpha=al, label=vol_latex[vol], zorder=vol_zorder[vol])
+        ax_br.plot( hf_all["Time"], vol_intpart[vol]*100.0, color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
     ax_br.set_ylim(0,101)
     ax_br.legend(loc='center left', ncol=2, **leg_kwargs).set_zorder(20)
 
@@ -188,19 +198,23 @@ def plot_global(output_dir: str , options: dict, logt: bool=True, tmin: float=1e
     else:
         plt_name += "_lin"
 
-    fig.savefig(output_dir+"/%s.%s"%(plt_name,options["plot_format"]),
+    fig.savefig(output_dir+"/%s.%s"%(plt_name,config.params.out.plot_fmt),
                 bbox_inches='tight', dpi=200)
 
 
 def plot_global_entry(handler: Proteus):
+    # read helpfile
+    hf_all = pd.read_csv(os.path.join(handler.directories['output'], "runtime_helpfile.csv"), sep=r"\s+")
+
+    # make plot
     for logt in [True,False]:
         plot_global(
+            hf_all=hf_all,
             output_dir=handler.directories['output'],
-            options=handler.config,
+            config=handler.config,
             logt=logt,
             tmin=1e1,
         )
-
 
 if __name__ == "__main__":
     from proteus.plot._cpl_helpers import get_handler_from_argv

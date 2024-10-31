@@ -3,34 +3,25 @@
 from __future__ import annotations
 
 import glob
+import logging
 import os
 from typing import TYPE_CHECKING
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
-from cmcrameri import cm
+
+from proteus.utils.helper import mol_to_ele
+
+log = logging.getLogger("fwl."+__name__)
 
 if TYPE_CHECKING:
     from proteus import Proteus
 
-vol_zorder  = {
-    "H2O"            : 11,
-    "CO2"            : 10,
-    "H2"             : 9,
-    "CH4"            : 8,
-    "N2"             : 7,
-    "O2"             : 5,
-    "CO"             : 4,
-    "S"              : 3,
-    "S2"             : 3,
-    "SO2"            : 3,
-    "He"             : 2,
-    "NH3"            : 1,
-}
+# Standard plotting colours
+_preset_colours  = {
+    # Default colour
+    "_fallback": "#ff00ff",
 
-dict_colors  = {
-    # From Julia's default colours
+    # Volatile gases
     "H2O": "#027FB1",
     "CO2": "#D24901",
     "H2" : "#008C01",
@@ -41,104 +32,219 @@ dict_colors  = {
     "SO2": "#00008B",
     "He" : "#30FF71",
     "NH3": "#675200",
-    # Misc colours
-    "qgray"          : "#768E95",
-    "qgray2"         : "#888888",
-    "qblue"          : "#4283A9", # http://www.color-hex.com/color/4283a9
-    "qgreen"         : "#62B4A9", # http://www.color-hex.com/color/62b4a9
-    "qred"           : "#E6767A",
-    "qturq"          : "#2EC0D1",
-    "qorange"        : "#ff7f0e",
-    "qmagenta"       : "#9A607F",
-    "qyellow"        : "#EBB434",
-    "qgray_dark"     : "#465559",
-    "qblue_dark"     : "#274e65",
-    "qgreen_dark"    : "#3a6c65",
-    "qred_dark"      : "#b85e61",
-    "qturq_dark"     : "#2499a7",
-    "qmagenta_dark"  : "#4d303f",
-    "qyellow_dark"   : "#a47d24",
-    "qgray_light"    : "#acbbbf",
-    "qblue_light"    : "#8db4cb",
-    "qgreen_light"   : "#a0d2cb",
-    "qred_light"     : "#eb9194",
-    "qturq_light"    : "#57ccda",
-    "qmagenta_light" : "#c29fb2",
-    "qyellow_light"  : "#f1ca70",
+
+    # Volatile elements
+    "H": "#0000aa",
+    "C": "#ff0000",
+    "O": "#00dd00",
+    "N": "#ffaa00",
+    "S": "#ff22ff",
+    "P": "#33ccff",
+
+    # refractory elements
+    "Fe": "#888888",
+    "Si": "#aa2277",
+    "Mg": "#996633",
+
+    # Radiation
+    "OLR": "crimson",
+    "ASF": "royalblue",
+    "sct": "seagreen",
+
+    # Model components
+    "atm"     : "#768E95",
+    "int"     : "#ff7f0e",
+    "core"    : "#4d303f",
+    "atm_bkg" : "#f2faff",
+    "int_bkg" : "#fffaf2",
 }
 
-# Additional aliases
-dict_colors["OLR"] = "crimson"
-dict_colors["ASF"] = "royalblue"
-dict_colors["sct"] = "seagreen" # for scattering
-dict_colors["atm"] = dict_colors["qgray"]
-dict_colors["int"] = dict_colors["qorange"]
 
-dict_colors["atm_bkg"] = (0.95, 0.98, 1.0)
-dict_colors["int_bkg"] = (1.0, 0.98, 0.95)
+def _generate_colour(gas:str):
+    """
+    Systematically generate a colour for a gas, from its composition.
 
-# Volatile Latex names
-vol_latex = {
-    "H2O"     : r"H$_2$O",
-    "CO2"     : r"CO$_2$",
-    "H2"      : r"H$_2$" ,
-    "CH4"     : r"CH$_4$",
-    "CO"      : r"CO",
-    "N2"      : r"N$_2$",
-    "S"       : r"S",
-    "S2"      : r"S$_2$",
-    "SO2"     : r"SO$_2$",
-    "O2"      : r"O$_2$",
-    "O3"      : r"O$_3$",
-    "OH"      : r"OH",
-    "HCN"     : r"HCN",
-    "NH3"     : r"NH$_3$",
-    "He"      : r"He",
-    "H2O-CO2" : r"H$_2$O-CO$_2$",
-    "H2O-H2"  : r"H$_2$O-H$_2$",
-    "H2O-CO"  : r"H$_2$O-CO",
-    "H2O-CH4" : r"H$_2$O-CH$_4$",
-    "H2O-N2"  : r"H$_2$O-N$_2$",
-    "H2O-O2"  : r"H$_2$O-O$_2$",
-    "H2-H2O"  : r"H$_2$-H$_2$O",
-    "H2-CO"   : r"H$_2$-CO",
-    "H2-CH4"  : r"H$_2$-CH$_4$",
-    "H2-CO2"  : r"H$_2$-CO$_2$",
-    "H2-N2"   : r"H$_2$-N$_2$",
-    "H2-O2"   : r"H$_2$-O$_2$",
-    "CO2-N2"  : r"CO$_2$-N$_2$",
-    "CO2-H2O" : r"CO$_2$-H$_2$O",
-    "CO2-CO"  : r"CO$_2$-CO",
-    "CO2-CH4"  : r"CO$_2$-CH$_4$",
-    "CO2-O2"  : r"CO$_2$-O$_2$",
-    "CO2-H2"  : r"CO$_2$-H$_2$",
-    "CO-H2O" : r"CO-H$_2$O",
-    "CO-CO2" : r"CO-CO$_2$",
-    "CO-H2"  : r"CO-H$_2$",
-    "CO-CH4" : r"CO-CH$_4$",
-    "CO-N2"  : r"CO-N$_2$",
-    "CO-O2"  : r"CO-O$_2$",
-    "CH4-H2O" : r"CH$_4$-H$_2$O",
-    "CH4-CO2" : r"CH$_4$-CO$_2$",
-    "CH4-H2"  : r"CH$_4$-H$_2$",
-    "CH4-CO"  : r"CH$_4$-CO",
-    "CH4-CH4" : r"CH$_4$-CH$_4$",
-    "CH4-N2"  : r"CH$_4$-N$_2$",
-    "CH4-O2"  : r"CH$_4$-O$_2$",
-    "N2-H2O" : r"N$_2$-H$_2$O",
-    "N2-CO2" : r"N$_2$-CO$_2$",
-    "N2-H2"  : r"N$_2$-H$_2$",
-    "N2-CO"  : r"N$_2$-CO",
-    "N2-CH4" : r"N$_2$-CH$_4$",
-    "N2-N2"  : r"N$_2$-N$_2$",
-    "N2-O2"  : r"N$_2$-O$_2$",
-    "O2-H2O" : r"O$_2$-H$_2$O",
-    "O2-CO2" : r"O$_2$-CO$_2$",
-    "O2-H2"  : r"O$_2$-H$_2$",
-    "O2-CO"  : r"O$_2$-CO",
-    "O2-CH4" : r"O$_2$-CH$_4$",
-    "O2-N2"  : r"O$_2$-N$_2$",
-    "O2-O2"  : r"O$_2$-O$_2$",
+    This method for mixing colours was taken from AGNI's phys.jl
+    """
+
+    # Break into atoms
+    try:
+        atoms = mol_to_ele(gas)
+    except ValueError:
+        log.warning(f"Using fallback colour for '{gas}'")
+        return _preset_colours["_fallback"]
+
+    # Red, green, blue components
+    red = 0.0
+    gre = 0.0
+    blu = 0.0
+
+    # For each atom, add the contriution of its rgb components
+    for e in atoms.keys():
+        red += int(_preset_colours[e][1:2],base=16)*atoms[e]
+        gre += int(_preset_colours[e][3:4],base=16)*atoms[e]
+        blu += int(_preset_colours[e][5:6],base=16)*atoms[e]
+
+    # Normalisation constant
+    norm = max((red,gre,blu))
+
+    # Prevent the colour getting too close to white, which is hard to see on a plot
+    if red+gre+blu > 705:
+        norm *= 255.0/235.0
+
+    # Normalise colours to 0-255
+    red = int(255*red/norm)
+    gre = int(255*gre/norm)
+    blu = int(255*blu/norm)
+
+    # Convert to hex string
+    colour = f"#{red:02x}{gre:02x}{blu:02x}"
+
+    return colour
+
+
+def get_colour(thing:str):
+    """
+    Get a colour for something which needs one (e.g. for plotting a particular gas)
+    """
+
+    # Try getting it from dictionary
+    try:
+        colour = _preset_colours[thing]
+
+    # Otherwise, generate it systematically
+    except KeyError:
+        colour = _generate_colour(thing)
+
+    return colour
+
+def latexify(gas:str):
+    """
+    Convert gas name to latex-formatted string
+    """
+
+    out = ""
+    for c in gas:
+        c = str(c)
+        if c.isnumeric():
+            out += r"$_%s$"%c
+        else:
+            out += c
+    return out
+
+# Bandpasses for instrumentation of interest [units of microns, um]
+observer_bands = {
+
+    # https://jwst-docs.stsci.edu/jwst-mid-infrared-instrument/miri-instrumentation/miri-filters-and-dispersers
+    "MIRI" : {
+        "F560W":   [5.054, 6.171],
+        "F770W":   [6.581, 8.687],
+        "F1000W":  [9.023, 10.891],
+        "F1130W":  [10.953, 11.667],
+        "F1280W":  [11.588, 14.115],
+        "F1500W":  [13.527, 16.64],
+        "F1800W":  [16.519, 19.502],
+        "F2100W":  [18.477, 23.159],
+        "F2550W":  [23.301, 26.733],
+    },
+
+    # https://jwst-docs.stsci.edu/jwst-near-infrared-spectrograph/nirspec-instrumentation/nirspec-dispersers-and-filters#
+    "NIRSpec" : {
+        "F070LP": [0.70,1.27],
+        "F100LP": [0.97,1.84],
+        "F170LP": [1.66,3.07],
+        "F290LP": [2.87,5.10],
+        "PRISM" : [0.60,5.30],
+    },
+
+    # https://jwst-docs.stsci.edu/jwst-near-infrared-imager-and-slitless-spectrograph#gsc.tab=0
+    "NIRISS" : {
+        "SOSS": [0.6, 2.8],
+        "WFSS": [0.8, 2.2],
+        "AMI":  [2.8, 4.8]
+    },
+
+    # https://jwst-docs.stsci.edu/jwst-near-infrared-camera/nircam-instrumentation/nircam-filters
+    "NIRCam" : {
+        "Short": [0.6, 2.3],
+        "Long":  [2.4, 5.0],
+    },
+
+    # https://www.esa.int/Science_Exploration/Space_Science/Ariel/Ariel_s_instruments
+    "ARIEL" : {
+        "AIRS0": [1.95, 3.9],
+        "AIRS1": [3.9, 7.8]
+    },
+
+    # https://en.wikipedia.org/wiki/Infrared_astronomy
+    # https://www.eso.org/sci/facilities/paranal/instruments/crires/inst.html
+    # https://www.eso.org/sci/facilities/paranal/instruments/gravity/overview.html
+    "IR" : {
+        "R": [0.65 , 1.0 ],
+        "J": [1.115, 1.362 ],
+        "H": [1.423, 1.769],
+        "K": [1.972, 2.624],
+        "L": [2.869, 4.188],
+        "M": [4.6  , 5.0 ],
+        "N": [7.5  , 14.5],
+        "Q": [17.0 , 25.0],
+        "Z": [28.0 , 40.0],
+    },
+
+    # https://link.springer.com/article/10.1007/s10686-020-09660-1
+    "PLATO" : {
+        "blue": [0.500, 0.675],
+        "red" : [0.675, 1.125]
+    },
+
+    # https://doi.org/10.1051/0004-6361/202140366
+    "LIFE" : {
+        "LIFE": [4.0, 18.5]
+    },
+
+    # https://ntrs.nasa.gov/api/citations/20240006497/downloads/HWO%20Engineering%20View%20Status%20Plans%20Opportunities.pdf
+    "HWO" : {
+        "Coronograph":      [0.4, 1.8],
+        "Highres imager":   [0.2, 2.5],
+        "Spectrograph":     [0.1, 1.0]
+    },
+
+    # https://www.gemini.edu/instrumentation/maroon-x
+    # https://www.gemini.edu/instrumentation/igrins-2
+    "GEMINI-N" : {
+        "MAROON-X": [0.5, 0.92],
+        "IGRINS-2": [1.49, 2.46]
+    },
+
+    # https://www.eso.org/sci/facilities/paranal/instruments/sphere.html
+    # https://www.eso.org/sci/facilities/paranal/instruments/espresso/overview.html
+    "VLT" : {
+        "ESPRESSO": [0.38, 0.788],
+        "SPHERE": [0.95, 2.32]
+    },
+
+    # https://carmenes.caha.es/ext/instrument/index.html
+    "CARMENES": {
+        "CARMENES": [0.520, 1.710],
+    },
+
+    # https://www.tng.iac.es/instruments/harps/
+    "HARPS" : {
+        "HARPS-N":   [0.383, 0.690],
+    },
+
+    # https://noirlab.edu/public/programs/kitt-peak-national-observatory/wiyn-35m-telescope/neid/
+    "NEID" : {
+        "NEID": [0.38, 0.93],
+    },
+
+    # https://elt.eso.org/instrument/
+    "ELT" : {
+        "HARMONI": [0.47, 2.45],
+        "MICADO":  [0.8,  2.4],
+        "ANDES":   [0.40, 1.80]
+    }
+
 }
 
 # https://stackoverflow.com/questions/13490292/format-number-using-latex-notation-in-python
@@ -150,19 +256,13 @@ def latex_float(f):
     else:
         return float_str
 
-def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0):
+def sample_times(times:list, nsamp:int, tmin:float=1.0):
     from proteus.utils.helper import find_nearest
 
-    # get all files
-    files = glob.glob(os.path.join(handler.directories["output"], "data", "*."+ftype))
-    if len(files) < 1:
-        return []
-
-    # get times
-    times = [int(f.split("/")[-1].split("_")[0]) for f in files]
-
-    # do not allow t=0
-    times = [x for x in times if x > 0]
+    # check count
+    if len(times) <= nsamp:
+        out_t, out_i = np.unique(times, return_index=True)
+        return list(out_t), list(out_i)
 
     # lower limit
     tmin = max(tmin,np.amin(times))
@@ -171,33 +271,52 @@ def sample_output(handler: Proteus, ftype:str = "nc", tmin:float = 1.0):
     # upper limit
     tmax = max(tmin+1, np.amax(times))
 
-    nsamp = 8
+    # do not allow times outside range
+    allowed_times = [int(x) for x in times if tmin<=x<=tmax]
 
     # get samples on log-time scale
     sample_t = []
-    sample_f = []
+    sample_i = []
     for s in np.logspace(np.log10(tmin),np.log10(tmax),nsamp): # Sample on log-scale
 
-        remaining = list(set(times) - set(sample_t))
+        remaining = [int(v) for v in set(allowed_times) - set(sample_t)]
         if len(remaining) == 0:
             break
 
-        _,idx = find_nearest(remaining,s) # Find next new sample
+        # Get next nearest time
+        val,_ = find_nearest(remaining,s)
+        sample_t.append(int(val))
 
-        sample_t.append(int(times[idx]))
-        sample_f.append(str(files[idx]))
+        # Get the index of this time in the original array
+        _,idx = find_nearest(times,val)
+        sample_i.append(int(idx))
 
     # sort output
     mask = np.argsort(sample_t)
-    out_t, out_f = [], []
+    out_t, out_i = [], []
     for i in mask:
         out_t.append(sample_t[i])
-        out_f.append(sample_f[i])
+        out_i.append(sample_i[i])
+
+    return out_t, out_i
+
+
+def sample_output(handler: Proteus, extension:str = ".nc", tmin:float = 1.0, nsamp:int=8):
+
+    # get all files
+    files = glob.glob(os.path.join(handler.directories["output"], "data", "*"+extension))
+    if len(files) < 1:
+        return []
+
+    # get times
+    times = [int(f.split("/")[-1].split(extension)[0]) for f in files]
+
+    out_t, out_i = sample_times(times, nsamp, tmin=tmin)
+    out_f = [files[i] for i in out_i]
 
     # return times and file paths
     return out_t, out_f
 
-#===================================================================
 class MyFuncFormatter( object ):
 
     '''the default function formatter from
@@ -263,194 +382,3 @@ class MyFuncFormatter( object ):
         y = self._invascale( x )
         fmt = self._sci_notation( y, 0 )
         return fmt
-
-
-#===================================================================
-class FigureData( object ):
-
-    def __init__( self, nrows, ncols, width, height, outname='fig',
-        times=[], units='kyr' ):
-        dd = {}
-        self.data_d = dd
-
-        mpl.use('Agg')  # Prevent plots popping up (it's very annoying)
-
-        if isinstance(times, (float, int)):
-            times = np.array([times])
-
-        if len(times) > 0:
-            dd['time_l'] = times
-            # self.process_time_list()
-
-        if units:
-            dd['time_units'] = units
-            dd['time_decimal_places'] = 2 # hard-coded
-        dd['outname'] = outname
-
-        self.cmap = cm.imola
-
-        self.set_properties( nrows, ncols, width, height )
-
-    def get_color( self, frac ):
-        return self.cmap(frac)
-
-    def get_legend_label( self, time ):
-        dd = self.data_d
-        units = dd['time_units']
-        age = float(time)
-        if units == 'yr':
-            age = round( age, 0 )
-            label = '%d'
-        elif units == 'kyr':
-            age /= 1.0E3
-            label = '%0.1f'
-        elif units == 'Myr':
-            age /= 1.0E6
-            label = '%0.2f'
-        elif units == 'Byr' or units == 'Gyr':
-            age /= 1.0E9
-            label = '%0.2f'
-        else:
-            raise ValueError(f'Unknown units: {units}')
-        label = label % age
-        return label
-
-    def process_time_list( self ):
-        dd = self.data_d
-        time_l = dd['time_l']
-        try:
-            time_l = [int(time_l)]
-        except ValueError:
-            time_l = [int(time) for time in time_l.split(',')]
-        self.time = time_l
-
-    def make_figure( self ):
-        dd = self.data_d
-        nrows = dd['nrows']
-        ncols = dd['ncols']
-        fig, ax = plt.subplots( nrows, ncols )
-        fig.subplots_adjust(wspace=0.3,hspace=0.3)
-        fig.set_size_inches( dd['width'], dd['height'] )
-        self.fig = fig
-        self.ax = ax
-
-    def savefig( self, num, fmt ):
-        dd = self.data_d
-        if dd['outname']:
-            outname = dd['outname'] + '.' + fmt
-        else:
-            outname = 'fig%d.'%num + fmt
-        self.fig.savefig(outname, bbox_inches='tight',
-            pad_inches=0.05, dpi=dd['dpi'])
-
-    def set_cmap( self, cmap_obj ):
-        self.cmap = cmap_obj
-
-    def set_properties( self, nrows, ncols, width, height ):
-        dd = self.data_d
-        dd['nrows'] = nrows
-        dd['ncols'] = ncols
-        dd['width'] = width # inches
-        dd['height'] = height # inches
-
-        # Set main font properties
-        font_d = {
-            'size': 10.0,
-            'family': ['sans-serif']
-            }
-
-        # fonts  = fm.findSystemFonts(fontpaths=None, fontext='ttf')
-        # Has arial?
-        # for f in fonts:
-        #     if 'Arial' in f:
-        #         font_d["family"]        = 'sans-serif'
-        #         font_d['serif']         = ['Arial']
-        #         font_d['sans-serif']    = ['Arial']
-        #         break
-        mpl.rc('font', **font_d)
-
-        # Do NOT use TeX font for labels etc.
-        plt.rc('text', usetex=False)
-
-        # Other params
-        dd['dpi'] = 200
-        dd['extension'] = 'png'
-        dd['fontsize_legend'] = 8
-        dd['fontsize_title'] = 10
-        dd['fontsize_xlabel'] = 10
-        dd['fontsize_ylabel'] = 10
-        self.make_figure()
-
-    def set_myaxes( self, ax, title='', xlabel='', xticks='',
-                        ylabel='', yticks='', yrotation='', fmt='', xfmt='',
-                        xmin='', xmax='', ymin='', ymax='' ):
-        if title:
-            self.set_mytitle( ax, title )
-        if xlabel:
-            self.set_myxlabel( ax, xlabel )
-        if xticks:
-            self.set_myxticks( ax, xticks, xmin, xmax, xfmt )
-        if ylabel:
-            self.set_myylabel( ax, ylabel, yrotation )
-        if yticks:
-            self.set_myyticks( ax, yticks, ymin, ymax, fmt )
-
-    def set_mylegend( self, ax, handles, loc=4, ncol=1, TITLE=None, **kwargs ):
-        fontsize = self.data_d['fontsize_legend']
-        # FIXME
-        if not TITLE:
-            legend = ax.legend(handles=handles, loc=loc, ncol=ncol,
-                               fontsize=fontsize, **kwargs )
-            #units = dd['time_units']
-            #title = r'Time ({0})'.format( units )
-        else:
-            title = TITLE
-            legend = ax.legend(title=title, handles=handles, loc=loc,
-                ncol=ncol, fontsize=fontsize, **kwargs)
-        plt.setp(legend.get_title(),fontsize=fontsize)
-
-    def set_mytitle( self, ax, title ):
-        dd = self.data_d
-        fontsize = dd['fontsize_title']
-        title = r'{}'.format( title )
-        ax.set_title( title, fontsize=fontsize )
-
-    def set_myxlabel( self, ax, label ):
-        dd = self.data_d
-        fontsize = dd['fontsize_xlabel']
-        label = r'{}'.format( label )
-        ax.set_xlabel( label, fontsize=fontsize )
-
-    def set_myylabel( self, ax, label, yrotation ):
-        dd = self.data_d
-        fontsize = dd['fontsize_ylabel']
-        if not yrotation:
-            yrotation = 'horizontal'
-        label = r'{}'.format( label )
-        ax.set_ylabel( label, fontsize=fontsize, rotation=yrotation )
-
-    def set_myxticks( self, ax, xticks, xmin, xmax, fmt ):
-        if fmt:
-            xticks = fmt.ascale( np.array(xticks) )
-            ax.xaxis.set_major_formatter(
-                mpl.ticker.FuncFormatter(fmt))
-        ax.set_xticks( xticks)
-        # set x limits to match extent of ticks
-        if not xmax:
-            xmax=xticks[-1]
-        if not xmin:
-            xmin=xticks[0]
-        ax.set_xlim( xmin, xmax )
-
-    def set_myyticks( self, ax, yticks, ymin, ymax, fmt ):
-        if fmt:
-            yticks = fmt.ascale( np.array(yticks) )
-            ax.yaxis.set_major_formatter(
-                mpl.ticker.FuncFormatter(fmt))
-        ax.set_yticks( yticks)
-        # set y limits to match extent of ticks
-        if not ymax:
-            ymax=yticks[-1]
-        if not ymin:
-            ymin=yticks[0]
-        ax.set_ylim( ymin, ymax )

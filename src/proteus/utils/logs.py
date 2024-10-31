@@ -62,8 +62,6 @@ def setup_logger(logpath:str="new.log",level:str="INFO",logterm:bool=True):
     logger_name = "fwl"
 
     # https://stackoverflow.com/a/61457119
-    print(f"Setup logger as {logger_name}")
-
     custom_logger = logging.getLogger(logger_name)
 
     if os.path.exists(logpath):

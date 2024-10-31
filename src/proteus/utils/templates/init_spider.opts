@@ -32,7 +32,7 @@
 -melt_dTdPs_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/adiabat_temp_grad_melt.dat
 -melt_rho_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/density_melt.dat
 -melt_temp_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/temperature_melt.dat
--melt_log10visc 2.0 
+-melt_log10visc 2.0
 -melt_cond 4.0 # conductivity of melt
 -melt_phase_boundary_filename_rel_to_src lookup_data/1TPa-dK09-elec-free/liquidus_A11_H13.dat
 
