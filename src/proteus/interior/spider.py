@@ -5,9 +5,9 @@ import glob
 import json
 import logging
 import os
+import platform
 import shutil
 import subprocess
-import platform
 import sys
 from typing import TYPE_CHECKING
 

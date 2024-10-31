@@ -111,9 +111,9 @@ def print_system_configuration(dirs:dict):
     '''
     Print the current system configuration.
     '''
-    import sys
-    import pwd
     import platform
+    import pwd
+    import sys
 
     # Try to get the login name using os.getlogin()
     try:

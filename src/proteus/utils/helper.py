@@ -14,15 +14,22 @@ log = logging.getLogger("fwl."+__name__)
 
 def get_proteus_dir():
     '''
-    Get path to PROTEUS directory. This is the directory containing `pyproject.toml`.
+    Get absolute path to PROTEUS directory.
+
+    This should be a directory containing `pyproject.toml`.
     '''
 
-    # This file is in `PROTEUS/src/proteus/utils/`
+    # Assuming that this file is in `PROTEUS/src/proteus/utils/`
     utils = os.path.dirname(os.path.abspath(__file__))
 
     # Work upwards from utils
-    root = os.path.join(utils,"..","..","..")
-    return os.path.abspath(root)
+    root = os.path.abspath(os.path.join(utils,"..","..",".."))
+
+    # Check that this path is reasonable
+    if "pyproject.toml" not in os.listdir(root):
+        raise EnvironmentError(f"Cannot locate PROTEUS directory. Tried '{root}' ")
+
+    return root
 
 def PrintSeparator():
     log.info("===================================================")

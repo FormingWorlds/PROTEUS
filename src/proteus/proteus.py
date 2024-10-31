@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -34,15 +33,15 @@ from proteus.utils.coupler import (
     CreateHelpfileFromDict,
     CreateLockFile,
     ExtendHelpfile,
-    print_header,
-    print_module_configuration,
-    print_system_configuration,
     PrintCurrentState,
     ReadHelpfileFromCSV,
     SetDirectories,
     UpdatePlots,
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
+    print_header,
+    print_module_configuration,
+    print_system_configuration,
 )
 from proteus.utils.data import download_sufficient_data
 from proteus.utils.helper import (
