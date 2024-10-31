@@ -17,7 +17,7 @@ def tmp_max_bigger_than_tmp_min(instance, attribute, value):
 
 def warn_if_dummy(instance, attribute, value):
     if (instance.module == 'dummy') and value:
-        log.warning('Rayleigh scattering is enabled but it will be neglected')
+        raise ValueError('Dummy atmos_clim module is incompatible with Rayleigh scattering')
 
 
 @define
