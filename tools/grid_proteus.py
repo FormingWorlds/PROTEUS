@@ -443,8 +443,8 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "trappist1c.toml"
-    folder = "trappist1c_oxfu"
+    config = "hd63433d.toml"
+    folder = "hd63433d_oxfu"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
