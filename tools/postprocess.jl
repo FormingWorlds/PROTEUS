@@ -6,10 +6,11 @@
 # file called ppr.nc, in the PROTEUS run output folder.
 
 # Activate environment
-if !haskey(ENV, "PROTEUS_DIR")
-    error("The PROTEUS_DIR environment variable has not been set")
-end
-ROOT_DIR = abspath( ENV["PROTEUS_DIR"] , "AGNI/")
+# Assuming that this file is in PROTEUS/tools/
+PROTEUS_DIR = dirname(dirname(abspath(@__FILE__)))
+println("PROTEUS_DIR = $PROTEUS_DIR")
+
+ROOT_DIR = abspath( PROTEUS_DIR , "AGNI/")
 using Pkg
 Pkg.activate(ROOT_DIR)
 

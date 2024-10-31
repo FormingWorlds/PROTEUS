@@ -21,7 +21,7 @@ def init_star(handler:Proteus):
     Star-related things to be done when the simulation begins.
     '''
 
-    log.debug("Prepare stellar models")
+    log.info("Preparing stellar model")
 
     # Path to the modern spectrum
     #   i.e. that observed by a telescope, or derived from various observations.

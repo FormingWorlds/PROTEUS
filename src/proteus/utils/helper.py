@@ -13,9 +13,23 @@ import numpy as np
 log = logging.getLogger("fwl."+__name__)
 
 def get_proteus_dir():
-    if os.environ.get('PROTEUS_DIR') is None:
-        raise Exception("Environment variables not set! Have you sourced PROTEUS.env?")
-    return os.path.abspath(os.getenv('PROTEUS_DIR'))
+    '''
+    Get absolute path to PROTEUS directory.
+
+    This should be a directory containing `pyproject.toml`.
+    '''
+
+    # Assuming that this file is in `PROTEUS/src/proteus/utils/`
+    utils = os.path.dirname(os.path.abspath(__file__))
+
+    # Work upwards from utils
+    root = os.path.abspath(os.path.join(utils,"..","..",".."))
+
+    # Check that this path is reasonable
+    if "pyproject.toml" not in os.listdir(root):
+        raise EnvironmentError(f"Cannot locate PROTEUS directory. Tried '{root}' ")
+
+    return root
 
 def PrintSeparator():
     log.info("===================================================")

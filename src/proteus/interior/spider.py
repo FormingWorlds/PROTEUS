@@ -5,6 +5,7 @@ import glob
 import json
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -169,7 +170,7 @@ def _try_spider( dirs:dict, config:Config,
     # Check that SPIDER can be found
     spider_exec = os.path.join(dirs["spider"],"spider")
     if not os.path.isfile(spider_exec):
-        raise Exception("SPIDER executable could not be found at '%s'"%spider_exec)
+        raise FileNotFoundError("SPIDER executable could not be found at '%s'"%spider_exec)
 
     # Bounds on tolereances
     step_sf = min(1.0, max(1.0e-10, step_sf))
@@ -265,12 +266,20 @@ def _try_spider( dirs:dict, config:Config,
 
     call_string = " ".join(call_sequence)
 
+    # Environment
+    spider_env = os.environ.copy()
+    if platform.system() == "Darwin":
+        spider_env["PETSC_ARCH"] = "arch-darwin-c-opt"
+    else:
+        spider_env["PETSC_ARCH"] = "arch-linux-c-opt"
+    spider_env["PETSC_DIR"] = os.path.join(dirs["proteus"], "petsc")
+
     # Run SPIDER
-    log.info("Terminal output suppressed")
+    log.debug("SPIDER output suppressed")
     spider_print = open(dirs["output"]+"spider_recent.log",'w')
     spider_print.write(call_string+"\n")
     spider_print.flush()
-    proc = subprocess.run([call_string],shell=True,stdout=spider_print)
+    proc = subprocess.run([call_string],shell=True,stdout=spider_print, env=spider_env)
     spider_print.close()
 
     # Check status

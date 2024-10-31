@@ -45,8 +45,13 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
+def _get_current_time():
+    '''
+    Get the current system time as a formatted string.
+    '''
+    return str(datetime.now().strftime('%Y-%m-%d %H:%M:%S %Z'))
 
-def GitRevision(dir:str) -> str:
+def _get_git_revision(dir:str) -> str:
     '''
     Get git hash for repository in `dir`.
     '''
@@ -62,13 +67,151 @@ def GitRevision(dir:str) -> str:
 
     return hash
 
+def _get_socrates_version():
+    '''
+    Get the installed SOCRATES version.
+    '''
+    verpath = os.path.join(os.environ.get("RAD_DIR"),"version")
+    with open(verpath, 'r') as hdl:
+        ver = hdl.read().replace("\n","")
+    return str(ver)
+
+def _get_spider_version():
+    '''
+    Get the installed SPIDER version.
+    '''
+
+    # This is the only one that we use, and it won't be updated in the future.
+    return "0.2.0"
+
+def _get_petsc_version():
+    '''
+    Get the installed PETSc version.
+    '''
+
+    # Like SPIDER, this is the only one that we use
+    return "1.3.19.0"
+
+def _get_agni_version(dirs:dict):
+    '''
+    Get the installed AGNI version
+    '''
+    from tomllib import load as tomlload
+    with open(os.path.join(dirs["agni"],"Project.toml"),'rb') as hdl:
+        agni_meta = tomlload(hdl)
+    return agni_meta["version"]
+
+def _get_julia_version():
+    '''
+    Get the installed Julia version
+    '''
+    return subprocess.check_output(["julia","--version"]).decode("utf-8").split()[-1]
+
+def print_system_configuration(dirs:dict):
+    '''
+    Print the current system configuration.
+    '''
+    import platform
+    import pwd
+    import sys
+
+    # Try to get the login name using os.getlogin()
+    try:
+        username = os.getlogin()
+    except OSError:
+        username = pwd.getpwuid(os.getuid()).pw_name
+
+    log.info("Current time      " + _get_current_time())
+    log.info("Python version    " + sys.version.split(" ")[0])
+    log.info("System hostname   " + str(os.uname()[1]))
+    log.info("System username   " + str(username))
+    log.info("Platform type     " + str(platform.system()))
+    log.info("FWL data path     " + dirs["fwl"])
+    log.info(" ")
+
+def print_module_configuration(dirs:dict, config:Config, config_path:str):
+    '''
+    Print the current module configuration, with versions.
+    '''
+
+    # PROTEUS
+    from proteus import __version__ as proteus_version
+    log.info("PROTEUS version   " + proteus_version)
+    log.info("PROTEUS location  " + dirs["proteus"])
+    log.info("PROTEUS git hash  " + _get_git_revision(dirs["proteus"]))
+    log.info("Config file       " + str(config_path))
+    log.info("Output path       " + dirs["output"])
+    log.info(" ")
+
+    # Interior module
+    write = "Interior module   %s" % config.interior.module
+    match config.interior.module:
+        case 'spider':
+            write += " version " + _get_spider_version()
+        case 'aragog':
+            from aragog import __version__ as aragog_version
+            write += " version " + aragog_version
+    log.info(write)
+    if config.interior.module == "spider":
+        log.info("  - PETSc         version " + _get_petsc_version())
+
+    # Structure module
+    log.info("Structure module  %s" % config.struct.module)
+
+    # Atmosphere module
+    write = "Atmos_clim module %s" % config.atmos_clim.module
+    match config.atmos_clim.module:
+        case 'janus':
+            from janus import __version__ as janus_version
+            write += " version " + janus_version
+        case 'agni':
+            write += " version " + _get_agni_version(dirs)
+    log.info(write)
+    if config.atmos_clim.module in ['janus', 'agni']:
+        log.info("  - SOCRATES      version %s at %s" %(_get_socrates_version(), dirs["rad"]))
+        if config.atmos_clim.module == 'agni':
+            log.info("  - Julia         version " + _get_julia_version())
+
+    # Outgassing module
+    write = "Outgas module     %s" % config.outgas.module
+    if config.outgas.module == 'calliope':
+        from calliope import __version__ as calliope_version
+        write += " version " + calliope_version
+    log.info(write)
+
+    # Escape module
+    log.info("Escape module     %s" % config.escape.module)
+
+    # Star module
+    write = "Star module       %s" % config.star.module
+    if config.star.module == 'mors':
+        from mors import __version__ as mors_version
+        write += " version " + mors_version
+    log.info(write)
+
+    # Orbit module
+    log.info("Orbit module      %s" % config.orbit.module)
+
+    # Delivery module
+    log.info("Delivery module   %s" % config.delivery.module)
+
+    # End spacer
+    log.info(" ")
+
+
+def print_header():
+    log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    log.info("                   PROTEUS framework                   ")
+    log.info("                   by Forming Worlds                   ")
+    log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    log.info(" ")
 
 def PrintCurrentState(hf_row:dict):
     '''
     Print the current state of the model to the logger
     '''
     log.info("Runtime info...")
-    log.info("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
+    log.info("    System time  :   %s  "         % _get_current_time())
     log.info("    Model time   :   %.2e   yr"    % float(hf_row["Time"]))
     log.info("    T_surf       :   %4.3f   K"    % float(hf_row["T_surf"]))
     log.info("    T_magma      :   %4.3f   K"    % float(hf_row["T_magma"]))
