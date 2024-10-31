@@ -123,7 +123,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = false      # do not allow the planet to heat up
+    prevent_warming = true      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
