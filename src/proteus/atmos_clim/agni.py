@@ -72,13 +72,13 @@ def _construct_voldict(hf_row:dict, config:Config, dirs:dict):
 
     # get from hf_row
     vol_dict = {}
+    vol_sum = 0.0
     for vol in gas_list:
-        vmr = hf_row[vol+"_vmr"]
-        if vmr > 1e-40:
-            vol_dict[vol] = vmr
+        vol_dict[vol] = hf_row[vol+"_vmr"]
+        vol_sum += vol_dict[vol]
 
-    # check values
-    if len(vol_dict) == 0:
+    # Check that the total VMR is not zero
+    if vol_sum < 1e-4:
         UpdateStatusfile(dirs, 20)
         raise Exception("All volatiles have a volume mixing ratio of zero")
 
@@ -141,9 +141,6 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
         # set all gases as condensates, except the least abundant gas
         condensates = [v[0] for v in vol_sorted[1:]]
-
-        # set top two gases to be condensible
-        # condensates = [v[0] for v in vol_sorted[-2:]]
 
     # Chemistry
     chem_type = config.atmos_clim.agni.chemistry
