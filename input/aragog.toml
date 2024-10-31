@@ -135,7 +135,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     tmp_minimum     = 0.5           # temperature floor on solver
     tmp_maximum     = 5000.0        # temperature ceiling on solver
 
-    module  = "janus"           # Which atmosphere module to use
+    module  = "dummy"           # Which atmosphere module to use
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
@@ -156,7 +156,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         tropopause      = "none"        # none | skin | dynamic
 
     [atmos_clim.dummy]
-        gamma           = 0.7           # atmosphere opacity between 0 and 1
+        gamma           = 0.8           # atmosphere opacity between 0 and 1
 
 # Volatile escape - physics table
 [escape]
@@ -188,7 +188,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [interior.aragog]
         num_levels      = 100       # Number of Aragog grid levels
-        tolerance       = 1.0e-8   # solver tolerance
+        tolerance       = 1.0e-7   # solver tolerance
 
 # Outgassing - physics table
 [outgas]

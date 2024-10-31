@@ -19,10 +19,9 @@ from datetime import datetime
 import numpy as np
 
 from proteus.config import Config, read_config_object
+from proteus.utils.helper import get_proteus_dir
 
-PROTEUS_DIR=os.getenv('PROTEUS_DIR')
-if PROTEUS_DIR is None:
-    raise Exception("Environment is not activated or is setup incorrectly")
+PROTEUS_DIR=get_proteus_dir()
 
 # Custom logger instance
 def setup_logger(logpath:str="new.log",level=1,logterm=True):
@@ -447,7 +446,7 @@ if __name__=='__main__':
     config = "trappist1c.toml"
     folder = "trappist1c_oxfu"
 
-    cfg_base = os.path.join(os.getenv('PROTEUS_DIR'),"input",config)
+    cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 

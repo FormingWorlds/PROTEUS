@@ -124,6 +124,7 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     # PROTEUS
     from proteus import __version__ as proteus_version
     log.info("PROTEUS version   " + proteus_version)
+    log.info("PROTEUS location  " + dirs["proteus"])
     log.info("PROTEUS git hash  " + _get_git_revision(dirs["proteus"]))
     log.info("Config file       " + str(config_path))
     log.info("Output path       " + dirs["output"])
