@@ -53,13 +53,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.iters]
             enabled = true
             minimum = 3
-            maximum = 10
+            maximum = 8
 
         # required time constraints
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 4.567e+9     # yr, model will terminate when t > maximum
+            maximum = 1e9       # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -187,7 +187,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        num_levels      = 110       # Number of Aragog grid levels
+        num_levels      = 90       # Number of Aragog grid levels
         tolerance       = 1.0e-7   # solver tolerance
 
 # Outgassing - physics table

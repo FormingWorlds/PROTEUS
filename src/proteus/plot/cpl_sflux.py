@@ -35,7 +35,8 @@ def planck_function(lam, T):
     return planck_func
 
 
-def plot_sflux(output_dir: str, wl_max: float = 6000.0, plot_format: str="pdf"):
+def plot_sflux(output_dir: str, wl_max: float = 6000.0,
+                plt_modern:bool=True, plot_format: str="pdf"):
     """Plots stellar flux vs time for all wavelengths
 
     Note that this function will plot the flux from EVERY file it finds.
@@ -48,6 +49,10 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0, plot_format: str="pdf"):
 
     wl_max : float
         Upper limit of wavelength axis [nm]
+    plt_modern : bool
+        Include modern spectrum in plot?
+    plot_format: str
+        Output figure file format
 
     """
 
@@ -61,6 +66,8 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0, plot_format: str="pdf"):
     if (len(files) == 0):
         log.warning("No files found when trying to plot stellar flux")
         return
+
+    log.info("Plot stellar flux")
 
     # Downsample data
     if (len(files) > 200):
@@ -138,8 +145,9 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0, plot_format: str="pdf"):
         ax.plot(wave_t[i],flux_t[i],color=c,lw=0.7,alpha=0.6, label=label)
 
     # Plot current spectrum (use the copy made in the output directory)
-    X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
-    ax.plot(X[0],X[1],color='black',label='Modern',lw=0.8,alpha=0.9)
+    if plt_modern:
+        X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
+        ax.plot(X[0],X[1],color='black',label='Modern',lw=0.8,alpha=0.9)
 
     ax.legend()
 
@@ -152,6 +160,7 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0, plot_format: str="pdf"):
 def plot_sflux_entry(handler: Proteus):
     plot_sflux(
         output_dir=handler.directories['output'],
+        plt_modern=handler.config.star.module == "mors",
         plot_format=handler.config.params.out.plot_fmt,
     )
 
