@@ -50,7 +50,7 @@ def test_dummy_run(dummy_run):
 
 @pytest.mark.xfail(raises=AssertionError)
 @pytest.mark.parametrize("image", IMAGE_LIST)
-def test_plot_dummy_integration(dummy_run, image):
+def test_dummy_plot(dummy_run, image):
 
     out_dir = PROTEUS_ROOT / 'output' / 'dummy'
     ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy'
