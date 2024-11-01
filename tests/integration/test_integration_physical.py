@@ -39,16 +39,26 @@ def test_physical_run(physical_run):
 
 def test_physical_atmosphere(physical_run):
     # Get output times
-    print(physical_run)
     times,_ = sample_output(physical_run, extension="_atm.nc")
 
-    # Check JANUS output
+    # Load atmosphere output
     atm_data = read_atmosphere_data(out_dir,times)
+
+    # Compare to config
+    for i,atm in enumerate(atm_data):
+        assert len(atm["t"]) == physical_run.config.atmos_clim.janus.num_levels*2+1
+
+    # Compare to expected
+
+
 
 def test_physical_interior(physical_run):
     # Get output times
-    print(physical_run)
     times,_ = sample_output(physical_run, extension="_atm.nc")
 
     # Check Aragog output
     int_data = read_interior_data(out_dir,times)
+
+    # Compare to config
+    for i,atm in enumerate(int_data):
+        assert len(atm["t"]) == physical_run.config.atmos_clim.janus.num_levels*2+1
