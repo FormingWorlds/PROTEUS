@@ -123,6 +123,8 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 
 7. Setup numerical computing library (**PETSc**)
 
+    You will need to do this step in an environment with Python <=3.12.
+
     ```console
     ./tools/get_petsc.sh
     ```
