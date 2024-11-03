@@ -36,7 +36,7 @@ jobs:
 
     env:
       FWL_DATA: $HOME/work/fwl_data
-      RAD_DIR: $HOME/work/SOCRATES
+      RAD_DIR: $GITHUB_WORKSPACE/SOCRATES
 
     runs-on: ${{ matrix.os }}
     steps:
