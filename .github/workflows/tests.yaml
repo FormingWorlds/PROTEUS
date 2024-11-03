@@ -36,8 +36,7 @@ jobs:
 
     env:
       FWL_DATA: $HOME/work/fwl_data
-      RAD_DIR: ./SOCRATES
-      SOCRATES: ./SOCRATES  # https://github.com/FormingWorlds/JANUS/issues/51
+      RAD_DIR: $HOME/work/SOCRATES
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -59,24 +58,24 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 'nichollsh/SOCRATES'
-          path: 'SOCRATES'
+          path: '$RAD_DIR'
 
       # Try to restore SOCRATES from the cache
       - uses: actions/cache@v4
         id: cache-socrates
         with:
           path: |
-            SOCRATES/bin
-            SOCRATES/sbin
-            SOCRATES/set_rad_env
-          key: socrates-${{ hashFiles('SOCRATES/version') }}
+            $RAD_DIR/bin
+            $RAD_DIR/sbin
+            $RAD_DIR/set_rad_env
+          key: socrates-${{ hashFiles('$RAD_DIR/version') }}
 
       # Build SOCRATES if we can't restore it from the cache
       - name: Build SOCRATES
-        if: steps.cache-socrates.outputs.cache-hit != 'true'
+        # if: steps.cache-socrates.outputs.cache-hit != 'true'
         run: |
           export LD_LIBRARY_PATH=""
-          cd SOCRATES
+          cd $RAD_DIR
           ./configure
           ./build_code
           cd ..
