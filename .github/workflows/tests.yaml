@@ -22,6 +22,15 @@ jobs:
       matrix:
         os: ['ubuntu-latest', 'macos-latest']
         python-version: ['3.11', '3.13']
+        include:
+          - os: ubuntu-latest
+            INSTALL_DEPS: sudo apt-get install libnetcdff-dev netcdf-bin
+            CC: gcc
+            CXX: g++
+          - os: macos-latest
+            INSTALL_DEPS: brew install netcdf netcdf-fortran
+            CC: gcc
+            CXX: g++
 
     env:
       FWL_DATA: $HOME/work/fwl_data
@@ -30,45 +39,54 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
+
+      # https://stackoverflow.com/a/65356209
+      - name: Install system dependencies
+        run: ${{ matrix.INSTALL_DEPS }}
+
+      # Checkout PROTEUS
       - uses: actions/checkout@v4
         with:
           submodules: 'false'
 
+      # Setup Python using the version defined in the matrix
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
 
+      # Try to restore the Python environment from the cache
       - uses: actions/cache@v4
         id: cache-virtualenv
         with:
           path: ${{ env.pythonLocation }}
           key: ${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml') }}
 
-      # Setup aragog
+      # Setup Aragog
       - name: Get Aragog interior model
         uses: actions/checkout@v4
         with:
           repository: 'ExPlanetology/aragog'
           path: 'aragog'
 
-      - name: Install aragog
+      - name: Install Aragog
         run: |
           python -m pip install -e aragog/.
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         # if: steps.cache-virtualenv.outputs.cache-hit != 'true'
         run: |
           python -m pip install -e .[develop]
 
       # Get lookup data for PROTEUS
-      - uses: actions/cache@v4
+      - name: Get FWL data from cache
+        uses: actions/cache@v4
         id: cache-fwl-data
         with:
           path: ${{ env.FWL_DATA }}
           key: fwl-data-2
 
-      - name: Pre-download fwl data
+      - name: Get additional FWL data
         if: steps.cache-fwl-data.cache-hit != 'true'
         run: |
           proteus get stellar
@@ -81,6 +99,7 @@ jobs:
           repository: 'nichollsh/SOCRATES'
           path: 'SOCRATES'
 
+      # Try to restore SOCRATES from the cache
       - uses: actions/cache@v4
         id: cache-socrates
         with:
@@ -90,6 +109,7 @@ jobs:
             SOCRATES/set_rad_env
           key: socrates-${{ hashFiles('SOCRATES/version') }}
 
+      # Build SOCRATES if we can't restore it from the cache
       - name: Build SOCRATES
         if: steps.cache-socrates.outputs.cache-hit != 'true'
         run: |
@@ -99,7 +119,7 @@ jobs:
           ./build_code
           cd ..
 
-      # Run the tests
+      # Run PROTEUS tests
       - name: Test with pytest
         run: |
           coverage run -m pytest
