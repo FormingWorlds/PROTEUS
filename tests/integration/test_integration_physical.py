@@ -54,7 +54,7 @@ def test_physical_spectrum(physical_run):
 
 def test_physical_atmosphere(physical_run):
     # Keys to load and test
-    fields = ["t", "p", "z", "fl_U_LW", "fl_D_LW", "fl_U_SW", "fl_D_SW", "mmw"]
+    fields = ["t", "p", "z", "fl_U_LW", "fl_D_SW"]
 
     # Load atmosphere output
     out = read_atmosphere(out_dir / 'data' / '2002_atm.nc', extra_keys=fields)

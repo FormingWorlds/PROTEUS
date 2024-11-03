@@ -54,12 +54,13 @@ jobs:
           which gfortran
 
       # Checkout PROTEUS
-      - uses: actions/checkout@v4
+      - name: Checkout PROTEUS
+        uses: actions/checkout@v4
         with:
           submodules: 'false'
 
-      # Setup SOCRATES - copied from JANUS
-      - name: Get SOCRATES radiative transfer model
+      # Checkout SOCRATES
+      - name: Checlout SOCRATES radiative transfer model
         if: steps.cache-socrates.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
         with:
@@ -67,7 +68,8 @@ jobs:
           path: ${{ env.RAD_DIR }}
 
       # Try to restore SOCRATES from the cache
-      - uses: actions/cache@v4
+      - name: Restore SOCRATES from cache
+        uses: actions/cache@v4
         id: cache-socrates
         with:
           path: |
@@ -94,14 +96,15 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       # Try to restore the Python environment from the cache
-      - uses: actions/cache@v4
+      - name: Restore Python environment from cache
+        uses: actions/cache@v4
         id: cache-virtualenv
         with:
           path: ${{ env.pythonLocation }}
           key: ${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml') }}
 
       # Setup Aragog
-      - name: Get Aragog interior model
+      - name: Checkout Aragog interior model
         uses: actions/checkout@v4
         with:
           repository: 'ExPlanetology/aragog'
@@ -125,15 +128,14 @@ jobs:
           key: fwl-data-2
 
       # - name: Get additional FWL data
-      #   if: steps.cache-fwl-data.cache-hit != 'true'
-      #   run: |
-      #     proteus get stellar
-      #     proteus get spectral --name Frostflow --bands 48
+        if: steps.cache-fwl-data.cache-hit != 'true'
+        run: |
+          proteus get stellar
+          proteus get spectral --name Frostflow --bands 48
 
       # Run PROTEUS tests
       - name: Test with pytest
         run: |
-          ls $RAD_DIR
           coverage run -m pytest
 
       # Upload output run images if tests fail
