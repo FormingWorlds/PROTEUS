@@ -111,7 +111,6 @@ jobs:
         run: python -m pip install -e aragog/.
 
       - name: Install Python dependencies
-        if: steps.cache-virtualenv.outputs.cache-hit != 'true'
         run: python -m pip install -e .[develop]
 
       # Get lookup data for PROTEUS
