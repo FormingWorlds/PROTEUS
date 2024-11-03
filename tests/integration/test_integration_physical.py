@@ -35,19 +35,19 @@ def test_physical_run(physical_run):
     assert filecmp.cmp(out_dir / 'data' / '0.sflux', ref_dir / '0.sflux', shallow=False)
 
 def test_physical_atmosphere(physical_run):
-    # Get output times
-    # times,_ = sample_output(physical_run, extension="_atm.nc")
+    # Keys to load and test
+    fields = ["t", "p", "z", "fl_U_LW", "fl_D_LW", "fl_U_SW", "fl_D_SW"]
 
     # Load atmosphere output
-    atm_out = read_ncdf_profile(out_dir / 'data' / '2002_atm.nc')
+    atm_out = read_ncdf_profile(out_dir / 'data' / '2002_atm.nc', extra_keys=fields)
 
     # Compare to config
     assert len(atm_out["t"]) == physical_run.config.atmos_clim.janus.num_levels*2+1
 
     # Load atmosphere reference
-    atm_ref = read_ncdf_profile(ref_dir / '2002_atm.nc')
+    atm_ref = read_ncdf_profile(ref_dir / '2002_atm.nc', extra_keys=fields)
 
     # Compare to expected array values.
     # Cannot simply compare the files as black-boxes, because they contain date information
-    for field in ["t", "p", "z", "fl_U_LW", "fl_D_LW", "fl_U_SW", "fl_D_SW"]:
-        assert_allclose(atm_out[field], atm_ref[field], rtol=5e-3)
+    for key in fields:
+        assert_allclose(atm_out[key], atm_ref[key], rtol=5e-3)
