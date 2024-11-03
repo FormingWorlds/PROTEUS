@@ -46,51 +46,13 @@ jobs:
       - name: Install system dependencies
         run: ${{ matrix.INSTALL_DEPS }}
 
-      # Set homebrew path for MacOS
-      - name: Add homebrew to path
+      # MacOS only: create symbolic link for gfortran
+      - name: Symlink gfortran
         if: runner.os == 'macOS'
         run: |
-          ls /opt/homebrew/bin/gfortran*
           sudo ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
           sudo ln -s /opt/homebrew/Cellar/gcc/12.*/lib/gcc/12/*.dylib /opt/homebrew/lib/
           which gfortran
-
-      # Checkout PROTEUS
-      - uses: actions/checkout@v4
-        with:
-          submodules: 'false'
-
-      # Setup Python using the version defined in the matrix
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      # Try to restore the Python environment from the cache
-      - uses: actions/cache@v4
-        id: cache-virtualenv
-        with:
-          path: ${{ env.pythonLocation }}
-          key: ${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml') }}
-
-      - name: Install Python dependencies
-        # if: steps.cache-virtualenv.outputs.cache-hit != 'true'
-        run: |
-          python -m pip install -e .[develop]
-
-      # Get lookup data for PROTEUS
-      - name: Get FWL data from cache
-        uses: actions/cache@v4
-        id: cache-fwl-data
-        with:
-          path: ${{ env.FWL_DATA }}
-          key: fwl-data-2
-
-      - name: Get additional FWL data
-        if: steps.cache-fwl-data.cache-hit != 'true'
-        run: |
-          proteus get stellar
-          proteus get spectral --name Frostflow --bands 48
 
       # Setup SOCRATES - copied from JANUS
       - name: Get SOCRATES radiative tranfer model
@@ -118,6 +80,54 @@ jobs:
           ./configure
           ./build_code
           cd ..
+
+      # Checkout PROTEUS
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'false'
+
+      # Setup Python using the version defined in the matrix
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Try to restore the Python environment from the cache
+      - uses: actions/cache@v4
+        id: cache-virtualenv
+        with:
+          path: ${{ env.pythonLocation }}
+          key: ${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml') }}
+
+      # Setup Aragog
+      - name: Get Aragog interior model
+        uses: actions/checkout@v4
+        with:
+          repository: 'ExPlanetology/aragog'
+          path: 'aragog'
+
+      - name: Install Aragog
+        run: |
+          python -m pip install -e aragog/.
+
+      - name: Install Python dependencies
+        # if: steps.cache-virtualenv.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install -e .[develop]
+
+      # Get lookup data for PROTEUS
+      - name: Get FWL data from cache
+        uses: actions/cache@v4
+        id: cache-fwl-data
+        with:
+          path: ${{ env.FWL_DATA }}
+          key: fwl-data-2
+
+      - name: Get additional FWL data
+        if: steps.cache-fwl-data.cache-hit != 'true'
+        run: |
+          proteus get stellar
+          proteus get spectral --name Frostflow --bands 48
 
       # Run PROTEUS tests
       - name: Test with pytest
