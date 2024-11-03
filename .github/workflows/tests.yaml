@@ -78,7 +78,6 @@ jobs:
           export LD_LIBRARY_PATH=""
           echo $RAD_DIR
           cd $RAD_DIR
-          ls
           ./configure
           ./build_code
           cd ..
@@ -125,15 +124,16 @@ jobs:
           path: ${{ env.FWL_DATA }}
           key: fwl-data-2
 
-      - name: Get additional FWL data
-        if: steps.cache-fwl-data.cache-hit != 'true'
-        run: |
-          proteus get stellar
-          proteus get spectral --name Frostflow --bands 48
+      # - name: Get additional FWL data
+      #   if: steps.cache-fwl-data.cache-hit != 'true'
+      #   run: |
+      #     proteus get stellar
+      #     proteus get spectral --name Frostflow --bands 48
 
       # Run PROTEUS tests
       - name: Test with pytest
         run: |
+          ls $RAD_DIR
           coverage run -m pytest
 
       # Upload output run images if tests fail
