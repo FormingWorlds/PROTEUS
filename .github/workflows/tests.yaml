@@ -35,8 +35,8 @@ jobs:
             FC: gfortran
 
     env:
-      FWL_DATA: $HOME/work/fwl_data
-      RAD_DIR: $HOME/work/PROTEUS/PROTEUS/SOCRATES
+      FWL_DATA: ${{ github.workspace }}/fwl_data
+      RAD_DIR: ${{ github.workspace }}/SOCRATES
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -58,7 +58,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 'nichollsh/SOCRATES'
-          path: 'SOCRATES'
+          path: ${{ env.RAD_DIR }}
 
       # Try to restore SOCRATES from the cache
       # - uses: actions/cache@v4
