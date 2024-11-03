@@ -64,7 +64,7 @@ def test_physical_atmosphere(physical_run):
     assert len(out["t"]) == physical_run.config.atmos_clim.janus.num_levels*2+1
 
     # Load atmosphere reference
-    atm_ref = read_atmosphere(ref_dir / '2002_atm.nc', extra_keys=fields)
+    ref = read_atmosphere(ref_dir / '2002_atm.nc', extra_keys=fields)
 
     # Compare to expected array values.
     # Cannot simply compare the files as black-boxes, because they contain date information
