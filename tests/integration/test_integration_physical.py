@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from helpers import PROTEUS_ROOT
 from pandas.testing import assert_frame_equal
-from np.testing import assert_array_equal
+from numpy.testing import assert_allclose
 
 from proteus import Proteus
 from proteus.utils.coupler import ReadHelpfileFromCSV
@@ -47,7 +47,7 @@ def test_physical_atmosphere(physical_run):
     # Load atmosphere reference
     atm_ref = read_ncdf_profile(ref_dir / '2002_atm.nc')
 
-    # Compare to expected
+    # Compare to expected array values.
     # Cannot simply compare the files as black-boxes, because they contain date information
-    for field in ["tmp","p","fl_U_LW"]:
+    for field in ["t", "p", "z", "fl_U_LW", "fl_D_LW", "fl_U_SW", "fl_D_SW"]:
         assert_allclose(atm_out[field], atm_ref[field], rtol=5e-3)
