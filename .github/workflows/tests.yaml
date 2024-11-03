@@ -46,6 +46,11 @@ jobs:
       - name: Install system dependencies
         run: ${{ matrix.INSTALL_DEPS }}
 
+      # Set homebrew path for MacOS
+      - name: Add homebrew to path
+        if: runner.os == 'macOS'
+        run: echo "/opt/homebrew/bin/" >> $GITHUB_PATH
+
       # Checkout PROTEUS
       - uses: actions/checkout@v4
         with:
