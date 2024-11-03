@@ -36,7 +36,7 @@ jobs:
 
     env:
       FWL_DATA: $HOME/work/fwl_data
-      RAD_DIR: $GITHUB_WORKSPACE/SOCRATES
+      RAD_DIR: $HOME/work/PROTEUS/PROTEUS/SOCRATES
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -58,23 +58,24 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: 'nichollsh/SOCRATES'
-          path: '$RAD_DIR'
+          path: 'SOCRATES'
 
       # Try to restore SOCRATES from the cache
-      - uses: actions/cache@v4
-        id: cache-socrates
-        with:
-          path: |
-            $RAD_DIR/bin
-            $RAD_DIR/sbin
-            $RAD_DIR/set_rad_env
-          key: socrates-${{ hashFiles('$RAD_DIR/version') }}
+      # - uses: actions/cache@v4
+      #   id: cache-socrates
+      #   with:
+      #     path: |
+      #       $RAD_DIR/bin
+      #       $RAD_DIR/sbin
+      #       $RAD_DIR/set_rad_env
+      #     key: socrates-${{ hashFiles('$RAD_DIR/version') }}
 
       # Build SOCRATES if we can't restore it from the cache
       - name: Build SOCRATES
         # if: steps.cache-socrates.outputs.cache-hit != 'true'
         run: |
           export LD_LIBRARY_PATH=""
+          echo $RAD_DIR
           cd $RAD_DIR
           ./configure
           ./build_code
