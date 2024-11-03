@@ -53,6 +53,19 @@ jobs:
           sudo ln -s /opt/homebrew/Cellar/gcc/12.*/lib/gcc/12/*.dylib /opt/homebrew/lib/
           which gfortran
 
+      # Checkout PROTEUS
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'false'
+
+      # Setup SOCRATES - copied from JANUS
+      - name: Get SOCRATES radiative transfer model
+        if: steps.cache-socrates.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: 'nichollsh/SOCRATES'
+          path: ${{ env.RAD_DIR }}
+
       # Try to restore SOCRATES from the cache
       - uses: actions/cache@v4
         id: cache-socrates
@@ -62,14 +75,6 @@ jobs:
             ${{ env.RAD_DIR }}/sbin
             ${{ env.RAD_DIR }}/set_rad_env
           key: socrates-${{ hashFiles('$RAD_DIR/version') }}
-
-      # Setup SOCRATES - copied from JANUS
-      - name: Get SOCRATES radiative transfer model
-        if: steps.cache-socrates.outputs.cache-hit != 'true'
-        uses: actions/checkout@v4
-        with:
-          repository: 'nichollsh/SOCRATES'
-          path: ${{ env.RAD_DIR }}
 
       # Build SOCRATES if we can't restore it from the cache
       - name: Build SOCRATES
@@ -81,11 +86,6 @@ jobs:
           ./configure
           ./build_code
           cd ..
-
-      # Checkout PROTEUS
-      - uses: actions/checkout@v4
-        with:
-          submodules: 'false'
 
       # Setup Python using the version defined in the matrix
       - name: Set up Python ${{ matrix.python-version }}
