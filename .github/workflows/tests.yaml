@@ -45,11 +45,23 @@ jobs:
           path: ${{ env.pythonLocation }}
           key: ${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml') }}
 
+      # Setup aragog
+      - name: Get Aragog interior model
+        uses: actions/checkout@v4
+        with:
+          repository: 'ExPlanetology/aragog'
+          path: 'aragog'
+
+      - name: Install aragog
+        run: |
+          python -m pip install -e aragog/.
+
       - name: Install dependencies
         # if: steps.cache-virtualenv.outputs.cache-hit != 'true'
         run: |
           python -m pip install -e .[develop]
 
+      # Get lookup data for PROTEUS
       - uses: actions/cache@v4
         id: cache-fwl-data
         with:
@@ -62,23 +74,55 @@ jobs:
           proteus get stellar
           proteus get spectral --name Frostflow --bands 48
 
+      # Setup SOCRATES - copied from JANUS
+      - name: Get SOCRATES radiative tranfer model
+        uses: actions/checkout@v4
+        with:
+          repository: 'nichollsh/SOCRATES'
+          path: 'SOCRATES'
+
+      - uses: actions/cache@v4
+        id: cache-socrates
+        with:
+          path: |
+            SOCRATES/bin
+            SOCRATES/sbin
+            SOCRATES/set_rad_env
+          key: socrates-${{ hashFiles('SOCRATES/version') }}
+
+      - name: Build SOCRATES
+        if: steps.cache-socrates.outputs.cache-hit != 'true'
+        run: |
+          export LD_LIBRARY_PATH=""
+          cd SOCRATES
+          ./configure
+          ./build_code
+          cd ..
+
+      # Run the tests
       - name: Test with pytest
         run: |
           coverage run -m pytest
 
+      # Upload output run images if tests fail
       - name: Upload PNG plots as artifacts
-        if: failure()  # Only upload if tests fail
+        if: failure()
         uses: actions/upload-artifact@v3
         with:
           name: png-plots
           path: |
-            output/dummy/plot_elements.png
-            output/dummy/plot_escape.png
-            output/dummy/plot_fluxes_global.png
-            output/dummy/plot_global_lin.png
-            output/dummy/plot_global_log.png
-            output/dummy/plot_observables.png
-            output/dummy/plot_sflux.png
+            output/physical/plot_atmosphere.png
+            output/physical/plot_escape.png
+            output/physical/plot_global_log.png
+            output/physical/plot_observables.png
+            output/physical/plot_stacked.png
+            output/physical/plot_elements.png
+            output/physical/plot_fluxes_atmosphere.png
+            output/physical/plot_interior_cmesh.png
+            output/physical/plot_sflux_cross.png
+            output/physical/plot_emission.png
+            output/physical/plot_interior.png
+            output/physical/plot_sflux.png
 
       - name: Report coverage
         run: |
