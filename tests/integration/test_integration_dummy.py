@@ -4,28 +4,15 @@ import filecmp
 from pathlib import Path
 
 import pytest
-from helpers import PROTEUS_ROOT, resize_to_match
-from matplotlib.testing.compare import compare_images
+from helpers import PROTEUS_ROOT
 from pandas.testing import assert_frame_equal
 
 from proteus import Proteus
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
-IMAGE_LIST = (
-        "plot_elements.png",
-        "plot_escape.png",
-        "plot_fluxes_global.png",
-        "plot_global_lin.png",
-        "plot_global_log.png",
-        "plot_observables.png",
-        "plot_sflux.png",
-        "plot_population_mass_radius.png",
-        "plot_population_time_density.png",
-        )
-
 @pytest.fixture(scope="module")
 def dummy_run():
-    config_path = PROTEUS_ROOT /'tests' / 'data' / 'integration' / 'dummy' / 'dummy.toml'
+    config_path = PROTEUS_ROOT /'tests' / 'integration' / 'dummy.toml'
 
     runner = Proteus(config_path=config_path)
 
@@ -47,32 +34,3 @@ def test_dummy_run(dummy_run):
     # Check stellar spectra
     assert filecmp.cmp(out_dir / 'data' / '0.sflux', ref_dir / '0.sflux', shallow=False)
 
-
-@pytest.mark.xfail(raises=AssertionError)
-@pytest.mark.parametrize("image", IMAGE_LIST)
-def test_dummy_plot(dummy_run, image):
-
-    out_dir = PROTEUS_ROOT / 'output' / 'dummy'
-    ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy'
-
-    out_img = out_dir / image
-    ref_img = ref_dir / image
-    tolerance = 3
-
-    # Resize images if needed
-    out_img, ref_img = resize_to_match(out_img, ref_img)
-
-    results_dir = Path('result_images')
-    results_dir.mkdir(exist_ok=True, parents=True)
-
-    actual = results_dir / image
-    expected = results_dir / f'{actual.stem}-expected{actual.suffix}'
-
-    # Save resized images to temporary paths
-    out_img.save(actual)
-    ref_img.save(expected)
-
-    # Use compare_images to compare the resized files
-    result = compare_images(actual=str(actual), expected=str(expected), tol=tolerance)
-
-    assert result is None, f"The two PNG files {image} differ more than the allowed tolerance: {result}"

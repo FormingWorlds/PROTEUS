@@ -149,7 +149,8 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0,
         X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
         ax.plot(X[0],X[1],color='black',label='Modern',lw=0.8,alpha=0.9)
 
-    ax.legend()
+    if plt_modern or justone:
+        ax.legend()
 
     plt.close()
     plt.ioff()

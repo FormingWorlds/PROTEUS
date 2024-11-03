@@ -35,7 +35,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         minimum      = 1e2    # yr, minimum time-step
         maximum      = 1e3    # yr, maximum time-step
         initial      = 1e2    # yr, inital step size
-        starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
+        starspec     = 1e1    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e1    # yr, interval to re-calculate the instellation
         method       = "maximum"  # proportional | adaptive | maximum
 
@@ -152,7 +152,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         spectral_group  = "Frostflow"   # which gas opacities to include
         spectral_bands  = "16"          # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 35           # Number of atmospheric grid levels
+        num_levels      = 90           # Number of atmospheric grid levels
         tropopause      = "none"        # none | skin | dynamic
 
     [atmos_clim.dummy]
