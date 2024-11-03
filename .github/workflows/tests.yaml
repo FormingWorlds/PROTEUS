@@ -27,10 +27,12 @@ jobs:
             INSTALL_DEPS: sudo apt-get install libnetcdff-dev netcdf-bin
             CC: gcc
             CXX: g++
+            FC: gfortran
           - os: macos-latest
-            INSTALL_DEPS: brew install netcdf netcdf-fortran
+            INSTALL_DEPS: brew install  gfortran netcdf netcdf-fortran
             CC: gcc
             CXX: g++
+            FC: gfortran
 
     env:
       FWL_DATA: $HOME/work/fwl_data
