@@ -29,7 +29,7 @@ jobs:
             CXX: g++
             FC: gfortran
           - os: macos-latest
-            INSTALL_DEPS: brew install  gfortran netcdf netcdf-fortran
+            INSTALL_DEPS: brew install gfortran netcdf netcdf-fortran
             CC: gcc
             CXX: g++
             FC: gfortran
@@ -56,12 +56,9 @@ jobs:
       # Checkout PROTEUS
       - name: Checkout PROTEUS
         uses: actions/checkout@v4
-        with:
-          submodules: 'false'
 
       # Checkout SOCRATES
-      - name: Checlout SOCRATES radiative transfer model
-        if: steps.cache-socrates.outputs.cache-hit != 'true'
+      - name: Checkout SOCRATES radiative transfer model
         uses: actions/checkout@v4
         with:
           repository: 'nichollsh/SOCRATES'
@@ -76,7 +73,7 @@ jobs:
             ${{ env.RAD_DIR }}/bin
             ${{ env.RAD_DIR }}/sbin
             ${{ env.RAD_DIR }}/set_rad_env
-          key: socrates-${{ hashFiles('$RAD_DIR/version') }}
+          key: socrates-${{ hashFiles('SOCRATES/version') }}-${{ runner.os }}
 
       # Build SOCRATES if we can't restore it from the cache
       - name: Build SOCRATES
@@ -111,13 +108,11 @@ jobs:
           path: 'aragog'
 
       - name: Install Aragog
-        run: |
-          python -m pip install -e aragog/.
+        run: python -m pip install -e aragog/.
 
       - name: Install Python dependencies
-        # if: steps.cache-virtualenv.outputs.cache-hit != 'true'
-        run: |
-          python -m pip install -e .[develop]
+        if: steps.cache-virtualenv.outputs.cache-hit != 'true'
+        run: python -m pip install -e .[develop]
 
       # Get lookup data for PROTEUS
       - name: Get FWL data from cache
@@ -136,8 +131,7 @@ jobs:
 
       # Run PROTEUS tests
       - name: Test with pytest
-        run: |
-          coverage run -m pytest
+        run: coverage run -m pytest
 
       # Upload output run images if tests fail
       - name: Upload PNG plots as artifacts
@@ -163,6 +157,7 @@ jobs:
         run: |
           coverage json
           export TOTAL=$(python -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
+          echo "Total coverage: $TOTAL"
           echo "total=$TOTAL" >> $GITHUB_ENV
           echo "### Total coverage: ${TOTAL}%" >> $GITHUB_STEP_SUMMARY
           echo $'\n```' >> $GITHUB_STEP_SUMMARY
@@ -170,7 +165,7 @@ jobs:
           echo $'\n```' >> $GITHUB_STEP_SUMMARY
 
       - name: Make coverage badge
-        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.10' }}
+        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.13' }}
         uses: schneegans/dynamic-badges-action@v1.7.0
         with:
           auth: ${{ secrets.GIST_TOKEN }}
