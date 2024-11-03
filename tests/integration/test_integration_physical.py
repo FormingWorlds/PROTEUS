@@ -5,15 +5,14 @@ from pathlib import Path
 
 import pytest
 from helpers import PROTEUS_ROOT, resize_to_match
-from pandas.testing import assert_frame_equal
-from numpy.testing import assert_allclose
 from matplotlib.testing.compare import compare_images
+from numpy.testing import assert_allclose
+from pandas.testing import assert_frame_equal
 
 from proteus import Proteus
-from proteus.utils.coupler import ReadHelpfileFromCSV
 from proteus.atmos_clim.common import read_ncdf_profile as read_atmosphere
 from proteus.interior.aragog import read_ncdf as read_interior
-from proteus.utils.plot import sample_output
+from proteus.utils.coupler import ReadHelpfileFromCSV
 
 out_dir = PROTEUS_ROOT / 'output' / 'physical'
 ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'physical'

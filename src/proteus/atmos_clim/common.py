@@ -50,7 +50,6 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
     zl = np.array(ds.variables["zl"][:])
 
     nlev_c = len(p)
-    nlev_l = len(pl)
 
     # read pressure, temperature, height data into dictionary values
     out = {}

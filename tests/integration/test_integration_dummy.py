@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import filecmp
-from pathlib import Path
 
 import pytest
 from helpers import PROTEUS_ROOT
@@ -9,6 +8,7 @@ from pandas.testing import assert_frame_equal
 
 from proteus import Proteus
 from proteus.utils.coupler import ReadHelpfileFromCSV
+
 
 @pytest.fixture(scope="module")
 def dummy_run():
@@ -33,4 +33,3 @@ def test_dummy_run(dummy_run):
 
     # Check stellar spectra
     assert filecmp.cmp(out_dir / 'data' / '0.sflux', ref_dir / '0.sflux', shallow=False)
-
