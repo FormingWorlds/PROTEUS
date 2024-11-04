@@ -22,8 +22,6 @@ log = logging.getLogger("fwl."+__name__)
 
 def plot_atmosphere_cbar(output_dir, plot_format="pdf", tmin=1e2):
 
-    print("Plot atmosphere temperatures colourbar")
-
     # Gather data files
     output_files = glob.glob(output_dir+"/data/*_atm.nc")
     output_times = [ int(str(f).split('/')[-1].split('_')[0]) for f in output_files]
@@ -37,6 +35,8 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf", tmin=1e2):
     if np.amax(sorted_times) < 2:
         log.debug("Insufficient data to make plot_atmosphere_cbar")
         return
+
+    log.info("Plot atmosphere temperatures colourbar")
 
     # Parse NetCDF files
     stride = 1
@@ -91,7 +91,6 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf", tmin=1e2):
 
     # Save plot
     fname = os.path.join(output_dir,"plot_atmosphere_cbar.%s"%plot_format)
-    print(fname)
     fig.savefig(fname, bbox_inches='tight', dpi=200)
 
 

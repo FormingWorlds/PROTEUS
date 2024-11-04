@@ -49,6 +49,7 @@ dependencies = [
     "fwl-mors>=24.10.27",
     "fwl-calliope>=24.9.10",
     "fwl-zephyrus>=24.10.15",
+    # "aragog",
     "cmcrameri",
     "juliacall",
     "matplotlib",

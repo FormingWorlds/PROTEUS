@@ -206,7 +206,7 @@ def GetAragogOutput(hf_row:dict):
     output["M_mantle"] = aragog_output.mantle_mass
     output["T_magma"] = aragog_output.solution_top_temperature
     output["Phi_global"] = float(aragog_output.melt_fraction_global[-1])
-    output["RF_depth"] = aragog_output.rheological_front
+    output["RF_depth"] = float(aragog_output.rheological_front)
     output["F_int"] = aragog_output.convective_heat_flux_basic[-1,-1] # Need to be revised for consistency
 
     output["M_mantle_liquid"] = output["M_mantle"] * output["Phi_global"]

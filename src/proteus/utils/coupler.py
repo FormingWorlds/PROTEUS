@@ -472,8 +472,16 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_observables(hf_all,    output_dir, plot_format=config.params.out.plot_fmt)
         plot_population_mass_radius (hf_all, output_dir, fwl_dir, config.params.out.plot_fmt)
         plot_population_time_density(hf_all, output_dir, fwl_dir, config.params.out.plot_fmt)
-        plot_sflux(output_dir,          plot_format=config.params.out.plot_fmt)
-        plot_sflux_cross(output_dir,    plot_format=config.params.out.plot_fmt)
+
+        plt_modern = bool(config.star.module == "mors")
+        if plt_modern:
+            modern_age = config.star.mors.age_now * 1e9
+        else:
+            modern_age = -1
+        plot_sflux(output_dir, plt_modern=plt_modern,
+                            plot_format=config.params.out.plot_fmt)
+        plot_sflux_cross(output_dir,modern_age=modern_age,
+                            plot_format=config.params.out.plot_fmt)
 
         if spider or aragog:
             plot_interior_cmesh(output_dir, plot_times, int_data, config.interior.module,
