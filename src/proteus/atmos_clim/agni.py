@@ -189,7 +189,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
                         flag_rayleigh = config.atmos_clim.rayleigh,
                         flag_cloud    = config.atmos_clim.cloud_enabled,
-                        overlap_type  = config.atmos_clim.agni.overlap_type,
+                        overlap_method  = config.atmos_clim.agni.overlap_method,
 
                         albedo_s=config.atmos_clim.surf_greyalbedo,
                         surface_material=surface_material,

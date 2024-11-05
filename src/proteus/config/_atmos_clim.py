@@ -19,10 +19,10 @@ def warn_if_dummy(instance, attribute, value):
     if (instance.module == 'dummy') and value:
         raise ValueError('Dummy atmos_clim module is incompatible with Rayleigh scattering')
 
-def check_overlap_types(instance, attribute, value):
-    _overlap_types = ("ro", "ee", "rorr")
-    if value not in _overlap_types:
-        raise ValueError("Overlap type must be one of " + str(_overlap_types))
+def check_overlap(instance, attribute, value):
+    _overlaps = ("ro", "ee", "rorr")
+    if value not in _overlaps:
+        raise ValueError("Overlap type must be one of " + str(_overlaps))
 
 @define
 class AtmosClim:
@@ -108,7 +108,7 @@ class Agni:
         Absolute tolerance on the atmosphere solution.
     solution_rtol: float
         Relative tolerance on the atmosphere solution.
-    overlap_type: str
+    overlap_method: str
         Gas overlap method. Choices: "ro", "ee", "rorr".
     """
 
@@ -120,13 +120,12 @@ class Agni:
     chemistry: str = field(validator=in_((None, "eq")), converter=none_if_none)
     solution_atol: float = field(validator=gt(0))
     solution_rtol: float = field(validator=gt(0))
-    overlap_type: str = field(validator=check_overlap_types)
+    overlap_method: str = field(validator=check_overlap)
 
     @property
     def chemistry_int(self) -> int:
         """Return integer state for agni."""
         return 1 if self.chemistry else 0
-
 
 @define
 class Janus:
@@ -146,7 +145,7 @@ class Janus:
         Number of atmospheric grid levels.
     tropopause: str | None
         Scheme for determining tropopause location. Choices: "none", "skin", "dynamic".
-    overlap_type: str
+    overlap_method: str
         Gas overlap method. Choices: "ro", "ee", "rorr".
     """
 
@@ -158,7 +157,8 @@ class Janus:
     tropopause: str | None = field(
         validator=in_((None, 'skin', 'dynamic')), converter=none_if_none
     )
-    overlap_type: str = field(validator=check_overlap_types)
+    overlap_method: str = field(validator=check_overlap)
+
 @define
 class Dummy:
     """Dummy atmosphere module.
