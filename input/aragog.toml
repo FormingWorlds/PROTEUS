@@ -146,7 +146,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         surf_material   = "greybody"    # surface material file for scattering
         solution_atol   = 1e-3          # solver absolute tolerance
         solution_rtol   = 2e-2          # solver relative tolerance
-        overlap_type    = "ee"          # gas overlap method
+        overlap_method    = "ee"          # gas overlap method
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
@@ -155,7 +155,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
         num_levels      = 40           # Number of atmospheric grid levels
         tropopause      = "none"        # none | skin | dynamic
-        overlap_type    = "ee"          # gas overlap method
+        overlap_method    = "ee"          # gas overlap method
 
     [atmos_clim.dummy]
         gamma           = 0.8           # atmosphere opacity between 0 and 1
