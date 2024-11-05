@@ -30,8 +30,6 @@ _preset_colours  = {
     "N2" : "#870036",
     "S2" : "#FF8FA1",
     "SO2": "#00008B",
-    "He" : "#30FF71",
-    "NH3": "#675200",
 
     # Volatile elements
     "H": "#0000aa",
@@ -88,14 +86,18 @@ def _generate_colour(gas:str):
     # Normalisation constant
     norm = max((red,gre,blu))
 
-    # Prevent the colour getting too close to white, which is hard to see on a plot
-    if red+gre+blu > 705:
-        norm *= 255.0/235.0
-
     # Normalise colours to 0-255
     red = int(255*red/norm)
     gre = int(255*gre/norm)
     blu = int(255*blu/norm)
+
+    # Prevent the colour getting too close to white, which is hard to see on a plot
+    c_lim = 220
+    if red+gre+blu > c_lim*3:
+        scale = c_lim/255.0
+        red = int(scale*red)
+        gre = int(scale*gre)
+        blu = int(scale*blu)
 
     # Convert to hex string
     colour = f"#{red:02x}{gre:02x}{blu:02x}"

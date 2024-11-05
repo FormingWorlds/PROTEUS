@@ -83,6 +83,11 @@ def InitAtm(dirs:dict, config:Config):
     atm.skin_d = config.atmos_clim.surface_d
     atm.skin_k = config.atmos_clim.surface_k
 
+    match config.atmos_clim.janus.overlap_type:
+        case "ro":   atm.overlap_type = 2
+        case "ee":   atm.overlap_type = 4
+        case "rorr": atm.overlap_type = 8
+
     return atm
 
 def UpdateStateAtm(atm, hf_row:dict, tropopause):
