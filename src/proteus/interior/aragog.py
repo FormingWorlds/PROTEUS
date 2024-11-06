@@ -91,7 +91,6 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             inner_boundary_value = 4000, # core temperature [K]
             emissivity = 1, # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature = 273, # only used in gray body BC, outer_boundary_condition = 1
-            core_radius = config.struct.corefrac * hf_row["R_int"], # not used now
             core_density = 10738.332568062382, # not used now
             core_heat_capacity = 880, # not used now
             )
