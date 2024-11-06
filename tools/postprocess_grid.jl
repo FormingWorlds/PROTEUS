@@ -18,7 +18,7 @@ using LoggingExtras
 
 # Wrapper
 function once(dir::String, Nsamp::Int)
-    execpath::String = joinpath(PROTEUS_DIR, "tools", "Postprocess.jl")
+    execpath::String = joinpath(PROTEUS_DIR, "tools", "postprocess.jl")
 
     @info "Start processing $dir..."
     logfile = joinpath(dir, "ppr.log")

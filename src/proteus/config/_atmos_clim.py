@@ -19,6 +19,10 @@ def warn_if_dummy(instance, attribute, value):
     if (instance.module == 'dummy') and value:
         raise ValueError('Dummy atmos_clim module is incompatible with Rayleigh scattering')
 
+def check_overlap(instance, attribute, value):
+    _overlaps = ("ro", "ee", "rorr")
+    if value not in _overlaps:
+        raise ValueError("Overlap type must be one of " + str(_overlaps))
 
 @define
 class AtmosClim:
@@ -104,6 +108,8 @@ class Agni:
         Absolute tolerance on the atmosphere solution.
     solution_rtol: float
         Relative tolerance on the atmosphere solution.
+    overlap_method: str
+        Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
     """
 
     p_top: float = field(validator=gt(0))
@@ -114,12 +120,12 @@ class Agni:
     chemistry: str = field(validator=in_((None, "eq")), converter=none_if_none)
     solution_atol: float = field(validator=gt(0))
     solution_rtol: float = field(validator=gt(0))
+    overlap_method: str = field(validator=check_overlap)
 
     @property
     def chemistry_int(self) -> int:
         """Return integer state for agni."""
         return 1 if self.chemistry else 0
-
 
 @define
 class Janus:
@@ -139,6 +145,8 @@ class Janus:
         Number of atmospheric grid levels.
     tropopause: str | None
         Scheme for determining tropopause location. Choices: "none", "skin", "dynamic".
+    overlap_method: str
+        Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
     """
 
     p_top: float = field(validator=gt(0))
@@ -149,7 +157,7 @@ class Janus:
     tropopause: str | None = field(
         validator=in_((None, 'skin', 'dynamic')), converter=none_if_none
     )
-
+    overlap_method: str = field(validator=check_overlap)
 
 @define
 class Dummy:
