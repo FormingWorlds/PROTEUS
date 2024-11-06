@@ -279,7 +279,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         rho_obs = calc_observed_rho(atm)
 
     # XUV scale height in atm
-    p_xuv, idx_xuv =  find_nearest(atm.p, config.escape.zephyrus.Pxuv*1e5)      # Find the index of the closest pressure from Pxuv [Pa]
+    p_xuv, idx_xuv =  find_nearest(atm.p, config.escape.zephyrus.Pxuv*1e5)      # Find the index of the closest pressure from Pxuv [Pa]?
     z_xuv = atm.z[idx_xuv]
 
     # final things to store
@@ -292,7 +292,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["z_obs"]  = z_obs
     output["rho_obs"]= rho_obs
 
-    output["P_xuv"]  = p_xuv            # Closest pressure from Pxuv    [Pa] ?
+    output["p_xuv"]  = p_xuv/1e5        # Closest pressure from Pxuv    [bar] ?
     output["z_xuv"]  = z_xuv            # Scale height at Pxuv          [m]
 
     return output

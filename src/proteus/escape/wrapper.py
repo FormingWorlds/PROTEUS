@@ -38,7 +38,7 @@ def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
         # solvevol_target is undefined?
         pass
     elif config.escape.module == 'zephyrus':
-        hf_row["esc_rate_total"] = RunZEPHYRUS(config, hf_row, hf_all, stellar_track)
+        hf_row["esc_rate_total"] = RunZEPHYRUS(config, hf_row, stellar_track)
     elif config.escape.module == 'dummy':
         hf_row["esc_rate_total"] = config.escape.dummy.rate
     else:
