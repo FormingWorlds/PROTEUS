@@ -4,25 +4,18 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import mors
 import numpy as np
-import os
-import glob
 from zephyrus.escape import EL_escape
 
 from proteus.utils.constants import AU, element_list, ergcm2stoWm2, secs_per_year
-from proteus.utils.helper import PrintHalfSeparator, find_nearest
-from proteus.atmos_clim.common import read_ncdfs
+from proteus.utils.helper import PrintHalfSeparator
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
-# Define global variables
-star = None
-
-def RunEscape(config:Config, hf_row:dict, hf_all:dict, dt:float, stellar_track):
+def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
     """Run Escape submodule.
 
     Generic function to run escape calculation using ZEPHYRUS or dummy.
@@ -33,8 +26,6 @@ def RunEscape(config:Config, hf_row:dict, hf_all:dict, dt:float, stellar_track):
             Dictionary of configuration options
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
-        hf_all : dict
-            Dictionary of helpfile variables for all iterations
         dt : float
             Time interval over which escape is occuring [yr]
         stellar_track : mors star object
@@ -66,7 +57,7 @@ def RunEscape(config:Config, hf_row:dict, hf_all:dict, dt:float, stellar_track):
             continue
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
-def RunZEPHYRUS(config, hf_row, hf_all, stellar_track):
+def RunZEPHYRUS(config, hf_row, stellar_track):
     """Run energy-limited escape (for now) model.
 
     Parameters
@@ -75,8 +66,6 @@ def RunZEPHYRUS(config, hf_row, hf_all, stellar_track):
             Dictionary of configuration options
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
-        hf_all : dict
-            Dictionary of helpfile variables for all iterations
         stellar_track : mors star object
             Mors star object storing spada track data.
     Returns
@@ -84,12 +73,8 @@ def RunZEPHYRUS(config, hf_row, hf_all, stellar_track):
         mlr : float
             Bulk escape rate [kg s-1]
     """
-    global star
 
     log.info("Running EL escape (ZEPHYRUS) ...")
-
-    ## Load stellar evolution track + compute EL escape
-    log.info("Load stellar evolution track + compute EL escape ")
 
     # Get the age of the star at time t to compute XUV flux at that time
     age_star = hf_row["age_star"] / 1e6 # [Myrs]
@@ -101,18 +86,18 @@ def RunZEPHYRUS(config, hf_row, hf_all, stellar_track):
     log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI} [W/m2]")
 
     # Compute Rxuv
-
-    ncdfs = read_ncdfs('output/'+config.params.out.path, hf_all['Time'])
-    print(int(hf_all['Time'][-1]))
-    profiles = ncdfs[int(hf_all['Time'][0])]
-    p_ncdfs = profiles['p']
-    z_ncdfs = profiles['z']
-    log.info('p_ncdfs : ', p_ncdfs)
-    index_Pxuv  = find_nearest(p_ncdfs, config.escape.zephyrus.Pxuv)[1]          # Find the scale heigh z for the corresponding Pxuv [m]
-    z_Pxuv = z_ncdfs[index_Pxuv]
-    log.info(f"Scale height at Pxuv : z = {z_Pxuv} [m]?")
-    Rxuv    = hf_row["R_int"] + z_Pxuv                                  # XUV optically thick planetary radius              [m]
-    log.info(f"XUV optically thick planetary radius : Rxuv = {Rxuv} [m]")
+    ##### DRAFT STAGE
+    # ncdfs = read_ncdfs('output/'+config.params.out.path, hf_all['Time'])
+    # print(int(hf_all['Time'][-1]))
+    # profiles = ncdfs[int(hf_all['Time'][0])]
+    # p_ncdfs = profiles['p']
+    # z_ncdfs = profiles['z']
+    # log.info('p_ncdfs : ', p_ncdfs)
+    # index_Pxuv  = find_nearest(p_ncdfs, config.escape.zephyrus.Pxuv)[1]          # Find the scale heigh z for the corresponding Pxuv [m]
+    # z_Pxuv = z_ncdfs[index_Pxuv]
+    # log.info(f"Scale height at Pxuv : z = {z_Pxuv} [m]?")
+    # Rxuv    = hf_row["R_int"] + z_Pxuv                                  # XUV optically thick planetary radius              [m]
+    # log.info(f"XUV optically thick planetary radius : Rxuv = {Rxuv} [m]")
 
     # Compute energy-limited escape
     mlr = EL_escape(config.escape.zephyrus.tidal, #tidal contribution (True/False)
