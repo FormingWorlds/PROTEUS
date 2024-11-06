@@ -154,9 +154,13 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
     hf_row["bond_albedo"]= atm_output["albedo"]
 
+    hf_row["P_xuv"]  = atm_output["p_xuv"]                  # Closest pressure from Pxuv    [Pa] ?
+    hf_row["z_xuv"]  = atm_output["z_xuv"]                  # Scale height at Pxuv          [m]
+    hf_row["R_xuv"]  = hf_row["R_int"] + hf_row["z_xuv"]    # Computed XUV planetary radius
+
     # Calculate observables (measured at infinite distance)
     R_obs = hf_row["z_obs"] + hf_row["R_int"] # observed radius
-    hf_row["transit_depth"] =  ( R_obs / hf_row["R_star"])**2.0
+    hf_row["transit_depth"] =  (R_obs / hf_row["R_star"])**2.0
     hf_row["contrast_ratio"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
                                  (R_obs / hf_row["separation"])**2.0
 

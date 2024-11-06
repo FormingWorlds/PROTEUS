@@ -12,7 +12,7 @@ from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_spfile_path
 from proteus.utils.constants import gas_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, safe_rm
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, safe_rm, find_nearest
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 if TYPE_CHECKING:
@@ -454,6 +454,10 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.2e, %.2e, %.2e  W m-2" %
                                         (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
+    # XUV scale height in atm
+    p_xuv, idx_xuv =  find_nearest(atmos.p, config.escape.zephyrus.Pxuv*1e5)      # Find the index of the closest pressure from Pxuv [Pa]
+    z_xuv = atm.z[idx_xuv]
+
     output = {}
     output["F_atm"]  = F_atm_lim
     output["F_olr"]  = LW_flux_up[0]
@@ -462,5 +466,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     output["z_obs"]  = z_obs
     output["rho_obs"]= rho_obs
     output["albedo"] = SW_flux_up[0]/SW_flux_down[0]
+
+    output["P_xuv"]  = p_xuv            # Closest pressure from Pxuv    [Pa] ?
+    output["z_xuv"]  = z_xuv            # Scale height at Pxuv          [m]
 
     return atmos, output
