@@ -109,7 +109,7 @@ class Agni:
     solution_rtol: float
         Relative tolerance on the atmosphere solution.
     overlap_method: str
-        Gas overlap method. Choices: "ro", "ee", "rorr".
+        Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
     """
 
     p_top: float = field(validator=gt(0))
@@ -146,7 +146,7 @@ class Janus:
     tropopause: str | None
         Scheme for determining tropopause location. Choices: "none", "skin", "dynamic".
     overlap_method: str
-        Gas overlap method. Choices: "ro", "ee", "rorr".
+        Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
     """
 
     p_top: float = field(validator=gt(0))

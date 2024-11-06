@@ -447,7 +447,8 @@ if __name__=='__main__':
     folder = "hd63433d_ro"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
-    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
+    # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
+    symlink = None
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("C/H ratio", "delivery.elements.CH_ratio")
