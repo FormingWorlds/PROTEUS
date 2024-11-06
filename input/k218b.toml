@@ -26,7 +26,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # output files
     [params.out]
         path        = "k218b_low3"
-        logging     = "INFO"
+        logging     = "DEBUG"
         plot_mod    = 2      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
@@ -114,8 +114,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    mass        = 5.8 # 8.63       # M_earth
-    radius      = 1.8 # 2.61     # R_earth
+    mass        = 4.1 # 8.63       # M_earth
+    radius      = 1.6 # 2.61     # R_earth
     corefrac    = 0.6      # non-dim., radius fraction
 
     # No module for specifically for internal structure
@@ -135,12 +135,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     tmp_minimum     = 0.5           # temperature floor on solver
     tmp_maximum     = 5000.0        # temperature ceiling on solver
 
-    module  = "agni"           # Which atmosphere module to use
+    module  = "dummy"           # Which atmosphere module to use
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "48"         # how many spectral bands?
+        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_bands  = "256"         # how many spectral bands?
         num_levels      = 35            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering

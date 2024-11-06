@@ -12,6 +12,7 @@ from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
 from proteus.interior import run_interior
+from proteus.struct.wrapper import update_surface_gravity, update_interior_mass
 from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 from proteus.star.wrapper import (
     get_new_spectrum,
@@ -24,7 +25,6 @@ from proteus.utils.constants import (
     AU,
     M_earth,
     R_earth,
-    const_G,
     gas_list,
     vap_list,
     vol_list,
@@ -179,10 +179,12 @@ class Proteus:
             # Planet size conversion, and calculate mantle mass (= liquid + solid)
             self.hf_row["M_int"] = self.config.struct.mass * M_earth
             self.hf_row["R_int"] = self.config.struct.radius * R_earth
-            self.hf_row["gravity"] = const_G * self.hf_row["M_int"] / (self.hf_row["R_int"] ** 2.0)
             self.hf_row["M_mantle"] = calculate_mantle_mass(
                 self.hf_row["R_int"], self.hf_row["M_int"], self.config.struct.corefrac
             )
+
+            # Surface gravity and interior mass
+            update_surface_gravity(self.hf_row)
 
             # Store partial pressures and list of included volatiles
             inc_gases = []
@@ -273,17 +275,23 @@ class Proteus:
 
             ############### / ORBIT AND TIDES
 
-            ############### INTERIOR
+            ############### INTERIOR AND STRUCTURE
 
             # Run interior model
             self.dt = run_interior(self.directories, self.config,
                                 self.loops, self.IC_INTERIOR, self.hf_all,  self.hf_row)
 
+            # Update sum of masses of all things in the interior
+            update_interior_mass(self.hf_row)
+
+            # Update surface gravity
+            update_surface_gravity(self.hf_row)
+
             # Advance current time in main loop according to interior step
             self.hf_row["Time"]     += self.dt    # in years
             self.hf_row["age_star"] += self.dt    # in years
 
-            ############### / INTERIOR
+            ############### / INTERIOR AND STRUCTURE
 
             ############### STELLAR FLUX MANAGEMENT
             PrintHalfSeparator()

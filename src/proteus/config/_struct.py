@@ -11,11 +11,11 @@ class Struct:
     """Planetary structure (mass, radius).
 
     mass: float
-        M_earth
+        Initial guess for mass of planet's interior. Units of [M_earth].
     radius: float
-        R_earth
+        Fixed radius of the atmosphere-interior boundary. Units of [R_earth].
     corefrac: float
-        Non-dimensional, radius fraction
+        Core radius fraction between 0 and 1.
     module: str | None
         Select internal structure module to use. Not used currently.
     """

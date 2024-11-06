@@ -243,10 +243,13 @@ def GetHelpfileKeys():
 
     # Basic keys
     keys = [
-            # Model tracking and basic parameters
-            "Time", "separation", # [yr], [m]
+            # Model evolution time
+            "Time", # [yr]
 
-            # Input parameters (converted to SI)
+            # Time-averaged orbital separation
+            "separation", # [m]
+
+            # Mass and radius contained by the atmosphere-interior interface
             "R_int", "M_int", # [m], [kg]
 
             # Temperatures
@@ -267,7 +270,7 @@ def GetHelpfileKeys():
             "z_obs", # observed height relative to R_int [m]
             "rho_obs", # observed bulk density [kg m-3]
             "transit_depth", "contrast_ratio", # [1], [1]
-            "bond_albedo", # bond albedo [1]
+            "bond_albedo", # [1]
 
             # Escape
             "esc_rate_total", # [kg s-1]
