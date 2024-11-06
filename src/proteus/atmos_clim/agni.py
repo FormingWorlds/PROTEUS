@@ -355,6 +355,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         easy_start = False
         dx_max = config.interior.spider.tsurf_atol+10.0
         ls_increase = 1.02
+        reset_vmrs = False
 
         # try different solver parameters if struggling
         if attempts == 2:
@@ -368,6 +369,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             easy_start  = True
             dx_max      = 200.0
             ls_increase = 1.1
+            reset_vmrs  = True
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -380,6 +382,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
                             chem_type=config.atmos_clim.agni.chemistry_int,
 
                             conduct=False, convect=True, latent=True, sens_heat=True,
+                            reset_vmrs=reset_vmrs,
 
                             max_steps=130, max_runtime=900.0,
                             conv_atol=config.atmos_clim.agni.solution_atol,
