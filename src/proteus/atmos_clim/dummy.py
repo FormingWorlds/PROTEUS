@@ -29,13 +29,9 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     zenith_angle    = config.orbit.zenith_angle
     albedo_pl       = config.atmos_clim.albedo_pl
     inst_sf         = config.orbit.s0_factor
-    albedo_s        = config.atmos_clim.surf_albedo
+    albedo_s        = config.atmos_clim.surf_greyalbedo
     skin_d          = config.atmos_clim.surface_d
     skin_k          = config.atmos_clim.surface_k
-
-    # Check configuration
-    if config.atmos_clim.rayleigh:
-        log.warning("Rayleigh scattering is enabled but it will be neglected")
 
     log.info("Gamma = %.4f" % gamma)
     if not (0.0 <= gamma <= 1.0):
@@ -113,5 +109,6 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     output["F_sct"]   =  fluxes["fl_U_SW"]     # Scattered SW flux
     output["z_obs"]   =  0.0
     output["rho_obs"] =  3 * M_int / (4*np.pi*R_int**3)
+    output["albedo"]  = fluxes["fl_U_SW"]/fluxes["fl_D_SW"]
 
     return output

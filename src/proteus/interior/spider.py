@@ -5,6 +5,7 @@ import glob
 import json
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -120,7 +121,7 @@ class MyJSON( object ):
 def read_jsons(output_dir:str, times:list):
     return [MyJSON(os.path.join(output_dir, "data", "%d.json"%t)) for t in times]
 
-def get_all_output_times( odir='output' ):
+def get_all_output_times(odir:str):
     '''
     Get all times (in yr) from the json files located in the output directory
     '''
@@ -141,51 +142,6 @@ def get_all_output_times( odir='output' ):
     time_a = np.array( time_l )
 
     return time_a
-
-def get_dict_values_for_times( keys, time_l, indir='output' ):
-    data_l = []
-    for time in time_l:
-        filename = indir + '/data/{}.json'.format(time)
-        myjson_o = MyJSON( filename )
-        values_a = myjson_o.get_dict_values( keys )
-        data_l.append( values_a )
-
-    data_a = np.array( data_l )
-
-    # rows time, cols data
-    data_a.reshape( (len(time_l),-1 ) )
-    # rows data, cols time
-    data_a = data_a.transpose()
-
-    return data_a
-
-def get_dict_surface_values_for_times( keys_t, time_l, indir='output'):
-    '''Similar to above, but only loop over all times once and get
-       all requested (surface / zero index) data in one go'''
-
-    data_l = []
-
-    for time in time_l:
-        filename = indir + '/data/{}.json'.format(time)
-        myjson_o = MyJSON( filename )
-        keydata_l = []
-        for key in keys_t:
-            values_a = myjson_o.get_dict_values( key )
-            try:
-                value = values_a[0]
-            except TypeError:
-                value = values_a
-            keydata_l.append( value )
-        data_l.append( keydata_l )
-
-    data_a = np.array( data_l )
-
-    # rows time, cols data
-    data_a.reshape( (len(time_l),-1 ) )
-    # rows data, cols time
-    data_a = data_a.transpose()
-
-    return data_a
 
 def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
     '''Similar to above, but only loop over all times once and get
@@ -214,7 +170,7 @@ def _try_spider( dirs:dict, config:Config,
     # Check that SPIDER can be found
     spider_exec = os.path.join(dirs["spider"],"spider")
     if not os.path.isfile(spider_exec):
-        raise Exception("SPIDER executable could not be found at '%s'"%spider_exec)
+        raise FileNotFoundError("SPIDER executable could not be found at '%s'"%spider_exec)
 
     # Bounds on tolereances
     step_sf = min(1.0, max(1.0e-10, step_sf))
@@ -310,12 +266,20 @@ def _try_spider( dirs:dict, config:Config,
 
     call_string = " ".join(call_sequence)
 
+    # Environment
+    spider_env = os.environ.copy()
+    if platform.system() == "Darwin":
+        spider_env["PETSC_ARCH"] = "arch-darwin-c-opt"
+    else:
+        spider_env["PETSC_ARCH"] = "arch-linux-c-opt"
+    spider_env["PETSC_DIR"] = os.path.join(dirs["proteus"], "petsc")
+
     # Run SPIDER
-    log.info("Terminal output suppressed")
+    log.debug("SPIDER output suppressed")
     spider_print = open(dirs["output"]+"spider_recent.log",'w')
     spider_print.write(call_string+"\n")
     spider_print.flush()
-    proc = subprocess.run([call_string],shell=True,stdout=spider_print)
+    proc = subprocess.run([call_string],shell=True,stdout=spider_print, env=spider_env)
     spider_print.close()
 
     # Check status

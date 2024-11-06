@@ -59,6 +59,10 @@ class Volatiles:
     CH4: float = field(default=0, validator=ge(0))
     CO: float = field(default=0, validator=ge(0))
 
+    def get_pressure(self, s: str) -> float:
+        """Helper method for getting the pressure for `vol` by string."""
+        return getattr(self, s)
+
 
 @define
 class Delivery:

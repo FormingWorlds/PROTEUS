@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -34,13 +33,15 @@ from proteus.utils.coupler import (
     CreateHelpfileFromDict,
     CreateLockFile,
     ExtendHelpfile,
-    GitRevision,
     PrintCurrentState,
     ReadHelpfileFromCSV,
     SetDirectories,
     UpdatePlots,
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
+    print_header,
+    print_module_configuration,
+    print_system_configuration,
 )
 from proteus.utils.data import download_sufficient_data
 from proteus.utils.helper import (
@@ -114,6 +115,8 @@ class Proteus:
             If True, continue from previous simulation
         """
 
+        # First things
+        start_time = datetime.now()
         UpdateStatusfile(self.directories, 0)
 
         # Clean output directory
@@ -129,22 +132,15 @@ class Proteus:
         setup_logger(logpath=logpath, logterm=True, level=self.config.params.out.logging)
         log = logging.getLogger("fwl."+__name__)
 
-        # Print information to logger
-        log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-        log.info("            PROTEUS framework (version 0.1)            ")
-        log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
-        log.info(" ")
-        start_time = datetime.now()
-        log.info("Current time: " + start_time.strftime("%Y-%m-%d_%H:%M:%S"))
-        log.info("Hostname    : " + str(os.uname()[1]))
-        log.info("PROTEUS hash: " + GitRevision(self.directories["proteus"]))
-        log.info("Py version  : " + sys.version.split(" ")[0])
-        log.info("Config file : " + str(self.config_path))
-        log.info("Output dir  : " + self.directories["output"])
-        log.info("FWL data dir: " + self.directories["fwl"])
-        if self.config.atmos_clim.module in ['janus', 'agni']:
-            log.info("SOCRATES dir: " + self.directories["rad"])
-        log.info(" ")
+        # Print header
+        print_header()
+
+        # Print system configuration
+        print_system_configuration(self.directories)
+
+        # Print module configuration
+        print_module_configuration(self.directories, self.config, self.config_path)
+        PrintHalfSeparator()
 
         # Count iterations
         self.loops = {
@@ -189,16 +185,10 @@ class Proteus:
             )
 
             # Store partial pressures and list of included volatiles
-            log.info("Input partial pressures:")
             inc_gases = []
             for s in vol_list:
-                pp_val = getattr(self.config.delivery.volatiles, s)
-                include = getattr(self.config.outgas.calliope, f'include_{s}')
-
-                log.info(
-                    "    %-6s : %-5.2f bar (included = %s)"
-                    % (s, pp_val, include)
-                )
+                pp_val = self.config.delivery.volatiles.get_pressure(s)
+                include = self.config.outgas.calliope.is_included(s)
 
                 if include:
                     inc_gases.append(s)
@@ -208,8 +198,15 @@ class Proteus:
             for s in vap_list:
                 inc_gases.append(s)
                 self.hf_row[s + "_bar"] = 0.0
-            log.info("Included gases: " + str(inc_gases))
 
+            # Inform user
+            log.info("Initial inventory set by '%s'"%self.config.delivery.initial)
+            log.info("Included gases")
+            for s in inc_gases:
+                log.info("    %s  %-8s : %6.2f bar" %
+                            ("vapour  " if s in vap_list else "volatile", s,
+                            self.hf_row[s + "_bar"])
+                        )
         else:
             # Resuming from disk
             log.info("Resuming the simulation from the disk")
@@ -230,7 +227,7 @@ class Proteus:
             # Set loop counters
             self.loops["total"] = len(self.hf_all)
             self.loops["init"] = self.loops["init_loops"] + 1
-
+        log.info(" ")
 
         # Create lockfile for keeping simulation running
         self.lockfile = CreateLockFile(self.directories["output"])

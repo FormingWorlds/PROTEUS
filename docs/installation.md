@@ -123,11 +123,19 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 
 7. Setup numerical computing library (**PETSc**)
 
+    You will need to do this step in an environment with Python <=3.12.
+
     ```console
     ./tools/get_petsc.sh
     ```
 
-8. Setup PROTEUS coupled framework
+8. Setup interior evolution model (**SPIDER**)
+
+    ```console
+    ./tools/get_spider.sh
+    ```
+
+9. Setup PROTEUS coupled framework
 
     1. Get the remaining Python dependencies
 
@@ -138,19 +146,6 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     2. Configure environment variables
 
         - The variable `RAD_DIR` must point to the SOCRATES installation path. It is best to add this to your shell rc file.
-
-        - Setup other variables
-
-            ```console
-            source PROTEUS.env
-            ```
-            This file can also be added to your shell rc file.
-
-9. Setup interior evolution model (**SPIDER**)
-
-    ```console
-    ./tools/get_spider.sh
-    ```
 
 10. Done! 🚀
     Any remaining dependencies will be downloaded when the model is first run.

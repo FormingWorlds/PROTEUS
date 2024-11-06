@@ -68,11 +68,13 @@ def plot_sflux_cross(
     files = natural_sort(files)
 
     if (len(files) == 0):
-        log.warning("No files found when trying to plot stellar flox (crossection)")
+        log.warning("No files found when trying to make sflux_cross plot")
         return
     if (len(files) == 1):
         log.warning("Cannot make sflux_cross plot with only 1 stellar spectrum sample")
         return
+
+    log.info("Plot stellar flux (crossection)")
 
     # Arrays for storing data over time
     time_t = []
@@ -122,7 +124,8 @@ def plot_sflux_cross(
     N = len(wl_iarr)
 
     # Load modern spectrum
-    X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
+    if modern_age > 0:
+        X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
 
     # Plot bins over time
     for i in range(N):
@@ -150,10 +153,15 @@ def plot_sflux_cross(
 def plot_sflux_cross_entry(handler: Proteus):
     wl_targets = [1.0, 12.0, 50.0, 121.0, 200.0, 400.0, 500.0, 2000.0]
 
+    if handler.config.star.module == "mors":
+        modern_age = handler.config.star.age_now * 1e9
+    else:
+        modern_age = -1
+
     plot_sflux_cross(
         output_dir=handler.directories['output'],
         wl_targets=wl_targets,
-        modern_age=handler.config.star.age_now * 1000,
+        modern_age=modern_age,
         plot_format=handler.config.params.out.plot_fmt,
     )
 

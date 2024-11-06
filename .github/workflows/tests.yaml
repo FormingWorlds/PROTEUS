@@ -22,69 +22,141 @@ jobs:
       matrix:
         os: ['ubuntu-latest', 'macos-latest']
         python-version: ['3.11', '3.13']
+        include:
+          - os: ubuntu-latest
+            INSTALL_DEPS: sudo apt-get install libnetcdff-dev netcdf-bin
+            CC: gcc
+            CXX: g++
+            FC: gfortran
+          - os: macos-latest
+            INSTALL_DEPS: brew install gfortran netcdf netcdf-fortran
+            CC: gcc
+            CXX: g++
+            FC: gfortran
 
     env:
-      FWL_DATA: $HOME/work/fwl_data
-      RAD_DIR: ./SOCRATES
-      SOCRATES: ./SOCRATES  # https://github.com/FormingWorlds/JANUS/issues/51
+      FWL_DATA: ${{ github.workspace }}/fwl_data
+      RAD_DIR: ${{ github.workspace }}/SOCRATES
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: 'false'
 
+      # https://stackoverflow.com/a/65356209
+      - name: Install system dependencies
+        run: ${{ matrix.INSTALL_DEPS }}
+
+      # MacOS only: create symbolic link for gfortran
+      - name: Symlink gfortran
+        if: runner.os == 'macOS'
+        run: |
+          sudo ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
+          sudo ln -s /opt/homebrew/Cellar/gcc/12.*/lib/gcc/12/*.dylib /opt/homebrew/lib/
+          which gfortran
+
+      # Checkout PROTEUS
+      - name: Checkout PROTEUS
+        uses: actions/checkout@v4
+
+      # Checkout SOCRATES
+      - name: Checkout SOCRATES radiative transfer model
+        uses: actions/checkout@v4
+        with:
+          repository: 'nichollsh/SOCRATES'
+          path: ${{ env.RAD_DIR }}
+
+      # Try to restore SOCRATES from the cache
+      - name: Restore SOCRATES from cache
+        uses: actions/cache@v4
+        id: cache-socrates
+        with:
+          path: |
+            ${{ env.RAD_DIR }}/bin
+            ${{ env.RAD_DIR }}/sbin
+            ${{ env.RAD_DIR }}/set_rad_env
+          key: socrates-${{ hashFiles('SOCRATES/version') }}-${{ runner.os }}
+
+      # Build SOCRATES if we can't restore it from the cache
+      - name: Build SOCRATES
+        if: steps.cache-socrates.outputs.cache-hit != 'true'
+        run: |
+          export LD_LIBRARY_PATH=""
+          echo $RAD_DIR
+          cd $RAD_DIR
+          ./configure
+          ./build_code
+          cd ..
+
+      # Setup Python using the version defined in the matrix
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
 
-      - uses: actions/cache@v4
+      # Try to restore the Python environment from the cache
+      - name: Restore Python environment from cache
+        uses: actions/cache@v4
         id: cache-virtualenv
         with:
           path: ${{ env.pythonLocation }}
           key: ${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml') }}
 
-      - name: Install dependencies
-        # if: steps.cache-virtualenv.outputs.cache-hit != 'true'
-        run: |
-          python -m pip install -e .[develop]
+      # Setup Aragog
+      - name: Checkout Aragog interior model
+        uses: actions/checkout@v4
+        with:
+          repository: 'ExPlanetology/aragog'
+          path: 'aragog'
 
-      - uses: actions/cache@v4
+      - name: Install Aragog
+        run: python -m pip install -e aragog/.
+
+      - name: Install Python dependencies
+        run: python -m pip install -e .[develop]
+
+      # Get lookup data for PROTEUS
+      - name: Get FWL data from cache
+        uses: actions/cache@v4
         id: cache-fwl-data
         with:
           path: ${{ env.FWL_DATA }}
           key: fwl-data-2
 
-      - name: Pre-download fwl data
+      # Get FWL data
+      - name: Get additional FWL data
         if: steps.cache-fwl-data.cache-hit != 'true'
         run: |
           proteus get stellar
           proteus get spectral --name Frostflow --bands 48
 
+      # Run PROTEUS tests
       - name: Test with pytest
-        run: |
-          source PROTEUS.env
-          coverage run -m pytest
+        run: coverage run -m pytest
 
+      # Upload output run images if tests fail
       - name: Upload PNG plots as artifacts
-        if: failure()  # Only upload if tests fail
+        if: failure()
         uses: actions/upload-artifact@v3
         with:
           name: png-plots
           path: |
-            output/dummy/plot_elements.png
-            output/dummy/plot_escape.png
-            output/dummy/plot_fluxes_global.png
-            output/dummy/plot_global_lin.png
-            output/dummy/plot_global_log.png
-            output/dummy/plot_observables.png
-            output/dummy/plot_sflux.png
+            output/physical/plot_atmosphere.png
+            output/physical/plot_escape.png
+            output/physical/plot_global_log.png
+            output/physical/plot_observables.png
+            output/physical/plot_stacked.png
+            output/physical/plot_elements.png
+            output/physical/plot_fluxes_atmosphere.png
+            output/physical/plot_interior_cmesh.png
+            output/physical/plot_sflux_cross.png
+            output/physical/plot_emission.png
+            output/physical/plot_interior.png
+            output/physical/plot_sflux.png
 
       - name: Report coverage
         run: |
           coverage json
           export TOTAL=$(python -c "import json;print(json.load(open('coverage.json'))['totals']['percent_covered_display'])")
+          echo "Total coverage: $TOTAL"
           echo "total=$TOTAL" >> $GITHUB_ENV
           echo "### Total coverage: ${TOTAL}%" >> $GITHUB_STEP_SUMMARY
           echo $'\n```' >> $GITHUB_STEP_SUMMARY
@@ -92,7 +164,7 @@ jobs:
           echo $'\n```' >> $GITHUB_STEP_SUMMARY
 
       - name: Make coverage badge
-        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.10' }}
+        if: ${{ github.ref == 'refs/heads/main' && matrix.python-version == '3.13' }}
         uses: schneegans/dynamic-badges-action@v1.7.0
         with:
           auth: ${{ secrets.GIST_TOKEN }}

@@ -64,3 +64,30 @@ def run_interior(dirs:dict, config:Config, loop_counter:dict, IC_INTERIOR:int, h
 
     # Return timestep
     return dt
+
+def get_all_output_times(output_dir:str, model:str):
+
+    if model == "spider":
+        from proteus.interior.spider import get_all_output_times as _get_output_times
+    elif model == "aragog":
+        from proteus.interior.aragog import get_all_output_times as _get_output_times
+    else:
+        return []
+
+    return _get_output_times(output_dir)
+
+def read_interior_data(output_dir:str, model:str, times:list):
+
+    if len(times) == 0:
+        return []
+
+    if model == "spider":
+        from proteus.interior.spider import read_jsons
+        return read_jsons(output_dir, times)
+
+    elif model == "aragog":
+        from proteus.interior.aragog import read_ncdfs
+        return read_ncdfs(output_dir, times)
+
+    else:
+        return []

@@ -21,23 +21,23 @@ def init_star(handler:Proteus):
     Star-related things to be done when the simulation begins.
     '''
 
-    log.debug("Prepare stellar models")
+    log.info("Preparing stellar model")
 
-    # Path to the modern spectrum
-    #   i.e. that observed by a telescope, or derived from various observations.
-    #   This is what we download from OSF.
-    star_modern_path = os.path.join(handler.directories["fwl"],
-                                    handler.config.star.mors.spec)
-
-    # Copy modern spectrum to output folder, for posterity.
-    star_backup_path = os.path.join(handler.directories["output"], "-1.sflux")
-    shutil.copyfile(star_modern_path, star_backup_path)
-
-    # Dummy star modules does not require preparation
+    # Dummy star module does not require preparation
 
     # Prepare MORS
     if handler.config.star.module == 'mors':
         import mors
+
+        # Path to the modern spectrum
+        #   i.e. that observed by a telescope, or derived from various observations.
+        #   This is what we download from OSF.
+        star_modern_path = os.path.join(handler.directories["fwl"],
+                                        handler.config.star.mors.spec)
+
+        # Copy modern spectrum to output folder, for posterity.
+        star_backup_path = os.path.join(handler.directories["output"], "-1.sflux")
+        shutil.copyfile(star_modern_path, star_backup_path)
 
         match handler.config.star.mors.tracks:
 
@@ -140,8 +140,10 @@ def get_new_spectrum(t_star:float, config:Config,
         match config.star.mors.tracks:
             case 'spada':
                 star_props_hist = get_spada_synthesis_properties(stellar_track, t_star/1e6)
+                assert star_struct_modern
+                assert star_props_modern
                 synthetic = mors.synthesis.CalcScaledSpectrumFromProps(
-                    star_struct_modern, star_props_modern, star_props_hist)
+                    modern_spec=star_struct_modern, modern_dict=star_props_modern, historical_dict=star_props_hist)
                 fl = synthetic.fl
                 wl = synthetic.wl
             case 'baraffe':

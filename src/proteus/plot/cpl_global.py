@@ -14,10 +14,11 @@ from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
     from proteus import Proteus
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
+def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
                 logt: bool=True, tmin: float=1e1):
 
     if np.amax(hf_all["Time"]) < 2:
@@ -51,7 +52,8 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
         # Check vmr for presence
         this_vmr = np.array(hf_all[vol+"_vmr"])
         vol_present[vol] = True
-        if (np.amax(this_vmr) < 1.0e-20) or (options[vol+"_included"] < 1):
+
+        if (np.amax(this_vmr) < 1.0e-20) or not config.outgas.calliope.is_included(vol):
             vol_present[vol] = False
             continue
         vol_vmr[vol] = this_vmr
@@ -93,15 +95,15 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
 
     # Set titles
     ax_titles = [
-        "A) Net heat flux to space",
-        "B) Surface temperature",
-        "C) Mantle evolution",
-        "D) Surface gas partial pressure",
-        "E) Surface gas mole fraction",
-        "F) Interior volatile partitioning"
+        "(a) Net heat flux to space",
+        "(c) Surface temperature",
+        "(e) Mantle evolution",
+        "(b) Surface gas partial pressure",
+        "(d) Surface gas mole fraction",
+        "(f) Interior volatile partitioning"
     ]
     for i,ax in enumerate(axs):
-        ax.text(0.015, 0.015, ax_titles[i],
+        ax.text(0.011, 0.015, ax_titles[i],
                 transform=ax.transAxes,
                 horizontalalignment='left',
                 verticalalignment='bottom',
@@ -154,9 +156,10 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
     ax_cl.set_ylim(min(1000.0,min_temp-25) , max(3500.0,max_temp+25))
 
     # PLOT ax_bl
-    ax_bl.axhline( y=options["planet_coresize"], ls='dashed', lw=lw*1.5, alpha=al, color=get_colour("core"), label=r'C-M boundary' )
+    ax_bl.axhline( y=config.struct.corefrac,     ls='dashed', lw=lw*1.5, alpha=al, color=get_colour("core"), label=r'C-M boundary' )
     ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=get_colour("int"), ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
     ax_bl.plot( hf_all["Time"],     hf_all["Phi_global"], color=get_colour("atm"), linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
+
     ax_bl.legend(loc='center left', **leg_kwargs)
     ax_bl.set_ylim(0.0,1.01)
 
@@ -195,7 +198,7 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, options: dict,
     else:
         plt_name += "_lin"
 
-    fig.savefig(output_dir+"/%s.%s"%(plt_name,options["plot_format"]),
+    fig.savefig(output_dir+"/%s.%s"%(plt_name,config.params.out.plot_fmt),
                 bbox_inches='tight', dpi=200)
 
 
@@ -208,7 +211,7 @@ def plot_global_entry(handler: Proteus):
         plot_global(
             hf_all=hf_all,
             output_dir=handler.directories['output'],
-            options=handler.config,
+            config=handler.config,
             logt=logt,
             tmin=1e1,
         )

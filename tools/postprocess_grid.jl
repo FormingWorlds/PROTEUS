@@ -5,20 +5,20 @@
 # in parallel, using one thread each. See the content of `Postprocess.jl` for more info.
 
 # Activate environment
-if !haskey(ENV, "PROTEUS_DIR")
-    error("The PROTEUS_DIR environment variable has not been set")
-end
-ROOT_DIR = abspath( ENV["PROTEUS_DIR"] , "AGNI/")
+# Assuming that this file is in PROTEUS/tools/
+PROTEUS_DIR = dirname(dirname(abspath(@__FILE__)))
+println("PROTEUS_DIR = $PROTEUS_DIR")
+
+ROOT_DIR = abspath( PROTEUS_DIR , "AGNI/")
 using Pkg
 Pkg.activate(ROOT_DIR)
 
 using Glob
 using LoggingExtras
 
-
 # Wrapper
 function once(dir::String, Nsamp::Int)
-    execpath::String = joinpath(ENV["PROTEUS_DIR"], "tools", "Postprocess.jl")
+    execpath::String = joinpath(PROTEUS_DIR, "tools", "postprocess.jl")
 
     @info "Start processing $dir..."
     logfile = joinpath(dir, "ppr.log")

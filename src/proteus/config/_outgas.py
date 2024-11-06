@@ -32,6 +32,8 @@ class Calliope:
 
     Attributes
     ----------
+    T_floor: float
+        Temperature floor applied to outgassing calculation [K].
     include_H2O: bool
         If True, include H2O outgassing.
     include_CO2: bool
@@ -48,18 +50,20 @@ class Calliope:
         If True, include CH4 outgassing.
     include_CO: bool
         If True, include CO outgassing.
-    T_floor: float
-        Temperature floor applied to outgassing calculation [K].
     """
-    include_H2O: bool
-    include_CO2: bool
-    include_N2: bool
-    include_S2: bool
-    include_SO2: bool
-    include_H2: bool
-    include_CH4: bool
-    include_CO: bool
     T_floor: float  = field(validator=validators.gt(0.0))
+    include_H2O: bool = False
+    include_CO2: bool = False
+    include_N2: bool = False
+    include_S2: bool = False
+    include_SO2: bool = False
+    include_H2: bool = False
+    include_CH4: bool = False
+    include_CO: bool = False
+
+    def is_included(self, vol: str) -> bool:
+        """Helper method for getting flag if `vol` is included in outgassing."""
+        return getattr(self, f'include_{vol}')
 
 
 @define

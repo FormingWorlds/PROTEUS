@@ -13,9 +13,28 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def read_ncdf_profile(nc_fpath:str):
-    """
-    Read temperature, pressure, height data from NetCDF file.
+def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
+    """Read data from atmosphere NetCDF output file.
+
+    Automatically reads pressure (p), temperature (t), height (z) arrays with
+    cell-centre (N) and cell-edge (N+1) values interleaved into a single combined array of
+    length (2*N+1).
+
+    Extra keys can be read-in using the extra_keys parameter. These will be stored with
+    the same dimensions as in the NetCDF file.
+
+    Parameters
+    ----------
+        nc_fpath : str
+            Path to NetCDF file.
+
+        extra_keys : list
+            List of extra keys (strings) to read from the file.
+
+    Returns
+    ----------
+        out : dict
+            Dictionary containing numpy arrays of data from the file.
     """
 
     # open file
@@ -30,14 +49,14 @@ def read_ncdf_profile(nc_fpath:str):
     z = np.array(ds.variables["z"][:])
     zl = np.array(ds.variables["zl"][:])
 
-    nlev = len(p)
+    nlev_c = len(p)
 
     # read pressure, temperature, height data into dictionary values
     out = {}
     out["p"] = [pl[0]]
     out["t"] = [tl[0]]
     out["z"] = [zl[0]]
-    for i in range(nlev):
+    for i in range(nlev_c):
         out["p"].append(p[i])
         out["p"].append(pl[i+1])
 
@@ -47,16 +66,21 @@ def read_ncdf_profile(nc_fpath:str):
         out["z"].append(z[i])
         out["z"].append(zl[i+1])
 
+    # Read extra keys
+    for key in extra_keys:
+        if key in ds.variables.keys():
+            out[key] = np.array(ds.variables[key][:])
+
     # close file
     ds.close()
 
     # convert to np arrays
-    for k in out.keys():
-        out[k] = np.array(out[k], dtype=float)
+    for key in out.keys():
+        out[key] = np.array(out[key], dtype=float)
 
     return out
 
-def read_ncdfs(output_dir:str, times:list):
+def read_atmosphere_data(output_dir:str, times:list):
     """
     Read all p,t,z profiles from NetCDF files in a PROTEUS output folder.
     """

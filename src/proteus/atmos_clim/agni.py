@@ -72,13 +72,13 @@ def _construct_voldict(hf_row:dict, config:Config, dirs:dict):
 
     # get from hf_row
     vol_dict = {}
+    vol_sum = 0.0
     for vol in gas_list:
-        vmr = hf_row[vol+"_vmr"]
-        if vmr > 1e-40:
-            vol_dict[vol] = vmr
+        vol_dict[vol] = hf_row[vol+"_vmr"]
+        vol_sum += vol_dict[vol]
 
-    # check values
-    if len(vol_dict) == 0:
+    # Check that the total VMR is not zero
+    if vol_sum < 1e-4:
         UpdateStatusfile(dirs, 20)
         raise Exception("All volatiles have a volume mixing ratio of zero")
 
@@ -113,7 +113,8 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
     # Stellar spectrum path
     sflux_files = glob.glob(os.path.join(dirs["output"], "data", "*.sflux"))
     sflux_times = [ int(s.split("/")[-1].split(".")[0]) for s in sflux_files]
-    sflux_path  = os.path.join(dirs["output"], "data", "%d.sflux"%int(sorted(sflux_times)[-1]))
+    sflux_path  = os.path.join(dirs["output"],
+                                "data", "%d.sflux"%int(sorted(sflux_times)[-1]))
 
     # Spectral file path
     try_spfile = os.path.join(dirs["output"] , "runtime.sf")
@@ -141,9 +142,6 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         # set all gases as condensates, except the least abundant gas
         condensates = [v[0] for v in vol_sorted[1:]]
 
-        # set top two gases to be condensible
-        # condensates = [v[0] for v in vol_sorted[-2:]]
-
     # Chemistry
     chem_type = config.atmos_clim.agni.chemistry
     include_all = False
@@ -157,9 +155,19 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         fc_dir = create_tmp_folder()
         log.debug("Fastchem work folder: '%s'"%fc_dir)
 
-    elif chem_type == 'kin':
-        # kinetics
-        raise Exception("Chemistry type %d unsupported by AGNI"%chem_type)
+    # Surface single-scattering albedo
+    surface_material = config.atmos_clim.agni.surf_material
+    if "greybody" in str(surface_material).lower():
+        # Grey value
+        surface_material = "greybody"
+        log.debug("Using grey single-scattering surface properties")
+
+    else:
+        # Empirical values
+        log.debug(f"Using '{surface_material}' single-scattering surface properties")
+        surface_material = os.path.join(dirs["fwl"], surface_material)
+        if not os.path.isfile(surface_material):
+            raise FileNotFoundError(surface_material)
 
     # Setup struct
     jl.AGNI.atmosphere.setup_b(atmos,
@@ -180,14 +188,17 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         vol_dict, "",
 
                         flag_rayleigh = config.atmos_clim.rayleigh,
-                        flag_cloud= config.atmos_clim.cloud_enabled,
+                        flag_cloud    = config.atmos_clim.cloud_enabled,
+                        overlap_method  = config.atmos_clim.agni.overlap_method,
 
-                        albedo_s=config.atmos_clim.surf_albedo,
+                        albedo_s=config.atmos_clim.surf_greyalbedo,
+                        surface_material=surface_material,
                         condensates=condensates,
                         use_all_gases=include_all,
                         fastchem_work = fc_dir,
 
-                        skin_d=config.atmos_clim.surface_d, skin_k=config.atmos_clim.surface_k,
+                        skin_d=config.atmos_clim.surface_d,
+                        skin_k=config.atmos_clim.surface_k,
                         tmp_magma=hf_row["T_surf"], tmp_floor=config.atmos_clim.tmp_minimum
                         )
 
@@ -200,7 +211,8 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         log.debug("Load NetCDF profile")
 
         nc_times = [ int(s.split("/")[-1].split("_")[0]) for s in nc_files]
-        nc_path  = os.path.join(dirs["output"], "data", "%d_atm.nc"%int(sorted(nc_times)[-1]))
+        nc_path  = os.path.join(dirs["output"],
+                                "data", "%d_atm.nc"%int(sorted(nc_times)[-1]))
         jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
 
     # Otherwise, set to log-linear
@@ -370,7 +382,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
                             conduct=False, convect=True, latent=True, sens_heat=True,
 
                             max_steps=130, max_runtime=900.0,
-                            conv_atol=1e-3, conv_rtol=2e-2,
+                            conv_atol=config.atmos_clim.agni.solution_atol,
+                            conv_rtol=config.atmos_clim.agni.solution_rtol,
 
                             method=1, ls_increase=ls_increase,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
@@ -415,7 +428,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     # observed height and derived bulk density
     jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
     rho_obs = float(atmos.transspec_rho)
-    z_obs   = float(atmos.transspec_r) - hf_row["R_int"] # because transspec_r = R_int + z_obs
+    z_obs   = float(atmos.transspec_r) - hf_row["R_int"] # transspec_r = R_int + z_obs
 
     # ---------------------------
     # Parse results
@@ -425,27 +438,29 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     net_flux =      np.array(atmos.flux_n)
     LW_flux_up =    np.array(atmos.flux_u_lw)
     SW_flux_up =    np.array(atmos.flux_u_sw)
+    SW_flux_down =  np.array(atmos.flux_d_sw)
     T_surf =        float(atmos.tmp_surf)
 
     # New flux from SOCRATES
-    if (config.atmos_clim.janus.F_atm_bc == 0):
-        F_atm_new = net_flux[0]
-    else:
-        F_atm_new = net_flux[-1]
+    F_atm_new = net_flux[0]
 
     # Require that the net flux must be upward (positive)
     if config.atmos_clim.prevent_warming:
-        F_atm_new = max( 1e-8 , F_atm_new )
+        F_atm_lim = max( 1e-8 , F_atm_new )
+    if not np.isclose(F_atm_lim , F_atm_new ):
+        log.warning("Change in F_atm [W m-2] limited in this step!")
+        log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
     log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.2e, %.2e, %.2e  W m-2" %
                                         (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
     output = {}
-    output["F_atm"]  = F_atm_new
+    output["F_atm"]  = F_atm_lim
     output["F_olr"]  = LW_flux_up[0]
     output["F_sct"]  = SW_flux_up[0]
     output["T_surf"] = T_surf
     output["z_obs"]  = z_obs
     output["rho_obs"]= rho_obs
+    output["albedo"] = SW_flux_up[0]/SW_flux_down[0]
 
     return atmos, output

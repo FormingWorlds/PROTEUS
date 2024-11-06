@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.common import read_ncdfs
-from proteus.interior.spider import read_jsons
+from proteus.atmos_clim.common import read_atmosphere_data
+from proteus.interior.wrapper import read_interior_data
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_elements import plot_elements
 from proteus.plot.cpl_emission import plot_emission
@@ -45,8 +45,13 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
+def _get_current_time():
+    '''
+    Get the current system time as a formatted string.
+    '''
+    return str(datetime.now().strftime('%Y-%m-%d %H:%M:%S %Z'))
 
-def GitRevision(dir:str) -> str:
+def _get_git_revision(dir:str) -> str:
     '''
     Get git hash for repository in `dir`.
     '''
@@ -62,13 +67,151 @@ def GitRevision(dir:str) -> str:
 
     return hash
 
+def _get_socrates_version():
+    '''
+    Get the installed SOCRATES version.
+    '''
+    verpath = os.path.join(os.environ.get("RAD_DIR"),"version")
+    with open(verpath, 'r') as hdl:
+        ver = hdl.read().replace("\n","")
+    return str(ver)
+
+def _get_spider_version():
+    '''
+    Get the installed SPIDER version.
+    '''
+
+    # This is the only one that we use, and it won't be updated in the future.
+    return "0.2.0"
+
+def _get_petsc_version():
+    '''
+    Get the installed PETSc version.
+    '''
+
+    # Like SPIDER, this is the only one that we use
+    return "1.3.19.0"
+
+def _get_agni_version(dirs:dict):
+    '''
+    Get the installed AGNI version
+    '''
+    from tomllib import load as tomlload
+    with open(os.path.join(dirs["agni"],"Project.toml"),'rb') as hdl:
+        agni_meta = tomlload(hdl)
+    return agni_meta["version"]
+
+def _get_julia_version():
+    '''
+    Get the installed Julia version
+    '''
+    return subprocess.check_output(["julia","--version"]).decode("utf-8").split()[-1]
+
+def print_system_configuration(dirs:dict):
+    '''
+    Print the current system configuration.
+    '''
+    import platform
+    import pwd
+    import sys
+
+    # Try to get the login name using os.getlogin()
+    try:
+        username = os.getlogin()
+    except OSError:
+        username = pwd.getpwuid(os.getuid()).pw_name
+
+    log.info("Current time      " + _get_current_time())
+    log.info("Python version    " + sys.version.split(" ")[0])
+    log.info("System hostname   " + str(os.uname()[1]))
+    log.info("System username   " + str(username))
+    log.info("Platform type     " + str(platform.system()))
+    log.info("FWL data path     " + dirs["fwl"])
+    log.info(" ")
+
+def print_module_configuration(dirs:dict, config:Config, config_path:str):
+    '''
+    Print the current module configuration, with versions.
+    '''
+
+    # PROTEUS
+    from proteus import __version__ as proteus_version
+    log.info("PROTEUS version   " + proteus_version)
+    log.info("PROTEUS location  " + dirs["proteus"])
+    log.info("PROTEUS git hash  " + _get_git_revision(dirs["proteus"]))
+    log.info("Config file       " + str(config_path))
+    log.info("Output path       " + dirs["output"])
+    log.info(" ")
+
+    # Interior module
+    write = "Interior module   %s" % config.interior.module
+    match config.interior.module:
+        case 'spider':
+            write += " version " + _get_spider_version()
+        case 'aragog':
+            from aragog import __version__ as aragog_version
+            write += " version " + aragog_version
+    log.info(write)
+    if config.interior.module == "spider":
+        log.info("  - PETSc         version " + _get_petsc_version())
+
+    # Structure module
+    log.info("Structure module  %s" % config.struct.module)
+
+    # Atmosphere module
+    write = "Atmos_clim module %s" % config.atmos_clim.module
+    match config.atmos_clim.module:
+        case 'janus':
+            from janus import __version__ as janus_version
+            write += " version " + janus_version
+        case 'agni':
+            write += " version " + _get_agni_version(dirs)
+    log.info(write)
+    if config.atmos_clim.module in ['janus', 'agni']:
+        log.info("  - SOCRATES      version %s at %s" %(_get_socrates_version(), dirs["rad"]))
+        if config.atmos_clim.module == 'agni':
+            log.info("  - Julia         version " + _get_julia_version())
+
+    # Outgassing module
+    write = "Outgas module     %s" % config.outgas.module
+    if config.outgas.module == 'calliope':
+        from calliope import __version__ as calliope_version
+        write += " version " + calliope_version
+    log.info(write)
+
+    # Escape module
+    log.info("Escape module     %s" % config.escape.module)
+
+    # Star module
+    write = "Star module       %s" % config.star.module
+    if config.star.module == 'mors':
+        from mors import __version__ as mors_version
+        write += " version " + mors_version
+    log.info(write)
+
+    # Orbit module
+    log.info("Orbit module      %s" % config.orbit.module)
+
+    # Delivery module
+    log.info("Delivery module   %s" % config.delivery.module)
+
+    # End spacer
+    log.info(" ")
+
+
+def print_header():
+    log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    log.info("                   PROTEUS framework                   ")
+    log.info("                   by Forming Worlds                   ")
+    log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    log.info(" ")
 
 def PrintCurrentState(hf_row:dict):
     '''
     Print the current state of the model to the logger
     '''
     log.info("Runtime info...")
-    log.info("    System time  :   %s  "         % str(datetime.now().strftime('%Y-%m-%d_%H-%M-%S')))
+    log.info("    System time  :   %s  "         % _get_current_time())
     log.info("    Model time   :   %.2e   yr"    % float(hf_row["Time"]))
     log.info("    T_surf       :   %4.3f   K"    % float(hf_row["T_surf"]))
     log.info("    T_magma      :   %4.3f   K"    % float(hf_row["T_magma"]))
@@ -121,7 +264,10 @@ def GetHelpfileKeys():
             "R_star", "age_star", # [m], [yr]
 
             # Observational (from infinity)
-            "z_obs", "rho_obs", "transit_depth", "contrast_ratio", # [m], [kg m-3], [1], [1]
+            "z_obs", # observed height relative to R_int [m]
+            "rho_obs", # observed bulk density [kg m-3]
+            "transit_depth", "contrast_ratio", # [1], [1]
+            "bond_albedo", # bond albedo [1]
 
             # Escape
             "esc_rate_total", # [kg s-1]
@@ -255,14 +401,17 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
-    spider = config.interior.module == 'spider'
+    spider    = config.interior.module == 'spider'
+    aragog    = config.interior.module == 'aragog'
     escape    = config.escape.module is not None
 
     # Get all output times
-    if not spider:
-        output_times = []
-    else:
+    output_times = []
+    if spider:
         from proteus.interior.spider import get_all_output_times
+        output_times = get_all_output_times( output_dir )
+    if aragog:
+        from proteus.interior.aragog import get_all_output_times
         output_times = get_all_output_times( output_dir )
 
     # Global properties for all timesteps
@@ -294,20 +443,22 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         log.debug("Snapshots to plot:" + str(plot_times))
 
     # Interior profiles
-    if spider:
-        jsons = read_jsons(output_dir, plot_times)
-        plot_interior(output_dir, plot_times, jsons, config.params.out.plot_fmt)
+    if spider or aragog:
+        int_data = read_interior_data(output_dir, config.interior.module, plot_times)
+        plot_interior(output_dir, plot_times, int_data,
+                              config.interior.module, config.params.out.plot_fmt)
 
     # Temperature profiles
     if not dummy_atm:
-        ncdfs = read_ncdfs(output_dir, plot_times)
+        atm_data = read_atmosphere_data(output_dir, plot_times)
 
         # Atmosphere only
-        plot_atmosphere(output_dir, plot_times, ncdfs, config.params.out.plot_fmt)
+        plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
         # Atmosphere and interior, stacked
-        if spider:
-            plot_stacked(output_dir, plot_times, jsons, ncdfs, config.params.out.plot_fmt)
+        if spider or aragog:
+            plot_stacked(output_dir, plot_times, int_data, atm_data,
+                            config.interior.module, config.params.out.plot_fmt)
 
         # Flux profiles
         if config.atmos_clim.module == 'janus':
@@ -321,11 +472,20 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_observables(hf_all,    output_dir, plot_format=config.params.out.plot_fmt)
         plot_population_mass_radius (hf_all, output_dir, fwl_dir, config.params.out.plot_fmt)
         plot_population_time_density(hf_all, output_dir, fwl_dir, config.params.out.plot_fmt)
-        plot_sflux(output_dir,          plot_format=config.params.out.plot_fmt)
-        plot_sflux_cross(output_dir,    plot_format=config.params.out.plot_fmt)
 
-        if spider:
-            plot_interior_cmesh(output_dir, plot_format=config.params.out.plot_fmt)
+        plt_modern = bool(config.star.module == "mors")
+        if plt_modern:
+            modern_age = config.star.mors.age_now * 1e9
+        else:
+            modern_age = -1
+        plot_sflux(output_dir, plt_modern=plt_modern,
+                            plot_format=config.params.out.plot_fmt)
+        plot_sflux_cross(output_dir,modern_age=modern_age,
+                            plot_format=config.params.out.plot_fmt)
+
+        if spider or aragog:
+            plot_interior_cmesh(output_dir, plot_times, int_data, config.interior.module,
+                                plot_format=config.params.out.plot_fmt)
 
         if not dummy_atm:
             plot_emission(output_dir, plot_times, plot_format=config.params.out.plot_fmt)
