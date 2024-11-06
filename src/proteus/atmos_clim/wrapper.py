@@ -161,10 +161,10 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
 
     log.info("-------Test to verify XUV computation-------")
     log.info(f"Atmospheric module : {config.atmos_clim.module}")
-    log.info(f"XUV Pressure : Pxuv = {hf_row["p_xuv"]} [bars] vs Pxuv_user = {config.escape.zephyrus.Pxuv} [bars]")
-    log.info(f"XUV Scale height : z_xuv = {hf_row["z_xuv"]} [m]")
-    log.info(f"Planetary radius : R_int = {hf_row["R_int"]} [m]")
-    log.info(f"XUV planetary radius : Rxuv = {hf_row["R_xuv"]} [m]")
+    log.info(f"XUV Pressure : Pxuv = {hf_row['p_xuv']} [bars] vs Pxuv_user = {config.escape.zephyrus.Pxuv} [bars]")
+    log.info(f"XUV Scale height : z_xuv = {hf_row['z_xuv']} [m]")
+    log.info(f"Planetary radius : R_int = {hf_row['R_int']} [m]")
+    log.info(f"XUV planetary radius : Rxuv = {hf_row['R_xuv']} [m]")
     log.info("-------Done-------")
 
     # Calculate observables (measured at infinite distance)
