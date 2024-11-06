@@ -25,9 +25,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "k218b_low3"
+        path        = "k218b_low4"
         logging     = "DEBUG"
-        plot_mod    = 2      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping
@@ -114,9 +114,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    mass        = 4.1 # 8.63       # M_earth
-    radius      = 1.6 # 2.61     # R_earth
-    corefrac    = 0.6      # non-dim., radius fraction
+    mass        = 8.63     # M_earth
+    radius      = 1.9 # 2.61     # R_earth
+    corefrac    = 0.7      # non-dim., radius fraction
 
     # No module for specifically for internal structure
     module  = "none"
@@ -153,12 +153,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 90            # Number of atmospheric grid levels
+        num_levels      = 60            # Number of atmospheric grid levels
         tropopause      = "none"        # none | skin | dynamic
         overlap_method    = "ee"          # gas overlap method
 
     [atmos_clim.dummy]
-        gamma           = 0.1           # atmosphere opacity between 0 and 1
+        gamma           = 0.0           # atmosphere opacity between 0 and 1
 
 # Volatile escape - physics table
 [escape]
@@ -180,17 +180,17 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 200       # Number of SPIDER grid levels
+        num_levels      = 80       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1.0e-6   # solver tolerance
         tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
-        ini_entropy     = 3500.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 3200.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        num_levels      = 220       # Number of Aragog grid levels
-        tolerance       = 1.0e-10   # solver tolerance
+        num_levels      = 100       # Number of Aragog grid levels
+        tolerance       = 1.0e-6   # solver tolerance
 
 # Outgassing - physics table
 [outgas]

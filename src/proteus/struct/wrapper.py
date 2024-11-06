@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from proteus.utils.constants import const_G, element_list
+from proteus.utils.constants import const_G, vol_list, vap_list
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -12,11 +12,11 @@ def update_interior_mass(hf_row:dict):
     M_int = M_core + M_mantle + M_{interior-volatiles}
     """
 
-    # Get mass of all volatiles partitioned into the interior
+    # Get mass of all volatiles partitioned into the INTERIOR
     M_vols = 0.0
-    for e in element_list:
-        M_vols += hf_row[e+"_kg_solid"]
-        M_vols += hf_row[e+"_kg_liquid"]
+    for vol in vol_list:
+        M_vols += hf_row[vol+"_kg_solid"]
+        M_vols += hf_row[vol+"_kg_liquid"]
 
     # Add parts together
     hf_row["M_int"] = hf_row["M_mantle"] + hf_row["M_core"] + M_vols

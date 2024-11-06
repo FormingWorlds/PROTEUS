@@ -12,9 +12,12 @@
 #   and do not represent the physical quantities that are actually
 #   used (physical parameters are listed below)
 -radius0 63710000.0 # Earth radius
--entropy0 2993.025100070677 # overturn of liquidus in Stixrude et al. (2009)
+# -entropy0 2993.025100070677 # overturn of liquidus in Stixrude et al. (2009)
 -time0 1.0E5
--pressure0 10.0E5
+# -pressure0 10.0E5
+
+-entropy0 3500.0
+-pressure0 10.0E7
 
 # energy fluxes and sources to include
 # [0] is off
@@ -83,7 +86,7 @@
 
 # smoothing of material properties across liquidus and solidus
 # units of melt fraction (non-dimensional)
--matprop_smooth_width 1.0E-2
+-matprop_smooth_width 3.0E-2
 
 # viscosity
 -phi_critical 0.4 # transition melt fraction (non-dimensional)
