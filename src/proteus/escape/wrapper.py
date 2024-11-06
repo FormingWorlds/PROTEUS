@@ -85,20 +85,6 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
 
     log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI} [W/m2]")
 
-    # Compute Rxuv
-    ##### DRAFT STAGE
-    # ncdfs = read_ncdfs('output/'+config.params.out.path, hf_all['Time'])
-    # print(int(hf_all['Time'][-1]))
-    # profiles = ncdfs[int(hf_all['Time'][0])]
-    # p_ncdfs = profiles['p']
-    # z_ncdfs = profiles['z']
-    # log.info('p_ncdfs : ', p_ncdfs)
-    # index_Pxuv  = find_nearest(p_ncdfs, config.escape.zephyrus.Pxuv)[1]          # Find the scale heigh z for the corresponding Pxuv [m]
-    # z_Pxuv = z_ncdfs[index_Pxuv]
-    # log.info(f"Scale height at Pxuv : z = {z_Pxuv} [m]?")
-    # Rxuv    = hf_row["R_int"] + z_Pxuv                                  # XUV optically thick planetary radius              [m]
-    # log.info(f"XUV optically thick planetary radius : Rxuv = {Rxuv} [m]")
-
     # Compute energy-limited escape
     mlr = EL_escape(config.escape.zephyrus.tidal, #tidal contribution (True/False)
                     config.orbit.semimajoraxis * AU, #planetary semi-major axis [m]
@@ -107,8 +93,7 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
                     config.star.mass, #stellar mass [kg]
                     config.escape.zephyrus.efficiency, #efficiency factor
                     hf_row["R_int"], #planetary radius [m]
-                    hf_row["R_int"], #XUV optically thick planetary radius [m]
-                    #Rxuv, #XUV optically thick planetary radius [m]
+                    hf_row["R_xuv"], #XUV optically thick planetary radius [m]
                     Fxuv_star_SI)   # [kg s-1]
 
     log.info('Zephyrus escape computation done :)')

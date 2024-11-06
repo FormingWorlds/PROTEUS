@@ -158,6 +158,8 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     hf_row["z_xuv"]  = atm_output["z_xuv"]                  # Scale height at Pxuv          [m]
     hf_row["R_xuv"]  = hf_row["R_int"] + hf_row["z_xuv"]    # Computed XUV planetary radius
 
+    log.info(f"XUV planetary radius : Rxuv = { hf_row["R_xuv"]} [m]")
+
     # Calculate observables (measured at infinite distance)
     R_obs = hf_row["z_obs"] + hf_row["R_int"] # observed radius
     hf_row["transit_depth"] =  (R_obs / hf_row["R_star"])**2.0
