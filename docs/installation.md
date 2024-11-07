@@ -165,6 +165,8 @@ They are also reproduced below.
 
 2. Clone the model
 
+    This must be done **inside**  the PROTEUS directory.
+
     ```console
     git clone git@github.com:nichollsh/AGNI.git
     cd AGNI

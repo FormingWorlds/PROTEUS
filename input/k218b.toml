@@ -115,7 +115,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Planetary structure - physics table
 [struct]
     mass        = 8.63     # M_earth
-    radius      = 1.9 # 2.61     # R_earth
+    radius      = 1.95 # 2.61     # R_earth
     corefrac    = 0.7      # non-dim., radius fraction
 
     # No module for specifically for internal structure
@@ -185,7 +185,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         tolerance       = 1.0e-6   # solver tolerance
         tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
-        ini_entropy     = 3200.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 3400.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]

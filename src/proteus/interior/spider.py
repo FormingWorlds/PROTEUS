@@ -258,6 +258,10 @@ def _try_spider( dirs:dict, config:Config,
     call_sequence.extend(["-ts_sundials_atol", str(config.interior.spider.tolerance * atol_sf)])
     call_sequence.extend(["-ts_sundials_rtol", str(config.interior.spider.tolerance * atol_sf)])
 
+    # Smoothing of material properties across liquidus and solidus
+    #     In units of melt fraction (non-dimensional)
+    call_sequence.extend(["-matprop_smooth_width", "1e-2"])
+
     # Runtime info
     flags = ""
     for flag in call_sequence:
