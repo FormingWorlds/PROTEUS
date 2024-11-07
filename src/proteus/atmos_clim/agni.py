@@ -456,7 +456,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
     # XUV scale height in atm
     p_xuv, idx_xuv =  find_nearest(atmos.p, config.escape.zephyrus.Pxuv*1e5)      # Find the index of the closest pressure from Pxuv [Pa] ?
-    z_xuv = atm.z[idx_xuv]
+    z_xuv = atmos.z[idx_xuv]
 
     output = {}
     output["F_atm"]  = F_atm_lim
