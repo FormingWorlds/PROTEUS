@@ -168,11 +168,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "none"    # Which escape module to use
 
     [escape.zephyrus]
-        efficiency = 1.0   # Escape efficiency factor
-        tidal = false      # Tidal contribution enabled
+        Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
+        efficiency  = 1.0           # Escape efficiency factor
+        tidal       = false         # Tidal contribution enabled
 
     [escape.dummy]
-        rate = 0.0     #  Bulk unfractionated escape rate [kg s-1]
+        rate        = 0.0           # Bulk unfractionated escape rate [kg s-1]
 
 # Interior - physics table
 [interior]

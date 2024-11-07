@@ -171,7 +171,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         tidal       = false         # Tidal contribution enabled
 
     [escape.dummy]
-        rate    = 2.0e4    #  Bulk unfractionated escape rate [kg s-1]
+        rate        = 2.0e4         # Bulk unfractionated escape rate [kg s-1]
 
 # Interior - physics table
 [interior]
