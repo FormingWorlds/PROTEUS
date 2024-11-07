@@ -139,7 +139,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     elif config.atmos_clim.module == 'dummy':
         # Import
         from proteus.atmos_clim.dummy import RunDummyAtm
-
+        print(hf_row["P_surf"])
         # Run dummy atmosphere model
         atm_output = RunDummyAtm(dirs, config, hf_row["T_magma"], hf_row["F_ins"],
                                     hf_row["R_int"], hf_row["M_int"], hf_row["P_surf"])
@@ -153,9 +153,8 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     hf_row["T_surf"] = atm_output["T_surf"]
     hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
     hf_row["bond_albedo"]= atm_output["albedo"]
-
-    hf_row["p_xuv"]  = atm_output["p_xuv"]                  # Closest pressure from Pxuv    [Pa] ?
-    hf_row["z_xuv"]  = atm_output["z_xuv"]                  # Scale height at Pxuv          [m]
+    hf_row["p_xuv"]  = atm_output["p_xuv"]                  # Closest pressure from Pxuv    [Pa]
+    hf_row["z_xuv"]  = atm_output["z_xuv"]                  # Height at Pxuv                [m]
     hf_row["R_xuv"]  = hf_row["R_int"] + hf_row["z_xuv"]    # Computed XUV planetary radius
 
     # Calculate observables (measured at infinite distance)

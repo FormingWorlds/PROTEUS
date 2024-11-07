@@ -12,7 +12,7 @@ from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_spfile_path
 from proteus.utils.constants import gas_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, safe_rm, find_nearest
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 if TYPE_CHECKING:
