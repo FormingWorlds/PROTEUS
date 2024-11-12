@@ -263,18 +263,6 @@ class Proteus:
                 )
             )
 
-            ############### ORBIT AND TIDES
-
-            # Update orbital separation
-            update_separation(self.hf_row,
-                                self.config.orbit.semimajoraxis,
-                                self.config.orbit.eccentricity)
-
-            # Update orbital period
-            update_period(self.hf_row, self.config.orbit.semimajoraxis)
-
-            ############### / ORBIT AND TIDES
-
             ############### INTERIOR
 
             # Run interior model
@@ -286,6 +274,18 @@ class Proteus:
             self.hf_row["age_star"] += self.dt    # in years
 
             ############### / INTERIOR
+
+            ############### ORBIT AND TIDES
+
+            # Update orbital separation
+            update_separation(self.hf_row,
+                                self.config.orbit.semimajoraxis,
+                                self.config.orbit.eccentricity)
+
+            # Update orbital period
+            update_period(self.hf_row, self.config.orbit.semimajoraxis)
+
+            ############### / ORBIT AND TIDES
 
             ############### STELLAR FLUX MANAGEMENT
             PrintHalfSeparator()

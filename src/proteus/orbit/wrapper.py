@@ -45,5 +45,8 @@ def update_period(hf_row:dict, sma:float):
     # Standard gravitational parameter neglecting volatile mass.
     mu = const_G * (hf_row["M_star"] + hf_row["M_mantle"] + hf_row["M_core"])
 
+    # Semimajor axis in SI units
+    a = sma * AU
+
     # Orbital period [seconds]
-    hf_row["period"] = 2 * np.pi * (sma*sma*sma/mu)**0.5
+    hf_row["period"] = 2 * np.pi * (a*a*a/mu)**0.5
