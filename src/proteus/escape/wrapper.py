@@ -96,8 +96,6 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
                     hf_row["R_xuv"], #XUV optically thick planetary radius [m]
                     Fxuv_star_SI)   # [kg s-1]
 
-    log.info('Zephyrus escape computation done :)')
-
     return mlr
 
 def SpeciesEscapeFromTotalEscape(hf_row:dict, dt:float):

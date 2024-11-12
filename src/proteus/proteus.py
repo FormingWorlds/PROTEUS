@@ -12,6 +12,7 @@ from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
 from proteus.interior import run_interior
+from proteus.orbit.wrapper import update_period, update_separation
 from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 from proteus.star.wrapper import (
     get_new_spectrum,
@@ -21,7 +22,6 @@ from proteus.star.wrapper import (
     write_spectrum,
 )
 from proteus.utils.constants import (
-    AU,
     M_earth,
     R_earth,
     const_G,
@@ -263,16 +263,6 @@ class Proteus:
                 )
             )
 
-            ############### ORBIT AND TIDES
-
-            # Calculate time-averaged orbital separation (and convert from AU to metres)
-            # https://physics.stackexchange.com/a/715749
-            self.hf_row["separation"] = self.config.orbit.semimajoraxis * AU * \
-                                        (1 + 0.5 * self.config.orbit.eccentricity**2.0)
-
-
-            ############### / ORBIT AND TIDES
-
             ############### INTERIOR
 
             # Run interior model
@@ -284,6 +274,18 @@ class Proteus:
             self.hf_row["age_star"] += self.dt    # in years
 
             ############### / INTERIOR
+
+            ############### ORBIT AND TIDES
+
+            # Update orbital separation
+            update_separation(self.hf_row,
+                                self.config.orbit.semimajoraxis,
+                                self.config.orbit.eccentricity)
+
+            # Update orbital period
+            update_period(self.hf_row, self.config.orbit.semimajoraxis)
+
+            ############### / ORBIT AND TIDES
 
             ############### STELLAR FLUX MANAGEMENT
             PrintHalfSeparator()
