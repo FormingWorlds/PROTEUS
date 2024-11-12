@@ -6,7 +6,6 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from calliope.structure import calculate_mantle_mass
 
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
@@ -177,11 +176,7 @@ class Proteus:
             self.hf_row["T_eqm"] = 2000.0
 
             # Planet size conversion, and calculate mantle mass (= liquid + solid)
-            self.hf_row["M_int"] = self.config.struct.mass * M_earth
             self.hf_row["R_int"] = self.config.struct.radius * R_earth
-            self.hf_row["M_mantle"] = calculate_mantle_mass(
-                self.hf_row["R_int"], self.hf_row["M_int"], self.config.struct.corefrac
-            )
 
             # Surface gravity and interior mass
             update_surface_gravity(self.hf_row)

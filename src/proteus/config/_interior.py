@@ -59,6 +59,17 @@ class Spider:
     ini_entropy: float = field(validator=gt(0))
     ini_dsdr: float = field(validator=lt(0))
 
+@define
+class Dummy:
+    """Parameters for Dummy interior module.
+
+    Attributes
+    ----------
+    mass: float
+        Mass of planet's interior. Units of [M_earth].
+    """
+    mass: float = field(validator=gt(0))
+
 
 @define
 class Aragog:

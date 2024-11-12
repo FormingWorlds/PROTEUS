@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from proteus.struct.wrapper import simple_mantle_mass
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import secs_per_year
 
@@ -15,14 +16,21 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
+
 # Run the dummy interior module
 def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
     log.info("Running dummy interior...")
 
+    # Interior mass (mantle+core) from config
+    M_mant_core = config.interior.dummy.mass * M_earth
+
+    # Mantle mass using simple structure model
+    M_mant = simple_mantle_mass(hf_row["R_int"], M_mant_core, self.config.struct.corefrac)
+
     # Output dictionary
     output = {}
-    output["M_mantle"]  = hf_row["M_mantle"]
-    output["M_core"]    = hf_row["M_core"]
+    output["M_mantle"]  = M_mant
+    output["M_core"]    = M_mant_core - M_mant
     output["F_int"]     = hf_row["F_atm"]
 
     # Parameters

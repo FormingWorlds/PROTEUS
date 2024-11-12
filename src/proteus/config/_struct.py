@@ -10,8 +10,6 @@ from ._converters import none_if_none
 class Struct:
     """Planetary structure (mass, radius).
 
-    mass: float
-        Initial guess for mass of planet's interior. Units of [M_earth].
     radius: float
         Fixed radius of the atmosphere-interior boundary. Units of [R_earth].
     corefrac: float
@@ -19,7 +17,6 @@ class Struct:
     module: str | None
         Select internal structure module to use. Not used currently.
     """
-    mass: float = field(validator=gt(0))
     radius: float  = field(validator=gt(0))
     corefrac: float = field(validator=(gt(0), lt(1)))
 
