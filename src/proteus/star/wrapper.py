@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import AU, R_sun, const_sigma
+from proteus.utils.constants import AU, R_sun, const_sigma, M_sun
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -184,9 +184,10 @@ def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
 
 def update_stellar_quantities(hf_row:dict, config:Config, stellar_track=None):
 
-    # Update value for star's radius
-    log.info("Update stellar radius")
+    # Update value for star's radius and mass
+    log.info("Update stellar radius and mass")
     update_stellar_radius(hf_row, config, stellar_track)
+    update_stellar_mass(hf_row, config)
 
     # Update value for instellation flux
     log.info("Update instellation")
@@ -199,6 +200,12 @@ def update_stellar_quantities(hf_row:dict, config:Config, stellar_track=None):
     # Calculate new skin temperature
     # Assuming a grey stratosphere in radiative eqm (https://doi.org/10.5194/esd-7-697-2016)
     hf_row["T_skin"] = hf_row["T_eqm"] * (0.5**0.25)
+
+def update_stellar_mass(hf_row:dict, config:Config):
+    '''
+    Update stellar mass in hf_row, stored in SI units.
+    '''
+    hf_row["M_star"] = config.star.mass * M_sun
 
 def update_stellar_radius(hf_row:dict, config:Config, stellar_track=None):
     '''

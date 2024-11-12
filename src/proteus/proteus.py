@@ -4,15 +4,14 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-
 import numpy as np
-from calliope.structure import calculate_mantle_mass
 
-from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
+from proteus.atmos_clim import RunAtmosphere
 from proteus.escape.wrapper import RunEscape
 from proteus.interior import run_interior
 from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
+from proteus.orbit.wrapper import update_separation, update_period
 from proteus.star.wrapper import (
     get_new_spectrum,
     init_star,
@@ -56,6 +55,7 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
+from calliope.structure import calculate_mantle_mass
 
 
 class Proteus:
@@ -265,11 +265,13 @@ class Proteus:
 
             ############### ORBIT AND TIDES
 
-            # Calculate time-averaged orbital separation (and convert from AU to metres)
-            # https://physics.stackexchange.com/a/715749
-            self.hf_row["separation"] = self.config.orbit.semimajoraxis * AU * \
-                                        (1 + 0.5 * self.config.orbit.eccentricity**2.0)
+            # Update orbital separation
+            update_separation(self.hf_row,
+                                self.config.orbit.semimajoraxis,
+                                self.config.orbit.eccentricity)
 
+            # Update orbital period
+            update_period(self.hf_row, self.config.orbit.semimajoraxis)
 
             ############### / ORBIT AND TIDES
 
