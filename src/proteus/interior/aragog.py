@@ -91,7 +91,6 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             inner_boundary_value = 4000, # core temperature [K]
             emissivity = 1, # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature = 273, # only used in gray body BC, outer_boundary_condition = 1
-            core_radius = config.struct.corefrac * hf_row["R_int"], # not used now
             core_density = 10738.332568062382, # not used now
             core_heat_capacity = 880, # not used now
             )
@@ -205,7 +204,7 @@ def GetAragogOutput(hf_row:dict):
 
     output["M_mantle"] = aragog_output.mantle_mass
     output["T_magma"] = aragog_output.solution_top_temperature
-    output["Phi_global"] = float(aragog_output.melt_fraction_global[-1])
+    output["Phi_global"] = float(aragog_output.melt_fraction_global)
     output["RF_depth"] = float(aragog_output.rheological_front)
     output["F_int"] = aragog_output.convective_heat_flux_basic[-1,-1] # Need to be revised for consistency
 
