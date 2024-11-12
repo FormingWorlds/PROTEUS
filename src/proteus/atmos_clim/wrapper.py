@@ -139,7 +139,6 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     elif config.atmos_clim.module == 'dummy':
         # Import
         from proteus.atmos_clim.dummy import RunDummyAtm
-        print(hf_row["P_surf"])
         # Run dummy atmosphere model
         atm_output = RunDummyAtm(dirs, config, hf_row["T_magma"], hf_row["F_ins"],
                                     hf_row["R_int"], hf_row["M_int"], hf_row["P_surf"])
