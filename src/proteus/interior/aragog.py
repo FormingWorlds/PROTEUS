@@ -4,11 +4,14 @@ from __future__ import annotations
 import glob
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import netCDF4 as nc
 import numpy as np
 import pandas as pd
+import platformdirs
+
 from aragog import Output, Solver
 from aragog.parser import (
     Parameters,
@@ -22,7 +25,6 @@ from aragog.parser import (
     _ScalingsParameters,
     _SolverParameters,
 )
-
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import R_earth, secs_per_year
 
@@ -31,6 +33,8 @@ if TYPE_CHECKING:
 
 aragog_solver = None
 log = logging.getLogger("fwl."+__name__)
+
+FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 # Run the Aragog interior module
 def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
@@ -141,8 +145,8 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             latent_heat_of_fusion = 4e6,
             rheological_transition_melt_fraction = 0.4,
             rheological_transition_width = 0.15,
-            solidus = "aragog/data/test/solidus_1d_lookup.dat",
-            liquidus = "aragog/data/test/liquidus_1d_lookup.dat",
+            solidus = FWL_DATA_DIR / "interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018/solidus.dat",
+            liquidus = FWL_DATA_DIR / "interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018/liquidus.dat",
             phase = "mixed",
             phase_transition_width = 0.1,
             grain_size = config.interior.grain_size,
