@@ -270,7 +270,7 @@ def GetHelpfileKeys():
             "bond_albedo", # bond albedo [1]
 
             # Escape
-            "esc_rate_total", # [kg s-1]
+            "esc_rate_total", "p_xuv", "z_xuv", "R_xuv", # [kg s-1], [m], [m]
 
             # Atmospheric composition
             "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]
