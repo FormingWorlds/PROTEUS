@@ -57,23 +57,17 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 
     ```console
     git clone git@github.com:FormingWorlds/PROTEUS.git
-    ```
-
-3. Get dependencies
-
-    ```console
     cd PROTEUS
-    git submodule update --init --recursive
     ```
 
-4. Create a virtual environment
+3. Create a virtual environment
 
     ```console
     python -m venv .venv
     source .venv/bin/activate
     ```
 
-5. Setup radiative transfer code (**SOCRATES**)
+4. Setup radiative transfer code (**SOCRATES**)
 
     The code can be setup in `./socrates/` using the following script.
 
@@ -81,7 +75,10 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     source get_socrates.sh
     ```
 
-6. **Optional** developer installation steps
+    The environemnt variable `RAD_DIR` must always point to the SOCRATES installation path.
+    It is highly recommended that you add this to your shell rc file (e.g. `~/.bashrc`).
+
+5. **Optional** developer installation steps
 
     Follow the steps in this section if you want to create editable installations of these submodules.
     Otherwise, go to the next step section.
@@ -121,33 +118,28 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
         pip install -e ZEPHYRUS/.
         ```
 
-7. Setup numerical computing library (**PETSc**)
+6. Setup numerical computing library (**PETSc**)
 
-    You will need to do this step in an environment with Python <=3.12.
+    You will need to do this particular step in an environment with Python <=3.12.
 
     ```console
     ./tools/get_petsc.sh
     ```
 
-8. Setup interior evolution model (**SPIDER**)
+7. Setup interior evolution model (**SPIDER**)
 
     ```console
     ./tools/get_spider.sh
     ```
 
-9. Setup PROTEUS coupled framework
+8. Setup PROTEUS coupled framework
 
-    1. Get the remaining Python dependencies
+    ```console
+    pip install -e .
+    ```
 
-        ```console
-        pip install -e .
-        ```
 
-    2. Configure environment variables
-
-        - The variable `RAD_DIR` must point to the SOCRATES installation path. It is best to add this to your shell rc file.
-
-10. Done! 🚀
+9. Done! 🚀
     Any remaining dependencies will be downloaded when the model is first run.
 
 ## Optional modules

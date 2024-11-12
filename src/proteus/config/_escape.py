@@ -33,11 +33,14 @@ class Zephyrus:
 
     Attributes
     ----------
+    Pxuv: float
+        Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
     efficiency: float
         Escape efficiency factor
     tidal: bool
         Tidal contribution enabled
     """
+    Pxuv: float = field(default=1e-2, validator=[ge(1e-10), le(1e1)])
     efficiency: float = field(default=1.0,validator=(ge(0.0), le(1.0)))
     tidal: bool = field(default=False)
 

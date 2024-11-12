@@ -68,7 +68,6 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
             Dictionary of helpfile variables, at this iteration only
         stellar_track : mors star object
             Mors star object storing spada track data.
-
     Returns
     -------
         mlr : float
@@ -77,9 +76,6 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
 
     log.info("Running EL escape (ZEPHYRUS) ...")
 
-    ## Load stellar evolution track + compute EL escape
-    log.info("Load stellar evolution track + compute EL escape ")
-
     # Get the age of the star at time t to compute XUV flux at that time
     age_star = hf_row["age_star"] / 1e6 # [Myrs]
 
@@ -87,7 +83,7 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
     Fxuv_star_SI = ((stellar_track.Value(age_star, 'Lx') + stellar_track.Value(age_star, 'Leuv'))
                              / (4 * np.pi * (config.orbit.semimajoraxis * AU * 1e2)**2)) * ergcm2stoWm2
 
-    log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI}")
+    log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI} [W/m2]")
 
     # Compute energy-limited escape
     mlr = EL_escape(config.escape.zephyrus.tidal, #tidal contribution (True/False)
@@ -97,7 +93,7 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
                     config.star.mass, #stellar mass [kg]
                     config.escape.zephyrus.efficiency, #efficiency factor
                     hf_row["R_int"], #planetary radius [m]
-                    hf_row["R_int"], #XUV optically thick planetary radius [m]
+                    hf_row["R_xuv"], #XUV optically thick planetary radius [m]
                     Fxuv_star_SI)   # [kg s-1]
 
     log.info('Zephyrus escape computation done :)')
