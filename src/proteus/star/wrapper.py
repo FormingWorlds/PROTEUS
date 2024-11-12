@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import AU, R_sun, const_sigma, M_sun
+from proteus.utils.constants import AU, M_sun, R_sun, const_sigma
 
 log = logging.getLogger("fwl."+__name__)
 

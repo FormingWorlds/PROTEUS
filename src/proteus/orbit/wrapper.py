@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+
 import numpy as np
 
 from proteus.utils.constants import AU, const_G

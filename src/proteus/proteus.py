@@ -4,14 +4,16 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-import numpy as np
 
-from proteus.config import read_config_object
+import numpy as np
+from calliope.structure import calculate_mantle_mass
+
 from proteus.atmos_clim import RunAtmosphere
+from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
 from proteus.interior import run_interior
+from proteus.orbit.wrapper import update_period, update_separation
 from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
-from proteus.orbit.wrapper import update_separation, update_period
 from proteus.star.wrapper import (
     get_new_spectrum,
     init_star,
@@ -20,7 +22,6 @@ from proteus.star.wrapper import (
     write_spectrum,
 )
 from proteus.utils.constants import (
-    AU,
     M_earth,
     R_earth,
     const_G,
@@ -55,7 +56,6 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
-from calliope.structure import calculate_mantle_mass
 
 
 class Proteus:
