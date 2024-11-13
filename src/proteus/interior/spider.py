@@ -402,7 +402,7 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
     log.info("Running SPIDER...")
 
     # parameters
-    max_attempts = 1        # maximum number of attempts
+    max_attempts = 5        # maximum number of attempts
     step_sf = 1.0           # step scale factor at attempt 1
     atol_sf = 1.0           # tolerance scale factor at attempt 1
 

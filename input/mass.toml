@@ -114,7 +114,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    mass        = 1.0       # M_earth
+    mass        = 1.2       # M_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
     # No module for specifically for internal structure
@@ -177,7 +177,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e6   # Initial heat flux guess [W m-2]
 
-    module = "aragog"   # Which interior module to use
+    module = "spider"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 220       # Number of SPIDER grid levels

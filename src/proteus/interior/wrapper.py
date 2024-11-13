@@ -54,7 +54,6 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
             hf_row["R_int"] = x
             run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
             res = hf_row["M_int"] - M_target
-            print(x, res)
             return res
 
         # Find the radius
