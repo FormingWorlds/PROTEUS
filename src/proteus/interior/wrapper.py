@@ -64,8 +64,9 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
         run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
 
     # Result
-    log.info("    M_int: %.1e kg = %.1f M_earth"%(hf_row["M_int"], hf_row["M_int"]/M_earth))
-    log.info("    R_int: %.1e m  = %.1f R_earth"%(hf_row["R_int"], hf_row["R_int"]/R_earth))
+    log.info("Found solution for interior structure")
+    log.info("M_int: %.1e kg = %.3f M_earth"%(hf_row["M_int"], hf_row["M_int"]/M_earth))
+    log.info("R_int: %.1e m  = %.3f R_earth"%(hf_row["R_int"], hf_row["R_int"]/R_earth))
 
 
 

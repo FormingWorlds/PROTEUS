@@ -54,9 +54,11 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
 
     # Output dictionary
     output = {}
-    output["M_mantle"]  = hf_row["M_mantle"]
-    output["M_core"]    = hf_row["M_core"]
-    output["F_int"]     = hf_row["F_atm"]
+    output["F_int"] = hf_row["F_atm"]
+
+    # Interior structure
+    output["M_core"]   = calculate_simple_core_mass(hf_row["R_int"], config.struct.corefrac)
+    output["M_mantle"] = calculate_simple_mantle_mass(hf_row["R_int"], hf_row["M_int"], config.struct.corefrac)
 
     # Parameters
     tmp_init = config.interior.dummy.ini_tmagma # Initial magma temperature
