@@ -63,12 +63,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         # solidification
         [params.stop.solid]
-            enabled  = false
+            enabled  = true
             phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
-            enabled = false
+            enabled = true
             F_crit  = 0.2     # W m-2, model will terminate when |F_atm| < F_crit
 
         # steady state
