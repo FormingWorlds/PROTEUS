@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import platform
-import shutil
 import subprocess
 import sys
 from typing import TYPE_CHECKING
@@ -480,12 +479,12 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float):
     output["RF_depth"]        = float(data_a[7])/R_int  # depth of rheological front
 
     # Manually calculate heat flux at near-surface from energy gradient
-    json_file   = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
-    Etot        = json_file.get_dict_values(['data','Etot_b'])
-    rad         = json_file.get_dict_values(['data','radius_b'])
-    area        = json_file.get_dict_values(['data','area_b'])
-    E0          = Etot[1] - (Etot[2]-Etot[1]) * (rad[2]-rad[1]) / (rad[1]-rad[0])
-    F_int2      = E0/area[0]
+    # json_file   = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
+    # Etot        = json_file.get_dict_values(['data','Etot_b'])
+    # rad         = json_file.get_dict_values(['data','radius_b'])
+    # area        = json_file.get_dict_values(['data','area_b'])
+    # E0          = Etot[1] - (Etot[2]-Etot[1]) * (rad[2]-rad[1]) / (rad[1]-rad[0])
+    # F_int2      = E0/area[0]
 
     # Limit F_int to positive values
     if config.atmos_clim.prevent_warming:

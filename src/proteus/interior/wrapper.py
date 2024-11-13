@@ -5,9 +5,9 @@ import logging
 from typing import TYPE_CHECKING
 
 import pandas as pd
-
-from proteus.utils.constants import const_G, R_earth, M_earth
 import scipy.optimize as optimise
+
+from proteus.utils.constants import M_earth, R_earth, const_G
 
 if TYPE_CHECKING:
     from proteus.config import Config

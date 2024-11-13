@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.interior.timestep import next_step
-from proteus.utils.constants import secs_per_year, const_G, M_earth, R_earth
+from proteus.utils.constants import M_earth, R_earth, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
