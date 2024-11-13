@@ -177,7 +177,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e6   # Initial heat flux guess [W m-2]
 
-    module = "dummy"   # Which interior module to use
+    module = "aragog"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 220       # Number of SPIDER grid levels
