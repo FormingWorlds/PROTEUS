@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from proteus.utils.constants import const_G, R_earth, M_earth
 from proteus.utils.helper import PrintHalfSeparator
 
 if TYPE_CHECKING:
@@ -13,12 +14,49 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
+def update_gravity(hf_config:dict):
+    '''
+    Update surface gravity.
+    '''
+    hf_row["gravity"] = const_G * hf_row["M_int"] / (hf_row["R_int"] * hf_row["R_int"])
+
+def determine_interior_radius(dirs:dict, config:Config, loop_counter:dict, hf_all:pd.DataFrame, hf_row:dict):
+    '''
+    Determine the interior radius (R_int) of the planet.
+
+    This uses the interior model's hydrostatic integration to estimate the planet's
+    interior mass from a given radius. The radius is then adjusted until the interior mass
+    achieves the target mass provided by the user in the config file.
+
+    For the dummy interior, the radius is simply specified by the user in the config file.
+    '''
+
+    # Trivial dummy case
+    if config.interior.module == 'dummy':
+        hf_row["R_int"] = config.interior.dummy.radius * R_earth
+        return
+
+    # Other cases...
+
+    # Initial guess for interior radius
+    hf_row["R_int"] = R_earth * 0.9
+
+    # Run the interior module to see what mass we get.
+    IC_INTERIOR = 1
+    _dt = run_interior(dirs, config, loop_counter, IC_INTERIOR, hf_all, hf_row)
+
+    # Timestep dt should be zero
+    print("Timestep:",_dt)
+
+
+    print(hf_row["M_int"]/M_earth)
+
+
+
 def run_interior(dirs:dict, config:Config, loop_counter:dict, IC_INTERIOR:int, hf_all:pd.DataFrame, hf_row:dict):
     '''
     Run interior model
     '''
-
-    PrintHalfSeparator()
 
     # Use the appropriate interior model
 

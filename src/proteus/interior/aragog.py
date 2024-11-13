@@ -214,7 +214,7 @@ def GetAragogOutput(hf_row:dict):
 
     output["M_mantle_liquid"] = output["M_mantle"] * output["Phi_global"]
     output["M_mantle_solid"] = output["M_mantle"] - output["M_mantle_liquid"]
-    output["M_core"] = hf_row["M_core"]
+    output["M_core"] = aragog_output.core_mass
 
     return output
 

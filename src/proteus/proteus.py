@@ -6,12 +6,11 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from calliope.structure import calculate_mantle_mass
 
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
-from proteus.interior import run_interior
+from proteus.interior.wrapper import run_interior, update_gravity
 from proteus.orbit.wrapper import update_period, update_separation
 from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 from proteus.star.wrapper import (
@@ -176,13 +175,11 @@ class Proteus:
             self.hf_row["F_int"] = self.hf_row["F_atm"]
             self.hf_row["T_eqm"] = 2000.0
 
-            # Planet size conversion, and calculate mantle mass (= liquid + solid)
+            # Planet interior mass
             self.hf_row["M_int"] = self.config.struct.mass * M_earth
-            self.hf_row["R_int"] = self.config.struct.radius * R_earth
-            self.hf_row["gravity"] = const_G * self.hf_row["M_int"] / (self.hf_row["R_int"] ** 2.0)
-            self.hf_row["M_mantle"] = calculate_mantle_mass(
-                self.hf_row["R_int"], self.hf_row["M_int"], self.config.struct.corefrac
-            )
+
+            # Planet interior radius
+            determine_interior_radius()
 
             # Store partial pressures and list of included volatiles
             inc_gases = []
@@ -263,17 +260,26 @@ class Proteus:
                 )
             )
 
-            ############### INTERIOR
+            ############### INTERIOR AND STRUCTURE
+
+            PrintHalfSeparator()
 
             # Run interior model
             self.dt = run_interior(self.directories, self.config,
                                 self.loops, self.IC_INTERIOR, self.hf_all,  self.hf_row)
 
+
+            # Update surface gravity
+            update_gravity(self.hf_row)
+
+            self.hf_row["R_int"] = self.config.struct.radius * R_earth
+
+
             # Advance current time in main loop according to interior step
             self.hf_row["Time"]     += self.dt    # in years
             self.hf_row["age_star"] += self.dt    # in years
 
-            ############### / INTERIOR
+            ############### / INTERIOR AND STRUCTURE
 
             ############### ORBIT AND TIDES
 

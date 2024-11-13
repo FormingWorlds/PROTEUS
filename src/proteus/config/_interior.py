@@ -20,6 +20,8 @@ class Interior:
         Parameters for running the SPIDER module.
     aragog: Aragog
         Parameters for running the aragog module.
+    dummy: Dummy
+        Parameters for running the dummy module.
     """
     grain_size: float = field(validator=gt(0))
     F_initial: float = field(validator=gt(0))
@@ -28,6 +30,7 @@ class Interior:
 
     spider: Spider
     aragog: Aragog
+    dummy: Dummy
 
 
 @define
@@ -73,3 +76,18 @@ class Aragog:
     """
     num_levels: int  = field(validator=ge(40))
     tolerance: float
+
+@define
+class Dummy:
+    """Parameters for Dummy interior module.
+
+    Attributes
+    ----------
+    radius: float
+        Radius of the planet's interior [R_earth].
+    init_tmagma: float
+        Initial magma surface temperature [K].
+    """
+
+    radius: float = field(validator=gt(0))
+    ini_tmagma: float = field(validator=gt(0))
