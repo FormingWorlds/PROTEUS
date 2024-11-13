@@ -172,6 +172,14 @@ def download_evolution_tracks(track:str):
     log.debug("Get evolution tracks")
     DownloadEvolutionTracks(track)
 
+def download_interior_lookuptables():
+    """
+    Download interior lookup tables
+    """
+    from aragog.data import DownloadLookupTableData
+    log.debug("Get interior lookup tables")
+    DownloadLookupTableData()
+
 
 def download_sufficient_data(config:Config):
     """
@@ -208,6 +216,10 @@ def download_sufficient_data(config:Config):
 
     # Mass-radius reference data
     download_massradius_data()
+
+    # Interior look up tables
+    if config.interior.module == "aragog":
+        download_interior_lookuptables()
 
 
 def _none_dirs():

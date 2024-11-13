@@ -243,8 +243,12 @@ def GetHelpfileKeys():
 
     # Basic keys
     keys = [
-            # Model tracking and basic parameters
-            "Time", "separation", # [yr], [m]
+            # Model tracking
+            "Time", # [yr]
+
+            # Orbital dynamics
+            "separation", # [m]
+            "period", # [s]
 
             # Input parameters (converted to SI)
             "R_int", "M_int", # [m], [kg]
@@ -261,7 +265,7 @@ def GetHelpfileKeys():
             "M_mantle_solid", "M_mantle_liquid", # all [kg]
 
             # Stellar
-            "R_star", "age_star", # [m], [yr]
+            "M_star", "R_star", "age_star", # [kg], [m], [yr]
 
             # Observational (from infinity)
             "z_obs", # observed height relative to R_int [m]
@@ -270,7 +274,7 @@ def GetHelpfileKeys():
             "bond_albedo", # bond albedo [1]
 
             # Escape
-            "esc_rate_total", # [kg s-1]
+            "esc_rate_total", "p_xuv", "z_xuv", "R_xuv", # [kg s-1], [bar], [m], [m]
 
             # Atmospheric composition
             "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]

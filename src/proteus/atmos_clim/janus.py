@@ -278,6 +278,10 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         # calc observed density
         rho_obs = calc_observed_rho(atm)
 
+    # XUV height in atm
+    p_xuv, idx_xuv =  find_nearest(atm.p, config.escape.zephyrus.Pxuv*1e5)
+    z_xuv = atm.z[idx_xuv]
+
     # final things to store
     output={}
     output["T_surf"] = atm.ts            # Surface temperature [K]
@@ -287,5 +291,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["albedo"] = atm.SW_flux_up[0] / atm.SW_flux_down[0]
     output["z_obs"]  = z_obs
     output["rho_obs"]= rho_obs
+    output["p_xuv"]  = p_xuv/1e5         # Closest pressure from Pxuv    [bar]
+    output["z_xuv"]  = z_xuv             # Height at Pxuv                [m]
 
     return output

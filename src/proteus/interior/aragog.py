@@ -4,11 +4,13 @@ from __future__ import annotations
 import glob
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import netCDF4 as nc
 import numpy as np
 import pandas as pd
+import platformdirs
 from aragog import Output, Solver
 from aragog.parser import (
     Parameters,
@@ -31,6 +33,8 @@ if TYPE_CHECKING:
 
 aragog_solver = None
 log = logging.getLogger("fwl."+__name__)
+
+FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 # Run the Aragog interior module
 def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
@@ -91,7 +95,6 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             inner_boundary_value = 4000, # core temperature [K]
             emissivity = 1, # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature = 273, # only used in gray body BC, outer_boundary_condition = 1
-            core_radius = config.struct.corefrac * hf_row["R_int"], # not used now
             core_density = 10738.332568062382, # not used now
             core_heat_capacity = 880, # not used now
             )
@@ -142,8 +145,8 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             latent_heat_of_fusion = 4e6,
             rheological_transition_melt_fraction = 0.4,
             rheological_transition_width = 0.15,
-            solidus = "aragog/data/test/solidus_1d_lookup.dat",
-            liquidus = "aragog/data/test/liquidus_1d_lookup.dat",
+            solidus = FWL_DATA_DIR / "interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018/solidus.dat",
+            liquidus = FWL_DATA_DIR / "interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018/liquidus.dat",
             phase = "mixed",
             phase_transition_width = 0.1,
             grain_size = config.interior.grain_size,
@@ -205,7 +208,7 @@ def GetAragogOutput(hf_row:dict):
 
     output["M_mantle"] = aragog_output.mantle_mass
     output["T_magma"] = aragog_output.solution_top_temperature
-    output["Phi_global"] = float(aragog_output.melt_fraction_global[-1])
+    output["Phi_global"] = float(aragog_output.melt_fraction_global)
     output["RF_depth"] = float(aragog_output.rheological_front)
     output["F_int"] = aragog_output.convective_heat_flux_basic[-1,-1] # Need to be revised for consistency
 
