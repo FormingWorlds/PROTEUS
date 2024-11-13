@@ -200,9 +200,13 @@ def _try_spider( dirs:dict, config:Config,
         dtmacro     = 0
         dtswitch    = 0
 
+    empty_file = os.path.join(dirs["output"],"data", ".spider_tmp")
+    open(empty_file, 'w').close()
+
     ### SPIDER base call sequence
     call_sequence = [
                         spider_exec,
+                        "-options_file",           empty_file,
                         "-outputDirectory",        dirs["output"]+'data/',
                         "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
                         "-OXYGEN_FUGACITY_offset", "%.6e"%(config.outgas.fO2_shift_IW),  # Relative to the specified buffer
@@ -364,7 +368,7 @@ def _try_spider( dirs:dict, config:Config,
     flags = ""
     for flag in call_sequence:
         flags += " " + flag
-    log.debug("SPIDER call sequence: '%s'" % flags)
+    # log.debug("SPIDER call sequence: '%s'" % flags)
 
     call_string = " ".join(call_sequence)
 
@@ -397,10 +401,9 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
 
     # info
     log.info("Running SPIDER...")
-    log.debug("IC_INTERIOR = %d"%IC_INTERIOR)
 
     # parameters
-    max_attempts = 7        # maximum number of attempts
+    max_attempts = 1        # maximum number of attempts
     step_sf = 1.0           # step scale factor at attempt 1
     atol_sf = 1.0           # tolerance scale factor at attempt 1
 
@@ -483,7 +486,6 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float):
     area        = json_file.get_dict_values(['data','area_b'])
     E0          = Etot[1] - (Etot[2]-Etot[1]) * (rad[2]-rad[1]) / (rad[1]-rad[0])
     F_int2      = E0/area[0]
-    log.debug(">>>>>>> F_int2: %.2e, F_int: %.2e" % (F_int2, output["F_int"]) )
 
     # Limit F_int to positive values
     if config.atmos_clim.prevent_warming:

@@ -7,20 +7,20 @@ from typing import TYPE_CHECKING
 import pandas as pd
 
 from proteus.utils.constants import const_G, R_earth, M_earth
-from proteus.utils.helper import PrintHalfSeparator
+import scipy.optimize as optimise
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
-def update_gravity(hf_config:dict):
+def update_gravity(hf_row:dict):
     '''
     Update surface gravity.
     '''
     hf_row["gravity"] = const_G * hf_row["M_int"] / (hf_row["R_int"] * hf_row["R_int"])
 
-def determine_interior_radius(dirs:dict, config:Config, loop_counter:dict, hf_all:pd.DataFrame, hf_row:dict):
+def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     '''
     Determine the interior radius (R_int) of the planet.
 
@@ -31,25 +31,41 @@ def determine_interior_radius(dirs:dict, config:Config, loop_counter:dict, hf_al
     For the dummy interior, the radius is simply specified by the user in the config file.
     '''
 
+    log.info("Using interior model to determine R_int from M_int")
+
     # Trivial dummy case
     if config.interior.module == 'dummy':
         hf_row["R_int"] = config.interior.dummy.radius * R_earth
-        return
 
     # Other cases...
+    else:
+        IC_INTERIOR = 1
 
-    # Initial guess for interior radius
-    hf_row["R_int"] = R_earth * 0.9
+        # Initial guess for interior radius and gravity
+        hf_row["R_int"]   = R_earth
+        hf_row["gravity"] = 10.0
 
-    # Run the interior module to see what mass we get.
-    IC_INTERIOR = 1
-    _dt = run_interior(dirs, config, loop_counter, IC_INTERIOR, hf_all, hf_row)
+        # Target mass
+        M_target = config.struct.mass * M_earth
 
-    # Timestep dt should be zero
-    print("Timestep:",_dt)
+        # We need to solve for the state M_int = config.struct.mass
+        # This function takes R_int as the input value, and returns the mass residual
+        def _resid(x):
+            hf_row["R_int"] = x
+            run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
+            res = hf_row["M_int"] - M_target
+            print(x, res)
+            return res
 
+        # Find the radius
+        r = optimise.root_scalar(_resid, method='secant', x0=R_earth,
+                                     xtol=1.0, rtol=1e-8, maxiter=10)
+        hf_row["R_int"] = float(r.root)
+        run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
 
-    print(hf_row["M_int"]/M_earth)
+    # Result
+    log.info("    M_int: %.1e kg = %.1f M_earth"%(hf_row["M_int"], hf_row["M_int"]/M_earth))
+    log.info("    R_int: %.1e m  = %.1f R_earth"%(hf_row["R_int"], hf_row["R_int"]/R_earth))
 
 
 
@@ -86,6 +102,9 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int, hf_all:pd.DataFrame,
     for k in output.keys():
         if k in hf_row.keys():
             hf_row[k] = output[k]
+
+    # Update interior mass
+    hf_row["M_int"] = hf_row["M_mantle"]  + hf_row["M_core"]
 
     # Prevent increasing melt fraction
     if config.atmos_clim.prevent_warming and (IC_INTERIOR==2):
