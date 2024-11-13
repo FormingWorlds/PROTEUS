@@ -52,13 +52,14 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
         # This function takes R_int as the input value, and returns the mass residual
         def _resid(x):
             hf_row["R_int"] = x
+            update_gravity(hf_row)
             run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
             res = hf_row["M_int"] - M_target
             return res
 
         # Find the radius
         r = optimise.root_scalar(_resid, method='secant', x0=R_earth,
-                                     xtol=1.0, rtol=1e-8, maxiter=10)
+                                     xtol=10.0, rtol=1e-8, maxiter=10)
         hf_row["R_int"] = float(r.root)
         run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
 
@@ -103,7 +104,7 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int, hf_all:pd.DataFrame,
         if k in hf_row.keys():
             hf_row[k] = output[k]
 
-    # Update interior mass
+    # Update dry interior mass
     hf_row["M_int"] = hf_row["M_mantle"]  + hf_row["M_core"]
 
     # Prevent increasing melt fraction

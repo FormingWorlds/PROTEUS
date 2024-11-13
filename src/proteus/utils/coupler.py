@@ -250,7 +250,7 @@ def GetHelpfileKeys():
             "separation", # [m]
             "period", # [s]
 
-            # Input parameters (converted to SI)
+            # Dry interior radius (calculated) and mass (from config)
             "R_int", "M_int", # [m], [kg]
 
             # Temperatures
