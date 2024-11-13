@@ -160,7 +160,7 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
 
 #====================================================================
 def _try_spider( dirs:dict, config:Config,
-                IC_INTERIOR:int, loop_counter:dict,
+                IC_INTERIOR:int,
                 hf_all:pd.DataFrame, hf_row:dict,
                 step_sf:float, atol_sf:float ):
     '''
@@ -175,16 +175,6 @@ def _try_spider( dirs:dict, config:Config,
     # Bounds on tolereances
     step_sf = min(1.0, max(1.0e-10, step_sf))
     atol_sf = min(1.0e10, max(1.0e-10, atol_sf))
-
-    # Configuration file for SPIDER containing default values
-    SPIDER_options_file      = os.path.join(dirs["output"], "init_spider.opts")
-    SPIDER_options_file_orig = os.path.join(dirs["utils"], "templates", "init_spider.opts")
-
-    # First run
-    if (loop_counter["init"] == 0):
-        if os.path.isfile(SPIDER_options_file):
-            os.remove(SPIDER_options_file)
-        shutil.copy(SPIDER_options_file_orig,SPIDER_options_file)
 
     # Recalculate time stepping
     if IC_INTERIOR == 2:
@@ -213,7 +203,6 @@ def _try_spider( dirs:dict, config:Config,
     ### SPIDER base call sequence
     call_sequence = [
                         spider_exec,
-                        "-options_file",           SPIDER_options_file,
                         "-outputDirectory",        dirs["output"]+'data/',
                         "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
                         "-OXYGEN_FUGACITY_offset", "%.6e"%(config.outgas.fO2_shift_IW),  # Relative to the specified buffer
@@ -236,6 +225,10 @@ def _try_spider( dirs:dict, config:Config,
     else:
         call_sequence.extend(["-tsurf_poststep_change", str(config.interior.spider.tsurf_atol)])
 
+    # set surface and core entropy (-1 is a flag to ignore)
+    call_sequence.extend(["-ic_surface_entropy", "-1"])
+    call_sequence.extend(["-ic_core_entropy",    "-1"])
+
     # Initial condition
     if IC_INTERIOR == 2:
         # get last JSON File
@@ -257,6 +250,115 @@ def _try_spider( dirs:dict, config:Config,
     call_sequence.extend(["-mixing_length", str(config.interior.spider.mixing_length)])
     call_sequence.extend(["-ts_sundials_atol", str(config.interior.spider.tolerance * atol_sf)])
     call_sequence.extend(["-ts_sundials_rtol", str(config.interior.spider.tolerance * atol_sf)])
+
+    # Rollback
+    call_sequence.extend(["-activate_poststep", "-activate_rollback"])
+
+    # Dimensional scalings
+    call_sequence.extend(["-radius0",   "63710000.0"])
+    call_sequence.extend(["-entropy0",  "2993.025100070677"])
+    call_sequence.extend(["-time0",     "1.0E5"])
+    call_sequence.extend(["-pressure0", "10.0E5"])
+
+    # Energy transport physics
+    call_sequence.extend(["-CONDUCTION", "1"]) # conduction
+    call_sequence.extend(["-CONVECTION", "1"]) # convection
+    call_sequence.extend(["-MIXING    ", "1"]) # mixing (latent heat transport)
+    call_sequence.extend(["-SEPARATION", "1"]) # gravitational separation of solid/melt
+
+    # Properties lookup data (folder relative to SPIDER src)
+    folder = "lookup_data/1TPa-dK09-elec-free/"
+    call_sequence.extend(["-phase_names",  "melt,solid"])
+
+    call_sequence.extend(["-melt_TYPE", "1"])
+    call_sequence.extend(["-melt_alpha_filename_rel_to_src",          folder+"thermal_exp_melt.dat"])
+    call_sequence.extend(["-melt_cp_filename_rel_to_src",             folder+"heat_capacity_melt.dat"])
+    call_sequence.extend(["-melt_dTdPs_filename_rel_to_src",          folder+"adiabat_temp_grad_melt.dat"])
+    call_sequence.extend(["-melt_rho_filename_rel_to_src",            folder+"density_melt.dat"])
+    call_sequence.extend(["-melt_temp_filename_rel_to_src",           folder+"temperature_melt.dat"])
+    call_sequence.extend(["-melt_phase_boundary_filename_rel_to_src", folder+"liquidus_A11_H13.dat"])
+    call_sequence.extend(["-melt_log10visc", "2.0"])
+    call_sequence.extend(["-melt_cond", "4.0"]) # conductivity of melt
+
+    call_sequence.extend(["-solid_TYPE", "1"])
+    call_sequence.extend(["-solid_alpha_filename_rel_to_src",            folder+"thermal_exp_solid.dat"])
+    call_sequence.extend(["-solid_cp_filename_rel_to_src",               folder+"heat_capacity_solid.dat"])
+    call_sequence.extend(["-solid_dTdPs_filename_rel_to_src",            folder+"adiabat_temp_grad_solid.dat"])
+    call_sequence.extend(["-solid_rho_filename_rel_to_src",              folder+"density_solid.dat"])
+    call_sequence.extend(["-solid_temp_filename_rel_to_src",             folder+"temperature_solid.dat"])
+    call_sequence.extend(["-solid_phase_boundary_filename_rel_to_src",   folder+"solidus_A11_H13.dat"])
+    call_sequence.extend(["-solid_log10visc", "22.0"])
+    call_sequence.extend(["-solid_cond", "4.0"]) # conductivity of solid
+
+    # static pressure profile derived from Adams-Williamson equation of state
+    # these parameters are from fitting PREM in the lower mantle (for Earth)
+    call_sequence.extend(["-adams_williamson_rhos", "4078.95095544"]) # surface density
+    call_sequence.extend(["-adams_williamson_beta", "1.1115348931000002e-07"]) # beta parameter
+
+    # eddy diffusivity
+    # if negative, this value is adopted (units m^2/s)
+    # if positive, this value is used to scale the internally calculated eddy diffusivity
+    call_sequence.extend(["-eddy_diffusivity_thermal",  "1.0"])
+    call_sequence.extend(["-eddy_diffusivity_chemical", "1.0"])
+
+
+    # smoothing of material properties across liquidus and solidus
+    # units of melt fraction (non-dimensional)
+    call_sequence.extend(["-matprop_smooth_width", "1.0E-2"])
+
+    # viscosity
+    call_sequence.extend(["-phi_critical", "0.4"])  # transition melt fraction (non-dimensional)
+    call_sequence.extend(["-phi_width",    "0.15"]) # transition width (non-dimensional)
+
+    # core-mantle boundary condition
+    call_sequence.extend(["-CORE_BC",  "1"])
+    call_sequence.extend(["-rho_core", "10738.332568062382"]) # core density
+    call_sequence.extend(["-cp_core",  "880.0"]) # core heat capacity
+
+    # surface boundary condition
+    # [4] heat flux (prescribe value using surface_bc_value)
+    call_sequence.extend(["-SURFACE_BC", "4"])
+
+    # parameterise the upper thermal boundary layer
+    call_sequence.extend(["-PARAM_UTBL", "0"]) # disabled
+    call_sequence.extend(["-param_utbl_const", "1.0E-7"]) # value of parameterisation
+
+    # fO2 buffer chosen to define fO2 (7: Iron-Wustite)
+    call_sequence.extend(["-OXYGEN_FUGACITY", "7"])
+
+    # internal heat sources
+    # options: al26,k40,fe60,th232,u235,u238
+    call_sequence.extend(["-radionuclide_names", "k40,th232,u235,u238"])
+
+    # K40
+    call_sequence.extend(["-k40_t0",                "4.55E9"]) # years
+    call_sequence.extend(["-k40_abundance",         "1.1668E-4"]) # (40K/K) Ruedas (2017)
+    call_sequence.extend(["-k40_concentration",     "310"]) # ppm (Turcotte & Schubert, 2014, p. 170)
+    call_sequence.extend(["-k40_heat_production",   "2.8761E-5"]) # W/kg (Ruedas, 2017)
+    call_sequence.extend(["-k40_half_life",         "1248E6"]) # years (Ruedas, 2017)
+
+    # Th232
+    call_sequence.extend(["-th232_t0",             "4.55E9"]) # years
+    call_sequence.extend(["-th232_abundance",      "1.0"]) # (232Th/Th) Ruedas (2017)
+    call_sequence.extend(["-th232_concentration",  "0.124"]) # ppm (Turcotte & Schubert, 2014, p. 170)
+    call_sequence.extend(["-th232_heat_production","2.6368E-5"]) # W/kg (Ruedas, 2017)
+    call_sequence.extend(["-th232_half_life",      "14000E6"]) # years (Ruedas, 2017)
+
+    # U235
+    call_sequence.extend(["-u235_t0",              "4.55E9"]) # years
+    call_sequence.extend(["-u235_abundance",       "0.0072045"]) # (235U/U) Ruedas (2017)
+    call_sequence.extend(["-u235_concentration",   "0.031"]) # ppm (Turcotte & Schubert, 2014, p. 170)
+    call_sequence.extend(["-u235_heat_production", "5.68402E-4"]) # W/kg (Ruedas, 2017)
+    call_sequence.extend(["-u235_half_life",       "704E6"]) # years (Ruedas, 2017)
+
+    # U238
+    call_sequence.extend(["-u238_t0",              "4.55E9"]) # years
+    call_sequence.extend(["-u238_abundance",       "0.9927955"]) # (238U/U) Ruedas (2017)
+    call_sequence.extend(["-u238_concentration",   "0.031"])
+    call_sequence.extend(["-u238_heat_production", "9.4946E-5"]) # W/kg (Ruedas, 2017)
+    call_sequence.extend(["-u238_half_life",       "4468E6"]) # years (Ruedas, 2017)
+
+
 
     # Runtime info
     flags = ""
@@ -286,8 +388,7 @@ def _try_spider( dirs:dict, config:Config,
     return bool(proc.returncode == 0)
 
 
-def RunSPIDER( dirs:dict, config:Config,
-              IC_INTERIOR:int, loop_counter:dict,
+def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
               hf_all:pd.DataFrame, hf_row:dict ):
     '''
     Wrapper function for running SPIDER.
@@ -313,7 +414,7 @@ def RunSPIDER( dirs:dict, config:Config,
         log.info("Attempt %d" % attempts)
 
         # run SPIDER
-        spider_success = _try_spider(dirs, config, IC_INTERIOR, loop_counter, hf_all, hf_row, step_sf, atol_sf)
+        spider_success = _try_spider(dirs, config, IC_INTERIOR, hf_all, hf_row, step_sf, atol_sf)
 
         if spider_success:
             # success

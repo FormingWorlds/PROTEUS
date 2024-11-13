@@ -53,7 +53,7 @@ def determine_interior_radius(dirs:dict, config:Config, loop_counter:dict, hf_al
 
 
 
-def run_interior(dirs:dict, config:Config, loop_counter:dict, IC_INTERIOR:int, hf_all:pd.DataFrame, hf_row:dict):
+def run_interior(dirs:dict, config:Config, IC_INTERIOR:int, hf_all:pd.DataFrame, hf_row:dict):
     '''
     Run interior model
     '''
@@ -65,7 +65,7 @@ def run_interior(dirs:dict, config:Config, loop_counter:dict, IC_INTERIOR:int, h
         from proteus.interior.spider import ReadSPIDER, RunSPIDER
 
         # Run SPIDER
-        RunSPIDER(dirs, config, IC_INTERIOR, loop_counter, hf_all, hf_row)
+        RunSPIDER(dirs, config, IC_INTERIOR, hf_all, hf_row)
         sim_time, output = ReadSPIDER(dirs, config, hf_row["R_int"])
 
     elif config.interior.module == 'aragog':
@@ -88,7 +88,7 @@ def run_interior(dirs:dict, config:Config, loop_counter:dict, IC_INTERIOR:int, h
             hf_row[k] = output[k]
 
     # Prevent increasing melt fraction
-    if config.atmos_clim.prevent_warming and (loop_counter["total"] >= loop_counter["init_loops"]):
+    if config.atmos_clim.prevent_warming and (IC_INTERIOR==2):
         hf_row["Phi_global"] = min(hf_row["Phi_global"], hf_all.iloc[-1]["Phi_global"])
         hf_row["T_magma"] = min(hf_row["T_magma"], hf_all.iloc[-1]["T_magma"])
 

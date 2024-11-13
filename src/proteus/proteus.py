@@ -77,7 +77,7 @@ class Proteus:
         self.loops = None
 
         # Interior
-        self.IC_INTERIOR = -1   # initial condition
+        self.IC_INTERIOR = -1   # initial condition (1: new simulation, 2: mid-simulation)
         self.dt = 1.0           # Time step variable [yr]
 
         # Model has finished?
@@ -266,7 +266,7 @@ class Proteus:
 
             # Run interior model
             self.dt = run_interior(self.directories, self.config,
-                                self.loops, self.IC_INTERIOR, self.hf_all,  self.hf_row)
+                                    self.IC_INTERIOR, self.hf_all,  self.hf_row)
 
 
             # Update surface gravity
