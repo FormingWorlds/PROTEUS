@@ -191,7 +191,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [interior.aragog]
         num_levels      = 200       # Number of Aragog grid levels
         tolerance       = 1.0e-8   # solver tolerance
-        ini_tmagma      = 3800.0
+        ini_tmagma      = 3800.0    # Initial magma surface temperature [K]
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
