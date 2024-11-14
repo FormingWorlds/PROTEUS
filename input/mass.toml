@@ -34,7 +34,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.dt]
         minimum      = 1e2    # yr, minimum time-step
         maximum      = 3e7    # yr, maximum time-step
-        initial      = 1e2    # yr, inital step size
+        initial      = 1e1    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e1    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
@@ -114,7 +114,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    mass        = 2.0       # M_earth
+    mass        = 1.0       # M_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
     # No module for specifically for internal structure
@@ -177,12 +177,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e6   # Initial heat flux guess [W m-2]
 
-    module = "dummy"   # Which interior module to use
+    module = "aragog"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 220       # Number of SPIDER grid levels
+        num_levels      = 150       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-10   # solver tolerance
+        tolerance       = 1.0e-7   # solver tolerance
         tsurf_atol      = 30.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
         ini_entropy     = 2700.0    # Surface entropy conditions [J K-1 kg-1]

@@ -60,7 +60,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
             update_gravity(hf_row)
 
         res = hf_row["M_int"] - M_target
-        log.debug("    found M = %.4e kg"%hf_row["M_int"])
+        log.debug("    found M = %.5e kg"%hf_row["M_int"])
 
         return res
 

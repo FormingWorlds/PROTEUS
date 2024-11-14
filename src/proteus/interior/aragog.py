@@ -44,6 +44,7 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
     # Compute time step
     if IC_INTERIOR==1:
         dt = 0.0
+        aragog_solver = None
     else:
         step_sf = 1.0 # dt scale factor
         dt = next_step(config, dirs, hf_row, hf_all, step_sf)
@@ -89,10 +90,10 @@ def SetupAragogSolver(config:Config, hf_row:dict):
     boundary_conditions = _BoundaryConditionsParameters(
             outer_boundary_condition = 4, # 4 = prescribed heat flux
             outer_boundary_value = hf_row["F_atm"], # first guess surface heat flux [W/m2]
-            inner_boundary_condition = 3, # 3 = prescribed temperature
+            inner_boundary_condition = 1, # 3 = prescribed temperature
             inner_boundary_value = 4000, # core temperature [K]
             emissivity = 1, # only used in gray body BC, outer_boundary_condition = 1
-            equilibrium_temperature = 273, # only used in gray body BC, outer_boundary_condition = 1
+            equilibrium_temperature = hf_row["T_eqm"], # only used in gray body BC, outer_boundary_condition = 1
             core_density = 10738.332568062382, # not used now
             core_heat_capacity = 880, # not used now
             )
