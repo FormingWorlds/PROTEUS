@@ -410,22 +410,24 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
     # make attempts
     while not spider_success:
         attempts += 1
-        log.info("Attempt %d" % attempts)
+        log.debug("Attempt %d" % attempts)
 
         # run SPIDER
         spider_success = _try_spider(dirs, config, IC_INTERIOR, hf_all, hf_row, step_sf, atol_sf)
 
         if spider_success:
             # success
-            log.info("Attempt %d succeeded" % attempts)
+            log.debug("Attempt %d succeeded" % attempts)
         else:
             # failure
             log.warning("Attempt %d failed" % attempts)
             if attempts >= max_attempts:
                 # give up
+                log.error("Giving up")
                 break
             else:
                 # try again (change tolerance and step size)
+                log.warning("Trying again")
                 step_sf *= 0.5
                 atol_sf *= 4.0
 

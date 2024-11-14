@@ -55,7 +55,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
 
         log.debug("Try R = %.2e m"%hf_row["R_int"])
 
-        run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
+        run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row, quiet=True)
         if solve_g:
             update_gravity(hf_row)
 
@@ -78,14 +78,16 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     log.info(" ")
 
 
-def run_interior(dirs:dict, config:Config, IC_INTERIOR:int, hf_all:pd.DataFrame, hf_row:dict):
+def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
+                 hf_all:pd.DataFrame, hf_row:dict, quiet:bool=False):
     '''
     Run interior model
     '''
 
     # Use the appropriate interior model
 
-    log.info("Running %s interior module..."%config.interior.module)
+    if not quiet:
+        log.info("Running %s interior module..."%config.interior.module)
 
     if config.interior.module == 'spider':
         # Import
@@ -122,10 +124,11 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int, hf_all:pd.DataFrame,
         hf_row["Phi_global"] = min(hf_row["Phi_global"], hf_all.iloc[-1]["Phi_global"])
         hf_row["T_magma"] = min(hf_row["T_magma"], hf_all.iloc[-1]["T_magma"])
 
-    log.debug("    T_magma    = %.1f K"%hf_row["T_magma"])
-    log.debug("    Phi_global = %.3f  "%hf_row["Phi_global"])
-    log.debug("    F_int      = %.2e" %hf_row["F_int"])
-    log.debug("    RF_depth   = %.2e" %hf_row["RF_depth"])
+    if not quiet:
+        log.info("    T_magma    = %.1f K"%hf_row["T_magma"])
+        log.info("    Phi_global = %.3f  "%hf_row["Phi_global"])
+        log.info("    F_int      = %.2e" %hf_row["F_int"])
+        log.info("    RF_depth   = %.2e" %hf_row["RF_depth"])
 
     # Time step size
     dt = float(sim_time) - hf_row["Time"]
