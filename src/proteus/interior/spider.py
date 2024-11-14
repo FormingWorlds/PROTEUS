@@ -398,9 +398,6 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
     This wrapper handles cases where SPIDER fails to find a solution.
     '''
 
-    # info
-    log.info("Running SPIDER...")
-
     # parameters
     max_attempts = 5        # maximum number of attempts
     step_sf = 1.0           # step scale factor at attempt 1

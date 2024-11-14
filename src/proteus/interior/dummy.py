@@ -23,24 +23,35 @@ def calculate_simple_core_mass(radius:float, corefrac:float):
     earth_fr = 0.55     # earth core radius fraction
     earth_fm = 0.325    # earth core mass fraction  (https://arxiv.org/pdf/1708.08718.pdf)
 
+    # Estimate core density
     core_rho = (3.0 * earth_fm * M_earth) / (4.0 * np.pi * ( earth_fr * R_earth )**3.0 )  # core density [kg m-3]
+
+    # Get core mass
     core_mass = core_rho * 4.0/3.0 * np.pi * (radius * corefrac )**3.0
 
     return core_mass
 
 
-def calculate_simple_mantle_mass(radius:float, mass:float, corefrac:float)->float:
+def calculate_simple_mantle_mass(radius:float, corefrac:float)->float:
     '''
-    A very simple interior structure model copied from CALLIOPE.
+    A very simple interior structure model.
 
     This calculates mantle mass given planetary mass, radius, and core fraction. This
     assumes a core density equal to that of Earth's, and that the planet mass is simply
     the sum of mantle and core.
     '''
 
-    core_mass = calculate_simple_core_mass(radius, corefrac)
+    # Volume of mantle shell
+    mantle_volume = (4 * np.pi / 3) * (radius**3 - (radius*corefrac)**3)
 
-    mantle_mass = mass - core_mass
+    # Fixed density [g cm-3]
+    # This is roughly representative of the average density across Earth's
+    #    upper and lower mantle layers.
+    mantle_rho = 4.55
+
+    # Get mass [in SI units]
+    mantle_mass = mantle_volume * mantle_rho * 1e3
+
     log.debug("Total mantle mass = %.2e kg" % mantle_mass)
     if mantle_mass <= 0.0:
         raise Exception("Something has gone wrong (mantle mass is negative)")
@@ -50,7 +61,6 @@ def calculate_simple_mantle_mass(radius:float, mass:float, corefrac:float)->floa
 
 # Run the dummy interior module
 def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
-    log.info("Running dummy interior...")
 
     # Output dictionary
     output = {}
@@ -58,7 +68,7 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
 
     # Interior structure
     output["M_core"]   = calculate_simple_core_mass(hf_row["R_int"], config.struct.corefrac)
-    output["M_mantle"] = calculate_simple_mantle_mass(hf_row["R_int"], hf_row["M_int"], config.struct.corefrac)
+    output["M_mantle"] = calculate_simple_mantle_mass(hf_row["R_int"], config.struct.corefrac)
 
     # Parameters
     tmp_init = config.interior.dummy.ini_tmagma # Initial magma temperature

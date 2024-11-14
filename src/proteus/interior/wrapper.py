@@ -33,41 +33,49 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
 
     log.info("Using interior model to determine R_int from M_int")
 
-    # Trivial dummy case
-    if config.interior.module == 'dummy':
-        hf_row["R_int"] = config.interior.dummy.radius * R_earth
+    # Solve surf gravity self-consistently
+    solve_g = True
+    if config.interior.module == "aragog":
+        solve_g = False
+        log.warning("Using Aragog with const properties; not solving gravity self-consistently")
 
-    # Other cases...
-    else:
-        IC_INTERIOR = 1
 
-        # Initial guess for interior radius and gravity
-        hf_row["R_int"]   = R_earth
-        hf_row["gravity"] = 10.0
+    # Initial guess for interior radius and gravity
+    IC_INTERIOR = 1
+    hf_row["R_int"]   = R_earth
+    hf_row["gravity"] = 10.0
 
-        # Target mass
-        M_target = config.struct.mass * M_earth
+    # Target mass
+    M_target = config.struct.mass * M_earth
 
-        # We need to solve for the state M_int = config.struct.mass
-        # This function takes R_int as the input value, and returns the mass residual
-        def _resid(x):
-            hf_row["R_int"] = x
-            update_gravity(hf_row)
-            run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
-            res = hf_row["M_int"] - M_target
-            return res
+    # We need to solve for the state M_int = config.struct.mass
+    # This function takes R_int as the input value, and returns the mass residual
+    def _resid(x):
+        hf_row["R_int"] = x
 
-        # Find the radius
-        r = optimise.root_scalar(_resid, method='secant', x0=R_earth,
-                                     xtol=10.0, rtol=1e-8, maxiter=10)
-        hf_row["R_int"] = float(r.root)
+        log.debug("Try R = %.2e m"%hf_row["R_int"])
+
         run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
+        if solve_g:
+            update_gravity(hf_row)
+
+        res = hf_row["M_int"] - M_target
+        log.debug("    found M = %.4e kg"%hf_row["M_int"])
+
+        return res
+
+    # Find the radius
+    r = optimise.root_scalar(_resid, method='secant', x0=R_earth*0.9, x1=R_earth*1.1,
+                                    xtol=10.0, rtol=1e-8, maxiter=10)
+    hf_row["R_int"] = float(r.root)
+    run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
+    update_gravity(hf_row)
 
     # Result
     log.info("Found solution for interior structure")
     log.info("M_int: %.1e kg = %.3f M_earth"%(hf_row["M_int"], hf_row["M_int"]/M_earth))
     log.info("R_int: %.1e m  = %.3f R_earth"%(hf_row["R_int"], hf_row["R_int"]/R_earth))
-
+    log.info(" ")
 
 
 def run_interior(dirs:dict, config:Config, IC_INTERIOR:int, hf_all:pd.DataFrame, hf_row:dict):
@@ -76,6 +84,8 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int, hf_all:pd.DataFrame,
     '''
 
     # Use the appropriate interior model
+
+    log.info("Running %s interior module..."%config.interior.module)
 
     if config.interior.module == 'spider':
         # Import

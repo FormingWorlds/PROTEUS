@@ -83,11 +83,8 @@ class Dummy:
 
     Attributes
     ----------
-    radius: float
-        Radius of the planet's interior [R_earth].
     init_tmagma: float
         Initial magma surface temperature [K].
     """
 
-    radius: float = field(validator=gt(0))
     ini_tmagma: float = field(validator=gt(0))
