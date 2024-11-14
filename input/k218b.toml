@@ -26,7 +26,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # output files
     [params.out]
         path        = "k218b"
-        logging     = "INFO"
+        logging     = "DEBUG"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
@@ -115,7 +115,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Planetary structure - physics table
 [struct]
     mass        = 8.63       # M_earth
-    corefrac    = 0.55      # non-dim., radius fraction
+    corefrac    = 0.7      # non-dim., radius fraction
 
     # No module for specifically for internal structure
     module  = "none"
@@ -180,12 +180,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 200       # Number of SPIDER grid levels
+        num_levels      = 100       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1.0e-6   # solver tolerance
         tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
-        ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 3800.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
