@@ -85,9 +85,7 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
     '''
 
     # Use the appropriate interior model
-
-    if not quiet:
-        log.info("Running %s interior module..."%config.interior.module)
+    log.info("Running %s interior module..."%config.interior.module)
 
     if config.interior.module == 'spider':
         # Import
@@ -124,11 +122,15 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         hf_row["Phi_global"] = min(hf_row["Phi_global"], hf_all.iloc[-1]["Phi_global"])
         hf_row["T_magma"] = min(hf_row["T_magma"], hf_all.iloc[-1]["T_magma"])
 
-    if not quiet:
-        log.info("    T_magma    = %.1f K"%hf_row["T_magma"])
-        log.info("    Phi_global = %.3f  "%hf_row["Phi_global"])
-        log.info("    F_int      = %.2e" %hf_row["F_int"])
-        log.info("    RF_depth   = %.2e" %hf_row["RF_depth"])
+    # Print result of interior module
+    if quiet:
+        _logthis = log.debug
+    else:
+        _logthis = log.info
+    _logthis("    T_magma    = %.1f K"%hf_row["T_magma"])
+    _logthis("    Phi_global = %.3f  "%hf_row["Phi_global"])
+    _logthis("    F_int      = %.2e" %hf_row["F_int"])
+    _logthis("    RF_depth   = %.2e" %hf_row["RF_depth"])
 
     # Time step size
     dt = float(sim_time) - hf_row["Time"]
