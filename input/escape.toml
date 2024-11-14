@@ -115,7 +115,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Planetary structure - physics table
 [struct]
     mass        = 1.0       # M_earth
-    radius      = 1.0       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
     # No module for specifically for internal structure
@@ -192,6 +191,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [interior.aragog]
         num_levels      = 220       # Number of Aragog grid levels
         tolerance       = 1.0e-10   # solver tolerance
+
+    [interior.dummy]
+        ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
 
 # Outgassing - physics table
 [outgas]
