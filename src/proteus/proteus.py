@@ -154,6 +154,12 @@ class Proteus:
         # Write config to output directory, for future reference
         self.config.write(os.path.join(self.directories["output"], "init_coupler.toml"))
 
+        # Create lockfile for keeping simulation running
+        self.lockfile = CreateLockFile(self.directories["output"])
+
+        # Download basic data
+        download_sufficient_data(self.config)
+
         # Is the model resuming from a previous state?
         if not resume:
             # New simulation
@@ -223,12 +229,6 @@ class Proteus:
             self.loops["total"] = len(self.hf_all)
             self.loops["init"] = self.loops["init_loops"] + 1
         log.info(" ")
-
-        # Create lockfile for keeping simulation running
-        self.lockfile = CreateLockFile(self.directories["output"])
-
-        # Download basic data
-        download_sufficient_data(self.config)
 
         # Prepare star stuff
         init_star(self)

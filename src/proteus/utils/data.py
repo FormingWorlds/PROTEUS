@@ -221,6 +221,8 @@ def download_sufficient_data(config:Config):
     if config.interior.module == "aragog":
         download_interior_lookuptables()
 
+    log.info(" ")
+
 
 def _none_dirs():
     from proteus.utils.helper import get_proteus_dir
