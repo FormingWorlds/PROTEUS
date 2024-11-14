@@ -118,8 +118,8 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             )
 
     initial_condition = _InitialConditionParameters(
-            surface_temperature = 4000, # initial top temperature (K)
-            basal_temperature = 4000, # initial bottom temperature (K)
+            surface_temperature = config.interior.aragog.ini_tmagma, # initial top temperature (K)
+            basal_temperature = config.interior.aragog.ini_tmagma, # initial bottom temperature (K)
             )
 
     phase_liquid = _PhaseParameters(

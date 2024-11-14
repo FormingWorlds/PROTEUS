@@ -65,8 +65,8 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
         return res
 
     # Find the radius
-    r = optimise.root_scalar(_resid, method='secant', x0=R_earth*0.9, x1=R_earth*1.1,
-                                    xtol=100.0, rtol=1e-7, maxiter=12)
+    r = optimise.root_scalar(_resid, method='secant', x0=R_earth, x1=R_earth*1.1,
+                                    xtol=1e3, rtol=1e-7, maxiter=12)
     hf_row["R_int"] = float(r.root)
     run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
     update_gravity(hf_row)

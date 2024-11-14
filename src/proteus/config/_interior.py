@@ -73,7 +73,11 @@ class Aragog:
         Number of Aragog grid levels (basic mesh).
     tolerance: float
         Solver tolerance.
+    ini_tmagma: float
+        Initial magma surface temperature [K].
     """
+
+    ini_tmagma: float = field(validator=gt(0))
     num_levels: int  = field(validator=ge(40))
     tolerance: float
 
@@ -83,7 +87,7 @@ class Dummy:
 
     Attributes
     ----------
-    init_tmagma: float
+    ini_tmagma: float
         Initial magma surface temperature [K].
     """
 
