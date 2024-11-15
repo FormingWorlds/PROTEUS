@@ -31,7 +31,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     For the dummy interior, the radius is simply specified by the user in the config file.
     '''
 
-    log.info("Using interior model to determine R_int from M_int")
+    log.info("Using %s interior module to solve strcture"%config.interior.module)
 
     # Solve surf gravity self-consistently
     solve_g = True
@@ -53,7 +53,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     def _resid(x):
         hf_row["R_int"] = x
 
-        log.debug("Try R = %.2e m"%hf_row["R_int"])
+        log.debug("Try R = %.2e m = %.3f R_earth"%(x,x/R_earth))
 
         run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row, quiet=True)
         if solve_g:
@@ -61,6 +61,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
 
         res = hf_row["M_int"] - M_target
         log.debug("    found M = %.5e kg , resid = %.3e kg"%(hf_row["M_int"], res))
+        log.debug(" ")
 
         return res
 
