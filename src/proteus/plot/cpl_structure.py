@@ -62,9 +62,9 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
     r_max = 0.2
     t_max = 1000
     lw = 1.5
-    ms=20
+    ms=40
     esc_m = '|'
-    obs_m = 'x'
+    obs_m = '.'
 
     # loop over times
     for i,time in enumerate(times):
@@ -84,20 +84,6 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
             int_r = ds.get_dict_values(['data','radius_b'])
         int_r /= R_earth
 
-        # Determine mixed phase region
-        if module == "aragog":
-            yy = np.array(ds["phi_b"])
-            MASK_SO = yy < 0.05
-            MASK_MI = (0.05 <= yy) & ( yy <= 0.95)
-            MASK_ME = yy > 0.95
-        elif module == "spider":
-            MASK_MI = ds.get_mixed_phase_boolean_array('basic')
-            MASK_ME = ds.get_melt_phase_boolean_array( 'basic')
-            MASK_SO = ds.get_solid_phase_boolean_array('basic')
-
-        # overlap lines by 1 node
-        MASK_MI[2:-2] = MASK_MI[2:-2] | MASK_MI[1:-3] | MASK_MI[3:-1]
-
         # Plot decorators
         label = latex_float(time)+" yr"
         color = sm.to_rgba(time)
@@ -115,9 +101,7 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
 
         # Plot mantle
         R_mantle = np.amax(int_r)
-        ax.plot(int_r[MASK_SO], int_t[MASK_SO],  linestyle='solid',  color=color, lw=lw, zorder=i)
-        ax.plot(int_r[MASK_MI], int_t[MASK_MI],  linestyle='dashed', color=color, lw=lw, zorder=i)
-        ax.plot(int_r[MASK_ME], int_t[MASK_ME],  linestyle='dotted', color=color, lw=lw, zorder=i)
+        ax.plot(int_r, int_t,  linestyle='solid',  color=color, lw=lw, zorder=i)
 
         # Plot core
         R_core = np.amin(int_r)
@@ -134,23 +118,27 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
 
     # Decorate plot
     ax.set(xlabel=r"Radius [R$_{\oplus}$]", ylabel="Temperature [K]")
-    ax.set_xlim(left=0.0, right=r_max)
-    ax.set_ylim(top=0.0, bottom=t_max)
     ax.legend()
     ax.grid(zorder=-1, alpha=0.1)
     leg = ax.legend(framealpha=1.0, loc='upper left')
     ax.add_artist(leg)
 
+    ax.xaxis.set_major_locator(MultipleLocator(0.25))
+    ax.xaxis.set_minor_locator(MultipleLocator(0.125))
+    ticks = [t for t in ax.get_xticks() if t >= 0]
+    ax.set_xticks(ticks, [str(t) for t in ticks], rotation=-45, ha='center')
+    ax.set_xlim(left=0.0, right=r_max)
+
+    ax.yaxis.set_minor_locator(MultipleLocator(500))
+    ax.set_ylim(top=0.0, bottom=t_max)
+
     # Filled regions
-    ax.fill_betweenx([0,1e20], x1=0,         x2=R_core,    color=get_colour("cor_bkg"), alpha=0.8, zorder=-3)
-    ax.fill_betweenx([0,1e20], x1=R_core,    x2=R_mantle, color=get_colour("int_bkg"), alpha=0.8, zorder=-3)
-    ax.fill_betweenx([0,1e20], x1=R_mantle,  x2=r_max,      color=get_colour("atm_bkg"), alpha=1, zorder=-3)
+    ax.fill_betweenx([0,1e20], x1=0,         x2=R_core,   color=get_colour("cor_bkg"), zorder=-3)
+    ax.fill_betweenx([0,1e20], x1=R_core,    x2=R_mantle, color=get_colour("int_bkg"), zorder=-3)
+    ax.fill_betweenx([0,1e20], x1=R_mantle,  x2=r_max,    color=get_colour("atm_bkg"), zorder=-3)
 
     # Line style information
     hdls = []
-    # hdls.append(ax.plot([-100,-200],[0,100], ls='solid',  c='k', lw=lw, label="Solid")[0])
-    # hdls.append(ax.plot([-100,-200],[0,100], ls='dashed', c='k', lw=lw, label="Mush")[0] )
-    # hdls.append(ax.plot([-100,-200],[0,100], ls='dotted', c='k', lw=lw, label="Melt")[0] )
     hdls.append(ax.scatter(-100, 0, c='k', s=ms, marker=esc_m, label="Escape level"))
     hdls.append(ax.scatter(-100, 0, c='k', s=ms, marker=obs_m, label="Observed level"))
     ax.legend(handles=hdls, loc='lower left', framealpha=1.0, )
