@@ -80,13 +80,15 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
         elif module == "spider":
            xx_radius = ds.get_dict_values(['data','radius_b']) * 1e-3
            xx_depth = xx_radius[0] - xx_radius
+        xx_depth = np.array(xx_depth, dtype=float) # make copy
 
         # Plot temperature
         if module == "aragog":
             yy = ds["temp_b"][:]
         elif module == "spider":
             yy = ds.get_dict_values(['data','temp_b'])
-        yy /= 1e3 # convert to kK
+        yy = np.array(yy, dtype=float) / 1e3 # convert to kK
+
         axs[0].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',  c=color, lw=lw, label=label )
         axs[0].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
         axs[0].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)

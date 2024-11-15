@@ -32,6 +32,10 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
 
     log.info("Plot structure")
 
+    if not(module in ('spider','aragog')):
+        log.debug("Cannot make structure plot with module '%s'"%module)
+        return
+
     # helpfile indicies
     hf_idxs = []
     hf_times = np.array(hf_all["Time"], dtype=float)

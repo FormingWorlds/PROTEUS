@@ -137,7 +137,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "agni"           # Which atmosphere module to use
 
     [atmos_clim.agni]
-        p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
+        p_top           = 1.0e-7        # bar, top of atmosphere grid pressure
         spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "16"          # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
@@ -191,7 +191,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [interior.aragog]
         num_levels      = 100       # Number of Aragog grid levels
         tolerance       = 1.0e-7   # solver tolerance
-        ini_tmagma      = 3200.0    # Initial magma surface temperature [K]
+        ini_tmagma      = 3300.0    # Initial magma surface temperature [K]
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
