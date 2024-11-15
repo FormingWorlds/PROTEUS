@@ -32,7 +32,7 @@ from proteus.plot.cpl_population import (
 )
 from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
-from proteus.plot.cpl_stacked import plot_stacked
+from proteus.plot.cpl_structure import plot_structure
 from proteus.utils.constants import (
     element_list,
     gas_list,
@@ -460,8 +460,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
         # Atmosphere and interior, stacked
-        if spider or aragog:
-            plot_stacked(output_dir, plot_times, int_data, atm_data,
+        plot_structure(hf_all, output_dir, plot_times, int_data, atm_data,
                             config.interior.module, config.params.out.plot_fmt)
 
         # Flux profiles

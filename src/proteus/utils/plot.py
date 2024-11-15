@@ -55,6 +55,7 @@ _preset_colours  = {
     "core"    : "#4d303f",
     "atm_bkg" : "#f2faff",
     "int_bkg" : "#fffaf2",
+    "cor_bkg" : "#efefef",
 }
 
 
