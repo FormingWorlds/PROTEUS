@@ -206,7 +206,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
     jl.AGNI.atmosphere.allocate_b(atmos,input_star)
 
     # Set temperature profile from old NetCDF if it exists
-    nc_files = glob.glob(os.path.join(dirs["output"],"data","*.nc"))
+    nc_files = glob.glob(os.path.join(dirs["output"],"data","*_atm.nc"))
     if len(nc_files) > 0:
         log.debug("Load NetCDF profile")
 

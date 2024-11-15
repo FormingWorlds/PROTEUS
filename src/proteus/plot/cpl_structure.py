@@ -74,7 +74,7 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
         ds = int_data[i]
         if module == "aragog":
             int_t = ds["temp_b"][:]
-            int_r = ds["radius_b"][:]
+            int_r = ds["radius_b"][:] * 1e3
         elif module == "spider":
             int_t = ds.get_dict_values(['data','temp_b'])
             int_r = ds.get_dict_values(['data','radius_b'])
@@ -121,14 +121,14 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
         # update limits
         r_max = max(r_max, np.amax(atm_r))
         t_max = max(t_max, np.amax(int_t))
+        t_max = max(t_max, np.amax(atm_t))
 
     # Decorate plot
     ax.set(xlabel=r"Radius [R$_{\oplus}$]", ylabel="Temperature [K]")
     ax.set_xlim(left=0.0, right=r_max)
-    ax.set_ylim(bottom=0.0, top=t_max)
+    ax.set_ylim(top=0.0, bottom=t_max)
     ax.legend()
     ax.grid(zorder=-1, alpha=0.1)
-    ax.invert_yaxis()
     leg = ax.legend(framealpha=1.0, loc='upper left')
     ax.add_artist(leg)
 
