@@ -131,7 +131,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
                 exit(1)
 
         # Update profile
-        atm = update_agni_atmos(atm, hf_row, config, dirs)
+        atm = update_agni_atmos(atm, hf_row, dirs)
 
         # Run solver
         atm, atm_output = run_agni(atm, loop_counter["total"], dirs, config, hf_row)

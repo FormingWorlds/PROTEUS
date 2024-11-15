@@ -59,7 +59,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 4.567e+9     # yr, model will terminate when t > maximum
+            maximum = 2.4e+9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -93,7 +93,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "mors"
     [star.mors]
         rot_pctle = 50.0    # rotation percentile
-        tracks  = "baraffe" # evolution tracks: spada | baraffe
+        tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 2.4     # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/gj176.txt" # stellar spectrum
 
@@ -140,7 +140,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "48"         # how many spectral bands?
-        num_levels      = 40           # Number of atmospheric grid levels
+        num_levels      = 35           # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solution_atol   = 1e-2          # solver absolute tolerance
@@ -149,8 +149,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "256"         # how many spectral bands?
+        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_bands  = "48"         # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
         num_levels      = 90            # Number of atmospheric grid levels
         tropopause      = "none"        # none | skin | dynamic
@@ -162,7 +162,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
-    module = "none"    # Which escape module to use
+    module = "zephyrus"    # Which escape module to use
 
     [escape.zephyrus]
         Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
@@ -185,7 +185,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         tolerance       = 1.0e-7   # solver tolerance
         tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
-        ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
@@ -198,7 +198,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = 0         # log10(ΔIW), atmosphere/interior boundary oxidation state
+    fO2_shift_IW    = -2         # log10(ΔIW), atmosphere/interior boundary oxidation state
 
     module = "calliope"         # Which outgassing module to use
 
@@ -229,7 +229,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
-        CH_ratio    = 0.01       # C/H ratio in mantle/atmosphere system
+        CH_ratio    = 0.1       # C/H ratio in mantle/atmosphere system
         H_oceans    = 50.0       # Hydrogen inventory in units of equivalent Earth oceans, by mass
         N_ppmw      = 2.01      # Nitrogen inventory in ppmw relative to mantle mass, by mass
         S_ppmw      = 235.0     # Sulfur inventory in ppmw relative to mass of melt
