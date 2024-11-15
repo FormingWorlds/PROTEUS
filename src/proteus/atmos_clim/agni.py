@@ -136,11 +136,19 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         # single-gas case
         condensates = list(vol_dict.keys())
     else:
-        # get sorted gases
-        vol_sorted = sorted(vol_dict.items(), key=lambda item: item[1])
+        # get sorted gases (in order of decreasing VMR at the surface)
+        vol_sorted = sorted(vol_dict.items(), key=lambda item: item[1])[::-1]
 
-        # set all gases as condensates, except the least abundant gas
-        condensates = [v[0] for v in vol_sorted[1:]]
+        # Set gases as condensates...
+        condensates = ['H2O'] # always prefer H2O
+        for v in vol_sorted:
+            # add gas if it has non-zero abundance
+            if (v[1] > 1e-30) and (v[0] not in condensates):
+                condensates.append(v[0])
+
+        # Remove the least abundant gas from the list, so that we have something to
+        #     fill the background with if everything else condenses at a given level
+        condensates = condensates[:-1]
 
     # Chemistry
     chem_type = config.atmos_clim.agni.chemistry

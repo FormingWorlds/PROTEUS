@@ -73,8 +73,8 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
         # Get temperuture-depth interior data for this time
         ds = int_data[i]
         if module == "aragog":
-            int_t = ds["temp_b"][:]
-            int_r = ds["radius_b"][:] * 1e3
+            int_t = ds["temp_b"][::-1]
+            int_r = ds["radius_b"][::-1] * 1e3
         elif module == "spider":
             int_t = ds.get_dict_values(['data','temp_b'])
             int_r = ds.get_dict_values(['data','radius_b'])
@@ -110,18 +110,23 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
         ax.scatter(R_xuv[i], atm_t[i_xuv], color=color, s=ms, marker=esc_m, zorder=i)
 
         # Plot mantle
+        R_mantle = np.amax(int_r)
         ax.plot(int_r[MASK_SO], int_t[MASK_SO],  linestyle='solid',  color=color, lw=lw, zorder=i)
         ax.plot(int_r[MASK_MI], int_t[MASK_MI],  linestyle='dashed', color=color, lw=lw, zorder=i)
         ax.plot(int_r[MASK_ME], int_t[MASK_ME],  linestyle='dotted', color=color, lw=lw, zorder=i)
 
         # Plot core
-        R_core = int_r[-1]
+        R_core = np.amin(int_r)
         ax.plot([0,R_core],[int_t[-1], int_t[-1]], color=color, lw=lw)
 
         # update limits
         r_max = max(r_max, np.amax(atm_r))
         t_max = max(t_max, np.amax(int_t))
         t_max = max(t_max, np.amax(atm_t))
+
+
+    r_max *= 1.05
+    t_max *= 1.05
 
     # Decorate plot
     ax.set(xlabel=r"Radius [R$_{\oplus}$]", ylabel="Temperature [K]")
@@ -133,10 +138,9 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
     ax.add_artist(leg)
 
     # Filled regions
-    ax.set_facecolor(get_colour("int_bkg"))
-    ax.fill_betweenx([-1,1e20], x1=0,         x2=R_core,    color=get_colour("cor_bkg"), alpha=0.8, zorder=-3)
-    ax.fill_betweenx([-1,1e20], x1=R_core,    x2=R_int[-1], color=get_colour("int_bkg"), alpha=0.8, zorder=-3)
-    ax.fill_betweenx([-1,1e20], x1=R_int[-1], x2=r_max,     color=get_colour("atm_bkg"), alpha=0.8, zorder=-3)
+    ax.fill_betweenx([0,1e20], x1=0,         x2=R_core,    color=get_colour("cor_bkg"), alpha=0.8, zorder=-3)
+    ax.fill_betweenx([0,1e20], x1=R_core,    x2=R_mantle, color=get_colour("int_bkg"), alpha=0.8, zorder=-3)
+    ax.fill_betweenx([0,1e20], x1=R_mantle,  x2=r_max,      color=get_colour("atm_bkg"), alpha=1, zorder=-3)
 
     # Line style information
     hdls = []
