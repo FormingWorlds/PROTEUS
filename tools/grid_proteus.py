@@ -22,7 +22,7 @@ from proteus.config import Config, read_config_object
 from proteus.utils.helper import get_proteus_dir
 
 PROTEUS_DIR=get_proteus_dir()
-
+multiprocessing.set_start_method('fork')
 # Custom logger instance
 def setup_logger(logpath:str="new.log",level=1,logterm=True):
 
@@ -443,8 +443,8 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "hd63433d.toml"
-    folder = "hd63433d_ro"
+    config = "escape.toml"
+    folder = "escape_test"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
@@ -460,14 +460,24 @@ if __name__=='__main__':
     # pg.add_dimension("Model", "atmos_clim.module")
     # pg.set_dimension_direct("Model", ["janus", "agni"])
 
-    pg.add_dimension("Overlap method", "atmos_clim.agni.overlap_method")
-    pg.set_dimension_direct("Overlap method", ["ro", "ee", "rorr"])
+    # pg.add_dimension("Overlap method", "atmos_clim.agni.overlap_method")
+    # pg.set_dimension_direct("Overlap method", ["ro", "ee", "rorr"])
 
-    pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_arange("Redox state", -5, 5, 1)
+    # pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
+    # pg.set_dimension_arange("Redox state", -5, 5, 1)
 
     # pg.add_dimension("Star Teff", "star.dummy.Teff")
     # pg.set_dimension_arange("Star Teff", 3500, 7500, 250)
+
+    pg.add_dimension("Pxuv", "escape.zephyrus.Pxuv")
+    pg.set_dimension_direct("Pxuv", [1e-5, 1e-4, 1e-3, 1e-2, 1e-1])
+
+    pg.add_dimension("efficiency", "escape.zephyrus.efficiency")
+    pg.set_dimension_direct("efficiency", [0.1, 0.3, 0.5, 0.7, 1.0])
+
+    pg.add_dimension("semimajoraxis", "orbit.semimajoraxis")
+    pg.set_dimension_direct("semimajoraxis", [0.1, 1.0, 1.5])
+
 
     # -----
     # Print state of parameter grid
