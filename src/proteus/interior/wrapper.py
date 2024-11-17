@@ -33,17 +33,15 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
 
     log.info("Using %s interior module to solve strcture"%config.interior.module)
 
-    # Solve surf gravity self-consistently
     solve_g = True
-    if config.interior.module == "aragog":
+    if config.interior.module == 'aragog':
+        log.warning("Cannot solve for interior structure with aragog")
         solve_g = False
-        log.warning("Using Aragog with const properties; not solving gravity self-consistently")
-
 
     # Initial guess for interior radius and gravity
     IC_INTERIOR = 1
     hf_row["R_int"]   = R_earth
-    hf_row["gravity"] = 10.0
+    hf_row["gravity"] = 9.81
 
     # Target mass
     M_target = config.struct.mass * M_earth
@@ -55,19 +53,27 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
 
         log.debug("Try R = %.2e m = %.3f R_earth"%(x,x/R_earth))
 
-        run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row, quiet=True)
+        run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row, verbose=False)
         if solve_g:
             update_gravity(hf_row)
 
         res = hf_row["M_int"] - M_target
-        log.debug("    found M = %.5e kg , resid = %.3e kg"%(hf_row["M_int"], res))
-        log.debug(" ")
+        log.debug("    yields M = %.5e kg , resid = %.3e kg"%(hf_row["M_int"], res))
 
         return res
 
+    # Set tolerance
+    match config.interior.module:
+        case 'aragog':
+            rtol = config.interior.aragog.tolerance
+        case 'spider':
+            rtol = config.interior.spider.tolerance
+        case _:
+            rtol = 1e-7
+
     # Find the radius
-    r = optimise.root_scalar(_resid, method='secant', x0=R_earth, x1=R_earth*1.1,
-                                    xtol=1e3, rtol=1e-7, maxiter=12)
+    r = optimise.root_scalar(_resid, method='secant', xtol=1e3, rtol=rtol, maxiter=12,
+                                    x0=hf_row["R_int"], x1=hf_row["R_int"]*1.02)
     hf_row["R_int"] = float(r.root)
     run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
     update_gravity(hf_row)
@@ -80,13 +86,15 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
 
 
 def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
-                 hf_all:pd.DataFrame, hf_row:dict, quiet:bool=False):
+                 hf_all:pd.DataFrame, hf_row:dict, verbose:bool=True):
     '''
     Run interior model
     '''
 
     # Use the appropriate interior model
-    log.info("Running %s interior module..."%config.interior.module)
+    if verbose:
+        log.info("Evolve interior...")
+    log.debug("Using %s module to evolve interior"%config.interior.module)
 
     if config.interior.module == 'spider':
         # Import
@@ -124,14 +132,11 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         hf_row["T_magma"] = min(hf_row["T_magma"], hf_all.iloc[-1]["T_magma"])
 
     # Print result of interior module
-    if quiet:
-        _logthis = log.debug
-    else:
-        _logthis = log.info
-    _logthis("    T_magma    = %.1f K"%hf_row["T_magma"])
-    _logthis("    Phi_global = %.3f  "%hf_row["Phi_global"])
-    _logthis("    F_int      = %.2e" %hf_row["F_int"])
-    _logthis("    RF_depth   = %.2e" %hf_row["RF_depth"])
+    if verbose:
+        log.info("    T_magma    = %.1f K"%hf_row["T_magma"])
+        log.info("    Phi_global = %.3f  "%hf_row["Phi_global"])
+        log.info("    F_int      = %.2e" %hf_row["F_int"])
+        log.info("    RF_depth   = %.2e" %hf_row["RF_depth"])
 
     # Time step size
     dt = float(sim_time) - hf_row["Time"]

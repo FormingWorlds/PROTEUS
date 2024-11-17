@@ -134,7 +134,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     tmp_minimum     = 0.5           # temperature floor on solver
     tmp_maximum     = 5000.0        # temperature ceiling on solver
 
-    module  = "agni"           # Which atmosphere module to use
+    module  = "dummy"           # Which atmosphere module to use
 
     [atmos_clim.agni]
         p_top           = 1.0e-7        # bar, top of atmosphere grid pressure

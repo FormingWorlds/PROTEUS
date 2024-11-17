@@ -182,7 +182,7 @@ class Proteus:
             # Planet interior mass
             self.hf_row["M_int"] = self.config.struct.mass * M_earth
 
-            # Planet interior radius
+            # Calculate R_int from M_int
             determine_interior_radius(self.directories, self.config, self.hf_all, self.hf_row)
 
             # Store partial pressures and list of included volatiles
@@ -261,6 +261,9 @@ class Proteus:
             ############### INTERIOR AND STRUCTURE
 
             PrintHalfSeparator()
+
+            # Calculate R_int from M_int
+            determine_interior_radius(self.directories, self.config, self.hf_all, self.hf_row)
 
             # Run interior model
             self.dt = run_interior(self.directories, self.config,
