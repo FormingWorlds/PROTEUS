@@ -8,6 +8,7 @@ import pandas as pd
 import scipy.optimize as optimise
 
 from proteus.utils.constants import M_earth, R_earth, const_G
+from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -76,7 +77,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
                                     x0=hf_row["R_int"], x1=hf_row["R_int"]*1.02)
     hf_row["R_int"] = float(r.root)
     run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
-    update_gravity(hf_row)
+    # update_gravity(hf_row)
 
     # Result
     log.info("Found solution for interior structure")
@@ -122,6 +123,12 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
     for k in output.keys():
         if k in hf_row.keys():
             hf_row[k] = output[k]
+
+    # Check that the new temperature is remotely reasonable
+    if not (0 < hf_row["T_magma"] < 1e6):
+        log.error("T_magma is out of range: %g K"%hf_row["T_magma"])
+        UpdateStatusfile(dirs, 21)
+        exit(1)
 
     # Update dry interior mass
     hf_row["M_int"] = hf_row["M_mantle"]  + hf_row["M_core"]
