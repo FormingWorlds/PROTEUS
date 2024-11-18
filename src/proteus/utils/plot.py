@@ -149,6 +149,7 @@ observer_bands = {
         "F1800W":  [16.519, 19.502],
         "F2100W":  [18.477, 23.159],
         "F2550W":  [23.301, 26.733],
+        "LRS":     [5, 14],
     },
 
     # https://jwst-docs.stsci.edu/jwst-near-infrared-spectrograph/nirspec-instrumentation/nirspec-dispersers-and-filters#
