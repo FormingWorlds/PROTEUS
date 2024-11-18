@@ -13,8 +13,8 @@ from matplotlib.ticker import MultipleLocator
 
 from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.interior.wrapper import read_interior_data
-from proteus.utils.plot import get_colour, latex_float, sample_output
 from proteus.utils.constants import R_earth
+from proteus.utils.plot import get_colour, latex_float, sample_output
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -32,7 +32,7 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
 
     log.info("Plot structure")
 
-    if not(module in ('spider','aragog')):
+    if module not in ('spider','aragog'):
         log.debug("Cannot make structure plot with module '%s'"%module)
         return
 
