@@ -31,6 +31,8 @@ IMAGE_LIST = (
         "plot_emission.png",
         "plot_interior.png",
         "plot_sflux.png",
+        "plot_population_time_density.png",
+        "plot_population_mass_radius.png"
         )
 
 @pytest.fixture(scope="module")
@@ -49,21 +51,26 @@ def test_physical_run(physical_run):
 
 def test_physical_spectrum(physical_run):
     # Check stellar spectrum
-    assert filecmp.cmp(out_dir / 'data' / '2002.sflux',
-                       ref_dir / '2002.sflux', shallow=False)
+
+    _out = out_dir / 'data' / '5002.sflux'
+    _ref = ref_dir / '5002.sflux'
+
+    assert filecmp.cmp(_out, _ref, shallow=False)
 
 def test_physical_atmosphere(physical_run):
     # Keys to load and test
+    _out   = out_dir / 'data' / '6002_atm.nc'
+    _ref   = ref_dir / '6002_atm.nc'
     fields = ["t", "p", "z", "fl_U_LW", "fl_D_SW"]
 
     # Load atmosphere output
-    out = read_atmosphere(out_dir / 'data' / '2002_atm.nc', extra_keys=fields)
+    out = read_atmosphere(_out, extra_keys=fields)
 
     # Compare to config
     assert len(out["t"]) == physical_run.config.atmos_clim.janus.num_levels*2+1
 
     # Load atmosphere reference
-    ref = read_atmosphere(ref_dir / '2002_atm.nc', extra_keys=fields)
+    ref = read_atmosphere(_ref, extra_keys=fields)
 
     # Compare to expected array values.
     # Cannot simply compare the files as black-boxes, because they contain date information
@@ -72,16 +79,18 @@ def test_physical_atmosphere(physical_run):
 
 def test_physical_interior(physical_run):
     # Keys to load and test
+    _out   = out_dir / 'data' / '6002_int.nc'
+    _ref   = ref_dir / '6002_int.nc'
     fields = ["radius_b", "pres_b", "temp_b", "phi_b"]
 
     # Load interior output
-    out = read_interior(out_dir / 'data' / '2002_int.nc')
+    out = read_interior(_out)
 
     # Compare to config
     assert len(out["radius_b"]) == physical_run.config.interior.aragog.num_levels
 
     # Load interior reference
-    ref = read_interior(ref_dir / '2002_int.nc')
+    ref = read_interior(_ref)
 
     # Compare to expected array values.
     # Cannot simply compare the files as black-boxes, because they contain date information

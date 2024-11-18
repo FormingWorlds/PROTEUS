@@ -367,7 +367,7 @@ def _try_spider( dirs:dict, config:Config,
     flags = ""
     for flag in call_sequence:
         flags += " " + flag
-    # log.debug("SPIDER call sequence: '%s'" % flags)
+    log.debug("SPIDER call sequence: '%s'" % flags)
 
     call_string = " ".join(call_sequence)
 

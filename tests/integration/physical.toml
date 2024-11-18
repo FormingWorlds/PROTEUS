@@ -35,7 +35,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         minimum      = 1e2    # yr, minimum time-step
         maximum      = 1e3    # yr, maximum time-step
         initial      = 1e2    # yr, inital step size
-        starspec     = 1e1    # yr, interval to re-calculate the stellar spectrum
+        starspec     = 5e3    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e1    # yr, interval to re-calculate the instellation
         method       = "maximum"  # proportional | adaptive | maximum
 
@@ -53,11 +53,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.iters]
             enabled = true
             minimum = 3
-            maximum = 6
+            maximum = 10
 
         # required time constraints
         [params.stop.time]
-            enabled = true
+            enabled = false
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
             maximum = 1e9       # yr, model will terminate when t > maximum
 
@@ -78,7 +78,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             dprel    = 1.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
 
         [params.stop.escape]
-            enabled   = true
+            enabled   = false
             mass_frac = 3e-4      # Stop when atm_mass < this frac of initial mass
 
 

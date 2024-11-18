@@ -91,7 +91,7 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             outer_boundary_condition = 4, # 4 = prescribed heat flux
             outer_boundary_value = hf_row["F_atm"], # first guess surface heat flux [W/m2]
             inner_boundary_condition = 1, # 3 = prescribed temperature
-            inner_boundary_value = 4000, # core temperature [K]
+            inner_boundary_value = 4000, # core temperature [K], if inner_boundary_condition = 3
             emissivity = 1, # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature = hf_row["T_eqm"], # only used in gray body BC, outer_boundary_condition = 1
             core_density = 10738.332568062382, # not used now
