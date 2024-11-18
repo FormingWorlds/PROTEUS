@@ -264,8 +264,7 @@ class Proteus:
             PrintHalfSeparator()
 
             # Calculate R_int from M_int
-            if self.hf_row["Time"] < 10:
-                determine_interior_radius(self.directories, self.config, self.hf_all, self.hf_row)
+            determine_interior_radius(self.directories, self.config, self.hf_all, self.hf_row)
 
             # Run interior model
             self.dt = run_interior(self.directories, self.config,
