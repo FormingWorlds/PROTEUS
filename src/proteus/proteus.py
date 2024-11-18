@@ -80,6 +80,7 @@ class Proteus:
 
         # Model has finished?
         self.finished = False
+        self.has_escaped = False
         self.lockfile = "/tmp/none"
 
         # Default values for mors.spada cases
@@ -364,6 +365,7 @@ class Proteus:
             # Check for when atmosphere has escaped.
             #    This will mean that the mixing ratios become undefined, so use value of 0.
             if self.hf_row["P_surf"] < 1.0e-10:
+                self.has_escaped = True
                 for gas in gas_list:
                     self.hf_row[gas+"_vmr"] = 0.0
                 self.hf_row["atm_kg_per_mol"] = 0.0
@@ -371,7 +373,8 @@ class Proteus:
             ############### / OUTGASSING
 
             ############### ATMOSPHERE CLIMATE
-            RunAtmosphere(self.config, self.directories, self.loops,
+            if not self.has_escaped:
+                RunAtmosphere(self.config, self.directories, self.loops,
                                 self.star_wl, self.star_fl, update_stellar_spectrum,
                                 self.hf_all, self.hf_row)
 
@@ -475,7 +478,10 @@ class Proteus:
                     self.finished = True
 
             # Atmosphere has escaped
-            if self.hf_row["M_atm"] <= self.config.params.stop.escape.mass_frac * self.hf_all.iloc[0]["M_atm"]:
+            if self.has_escaped \
+                or (self.hf_row["M_atm"] <= self.config.params.stop.escape.mass_frac * \
+                                                self.hf_all.iloc[0]["M_atm"]):
+
                 UpdateStatusfile(self.directories, 15)
                 log.info("")
                 log.info("===> Atmosphere has escaped! <===")

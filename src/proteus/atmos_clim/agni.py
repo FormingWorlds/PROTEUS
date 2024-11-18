@@ -364,7 +364,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         dx_max      = config.interior.spider.tsurf_atol+5.0
         ls_increase = 1.02
         reset_vmrs  = True
-        perturb_all = False
+        perturb_all = True
         max_steps   = 100
 
         # try different solver parameters if struggling
@@ -372,7 +372,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             linesearch  = 1
             dx_max     *= 3.0
             ls_increase = 1.1
-            perturb_all = True
 
         # first iteration parameters
         if loops_total == 0:
@@ -380,7 +379,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             easy_start  = True
             dx_max      = 200.0
             ls_increase = 1.1
-            perturb_all = True
             max_steps   = 200
 
         log.debug("Solver parameters:")
