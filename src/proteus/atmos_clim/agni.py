@@ -359,18 +359,20 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         log.info("Attempt %d" % attempts)
 
         # default parameters
-        linesearch = 2
-        easy_start = False
-        dx_max = config.interior.spider.tsurf_atol+10.0
+        linesearch  = 2
+        easy_start  = False
+        dx_max      = config.interior.spider.tsurf_atol+5.0
         ls_increase = 1.02
-        reset_vmrs = True
-        perturb_all = True
+        reset_vmrs  = True
+        perturb_all = False
+        max_steps   = 100
 
         # try different solver parameters if struggling
         if attempts == 2:
             linesearch  = 1
             dx_max     *= 3.0
             ls_increase = 1.1
+            perturb_all = True
 
         # first iteration parameters
         if loops_total == 0:
@@ -378,7 +380,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             easy_start  = True
             dx_max      = 200.0
             ls_increase = 1.1
-            perturb_all = False
+            perturb_all = True
+            max_steps   = 200
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -392,7 +395,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
                             conduct=False, convect=True, latent=True, sens_heat=True,
 
-                            max_steps=130, max_runtime=900.0,
+                            max_steps=max_steps, max_runtime=900.0,
                             conv_atol=config.atmos_clim.agni.solution_atol,
                             conv_rtol=config.atmos_clim.agni.solution_rtol,
 

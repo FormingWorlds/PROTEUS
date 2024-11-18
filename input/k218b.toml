@@ -139,13 +139,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Dayspring"   # which gas opacities to include
-        spectral_bands  = "256"         # how many spectral bands?
+        spectral_bands  = "48"         # how many spectral bands?
         num_levels      = 30           # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solution_atol   = 1e-2          # solver absolute tolerance
-        solution_rtol   = 5e-2          # solver relative tolerance
-        overlap_method    = "ee"          # gas overlap method
+        solution_rtol   = 1e-1          # solver relative tolerance
+        overlap_method  = "ee"          # gas overlap method
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
@@ -191,7 +191,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [interior.aragog]
         num_levels      = 100       # Number of Aragog grid levels
         tolerance       = 1.0e-7   # solver tolerance
-        ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
+        ini_tmagma      = 3000.0    # Initial magma surface temperature [K]
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
@@ -230,7 +230,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
         CH_ratio    = 0.1       # C/H ratio in mantle/atmosphere system
-        H_oceans    = 50.0       # Hydrogen inventory in units of equivalent Earth oceans, by mass
+        H_oceans    = 60.0       # Hydrogen inventory in units of equivalent Earth oceans, by mass
         N_ppmw      = 2.01      # Nitrogen inventory in ppmw relative to mantle mass, by mass
         S_ppmw      = 235.0     # Sulfur inventory in ppmw relative to mass of melt
 
