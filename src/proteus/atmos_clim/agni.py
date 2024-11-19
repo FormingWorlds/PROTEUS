@@ -363,7 +363,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         easy_start  = False
         dx_max      = config.interior.spider.tsurf_atol+5.0
         ls_increase = 1.02
-        reset_vmrs  = True
         perturb_all = True
         max_steps   = 100
 
@@ -397,7 +396,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
                             conv_atol=config.atmos_clim.agni.solution_atol,
                             conv_rtol=config.atmos_clim.agni.solution_rtol,
 
-                            method=1, ls_increase=ls_increase, reset_vmrs=reset_vmrs,
+                            method=1, ls_increase=ls_increase, rainout=True,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
                             perturb_all=perturb_all,
 
