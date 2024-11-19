@@ -70,7 +70,9 @@ def doctor_entry():
             message = click.style(str(exc), fg='red')
         else:
             if current_version != latest_version:
-                message = click.style(f'Update available {current_version} -> {latest_version}', fg='yellow')
+                message = click.style(
+                    f'Update available {current_version} -> {latest_version}', fg='yellow'
+                )
             else:
                 message = click.style('ok', fg='green')
 
