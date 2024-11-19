@@ -146,6 +146,10 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         if k in hf_row.keys():
             hf_row[k] = output[k]
 
+    # Ensure values are >= 0
+    for k in ("M_mantle","M_mantle_liquid","M_mantle_solid","M_core","Phi_global"):
+        hf_row[k] = max(hf_row[k], 0.0)
+
     # Check that the new temperature is remotely reasonable
     if not (0 < hf_row["T_magma"] < 1e6):
         log.error("T_magma is out of range: %g K"%hf_row["T_magma"])
