@@ -74,8 +74,8 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
     tmp_init = config.interior.dummy.ini_tmagma # Initial magma temperature
     tmp_liq  = 2700.0    # Liquidus
     tmp_sol  = 1700.0    # Solidus
-    cp_m     = 1792.0    # Mantle heat capacity, J kg-1 K-1
-    cp_c     = 880.0     # Core heat capacity, J kg-1 K-1
+    cp_m     = 1792.0    # Mantle specific heat capacity, J kg-1 K-1
+    cp_c     = 880.0     # Core specific heat capacity, J kg-1 K-1
     area     = 4 * np.pi * hf_row["R_int"]**2
 
     # Get mantle melt fraction as a function of temperature
@@ -89,8 +89,19 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
         # Just right
         return  (tmp-tmp_sol)/(tmp_liq-tmp_sol )
 
-    # Rate of surface temperature change
-    dTdt = output["F_int"] * area / (cp_m*output["M_mantle"] + cp_c*output["M_core"])
+    # Interior heat capacity [J K-1]
+    cp_int = cp_m*output["M_mantle"] + cp_c*output["M_core"]
+
+    # Subtract tidal contribution to the total heat flux.
+    #    This energy is generated only in the mantle, not in the core.
+    if config.orbit.module == 'dummy':
+        output["F_tide"] = config.orbit.dummy.H_tide * output["M_mantle"] / area
+    else:
+        output["F_tide"] = 0.0
+    output["F_int"] -= output["F_tide"]
+
+    # Rate of surface temperature change (this will be negative)
+    dTdt = -output["F_int"] * area / cp_int
 
     # Timestepping
     if IC_INTERIOR==1:
@@ -98,7 +109,7 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
         dt = 0.0
     else:
         dt = next_step(config, dirs, hf_row, hf_all, 1.0)
-        output["T_magma"] = hf_row["T_magma"] - dTdt * dt * secs_per_year
+        output["T_magma"] = hf_row["T_magma"] + dTdt * dt * secs_per_year
 
     # Determine the new melt fraction
     output["Phi_global"]        = _calc_phi(output["T_magma"])

@@ -142,9 +142,10 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
 
 
     # PLOT ax_tl
-    ax_tl.plot( hf_all["Time"], hf_all["F_int"], color=get_colour("int"), lw=lw, alpha=al,  label="Int.",zorder=3, linestyle='dashed')
-    ax_tl.plot( hf_all["Time"], hf_all["F_atm"], color=get_colour("atm"), lw=lw, alpha=al,  label="Atm.",zorder=3)
-    ax_tl.plot( hf_all["Time"], hf_all["F_olr"], color=get_colour("OLR"), lw=lw, alpha=al,  label="OLR", zorder=2)
+    ax_tl.plot( hf_all["Time"], hf_all["F_int"],  color=get_colour("int"),  lw=lw, alpha=al,  label="Int.",  zorder=3, linestyle='dashed')
+    ax_tl.plot( hf_all["Time"], hf_all["F_atm"],  color=get_colour("atm"),  lw=lw, alpha=al,  label="Atm.",  zorder=3)
+    ax_tl.plot( hf_all["Time"], hf_all["F_olr"],  color=get_colour("OLR"),  lw=lw, alpha=al,  label="OLR",   zorder=2)
+    ax_tl.plot( hf_all["Time"], hf_all["F_tide"], color=get_colour("tide"), lw=lw, alpha=al,  label="Tidal", zorder=1)
     ax_tl.legend(loc='center left', **leg_kwargs)
     ax_tl.set_ylim(0.0, np.amax(hf_all["F_olr"]*2.0))
 

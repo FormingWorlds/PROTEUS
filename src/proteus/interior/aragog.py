@@ -215,6 +215,9 @@ def GetAragogOutput(hf_row:dict):
     output["M_mantle_solid"] = output["M_mantle"] - output["M_mantle_liquid"]
     output["M_core"] = aragog_output.core_mass
 
+    # Tidal heating is not supported by Aragog (yet)
+    output["F_tide"] = 0.0
+
     return output
 
 

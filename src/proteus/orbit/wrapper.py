@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import logging
-
+from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.utils.constants import AU, const_G
+
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 

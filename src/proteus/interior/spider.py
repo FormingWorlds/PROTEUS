@@ -477,6 +477,9 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float):
     output["F_int"]           = float(data_a[6])  # Heat flux from interior
     output["RF_depth"]        = float(data_a[7])/R_int  # depth of rheological front
 
+    # Tidal heating is not supported by SPIDER
+    output["F_tide"] = 0.0
+
     # Manually calculate heat flux at near-surface from energy gradient
     # json_file   = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
     # Etot        = json_file.get_dict_values(['data','Etot_b'])

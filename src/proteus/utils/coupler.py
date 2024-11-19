@@ -256,8 +256,8 @@ def GetHelpfileKeys():
             # Temperatures
             "T_surf", "T_magma", "T_eqm", "T_skin", # all [K]
 
-            # Energy fluxes
-            "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins", # all [W m-2]
+            # Energy fluxes, all [W m-2]
+            "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins", "F_tide",
 
             # Interior properties
             "gravity", "Phi_global", "RF_depth", # [m s-2] , [1] , [1]

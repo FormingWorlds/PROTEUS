@@ -21,7 +21,7 @@ class Orbit:
     s0_factor: float
         Scale factor applies to incoming stellar radiation to represent planetary rotation and heat redistribution.
     module: str | None
-        Select orbit module to use. Not used currently.
+        Select orbit module to use. Choices: 'none', 'dummy'.
     """
     semimajoraxis: float = field(validator=gt(0))
     eccentricity: float = field(validator=(
@@ -34,4 +34,22 @@ class Orbit:
     ))
     s0_factor: float = field(validator=gt(0))
 
-    module: str | None = field(validator=in_((None,)), converter=none_if_none)
+    module: str | None = field(
+        validator=in_((None, 'dummy')),
+        converter=none_if_none,
+    )
+
+    dummy: OrbitDummy
+
+
+@define
+class OrbitDummy:
+    """Dummy orbit module.
+
+    Attributes
+    ----------
+    H_tide: float
+        Fixed global heating rate from tides [W kg-1].
+    """
+    H_tide: float = field(validator=ge(0))
+
