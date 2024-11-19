@@ -147,7 +147,11 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
     ax_tl.plot( hf_all["Time"], hf_all["F_olr"],  color=get_colour("OLR"),  lw=lw, alpha=al,  label="OLR",   zorder=2)
     ax_tl.plot( hf_all["Time"], hf_all["F_tide"], color=get_colour("tide"), lw=lw, alpha=al,  label="Tidal", zorder=1)
     ax_tl.legend(loc='center left', **leg_kwargs)
-    ax_tl.set_ylim(0.0, np.amax(hf_all["F_olr"]*2.0))
+    ymin, ymax = 0.0, 100.0
+    for k in ("F_int","F_atm","F_olr","F_tide"):
+        ymin = min(ymin, np.amin(hf_all[k]))
+        ymax = max(ymax, np.amax(hf_all[k]))
+    ax_tl.set_ylim(bottom=ymin/1.5, top=ymax*1.5)
 
     # PLOT ax_cl
     min_temp = np.amin(hf_all["T_surf"])
