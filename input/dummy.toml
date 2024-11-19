@@ -114,9 +114,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    set_by      = 'mass_tot'
+    set_by      = 'radius_int'
     mass_tot    = 1.0       # M_earth
-    radius_int  = 1.0
+    radius_int  = 0.9       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
 # Atmosphere - physics table

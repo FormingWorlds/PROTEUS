@@ -114,11 +114,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    mass        = 1.308       # M_earth
+    set_by      = 'mass_tot'
+    mass_tot    = 1.308       # M_earth
+    radius_int  = 1.0       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
-
-    # No module for specifically for internal structure
-    module  = "none"
 
 # Atmosphere - physics table
 [atmos_clim]
