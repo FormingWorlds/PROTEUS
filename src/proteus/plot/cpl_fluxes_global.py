@@ -33,6 +33,7 @@ def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, config: Config, t0:
     F_olr = np.array(hf_crop["F_olr"])
     F_upw = np.array(hf_crop["F_olr"]) + np.array(hf_crop["F_sct"])
     F_int = np.array(hf_crop["F_int"])
+    F_tid = np.array(hf_crop["F_tide"])
 
     # Create plot
     mpl.use('Agg')
@@ -50,6 +51,7 @@ def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, config: Config, t0:
     ax.plot(time, F_olr, lw=lw, alpha=al, zorder=2, color=get_colour("OLR"), label="OLR")
     ax.plot(time, F_upw, lw=lw, alpha=al, zorder=3, color=get_colour("sct"), label="OLR + Scat.")
     ax.plot(time, F_asf, lw=lw, alpha=al, zorder=3, color=get_colour("ASF"), label="ASF", linestyle='dotted')
+    ax.plot(time, F_tid, lw=lw, alpha=al, zorder=1, color=get_colour("tide"),label="Tidal")
 
     # Configure plot
     ax.set_yscale("symlog")
