@@ -10,7 +10,7 @@ import numpy as np
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
-from proteus.interior.wrapper import solve_structure, run_interior, update_gravity
+from proteus.interior.wrapper import run_interior, solve_structure, update_gravity
 from proteus.orbit.wrapper import update_period, update_separation
 from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 from proteus.star.wrapper import (
@@ -21,7 +21,6 @@ from proteus.star.wrapper import (
     write_spectrum,
 )
 from proteus.utils.constants import (
-    M_earth,
     gas_list,
     vap_list,
     vol_list,

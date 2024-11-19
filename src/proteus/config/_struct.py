@@ -3,8 +3,6 @@ from __future__ import annotations
 from attrs import define, field
 from attrs.validators import gt, in_, lt
 
-from ._converters import none_if_none
-
 
 @define
 class Struct:
