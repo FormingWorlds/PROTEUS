@@ -114,7 +114,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    set_by      = 'mass_tot'    # Which variable is used to set the interior structure?
+    set_by      = 'mass_tot'    # Variable to set interior structure: 'radius_int' or 'mass_tot'
     mass_tot    = 1.0           # Total planet mass [M_earth]
     radius_int  = 0.9           # Radius at mantle-atmosphere boundary [R_earth]
     corefrac    = 0.55          # non-dim., radius fraction

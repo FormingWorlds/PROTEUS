@@ -114,7 +114,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    set_by      = 'mass_tot'
+    set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
     mass_tot    = 8.63       # M_earth
     radius_int  = 1.0       # R_earth
     corefrac    = 0.75      # non-dim., radius fraction
