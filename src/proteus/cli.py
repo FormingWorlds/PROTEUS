@@ -138,6 +138,7 @@ def spider():
     from .utils.data import get_spider
     get_spider()
 
+
 cli.add_command(get)
 get.add_command(spectral)
 get.add_command(surfaces)
@@ -146,6 +147,16 @@ get.add_command(stellar)
 get.add_command(socrates)
 get.add_command(petsc)
 get.add_command(spider)
+
+
+@click.command()
+def doctor():
+    """Diagnose your PROTEUS installation"""
+    from .doctor import doctor_entry
+    doctor_entry()
+
+
+cli.add_command(doctor)
 
 if __name__ == '__main__':
     cli()
