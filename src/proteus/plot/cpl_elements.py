@@ -26,7 +26,7 @@ def plot_elements( hf_all:pd.DataFrame, output_dir:str, plot_format="pdf", t0=10
     time = np.array(hf_all["Time"] )
 
     # make plot
-    lw = 2
+    lw = 1.8
     scale = 1.1
     fig,ax = plt.subplots(1,1, figsize=(6*scale,4*scale))
 
@@ -34,21 +34,25 @@ def plot_elements( hf_all:pd.DataFrame, output_dir:str, plot_format="pdf", t0=10
     total = np.zeros(len(time))
     for e in element_list:
 
+        _lw = lw
+        if e == 'H':
+            _lw = lw * 1.8
+
         # Plot planetary inventory of this element
         y = np.array(hf_all[e+"_kg_total"])/M_earth
         total += y
-        line = ax.plot(time, y, lw=lw, ls='solid',  label=e)[0]
+        line = ax.plot(time, y, lw=_lw, ls='solid',  label=e)[0]
 
         # Plot atmospheric inventory of this element
         y = np.array(hf_all[e+"_kg_atm"])/M_earth
-        ax.plot(time, y, lw=lw*1.5, ls='dotted', color=line.get_color())
+        ax.plot(time, y, lw=_lw, ls='dotted', color=line.get_color())
 
     # Planetary element sum inventory
     ax.plot(time, total, lw=lw, ls='solid',  label='Total',  c='k')
 
     # Atmosphere mass
     M_atm = np.array(hf_all["M_atm"])/M_earth
-    ax.plot(time, M_atm, lw=lw*1.5, ls='dotted', label='Atmosphere', c='k')
+    ax.plot(time, M_atm, lw=lw, ls='dotted', label='Atmosphere', c='k')
 
     # decorate
     ax.set_ylabel(r"Mass [M$_\oplus$]")

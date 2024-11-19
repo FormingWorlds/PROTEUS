@@ -26,7 +26,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # output files
     [params.out]
         path        = "physical"
-        logging     = "DEBUG"
+        logging     = "ERROR"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
@@ -35,7 +35,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         minimum      = 1e2    # yr, minimum time-step
         maximum      = 1e3    # yr, maximum time-step
         initial      = 1e2    # yr, inital step size
-        starspec     = 1e1    # yr, interval to re-calculate the stellar spectrum
+        starspec     = 5e3    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e1    # yr, interval to re-calculate the instellation
         method       = "maximum"  # proportional | adaptive | maximum
 
@@ -53,11 +53,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.iters]
             enabled = true
             minimum = 3
-            maximum = 6
+            maximum = 10
 
         # required time constraints
         [params.stop.time]
-            enabled = true
+            enabled = false
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
             maximum = 1e9       # yr, model will terminate when t > maximum
 
@@ -78,7 +78,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             dprel    = 1.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
 
         [params.stop.escape]
-            enabled   = true
+            enabled   = false
             mass_frac = 3e-4      # Stop when atm_mass < this frac of initial mass
 
 
@@ -115,7 +115,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Planetary structure - physics table
 [struct]
     mass        = 1.0       # M_earth
-    radius      = 1.0       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
     # No module for specifically for internal structure
@@ -192,6 +191,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [interior.aragog]
         num_levels      = 90       # Number of Aragog grid levels
         tolerance       = 1.0e-7   # solver tolerance
+        ini_tmagma      = 3000.0    # Initial magma surface temperature [K]
+
+    [interior.dummy]
+        ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
 
 # Outgassing - physics table
 [outgas]

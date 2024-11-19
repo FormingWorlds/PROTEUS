@@ -11,16 +11,13 @@ class Struct:
     """Planetary structure (mass, radius).
 
     mass: float
-        M_earth
-    radius: float
-        R_earth
+        Dry mass of the planet's interior [M_earth]
     corefrac: float
-        Non-dimensional, radius fraction
+        Fraction of the planet's interior radius corresponding to the core.
     module: str | None
         Select internal structure module to use. Not used currently.
     """
-    mass: float = field(validator=gt(0))
-    radius: float  = field(validator=gt(0))
+    mass: float = field(validator=(gt(0),lt(20)))
     corefrac: float = field(validator=(gt(0), lt(1)))
 
     module: str | None = field(validator=in_((None,)), converter=none_if_none)

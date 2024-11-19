@@ -115,7 +115,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Planetary structure - physics table
 [struct]
     mass        = 1.0       # M_earth
-    radius      = 1.0       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
     # No module for specifically for internal structure
@@ -138,15 +137,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "dummy"           # Which atmosphere module to use
 
     [atmos_clim.agni]
-        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Frostflow"   # which gas opacities to include
-        spectral_bands  = "48"          # how many spectral bands?
+        p_top           = 1.0e-7        # bar, top of atmosphere grid pressure
+        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_bands  = "16"          # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solution_atol   = 1e-3          # solver absolute tolerance
         solution_rtol   = 2e-2          # solver relative tolerance
-        overlap_method    = "ee"          # gas overlap method
+        overlap_method  = "ee"          # gas overlap method
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
@@ -192,6 +191,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [interior.aragog]
         num_levels      = 100       # Number of Aragog grid levels
         tolerance       = 1.0e-7   # solver tolerance
+        ini_tmagma      = 3300.0    # Initial magma surface temperature [K]
+
+    [interior.dummy]
+        ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
 
 # Outgassing - physics table
 [outgas]
@@ -204,10 +207,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         include_CO2  = true     # Include CO2 compound
         include_N2   = true     # Include N2 compound
         include_S2   = true     # Include S2 compound
-        include_SO2  = true     # Include SO2 compound
-        include_H2   = true     # Include H2 compound
-        include_CH4  = true     # Include CH4 compound
-        include_CO   = true     # Include CO compound
+        include_SO2  = false     # Include SO2 compound
+        include_H2   = false     # Include H2 compound
+        include_CH4  = false     # Include CH4 compound
+        include_CO   = false     # Include CO compound
         T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
     [outgas.atmodeller]
@@ -219,7 +222,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # [Settings here for accretion rate, etc.]
 
     # Which initial inventory to use?
-    initial = 'elements'        # "elements" | "volatiles"
+    initial = 'volatiles'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"
@@ -233,8 +236,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [delivery.volatiles]
-        H2O  = 0.0          # partial pressure of H2O
-        CO2  = 0.0          # partial pressure of CO2
+        H2O  = 20.0          # partial pressure of H2O
+        CO2  = 30.0          # partial pressure of CO2
         N2   = 0.0          # etc
         S2   = 0.0
         SO2  = 0.0

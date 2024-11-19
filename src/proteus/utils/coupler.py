@@ -32,7 +32,7 @@ from proteus.plot.cpl_population import (
 )
 from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
-from proteus.plot.cpl_stacked import plot_stacked
+from proteus.plot.cpl_structure import plot_structure
 from proteus.utils.constants import (
     element_list,
     gas_list,
@@ -250,7 +250,7 @@ def GetHelpfileKeys():
             "separation", # [m]
             "period", # [s]
 
-            # Input parameters (converted to SI)
+            # Dry interior radius (calculated) and mass (from config)
             "R_int", "M_int", # [m], [kg]
 
             # Temperatures
@@ -405,6 +405,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
+    dummy_int = config.interior.module == 'dummy'
     spider    = config.interior.module == 'spider'
     aragog    = config.interior.module == 'aragog'
     escape    = config.escape.module is not None
@@ -432,7 +433,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         nc_times = [int(f.split("/")[-1].split("_atm")[0]) for f in ncs]
 
         # Check intersection of atmosphere and interior data
-        if not spider:
+        if dummy_int:
             output_times = nc_times
         else:
             output_times = sorted(list(set(output_times) & set(nc_times)))
@@ -447,7 +448,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         log.debug("Snapshots to plot:" + str(plot_times))
 
     # Interior profiles
-    if spider or aragog:
+    if not dummy_int:
         int_data = read_interior_data(output_dir, config.interior.module, plot_times)
         plot_interior(output_dir, plot_times, int_data,
                               config.interior.module, config.params.out.plot_fmt)
@@ -460,8 +461,8 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
         # Atmosphere and interior, stacked
-        if spider or aragog:
-            plot_stacked(output_dir, plot_times, int_data, atm_data,
+        if not dummy_int:
+            plot_structure(hf_all, output_dir, plot_times, int_data, atm_data,
                             config.interior.module, config.params.out.plot_fmt)
 
         # Flux profiles
@@ -487,7 +488,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_sflux_cross(output_dir,modern_age=modern_age,
                             plot_format=config.params.out.plot_fmt)
 
-        if spider or aragog:
+        if not dummy_int:
             plot_interior_cmesh(output_dir, plot_times, int_data, config.interior.module,
                                 plot_format=config.params.out.plot_fmt)
 

@@ -68,7 +68,7 @@ def activate_julia(dirs:dict):
     log.debug("AGNI will log to '%s'"%logpath)
 
 
-def _construct_voldict(hf_row:dict, config:Config, dirs:dict):
+def _construct_voldict(hf_row:dict, dirs:dict):
 
     # get from hf_row
     vol_dict = {}
@@ -128,7 +128,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         input_star =    sflux_path
 
     # composition
-    vol_dict = _construct_voldict(hf_row, config, dirs)
+    vol_dict = _construct_voldict(hf_row, dirs)
 
     # set condensation
     condensates = []
@@ -136,11 +136,19 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         # single-gas case
         condensates = list(vol_dict.keys())
     else:
-        # get sorted gases
-        vol_sorted = sorted(vol_dict.items(), key=lambda item: item[1])
+        # get sorted gases (in order of decreasing VMR at the surface)
+        vol_sorted = sorted(vol_dict.items(), key=lambda item: item[1])[::-1]
 
-        # set all gases as condensates, except the least abundant gas
-        condensates = [v[0] for v in vol_sorted[1:]]
+        # Set gases as condensates...
+        condensates = ['H2O'] # always prefer H2O
+        for v in vol_sorted:
+            # add gas if it has non-zero abundance
+            if (v[1] > 1e-30) and (v[0] not in condensates):
+                condensates.append(v[0])
+
+        # Remove the least abundant gas from the list, so that we have something to
+        #     fill the background with if everything else condenses at a given level
+        condensates = condensates[:-1]
 
     # Chemistry
     chem_type = config.atmos_clim.agni.chemistry
@@ -206,7 +214,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
     jl.AGNI.atmosphere.allocate_b(atmos,input_star)
 
     # Set temperature profile from old NetCDF if it exists
-    nc_files = glob.glob(os.path.join(dirs["output"],"data","*.nc"))
+    nc_files = glob.glob(os.path.join(dirs["output"],"data","*_atm.nc"))
     if len(nc_files) > 0:
         log.debug("Load NetCDF profile")
 
@@ -234,7 +242,7 @@ def deallocate_atmos(atmos):
     safe_rm(str(atmos.fastchem_work))
 
 
-def update_agni_atmos(atmos, hf_row:dict, config:Config, dirs:dict):
+def update_agni_atmos(atmos, hf_row:dict, dirs:dict):
     """Update atmosphere struct.
 
     Sets the new boundary conditions and composition.
@@ -245,8 +253,8 @@ def update_agni_atmos(atmos, hf_row:dict, config:Config, dirs:dict):
             Atmosphere struct
         hf_row : dict
             Dictionary containing simulation variables for current iteration
-        config : Config
-            Configuration options and other variables
+        dirs : dict
+            Directories dictionary
 
     Returns
     ----------
@@ -257,7 +265,7 @@ def update_agni_atmos(atmos, hf_row:dict, config:Config, dirs:dict):
 
     # ---------------------
     # Update compositions
-    vol_dict = _construct_voldict(hf_row, config, dirs)
+    vol_dict = _construct_voldict(hf_row, dirs)
     for g in vol_dict.keys():
         atmos.gas_vmr[g][:]  = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]
@@ -351,10 +359,13 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         log.info("Attempt %d" % attempts)
 
         # default parameters
-        linesearch = 2
-        easy_start = False
-        dx_max = config.interior.spider.tsurf_atol+10.0
+        linesearch  = 2
+        easy_start  = False
+        dx_max      = config.interior.spider.tsurf_atol+5.0
         ls_increase = 1.02
+        reset_vmrs  = True
+        perturb_all = True
+        max_steps   = 100
 
         # try different solver parameters if struggling
         if attempts == 2:
@@ -368,6 +379,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             easy_start  = True
             dx_max      = 200.0
             ls_increase = 1.1
+            max_steps   = 200
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -381,12 +393,13 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
                             conduct=False, convect=True, latent=True, sens_heat=True,
 
-                            max_steps=130, max_runtime=900.0,
+                            max_steps=max_steps, max_runtime=900.0,
                             conv_atol=config.atmos_clim.agni.solution_atol,
                             conv_rtol=config.atmos_clim.agni.solution_rtol,
 
-                            method=1, ls_increase=ls_increase,
+                            method=1, ls_increase=ls_increase, reset_vmrs=reset_vmrs,
                             dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
+                            perturb_all=perturb_all,
 
                             save_frames=False, modplot=modplot
                             )

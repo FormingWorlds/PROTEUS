@@ -6,12 +6,11 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from calliope.structure import calculate_mantle_mass
 
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
-from proteus.interior import run_interior
+from proteus.interior.wrapper import determine_interior_radius, run_interior, update_gravity
 from proteus.orbit.wrapper import update_period, update_separation
 from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 from proteus.star.wrapper import (
@@ -23,8 +22,6 @@ from proteus.star.wrapper import (
 )
 from proteus.utils.constants import (
     M_earth,
-    R_earth,
-    const_G,
     gas_list,
     vap_list,
     vol_list,
@@ -78,11 +75,12 @@ class Proteus:
         self.loops = None
 
         # Interior
-        self.IC_INTERIOR = -1   # initial condition
+        self.IC_INTERIOR = -1   # initial condition (1: new simulation, 2: mid-simulation)
         self.dt = 1.0           # Time step variable [yr]
 
         # Model has finished?
         self.finished = False
+        self.has_escaped = False
         self.lockfile = "/tmp/none"
 
         # Default values for mors.spada cases
@@ -157,6 +155,12 @@ class Proteus:
         # Write config to output directory, for future reference
         self.config.write(os.path.join(self.directories["output"], "init_coupler.toml"))
 
+        # Create lockfile for keeping simulation running
+        self.lockfile = CreateLockFile(self.directories["output"])
+
+        # Download basic data
+        download_sufficient_data(self.config)
+
         # Is the model resuming from a previous state?
         if not resume:
             # New simulation
@@ -176,13 +180,11 @@ class Proteus:
             self.hf_row["F_int"] = self.hf_row["F_atm"]
             self.hf_row["T_eqm"] = 2000.0
 
-            # Planet size conversion, and calculate mantle mass (= liquid + solid)
+            # Planet interior mass
             self.hf_row["M_int"] = self.config.struct.mass * M_earth
-            self.hf_row["R_int"] = self.config.struct.radius * R_earth
-            self.hf_row["gravity"] = const_G * self.hf_row["M_int"] / (self.hf_row["R_int"] ** 2.0)
-            self.hf_row["M_mantle"] = calculate_mantle_mass(
-                self.hf_row["R_int"], self.hf_row["M_int"], self.config.struct.corefrac
-            )
+
+            # Calculate R_int from M_int
+            determine_interior_radius(self.directories, self.config, self.hf_all, self.hf_row)
 
             # Store partial pressures and list of included volatiles
             inc_gases = []
@@ -229,12 +231,6 @@ class Proteus:
             self.loops["init"] = self.loops["init_loops"] + 1
         log.info(" ")
 
-        # Create lockfile for keeping simulation running
-        self.lockfile = CreateLockFile(self.directories["output"])
-
-        # Download basic data
-        download_sufficient_data(self.config)
-
         # Prepare star stuff
         init_star(self)
 
@@ -263,17 +259,28 @@ class Proteus:
                 )
             )
 
-            ############### INTERIOR
+            ############### INTERIOR AND STRUCTURE
+
+            PrintHalfSeparator()
+
+            # Calculate R_int from M_int
+            if self.hf_row["Time"] < 100:
+                determine_interior_radius(self.directories, self.config,
+                                            self.hf_all, self.hf_row)
 
             # Run interior model
             self.dt = run_interior(self.directories, self.config,
-                                self.loops, self.IC_INTERIOR, self.hf_all,  self.hf_row)
+                                    self.IC_INTERIOR, self.hf_all,  self.hf_row)
+
+
+            # Update surface gravity
+            update_gravity(self.hf_row)
 
             # Advance current time in main loop according to interior step
             self.hf_row["Time"]     += self.dt    # in years
             self.hf_row["age_star"] += self.dt    # in years
 
-            ############### / INTERIOR
+            ############### / INTERIOR AND STRUCTURE
 
             ############### ORBIT AND TIDES
 
@@ -359,6 +366,7 @@ class Proteus:
             # Check for when atmosphere has escaped.
             #    This will mean that the mixing ratios become undefined, so use value of 0.
             if self.hf_row["P_surf"] < 1.0e-10:
+                self.has_escaped = True
                 for gas in gas_list:
                     self.hf_row[gas+"_vmr"] = 0.0
                 self.hf_row["atm_kg_per_mol"] = 0.0
@@ -366,7 +374,8 @@ class Proteus:
             ############### / OUTGASSING
 
             ############### ATMOSPHERE CLIMATE
-            RunAtmosphere(self.config, self.directories, self.loops,
+            if not self.has_escaped:
+                RunAtmosphere(self.config, self.directories, self.loops,
                                 self.star_wl, self.star_fl, update_stellar_spectrum,
                                 self.hf_all, self.hf_row)
 
@@ -470,7 +479,10 @@ class Proteus:
                     self.finished = True
 
             # Atmosphere has escaped
-            if self.hf_row["M_atm"] <= self.config.params.stop.escape.mass_frac * self.hf_all.iloc[0]["M_atm"]:
+            if self.has_escaped \
+                or (self.hf_row["M_atm"] <= self.config.params.stop.escape.mass_frac * \
+                                                self.hf_all.iloc[0]["M_atm"]):
+
                 UpdateStatusfile(self.directories, 15)
                 log.info("")
                 log.info("===> Atmosphere has escaped! <===")
