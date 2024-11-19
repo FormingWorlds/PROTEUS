@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 import scipy.optimize as optimise
 
-from proteus.utils.constants import M_earth, R_earth, const_G
+from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -28,8 +28,6 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     This uses the interior model's hydrostatic integration to estimate the planet's
     interior mass from a given radius. The radius is then adjusted until the interior mass
     achieves the target mass provided by the user in the config file.
-
-    For the dummy interior, the radius is simply specified by the user in the config file.
     '''
 
     log.info("Using %s interior module to solve strcture"%config.interior.module)
@@ -45,21 +43,23 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     hf_row["gravity"] = 9.81
 
     # Target mass
-    M_target = config.struct.mass * M_earth
+    M_target = config.struct.mass_tot * M_earth
 
-    # We need to solve for the state M_int = config.struct.mass
+    # We need to solve for the state hf_row[M_tot] = config.struct.mass_tot
     # This function takes R_int as the input value, and returns the mass residual
     def _resid(x):
         hf_row["R_int"] = x
 
         log.debug("Try R = %.2e m = %.3f R_earth"%(x,x/R_earth))
 
+        # Use interior model to get dry mass from radius
         run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row, verbose=False)
         if solve_g:
             update_gravity(hf_row)
 
-        res = hf_row["M_int"] - M_target
-        log.debug("    yields M = %.5e kg , resid = %.3e kg"%(hf_row["M_int"], res))
+        # Calculate residual
+        res = hf_row["M_tot"] - M_target
+        log.debug("    yields M = %.5e kg , resid = %.3e kg"%(hf_row["M_tot"], res))
 
         return res
 
@@ -77,13 +77,35 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
                                     x0=hf_row["R_int"], x1=hf_row["R_int"]*1.02)
     hf_row["R_int"] = float(r.root)
     run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
-    # update_gravity(hf_row)
+    if solve_g:
+        update_gravity(hf_row)
 
     # Result
     log.info("Found solution for interior structure")
-    log.info("M_int: %.1e kg = %.3f M_earth"%(hf_row["M_int"], hf_row["M_int"]/M_earth))
+    log.info("M_tot: %.1e kg = %.3f M_earth"%(hf_row["M_tot"], hf_row["M_tot"]/M_earth))
     log.info("R_int: %.1e m  = %.3f R_earth"%(hf_row["R_int"], hf_row["R_int"]/R_earth))
     log.info(" ")
+
+def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
+    '''
+    Solve for the planet structure based on the method set in the configuration file.
+
+    If the structure is set by the radius, then this is trivial because the radius is used
+    as an input to the interior modules anyway. If the structure is set by mass, then it is
+    solved as an inverse problem for now.
+    '''
+
+    # Trivial case of setting it by the interior radius
+    if config.struct.set_by == 'radius_int':
+        hf_row["R_int"] = config.struct.radius_int * R_earth
+
+    # Set by total mass (mantle + core + volatiles)
+    elif config.struct.set_by == 'mass_tot':
+        determine_interior_radius(dirs, config, hf_all, hf_row)
+
+    # Otherwise, error
+    else:
+        log.error("Invalid constraint on interior structure: %s"%config.struct.set_by)
 
 
 def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
@@ -132,6 +154,15 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
 
     # Update dry interior mass
     hf_row["M_int"] = hf_row["M_mantle"]  + hf_row["M_core"]
+
+    # Update total planet mass
+    M_volatiles = 0.0
+    for e in element_list:
+        if (e == 'O'):
+            # do not include oxygen, because it varies over time in order to set fO2.
+            continue
+        M_volatiles += hf_row[e+"_kg_total"]
+    hf_row["M_tot"] = hf_row["M_int"] + M_volatiles
 
     # Prevent increasing melt fraction
     if config.atmos_clim.prevent_warming and (IC_INTERIOR==2):

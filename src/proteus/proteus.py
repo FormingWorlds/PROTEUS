@@ -10,7 +10,7 @@ import numpy as np
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
-from proteus.interior.wrapper import determine_interior_radius, run_interior, update_gravity
+from proteus.interior.wrapper import solve_structure, run_interior, update_gravity
 from proteus.orbit.wrapper import update_period, update_separation
 from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 from proteus.star.wrapper import (
@@ -180,11 +180,8 @@ class Proteus:
             self.hf_row["F_int"] = self.hf_row["F_atm"]
             self.hf_row["T_eqm"] = 2000.0
 
-            # Planet interior mass
-            self.hf_row["M_int"] = self.config.struct.mass * M_earth
-
-            # Calculate R_int from M_int
-            determine_interior_radius(self.directories, self.config, self.hf_all, self.hf_row)
+            # Solve interior structure
+            solve_structure(self.directories, self.config, self.hf_all, self.hf_row)
 
             # Store partial pressures and list of included volatiles
             inc_gases = []
@@ -263,10 +260,9 @@ class Proteus:
 
             PrintHalfSeparator()
 
-            # Calculate R_int from M_int
+            # Solve interior structure
             if self.hf_row["Time"] < 100:
-                determine_interior_radius(self.directories, self.config,
-                                            self.hf_all, self.hf_row)
+                solve_structure(self.directories, self.config, self.hf_all, self.hf_row)
 
             # Run interior model
             self.dt = run_interior(self.directories, self.config,

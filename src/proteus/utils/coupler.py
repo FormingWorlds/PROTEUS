@@ -155,9 +155,6 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     if config.interior.module == "spider":
         log.info("  - PETSc         version " + _get_petsc_version())
 
-    # Structure module
-    log.info("Structure module  %s" % config.struct.module)
-
     # Atmosphere module
     write = "Atmos_clim module %s" % config.atmos_clim.module
     match config.atmos_clim.module:
@@ -252,6 +249,9 @@ def GetHelpfileKeys():
 
             # Dry interior radius (calculated) and mass (from config)
             "R_int", "M_int", # [m], [kg]
+
+            # Total planet mass (mantle + core + volatiles)
+            "M_tot", # [kg]
 
             # Temperatures
             "T_surf", "T_magma", "T_eqm", "T_skin", # all [K]
