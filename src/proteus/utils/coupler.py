@@ -259,6 +259,9 @@ def GetHelpfileKeys():
             # Energy fluxes, all [W m-2]
             "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins", "F_tide",
 
+            # Tidal power density [W kg-1]
+            "H_tide",
+
             # Interior properties
             "gravity", "Phi_global", "RF_depth", # [m s-2] , [1] , [1]
             "M_core", "M_mantle", "M_planet",    # all [kg]

@@ -69,11 +69,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # radiative equilibrium
         [params.stop.radeqm]
             enabled = true
-            F_crit  = 0.1     # W m-2, model will terminate when |F_atm| < F_crit
+            atol    = 0.1     # absolute tolerance [W m-2]
+            rtol    = 1e-3    # relative tolerance
 
         # steady state
         [params.stop.steady]
-            enabled  = true
+            enabled  = false
             F_crit   = 1.8        # Maximum absolute value of F_atm allowed for convergence
             dprel    = 3.0e-10     # Percentage change in melt fraction over time (dp/p)/dt*100
 

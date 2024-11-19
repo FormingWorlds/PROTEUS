@@ -119,7 +119,7 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         log.info("Evolve interior...")
     log.debug("Using %s module to evolve interior"%config.interior.module)
 
-    tides_enabled = (config.orbit.module == "dummy") and (config.orbit.dummy.H_tide > 1e-30)
+    tides_enabled = bool(hf_row["H_tide"] > 1e-30)
 
     if config.interior.module == 'spider':
         # Import
