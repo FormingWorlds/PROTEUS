@@ -97,7 +97,11 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
 
     # Trivial case of setting it by the interior radius
     if config.struct.set_by == 'radius_int':
+        # radius defines interior structure
         hf_row["R_int"] = config.struct.radius_int * R_earth
+        # initial guess for mass, which will be updated by the interior model
+        hf_row["M_int"] = config.struct.mass_tot * M_earth
+        update_gravity(hf_row)
 
     # Set by total mass (mantle + core + volatiles)
     elif config.struct.set_by == 'mass_tot':
