@@ -11,7 +11,7 @@ import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import platformdirs
-from aragog import Output, Solver
+from aragog import Output, Solver, aragog_file_logger
 from aragog.parser import (
     Parameters,
     _BoundaryConditionsParameters,
@@ -40,6 +40,11 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
 
     global aragog_solver
+
+    # Setup Aragog logger
+    aragoglog = aragog_file_logger(console_level = logging.WARNING,
+                                   file_level = logging.INFO,
+                                   log_dir = dirs["output"])
 
     # Compute time step
     if IC_INTERIOR==1:
