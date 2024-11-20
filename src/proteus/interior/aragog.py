@@ -52,7 +52,10 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
     # Setup Aragog parameters from options at first iteration
     if (aragog_solver is None):
         SetupAragogSolver(config, hf_row)
-    # Else only update varying parameters
+        # Update state from stored data if resuming a simulation
+        if config.params.resume:
+            UpdateAragogSolver(dt, hf_row, dirs["output"])
+    # Update varying parameters in ongoing simulation
     else:
         UpdateAragogSolver(dt, hf_row)
 
@@ -175,15 +178,20 @@ def SetupAragogSolver(config:Config, hf_row:dict):
 
     aragog_solver = Solver(param)
 
-def UpdateAragogSolver(dt:float, hf_row:dict):
+def UpdateAragogSolver(dt:float, hf_row:dict, output_dir:str = None):
 
     # Set solver time
     # hf_row["Time"] is in yr so do not need to scale as long as scaling time is secs_per_year
     aragog_solver.parameters.solver.start_time = hf_row["Time"]
     aragog_solver.parameters.solver.end_time = hf_row["Time"] + dt
 
-    # Update initial condition (temperature field from previous run)
-    Tfield: np.array = aragog_solver.temperature_staggered[:, -1]
+    # Get temperature field from previous run
+    if output_dir is not None: # read it from output directory
+        Tfield = read_last_Tfield(output_dir, hf_row["Time"])
+    else: # get it from solver
+        Tfield = aragog_solver.temperature_staggered[:, -1]
+
+    # Update initial condition
     Tfield = Tfield / aragog_solver.parameters.scalings.temperature
     aragog_solver.parameters.initial_condition.from_field = True
     aragog_solver.parameters.initial_condition.init_temperature = Tfield
@@ -217,6 +225,18 @@ def GetAragogOutput(hf_row:dict):
 
     return output
 
+def read_last_Tfield(output_dir:str, time:float):
+
+    # Read Aragog output at last run
+    fpath = os.path.join(output_dir,"data","%d_int.nc"%time)
+    out = read_ncdf(fpath)
+
+    # Get temperature field at basic nodes and interpolate to staggered nodes
+    T_basic = out["temp_b"]
+    N_basic = len(T_basic)
+    T_staggered = (T_basic[0:N_basic-1] + T_basic[1:N_basic] ) / 2.0
+
+    return T_staggered
 
 def get_all_output_times(output_dir:str):
     files = glob.glob(output_dir+"/data/*_int.nc")
