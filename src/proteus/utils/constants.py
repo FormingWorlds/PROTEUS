@@ -58,3 +58,32 @@ Fxuv_earth_today  = 4.64e-3            # Stellar flux received on Earth today  [
 age_earth         = 4.543e9            # Age of the Earth                      [yr]
 e_earth           = 0.0167             # Earth eccentricity                    [dimensionless]
 a_earth           = 1                  # Earth semi-major axis                 [au]
+
+# Radionuclide values below are from Ruedas (2017), via SPIDER
+# Natural concentrations (provided in config file) can
+#      be obtained from Turcotte & Schubert, 2014, p. 170
+radionuclides = {
+    "k40": {
+        "abundance": 1.1668E-4, # 40K/K
+        "heatprod":  2.8761E-5, # W/kg
+        "halflife":  1.248e9    # yr
+    },
+
+    "th232": {
+        "abundance": 1.0,       # 232Th/Th
+        "heatprod":  2.6368E-5, # W/kg
+        "halflife":  14e9       # yr
+    },
+
+    "u235": {
+        "abundance": 0.0072045,  # 235U/U
+        "heatprod":  5.68402E-4, # W/kg
+        "halflife":  0.704e9     # yr
+    },
+
+    "u238": {
+        "abundance": 0.9927955, # 40K/K
+        "heatprod":  9.4946E-5, # W/kg
+        "halflife":  4.468e9    # yr
+    },
+}
