@@ -233,8 +233,14 @@ def GetAragogOutput(hf_row:dict):
     # Tidal heating is not supported by Aragog (yet)
     output["F_tidal"] = 0.0
 
-    # Radiogenic heating is not supported yet
-    output["F_radio"] = 0.0
+    # Radiogenic heating
+    Hradio_s = aragog_output.heating_radio[:,-1] # [W kg-1]
+    mass_s   = aragog_output.mass_staggered[:,-1] # [kg]
+    Hradio_total = np.dot(Hradio_s, mass_s)
+
+    radii_s  = aragog_output.radii_km_staggered * 1e3 # [m]
+    area = 4 * np.pi * radii_s[0]**2
+    output["F_radio"] = Hradio_total / area
 
     return output
 
