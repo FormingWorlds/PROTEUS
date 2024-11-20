@@ -52,4 +52,3 @@ class OrbitDummy:
         Fixed global heating rate from tides [W kg-1].
     """
     H_tide: float = field(validator=ge(0))
-

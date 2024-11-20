@@ -85,4 +85,3 @@ def run_orbit(hf_row:dict, config:Config):
 
     # Update tidal heating
     update_tides(hf_row, config)
-
