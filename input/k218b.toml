@@ -46,7 +46,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             atol         = 0.03   # Step size atol
             rtol         = 0.15   # Step size rtol
 
-    # termination criteria
+    # Termination criteria
+    #     Set enabled=true/false in each section to enable/disable that termination criterion
     [params.stop]
 
         # required number of iterations
