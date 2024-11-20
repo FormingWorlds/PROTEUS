@@ -11,7 +11,7 @@ from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
 from proteus.interior.wrapper import run_interior, solve_structure, update_gravity
-from proteus.orbit.wrapper import update_period, update_separation
+from proteus.orbit.wrapper import run_orbit
 from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 from proteus.star.wrapper import (
     get_new_spectrum,
@@ -145,7 +145,7 @@ class Proteus:
             "total_min": 5,  # Minimum number of total loops
             "total_loops": self.config.params.stop.iters.maximum,  # Maximum number of total loops
             "init": 0,  # Number of init iters performed
-            "init_loops": 2,  # Maximum number of init iters
+            "init_loops": 3,  # Maximum number of init iters
             "steady": -1,  # Number of iterations passed since steady-state declared
             "steady_loops": 3,  # Number of iterations to perform post-steady state
             "steady_check": 15,  # Number of iterations to look backwards when checking steady state
@@ -260,7 +260,7 @@ class Proteus:
             PrintHalfSeparator()
 
             # Solve interior structure
-            if self.hf_row["Time"] < 100:
+            if self.loops["total"] < self.loops["init_loops"]:
                 solve_structure(self.directories, self.config, self.hf_all, self.hf_row)
 
             # Run interior model
@@ -279,13 +279,8 @@ class Proteus:
 
             ############### ORBIT AND TIDES
 
-            # Update orbital separation
-            update_separation(self.hf_row,
-                                self.config.orbit.semimajoraxis,
-                                self.config.orbit.eccentricity)
-
-            # Update orbital period
-            update_period(self.hf_row, self.config.orbit.semimajoraxis)
+            PrintHalfSeparator()
+            run_orbit(self.hf_row, self.config)
 
             ############### / ORBIT AND TIDES
 
@@ -414,17 +409,22 @@ class Proteus:
                 log.info("")
                 self.finished = True
 
-            # Stop simulation when flux is small
-            if (
-                self.config.params.stop.radeqm.enabled
-                and (self.loops["total"] > self.loops["init_loops"] + 1)
-                and (abs(self.hf_row["F_atm"]) <= self.config.params.stop.radeqm.F_crit)
-            ):
-                UpdateStatusfile(self.directories, 14)
-                log.info("")
-                log.info("===> Planet no longer cooling! <===")
-                log.info("")
-                self.finished = True
+            # Stop simulation when at radiative equilibrium
+            if self.config.params.stop.radeqm.enabled and (self.loops["total"] > self.loops["init_loops"] + 1):
+
+                # Radiative equilibrium nominally occurs when F_atm is zero.
+                # However, with tidal heating included, this is offset by the interior
+                #   heat production of the planet. Energy balance is instead achieved
+                #   when F_atm and F_tidal are equal.
+                F_eps = abs(self.hf_row["F_atm"] - self.hf_row["F_tidal"] - self.hf_row["F_radio"])
+                F_ref = abs(self.hf_row["F_atm"]) * self.config.params.stop.radeqm.rtol + self.config.params.stop.radeqm.atol
+
+                if F_eps <= F_ref:
+                    UpdateStatusfile(self.directories, 14)
+                    log.info("")
+                    log.info("===> Planet has reached global energy balance! <===")
+                    log.info("")
+                    self.finished = True
 
             # Determine when the simulation enters a steady state
             if (

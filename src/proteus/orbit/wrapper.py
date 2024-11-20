@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import AU, const_G
+from proteus.utils.constants import AU, const_G, secs_per_day
+
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -51,3 +55,33 @@ def update_period(hf_row:dict, sma:float):
 
     # Orbital period [seconds]
     hf_row["period"] = 2 * np.pi * (a*a*a/mu)**0.5
+
+
+def update_tides(hf_row:dict, config:Config):
+    '''
+    Update power density associated with tides.
+    '''
+
+    if config.orbit.module == 'dummy':
+        log.info("    tidal power density: %.1f nW kg-1"%(config.orbit.dummy.H_tide*1e9))
+
+    else:
+        log.debug("    tidal heating disabled")
+
+
+def run_orbit(hf_row:dict, config:Config):
+    '''
+    Update parameters relating to orbital evolution and tides.
+    '''
+
+    log.info("Evolve orbit...")
+
+    # Update orbital separation
+    update_separation(hf_row, config.orbit.semimajoraxis, config.orbit.eccentricity)
+
+    # Update orbital period
+    update_period(hf_row, config.orbit.semimajoraxis)
+    log.info("    period: %.1f days"%(hf_row["period"]/secs_per_day))
+
+    # Update tidal heating
+    update_tides(hf_row, config)
