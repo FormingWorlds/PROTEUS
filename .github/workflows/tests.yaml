@@ -24,7 +24,7 @@ jobs:
         python-version: ['3.11', '3.13']
         include:
           - os: ubuntu-latest
-            INSTALL_DEPS: sudo apt-get install libnetcdff-dev netcdf-bin
+            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin
             CC: gcc
             CXX: g++
             FC: gfortran
