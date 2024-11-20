@@ -15,7 +15,7 @@ import pandas as pd
 
 from proteus.interior.timestep import next_step
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
-from proteus.utils.constants import radionuclides
+from proteus.utils.constants import radnuc_data
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -339,9 +339,9 @@ def _try_spider( dirs:dict, config:Config,
             radnuc_names.append(_iso)
             call_sequence.extend([f"-{_iso}_t0",              "%.5e"%radio_t0])
             call_sequence.extend([f"-{_iso}_concentration",   "%.5f"%_cnc])
-            call_sequence.extend([f"-{_iso}_abundance",       "%.5e"%radionuclides[_iso]["abundance"]])
-            call_sequence.extend([f"-{_iso}_heat_production", "%.5e"%radionuclides[_iso]["heatprod"]])
-            call_sequence.extend([f"-{_iso}_half_life",       "%.5e"%radionuclides[_iso]["halflife"]])
+            call_sequence.extend([f"-{_iso}_abundance",       "%.5e"%radnuc_data[_iso]["abundance"]])
+            call_sequence.extend([f"-{_iso}_heat_production", "%.5e"%radnuc_data[_iso]["heatprod"]])
+            call_sequence.extend([f"-{_iso}_half_life",       "%.5e"%radnuc_data[_iso]["halflife"]])
 
         if config.delivery.radio_K > 0.0:
             _append_radnuc("k40", config.delivery.radio_K)

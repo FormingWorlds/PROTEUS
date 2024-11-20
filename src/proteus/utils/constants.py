@@ -62,7 +62,7 @@ a_earth           = 1                  # Earth semi-major axis                 [
 # Radionuclide values below are from Ruedas (2017), via SPIDER
 # Natural concentrations (provided in config file) can
 #      be obtained from Turcotte & Schubert, 2014, p. 170
-radionuclides = {
+radnuc_data = {
     "k40": {
         "abundance": 1.1668E-4, # 40K/K
         "heatprod":  2.8761E-5, # W/kg

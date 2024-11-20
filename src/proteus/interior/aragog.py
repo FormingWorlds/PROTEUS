@@ -26,7 +26,7 @@ from aragog.parser import (
 )
 
 from proteus.interior.timestep import next_step
-from proteus.utils.constants import R_earth, secs_per_year
+from proteus.utils.constants import R_earth, secs_per_year, radnuc_data
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -151,14 +151,29 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             grain_size = config.interior.grain_size,
             )
 
-    radionuclides = _Radionuclide(
-            name = "U235",
-            t0_years = 4.55E9,
-            abundance = 0.0072045,
-            concentration = 0.031,
-            heat_production = 5.68402E-4,
-            half_life_years = 704E6,
-            )
+    radionuclides = []
+    if config.interior.radiogenic_heat:
+        radio_t0 = config.delivery.radio_tref * 1e9 # Convert Gyr to yr
+
+        def _append_radnuc(_iso, _cnc):
+            radionuclides.append(_Radionuclide(
+                                    name = _iso,
+                                    t0_years = radio_t0,
+                                    abundance = radnuc_data[_iso]["abundance"],
+                                    concentration = _cnc,
+                                    heat_production = radnuc_data[_iso]["heatprod"],
+                                    half_life_years = radnuc_data[_iso]["halflife"],
+                                ))
+
+        if config.delivery.radio_K > 0.0:
+            _append_radnuc("k40", config.delivery.radio_K)
+
+        if config.delivery.radio_Th > 0.0:
+            _append_radnuc("th232", config.delivery.radio_Th)
+
+        if config.delivery.radio_U > 0.0:
+            _append_radnuc("u235", config.delivery.radio_U)
+            _append_radnuc("u238", config.delivery.radio_U)
 
     param = Parameters(
             boundary_conditions = boundary_conditions,
