@@ -113,7 +113,7 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             convection = True,
             gravitational_separation = False,
             mixing = False,
-            radionuclides = False,
+            radionuclides = config.interior.radiogenic_heat,
             tidal = False,
             )
 
@@ -236,10 +236,16 @@ def GetAragogOutput(hf_row:dict):
     # Radiogenic heating
     Hradio_s = aragog_output.heating_radio[:,-1] # [W kg-1]
     mass_s   = aragog_output.mass_staggered[:,-1] # [kg]
+    mass_b   = aragog_output.mass_basic[:,-1] # [kg]
     Hradio_total = np.dot(Hradio_s, mass_s)
 
+    log.info("\n")
+    log.info("Mass_total   = %.3e kg"%np.sum(mass_b))
+    log.info("Hradio_total = %.3e W"%Hradio_total)
+    log.info("\n")
+
     radii_s  = aragog_output.radii_km_staggered * 1e3 # [m]
-    area = 4 * np.pi * radii_s[0]**2
+    area = 4 * np.pi * radii_s[-1]**2
     output["F_radio"] = Hradio_total / area
 
     return output

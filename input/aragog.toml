@@ -179,7 +179,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [interior]
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e6   # Initial heat flux guess [W m-2]
-    radiogenic_heat = false  # enable radiogenic heat production
+    radiogenic_heat = true  # enable radiogenic heat production
 
     module = "aragog"   # Which interior module to use
 
