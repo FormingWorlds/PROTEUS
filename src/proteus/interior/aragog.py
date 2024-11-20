@@ -230,23 +230,18 @@ def GetAragogOutput(hf_row:dict):
     output["M_mantle_solid"] = output["M_mantle"] - output["M_mantle_liquid"]
     output["M_core"] = aragog_output.core_mass
 
-    # Tidal heating is not supported by Aragog (yet)
-    output["F_tidal"] = 0.0
+    # Calculate surface area
+    radii = aragog_output.radii_km_basic * 1e3 # [m]
+    area  = 4 * np.pi * radii[-1]**2 # [m^2]
 
     # Radiogenic heating
-    Hradio_s = aragog_output.heating_radio[:,-1] # [W kg-1]
+    Hradio_s = aragog_output.heating_radio[:,-1]  # [W kg-1]
     mass_s   = aragog_output.mass_staggered[:,-1] # [kg]
-    mass_b   = aragog_output.mass_basic[:,-1] # [kg]
-    Hradio_total = np.dot(Hradio_s, mass_s)
+    Hradio_total = np.dot(Hradio_s, mass_s)       # [W]
+    output["F_radio"] = Hradio_total / area       # [W m-2]
 
-    log.info("\n")
-    log.info("Mass_total   = %.3e kg"%np.sum(mass_b))
-    log.info("Hradio_total = %.3e W"%Hradio_total)
-    log.info("\n")
-
-    radii_s  = aragog_output.radii_km_staggered * 1e3 # [m]
-    area = 4 * np.pi * radii_s[-1]**2
-    output["F_radio"] = Hradio_total / area
+    # Tidal heating is not supported by Aragog (yet)
+    output["F_tidal"] = 0.0
 
     return output
 
