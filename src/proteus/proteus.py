@@ -145,7 +145,7 @@ class Proteus:
             "total_min": 5,  # Minimum number of total loops
             "total_loops": self.config.params.stop.iters.maximum,  # Maximum number of total loops
             "init": 0,  # Number of init iters performed
-            "init_loops": 2,  # Maximum number of init iters
+            "init_loops": 3,  # Maximum number of init iters
             "steady": -1,  # Number of iterations passed since steady-state declared
             "steady_loops": 3,  # Number of iterations to perform post-steady state
             "steady_check": 15,  # Number of iterations to look backwards when checking steady state
@@ -260,7 +260,7 @@ class Proteus:
             PrintHalfSeparator()
 
             # Solve interior structure
-            if self.hf_row["Time"] < 100:
+            if self.loops["total"] < self.loops["init_loops"]:
                 solve_structure(self.directories, self.config, self.hf_all, self.hf_row)
 
             # Run interior model
@@ -415,8 +415,8 @@ class Proteus:
                 # Radiative equilibrium nominally occurs when F_atm is zero.
                 # However, with tidal heating included, this is offset by the interior
                 #   heat production of the planet. Energy balance is instead achieved
-                #   when F_atm and F_tide are equal.
-                F_eps = abs(self.hf_row["F_atm"] - self.hf_row["F_tide"])
+                #   when F_atm and F_tidal are equal.
+                F_eps = abs(self.hf_row["F_atm"] - self.hf_row["F_tidal"] - self.hf_row["F_radio"])
                 F_ref = abs(self.hf_row["F_atm"]) * self.config.params.stop.radeqm.rtol + self.config.params.stop.radeqm.atol
 
                 if F_eps <= F_ref:

@@ -94,11 +94,16 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
 
     # Subtract tidal contribution to the total heat flux.
     #    This heat energy is generated only in the mantle, not in the core.
-    output["F_tide"] = hf_row["H_tide"] * output["M_mantle"] / area
-    output["F_int"] -= output["F_tide"]
+    output["F_tidal"] = config.orbit.dummy.H_tide * output["M_mantle"] / area
+
+    # Radiogenic heating not included
+    output["F_radio"] = 0.0
+
+    # Total flux loss
+    F_loss = output["F_int"] - output["F_tidal"] - output["F_radio"]
 
     # Rate of surface temperature change (this will be negative)
-    dTdt = -output["F_int"] * area / cp_int
+    dTdt = -F_loss * area / cp_int
 
     # Timestepping
     if IC_INTERIOR==1:

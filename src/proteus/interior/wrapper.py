@@ -119,7 +119,7 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         log.info("Evolve interior...")
     log.debug("Using %s module to evolve interior"%config.interior.module)
 
-    tides_enabled = bool(hf_row["H_tide"] > 1e-30)
+    tides_enabled = (config.orbit.module == 'dummy') and (config.orbit.dummy.H_tide > 1e-30)
 
     if config.interior.module == 'spider':
         # Import
@@ -183,10 +183,13 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
 
     # Print result of interior module
     if verbose:
-        log.info("    T_magma    = %.1f K"%hf_row["T_magma"])
+        log.info("    T_magma    = %.3f K"%hf_row["T_magma"])
         log.info("    Phi_global = %.3f  "%hf_row["Phi_global"])
-        log.info("    F_int      = %.2e" %hf_row["F_int"])
-        log.info("    RF_depth   = %.2e" %hf_row["RF_depth"])
+        log.info("    RF_depth   = %.2e W m-2" %hf_row["RF_depth"])
+        log.info("    F_int      = %.2e W m-2" %hf_row["F_int"])
+        log.info("    F_tidal    = %.2e W m-2" %hf_row["F_tidal"])
+        log.info("    F_radio    = %.2e W m-2" %hf_row["F_radio"])
+
 
     # Time step size
     dt = float(sim_time) - hf_row["Time"]

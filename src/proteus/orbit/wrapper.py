@@ -63,11 +63,9 @@ def update_tides(hf_row:dict, config:Config):
     '''
 
     if config.orbit.module == 'dummy':
-        hf_row["H_tide"] = config.orbit.dummy.H_tide
-        log.info("    tidal power density: %.1f nW kg-1"%(hf_row["H_tide"]*1e9))
+        log.info("    tidal power density: %.1f nW kg-1"%(config.orbit.dummy.H_tide*1e9))
 
     else:
-        hf_row["H_tide"] = 0.0
         log.debug("    tidal heating disabled")
 
 

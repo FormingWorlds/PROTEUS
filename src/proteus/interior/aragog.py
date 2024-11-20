@@ -216,7 +216,10 @@ def GetAragogOutput(hf_row:dict):
     output["M_core"] = aragog_output.core_mass
 
     # Tidal heating is not supported by Aragog (yet)
-    output["F_tide"] = 0.0
+    output["F_tidal"] = 0.0
+
+    # Radiogenic heating is not supported yet
+    output["F_radio"] = 0.0
 
     return output
 

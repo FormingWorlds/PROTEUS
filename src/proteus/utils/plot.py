@@ -45,10 +45,11 @@ _preset_colours  = {
     "Mg": "#996633",
 
     # Energy fluxes
-    "OLR": "crimson",
-    "ASF": "royalblue",
-    "sct": "seagreen",
-    "tide":"dodgerblue",
+    "OLR":   "#dc143c",
+    "ASF":   "#4169e1",
+    "sct":   "#2e8b57",
+    "tidal": "#daa520",
+    "radio": "#1e90ff",
 
     # Model components
     "atm"     : "#444444",

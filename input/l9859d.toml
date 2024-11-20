@@ -27,7 +27,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "l9859d"
         logging     = "INFO"
-        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 3      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping
@@ -44,7 +44,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.dt.adaptive]
             atol         = 0.02   # Step size atol
-            rtol         = 0.1   # Step size rtol
+            rtol         = 0.08   # Step size rtol
 
     # termination criteria
     [params.stop]
@@ -176,9 +176,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Interior - physics table
 [interior]
     grain_size      = 0.1   # crystal settling grain size [m]
-    F_initial       = 1e5   # Initial heat flux guess [W m-2]
+    F_initial       = 1e3   # Initial heat flux guess [W m-2]
 
-    module = "dummy"   # Which interior module to use
+    module = "spider"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 220       # Number of SPIDER grid levels
@@ -190,8 +190,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        num_levels      = 220       # Number of Aragog grid levels
-        tolerance       = 1.0e-10   # solver tolerance
+        num_levels      = 200       # Number of Aragog grid levels
+        tolerance       = 1.0e-9   # solver tolerance
         ini_tmagma      = 3200.0    # Initial magma surface temperature [K]
 
     [interior.dummy]

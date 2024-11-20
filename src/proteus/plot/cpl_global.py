@@ -143,13 +143,14 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
 
 
     # PLOT ax_tl
-    ax_tl.plot( hf["Time"], hf["F_int"],  color=get_colour("int"),  lw=lw, alpha=al,  label="Int.",  zorder=3, linestyle='dashed')
-    ax_tl.plot( hf["Time"], hf["F_atm"],  color=get_colour("atm"),  lw=lw, alpha=al,  label="Atm.",  zorder=3)
-    ax_tl.plot( hf["Time"], hf["F_olr"],  color=get_colour("OLR"),  lw=lw, alpha=al,  label="OLR",   zorder=2)
-    ax_tl.plot( hf["Time"], hf["F_tide"], color=get_colour("tide"), lw=lw, alpha=al,  label="Tidal", zorder=1)
+    ax_tl.plot( hf["Time"], hf["F_int"],  color=get_colour("int"),  lw=lw, alpha=al,  label="Int.", linestyle='dashed')
+    ax_tl.plot( hf["Time"], hf["F_atm"],  color=get_colour("atm"),  lw=lw, alpha=al,  label="Atm."  )
+    ax_tl.plot( hf["Time"], hf["F_olr"],  color=get_colour("OLR"),  lw=lw, alpha=al,  label="OLR"   )
+    ax_tl.plot( hf["Time"], hf["F_tidal"], color=get_colour("tidal"), lw=lw, alpha=al,  label="Tidal")
+    ax_tl.plot( hf["Time"], hf["F_radio"], color=get_colour("radio"), lw=lw, alpha=al,  label="Radio.")
     ax_tl.legend(loc='center left', **leg_kwargs)
     ymin, ymax = 0.0, 100.0
-    for k in ("F_int","F_atm","F_olr","F_tide"):
+    for k in ("F_int","F_atm","F_olr","F_tidal","F_radio"):
         ymin = min(ymin, np.amin(hf[k]))
         ymax = max(ymax, np.amax(hf[k]))
     ax_tl.set_ylim(bottom=ymin/1.5, top=ymax*1.5)
