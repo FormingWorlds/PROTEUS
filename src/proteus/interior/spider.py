@@ -329,39 +329,44 @@ def _try_spider( dirs:dict, config:Config,
     # fO2 buffer chosen to define fO2 (7: Iron-Wustite)
     call_sequence.extend(["-OXYGEN_FUGACITY", "7"])
 
-    # internal heat sources
-    # options: al26,k40,fe60,th232,u235,u238
-    call_sequence.extend(["-radionuclide_names", "k40,th232,u235,u238"])
+    # radionuclides
+    radio_t0 = "%.6e"%(config.delivery.radio_tref * 1e9) # Convert Gyr to yr
 
-    # K40
-    call_sequence.extend(["-k40_t0",                "4.55E9"]) # years
-    call_sequence.extend(["-k40_abundance",         "1.1668E-4"]) # (40K/K) Ruedas (2017)
-    call_sequence.extend(["-k40_concentration",     "310"]) # ppm (Turcotte & Schubert, 2014, p. 170)
-    call_sequence.extend(["-k40_heat_production",   "2.8761E-5"]) # W/kg (Ruedas, 2017)
-    call_sequence.extend(["-k40_half_life",         "1248E6"]) # years (Ruedas, 2017)
+    radnuc_names = []
+    if config.delivery.radio_K > 0.0:
+        radnuc_names.append("k40")
+        call_sequence.extend(["-k40_t0",                radio_t0])
+        call_sequence.extend(["-k40_concentration",     "%.5f"%config.delivery.radio_K]) # ppm (Turcotte & Schubert, 2014, p. 170)
+        call_sequence.extend(["-k40_abundance",         "1.1668E-4"]) # (40K/K) Ruedas (2017)
+        call_sequence.extend(["-k40_heat_production",   "2.8761E-5"]) # W/kg (Ruedas, 2017)
+        call_sequence.extend(["-k40_half_life",         "1248E6"]) # years (Ruedas, 2017)
 
-    # Th232
-    call_sequence.extend(["-th232_t0",             "4.55E9"]) # years
-    call_sequence.extend(["-th232_abundance",      "1.0"]) # (232Th/Th) Ruedas (2017)
-    call_sequence.extend(["-th232_concentration",  "0.124"]) # ppm (Turcotte & Schubert, 2014, p. 170)
-    call_sequence.extend(["-th232_heat_production","2.6368E-5"]) # W/kg (Ruedas, 2017)
-    call_sequence.extend(["-th232_half_life",      "14000E6"]) # years (Ruedas, 2017)
+    if config.delivery.radio_Th > 0.0:
+        radnuc_names.append("th232")
+        call_sequence.extend(["-th232_t0",             radio_t0]) # years
+        call_sequence.extend(["-th232_concentration",  "%.5f"%config.delivery.radio_Th]) # ppm (Turcotte & Schubert, 2014, p. 170)
+        call_sequence.extend(["-th232_abundance",      "1.0"]) # (232Th/Th) Ruedas (2017)
+        call_sequence.extend(["-th232_heat_production","2.6368E-5"]) # W/kg (Ruedas, 2017)
+        call_sequence.extend(["-th232_half_life",      "14000E6"]) # years (Ruedas, 2017)
 
-    # U235
-    call_sequence.extend(["-u235_t0",              "4.55E9"]) # years
-    call_sequence.extend(["-u235_abundance",       "0.0072045"]) # (235U/U) Ruedas (2017)
-    call_sequence.extend(["-u235_concentration",   "0.031"]) # ppm (Turcotte & Schubert, 2014, p. 170)
-    call_sequence.extend(["-u235_heat_production", "5.68402E-4"]) # W/kg (Ruedas, 2017)
-    call_sequence.extend(["-u235_half_life",       "704E6"]) # years (Ruedas, 2017)
+    if config.delivery.radio_U > 0.0:
+        radnuc_names.append("u235")
+        # U235
+        call_sequence.extend(["-u235_t0",              radio_t0]) # years
+        call_sequence.extend(["-u235_concentration",   "%.5f"%config.delivery.radio_U]) # ppm (Turcotte & Schubert, 2014, p. 170)
+        call_sequence.extend(["-u235_abundance",       "0.0072045"]) # (235U/U) Ruedas (2017)
+        call_sequence.extend(["-u235_heat_production", "5.68402E-4"]) # W/kg (Ruedas, 2017)
+        call_sequence.extend(["-u235_half_life",       "704E6"]) # years (Ruedas, 2017)
 
-    # U238
-    call_sequence.extend(["-u238_t0",              "4.55E9"]) # years
-    call_sequence.extend(["-u238_abundance",       "0.9927955"]) # (238U/U) Ruedas (2017)
-    call_sequence.extend(["-u238_concentration",   "0.031"])
-    call_sequence.extend(["-u238_heat_production", "9.4946E-5"]) # W/kg (Ruedas, 2017)
-    call_sequence.extend(["-u238_half_life",       "4468E6"]) # years (Ruedas, 2017)
+        radnuc_names.append("u238")
+        # U238
+        call_sequence.extend(["-u238_t0",              radio_t0]) # years
+        call_sequence.extend(["-u238_concentration",   "%.5f"%config.delivery.radio_U])
+        call_sequence.extend(["-u238_abundance",       "0.9927955"]) # (238U/U) Ruedas (2017)
+        call_sequence.extend(["-u238_heat_production", "9.4946E-5"]) # W/kg (Ruedas, 2017)
+        call_sequence.extend(["-u238_half_life",       "4468E6"]) # years (Ruedas, 2017)
 
-
+    call_sequence.extend(["-radionuclide_names", ",".join(radnuc_names)])
 
     # Runtime info
     flags = ""
