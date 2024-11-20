@@ -331,28 +331,29 @@ def _try_spider( dirs:dict, config:Config,
     call_sequence.extend(["-OXYGEN_FUGACITY", "7"])
 
     # radionuclides
-    radio_t0 = "%.5e"%(config.delivery.radio_tref * 1e9) # Convert Gyr to yr
-    radnuc_names = []
+    if config.interior.radiogenic_heat:
+        radio_t0 = config.delivery.radio_tref * 1e9 # Convert Gyr to yr
+        radnuc_names = []
 
-    def _append_radnuc(name, conc):
-        radnuc_names.append(name)
-        call_sequence.extend([f"-{name}_t0",              radio_t0])
-        call_sequence.extend([f"-{name}_concentration",   "%.5f"%conc])
-        call_sequence.extend([f"-{name}_abundance",       "%.5e"%radionuclides[name]["abundance"]])
-        call_sequence.extend([f"-{name}_heat_production", "%.5e"%radionuclides[name]["heatprod"]])
-        call_sequence.extend([f"-{name}_half_life",       "%.5e"%radionuclides[name]["halflife"]])
+        def _append_radnuc(_iso, _cnc):
+            radnuc_names.append(_iso)
+            call_sequence.extend([f"-{_iso}_t0",              "%.5e"%radio_t0])
+            call_sequence.extend([f"-{_iso}_concentration",   "%.5f"%_cnc])
+            call_sequence.extend([f"-{_iso}_abundance",       "%.5e"%radionuclides[_iso]["abundance"]])
+            call_sequence.extend([f"-{_iso}_heat_production", "%.5e"%radionuclides[_iso]["heatprod"]])
+            call_sequence.extend([f"-{_iso}_half_life",       "%.5e"%radionuclides[_iso]["halflife"]])
 
-    if config.delivery.radio_K > 0.0:
-        _append_radnuc("k40", config.delivery.radio_K)
+        if config.delivery.radio_K > 0.0:
+            _append_radnuc("k40", config.delivery.radio_K)
 
-    if config.delivery.radio_Th > 0.0:
-        _append_radnuc("th232", config.delivery.radio_Th)
+        if config.delivery.radio_Th > 0.0:
+            _append_radnuc("th232", config.delivery.radio_Th)
 
-    if config.delivery.radio_U > 0.0:
-        _append_radnuc("u235", config.delivery.radio_U)
-        _append_radnuc("u238", config.delivery.radio_U)
+        if config.delivery.radio_U > 0.0:
+            _append_radnuc("u235", config.delivery.radio_U)
+            _append_radnuc("u238", config.delivery.radio_U)
 
-    call_sequence.extend(["-radionuclide_names", ",".join(radnuc_names)])
+        call_sequence.extend(["-radionuclide_names", ",".join(radnuc_names)])
 
     # Runtime info
     flags = ""

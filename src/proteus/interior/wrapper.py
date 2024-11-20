@@ -143,12 +143,18 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         if tides_enabled:
             log.warning("Tidal heating is not yet supported by Aragog, but has been enabled")
 
+        if config.interior.radiogenic_heat:
+            log.warning("Radiogenic heat production is not yet supported by Aragog")
+
         # Run Aragog
         sim_time, output = RunAragog(config, dirs, IC_INTERIOR, hf_row, hf_all)
 
     elif config.interior.module == 'dummy':
         # Import
         from proteus.interior.dummy import RunDummyInt
+
+        if config.interior.radiogenic_heat:
+            log.warning("Radiogenic heat production not supported by dummy interior module")
 
         # Run dummy interior
         sim_time, output = RunDummyInt(config, dirs, IC_INTERIOR, hf_row, hf_all)

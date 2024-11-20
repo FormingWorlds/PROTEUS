@@ -178,6 +178,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [interior]
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e3   # Initial heat flux guess [W m-2]
+    radiogenic_heat = true  # enable radiogenic heat production
 
     module = "spider"   # Which interior module to use
 
@@ -221,7 +222,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile delivery - physics table
 [delivery]
 
-    # [Settings here for accretion rate, etc.]
+    # Radionuclide parameters
+    radio_tref = 4.55   # Reference age for concentrations [Gyr]
+    radio_K    = 310.0  # ppmw of potassium (all isotopes)
+    radio_U    = 0.031  # ppmw of uranium (all isotopes)
+    radio_Th   = 0.124  # ppmw of thorium (all isotopes)
 
     # Which initial inventory to use?
     initial = 'elements'        # "elements" | "volatiles"

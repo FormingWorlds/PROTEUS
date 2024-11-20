@@ -179,6 +179,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [interior]
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 8.0E4 # Initial heat flux guess [W m-2]
+    radiogenic_heat = true  # enable radiogenic heat production
 
     module = "spider"   # Which interior module to use
 

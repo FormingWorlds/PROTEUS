@@ -14,6 +14,8 @@ class Interior:
         Crystal settling grain size [m].
     F_initial: float
         Initial heat flux guess [W m-2].
+    radiogenic_heat: bool
+        Include radiogenic heat production?
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
     spider: Spider
@@ -25,6 +27,7 @@ class Interior:
     """
     grain_size: float = field(validator=gt(0))
     F_initial: float = field(validator=gt(0))
+    radiogenic_heat: bool
 
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
 
