@@ -123,10 +123,10 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
     leg = ax.legend(framealpha=1.0, loc='upper left')
     ax.add_artist(leg)
 
-    ax.xaxis.set_major_locator(MultipleLocator(0.25))
-    ax.xaxis.set_minor_locator(MultipleLocator(0.125))
+    ax.xaxis.set_major_locator(MultipleLocator(0.20))
+    ax.xaxis.set_minor_locator(MultipleLocator(0.10))
     ticks = [t for t in ax.get_xticks() if t >= 0]
-    ax.set_xticks(ticks, [str(t) for t in ticks], rotation=-45, ha='center')
+    ax.set_xticks(ticks, ["%.2f"%t for t in ticks], rotation=-45, ha='center')
     ax.set_xlim(left=0.0, right=r_max)
 
     ax.yaxis.set_minor_locator(MultipleLocator(500))
