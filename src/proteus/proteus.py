@@ -114,10 +114,11 @@ class Proteus:
 
         # First things
         start_time = datetime.now()
+        self.config.params.resume = resume
         UpdateStatusfile(self.directories, 0)
 
         # Clean output directory
-        if not resume:
+        if not self.config.params.resume:
             CleanDir(self.directories["output"])
             CleanDir(os.path.join(self.directories["output"], "data"))
 
@@ -161,7 +162,7 @@ class Proteus:
         download_sufficient_data(self.config)
 
         # Is the model resuming from a previous state?
-        if not resume:
+        if not self.config.params.resume:
             # New simulation
 
             # SPIDER initial condition
