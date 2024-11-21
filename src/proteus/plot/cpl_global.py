@@ -21,9 +21,10 @@ log = logging.getLogger("fwl."+__name__)
 def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
                 logt: bool=True, tmin: float=1e1):
 
-    if np.amax(hf_all["Time"]) < 2:
+    if np.amax(hf_all["Time"]) < 3:
         log.debug("Insufficient data to make plot_global")
         return
+    hf = hf_all.loc[hf_all["Time"]>0]
 
     log.info("Plot global")
 
@@ -50,7 +51,7 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
 
     for vol in gas_list:
         # Check vmr for presence
-        this_vmr = np.array(hf_all[vol+"_vmr"])
+        this_vmr = np.array(hf[vol+"_vmr"])
         vol_present[vol] = True
 
         if (np.amax(this_vmr) < 1.0e-20) or not config.outgas.calliope.is_included(vol):
@@ -59,9 +60,9 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
         vol_vmr[vol] = this_vmr
 
         # Do other variables
-        vol_bars[vol]    = np.array(hf_all[vol+"_bar"])
-        vol_mol_atm[vol] = np.array(hf_all[vol+"_mol_atm"])
-        vol_mol_tot[vol] = np.array(hf_all[vol+"_mol_total"])
+        vol_bars[vol]    = np.array(hf[vol+"_bar"])
+        vol_mol_atm[vol] = np.array(hf[vol+"_mol_atm"])
+        vol_mol_tot[vol] = np.array(hf[vol+"_mol_total"])
         vol_mol_int[vol] = vol_mol_tot[vol] - vol_mol_atm[vol]
 
         # Volatile partitioning into the interior
@@ -132,45 +133,51 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
     # Set xlim
     xmin = max(tmin, 1.0)
     if logt:
-        xmax = max(1.0e6,np.amax(hf_all["Time"]))
+        xmax = max(1.0e6,np.amax(hf["Time"]))
         xlim = (xmin,10 ** np.ceil(np.log10(xmax*1.1)))
     else:
-        xmax = np.amax(hf_all["Time"])
+        xmax = np.amax(hf["Time"])
         xlim = (1.0, xmax)
     for ax in axs:
         ax.set_xlim(xlim[0],  max(xlim[1], xlim[0]+1))
 
 
     # PLOT ax_tl
-    ax_tl.plot( hf_all["Time"], hf_all["F_int"], color=get_colour("int"), lw=lw, alpha=al,  label="Int.",zorder=3, linestyle='dashed')
-    ax_tl.plot( hf_all["Time"], hf_all["F_atm"], color=get_colour("atm"), lw=lw, alpha=al,  label="Atm.",zorder=3)
-    ax_tl.plot( hf_all["Time"], hf_all["F_olr"], color=get_colour("OLR"), lw=lw, alpha=al,  label="OLR", zorder=2)
+    ax_tl.plot( hf["Time"], hf["F_int"],  color=get_colour("int"),  lw=lw, alpha=al,  label="Int.", linestyle='dashed')
+    ax_tl.plot( hf["Time"], hf["F_atm"],  color=get_colour("atm"),  lw=lw, alpha=al,  label="Atm."  )
+    ax_tl.plot( hf["Time"], hf["F_olr"],  color=get_colour("OLR"),  lw=lw, alpha=al,  label="OLR"   )
+    ax_tl.plot( hf["Time"], hf["F_tidal"], color=get_colour("tidal"), lw=lw, alpha=al,  label="Tidal")
+    ax_tl.plot( hf["Time"], hf["F_radio"], color=get_colour("radio"), lw=lw, alpha=al,  label="Radio.")
     ax_tl.legend(loc='center left', **leg_kwargs)
-    ax_tl.set_ylim(0.0, np.amax(hf_all["F_olr"]*2.0))
+    ymin, ymax = 0.0, 100.0
+    for k in ("F_int","F_atm","F_olr","F_tidal","F_radio"):
+        ymin = min(ymin, np.amin(hf[k]))
+        ymax = max(ymax, np.amax(hf[k]))
+    ax_tl.set_ylim(bottom=ymin/1.5, top=ymax*1.5)
 
     # PLOT ax_cl
-    min_temp = np.amin(hf_all["T_surf"])
-    max_temp = np.amax(hf_all["T_surf"])
-    ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="dashed", lw=lw, alpha=al, color=get_colour("int"))
-    ax_cl.plot(hf_all["Time"], hf_all["T_surf"], ls="-",      lw=lw, alpha=al, color=get_colour("atm"))
+    min_temp = np.amin(hf["T_surf"])
+    max_temp = np.amax(hf["T_surf"])
+    ax_cl.plot(hf["Time"], hf["T_surf"], ls="dashed", lw=lw, alpha=al, color=get_colour("int"))
+    ax_cl.plot(hf["Time"], hf["T_surf"], ls="-",      lw=lw, alpha=al, color=get_colour("atm"))
     ax_cl.set_ylim(min(1000.0,min_temp-25) , max(3500.0,max_temp+25))
 
     # PLOT ax_bl
     ax_bl.axhline( y=config.struct.corefrac,     ls='dashed', lw=lw*1.5, alpha=al, color=get_colour("core"), label=r'C-M boundary' )
-    ax_bl.plot( hf_all["Time"], 1.0-hf_all["RF_depth"],   color=get_colour("int"), ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
-    ax_bl.plot( hf_all["Time"],     hf_all["Phi_global"], color=get_colour("atm"), linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
+    ax_bl.plot( hf["Time"], 1.0-hf["RF_depth"],   color=get_colour("int"), ls="solid",    lw=lw, alpha=al, label=r'Rheol. front')
+    ax_bl.plot( hf["Time"],     hf["Phi_global"], color=get_colour("atm"), linestyle=':', lw=lw, alpha=al, label=r'Melt fraction')
 
     ax_bl.legend(loc='center left', **leg_kwargs)
     ax_bl.set_ylim(0.0,1.01)
 
     # PLOT ax_tr
-    ax_tr.plot( hf_all["Time"], hf_all["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
+    ax_tr.plot( hf["Time"], hf["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
     bar_min, bar_max = 0.1, 10.0
-    bar_max = max(bar_max, np.amax(hf_all["P_surf"]))
+    bar_max = max(bar_max, np.amax(hf["P_surf"]))
     for vol in gas_list:
         if not vol_present[vol]:
             continue
-        ax_tr.plot( hf_all["Time"], vol_bars[vol], color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
+        ax_tr.plot( hf["Time"], vol_bars[vol], color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
         bar_min = min(bar_min, np.amin(vol_bars[vol]))
     ax_tr.set_ylim(max(1.0e-7,min(bar_min, 1.0e-1)), bar_max * 2.0)
     ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
@@ -179,14 +186,14 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
     for vol in gas_list:
         if not vol_present[vol]:
             continue
-        ax_cr.plot( hf_all["Time"], vol_vmr[vol]*100.0, color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
+        ax_cr.plot( hf["Time"], vol_vmr[vol]*100.0, color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
     ax_cr.set_ylim(0, 101)
 
     # PLOT ax_br
     for vol in gas_list:
         if not vol_present[vol]:
             continue
-        ax_br.plot( hf_all["Time"], vol_intpart[vol]*100.0, color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
+        ax_br.plot( hf["Time"], vol_intpart[vol]*100.0, color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
     ax_br.set_ylim(0,101)
     ax_br.legend(loc='center left', ncol=2, **leg_kwargs).set_zorder(20)
 

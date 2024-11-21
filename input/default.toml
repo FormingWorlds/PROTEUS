@@ -46,7 +46,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             atol         = 0.02   # Step size atol
             rtol         = 0.07   # Step size rtol
 
-    # termination criteria
+    # Termination criteria
+    #     Set enabled=true/false in each section to enable/disable that termination criterion
     [params.stop]
 
         # required number of iterations
@@ -69,11 +70,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # radiative equilibrium
         [params.stop.radeqm]
             enabled = true
-            F_crit  = 0.2     # W m-2, model will terminate when |F_atm| < F_crit
+            atol    = 0.2     # absolute tolerance [W m-2]
+            rtol    = 1e-3    # relative tolerance
 
         # steady state
         [params.stop.steady]
-            enabled  = true
+            enabled  = false
             F_crit   = 0.8        # Maximum absolute value of F_atm allowed for convergence
             dprel    = 1.0e-9     # Percentage change in melt fraction over time (dp/p)/dt*100
 
@@ -108,8 +110,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
 
-    # No module specifically for tides / orbital dynamics
     module  = "none"
+
+    [orbit.dummy]
+        H_tide  = 1e-11  # Fixed tidal power density [W kg-1]
 
 
 # Planetary structure - physics table

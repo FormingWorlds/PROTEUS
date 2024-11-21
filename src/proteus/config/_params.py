@@ -198,12 +198,14 @@ class StopRadeqm:
     ----------
     enabled: bool
         Enable criteria if True
-    F_crit: float
-        Model will terminate when absolute net outgoing flux is less than this value [W m-2].
-        Set to 0 to disable.
+    atol: float
+        Absolute tolerance on energy balance [W m-2].
+    rtol: float
+        Relative tolerance on energy balance.
     """
     enabled: bool
-    F_crit: float = field(validator=gt(0))
+    atol: float = field(validator=gt(0))
+    rtol: float = field(validator=ge(0))
 
 
 @define

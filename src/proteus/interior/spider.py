@@ -367,7 +367,7 @@ def _try_spider( dirs:dict, config:Config,
     flags = ""
     for flag in call_sequence:
         flags += " " + flag
-    log.debug("SPIDER call sequence: '%s'" % flags)
+    # log.debug("SPIDER call sequence: '%s'" % flags)
 
     call_string = " ".join(call_sequence)
 
@@ -465,6 +465,12 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float):
 
     data_a = get_dict_surface_values_for_specific_time( keys_t, sim_time, indir=dirs["output"] )
 
+    json_file = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
+    area_b   = json_file.get_dict_values(['data','area_b'])
+    Hradio_s = json_file.get_dict_values(['data','Hradio_s'])
+    Htidal_s = json_file.get_dict_values(['data','Htidal_s'])
+    mass_s   = json_file.get_dict_values(['data','mass_s'])
+
     # Fill the new dict
     output["M_mantle_liquid"] = float(data_a[0])
     output["M_mantle_solid"]  = float(data_a[1])
@@ -477,8 +483,13 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float):
     output["F_int"]           = float(data_a[6])  # Heat flux from interior
     output["RF_depth"]        = float(data_a[7])/R_int  # depth of rheological front
 
+    # Tidal heating is not supported by SPIDER, so this should always be zero
+    output["F_tidal"] = np.dot(Htidal_s, mass_s)/area_b[0]
+
+    # Radiogenic heating
+    output["F_radio"] = np.dot(Hradio_s, mass_s)/area_b[0]
+
     # Manually calculate heat flux at near-surface from energy gradient
-    # json_file   = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
     # Etot        = json_file.get_dict_values(['data','Etot_b'])
     # rad         = json_file.get_dict_values(['data','radius_b'])
     # area        = json_file.get_dict_values(['data','area_b'])

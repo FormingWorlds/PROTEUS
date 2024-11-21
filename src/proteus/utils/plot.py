@@ -44,15 +44,17 @@ _preset_colours  = {
     "Si": "#aa2277",
     "Mg": "#996633",
 
-    # Radiation
-    "OLR": "crimson",
-    "ASF": "royalblue",
-    "sct": "seagreen",
+    # Energy fluxes
+    "OLR":   "#dc143c",
+    "ASF":   "#4169e1",
+    "sct":   "#2e8b57",
+    "tidal": "#daa520",
+    "radio": "#1e90ff",
 
     # Model components
-    "atm"     : "#768E95",
+    "atm"     : "#444444",
     "int"     : "#ff7f0e",
-    "core"    : "#4d303f",
+    "core"    : "#aa3077",
     "atm_bkg" : "#f2faff",
     "int_bkg" : "#fffaf2",
     "cor_bkg" : "#efefef",
