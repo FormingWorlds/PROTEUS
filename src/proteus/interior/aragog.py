@@ -11,7 +11,7 @@ import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import platformdirs
-from aragog import Output, Solver
+from aragog import Output, Solver, aragog_file_logger
 from aragog.parser import (
     Parameters,
     _BoundaryConditionsParameters,
@@ -26,7 +26,7 @@ from aragog.parser import (
 )
 
 from proteus.interior.timestep import next_step
-from proteus.utils.constants import R_earth, secs_per_year
+from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -41,6 +41,11 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
 
     global aragog_solver
 
+    # Setup Aragog logger
+    aragog_file_logger(console_level = logging.WARNING,
+                       file_level = logging.INFO,
+                       log_dir = dirs["output"])
+
     # Compute time step
     if IC_INTERIOR==1:
         dt = 0.0
@@ -52,7 +57,10 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
     # Setup Aragog parameters from options at first iteration
     if (aragog_solver is None):
         SetupAragogSolver(config, hf_row)
-    # Else only update varying parameters
+        # Update state from stored data if resuming a simulation
+        if config.params.resume:
+            UpdateAragogSolver(dt, hf_row, dirs["output"])
+    # Update varying parameters in ongoing simulation
     else:
         UpdateAragogSolver(dt, hf_row)
 
@@ -113,7 +121,7 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             convection = True,
             gravitational_separation = False,
             mixing = False,
-            radionuclides = False,
+            radionuclides = config.interior.radiogenic_heat,
             tidal = False,
             )
 
@@ -151,14 +159,31 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             grain_size = config.interior.grain_size,
             )
 
-    radionuclides = _Radionuclide(
-            name = "U235",
-            t0_years = 4.55E9,
-            abundance = 0.0072045,
-            concentration = 0.031,
-            heat_production = 5.68402E-4,
-            half_life_years = 704E6,
-            )
+    radionuclides = []
+    if config.interior.radiogenic_heat:
+        # offset by age_ini, which converts model simulation time to the actual age
+        radio_t0 = config.delivery.radio_tref - config.star.age_ini
+        radio_t0 *= 1e9 # Convert Gyr to yr
+
+        def _append_radnuc(_iso, _cnc):
+            radionuclides.append(_Radionuclide(
+                                    name = _iso,
+                                    t0_years = radio_t0,
+                                    abundance = radnuc_data[_iso]["abundance"],
+                                    concentration = _cnc,
+                                    heat_production = radnuc_data[_iso]["heatprod"],
+                                    half_life_years = radnuc_data[_iso]["halflife"],
+                                ))
+
+        if config.delivery.radio_K > 0.0:
+            _append_radnuc("k40", config.delivery.radio_K)
+
+        if config.delivery.radio_Th > 0.0:
+            _append_radnuc("th232", config.delivery.radio_Th)
+
+        if config.delivery.radio_U > 0.0:
+            _append_radnuc("u235", config.delivery.radio_U)
+            _append_radnuc("u238", config.delivery.radio_U)
 
     param = Parameters(
             boundary_conditions = boundary_conditions,
@@ -175,15 +200,20 @@ def SetupAragogSolver(config:Config, hf_row:dict):
 
     aragog_solver = Solver(param)
 
-def UpdateAragogSolver(dt:float, hf_row:dict):
+def UpdateAragogSolver(dt:float, hf_row:dict, output_dir:str = None):
 
     # Set solver time
     # hf_row["Time"] is in yr so do not need to scale as long as scaling time is secs_per_year
     aragog_solver.parameters.solver.start_time = hf_row["Time"]
     aragog_solver.parameters.solver.end_time = hf_row["Time"] + dt
 
-    # Update initial condition (temperature field from previous run)
-    Tfield: np.array = aragog_solver.temperature_staggered[:, -1]
+    # Get temperature field from previous run
+    if output_dir is not None: # read it from output directory
+        Tfield = read_last_Tfield(output_dir, hf_row["Time"])
+    else: # get it from solver
+        Tfield = aragog_solver.temperature_staggered[:, -1]
+
+    # Update initial condition
     Tfield = Tfield / aragog_solver.parameters.scalings.temperature
     aragog_solver.parameters.initial_condition.from_field = True
     aragog_solver.parameters.initial_condition.init_temperature = Tfield
@@ -215,14 +245,33 @@ def GetAragogOutput(hf_row:dict):
     output["M_mantle_solid"] = output["M_mantle"] - output["M_mantle_liquid"]
     output["M_core"] = aragog_output.core_mass
 
+    # Calculate surface area
+    radii = aragog_output.radii_km_basic * 1e3 # [m]
+    area  = 4 * np.pi * radii[-1]**2 # [m^2]
+
+    # Radiogenic heating
+    Hradio_s = aragog_output.heating_radio[:,-1]  # [W kg-1]
+    mass_s   = aragog_output.mass_staggered[:,-1] # [kg]
+    Hradio_total = np.dot(Hradio_s, mass_s)       # [W]
+    output["F_radio"] = Hradio_total / area       # [W m-2]
+
     # Tidal heating is not supported by Aragog (yet)
     output["F_tidal"] = 0.0
 
-    # Radiogenic heating is not supported yet
-    output["F_radio"] = 0.0
-
     return output
 
+def read_last_Tfield(output_dir:str, time:float):
+
+    # Read Aragog output at last run
+    fpath = os.path.join(output_dir,"data","%d_int.nc"%time)
+    out = read_ncdf(fpath)
+
+    # Get temperature field at basic nodes and interpolate to staggered nodes
+    T_basic = out["temp_b"]
+    N_basic = len(T_basic)
+    T_staggered = (T_basic[0:N_basic-1] + T_basic[1:N_basic] ) / 2.0
+
+    return T_staggered
 
 def get_all_output_times(output_dir:str):
     files = glob.glob(output_dir+"/data/*_int.nc")

@@ -4,6 +4,10 @@ from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
 
+def no_radio_if_dummy(instance, attribute, value):
+    if (instance.module == 'dummy') and value:
+        raise ValueError("Radiogenic heating is not supported by the dummy interior module")
+
 @define
 class Interior:
     """Magma ocean model selection and parameters.
@@ -14,6 +18,8 @@ class Interior:
         Crystal settling grain size [m].
     F_initial: float
         Initial heat flux guess [W m-2].
+    radiogenic_heat: bool
+        Include radiogenic heat production?
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
     spider: Spider
@@ -25,6 +31,7 @@ class Interior:
     """
     grain_size: float = field(validator=gt(0))
     F_initial: float = field(validator=gt(0))
+    radiogenic_heat: bool = field(validator=no_radio_if_dummy)
 
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
 
