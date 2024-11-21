@@ -97,5 +97,3 @@ class Delivery:
     radio_U: float    = field(validator=ge(0))
     radio_K: float    = field(validator=ge(0))
     radio_Th: float   = field(validator=ge(0))
-
-

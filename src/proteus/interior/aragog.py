@@ -26,7 +26,7 @@ from aragog.parser import (
 )
 
 from proteus.interior.timestep import next_step
-from proteus.utils.constants import R_earth, secs_per_year, radnuc_data
+from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
