@@ -11,6 +11,7 @@ import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import platformdirs
+
 from aragog import Output, Solver, aragog_file_logger
 from aragog.parser import (
     Parameters,
@@ -24,7 +25,6 @@ from aragog.parser import (
     _ScalingsParameters,
     _SolverParameters,
 )
-
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import R_earth, secs_per_year
 
@@ -42,9 +42,9 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
     global aragog_solver
 
     # Setup Aragog logger
-    aragoglog = aragog_file_logger(console_level = logging.WARNING,
-                                   file_level = logging.INFO,
-                                   log_dir = dirs["output"])
+    aragog_file_logger(console_level = logging.WARNING,
+                       file_level = logging.INFO,
+                       log_dir = dirs["output"])
 
     # Compute time step
     if IC_INTERIOR==1:
