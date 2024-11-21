@@ -3,6 +3,7 @@ from __future__ import annotations
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
+
 def no_radio_if_dummy(instance, attribute, value):
     if (instance.module == 'dummy') and value:
         raise ValueError("Radiogenic heating is not supported by the dummy interior module")

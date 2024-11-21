@@ -14,8 +14,8 @@ import numpy as np
 import pandas as pd
 
 from proteus.interior.timestep import next_step
-from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 from proteus.utils.constants import radnuc_data
+from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 
 if TYPE_CHECKING:
     from proteus.config import Config
