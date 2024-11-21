@@ -4,18 +4,15 @@ import importlib.metadata
 import os
 from functools import partial
 from importlib.metadata import PackageNotFoundError
-from pathlib import Path
 from typing import Callable
 
 import click
 import requests
 from attr import dataclass
 
-from proteus.utils.coupler import _get_agni_version, get_proteus_dir
+from proteus.utils.coupler import _get_agni_version, get_proteus_directories
 
-PROTEUS_DIR = Path(get_proteus_dir())
-
-DIRS = {'agni': PROTEUS_DIR / 'agni'}
+DIRS = get_proteus_directories()
 
 HEADER_STYLE = {'fg': 'yellow', 'underline': True, 'bold': True}
 OK_STYLE = {'fg': 'green'}
@@ -79,12 +76,13 @@ class GitPackage(BasePackage):
         return response.json()['name']
 
 
-DEPENDENCIES = (
+PACKAGES = (
+    PythonPackage(name='aragog'),
+    PythonPackage(name='fwl-calliope'),
+    PythonPackage(name='fwl-janus'),
     PythonPackage(name='fwl-proteus'),
     PythonPackage(name='fwl-mors'),
-    PythonPackage(name='fwl-calliope'),
     PythonPackage(name='fwl-zephyrus'),
-    PythonPackage(name='aragog'),
     GitPackage(name='AGNI', owner='nichollsh', version_getter=partial(_get_agni_version, DIRS)),
 )
 
@@ -106,8 +104,8 @@ VARIABLES = (
 
 
 def doctor_entry():
-    click.secho('Dependencies', **HEADER_STYLE)
-    for package in DEPENDENCIES:
+    click.secho('Packages', **HEADER_STYLE)
+    for package in PACKAGES:
         message = package.get_status_message()
         click.echo(message)
 
