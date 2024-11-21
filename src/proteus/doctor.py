@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.metadata
+import os
 from functools import partial
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
@@ -16,11 +17,39 @@ PROTEUS_DIR = Path(get_proteus_dir())
 
 DIRS = {'agni': PROTEUS_DIR / 'agni'}
 
+HEADER_STYLE = {'fg': 'yellow', 'underline': True, 'bold': True}
+OK_STYLE = {'fg': 'green'}
+ERROR_STYLE = {'fg': 'red'}
+DEFAULT_STYLE = {'fg': 'yellow'}
+
 
 @dataclass
-class PythonPackage:
+class BasePackage:
     name: str
 
+    def current_version(self) -> str: ...
+
+    def latest_version(self) -> str: ...
+
+    def get_status_message(self) -> str:
+        try:
+            current_version = self.current_version()
+            latest_version = self.latest_version()
+        except BaseException as exc:
+            message = click.style(str(exc), **ERROR_STYLE)
+        else:
+            if current_version != latest_version:
+                message = click.style(
+                    f'Update available {current_version} -> {latest_version}', fg='yellow'
+                )
+            else:
+                message = click.style('ok', **OK_STYLE)
+
+        name = click.style(self.name, **OK_STYLE)
+        return f'{name}: {message}'
+
+
+class PythonPackage(BasePackage):
     def current_version(self) -> str:
         return importlib.metadata.version(self.name)
 
@@ -33,8 +62,7 @@ class PythonPackage:
 
 
 @dataclass
-class GitPackage:
-    name: str
+class GitPackage(BasePackage):
     owner: str
     version_getter: Callable
 
@@ -61,20 +89,29 @@ DEPENDENCIES = (
 )
 
 
-def doctor_entry():
-    for package in DEPENDENCIES:
-        try:
-            current_version = package.current_version()
-            latest_version = package.latest_version()
-        except BaseException as exc:
-            message = click.style(str(exc), fg='red')
-        else:
-            if current_version != latest_version:
-                message = click.style(
-                    f'Update available {current_version} -> {latest_version}', fg='yellow'
-                )
-            else:
-                message = click.style('ok', fg='green')
+def get_env_var_status_message(var: str) -> str:
+    if os.environ.get(var):
+        message = click.style('ok', **OK_STYLE)
+    else:
+        message = click.style('Variable not set.', **ERROR_STYLE)
 
-        name = click.style(package.name, fg='green', bold=True)
-        click.echo(f'{name}: {message}')
+    name = click.style(var, **OK_STYLE)
+    return f'{name}: {message}'
+
+
+VARIABLES = (
+    'FWL_DATA',
+    'RAD_DIR',
+)
+
+
+def doctor_entry():
+    click.secho('Dependencies', **HEADER_STYLE)
+    for package in DEPENDENCIES:
+        message = package.get_status_message()
+        click.echo(message)
+
+    click.secho('\nEnvironment variables', **HEADER_STYLE)
+    for var in VARIABLES:
+        message = get_env_var_status_message(var)
+        click.echo(message)
