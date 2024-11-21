@@ -26,7 +26,7 @@ from aragog.parser import (
 )
 
 from proteus.interior.timestep import next_step
-from proteus.utils.constants import R_earth, secs_per_year
+from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -121,7 +121,7 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             convection = True,
             gravitational_separation = False,
             mixing = False,
-            radionuclides = False,
+            radionuclides = config.interior.radiogenic_heat,
             tidal = False,
             )
 
@@ -159,14 +159,31 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             grain_size = config.interior.grain_size,
             )
 
-    radionuclides = _Radionuclide(
-            name = "U235",
-            t0_years = 4.55E9,
-            abundance = 0.0072045,
-            concentration = 0.031,
-            heat_production = 5.68402E-4,
-            half_life_years = 704E6,
-            )
+    radionuclides = []
+    if config.interior.radiogenic_heat:
+        # offset by age_ini, which converts model simulation time to the actual age
+        radio_t0 = config.delivery.radio_tref - config.star.age_ini
+        radio_t0 *= 1e9 # Convert Gyr to yr
+
+        def _append_radnuc(_iso, _cnc):
+            radionuclides.append(_Radionuclide(
+                                    name = _iso,
+                                    t0_years = radio_t0,
+                                    abundance = radnuc_data[_iso]["abundance"],
+                                    concentration = _cnc,
+                                    heat_production = radnuc_data[_iso]["heatprod"],
+                                    half_life_years = radnuc_data[_iso]["halflife"],
+                                ))
+
+        if config.delivery.radio_K > 0.0:
+            _append_radnuc("k40", config.delivery.radio_K)
+
+        if config.delivery.radio_Th > 0.0:
+            _append_radnuc("th232", config.delivery.radio_Th)
+
+        if config.delivery.radio_U > 0.0:
+            _append_radnuc("u235", config.delivery.radio_U)
+            _append_radnuc("u238", config.delivery.radio_U)
 
     param = Parameters(
             boundary_conditions = boundary_conditions,
@@ -228,11 +245,18 @@ def GetAragogOutput(hf_row:dict):
     output["M_mantle_solid"] = output["M_mantle"] - output["M_mantle_liquid"]
     output["M_core"] = aragog_output.core_mass
 
+    # Calculate surface area
+    radii = aragog_output.radii_km_basic * 1e3 # [m]
+    area  = 4 * np.pi * radii[-1]**2 # [m^2]
+
+    # Radiogenic heating
+    Hradio_s = aragog_output.heating_radio[:,-1]  # [W kg-1]
+    mass_s   = aragog_output.mass_staggered[:,-1] # [kg]
+    Hradio_total = np.dot(Hradio_s, mass_s)       # [W]
+    output["F_radio"] = Hradio_total / area       # [W m-2]
+
     # Tidal heating is not supported by Aragog (yet)
     output["F_tidal"] = 0.0
-
-    # Radiogenic heating is not supported yet
-    output["F_radio"] = 0.0
 
     return output
 

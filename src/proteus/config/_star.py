@@ -19,7 +19,7 @@ class Star:
         it should be between 0.1 and 1.25 solar masses.
         Values outside of the valid range will be clipped.
     age_ini: float
-        Age of star at model initialisation [Gyr].
+        Age of system at model initialisation [Gyr].
     module: str | None
         Select star module to use.
     mors: Mors

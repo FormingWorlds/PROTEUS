@@ -63,10 +63,9 @@ class Volatiles:
         """Helper method for getting the pressure for `vol` by string."""
         return getattr(self, s)
 
-
 @define
 class Delivery:
-    """Initial volatile inventory, and delivery model selection
+    """Initial volatile inventory, radionuclide concentration, and delivery model selection.
 
     Attributes
     ----------
@@ -78,6 +77,14 @@ class Delivery:
         Parameters used when setting volatile inventory by element abundances.
     volatiles: Volatiles
         Parameters used when setting volatile inventory by partial pressures.
+    radio_tref: float
+        Reference age for setting radioactive decay [Gyr].
+    radio_U: float
+        Concentration (ppmw) of uranium at reference age of `t=radio_tref`
+    radio_K: float
+        Concentration (ppmw) of potassium at reference age of `t=radio_tref`
+    radio_Th: float
+        Concentration (ppmw) of thorium at reference age of `t=radio_tref`
     """
     initial: str = field(validator=in_(('elements', 'volatiles')))
 
@@ -85,3 +92,8 @@ class Delivery:
 
     elements: Elements
     volatiles: Volatiles
+
+    radio_tref: float = field(validator=gt(0))
+    radio_U: float    = field(validator=ge(0))
+    radio_K: float    = field(validator=ge(0))
+    radio_Th: float   = field(validator=ge(0))

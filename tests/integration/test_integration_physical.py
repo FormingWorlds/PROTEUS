@@ -81,7 +81,7 @@ def test_physical_interior(physical_run):
     # Keys to load and test
     _out   = out_dir / 'data' / '5002_int.nc'
     _ref   = ref_dir / '5002_int.nc'
-    fields = ["radius_b", "pres_b", "temp_b", "phi_b"]
+    fields = ["radius_b", "pres_b", "temp_b", "phi_b", "Hradio_s"]
 
     # Load interior output
     out = read_interior(_out)
