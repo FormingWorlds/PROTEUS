@@ -33,6 +33,8 @@ def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, config: Config, t0:
     F_olr = np.array(hf_crop["F_olr"])
     F_upw = np.array(hf_crop["F_olr"]) + np.array(hf_crop["F_sct"])
     F_int = np.array(hf_crop["F_int"])
+    F_tidal = np.array(hf_crop["F_tidal"])
+    F_radio = np.array(hf_crop["F_radio"])
 
     # Create plot
     mpl.use('Agg')
@@ -45,11 +47,14 @@ def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, config: Config, t0:
     ax.axhline(y=280.0, color='black', lw=lw, linestyle='dashed', label="S-N limit", zorder=1)
 
     # Plot fluxes
-    ax.plot(time, F_int, lw=lw, alpha=al, zorder=2, color=get_colour("int"), label="Net (int.)")
-    ax.plot(time, F_net, lw=lw, alpha=al, zorder=2, color=get_colour("atm"), label="Net (atm.)")
-    ax.plot(time, F_olr, lw=lw, alpha=al, zorder=2, color=get_colour("OLR"), label="OLR")
-    ax.plot(time, F_upw, lw=lw, alpha=al, zorder=3, color=get_colour("sct"), label="OLR + Scat.")
-    ax.plot(time, F_asf, lw=lw, alpha=al, zorder=3, color=get_colour("ASF"), label="ASF", linestyle='dotted')
+    ax.plot(time, F_tidal, lw=lw, alpha=al, color=get_colour("tidal"),label="Tidal")
+    ax.plot(time, F_radio, lw=lw, alpha=al, color=get_colour("radio"),label="Radio.")
+    ax.plot(time, F_int,   lw=lw, alpha=al, color=get_colour("int"),  label="Net (int.)")
+    ax.plot(time, F_net,   lw=lw, alpha=al, color=get_colour("atm"),  label="Net (atm.)")
+    ax.plot(time, F_olr,   lw=lw, alpha=al, color=get_colour("OLR"),  label="OLR")
+    ax.plot(time, F_upw,   lw=lw, alpha=al, color=get_colour("sct"),  label="OLR + Scat.")
+    ax.plot(time, F_asf,   lw=lw, alpha=al, color=get_colour("ASF"),  label="ASF", linestyle='dotted')
+
 
     # Configure plot
     ax.set_yscale("symlog")

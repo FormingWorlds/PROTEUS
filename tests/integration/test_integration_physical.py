@@ -59,8 +59,8 @@ def test_physical_spectrum(physical_run):
 
 def test_physical_atmosphere(physical_run):
     # Keys to load and test
-    _out   = out_dir / 'data' / '6002_atm.nc'
-    _ref   = ref_dir / '6002_atm.nc'
+    _out   = out_dir / 'data' / '5002_atm.nc'
+    _ref   = ref_dir / '5002_atm.nc'
     fields = ["t", "p", "z", "fl_U_LW", "fl_D_SW"]
 
     # Load atmosphere output
@@ -79,8 +79,8 @@ def test_physical_atmosphere(physical_run):
 
 def test_physical_interior(physical_run):
     # Keys to load and test
-    _out   = out_dir / 'data' / '6002_int.nc'
-    _ref   = ref_dir / '6002_int.nc'
+    _out   = out_dir / 'data' / '5002_int.nc'
+    _ref   = ref_dir / '5002_int.nc'
     fields = ["radius_b", "pres_b", "temp_b", "phi_b"]
 
     # Load interior output

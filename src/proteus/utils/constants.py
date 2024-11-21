@@ -24,7 +24,8 @@ M_jupiter       = 1.898e27              # kg
 R_jupiter       = 1.42984e8 / 2         # m
 
 # Time constants
-secs_per_year   = 365.25 * 24 * 60 * 60 # seconds per year
+secs_per_day    = 24 * 60 * 60
+secs_per_year   = secs_per_day * 365.25
 
 # Values from Pierrehumbert (2010) workbook
 const_h = 6.626075540e-34    #Planck's constant

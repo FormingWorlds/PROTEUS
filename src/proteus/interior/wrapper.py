@@ -97,7 +97,11 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
 
     # Trivial case of setting it by the interior radius
     if config.struct.set_by == 'radius_int':
+        # radius defines interior structure
         hf_row["R_int"] = config.struct.radius_int * R_earth
+        # initial guess for mass, which will be updated by the interior model
+        hf_row["M_int"] = config.struct.mass_tot * M_earth
+        update_gravity(hf_row)
 
     # Set by total mass (mantle + core + volatiles)
     elif config.struct.set_by == 'mass_tot':
@@ -119,9 +123,14 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         log.info("Evolve interior...")
     log.debug("Using %s module to evolve interior"%config.interior.module)
 
+    tides_enabled = (config.orbit.module == 'dummy') and (config.orbit.dummy.H_tide > 1e-30)
+
     if config.interior.module == 'spider':
         # Import
         from proteus.interior.spider import ReadSPIDER, RunSPIDER
+
+        if tides_enabled:
+            log.warning("Tidal heating is not supported by SPIDER, but has been enabled")
 
         # Run SPIDER
         RunSPIDER(dirs, config, IC_INTERIOR, hf_all, hf_row)
@@ -130,6 +139,9 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
     elif config.interior.module == 'aragog':
         # Import
         from proteus.interior.aragog import RunAragog
+
+        if tides_enabled:
+            log.warning("Tidal heating is not yet supported by Aragog, but has been enabled")
 
         # Run Aragog
         sim_time, output = RunAragog(config, dirs, IC_INTERIOR, hf_row, hf_all)
@@ -175,10 +187,13 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
 
     # Print result of interior module
     if verbose:
-        log.info("    T_magma    = %.1f K"%hf_row["T_magma"])
+        log.info("    T_magma    = %.3f K"%hf_row["T_magma"])
         log.info("    Phi_global = %.3f  "%hf_row["Phi_global"])
-        log.info("    F_int      = %.2e" %hf_row["F_int"])
-        log.info("    RF_depth   = %.2e" %hf_row["RF_depth"])
+        log.info("    RF_depth   = %.2e W m-2" %hf_row["RF_depth"])
+        log.info("    F_int      = %.2e W m-2" %hf_row["F_int"])
+        log.info("    F_tidal    = %.2e W m-2" %hf_row["F_tidal"])
+        log.info("    F_radio    = %.2e W m-2" %hf_row["F_radio"])
+
 
     # Time step size
     dt = float(sim_time) - hf_row["Time"]
