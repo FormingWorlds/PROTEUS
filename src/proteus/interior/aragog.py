@@ -122,7 +122,7 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             gravitational_separation = False,
             mixing = False,
             radionuclides = config.interior.radiogenic_heat,
-            tidal = False,
+            tidal = config.interior.tidal_heat,
             )
 
     initial_condition = _InitialConditionParameters(
@@ -200,7 +200,7 @@ def SetupAragogSolver(config:Config, hf_row:dict):
 
     aragog_solver = Solver(param)
 
-def UpdateAragogSolver(dt:float, hf_row:dict, output_dir:str = None):
+def UpdateAragogSolver(dt:float, hf_row:dict, config:Config, output_dir:str = None):
 
     # Set solver time
     # hf_row["Time"] is in yr so do not need to scale as long as scaling time is secs_per_year
@@ -220,6 +220,14 @@ def UpdateAragogSolver(dt:float, hf_row:dict, output_dir:str = None):
 
     # Update boundary conditions
     aragog_solver.parameters.boundary_conditions.outer_boundary_value = hf_row["F_atm"]
+
+    # Update tidal heating
+    tidal_value= 0.0
+    if config.interior.tidal_heat:
+        if config.orbit.dummy:
+            tidal_value = config.orbit.dummy.H_tide
+    tidal_value /= aragog_solver.parameters.scalings.power_per_mass
+    aragog_solver.parameters.energy.tidal_value = tidal_value
 
     return
 
