@@ -48,7 +48,7 @@ def update_period(hf_row:dict, sma:float):
     '''
 
     # Standard gravitational parameter neglecting volatile mass.
-    mu = const_G * (hf_row["M_star"] + hf_row["M_mantle"] + hf_row["M_core"])
+    mu = const_G * (hf_row["M_star"] + hf_row["M_tot"])
 
     # Semimajor axis in SI units
     a = sma * AU
@@ -63,10 +63,14 @@ def update_tides(hf_row:dict, config:Config):
     '''
 
     if config.orbit.module == 'dummy':
-        log.info("    tidal power density: %.1f nW kg-1"%(config.orbit.dummy.H_tide*1e9))
+        log.info("    tidal power density: %.1e W kg-1"%(config.orbit.dummy.H_tide))
+
+    # [call to some other tidal heating module goes here]
 
     else:
-        log.debug("    tidal heating disabled")
+        # no interior module selected
+        if config.interior.tidal_heat:
+            log.warning("Tidal heating is enabled but no orbit module was selected")
 
 
 def run_orbit(hf_row:dict, config:Config):

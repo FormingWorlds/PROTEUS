@@ -113,7 +113,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "dummy"
 
     [orbit.dummy]
-        H_tide  = 1e-7  # Fixed tidal power density [W kg-1]
+        H_tide  = 1e-6  # Fixed tidal power density [W kg-1]
 
 # Planetary structure - physics table
 [struct]
@@ -129,7 +129,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
     cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
-    surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
+    surf_state      = "fixed"    # surface scheme: "mixed_layer" | "fixed" | "skin"
     surf_greyalbedo = 0.2       # surface grey albedo
     albedo_pl       = 0.0   	# Enforced Bond albedo (do not use with `rayleigh = true`)
     rayleigh        = false     # Enable rayleigh scattering
@@ -179,17 +179,17 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e3   # Initial heat flux guess [W m-2]
     radiogenic_heat = true  # enable radiogenic heat production
-    tidal_heat      = false  # enable tidal heat production
+    tidal_heat      = true  # enable tidal heat production
 
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 120       # Number of SPIDER grid levels
+        num_levels      = 60       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-8   # solver tolerance
+        tolerance       = 1.0e-7   # solver tolerance
         tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
-        ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 2800.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
