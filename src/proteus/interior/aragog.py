@@ -64,6 +64,14 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
     else:
         UpdateAragogSolver(dt, hf_row)
 
+    # Update tidal heating inside Aragog
+    tidal_value= 0.0
+    if config.interior.tidal_heat:
+        if config.orbit.dummy:
+            tidal_value = config.orbit.dummy.H_tide
+    tidal_value /= aragog_solver.parameters.scalings.power_per_mass
+    aragog_solver.parameters.energy.tidal_value = tidal_value
+
     # Run Aragog solver
     aragog_solver.initialize()
     aragog_solver.solve()
@@ -76,6 +84,7 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
     WriteAragogOutput(dirs["output"],sim_time)
 
     return sim_time, output
+
 
 def SetupAragogSolver(config:Config, hf_row:dict):
 
@@ -200,7 +209,7 @@ def SetupAragogSolver(config:Config, hf_row:dict):
 
     aragog_solver = Solver(param)
 
-def UpdateAragogSolver(dt:float, hf_row:dict, config:Config, output_dir:str = None):
+def UpdateAragogSolver(dt:float, hf_row:dict, output_dir:str = None):
 
     # Set solver time
     # hf_row["Time"] is in yr so do not need to scale as long as scaling time is secs_per_year
@@ -220,14 +229,6 @@ def UpdateAragogSolver(dt:float, hf_row:dict, config:Config, output_dir:str = No
 
     # Update boundary conditions
     aragog_solver.parameters.boundary_conditions.outer_boundary_value = hf_row["F_atm"]
-
-    # Update tidal heating
-    tidal_value= 0.0
-    if config.interior.tidal_heat:
-        if config.orbit.dummy:
-            tidal_value = config.orbit.dummy.H_tide
-    tidal_value /= aragog_solver.parameters.scalings.power_per_mass
-    aragog_solver.parameters.energy.tidal_value = tidal_value
 
     return
 
@@ -257,14 +258,16 @@ def GetAragogOutput(hf_row:dict):
     radii = aragog_output.radii_km_basic * 1e3 # [m]
     area  = 4 * np.pi * radii[-1]**2 # [m^2]
 
+    # Mass at each mesh layer
+    mass_s = aragog_output.mass_staggered[:,-1] # [kg]
+
     # Radiogenic heating
     Hradio_s = aragog_output.heating_radio[:,-1]  # [W kg-1]
-    mass_s   = aragog_output.mass_staggered[:,-1] # [kg]
-    Hradio_total = np.dot(Hradio_s, mass_s)       # [W]
-    output["F_radio"] = Hradio_total / area       # [W m-2]
+    output["F_radio"] = np.dot(Hradio_s, mass_s) / area  # [W m-2]
 
-    # Tidal heating is not supported by Aragog (yet)
-    output["F_tidal"] = 0.0
+    # Tidal heating
+    Htidal_s = aragog_output.heating_tidal[:,-1]  # [W kg-1]
+    output["F_tidal"] = np.dot(Htidal_s, mass_s)/area
 
     return output
 
