@@ -332,7 +332,9 @@ def _try_spider( dirs:dict, config:Config,
 
     # radionuclides
     if config.interior.radiogenic_heat:
-        radio_t0 = config.delivery.radio_tref * 1e9 # Convert Gyr to yr
+        # offset by age_ini, which converts model simulation time to the actual age
+        radio_t0 = config.delivery.radio_tref - config.star.age_ini
+        radio_t0 *= 1e9 # Convert Gyr to yr
         radnuc_names = []
 
         def _append_radnuc(_iso, _cnc):

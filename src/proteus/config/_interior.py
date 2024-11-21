@@ -3,6 +3,9 @@ from __future__ import annotations
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
+def no_radio_if_dummy(instance, attribute, value):
+    if (instance.module == 'dummy') and value:
+        raise ValueError("Radiogenic heating is not supported by the dummy interior module")
 
 @define
 class Interior:
@@ -27,7 +30,7 @@ class Interior:
     """
     grain_size: float = field(validator=gt(0))
     F_initial: float = field(validator=gt(0))
-    radiogenic_heat: bool
+    radiogenic_heat: bool = field(validator=no_radio_if_dummy)
 
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
 

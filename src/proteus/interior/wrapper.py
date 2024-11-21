@@ -150,9 +150,6 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         # Import
         from proteus.interior.dummy import RunDummyInt
 
-        if config.interior.radiogenic_heat:
-            log.warning("Radiogenic heat production not supported by dummy interior module")
-
         # Run dummy interior
         sim_time, output = RunDummyInt(config, dirs, IC_INTERIOR, hf_row, hf_all)
 
