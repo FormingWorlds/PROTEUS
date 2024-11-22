@@ -47,7 +47,7 @@ def update_period(hf_row:dict, sma:float):
             Semimajor axis [AU]
     '''
 
-    # Standard gravitational parameter neglecting volatile mass.
+    # Standard gravitational parameter (planet mass + star mass)
     mu = const_G * (hf_row["M_star"] + hf_row["M_tot"])
 
     # Semimajor axis in SI units
