@@ -29,7 +29,7 @@ jobs:
             CXX: g++
             FC: gfortran
           - os: macos-latest
-            INSTALL_DEPS: brew uninstall --force pkg-config; brew cleanup --prune-prefix; brew install gfortran netcdf netcdf-fortran
+            INSTALL_DEPS: brew uninstall --force pkg-config; brew cleanup -s pkg-config; brew cleanup --prune-prefix; brew install gfortran netcdf netcdf-fortran
             CC: gcc
             CXX: g++
             FC: gfortran
