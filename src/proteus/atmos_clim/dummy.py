@@ -105,7 +105,7 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     # Escape level always at surface for dummy atmosphere
     if config.escape.module == 'zephyrus':
         log.warning("Setting escape level to surface because dummy atmosphere is used")
-    p_xuv = P_surf
+    p_xuv = P_surf # already in bar
     z_xuv = 0.0
 
     output = {}
@@ -116,7 +116,7 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     output["z_obs"]   = 0.0
     output["rho_obs"] = 3 * M_int / (4*np.pi*R_int**3)
     output["albedo"]  = fluxes["fl_U_SW"]/fluxes["fl_D_SW"]
-    output["p_xuv"]   = p_xuv/1e5
+    output["p_xuv"]   = p_xuv
     output["z_xuv"]   = z_xuv
 
     return output

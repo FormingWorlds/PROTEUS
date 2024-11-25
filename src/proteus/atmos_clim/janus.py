@@ -271,25 +271,24 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
 
     # observables
     z_obs = 0.0
-    p_obs = hf_row["P_surf"]
     rho_obs = -1.0
     if atm.height_error:
         log.error("Hydrostatic integration failed in JANUS!")
     else:
-        # find observed level
-        p_obs, z_obs = get_height_from_pressure(atm.p, atm.z, p_obs)
+        # find observed level [m] at 1 mbar
+        _, z_obs = get_height_from_pressure(atm.p, atm.z, 1e2)
 
-        # calc observed density
+        # calc observed density [kg m-3]
         rho_obs = calc_observed_rho(atm)
 
     # XUV height in atm
     if config.escape.module == 'zephyrus':
         # escape level set by zephyrus config
-        p_xuv = config.escape.zephyrus.Pxuv*1e5     # convert bar -> Pa
+        p_xuv = config.escape.zephyrus.Pxuv # [bar]
     else:
         # escape level set to surface
-        p_xuv = hf_row["P_surf"]
-    p_xuv, z_xuv = get_height_from_pressure(atm.p, atm.z, p_xuv)
+        p_xuv = hf_row["P_surf"] # [bar]
+    p_xuv, z_xuv = get_height_from_pressure(atm.p, atm.z, p_xuv*1e5) # [Pa], [m]
 
     # final things to store
     output={}

@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 import netCDF4 as nc
 import numpy as np
 
+from proteus.utils.helper import find_nearest
+
 if TYPE_CHECKING:
     from proteus.config import Config
 
@@ -137,6 +139,6 @@ def get_height_from_pressure(p_arr, z_arr, p_tgt):
     """
 
     p_close, idx = find_nearest(p_arr, p_tgt)
-    z_close = z_arr[idx_xuv]
+    z_close = z_arr[idx]
 
     return float(p_close), z_close
