@@ -122,25 +122,15 @@ jobs:
       - name: Test with pytest
         run: coverage run -m pytest
 
-      # Upload output run images if tests fail
-      - name: Upload PNG plots as artifacts
+      # Upload result if tests fail
+      - name: Upload result as artifact
         if: failure()
         uses: actions/upload-artifact@v3
         with:
-          name: png-plots
+          name: integration-physical
           path: |
-            output/physical/plot_atmosphere.png
-            output/physical/plot_escape.png
-            output/physical/plot_global_log.png
-            output/physical/plot_observables.png
-            output/physical/plot_stacked.png
-            output/physical/plot_elements.png
-            output/physical/plot_fluxes_atmosphere.png
-            output/physical/plot_interior_cmesh.png
-            output/physical/plot_sflux_cross.png
-            output/physical/plot_emission.png
-            output/physical/plot_interior.png
-            output/physical/plot_sflux.png
+            output/physical/plot_*.png
+            output/physical/runtime_helpfile.csv
 
       - name: Report coverage
         run: |

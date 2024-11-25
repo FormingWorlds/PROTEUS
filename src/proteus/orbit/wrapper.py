@@ -47,8 +47,15 @@ def update_period(hf_row:dict, sma:float):
             Semimajor axis [AU]
     '''
 
+    # Total mass of system, kg
+    M_total = hf_row["M_star"] + hf_row["M_tot"]
+
+    # Sanity check
+    if M_total < 1e3:
+       log.error("Unreasonable star+planet mass: %.5e kg"%M_total)
+
     # Standard gravitational parameter (planet mass + star mass)
-    mu = const_G * (hf_row["M_star"] + hf_row["M_core"] + hf_row["M_mantle"])
+    mu = const_G * M_total
 
     # Semimajor axis in SI units
     a = sma * AU
