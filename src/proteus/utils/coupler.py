@@ -498,7 +498,37 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Close all figures
     plt.close()
 
-def SetDirectories(config: Config):
+
+def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
+    """Create dict of proteus directories from root dir.
+
+    Parameters
+    ----------
+    root_dir : str
+        Proteus root directory
+    out_dir : str, optional
+        Name out output directory
+
+    Returns
+    -------
+    dirs : dict[str, str]
+        Proteus directories dict
+    """
+    root_dir = get_proteus_dir()
+
+    return {
+        "agni": os.path.join(root_dir, "AGNI"),
+        "input": os.path.join(root_dir, "input"),
+        "output": os.path.join(root_dir, "output", out_dir),
+        "proteus":  root_dir,
+        "spider": os.path.join(root_dir, "SPIDER"),
+        "tools": os.path.join(root_dir, "tools"),
+        "vulcan": os.path.join(root_dir, "VULCAN"),
+        "utils": os.path.join(root_dir, "src", "proteus", "utils")
+    }
+
+
+def SetDirectories(config: Config) -> dict[str, str]:
     """Set directories dictionary
 
     Sets paths to the required directories, based on the configuration provided
@@ -506,29 +536,15 @@ def SetDirectories(config: Config):
 
     Parameters
     ----------
-        config : Config
-            PROTEUS options dictionary
+    config : Config
+        PROTEUS options dictionary
 
     Returns
     ----------
-        dirs : dict
-            Dictionary of paths to important directories
+    dirs : dict
+        Dictionary of paths to important directories
     """
-
-    proteus_dir = get_proteus_dir()
-    proteus_src = os.path.join(proteus_dir,"src","proteus")
-
-    # PROTEUS folders
-    dirs = {
-            "output":   os.path.join(proteus_dir,"output",config.params.out.path),
-            "input":    os.path.join(proteus_dir,"input"),
-            "proteus":  proteus_dir,
-            "agni":     os.path.join(proteus_dir,"AGNI"),
-            "vulcan":   os.path.join(proteus_dir,"VULCAN"),
-            "spider":   os.path.join(proteus_dir,"SPIDER"),
-            "utils":    os.path.join(proteus_src,"utils"),
-            "tools":    os.path.join(proteus_dir,"tools"),
-            }
+    dirs = get_proteus_directories(out_dir=config.params.out.path)
 
     # FWL data folder
     if os.environ.get('FWL_DATA') is None:

@@ -32,6 +32,7 @@ class Interior:
     grain_size: float = field(validator=gt(0))
     F_initial: float = field(validator=gt(0))
     radiogenic_heat: bool = field(validator=no_radio_if_dummy)
+    tidal_heat: bool
 
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
 

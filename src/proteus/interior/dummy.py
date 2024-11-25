@@ -76,7 +76,11 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
 
     # Subtract tidal contribution to the total heat flux.
     #    This heat energy is generated only in the mantle, not in the core.
-    output["F_tidal"] = config.orbit.dummy.H_tide * output["M_mantle"] / area
+    tidal_flux = 0.0
+    if config.interior.tidal_heat:
+        if config.orbit.dummy:
+            tidal_flux = config.orbit.dummy.H_tide * output["M_mantle"] / area
+    output["F_tidal"] = tidal_flux
 
     # Radiogenic heating not included
     output["F_radio"] = 0.0

@@ -19,6 +19,14 @@ M_core_earth    = 1.94E24               # kg
 mol             = 6.02214076e+23        # mol definition
 ocean_moles     = 7.68894973907177e+22  # moles of H2 (or H2O) in one present-day Earth ocean
 
+# Earth heat flux, globally averaged [W m-2]
+# https://se.copernicus.org/articles/1/5/2010/
+F_earth         = 47.2e12 / (4 * 3.141 * R_earth * R_earth)
+
+# Io radius [m] and tidal heat flux [W m-2]
+R_io            = 1.82149e6     # https://ssd.jpl.nasa.gov/sats/phys_par/#refs
+F_io            = 2.24          # https://www.nature.com/articles/nature08108
+
 # https://nssdc.gsfc.nasa.gov/planetary/factsheet/
 M_jupiter       = 1.898e27              # kg
 R_jupiter       = 1.42984e8 / 2         # m

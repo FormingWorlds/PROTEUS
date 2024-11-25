@@ -32,9 +32,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # time-stepping
     [params.dt]
-        minimum      = 1e2    # yr, minimum time-step
-        maximum      = 3e7    # yr, maximum time-step
-        initial      = 1e2    # yr, inital step size
+        minimum      = 3e1    # yr, minimum time-step
+        maximum      = 1e7    # yr, maximum time-step
+        initial      = 3e1    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e1    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
@@ -44,7 +44,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.dt.adaptive]
             atol         = 0.02   # Step size atol
-            rtol         = 0.11   # Step size rtol
+            rtol         = 0.09   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -110,10 +110,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
 
-    module  = "none"
+    module  = "dummy"
 
     [orbit.dummy]
-        H_tide  = 1e-11  # Fixed tidal power density [W kg-1]
+        H_tide  = 1e-7  # Fixed tidal power density [W kg-1]
 
 
 # Planetary structure - physics table
@@ -179,7 +179,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [interior]
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e6   # Initial heat flux guess [W m-2]
-    radiogenic_heat = true  # enable radiogenic heat production
+    radiogenic_heat = false  # enable radiogenic heat production
+    tidal_heat      = true  # enable tidal heat production
 
     module = "aragog"   # Which interior module to use
 

@@ -128,14 +128,9 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         log.info("Evolve interior...")
     log.debug("Using %s module to evolve interior"%config.interior.module)
 
-    tides_enabled = (config.orbit.module == 'dummy') and (config.orbit.dummy.H_tide > 1e-30)
-
     if config.interior.module == 'spider':
         # Import
         from proteus.interior.spider import ReadSPIDER, RunSPIDER
-
-        if tides_enabled:
-            log.warning("Tidal heating is not supported by SPIDER, but has been enabled")
 
         # Run SPIDER
         RunSPIDER(dirs, config, IC_INTERIOR, hf_all, hf_row)
@@ -144,9 +139,6 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
     elif config.interior.module == 'aragog':
         # Import
         from proteus.interior.aragog import RunAragog
-
-        if tides_enabled:
-            log.warning("Tidal heating is not yet supported by Aragog, but has been enabled")
 
         # Run Aragog
         sim_time, output = RunAragog(config, dirs, IC_INTERIOR, hf_row, hf_all)
