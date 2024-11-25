@@ -18,6 +18,13 @@ from ._struct import Struct
 
 log = logging.getLogger('fwl.' + __name__)
 
+def spada_zephyrus(instance, attribute, value):
+    # using zephyrus
+    #     zephyrus requires MORS + Spada
+    if (instance.escape.module == 'zephyrus') and \
+        not ( (instance.star.module == 'mors') and (instance.star.mors.tracks == 'spada')):
+        raise ValueError('ZEPHYRUS must be used with MORS and the Spada evolution tracks')
+
 @define
 class Config:
     """Root config parameters.
@@ -56,7 +63,7 @@ class Config:
     orbit: Orbit
     struct: Struct
     atmos_clim: AtmosClim
-    escape: Escape
+    escape: Escape = field(validator=(spada_zephyrus,))
     interior: Interior
     outgas: Outgas
     delivery: Delivery

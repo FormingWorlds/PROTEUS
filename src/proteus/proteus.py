@@ -17,6 +17,7 @@ from proteus.star.wrapper import (
     get_new_spectrum,
     init_star,
     scale_spectrum_to_toa,
+    update_stellar_mass,
     update_stellar_quantities,
     write_spectrum,
 )
@@ -170,6 +171,9 @@ class Proteus:
 
             # Create an empty initial row for helpfile
             self.hf_row = ZeroHelpfileRow()
+
+            # Stellar mass
+            update_stellar_mass(self.hf_row, self.config)
 
             # Initial time
             self.hf_row["Time"] = 0.0
