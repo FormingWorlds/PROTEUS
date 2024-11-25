@@ -72,7 +72,7 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
         return  (tmp-tmp_sol)/(tmp_liq-tmp_sol )
 
     # Interior heat capacity [J K-1]
-    cp_int = cp_m*output["M_mantle"] + cp_c*output["M_core"]
+    cp_int = cp_m*output["M_mantle"] + cp_c*hf_row["M_core"]
 
     # Subtract tidal contribution to the total heat flux.
     #    This heat energy is generated only in the mantle, not in the core.
