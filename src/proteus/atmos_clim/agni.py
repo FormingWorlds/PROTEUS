@@ -10,9 +10,9 @@ import numpy as np
 from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
-from proteus.atmos_clim.common import get_spfile_path
+from proteus.atmos_clim.common import get_spfile_path, get_height_from_pressure
 from proteus.utils.constants import gas_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest, safe_rm
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 if TYPE_CHECKING:
@@ -469,8 +469,13 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
                                         (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
 
     # XUV height in atm
-    p_xuv, idx_xuv =  find_nearest(atmos.p, config.escape.zephyrus.Pxuv*1e5)
-    z_xuv = atmos.z[idx_xuv]
+    if config.escape.module == 'zephyrus':
+        # escape level set by zephyrus config
+        p_xuv = config.escape.zephyrus.Pxuv*1e5     # convert bar -> Pa
+    else:
+        # escape level set to surface
+        p_xuv = hf_row["P_surf"]
+    p_xuv, z_xuv = get_height_from_pressure(atmos.p, atmos.z, p_xuv)
 
     # final things to store
     output = {}

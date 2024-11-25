@@ -12,7 +12,8 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import vap_list, vol_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, find_nearest
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder
+from proteus.atmos_clim.common import get_height_from_pressure
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -269,18 +270,26 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
     # observables
-    z_obs = -1.0
+    z_obs = 0.0
+    p_obs = hf_row["P_surf"]
     rho_obs = -1.0
-    if not atm.height_error:
-        # find 1 mbar level
-        idx = find_nearest(atm.p, 1e2)[1]
-        z_obs = atm.z[idx]
+    if atm.height_error:
+        log.error("Hydrostatic integration failed in JANUS!")
+    else:
+        # find observed level
+        p_obs, z_obs = get_height_from_pressure(atmos.p, atmos.z, p_obs)
+
         # calc observed density
         rho_obs = calc_observed_rho(atm)
 
     # XUV height in atm
-    p_xuv, idx_xuv =  find_nearest(atm.p, config.escape.zephyrus.Pxuv*1e5)
-    z_xuv = atm.z[idx_xuv]
+    if config.escape.module == 'zephyrus':
+        # escape level set by zephyrus config
+        p_xuv = config.escape.zephyrus.Pxuv*1e5     # convert bar -> Pa
+    else:
+        # escape level set to surface
+        p_xuv = hf_row["P_surf"]
+    p_xuv, z_xuv = get_height_from_pressure(atmos.p, atmos.z, p_xuv)
 
     # final things to store
     output={}
