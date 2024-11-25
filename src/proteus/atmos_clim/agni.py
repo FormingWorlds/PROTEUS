@@ -471,11 +471,11 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     # XUV height in atm
     if config.escape.module == 'zephyrus':
         # escape level set by zephyrus config
-        p_xuv = config.escape.zephyrus.Pxuv*1e5     # convert bar -> Pa
+        p_xuv = config.escape.zephyrus.Pxuv # [bar]
     else:
         # escape level set to surface
-        p_xuv = hf_row["P_surf"]
-    p_xuv, z_xuv = get_height_from_pressure(atmos.p, atmos.z, p_xuv)
+        p_xuv = hf_row["P_surf"] # [bar]
+    p_xuv, z_xuv = get_height_from_pressure(atmos.p, atmos.z, p_xuv*1e5) # [Pa], [m]
 
     # final things to store
     output = {}
