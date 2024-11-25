@@ -11,9 +11,9 @@ import janus.set_socrates_env  # noqa
 import numpy as np
 import pandas as pd
 
+from proteus.atmos_clim.common import get_height_from_pressure
 from proteus.utils.constants import vap_list, vol_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder
-from proteus.atmos_clim.common import get_height_from_pressure
 
 if TYPE_CHECKING:
     from proteus.config import Config

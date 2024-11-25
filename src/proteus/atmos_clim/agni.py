@@ -10,7 +10,7 @@ import numpy as np
 from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
-from proteus.atmos_clim.common import get_spfile_path, get_height_from_pressure
+from proteus.atmos_clim.common import get_height_from_pressure, get_spfile_path
 from proteus.utils.constants import gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
