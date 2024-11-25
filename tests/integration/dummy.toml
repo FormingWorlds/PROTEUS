@@ -178,6 +178,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e6   # Initial heat flux guess [W m-2]
     radiogenic_heat = false  # enable radiogenic heat production
+    tidal_heat      = true  # enable tidal heat production
 
     module = "dummy"   # Which interior module to use
 

@@ -77,6 +77,7 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
 
     return sim_time, output
 
+
 def SetupAragogSolver(config:Config, hf_row:dict):
 
     global aragog_solver
@@ -116,13 +117,19 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             adiabatic_bulk_modulus = 260E9, # AdamsWilliamsonEOS parameter [Pa]
             )
 
+    # Get tidal heat production [W/kg]
+    tidal_value = 0.0
+    if config.interior.tidal_heat and config.orbit.dummy:
+        tidal_value = config.orbit.dummy.H_tide
+
     energy = _EnergyParameters(
             conduction = True,
             convection = True,
             gravitational_separation = False,
             mixing = False,
             radionuclides = config.interior.radiogenic_heat,
-            tidal = False,
+            tidal = config.interior.tidal_heat,
+            tidal_value=tidal_value
             )
 
     initial_condition = _InitialConditionParameters(
@@ -221,6 +228,9 @@ def UpdateAragogSolver(dt:float, hf_row:dict, output_dir:str = None):
     # Update boundary conditions
     aragog_solver.parameters.boundary_conditions.outer_boundary_value = hf_row["F_atm"]
 
+    # TODO: Update tidal heating here when it is calculated self-consistently from
+    #       the interior properties (e.g. viscosity) and evolved over time.
+
     return
 
 def WriteAragogOutput(output_dir:str, time:float):
@@ -249,14 +259,16 @@ def GetAragogOutput(hf_row:dict):
     radii = aragog_output.radii_km_basic * 1e3 # [m]
     area  = 4 * np.pi * radii[-1]**2 # [m^2]
 
+    # Mass at each mesh layer
+    mass_s = aragog_output.mass_staggered[:,-1] # [kg]
+
     # Radiogenic heating
     Hradio_s = aragog_output.heating_radio[:,-1]  # [W kg-1]
-    mass_s   = aragog_output.mass_staggered[:,-1] # [kg]
-    Hradio_total = np.dot(Hradio_s, mass_s)       # [W]
-    output["F_radio"] = Hradio_total / area       # [W m-2]
+    output["F_radio"] = np.dot(Hradio_s, mass_s) / area  # [W m-2]
 
-    # Tidal heating is not supported by Aragog (yet)
-    output["F_tidal"] = 0.0
+    # Tidal heating
+    Htidal_s = aragog_output.heating_tidal[:,-1]  # [W kg-1]
+    output["F_tidal"] = np.dot(Htidal_s, mass_s)/area
 
     return output
 

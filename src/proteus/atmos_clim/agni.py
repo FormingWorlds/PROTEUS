@@ -456,9 +456,11 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     # New flux from SOCRATES
     F_atm_new = net_flux[0]
 
-    # Require that the net flux must be upward (positive)
+    # Enforce positive limit on F_atm, if enabled
     if config.atmos_clim.prevent_warming:
         F_atm_lim = max( 1e-8 , F_atm_new )
+    else:
+        F_atm_lim = F_atm_new
     if not np.isclose(F_atm_lim , F_atm_new ):
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))

@@ -270,6 +270,15 @@ def _try_spider( dirs:dict, config:Config,
     call_sequence.extend(["-MIXING    ", "1"]) # mixing (latent heat transport)
     call_sequence.extend(["-SEPARATION", "1"]) # gravitational separation of solid/melt
 
+    # Tidal heating
+    tidal_value = 0.0
+    if config.interior.tidal_heat:
+        if config.orbit.dummy:
+            tidal_value = config.orbit.dummy.H_tide
+
+        call_sequence.extend(["-HTIDAL",       "1"])
+        call_sequence.extend(["-htidal_value", "%.5e"%tidal_value])
+
     # Properties lookup data (folder relative to SPIDER src)
     folder = "lookup_data/1TPa-dK09-elec-free/"
     call_sequence.extend(["-phase_names",  "melt,solid"])
