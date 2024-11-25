@@ -64,14 +64,6 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
     else:
         UpdateAragogSolver(dt, hf_row)
 
-    # Update tidal heating inside Aragog
-    tidal_value= 0.0
-    if config.interior.tidal_heat:
-        if config.orbit.dummy:
-            tidal_value = config.orbit.dummy.H_tide
-    tidal_value /= aragog_solver.parameters.scalings.power_per_mass
-    aragog_solver.parameters.energy.tidal_value = tidal_value
-
     # Run Aragog solver
     aragog_solver.initialize()
     aragog_solver.solve()
@@ -125,6 +117,11 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             adiabatic_bulk_modulus = 260E9, # AdamsWilliamsonEOS parameter [Pa]
             )
 
+    # Get tidal heat production [W/kg]
+    tidal_value = 0.0
+    if config.interior.tidal_heat and config.orbit.dummy:
+        tidal_value = config.orbit.dummy.H_tide
+
     energy = _EnergyParameters(
             conduction = True,
             convection = True,
@@ -132,6 +129,7 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             mixing = False,
             radionuclides = config.interior.radiogenic_heat,
             tidal = config.interior.tidal_heat,
+            tidal_value=tidal_value
             )
 
     initial_condition = _InitialConditionParameters(
@@ -229,6 +227,9 @@ def UpdateAragogSolver(dt:float, hf_row:dict, output_dir:str = None):
 
     # Update boundary conditions
     aragog_solver.parameters.boundary_conditions.outer_boundary_value = hf_row["F_atm"]
+
+    # TODO: Update tidal heating here when it is calculated self-consistently from
+    #       the interior properties (e.g. viscosity) and evolved over time.
 
     return
 
