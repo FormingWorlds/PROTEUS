@@ -316,7 +316,7 @@ def _try_spider( dirs:dict, config:Config,
 
     # core-mantle boundary condition
     call_sequence.extend(["-CORE_BC",  "1"])
-    call_sequence.extend(["-rho_core", "10738.332568062382"]) # core density
+    call_sequence.extend(["-rho_core", "%.6e"%(config.struct.core_density)]) # core density
     call_sequence.extend(["-cp_core",  "880.0"]) # core heat capacity
 
     # surface boundary condition
@@ -469,7 +469,6 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float):
     output["M_mantle_liquid"] = float(data_a[0])
     output["M_mantle_solid"]  = float(data_a[1])
     output["M_mantle"]        = float(data_a[2])
-    output["M_core"]          = float(data_a[3])
 
     # Surface properties
     output["T_magma"]         = float(data_a[4])

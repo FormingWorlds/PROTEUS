@@ -98,12 +98,12 @@ def SetupAragogSolver(config:Config, hf_row:dict):
     boundary_conditions = _BoundaryConditionsParameters(
             outer_boundary_condition = 4, # 4 = prescribed heat flux
             outer_boundary_value = hf_row["F_atm"], # first guess surface heat flux [W/m2]
-            inner_boundary_condition = 1, # 3 = prescribed temperature
+            inner_boundary_condition = 1, # 1 = core cooling model, 3 = prescribed temperature
             inner_boundary_value = 4000, # core temperature [K], if inner_boundary_condition = 3
             emissivity = 1, # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature = hf_row["T_eqm"], # only used in gray body BC, outer_boundary_condition = 1
-            core_density = 10738.332568062382, # not used now
-            core_heat_capacity = 880, # not used now
+            core_density = config.struct.core_density, # used if inner_boundary_condition = 1
+            core_heat_capacity = 880, # used if inner_boundary_condition = 1
             )
 
     mesh = _MeshParameters(
@@ -243,7 +243,6 @@ def GetAragogOutput(hf_row:dict):
 
     output["M_mantle_liquid"] = output["M_mantle"] * output["Phi_global"]
     output["M_mantle_solid"] = output["M_mantle"] - output["M_mantle_liquid"]
-    output["M_core"] = aragog_output.core_mass
 
     # Calculate surface area
     radii = aragog_output.radii_km_basic * 1e3 # [m]
