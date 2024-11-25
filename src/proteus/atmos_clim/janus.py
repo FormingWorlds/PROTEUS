@@ -277,7 +277,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         log.error("Hydrostatic integration failed in JANUS!")
     else:
         # find observed level
-        p_obs, z_obs = get_height_from_pressure(atmos.p, atmos.z, p_obs)
+        p_obs, z_obs = get_height_from_pressure(atm.p, atm.z, p_obs)
 
         # calc observed density
         rho_obs = calc_observed_rho(atm)
@@ -289,7 +289,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     else:
         # escape level set to surface
         p_xuv = hf_row["P_surf"]
-    p_xuv, z_xuv = get_height_from_pressure(atmos.p, atmos.z, p_xuv)
+    p_xuv, z_xuv = get_height_from_pressure(atm.p, atm.z, p_xuv)
 
     # final things to store
     output={}
