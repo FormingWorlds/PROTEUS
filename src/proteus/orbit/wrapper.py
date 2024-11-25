@@ -48,7 +48,7 @@ def update_period(hf_row:dict, sma:float):
     '''
 
     # Standard gravitational parameter (planet mass + star mass)
-    mu = const_G * (hf_row["M_star"] + hf_row["M_tot"])
+    mu = const_G * (hf_row["M_star"] + hf_row["M_core"] + hf_row["M_mantle"])
 
     # Semimajor axis in SI units
     a = sma * AU
