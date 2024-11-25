@@ -443,12 +443,12 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "hd63433d.toml"
-    folder = "hd63433d_ro"
+    config = "l9859d.toml"
+    folder = "l9859d_grid2"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
-    # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
-    symlink = None
+    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
+    # symlink = None
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("C/H ratio", "delivery.elements.CH_ratio")
@@ -460,14 +460,17 @@ if __name__=='__main__':
     # pg.add_dimension("Model", "atmos_clim.module")
     # pg.set_dimension_direct("Model", ["janus", "agni"])
 
-    pg.add_dimension("Overlap method", "atmos_clim.agni.overlap_method")
-    pg.set_dimension_direct("Overlap method", ["ro", "ee", "rorr"])
-
     pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_arange("Redox state", -5, 5, 1)
+    pg.set_dimension_direct("Redox state", [-4, -1, 2])
 
-    # pg.add_dimension("Star Teff", "star.dummy.Teff")
-    # pg.set_dimension_arange("Star Teff", 3500, 7500, 250)
+    pg.add_dimension("Hydrogen", "delivery.elements.H_oceans")
+    pg.set_dimension_direct("Hydrogen", [10, 20, 30])
+
+    pg.add_dimension("Tidal", "orbit.dummy.H_tide")
+    pg.set_dimension_direct("Tidal", [0.0, 1e-8, 1e-6])
+
+    pg.add_dimension("Mass", "struct.mass_tot")
+    pg.set_dimension_direct("Mass", [1.94, 2.14, 2.31])
 
     # -----
     # Print state of parameter grid
@@ -479,7 +482,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(40, test_run=False)
+    pg.run(65, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.
