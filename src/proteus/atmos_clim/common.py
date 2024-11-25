@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 import netCDF4 as nc
 import numpy as np
 
+from proteus.utils.helper import find_nearest
+
 if TYPE_CHECKING:
     from proteus.config import Config
 
@@ -114,3 +116,29 @@ def get_spfile_path(fwl_dir:str, config:Config):
 
     # Construct file path
     return os.path.join(fwl_dir,"spectral_files",group,bands,group)+".sf"
+
+def get_height_from_pressure(p_arr, z_arr, p_tgt):
+    """
+    Get the geometric height [m] corresponding to a given pressure.
+
+    Parameters:
+    ----------------
+        p_arr: list
+            Pressure array
+        z_arr: list
+            Height array
+        p_tgt: float
+            Target pressure
+
+    Returns:
+    ----------------
+        p_close: float
+            Closest pressure in the array
+        z_close: float
+            Closest height in the array
+    """
+
+    p_close, idx = find_nearest(p_arr, p_tgt)
+    z_close = z_arr[idx]
+
+    return float(p_close), z_close
