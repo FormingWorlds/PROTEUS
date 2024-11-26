@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from proteus.config import Config
 
+from calliope.constants import molar_mass, ocean_moles
 from calliope.solve import (
     equilibrium_atmosphere,
     get_target_from_params,
     get_target_from_pressures,
 )
-from calliope.constants import ocean_moles, molar_mass
 
 from proteus.utils.constants import element_list, vol_list
 from proteus.utils.helper import UpdateStatusfile
