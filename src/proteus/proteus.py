@@ -10,7 +10,7 @@ import numpy as np
 from proteus.atmos_clim import RunAtmosphere
 from proteus.config import read_config_object
 from proteus.escape.wrapper import RunEscape
-from proteus.interior.wrapper import run_interior, solve_structure, update_gravity
+from proteus.interior.wrapper import run_interior, solve_structure
 from proteus.orbit.wrapper import run_orbit
 from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 from proteus.star.wrapper import (
@@ -260,21 +260,14 @@ class Proteus:
                 )
             )
 
-            ############### INTERIOR AND STRUCTURE
+            ############### INTERIOR
 
             PrintHalfSeparator()
-
-            # Solve interior structure
-            if self.loops["total"] < self.loops["init_loops"]:
-                solve_structure(self.directories, self.config, self.hf_all, self.hf_row)
 
             # Run interior model
             self.dt = run_interior(self.directories, self.config,
                                     self.IC_INTERIOR, self.hf_all,  self.hf_row)
 
-
-            # Update surface gravity
-            update_gravity(self.hf_row)
 
             # Advance current time in main loop according to interior step
             self.hf_row["Time"]     += self.dt    # in years

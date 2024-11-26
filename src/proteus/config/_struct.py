@@ -16,6 +16,8 @@ class Struct:
         Radius of the atmosphere-mantle boundary [R_earth]
     corefrac: float
         Fraction of the planet's interior radius corresponding to the core.
+    core_density: float
+        Density of the planet's core, optional [kg/m3]
     """
 
     set_by: str = field(validator=in_(('mass_tot','radius_int')))
@@ -24,3 +26,4 @@ class Struct:
     radius_int: float = field(validator=(gt(0),lt(10)))
 
     corefrac: float = field(validator=(gt(0), lt(1)))
+    core_density: float = field(default = 10738.33)

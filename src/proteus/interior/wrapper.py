@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
@@ -21,6 +22,12 @@ def update_gravity(hf_row:dict):
     '''
     hf_row["gravity"] = const_G * hf_row["M_int"] / (hf_row["R_int"] * hf_row["R_int"])
 
+def calculate_core_mass(hf_row:dict, config:Config):
+    '''
+    Calculate the core mass of the planet.
+    '''
+    hf_row["M_core"] = config.struct.core_density * 4.0/3.0 * np.pi * (hf_row["R_int"] * config.struct.corefrac)**3.0
+
 def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     '''
     Determine the interior radius (R_int) of the planet.
@@ -32,14 +39,10 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
 
     log.info("Using %s interior module to solve strcture"%config.interior.module)
 
-    solve_g = True
-    if config.interior.module == 'aragog':
-        log.warning("Cannot solve for interior structure with aragog")
-        solve_g = False
-
     # Initial guess for interior radius and gravity
     IC_INTERIOR = 1
     hf_row["R_int"]   = R_earth
+    calculate_core_mass(hf_row, config)
     hf_row["gravity"] = 9.81
 
     # Target mass
@@ -53,9 +56,9 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
         log.debug("Try R = %.2e m = %.3f R_earth"%(x,x/R_earth))
 
         # Use interior model to get dry mass from radius
+        calculate_core_mass(hf_row, config)
         run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row, verbose=False)
-        if solve_g:
-            update_gravity(hf_row)
+        update_gravity(hf_row)
 
         # Calculate residual
         res = hf_row["M_tot"] - M_target
@@ -76,9 +79,9 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     r = optimise.root_scalar(_resid, method='secant', xtol=1e3, rtol=rtol, maxiter=12,
                                     x0=hf_row["R_int"], x1=hf_row["R_int"]*1.02)
     hf_row["R_int"] = float(r.root)
+    calculate_core_mass(hf_row, config)
     run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
-    if solve_g:
-        update_gravity(hf_row)
+    update_gravity(hf_row)
 
     # Result
     log.info("Found solution for interior structure")
@@ -95,10 +98,12 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     solved as an inverse problem for now.
     '''
 
-    # Trivial case of setting it by the interior radius
+    # Set total mass by radius
+    # We might need here to setup a determine_interior_mass function as mass calculation depends on gravity
     if config.struct.set_by == 'radius_int':
         # radius defines interior structure
         hf_row["R_int"] = config.struct.radius_int * R_earth
+        calculate_core_mass(hf_row, config)
         # initial guess for mass, which will be updated by the interior model
         hf_row["M_int"] = config.struct.mass_tot * M_earth
         update_gravity(hf_row)

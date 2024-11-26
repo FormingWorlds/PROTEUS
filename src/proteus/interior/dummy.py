@@ -8,29 +8,12 @@ import numpy as np
 import pandas as pd
 
 from proteus.interior.timestep import next_step
-from proteus.utils.constants import M_earth, R_earth, secs_per_year
+from proteus.utils.constants import secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
-
-def calculate_simple_core_mass(radius:float, corefrac:float):
-    '''
-    Calculate the mass of a planet's core based on the density of Earth's.
-    '''
-
-    earth_fr = 0.55     # earth core radius fraction
-    earth_fm = 0.325    # earth core mass fraction  (https://arxiv.org/pdf/1708.08718.pdf)
-
-    # Estimate core density
-    core_rho = (3.0 * earth_fm * M_earth) / (4.0 * np.pi * ( earth_fr * R_earth )**3.0 )  # core density [kg m-3]
-
-    # Get core mass
-    core_mass = core_rho * 4.0/3.0 * np.pi * (radius * corefrac )**3.0
-
-    return core_mass
-
 
 def calculate_simple_mantle_mass(radius:float, corefrac:float)->float:
     '''
@@ -67,7 +50,6 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
     output["F_int"] = hf_row["F_atm"]
 
     # Interior structure
-    output["M_core"]   = calculate_simple_core_mass(hf_row["R_int"], config.struct.corefrac)
     output["M_mantle"] = calculate_simple_mantle_mass(hf_row["R_int"], config.struct.corefrac)
 
     # Parameters
@@ -90,7 +72,7 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
         return  (tmp-tmp_sol)/(tmp_liq-tmp_sol )
 
     # Interior heat capacity [J K-1]
-    cp_int = cp_m*output["M_mantle"] + cp_c*output["M_core"]
+    cp_int = cp_m*output["M_mantle"] + cp_c*hf_row["M_core"]
 
     # Subtract tidal contribution to the total heat flux.
     #    This heat energy is generated only in the mantle, not in the core.
