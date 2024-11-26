@@ -79,6 +79,11 @@ def calc_target_masses(dirs:dict, config:Config, hf_row:dict):
     # make solvevol options
     solvevol_inp = construct_options(dirs, config, hf_row)
 
+    # warn
+    if (config.delivery.elements.H_ppmw > 1e-10) \
+        and (config.delivery.elements.H_oceans > 1e-10):
+        log.warning("Hydrogen inventory set by summing `H_ppmw` and `H_oceans`")
+
     # calculate target mass of atoms (except O, which is derived from fO2)
     if config.delivery.initial == 'elements':
         solvevol_target = get_target_from_params(solvevol_inp)

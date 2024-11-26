@@ -13,7 +13,7 @@ class Elements:
     Attributes
     ----------
     CH_ratio: float
-        Volatile C/H nass ratio in combined mantle+atmosphere system.
+        Volatile C/H mass ratio in combined mantle+atmosphere system.
     H_oceans: float
         Absolute hydrogen inventory, units of equivalent Earth oceans.
     H_ppmw: float
