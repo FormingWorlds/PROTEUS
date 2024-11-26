@@ -104,18 +104,21 @@ class Proteus:
         """Initialize directories dictionary"""
         self.directories = SetDirectories(self.config)
 
-    def start(self, *, resume: bool = False):
+    def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
 
         Parameters
         ----------
         resume : bool
-            If True, continue from previous simulation
+            If True, continue from previous simulation.
+        offline : bool
+            Run in offline mode; do not try to connect to the internet.
         """
 
         # First things
         start_time = datetime.now()
         self.config.params.resume = resume
+        self.config.params.offline = offline
         UpdateStatusfile(self.directories, 0)
 
         # Clean output directory

@@ -69,10 +69,17 @@ def plot(plots: str, config_path: Path):
     default=False,
     help='Resume simulation from disk',
 )
-def start(config_path: Path, resume: bool):
+@click.option(
+    '-o',
+    '--offline',
+    is_flag=True,
+    default=False,
+    help='Run in offline mode; do not connect to the internet',
+)
+def start(config_path: Path, resume: bool, offline: bool):
     """Start proteus run"""
     runner = Proteus(config_path=config_path)
-    runner.start(resume=resume)
+    runner.start(resume=resume, offline=offline)
 
 
 cli.add_command(plot)
