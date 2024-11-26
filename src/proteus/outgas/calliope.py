@@ -49,6 +49,12 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     H_rel = config.delivery.elements.H_ppmw * 1e-6 * hf_row["M_mantle"]
     H_rel /= ocean_moles * molar_mass['H2']
 
+    #    avoid floating point errors here
+    if H_abs < 1e-10:
+        H_abs = 0.0
+    if H_rel < 1e-10:
+        H_rel < 0.0
+
     # Elemental inventory
     solvevol_inp['hydrogen_earth_oceans'] = H_abs + H_rel
     solvevol_inp['CH_ratio']    =           config.delivery.elements.CH_ratio
