@@ -181,13 +181,7 @@ def download_interior_lookuptables():
     DownloadLookupTableData()
 
 
-def download_sufficient_data(config:Config):
-    """
-    Download the required data based on the current options
-    """
-
-    log.info("Getting physical and reference data")
-
+def _get_sufficient(config:Config):
     # Star stuff
     if config.star.module == "mors":
         download_stellar_spectra()
@@ -220,6 +214,29 @@ def download_sufficient_data(config:Config):
     # Interior look up tables
     if config.interior.module == "aragog":
         download_interior_lookuptables()
+
+
+def download_sufficient_data(config:Config):
+    """
+    Download the required data based on the current options
+    """
+
+    log.info("Getting physical and reference data")
+
+    if config.params.offline:
+        # Don't try to get data
+        log.warning("Running in offline mode. Will not check for reference data.")
+
+    else:
+        # Try to get data
+        try:
+            _get_sufficient(config)
+
+        # Some issue. Usually due to lack of internet connection, but print the error
+        #     anyway so that the user knows what happened.
+        except OSError as e:
+            log.warning("Problem when downloading/checking reference data")
+            log.warning(str(e))
 
     log.info(" ")
 

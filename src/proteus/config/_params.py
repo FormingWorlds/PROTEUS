@@ -28,7 +28,9 @@ class Params:
     out: OutputParams
     dt: TimeStepParams
     stop: StopParams
+
     resume: bool = field(default = False)
+    offline: bool = field(default = False)
 
 
 @define
