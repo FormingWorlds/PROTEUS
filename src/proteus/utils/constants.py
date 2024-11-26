@@ -17,7 +17,6 @@ R_earth         = 6.335439e6            # m
 R_core_earth    = 3485000.0             # m
 M_core_earth    = 1.94E24               # kg
 mol             = 6.02214076e+23        # mol definition
-ocean_moles     = 7.68894973907177e+22  # moles of H2 (or H2O) in one present-day Earth ocean
 
 # Earth heat flux, globally averaged [W m-2]
 # https://se.copernicus.org/articles/1/5/2010/

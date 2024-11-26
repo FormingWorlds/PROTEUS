@@ -13,16 +13,19 @@ class Elements:
     Attributes
     ----------
     CH_ratio: float
-        Volatile C/H nass ratio in combined mantle+atmosphere system.
+        Volatile C/H mass ratio in combined mantle+atmosphere system.
     H_oceans: float
-        Bulk hydrogen inventory in units of equivalent Earth oceans.
+        Absolute hydrogen inventory, units of equivalent Earth oceans.
+    H_ppmw: float
+        Relative hydrogen inventory, ppmw relative to mantle mass.
     N_ppmw: float
-        Bulk nitrogen inventory in ppmw relative to mantle mass.
+        Relative nitrogen inventory, ppmw relative to mantle mass.
     S_ppmw: float
-        Bulk sulfur inventory in ppmw relative to mantle mass.
+        Absolute sulfur inventory, ppmw relative to mantle mass.
     """
     CH_ratio: float = field(validator=gt(0))
-    H_oceans: float = field(validator=gt(0))
+    H_oceans: float = field(validator=ge(0))
+    H_ppmw: float = field(validator=ge(0))
     N_ppmw: float = field(validator=ge(0))
     S_ppmw: float = field(validator=ge(0))
 

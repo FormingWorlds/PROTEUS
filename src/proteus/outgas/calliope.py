@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from proteus.config import Config
 
+from calliope.constants import molar_mass, ocean_moles
 from calliope.solve import (
     equilibrium_atmosphere,
     get_target_from_params,
@@ -35,8 +36,27 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     solvevol_inp["T_magma"]     =  hf_row["T_magma"]
     solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
 
+    # Sum hydrogen absolute and relative amounts...
+
+    #    absolute part
+    #         internally, calliope will convert this to mass in kg as:
+    #         H_kg = H_oceans * number_ocean_moles * molar_mass['H2']
+    H_abs = float(config.delivery.elements.H_oceans)
+
+    #    relative part
+    #        H_kg = H_rel * 1e-6 * M_mantle
+    #        then converted to units of earth oceans, and summed with absolute part
+    H_rel = config.delivery.elements.H_ppmw * 1e-6 * hf_row["M_mantle"]
+    H_rel /= ocean_moles * molar_mass['H2']
+
+    #    avoid floating point errors here
+    if H_abs < 1e-10:
+        H_abs = 0.0
+    if H_rel < 1e-10:
+        H_rel < 0.0
+
     # Elemental inventory
-    solvevol_inp['hydrogen_earth_oceans'] = config.delivery.elements.H_oceans
+    solvevol_inp['hydrogen_earth_oceans'] = H_abs + H_rel
     solvevol_inp['CH_ratio']    =           config.delivery.elements.CH_ratio
     solvevol_inp['nitrogen_ppmw'] =         config.delivery.elements.N_ppmw
     solvevol_inp['sulfur_ppmw'] =           config.delivery.elements.S_ppmw
@@ -58,6 +78,11 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
 def calc_target_masses(dirs:dict, config:Config, hf_row:dict):
     # make solvevol options
     solvevol_inp = construct_options(dirs, config, hf_row)
+
+    # warn
+    if (config.delivery.elements.H_ppmw > 1e-10) \
+        and (config.delivery.elements.H_oceans > 1e-10):
+        log.warning("Hydrogen inventory set by summing `H_ppmw` and `H_oceans`")
 
     # calculate target mass of atoms (except O, which is derived from fO2)
     if config.delivery.initial == 'elements':
