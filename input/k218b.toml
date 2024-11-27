@@ -53,7 +53,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # required number of iterations
         [params.stop.iters]
             enabled = true
-            minimum = 3
+            minimum = 5
             maximum = 9000
 
         # required time constraints
