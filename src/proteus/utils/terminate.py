@@ -3,15 +3,15 @@
 # Import utils-specific modules
 from __future__ import annotations
 
-import os
 import logging
+import os
 from typing import TYPE_CHECKING
 
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus import Proteus
-    from proteus.config import config
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
