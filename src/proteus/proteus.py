@@ -53,7 +53,7 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
-from proteus.utils.terminate import check_termination
+from proteus.utils.terminate import check_termination, print_termination_criteria
 
 
 class Proteus:
@@ -143,6 +143,10 @@ class Proteus:
 
         # Print module configuration
         print_module_configuration(self.directories, self.config, self.config_path)
+
+        # Print termination criteria
+        print_termination_criteria(self.config)
+
         PrintHalfSeparator()
 
         # Count iterations
@@ -152,9 +156,6 @@ class Proteus:
             "total_loops": self.config.params.stop.iters.maximum,  # Maximum number of total loops
             "init": 0,  # Number of init iters performed
             "init_loops": 3,  # Maximum number of init iters
-            "steady": -1,  # Number of iterations passed since steady-state declared
-            "steady_loops": 3,  # Number of iterations to perform post-steady state
-            "steady_check": 15,  # Number of iterations to look backwards when checking steady state
         }
 
         # Write config to output directory, for future reference
@@ -251,16 +252,14 @@ class Proteus:
             log.info(" ")
             PrintSeparator()
             log.info("Loop counters")
-            log.info("init    total     steady")
+            log.info("init      total")
             log.info(
-                "%1d/%1d   %04d/%04d   %1d/%1d"
+                "%1d/%1d     %04d/%04d "
                 % (
                     self.loops["init"],
                     self.loops["init_loops"],
                     self.loops["total"],
                     self.loops["total_loops"],
-                    self.loops["steady"],
-                    self.loops["steady_loops"],
                 )
             )
 

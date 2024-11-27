@@ -11,8 +11,26 @@ from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus import Proteus
+    from proteus.config import config
 
 log = logging.getLogger("fwl."+__name__)
+
+# Summarise convergence criteria
+def print_termination_criteria(config:Config):
+    log.info("Active termination criteria:")
+
+    def _print_criterion(state, msg):
+        log.info(f" {"✔" if state else "✗"}  {msg}")
+
+    # Optionally enabled:
+    _print_criterion(config.params.stop.solid.enabled,  "solidification")
+    _print_criterion(config.params.stop.radeqm.enabled, "energy balance / radiative equilibrium")
+    _print_criterion(config.params.stop.escape.enabled, "volatile inventory escaped")
+    _print_criterion(config.params.stop.time.enabled,   "maximum time reached")
+    _print_criterion(config.params.stop.iters.enabled,  "maximum loops reached")
+
+    # Always enabled:
+    _print_criterion(True, "keepalive file removed")
 
 # Print message in common format
 def _msg_termination(msg:str):
