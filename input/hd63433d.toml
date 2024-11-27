@@ -53,7 +53,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # required number of iterations
         [params.stop.iters]
             enabled = true
-            minimum = 3
+            minimum = 5
             maximum = 9000
 
         # required time constraints
@@ -72,12 +72,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             enabled = true
             atol    = 0.1     # absolute tolerance [W m-2]
             rtol    = 1e-3    # relative tolerance
-
-        # steady state
-        [params.stop.steady]
-            enabled  = false
-            F_crit   = 1.8        # Maximum absolute value of F_atm allowed for convergence
-            dprel    = 3.0e-10     # Percentage change in melt fraction over time (dp/p)/dt*100
 
         [params.stop.escape]
             enabled   = true
