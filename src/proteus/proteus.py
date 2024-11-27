@@ -153,7 +153,7 @@ class Proteus:
         self.loops = {
             "total": 0,  # Total number of iters performed
             "total_min": self.config.params.stop.iters.minimum,
-            "total_loops": self.config.params.stop.iters.maximum, 
+            "total_loops": self.config.params.stop.iters.maximum,
             "init": 0,  # Number of init iters performed
             "init_loops": 3,  # Maximum number of init iters
         }

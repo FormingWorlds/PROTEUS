@@ -20,7 +20,7 @@ def print_termination_criteria(config:Config):
     log.info("Active termination criteria")
 
     def _print_criterion(state, msg):
-        log.info(f"    {msg:16} {"✔" if state else "✗"}  ")
+        log.info(f"    {msg:16} {'✔' if state else '✗'}  ")
 
     # Optionally enabled:
     _print_criterion(config.params.stop.solid.enabled,  "Solidification")
