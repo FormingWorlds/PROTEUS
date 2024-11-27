@@ -427,6 +427,18 @@ class Proteus:
                     log.info("")
                     self.finished = True
 
+            # Stop simulation when wants to warm up but cannot do so
+            if self.config.atmos_clim.prevent_warming and (self.loops["total"] > self.loops["init_loops"] + 1):
+
+                F_eps = self.hf_row["F_atm"] - self.hf_row["F_tidal"] - self.hf_row["F_radio"]
+
+                if F_eps < 0:
+                    UpdateStatusfile(self.directories, 14)
+                    log.info("")
+                    log.info("===> Planet is no longer cooling! <===")
+                    log.info("")
+                    self.finished = True
+
             # Determine when the simulation enters a steady state
             if (
                 self.config.params.stop.steady.enabled
