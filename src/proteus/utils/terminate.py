@@ -17,20 +17,20 @@ log = logging.getLogger("fwl."+__name__)
 
 # Summarise convergence criteria
 def print_termination_criteria(config:Config):
-    log.info("Active termination criteria:")
+    log.info("Active termination criteria")
 
     def _print_criterion(state, msg):
-        log.info(f" {"✔" if state else "✗"}  {msg}")
+        log.info(f"    {msg:16} {"✔" if state else "✗"}  ")
 
     # Optionally enabled:
-    _print_criterion(config.params.stop.solid.enabled,  "solidification")
-    _print_criterion(config.params.stop.radeqm.enabled, "energy balance / radiative equilibrium")
-    _print_criterion(config.params.stop.escape.enabled, "volatile inventory escaped")
-    _print_criterion(config.params.stop.time.enabled,   "maximum time reached")
-    _print_criterion(config.params.stop.iters.enabled,  "maximum loops reached")
+    _print_criterion(config.params.stop.solid.enabled,  "Solidification")
+    _print_criterion(config.params.stop.radeqm.enabled, "Energy balance")
+    _print_criterion(config.params.stop.escape.enabled, "Volatile escape")
+    _print_criterion(config.params.stop.time.enabled,   "Maximum time")
+    _print_criterion(config.params.stop.iters.enabled,  "Maximum loops")
 
     # Always enabled:
-    _print_criterion(True, "keepalive file removed")
+    _print_criterion(True, "Keepalive file")
 
 # Print message in common format
 def _msg_termination(msg:str):
@@ -41,7 +41,7 @@ def _msg_termination(msg:str):
 # Solidified condition
 def _check_solid(handler: Proteus) -> bool:
     log.debug("Check solidification")
-    if handler.hf_row["Phi_global"] <= handler.handler.config.params.stop.solid.phi_crit:
+    if handler.hf_row["Phi_global"] <= handler.config.params.stop.solid.phi_crit:
         UpdateStatusfile(handler.directories, 10)
         _msg_termination("Planet solidified!")
         return True
@@ -104,13 +104,17 @@ def _check_maxiter(handler: Proteus) -> bool:
         return True
     return False
 
-# Minimum iterations
-def _check_miniter(handler: Proteus) -> bool:
+# Minimum iterations (return true when exit is allowed)
+def _check_miniter(handler: Proteus, finished:bool) -> bool:
     log.debug("Check minimum iterations")
 
-    if handler.loops["total"] > handler.loops["total_min"]:
-        UpdateStatusfile(handler.directories, 1)
-        return False
+    # Number of iterations not reached
+    if handler.loops["total"] <= handler.loops["total_min"]:
+        if finished:
+            # Model thinks that it is done
+            log.warning("Minimum number of iterations not yet attained; continuing...")
+            UpdateStatusfile(handler.directories, 1)
+        return False # do not exit
     return True
 
 def _check_keepalive(handler: Proteus) -> bool:
@@ -164,12 +168,11 @@ def check_termination(handler: Proteus) -> bool:
 
     # Minimum loops reached
     if handler.config.params.stop.iters.enabled:
-        miniter = _check_miniter(handler)
-        if miniter and finished:
-            log.warning("Minimum number of iterations not yet attained; continuing...")
-            finished = False
+        finished = finished and _check_miniter(handler, finished)
 
-    # Check if keepalive file has been removed - this means that the model should exit ASAP
+    # Check if keepalive file has been removed
+    #    This means that the model should exit ASAP.
+    #    This check should always come last.
     finished = finished or _check_keepalive(handler)
 
     # Set state
