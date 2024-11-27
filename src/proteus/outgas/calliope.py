@@ -19,6 +19,9 @@ from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("fwl."+__name__)
 
+# Constants
+mass_ocean = ocean_moles * molar_mass['H2']
+
 def construct_options(dirs:dict, config:Config, hf_row:dict):
     """
     Construct CALLIOPE options dictionary
@@ -38,28 +41,69 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
 
     # Sum hydrogen absolute and relative amounts...
 
-    #    absolute part
-    #         internally, calliope will convert this to mass in kg as:
-    #         H_kg = H_oceans * number_ocean_moles * molar_mass['H2']
-    H_abs = float(config.delivery.elements.H_oceans)
+    #    absolute part (H_kg = H_oceans * number_ocean_moles * molar_mass['H2'])
+    H_abs = float(config.delivery.elements.H_oceans) * mass_ocean
 
-    #    relative part
-    #        H_kg = H_rel * 1e-6 * M_mantle
-    #        then converted to units of earth oceans, and summed with absolute part
+    #    relative part (H_kg = H_rel * 1e-6 * M_mantle)
     H_rel = config.delivery.elements.H_ppmw * 1e-6 * hf_row["M_mantle"]
-    H_rel /= ocean_moles * molar_mass['H2']
+
+    # warn
+    if (H_abs > 1e-10) and (H_rel > 1e-10):
+        log.warning("Hydrogen inventory set by summing `H_ppmw` and `H_oceans`")
 
     #    avoid floating point errors here
-    if H_abs < 1e-10:
+    if H_abs < 1.0:
         H_abs = 0.0
-    if H_rel < 1e-10:
+    if H_rel < 1.0:
         H_rel < 0.0
+    H_kg = H_abs + H_rel
 
-    # Elemental inventory
-    solvevol_inp['hydrogen_earth_oceans'] = H_abs + H_rel
-    solvevol_inp['CH_ratio']    =           config.delivery.elements.CH_ratio
-    solvevol_inp['nitrogen_ppmw'] =         config.delivery.elements.N_ppmw
-    solvevol_inp['sulfur_ppmw'] =           config.delivery.elements.S_ppmw
+
+    # Calculate carbon inventory (we need CH_ratio for calliope)
+    CH_ratio = float(config.delivery.elements.CH_ratio)
+    if CH_ratio > 1e-10:
+        # check that C_ppmw isn't also set
+        if config.delivery.elements.C_ppmw > 1e-10:
+            log.error("Carbon inventory must be specified by CH_ratio or C_ppmw, not both")
+            UpdateStatusfile(dirs, 20)
+            exit(1)
+    else:
+        # calculate C/H ratio for calliope from C_kg and H_kg
+        CH_ratio = config.delivery.elements.C_ppmw * 1e-6 * hf_row["M_mantle"] / H_kg
+
+
+    # Calculate nitrogen inventory (we need N_ppmw for calliope)
+    NH_ratio = float(config.delivery.elements.NH_ratio)
+    if NH_ratio > 1e-10:
+        # check that N_ppmw isn't also set
+        if config.delivery.elements.N_ppmw > 1e-10:
+            log.error("Nitrogen inventory must be specified by NH_ratio or N_ppmw, not both")
+            UpdateStatusfile(dirs, 20)
+            exit(1)
+        # calculate N_ppmw
+        N_ppmw = 1e6 * NH_ratio * H_kg / hf_row["M_mantle"]
+    else:
+        N_ppmw = float(config.delivery.elements.N_ppmw)
+
+
+    # Calculate nitrogen inventory (we need N_ppmw for calliope)
+    SH_ratio = float(config.delivery.elements.SH_ratio)
+    if SH_ratio > 1e-10:
+        # check that S_ppmw isn't also set
+        if config.delivery.elements.S_ppmw > 1e-10:
+            log.error("Sulfur inventory must be specified by SH_ratio or S_ppmw, not both")
+            UpdateStatusfile(dirs, 20)
+            exit(1)
+        # calculate S_ppmw
+        S_ppmw = 1e6 * SH_ratio * H_kg / hf_row["M_mantle"]
+    else:
+        S_ppmw = float(config.delivery.elements.S_ppmw)
+
+    # Pass elemental inventory
+    solvevol_inp['hydrogen_earth_oceans'] = H_kg / mass_ocean
+    solvevol_inp['CH_ratio']    =           CH_ratio
+    solvevol_inp['nitrogen_ppmw'] =         N_ppmw
+    solvevol_inp['sulfur_ppmw'] =           S_ppmw
 
     # Volatile inventory
     for s in vol_list:
@@ -78,11 +122,6 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
 def calc_target_masses(dirs:dict, config:Config, hf_row:dict):
     # make solvevol options
     solvevol_inp = construct_options(dirs, config, hf_row)
-
-    # warn
-    if (config.delivery.elements.H_ppmw > 1e-10) \
-        and (config.delivery.elements.H_oceans > 1e-10):
-        log.warning("Hydrogen inventory set by summing `H_ppmw` and `H_oceans`")
 
     # calculate target mass of atoms (except O, which is derived from fO2)
     if config.delivery.initial == 'elements':
