@@ -444,7 +444,7 @@ if __name__=='__main__':
     # -----
 
     config = "l9859d.toml"
-    folder = "l9859d_grid3"
+    folder = "l9859d_grid4"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
@@ -461,13 +461,16 @@ if __name__=='__main__':
     # pg.set_dimension_direct("Model", ["janus", "agni"])
 
     pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_direct("Redox state", [-2, 0, 2, 4])
+    pg.set_dimension_direct("Redox state", [-2, 2, 6])
 
     pg.add_dimension("Tidal", "orbit.dummy.H_tide")
-    pg.set_dimension_direct("Tidal", [0.0, 1e-9, 1e-8, 1e-7, 1e-6])
+    pg.set_dimension_direct("Tidal", [0.0, 3e-8, 3e-7, 3e-6])
 
     pg.add_dimension("Mass", "struct.mass_tot")
-    pg.set_dimension_direct("Mass", [1.94, 2.14, 2.31])
+    pg.set_dimension_direct("Mass", [1.94, 2.31])
+
+    pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
+    pg.set_dimension_direct("Hydrogen", [1e2, 3e2, 1e3])
 
     # -----
     # Print state of parameter grid

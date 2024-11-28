@@ -53,6 +53,7 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
+from proteus.utils.terminate import check_termination, print_termination_criteria
 
 
 class Proteus:
@@ -142,18 +143,19 @@ class Proteus:
 
         # Print module configuration
         print_module_configuration(self.directories, self.config, self.config_path)
+
+        # Print termination criteria
+        print_termination_criteria(self.config)
+
         PrintHalfSeparator()
 
         # Count iterations
         self.loops = {
             "total": 0,  # Total number of iters performed
-            "total_min": 5,  # Minimum number of total loops
-            "total_loops": self.config.params.stop.iters.maximum,  # Maximum number of total loops
+            "total_min": self.config.params.stop.iters.minimum,
+            "total_loops": self.config.params.stop.iters.maximum,
             "init": 0,  # Number of init iters performed
             "init_loops": 3,  # Maximum number of init iters
-            "steady": -1,  # Number of iterations passed since steady-state declared
-            "steady_loops": 3,  # Number of iterations to perform post-steady state
-            "steady_check": 15,  # Number of iterations to look backwards when checking steady state
         }
 
         # Write config to output directory, for future reference
@@ -250,16 +252,14 @@ class Proteus:
             log.info(" ")
             PrintSeparator()
             log.info("Loop counters")
-            log.info("init    total     steady")
+            log.info("init      total")
             log.info(
-                "%1d/%1d   %04d/%04d   %1d/%1d"
+                "%1d/%1d     %04d/%04d "
                 % (
                     self.loops["init"],
                     self.loops["init_loops"],
                     self.loops["total"],
                     self.loops["total_loops"],
-                    self.loops["steady"],
-                    self.loops["steady_loops"],
                 )
             )
 
@@ -400,135 +400,21 @@ class Proteus:
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)
 
-            log.info("Check convergence criteria")
+            # Check for convergence
+            if self.loops["total"] >= self.loops["init_loops"]:
+                log.info("Check convergence criteria")
+                self.finished = check_termination(self)
 
-            # Stop simulation when planet is completely solidified
-            if self.config.params.stop.solid.enabled and (self.hf_row["Phi_global"] <= self.config.params.stop.solid.phi_crit):
-                UpdateStatusfile(self.directories, 10)
-                log.info("")
-                log.info("===> Planet solidified! <===")
-                log.info("")
-                self.finished = True
-
-            # Stop simulation when at radiative equilibrium
-            if self.config.params.stop.radeqm.enabled and (self.loops["total"] > self.loops["init_loops"] + 1):
-
-                # Radiative equilibrium nominally occurs when F_atm is zero.
-                # However, with tidal heating included, this is offset by the interior
-                #   heat production of the planet. Energy balance is instead achieved
-                #   when F_atm and F_tidal are equal.
-                F_eps = abs(self.hf_row["F_atm"] - self.hf_row["F_tidal"] - self.hf_row["F_radio"])
-                F_ref = abs(self.hf_row["F_atm"]) * self.config.params.stop.radeqm.rtol + self.config.params.stop.radeqm.atol
-
-                if F_eps <= F_ref:
-                    UpdateStatusfile(self.directories, 14)
-                    log.info("")
-                    log.info("===> Planet has reached global energy balance! <===")
-                    log.info("")
-                    self.finished = True
-
-            # Determine when the simulation enters a steady state
-            if (
-                self.config.params.stop.steady.enabled
-                and (self.loops["total"] > self.loops["steady_check"] * 2 + 5)
-                and (self.loops["steady"] < 0)
-            ):
-                # How many iterations to look backwards
-                lb1 = -int(self.loops["steady_check"])
-                lb2 = -1
-
-                # Get data
-                arr_t = np.array(self.hf_all["Time"])
-                arr_f = np.array(self.hf_all["F_atm"])
-                arr_p = np.array(self.hf_all["Phi_global"])
-
-                # Time samples
-                t1 = arr_t[lb1]
-                t2 = arr_t[lb2]
-
-                # Flux samples
-                flx_m = max(abs(arr_f[lb1]), abs(arr_f[lb2]))
-
-                # Check melt fraction rate
-                phi_1 = arr_p[lb1]
-                phi_2 = arr_p[lb2]
-                phi_r = abs(phi_2 - phi_1) / (t2 - t1)
-
-                # Stop when flux is small and melt fraction is unchanging
-                if (flx_m < self.config.params.stop.steady.F_crit) \
-                    and (phi_r < self.config.params.stop.steady.dprel):
-                    log.debug("Steady state declared")
-                    self.loops["steady"] = 0
-
-            # Steady-state handling
-            if self.loops["steady"] >= 0:
-                # Force the model to do N=steady_loops more iterations before stopping
-                # This is to make absolutely sure that it has reached a steady state.
-                self.loops["steady"] += 1
-
-                # Stop now?
-                if self.loops["steady"] >= self.loops["steady_loops"]:
-                    UpdateStatusfile(self.directories, 11)
-                    log.info("")
-                    log.info("===> Planet entered a steady state! <===")
-                    log.info("")
-                    self.finished = True
-
-            # Atmosphere has escaped
-            if self.has_escaped \
-                or (self.hf_row["M_atm"] <= self.config.params.stop.escape.mass_frac * \
-                                                self.hf_all.iloc[0]["M_atm"]):
-
-                UpdateStatusfile(self.directories, 15)
-                log.info("")
-                log.info("===> Atmosphere has escaped! <===")
-                log.info("")
-                self.finished = True
-
-            # Maximum time reached
-            if self.hf_row["Time"] >= self.config.params.stop.time.maximum:
-                UpdateStatusfile(self.directories, 13)
-                log.info("")
-                log.info("===> Target time reached! <===")
-                log.info("")
-                self.finished = True
-
-            # Maximum loops reached
-            if self.loops["total"] > self.loops["total_loops"]:
-                UpdateStatusfile(self.directories, 12)
-                log.info("")
-                log.info("===> Maximum number of iterations reached! <===")
-                log.info("")
-                self.finished = True
-
-            # Check if the minimum number of loops have been performed
-            if self.finished and (self.loops["total"] < self.loops["total_min"]):
-                log.info("Minimum number of iterations not yet attained; continuing...")
-                self.finished = False
-                UpdateStatusfile(self.directories, 1)
-
-            # Check if keepalive file has been removed - this means that the model should exit ASAP
-            if not os.path.exists(self.lockfile):
-                UpdateStatusfile(self.directories, 25)
-                log.info("")
-                log.info("===> Model exit was requested! <===")
-                log.info("")
-                self.finished = True
-
-            # Make plots if required and go to next iteration
-            if (
-                (self.config.params.out.plot_mod > 0)
-                and (self.loops["total"] % self.config.params.out.plot_mod == 0)
-                and (not self.finished)
-            ):
-                PrintHalfSeparator()
-                log.info("Making plots")
-                UpdatePlots(self.hf_all, self.directories, self.config)
+            # Make plots
+            if self.config.params.out.plot_mod > 0 and not self.finished:
+                if self.loops["total"] % self.config.params.out.plot_mod == 0:
+                    log.info("Making plots")
+                    UpdatePlots(self.hf_all, self.directories, self.config)
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
         # FINAL THINGS BEFORE EXIT
-        PrintHalfSeparator()
+        PrintSeparator()
 
         # Clean up files
         safe_rm(self.lockfile)

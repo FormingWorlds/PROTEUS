@@ -27,7 +27,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "l9859d"
         logging     = "INFO"
-        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 10      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping
@@ -53,14 +53,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # required number of iterations
         [params.stop.iters]
             enabled = true
-            minimum = 3
+            minimum = 5
             maximum = 9000
 
         # required time constraints
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 4.567e+9     # yr, model will terminate when t > maximum
+            maximum = 1e+9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -71,13 +71,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.radeqm]
             enabled = true
             atol    = 1e-2    # absolute tolerance [W m-2]
-            rtol    = 1e-2    # relative tolerance
-
-        # steady state
-        [params.stop.steady]
-            enabled  = false
-            F_crit   = 1.8        # Maximum absolute value of F_atm allowed for convergence
-            dprel    = 3.0e-10     # Percentage change in melt fraction over time (dp/p)/dt*100
+            rtol    = 2e-2    # relative tolerance
 
         [params.stop.escape]
             enabled   = true
@@ -140,7 +134,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [atmos_clim.agni]
         p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
-        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
         num_levels      = 42            # Number of atmospheric grid levels
         chemistry       = "eq"        # "none" | "eq"

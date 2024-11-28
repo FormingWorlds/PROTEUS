@@ -128,8 +128,6 @@ class StopParams:
         Parameters for solidification criteria.
     radeqm: StopRadeqm
         Parameters for radiative equilibrium criteria.
-    steady: StopSteady
-        Parameters for steady state criteria.
     escape: StopEscape
         Parameters for escape criteria.
     """
@@ -137,7 +135,6 @@ class StopParams:
     time: StopTime
     solid: StopSolid
     radeqm: StopRadeqm
-    steady: StopSteady
     escape: StopEscape
 
 
@@ -208,24 +205,6 @@ class StopRadeqm:
     enabled: bool
     atol: float = field(validator=gt(0))
     rtol: float = field(validator=ge(0))
-
-
-@define
-class StopSteady:
-    """Parameters for steady state stopping criteria.
-
-    Attributes
-    ----------
-    enabled: bool
-        Enable criteria if True
-    F_crit: float
-        Necessary (not sufficient) condition on maximum absolute net outgoing flux [W m-2].
-    dprel: float
-        Necessary (not sufficient) condition maximum change in melt fraction over time `(dp/p)/dt*100` [yr-1].
-    """
-    enabled: bool
-    F_crit: float = field(validator=gt(0))
-    dprel: float = field(validator=gt(0))
 
 
 @define
