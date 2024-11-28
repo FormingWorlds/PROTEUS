@@ -10,7 +10,8 @@ from ._converters import none_if_none
 class Elements:
     """Initial volatile inventory by planetary element abundances.
 
-    For C, N, S elements: only XH_ratio or X_ppmw should be used at any one time.
+    For hydrogen: only H_oceans or H_ppmw should be used at any one time.
+    For X in {C, N, S}: only XH_ratio or X_ppmw should be used at any one time.
 
     Attributes
     ----------

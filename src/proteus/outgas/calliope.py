@@ -27,6 +27,8 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     Construct CALLIOPE options dictionary
     """
 
+    invalid = False  # Invalid options set by config
+
     solvevol_inp = {}
 
     # Planet properties
@@ -39,7 +41,7 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     solvevol_inp["T_magma"]     =  hf_row["T_magma"]
     solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
 
-    # Sum hydrogen absolute and relative amounts...
+    # Calculate hydrogen inventory...
 
     #    absolute part (H_kg = H_oceans * number_ocean_moles * molar_mass['H2'])
     H_abs = float(config.delivery.elements.H_oceans) * mass_ocean
@@ -47,17 +49,15 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     #    relative part (H_kg = H_rel * 1e-6 * M_mantle)
     H_rel = config.delivery.elements.H_ppmw * 1e-6 * hf_row["M_mantle"]
 
-    # warn
-    if (H_abs > 1e-10) and (H_rel > 1e-10):
-        log.warning("Hydrogen inventory set by summing `H_ppmw` and `H_oceans`")
-
-    #    avoid floating point errors here
+    #    use whichever was set (one of these will be zero)
     if H_abs < 1.0:
-        H_abs = 0.0
-    if H_rel < 1.0:
-        H_rel < 0.0
-    H_kg = H_abs + H_rel
-
+        H_kg = H_rel
+    elif H_rel < 1.0:
+        H_kg = H_abs
+    else:
+        log.error("Hydrogen inventory must be specified by H_oceans or H_ppmw, not both")
+        invalid = True
+        H_kg = -1 # dummy value
 
     # Calculate carbon inventory (we need CH_ratio for calliope)
     CH_ratio = float(config.delivery.elements.CH_ratio)
@@ -65,12 +65,10 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
         # check that C_ppmw isn't also set
         if config.delivery.elements.C_ppmw > 1e-10:
             log.error("Carbon inventory must be specified by CH_ratio or C_ppmw, not both")
-            UpdateStatusfile(dirs, 20)
-            exit(1)
+            invalid = True
     else:
         # calculate C/H ratio for calliope from C_kg and H_kg
         CH_ratio = config.delivery.elements.C_ppmw * 1e-6 * hf_row["M_mantle"] / H_kg
-
 
     # Calculate nitrogen inventory (we need N_ppmw for calliope)
     NH_ratio = float(config.delivery.elements.NH_ratio)
@@ -78,8 +76,7 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
         # check that N_ppmw isn't also set
         if config.delivery.elements.N_ppmw > 1e-10:
             log.error("Nitrogen inventory must be specified by NH_ratio or N_ppmw, not both")
-            UpdateStatusfile(dirs, 20)
-            exit(1)
+            invalid = True
         # calculate N_ppmw
         N_ppmw = 1e6 * NH_ratio * H_kg / hf_row["M_mantle"]
     else:
@@ -92,12 +89,19 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
         # check that S_ppmw isn't also set
         if config.delivery.elements.S_ppmw > 1e-10:
             log.error("Sulfur inventory must be specified by SH_ratio or S_ppmw, not both")
-            UpdateStatusfile(dirs, 20)
-            exit(1)
+            invalid = True
         # calculate S_ppmw
         S_ppmw = 1e6 * SH_ratio * H_kg / hf_row["M_mantle"]
     else:
         S_ppmw = float(config.delivery.elements.S_ppmw)
+
+    # Volatile abundances are over-specified in the config file.
+    # The code exits here, rather than above, in case there are multiple
+    #   instances of volatiles being over-specified in the file.
+    if invalid:
+        log.error("e.g. to set N by metallicity, use NH_ratio=1 and N_ppmw=0")
+        UpdateStatusfile(dirs, 20)
+        exit(1)
 
     # Pass elemental inventory
     solvevol_inp['hydrogen_earth_oceans'] = H_kg / mass_ocean
