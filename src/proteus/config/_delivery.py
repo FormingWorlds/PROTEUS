@@ -5,6 +5,7 @@ from attrs import define, field
 
 from ._converters import none_if_none
 
+
 @define
 class Elements:
     """Initial volatile inventory by planetary element abundances.
