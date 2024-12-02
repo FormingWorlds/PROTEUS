@@ -16,8 +16,6 @@ Pkg.activate(ROOT_DIR)
 
 # Import system packages
 using Printf
-using Plots
-using LaTeXStrings
 using LoggingExtras
 using NCDatasets
 using Glob
@@ -179,7 +177,7 @@ function setup_atmos_from_nc!(output_dir::String, ncfile::String, spfile::String
                             flag_gcontinuum=input_flag_continuum,
                             flag_rayleigh=input_flag_rayleigh,
                             thermo_functions=input_flag_thermo,
-                            overlap_method=2
+                            overlap_method="ro"
                             )
     code = atmosphere.allocate!(atmos, stfile)
     if !code
@@ -190,7 +188,7 @@ function setup_atmos_from_nc!(output_dir::String, ncfile::String, spfile::String
     return atmos, original_model
 end
 
-function postproc(output_dir::String, nsamples::Int)
+function postproc(output_dir::String, nsamples::Int, spfile::String)
 
     @info "Working in $output_dir"
 
@@ -215,15 +213,29 @@ function postproc(output_dir::String, nsamples::Int)
     all_years = all_years[mask]
     all_files = all_files[mask]
 
+    # negative sample number means to sample all
+    if nsamples < 1
+        nsamples = nfiles
+    end
+
     # re-sample files
-    if nsamples <= 2
+    if nsamples == 1
+        # use last
+        years = Int[all_years[end]]
+        files = String[all_files[end]]
+        nsamples = 1
+        @info @sprintf("Sampled down to %d files \n", nsamples)
+        @debug repr(years)
+
+    elseif nsamples == 2
+        # use first and last
         years = Int[all_years[1], all_years[end]]
         files = String[all_files[1], all_files[end]]
-        nsamples = 2
         @info @sprintf("Sampled down to %d files \n", nsamples)
         @debug repr(years)
 
     elseif nsamples < nfiles
+        # sample file names linearly
         years = Int[]
         files = String[]
         stride::Int = Int(ceil(nfiles/(nsamples-1)))
@@ -237,6 +249,7 @@ function postproc(output_dir::String, nsamples::Int)
         @debug repr(years)
 
     else
+        # sample all
         @info "Processing all files"
         years = copy(all_years)
         files = copy(all_files)
@@ -253,12 +266,16 @@ function postproc(output_dir::String, nsamples::Int)
     sort!(star_years)
 
     # use high resolution file
-    spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
-    star_file = joinpath(output_dir, "data", "$(star_years[1]).sflux")
-
+    if isempty(spfile)
+        spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
+        star_file = joinpath(output_dir, "data", "$(star_years[1]).sflux")
+        @info "Spectral file not provided. Will use $spectral_file"
+    else
     # use existing spectral file
-    # spectral_file = joinpath(output_dir, "runtime.sf")
-    # star_file = ""
+        spectral_file = spfile
+        star_file = ""
+        @info "Spectral file provided by user: $spectral_file"
+    end
 
     # Setup initial atmos struct...
     atmos, original_model = setup_atmos_from_nc!(output_dir, files[1], spectral_file, star_file)
@@ -418,23 +435,36 @@ end
 function main()::Int
 
     # validate CLI
-    if length(ARGS) != 2
+    if length(ARGS) < 2
         @error("Invalid arguments. Must provide output path (str) and sampling count (int).")
         return 1
     end
+
+    # directory to post-process
     target_dir = abspath(ARGS[1])
     if !isdir(target_dir)
         @error("Path does not exist: $target_dir")
         return 1
     end
+
+    # samples in time
     if isnothing(tryparse(Int, ARGS[2]))
         @error("Nsamp is not an integer: $(ARGS[2])")
         return 1
     end
     Nsamp = parse(Int, ARGS[2])
 
+    # path to spectral file
+    spfile::String = ""
+    if length(ARGS) == 3
+        spfile = String(ARGS[3])
+        if !isfile(spfile)
+            @error "Invalid spectral file provided: $spfile"
+        end
+    end
+
     # run postprocessing
-    postproc(target_dir, Nsamp)
+    postproc(target_dir, Nsamp, spfile)
 
     # done
     @info "Done"

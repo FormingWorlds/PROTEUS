@@ -365,6 +365,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         ls_increase = 1.02
         perturb_all = True
         max_steps   = 100
+        chem_type   = int(config.atmos_clim.agni.chemistry_int)
 
         # try different solver parameters if struggling
         if attempts == 2:
@@ -379,6 +380,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             dx_max      = 200.0
             ls_increase = 1.1
             max_steps   = 200
+            chem_type   = 0     # no chemistry for very first iteration
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -388,7 +390,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         # Try solving temperature profile
         agni_success = jl.AGNI.solver.solve_energy_b(atmos,
                             sol_type=config.atmos_clim.surf_state_int,
-                            chem_type=config.atmos_clim.agni.chemistry_int,
+                            chem_type=chem_type,
 
                             conduct=False, convect=True, latent=True, sens_heat=True,
 

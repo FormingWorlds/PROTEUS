@@ -444,7 +444,7 @@ if __name__=='__main__':
     # -----
 
     config = "l9859d.toml"
-    folder = "l9859d_grid4"
+    folder = "l9859d_grid5"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
@@ -461,16 +461,20 @@ if __name__=='__main__':
     # pg.set_dimension_direct("Model", ["janus", "agni"])
 
     pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_direct("Redox state", [-2, 2, 6])
+    pg.set_dimension_direct("Redox state", [-6, -3, 3, 6])
 
     pg.add_dimension("Tidal", "orbit.dummy.H_tide")
-    pg.set_dimension_direct("Tidal", [0.0, 3e-8, 3e-7, 3e-6])
+    pg.set_dimension_direct("Tidal", [0.0, 1e-7, 3e-7, 1e-6])
 
-    pg.add_dimension("Mass", "struct.mass_tot")
-    pg.set_dimension_direct("Mass", [1.94, 2.31])
+    pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
+    pg.set_dimension_direct("Sulfur", [2, 4, 8])
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_direct("Hydrogen", [1e2, 3e2, 1e3])
+    pg.set_dimension_direct("Hydrogen", [100, 200])
+
+    pg.add_dimension("Core", "struct.corefrac")
+    pg.set_dimension_direct("Core", [0.4, 0.6])
+
 
     # -----
     # Print state of parameter grid
@@ -482,7 +486,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(90, test_run=False)
+    pg.run(100, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.
