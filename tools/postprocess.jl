@@ -267,7 +267,7 @@ function postproc(output_dir::String, nsamples::Int, spfile::String)
 
     # use high resolution file
     if isempty(spfile)
-        spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
+        spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files", "Honeyside", "4096", "Honeyside.sf")
         star_file = joinpath(output_dir, "data", "$(star_years[1]).sflux")
         @info "Spectral file not provided. Will use $spectral_file"
     else

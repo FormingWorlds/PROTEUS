@@ -31,7 +31,7 @@ end
 function main()::Int
 
     # validate CLI
-    if length(ARGS) != 2
+    if length(ARGS) < 2
         @error("Invalid arguments. Must provide output path (str) and sampling count (int).")
         return 1
     end
@@ -52,10 +52,15 @@ function main()::Int
 
     # optimise by using first case spectral file
     optimise::Bool = false
-    spfile::Bool = ""
-    if (length(ARGS) == 3) && !isnothing(tryparse(Bool), ARGS[3])
-        optimise = parse(Bool, ARGS[3])
-        @info "Will use case00000 spectral file for all cases"
+    spfile::String = ""
+    if length(ARGS) >= 3
+        for arg in ARGS
+            optimise = optimise || (lowercase(arg) == "optimise")
+        end
+        if optimise
+            @info "Optimising file I/O"
+            @info "    will use case00000 spectral file for all cases"
+        end
     end
 
     # find case dirs
@@ -69,16 +74,18 @@ function main()::Int
     @info "Will use up to $(Threads.nthreads()) threads"
     sleep(3)
 
-    # remove old spectral files
+    # remove old files
     for c in case_dirs
-        rm(joinpath(c, "runtime.sf"))
-        rm(joinpath(c, "runtime.sf_k"))
+        rm(joinpath(c, "runtime.sf")  , force=true)
+        rm(joinpath(c, "runtime.sf_k"), force=true)
+        rm(joinpath(c, "ppr.nc"),       force=true)
+        rm(joinpath(c, "ppr.log"),      force=true)
     end
 
     # run first case
     if optimise
         # run
-        once(case_dirs[1], Nsamp)
+        once(case_dirs[1], Nsamp, spfile)
 
         # get spectral file
         spfile = joinpath(case_dirs[1],"runtime.sf")
