@@ -443,8 +443,8 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "l9859d.toml"
-    folder = "l9859d_grid5"
+    config = "l9859b.toml"
+    folder = "l9859b_grid1"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
@@ -466,14 +466,11 @@ if __name__=='__main__':
     pg.add_dimension("Tidal", "orbit.dummy.H_tide")
     pg.set_dimension_direct("Tidal", [0.0, 1e-7, 3e-7, 1e-6])
 
-    pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    pg.set_dimension_direct("Sulfur", [2, 4, 8])
-
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
     pg.set_dimension_direct("Hydrogen", [100, 200])
 
     pg.add_dimension("Core", "struct.corefrac")
-    pg.set_dimension_direct("Core", [0.4, 0.6])
+    pg.set_dimension_direct("Core", [0.2, 0.4, 0.6])
 
 
     # -----

@@ -25,7 +25,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "l9859d"
+        path        = "l9859b"
         logging     = "INFO"
         plot_mod    = 20      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -99,8 +99,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.0486    # AU
-    eccentricity    = 0.074      # dimensionless
+    semimajoraxis   = 0.02191    # AU
+    eccentricity    = 0.167      # dimensionless
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 
@@ -112,7 +112,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Planetary structure - physics table
 [struct]
     set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
-    mass_tot    = 2.31       # M_earth
+    mass_tot    = 0.47       # M_earth
     radius_int  = 1.0       # R_earth
     corefrac    = 0.4      # non-dim., radius fraction
 
@@ -134,7 +134,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Honeyside"   # which gas opacities to include
+        spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "eq"        # "none" | "eq"
@@ -183,7 +183,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         tolerance       = 1.0e-9   # solver tolerance
         tsurf_atol      = 25.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
-        ini_entropy     = 3500.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 3600.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]

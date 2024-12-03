@@ -365,6 +365,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         ls_increase = 1.02
         perturb_all = True
         max_steps   = 100
+        rtol        = float(config.atmos_clim.agni.solution_rtol)
         chem_type   = int(config.atmos_clim.agni.chemistry_int)
 
         # try different solver parameters if struggling
@@ -379,8 +380,15 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             easy_start  = True
             dx_max      = 200.0
             ls_increase = 1.1
-            max_steps   = 200
             chem_type   = 0     # no chemistry for very first iteration
+            max_steps  *= 2.0
+            rtol       *= 2.0
+
+        # second iteration parameters
+        if loops_total == 1:
+            dx_max      = 90.0
+            max_steps  *= 1.5
+            rtol       *= 1.5
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -389,20 +397,22 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
         # Try solving temperature profile
         agni_success = jl.AGNI.solver.solve_energy_b(atmos,
-                            sol_type=config.atmos_clim.surf_state_int,
-                            chem_type=chem_type,
+                            sol_type  = int(config.atmos_clim.surf_state_int),
+                            method    = int(1),
+                            chem_type = int(chem_type),
 
-                            conduct=False, convect=True, latent=True, sens_heat=True,
+                            conduct=False, convect=True, sens_heat=True,
+                            latent=True, rainout=True,
 
-                            max_steps=max_steps, max_runtime=900.0,
-                            conv_atol=config.atmos_clim.agni.solution_atol,
-                            conv_rtol=config.atmos_clim.agni.solution_rtol,
+                            max_steps=int(max_steps), max_runtime=900.0,
+                            conv_atol=float(config.atmos_clim.agni.solution_atol),
+                            conv_rtol=float(rtol),
 
-                            method=1, ls_increase=ls_increase, rainout=True,
-                            dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
+                            ls_increase=float(ls_increase), ls_method=int(linesearch),
+                            dx_max=float(dx_max), easy_start=easy_start,
                             perturb_all=perturb_all,
 
-                            save_frames=False, modplot=modplot
+                            save_frames=False, modplot=int(modplot)
                             )
 
         # Move AGNI logfile content into PROTEUS logfile
