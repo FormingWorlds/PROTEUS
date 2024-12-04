@@ -10,6 +10,7 @@ nav:
   - Config: config.md
   - Data: data.md
   - Troubleshooting: troubleshooting.md
+  - Kapteyn cluster: tips_kapteyn_cluster.md
   - Contact: contact.md
   - Contributing: CONTRIBUTING.md
   - Code of Conduct: CODE_OF_CONDUCT.md
