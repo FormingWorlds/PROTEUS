@@ -141,7 +141,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         surf_material   = "greybody"    # surface material file for scattering
         solution_atol   = 1e-3          # solver absolute tolerance
         solution_rtol   = 2e-2          # solver relative tolerance
-        overlap_method    = "ee"          # gas overlap method
+        overlap_method  = "ee"          # gas overlap method
+        condensation    = true          # volatile condensation
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure

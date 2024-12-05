@@ -132,23 +132,24 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
     # set condensation
     condensates = []
-    if len(vol_dict) == 1:
-        # single-gas case
-        condensates = list(vol_dict.keys())
-    else:
-        # get sorted gases (in order of decreasing VMR at the surface)
-        vol_sorted = sorted(vol_dict.items(), key=lambda item: item[1])[::-1]
+    if config.atmos_clim.agni.condensation:
+        if len(vol_dict) == 1:
+            # single-gas case
+            condensates = list(vol_dict.keys())
+        else:
+            # get sorted gases (in order of decreasing VMR at the surface)
+            vol_sorted = sorted(vol_dict.items(), key=lambda item: item[1])[::-1]
 
-        # Set gases as condensates...
-        condensates = ['H2O'] # always prefer H2O
-        for v in vol_sorted:
-            # add gas if it has non-zero abundance
-            if (v[1] > 1e-30) and (v[0] not in condensates):
-                condensates.append(v[0])
+            # Set gases as condensates...
+            condensates = ['H2O'] # always prefer H2O
+            for v in vol_sorted:
+                # add gas if it has non-zero abundance
+                if (v[1] > 1e-30) and (v[0] not in condensates):
+                    condensates.append(v[0])
 
-        # Remove the least abundant gas from the list, so that we have something to
-        #     fill the background with if everything else condenses at a given level
-        condensates = condensates[:-1]
+            # Remove the least abundant gas from the list, so that we have something to
+            #     fill the background with if everything else condenses at a given level
+            condensates = condensates[:-1]
 
     # Chemistry
     chem_type = config.atmos_clim.agni.chemistry
@@ -365,8 +366,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         ls_increase = 1.02
         perturb_all = True
         max_steps   = 100
-        rtol        = float(config.atmos_clim.agni.solution_rtol)
-        chem_type   = int(config.atmos_clim.agni.chemistry_int)
 
         # try different solver parameters if struggling
         if attempts == 2:
@@ -380,15 +379,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             easy_start  = True
             dx_max      = 200.0
             ls_increase = 1.1
-            chem_type   = 0     # no chemistry for very first iteration
-            max_steps  *= 2.0
-            rtol       *= 2.0
-
-        # second iteration parameters
-        if loops_total == 1:
-            dx_max      = 90.0
-            max_steps  *= 1.5
-            rtol       *= 1.5
+            max_steps   = 200
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -399,14 +390,14 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         agni_success = jl.AGNI.solver.solve_energy_b(atmos,
                             sol_type  = int(config.atmos_clim.surf_state_int),
                             method    = int(1),
-                            chem_type = int(chem_type),
+                            chem_type = int(config.atmos_clim.agni.chemistry_int),
 
                             conduct=False, convect=True, sens_heat=True,
-                            latent=True, rainout=True,
+                            latent=config.atmos_clim.agni.condensation, rainout=True,
 
                             max_steps=int(max_steps), max_runtime=900.0,
                             conv_atol=float(config.atmos_clim.agni.solution_atol),
-                            conv_rtol=float(rtol),
+                            conv_rtol=float(config.atmos_clim.agni.solution_rtol),
 
                             ls_increase=float(ls_increase), ls_method=int(linesearch),
                             dx_max=float(dx_max), easy_start=easy_start,

@@ -134,14 +134,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
-        chemistry       = "eq"        # "none" | "eq"
+        chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solution_atol   = 3e-2          # solver absolute tolerance
         solution_rtol   = 6e-2          # solver relative tolerance
-        overlap_method    = "ee"          # gas overlap method
+        overlap_method  = "ee"          # gas overlap method
+        condensation    = false         # volatile condensation
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure

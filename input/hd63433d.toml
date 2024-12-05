@@ -143,6 +143,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         solution_atol   = 1e-2          # solver absolute tolerance
         solution_rtol   = 5e-2          # solver relative tolerance
         overlap_method    = "ee"          # gas overlap method
+        condensation    = true          # volatile condensation
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
