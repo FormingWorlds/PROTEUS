@@ -141,7 +141,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solution_atol   = 3e-2          # solver absolute tolerance
         solution_rtol   = 6e-2          # solver relative tolerance
-        overlap_method  = "ro"          # gas overlap method
+        overlap_method  = "ee"          # gas overlap method
         condensation    = true         # volatile condensation
 
     [atmos_clim.janus]
