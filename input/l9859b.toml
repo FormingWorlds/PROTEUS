@@ -43,8 +43,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             propconst    = 52.0   # Proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.02   # Step size atol
-            rtol         = 0.09   # Step size rtol
+            atol         = 0.03   # Step size atol
+            rtol         = 0.10   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -136,13 +136,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
+        num_levels      = 42            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
-        surf_material   = "greybody"    # surface material file for scattering
+        surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solution_atol   = 3e-2          # solver absolute tolerance
         solution_rtol   = 6e-2          # solver relative tolerance
-        overlap_method  = "ee"          # gas overlap method
-        condensation    = false         # volatile condensation
+        overlap_method  = "ro"          # gas overlap method
+        condensation    = true         # volatile condensation
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
@@ -179,7 +179,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 170       # Number of SPIDER grid levels
+        num_levels      = 200       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1.0e-9   # solver tolerance
         tsurf_atol      = 25.0      # tsurf_poststep_change
