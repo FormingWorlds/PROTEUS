@@ -447,8 +447,8 @@ if __name__=='__main__':
     folder = "l9859b_grid2"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
-    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
-    # symlink = None
+    # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
+    symlink = None
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
     # pg.add_dimension("C/H ratio", "delivery.elements.CH_ratio")
@@ -483,7 +483,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(70, test_run=False)
+    pg.run(110, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.
