@@ -369,13 +369,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         perturb_all = False
         max_steps   = 100
 
-        # try different solver parameters if struggling
-        if attempts == 2:
-            linesearch  = 1
-            dx_max     *= 3.0
-            ls_increase = 1.1
-            perturb_all = True
-
         # first iteration parameters
         if loops_total == 0:
             linesearch  = 2
@@ -384,6 +377,13 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             dx_max      = 200.0
             ls_increase = 1.1
             max_steps   = 200
+
+        # try different solver parameters if struggling
+        if attempts == 2:
+            linesearch  = 1
+            dx_max     *= 2.0
+            ls_increase = 1.1
+            perturb_all = True
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(

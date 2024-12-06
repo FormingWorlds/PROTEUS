@@ -114,7 +114,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
     mass_tot    = 0.47       # M_earth
     radius_int  = 1.0       # R_earth
-    corefrac    = 0.4      # non-dim., radius fraction
+    corefrac    = 0.55      # non-dim., radius fraction
 
 # Atmosphere - physics table
 [atmos_clim]
@@ -133,14 +133,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "agni"           # Which atmosphere module to use
 
     [atmos_clim.agni]
-        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+        p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
-        num_levels      = 42            # Number of atmospheric grid levels
+        num_levels      = 44            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solution_atol   = 3e-2          # solver absolute tolerance
-        solution_rtol   = 6e-2          # solver relative tolerance
+        solution_rtol   = 7e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = true         # volatile condensation
 
@@ -181,10 +181,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [interior.spider]
         num_levels      = 200       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-9   # solver tolerance
+        tolerance       = 1.0e-8   # solver tolerance
         tsurf_atol      = 25.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
-        ini_entropy     = 3600.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 2900.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
