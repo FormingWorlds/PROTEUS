@@ -224,15 +224,11 @@ function postproc(output_dir::String, nsamples::Int, spfile::String)
         years = Int[all_years[end]]
         files = String[all_files[end]]
         nsamples = 1
-        @info @sprintf("Sampled down to %d files \n", nsamples)
-        @debug repr(years)
 
     elseif nsamples == 2
         # use first and last
         years = Int[all_years[1], all_years[end]]
         files = String[all_files[1], all_files[end]]
-        @info @sprintf("Sampled down to %d files \n", nsamples)
-        @debug repr(years)
 
     elseif nsamples < nfiles
         # sample file names linearly
@@ -245,8 +241,6 @@ function postproc(output_dir::String, nsamples::Int, spfile::String)
         end
         push!(years, all_years[end])
         push!(files, all_files[end])
-        @info @sprintf("Sampled down to %d files \n", nsamples)
-        @debug repr(years)
 
     else
         # sample all
@@ -255,6 +249,9 @@ function postproc(output_dir::String, nsamples::Int, spfile::String)
         files = copy(all_files)
         nsamples = nfiles
     end
+
+    @info @sprintf("Sampling %d files \n", nsamples)
+    @debug repr(years)
 
     # get years at which stellar spectrum was updated
     star_files = glob("*.sflux", joinpath(output_dir , "data"))
@@ -282,6 +279,7 @@ function postproc(output_dir::String, nsamples::Int, spfile::String)
 
     # Setup matricies for output fluxes
     @debug "Allocate output matricies"
+    contfunc  = zeros(Float64, (atmos.nlev_c, atmos.nbands))  # contribution function at most recent atmos update
     band_u_lw = zeros(Float64, (nsamples, atmos.nbands))
     band_d_lw = copy(band_u_lw)
     band_n_lw = copy(band_u_lw)
@@ -337,10 +335,10 @@ function postproc(output_dir::String, nsamples::Int, spfile::String)
         energy.reset_fluxes!(atmos)
 
         # do radtrans with this composition
-        energy.radtrans!(atmos, true)   # LW
+        energy.radtrans!(atmos, true, calc_cf=true)   # LW
         energy.radtrans!(atmos, false)  # SW
 
-        # store data in matrix
+        # store fluxes in matrix
         #    lw
         @. band_u_lw[i, :] = atmos.band_u_lw[lvl, :]
         @. band_d_lw[i, :] = atmos.band_d_lw[lvl, :]
@@ -349,6 +347,13 @@ function postproc(output_dir::String, nsamples::Int, spfile::String)
         @. band_u_sw[i, :] = atmos.band_u_sw[lvl, :]
         @. band_d_sw[i, :] = atmos.band_d_sw[lvl, :]
         @. band_n_sw[i, :] = atmos.band_n_sw[lvl, :]
+
+        # store contribution function from this instance
+        for ilev in 1:atmos.nlev_c
+            for iband in 1:atmos.nbands
+                contfunc[ilev, iband]  = atmos.contfunc_band[ilev, iband]
+            end
+        end
     end
 
     # Write to netcdf file
@@ -382,6 +387,7 @@ function postproc(output_dir::String, nsamples::Int, spfile::String)
         #     Create dimensions
         defDim(ds, "nbands", atmos.nbands)  # Number of spectral bands
         defDim(ds, "nsamps", nsamples)      # Number of samples that were calculated
+        defDim(ds, "nlev_c", atmos.nlev_c)  # Number of level centres (atmos.nlev_c)
 
         #     Scalar quantities
         var_specfile =  defVar(ds, "specfile" ,String, ())     # Path to spectral file when read
@@ -399,6 +405,7 @@ function postproc(output_dir::String, nsamples::Int, spfile::String)
         var_bds =  defVar(ds, "ba_D_SW",   Float64, ("nbands","nsamps"), attrib = OrderedDict("units" => "W m-2"))
         var_bus =  defVar(ds, "ba_U_SW",   Float64, ("nbands","nsamps"), attrib = OrderedDict("units" => "W m-2"))
         var_bns =  defVar(ds, "ba_N_SW",   Float64, ("nbands","nsamps"), attrib = OrderedDict("units" => "W m-2"))
+        var_cfn =  defVar(ds, "contfunc",  Float64, ("nbands","nlev_c"))
 
         # Write years
         var_time[:] = years[:]
@@ -416,6 +423,13 @@ function postproc(output_dir::String, nsamples::Int, spfile::String)
                 var_bus[ba, i] = band_u_sw[i, ba]
                 var_bds[ba, i] = band_d_sw[i, ba]
                 var_bns[ba, i] = band_n_sw[i, ba]
+            end
+        end
+
+        # write contribution function for last atmos sample
+        for lc in 1:atmos.nlev_c
+            for ba in 1:atmos.nbands
+                var_cfn[ba, lc] = contfunc[lc, ba]
             end
         end
 
