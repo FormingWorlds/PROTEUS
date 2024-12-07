@@ -224,10 +224,10 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                                 "data", "%d_atm.nc"%int(sorted(nc_times)[-1]))
         jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
 
-    # Otherwise, set to log-linear
+    # Otherwise, set to initial guess
     else:
-        # jl.AGNI.setpt.isothermal_b(atmos, hf_row["T_surf"])
-        jl.AGNI.setpt.loglinear_b(atmos, min(900.0, hf_row["T_surf"]))
+        jl.AGNI.setpt.isothermal_b(atmos, 1200.0)
+        # jl.AGNI.setpt.loglinear_b(atmos, min(900.0, hf_row["T_surf"]))
 
     # Logging
     sync_log_files(dirs["output"])
@@ -347,8 +347,10 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
     # atmosphere solver plotting frequency
     modplot = 0
+    plot_jacobian = False
     if config.params.out.logging == "DEBUG":
         modplot = 1
+        plot_jacobian = True
 
     # tracking
     agni_success = False  # success?
@@ -364,22 +366,24 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         easy_start  = False
         dx_max      = config.interior.spider.tsurf_atol+5.0
         ls_increase = 1.02
-        perturb_all = True
+        perturb_all = False
         max_steps   = 100
-
-        # try different solver parameters if struggling
-        if attempts == 2:
-            linesearch  = 1
-            dx_max     *= 3.0
-            ls_increase = 1.1
 
         # first iteration parameters
         if loops_total == 0:
             linesearch  = 2
             easy_start  = True
+            perturb_all = True
             dx_max      = 200.0
             ls_increase = 1.1
             max_steps   = 200
+
+        # try different solver parameters if struggling
+        if attempts == 2:
+            linesearch  = 1
+            dx_max     *= 2.0
+            ls_increase = 1.1
+            perturb_all = True
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -403,7 +407,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
                             dx_max=float(dx_max), easy_start=easy_start,
                             perturb_all=perturb_all,
 
-                            save_frames=False, modplot=int(modplot)
+                            save_frames=False, modplot=int(modplot),
+                            plot_jacobian=plot_jacobian
                             )
 
         # Move AGNI logfile content into PROTEUS logfile

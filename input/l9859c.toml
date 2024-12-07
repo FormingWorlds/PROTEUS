@@ -25,7 +25,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "l9859d"
+        path        = "l9859c"
         logging     = "INFO"
         plot_mod    = 20      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -99,8 +99,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.0486    # AU
-    eccentricity    = 0.074      # dimensionless
+    semimajoraxis   = 0.0304    # AU
+    eccentricity    = 0.049      # dimensionless
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 
@@ -112,7 +112,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Planetary structure - physics table
 [struct]
     set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
-    mass_tot    = 2.14       # M_earth
+    mass_tot    = 2.25       # M_earth
     radius_int  = 1.0       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
