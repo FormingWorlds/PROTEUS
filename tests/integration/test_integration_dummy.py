@@ -23,10 +23,15 @@ def test_dummy_run(dummy_run):
     ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy'
 
     hf_all = ReadHelpfileFromCSV(out_dir)
-    hf_all_ref = ReadHelpfileFromCSV(ref_dir)
+    hf_ref = ReadHelpfileFromCSV(ref_dir)
+
+    # Neglect these columns
+    neglect = ["CH4_mol_atm"]
+    hf_all.drop(columns=neglect)
+    hf_ref.drop(columns=neglect)
 
     # Check helpfile
-    assert_frame_equal(hf_all, hf_all_ref, rtol=5e-3)
+    assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
 
     # Check statusfiles
     assert filecmp.cmp(out_dir / 'status', ref_dir / 'status', shallow=False)

@@ -110,6 +110,8 @@ class Agni:
         Relative tolerance on the atmosphere solution.
     overlap_method: str
         Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
+    condensation: bool
+        Enable volatile condensation/phase change in the atmosphere.
     """
 
     p_top: float = field(validator=gt(0))
@@ -121,6 +123,7 @@ class Agni:
     solution_atol: float = field(validator=gt(0))
     solution_rtol: float = field(validator=gt(0))
     overlap_method: str = field(validator=check_overlap)
+    condensation: bool
 
     @property
     def chemistry_int(self) -> int:
@@ -135,6 +138,8 @@ class Janus:
     ----------
     p_top: float
         Top of atmosphere grid pressure [bar].
+    p_obs: float
+        Pressure level probed by observations [bar]
     spectral_group: str
         Spectral file codename defining the gas opacities to be included. See [documentation](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/spectral_files.pdf).
     spectral_bands: str
@@ -150,6 +155,7 @@ class Janus:
     """
 
     p_top: float = field(validator=gt(0))
+    p_obs: float = field(validator=gt(0))
     spectral_group: str
     spectral_bands: str
     F_atm_bc: int = field(validator=in_((0, 1)))

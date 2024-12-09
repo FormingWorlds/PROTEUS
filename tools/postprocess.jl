@@ -16,8 +16,6 @@ Pkg.activate(ROOT_DIR)
 
 # Import system packages
 using Printf
-using Plots
-using LaTeXStrings
 using LoggingExtras
 using NCDatasets
 using Glob
@@ -179,7 +177,7 @@ function setup_atmos_from_nc!(output_dir::String, ncfile::String, spfile::String
                             flag_gcontinuum=input_flag_continuum,
                             flag_rayleigh=input_flag_rayleigh,
                             thermo_functions=input_flag_thermo,
-                            overlap_method=2
+                            overlap_method="ro"
                             )
     code = atmosphere.allocate!(atmos, stfile)
     if !code
@@ -190,7 +188,7 @@ function setup_atmos_from_nc!(output_dir::String, ncfile::String, spfile::String
     return atmos, original_model
 end
 
-function postproc(output_dir::String, nsamples::Int)
+function postproc(output_dir::String, nsamples::Int, spfile::String)
 
     @info "Working in $output_dir"
 
@@ -215,15 +213,25 @@ function postproc(output_dir::String, nsamples::Int)
     all_years = all_years[mask]
     all_files = all_files[mask]
 
+    # negative sample number means to sample all
+    if nsamples < 1
+        nsamples = nfiles
+    end
+
     # re-sample files
-    if nsamples <= 2
+    if nsamples == 1
+        # use last
+        years = Int[all_years[end]]
+        files = String[all_files[end]]
+        nsamples = 1
+
+    elseif nsamples == 2
+        # use first and last
         years = Int[all_years[1], all_years[end]]
         files = String[all_files[1], all_files[end]]
-        nsamples = 2
-        @info @sprintf("Sampled down to %d files \n", nsamples)
-        @debug repr(years)
 
     elseif nsamples < nfiles
+        # sample file names linearly
         years = Int[]
         files = String[]
         stride::Int = Int(ceil(nfiles/(nsamples-1)))
@@ -233,15 +241,17 @@ function postproc(output_dir::String, nsamples::Int)
         end
         push!(years, all_years[end])
         push!(files, all_files[end])
-        @info @sprintf("Sampled down to %d files \n", nsamples)
-        @debug repr(years)
 
     else
+        # sample all
         @info "Processing all files"
         years = copy(all_years)
         files = copy(all_files)
         nsamples = nfiles
     end
+
+    @info @sprintf("Sampling %d files \n", nsamples)
+    @debug repr(years)
 
     # get years at which stellar spectrum was updated
     star_files = glob("*.sflux", joinpath(output_dir , "data"))
@@ -253,18 +263,23 @@ function postproc(output_dir::String, nsamples::Int)
     sort!(star_years)
 
     # use high resolution file
-    spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files/Honeyside/4096/Honeyside.sf")
-    star_file = joinpath(output_dir, "data", "$(star_years[1]).sflux")
-
+    if isempty(spfile)
+        spectral_file = joinpath(ENV["FWL_DATA"], "spectral_files", "Honeyside", "4096", "Honeyside.sf")
+        star_file = joinpath(output_dir, "data", "$(star_years[1]).sflux")
+        @info "Spectral file not provided. Will use $spectral_file"
+    else
     # use existing spectral file
-    # spectral_file = joinpath(output_dir, "runtime.sf")
-    # star_file = ""
+        spectral_file = spfile
+        star_file = ""
+        @info "Spectral file provided by user: $spectral_file"
+    end
 
     # Setup initial atmos struct...
     atmos, original_model = setup_atmos_from_nc!(output_dir, files[1], spectral_file, star_file)
 
     # Setup matricies for output fluxes
     @debug "Allocate output matricies"
+    contfunc  = zeros(Float64, (atmos.nlev_c, atmos.nbands))  # contribution function at most recent atmos update
     band_u_lw = zeros(Float64, (nsamples, atmos.nbands))
     band_d_lw = copy(band_u_lw)
     band_n_lw = copy(band_u_lw)
@@ -320,10 +335,10 @@ function postproc(output_dir::String, nsamples::Int)
         energy.reset_fluxes!(atmos)
 
         # do radtrans with this composition
-        energy.radtrans!(atmos, true)   # LW
+        energy.radtrans!(atmos, true, calc_cf=true)   # LW
         energy.radtrans!(atmos, false)  # SW
 
-        # store data in matrix
+        # store fluxes in matrix
         #    lw
         @. band_u_lw[i, :] = atmos.band_u_lw[lvl, :]
         @. band_d_lw[i, :] = atmos.band_d_lw[lvl, :]
@@ -332,6 +347,13 @@ function postproc(output_dir::String, nsamples::Int)
         @. band_u_sw[i, :] = atmos.band_u_sw[lvl, :]
         @. band_d_sw[i, :] = atmos.band_d_sw[lvl, :]
         @. band_n_sw[i, :] = atmos.band_n_sw[lvl, :]
+
+        # store contribution function from this instance
+        for ilev in 1:atmos.nlev_c
+            for iband in 1:atmos.nbands
+                contfunc[ilev, iband]  = atmos.contfunc_band[ilev, iband]
+            end
+        end
     end
 
     # Write to netcdf file
@@ -365,6 +387,7 @@ function postproc(output_dir::String, nsamples::Int)
         #     Create dimensions
         defDim(ds, "nbands", atmos.nbands)  # Number of spectral bands
         defDim(ds, "nsamps", nsamples)      # Number of samples that were calculated
+        defDim(ds, "nlev_c", atmos.nlev_c)  # Number of level centres (atmos.nlev_c)
 
         #     Scalar quantities
         var_specfile =  defVar(ds, "specfile" ,String, ())     # Path to spectral file when read
@@ -382,6 +405,7 @@ function postproc(output_dir::String, nsamples::Int)
         var_bds =  defVar(ds, "ba_D_SW",   Float64, ("nbands","nsamps"), attrib = OrderedDict("units" => "W m-2"))
         var_bus =  defVar(ds, "ba_U_SW",   Float64, ("nbands","nsamps"), attrib = OrderedDict("units" => "W m-2"))
         var_bns =  defVar(ds, "ba_N_SW",   Float64, ("nbands","nsamps"), attrib = OrderedDict("units" => "W m-2"))
+        var_cfn =  defVar(ds, "contfunc",  Float64, ("nbands","nlev_c"))
 
         # Write years
         var_time[:] = years[:]
@@ -402,6 +426,13 @@ function postproc(output_dir::String, nsamples::Int)
             end
         end
 
+        # write contribution function for last atmos sample
+        for lc in 1:atmos.nlev_c
+            for ba in 1:atmos.nbands
+                var_cfn[ba, lc] = contfunc[lc, ba]
+            end
+        end
+
         close(ds)
 
     end # suppress output
@@ -418,23 +449,36 @@ end
 function main()::Int
 
     # validate CLI
-    if length(ARGS) != 2
+    if length(ARGS) < 2
         @error("Invalid arguments. Must provide output path (str) and sampling count (int).")
         return 1
     end
+
+    # directory to post-process
     target_dir = abspath(ARGS[1])
     if !isdir(target_dir)
         @error("Path does not exist: $target_dir")
         return 1
     end
+
+    # samples in time
     if isnothing(tryparse(Int, ARGS[2]))
         @error("Nsamp is not an integer: $(ARGS[2])")
         return 1
     end
     Nsamp = parse(Int, ARGS[2])
 
+    # path to spectral file
+    spfile::String = ""
+    if length(ARGS) == 3
+        spfile = String(ARGS[3])
+        if !isfile(spfile)
+            @error "Invalid spectral file provided: $spfile"
+        end
+    end
+
     # run postprocessing
-    postproc(target_dir, Nsamp)
+    postproc(target_dir, Nsamp, spfile)
 
     # done
     @info "Done"

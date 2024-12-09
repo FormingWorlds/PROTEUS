@@ -10,5 +10,6 @@
     "python.analysis.exclude": [
         "**/__pycache__", "petsc", ".git", "SPIDER", "output"
     ],
-    "julia.environmentPath": "${workspaceFolder}/AGNI"
+    "julia.environmentPath": "${workspaceFolder}/AGNI",
+    "fortran.fortls.disabled": true
 }

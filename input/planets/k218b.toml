@@ -143,9 +143,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         solution_atol   = 1e-2          # solver absolute tolerance
         solution_rtol   = 1e-1          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
+        condensation    = true          # volatile condensation
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+        p_obs           = 1.0e-3        # bar, observed pressure level
         spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "48"         # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
