@@ -56,15 +56,15 @@ def test_physical_run(physical_run):
 def test_physical_spectrum(physical_run):
     # Check stellar spectrum
 
-    _out = out_dir / 'data' / '5002.sflux'
-    _ref = ref_dir / '5002.sflux'
+    _out = out_dir / 'data' / '0.sflux'
+    _ref = ref_dir / '0.sflux'
 
     assert filecmp.cmp(_out, _ref, shallow=False)
 
 def test_physical_atmosphere(physical_run):
     # Keys to load and test
-    _out   = out_dir / 'data' / '5002_atm.nc'
-    _ref   = ref_dir / '5002_atm.nc'
+    _out   = out_dir / 'data' / '302_atm.nc'
+    _ref   = ref_dir / '302_atm.nc'
     fields = ["t", "p", "z", "fl_U_LW", "fl_D_SW"]
 
     # Load atmosphere output
@@ -83,8 +83,8 @@ def test_physical_atmosphere(physical_run):
 
 def test_physical_interior(physical_run):
     # Keys to load and test
-    _out   = out_dir / 'data' / '5002_int.nc'
-    _ref   = ref_dir / '5002_int.nc'
+    _out   = out_dir / 'data' / '302_int.nc'
+    _ref   = ref_dir / '302_int.nc'
     fields = ["radius_b", "pres_b", "temp_b", "phi_b", "Hradio_s"]
 
     # Load interior output
