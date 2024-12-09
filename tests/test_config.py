@@ -18,7 +18,7 @@ PATHS = chain(
 
 @pytest.fixture
 def cfg():
-    path = PROTEUS_ROOT / 'input' / 'dummy.toml'
+    path = PROTEUS_ROOT / 'input' / 'demos'/ 'dummy.toml'
     obj = read_config_object(path)
 
     assert isinstance(obj, Config)
