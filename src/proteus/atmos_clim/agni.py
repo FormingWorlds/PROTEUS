@@ -46,14 +46,14 @@ def sync_log_files(outdir:str):
 
 def activate_julia(dirs:dict):
 
-    log.debug("Activating Julia environment")
+    log.info("Activating Julia environment")
     jl.seval("using Pkg")
     jl.Pkg.activate(dirs["agni"])
 
     # Plotting configuration
     jl.seval('ENV["GKSwstype"] = "100"')
     jl.seval("using Plots")
-    jl.seval('default(label=nothing)')
+    jl.seval('default(label=nothing, dpi=250)')
 
     # Import AGNI
     jl.seval("using AGNI")
@@ -438,8 +438,11 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
         fmt = config.params.out.plot_fmt
         jl.AGNI.plotting.plot_fluxes(atmos, os.path.join(dirs["output"],
-                                                  "plot_fluxes_atmosphere.%s"%fmt))
-        jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"], "plot_vmr.%s"%fmt))
+                                                    "plot_fluxes_atmosphere.%s"%fmt))
+        jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"],
+                                                    "plot_vmr.%s"%fmt))
+        jl.AGNI.plotting.plot_contfunc1(atmos, os.path.join(dirs["output"],
+                                                    "plot_cff.%s"%fmt))
 
     # ---------------------------
     # Calculate observables
