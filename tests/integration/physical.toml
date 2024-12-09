@@ -32,8 +32,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # time-stepping
     [params.dt]
-        minimum      = 1e2    # yr, minimum time-step
-        maximum      = 1e3    # yr, maximum time-step
+        minimum      = 1e1    # yr, minimum time-step
+        maximum      = 1e2    # yr, maximum time-step
         initial      = 1e2    # yr, inital step size
         starspec     = 5e3    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e1    # yr, interval to re-calculate the instellation
@@ -53,7 +53,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.iters]
             enabled = true
             minimum = 3
-            maximum = 10
+            maximum = 8
 
         # required time constraints
         [params.stop.time]
