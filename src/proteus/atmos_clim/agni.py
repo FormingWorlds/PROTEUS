@@ -448,6 +448,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     # observed height and derived bulk density
     jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
     rho_obs = float(atmos.transspec_rho)
+    p_obs   = float(atmos.transspec_p) # set by peak of contribution function
     z_obs   = float(atmos.transspec_r) - hf_row["R_int"] # transspec_r = R_int + z_obs
 
     # ---------------------------
@@ -491,6 +492,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     output["F_olr"]  = LW_flux_up[0]
     output["F_sct"]  = SW_flux_up[0]
     output["T_surf"] = T_surf
+    output["p_obs"]  = p_obs/1e5 # convert [Pa] to [bar]
     output["z_obs"]  = z_obs
     output["rho_obs"]= rho_obs
     output["albedo"] = SW_flux_up[0]/SW_flux_down[0]

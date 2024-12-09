@@ -144,8 +144,9 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
                                     hf_row["R_int"], hf_row["M_int"], hf_row["P_surf"])
 
     # Store atmosphere module output variables
-    hf_row["rho_obs"]= atm_output["rho_obs"]
-    hf_row["z_obs"]  = atm_output["z_obs"]
+    hf_row["rho_obs"]= atm_output["rho_obs"] # [kg m-3]
+    hf_row["p_obs"]  = atm_output["p_obs"]   # [bar]
+    hf_row["z_obs"]  = atm_output["z_obs"]   # [m]
     hf_row["F_atm"]  = atm_output["F_atm"]
     hf_row["F_olr"]  = atm_output["F_olr"]
     hf_row["F_sct"]  = atm_output["F_sct"]
