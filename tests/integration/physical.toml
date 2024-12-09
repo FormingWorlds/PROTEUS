@@ -113,7 +113,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [struct]
     set_by      = 'mass_tot'
     mass_tot    = 1.0       # M_earth
-    radius_int  = 0.9       # R_earth
+    radius_int  = 0.97      # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
 # Atmosphere - physics table
