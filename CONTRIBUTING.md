@@ -84,7 +84,7 @@ The documentation is written in [markdown](https://www.markdownguide.org/basic-s
 To build the documentation for yourself:
 
 ```console
-pip install -e .[docs]
+pip install -e '.[docs]'
 mkdocs serve
 ```
 
