@@ -100,7 +100,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Orbital system
 [orbit]
     semimajoraxis   = 0.0486    # AU
-    eccentricity    = 0.074      # dimensionless
+    eccentricity    = 0.098      # dimensionless
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 

@@ -443,8 +443,8 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "l9859d.toml"
-    folder = "l9859d_grid3"
+    config = "l9859b.toml"
+    folder = "l9859b_grid3"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
@@ -479,7 +479,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(40, test_run=False)
+    pg.run(38, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.
