@@ -27,14 +27,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "l9859d"
         logging     = "INFO"
-        plot_mod    = 10      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 20      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping
     [params.dt]
-        minimum      = 3e2    # yr, minimum time-step
+        minimum      = 4e2    # yr, minimum time-step
         maximum      = 1e7    # yr, maximum time-step
-        initial      = 1e3    # yr, inital step size
+        initial      = 2e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
@@ -43,8 +43,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             propconst    = 52.0   # Proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.02   # Step size atol
-            rtol         = 0.09   # Step size rtol
+            atol         = 0.03   # Step size atol
+            rtol         = 0.10   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -65,12 +65,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # solidification
         [params.stop.solid]
             enabled  = true
-            phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
+            phi_crit = 0.01  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
             enabled = true
-            atol    = 1e-2    # absolute tolerance [W m-2]
+            atol    = 1e-1    # absolute tolerance [W m-2]
             rtol    = 2e-2    # relative tolerance
 
         [params.stop.escape]
@@ -90,7 +90,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [star.mors]
         rot_pctle = 50.0    # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
-        age_now = 0.8     # Gyr, current age of star used for scaling
+        age_now = 4.94     # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/l-98-59.txt" # stellar spectrum
 
     [star.dummy]
@@ -100,7 +100,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Orbital system
 [orbit]
     semimajoraxis   = 0.0486    # AU
-    eccentricity    = 0.074      # dimensionless
+    eccentricity    = 0.098      # dimensionless
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 
@@ -112,9 +112,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Planetary structure - physics table
 [struct]
     set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
-    mass_tot    = 2.31       # M_earth
+    mass_tot    = 2.14       # M_earth
     radius_int  = 1.0       # R_earth
-    corefrac    = 0.4      # non-dim., radius fraction
+    corefrac    = 0.55      # non-dim., radius fraction
 
 # Atmosphere - physics table
 [atmos_clim]
@@ -133,18 +133,20 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "agni"           # Which atmosphere module to use
 
     [atmos_clim.agni]
-        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+        p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
-        num_levels      = 41            # Number of atmospheric grid levels
+        num_levels      = 44            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
-        surf_material   = "greybody"    # surface material file for scattering
-        solution_atol   = 1e-2          # solver absolute tolerance
-        solution_rtol   = 6e-2          # solver relative tolerance
-        overlap_method    = "ee"          # gas overlap method
+        surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
+        solution_atol   = 3e-2          # solver absolute tolerance
+        solution_rtol   = 7e-2          # solver relative tolerance
+        overlap_method  = "ee"          # gas overlap method
+        condensation    = true         # volatile condensation
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+        p_obs           = 1.0e-3        # bar, observed pressure level
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
@@ -171,19 +173,19 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Interior - physics table
 [interior]
     grain_size      = 0.1   # crystal settling grain size [m]
-    F_initial       = 1e4   # Initial heat flux guess [W m-2]
+    F_initial       = 1e5   # Initial heat flux guess [W m-2]
     radiogenic_heat = false  # enable radiogenic heat production
     tidal_heat      = true  # enable tidal heat production
 
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 160       # Number of SPIDER grid levels
+        num_levels      = 200       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-9   # solver tolerance
+        tolerance       = 1.0e-8   # solver tolerance
         tsurf_atol      = 25.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
-        ini_entropy     = 3500.0    # Surface entropy conditions [J K-1 kg-1]
+        tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
+        ini_entropy     = 2900.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
@@ -237,8 +239,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
 
-        NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
-        # N_ppmw      = 0.0       # Nitrogen inventory in ppmw relative to mantle mass
+        # NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
+        N_ppmw      = 2.01       # Nitrogen inventory in ppmw relative to mantle mass
 
         SH_ratio    = 2.16       # S/H mass ratio in mantle/atmosphere system
         # S_ppmw      = 0.0     # Sulfur inventory in ppmw relative to mantle mass

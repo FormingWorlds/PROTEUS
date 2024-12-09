@@ -40,7 +40,6 @@ from proteus.utils.coupler import (
     print_module_configuration,
     print_system_configuration,
 )
-from proteus.utils.data import download_sufficient_data
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -115,6 +114,9 @@ class Proteus:
         offline : bool
             Run in offline mode; do not try to connect to the internet.
         """
+
+        # Import
+        from proteus.utils.data import download_sufficient_data
 
         # First things
         start_time = datetime.now()
