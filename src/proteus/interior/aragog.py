@@ -137,30 +137,35 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             basal_temperature = config.interior.aragog.ini_tmagma, # initial bottom temperature (K)
             )
 
+    # Get look up data directory, will be configurable in the future
+    LOOK_UP_DIR = FWL_DATA_DIR / "interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018/"
+
     phase_liquid = _PhaseParameters(
-            density = 4000,
+            density = LOOK_UP_DIR / "density_melt.dat",
             viscosity = 1E2,
-            heat_capacity = 1000,
+            heat_capacity = LOOK_UP_DIR / "heat_capacity_melt.dat",
             melt_fraction = 1,
             thermal_conductivity = 4,
-            thermal_expansivity = 1.0E-5,
+            #thermal_expansivity = 1.0E-5,
+            thermal_expansivity = LOOK_UP_DIR / "thermal_exp_melt.dat",
             )
 
     phase_solid = _PhaseParameters(
-            density = 4200,
+            density = LOOK_UP_DIR / "density_solid.dat",
             viscosity = 1E21,
-            heat_capacity = 1000,
+            heat_capacity = LOOK_UP_DIR / "heat_capacity_solid.dat",
             melt_fraction = 0,
             thermal_conductivity = 4,
-            thermal_expansivity = 1.0E-5,
+            #thermal_expansivity = 1.0E-5,
+            thermal_expansivity = LOOK_UP_DIR / "thermal_exp_solid.dat",
             )
 
     phase_mixed = _PhaseMixedParameters(
             latent_heat_of_fusion = 4e6,
             rheological_transition_melt_fraction = 0.4,
             rheological_transition_width = 0.15,
-            solidus = FWL_DATA_DIR / "interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018/solidus.dat",
-            liquidus = FWL_DATA_DIR / "interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018/liquidus.dat",
+            solidus = LOOK_UP_DIR / "solidus.dat",
+            liquidus = LOOK_UP_DIR / "liquidus.dat",
             phase = "mixed",
             phase_transition_width = 0.1,
             grain_size = config.interior.grain_size,

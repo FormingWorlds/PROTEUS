@@ -41,7 +41,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
 
     # Initial guess for interior radius and gravity
     IC_INTERIOR = 1
-    hf_row["R_int"]   = R_earth
+    hf_row["R_int"]   = config.struct.radius_int * R_earth
     calculate_core_mass(hf_row, config)
     hf_row["gravity"] = 9.81
 
@@ -76,7 +76,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
             rtol = 1e-7
 
     # Find the radius
-    r = optimise.root_scalar(_resid, method='secant', xtol=1e3, rtol=rtol, maxiter=12,
+    r = optimise.root_scalar(_resid, method='secant', xtol=1e3, rtol=rtol, maxiter=10,
                                     x0=hf_row["R_int"], x1=hf_row["R_int"]*1.02)
     hf_row["R_int"] = float(r.root)
     calculate_core_mass(hf_row, config)
