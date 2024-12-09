@@ -46,14 +46,14 @@ def sync_log_files(outdir:str):
 
 def activate_julia(dirs:dict):
 
-    log.debug("Activating Julia environment")
+    log.info("Activating Julia environment")
     jl.seval("using Pkg")
     jl.Pkg.activate(dirs["agni"])
 
     # Plotting configuration
     jl.seval('ENV["GKSwstype"] = "100"')
     jl.seval("using Plots")
-    jl.seval('default(label=nothing)')
+    jl.seval('default(label=nothing, dpi=250)')
 
     # Import AGNI
     jl.seval("using AGNI")
@@ -132,23 +132,24 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
     # set condensation
     condensates = []
-    if len(vol_dict) == 1:
-        # single-gas case
-        condensates = list(vol_dict.keys())
-    else:
-        # get sorted gases (in order of decreasing VMR at the surface)
-        vol_sorted = sorted(vol_dict.items(), key=lambda item: item[1])[::-1]
+    if config.atmos_clim.agni.condensation:
+        if len(vol_dict) == 1:
+            # single-gas case
+            condensates = list(vol_dict.keys())
+        else:
+            # get sorted gases (in order of decreasing VMR at the surface)
+            vol_sorted = sorted(vol_dict.items(), key=lambda item: item[1])[::-1]
 
-        # Set gases as condensates...
-        condensates = ['H2O'] # always prefer H2O
-        for v in vol_sorted:
-            # add gas if it has non-zero abundance
-            if (v[1] > 1e-30) and (v[0] not in condensates):
-                condensates.append(v[0])
+            # Set gases as condensates...
+            condensates = ['H2O'] # always prefer H2O
+            for v in vol_sorted:
+                # add gas if it has non-zero abundance
+                if (v[1] > 1e-30) and (v[0] not in condensates):
+                    condensates.append(v[0])
 
-        # Remove the least abundant gas from the list, so that we have something to
-        #     fill the background with if everything else condenses at a given level
-        condensates = condensates[:-1]
+            # Remove the least abundant gas from the list, so that we have something to
+            #     fill the background with if everything else condenses at a given level
+            condensates = condensates[:-1]
 
     # Chemistry
     chem_type = config.atmos_clim.agni.chemistry
@@ -223,10 +224,10 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                                 "data", "%d_atm.nc"%int(sorted(nc_times)[-1]))
         jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
 
-    # Otherwise, set to log-linear
+    # Otherwise, set to initial guess
     else:
-        # jl.AGNI.setpt.isothermal_b(atmos, hf_row["T_surf"])
-        jl.AGNI.setpt.loglinear_b(atmos, min(900.0, hf_row["T_surf"]))
+        jl.AGNI.setpt.isothermal_b(atmos, 1200.0)
+        # jl.AGNI.setpt.loglinear_b(atmos, min(900.0, hf_row["T_surf"]))
 
     # Logging
     sync_log_files(dirs["output"])
@@ -346,8 +347,10 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
     # atmosphere solver plotting frequency
     modplot = 0
+    plot_jacobian = False
     if config.params.out.logging == "DEBUG":
         modplot = 1
+        plot_jacobian = True
 
     # tracking
     agni_success = False  # success?
@@ -363,22 +366,24 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         easy_start  = False
         dx_max      = config.interior.spider.tsurf_atol+5.0
         ls_increase = 1.02
-        perturb_all = True
+        perturb_all = False
         max_steps   = 100
-
-        # try different solver parameters if struggling
-        if attempts == 2:
-            linesearch  = 1
-            dx_max     *= 3.0
-            ls_increase = 1.1
 
         # first iteration parameters
         if loops_total == 0:
             linesearch  = 2
             easy_start  = True
+            perturb_all = True
             dx_max      = 200.0
             ls_increase = 1.1
             max_steps   = 200
+
+        # try different solver parameters if struggling
+        if attempts == 2:
+            linesearch  = 1
+            dx_max     *= 2.0
+            ls_increase = 1.1
+            perturb_all = True
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -387,20 +392,23 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
         # Try solving temperature profile
         agni_success = jl.AGNI.solver.solve_energy_b(atmos,
-                            sol_type=config.atmos_clim.surf_state_int,
-                            chem_type=config.atmos_clim.agni.chemistry_int,
+                            sol_type  = int(config.atmos_clim.surf_state_int),
+                            method    = int(1),
+                            chem_type = int(config.atmos_clim.agni.chemistry_int),
 
-                            conduct=False, convect=True, latent=True, sens_heat=True,
+                            conduct=False, convect=True, sens_heat=True,
+                            latent=config.atmos_clim.agni.condensation, rainout=True,
 
-                            max_steps=max_steps, max_runtime=900.0,
-                            conv_atol=config.atmos_clim.agni.solution_atol,
-                            conv_rtol=config.atmos_clim.agni.solution_rtol,
+                            max_steps=int(max_steps), max_runtime=900.0,
+                            conv_atol=float(config.atmos_clim.agni.solution_atol),
+                            conv_rtol=float(config.atmos_clim.agni.solution_rtol),
 
-                            method=1, ls_increase=ls_increase, rainout=True,
-                            dx_max=dx_max, ls_method=linesearch, easy_start=easy_start,
+                            ls_increase=float(ls_increase), ls_method=int(linesearch),
+                            dx_max=float(dx_max), easy_start=easy_start,
                             perturb_all=perturb_all,
 
-                            save_frames=False, modplot=modplot
+                            save_frames=False, modplot=int(modplot),
+                            plot_jacobian=plot_jacobian
                             )
 
         # Move AGNI logfile content into PROTEUS logfile
@@ -430,8 +438,11 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
         fmt = config.params.out.plot_fmt
         jl.AGNI.plotting.plot_fluxes(atmos, os.path.join(dirs["output"],
-                                                  "plot_fluxes_atmosphere.%s"%fmt))
-        jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"], "plot_vmr.%s"%fmt))
+                                                    "plot_fluxes_atmosphere.%s"%fmt))
+        jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"],
+                                                    "plot_vmr.%s"%fmt))
+        jl.AGNI.plotting.plot_contfunc1(atmos, os.path.join(dirs["output"],
+                                                    "plot_cff.%s"%fmt))
 
     # ---------------------------
     # Calculate observables
@@ -440,6 +451,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     # observed height and derived bulk density
     jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
     rho_obs = float(atmos.transspec_rho)
+    p_obs   = float(atmos.transspec_p) # set by peak of contribution function
     z_obs   = float(atmos.transspec_r) - hf_row["R_int"] # transspec_r = R_int + z_obs
 
     # ---------------------------
@@ -483,6 +495,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     output["F_olr"]  = LW_flux_up[0]
     output["F_sct"]  = SW_flux_up[0]
     output["T_surf"] = T_surf
+    output["p_obs"]  = p_obs/1e5 # convert [Pa] to [bar]
     output["z_obs"]  = z_obs
     output["rho_obs"]= rho_obs
     output["albedo"] = SW_flux_up[0]/SW_flux_down[0]

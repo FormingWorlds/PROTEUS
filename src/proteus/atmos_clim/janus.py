@@ -270,13 +270,14 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
     # observables
+    p_obs = float(config.atmos_clim.janus.p_obs)*1e5 # converted to Pa
     z_obs = 0.0
     rho_obs = -1.0
     if atm.height_error:
         log.error("Hydrostatic integration failed in JANUS!")
     else:
-        # find observed level [m] at 1 mbar
-        _, z_obs = get_height_from_pressure(atm.p, atm.z, 1e2)
+        # find observed level [m] at p ~ p_obs
+        _, z_obs = get_height_from_pressure(atm.p, atm.z, p_obs)
 
         # calc observed density [kg m-3]
         rho_obs = calc_observed_rho(atm)
@@ -297,8 +298,9 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["F_olr"]  = atm.LW_flux_up[0] # OLR
     output["F_sct"]  = atm.SW_flux_up[0] # Scattered SW flux
     output["albedo"] = atm.SW_flux_up[0] / atm.SW_flux_down[0]
-    output["z_obs"]  = z_obs
-    output["rho_obs"]= rho_obs
+    output["p_obs"]  = p_obs/1e5        # observed level [bar]
+    output["z_obs"]  = z_obs            # observed level [m]
+    output["rho_obs"]= rho_obs          # observed density [kg m-3]
     output["p_xuv"]  = p_xuv/1e5         # Closest pressure from Pxuv    [bar]
     output["z_xuv"]  = z_xuv             # Height at Pxuv                [m]
 
