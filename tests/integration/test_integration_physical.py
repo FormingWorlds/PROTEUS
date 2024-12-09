@@ -27,7 +27,7 @@ IMAGE_LIST = (
         "plot_elements.png",
         "plot_fluxes_atmosphere.png",
         "plot_interior_cmesh.png",
-        "plot_sflux_cross.png",
+        #"plot_sflux_cross.png",
         "plot_emission.png",
         "plot_interior.png",
         "plot_sflux.png",
