@@ -28,11 +28,11 @@ jobs:
             CC: gcc
             CXX: g++
             FC: gfortran
-          - os: macos-latest
-            INSTALL_DEPS: brew uninstall --force pkg-config;  rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f  /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran
-            CC: gcc
-            CXX: g++
-            FC: gfortran
+          #- os: macos-latest
+          #  INSTALL_DEPS: brew uninstall --force pkg-config;  rm -f /opt/homebrew/bin/pkg-config; rm -f /opt/homebrew/share/aclocal/pkg.m4; rm -f  /opt/homebrew/share/man/man1/pkg-config.1; brew install gfortran netcdf netcdf-fortran
+          #  CC: gcc
+          #  CXX: g++
+          #  FC: gfortran
 
     env:
       FWL_DATA: ${{ github.workspace }}/fwl_data
@@ -46,12 +46,12 @@ jobs:
         run: ${{ matrix.INSTALL_DEPS }}
 
       # MacOS only: create symbolic link for gfortran
-      - name: Symlink gfortran
-        if: runner.os == 'macOS'
-        run: |
-          sudo ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
-          sudo ln -s /opt/homebrew/Cellar/gcc/12.*/lib/gcc/12/*.dylib /opt/homebrew/lib/
-          which gfortran
+      #- name: Symlink gfortran
+      #  if: runner.os == 'macOS'
+      #  run: |
+      #    sudo ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
+      #    sudo ln -s /opt/homebrew/Cellar/gcc/12.*/lib/gcc/12/*.dylib /opt/homebrew/lib/
+      #    which gfortran
 
       # Checkout PROTEUS
       - name: Checkout PROTEUS
