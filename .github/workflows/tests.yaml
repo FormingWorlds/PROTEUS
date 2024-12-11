@@ -20,7 +20,7 @@ jobs:
     name: Run Coverage and Tests
     strategy:
       matrix:
-        os: ['ubuntu-latest']
+        os: ['ubuntu-latest', 'macos-latest']
         python-version: ['3.11', '3.13']
         include:
           - os: ubuntu-latest
