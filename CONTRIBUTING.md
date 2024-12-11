@@ -100,7 +100,7 @@ The versioning scheme we use is [CalVer](https://calver.org/).
 0. Update requirements files:
 
 ```console
-python tools/requirements_txt.py
+python tools/generate_requirements_txt.py
 pip-compile -o requirements_full.txt pyproject.toml
 ```
 
