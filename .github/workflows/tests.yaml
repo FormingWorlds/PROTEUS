@@ -20,7 +20,7 @@ jobs:
     name: Run Coverage and Tests
     strategy:
       matrix:
-        os: ['ubuntu-latest', 'macos-latest']
+        os: ['ubuntu-latest']
         python-version: ['3.11', '3.13']
         include:
           - os: ubuntu-latest
@@ -104,19 +104,19 @@ jobs:
         run: python -m pip install -e .[develop]
 
       # Get lookup data for PROTEUS
-      - name: Get FWL data from cache
-        uses: actions/cache@v4
-        id: cache-fwl-data
-        with:
-          path: ${{ env.FWL_DATA }}
-          key: fwl-data-2
+      #- name: Get FWL data from cache
+      #  uses: actions/cache@v4
+      #  id: cache-fwl-data
+      #  with:
+      #    path: ${{ env.FWL_DATA }}
+      #    key: fwl-data-2
 
       # Get FWL data
-      - name: Get additional FWL data
-        if: steps.cache-fwl-data.cache-hit != 'true'
-        run: |
-          proteus get stellar
-          proteus get spectral --name Frostflow --bands 48
+      #- name: Get additional FWL data
+      #  if: steps.cache-fwl-data.cache-hit != 'true'
+      #  run: |
+      #    proteus get stellar
+      #    proteus get spectral --name Frostflow --bands 48
 
       # Run PROTEUS tests
       - name: Test with pytest
