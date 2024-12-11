@@ -176,10 +176,7 @@ def download_interior_lookuptables():
     """
     Download interior lookup tables
     """
-    import subprocess
     from aragog.data import DownloadLookupTableData
-    folder = FWL_DATA_DIR / "interior_lookup_tables"
-    subprocess.call(['rm', '-rf', folder])
     log.debug("Get interior lookup tables")
     DownloadLookupTableData()
 
