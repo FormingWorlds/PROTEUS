@@ -5,7 +5,7 @@
 set -e
 
 # Output path
-workpath=$(realpath petsc) # petsc doesn't like relative paths
+workpath=$(mkdir -p petsc && realpath petsc) #creating the folder to store the petsc files
 
 # Set environment
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
