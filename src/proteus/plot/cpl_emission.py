@@ -21,6 +21,10 @@ log = logging.getLogger("fwl."+__name__)
 def plot_emission(output_dir:str, times:list, plot_format="pdf",
                 cumulative=False, xmax=2e4):
 
+    if len(np.unique(times)) < 3:
+        log.warning("Insufficient data to make plot_emission")
+        return
+
     log.info("Plot emission spectrum")
 
     norm = mpl.colors.LogNorm(vmin=max(times[0],1), vmax=times[-1])

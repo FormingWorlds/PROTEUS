@@ -23,7 +23,7 @@ def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, config: Config, t0:
     hf_crop = hf_all.loc[hf_all["Time"]>t0]
     time = np.array(hf_crop["Time"])
     if len(time) < 3:
-        log.warning("Cannot make plot with less than 3 samples")
+        log.warning("Cannot make plot_fluxes with less than 3 samples")
         return
 
     log.info("Plot global fluxes")

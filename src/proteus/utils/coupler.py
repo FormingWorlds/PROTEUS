@@ -195,12 +195,101 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     # End spacer
     log.info(" ")
 
+def print_citation(config:Config):
+    '''
+    Print information on which papers should be cited.
+    '''
+
+    log.info("If you use these results in a publication, please cite:")
+
+    def _cite(key:str, url:str):
+        __BLUE = "\x1b[4;34m"
+        __RESET = "\x1b[0m"
+        log.info("  - "+key+" "+__BLUE+url+__RESET)
+
+    # Core PROTEUS papers
+    _cite("Lichtenberg et al. (2021)",
+            "https://doi.org/10.1029/2020JE006711")
+    _cite("Nicholls et al. (2024a)",
+            "https://doi.org/10.1029/2024JE008576")
+
+    # Atmosphere module
+    match config.atmos_clim.module:
+        case 'janus':
+            _cite("Graham et al. (2021)",
+                    "https://doi.org/10.3847/PSJ/ac214c")
+        case 'agni':
+            _cite("Nicholls et al. (2024b)",
+                    "https://doi.org/10.1093/mnras/stae2772")
+        case _:
+            pass
+
+    # Interior module
+    match config.interior.module:
+        case 'spider':
+            _cite("Bower et al. (2021)",
+                    "https://doi.org/10.3847/PSJ/ac5fb1")
+        case 'aragog':
+            # _cite("Bower et al. (2025)", "in prep")
+            pass
+        case _:
+            pass
+
+    # Outgassing module
+    match config.outgas.module:
+        case 'calliope':
+            # Covered by Nicholls et al. (2024a)
+            pass
+        case 'atmodeller':
+            # _cite("Bower et al. (2025)", "in prep")
+            pass
+        case _:
+            pass
+
+    # Escape module
+    match config.outgas.module:
+        case 'zephyrus':
+            # _cite("Postolec et al. (2025)", "in prep")
+            pass
+        case _:
+            pass
+
+    # Star module
+    match config.star.module:
+        case 'mors':
+            _cite("Johnstone et al. (2021)",
+                    "https://doi.org/10.1051/0004-6361/202038407")
+        case _:
+            pass
+
+    # Orbit module
+    match config.orbit.module:
+        case _:
+            pass
+
+    # Delivery module
+    match config.orbit.module:
+        case _:
+            pass
 
 def print_header():
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     log.info("                   PROTEUS framework                   ")
-    log.info("                   by Forming Worlds                   ")
+    log.info("            Copyright (C) 2025 Forming Worlds          ")
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    log.info(" ")
+
+def print_stoptime(start_time):
+    end_time = datetime.now()
+    log.info("Simulation stopped at: " + end_time.strftime("%Y-%m-%d_%H:%M:%S"))
+
+    run_time = end_time - start_time
+    run_time = run_time.total_seconds() / 60  # minutes
+    if run_time > 60:
+        log.info("Total runtime: %.2f hours" % (run_time / 60))
+    else:
+        log.info("Total runtime: %.2f minutes" % run_time)
+
     log.info(" ")
 
 def PrintCurrentState(hf_row:dict):
@@ -476,28 +565,36 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_global(hf_all,         output_dir, config, logt=False)
         plot_fluxes_global(hf_all,  output_dir, config)
         plot_observables(hf_all,    output_dir, plot_format=config.params.out.plot_fmt)
-        plot_population_mass_radius (hf_all, output_dir, fwl_dir, config.params.out.plot_fmt)
-        plot_population_time_density(hf_all, output_dir, fwl_dir, config.params.out.plot_fmt)
 
-        plt_modern = bool(config.star.module == "mors")
-        if plt_modern:
-            modern_age = config.star.mors.age_now * 1e9
-        else:
-            modern_age = -1
-        plot_sflux(output_dir, plt_modern=plt_modern,
+        # Check that the simulation ran for long enough to make data
+        if len(hf_all["Time"]) >= 3:
+            plot_population_mass_radius (hf_all, output_dir, fwl_dir,
+                                            config.params.out.plot_fmt)
+            plot_population_time_density(hf_all, output_dir, fwl_dir,
+                                            config.params.out.plot_fmt)
+
+            plt_modern = bool(config.star.module == "mors")
+            if plt_modern:
+                modern_age = config.star.mors.age_now * 1e9
+            else:
+                modern_age = -1
+            plot_sflux(output_dir, plt_modern=plt_modern,
                             plot_format=config.params.out.plot_fmt)
-        plot_sflux_cross(output_dir,modern_age=modern_age,
+            plot_sflux_cross(output_dir,modern_age=modern_age,
                             plot_format=config.params.out.plot_fmt)
 
-        if not dummy_int:
-            plot_interior_cmesh(output_dir, plot_times, int_data, config.interior.module,
-                                plot_format=config.params.out.plot_fmt)
+            if not dummy_int:
+                plot_interior_cmesh(output_dir, plot_times, int_data,
+                                        config.interior.module,
+                                        plot_format=config.params.out.plot_fmt)
 
-        if not dummy_atm:
-            plot_emission(output_dir, plot_times, plot_format=config.params.out.plot_fmt)
+            if not dummy_atm:
+                plot_emission(output_dir, plot_times,
+                                    plot_format=config.params.out.plot_fmt)
 
     # Close all figures
     plt.close()
+    log.info(" ")
 
 
 def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
