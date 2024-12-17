@@ -38,13 +38,13 @@ Raymond Pierrehumbert   | raymond.pierrehumbert[at]physics.ox.ac.uk |
 | Object                | Description                                               |
 | -                     | -                                                         |
 | `README.md`           | Overview file                                             |
-| `pyproject.toml`	    | Project configuration file                                |
-| `CODE_OF_CONDUCT.md`	| Project code of conduct                                   |
+| `pyproject.toml`	   | Project configuration file                                |
+| `CODE_OF_CONDUCT.md`  | Project code of conduct                                   |
 | `LICENSE.txt`         | Project license                                           |
 | `src/proteus`         | Source code for PROTEUS                                   |
 | `output/`             | Output folder with subfolders for each model run          |
-| `input/`              | Input folder (e.g. stellar spectra, example configs)      |
-| `docs/`			          | Documentation source files                                |
+| `input/`              | Example configuration files for running the model         |
+| `docs/`		   | Documentation source files                                |
 | `examples/`           | Example cases that the model should be able to reproduce  |
 
 ## Citation
@@ -52,6 +52,26 @@ Raymond Pierrehumbert   | raymond.pierrehumbert[at]physics.ox.ac.uk |
 If you make use of PROTEUS, please reference the following manuscripts, and state the code version used.
 
 ```
+@ARTICLE{Nicholls2024MNRAS,
+       author = {{Nicholls}, Harrison and {Pierrehumbert}, Raymond T. and {Lichtenberg}, Tim and {Soucasse}, Laurent and {Smeets}, Stef},
+        title = "{Convective shutdown in the atmospheres of lava worlds}",
+      journal = {Monthly Notices of the Royal Astronomical Society},
+         year = 2024,
+       month  = dec,
+         doi  = {10.1093/mnras/stae2772},
+          url = {https://arxiv.org/abs/2412.11987}
+}
+
+@ARTICLE{Nicholls2024JGRP,
+       author = {{Nicholls}, Harrison and {Lichtenberg}, Tim and {Bower}, Dan J. and and {Pierrehumbert}, Raymond T.},
+        title = "{Magma ocean evolution at arbitrary redox state}",
+      journal = {Journal of Geophysical Research (Planets)},
+         year = 2024,
+       month  = nov,
+         doi  = {10.1029/2024JE008576},
+          url = {https://arxiv.org/abs/2411.19137}
+}
+
 @ARTICLE{Lichtenberg2021JGRP,
        author = {{Lichtenberg}, Tim and {Bower}, Dan J. and {Hammond}, Mark and {Boukrouche}, Ryan and {Sanan}, Patrick and {Tsai}, Shang-Min and {Pierrehumbert}, Raymond T.},
         title = "{Vertically Resolved Magma Ocean-Protoatmosphere Evolution: H$_{2}$, H$_{2}$O, CO$_{2}$, CH$_{4}$, CO, O$_{2}$, and N$_{2}$ as Primary Absorbers}",
@@ -66,15 +86,6 @@ If you make use of PROTEUS, please reference the following manuscripts, and stat
 archivePrefix = {arXiv},
        eprint = {2101.10991},
  primaryClass = {astro-ph.EP},
-       adsurl = {https://ui.adsabs.harvard.edu/abs/2021JGRE..12606711L}
-}
-
-@ARTICLE{Nicholls2025JGRP,
-       author = {{Nicholls}, Harrison and {Lichtenberg}, Tim and {Bower}, Dan J. and and {Pierrehumbert}, Raymond T.},
-        title = "{Magma ocean evolution at arbitrary redox state}",
-      journal = {Journal of Geophysical Research (Planets)},
-         year = 2025,
-        pages = {submitted},
        adsurl = {https://ui.adsabs.harvard.edu/abs/2021JGRE..12606711L}
 }
 ```

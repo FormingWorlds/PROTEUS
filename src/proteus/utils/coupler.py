@@ -199,7 +199,7 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
 def print_header():
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     log.info("                   PROTEUS framework                   ")
-    log.info("                   by Forming Worlds                   ")
+    log.info("            Copyright (C) 2025 Forming Worlds          ")
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     log.info(" ")
 

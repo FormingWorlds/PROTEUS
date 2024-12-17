@@ -432,3 +432,6 @@ class Proteus:
             log.info("Total runtime: %.2f hours" % (run_time / 60))
         else:
             log.info("Total runtime: %.2f minutes" % run_time)
+
+        # Print citation
+        
