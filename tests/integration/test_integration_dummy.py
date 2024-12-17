@@ -27,8 +27,8 @@ def test_dummy_run(dummy_run):
 
     # Neglect these columns
     neglect = ["CH4_mol_atm"]
-    hf_all.drop(columns=neglect)
-    hf_ref.drop(columns=neglect)
+    hf_all = hf_all.drop(columns=neglect)
+    hf_ref = hf_ref.drop(columns=neglect)
 
     # Check helpfile
     assert_frame_equal(hf_all, hf_ref, rtol=5e-3)

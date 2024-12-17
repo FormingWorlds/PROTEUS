@@ -47,8 +47,8 @@ def test_physical_run(physical_run):
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
     neglect = ["CH4_mol_atm"]
-    hf_all.drop(columns=neglect)
-    hf_ref.drop(columns=neglect)
+    hf_all = hf_all.drop(columns=neglect)
+    hf_ref = hf_ref.drop(columns=neglect)
 
     # Check helpfile
     assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
