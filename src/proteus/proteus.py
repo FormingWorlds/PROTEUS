@@ -36,11 +36,11 @@ from proteus.utils.coupler import (
     UpdatePlots,
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
+    print_citation,
     print_header,
     print_module_configuration,
-    print_system_configuration,
     print_stoptime,
-    print_citation
+    print_system_configuration,
 )
 from proteus.utils.helper import (
     CleanDir,
