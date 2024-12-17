@@ -2,7 +2,7 @@
 
 ## Development
 
-*PROTEUS* targets Python 3.10 or newer.
+*PROTEUS* targets Python 3.11 or newer.
 
 Clone the repository into the `proteus` directory:
 
