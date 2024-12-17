@@ -90,4 +90,4 @@ archivePrefix = {arXiv},
 }
 ```
 
-Please see the relevant sub-modules (e.g., [JANUS]([url](https://github.com/FormingWorlds/JANUS)), [MORS]([url](https://github.com/FormingWorlds/MORS)), [SOCRATES]([url](https://github.com/nichollsh/SOCRATES)), [AGNI]([url](https://github.com/nichollsh/AGNI)), [SPIDER]([url](https://github.com/djbower/spider)), [CALLIOPE]([url](https://github.com/FormingWorlds/CALLIOPE)), [ZEPHYRUS]([url](https://github.com/FormingWorlds/ZEPHYRUS))) for further references.
+Please see the relevant sub-modules for further references.
