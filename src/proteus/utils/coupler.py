@@ -205,14 +205,13 @@ def print_citation(config:Config):
     def _cite(key:str, url:str):
         __BLUE = "\x1b[4;34m"
         __RESET = "\x1b[0m"
-        log.info("  - "+key+", "+__BLUE+url+__RESET)
+        log.info("  - "+key+" "+__BLUE+url+__RESET)
 
-    # Key PROTEUS papers
+    # Core PROTEUS papers
     _cite("Lichtenberg et al. (2021)",
             "https://doi.org/10.1029/2020JE006711")
     _cite("Nicholls et al. (2024a)",
             "https://doi.org/10.1029/2024JE008576")
-
 
     # Atmosphere module
     match config.atmos_clim.module:
@@ -572,25 +571,32 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_global(hf_all,         output_dir, config, logt=False)
         plot_fluxes_global(hf_all,  output_dir, config)
         plot_observables(hf_all,    output_dir, plot_format=config.params.out.plot_fmt)
-        plot_population_mass_radius (hf_all, output_dir, fwl_dir, config.params.out.plot_fmt)
-        plot_population_time_density(hf_all, output_dir, fwl_dir, config.params.out.plot_fmt)
 
-        plt_modern = bool(config.star.module == "mors")
-        if plt_modern:
-            modern_age = config.star.mors.age_now * 1e9
-        else:
-            modern_age = -1
-        plot_sflux(output_dir, plt_modern=plt_modern,
+        # Check that the simulation ran for long enough to make data
+        if len(hf_all["Time"]) >= 3:
+            plot_population_mass_radius (hf_all, output_dir, fwl_dir,
+                                            config.params.out.plot_fmt)
+            plot_population_time_density(hf_all, output_dir, fwl_dir,
+                                            config.params.out.plot_fmt)
+
+            plt_modern = bool(config.star.module == "mors")
+            if plt_modern:
+                modern_age = config.star.mors.age_now * 1e9
+            else:
+                modern_age = -1
+            plot_sflux(output_dir, plt_modern=plt_modern,
                             plot_format=config.params.out.plot_fmt)
-        plot_sflux_cross(output_dir,modern_age=modern_age,
+            plot_sflux_cross(output_dir,modern_age=modern_age,
                             plot_format=config.params.out.plot_fmt)
 
-        if not dummy_int:
-            plot_interior_cmesh(output_dir, plot_times, int_data, config.interior.module,
-                                plot_format=config.params.out.plot_fmt)
+            if not dummy_int:
+                plot_interior_cmesh(output_dir, plot_times, int_data,
+                                        config.interior.module,
+                                        plot_format=config.params.out.plot_fmt)
 
-        if not dummy_atm:
-            plot_emission(output_dir, plot_times, plot_format=config.params.out.plot_fmt)
+            if not dummy_atm:
+                plot_emission(output_dir, plot_times,
+                                    plot_format=config.params.out.plot_fmt)
 
     # Close all figures
     plt.close()

@@ -52,7 +52,7 @@ def plot_population_mass_radius(hf_all:pd.DataFrame, output_dir: str, fwl_dir:st
     hf_crop = hf_all.loc[hf_all["Time"]>t0]
     time = np.array(hf_crop["Time"])
     if len(time) < 3:
-        log.warning("Cannot make plot with less than 3 samples")
+        log.warning("Cannot make plot_population with less than 3 samples")
         return
 
     log.info("Plot population (mass-radius)")
@@ -127,7 +127,7 @@ def plot_population_time_density(hf_all:pd.DataFrame, output_dir: str, fwl_dir:s
     hf_crop = hf_all.loc[hf_all["Time"]>t0]
     time = np.array(hf_crop["Time"])
     if len(time) < 3:
-        log.warning("Cannot make plot with less than 3 samples")
+        log.warning("Cannot make plot_population with less than 3 samples")
         return
 
     log.info("Plot population (time-density)")
