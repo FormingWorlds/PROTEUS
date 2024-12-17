@@ -195,12 +195,108 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     # End spacer
     log.info(" ")
 
+def print_citation(config:Config):
+    '''
+    Print information on which papers should be cited.
+    '''
+
+    log.info("If you use these results in a publication, please cite:")
+
+    def _cite(key:str, url:str):
+        __BLUE = "\x1b[4;34m"
+        __RESET = "\x1b[0m"
+        log.info("  - "+key+", "+__BLUE+url+__RESET)
+
+    # Key PROTEUS papers
+    _cite("Lichtenberg et al. (2021)",
+            "https://doi.org/10.1029/2020JE006711")
+    _cite("Nicholls et al. (2024a)",
+            "https://doi.org/10.1029/2024JE008576")
+
+
+    # Atmosphere module
+    match config.atmos_clim.module:
+        case 'janus':
+            _cite("Graham et al. (2021)",
+                    "https://doi.org/10.3847/PSJ/ac214c")
+        case 'agni':
+            _cite("Nicholls et al. (2024b)",
+                    "https://doi.org/10.1093/mnras/stae2772")
+        case _:
+            pass
+
+    # Interior module
+    match config.interior.module:
+        case 'spider':
+            _cite("Bower et al. (2021)",
+                    "https://doi.org/10.3847/PSJ/ac5fb1")
+        case 'aragog':
+            # _cite("Bower et al. (2025)", "in prep")
+            pass
+        case _:
+            pass
+
+    # Outgassing module
+    match config.outgas.module:
+        case 'calliope':
+            _cite("Sossi et al. (2022)",
+                    "https://doi.org/10.1016/j.epsl.2022.117894")
+        case 'atmodeller':
+            # _cite("Bower et al. (2025)", "in prep")
+            pass
+        case _:
+            pass
+
+    # Escape module
+    match config.outgas.module:
+        case 'zephyrus':
+            # _cite("Postolec et al. (2025)", "in prep")
+            pass
+        case _:
+            pass
+
+    # Star module
+    match config.star.module:
+        case 'mors':
+            _cite("Johnstone et al. (2021)",
+                  "https://doi.org/10.1051/0004-6361/202038407")
+            if config.star.mors.tracks == 'spada':
+                _cite("Spada et al. (2013)",
+                        "https://doi.org/10.1088/0004-637X/776/2/87")
+            else:
+                _cite("Baraffe et al. (2015)",
+                        "https://doi.org/10.1051/0004-6361/201425481")
+        case _:
+            pass
+
+    # Orbit module
+    match config.orbit.module:
+        case _:
+            pass
+
+    # Delivery module
+    match config.orbit.module:
+        case _:
+            pass
 
 def print_header():
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     log.info("                   PROTEUS framework                   ")
     log.info("            Copyright (C) 2025 Forming Worlds          ")
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
+    log.info(" ")
+
+def print_stoptime(start_time):
+    end_time = datetime.now()
+    log.info("Simulation stopped at: " + end_time.strftime("%Y-%m-%d_%H:%M:%S"))
+
+    run_time = end_time - start_time
+    run_time = run_time.total_seconds() / 60  # minutes
+    if run_time > 60:
+        log.info("Total runtime: %.2f hours" % (run_time / 60))
+    else:
+        log.info("Total runtime: %.2f minutes" % run_time)
+
     log.info(" ")
 
 def PrintCurrentState(hf_row:dict):
@@ -498,6 +594,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Close all figures
     plt.close()
+    log.info(" ")
 
 
 def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:

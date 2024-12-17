@@ -39,6 +39,8 @@ from proteus.utils.coupler import (
     print_header,
     print_module_configuration,
     print_system_configuration,
+    print_stoptime,
+    print_citation
 )
 from proteus.utils.helper import (
     CleanDir,
@@ -423,15 +425,9 @@ class Proteus:
 
         # Plot conditions at the end
         UpdatePlots(self.hf_all, self.directories, self.config, end=True)
-        end_time = datetime.now()
-        log.info("Simulation stopped at: " + end_time.strftime("%Y-%m-%d_%H:%M:%S"))
 
-        run_time = end_time - start_time
-        run_time = run_time.total_seconds() / 60  # minutes
-        if run_time > 60:
-            log.info("Total runtime: %.2f hours" % (run_time / 60))
-        else:
-            log.info("Total runtime: %.2f minutes" % run_time)
+        # Stop time and model duration
+        print_stoptime(start_time)
 
         # Print citation
-        
+        print_citation(self.config)
