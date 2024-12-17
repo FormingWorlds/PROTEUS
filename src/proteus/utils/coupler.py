@@ -238,8 +238,8 @@ def print_citation(config:Config):
     # Outgassing module
     match config.outgas.module:
         case 'calliope':
-            _cite("Sossi et al. (2022)",
-                    "https://doi.org/10.1016/j.epsl.2022.117894")
+            # Covered by Nicholls et al. (2024a)
+            pass
         case 'atmodeller':
             # _cite("Bower et al. (2025)", "in prep")
             pass
@@ -258,13 +258,7 @@ def print_citation(config:Config):
     match config.star.module:
         case 'mors':
             _cite("Johnstone et al. (2021)",
-                  "https://doi.org/10.1051/0004-6361/202038407")
-            if config.star.mors.tracks == 'spada':
-                _cite("Spada et al. (2013)",
-                        "https://doi.org/10.1088/0004-637X/776/2/87")
-            else:
-                _cite("Baraffe et al. (2015)",
-                        "https://doi.org/10.1051/0004-6361/201425481")
+                    "https://doi.org/10.1051/0004-6361/202038407")
         case _:
             pass
 
