@@ -2,7 +2,7 @@
 
 1. Connect via SSH. See instructions from SURF [here](https://servicedesk.surf.nl/wiki/display/WIKI/SSH+public-key+authentication).
 
-2. Set up your working environment. You have to load some modules and set up the environment variables prior to the installation. To facilitate this we suggest to copy the following function into your `.bashrc` file of your home directory.
+2. Set up your working environment. You have to load some modules and set up the environment variables prior to the installation. To facilitate this we suggest to copy the following function into your `.bashrc` file of your home directory. Then, simply run this function `boot_PROTEUS` in your terminal each time you login.
 
     ```console
     boot_PROTEUS () {
@@ -15,8 +15,6 @@
       export RAD_DIR=${HOME}/your_path_to_socrates
     }
     ```
-
-   Simply run `boot_PROTEUS` in your terminal each time you login.
 
 3. Follow the generic installation instructions [here](./installation.md) from "Download the framework". We then recommand to add the activation of the python virtual environment into the `boot_PROTEUS` function of step 2.
 
