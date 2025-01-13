@@ -25,4 +25,3 @@
       source ${HOME}/proteus_directory/.venv/bin/activate
     }
     ```
-
