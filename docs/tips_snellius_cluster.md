@@ -21,7 +21,7 @@
     ```console
     boot_PROTEUS () {
       [...]
-      
+
       source ${HOME}/proteus_directory/.venv/bin/activate
     }
     ```
