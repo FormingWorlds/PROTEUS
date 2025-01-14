@@ -44,7 +44,7 @@ def _estimate_solid(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
             #  dp/dt * dt + p2 = 0    ->   dt = -p2/(dp/dt)
             dt_solid = abs(-1.0 * h2["Phi_global"] / (dp/dt))
 
-    log.info("Solidification expected in %.3e yrs"%dt_solid)
+    log.debug("Solidification expected in %.3e yrs"%dt_solid)
 
     return dt_solid
 
@@ -76,7 +76,7 @@ def _estimate_radeq(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
         else:
             dt_radeq = abs(-1.0 * f2 / (df/dt))
 
-    log.info("Energy balance expected in %.3e yrs"%dt_radeq)
+    log.debug("Energy balance expected in %.3e yrs"%dt_radeq)
 
     return dt_radeq
 
