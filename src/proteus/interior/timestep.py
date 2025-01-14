@@ -5,6 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import pandas as pd
+import numpy as np
 
 from proteus.utils.helper import UpdateStatusfile
 
@@ -13,14 +14,58 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-ILOOK = 4 # Number of steps to use for extrapolation fitting
+ILOOK = 3 # Ideal number of steps to look back
 
-def _estimate_solidify(hf_all:pd.DataFrame) -> float:
+def _estimate_solid(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
     '''
     Estimate the time remaining until the planet solidifies.
     '''
 
+    # HF at times
+    h1 = hf_all.iloc[i1]
+    h2 = hf_all.iloc[i2]
 
+    # Change in time and global melt frac
+    dt = h2["Time"]       - h1["Time"]
+    dp = h2["Phi_global"] - h1["Phi_global"]
+
+    # Estimate how long until p=0
+    if abs(dp) < 1e-30:
+        dt_solid = np.inf
+    else:
+        #  dp/dt * dt + p2 = 0    ->   dt = -p2/(dp/dt)
+        dt_solid = abs(-1.0 * h2["Phi_global"] / (dp/dt))
+
+    log.debug("Solidification expected in %.3e yrs"%dt_solid)
+
+    return dt_solid
+
+def _estimate_radeq(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
+    '''
+    Estimate the time remaining until the energy balance is achieved.
+    '''
+
+    # HF at times
+    h1 = hf_all.iloc[i1]
+    h2 = hf_all.iloc[i2]
+
+    # Flux residuals
+    f2 = h2["F_atm"] - h2["F_tidal"] - h2["F_radio"]
+    f1 = h1["F_atm"] - h1["F_tidal"] - h1["F_radio"]
+
+    # Change in time and global melt frac
+    dt = h2["Time"] - h1["Time"]
+    df = f2 - f1
+
+    # Estimate how long until f=0
+    if abs(df) < 1e-30:
+        dt_radeq = np.inf
+    else:
+        dt_radeq = abs(-1.0 * f2 / (df/dt))
+
+    log.debug("Energy balance expected in %.3e yrs"%dt_radeq)
+
+    return dt_radeq
 
 
 def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_sf:float) -> float:
@@ -53,12 +98,19 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
         log.info("Time-stepping intent: static")
 
     else:
-        # Estimate solidification time
+        # How far to look back?
+        if ILOOK >= len(hf_all["Time"]):
+            i1 = -2
+        else:
+            i1 = int(-1 * ILOOK)
+        i2 = -1
 
+        # Estimate time until solidification
+        dt_solid = _estimate_solid(hf_all, i1, i2)
+        dt_radeq = _estimate_radeq(hf_all, i1, i2)
 
         # Proportional time-step calculation
         if config.params.dt.method == 'proportional':
-
             log.info("Time-stepping intent: proportional")
             dtswitch = hf_row["Time"] / config.params.dt.proportional.propconst
 
@@ -72,26 +124,20 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
                 dtprev = config.params.dt.initial
             log.debug("Previous step size: %.2e yr"%dtprev)
 
-            if ILOOK >= len(hf_all["Time"]):
-                i2 = -2
-            else:
-                i2 = int(-1 * ILOOK)
-            i1 = -1
-
             # Change in F_int
             F_int_2  = hf_all.iloc[i2]["F_int"]
             F_int_1  = hf_all.iloc[i1]["F_int"]
-            F_int_12 = abs(F_int_1 - F_int_2)
+            F_int_12 = abs(F_int_2 - F_int_1)
 
             # Change in F_atm
             F_atm_2  = hf_all.iloc[i2]["F_atm"]
             F_atm_1  = hf_all.iloc[i1]["F_atm"]
-            F_atm_12 = abs(F_atm_1 - F_atm_2)
+            F_atm_12 = abs(F_atm_2 - F_atm_1)
 
             # Change in global melt fraction
             phi_2  = hf_all.iloc[i2]["Phi_global"]
             phi_1  = hf_all.iloc[i1]["Phi_global"]
-            phi_12 = abs(phi_1 - phi_2)
+            phi_12 = abs(phi_2 - phi_1)
 
             # Determine new time-step given the tolerances
             dt_rtol = config.params.dt.adaptive.rtol
@@ -121,6 +167,10 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
 
         # Step scale factor (is always <= 1.0)
         dtswitch *= step_sf
+
+        # Do not allow step size to exceed predicted point of termination
+        dtswitch = min(dtswitch, dt_solid)
+        dtswitch = min(dtswitch, dt_radeq)
 
         # Step-size ceiling
         dtswitch = min(dtswitch, config.params.dt.maximum )    # Absolute
