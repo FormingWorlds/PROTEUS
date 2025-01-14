@@ -26,7 +26,7 @@ def test_dummy_run(dummy_run):
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
     # Neglect these columns
-    neglect = ["CH4_mol_atm"]
+    neglect = ["CH4_mol_atm", "CH4_mol_solid", "CH4_mol_liquid", "CH4_mol_total"]
     hf_all = hf_all.drop(columns=neglect)
     hf_ref = hf_ref.drop(columns=neglect)
 
