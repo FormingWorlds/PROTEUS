@@ -27,7 +27,7 @@ def _get_mr_data(fwl_dir:str):
     # Set paths
     curves = {
         "Earth-like":       os.path.join(z19, "massradiusEarthlikeRocky.txt"),
-        r"MgSiO3":          os.path.join(z19, "massradiusmgsio3.txt"),
+        r"MgSiO$_3$":       os.path.join(z19, "massradiusmgsio3.txt"),
         r"H$_2$O, 300 K":   os.path.join(z19, "massradius_100percentH2O_300K_1mbar.txt"),
         r"H$_2$O, 1000 K":  os.path.join(z19, "massradius_100percentH2O_1000K_1mbar.txt"),
     }
@@ -100,7 +100,7 @@ def plot_population_mass_radius(hf_all:pd.DataFrame, output_dir: str, fwl_dir:st
     # Simulation
     col='k'
     ax.plot(sim_mas, sim_rad, label="Simulation", color=col, lw=1.5, zorder=98)
-    ax.scatter(sim_mas[-1], sim_rad[-1], color=col, s=ms, zorder=99)
+    ax.scatter(sim_mas[-1], sim_rad[-1], color=col, s=ms, zorder=99, marker='D', label='End')
 
     # Save figure
     ax.set_ylabel(r"Planet radius [$R_{\oplus}$]")
@@ -168,7 +168,7 @@ def plot_population_time_density(hf_all:pd.DataFrame, output_dir: str, fwl_dir:s
     col='k'
     ax.plot([time[-1],1e13],[sim_rho[-1],sim_rho[-1]], color=col, lw=lw, ls='dotted', label="Extrapolated", zorder=97)
     ax.plot(time, sim_rho, label="Simulation", color=col, lw=lw, zorder=98)
-    ax.scatter(time[-1], sim_rho[-1], color=col, s=ms, zorder=99)
+    ax.scatter(time[-1], sim_rho[-1], color=col, s=ms, zorder=99, marker='D', label='End')
 
 
     # Save figure

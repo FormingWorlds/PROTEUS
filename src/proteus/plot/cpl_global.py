@@ -39,6 +39,9 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
         "framealpha":0.9
     }
 
+    # Magnitude of change in instellation flux
+    F_delta_inst = np.abs(hf["F_ins"] - hf["F_ins"].iloc[0])
+
 
     #    Volatile parameters (keys=vols, vals=quantites_over_time)
     vol_present = {} # Is present ever? (true/false)
@@ -96,12 +99,12 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
 
     # Set titles
     ax_titles = [
-        "(a) Net heat flux to space",
+        "(a) Components of heat flux",
         "(c) Surface temperature",
         "(e) Mantle evolution",
         "(b) Surface gas partial pressure",
         "(d) Surface gas mole fraction",
-        "(f) Interior volatile partitioning"
+        "(f) Volatile partitioning into interior"
     ]
     for i,ax in enumerate(axs):
         ax.text(0.011, 0.015, ax_titles[i],
@@ -148,6 +151,7 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
     ax_tl.plot( hf["Time"], hf["F_olr"],  color=get_colour("OLR"),  lw=lw, alpha=al,  label="OLR"   )
     ax_tl.plot( hf["Time"], hf["F_tidal"], color=get_colour("tidal"), lw=lw, alpha=al,  label="Tidal")
     ax_tl.plot( hf["Time"], hf["F_radio"], color=get_colour("radio"), lw=lw, alpha=al,  label="Radio.")
+    ax_tl.plot( hf["Time"], F_delta_inst, color=get_colour("star"), lw=lw, alpha=al,  label=r"|$\Delta$Inst.|")
     ax_tl.legend(loc='center left', **leg_kwargs)
     ymin, ymax = 0.0, 100.0
     for k in ("F_int","F_atm","F_olr","F_tidal","F_radio"):

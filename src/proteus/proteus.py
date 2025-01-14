@@ -7,12 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from proteus.atmos_clim import RunAtmosphere
+
 from proteus.config import read_config_object
-from proteus.escape.wrapper import RunEscape
-from proteus.interior.wrapper import run_interior, solve_structure
-from proteus.orbit.wrapper import run_orbit
-from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 from proteus.star.wrapper import (
     get_new_spectrum,
     init_star,
@@ -119,6 +115,11 @@ class Proteus:
 
         # Import
         from proteus.utils.data import download_sufficient_data
+        from proteus.atmos_clim import RunAtmosphere
+        from proteus.escape.wrapper import RunEscape
+        from proteus.interior.wrapper import run_interior, solve_structure
+        from proteus.orbit.wrapper import run_orbit
+        from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
 
         # First things
         start_time = datetime.now()

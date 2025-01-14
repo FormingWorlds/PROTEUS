@@ -36,7 +36,7 @@ def plot_observables(hf_all:pd.DataFrame, output_dir: str, plot_format: str="pdf
     axr = axl.twinx()
     color = "tab:red"
     axr.plot(time, hf_all["contrast_ratio"]*1e9, lw=lw, color=color)
-    axr.set_ylabel("Contrast ratio [ppb]")
+    axr.set_ylabel("Bolometric contrast ratio [ppb]")
     axr.yaxis.label.set_color(color)
     axr.tick_params(axis='y', colors=color)
 

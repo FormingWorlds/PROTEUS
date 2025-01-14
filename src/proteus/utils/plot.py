@@ -50,6 +50,7 @@ _preset_colours  = {
     "sct":   "#2e8b57",
     "tidal": "#daa520",
     "radio": "#1e90ff",
+    "star":  "#ffbbcc",
 
     # Model components
     "atm"     : "#444444",
