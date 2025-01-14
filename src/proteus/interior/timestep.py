@@ -14,7 +14,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-ILOOK = 3 # Ideal number of steps to look back
+# Constants
+ILOOK = 2       # Ideal number of steps to look back
+SFINC = 1.10    # Scale factor for step size increase
+SFDEC = 0.75    # Scale factor for step size decrease
 
 def _estimate_solid(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
     '''
@@ -25,18 +28,23 @@ def _estimate_solid(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
     h1 = hf_all.iloc[i1]
     h2 = hf_all.iloc[i2]
 
-    # Change in time and global melt frac
-    dt = h2["Time"]       - h1["Time"]
-    dp = h2["Phi_global"] - h1["Phi_global"]
-
-    # Estimate how long until p=0
-    if abs(dp) < 1e-30:
+    # Check if planet has already solidified
+    if h2["Phi_global"] < 1e-30:
         dt_solid = np.inf
-    else:
-        #  dp/dt * dt + p2 = 0    ->   dt = -p2/(dp/dt)
-        dt_solid = abs(-1.0 * h2["Phi_global"] / (dp/dt))
 
-    log.debug("Solidification expected in %.3e yrs"%dt_solid)
+    else:
+        # Change in time and global melt frac
+        dt = h2["Time"]       - h1["Time"]
+        dp = h2["Phi_global"] - h1["Phi_global"]
+
+        # Estimate how long until p=0
+        if abs(dp) < 1e-30:
+            dt_solid = np.inf
+        else:
+            #  dp/dt * dt + p2 = 0    ->   dt = -p2/(dp/dt)
+            dt_solid = abs(-1.0 * h2["Phi_global"] / (dp/dt))
+
+    log.info("Solidification expected in %.3e yrs"%dt_solid)
 
     return dt_solid
 
@@ -53,17 +61,22 @@ def _estimate_radeq(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
     f2 = h2["F_atm"] - h2["F_tidal"] - h2["F_radio"]
     f1 = h1["F_atm"] - h1["F_tidal"] - h1["F_radio"]
 
-    # Change in time and global melt frac
-    dt = h2["Time"] - h1["Time"]
-    df = f2 - f1
-
-    # Estimate how long until f=0
-    if abs(df) < 1e-30:
+    # Check if planet is already at radeq
+    if abs(f2) < 1e-30:
         dt_radeq = np.inf
-    else:
-        dt_radeq = abs(-1.0 * f2 / (df/dt))
 
-    log.debug("Energy balance expected in %.3e yrs"%dt_radeq)
+    else:
+        # Change in time and global melt frac
+        dt = h2["Time"] - h1["Time"]
+        df = f2 - f1
+
+        # Estimate how long until f=0
+        if abs(df) < 1e-30:
+            dt_radeq = np.inf
+        else:
+            dt_radeq = abs(-1.0 * f2 / (df/dt))
+
+    log.info("Energy balance expected in %.3e yrs"%dt_radeq)
 
     return dt_radeq
 
@@ -148,10 +161,10 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
             speed_up = speed_up and ( phi_12   < dt_rtol*abs(phi_2  ) + dt_atol )
 
             if speed_up:
-                dtswitch = dtprev * 1.1
+                dtswitch = dtprev * SFINC
                 log.info("Time-stepping intent: speed up")
             else:
-                dtswitch = dtprev * 0.75
+                dtswitch = dtprev * SFDEC
                 log.info("Time-stepping intent: slow down")
 
 
@@ -172,12 +185,9 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
         dtswitch = min(dtswitch, dt_solid)
         dtswitch = min(dtswitch, dt_radeq)
 
-        # Step-size ceiling
-        dtswitch = min(dtswitch, config.params.dt.maximum )    # Absolute
-
-        # Step-size floor
-        dtswitch = max(dtswitch, hf_row["Time"]*0.0001)     # Relative
-        dtswitch = max(dtswitch, config.params.dt.minimum )    # Absolute
+        # Step-size limits
+        dtswitch = min(dtswitch, config.params.dt.maximum )    # Ceiling
+        dtswitch = max(dtswitch, config.params.dt.minimum )    # Floor
 
     log.info("New time-step is %1.2e years" % dtswitch)
     return dtswitch

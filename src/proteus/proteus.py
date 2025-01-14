@@ -43,6 +43,7 @@ from proteus.utils.helper import (
     PrintSeparator,
     UpdateStatusfile,
     safe_rm,
+    multiple
 )
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
@@ -399,7 +400,8 @@ class Proteus:
                 self.hf_all = CreateHelpfileFromDict(self.hf_row)
 
             # Write helpfile to disk
-            WriteHelpfileToCSV(self.directories["output"], self.hf_all)
+            if multiple(self.loops["total"], self.config.params.out.write_mod):
+                    WriteHelpfileToCSV(self.directories["output"], self.hf_all)
 
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)
@@ -410,10 +412,11 @@ class Proteus:
                 self.finished = check_termination(self)
 
             # Make plots
-            if self.config.params.out.plot_mod > 0 and not self.finished:
-                if self.loops["total"] % self.config.params.out.plot_mod == 0:
-                    log.info("Making plots")
-                    UpdatePlots(self.hf_all, self.directories, self.config)
+            if multiple(self.loops["total"], self.config.params.out.plot_mod) \
+                and not self.finished:
+
+                log.info("Making plots")
+                UpdatePlots(self.hf_all, self.directories, self.config)
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
@@ -423,7 +426,8 @@ class Proteus:
         # Clean up files
         safe_rm(self.lockfile)
 
-        # Plot conditions at the end
+        # Plot and write conditions at the end of simulation
+        WriteHelpfileToCSV(self.directories["output"], self.hf_all)
         UpdatePlots(self.hf_all, self.directories, self.config, end=True)
 
         # Stop time and model duration

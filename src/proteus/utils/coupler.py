@@ -36,6 +36,8 @@ from proteus.plot.cpl_structure import plot_structure
 from proteus.utils.constants import (
     element_list,
     gas_list,
+    secs_per_hour,
+    secs_per_minute
 )
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -282,11 +284,13 @@ def print_stoptime(start_time):
     log.info("Simulation stopped at: " + end_time.strftime("%Y-%m-%d_%H:%M:%S"))
 
     run_time = end_time - start_time
-    run_time = run_time.total_seconds() / 60  # minutes
-    if run_time > 60:
-        log.info("Total runtime: %.2f hours" % (run_time / 60))
+    run_time = run_time.total_seconds()
+    if run_time > secs_per_hour:
+        log.info("Total runtime: %.2f hours" % (run_time / secs_per_hour))
+    elif run_time > secs_per_minute:
+        log.info("Total runtime: %.2f minutes" % (run_time / secs_per_minute))
     else:
-        log.info("Total runtime: %.2f minutes" % run_time)
+        log.info("Total runtime: %.2f seconds" % run_time)
 
     log.info(" ")
 

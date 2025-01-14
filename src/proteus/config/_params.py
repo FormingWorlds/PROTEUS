@@ -47,11 +47,14 @@ class OutputParams:
         Plotting frequency. 0: wait until completion. n: every n iterations.
     plot_fmt: str
         Plotting output file format. Choices: "png", "pdf".
+    write_mod: int
+        Write CSV frequency. 0: wait until completion. n: every n iterations.
     """
     path: str
     logging: str = field(validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
     plot_mod: int = field(validator=ge(0))
     plot_fmt: str = field(validator=in_(('pdf', 'png')))
+    write_mod: int = field(validator=ge(0))
 
 
 @define
