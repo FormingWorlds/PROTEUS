@@ -167,6 +167,9 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
                 dtswitch = dtprev * SFDEC
                 log.info("Time-stepping intent: slow down")
 
+            # Do not allow step size to exceed predicted point of termination
+            dtswitch = min(dtswitch, dt_solid)
+            dtswitch = min(dtswitch, dt_radeq)
 
         # Always use the maximum time-step, which can be adjusted in the cfg file
         elif config.params.dt.method == 'maximum':
@@ -180,10 +183,6 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
 
         # Step scale factor (is always <= 1.0)
         dtswitch *= step_sf
-
-        # Do not allow step size to exceed predicted point of termination
-        dtswitch = min(dtswitch, dt_solid)
-        dtswitch = min(dtswitch, dt_radeq)
 
         # Step-size limits
         dtswitch = min(dtswitch, config.params.dt.maximum )    # Ceiling
