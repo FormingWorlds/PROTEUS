@@ -43,8 +43,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             propconst    = 52.0   # Proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.02   # Step size atol
-            rtol         = 0.10   # Step size rtol
+            atol         = 0.03   # Step size atol
+            rtol         = 0.12   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -74,7 +74,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             rtol    = 1e-3    # relative tolerance
 
         [params.stop.escape]
-            enabled   = true
+            enabled   = false
             mass_frac = 3e-4      # Stop when atm_mass < this frac of initial mass
 
 
@@ -119,7 +119,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = true      # do not allow the planet to heat up
+    prevent_warming = false      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
@@ -161,7 +161,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
-    module = "dummy"    # Which escape module to use
+    module = "none"    # Which escape module to use
 
     [escape.zephyrus]
         Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]

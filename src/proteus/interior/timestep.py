@@ -13,22 +13,57 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_sf:float) -> float:
+ILOOK = 4 # Number of steps to use for extrapolation fitting
 
-    # Time stepping adjustment
+def _estimate_solidify(hf_all:pd.DataFrame) -> float:
+    '''
+    Estimate the time remaining until the planet solidifies.
+    '''
+
+
+
+
+def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_sf:float) -> float:
+    '''
+    Determine the size of the next interior time-step.
+
+    Parameters
+    -----------
+        config : dict
+            Dictionary of configuration options
+        dirs : dict
+            Dictionary of directories
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
+        hf_all : pd.DataFrame
+            Dataframe containing simulation variables (now and historic)
+        step_sf : float
+            Scale factor to apply to step size
+
+
+    Returns
+    -----------
+        dtswitch : float
+            Optimal step size [years].
+    '''
+
+    # First years, use small step
     if hf_row["Time"] < 2.0:
-        # First year, use small step
         dtswitch = 1.0
         log.info("Time-stepping intent: static")
 
     else:
+        # Estimate solidification time
+
+
+        # Proportional time-step calculation
         if config.params.dt.method == 'proportional':
-            # Proportional time-step calculation
+
             log.info("Time-stepping intent: proportional")
             dtswitch = hf_row["Time"] / config.params.dt.proportional.propconst
 
+        # Dynamic time-step calculation
         elif config.params.dt.method == 'adaptive':
-            # Dynamic time-step calculation
 
             # Try to maintain a minimum step size of dt_initial at first
             if hf_row["Time"] > config.params.dt.initial:
@@ -37,19 +72,25 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
                 dtprev = config.params.dt.initial
             log.debug("Previous step size: %.2e yr"%dtprev)
 
+            if ILOOK >= len(hf_all["Time"]):
+                i2 = -2
+            else:
+                i2 = int(-1 * ILOOK)
+            i1 = -1
+
             # Change in F_int
-            F_int_2  = hf_all.iloc[-2]["F_int"]
-            F_int_1  = hf_all.iloc[-1]["F_int"]
+            F_int_2  = hf_all.iloc[i2]["F_int"]
+            F_int_1  = hf_all.iloc[i1]["F_int"]
             F_int_12 = abs(F_int_1 - F_int_2)
 
             # Change in F_atm
-            F_atm_2  = hf_all.iloc[-2]["F_atm"]
-            F_atm_1  = hf_all.iloc[-1]["F_atm"]
+            F_atm_2  = hf_all.iloc[i2]["F_atm"]
+            F_atm_1  = hf_all.iloc[i1]["F_atm"]
             F_atm_12 = abs(F_atm_1 - F_atm_2)
 
             # Change in global melt fraction
-            phi_2  = hf_all.iloc[-2]["Phi_global"]
-            phi_1  = hf_all.iloc[-1]["Phi_global"]
+            phi_2  = hf_all.iloc[i2]["Phi_global"]
+            phi_1  = hf_all.iloc[i1]["Phi_global"]
             phi_12 = abs(phi_1 - phi_2)
 
             # Determine new time-step given the tolerances
@@ -68,11 +109,12 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
                 log.info("Time-stepping intent: slow down")
 
 
+        # Always use the maximum time-step, which can be adjusted in the cfg file
         elif config.params.dt.method == 'maximum':
-            # Always use the maximum time-step, which can be adjusted in the cfg file
             log.info("Time-stepping intent: maximum")
             dtswitch = config.params.dt.maximum
 
+        # Handle all other inputs
         else:
             UpdateStatusfile(dirs, 20)
             raise Exception(f"Invalid time-stepping method: {config.params.dt.method}")
