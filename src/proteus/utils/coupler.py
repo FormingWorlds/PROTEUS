@@ -203,9 +203,7 @@ def print_citation(config:Config):
     log.info("If you use these results in a publication, please cite:")
 
     def _cite(key:str, url:str):
-        __BLUE = "\x1b[4;34m"
-        __RESET = "\x1b[0m"
-        log.info("  - "+key+" "+__BLUE+url+__RESET)
+        log.info("  - "+key+", "+url)
 
     # Core PROTEUS papers
     _cite("Lichtenberg et al. (2021)",
