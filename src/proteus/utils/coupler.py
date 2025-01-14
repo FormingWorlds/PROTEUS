@@ -33,12 +33,7 @@ from proteus.plot.cpl_population import (
 from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
 from proteus.plot.cpl_structure import plot_structure
-from proteus.utils.constants import (
-    element_list,
-    gas_list,
-    secs_per_hour,
-    secs_per_minute
-)
+from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
 
