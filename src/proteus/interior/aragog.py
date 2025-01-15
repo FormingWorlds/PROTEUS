@@ -37,7 +37,8 @@ log = logging.getLogger("fwl."+__name__)
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 # Run the Aragog interior module
-def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
+def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int,
+                hf_row:dict, hf_all:pd.DataFrame, tides_array:np.ndarray):
 
     global aragog_solver
 
@@ -53,6 +54,10 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
     else:
         step_sf = 1.0 # dt scale factor
         dt = next_step(config, dirs, hf_row, hf_all, step_sf)
+
+    # Tidal heating base case
+    if tides_array is None:
+        tides_array = np.zeros(config.interior.aragog.num_levels-1)
 
     # Setup Aragog parameters from options at first iteration
     if (aragog_solver is None):

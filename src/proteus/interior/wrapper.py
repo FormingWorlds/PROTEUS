@@ -45,6 +45,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     calculate_core_mass(hf_row, config)
     hf_row["gravity"] = 9.81
 
+
     # Target mass
     M_target = config.struct.mass_tot * M_earth
 
@@ -57,7 +58,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
 
         # Use interior model to get dry mass from radius
         calculate_core_mass(hf_row, config)
-        run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row, verbose=False)
+        run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row, None, verbose=False)
         update_gravity(hf_row)
 
         # Calculate residual
@@ -80,7 +81,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
                                     x0=hf_row["R_int"], x1=hf_row["R_int"]*1.02)
     hf_row["R_int"] = float(r.root)
     calculate_core_mass(hf_row, config)
-    run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row)
+    run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row, None)
     update_gravity(hf_row)
 
     # Result
@@ -118,7 +119,8 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
 
 
 def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
-                 hf_all:pd.DataFrame, hf_row:dict, verbose:bool=True):
+                    hf_all:pd.DataFrame, hf_row:dict,
+                    tides:np.ndarray, verbose:bool=True):
     '''
     Run interior model
     '''
@@ -133,7 +135,7 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         from proteus.interior.spider import ReadSPIDER, RunSPIDER
 
         # Run SPIDER
-        RunSPIDER(dirs, config, IC_INTERIOR, hf_all, hf_row)
+        RunSPIDER(dirs, config, IC_INTERIOR, hf_all, hf_row, tides)
         sim_time, output = ReadSPIDER(dirs, config, hf_row["R_int"])
 
     elif config.interior.module == 'aragog':
@@ -141,14 +143,16 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         from proteus.interior.aragog import RunAragog
 
         # Run Aragog
-        sim_time, output = RunAragog(config, dirs, IC_INTERIOR, hf_row, hf_all)
+        sim_time, output = RunAragog(config, dirs, IC_INTERIOR,
+                                            hf_row, hf_all, tides)
 
     elif config.interior.module == 'dummy':
         # Import
         from proteus.interior.dummy import RunDummyInt
 
         # Run dummy interior
-        sim_time, output = RunDummyInt(config, dirs, IC_INTERIOR, hf_row, hf_all)
+        sim_time, output = RunDummyInt(config, dirs, IC_INTERIOR,
+                                            hf_row, hf_all, tides)
 
     # Read output
     for k in output.keys():

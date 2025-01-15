@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
+TIDES_FILENAME = ".tides_tmp"
 
 class MyJSON( object ):
 
@@ -271,24 +272,8 @@ def _try_spider( dirs:dict, config:Config,
     call_sequence.extend(["-SEPARATION", "1"]) # gravitational separation of solid/melt
 
     # Tidal heating
-    tidal_value = 0.0
     if config.interior.tidal_heat:
-        if config.orbit.dummy:
-            tidal_value = config.orbit.dummy.H_tide
-
-        # write tides file
-        tides_file = os.path.join(dirs["output"], "data", ".tides_tmp")
-        with open(tides_file,'w') as hdl:
-            nlev_s = config.interior.spider.num_levels - 1
-            hdl.write("# 5 %d \n"%nlev_s)
-            hdl.write("# Pressure, Tidal heating rate \n")
-            hdl.write("# column * scaling factor should be SI units \n")
-            hdl.write("# scaling factors (constant) for each column given on line below \n")
-            hdl.write("# 1.0 1.0 \n")
-            for i in range(nlev_s):
-                hdl.write("0.0 %.3e \n"%tidal_value)
-
-        # pass file name to spider
+        tides_file = os.path.join(dirs["output"], "data", TIDES_FILENAME)
         call_sequence.extend(["-HTIDAL", "2"])
         call_sequence.extend(["-htidal_filename", tides_file])
 
@@ -408,7 +393,7 @@ def _try_spider( dirs:dict, config:Config,
 
 
 def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
-              hf_all:pd.DataFrame, hf_row:dict ):
+              hf_all:pd.DataFrame, hf_row:dict, tides_array:np.ndarray ):
     '''
     Wrapper function for running SPIDER.
     This wrapper handles cases where SPIDER fails to find a solution.
@@ -422,6 +407,20 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
     # tracking
     spider_success = False  # success?
     attempts = 0            # number of attempts so far
+
+    # write tidal heating file
+    tides_file = os.path.join(dirs["output"], "data", TIDES_FILENAME)
+    if tides_array is None:
+        tides_array = np.zeros(config.interior.spider.num_levels-1)
+    with open(tides_file,'w') as hdl:
+        # header information
+        hdl.write("# 3 %d \n"%len(tides_array))
+        hdl.write("# Dummy, Tidal heating density \n")
+        hdl.write("# 1.0 1.0 \n")
+
+        # for each level...
+        for h in tides_array:
+            hdl.write("0.0 %.3e \n"%h)
 
     # make attempts
     while not spider_success:
