@@ -276,8 +276,21 @@ def _try_spider( dirs:dict, config:Config,
         if config.orbit.dummy:
             tidal_value = config.orbit.dummy.H_tide
 
-        call_sequence.extend(["-HTIDAL",       "1"])
-        call_sequence.extend(["-htidal_value", "%.5e"%tidal_value])
+        # write tides file
+        tides_file = os.path.join(dirs["output"], "data", ".tides_tmp")
+        with open(tides_file,'w') as hdl:
+            nlev_s = config.interior.spider.num_levels - 1
+            hdl.write("# 5 %d \n"%nlev_s)
+            hdl.write("# Pressure, Tidal heating rate \n")
+            hdl.write("# column * scaling factor should be SI units \n")
+            hdl.write("# scaling factors (constant) for each column given on line below \n")
+            hdl.write("# 1.0 1.0 \n")
+            for i in range(nlev_s):
+                hdl.write("0.0 %.3e \n"%tidal_value)
+
+        # pass file name to spider
+        call_sequence.extend(["-HTIDAL", "2"])
+        call_sequence.extend(["-htidal_filename", tides_file])
 
     # Properties lookup data (folder relative to SPIDER src)
     folder = "lookup_data/1TPa-dK09-elec-free/"

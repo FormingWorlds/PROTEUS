@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, lt
+from attrs.validators import ge, gt, in_, lt, le
 
 from ._converters import none_if_none
 
@@ -50,5 +50,8 @@ class OrbitDummy:
     ----------
     H_tide: float
         Fixed global heating rate from tides [W kg-1].
+    Phi_tide: float
+        Maximum local melt fraction to which tides can be applied.
     """
-    H_tide: float = field(validator=ge(0))
+    H_tide: float   = field(validator=ge(0))
+    Phi_tide: float = field(validator=(ge(0),le(1)))
