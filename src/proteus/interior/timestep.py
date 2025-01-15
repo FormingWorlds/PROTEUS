@@ -18,7 +18,7 @@ log = logging.getLogger("fwl."+__name__)
 ILOOK = 2       # Ideal number of steps to look back
 SFINC = 1.10    # Scale factor for step size increase
 SFDEC = 0.75    # Scale factor for step size decrease
-SMALL = 1e-10   # Small number
+SMALL = 1e-8   # Small number
 
 def _estimate_solid(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
     '''
@@ -29,21 +29,25 @@ def _estimate_solid(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
     h1 = hf_all.iloc[i1]
     h2 = hf_all.iloc[i2]
 
+    # Melt fractions
+    p1 = h1["Phi_global"]
+    p2 = h2["Phi_global"]
+
     # Check if planet has already solidified
-    if h2["Phi_global"] < SMALL:
+    if p2 < SMALL:
         dt_solid = np.inf
 
     else:
         # Change in time and global melt frac
-        dt = h2["Time"]       - h1["Time"]
-        dp = h2["Phi_global"] - h1["Phi_global"]
+        dt = h2["Time"] - h1["Time"]
+        dp = p2 - p1
 
-        # Estimate how long until p=0
-        if abs(dp) < SMALL:
+        # Estimate how long Δt until p=0
+        if abs(dp/p2) < SMALL:
             dt_solid = np.inf
         else:
-            #  dp/dt * dt + p2 = 0    ->   dt = -p2/(dp/dt)
-            dt_solid = abs(-1.0 * h2["Phi_global"] / (dp/dt))
+            #  dp/dt * Δt + p2 = 0    ->   Δt = -p2/(dp/dt)
+            dt_solid = abs(-1.0 * p2 / (dp/dt))
 
     log.debug("Solidification expected in %.3e yrs"%dt_solid)
 
@@ -72,7 +76,7 @@ def _estimate_radeq(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
         df = f2 - f1
 
         # Estimate how long until f=0
-        if abs(df) < SMALL:
+        if abs(df/f2) < SMALL:
             dt_radeq = np.inf
         else:
             dt_radeq = abs(-1.0 * f2 / (df/dt))
