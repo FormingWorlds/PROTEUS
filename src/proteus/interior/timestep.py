@@ -18,6 +18,7 @@ log = logging.getLogger("fwl."+__name__)
 ILOOK = 2       # Ideal number of steps to look back
 SFINC = 1.10    # Scale factor for step size increase
 SFDEC = 0.75    # Scale factor for step size decrease
+SMALL = 1e-10   # Small number
 
 def _estimate_solid(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
     '''
@@ -29,7 +30,7 @@ def _estimate_solid(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
     h2 = hf_all.iloc[i2]
 
     # Check if planet has already solidified
-    if h2["Phi_global"] < 1e-30:
+    if h2["Phi_global"] < SMALL:
         dt_solid = np.inf
 
     else:
@@ -38,7 +39,7 @@ def _estimate_solid(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
         dp = h2["Phi_global"] - h1["Phi_global"]
 
         # Estimate how long until p=0
-        if abs(dp) < 1e-30:
+        if abs(dp) < SMALL:
             dt_solid = np.inf
         else:
             #  dp/dt * dt + p2 = 0    ->   dt = -p2/(dp/dt)
@@ -62,7 +63,7 @@ def _estimate_radeq(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
     f1 = h1["F_atm"] - h1["F_tidal"] - h1["F_radio"]
 
     # Check if planet is already at radeq
-    if abs(f2) < 1e-30:
+    if abs(f2) < SMALL:
         dt_radeq = np.inf
 
     else:
@@ -71,7 +72,7 @@ def _estimate_radeq(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
         df = f2 - f1
 
         # Estimate how long until f=0
-        if abs(df) < 1e-30:
+        if abs(df) < SMALL:
             dt_radeq = np.inf
         else:
             dt_radeq = abs(-1.0 * f2 / (df/dt))
