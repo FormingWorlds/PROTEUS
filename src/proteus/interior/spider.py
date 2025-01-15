@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-TIDES_FILENAME = ".tides_tmp"
+TIDES_FILENAME = ".tides_recent.dat"
 
 class MyJSON( object ):
 

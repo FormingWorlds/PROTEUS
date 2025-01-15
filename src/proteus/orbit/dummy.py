@@ -13,20 +13,16 @@ log = logging.getLogger("fwl."+__name__)
 
 def run_dummy_tides(config:Config, phi:np.ndarray):
     '''
-    Dummy tides module
+    Dummy tides module.
     '''
 
+    # Default case; zero heating throughout the mantle
     H_tide = np.zeros(len(phi))
 
+    # For regions with small melt fraction, set non-zero heating
     for i,p in enumerate(phi):
-        if p > config.orbit.dummy.Phi_tide:
-            H_tide[i] = 0.0
-        else:
+        if p < config.orbit.dummy.Phi_tide:
             H_tide[i] = config.orbit.dummy.H_tide
 
     return H_tide
-
-
-
-
 
