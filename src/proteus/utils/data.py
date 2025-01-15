@@ -89,7 +89,7 @@ def download(
         log.info(f"Downloading {desc} to {data_dir}")
         download_folder(storage=storage, folders=[folder], data_dir=data_dir)
     else:
-        log.debug(f"\t{desc} already exists")
+        log.debug(f"    {desc} already exists")
 
 
 def download_surface_albedos():
@@ -264,7 +264,7 @@ def get_socrates(dirs=None):
     workpath = os.path.join(dirs["proteus"], "SOCRATES")
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
-        log.debug("\talready set up")
+        log.debug("    already set up")
         return
 
     # Download, configure, and build
@@ -277,7 +277,7 @@ def get_socrates(dirs=None):
 
     # Set environment
     os.environ["RAD_DIR"] = workpath
-    log.debug("\tdone")
+    log.debug("    done")
 
 
 def get_petsc(dirs=None):
@@ -295,18 +295,18 @@ def get_petsc(dirs=None):
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
         # already downloaded
-        log.debug("\talready set up")
+        log.debug("    already set up")
         return
 
     # Download, configure, and build
     log.debug("Running get_petsc.sh")
     cmd = [os.path.join(dirs["tools"],"get_petsc.sh"), workpath]
     out = os.path.join(dirs["proteus"], "nogit_setup_petsc.log")
-    log.debug("\tlogging to %s"%out)
+    log.debug("    logging to %s"%out)
     with open(out,'w') as hdl:
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 
-    log.debug("\tdone")
+    log.debug("    done")
 
 
 def get_spider(dirs=None):
@@ -327,15 +327,15 @@ def get_spider(dirs=None):
     workpath = os.path.abspath(workpath)
     if os.path.isdir(workpath):
         # already downloaded
-        log.debug("\talready set up")
+        log.debug("    already set up")
         return
 
     # Download, configure, and build
     log.debug("Running get_spider.sh")
     cmd = [os.path.join(dirs["tools"],"get_spider.sh"), workpath]
     out = os.path.join(dirs["proteus"], "nogit_setup_spider.log")
-    log.debug("\tlogging to %s"%out)
+    log.debug("    logging to %s"%out)
     with open(out,'w') as hdl:
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 
-    log.debug("\tdone")
+    log.debug("    done")

@@ -39,6 +39,15 @@ def PrintHalfSeparator():
     log.info("---------------------------------------------------")
     pass
 
+def multiple(a:int,b:int) -> bool:
+    '''
+    Return true if a is an integer multiple of b. Return false if b is zero.
+    '''
+    if b == 0:
+        return False
+    else:
+        return bool(a%b == 0)
+
 def mol_to_ele(mol:str):
     '''
     Return the number of atoms of each element in a given molecule, as a dictionary

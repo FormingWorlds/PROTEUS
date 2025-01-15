@@ -12,7 +12,7 @@ from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_height_from_pressure, get_spfile_path
 from proteus.utils.constants import gas_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, safe_rm
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, multiple, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 if TYPE_CHECKING:
@@ -433,8 +433,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     jl.AGNI.dump.write_ncdf(atmos, ncdf_path)
 
     # Make plots
-    if (config.params.out.plot_mod > 0) \
-            and (loops_total % config.params.out.plot_mod == 0):
+    if multiple(loops_total, config.params.out.plot_mod):
 
         fmt = config.params.out.plot_fmt
         jl.AGNI.plotting.plot_fluxes(atmos, os.path.join(dirs["output"],
