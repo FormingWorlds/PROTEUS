@@ -26,9 +26,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # output files
     [params.out]
         path        = "dummy"
-        logging     = "INFO"
+        logging     = "ERROR"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
+        write_mod   = 100      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
     # time-stepping
     [params.dt]
@@ -44,7 +45,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.dt.adaptive]
             atol         = 0.02   # Step size atol
-            rtol         = 0.10   # Step size rtol
+            rtol         = 0.12   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -60,7 +61,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 1e10     # yr, model will terminate when t > maximum
+            maximum = 2e8     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -74,7 +75,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             rtol    = 1e-3    # relative tolerance
 
         [params.stop.escape]
-            enabled   = true
+            enabled   = false
             mass_frac = 3e-4      # Stop when atm_mass < this frac of initial mass
 
 
@@ -119,7 +120,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = true      # do not allow the planet to heat up
+    prevent_warming = false      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
@@ -161,7 +162,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
-    module = "dummy"    # Which escape module to use
+    module = "none"    # Which escape module to use
 
     [escape.zephyrus]
         Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]

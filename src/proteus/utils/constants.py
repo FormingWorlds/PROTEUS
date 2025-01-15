@@ -31,7 +31,9 @@ M_jupiter       = 1.898e27              # kg
 R_jupiter       = 1.42984e8 / 2         # m
 
 # Time constants
-secs_per_day    = 24 * 60 * 60
+secs_per_minute = 60.0
+secs_per_hour   = secs_per_minute * 60.0
+secs_per_day    = secs_per_hour * 24.0
 secs_per_year   = secs_per_day * 365.25
 
 # Values from Pierrehumbert (2010) workbook

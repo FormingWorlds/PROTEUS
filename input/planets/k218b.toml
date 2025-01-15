@@ -29,6 +29,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         logging     = "DEBUG"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
+        write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
     # time-stepping
     [params.dt]
