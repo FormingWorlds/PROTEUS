@@ -64,46 +64,25 @@ def update_period(hf_row:dict, sma:float):
     hf_row["period"] = 2 * np.pi * (a*a*a/mu)**0.5
 
 
-def update_tides(hf_row:dict, config:Config):
-    '''
-    Update power density associated with tides.
-    '''
+def run_orbit(hf_row:dict, config:Config, phi:np.ndarray):
+    """Update parameters relating to orbital evolution and tides.
 
-    # Number of interior levels (0 if using dummy interior)
-    interior_nlev = 0
-    if config.interior.module == "spider":
-        interior_nlev = config.interior.spider.num_levels - 1
-    elif config.interior.module == "aragog":
-        interior_nlev = config.interior.aragog.num_levels - 1
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        config : Config
+            Model configuration
+        phi : np.ndarray
+            Array of melt fractions at each layer of the model. If using the dummy
+            interior module, this should have a length of 1.
 
-    # Melt fraction (must be array, can have length=1)
-    if interior_nlev == 0:
-        phi_array = np.array([hf_row["Phi_global"]])
-        tides_array = np.array([0.0]) # default value
-    else:
-        phi_array = np.ones(interior_nlev) * hf_row["Phi_global"] # PLACEHOLDER - FIX ME!!
-        log.warning("fix me ^^")
-        tides_array = np.zeros(interior_nlev) # default value
+    Returns
+    ----------
+        tides : np.ndarray
+            Tidal heating [W kg-1] at each layer `phi[i]`.
+    """
 
-    # Call tides module
-    if config.orbit.module is None:
-        pass
-
-    elif config.orbit.module == 'dummy':
-        from proteus.orbit.dummy import run_dummy_tides
-        tides_array = run_dummy_tides(config, phi_array)
-
-    else:
-        log.error("Unsupported tides module")
-
-    log.info("    median tidal power density: %.1e W kg-1"%np.median(tides_array))
-    return tides_array
-
-
-def run_orbit(hf_row:dict, config:Config):
-    '''
-    Update parameters relating to orbital evolution and tides.
-    '''
 
     log.info("Evolve orbit...")
 
@@ -114,7 +93,20 @@ def run_orbit(hf_row:dict, config:Config):
     update_period(hf_row, config.orbit.semimajoraxis)
     log.info("    period: %.1f days"%(hf_row["period"]/secs_per_day))
 
-    # Update tidal heating
-    tides = update_tides(hf_row, config)
+    # Initialise, set tidal heating to zero
+    tides = np.zeros(len(phi)) # default value
+
+    # Call tides module
+    if config.orbit.module is None:
+        pass
+
+    elif config.orbit.module == 'dummy':
+        from proteus.orbit.dummy import run_dummy_tides
+        tides = run_dummy_tides(config, phi)
+
+    else:
+        log.error("Unsupported tides module")
+
+    log.info("    median tidal power density: %.1e W kg-1"%np.median(tides))
 
     return tides

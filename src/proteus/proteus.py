@@ -73,8 +73,10 @@ class Proteus:
         self.loops = None
 
         # Interior
-        self.IC_INTERIOR = -1   # initial condition (1: new simulation, 2: mid-simulation)
-        self.dt = 1.0           # Time step variable [yr]
+        self.IC_INTERIOR = -1       # Initial condition (1: start, 2: mid-simulation)
+        self.dt = 1.0               # Time step variable [yr]
+        self.int_tides = None  # Tidal heat density [W kg-1].
+        self.int_phi = None    # Melt fraction.
 
         # Model has finished?
         self.finished = False
@@ -98,8 +100,6 @@ class Proteus:
         self.sspec_prev = -np.inf   # spectrum
         self.sinst_prev = -np.inf   # instellation and radius
 
-        # Tidal heating
-        self.tides = None   # Tidal heat density [W kg-1].
 
     def init_directories(self):
         """Initialize directories dictionary"""
@@ -276,9 +276,9 @@ class Proteus:
             PrintHalfSeparator()
 
             # Run interior model
-            self.dt = run_interior(self.directories, self.config,
-                                    self.IC_INTERIOR, self.hf_all,
-                                    self.hf_row, self.tides)
+            self.dt, self.int_phi = run_interior(self.directories, self.config,
+                                                    self.IC_INTERIOR, self.hf_all,
+                                                    self.hf_row, self.int_tides)
 
 
             # Advance current time in main loop according to interior step
@@ -290,7 +290,7 @@ class Proteus:
             ############### ORBIT AND TIDES
 
             PrintHalfSeparator()
-            self.tides = run_orbit(self.hf_row, self.config)
+            self.int_tides = run_orbit(self.hf_row, self.config, self.int_phi)
 
             ############### / ORBIT AND TIDES
 

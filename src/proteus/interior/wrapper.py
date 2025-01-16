@@ -121,9 +121,34 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
 def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
                     hf_all:pd.DataFrame, hf_row:dict,
                     tides:np.ndarray, verbose:bool=True):
-    '''
-    Run interior model
-    '''
+    """Run interior mantle evolution model.
+
+    Parameters
+    ----------
+        dirs : dict
+            Dictionary of directories.
+        config : Config
+            Model configuration
+        IC_INTERIOR : int
+            Interior initial condition flag.
+        hf_all : pd.DataFrame
+            Dataframe of historical runtime variables
+        hf_row : dict
+            Dictionary of current runtime variables
+        tides : np.ndarray
+            Array of tidal heating production [W kg-1] at each layer of the model. Length
+            of 1 if using dummy interior.
+
+        verbose : bool
+            Verbose printing enabled.
+
+    Returns
+    ----------
+        dt : float
+            Length of interior time-step [years].
+        phi : np.ndarray
+            Melt fraction at each layer of the mantle.
+    """
 
     # Use the appropriate interior model
     if verbose:
@@ -200,7 +225,7 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
     dt = float(sim_time) - hf_row["Time"]
 
     # Return timestep
-    return dt
+    return dt, output["Phi_array"]
 
 def get_all_output_times(output_dir:str, model:str):
 

@@ -27,7 +27,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "spider_tides"
         logging     = "INFO"
-        plot_mod    = 2      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
@@ -109,7 +109,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [orbit.dummy]
         H_tide   = 1e-11  # Fixed tidal power density [W kg-1]
-        Phi_tide = 0.3    # Maximum local melt fraction to which tides can be applied.
+        Phi_tide = 0.6    # Maximum local melt fraction to which tides can be applied.
 
 
 # Planetary structure - physics table
@@ -183,11 +183,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 180       # Number of SPIDER grid levels
+        num_levels      = 90       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1.0e-9   # solver tolerance
-        tsurf_atol      = 20.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
+        tsurf_atol      = 25.0      # tsurf_poststep_change
+        tsurf_rtol      = 0.03      # tsurf_poststep_change_frac
         ini_entropy     = 2600.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 

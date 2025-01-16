@@ -105,6 +105,7 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int,
 
     # Determine the new melt fraction
     output["Phi_global"]        = _calc_phi(output["T_magma"])
+    output["Phi_array"]         = np.array([output["Phi_global"]])
     output["M_mantle_liquid"]   = output["M_mantle"] * output["Phi_global"]
     output["M_mantle_solid"]    = output["M_mantle"] - output["M_mantle_liquid"]
     output["RF_depth"]          = output["Phi_global"] * (1- config.struct.corefrac)

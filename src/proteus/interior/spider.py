@@ -485,6 +485,7 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float):
     Hradio_s = json_file.get_dict_values(['data','Hradio_s'])
     Htidal_s = json_file.get_dict_values(['data','Htidal_s'])
     mass_s   = json_file.get_dict_values(['data','mass_s'])
+    phi_s    = json_file.get_dict_values(['data','phi_s'])
 
     # Fill the new dict
     output["M_mantle_liquid"] = float(data_a[0])
@@ -497,7 +498,10 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float):
     output["F_int"]           = float(data_a[6])  # Heat flux from interior
     output["RF_depth"]        = float(data_a[7])/R_int  # depth of rheological front
 
-    # Tidal heating is not supported by SPIDER, so this should always be zero
+    # Melt fraction array
+    output["Phi_array"] = np.array(phi_s)
+
+    # Tidal heating
     output["F_tidal"] = np.dot(Htidal_s, mass_s)/area_b[0]
 
     # Radiogenic heating
