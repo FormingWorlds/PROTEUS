@@ -73,10 +73,10 @@ class Proteus:
         self.loops = None
 
         # Interior
-        self.IC_INTERIOR = -1       # Initial condition (1: start, 2: mid-simulation)
-        self.dt = 1.0               # Time step variable [yr]
-        self.int_tides = None  # Tidal heat density [W kg-1].
-        self.int_phi = None    # Melt fraction.
+        self.IC_INTERIOR = -1  # Initial condition flag (-1: init, 1: start, 2: running)
+        self.dt = 1.0          # Interior time step length [yr]
+        self.int_tides = None  # Tidal power density, array [W kg-1].
+        self.int_phi = None    # Melt fraction, array.
 
         # Model has finished?
         self.finished = False
