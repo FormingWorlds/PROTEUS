@@ -43,7 +43,8 @@ def calculate_simple_mantle_mass(radius:float, corefrac:float)->float:
 
 
 # Run the dummy interior module
-def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
+def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int,
+                    hf_row:dict, hf_all:pd.DataFrame, tides_array:np.ndarray):
 
     # Output dictionary
     output = {}
@@ -78,8 +79,11 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
     #    This heat energy is generated only in the mantle, not in the core.
     tidal_flux = 0.0
     if config.interior.tidal_heat:
-        if config.orbit.dummy:
-            tidal_flux = config.orbit.dummy.H_tide * output["M_mantle"] / area
+        if tides_array is None:
+            tides_value = 0.0
+        else:
+            tides_value = tides_array[0]
+        tidal_flux = tides_value * output["M_mantle"] / area
     output["F_tidal"] = tidal_flux
 
     # Radiogenic heating not included
@@ -101,6 +105,7 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:p
 
     # Determine the new melt fraction
     output["Phi_global"]        = _calc_phi(output["T_magma"])
+    output["Phi_array"]         = np.array([output["Phi_global"]])
     output["M_mantle_liquid"]   = output["M_mantle"] * output["Phi_global"]
     output["M_mantle_solid"]    = output["M_mantle"] - output["M_mantle_liquid"]
     output["RF_depth"]          = output["Phi_global"] * (1- config.struct.corefrac)

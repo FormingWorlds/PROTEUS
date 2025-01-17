@@ -37,7 +37,8 @@ log = logging.getLogger("fwl."+__name__)
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 # Run the Aragog interior module
-def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.DataFrame):
+def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int,
+                hf_row:dict, hf_all:pd.DataFrame, tides_array:np.ndarray):
 
     global aragog_solver
 
@@ -54,15 +55,19 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
         step_sf = 1.0 # dt scale factor
         dt = next_step(config, dirs, hf_row, hf_all, step_sf)
 
+    # Tidal heating base case
+    if (tides_array is None) or (not config.interior.tidal_heat):
+        tides_array = np.zeros(config.interior.aragog.num_levels-1)
+
     # Setup Aragog parameters from options at first iteration
     if (aragog_solver is None):
-        SetupAragogSolver(config, hf_row)
+        SetupAragogSolver(config, hf_row, tides_array)
         # Update state from stored data if resuming a simulation
         if config.params.resume:
-            UpdateAragogSolver(dt, hf_row, dirs["output"])
+            UpdateAragogSolver(dt, hf_row, tides_array, output_dir=dirs["output"])
     # Update varying parameters in ongoing simulation
     else:
-        UpdateAragogSolver(dt, hf_row)
+        UpdateAragogSolver(dt, hf_row, tides_array)
 
     # Run Aragog solver
     aragog_solver.initialize()
@@ -78,7 +83,7 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int, hf_row:dict, hf_all:pd.
     return sim_time, output
 
 
-def SetupAragogSolver(config:Config, hf_row:dict):
+def SetupAragogSolver(config:Config, hf_row:dict, tides_array:np.ndarray ):
 
     global aragog_solver
 
@@ -117,11 +122,6 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             adiabatic_bulk_modulus = 260E9, # AdamsWilliamsonEOS parameter [Pa]
             )
 
-    # Get tidal heat production [W/kg]
-    tidal_value = 0.0
-    if config.interior.tidal_heat and config.orbit.dummy:
-        tidal_value = config.orbit.dummy.H_tide
-
     energy = _EnergyParameters(
             conduction = True,
             convection = True,
@@ -129,7 +129,7 @@ def SetupAragogSolver(config:Config, hf_row:dict):
             mixing = False,
             radionuclides = config.interior.radiogenic_heat,
             tidal = config.interior.tidal_heat,
-            tidal_value=tidal_value
+            tidal_array = tides_array
             )
 
     initial_condition = _InitialConditionParameters(
@@ -212,7 +212,8 @@ def SetupAragogSolver(config:Config, hf_row:dict):
 
     aragog_solver = Solver(param)
 
-def UpdateAragogSolver(dt:float, hf_row:dict, output_dir:str = None):
+def UpdateAragogSolver(dt:float, hf_row:dict, tides_array:np.ndarray,
+                            output_dir:str = None):
 
     # Set solver time
     # hf_row["Time"] is in yr so do not need to scale as long as scaling time is secs_per_year
@@ -233,10 +234,9 @@ def UpdateAragogSolver(dt:float, hf_row:dict, output_dir:str = None):
     # Update boundary conditions
     aragog_solver.parameters.boundary_conditions.outer_boundary_value = hf_row["F_atm"]
 
-    # TODO: Update tidal heating here when it is calculated self-consistently from
-    #       the interior properties (e.g. viscosity) and evolved over time.
-
-    return
+    # Update tidal heating within the mantle
+    aragog_solver.parameters.energy.tidal_array = \
+        tides_array / aragog_solver.parameters.scalings.power_per_mass
 
 def WriteAragogOutput(output_dir:str, time:float):
 
@@ -270,9 +270,13 @@ def GetAragogOutput(hf_row:dict):
     Hradio_s = aragog_output.heating_radio[:,-1]  # [W kg-1]
     output["F_radio"] = np.dot(Hradio_s, mass_s) / area  # [W m-2]
 
-    # Tidal heating
+    # Tidal heating flux
     Htidal_s = aragog_output.heating_tidal[:,-1]  # [W kg-1]
     output["F_tidal"] = np.dot(Htidal_s, mass_s)/area
+
+    # Melt fraction array
+    Phi_array = aragog_output.melt_fraction_staggered[:,-1]
+    output["Phi_array"] = Phi_array
 
     return output
 
