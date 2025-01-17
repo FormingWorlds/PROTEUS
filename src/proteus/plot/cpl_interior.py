@@ -31,7 +31,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
 
     # Init figure
     scale = 1.0
-    fig,axs = plt.subplots(1,4, figsize=(10*scale,6*scale), sharey=True)
+    fig,axs = plt.subplots(1,5, figsize=(12*scale,6*scale), sharey=True)
 
     # Create colormapping stuff
     norm = mpl.colors.LogNorm(vmin=max(1,times[0]), vmax=times[-1])
@@ -120,15 +120,27 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
             yy = ds["Fconv_b"][:]
         elif module == "spider":
             yy =  ds.get_dict_values(['data','Jconv_b'])
+        yy = np.array(yy) / 1e3 # convert units
         axs[3].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',   c=color, lw=lw)
         axs[3].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed',  c=color, lw=lw)
         axs[3].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted',  c=color, lw=lw)
         flux_min = min(flux_min, np.amin(yy))
         flux_max = max(flux_max, np.amax(yy))
 
+        # Plot tidal heating
+        if module == "aragog":
+            yy = ds["Htidal_s"][:]
+        elif module == "spider":
+            yy = ds.get_dict_values(['data','Htidal_s'])
+        yy = np.array(yy) * 1e6 # convert units
+        yy = np.append([yy[0]],yy) # extend to surface (_s arrays are shorter than _b)
+        axs[4].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',   c=color, lw=lw)
+        axs[4].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed',  c=color, lw=lw)
+        axs[4].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted',  c=color, lw=lw)
+
     # Decorate figure
     title = '(a) Temperature' #'(a) Temperature, {}'.format(units)
-    axs[0].set( title=title, xlabel=r'$T$ [kK]', ylabel=r'$P$ [GPa]')
+    axs[0].set( title=title, xlabel=r'$T$ [$10^3$ K]', ylabel=r'$P$ [GPa]')
     axs[0].set_ylim(top=np.amin(xx_pres), bottom=np.amax(xx_pres))
     axs[0].yaxis.set_minor_locator(MultipleLocator(10.0))
     axs[0].xaxis.set_minor_locator(MultipleLocator(0.25))
@@ -151,16 +163,21 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
         axs[2].set_xscale("log")
 
     title = '(d) Convective flux'
-    axs[3].set( title=title, xlabel=r'$F_c$ [W m$^{-2}$]')
+    axs[3].set( title=title, xlabel=r'$F_c$ [kW m$^{-2}$]')
     if flux_max > 100.0*flux_min:
         axs[3].set_xscale("symlog", linthresh=1.0)
+    axs[3].set_xlim(left=0.0, right=flux_max)
+
+    title = '(e) Tidal power density'
+    axs[4].set( title=title, xlabel=r'$H_t$ [$\mu$W kg$^{-1}$]')
+    axs[4].set_xlim(left=0.0)
 
     # Pressure-depth conversion for y-axis
-    ax3b = axs[3].twinx()
-    ax3b.plot( yy, xx_depth, alpha=0.0)
-    ax3b.set_ylim(top=np.amin(xx_depth), bottom=np.amax(xx_depth))
-    ax3b.yaxis.set_minor_locator(MultipleLocator(100.0))
-    ax3b.set_ylabel( '$d$ [km]')
+    axb = axs[-1].twinx()
+    axb.plot( yy, xx_depth, alpha=0.0)
+    axb.set_ylim(top=np.amin(xx_depth), bottom=np.amax(xx_depth))
+    axb.yaxis.set_minor_locator(MultipleLocator(100.0))
+    axb.set_ylabel( '$d$ [km]')
 
     # Save figure
     fig.subplots_adjust(wspace=0.05)

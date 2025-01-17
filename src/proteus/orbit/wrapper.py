@@ -64,26 +64,25 @@ def update_period(hf_row:dict, sma:float):
     hf_row["period"] = 2 * np.pi * (a*a*a/mu)**0.5
 
 
-def update_tides(hf_row:dict, config:Config):
-    '''
-    Update power density associated with tides.
-    '''
+def run_orbit(hf_row:dict, config:Config, phi:np.ndarray):
+    """Update parameters relating to orbital evolution and tides.
 
-    if config.orbit.module == 'dummy':
-        log.info("    tidal power density: %.1e W kg-1"%(config.orbit.dummy.H_tide))
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        config : Config
+            Model configuration
+        phi : np.ndarray
+            Array of melt fractions at each layer of the model. If using the dummy
+            interior module, this should have a length of 1.
 
-    # [call to some other tidal heating module goes here]
+    Returns
+    ----------
+        tides : np.ndarray
+            Tidal heating [W kg-1] at each layer `phi[i]`.
+    """
 
-    else:
-        # no interior module selected
-        if config.interior.tidal_heat:
-            log.warning("Tidal heating is enabled but no orbit module was selected")
-
-
-def run_orbit(hf_row:dict, config:Config):
-    '''
-    Update parameters relating to orbital evolution and tides.
-    '''
 
     log.info("Evolve orbit...")
 
@@ -94,5 +93,20 @@ def run_orbit(hf_row:dict, config:Config):
     update_period(hf_row, config.orbit.semimajoraxis)
     log.info("    period: %.1f days"%(hf_row["period"]/secs_per_day))
 
-    # Update tidal heating
-    update_tides(hf_row, config)
+    # Initialise, set tidal heating to zero
+    tides = np.zeros(len(phi)) # default value
+
+    # Call tides module
+    if config.orbit.module is None:
+        pass
+
+    elif config.orbit.module == 'dummy':
+        from proteus.orbit.dummy import run_dummy_tides
+        tides = run_dummy_tides(config, phi)
+
+    else:
+        log.error("Unsupported tides module")
+
+    log.info("    median tidal power density: %.1e W kg-1"%np.median(tides))
+
+    return tides
