@@ -178,12 +178,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 8.0E4 # Initial heat flux guess [W m-2]
     radiogenic_heat = false  # enable radiogenic heat production
-    tidal_heat      = false  # enable tidal heat production
+    tidal_heat      = true  # enable tidal heat production
 
-    module = "aragog"   # Which interior module to use
+    module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 90       # Number of SPIDER grid levels
+        num_levels      = 70       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1.0e-9   # solver tolerance
         tsurf_atol      = 25.0      # tsurf_poststep_change
