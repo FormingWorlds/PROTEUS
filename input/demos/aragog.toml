@@ -105,10 +105,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
 
-    module  = "dummy"
+    module  = "none"
 
     [orbit.dummy]
         H_tide  = 1e-7  # Fixed tidal power density [W kg-1]
+        Phi_tide = 0.3    # Maximum local melt fraction to which tides can be applied.
 
 
 # Planetary structure - physics table
