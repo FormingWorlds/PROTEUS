@@ -11,7 +11,7 @@ from cmcrameri import cm
 from matplotlib.ticker import MultipleLocator
 
 from proteus.interior.wrapper import read_interior_data
-from proteus.utils.plot import MyFuncFormatter, latex_float, sample_output
+from proteus.utils.plot import latex_float, sample_output
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -107,8 +107,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
         if module == "aragog":
             yy = 10**ds["log10visc_b"][:]
         elif module == "spider":
-            visc_const = 1 # this is used for the arcsinh scaling
-            yy = ds.get_dict_values(['data','visc_b'], MyFuncFormatter( visc_const ))
+            yy = ds.get_dict_values(['data','visc_b'])
         axs[2].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',  c=color, lw=lw)
         axs[2].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed',  c=color, lw=lw)
         axs[2].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted',  c=color, lw=lw)
