@@ -120,6 +120,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
             yy = ds["Fconv_b"][:]
         elif module == "spider":
             yy =  ds.get_dict_values(['data','Jconv_b'])
+        yy = np.array(yy) / 1e3 # convert units
         axs[3].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',   c=color, lw=lw)
         axs[3].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed',  c=color, lw=lw)
         axs[3].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted',  c=color, lw=lw)
@@ -139,7 +140,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
 
     # Decorate figure
     title = '(a) Temperature' #'(a) Temperature, {}'.format(units)
-    axs[0].set( title=title, xlabel=r'$T$ [kK]', ylabel=r'$P$ [GPa]')
+    axs[0].set( title=title, xlabel=r'$T$ [$10^3$ K]', ylabel=r'$P$ [GPa]')
     axs[0].set_ylim(top=np.amin(xx_pres), bottom=np.amax(xx_pres))
     axs[0].yaxis.set_minor_locator(MultipleLocator(10.0))
     axs[0].xaxis.set_minor_locator(MultipleLocator(0.25))
@@ -162,7 +163,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
         axs[2].set_xscale("log")
 
     title = '(d) Convective flux'
-    axs[3].set( title=title, xlabel=r'$F_c$ [W m$^{-2}$]')
+    axs[3].set( title=title, xlabel=r'$F_c$ [kW m$^{-2}$]')
     if flux_max > 100.0*flux_min:
         axs[3].set_xscale("symlog", linthresh=1.0)
     axs[3].set_xlim(left=0.0, right=flux_max)
