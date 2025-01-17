@@ -25,6 +25,7 @@ from aragog.parser import (
     _ScalingsParameters,
     _SolverParameters,
 )
+
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
 

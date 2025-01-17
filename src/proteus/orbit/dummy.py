@@ -25,4 +25,3 @@ def run_dummy_tides(config:Config, phi:np.ndarray):
             H_tide[i] = config.orbit.dummy.H_tide
 
     return H_tide
-
