@@ -410,7 +410,7 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
 
     # write tidal heating file
     tides_file = os.path.join(dirs["output"], "data", TIDES_FILENAME)
-    if tides_array is None:
+    if (tides_array is None) or (not config.interior.tidal_heat):
         tides_array = np.zeros(config.interior.spider.num_levels-1)
     with open(tides_file,'w') as hdl:
         # header information
