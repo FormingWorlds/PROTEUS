@@ -108,8 +108,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "dummy"
 
     [orbit.dummy]
-        H_tide  = 0.0  # Fixed tidal power density [W kg-1]
-        Phi_tide = 0.3    # Maximum local melt fraction to which tides can be applied.
+        H_tide  = 0.0       # Fixed tidal power density [W kg-1]
+        Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
 
 # Planetary structure - physics table
 [struct]

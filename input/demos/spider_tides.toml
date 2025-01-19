@@ -109,7 +109,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [orbit.dummy]
         H_tide   = 1e-6  # Fixed tidal power density [W kg-1]
-        Phi_tide = 0.8    # Maximum local melt fraction to which tides can be applied.
+        Phi_tide = "<0.8"    # Maximum local melt fraction to which tides can be applied.
 
 
 # Planetary structure - physics table
@@ -180,7 +180,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     radiogenic_heat = false  # enable radiogenic heat production
     tidal_heat      = true  # enable tidal heat production
 
-    module = "spider"   # Which interior module to use
+    module = "dummy"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 70       # Number of SPIDER grid levels
