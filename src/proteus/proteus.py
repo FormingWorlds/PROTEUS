@@ -79,9 +79,10 @@ class Proteus:
         self.int_phi = None    # Melt fraction, array.
 
         # Model has finished?
-        self.finished = False
-        self.has_escaped = False
-        self.lockfile = "/tmp/none"
+        self.finished1 = False          # Satisfied finishing criteria once
+        self.finished2 = False          # Satisfied finishing criteria twice
+        self.has_escaped = False        # Atmosphere has escaped
+        self.lockfile = "/tmp/none"     # Path to keepalive file
 
         # Default values for mors.spada cases
         self.star_props  = None
@@ -250,7 +251,7 @@ class Proteus:
 
         # Main loop
         UpdateStatusfile(self.directories, 1)
-        while not self.finished:
+        while not self.finished2:
             # New rows
             if self.loops["total"] > 0:
                 # Create new row to hold the updated variables. This will be
@@ -412,12 +413,13 @@ class Proteus:
 
             # Check for convergence
             if self.loops["total"] >= self.loops["init_loops"]:
+                check_termination(self)
                 log.info("Check convergence criteria")
-                self.finished = check_termination(self)
+
 
             # Make plots
             if multiple(self.loops["total"], self.config.params.out.plot_mod) \
-                and not self.finished:
+                and not self.finished2:
 
                 log.info("Making plots")
                 UpdatePlots(self.hf_all, self.directories, self.config)

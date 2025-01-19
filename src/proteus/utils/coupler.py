@@ -205,7 +205,7 @@ def print_citation(config:Config):
     # Core PROTEUS papers
     _cite("Lichtenberg et al. (2021)",
             "https://doi.org/10.1029/2020JE006711")
-    _cite("Nicholls et al. (2024a)",
+    _cite("Nicholls et al. (2024)",
             "https://doi.org/10.1029/2024JE008576")
 
     # Atmosphere module
@@ -214,7 +214,7 @@ def print_citation(config:Config):
             _cite("Graham et al. (2021)",
                     "https://doi.org/10.3847/PSJ/ac214c")
         case 'agni':
-            _cite("Nicholls et al. (2024b)",
+            _cite("Nicholls et al. (2025)",
                     "https://doi.org/10.1093/mnras/stae2772")
         case _:
             pass
@@ -233,7 +233,7 @@ def print_citation(config:Config):
     # Outgassing module
     match config.outgas.module:
         case 'calliope':
-            # Covered by Nicholls et al. (2024a)
+            # Covered by Nicholls et al. (2024)
             pass
         case 'atmodeller':
             # _cite("Bower et al. (2025)", "in prep")
@@ -591,7 +591,6 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Close all figures
     plt.close()
-    log.info(" ")
 
 
 def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
