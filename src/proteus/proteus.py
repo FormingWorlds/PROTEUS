@@ -413,9 +413,8 @@ class Proteus:
 
             # Check for convergence
             if self.loops["total"] >= self.loops["init_loops"]:
+                log.info("Checking convergence criteria")
                 check_termination(self)
-                log.info("Check convergence criteria")
-
 
             # Make plots
             if multiple(self.loops["total"], self.config.params.out.plot_mod) \

@@ -444,7 +444,7 @@ if __name__=='__main__':
     # -----
 
     config = "planets/l9859c.toml"
-    folder = "l9859c_grid5"
+    folder = "l9859c_grid6"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder

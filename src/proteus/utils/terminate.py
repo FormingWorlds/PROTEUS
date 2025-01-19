@@ -177,7 +177,8 @@ def check_termination(handler: Proteus) -> bool:
         if finished:
             # convergence is also satisfied at this iteration
             handler.finished2 = True
-            log.info("Model will exit")
+            log.info("Convergence criteria satisfied twice")
+            log.debug("Model will exit")
         else:
             # convergence no longer satisfied - reset flags
             handler.finished1 = False
@@ -185,6 +186,8 @@ def check_termination(handler: Proteus) -> bool:
     else:
         # previous iteration DID NOT satisfy criteria...
         handler.finished1 = finished
+        if finished:
+            log.info("Convergence criteria satisfied once")
 
     # Check if keepalive file has been removed
     #    This means that the model should exit ASAP, regardless of the other criteria.
