@@ -177,6 +177,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     F_initial       = 1e6   # Initial heat flux guess [W m-2]
     radiogenic_heat = false  # enable radiogenic heat production
     tidal_heat      = true  # enable tidal heat production
+    rheo_phi_loc    = 0.4    # Centre of rheological transition
+    rheo_phi_wid    = 0.15   # Width of rheological transition
 
     module = "dummy"   # Which interior module to use
 
