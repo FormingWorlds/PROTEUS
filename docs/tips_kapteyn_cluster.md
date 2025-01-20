@@ -6,6 +6,8 @@
 
 2. Follow the installation instructions [here](./installation.md).
 
+3. Increase the file limit for your user by adding to your shell rc file: `ulimit -Sn 4000000` and `ulimit -Hn 5000000`.
+
 ## Tricks
 
 - To launch a simulation on the Kapteyn cluster, avoid using `screen` sessions (it behaves inconsistently on the cluster). Instead, use the similar tool `tmux`. You can find detailed documentation [here](https://tmuxcheatsheet.com/).
