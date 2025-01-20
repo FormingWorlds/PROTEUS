@@ -157,6 +157,9 @@ def check_termination(handler: Proteus) -> bool:
     # Atmosphere has escaped
     if handler.config.params.stop.escape.enabled:
         finished = finished or _check_escape(handler)
+        # By pass two-iteration check here, otherwise we will get a divide-by-zero
+        #   error in the next iteration's calculation.
+        handler.finished1 = handler.finished1 or handler.has_escaped
 
     # Maximum time reached
     if handler.config.params.stop.time.enabled:

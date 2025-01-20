@@ -9,7 +9,7 @@ def phi_tide_validator(instance, attribute, value):
 
     # direction of inequality
     if (value[0] not in ("<",">")) or (len(value) < 2):
-        raise ValueError("Phi_tide must be an inequality, e.g. '<0.3'")
+        raise ValueError(f"Phi_tide must be an inequality (e.g. '<0.3') got {value}")
 
     # value of inequality
     try:

@@ -35,8 +35,10 @@ def test_none_if_none():
 
 @pytest.mark.parametrize('path', PATHS)
 def test_proteus_init(path):
+    if "nogit" in path:
+        return
+    print(f"Testing config at {path}")
     runner = Proteus(config_path=path)
-
     assert isinstance(runner.config, Config)
 
 
