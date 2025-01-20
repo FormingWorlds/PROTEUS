@@ -72,7 +72,7 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     The code can be setup in `./socrates/` using the following script.
 
     ```console
-    source get_socrates.sh
+    source tools/get_socrates.sh
     ```
 
     The environemnt variable `RAD_DIR` must always point to the SOCRATES installation path.
