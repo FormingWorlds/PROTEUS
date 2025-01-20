@@ -20,6 +20,13 @@ class Interior:
         Initial heat flux guess [W m-2].
     radiogenic_heat: bool
         Include radiogenic heat production?
+    tidal_heat: bool
+        Include tidal heating?
+    rheo_phi_loc: float
+        Centre of rheological transition in terms of melt fraction
+    rheo_phi_wid: float
+        Width of rheological transition in terms of melt fraction
+
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
     spider: Spider
@@ -33,9 +40,10 @@ class Interior:
     F_initial: float = field(validator=gt(0))
     radiogenic_heat: bool = field(validator=no_radio_if_dummy)
     tidal_heat: bool
+    rheo_phi_loc: float = field(validator=(gt(0),lt(1)))
+    rheo_phi_wid: float = field(validator=(gt(0),lt(1)))
 
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
-
     spider: Spider
     aragog: Aragog
     dummy: Dummy
@@ -70,7 +78,6 @@ class Spider:
     ini_entropy: float = field(validator=gt(0))
     ini_dsdr: float = field(validator=lt(0))
 
-
 @define
 class Aragog:
     """Parameters for Aragog module.
@@ -86,8 +93,8 @@ class Aragog:
     """
 
     ini_tmagma: float = field(validator=gt(0))
-    num_levels: int  = field(validator=ge(40))
-    tolerance: float
+    num_levels: int = field(validator=ge(40))
+    tolerance: float = field(validator=gt(0))
 
 @define
 class Dummy:

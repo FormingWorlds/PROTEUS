@@ -162,8 +162,8 @@ def SetupAragogSolver(config:Config, hf_row:dict, tides_array:np.ndarray ):
 
     phase_mixed = _PhaseMixedParameters(
             latent_heat_of_fusion = 4e6,
-            rheological_transition_melt_fraction = 0.4,
-            rheological_transition_width = 0.15,
+            rheological_transition_melt_fraction = config.interior.rheo_phi_loc,
+            rheological_transition_width = config.interior.rheo_phi_wid,
             solidus = LOOK_UP_DIR / "solidus.dat",
             liquidus = LOOK_UP_DIR / "liquidus.dat",
             phase = "mixed",

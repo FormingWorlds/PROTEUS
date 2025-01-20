@@ -317,14 +317,14 @@ def _try_spider( dirs:dict, config:Config,
     # units of melt fraction (non-dimensional)
     call_sequence.extend(["-matprop_smooth_width", "1.0E-2"])
 
-    # viscosity
-    call_sequence.extend(["-phi_critical", "0.4"])  # transition melt fraction (non-dimensional)
-    call_sequence.extend(["-phi_width",    "0.15"]) # transition width (non-dimensional)
+    # Viscosity behaviour (rheological transition location and width, melt fractions)
+    call_sequence.extend(["-phi_critical", "%.6e"%(config.interior.rheo_phi_loc)])
+    call_sequence.extend(["-phi_width",    "%.6e"%(config.interior.rheo_phi_wid)])
 
-    # core-mantle boundary condition
-    call_sequence.extend(["-CORE_BC",  "1"])
-    call_sequence.extend(["-rho_core", "%.6e"%(config.struct.core_density)]) # core density
-    call_sequence.extend(["-cp_core",  "880.0"]) # core heat capacity
+    # Relating to the planet's metallic core
+    call_sequence.extend(["-CORE_BC",  "1"]) # CMB boundary condition
+    call_sequence.extend(["-rho_core", "%.6e"%(config.struct.core_density)]) # density
+    call_sequence.extend(["-cp_core",  "%.6e"%(config.struct.core_heatcap)]) # heat capacity
 
     # surface boundary condition
     # [4] heat flux (prescribe value using surface_bc_value)
