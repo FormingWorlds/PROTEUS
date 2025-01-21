@@ -40,7 +40,7 @@ def update_separation(hf_row:dict):
             Current helpfile row
     '''
 
-    sma = hf_row["semimajor"] * AU
+    sma = hf_row["semimajor"] # already in SI units
     ecc = hf_row["eccentricity"]
 
     hf_row["separation"] = sma *  (1 + 0.5*ecc*ecc)
@@ -70,8 +70,8 @@ def update_period(hf_row:dict):
     # Standard gravitational parameter (planet mass + star mass)
     mu = const_G * M_total
 
-    # Semimajor axis in SI units
-    sma = hf_row["semimajor"] * AU
+    # Semimajor axis is already in SI units
+    sma = hf_row["semimajor"]
 
     # Orbital period [seconds]
     hf_row["period"] = 2 * np.pi * (sma*sma*sma/mu)**0.5
