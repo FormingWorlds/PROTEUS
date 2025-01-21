@@ -56,20 +56,24 @@ If you make use of PROTEUS, please reference the following manuscripts, and stat
        author = {{Nicholls}, Harrison and {Pierrehumbert}, Raymond T. and {Lichtenberg}, Tim and {Soucasse}, Laurent and {Smeets}, Stef},
         title = "{Convective shutdown in the atmospheres of lava worlds}",
       journal = {Monthly Notices of the Royal Astronomical Society},
-         year = 2024,
-       month  = dec,
-         doi  = {10.1093/mnras/stae2772},
-          url = {https://arxiv.org/abs/2412.11987}
+         year = 2025,
+        month = jan,
+       volume = {536},
+       number = {3},
+        pages = {2957-2971},
+          doi = {10.1093/mnras/stae2772},
 }
 
 @ARTICLE{Nicholls2024JGRP,
-       author = {{Nicholls}, Harrison and {Lichtenberg}, Tim and {Bower}, Dan J. and and {Pierrehumbert}, Raymond T.},
-        title = "{Magma ocean evolution at arbitrary redox state}",
+       author = {{Nicholls}, Harrison and {Lichtenberg}, Tim and {Bower}, Dan J. and {Pierrehumbert}, Raymond},
+        title = "{Magma Ocean Evolution at Arbitrary Redox State}",
       journal = {Journal of Geophysical Research (Planets)},
          year = 2024,
-       month  = nov,
-         doi  = {10.1029/2024JE008576},
-          url = {https://arxiv.org/abs/2411.19137}
+        month = dec,
+       volume = {129},
+       number = {12},
+        pages = {2024JE008576},
+          doi = {10.1029/2024JE008576},
 }
 
 @ARTICLE{Lichtenberg2021JGRP,
@@ -83,10 +87,6 @@ If you make use of PROTEUS, please reference the following manuscripts, and stat
           eid = {e06711},
         pages = {e06711},
           doi = {10.1029/2020JE006711},
-archivePrefix = {arXiv},
-       eprint = {2101.10991},
- primaryClass = {astro-ph.EP},
-       adsurl = {https://ui.adsabs.harvard.edu/abs/2021JGRE..12606711L}
 }
 ```
 

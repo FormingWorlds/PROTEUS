@@ -130,7 +130,7 @@ def check_termination(handler: Proteus) -> bool:
     """
     Decide if the model should stop or not.
 
-    Updates the status file. Does not modify any variables in the handler.
+    The model will stop when two sequential iterations satisfy the convergence criteria.
 
     Parameters:
     --------------
@@ -143,7 +143,7 @@ def check_termination(handler: Proteus) -> bool:
             Should the model terminate now?
     """
 
-    # Quantify model state
+    # Quantify model state at this iteration
     finished = False
 
     # Stop simulation when planet is completely solidified
@@ -157,6 +157,9 @@ def check_termination(handler: Proteus) -> bool:
     # Atmosphere has escaped
     if handler.config.params.stop.escape.enabled:
         finished = finished or _check_escape(handler)
+        # By pass two-iteration check here, otherwise we will get a divide-by-zero
+        #   error in the next iteration's calculation.
+        handler.finished1 = handler.finished1 or handler.has_escaped
 
     # Maximum time reached
     if handler.config.params.stop.time.enabled:
@@ -170,10 +173,27 @@ def check_termination(handler: Proteus) -> bool:
     if handler.config.params.stop.iters.enabled:
         finished = finished and _check_miniter(handler, finished)
 
-    # Check if keepalive file has been removed
-    #    This means that the model should exit ASAP.
-    #    This check should always come last.
-    finished = finished or _check_keepalive(handler)
+    # Ensure that criteria are satisfied for two sequential iterations
+    handler.finished2 = False
+    if handler.finished1:
+        # previous iteration satisfied the criteria...
+        if finished:
+            # convergence is also satisfied at this iteration
+            handler.finished2 = True
+            log.info("Convergence criteria satisfied twice")
+            log.debug("Model will exit")
+        else:
+            # convergence no longer satisfied - reset flags
+            handler.finished1 = False
+            log.warning("Convergence criteria no longer satisfied")
+    else:
+        # previous iteration DID NOT satisfy criteria...
+        handler.finished1 = finished
+        if finished:
+            log.info("Convergence criteria satisfied once")
 
-    # Set state
-    return finished
+    # Check if keepalive file has been removed
+    #    This means that the model should exit ASAP, regardless of the other criteria.
+    if _check_keepalive(handler):
+        handler.finished2 = True
+        handler.finished1 = True

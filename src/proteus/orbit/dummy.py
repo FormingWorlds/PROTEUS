@@ -19,9 +19,17 @@ def run_dummy_tides(config:Config, phi:np.ndarray):
     # Default case; zero heating throughout the mantle
     H_tide = np.zeros(len(phi))
 
-    # For regions with small melt fraction, set non-zero heating
+    # Inequality (less than, value)
+    Pt_lt = bool(config.orbit.dummy.Phi_tide[0] == "<")
+    Pt_va = float(config.orbit.dummy.Phi_tide[1:])
+
+    # For regions with melt fraction in the appropriate range, set heating to be non-zero
     for i,p in enumerate(phi):
-        if p < config.orbit.dummy.Phi_tide:
-            H_tide[i] = config.orbit.dummy.H_tide
+        if Pt_lt:
+            if p < Pt_va:
+                H_tide[i] = config.orbit.dummy.H_tide
+        else:
+            if p > Pt_va:
+                H_tide[i] = config.orbit.dummy.H_tide
 
     return H_tide

@@ -233,7 +233,7 @@ def print_citation(config:Config):
     # Outgassing module
     match config.outgas.module:
         case 'calliope':
-            # Covered by Nicholls et al. (2024a)
+            # Covered by Nicholls et al. (2024a,b)
             pass
         case 'atmodeller':
             # _cite("Bower et al. (2025)", "in prep")
@@ -591,7 +591,6 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Close all figures
     plt.close()
-    log.info(" ")
 
 
 def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
