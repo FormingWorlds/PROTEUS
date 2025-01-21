@@ -49,7 +49,7 @@ class Orbit:
     s0_factor: float = field(validator=gt(0))
 
     module: str | None = field(
-        validator=in_((None, 'dummy')),
+        validator=in_((None, 'dummy', 'lovepy')),
         converter=none_if_none,
     )
 
@@ -69,3 +69,17 @@ class OrbitDummy:
     """
     H_tide: float   = field(validator=ge(0))
     Phi_tide: str = field(validator=phi_tide_validator)
+
+@define
+class OrbitLovepy:
+    """Lovepy tides module.
+
+    Attributes
+    ----------
+    shear_modulus: float
+        Fixed shear modulus of each layer [Pa].
+    bulk_modulus: float
+        Fixed bulk modulus of each layer [Pa].
+    """
+    shear_modulus: float = field(validator=gt(0))
+    bulk_modulus: float = field(validator=gt(0))
