@@ -330,8 +330,7 @@ def GetHelpfileKeys():
             "Time", # [yr]
 
             # Orbital dynamics
-            "separation", # [m]
-            "period", # [s]
+            "semimajor", "separation", "period", "eccentricity", # [m], [m], [s], [1]
 
             # Dry interior radius (calculated) and mass (from config)
             "R_int", "M_int", # [m], [kg]

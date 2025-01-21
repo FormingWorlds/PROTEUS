@@ -61,6 +61,7 @@ class Proteus:
         self.config = read_config_object(config_path)
 
         # Setup directories dictionary
+        self.directories:dict = None # Directories dictionary
         self.init_directories()
 
         # Helpfile variables for the current iteration
@@ -119,7 +120,7 @@ class Proteus:
         from proteus.escape.wrapper import RunEscape
         from proteus.interior.wrapper import run_interior, solve_structure
         from proteus.interior.common import Interior_t
-        from proteus.orbit.wrapper import run_orbit
+        from proteus.orbit.wrapper import run_orbit, init_orbit
         from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
         from proteus.utils.data import download_sufficient_data
 
@@ -250,6 +251,9 @@ class Proteus:
         # Prepare star stuff
         init_star(self)
 
+        # Prepare orbit stuff
+        init_orbit(self)
+
         # Main loop
         UpdateStatusfile(self.directories, 1)
         while not self.finished2:
@@ -281,10 +285,6 @@ class Proteus:
             run_interior(self.directories, self.config,
                             self.hf_all, self.hf_row, self.interior_o)
 
-
-            print("")
-            print(self.interior_o.phi)
-            print("")
 
             # Advance current time in main loop according to interior step
             self.hf_row["Time"]     += self.interior_o.dt    # in years

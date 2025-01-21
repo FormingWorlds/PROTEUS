@@ -10,11 +10,24 @@ from proteus.utils.constants import AU, const_G, secs_per_day
 from proteus.interior.common import Interior_t
 
 if TYPE_CHECKING:
+    from proteus import Proteus
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
-def update_separation(hf_row:dict, sma:float, ecc:float):
+def init_orbit(handler:Proteus):
+    '''
+    Initialise orbit and tides stuff.
+    '''
+
+    log.info("Preparing orbit/tides model")
+
+    if handler.config.orbit.module == "lovepy":
+        from proteus.orbit.lovepy import import_lovepy
+        import_lovepy(handler.directories["lovepy"])
+
+
+def update_separation(hf_row:dict):
     '''
     Calculate time-averaged orbital separation on an elliptical path.
 
@@ -25,15 +38,14 @@ def update_separation(hf_row:dict, sma:float, ecc:float):
     -------------
         hf_row: dict
             Current helpfile row
-        sma: float
-            Semimajor axis [AU]
-        ecc: float
-            Eccentricity
     '''
 
-    hf_row["separation"] = sma * AU *  (1 + 0.5*ecc*ecc)
+    sma = hf_row["semimajor"] * AU
+    ecc = hf_row["eccentricity"]
 
-def update_period(hf_row:dict, sma:float):
+    hf_row["separation"] = sma *  (1 + 0.5*ecc*ecc)
+
+def update_period(hf_row:dict):
     '''
     Calculate orbital period on an elliptical path.
 
@@ -59,10 +71,10 @@ def update_period(hf_row:dict, sma:float):
     mu = const_G * M_total
 
     # Semimajor axis in SI units
-    a = sma * AU
+    sma = hf_row["semimajor"] * AU
 
     # Orbital period [seconds]
-    hf_row["period"] = 2 * np.pi * (a*a*a/mu)**0.5
+    hf_row["period"] = 2 * np.pi * (sma*sma*sma/mu)**0.5
 
 
 def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
@@ -73,19 +85,21 @@ def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
         hf_row : dict
             Dictionary of current runtime variables
         config : Config
-            Model configuration
+            Model configuration.
         interior_o: Interior_t
             Struct containing interior arrays at current time.
     """
 
-
     log.info("Evolve orbit...")
 
-    # Update orbital separation
-    update_separation(hf_row, config.orbit.semimajoraxis, config.orbit.eccentricity)
+    # Set semimajor axis and eccentricity.
+    #    In the future, these could be allowed to evolve in time.
+    hf_row["semimajor"]    = config.orbit.semimajoraxis * AU
+    hf_row["eccentricity"] = config.orbit.eccentricity
 
-    # Update orbital period
-    update_period(hf_row, config.orbit.semimajoraxis)
+    # Update orbital separation and period
+    update_separation(hf_row)
+    update_period(hf_row)
     log.info("    period: %.1f days"%(hf_row["period"]/secs_per_day))
 
     # Initialise, set tidal heating to zero
@@ -101,7 +115,7 @@ def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
 
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
-        interior_o.tides = run_lovepy(config, interior_o)
+        interior_o.tides = run_lovepy(hf_row, interior_o)
 
     else:
         log.error(f"Unsupported tides module '{config.orbit.module}'")
