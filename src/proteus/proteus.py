@@ -73,9 +73,6 @@ class Proteus:
         self.loops = None
 
         # Interior
-        #    scalars
-        self.IC_INTERIOR = -1       # Initial condition flag (-1: init, 1: start, 2: running)
-        self.dt = 1.0               # Interior time step length [yr]
         self.interior_o = None      # Interior object from common.py
 
         # Model has finished?
@@ -177,12 +174,15 @@ class Proteus:
         # Download basic data
         download_sufficient_data(self.config)
 
+        # Initialise interior struct object.
+        self.interior_o = Interior_t()
+
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
             # New simulation
 
             # SPIDER initial condition
-            self.IC_INTERIOR = 1
+            self.interior_o.ic = 1
 
             # Create an empty initial row for helpfile
             self.hf_row = ZeroHelpfileRow()
@@ -230,7 +230,7 @@ class Proteus:
             log.info("Resuming the simulation from the disk")
 
             # SPIDER initial condition
-            self.IC_INTERIOR = 2
+            self.interior_o.ic = 2
 
             # Read helpfile from disk
             self.hf_all = ReadHelpfileFromCSV(self.directories["output"])
@@ -249,9 +249,6 @@ class Proteus:
 
         # Prepare star stuff
         init_star(self)
-
-        # Prepare interior stuff
-        self.interior_o = Interior_t()
 
         # Main loop
         UpdateStatusfile(self.directories, 1)
@@ -281,13 +278,13 @@ class Proteus:
             PrintHalfSeparator()
 
             # Run interior model
-            run_interior(self.directories, self.config, self.IC_INTERIOR,
+            run_interior(self.directories, self.config,
                             self.hf_all, self.hf_row, self.interior_o)
 
 
             # Advance current time in main loop according to interior step
-            self.hf_row["Time"]     += self.dt    # in years
-            self.hf_row["age_star"] += self.dt    # in years
+            self.hf_row["Time"]     += self.interior_o.dt    # in years
+            self.hf_row["age_star"] += self.interior_o.dt    # in years
 
             ############### / INTERIOR AND STRUCTURE
 
@@ -349,7 +346,7 @@ class Proteus:
 
             ############### ESCAPE
             if (self.loops["total"] >= self.loops["init_loops"]):
-                RunEscape(self.config, self.hf_row, self.dt, self.stellar_track)
+                RunEscape(self.config, self.hf_row, self.interior_o.dt, self.stellar_track)
 
             ############### / ESCAPE
 
@@ -394,7 +391,7 @@ class Proteus:
                 self.hf_row["Time"] = 0.0
             # Reset restart flag once SPIDER has correct heat flux
             if self.loops["total"] >= self.loops["init_loops"]:
-                self.IC_INTERIOR = 2
+                self.interior_o.ic = 2
 
             # Adjust total iteration counters
             self.loops["total"] += 1

@@ -10,6 +10,7 @@ import scipy.optimize as optimise
 
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
+from proteus.interior.common import Interior_t
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -40,7 +41,8 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     log.info("Using %s interior module to solve strcture"%config.interior.module)
 
     # Initial guess for interior radius and gravity
-    IC_INTERIOR = 1
+    int_o = Interior_t()
+    int_o.ic = 1
     hf_row["R_int"]   = config.struct.radius_int * R_earth
     calculate_core_mass(hf_row, config)
     hf_row["gravity"] = 9.81
@@ -58,7 +60,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
 
         # Use interior model to get dry mass from radius
         calculate_core_mass(hf_row, config)
-        run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row, None, verbose=False)
+        run_interior(dirs, config, hf_all, hf_row, int_o, verbose=False)
         update_gravity(hf_row)
 
         # Calculate residual
@@ -81,7 +83,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
                                     x0=hf_row["R_int"], x1=hf_row["R_int"]*1.02)
     hf_row["R_int"] = float(r.root)
     calculate_core_mass(hf_row, config)
-    run_interior(dirs, config, IC_INTERIOR, hf_all, hf_row, None)
+    run_interior(dirs, config, hf_all, hf_row, int_o)
     update_gravity(hf_row)
 
     # Result
@@ -118,9 +120,9 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
         log.error("Invalid constraint on interior structure: %s"%config.struct.set_by)
 
 
-def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
+def run_interior(dirs:dict, config:Config,
                     hf_all:pd.DataFrame, hf_row:dict,
-                    interior_o, dt:float, verbose:bool=True):
+                    interior_o, verbose:bool=True):
     """Run interior mantle evolution model.
 
     Parameters
@@ -129,16 +131,12 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
             Dictionary of directories.
         config : Config
             Model configuration
-        IC_INTERIOR : int
-            Interior initial condition flag.
         hf_all : pd.DataFrame
             Dataframe of historical runtime variables
         hf_row : dict
             Dictionary of current runtime variables
         interior_o : Interior_t
             Interior struct.
-        dt: float
-            New time-step length.
         verbose : bool
             Verbose printing enabled.
     """
@@ -153,7 +151,7 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         from proteus.interior.spider import ReadSPIDER, RunSPIDER
 
         # Run SPIDER
-        RunSPIDER(dirs, config, IC_INTERIOR, hf_all, hf_row, interior_o)
+        RunSPIDER(dirs, config, hf_all, hf_row, interior_o)
         sim_time, output = ReadSPIDER(dirs, config, hf_row["R_int"], interior_o)
 
     elif config.interior.module == 'aragog':
@@ -161,16 +159,14 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         from proteus.interior.aragog import RunAragog
 
         # Run Aragog
-        sim_time, output = RunAragog(config, dirs, IC_INTERIOR,
-                                            hf_row, hf_all, interior_o)
+        sim_time, output = RunAragog(config, dirs, hf_row, hf_all, interior_o)
 
     elif config.interior.module == 'dummy':
         # Import
-        from proteus.interior.dummy import RunDummyInt
+        from proteus.interior.dummy import run_dummy_int
 
         # Run dummy interior
-        sim_time, output = RunDummyInt(config, dirs, IC_INTERIOR,
-                                            hf_row, hf_all, interior_o)
+        sim_time, output = run_dummy_int(config, dirs, hf_row, hf_all, interior_o)
 
     # Read output
     for k in output.keys():
@@ -200,7 +196,7 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
     hf_row["M_tot"] = hf_row["M_int"] + M_volatiles
 
     # Prevent increasing melt fraction
-    if config.atmos_clim.prevent_warming and (IC_INTERIOR==2):
+    if config.atmos_clim.prevent_warming and (interior_o.ic==2):
         hf_row["Phi_global"] = min(hf_row["Phi_global"], hf_all.iloc[-1]["Phi_global"])
         hf_row["T_magma"] = min(hf_row["T_magma"], hf_all.iloc[-1]["T_magma"])
 
@@ -213,9 +209,8 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         log.info("    F_tidal    = %.2e W m-2" %hf_row["F_tidal"])
         log.info("    F_radio    = %.2e W m-2" %hf_row["F_radio"])
 
-
-    # Time step size
-    dt = float(sim_time) - hf_row["Time"]
+    # Actual time step size
+    interior_o.dt = float(sim_time) - hf_row["Time"]
 
 
 def get_all_output_times(output_dir:str, model:str):

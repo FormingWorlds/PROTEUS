@@ -37,8 +37,7 @@ log = logging.getLogger("fwl."+__name__)
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 # Run the Aragog interior module
-def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int,
-                hf_row:dict, hf_all:pd.DataFrame, interior_o):
+def RunAragog(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, interior_o):
 
     global aragog_solver
 
@@ -48,7 +47,7 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int,
                        log_dir = dirs["output"])
 
     # Compute time step
-    if IC_INTERIOR==1:
+    if interior_o.ic==1:
         dt = 0.0
         aragog_solver = None
     else:

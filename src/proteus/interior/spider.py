@@ -392,8 +392,7 @@ def _try_spider( dirs:dict, config:Config,
     return bool(proc.returncode == 0)
 
 
-def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
-              hf_all:pd.DataFrame, hf_row:dict, interior_o):
+def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, interior_o):
     '''
     Wrapper function for running SPIDER.
     This wrapper handles cases where SPIDER fails to find a solution.
@@ -428,7 +427,8 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
         log.debug("Attempt %d" % attempts)
 
         # run SPIDER
-        spider_success = _try_spider(dirs, config, IC_INTERIOR, hf_all, hf_row, step_sf, atol_sf)
+        spider_success = _try_spider(dirs, config, interior_o.ic,
+                                        hf_all, hf_row, step_sf, atol_sf)
 
         if spider_success:
             # success

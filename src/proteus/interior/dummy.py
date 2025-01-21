@@ -43,7 +43,7 @@ def calculate_simple_mantle_mass(radius:float, corefrac:float)->float:
 
 
 # Run the dummy interior module
-def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int,
+def run_dummy_int(config:Config, dirs:dict,
                     hf_row:dict, hf_all:pd.DataFrame, interior_o):
 
     # Output dictionary
@@ -96,7 +96,7 @@ def RunDummyInt(config:Config, dirs:dict, IC_INTERIOR:int,
     dTdt = -F_loss * area / cp_int
 
     # Timestepping
-    if IC_INTERIOR==1:
+    if interior_o.ic==1:
         output["T_magma"] = tmp_init
         dt = 0.0
     else:
