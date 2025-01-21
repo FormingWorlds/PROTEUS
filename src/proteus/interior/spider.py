@@ -487,7 +487,6 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     Hradio_s = json_file.get_dict_values(['data','Hradio_s'])
     Htidal_s = json_file.get_dict_values(['data','Htidal_s'])
     mass_s   = json_file.get_dict_values(['data','mass_s'])
-    phi_s    = json_file.get_dict_values(['data','phi_s'])
 
     # Fill the new dict
     output["M_mantle_liquid"] = float(data_a[0])
@@ -500,14 +499,17 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     output["F_int"]           = float(data_a[6])  # Heat flux from interior
     output["RF_depth"]        = float(data_a[7])/R_int  # depth of rheological front
 
-    # Melt fraction array
-    interior_o.phi = np.array(phi_s)
-
     # Tidal heating
     output["F_tidal"] = np.dot(Htidal_s, mass_s)/area_b[0]
 
     # Radiogenic heating
     output["F_radio"] = np.dot(Hradio_s, mass_s)/area_b[0]
+
+    # Arrays at current time
+    interior_o.phi      = np.array(json_file.get_dict_values(['data','phi_s']))
+    interior_o.rho      = np.array(json_file.get_dict_values(['data','rho_s']))
+    interior_o.radius   = np.array(json_file.get_dict_values(['data','radius_s']))
+    interior_o.visc     = np.array(json_file.get_dict_values(['data','visc_b']))[1:]
 
     # Manually calculate heat flux at near-surface from energy gradient
     # Etot        = json_file.get_dict_values(['data','Etot_b'])

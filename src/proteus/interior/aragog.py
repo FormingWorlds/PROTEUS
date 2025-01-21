@@ -276,7 +276,11 @@ def GetAragogOutput(hf_row:dict, interior_o):
     output["F_tidal"] = np.dot(Htidal_s, mass_s)/area
 
     # Store arrays
-    interior_o.phi = aragog_output.melt_fraction_staggered[:,-1]
+    # FIX ME - Should extract values from staggered nodes rather than cropping basic nodes.
+    interior_o.phi      = np.array(aragog_output.melt_fraction_staggered[:,-1])
+    interior_o.visc     = np.power(10.0, aragog_output.log10_viscosity_staggered[:,-1])
+    interior_o.density  = np.array(aragog_output.density_basic[:,-1])[1:]
+    interior_o.radius   = radii[1:]
 
     return output
 

@@ -16,5 +16,3 @@ class Interior_t():
         self.visc       = None      # Viscosity [Pa s].
         self.radius     = None      # Radius [m].
         self.density    = None      # Mass density [kg m-3]
-        self.shear_mod  = None      # Shear modulus [Pa].
-        self.bulk_mod   = None      # Bulk modulus [Pa].

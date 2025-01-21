@@ -111,6 +111,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         H_tide  = 1e-7  # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
 
+    [orbit.lovepy]
+        shear_modulus = 60e9    # Shear modulus [Pa]
+        bulk_modulus  = 100e9   # Bulk modulus [Pa]
+
 
 # Planetary structure - physics table
 [struct]
