@@ -115,7 +115,7 @@ def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
 
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
-        interior_o.tides = run_lovepy(hf_row, interior_o)
+        interior_o.tides = run_lovepy(hf_row, config, interior_o)
 
     else:
         log.error(f"Unsupported tides module '{config.orbit.module}'")

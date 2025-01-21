@@ -25,17 +25,18 @@ def _jlarr(arr:np.array):
     # Make copy of array and convert to Julia type
     return juliacall.convert(jl.Array[jl.Float64, 1], np.array(arr, dtype=float))
 
-def run_lovepy(hf_row:dict, interior_o:Interior_t):
+def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
     '''
     Run the lovepy tidal heating module
     '''
 
     # Default case; zero heating throughout the mantle
-    H_tide = np.zeros(len(interior_o.phi))
+    nlev = len(interior_o.phi)
+    H_tide = np.zeros(nlev)
 
     # Other arrays (FIX ME)
-    interior_o.shear = np.ones(len(H_tide)) * 60e9
-    interior_o.bulk  = np.ones(len(H_tide)) * 100e9
+    interior_o.shear = np.ones(nlev) * config.orbit.lovepy.shear_modulus
+    interior_o.bulk  = np.ones(nlev) * config.orbit.lovepy.bulk_modulus
 
     # Get orbital properties
     omega = 2 * np.pi / hf_row["period"]
@@ -49,6 +50,6 @@ def run_lovepy(hf_row:dict, interior_o:Interior_t):
                                     _jlarr(interior_o.shear),
                                     _jlarr(interior_o.bulk),
                                 )
-    print(power)
 
+    H_tide = np.ones(nlev) * power / hf_row["M_mantle"]
     return H_tide
