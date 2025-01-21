@@ -393,7 +393,7 @@ def _try_spider( dirs:dict, config:Config,
 
 
 def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
-              hf_all:pd.DataFrame, hf_row:dict, tides_array:np.ndarray ):
+              hf_all:pd.DataFrame, hf_row:dict, interior_o):
     '''
     Wrapper function for running SPIDER.
     This wrapper handles cases where SPIDER fails to find a solution.
@@ -410,16 +410,16 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
 
     # write tidal heating file
     tides_file = os.path.join(dirs["output"], "data", TIDES_FILENAME)
-    if (tides_array is None) or (not config.interior.tidal_heat):
-        tides_array = np.zeros(config.interior.spider.num_levels-1)
+    if (interior_o.tides is None) or (not config.interior.tidal_heat):
+        interior_o.tides = np.zeros(config.interior.spider.num_levels-1)
     with open(tides_file,'w') as hdl:
         # header information
-        hdl.write("# 3 %d \n"%len(tides_array))
+        hdl.write("# 3 %d \n"%len(interior_o.tides))
         hdl.write("# Dummy, Tidal heating density \n")
         hdl.write("# 1.0 1.0 \n")
 
         # for each level...
-        for h in tides_array:
+        for h in interior_o.tides:
             hdl.write("0.0 %.3e \n"%h)
 
     # make attempts
@@ -456,7 +456,7 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
         raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
-def ReadSPIDER(dirs:dict, config:Config, R_int:float):
+def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o):
     '''
     Read variables from last SPIDER output JSON file into a dictionary
     '''
@@ -499,7 +499,7 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float):
     output["RF_depth"]        = float(data_a[7])/R_int  # depth of rheological front
 
     # Melt fraction array
-    output["Phi_array"] = np.array(phi_s)
+    interior_o.phi = np.array(phi_s)
 
     # Tidal heating
     output["F_tidal"] = np.dot(Htidal_s, mass_s)/area_b[0]

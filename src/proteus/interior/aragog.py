@@ -38,7 +38,7 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 
 # Run the Aragog interior module
 def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int,
-                hf_row:dict, hf_all:pd.DataFrame, tides_array:np.ndarray):
+                hf_row:dict, hf_all:pd.DataFrame, interior_o):
 
     global aragog_solver
 
@@ -56,25 +56,25 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int,
         dt = next_step(config, dirs, hf_row, hf_all, step_sf)
 
     # Tidal heating base case
-    if (tides_array is None) or (not config.interior.tidal_heat):
-        tides_array = np.zeros(config.interior.aragog.num_levels-1)
+    if (interior_o.tides is None) or (not config.interior.tidal_heat):
+        interior_o.tides = np.zeros(config.interior.aragog.num_levels-1)
 
     # Setup Aragog parameters from options at first iteration
     if (aragog_solver is None):
-        SetupAragogSolver(config, hf_row, tides_array)
+        SetupAragogSolver(config, hf_row, interior_o)
         # Update state from stored data if resuming a simulation
         if config.params.resume:
-            UpdateAragogSolver(dt, hf_row, tides_array, output_dir=dirs["output"])
+            UpdateAragogSolver(dt, hf_row, interior_o, output_dir=dirs["output"])
     # Update varying parameters in ongoing simulation
     else:
-        UpdateAragogSolver(dt, hf_row, tides_array)
+        UpdateAragogSolver(dt, hf_row, interior_o)
 
     # Run Aragog solver
     aragog_solver.initialize()
     aragog_solver.solve()
 
     # Get Aragog output
-    output = GetAragogOutput(hf_row)
+    output = GetAragogOutput(hf_row, interior_o)
     sim_time = aragog_solver.parameters.solver.end_time
 
     # Write output to a file
@@ -83,7 +83,7 @@ def RunAragog(config:Config, dirs:dict, IC_INTERIOR:int,
     return sim_time, output
 
 
-def SetupAragogSolver(config:Config, hf_row:dict, tides_array:np.ndarray ):
+def SetupAragogSolver(config:Config, hf_row:dict, interior_o):
 
     global aragog_solver
 
@@ -129,7 +129,7 @@ def SetupAragogSolver(config:Config, hf_row:dict, tides_array:np.ndarray ):
             mixing = False,
             radionuclides = config.interior.radiogenic_heat,
             tidal = config.interior.tidal_heat,
-            tidal_array = tides_array
+            tidal_array = interior_o.tides
             )
 
     initial_condition = _InitialConditionParameters(
@@ -212,7 +212,7 @@ def SetupAragogSolver(config:Config, hf_row:dict, tides_array:np.ndarray ):
 
     aragog_solver = Solver(param)
 
-def UpdateAragogSolver(dt:float, hf_row:dict, tides_array:np.ndarray,
+def UpdateAragogSolver(dt:float, hf_row:dict, interior_o,
                             output_dir:str = None):
 
     # Set solver time
@@ -236,7 +236,7 @@ def UpdateAragogSolver(dt:float, hf_row:dict, tides_array:np.ndarray,
 
     # Update tidal heating within the mantle
     aragog_solver.parameters.energy.tidal_array = \
-        tides_array / aragog_solver.parameters.scalings.power_per_mass
+        interior_o.tides / aragog_solver.parameters.scalings.power_per_mass
 
 def WriteAragogOutput(output_dir:str, time:float):
 
@@ -245,7 +245,7 @@ def WriteAragogOutput(output_dir:str, time:float):
     fpath = os.path.join(output_dir,"data","%d_int.nc"%time)
     aragog_output.write_at_time(fpath,-1)
 
-def GetAragogOutput(hf_row:dict):
+def GetAragogOutput(hf_row:dict, interior_o):
 
     aragog_output: Output = Output(aragog_solver)
     output = {}
@@ -274,9 +274,8 @@ def GetAragogOutput(hf_row:dict):
     Htidal_s = aragog_output.heating_tidal[:,-1]  # [W kg-1]
     output["F_tidal"] = np.dot(Htidal_s, mass_s)/area
 
-    # Melt fraction array
-    Phi_array = aragog_output.melt_fraction_staggered[:,-1]
-    output["Phi_array"] = Phi_array
+    # Store arrays
+    interior_o.phi = aragog_output.melt_fraction_staggered[:,-1]
 
     return output
 

@@ -120,7 +120,7 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
 
 def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
                     hf_all:pd.DataFrame, hf_row:dict,
-                    tides:np.ndarray, verbose:bool=True):
+                    interior_o, dt:float, verbose:bool=True):
     """Run interior mantle evolution model.
 
     Parameters
@@ -135,19 +135,12 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
             Dataframe of historical runtime variables
         hf_row : dict
             Dictionary of current runtime variables
-        tides : np.ndarray
-            Array of tidal heating production [W kg-1] at each layer of the model. Length
-            of 1 if using dummy interior.
-
+        interior_o : Interior_t
+            Interior struct.
+        dt: float
+            New time-step length.
         verbose : bool
             Verbose printing enabled.
-
-    Returns
-    ----------
-        dt : float
-            Length of interior time-step [years].
-        phi : np.ndarray
-            Melt fraction at each layer of the mantle.
     """
 
     # Use the appropriate interior model
@@ -160,8 +153,8 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
         from proteus.interior.spider import ReadSPIDER, RunSPIDER
 
         # Run SPIDER
-        RunSPIDER(dirs, config, IC_INTERIOR, hf_all, hf_row, tides)
-        sim_time, output = ReadSPIDER(dirs, config, hf_row["R_int"])
+        RunSPIDER(dirs, config, IC_INTERIOR, hf_all, hf_row, interior_o)
+        sim_time, output = ReadSPIDER(dirs, config, hf_row["R_int"], interior_o)
 
     elif config.interior.module == 'aragog':
         # Import
@@ -169,7 +162,7 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
 
         # Run Aragog
         sim_time, output = RunAragog(config, dirs, IC_INTERIOR,
-                                            hf_row, hf_all, tides)
+                                            hf_row, hf_all, interior_o)
 
     elif config.interior.module == 'dummy':
         # Import
@@ -177,7 +170,7 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
 
         # Run dummy interior
         sim_time, output = RunDummyInt(config, dirs, IC_INTERIOR,
-                                            hf_row, hf_all, tides)
+                                            hf_row, hf_all, interior_o)
 
     # Read output
     for k in output.keys():
@@ -224,8 +217,6 @@ def run_interior(dirs:dict, config:Config, IC_INTERIOR:int,
     # Time step size
     dt = float(sim_time) - hf_row["Time"]
 
-    # Return timestep
-    return dt, output["Phi_array"]
 
 def get_all_output_times(output_dir:str, model:str):
 

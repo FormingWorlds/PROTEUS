@@ -73,10 +73,10 @@ class Proteus:
         self.loops = None
 
         # Interior
-        self.IC_INTERIOR = -1  # Initial condition flag (-1: init, 1: start, 2: running)
-        self.dt = 1.0          # Interior time step length [yr]
-        self.int_tides = None  # Tidal power density, array [W kg-1].
-        self.int_phi = None    # Melt fraction, array.
+        #    scalars
+        self.IC_INTERIOR = -1       # Initial condition flag (-1: init, 1: start, 2: running)
+        self.dt = 1.0               # Interior time step length [yr]
+        self.interior_o = None      # Interior object from common.py
 
         # Model has finished?
         self.finished1 = False          # Satisfied finishing criteria once
@@ -121,6 +121,7 @@ class Proteus:
         from proteus.atmos_clim import RunAtmosphere
         from proteus.escape.wrapper import RunEscape
         from proteus.interior.wrapper import run_interior, solve_structure
+        from proteus.interior.common import Interior_t
         from proteus.orbit.wrapper import run_orbit
         from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
         from proteus.utils.data import download_sufficient_data
@@ -249,6 +250,9 @@ class Proteus:
         # Prepare star stuff
         init_star(self)
 
+        # Prepare interior stuff
+        self.interior_o = Interior_t()
+
         # Main loop
         UpdateStatusfile(self.directories, 1)
         while not self.finished2:
@@ -277,9 +281,8 @@ class Proteus:
             PrintHalfSeparator()
 
             # Run interior model
-            self.dt, self.int_phi = run_interior(self.directories, self.config,
-                                                    self.IC_INTERIOR, self.hf_all,
-                                                    self.hf_row, self.int_tides)
+            run_interior(self.directories, self.config, self.IC_INTERIOR,
+                            self.hf_all, self.hf_row, self.interior_o)
 
 
             # Advance current time in main loop according to interior step
@@ -291,7 +294,7 @@ class Proteus:
             ############### ORBIT AND TIDES
 
             PrintHalfSeparator()
-            self.int_tides = run_orbit(self.hf_row, self.config, self.int_phi)
+            run_orbit(self.hf_row, self.config, self.interior_o)
 
             ############### / ORBIT AND TIDES
 
