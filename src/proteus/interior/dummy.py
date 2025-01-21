@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.interior.timestep import next_step
+from proteus.interior.common import Interior_t
 from proteus.utils.constants import secs_per_year
 
 if TYPE_CHECKING:
@@ -44,7 +45,7 @@ def calculate_simple_mantle_mass(radius:float, corefrac:float)->float:
 
 # Run the dummy interior module
 def run_dummy_int(config:Config, dirs:dict,
-                    hf_row:dict, hf_all:pd.DataFrame, interior_o):
+                    hf_row:dict, hf_all:pd.DataFrame, interior_o:Interior_t):
 
     # Output dictionary
     output = {}

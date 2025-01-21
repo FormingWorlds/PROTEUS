@@ -282,6 +282,10 @@ class Proteus:
                             self.hf_all, self.hf_row, self.interior_o)
 
 
+            print("")
+            print(self.interior_o.phi)
+            print("")
+
             # Advance current time in main loop according to interior step
             self.hf_row["Time"]     += self.interior_o.dt    # in years
             self.hf_row["age_star"] += self.interior_o.dt    # in years

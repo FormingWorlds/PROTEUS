@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.utils.constants import AU, const_G, secs_per_day
+from proteus.interior.common import Interior_t
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -64,7 +65,7 @@ def update_period(hf_row:dict, sma:float):
     hf_row["period"] = 2 * np.pi * (a*a*a/mu)**0.5
 
 
-def run_orbit(hf_row:dict, config:Config, interior_o):
+def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
     """Update parameters relating to orbital evolution and tides.
 
     Parameters
@@ -98,7 +99,11 @@ def run_orbit(hf_row:dict, config:Config, interior_o):
         from proteus.orbit.dummy import run_dummy_tides
         interior_o.tides = run_dummy_tides(config, interior_o.phi)
 
+    elif config.orbit.module == 'lovepy':
+        from proteus.orbit.lovepy import run_lovepy
+        interior_o.tides = run_lovepy(config, interior_o)
+
     else:
-        log.error("Unsupported tides module")
+        log.error(f"Unsupported tides module '{config.orbit.module}'")
 
     log.info("    median tidal power density: %.1e W kg-1"%np.median(interior_o.tides))

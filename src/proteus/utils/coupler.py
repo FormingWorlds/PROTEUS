@@ -611,14 +611,15 @@ def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
     root_dir = get_proteus_dir()
 
     return {
-        "agni": os.path.join(root_dir, "AGNI"),
-        "input": os.path.join(root_dir, "input"),
-        "output": os.path.join(root_dir, "output", out_dir),
         "proteus":  root_dir,
-        "spider": os.path.join(root_dir, "SPIDER"),
-        "tools": os.path.join(root_dir, "tools"),
-        "vulcan": os.path.join(root_dir, "VULCAN"),
-        "utils": os.path.join(root_dir, "src", "proteus", "utils")
+        "agni":     os.path.join(root_dir, "AGNI"),
+        "lovepy":   os.path.join(root_dir, "lovepy"),
+        "input":    os.path.join(root_dir, "input"),
+        "spider":   os.path.join(root_dir, "SPIDER"),
+        "tools":    os.path.join(root_dir, "tools"),
+        "vulcan":   os.path.join(root_dir, "VULCAN"),
+        "output":   os.path.join(root_dir, "output", out_dir),
+        "utils":    os.path.join(root_dir, "src", "proteus", "utils")
     }
 
 

@@ -26,6 +26,7 @@ from aragog.parser import (
 )
 
 from proteus.interior.timestep import next_step
+from proteus.interior.common import Interior_t
 from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
 
 if TYPE_CHECKING:
@@ -37,7 +38,8 @@ log = logging.getLogger("fwl."+__name__)
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 # Run the Aragog interior module
-def RunAragog(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, interior_o):
+def RunAragog(config:Config, dirs:dict,
+                hf_row:dict, hf_all:pd.DataFrame, interior_o:Interior_t):
 
     global aragog_solver
 
@@ -82,7 +84,7 @@ def RunAragog(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, interi
     return sim_time, output
 
 
-def SetupAragogSolver(config:Config, hf_row:dict, interior_o):
+def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
 
     global aragog_solver
 
@@ -211,7 +213,7 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o):
 
     aragog_solver = Solver(param)
 
-def UpdateAragogSolver(dt:float, hf_row:dict, interior_o,
+def UpdateAragogSolver(dt:float, hf_row:dict, interior_o:Interior_t,
                             output_dir:str = None):
 
     # Set solver time

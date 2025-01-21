@@ -54,6 +54,7 @@ class Orbit:
     )
 
     dummy: OrbitDummy
+    lovepy: OrbitLovepy
 
 
 @define

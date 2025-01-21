@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.interior.timestep import next_step
+from proteus.interior.common import Interior_t
 from proteus.utils.constants import radnuc_data
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 
@@ -392,7 +393,8 @@ def _try_spider( dirs:dict, config:Config,
     return bool(proc.returncode == 0)
 
 
-def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, interior_o):
+def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
+                interior_o:Interior_t):
     '''
     Wrapper function for running SPIDER.
     This wrapper handles cases where SPIDER fails to find a solution.
@@ -456,7 +458,7 @@ def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, inter
         raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
-def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o):
+def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     '''
     Read variables from last SPIDER output JSON file into a dictionary
     '''
