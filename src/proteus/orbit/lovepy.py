@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
+def activate_julia():
+    jl.Pkg.add("DoubleFloats")
 
 def run_lovepy(config:Config, interior_o:Interior_t):
     '''
