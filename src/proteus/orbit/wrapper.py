@@ -30,8 +30,6 @@ def init_orbit(handler:Proteus):
 def update_separation(hf_row:dict):
     '''
     Calculate time-averaged orbital separation on an elliptical path.
-
-    Converts from AU to metres.
     https://physics.stackexchange.com/a/715749
 
     Parameters
@@ -40,7 +38,7 @@ def update_separation(hf_row:dict):
             Current helpfile row
     '''
 
-    sma = hf_row["semimajor"] # already in SI units
+    sma = hf_row["semimajorax"] # already in SI units
     ecc = hf_row["eccentricity"]
 
     hf_row["separation"] = sma *  (1 + 0.5*ecc*ecc)
@@ -71,7 +69,7 @@ def update_period(hf_row:dict):
     mu = const_G * M_total
 
     # Semimajor axis is already in SI units
-    sma = hf_row["semimajor"]
+    sma = hf_row["semimajorax"]
 
     # Orbital period [seconds]
     hf_row["period"] = 2 * np.pi * (sma*sma*sma/mu)**0.5
@@ -94,13 +92,12 @@ def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
 
     # Set semimajor axis and eccentricity.
     #    In the future, these could be allowed to evolve in time.
-    hf_row["semimajor"]    = config.orbit.semimajoraxis * AU
+    hf_row["semimajorax"]  = config.orbit.semimajoraxis * AU
     hf_row["eccentricity"] = config.orbit.eccentricity
 
     # Update orbital separation and period
     update_separation(hf_row)
     update_period(hf_row)
-    log.info("    period: %.1f days"%(hf_row["period"]/secs_per_day))
 
     # Initialise, set tidal heating to zero
     interior_o.tides = np.zeros(len(interior_o.phi))
@@ -110,14 +107,16 @@ def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
         pass
 
     elif config.orbit.module == 'dummy':
-        from proteus.orbit.dummy import run_dummy_tides
-        interior_o.tides = run_dummy_tides(config, interior_o.phi)
+        from proteus.orbit.dummy import run_dummy_orbit
+        Imk2 = run_dummy_orbit(config, interior_o)
 
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
-        interior_o.tides = run_lovepy(hf_row, config, interior_o)
+        Imk2 = run_lovepy(hf_row, config, interior_o)
 
     else:
         log.error(f"Unsupported tides module '{config.orbit.module}'")
 
-    log.info("    median tidal power density: %.1e W kg-1"%np.median(interior_o.tides))
+    log.info("    period = %.3f days"%(hf_row["period"]/secs_per_day))
+    log.info("    H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
+    log.info("    Im(k2) = %.1e "%Imk2)

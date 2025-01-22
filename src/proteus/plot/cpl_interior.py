@@ -139,7 +139,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
 
     # Decorate figure
     title = '(a) Temperature' #'(a) Temperature, {}'.format(units)
-    axs[0].set( title=title, xlabel=r'$T$ [$10^3$ K]', ylabel=r'$P$ [GPa]')
+    axs[0].set( title=title, xlabel=r'$T$ [1000 K]', ylabel=r'$P$ [GPa]')
     axs[0].set_ylim(top=np.amin(xx_pres), bottom=np.amax(xx_pres))
     axs[0].yaxis.set_minor_locator(MultipleLocator(10.0))
     axs[0].xaxis.set_minor_locator(MultipleLocator(0.25))

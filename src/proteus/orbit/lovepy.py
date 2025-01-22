@@ -27,11 +27,13 @@ def _jlarr(arr:np.array):
 
 def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
     '''
-    Run the lovepy tidal heating module
+    Run the lovepy tidal heating module.
+
+    Sets the interior tidal heating and returns Im(k2) love number.
     '''
 
     # Default case; zero heating throughout the mantle
-    H_tide = np.zeros_like(interior_o.phi)
+    interior_o.tides = np.zeros_like(interior_o.phi)
 
     # Get orbital properties
     omega = 2 * np.pi / hf_row["period"]
@@ -51,20 +53,18 @@ def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
     lov_bulk   = interior_o.bulk[mask]
 
     # Viscosity is small everywhere?
-    #    Return default value (H_tide = 0)
     if len(lov_rho)  == 0:
-        return H_tide
+        return 0.0
 
     # Calculate heating using lovepy
-    power = jl.calculate_heating(omega, ecc,
+    power, k2_love = jl.calculate_heating(omega, ecc,
                                     _jlarr(lov_rho),
                                     _jlarr(lov_radius),
                                     _jlarr(lov_visc),
                                     _jlarr(lov_shear),
                                     _jlarr(lov_bulk),
                                 )
-    print("Power from lovepy: %.3e W"%power)
-    H_tide[mask] = power / np.sum(interior_o.mass[mask])
+    interior_o.tides[mask] = float(power) / np.sum(interior_o.mass[mask])
 
-    # Return array
-    return H_tide
+    # Return imaginary part of k2 love number
+    return float(k2_love)

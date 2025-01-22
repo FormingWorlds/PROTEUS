@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
+from proteus.interior.common import Interior_t
 
 import numpy as np
 
@@ -11,25 +12,27 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def run_dummy_tides(config:Config, phi:np.ndarray):
+def run_dummy_orbit(config:Config, interior_o:Interior_t):
     '''
-    Dummy tides module.
+    Dummy orbit module.
+
+    Sets interior tidal heating, return Im(k2) love number value of zero.
     '''
 
     # Default case; zero heating throughout the mantle
-    H_tide = np.zeros(len(phi))
+    interior_o.tides = np.zeros_like(interior_o.phi)
 
     # Inequality (less than, value)
     Pt_lt = bool(config.orbit.dummy.Phi_tide[0] == "<")
     Pt_va = float(config.orbit.dummy.Phi_tide[1:])
 
     # For regions with melt fraction in the appropriate range, set heating to be non-zero
-    for i,p in enumerate(phi):
+    for i,p in enumerate(interior_o.phi):
         if Pt_lt:
             if p < Pt_va:
-                H_tide[i] = config.orbit.dummy.H_tide
+                interior_o.tides[i] = config.orbit.dummy.H_tide
         else:
             if p > Pt_va:
-                H_tide[i] = config.orbit.dummy.H_tide
+                interior_o.tides[i] = config.orbit.dummy.H_tide
 
-    return H_tide
+    return 0.0
