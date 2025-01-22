@@ -111,7 +111,8 @@ def run_dummy_int(config:Config, dirs:dict,
     output["RF_depth"]          = output["Phi_global"] * (1- config.struct.corefrac)
 
     # Store arrays
-    interior_o.phi = np.array([output["Phi_global"]])
+    interior_o.phi  = np.array([output["Phi_global"]])
+    interior_o.mass = np.array([output["M_mantle"]])
 
     sim_time = hf_row["Time"] + dt
     return sim_time, output

@@ -31,25 +31,40 @@ def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
     '''
 
     # Default case; zero heating throughout the mantle
-    nlev = len(interior_o.phi)
-    H_tide = np.zeros(nlev)
-
-    # Other arrays (FIX ME)
-    interior_o.shear = np.ones(nlev) * config.orbit.lovepy.shear_modulus
-    interior_o.bulk  = np.ones(nlev) * config.orbit.lovepy.bulk_modulus
+    H_tide = np.zeros_like(interior_o.phi)
 
     # Get orbital properties
     omega = 2 * np.pi / hf_row["period"]
     ecc   = hf_row["eccentricity"]
 
+    # Other arrays (FIX ME)
+    interior_o.shear = np.ones_like(interior_o.phi) * config.orbit.lovepy.shear_modulus
+    interior_o.bulk  = np.ones_like(interior_o.phi) * config.orbit.lovepy.bulk_modulus
+
+    # Truncated arrays based on valid viscosity range
+    visc_crit = 1e9
+    mask = interior_o.visc > visc_crit
+    lov_rho    = interior_o.rho[mask]
+    lov_radius = interior_o.radius[mask]
+    lov_visc   = interior_o.visc[mask]
+    lov_shear  = interior_o.shear[mask]
+    lov_bulk   = interior_o.bulk[mask]
+
+    # Viscosity is small everywhere?
+    #    Return default value (H_tide = 0)
+    if len(lov_rho)  == 0:
+        return H_tide
+
     # Calculate heating using lovepy
     power = jl.calculate_heating(omega, ecc,
-                                    _jlarr(interior_o.rho),
-                                    _jlarr(interior_o.radius),
-                                    _jlarr(interior_o.visc),
-                                    _jlarr(interior_o.shear),
-                                    _jlarr(interior_o.bulk),
+                                    _jlarr(lov_rho),
+                                    _jlarr(lov_radius),
+                                    _jlarr(lov_visc),
+                                    _jlarr(lov_shear),
+                                    _jlarr(lov_bulk),
                                 )
+    print("Power from lovepy: %.3e W"%power)
+    H_tide[mask] = power / np.sum(interior_o.mass[mask])
 
-    H_tide = np.ones(nlev) * power / hf_row["M_mantle"]
+    # Return array
     return H_tide

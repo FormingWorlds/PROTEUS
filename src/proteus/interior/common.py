@@ -16,3 +16,4 @@ class Interior_t():
         self.visc       = None      # Viscosity [Pa s].
         self.radius     = None      # Radius [m].
         self.density    = None      # Mass density [kg m-3]
+        self.mass       = None      # Mass of shell [kg]

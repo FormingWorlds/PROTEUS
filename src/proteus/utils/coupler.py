@@ -259,6 +259,9 @@ def print_citation(config:Config):
 
     # Orbit module
     match config.orbit.module:
+        case 'lovepy':
+            _cite("Hay & Matsuyama (2019)",
+                    "https://doi.org/10.3847/1538-4357/ab0c21")
         case _:
             pass
 

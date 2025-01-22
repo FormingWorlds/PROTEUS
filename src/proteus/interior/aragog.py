@@ -281,6 +281,7 @@ def GetAragogOutput(hf_row:dict, interior_o):
     interior_o.visc     = np.power(10.0, aragog_output.log10_viscosity_staggered[:,-1])
     interior_o.density  = np.array(aragog_output.density_basic[:,-1])[1:]
     interior_o.radius   = radii[1:]
+    interior_o.mass     = mass_s
 
     return output
 
