@@ -23,7 +23,7 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     #    surface, relative to the surface temperature itself
     # Setting this to 0 will result in an entirely transparent atmosphere
     # Setting this to 1 will result in an OLR of zero
-    gamma           = 0.7
+    gamma = config.atmos_clim.dummy.gamma
 
     # Parameters
     zenith_angle    = config.orbit.zenith_angle

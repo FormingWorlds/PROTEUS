@@ -15,9 +15,9 @@ module = "dummy"
 
 [struct]
 set_by = "mass_tot"
-mass_tot = 2.1382795033572477
+mass_tot = 2.7592703947158066
 radius_int = 0.9
-corefrac = 0.32958394089386567
+corefrac = 0.7971570104780077
 
 [atmos_clim]
 prevent_warming = false
@@ -26,7 +26,7 @@ surface_k = 2.0
 cloud_enabled = false
 cloud_alpha = 0.0
 surf_state = "fixed"
-surf_greyalbedo = 0.5003406839007034
+surf_greyalbedo = 0.17198990446510462
 albedo_pl = 0.1
 rayleigh = false
 tmp_minimum = 0.5
@@ -44,19 +44,19 @@ tidal_heat = true
 module = "dummy"
 
 [outgas]
-fO2_shift_IW = -0.9705082463067676
+fO2_shift_IW = -1.569411439979314
 module = "calliope"
 
 [delivery]
 radio_tref = 4.55
-radio_K = 267.84079438731965
+radio_K = 250.2410556527332
 radio_U = 0.031
 radio_Th = 0.124
 initial = "elements"
 module = "none"
 
 [params.out]
-path = "temp3"
+path = "sample_synth_data"
 logging = "INFO"
 plot_mod = 0
 plot_fmt = "png"
@@ -106,7 +106,7 @@ tropopause = "none"
 overlap_method = "ee"
 
 [atmos_clim.dummy]
-gamma = 0.5725611762292598
+gamma = 0.8124923527656339
 
 [escape.zephyrus]
 Pxuv = 0.01
@@ -114,7 +114,7 @@ efficiency = 0.5
 tidal = false
 
 [escape.dummy]
-rate = 55222.03436489329
+rate = 57666.35256264306
 
 [interior.spider]
 num_levels = 220
@@ -132,7 +132,7 @@ ini_tmagma = 3200.0
 
 [interior.dummy]
 ini_tmagma = 3500.0
-magma = 3529.0900543527023
+magma = 2432.3344533979075
 
 [outgas.calliope]
 include_H2O = true
@@ -149,7 +149,7 @@ T_floor = 700.0
 some_parameter = "some_value"
 
 [delivery.elements]
-H_oceans = 8.643922254864316
+H_oceans = 17.10961921292805
 CH_ratio = 1.0
 N_ppmw = 2.0
 S_ppmw = 200.0

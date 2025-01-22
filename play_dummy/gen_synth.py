@@ -9,11 +9,16 @@ import os
 # run from PROTEUS directory with: python play_dummy/gen_synth.py
 # creates plots and csv files with synthetic data by varying one parameter and keeping all else fixed at dummy config
 
-
+# the refernce config file
 dummy_path = "input/demos/dummy.toml"
 
+# name of new config file
 run_name = "gen_synth_data"
+
+# path to new config file (will be created automatically)
 config_path = "input/gen_synth/" + run_name + ".toml"
+
+# path to proteus output
 out_path = "output/" + run_name + "/runtime_helpfile.csv"
 
 observables = [ "z_obs",
@@ -42,12 +47,13 @@ for parameter, ran in parameters.items():
 
     index = np.linspace(ran[0], ran[1], 20)
 
-    graph_df = pd.DataFrame(columns=(["index"].append(observables)))
+    #graph_df = pd.DataFrame(columns=["index"].append(observables))
+    data = []
 
     print(f"\nGenerating data by varying {parameter}\n")
 
     for i in tqdm(index):
-        dummy_params = {   "params.out.path": run_name,
+        update_params = {   "params.out.path": run_name,
 
                             "struct.mass_tot": 1.0,
                             "struct.corefrac": 0.55,
@@ -64,8 +70,6 @@ for parameter, ran in parameters.items():
                             "delivery.radio_K": 310.0,
                             "delivery.elements.H_oceans": 6.0}
 
-        update_params = dummy_params
-
         update_params[parameter] = i
 
         # uptdate config file
@@ -75,7 +79,14 @@ for parameter, ran in parameters.items():
 
         out["index"] = i
 
-        graph_df = pd.concat([graph_df, out.to_frame().T], ignore_index=True)
+        out = out.to_list()
+
+        #graph_df = pd.concat([graph_df, out], ignore_index=True)
+        data.append(out)
+
+    col_names = observables + ["index"]
+
+    data = pd.DataFrame(data, columns=col_names)
 
     # save data
     name = f"{parameter}.csv"
@@ -83,13 +94,13 @@ for parameter, ran in parameters.items():
     os.makedirs(direct, exist_ok=True)
 
     path = os.path.join(direct,name)
-    graph_df.to_csv(path, sep= "\t",index=False)
+    data.to_csv(path, sep= "\t",index=False)
 
 
-    for observable in graph_df.columns[:-1]:
+    for observable in data.columns[:-1]:
 
         plt.figure()
-        plt.plot(index, graph_df[observable], label=observable)
+        plt.plot(index, data[observable], label=observable)
         plt.title(f'{observable} vs {parameter}')
         plt.xlabel(f"{parameter}")
         plt.ylabel(observable)
