@@ -508,7 +508,7 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     # Arrays at current time
     interior_o.phi      = np.array(json_file.get_dict_values(['data','phi_s']))
     interior_o.rho      = np.array(json_file.get_dict_values(['data','rho_s']))
-    interior_o.radius   = np.array(json_file.get_dict_values(['data','radius_s']))
+    interior_o.radius   = np.array(json_file.get_dict_values(['data','radius_b']))
     interior_o.visc     = np.array(json_file.get_dict_values(['data','visc_b']))[1:]
     interior_o.mass     = np.array(json_file.get_dict_values(['data','mass_s']))
 

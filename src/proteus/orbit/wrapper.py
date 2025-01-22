@@ -88,7 +88,7 @@ def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
             Struct containing interior arrays at current time.
     """
 
-    log.info("Evolve orbit...")
+    log.info("Evolve orbit and tides...")
 
     # Set semimajor axis and eccentricity.
     #    In the future, these could be allowed to evolve in time.

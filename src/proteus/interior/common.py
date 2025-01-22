@@ -11,6 +11,7 @@ class Interior_t():
 
         # Arrays of interior properties at CURRENT  time-step.
         #    These have a length of 1 if using the dummy interior module.
+        #    Radius has a length N+1. All others have length  N.
         self.tides      = None      # Tidal power density [W kg-1].
         self.phi        = None      # Melt fraction.
         self.visc       = None      # Viscosity [Pa s].

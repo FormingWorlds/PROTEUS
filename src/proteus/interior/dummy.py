@@ -109,10 +109,12 @@ def run_dummy_int(config:Config, dirs:dict,
     output["M_mantle_liquid"]   = output["M_mantle"] * output["Phi_global"]
     output["M_mantle_solid"]    = output["M_mantle"] - output["M_mantle_liquid"]
     output["RF_depth"]          = output["Phi_global"] * (1- config.struct.corefrac)
+    R_core = config.struct.corefrac * output["R_int"]
 
     # Store arrays
-    interior_o.phi  = np.array([output["Phi_global"]])
-    interior_o.mass = np.array([output["M_mantle"]])
+    interior_o.phi    = np.array([output["Phi_global"]])
+    interior_o.mass   = np.array([output["M_mantle"]])
+    interior_o.radius = np.array([R_core, output["R_int"]])
 
     sim_time = hf_row["Time"] + dt
     return sim_time, output

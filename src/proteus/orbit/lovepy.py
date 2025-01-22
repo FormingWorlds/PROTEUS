@@ -22,8 +22,8 @@ def import_lovepy(lovepy_dir:str):
     jl.seval('include("%s")'%lib)
 
 def _jlarr(arr:np.array):
-    # Make copy of array and convert to Julia type
-    return juliacall.convert(jl.Array[jl.Float64, 1], np.array(arr, dtype=float))
+    # Make copy of array, reverse order, and convert to Julia type
+    return juliacall.convert(jl.Array[jl.Float64, 1], arr[::-1])
 
 def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
     '''
@@ -34,6 +34,7 @@ def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
 
     # Default case; zero heating throughout the mantle
     interior_o.tides = np.zeros_like(interior_o.phi)
+    nlev = len(interior_o.phi)
 
     # Get orbital properties
     omega = 2 * np.pi / hf_row["period"]
@@ -43,28 +44,35 @@ def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
     interior_o.shear = np.ones_like(interior_o.phi) * config.orbit.lovepy.shear_modulus
     interior_o.bulk  = np.ones_like(interior_o.phi) * config.orbit.lovepy.bulk_modulus
 
-    # Truncated arrays based on valid viscosity range
-    visc_min = 1e9
-    mask = interior_o.visc > visc_min
-    lov_rho    = interior_o.rho[mask]
-    lov_radius = interior_o.radius[mask]
-    lov_visc   = interior_o.visc[mask]
-    lov_shear  = interior_o.shear[mask]
-    lov_bulk   = interior_o.bulk[mask]
+    # Truncate arrays based on valid viscosity range
+    visc_thresh = 1e9
+    i_top = nlev-1
+    for i in range(nlev-1,0,-1):
+        if interior_o.visc[i] > visc_thresh:
+            i_top = i
 
-    # Viscosity is small everywhere?
-    if len(lov_rho)  == 0:
+    # Check if fully liquid
+    if i_top == nlev-1:
         return 0.0
 
+    lov_rho    = interior_o.rho[i_top:]
+    lov_visc   = interior_o.visc[i_top:]
+    lov_shear  = interior_o.shear[i_top:]
+    lov_bulk   = interior_o.bulk[i_top:]
+    lov_mass   = interior_o.mass[i_top:]
+    lov_radius = interior_o.radius[i_top:] # radius array length N+1
+
     # Calculate heating using lovepy
-    power, k2_love = jl.calculate_heating(omega, ecc,
-                                    _jlarr(lov_rho),
-                                    _jlarr(lov_radius),
-                                    _jlarr(lov_visc),
-                                    _jlarr(lov_shear),
-                                    _jlarr(lov_bulk),
-                                )
-    interior_o.tides[mask] = float(power) / np.sum(interior_o.mass[mask])
+    power_prf, power_blk, k2_love = jl.calculate_heating(omega, ecc,
+                                                            _jlarr(lov_rho),
+                                                            _jlarr(lov_radius),
+                                                            _jlarr(lov_visc),
+                                                            _jlarr(lov_shear),
+                                                            _jlarr(lov_bulk),
+                                                            )
+    interior_o.tides[i_top:] = np.array(power_prf)[::-1]
+    interior_o.tides[-1] = interior_o.tides[-2]
+    power_blk /= np.sum(lov_mass)
 
     # Return imaginary part of k2 love number
     return float(k2_love)

@@ -297,16 +297,15 @@ def PrintCurrentState(hf_row:dict):
     Print the current state of the model to the logger
     '''
     log.info("Runtime info...")
-    log.info("    System time  :   %s  "         % _get_current_time())
-    log.info("    Model time   :   %.2e   yr"    % float(hf_row["Time"]))
-    log.info("    T_surf       :   %4.3f   K"    % float(hf_row["T_surf"]))
-    log.info("    T_magma      :   %4.3f   K"    % float(hf_row["T_magma"]))
-    log.info("    P_surf       :   %.2e   bar"   % float(hf_row["P_surf"]))
-    log.info("    Phi_global   :   %.2e   "      % float(hf_row["Phi_global"]))
-    log.info("    Instellation :   %.2e   W m-2" % float(hf_row["F_ins"]))
-    log.info("    F_int        :   %.2e   W m-2" % float(hf_row["F_int"]))
-    log.info("    F_atm        :   %.2e   W m-2" % float(hf_row["F_atm"]))
-    log.info("    |F_net|      :   %.2e   W m-2" % abs(float(hf_row["F_net"])))
+    log.info("    Wall time  = %s  "         % _get_current_time())
+    log.info("    Model time = %.2e   yr"    % float(hf_row["Time"]))
+    log.info("    T_surf     = %4.3f   K"    % float(hf_row["T_surf"]))
+    log.info("    T_magma    = %4.3f   K"    % float(hf_row["T_magma"]))
+    log.info("    P_surf     = %.2e   bar"   % float(hf_row["P_surf"]))
+    log.info("    Phi_global = %.2e   "      % float(hf_row["Phi_global"]))
+    log.info("    F_atm      = %.2e   W m-2" % float(hf_row["F_atm"]))
+    log.info("    F_int      = %.2e   W m-2" % float(hf_row["F_int"]))
+    log.info("    F_ins      = %.2e   W m-2" % float(hf_row["F_ins"]))
 
 def CreateLockFile(output_dir:str):
     '''
