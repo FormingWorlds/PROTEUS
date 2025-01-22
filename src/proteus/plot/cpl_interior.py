@@ -119,7 +119,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
             yy = ds["Fconv_b"][:]
         elif module == "spider":
             yy =  ds.get_dict_values(['data','Jconv_b'])
-        yy = np.array(yy) / 1e3 # convert units
+        yy = np.array(yy) / 1e3 # convert units to kW/m2
         axs[3].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',   c=color, lw=lw)
         axs[3].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed',  c=color, lw=lw)
         axs[3].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted',  c=color, lw=lw)
@@ -131,7 +131,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
             yy = ds["Htidal_s"][:]
         elif module == "spider":
             yy = ds.get_dict_values(['data','Htidal_s'])
-        yy = np.array(yy) * 1e6 # convert units
+        yy = np.array(yy) * 1e9 # convert units to nW/kg
         yy = np.append([yy[0]],yy) # extend to surface (_s arrays are shorter than _b)
         axs[4].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',   c=color, lw=lw)
         axs[4].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed',  c=color, lw=lw)
@@ -168,7 +168,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
     axs[3].set_xlim(left=0.0, right=flux_max)
 
     title = '(e) Tidal power density'
-    axs[4].set( title=title, xlabel=r'$H_t$ [$\mu$W kg$^{-1}$]')
+    axs[4].set( title=title, xlabel=r'$H_t$ [nW kg$^{-1}$]')
     axs[4].set_xlim(left=0.0)
 
     # Pressure-depth conversion for y-axis
