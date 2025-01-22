@@ -233,6 +233,12 @@ class Proteus:
             # SPIDER initial condition
             self.interior_o.ic = 2
 
+            # Warn about resuming with tides
+            if self.config.orbit.module == 'lovepy':
+                log.warning(">>")
+                log.warning(">> RESUMING SIMULATION WITH lovepy IS CURRENTLY UNSUPPORTED")
+                log.warning(">>")
+
             # Read helpfile from disk
             self.hf_all = ReadHelpfileFromCSV(self.directories["output"])
 

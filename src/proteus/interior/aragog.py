@@ -246,7 +246,7 @@ def WriteAragogOutput(output_dir:str, time:float):
     fpath = os.path.join(output_dir,"data","%d_int.nc"%time)
     aragog_output.write_at_time(fpath,-1)
 
-def GetAragogOutput(hf_row:dict, interior_o):
+def GetAragogOutput(hf_row:dict, interior_o:Interior_t):
 
     aragog_output: Output = Output(aragog_solver)
     output = {}

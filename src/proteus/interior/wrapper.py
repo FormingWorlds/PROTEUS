@@ -119,10 +119,9 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     else:
         log.error("Invalid constraint on interior structure: %s"%config.struct.set_by)
 
-
 def run_interior(dirs:dict, config:Config,
                     hf_all:pd.DataFrame, hf_row:dict,
-                    interior_o, verbose:bool=True):
+                    interior_o:Interior_t, verbose:bool=True):
     """Run interior mantle evolution model.
 
     Parameters
