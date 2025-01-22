@@ -175,4 +175,4 @@ class Dummy:
         Atmosphere opacity between 0 and 1.
     """
 
-    gamma: float
+    gamma: float = field( validator=(ge(0),le(1)) )

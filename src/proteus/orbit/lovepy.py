@@ -44,8 +44,8 @@ def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
     interior_o.bulk  = np.ones_like(interior_o.phi) * config.orbit.lovepy.bulk_modulus
 
     # Truncated arrays based on valid viscosity range
-    visc_crit = 1e9
-    mask = interior_o.visc > visc_crit
+    visc_min = 1e9
+    mask = interior_o.visc > visc_min
     lov_rho    = interior_o.rho[mask]
     lov_radius = interior_o.radius[mask]
     lov_visc   = interior_o.visc[mask]
