@@ -41,12 +41,11 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     log.info("Using %s interior module to solve strcture"%config.interior.module)
 
     # Initial guess for interior radius and gravity
-    int_o = Interior_t()
+    int_o = Interior_t(dirs["output"],config)
     int_o.ic = 1
     hf_row["R_int"]   = config.struct.radius_int * R_earth
     calculate_core_mass(hf_row, config)
     hf_row["gravity"] = 9.81
-
 
     # Target mass
     M_target = config.struct.mass_tot * M_earth

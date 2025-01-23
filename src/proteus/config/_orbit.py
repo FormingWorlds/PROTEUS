@@ -35,7 +35,7 @@ class Orbit:
     s0_factor: float
         Scale factor applies to incoming stellar radiation to represent planetary rotation and heat redistribution.
     module: str | None
-        Select orbit module to use. Choices: 'none', 'dummy'.
+        Select orbit module to use. Choices: 'none', 'dummy', 'lovepy'.
     """
     semimajoraxis: float = field(validator=gt(0))
     eccentricity: float = field(validator=(

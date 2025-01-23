@@ -264,6 +264,9 @@ class Grid():
         # do not need more threads than there are points
         num_threads = min(num_threads, self.size)
 
+        # do not use more threads than are available
+        num_threads = min(num_threads, os.cpu_count())
+
         # Print warning
         if not test_run:
             log.info(" ")
@@ -443,8 +446,8 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "planets/l9859d.toml"
-    folder = "tides_l98d_sol"
+    config = "planets/l9859c.toml"
+    folder = "tides_l98c_lov"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
@@ -454,8 +457,8 @@ if __name__=='__main__':
     pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
     pg.set_dimension_direct("Redox state", [-5, -2, 0, 2, 5])
 
-    pg.add_dimension("Tidal", "orbit.dummy.H_tide")
-    pg.set_dimension_direct("Tidal", [0.0, 1e-9, 1e-8, 1e-7, 1e-6, 3e-6, 1e-5, 3e-5])
+    # pg.add_dimension("Tidal", "orbit.dummy.H_tide")
+    # pg.set_dimension_direct("Tidal", [0.0, 1e-9, 1e-8, 1e-7, 1e-6, 3e-6, 1e-5, 3e-5])
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
     pg.set_dimension_direct("Hydrogen", [60, 109, 200, 350, 500])
@@ -470,7 +473,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(180, test_run=False)
+    pg.run(40, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.
