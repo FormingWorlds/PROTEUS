@@ -221,13 +221,16 @@ def _try_spider( dirs:dict, config:Config,
                         "-grain",                  "%.6e"%(config.interior.grain_size),
                     ]
 
-    # Min of fractional and absolute Ts poststep change
+    # Tolerance on the change in T_magma during a single SPIDER call
     if hf_row["Time"] > 0:
-        dTs_frac = config.interior.spider.tsurf_rtol * float(hf_all["T_surf"].iloc[-1])
-        dT_int_max = np.min([ float(config.interior.spider.tsurf_atol), float(dTs_frac) ])
-        call_sequence.extend(["-tsurf_poststep_change", str(dT_int_max)])
+        dT_max = config.interior.spider.tsurf_rtol * hf_row["T_magma"] \
+                    + config.interior.spider.tsurf_atol
     else:
-        call_sequence.extend(["-tsurf_poststep_change", str(config.interior.spider.tsurf_atol)])
+        dT_max = float(config.interior.spider.tsurf_atol)
+    if hf_row["F_tidal"] > 1:
+        # CHANGE ME 
+        dT_max = 1.0
+    call_sequence.extend(["-tsurf_poststep_change", str(dT_max)])
 
     # set surface and core entropy (-1 is a flag to ignore)
     call_sequence.extend(["-ic_surface_entropy", "-1"])

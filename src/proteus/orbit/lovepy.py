@@ -1,7 +1,6 @@
 # Lovepy tidal heating module
 from __future__ import annotations
 
-import os
 import logging
 from typing import TYPE_CHECKING
 import juliacall
@@ -16,9 +15,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def import_lovepy(lovepy_dir:str):
+def import_lovepy(lib:str):
     log.debug("Import lovepy...")
-    lib = os.path.join(os.path.abspath(lovepy_dir), "lovepy.jl")
     jl.seval('include("%s")'%lib)
 
 def _jlarr(arr:np.array):

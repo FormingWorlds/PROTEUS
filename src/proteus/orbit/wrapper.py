@@ -24,7 +24,10 @@ def init_orbit(handler:Proteus):
 
     if handler.config.orbit.module == "lovepy":
         from proteus.orbit.lovepy import import_lovepy
-        import_lovepy(handler.directories["lovepy"])
+        import os
+
+        lib = os.path.join(handler.directories["proteus"], "src/proteus/orbit/lovepy.jl")
+        import_lovepy(lib)
 
 
 def update_separation(hf_row:dict):
@@ -116,8 +119,6 @@ def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
         from proteus.orbit.lovepy import run_lovepy
         hf_row["Imk2"] = run_lovepy(hf_row, config, interior_o)
 
-    else:
-        log.error(f"Unsupported tides module '{config.orbit.module}'")
-
+    # Print info
     log.info("    H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
     log.info("    Im(k2) = %.1e "%hf_row["Imk2"])
