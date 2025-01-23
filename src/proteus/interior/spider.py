@@ -442,7 +442,7 @@ def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
     else:
         # failure of all attempts
         UpdateStatusfile(dirs, 21)
-        raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
+        raise RuntimeError("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
 def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):

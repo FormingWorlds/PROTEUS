@@ -58,8 +58,7 @@ def _check_radeqm(handler: Proteus) -> bool:
 
     F_eps = handler.hf_row["F_atm"] - handler.hf_row["F_tidal"] - handler.hf_row["F_radio"]
     F_ref = abs(handler.hf_row["F_atm"]) * handler.config.params.stop.radeqm.rtol + handler.config.params.stop.radeqm.atol
-    log.debug("    F_eps = %.3e W m-2"%F_eps)
-    log.debug("    F_ref = %.3e W m-2"%F_ref)
+    log.debug("    val, req = %.3e, %.3e  W m-2"%(F_eps, F_ref))
 
     if abs(F_eps) <= F_ref:
         UpdateStatusfile(handler.directories, 14)
@@ -80,8 +79,7 @@ def _check_escape(handler: Proteus) -> bool:
 
     M_atm = handler.hf_row["M_atm"]
     M_ref = handler.config.params.stop.escape.mass_frac * handler.hf_all.iloc[0]["M_atm"]
-    log.debug("    M_atm = %.3e W m-2"%M_atm)
-    log.debug("    M_ref = %.3e W m-2"%M_ref)
+    log.debug("    val, req = %.3e, %.3e  W m-2"%(M_atm, M_ref))
 
     if handler.has_escaped or (M_atm <= M_ref):
         UpdateStatusfile(handler.directories, 15)

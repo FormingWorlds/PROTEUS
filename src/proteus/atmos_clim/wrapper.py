@@ -49,8 +49,6 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     #Warning! Find a way to store atm object for AGNI
     global atm
 
-    PrintHalfSeparator()
-
     # Warnings
     if config.atmos_clim.albedo_pl > 1.0e-9:
         if config.atmos_clim.rayleigh:

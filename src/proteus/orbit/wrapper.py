@@ -78,7 +78,7 @@ def update_period(hf_row:dict):
     hf_row["period"] = 2 * np.pi * (sma*sma*sma/mu)**0.5
 
 
-def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
+def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     """Update parameters relating to orbital evolution and tides.
 
     Parameters
@@ -87,6 +87,8 @@ def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
             Dictionary of current runtime variables
         config : Config
             Model configuration.
+        dirs: dict
+            Dictionary of directories.
         interior_o: Interior_t
             Struct containing interior arrays at current time.
     """
@@ -117,7 +119,7 @@ def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
 
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
-        hf_row["Imk2"] = run_lovepy(hf_row, config, interior_o)
+        hf_row["Imk2"] = run_lovepy(hf_row, config, dirs, interior_o)
 
     # Print info
     log.info("    H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))

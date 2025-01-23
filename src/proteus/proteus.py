@@ -282,10 +282,7 @@ class Proteus:
             )
 
             ############### INTERIOR
-
             PrintHalfSeparator()
-
-            # Run interior model
             run_interior(self.directories, self.config,
                             self.hf_all, self.hf_row, self.interior_o)
 
@@ -297,9 +294,8 @@ class Proteus:
             ############### / INTERIOR AND STRUCTURE
 
             ############### ORBIT AND TIDES
-
             PrintHalfSeparator()
-            run_orbit(self.hf_row, self.config, self.interior_o)
+            run_orbit(self.hf_row, self.config, self.directories, self.interior_o)
 
             ############### / ORBIT AND TIDES
 
@@ -385,9 +381,12 @@ class Proteus:
 
             ############### ATMOSPHERE CLIMATE
             if not self.has_escaped:
+                PrintHalfSeparator()
                 RunAtmosphere(self.config, self.directories, self.loops,
                                 self.star_wl, self.star_fl, update_stellar_spectrum,
                                 self.hf_all, self.hf_row)
+
+            ############### / ATMOSPHERE CLIMATE
 
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 

@@ -7,6 +7,7 @@ import juliacall
 from juliacall import Main as jl
 
 from proteus.interior.common import Interior_t
+from proteus.utils.helper import UpdateStatusfile
 
 import numpy as np
 
@@ -23,12 +24,26 @@ def _jlarr(arr:np.array):
     # Make copy of array, reverse order, and convert to Julia type
     return juliacall.convert(jl.Array[jl.Float64, 1], arr[::-1])
 
-def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
-    '''
-    Run the lovepy tidal heating module.
+def run_lovepy(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t) -> float:
+    """Run the lovepy tidal heating module.
 
     Sets the interior tidal heating and returns Im(k2) love number.
-    '''
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        config : Config
+            Model configuration.
+        dirs: dict
+            Dictionary of directories.
+        interior_o: Interior_t
+            Struct containing interior arrays at current time.
+
+    Returns
+    ----------
+        Imk2_love: float
+    """
 
     # Default case; zero heating throughout the mantle
     interior_o.tides = np.zeros_like(interior_o.phi)
@@ -47,6 +62,7 @@ def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
     if i_top == nlev-1:
         return 0.0
 
+    # Construct arrays for lovepy
     lov_rho    = interior_o.rho[i_top:]
     lov_visc   = interior_o.visc[i_top:]
     lov_shear  = interior_o.shear[i_top:]
@@ -56,22 +72,26 @@ def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
 
     # Calculate heating using lovepy
     try:
-        power_prf, power_blk, k2_love = jl.calculate_heating(omega,
-                                                             hf_row["eccentricity"],
-                                                             _jlarr(lov_rho),
-                                                             _jlarr(lov_radius),
-                                                             _jlarr(lov_visc),
-                                                             _jlarr(lov_shear),
-                                                             _jlarr(lov_bulk),
-                                                            )
+        power_prf, power_blk, Imk2 = \
+            jl.calculate_heating(omega, hf_row["eccentricity"],
+                                    _jlarr(lov_rho),
+                                    _jlarr(lov_radius),
+                                    _jlarr(lov_visc),
+                                    _jlarr(lov_shear),
+                                    _jlarr(lov_bulk),
+                                    )
     except juliacall.JuliaError as e:
-        log.error("Encountered problem when running lovepy module...")
+        UpdateStatusfile(dirs, 26)
         log.error(e)
-        return 0.0
+        raise RuntimeError("Encountered problem when running lovepy module")
 
+    # Store result
     interior_o.tides[i_top:] = np.array(power_prf)[::-1]
     interior_o.tides[-1] = interior_o.tides[-2]
+
+    # Verify result
     power_blk /= np.sum(lov_mass)
+    log.debug("    power from bulk calc: %.3e W kg-1"%power_blk)
 
     # Return imaginary part of k2 love number
-    return float(k2_love)
+    return float(Imk2)
