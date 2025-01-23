@@ -48,6 +48,8 @@ class Interior_t():
         self.file_tides = os.path.join(outdir, "data", TIDES_FILENAME)
 
     def resume_tides(self):
+        # Read tidal heating array from file, when resuming from disk.
+
         # If tides_recent.dat exists, we must be resuming a simulation from a
         #     previous state on the disk. Load the `tides` and `phi` arrays
         #     into this object. If we do not do this, tidal heating will be zero
@@ -69,6 +71,8 @@ class Interior_t():
 
 
     def write_tides(self):
+        # Write tidal heating array to file.
+
         with open(self.file_tides, 'w') as hdl:
             # header information
             hdl.write("# 3 %d \n"%self.nlev_s)
@@ -76,5 +80,5 @@ class Interior_t():
             hdl.write("# 1.0 1.0 \n")
             # for each level...
             for i in range(self.nlev_s):
-                hdl.write("%.4e %.4e \n"%(self.phi[i], self.tides[i]))
+                hdl.write("%.7e %.7e \n"%(self.phi[i], self.tides[i]))
 

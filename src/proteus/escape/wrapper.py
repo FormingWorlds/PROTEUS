@@ -32,8 +32,6 @@ def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
             Mors star object storing spada track data.
     """
 
-    PrintHalfSeparator()
-
     if not config.escape.module:
         # solvevol_target is undefined?
         pass

@@ -354,6 +354,7 @@ class Proteus:
 
             ############### ESCAPE
             if (self.loops["total"] >= self.loops["init_loops"]):
+                PrintHalfSeparator()
                 RunEscape(self.config, self.hf_row, self.interior_o.dt, self.stellar_track)
 
             ############### / ESCAPE

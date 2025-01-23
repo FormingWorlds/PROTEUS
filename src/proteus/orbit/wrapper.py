@@ -98,15 +98,17 @@ def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
     # Update orbital separation and period
     update_separation(hf_row)
     update_period(hf_row)
+    log.info("    period = %.3f days"%(hf_row["period"]/secs_per_day))
+
+    # Exit here if not modelling tides
+    if config.orbit.module is None:
+        return
 
     # Initialise, set tidal heating to zero
     interior_o.tides = np.zeros(len(interior_o.phi))
 
     # Call tides module
-    if config.orbit.module is None:
-        pass
-
-    elif config.orbit.module == 'dummy':
+    if config.orbit.module == 'dummy':
         from proteus.orbit.dummy import run_dummy_orbit
         Imk2 = run_dummy_orbit(config, interior_o)
 
@@ -117,6 +119,5 @@ def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
     else:
         log.error(f"Unsupported tides module '{config.orbit.module}'")
 
-    log.info("    period = %.3f days"%(hf_row["period"]/secs_per_day))
     log.info("    H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
     log.info("    Im(k2) = %.1e "%Imk2)

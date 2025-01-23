@@ -147,9 +147,10 @@ def run_interior(dirs:dict, config:Config,
     log.debug("Using %s module to evolve interior"%config.interior.module)
 
     # Write tidal heating file
-    if (interior_o.tides is None) or (not config.interior.tidal_heat):
+    if (interior_o.tides is None) and (config.interior.tidal_heat):
+        # Initialise arrays if this is the first iteration
         interior_o.tides = np.zeros(interior_o.nlev_s)
-        interior_o.phi   = np.zeros_like(interior_o.tides)
+        interior_o.phi   = np.zeros(interior_o.nlev_s)
     interior_o.write_tides()
 
     if config.interior.module == 'spider':

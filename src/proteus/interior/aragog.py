@@ -56,10 +56,6 @@ def RunAragog(config:Config, dirs:dict,
         step_sf = 1.0 # dt scale factor
         dt = next_step(config, dirs, hf_row, hf_all, step_sf)
 
-    # Tidal heating base case
-    if (interior_o.tides is None) or (not config.interior.tidal_heat):
-        interior_o.tides = np.zeros(config.interior.aragog.num_levels-1)
-
     # Setup Aragog parameters from options at first iteration
     if (aragog_solver is None):
         SetupAragogSolver(config, hf_row, interior_o)
