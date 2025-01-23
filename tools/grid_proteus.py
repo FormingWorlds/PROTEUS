@@ -325,7 +325,7 @@ class Grid():
             if test_run:
                 command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
             else:
-                command = ["proteus","start","--config",cfg_path]
+                command = ["proteus","start","--offline","--config",cfg_path]
             subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
 
@@ -443,31 +443,22 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "planets/l9859c.toml"
-    folder = "l9859c_grid6"
+    config = "planets/l9859d.toml"
+    folder = "tides_l98d_sol"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
     symlink = None
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
-    # pg.add_dimension("C/H ratio", "delivery.elements.CH_ratio")
-    # pg.set_dimension_logspace("C/H ratio",  0.01, 1.0, 2)
-
-    # pg.add_dimension("Distance", "orbit.semimajoraxis")
-    # pg.set_dimension_arange("Distance",  0.03, 0.07, 0.01)
-
-    # pg.add_dimension("Model", "atmos_clim.module")
-    # pg.set_dimension_direct("Model", ["janus", "agni"])
-
     pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
     pg.set_dimension_direct("Redox state", [-5, -2, 0, 2, 5])
 
     pg.add_dimension("Tidal", "orbit.dummy.H_tide")
-    pg.set_dimension_direct("Tidal", [0.0, 1e-9, 1e-8, 3e-8, 1e-7, 3e-7, 1e-6, 3e-6, 1e-5])
+    pg.set_dimension_direct("Tidal", [0.0, 1e-9, 1e-8, 1e-7, 1e-6, 3e-6, 1e-5, 3e-5])
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_direct("Hydrogen", [60, 109, 250, 500, 750])
+    pg.set_dimension_direct("Hydrogen", [60, 109, 200, 350, 500])
 
     # -----
     # Print state of parameter grid
@@ -479,7 +470,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(80, test_run=False)
+    pg.run(180, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.

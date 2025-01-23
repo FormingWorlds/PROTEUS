@@ -66,12 +66,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # solidification
         [params.stop.solid]
             enabled  = true
-            phi_crit = 0.01  # non-dim., model will terminate when global melt fraction < phi_crit
+            phi_crit = 0.02  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
             enabled = true
-            atol    = 1e-1    # absolute tolerance [W m-2]
+            atol    = 4e-1    # absolute tolerance [W m-2]
             rtol    = 2e-2    # relative tolerance
 
         [params.stop.escape]
@@ -109,7 +109,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [orbit.dummy]
         H_tide  = 0.0  # Fixed tidal power density [W kg-1]
-        Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
+        Phi_tide = "<0.4"   # Tidal heating applied when inequality locally satisfied
 
 # Planetary structure - physics table
 [struct]
@@ -184,10 +184,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 200       # Number of SPIDER grid levels
+        num_levels      = 280       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 2.0e-8   # solver tolerance
-        tsurf_atol      = 25.0      # tsurf_poststep_change
+        tsurf_atol      = 15.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
         ini_entropy     = 2900.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
@@ -243,8 +243,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
 
-        # NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
-        N_ppmw      = 2.01       # Nitrogen inventory in ppmw relative to mantle mass
+        NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
+        # N_ppmw      = 2.01       # Nitrogen inventory in ppmw relative to mantle mass
 
         SH_ratio    = 2.16       # S/H mass ratio in mantle/atmosphere system
         # S_ppmw      = 0.0     # Sulfur inventory in ppmw relative to mantle mass
