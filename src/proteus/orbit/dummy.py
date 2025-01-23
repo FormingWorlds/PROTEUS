@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
-from proteus.interior.common import Interior_t
 
 import numpy as np
+
+from proteus.interior.common import Interior_t
 
 if TYPE_CHECKING:
     from proteus.config import Config

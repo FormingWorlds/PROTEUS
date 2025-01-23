@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
+
 import juliacall
+import numpy as np
 from juliacall import Main as jl
 
 from proteus.interior.common import Interior_t
 from proteus.utils.helper import UpdateStatusfile
-
-import numpy as np
 
 if TYPE_CHECKING:
     from proteus.config import Config

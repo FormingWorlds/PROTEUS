@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from proteus.interior.common import TIDES_FILENAME, Interior_t
 from proteus.interior.timestep import next_step
-from proteus.interior.common import Interior_t, TIDES_FILENAME
 from proteus.utils.constants import radnuc_data
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 

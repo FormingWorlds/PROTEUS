@@ -5,13 +5,12 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
-import os
 import pandas as pd
 import scipy.optimize as optimise
 
+from proteus.interior.common import Interior_t
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
-from proteus.interior.common import Interior_t
 
 if TYPE_CHECKING:
     from proteus.config import Config

@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from proteus.interior.timestep import next_step
 from proteus.interior.common import Interior_t
+from proteus.interior.timestep import next_step
 from proteus.utils.constants import secs_per_year
 
 if TYPE_CHECKING:

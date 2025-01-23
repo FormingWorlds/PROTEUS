@@ -8,7 +8,6 @@ import numpy as np
 from zephyrus.escape import EL_escape
 
 from proteus.utils.constants import AU, element_list, ergcm2stoWm2, secs_per_year
-from proteus.utils.helper import PrintHalfSeparator
 
 if TYPE_CHECKING:
     from proteus.config import Config

@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import AU, const_G, secs_per_day
 from proteus.interior.common import Interior_t
+from proteus.utils.constants import AU, const_G, secs_per_day
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -23,8 +23,9 @@ def init_orbit(handler:Proteus):
     log.info("Preparing orbit/tides model")
 
     if handler.config.orbit.module == "lovepy":
-        from proteus.orbit.lovepy import import_lovepy
         import os
+
+        from proteus.orbit.lovepy import import_lovepy
 
         lib = os.path.join(handler.directories["proteus"], "src/proteus/orbit/lovepy.jl")
         import_lovepy(lib)
