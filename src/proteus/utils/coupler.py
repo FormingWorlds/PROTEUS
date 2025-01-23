@@ -185,6 +185,8 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
 
     # Orbit module
     log.info("Orbit module      %s" % config.orbit.module)
+    if config.orbit.module == 'lovepy':
+        log.info("  - Julia         version " + _get_julia_version())
 
     # Delivery module
     log.info("Delivery module   %s" % config.delivery.module)
@@ -331,8 +333,11 @@ def GetHelpfileKeys():
             # Model tracking
             "Time", # [yr]
 
-            # Orbital dynamics
-            "semimajorax", "separation", "period", "eccentricity", # [m], [m], [s], [1]
+            # Orbit semi-major axis and time-averaged separation
+            "semimajorax", "separation", # [m], [m],
+
+            # Orbital period and eccentricity
+            "period", "eccentricity", # [s], [1]
 
             # Dry interior radius (calculated) and mass (from config)
             "R_int", "M_int", # [m], [kg]
@@ -360,6 +365,9 @@ def GetHelpfileKeys():
             "rho_obs",  # observed bulk density [kg m-3]
             "transit_depth", "contrast_ratio", # [1], [1]
             "bond_albedo", # bond albedo [1]
+
+            # Imaginary part of k2 Love Number
+            "Imk2", # [1]
 
             # Escape
             "esc_rate_total", "p_xuv", "z_xuv", "R_xuv", # [kg s-1], [bar], [m], [m]

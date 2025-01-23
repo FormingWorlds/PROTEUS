@@ -116,7 +116,7 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
             mixing_length_profile = "constant",
             surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration = hf_row["gravity"], # [m/s-2]
-            adiabatic_bulk_modulus = 260E9, # AdamsWilliamsonEOS parameter [Pa]
+            adiabatic_bulk_modulus = config.interior.bulk_modulus, # AW-EOS parameter [Pa]
             )
 
     energy = _EnergyParameters(

@@ -110,14 +110,14 @@ def run_orbit(hf_row:dict, config:Config, interior_o:Interior_t):
     # Call tides module
     if config.orbit.module == 'dummy':
         from proteus.orbit.dummy import run_dummy_orbit
-        Imk2 = run_dummy_orbit(config, interior_o)
+        hf_row["Imk2"] = run_dummy_orbit(config, interior_o)
 
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
-        Imk2 = run_lovepy(hf_row, config, interior_o)
+        hf_row["Imk2"] = run_lovepy(hf_row, config, interior_o)
 
     else:
         log.error(f"Unsupported tides module '{config.orbit.module}'")
 
     log.info("    H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
-    log.info("    Im(k2) = %.1e "%Imk2)
+    log.info("    Im(k2) = %.1e "%hf_row["Imk2"])

@@ -38,17 +38,11 @@ def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
 
     # Get orbital properties
     omega = 2 * np.pi / hf_row["period"]
-    ecc   = hf_row["eccentricity"]
-
-    # Other arrays (FIX ME)
-    interior_o.shear = np.ones_like(interior_o.phi) * config.orbit.lovepy.shear_modulus
-    interior_o.bulk  = np.ones_like(interior_o.phi) * config.orbit.lovepy.bulk_modulus
 
     # Truncate arrays based on valid viscosity range
-    visc_thresh = 1e9
     i_top = nlev-1
     for i in range(nlev-1,0,-1):
-        if interior_o.visc[i] > visc_thresh:
+        if interior_o.visc[i] > config.orbit.lovepy.visc_thresh:
             i_top = i
 
     # Check if fully liquid
@@ -64,12 +58,13 @@ def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
 
     # Calculate heating using lovepy
     try:
-        power_prf, power_blk, k2_love = jl.calculate_heating(omega, ecc,
-                                                            _jlarr(lov_rho),
-                                                            _jlarr(lov_radius),
-                                                            _jlarr(lov_visc),
-                                                            _jlarr(lov_shear),
-                                                            _jlarr(lov_bulk),
+        power_prf, power_blk, k2_love = jl.calculate_heating(omega,
+                                                             hf_row["eccentricity"],
+                                                             _jlarr(lov_rho),
+                                                             _jlarr(lov_radius),
+                                                             _jlarr(lov_visc),
+                                                             _jlarr(lov_shear),
+                                                             _jlarr(lov_bulk),
                                                             )
     except juliacall.JuliaError as e:
         log.error("Encountered problem when running lovepy module...")

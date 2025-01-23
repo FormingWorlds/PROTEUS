@@ -180,6 +180,11 @@ def run_interior(dirs:dict, config:Config,
         if k in hf_row.keys():
             hf_row[k] = output[k]
 
+    # Fill other values (these are constant for now)
+    if interior_o.phi is not None:
+        interior_o.shear    = np.ones_like(interior_o.phi) * config.interior.shear_modulus
+        interior_o.bulk     = np.ones_like(interior_o.phi) * config.interior.bulk_modulus
+
     # Ensure values are >= 0
     for k in ("M_mantle","M_mantle_liquid","M_mantle_solid","M_core","Phi_global"):
         hf_row[k] = max(hf_row[k], 0.0)

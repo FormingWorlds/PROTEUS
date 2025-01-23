@@ -111,6 +111,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         H_tide  = 0.0  # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
 
+    [orbit.lovepy]
+        visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
+
 # Planetary structure - physics table
 [struct]
     set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
@@ -180,6 +183,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     tidal_heat      = true  # enable tidal heat production
     rheo_phi_loc    = 0.4    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
+    bulk_modulus    = 260e9   # Bulk modulus [Pa]
+    shear_modulus   = 60e9    # Shear modulus [Pa]
 
     module = "spider"   # Which interior module to use
 
