@@ -4,6 +4,8 @@ using .TidalLoveNumbers
 # Get precision of Love number module (e.g., Float64, Double64, etc)
 prec = TidalLoveNumbers.prec
 precc = TidalLoveNumbers.precc
+TARGET_NLEV::Int = 2000
+SPATIAL_RES::Float64 = 10.0
 
 # Calculate heating from interior properties
 function calculate_heating( omega::Float64,
@@ -29,8 +31,8 @@ function calculate_heating( omega::Float64,
     # Outer radius
     R = r[end]
 
-    # Subdivide layers
-    rr = expand_layers(r, nr=10)
+    # Subdivide input layers such that we have ~TARGET_NLEV in total
+    rr = expand_layers(r, nr=convert(Int,div(TARGET_NLEV,length(η))))
 
     # Get gravity at each layer
     g = get_g(rr, ρ);
@@ -45,7 +47,9 @@ function calculate_heating( omega::Float64,
     power_blk = get_bulk_heating(tidal_solution, omega, R, ecc)
 
     # Get profile power output (W m-3), converted to W/kg
-    power_prf = get_heating_profile(tidal_solution, rr, ρ, g, μc, κ, omega, ecc, res=10.0)
+    power_prf = get_heating_profile(tidal_solution,
+                                    rr, ρ, g, μc, κ,
+                                    omega, ecc, res=SPATIAL_RES)
     power_prf = power_prf ./ ρ # Convert to mass heating rate (W/kg)
 
     # Edot_total = 0.0

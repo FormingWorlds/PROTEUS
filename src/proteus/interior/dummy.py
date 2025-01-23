@@ -16,6 +16,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
+# Constants
+MANTLE_RHO  = 4.55e3 # kg m-3
+MANTLE_VISC = 1e10 # Pa s
+
 def calculate_simple_mantle_mass(radius:float, corefrac:float)->float:
     '''
     A very simple interior structure model.
@@ -28,13 +32,8 @@ def calculate_simple_mantle_mass(radius:float, corefrac:float)->float:
     # Volume of mantle shell
     mantle_volume = (4 * np.pi / 3) * (radius**3 - (radius*corefrac)**3)
 
-    # Fixed density [g cm-3]
-    # This is roughly representative of the average density across Earth's
-    #    upper and lower mantle layers.
-    mantle_rho = 4.55
-
     # Get mass [in SI units]
-    mantle_mass = mantle_volume * mantle_rho * 1e3
+    mantle_mass = mantle_volume * MANTLE_RHO * 1e3
 
     log.debug("Total mantle mass = %.2e kg" % mantle_mass)
     if mantle_mass <= 0.0:
@@ -109,12 +108,14 @@ def run_dummy_int(config:Config, dirs:dict,
     output["M_mantle_liquid"]   = output["M_mantle"] * output["Phi_global"]
     output["M_mantle_solid"]    = output["M_mantle"] - output["M_mantle_liquid"]
     output["RF_depth"]          = output["Phi_global"] * (1- config.struct.corefrac)
-    R_core = config.struct.corefrac * output["R_int"]
+    R_core = config.struct.corefrac * hf_row["R_int"]
 
     # Store arrays
     interior_o.phi    = np.array([output["Phi_global"]])
     interior_o.mass   = np.array([output["M_mantle"]])
-    interior_o.radius = np.array([R_core, output["R_int"]])
+    interior_o.visc   = np.array([MANTLE_VISC])
+    interior_o.rho    = np.array([MANTLE_RHO])
+    interior_o.radius = np.array([R_core, hf_row["R_int"]])
 
     sim_time = hf_row["Time"] + dt
     return sim_time, output

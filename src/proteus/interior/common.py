@@ -62,8 +62,14 @@ class Interior_t():
 
         # Read the file
         data = np.loadtxt(self.file_tides)
-        self.phi   = np.array(data[:,0])
-        self.tides = np.array(data[:,1])
+        if self.nlev_s == 1:
+            # dummy interior
+            self.phi   = np.array([data[0]])
+            self.tides = np.array([data[1]])
+        else:
+            # resolved interior
+            self.phi   = np.array(data[:,0])
+            self.tides = np.array(data[:,1])
 
         # Check the length
         if len(self.phi) != self.nlev_s:

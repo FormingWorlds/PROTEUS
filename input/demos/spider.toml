@@ -187,7 +187,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
     shear_modulus   = 60e9    # Shear modulus [Pa]
 
-    module = "spider"   # Which interior module to use
+    module = "dummy"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 250       # Number of SPIDER grid levels
