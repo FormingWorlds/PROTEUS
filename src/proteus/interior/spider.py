@@ -228,8 +228,8 @@ def _try_spider( dirs:dict, config:Config,
     else:
         dT_max = float(config.interior.spider.tsurf_atol)
     if hf_row["F_tidal"] > 1:
-        # CHANGE ME 
-        dT_max = 1.0
+        # CHANGE ME
+        dT_max = 6.0
     call_sequence.extend(["-tsurf_poststep_change", str(dT_max)])
 
     # set surface and core entropy (-1 is a flag to ignore)

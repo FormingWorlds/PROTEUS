@@ -26,14 +26,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # output files
     [params.out]
         path        = "spider_tides"
-        logging     = "INFO"
+        logging     = "DEBUG"
         plot_mod    = 2      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
     # time-stepping
     [params.dt]
-        minimum      = 3e3    # yr, minimum time-step
+        minimum      = 1e1    # yr, minimum time-step
         maximum      = 1e7    # yr, maximum time-step
         initial      = 1e2    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
@@ -72,7 +72,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.radeqm]
             enabled = true
             atol    = 0.2     # absolute tolerance [W m-2]
-            rtol    = 1e-3    # relative tolerance
+            rtol    = 5e-2    # relative tolerance
 
         [params.stop.escape]
             enabled   = true
