@@ -33,7 +33,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # time-stepping
     [params.dt]
-        minimum      = 4e2    # yr, minimum time-step
+        minimum      = 2e2    # yr, minimum time-step
         maximum      = 1e7    # yr, maximum time-step
         initial      = 2e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
@@ -72,7 +72,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.radeqm]
             enabled = true
             atol    = 4e-1    # absolute tolerance [W m-2]
-            rtol    = 2e-2    # relative tolerance
+            rtol    = 4e-2    # relative tolerance
 
         [params.stop.escape]
             enabled   = true
@@ -193,7 +193,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 2.0e-8   # solver tolerance
         tsurf_atol      = 15.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
+        tsurf_rtol      = 0.001      # tsurf_poststep_change_frac
         ini_entropy     = 2900.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
