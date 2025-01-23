@@ -176,7 +176,7 @@ class Proteus:
         download_sufficient_data(self.config)
 
         # Initialise interior struct object.
-        self.interior_o = Interior_t()
+        self.interior_o = Interior_t(self.directories["output"], self.config)
 
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
@@ -230,14 +230,12 @@ class Proteus:
             # Resuming from disk
             log.info("Resuming the simulation from the disk")
 
-            # SPIDER initial condition
+            # Interior initial condition
             self.interior_o.ic = 2
 
-            # Warn about resuming with tides
-            if self.config.orbit.module == 'lovepy':
-                log.warning(">>")
-                log.warning(">> RESUMING SIMULATION WITH lovepy IS CURRENTLY UNSUPPORTED")
-                log.warning(">>")
+            # Restore tides data
+            if self.config.orbit.module is not None:
+                self.interior_o.resume_tides()
 
             # Read helpfile from disk
             self.hf_all = ReadHelpfileFromCSV(self.directories["output"])

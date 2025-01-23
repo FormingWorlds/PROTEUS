@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.interior.timestep import next_step
-from proteus.interior.common import Interior_t
+from proteus.interior.common import Interior_t, TIDES_FILENAME
 from proteus.utils.constants import radnuc_data
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
 
@@ -22,8 +22,6 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
-
-TIDES_FILENAME = ".tides_recent.dat"
 
 class MyJSON( object ):
 
@@ -408,20 +406,6 @@ def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
     # tracking
     spider_success = False  # success?
     attempts = 0            # number of attempts so far
-
-    # write tidal heating file
-    tides_file = os.path.join(dirs["output"], "data", TIDES_FILENAME)
-    if (interior_o.tides is None) or (not config.interior.tidal_heat):
-        interior_o.tides = np.zeros(config.interior.spider.num_levels-1)
-    with open(tides_file,'w') as hdl:
-        # header information
-        hdl.write("# 3 %d \n"%len(interior_o.tides))
-        hdl.write("# Dummy, Tidal heating density \n")
-        hdl.write("# 1.0 1.0 \n")
-
-        # for each level...
-        for h in interior_o.tides:
-            hdl.write("0.0 %.3e \n"%h)
 
     # make attempts
     while not spider_success:

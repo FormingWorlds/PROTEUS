@@ -63,13 +63,19 @@ def run_lovepy(hf_row:dict, config:Config, interior_o:Interior_t):
     lov_radius = interior_o.radius[i_top:] # radius array length N+1
 
     # Calculate heating using lovepy
-    power_prf, power_blk, k2_love = jl.calculate_heating(omega, ecc,
+    try:
+        power_prf, power_blk, k2_love = jl.calculate_heating(omega, ecc,
                                                             _jlarr(lov_rho),
                                                             _jlarr(lov_radius),
                                                             _jlarr(lov_visc),
                                                             _jlarr(lov_shear),
                                                             _jlarr(lov_bulk),
                                                             )
+    except juliacall.JuliaError as e:
+        log.error("Encountered problem when running lovepy module...")
+        log.error(e)
+        return 0.0
+
     interior_o.tides[i_top:] = np.array(power_prf)[::-1]
     interior_o.tides[-1] = interior_o.tides[-2]
     power_blk /= np.sum(lov_mass)

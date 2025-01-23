@@ -5,6 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+import os
 import pandas as pd
 import scipy.optimize as optimise
 
@@ -144,6 +145,12 @@ def run_interior(dirs:dict, config:Config,
     if verbose:
         log.info("Evolve interior...")
     log.debug("Using %s module to evolve interior"%config.interior.module)
+
+    # Write tidal heating file
+    if (interior_o.tides is None) or (not config.interior.tidal_heat):
+        interior_o.tides = np.zeros(interior_o.nlev_s)
+        interior_o.phi   = np.zeros_like(interior_o.tides)
+    interior_o.write_tides()
 
     if config.interior.module == 'spider':
         # Import
