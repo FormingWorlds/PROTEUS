@@ -9,6 +9,7 @@ import pandas as pd
 import scipy.optimize as optimise
 
 from proteus.interior.common import Interior_t
+from proteus.interior.rheological import eval_rheoparam
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -118,6 +119,12 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     else:
         log.error("Invalid constraint on interior structure: %s"%config.struct.set_by)
 
+def update_rheology(interior_o:Interior_t, config:Config):
+    for i,p in enumerate(interior_o.phi):
+        interior_o.shear[i] = eval_rheoparam(p, 'shear', config.interior.rheo_phi_loc)
+        interior_o.bulk[i]  = eval_rheoparam(p, 'bulk', config.interior.rheo_phi_loc)
+
+
 def run_interior(dirs:dict, config:Config,
                     hf_all:pd.DataFrame, hf_row:dict,
                     interior_o:Interior_t, verbose:bool=True):
@@ -147,8 +154,14 @@ def run_interior(dirs:dict, config:Config,
     # Write tidal heating file
     if (interior_o.tides is None) and (config.interior.tidal_heat):
         # Initialise arrays if this is the first iteration
-        interior_o.tides = np.zeros(interior_o.nlev_s)
-        interior_o.phi   = np.zeros(interior_o.nlev_s)
+        interior_o.tides    = np.zeros(interior_o.nlev_s)
+        interior_o.phi      = np.zeros(interior_o.nlev_s)
+        interior_o.visc     = np.zeros(interior_o.nlev_s)
+        interior_o.radius   = np.zeros(interior_o.nlev_s)
+        interior_o.density  = np.zeros(interior_o.nlev_s)
+        interior_o.mass     = np.zeros(interior_o.nlev_s)
+        interior_o.shear    = np.zeros(interior_o.nlev_s)
+        interior_o.bulk     = np.zeros(interior_o.nlev_s)
     interior_o.write_tides()
 
     if config.interior.module == 'spider':
@@ -178,10 +191,9 @@ def run_interior(dirs:dict, config:Config,
         if k in hf_row.keys():
             hf_row[k] = output[k]
 
-    # Fill other values (these are constant for now)
+    # Update rheological parameters
     if interior_o.phi is not None:
-        interior_o.shear    = np.ones_like(interior_o.phi) * config.interior.shear_modulus
-        interior_o.bulk     = np.ones_like(interior_o.phi) * config.interior.bulk_modulus
+        update_rheology(interior_o, config)
 
     # Ensure values are >= 0
     for k in ("M_mantle","M_mantle_liquid","M_mantle_solid","M_core","Phi_global"):

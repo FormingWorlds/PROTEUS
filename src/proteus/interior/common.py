@@ -34,6 +34,8 @@ class Interior_t():
         self.radius     = None      # Radius [m].
         self.density    = None      # Mass density [kg m-3]
         self.mass       = None      # Mass of shell [kg]
+        self.shear      = None      # Shear modulus [Pa]
+        self.bulk       = None      # Bulk modulus [Pa]
 
         # Number of levels
         match config.interior.module :
