@@ -265,7 +265,7 @@ class Grid():
         num_threads = min(num_threads, self.size)
 
         # do not use more threads than are available
-        num_threads = min(num_threads, os.cpu_count())
+        num_threads = min(num_threads, os.process_cpu_count())
 
         # Print warning
         if not test_run:
@@ -473,7 +473,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(40, test_run=False)
+    pg.run(60, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.
