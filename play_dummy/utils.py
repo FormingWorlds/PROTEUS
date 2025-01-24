@@ -3,15 +3,17 @@ import subprocess
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
+import os
 
-def run_proteus(config_file, output_file, observables = None):
+def run_proteus(parameters, run_name, observables = None, ref_config = "input/demos/dummy.toml"):
     """
     Run the simulator using a .toml configuration file and return the results as a DataFrame.
 
-    Parameters:
-        config_file (str): Path to the .toml configuration file.
-        output_file (str): Path to the simulator's output .csv file.
-        observables (list): PROTEUS output to be returned
+    Input:
+        parameters (dict): parameter, value pairs to change vis a vis reference config
+        run_name (str): name of experiment, will be used to create input and output directories in input and output folder, can be "directory/name"
+        observables (list): PROTEUS output to be return, defaults to some interesting ones
+        ref_config (str): path to reference config, defaults to the dummy.toml
 
     Returns:
         pd.DataFrame: Output data loaded into a Pandas DataFrame.
@@ -26,10 +28,24 @@ def run_proteus(config_file, output_file, observables = None):
                             "bond_albedo",
                             "contrast_ratio"]
 
+    # create config file for this run
+
+    # path to proteus output
+    out_path = "output/" + run_name + "/runtime_helpfile.csv"
+
+    # set path to output
+    parameters["params.out.path"] = run_name
+
+    # set path to config file for this run
+    config_path = "input/" + run_name + ".toml"
+
+    # create
+    update_toml(ref_config, parameters, config_path)
+
     # Run the simulator as a subprocess
     try:
         subprocess.run(
-            ["proteus", "start", "-c", config_file],
+            ["proteus", "start", "-c", config_path],
             check=True,
             stdout=subprocess.DEVNULL # to suppress terminal output
         )
@@ -38,13 +54,12 @@ def run_proteus(config_file, output_file, observables = None):
 
     # Load the output CSV file into a Pandas DataFrame
     try:
-        df = pd.read_csv(output_file, delimiter="\t")
+        df = pd.read_csv(out_path, delimiter="\t")
     except FileNotFoundError:
-        raise RuntimeError(f"Output file {output_file} not found. Check the simulator configuration.")
+        raise RuntimeError(f"Output file {out_path} not found. Check the simulator configuration.")
 
     out = df.iloc[-1][observables]
     return out.T
-
 
 def sample_proteus(n, parameters = None, observables = None):
 
@@ -59,20 +74,9 @@ def sample_proteus(n, parameters = None, observables = None):
         Y (pd.DataFrame): Calculated outputs
     """
 
-    # set up paths for calling run_proteus
     # config and output files will always be overwritten
-
-    # the reference config file
-    dummy_path = "input/demos/dummy.toml"
-
     # name of new config file
-    run_name = "sample_synth_data"
-
-    # path to new config file (will be created automatically)
-    config_path = "input/gen_synth/" + run_name + ".toml"
-
-    # path to proteus output
-    out_path = "output/" + run_name + "/runtime_helpfile.csv"
+    run_name = "gen_synth/sample_synth_data"
 
     if parameters == None:
 
@@ -105,21 +109,19 @@ def sample_proteus(n, parameters = None, observables = None):
 
     for sample in tqdm(range(n)):
 
-        update_params = {"params.out.path": run_name}
-
+        par = {}
         xs = []
         for paramter, ran in parameters.items():
 
             x = np.random.uniform(ran[0], ran[1])
 
             xs.append(x)
-            update_params[paramter] = x
+            par[paramter] = x
 
         X.append(xs)
 
-        update_toml(dummy_path, update_params, config_path)
 
-        ys = run_proteus(config_path, out_path, observables)
+        ys = run_proteus(par, run_name, observables)
         Y.append(ys)
 
     X = pd.DataFrame(X, columns=parameters.keys())
@@ -152,6 +154,9 @@ def update_toml(config_file, updates, output_file=None):
         for k in keys[:-1]:
             d = d.setdefault(k, {})  # Create nested dictionaries if they don't exist
         d[keys[-1]] = value
+
+    # Ensure the directory for the output file exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
     # Save the updated configuration
     output_file = output_file or config_file  # Default to overwriting the input file

@@ -9,17 +9,9 @@ import os
 # run from PROTEUS directory with: python play_dummy/gen_synth.py
 # creates plots and csv files with synthetic data by varying one parameter and keeping all else fixed at dummy config
 
-# the refernce config file
-dummy_path = "input/demos/dummy.toml"
 
 # name of new config file
-run_name = "gen_synth_data"
-
-# path to new config file (will be created automatically)
-config_path = "input/gen_synth/" + run_name + ".toml"
-
-# path to proteus output
-out_path = "output/" + run_name + "/runtime_helpfile.csv"
+run_name = "gen_synth/gen_synth_data"
 
 observables = [ "z_obs",
                 "R_int",
@@ -28,60 +20,40 @@ observables = [ "z_obs",
                 "bond_albedo",
                 "contrast_ratio"]
 
-parameters = {"struct.mass_tot": [0.5, 3.0],
-                        "struct.corefrac": [0.3, 0.9],
+parameters = {  "struct.mass_tot": [0.5, 3.0],
+                "struct.corefrac": [0.3, 0.9],
 
-                        "atmos_clim.surf_greyalbedo": [0.0, 0.51],
-                        "atmos_clim.dummy.gamma": [0.05, 0.95],
+                "atmos_clim.surf_greyalbedo": [0.0, 0.51],
+                "atmos_clim.dummy.gamma": [0.05, 0.95],
 
-                        "escape.dummy.rate": [0.0, 1e5],
+                "escape.dummy.rate": [0.0, 1e5],
 
-                        "interior.dummy.magma": [2000, 4500],
+                "interior.dummy.magma": [2000, 4500],
 
-                        "outgas.fO2_shift_IW": [-4.0, 4.0],
+                "outgas.fO2_shift_IW": [-4.0, 4.0],
 
-                        "delivery.radio_K": [50, 400],
-                        "delivery.elements.H_oceans": [0.5, 18]}
+                "delivery.radio_K": [50, 400],
+                "delivery.elements.H_oceans": [0.5, 18]}
 
 for parameter, ran in parameters.items():
 
     index = np.linspace(ran[0], ran[1], 20)
 
-    #graph_df = pd.DataFrame(columns=["index"].append(observables))
     data = []
 
     print(f"\nGenerating data by varying {parameter}\n")
 
     for i in tqdm(index):
-        update_params = {   "params.out.path": run_name,
 
-                            "struct.mass_tot": 1.0,
-                            "struct.corefrac": 0.55,
+        # change parameter to i in dummy config
+        par = {parameter : i.item()}
 
-                            "atmos_clim.surf_greyalbedo": 0.1,
-                            "atmos_clim.dummy.gamma": 0.7,
-
-                            "escape.dummy.rate": 2.0e4,
-
-                            "interior.dummy.magma": 3500,
-
-                            "outgas.fO2_shift_IW": 2,
-
-                            "delivery.radio_K": 310.0,
-                            "delivery.elements.H_oceans": 6.0}
-
-        update_params[parameter] = i
-
-        # uptdate config file
-        update_toml(dummy_path, update_params, config_path)
-
-        out = run_proteus(config_path, out_path)
+        out = run_proteus(par, run_name, observables)
 
         out["index"] = i
 
         out = out.to_list()
 
-        #graph_df = pd.concat([graph_df, out], ignore_index=True)
         data.append(out)
 
     col_names = observables + ["index"]
