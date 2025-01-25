@@ -8,14 +8,6 @@ from pathlib import Path
 import numpy as np
 
 from proteus.config import read_config_object
-from proteus.star.wrapper import (
-    get_new_spectrum,
-    init_star,
-    scale_spectrum_to_toa,
-    update_stellar_mass,
-    update_stellar_quantities,
-    write_spectrum,
-)
 from proteus.utils.constants import (
     gas_list,
     vap_list,
@@ -119,10 +111,18 @@ class Proteus:
         from proteus.atmos_clim import RunAtmosphere
         from proteus.escape.wrapper import RunEscape
         from proteus.interior.common import Interior_t
-        from proteus.interior.wrapper import run_interior, solve_structure
+        from proteus.interior.wrapper import run_interior, solve_structure, get_nlevb
         from proteus.orbit.wrapper import init_orbit, run_orbit
         from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
         from proteus.utils.data import download_sufficient_data
+        from proteus.star.wrapper import (
+            get_new_spectrum,
+            init_star,
+            scale_spectrum_to_toa,
+            update_stellar_mass,
+            update_stellar_quantities,
+            write_spectrum,
+        )
 
         # First things
         start_time = datetime.now()
@@ -176,7 +176,7 @@ class Proteus:
         download_sufficient_data(self.config)
 
         # Initialise interior struct object.
-        self.interior_o = Interior_t(self.directories["output"], self.config)
+        self.interior_o = Interior_t(get_nlevb(self.config))
 
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
@@ -235,7 +235,7 @@ class Proteus:
 
             # Restore tides data
             if self.config.orbit.module is not None:
-                self.interior_o.resume_tides()
+                self.interior_o.resume_tides(self.directories["output"])
 
             # Read helpfile from disk
             self.hf_all = ReadHelpfileFromCSV(self.directories["output"])

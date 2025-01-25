@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from proteus.interior.common import TIDES_FILENAME, Interior_t
+from proteus.interior.common import get_file_tides, Interior_t
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import radnuc_data
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
@@ -162,7 +162,7 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
 def _try_spider( dirs:dict, config:Config,
                 IC_INTERIOR:int,
                 hf_all:pd.DataFrame, hf_row:dict,
-                step_sf:float, atol_sf:float ):
+                step_sf:float, atol_sf:float, dT_max:float ):
     '''
     Try to run spider with the current configuration.
     '''
@@ -191,7 +191,7 @@ def _try_spider( dirs:dict, config:Config,
         nstepsmacro = step + nsteps
         dtmacro = dtswitch
 
-        log.debug("Time options in RunSPIDER: dt=%.2e yrs in %d steps (at i=%d)" %
+        log.debug("SPIDER iteration: dt=%.2e yrs in %d steps (at i=%d)" %
                                                     (dtmacro, nsteps, nstepsmacro))
 
     # For init loop
@@ -223,15 +223,11 @@ def _try_spider( dirs:dict, config:Config,
 
     # Tolerance on the change in T_magma during a single SPIDER call
     if hf_row["Time"] > 0:
-        dT_max = config.interior.spider.tsurf_rtol * hf_row["T_magma"] \
+        dT_poststep = config.interior.spider.tsurf_rtol * hf_row["T_magma"] \
                     + config.interior.spider.tsurf_atol
     else:
-        dT_max = float(config.interior.spider.tsurf_atol)
-    if hf_row["F_tidal"] > 1:
-        dT_max_tidal = 6.0
-        log.info("Tidal heating active; limiting dT_magma to %.2f K"%dT_max_tidal)
-        dT_max = min(dT_max, dT_max_tidal)
-    call_sequence.extend(["-tsurf_poststep_change", str(dT_max)])
+        dT_poststep = float(config.interior.spider.tsurf_atol)
+    call_sequence.extend(["-tsurf_poststep_change", str(min(dT_max, dT_poststep))])
 
     # set surface and core entropy (-1 is a flag to ignore)
     call_sequence.extend(["-ic_surface_entropy", "-1"])
@@ -276,9 +272,8 @@ def _try_spider( dirs:dict, config:Config,
 
     # Tidal heating
     if config.interior.tidal_heat:
-        tides_file = os.path.join(dirs["output"], "data", TIDES_FILENAME)
         call_sequence.extend(["-HTIDAL", "2"])
-        call_sequence.extend(["-htidal_filename", tides_file])
+        call_sequence.extend(["-htidal_filename", get_file_tides(dirs["output"])])
 
     # Properties lookup data (folder relative to SPIDER src)
     folder = "lookup_data/1TPa-dK09-elec-free/"
@@ -411,6 +406,12 @@ def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
     spider_success = False  # success?
     attempts = 0            # number of attempts so far
 
+    # Maximum dT
+    dT_max = 1e99
+    if np.amax(interior_o.tides) > 1e-10:
+        dT_max = 3.0
+        log.info("Tidal heating active; limiting dT_magma to %.2f K"%dT_max)
+
     # make attempts
     while not spider_success:
         attempts += 1
@@ -418,7 +419,7 @@ def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
 
         # run SPIDER
         spider_success = _try_spider(dirs, config, interior_o.ic,
-                                        hf_all, hf_row, step_sf, atol_sf)
+                                        hf_all, hf_row, step_sf, atol_sf, dT_max)
 
         if spider_success:
             # success
@@ -495,7 +496,7 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
 
     # Arrays at current time
     interior_o.phi      = np.array(json_file.get_dict_values(['data','phi_s']))
-    interior_o.rho      = np.array(json_file.get_dict_values(['data','rho_s']))
+    interior_o.density  = np.array(json_file.get_dict_values(['data','rho_s']))
     interior_o.radius   = np.array(json_file.get_dict_values(['data','radius_b']))
     interior_o.visc     = np.array(json_file.get_dict_values(['data','visc_b']))[1:]
     interior_o.mass     = np.array(json_file.get_dict_values(['data','mass_s']))

@@ -120,7 +120,7 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
-        hf_row["Imk2"] = run_lovepy(hf_row, config, dirs, interior_o)
+        hf_row["Imk2"] = run_lovepy(hf_row, dirs, interior_o)
 
     # Print info
     log.info("    H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))

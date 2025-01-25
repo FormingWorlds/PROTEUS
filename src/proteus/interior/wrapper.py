@@ -9,7 +9,6 @@ import pandas as pd
 import scipy.optimize as optimise
 
 from proteus.interior.common import Interior_t
-from proteus.interior.rheological import eval_rheoparam
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -30,6 +29,19 @@ def calculate_core_mass(hf_row:dict, config:Config):
     '''
     hf_row["M_core"] = config.struct.core_density * 4.0/3.0 * np.pi * (hf_row["R_int"] * config.struct.corefrac)**3.0
 
+def get_nlevb(config:Config):
+    '''
+    Get number of interior basic-nodes (level edges) from config.
+    '''
+    match config.interior.module :
+        case "spider":
+            return int(config.interior.spider.num_levels)
+        case "aragog":
+            return int(config.interior.aragog.num_levels)
+        case "dummy":
+            return 1
+    raise ValueError(f"Invalid interior module selected '{config.interior.module}'")
+
 def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     '''
     Determine the interior radius (R_int) of the planet.
@@ -42,7 +54,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     log.info("Using %s interior module to solve strcture"%config.interior.module)
 
     # Initial guess for interior radius and gravity
-    int_o = Interior_t(dirs["output"],config)
+    int_o = Interior_t(get_nlevb(config))
     int_o.ic = 1
     hf_row["R_int"]   = config.struct.radius_int * R_earth
     calculate_core_mass(hf_row, config)
@@ -119,12 +131,6 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     else:
         log.error("Invalid constraint on interior structure: %s"%config.struct.set_by)
 
-def update_rheology(interior_o:Interior_t, config:Config):
-    for i,p in enumerate(interior_o.phi):
-        interior_o.shear[i] = eval_rheoparam(p, 'shear', config.interior.rheo_phi_loc)
-        interior_o.bulk[i]  = eval_rheoparam(p, 'bulk', config.interior.rheo_phi_loc)
-
-
 def run_interior(dirs:dict, config:Config,
                     hf_all:pd.DataFrame, hf_row:dict,
                     interior_o:Interior_t, verbose:bool=True):
@@ -152,17 +158,7 @@ def run_interior(dirs:dict, config:Config,
     log.debug("Using %s module to evolve interior"%config.interior.module)
 
     # Write tidal heating file
-    if (interior_o.tides is None) and (config.interior.tidal_heat):
-        # Initialise arrays if this is the first iteration
-        interior_o.tides    = np.zeros(interior_o.nlev_s)
-        interior_o.phi      = np.zeros(interior_o.nlev_s)
-        interior_o.visc     = np.zeros(interior_o.nlev_s)
-        interior_o.radius   = np.zeros(interior_o.nlev_s)
-        interior_o.density  = np.zeros(interior_o.nlev_s)
-        interior_o.mass     = np.zeros(interior_o.nlev_s)
-        interior_o.shear    = np.zeros(interior_o.nlev_s)
-        interior_o.bulk     = np.zeros(interior_o.nlev_s)
-    interior_o.write_tides()
+    interior_o.write_tides(dirs["output"])
 
     if config.interior.module == 'spider':
         # Import
@@ -192,8 +188,7 @@ def run_interior(dirs:dict, config:Config,
             hf_row[k] = output[k]
 
     # Update rheological parameters
-    if interior_o.phi is not None:
-        update_rheology(interior_o, config)
+    interior_o.update_rheology(config.interior.rheo_phi_loc)
 
     # Ensure values are >= 0
     for k in ("M_mantle","M_mantle_liquid","M_mantle_solid","M_core","Phi_global"):

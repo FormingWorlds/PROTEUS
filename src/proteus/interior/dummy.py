@@ -79,11 +79,7 @@ def run_dummy_int(config:Config, dirs:dict,
     #    This heat energy is generated only in the mantle, not in the core.
     tidal_flux = 0.0
     if config.interior.tidal_heat:
-        if interior_o.tides is None:
-            tides_value = 0.0
-        else:
-            tides_value = interior_o.tides[0]
-        tidal_flux = tides_value * output["M_mantle"] / area
+        tidal_flux = interior_o.tides[0] * output["M_mantle"] / area
     output["F_tidal"] = tidal_flux
 
     # Radiogenic heating not included
@@ -111,11 +107,11 @@ def run_dummy_int(config:Config, dirs:dict,
     R_core = config.struct.corefrac * hf_row["R_int"]
 
     # Store arrays
-    interior_o.phi    = np.array([output["Phi_global"]])
-    interior_o.mass   = np.array([output["M_mantle"]])
-    interior_o.visc   = np.array([MANTLE_VISC])
-    interior_o.rho    = np.array([MANTLE_RHO])
-    interior_o.radius = np.array([R_core, hf_row["R_int"]])
+    interior_o.phi     = np.array([output["Phi_global"]])
+    interior_o.mass    = np.array([output["M_mantle"]])
+    interior_o.visc    = np.array([MANTLE_VISC])
+    interior_o.density = np.array([MANTLE_RHO])
+    interior_o.radius  = np.array([R_core, hf_row["R_int"]])
 
     sim_time = hf_row["Time"] + dt
     return sim_time, output

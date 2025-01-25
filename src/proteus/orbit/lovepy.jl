@@ -4,17 +4,17 @@ using .TidalLoveNumbers
 # Get precision of Love number module (e.g., Float64, Double64, etc)
 prec = TidalLoveNumbers.prec
 precc = TidalLoveNumbers.precc
-TARGET_NLEV::Int = 2000
-SPATIAL_RES::Float64 = 10.0
+SPATIAL_RES::prec = 10.0
 
 # Calculate heating from interior properties
-function calculate_heating( omega::Float64,
-                            ecc::Float64,
-                            rho::Array{Float64,1},
-                            radius::Array{Float64,1},
-                            visc::Array{Float64,1},
-                            shear::Array{Float64,1},
-                            bulk::Array{Float64,1}
+function calculate_heating( omega::prec,
+                            ecc::prec,
+                            rho::Array{prec,1},
+                            radius::Array{prec,1},
+                            visc::Array{prec,1},
+                            shear::Array{prec,1},
+                            bulk::Array{prec,1};
+                            ncalc::Int=2000
                               )::Tuple{Array{Float64,1},Float64,Float64}
 
     # Internal structure arrays.
@@ -31,8 +31,8 @@ function calculate_heating( omega::Float64,
     # Outer radius
     R = r[end]
 
-    # Subdivide input layers such that we have ~TARGET_NLEV in total
-    rr = expand_layers(r, nr=convert(Int,div(TARGET_NLEV,length(η))))
+    # Subdivide input layers such that we have ~ncalc in total
+    rr = expand_layers(r, nr=convert(Int,div(ncalc,length(η))))
 
     # Get gravity at each layer
     g = get_g(rr, ρ);

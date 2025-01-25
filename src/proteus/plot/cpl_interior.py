@@ -40,6 +40,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
 
     visc_min, visc_max = 1e99, 0
     flux_min, flux_max = 1e99, 0
+    tide_min, tide_max = 0.0, 1.0
 
     lw=1.5
 
@@ -136,6 +137,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
         axs[4].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',   c=color, lw=lw)
         axs[4].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed',  c=color, lw=lw)
         axs[4].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted',  c=color, lw=lw)
+        tide_max = max(tide_max, np.amax(yy))
 
     # Decorate figure
     title = '(a) Temperature' #'(a) Temperature, {}'.format(units)
@@ -169,7 +171,8 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
 
     title = '(e) Tidal power density'
     axs[4].set( title=title, xlabel=r'$H_t$ [nW kg$^{-1}$]')
-    axs[4].set_xlim(left=0.0)
+    axs[4].set_xlim(left=tide_min, right=tide_max*1.5)
+    axs[4].set_xscale("symlog", linthresh=1.0)
 
     # Pressure-depth conversion for y-axis
     axb = axs[-1].twinx()
