@@ -188,7 +188,7 @@ def run_interior(dirs:dict, config:Config,
             hf_row[k] = output[k]
 
     # Update rheological parameters
-    interior_o.update_rheology(config.interior.rheo_phi_loc)
+    interior_o.update_rheology()
 
     # Ensure values are >= 0
     for k in ("M_mantle","M_mantle_liquid","M_mantle_solid","M_core","Phi_global"):

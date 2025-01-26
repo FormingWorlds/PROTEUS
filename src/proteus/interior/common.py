@@ -26,9 +26,9 @@ class rheo_t():
 
 # Lookup parameters for rheological properties
 # Taken from https://doi.org/10.1051/0004-6361/202039433
-par_visc  = rheo_t(1.0,  25.7, 1.17e-9, 5.0, 0.569)
-par_shear = rheo_t(10.0, 2.10, 7.08e-7, 5.0, 0.597)
-par_bulk  = rheo_t(1e9,  2.62, 0.102,   5.0, 0.712)
+par_visc  = rheo_t(1.0,  25.7, 1.17e-9, 5.0, 0.4)
+par_shear = rheo_t(10.0, 2.10, 7.08e-7, 5.0, 0.4)
+par_bulk  = rheo_t(1e9,  2.62, 0.102,   5.0, 0.4)
 
 # Evalulate big Phi at a given layer
 def _bigphi(phi:float, par:rheo_t):
@@ -41,7 +41,7 @@ def _bigf(phi:float, par:rheo_t):
     return (1.0-par.xi) * erf(numer/denom)
 
 # Evalulate rheological parameter at a given layer
-def eval_rheoparam(phi:float, which:str, phicrit:float):
+def eval_rheoparam(phi:float, which:str):
     match which:
         case 'visc':
             par = par_visc
@@ -51,8 +51,6 @@ def eval_rheoparam(phi:float, which:str, phicrit:float):
             par = par_bulk
         case _:
             raise ValueError(f"Invalid rheological parameter 'f{which}'")
-    # Update critical melt fraction
-    par.phist = phicrit
     # Evaluate parameter
     numer = 1.0 + _bigphi(phi, par)**par.delta
     denom = (1.0-_bigf(phi, par)) ** (B_ein*(1-par.phist))
@@ -130,15 +128,9 @@ class Interior_t():
             for i in range(self.nlev_s):
                 hdl.write("%.7e %.7e \n"%(self.phi[i], self.tides[i]))
 
-    def update_rheology(self, phi_crit:float, visc:bool=False):
+    def update_rheology(self, visc:bool=False):
         for i,p in enumerate(self.phi):
-            # self.shear[i] = 60e9
-            # self.bulk[i] = 260e9
-
-            self.shear[i] = eval_rheoparam(p, 'shear', phi_crit)
-            self.bulk[i]  = eval_rheoparam(p, 'bulk', phi_crit)
-
-            # print("%.3f %.5e"%(p, self.shear[i]))
-
+            self.shear[i] = eval_rheoparam(p, 'shear')
+            self.bulk[i]  = eval_rheoparam(p, 'bulk')
             if visc:
-                self.visc[i]  = eval_rheoparam(p, 'visc', phi_crit)
+                self.visc[i]  = eval_rheoparam(p, 'visc')
