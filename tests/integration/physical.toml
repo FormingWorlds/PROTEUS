@@ -183,7 +183,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     rheo_phi_loc    = 0.4    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
-    shear_modulus   = 60e9    # Shear modulus [Pa]
 
     module = "aragog"   # Which interior module to use
 
