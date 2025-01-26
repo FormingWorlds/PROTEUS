@@ -105,7 +105,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 
-    module  = "dummy"
+    module  = "none"
 
     [orbit.dummy]
         H_tide  = 0.0  # Fixed tidal power density [W kg-1]
@@ -180,7 +180,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e5   # Initial heat flux guess [W m-2]
     radiogenic_heat = false  # enable radiogenic heat production
-    tidal_heat      = true  # enable tidal heat production
+    tidal_heat      = false  # enable tidal heat production
     rheo_phi_loc    = 0.4    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
