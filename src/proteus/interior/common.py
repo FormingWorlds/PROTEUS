@@ -25,7 +25,10 @@ class rheo_t():
     phist:float
 
 # Lookup parameters for rheological properties
-# Taken from https://doi.org/10.1051/0004-6361/202039433
+#     Taken from Kervazo+21 (https://doi.org/10.1051/0004-6361/202039433).
+#     Note that the phi_star value of 0.4 differs from their Table 3,
+#     however, this value is required to replicate their Figure 2 with
+#     a rheological transition centred at 30% melt fraction.
 par_visc  = rheo_t(1.0,  25.7, 1.17e-9, 5.0, 0.4)
 par_shear = rheo_t(10.0, 2.10, 7.08e-7, 5.0, 0.4)
 par_bulk  = rheo_t(1e9,  2.62, 0.102,   5.0, 0.4)
@@ -65,10 +68,10 @@ class Interior_t():
     def __init__(self, nlev_b:int):
 
         # Initial condition flag  (-1: init, 1: start, 2: running)
-        self.ic         = -1
+        self.ic = -1
 
         # Current time step length [yr]
-        self.dt         = 1.0
+        self.dt = 1.0
 
         # Number of levels
         self.nlev_b = int(nlev_b)
@@ -115,10 +118,8 @@ class Interior_t():
         if len(self.phi) != self.nlev_s:
             log.error("Array length mismatch when reading old tidal data")
 
-
     def write_tides(self, outdir:str):
         # Write tidal heating array to file.
-
         with open(get_file_tides(outdir), 'w') as hdl:
             # header information
             hdl.write("# 3 %d \n"%self.nlev_s)
@@ -129,6 +130,7 @@ class Interior_t():
                 hdl.write("%.7e %.7e \n"%(self.phi[i], self.tides[i]))
 
     def update_rheology(self, visc:bool=False):
+        # Update shear and bulk moduli arrays based on the melt fraction at each layer.
         for i,p in enumerate(self.phi):
             self.shear[i] = eval_rheoparam(p, 'shear')
             self.bulk[i]  = eval_rheoparam(p, 'bulk')

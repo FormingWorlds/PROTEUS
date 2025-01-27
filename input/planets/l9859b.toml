@@ -141,13 +141,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
-        num_levels      = 44            # Number of atmospheric grid levels
+        num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solution_atol   = 3e-2          # solver absolute tolerance
-        solution_rtol   = 7e-2          # solver relative tolerance
+        solution_rtol   = 8e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = true         # volatile condensation
+        condensation    = false         # volatile condensation
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
@@ -190,10 +190,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [interior.spider]
         num_levels      = 280       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1e-7   # solver tolerance
+        tolerance       = 2e-7   # solver tolerance
         tsurf_atol      = 15.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.001      # tsurf_poststep_change_frac
-        ini_entropy     = 2780.0    # Surface entropy conditions [J K-1 kg-1]
+        tsurf_rtol      = 0.05      # tsurf_poststep_change_frac
+        ini_entropy     = 2900.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]

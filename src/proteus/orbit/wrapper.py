@@ -20,15 +20,19 @@ def init_orbit(handler:Proteus):
     Initialise orbit and tides stuff.
     '''
 
-    log.info("Preparing orbit/tides model")
+    module = str(handler.config.orbit.module)
+    log.info(f"Preparing orbit/tides model '{module}'")
 
-    if handler.config.orbit.module == "lovepy":
+    if module == "lovepy":
         import os
 
         from proteus.orbit.lovepy import import_lovepy
 
         lib = os.path.join(handler.directories["proteus"], "src/proteus/orbit/lovepy.jl")
         import_lovepy(lib)
+
+    if not handler.config.interior.tidal_heat and (module != "None"):
+        log.warning("Tidal heating is disabled within interior configuration!")
 
 
 def update_separation(hf_row:dict):
@@ -120,7 +124,8 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
-        hf_row["Imk2"] = run_lovepy(hf_row, dirs, interior_o)
+        hf_row["Imk2"] = run_lovepy(hf_row, dirs, interior_o,
+                                        config.orbit.lovepy.visc_thresh)
 
     # Print info
     log.info("    H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))

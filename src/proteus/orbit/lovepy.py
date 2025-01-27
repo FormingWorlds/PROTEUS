@@ -25,7 +25,8 @@ def _jlsca(sca:float):
     # Make a copy of a scalar, and convert to Julia type
     return juliacall.convert(jl.prec, sca)
 
-def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t, ncalc:int=1200) -> float:
+def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t,
+                    visc_thresh:float, ncalc:int=1200) -> float:
     """Run the lovepy tidal heating module.
 
     Sets the interior tidal heating and returns Im(k2) love number.
@@ -38,6 +39,8 @@ def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t, ncalc:int=1200) ->
             Dictionary of directories.
         interior_o: Interior_t
             Struct containing interior arrays at current time.
+        visc_thresh: float
+            Minimum viscosity required for heating [Pa s]
         ncalc: int
             Number of layers to use for tidal calculation, optional.
     Returns
@@ -51,7 +54,7 @@ def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t, ncalc:int=1200) ->
     # Truncate arrays based on valid viscosity range
     i_top = interior_o.nlev_s-1
     for i in range(interior_o.nlev_s-1,0,-1):
-        if interior_o.visc[i] > 1e9:
+        if interior_o.visc[i] >= visc_thresh:
             i_top = i
 
     # Check if fully liquid
