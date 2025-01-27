@@ -158,7 +158,8 @@ def run_interior(dirs:dict, config:Config,
     log.debug("Using %s module to evolve interior"%config.interior.module)
 
     # Write tidal heating file
-    interior_o.write_tides(dirs["output"])
+    if config.interior.tidal_heat:
+        interior_o.write_tides(dirs["output"])
 
     if config.interior.module == 'spider':
         # Import

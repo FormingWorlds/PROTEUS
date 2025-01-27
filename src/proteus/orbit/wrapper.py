@@ -19,21 +19,19 @@ def init_orbit(handler:Proteus):
     '''
     Initialise orbit and tides stuff.
     '''
-
     module = str(handler.config.orbit.module)
+    if module == "None":
+        return
+
     log.info(f"Preparing orbit/tides model '{module}'")
+    if not handler.config.interior.tidal_heat:
+        log.warning("Tidal heating is disabled within interior configuration!")
 
     if module == "lovepy":
         import os
-
         from proteus.orbit.lovepy import import_lovepy
-
         lib = os.path.join(handler.directories["proteus"], "src/proteus/orbit/lovepy.jl")
         import_lovepy(lib)
-
-    if not handler.config.interior.tidal_heat and (module != "None"):
-        log.warning("Tidal heating is disabled within interior configuration!")
-
 
 def update_separation(hf_row:dict):
     '''
