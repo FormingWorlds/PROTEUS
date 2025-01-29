@@ -28,7 +28,7 @@ parameters = {  "struct.mass_tot": [0.5, 3.0],
 
                 "escape.dummy.rate": [0.0, 1e5],
 
-                "interior.dummy.magma": [2000, 4500],
+                "interior.dummy.ini_tmagma": [2000, 4500],
 
                 "outgas.fO2_shift_IW": [-4.0, 4.0],
 
@@ -66,7 +66,7 @@ for parameter, ran in parameters.items():
     os.makedirs(direct, exist_ok=True)
 
     path = os.path.join(direct,name)
-    data.to_csv(path, sep= "\t",index=False)
+    data.to_csv(path, index=False)
 
 
     for observable in data.columns[:-1]:
@@ -80,7 +80,7 @@ for parameter, ran in parameters.items():
         plt.grid(True)
 
         name = f'{observable} vs {parameter}.png'
-        direct = f"play_dummy/plots/{parameter}"
+        direct = f"play_dummy/plots/data/{parameter}"
         os.makedirs(direct, exist_ok=True)
 
         path = os.path.join(direct, name)

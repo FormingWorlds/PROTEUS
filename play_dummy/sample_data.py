@@ -21,7 +21,7 @@ parameters = {  "struct.mass_tot": [0.5, 3.0],
 
                 "escape.dummy.rate": [0.0, 1e5],
 
-                "interior.dummy.magma": [2000, 4500],
+                "interior.dummy.ini_tmagma": [2000, 4500],
 
                 "outgas.fO2_shift_IW": [-4.0, 4.0],
 
@@ -44,7 +44,7 @@ os.makedirs(direct, exist_ok=True)
 path_x = os.path.join(direct,name_x)
 path_y = os.path.join(direct,name_y)
 
-X.to_csv(path_x, sep= "\t",index=False)
-Y.to_csv(path_y, sep= "\t",index=False)
+X.to_csv(path_x,index=False)
+Y.to_csv(path_y,index=False)
 
 print("done")

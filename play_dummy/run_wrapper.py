@@ -1,6 +1,5 @@
 from utils import run_proteus
-
-import numpy as np
+import time
 
 # if you get the name wrong it will create a new parameter!
 # par = {
@@ -12,7 +11,7 @@ import numpy as np
 
 #                     "escape.dummy.rate": 2.0e4,
 
-#                     "interior.dummy.magma": 3500,
+#                     "interior.dummy.ini_tmagma": 3500,
 
 #                     "outgas.fO2_shift_IW": 2,
 
@@ -20,21 +19,12 @@ import numpy as np
 #                     "delivery.elements.H_oceans": 6.0}
 
 
-par = { "struct.mass_tot": 2.1382795033572477,
-        "struct.corefrac": 0.32958394089386567,
+par = {'struct.mass_tot': 0.7730266348742676, 'struct.corefrac': 0.5049660861459808}
+t0 = time.time()
 
-        "atmos_clim.surf_greyalbedo": 0.5003406839007034,
-        "atmos_clim.dummy.gamma": 0.5725611762292598,
+out = run_proteus(par, run_name = "BO/tmp2")
 
-        "escape.dummy.rate": 55222.03436489329,
+t1 = time.time()
 
-        "interior.dummy.magma": 3529.0900543527023,
-
-        "outgas.fO2_shift_IW": -0.9705082463067676,
-
-        "delivery.radio_K": 267.84079438731965,
-        "delivery.elements.H_oceans": 8.643922254864316}
-
-out = run_proteus({"struct.mass_tot": 0.5}, run_name = "simple_BO/tmp2")
-
+print(f"Time taken: {t1 - t0:.2f} seconds")
 print(out)

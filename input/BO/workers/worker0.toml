@@ -15,9 +15,9 @@ module = "dummy"
 
 [struct]
 set_by = "mass_tot"
-mass_tot = 2.6835735069795406
+mass_tot = 4.130993057524082
 radius_int = 0.9
-corefrac = 0.8811243976925592
+corefrac = 0.7550976472917457
 
 [atmos_clim]
 prevent_warming = false
@@ -56,7 +56,7 @@ initial = "elements"
 module = "none"
 
 [params.out]
-path = "gen_synth/sample_synth_data"
+path = "BO/workers/worker0"
 logging = "INFO"
 plot_mod = 0
 plot_fmt = "png"

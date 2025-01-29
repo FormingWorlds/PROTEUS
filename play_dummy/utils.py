@@ -4,6 +4,16 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import os
+import time
+
+import torch
+from botorch.utils.transforms import normalize, unnormalize
+from botorch.models.transforms import Normalize, Standardize
+from gpytorch.mlls import ExactMarginalLogLikelihood
+from botorch.models import SingleTaskGP
+
+from concurrent.futures import ProcessPoolExecutor
+import itertools
 
 def run_proteus(parameters, run_name, observables = None, ref_config = "input/demos/dummy.toml"):
     """
@@ -50,7 +60,7 @@ def run_proteus(parameters, run_name, observables = None, ref_config = "input/de
             stdout=subprocess.DEVNULL # to suppress terminal output
         )
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Simulator failed with error: {e}")
+        raise RuntimeError(f"Simulator failed with error: {e}\n\n The inputs were: \n\n {parameters}")
 
     # Load the output CSV file into a Pandas DataFrame
     try:
@@ -88,7 +98,7 @@ def sample_proteus(n, parameters = None, observables = None):
 
                         "escape.dummy.rate": [0.0, 1e5],
 
-                        "interior.dummy.magma": [2000, 4500],
+                        "interior.dummy.ini_tmagma": [2000, 4500],
 
                         "outgas.fO2_shift_IW": [-4.0, 4.0],
 
@@ -164,3 +174,114 @@ def update_toml(config_file, updates, output_file=None):
         toml.dump(config, f)
 
     # print(f"Configuration file updated and saved to {output_file}.")
+
+def run_proteus_wrapper(args, obs):
+    return run_proteus(*args, observables = obs)
+
+def run_proteus_parallel(inputs, n, obs = None):
+
+    """
+    Run n simulations in parallel.
+
+    Inputs:
+        inputs (list): A list of tuples, first element a dict of parameter and values, second element the run name (str)
+        n (int): the number of workers requested
+        obs (list): Which observables to return, defaults to some interesting ones
+
+    Returns:
+        outputs (list): A list of pd.Series, the PROTEUS outputs
+
+    """
+
+    t0 = time.time()
+
+    # Use ProcessPoolExecutor to parallelize the task
+    with ProcessPoolExecutor(max_workers=n) as executor:
+        outputs = list(executor.map(run_proteus_wrapper, inputs, itertools.repeat(obs)))
+
+    t1 = time.time()
+
+    print(f"{len(inputs)} runs took: {t1 - t0:.2f} seconds")
+
+    return outputs
+
+
+def J(x, true_y, bounds, parameters, observables, out_scaler):
+
+    """
+    Get objecitve values at q-batch
+
+    Input:
+        x (tensor): normalized q x d dimensional input batch
+        true_y (tensor): the observables of the plante under investigation
+        bounds (tensor): 2 x d
+        observables (list): the observables considered
+        parameters (list): the parameters to be inferred
+        out_scaler (StandardScaler): the scipy scaler used to standardize outputs
+
+    Output:
+        J (tensor): q x 1 dimensional objective values
+        sim_list (list): list of q tensors, each a PROTEUS output
+    """
+
+    # proteus needs unnormalized inputs
+    x = unnormalize(x, bounds)
+
+    q = len(x)
+
+    run_names = [f"BO/workers/worker{i}" for i in range(q)]
+
+    par = [{parameters[j]: i[j].item() for j in range(len(parameters))} for i in x]
+
+    inputs = list(zip(par, run_names))
+
+    sim_list = run_proteus_parallel(inputs, q, obs = observables)
+
+    sim_list = [torch.tensor(i.values).reshape(1, -1) for i in sim_list]
+    sim = [out_scaler.transform(i) for i in sim_list]
+    J = np.array([-((true_y-i)**2).sum().reshape(1,1) for i in sim])
+    J = torch.tensor(J).reshape(q, 1)
+
+    return J, torch.cat(sim_list)
+
+
+def init_model(train_X, train_Y):
+
+    gp = SingleTaskGP(  train_X=train_X,
+                        train_Y=train_Y,
+                        input_transform=Normalize(d=train_X.shape[-1]),
+                        outcome_transform=Standardize(m=1)
+    )
+
+
+    mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
+
+    return mll, gp
+
+def sample_inputs(parameters, batch_size):
+    """
+    sample the input space uniformly
+
+    Inputs:
+        parameters (dict): d parameters to sample and their ranges
+        batch_size (int): how many samples to draw
+
+    Returns:
+        x (torch.tensor): sampled inputs of dimension batch_size x d
+    """
+
+    X = []
+    for _ in range(batch_size):
+
+        xs = []
+        for paramter, ran in parameters.items():
+
+            x = np.random.uniform(ran[0], ran[1])
+
+            xs.append(x)
+
+        X.append(xs)
+
+    X = torch.tensor(X, dtype = torch.double)
+
+    return X
