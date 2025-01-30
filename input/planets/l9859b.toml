@@ -33,7 +33,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # time-stepping
     [params.dt]
-        minimum      = 2e2    # yr, minimum time-step
+        minimum      = 3e1    # yr, minimum time-step
         maximum      = 1e7    # yr, maximum time-step
         initial      = 2e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
@@ -105,7 +105,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 
-    module  = "none"
+    module  = "dummy"
 
     [orbit.dummy]
         H_tide  = 0.0  # Fixed tidal power density [W kg-1]
@@ -145,7 +145,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solution_atol   = 3e-2          # solver absolute tolerance
-        solution_rtol   = 8e-2          # solver relative tolerance
+        solution_rtol   = 1e-1          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
 
@@ -160,7 +160,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         overlap_method    = "ee"          # gas overlap method
 
     [atmos_clim.dummy]
-        gamma           = 0.8           # atmosphere opacity between 0 and 1
+        gamma           = 0.0           # atmosphere opacity between 0 and 1
 
 # Volatile escape - physics table
 [escape]
@@ -180,7 +180,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e5   # Initial heat flux guess [W m-2]
     radiogenic_heat = false  # enable radiogenic heat production
-    tidal_heat      = false  # enable tidal heat production
+    tidal_heat      = true  # enable tidal heat production
     rheo_phi_loc    = 0.3    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
@@ -190,10 +190,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [interior.spider]
         num_levels      = 280       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 2e-7   # solver tolerance
+        tolerance       = 1e-6   # solver tolerance
         tsurf_atol      = 15.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.05      # tsurf_poststep_change_frac
-        ini_entropy     = 2900.0    # Surface entropy conditions [J K-1 kg-1]
+        tsurf_rtol      = 0.04      # tsurf_poststep_change_frac
+        ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]

@@ -446,8 +446,8 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "planets/l9859c.toml"
-    folder = "NOH_c"
+    config = "planets/l9859b.toml"
+    folder = "LOV_b"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
@@ -458,10 +458,13 @@ if __name__=='__main__':
     pg.set_dimension_linspace("Redox state", -5, 5, 10)
 
     # pg.add_dimension("Tidal", "orbit.dummy.H_tide")
-    # pg.set_dimension_direct("Tidal", [0.0, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 3e-5])
+    # pg.set_dimension_direct("Tidal", [0.0, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5])
 
-    pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_linspace("Hydrogen", 60, 500, 10)
+    pg.add_dimension("Core", "struct.corefrac")
+    pg.set_dimension_linspace("Core", 0.5, 0.9, 10)
+
+    # pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
+    # pg.set_dimension_linspace("Hydrogen", 60, 500, 10)
 
     # -----
     # Print state of parameter grid
@@ -473,7 +476,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(100, test_run=False)
+    pg.run(90, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.

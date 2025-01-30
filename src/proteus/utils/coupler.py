@@ -468,7 +468,7 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
         os.remove(fpath)
 
     # write new file
-    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.6e")
+    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.8e")
     return fpath
 
 def ReadHelpfileFromCSV(output_dir:str):
