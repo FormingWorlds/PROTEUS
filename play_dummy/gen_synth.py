@@ -5,6 +5,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
+import time
 
 # run from PROTEUS directory with: python play_dummy/gen_synth.py
 # creates plots and csv files with synthetic data by varying one parameter and keeping all else fixed at dummy config
@@ -48,15 +49,18 @@ for parameter, ran in parameters.items():
         # change parameter to i in dummy config
         par = {parameter : i.item()}
 
+        t_0 = time.time()
         out = run_proteus(par, run_name, observables)
+        t_1 = time.time()
 
+        out["run_time"] = t_1 - t_0
         out["index"] = i
 
         out = out.to_list()
 
         data.append(out)
 
-    col_names = observables + ["index"]
+    col_names = observables + ["run_time", "index"]
 
     data = pd.DataFrame(data, columns=col_names)
 
