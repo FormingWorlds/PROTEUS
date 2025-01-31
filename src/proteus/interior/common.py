@@ -3,16 +3,16 @@ from __future__ import annotations
 
 import logging
 import os
-import numpy as np
 from dataclasses import dataclass
-from scipy.special import erf
 from typing import TYPE_CHECKING
 
 import numpy as np
+from scipy.special import erf
+
 from proteus.utils.constants import B_ein
 
 if TYPE_CHECKING:
-    from proteus.config import Config
+    pass
 
 log = logging.getLogger("fwl."+__name__)
 

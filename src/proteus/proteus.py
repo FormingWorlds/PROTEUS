@@ -111,10 +111,9 @@ class Proteus:
         from proteus.atmos_clim import RunAtmosphere
         from proteus.escape.wrapper import RunEscape
         from proteus.interior.common import Interior_t
-        from proteus.interior.wrapper import run_interior, solve_structure, get_nlevb
+        from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure
         from proteus.orbit.wrapper import init_orbit, run_orbit
         from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
-        from proteus.utils.data import download_sufficient_data
         from proteus.star.wrapper import (
             get_new_spectrum,
             init_star,
@@ -123,6 +122,7 @@ class Proteus:
             update_stellar_quantities,
             write_spectrum,
         )
+        from proteus.utils.data import download_sufficient_data
 
         # First things
         start_time = datetime.now()

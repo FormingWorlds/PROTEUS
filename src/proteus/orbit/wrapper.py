@@ -29,6 +29,7 @@ def init_orbit(handler:Proteus):
 
     if module == "lovepy":
         import os
+
         from proteus.orbit.lovepy import import_lovepy
         lib = os.path.join(handler.directories["proteus"], "src/proteus/orbit/lovepy.jl")
         import_lovepy(lib)
