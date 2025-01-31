@@ -500,6 +500,8 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     interior_o.radius   = np.array(json_file.get_dict_values(['data','radius_b']))
     interior_o.visc     = np.array(json_file.get_dict_values(['data','visc_b']))[1:]
     interior_o.mass     = np.array(json_file.get_dict_values(['data','mass_s']))
+    interior_o.temp     = np.array(json_file.get_dict_values(['data','temp_s']))
+    interior_o.pres     = np.array(json_file.get_dict_values(['data','pressure_s']))
 
     # Manually calculate heat flux at near-surface from energy gradient
     # Etot        = json_file.get_dict_values(['data','Etot_b'])

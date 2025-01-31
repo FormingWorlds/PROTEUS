@@ -279,6 +279,8 @@ def GetAragogOutput(hf_row:dict, interior_o:Interior_t):
     interior_o.density  = np.array(aragog_output.density_basic[:,-1])[1:]
     interior_o.radius   = radii[:] # length N+1
     interior_o.mass     = mass_s[:]
+    interior_o.temp     = np.array(aragog_output.temperature_K_staggered[:,-1])
+    interior_o.pres     = np.array(aragog_output.pressure_GPa_staggered[:,-1] * 1e9)
 
     return output
 

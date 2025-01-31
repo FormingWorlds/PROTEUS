@@ -105,7 +105,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 
-    module  = "dummy"
+    module  = "lovepy"
 
     [orbit.dummy]
         H_tide  = 0.0  # Fixed tidal power density [W kg-1]
@@ -133,11 +133,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
     surf_greyalbedo = 0.2       # surface grey albedo
     albedo_pl       = 0.0   	# Enforced Bond albedo (do not use with `rayleigh = true`)
-    rayleigh        = true     # Enable rayleigh scattering
+    rayleigh        = false     # Enable rayleigh scattering
     tmp_minimum     = 0.5           # temperature floor on solver
     tmp_maximum     = 5000.0        # temperature ceiling on solver
 
-    module  = "agni"           # Which atmosphere module to use
+    module  = "dummy"           # Which atmosphere module to use
 
     [atmos_clim.agni]
         p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
@@ -194,7 +194,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-6   # solver tolerance
         tsurf_atol      = 15.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.04      # tsurf_poststep_change_frac
+        tsurf_rtol      = 0.005      # tsurf_poststep_change_frac
         ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 

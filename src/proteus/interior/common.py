@@ -87,6 +87,8 @@ class Interior_t():
         self.mass       = np.zeros(self.nlev_s)      # Mass of shell [kg]
         self.shear      = np.zeros(self.nlev_s)      # Shear modulus [Pa]
         self.bulk       = np.zeros(self.nlev_s)      # Bulk modulus [Pa]
+        self.pres       = np.zeros(self.nlev_s)      # Pressure [Pa]
+        self.temp       = np.zeros(self.nlev_s)      # Temperature [K]
 
     def print(self):
         log.info("Printing interior arrays....")

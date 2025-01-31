@@ -111,6 +111,8 @@ def run_dummy_int(config:Config, dirs:dict,
     interior_o.mass    = np.array([output["M_mantle"]])
     interior_o.visc    = np.array([MANTLE_VISC])
     interior_o.density = np.array([MANTLE_RHO])
+    interior_o.temp    = np.array([output["T_magma"]])
+    interior_o.pres    = np.array([hf_row["P_surf"]])
     interior_o.radius  = np.array([hf_row["R_int"], R_core])
 
     sim_time = hf_row["Time"] + dt
