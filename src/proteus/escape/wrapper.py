@@ -78,7 +78,7 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
 
     # Interpolating the XUV flux at the age of the star
     Fxuv_star_SI = ((stellar_track.Value(age_star, 'Lx') + stellar_track.Value(age_star, 'Leuv'))
-                             / (4 * np.pi * (hf_row["semimajorax"] * AU * 1e2)**2)) * ergcm2stoWm2
+                             / (4 * np.pi * (hf_row["semimajorax"] * 1e2)**2)) * ergcm2stoWm2
 
     log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI} [W/m2]")
 
