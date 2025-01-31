@@ -45,6 +45,8 @@ const_G = 6.67428e-11        #Gravitational constant (2006 measurements)
 const_N_avogadro = 6.022136736e23  #Avogadro's number
 const_R_gas = 8.31446261815324 # Universal gas constant, J.K-1.mol-1
 
+B_ein = 2.5
+
 # Supported gases
 vol_list = ["H2O", "CO2", "H2", "CH4", "CO", "N2", "S2", "SO2"]
 vap_list = ["SiO", "SiO2", "MgO", "FeO2"]

@@ -8,14 +8,6 @@ from pathlib import Path
 import numpy as np
 
 from proteus.config import read_config_object
-from proteus.star.wrapper import (
-    get_new_spectrum,
-    init_star,
-    scale_spectrum_to_toa,
-    update_stellar_mass,
-    update_stellar_quantities,
-    write_spectrum,
-)
 from proteus.utils.constants import (
     gas_list,
     vap_list,
@@ -61,6 +53,7 @@ class Proteus:
         self.config = read_config_object(config_path)
 
         # Setup directories dictionary
+        self.directories:dict = None # Directories dictionary
         self.init_directories()
 
         # Helpfile variables for the current iteration
@@ -73,10 +66,7 @@ class Proteus:
         self.loops = None
 
         # Interior
-        self.IC_INTERIOR = -1  # Initial condition flag (-1: init, 1: start, 2: running)
-        self.dt = 1.0          # Interior time step length [yr]
-        self.int_tides = None  # Tidal power density, array [W kg-1].
-        self.int_phi = None    # Melt fraction, array.
+        self.interior_o = None      # Interior object from common.py
 
         # Model has finished?
         self.finished1 = False          # Satisfied finishing criteria once
@@ -120,9 +110,18 @@ class Proteus:
         # Import
         from proteus.atmos_clim import RunAtmosphere
         from proteus.escape.wrapper import RunEscape
-        from proteus.interior.wrapper import run_interior, solve_structure
-        from proteus.orbit.wrapper import run_orbit
+        from proteus.interior.common import Interior_t
+        from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure
+        from proteus.orbit.wrapper import init_orbit, run_orbit
         from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
+        from proteus.star.wrapper import (
+            get_new_spectrum,
+            init_star,
+            scale_spectrum_to_toa,
+            update_stellar_mass,
+            update_stellar_quantities,
+            write_spectrum,
+        )
         from proteus.utils.data import download_sufficient_data
 
         # First things
@@ -176,12 +175,15 @@ class Proteus:
         # Download basic data
         download_sufficient_data(self.config)
 
+        # Initialise interior struct object.
+        self.interior_o = Interior_t(get_nlevb(self.config))
+
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
             # New simulation
 
             # SPIDER initial condition
-            self.IC_INTERIOR = 1
+            self.interior_o.ic = 1
 
             # Create an empty initial row for helpfile
             self.hf_row = ZeroHelpfileRow()
@@ -228,8 +230,12 @@ class Proteus:
             # Resuming from disk
             log.info("Resuming the simulation from the disk")
 
-            # SPIDER initial condition
-            self.IC_INTERIOR = 2
+            # Interior initial condition
+            self.interior_o.ic = 2
+
+            # Restore tides data
+            if self.config.orbit.module is not None:
+                self.interior_o.resume_tides(self.directories["output"])
 
             # Read helpfile from disk
             self.hf_all = ReadHelpfileFromCSV(self.directories["output"])
@@ -248,6 +254,9 @@ class Proteus:
 
         # Prepare star stuff
         init_star(self)
+
+        # Prepare orbit stuff
+        init_orbit(self)
 
         # Main loop
         UpdateStatusfile(self.directories, 1)
@@ -273,25 +282,20 @@ class Proteus:
             )
 
             ############### INTERIOR
-
             PrintHalfSeparator()
-
-            # Run interior model
-            self.dt, self.int_phi = run_interior(self.directories, self.config,
-                                                    self.IC_INTERIOR, self.hf_all,
-                                                    self.hf_row, self.int_tides)
+            run_interior(self.directories, self.config,
+                            self.hf_all, self.hf_row, self.interior_o)
 
 
             # Advance current time in main loop according to interior step
-            self.hf_row["Time"]     += self.dt    # in years
-            self.hf_row["age_star"] += self.dt    # in years
+            self.hf_row["Time"]     += self.interior_o.dt    # in years
+            self.hf_row["age_star"] += self.interior_o.dt    # in years
 
             ############### / INTERIOR AND STRUCTURE
 
             ############### ORBIT AND TIDES
-
             PrintHalfSeparator()
-            self.int_tides = run_orbit(self.hf_row, self.config, self.int_phi)
+            run_orbit(self.hf_row, self.config, self.directories, self.interior_o)
 
             ############### / ORBIT AND TIDES
 
@@ -346,7 +350,8 @@ class Proteus:
 
             ############### ESCAPE
             if (self.loops["total"] >= self.loops["init_loops"]):
-                RunEscape(self.config, self.hf_row, self.dt, self.stellar_track)
+                PrintHalfSeparator()
+                RunEscape(self.config, self.hf_row, self.interior_o.dt, self.stellar_track)
 
             ############### / ESCAPE
 
@@ -376,9 +381,12 @@ class Proteus:
 
             ############### ATMOSPHERE CLIMATE
             if not self.has_escaped:
+                PrintHalfSeparator()
                 RunAtmosphere(self.config, self.directories, self.loops,
                                 self.star_wl, self.star_fl, update_stellar_spectrum,
                                 self.hf_all, self.hf_row)
+
+            ############### / ATMOSPHERE CLIMATE
 
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
@@ -391,7 +399,7 @@ class Proteus:
                 self.hf_row["Time"] = 0.0
             # Reset restart flag once SPIDER has correct heat flux
             if self.loops["total"] >= self.loops["init_loops"]:
-                self.IC_INTERIOR = 2
+                self.interior_o.ic = 2
 
             # Adjust total iteration counters
             self.loops["total"] += 1

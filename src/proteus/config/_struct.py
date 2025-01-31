@@ -17,9 +17,9 @@ class Struct:
     corefrac: float
         Fraction of the planet's interior radius corresponding to the core.
     core_density: float
-        Density of the planet's core, optional [kg m-3]
+        Density of the planet's core [kg m-3]
     core_heatcap: float
-        Specific heat capacity of the planet's core, optional [J kg-1 K-1]
+        Specific heat capacity of the planet's core [J kg-1 K-1]
     """
 
     set_by: str = field(validator=in_(('mass_tot','radius_int')))
@@ -28,5 +28,5 @@ class Struct:
     radius_int: float = field(validator=(gt(0),lt(10)))
 
     corefrac: float = field(validator=(gt(0), lt(1)))
-    core_density: float = field(default = 10738.33)
-    core_heatcap: float = field(default = 880.0)
+    core_density: float = field(validator=gt(0))
+    core_heatcap: float = field(validator=gt(0))

@@ -25,6 +25,11 @@ def spada_zephyrus(instance, attribute, value):
         not ( (instance.star.module == 'mors') and (instance.star.mors.tracks == 'spada')):
         raise ValueError('ZEPHYRUS must be used with MORS and the Spada evolution tracks')
 
+def tides_enabled_orbit(instance, attribute, value):
+    # Tides in interior requires orbit module to not be None
+    if (instance.interior.tidal_heat) and (instance.orbit.module is None):
+        raise ValueError("Interior tidal heating requires an orbit module to be enabled")
+
 @define
 class Config:
     """Root config parameters.
@@ -64,7 +69,7 @@ class Config:
     struct: Struct
     atmos_clim: AtmosClim
     escape: Escape = field(validator=(spada_zephyrus,))
-    interior: Interior
+    interior: Interior = field(validator=(tides_enabled_orbit,))
     outgas: Outgas
     delivery: Delivery
 

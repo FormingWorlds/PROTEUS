@@ -125,7 +125,7 @@ jobs:
       # Upload result if tests fail
       - name: Upload result as artifact
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: integration-physical
           path: |

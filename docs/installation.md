@@ -176,6 +176,38 @@ They are also reproduced below.
 
 Consult the AGNI wiki if you encouter issues.
 
+
+### Multi-phase tidal heating model (**Lovepy**)
+
+Lovepy is written in Julia. You can use the same environment as AGNI if you wish, but you
+should make sure to follow the installation steps below.
+
+1. Clone the model
+
+    ```console
+    git clone git@github.com:hamishHay/lovepy.git
+    cd lovepy
+    git checkout julia_solid_body
+    ```
+
+2. Get dependencies
+
+    ```console
+    julia -e 'using Pkg; Pkg.add("DoubleFloats"); Pkg.add("AssociatedLegendrePolynomials")'
+    ```
+
+3. Pre-compile the code
+
+    ```console
+    julia -e 'include("TidalLoveNumbers.jl")'
+    ```
+
+4. Go back to the PROTEUS directory
+
+    ```console
+    cd ../
+    ```
+
 ### Chemical kinetics atmosphere model (**VULCAN**)
 
 1. Clone the model

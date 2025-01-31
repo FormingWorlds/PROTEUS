@@ -161,9 +161,9 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
 
     # PLOT ax_cl
     min_temp = np.amin(hf["T_surf"])
-    max_temp = np.amax(hf["T_surf"])
-    ax_cl.plot(hf["Time"], hf["T_surf"], ls="dashed", lw=lw, alpha=al, color=get_colour("int"))
-    ax_cl.plot(hf["Time"], hf["T_surf"], ls="-",      lw=lw, alpha=al, color=get_colour("atm"))
+    max_temp = np.amax(hf["T_magma"])
+    ax_cl.plot(hf["Time"], hf["T_magma"], ls="dashed", lw=lw, alpha=al, color=get_colour("int"))
+    ax_cl.plot(hf["Time"], hf["T_surf"],  ls="-",      lw=lw, alpha=al, color=get_colour("atm"))
     ax_cl.set_ylim(min(1000.0,min_temp-25) , max(3500.0,max_temp+25))
 
     # PLOT ax_bl
