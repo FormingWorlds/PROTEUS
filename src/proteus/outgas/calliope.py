@@ -72,12 +72,8 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
             log.error("Carbon inventory must be specified by CH_ratio or C_ppmw, not both")
             invalid = True
     else:
-        if C_ppmw < 1e-10:
-            log.error("Carbon inventory is unspecified")
-            invalid = True
-        else:
-            # calculate C/H ratio for calliope from C_kg and H_kg
-            CH_ratio = config.delivery.elements.C_ppmw * 1e-6 * hf_row["M_mantle"] / H_kg
+        # calculate C/H ratio for calliope from C_kg and H_kg
+        CH_ratio = config.delivery.elements.C_ppmw * 1e-6 * hf_row["M_mantle"] / H_kg
 
     # Calculate nitrogen inventory (we need N_ppmw for calliope)
     NH_ratio = float(config.delivery.elements.NH_ratio)
@@ -89,11 +85,6 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
             invalid = True
         # calculate N_ppmw
         N_ppmw = 1e6 * NH_ratio * H_kg / hf_row["M_mantle"]
-    else:
-        if N_ppmw < 1e-10:
-            log.error("Nitrogen inventory is unspecified")
-            invalid = True
-
 
     # Calculate sulfur inventory (we need S_ppmw for calliope)
     SH_ratio = float(config.delivery.elements.SH_ratio)
@@ -105,10 +96,6 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
             invalid = True
         # calculate S_ppmw
         S_ppmw = 1e6 * SH_ratio * H_kg / hf_row["M_mantle"]
-    else:
-        if S_ppmw < 1e-10:
-            log.error("Sulfur inventory is unspecified")
-            invalid = True
 
     # Volatile abundances are over-specified in the config file.
     # The code exits here, rather than above, in case there are multiple
