@@ -88,6 +88,11 @@ class Interior_t():
         self.shear      = np.zeros(self.nlev_s)      # Shear modulus [Pa]
         self.bulk       = np.zeros(self.nlev_s)      # Bulk modulus [Pa]
 
+    def print(self):
+        log.info("Printing interior arrays....")
+        for attr in ("radius","tides","phi","visc","density","mass","shear","bulk"):
+            log.info("    %s = %s"%(attr,str(getattr(self,attr))))
+
     def resume_tides(self, outdir:str):
         # Read tidal heating array from file, when resuming from disk.
 

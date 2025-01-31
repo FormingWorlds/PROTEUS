@@ -9,7 +9,7 @@ import pandas as pd
 
 from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
-from proteus.utils.constants import secs_per_year
+from proteus.utils.constants import secs_per_year, M_earth, R_earth
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -33,7 +33,7 @@ def calculate_simple_mantle_mass(radius:float, corefrac:float)->float:
     mantle_volume = (4 * np.pi / 3) * (radius**3 - (radius*corefrac)**3)
 
     # Get mass [in SI units]
-    mantle_mass = mantle_volume * MANTLE_RHO * 1e3
+    mantle_mass = mantle_volume * MANTLE_RHO
 
     log.debug("Total mantle mass = %.2e kg" % mantle_mass)
     if mantle_mass <= 0.0:
@@ -111,7 +111,7 @@ def run_dummy_int(config:Config, dirs:dict,
     interior_o.mass    = np.array([output["M_mantle"]])
     interior_o.visc    = np.array([MANTLE_VISC])
     interior_o.density = np.array([MANTLE_RHO])
-    interior_o.radius  = np.array([R_core, hf_row["R_int"]])
+    interior_o.radius  = np.array([hf_row["R_int"], R_core])
 
     sim_time = hf_row["Time"] + dt
     return sim_time, output

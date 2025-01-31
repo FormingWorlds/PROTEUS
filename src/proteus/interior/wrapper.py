@@ -39,7 +39,7 @@ def get_nlevb(config:Config):
         case "aragog":
             return int(config.interior.aragog.num_levels)
         case "dummy":
-            return 1
+            return 2
     raise ValueError(f"Invalid interior module selected '{config.interior.module}'")
 
 def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):

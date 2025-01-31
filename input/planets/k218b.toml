@@ -120,6 +120,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     mass_tot    = 8.63       # M_earth
     radius_int  = 1.0       # R_earth
     corefrac    = 0.75      # non-dim., radius fraction
+    core_density = 10738.33      # Core density [kg m-3]
+    core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
 
 # Atmosphere - physics table
 [atmos_clim]

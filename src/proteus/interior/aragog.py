@@ -45,7 +45,7 @@ def RunAragog(config:Config, dirs:dict,
 
     # Setup Aragog logger
     aragog_file_logger(console_level = logging.WARNING,
-                       file_level = logging.INFO,
+                       file_level = logging.getLevelName(config.params.out.logging),
                        log_dir = dirs["output"])
 
     # Compute time step
@@ -245,6 +245,7 @@ def WriteAragogOutput(output_dir:str, time:float):
 def GetAragogOutput(hf_row:dict, interior_o:Interior_t):
 
     aragog_output: Output = Output(aragog_solver)
+    aragog_output.state.update(aragog_output.solution.y, aragog_output.solution.t)
     output = {}
 
     output["M_mantle"] = aragog_output.mantle_mass
