@@ -9,7 +9,7 @@ import pandas as pd
 
 from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
-from proteus.utils.constants import secs_per_year, M_earth, R_earth
+from proteus.utils.constants import secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
