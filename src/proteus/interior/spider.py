@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from proteus.interior.common import Interior_t, get_file_tides
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import radnuc_data
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
@@ -21,8 +22,6 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
-
-TIDES_FILENAME = ".tides_recent.dat"
 
 class MyJSON( object ):
 
@@ -163,7 +162,7 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
 def _try_spider( dirs:dict, config:Config,
                 IC_INTERIOR:int,
                 hf_all:pd.DataFrame, hf_row:dict,
-                step_sf:float, atol_sf:float ):
+                step_sf:float, atol_sf:float, dT_max:float ):
     '''
     Try to run spider with the current configuration.
     '''
@@ -192,7 +191,7 @@ def _try_spider( dirs:dict, config:Config,
         nstepsmacro = step + nsteps
         dtmacro = dtswitch
 
-        log.debug("Time options in RunSPIDER: dt=%.2e yrs in %d steps (at i=%d)" %
+        log.debug("SPIDER iteration: dt=%.2e yrs in %d steps (at i=%d)" %
                                                     (dtmacro, nsteps, nstepsmacro))
 
     # For init loop
@@ -222,13 +221,13 @@ def _try_spider( dirs:dict, config:Config,
                         "-grain",                  "%.6e"%(config.interior.grain_size),
                     ]
 
-    # Min of fractional and absolute Ts poststep change
+    # Tolerance on the change in T_magma during a single SPIDER call
     if hf_row["Time"] > 0:
-        dTs_frac = config.interior.spider.tsurf_rtol * float(hf_all["T_surf"].iloc[-1])
-        dT_int_max = np.min([ float(config.interior.spider.tsurf_atol), float(dTs_frac) ])
-        call_sequence.extend(["-tsurf_poststep_change", str(dT_int_max)])
+        dT_poststep = config.interior.spider.tsurf_rtol * hf_row["T_magma"] \
+                    + config.interior.spider.tsurf_atol
     else:
-        call_sequence.extend(["-tsurf_poststep_change", str(config.interior.spider.tsurf_atol)])
+        dT_poststep = float(config.interior.spider.tsurf_atol)
+    call_sequence.extend(["-tsurf_poststep_change", str(min(dT_max, dT_poststep))])
 
     # set surface and core entropy (-1 is a flag to ignore)
     call_sequence.extend(["-ic_surface_entropy", "-1"])
@@ -273,9 +272,8 @@ def _try_spider( dirs:dict, config:Config,
 
     # Tidal heating
     if config.interior.tidal_heat:
-        tides_file = os.path.join(dirs["output"], "data", TIDES_FILENAME)
         call_sequence.extend(["-HTIDAL", "2"])
-        call_sequence.extend(["-htidal_filename", tides_file])
+        call_sequence.extend(["-htidal_filename", get_file_tides(dirs["output"])])
 
     # Properties lookup data (folder relative to SPIDER src)
     folder = "lookup_data/1TPa-dK09-elec-free/"
@@ -392,8 +390,8 @@ def _try_spider( dirs:dict, config:Config,
     return bool(proc.returncode == 0)
 
 
-def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
-              hf_all:pd.DataFrame, hf_row:dict, tides_array:np.ndarray ):
+def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
+                interior_o:Interior_t):
     '''
     Wrapper function for running SPIDER.
     This wrapper handles cases where SPIDER fails to find a solution.
@@ -408,19 +406,11 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
     spider_success = False  # success?
     attempts = 0            # number of attempts so far
 
-    # write tidal heating file
-    tides_file = os.path.join(dirs["output"], "data", TIDES_FILENAME)
-    if (tides_array is None) or (not config.interior.tidal_heat):
-        tides_array = np.zeros(config.interior.spider.num_levels-1)
-    with open(tides_file,'w') as hdl:
-        # header information
-        hdl.write("# 3 %d \n"%len(tides_array))
-        hdl.write("# Dummy, Tidal heating density \n")
-        hdl.write("# 1.0 1.0 \n")
-
-        # for each level...
-        for h in tides_array:
-            hdl.write("0.0 %.3e \n"%h)
+    # Maximum dT
+    dT_max = 1e99
+    if np.amax(interior_o.tides) > 1e-10:
+        dT_max = 3.0
+        log.info("Tidal heating active; limiting dT_magma to %.2f K"%dT_max)
 
     # make attempts
     while not spider_success:
@@ -428,7 +418,8 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
         log.debug("Attempt %d" % attempts)
 
         # run SPIDER
-        spider_success = _try_spider(dirs, config, IC_INTERIOR, hf_all, hf_row, step_sf, atol_sf)
+        spider_success = _try_spider(dirs, config, interior_o.ic,
+                                        hf_all, hf_row, step_sf, atol_sf, dT_max)
 
         if spider_success:
             # success
@@ -453,10 +444,10 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
     else:
         # failure of all attempts
         UpdateStatusfile(dirs, 21)
-        raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
+        raise RuntimeError("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
-def ReadSPIDER(dirs:dict, config:Config, R_int:float):
+def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     '''
     Read variables from last SPIDER output JSON file into a dictionary
     '''
@@ -485,7 +476,6 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float):
     Hradio_s = json_file.get_dict_values(['data','Hradio_s'])
     Htidal_s = json_file.get_dict_values(['data','Htidal_s'])
     mass_s   = json_file.get_dict_values(['data','mass_s'])
-    phi_s    = json_file.get_dict_values(['data','phi_s'])
 
     # Fill the new dict
     output["M_mantle_liquid"] = float(data_a[0])
@@ -498,14 +488,20 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float):
     output["F_int"]           = float(data_a[6])  # Heat flux from interior
     output["RF_depth"]        = float(data_a[7])/R_int  # depth of rheological front
 
-    # Melt fraction array
-    output["Phi_array"] = np.array(phi_s)
-
     # Tidal heating
     output["F_tidal"] = np.dot(Htidal_s, mass_s)/area_b[0]
 
     # Radiogenic heating
     output["F_radio"] = np.dot(Hradio_s, mass_s)/area_b[0]
+
+    # Arrays at current time
+    interior_o.phi      = np.array(json_file.get_dict_values(['data','phi_s']))
+    interior_o.density  = np.array(json_file.get_dict_values(['data','rho_s']))
+    interior_o.radius   = np.array(json_file.get_dict_values(['data','radius_b']))
+    interior_o.visc     = np.array(json_file.get_dict_values(['data','visc_b']))[1:]
+    interior_o.mass     = np.array(json_file.get_dict_values(['data','mass_s']))
+    interior_o.temp     = np.array(json_file.get_dict_values(['data','temp_s']))
+    interior_o.pres     = np.array(json_file.get_dict_values(['data','pressure_s']))
 
     # Manually calculate heat flux at near-surface from energy gradient
     # Etot        = json_file.get_dict_values(['data','Etot_b'])

@@ -33,7 +33,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # time-stepping
     [params.dt]
-        minimum      = 4e2    # yr, minimum time-step
+        minimum      = 3e1    # yr, minimum time-step
         maximum      = 1e7    # yr, maximum time-step
         initial      = 2e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
@@ -45,7 +45,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.dt.adaptive]
             atol         = 0.025  # Step size atol
-            rtol         = 0.09   # Step size rtol
+            rtol         = 0.08   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -66,13 +66,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # solidification
         [params.stop.solid]
             enabled  = true
-            phi_crit = 0.01  # non-dim., model will terminate when global melt fraction < phi_crit
+            phi_crit = 0.02  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
             enabled = true
-            atol    = 1e-1    # absolute tolerance [W m-2]
-            rtol    = 2e-2    # relative tolerance
+            atol    = 4e-1    # absolute tolerance [W m-2]
+            rtol    = 4e-2    # relative tolerance
 
         [params.stop.escape]
             enabled   = true
@@ -105,11 +105,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 
-    module  = "dummy"
+    module  = "lovepy"
 
     [orbit.dummy]
         H_tide  = 0.0       # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
+
+    [orbit.lovepy]
+        visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 # Planetary structure - physics table
 [struct]
@@ -117,6 +120,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     mass_tot    = 2.14       # M_earth
     radius_int  = 1.0       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
+    core_density = 10738.33      # Core density [kg m-3]
+    core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
 
 # Atmosphere - physics table
 [atmos_clim]
@@ -128,23 +133,23 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
     surf_greyalbedo = 0.2       # surface grey albedo
     albedo_pl       = 0.0   	# Enforced Bond albedo (do not use with `rayleigh = true`)
-    rayleigh        = true     # Enable rayleigh scattering
+    rayleigh        = false     # Enable rayleigh scattering
     tmp_minimum     = 0.5           # temperature floor on solver
     tmp_maximum     = 5000.0        # temperature ceiling on solver
 
-    module  = "agni"           # Which atmosphere module to use
+    module  = "dummy"           # Which atmosphere module to use
 
     [atmos_clim.agni]
         p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
-        num_levels      = 44            # Number of atmospheric grid levels
+        num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solution_atol   = 3e-2          # solver absolute tolerance
-        solution_rtol   = 7e-2          # solver relative tolerance
+        solution_rtol   = 1e-1          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = true         # volatile condensation
+        condensation    = false         # volatile condensation
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
@@ -157,7 +162,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         overlap_method    = "ee"          # gas overlap method
 
     [atmos_clim.dummy]
-        gamma           = 0.8           # atmosphere opacity between 0 and 1
+        gamma           = 0.0           # atmosphere opacity between 0 and 1
 
 # Volatile escape - physics table
 [escape]
@@ -178,18 +183,19 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     F_initial       = 1e5   # Initial heat flux guess [W m-2]
     radiogenic_heat = false  # enable radiogenic heat production
     tidal_heat      = true  # enable tidal heat production
-    rheo_phi_loc    = 0.4    # Centre of rheological transition
+    rheo_phi_loc    = 0.3    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
+    bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 200       # Number of SPIDER grid levels
+        num_levels      = 280       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 2.0e-8   # solver tolerance
-        tsurf_atol      = 25.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
-        ini_entropy     = 2900.0    # Surface entropy conditions [J K-1 kg-1]
+        tolerance       = 1e-6   # solver tolerance
+        tsurf_atol      = 15.0      # tsurf_poststep_change
+        tsurf_rtol      = 0.005      # tsurf_poststep_change_frac
+        ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
@@ -243,8 +249,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
 
-        # NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
-        N_ppmw      = 2.01       # Nitrogen inventory in ppmw relative to mantle mass
+        NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
+        # N_ppmw      = 2.01       # Nitrogen inventory in ppmw relative to mantle mass
 
         SH_ratio    = 2.16       # S/H mass ratio in mantle/atmosphere system
         # S_ppmw      = 0.0     # Sulfur inventory in ppmw relative to mantle mass

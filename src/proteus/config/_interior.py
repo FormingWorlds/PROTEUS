@@ -26,6 +26,8 @@ class Interior:
         Centre of rheological transition in terms of melt fraction
     rheo_phi_wid: float
         Width of rheological transition in terms of melt fraction
+    bulk_modulus: float
+        Fixed bulk modulus of each layer [Pa].
 
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
@@ -42,6 +44,7 @@ class Interior:
     tidal_heat: bool
     rheo_phi_loc: float = field(validator=(gt(0),lt(1)))
     rheo_phi_wid: float = field(validator=(gt(0),lt(1)))
+    bulk_modulus: float = field(validator=gt(0))
 
     module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
     spider: Spider

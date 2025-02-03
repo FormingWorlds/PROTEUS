@@ -185,6 +185,8 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
 
     # Orbit module
     log.info("Orbit module      %s" % config.orbit.module)
+    if config.orbit.module == 'lovepy':
+        log.info("  - Julia         version " + _get_julia_version())
 
     # Delivery module
     log.info("Delivery module   %s" % config.delivery.module)
@@ -259,6 +261,9 @@ def print_citation(config:Config):
 
     # Orbit module
     match config.orbit.module:
+        case 'lovepy':
+            _cite("Hay & Matsuyama (2019)",
+                    "https://doi.org/10.3847/1538-4357/ab0c21")
         case _:
             pass
 
@@ -294,16 +299,15 @@ def PrintCurrentState(hf_row:dict):
     Print the current state of the model to the logger
     '''
     log.info("Runtime info...")
-    log.info("    System time  :   %s  "         % _get_current_time())
-    log.info("    Model time   :   %.2e   yr"    % float(hf_row["Time"]))
-    log.info("    T_surf       :   %4.3f   K"    % float(hf_row["T_surf"]))
-    log.info("    T_magma      :   %4.3f   K"    % float(hf_row["T_magma"]))
-    log.info("    P_surf       :   %.2e   bar"   % float(hf_row["P_surf"]))
-    log.info("    Phi_global   :   %.2e   "      % float(hf_row["Phi_global"]))
-    log.info("    Instellation :   %.2e   W m-2" % float(hf_row["F_ins"]))
-    log.info("    F_int        :   %.2e   W m-2" % float(hf_row["F_int"]))
-    log.info("    F_atm        :   %.2e   W m-2" % float(hf_row["F_atm"]))
-    log.info("    |F_net|      :   %.2e   W m-2" % abs(float(hf_row["F_net"])))
+    log.info("    Wall time  = %s  "         % _get_current_time())
+    log.info("    Model time = %.2e   yr"    % float(hf_row["Time"]))
+    log.info("    T_surf     = %4.3f   K"    % float(hf_row["T_surf"]))
+    log.info("    T_magma    = %4.3f   K"    % float(hf_row["T_magma"]))
+    log.info("    P_surf     = %.2e   bar"   % float(hf_row["P_surf"]))
+    log.info("    Phi_global = %.2e   "      % float(hf_row["Phi_global"]))
+    log.info("    F_atm      = %.2e   W m-2" % float(hf_row["F_atm"]))
+    log.info("    F_int      = %.2e   W m-2" % float(hf_row["F_int"]))
+    log.info("    F_ins      = %.2e   W m-2" % float(hf_row["F_ins"]))
 
 def CreateLockFile(output_dir:str):
     '''
@@ -329,9 +333,11 @@ def GetHelpfileKeys():
             # Model tracking
             "Time", # [yr]
 
-            # Orbital dynamics
-            "separation", # [m]
-            "period", # [s]
+            # Orbit semi-major axis and time-averaged separation
+            "semimajorax", "separation", # [m], [m],
+
+            # Orbital period and eccentricity
+            "period", "eccentricity", # [s], [1]
 
             # Dry interior radius (calculated) and mass (from config)
             "R_int", "M_int", # [m], [kg]
@@ -359,6 +365,9 @@ def GetHelpfileKeys():
             "rho_obs",  # observed bulk density [kg m-3]
             "transit_depth", "contrast_ratio", # [1], [1]
             "bond_albedo", # bond albedo [1]
+
+            # Imaginary part of k2 Love Number
+            "Imk2", # [1]
 
             # Escape
             "esc_rate_total", "p_xuv", "z_xuv", "R_xuv", # [kg s-1], [bar], [m], [m]
@@ -459,7 +468,7 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
         os.remove(fpath)
 
     # write new file
-    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.6e")
+    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.8e")
     return fpath
 
 def ReadHelpfileFromCSV(output_dir:str):
@@ -611,14 +620,15 @@ def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
     root_dir = get_proteus_dir()
 
     return {
-        "agni": os.path.join(root_dir, "AGNI"),
-        "input": os.path.join(root_dir, "input"),
-        "output": os.path.join(root_dir, "output", out_dir),
         "proteus":  root_dir,
-        "spider": os.path.join(root_dir, "SPIDER"),
-        "tools": os.path.join(root_dir, "tools"),
-        "vulcan": os.path.join(root_dir, "VULCAN"),
-        "utils": os.path.join(root_dir, "src", "proteus", "utils")
+        "agni":     os.path.join(root_dir, "AGNI"),
+        "lovepy":   os.path.join(root_dir, "lovepy"),
+        "input":    os.path.join(root_dir, "input"),
+        "spider":   os.path.join(root_dir, "SPIDER"),
+        "tools":    os.path.join(root_dir, "tools"),
+        "vulcan":   os.path.join(root_dir, "VULCAN"),
+        "output":   os.path.join(root_dir, "output", out_dir),
+        "utils":    os.path.join(root_dir, "src", "proteus", "utils")
     }
 
 

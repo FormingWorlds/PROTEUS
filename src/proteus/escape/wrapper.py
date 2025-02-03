@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from zephyrus.escape import EL_escape
 
-from proteus.utils.constants import AU, element_list, ergcm2stoWm2, secs_per_year
-from proteus.utils.helper import PrintHalfSeparator
+from proteus.utils.constants import element_list, ergcm2stoWm2, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -31,8 +30,6 @@ def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
         stellar_track : mors star object
             Mors star object storing spada track data.
     """
-
-    PrintHalfSeparator()
 
     if not config.escape.module:
         # solvevol_target is undefined?
@@ -81,14 +78,14 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
 
     # Interpolating the XUV flux at the age of the star
     Fxuv_star_SI = ((stellar_track.Value(age_star, 'Lx') + stellar_track.Value(age_star, 'Leuv'))
-                             / (4 * np.pi * (config.orbit.semimajoraxis * AU * 1e2)**2)) * ergcm2stoWm2
+                             / (4 * np.pi * (hf_row["semimajorax"] * 1e2)**2)) * ergcm2stoWm2
 
     log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI} [W/m2]")
 
     # Compute energy-limited escape
     mlr = EL_escape(config.escape.zephyrus.tidal, #tidal contribution (True/False)
-                    config.orbit.semimajoraxis * AU, #planetary semi-major axis [m]
-                    config.orbit.eccentricity, #eccentricity
+                    hf_row["semimajorax"], #planetary semi-major axis [m]
+                    hf_row["eccentricity"], #eccentricity
                     hf_row["M_planet"], #planetary mass [kg]
                     config.star.mass, #stellar mass [kg]
                     config.escape.zephyrus.efficiency, #efficiency factor

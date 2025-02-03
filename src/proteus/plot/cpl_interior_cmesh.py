@@ -80,7 +80,7 @@ def plot_interior_cmesh(output_dir: str, times: list | np.ndarray, data: list,
             arr_z1[i,j] = y_tmp[j]
             arr_z2[i,j] = y_phi[j]
             arr_z3[i,j] = y_vis[j]
-            arr_z4[i,j] = y_flx[j]
+            arr_z4[i,j] = y_flx[j] / 1e3
 
     # Ensure that all values are float
     for a in (arr_z1,arr_z2,arr_z3,arr_z4,arr_yb):
@@ -141,18 +141,16 @@ def plot_interior_cmesh(output_dir: str, times: list | np.ndarray, data: list,
 
     # Plot convective heat flux
     cmap = cm.acton
+    cmap.set_under("k")
     cax = make_axes_locatable(ax4).append_axes('right', size='5%', pad=0.05)
-    if (np.amax(arr_z4) > 100.0*np.amin(arr_z4)):
-        norm = mpl.colors.SymLogNorm(vmin=np.amin(arr_z4), vmax=np.amax(arr_z4), linthresh=1.0)
-    else:
-        norm = mpl.colors.Normalize(vmin=np.amin(arr_z4), vmax=np.amax(arr_z4))
+    arr_z4 = np.clip(arr_z4, 1e2, np.inf)
+    norm = mpl.colors.LogNorm(vmin=1e2, vmax=np.amax(arr_z4))
     if use_contour:
-        cf = ax4.contourf(times, arr_yb, arr_z4.T, cmap=cmap, norm=norm, levels=cblevels)
+        cf = ax4.contourf(times, arr_yb, arr_z4.T, cmap=cmap, norm=norm, levels=cblevels, extend='min')
     else:
-        cf = ax4.pcolormesh(times, arr_yb, arr_z4.T, cmap=cmap, norm=norm, rasterized=True)
-    cb = fig.colorbar(cf, cax=cax, orientation='vertical')
-    cb.set_label("Convective flux [W m$^{-2}$]")
-    cb.set_ticks([float(round(v, -1)) for v in np.linspace(np.amin(arr_z4), np.amax(arr_z4), numticks)])
+        cf = ax4.pcolormesh(times, arr_yb, arr_z4.T, cmap=cmap, norm=norm, rasterized=True, extend='min')
+    cb = fig.colorbar(cf, cax=cax, orientation='vertical', extend='under')
+    cb.set_label("Convective flux \n [kW m$^{-2}$]")
 
     # Save plot
     ax4.set_xticks(np.linspace(times[0], times[-1], 5))

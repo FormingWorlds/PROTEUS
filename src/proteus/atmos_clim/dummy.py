@@ -23,9 +23,9 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     #    surface, relative to the surface temperature itself
     # Setting this to 0 will result in an entirely transparent atmosphere
     # Setting this to 1 will result in an OLR of zero
-    gamma           = 0.7
 
     # Parameters
+    gamma           = config.atmos_clim.dummy.gamma
     zenith_angle    = config.orbit.zenith_angle
     albedo_pl       = config.atmos_clim.albedo_pl
     inst_sf         = config.orbit.s0_factor
@@ -33,9 +33,7 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     skin_d          = config.atmos_clim.surface_d
     skin_k          = config.atmos_clim.surface_k
 
-    log.info("Gamma = %.4f" % gamma)
-    if not (0.0 <= gamma <= 1.0):
-        log.warning("Gamma value is out of bounds; expect unreasonable fluxes")
+    log.debug("Gamma = %.4f" % gamma)
 
     # Simple rad trans
     def _calc_fluxes(x):

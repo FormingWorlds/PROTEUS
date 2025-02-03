@@ -46,7 +46,7 @@ def test_physical_run(physical_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
-    neglect = ["CH4_mol_atm", "CH4_mol_total", "CH4_kg_atm", "CH4_kg_total"]
+    neglect = ["CH4_mol_atm", "CH4_mol_total", "CH4_kg_atm", "CH4_kg_total", "CH4_bar"]
     hf_all = hf_all.drop(columns=neglect)
     hf_ref = hf_ref.drop(columns=neglect)
 

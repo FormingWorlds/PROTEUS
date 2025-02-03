@@ -152,6 +152,8 @@ def CommentFromStatus(status:int):
             desc = "Error (Kinetics model)"
         case 25:
             desc = "Error (died, or exit requested by user)"
+        case 26:
+            desc = "Error (Tides/orbit model)"
         # Default case
         case _:
             desc = "UNHANDLED STATUS (%d)" % status
