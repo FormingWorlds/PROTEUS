@@ -415,6 +415,9 @@ def GetHelpfileKeys():
                 continue
             keys.append(k)
 
+    # Non-physical variables
+    keys.append("runtime") # [s]
+
     return keys
 
 def CreateHelpfileFromDict(d:dict):

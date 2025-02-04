@@ -392,6 +392,10 @@ class Proteus:
 
             PrintHalfSeparator()
 
+            # Update model wall-clock runtime
+            run_time = datetime.now() - start_time
+            self.hf_row["runtime"] = float(run_time.total_seconds())
+
             # Update init loop counter
             # Next init iter
             if self.loops["init"] < self.loops["init_loops"]:
