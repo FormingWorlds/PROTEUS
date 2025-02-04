@@ -149,6 +149,8 @@ def check_termination(handler: Proteus) -> bool:
 
     # Quantify model state at this iteration
     finished = False
+    handler.finished1 = handler.finished1 or (not handler.config.params.stop.strict)
+    handler.finished2 = False
 
     # Stop simulation when planet is completely solidified
     if handler.config.params.stop.solid.enabled:
@@ -177,27 +179,29 @@ def check_termination(handler: Proteus) -> bool:
     if handler.config.params.stop.iters.enabled:
         finished = finished and _check_miniter(handler, finished)
 
-    # Ensure that criteria are satisfied for two sequential iterations
-    handler.finished2 = False
-    if handler.finished1:
-        # previous iteration satisfied the criteria...
-        if finished:
-            # convergence is also satisfied at this iteration
-            handler.finished2 = True
-            log.info("Convergence criteria satisfied twice")
-            log.debug("Model will exit")
-        else:
-            # convergence no longer satisfied - reset flags
-            handler.finished1 = False
-            log.warning("Convergence criteria no longer satisfied")
-    else:
-        # previous iteration DID NOT satisfy criteria...
-        handler.finished1 = finished
-        if finished:
-            log.info("Convergence criteria satisfied once")
-
     # Check if keepalive file has been removed
     #    This means that the model should exit ASAP, regardless of the other criteria.
     if _check_keepalive(handler):
         handler.finished2 = True
         handler.finished1 = True
+
+    # Ensure that criteria are satisfied for two sequential iterations
+    if handler.finished1:
+        # previous iteration satisfied the criteria...
+        if finished:
+            # convergence is also satisfied at this iteration
+            handler.finished2 = True
+            log.info("Convergence criteria satisfied")
+            log.debug("Model will exit")
+        else:
+            # convergence no longer satisfied - reset flags
+            handler.finished1 = False
+            log.warning("Convergence criteria no longer satisfied")
+            UpdateStatusfile(handler.directories, 1)
+    else:
+        # previous iteration DID NOT satisfy criteria...
+        handler.finished1 = finished
+        if finished:
+            log.info("Convergence criteria satisfied once")
+        UpdateStatusfile(handler.directories, 1)
+

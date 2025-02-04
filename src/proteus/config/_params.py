@@ -123,6 +123,8 @@ class StopParams:
 
     Attributes
     ----------
+    strict: bool
+        Require termination criteria to be satisfied twice before the model exits.
     iters: StopIters
         Parameters for iteration number criteria.
     time: StopTime
@@ -134,6 +136,7 @@ class StopParams:
     escape: StopEscape
         Parameters for escape criteria.
     """
+    strict: bool
     iters: StopIters
     time: StopTime
     solid: StopSolid
