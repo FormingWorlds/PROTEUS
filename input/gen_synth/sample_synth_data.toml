@@ -15,9 +15,9 @@ module = "dummy"
 
 [struct]
 set_by = "mass_tot"
-mass_tot = 2.6835735069795406
+mass_tot = 2.9175745975341916
 radius_int = 0.9
-corefrac = 0.8811243976925592
+corefrac = 0.6283393495054335
 
 [atmos_clim]
 prevent_warming = false

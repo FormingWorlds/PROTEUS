@@ -5,6 +5,7 @@ import numpy as np
 from tqdm import tqdm
 import os
 import time
+import shutil
 
 import torch
 from botorch.utils.transforms import normalize, unnormalize
@@ -15,7 +16,7 @@ from botorch.models import SingleTaskGP
 from concurrent.futures import ProcessPoolExecutor
 import itertools
 
-def run_proteus(parameters, run_name, observables = None, ref_config = "input/demos/dummy.toml"):
+def run_proteus(parameters, run_name, observables = None, ref_config = "input/demos/dummy.toml", max_attempts = 2):
     """
     Run the simulator using a .toml configuration file and return the results as a DataFrame.
 
@@ -24,6 +25,7 @@ def run_proteus(parameters, run_name, observables = None, ref_config = "input/de
         run_name (str): name of experiment, will be used to create input and output directories in input and output folder, can be "directory/name"
         observables (list): PROTEUS output to be return, defaults to some interesting ones
         ref_config (str): path to reference config, defaults to the dummy.toml
+        max_attempts (int): number of tries till error
 
     Returns:
         pd.DataFrame: Output data loaded into a Pandas DataFrame.
@@ -43,33 +45,39 @@ def run_proteus(parameters, run_name, observables = None, ref_config = "input/de
     # path to proteus output
     out_path = "output/" + run_name + "/runtime_helpfile.csv"
 
+    # round parameters
+    # parameters = {k: round(v, pr) for k,v in parameters.items()}
+
     # set path to output
     parameters["params.out.path"] = run_name
 
     # set path to config file for this run
     config_path = "input/" + run_name + ".toml"
 
-    # create
-    update_toml(ref_config, parameters, config_path)
+    for attempt in range(1, max_attempts+1):
+        try:
+            # create
+            update_toml(ref_config, parameters, config_path)
 
-    # Run the simulator as a subprocess
-    try:
-        subprocess.run(
-            ["proteus", "start", "-c", config_path],
-            check=True,
-            stdout=subprocess.DEVNULL # to suppress terminal output
-        )
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Simulator failed with error: {e}\n\n The inputs were: \n\n {parameters}")
+            # Run the simulator as a subprocess
+            subprocess.run(
+                ["proteus", "start", "-c", config_path],
+                check=True,
+                stdout=subprocess.DEVNULL # to suppress terminal output
+            )
 
-    # Load the output CSV file into a Pandas DataFrame
-    try:
-        df = pd.read_csv(out_path, delimiter="\t")
-    except FileNotFoundError:
-        raise RuntimeError(f"Output file {out_path} not found. Check the simulator configuration.")
+            # Load the output CSV file into a Pandas DataFrame
+            df = pd.read_csv(out_path, delimiter="\t")
 
-    out = df.iloc[-1][observables]
-    return out.T
+            return df.iloc[-1][observables].T
+
+        except subprocess.CalledProcessError as e:
+            if attempt < max_attempts:
+                print(f"Attempt {attempt} failed: {e}. Retrying with perturbed parameters...")
+                parameters["struct.corefrac"] += 1e-10
+            else:
+                raise RuntimeError(f"Simulator failed with error: {e}\n\n The inputs were: \n\n {parameters}")
+
 
 def sample_proteus(n, parameters = None, observables = None):
 
@@ -80,8 +88,8 @@ def sample_proteus(n, parameters = None, observables = None):
         observables (list | None): If supplied, a list of observables to return.
 
     Outputs:
-        X (pd.DataFrame): Sampled inputs
-        Y (pd.DataFrame): Calculated outputs
+        X (pd.DataFrame): shape 1xd, sampled inputs
+        Y (pd.DataFrame): shape 1xm, calculated outputs
     """
 
     # config and output files will always be overwritten
@@ -159,11 +167,15 @@ def update_toml(config_file, updates, output_file=None):
 
     # Apply updates
     for key, value in updates.items():
+
         keys = key.split('.')  # Support for nested keys with dot notation
         d = config
+
         for k in keys[:-1]:
             d = d.setdefault(k, {})  # Create nested dictionaries if they don't exist
+
         d[keys[-1]] = value
+
 
     # Ensure the directory for the output file exists
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -206,18 +218,20 @@ def run_proteus_parallel(inputs, n, obs = None):
     return outputs
 
 
-def J(x, true_y, bounds, parameters, observables, out_scaler):
+def J(x, true_y, parameters, observables, out_scaler, bounds = None, in_normalized = True, max_cores = 7):
 
     """
     Get objecitve values at q-batch
 
     Input:
         x (tensor): normalized q x d dimensional input batch
-        true_y (tensor): the observables of the plante under investigation
-        bounds (tensor): 2 x d
+        true_y (tensor): the observables of the planet under investigation
         observables (list): the observables considered
         parameters (list): the parameters to be inferred
         out_scaler (StandardScaler): the scipy scaler used to standardize outputs
+        bounds (tensor): 2 x d, for MinMax normalization
+        in_normalized (bool): inputs are normalized
+        max_cores (int): the maximum number of cores to request from the system
 
     Output:
         J (tensor): q x 1 dimensional objective values
@@ -225,9 +239,13 @@ def J(x, true_y, bounds, parameters, observables, out_scaler):
     """
 
     # proteus needs unnormalized inputs
-    x = unnormalize(x, bounds)
+    if in_normalized:
+        x = unnormalize(x, bounds)
 
     q = len(x)
+
+    # guard against requesting too many processes
+    req_cores = min([max_cores, q])
 
     run_names = [f"BO/workers/worker{i}" for i in range(q)]
 
@@ -235,7 +253,11 @@ def J(x, true_y, bounds, parameters, observables, out_scaler):
 
     inputs = list(zip(par, run_names))
 
-    sim_list = run_proteus_parallel(inputs, q, obs = observables)
+    sim_list = run_proteus_parallel(inputs, req_cores, obs = observables)
+
+    # clean up
+    shutil.rmtree("input/BO/workers")
+    shutil.rmtree("output/BO/workers")
 
     sim_list = [torch.tensor(i.values).reshape(1, -1) for i in sim_list]
     sim = [out_scaler.transform(i) for i in sim_list]

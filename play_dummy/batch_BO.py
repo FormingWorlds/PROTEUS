@@ -78,7 +78,7 @@ def opt_acqf_obs(acq_func, obs, q, d):
     # observe new values
     new_x = candidates.detach()
 
-    new_y, new_y_raw = J(new_x, obs, bounds, ks, observables, out_scaler)
+    new_y, new_y_raw = J(new_x, obs, ks, observables, out_scaler, bounds = bounds)
 
     return new_x, new_y, new_y_raw
 

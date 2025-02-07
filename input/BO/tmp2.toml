@@ -17,7 +17,7 @@ module = "dummy"
 set_by = "mass_tot"
 mass_tot = 0.7730266348742676
 radius_int = 0.9
-corefrac = 0.5049660861459808
+corefrac = 0.5049660862459808
 
 [atmos_clim]
 prevent_warming = false
