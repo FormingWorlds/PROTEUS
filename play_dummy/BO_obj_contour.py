@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 
 # this will take a while, it runs n**2 simulations (batched, but still)
-
+REUSE = True
 
 par = {"struct.mass_tot": [0.5, 3.0],
               "struct.corefrac": [0.3, 0.9]
@@ -56,18 +56,19 @@ if __name__ == "__main__":
 
     grid_points = np.stack([X1.ravel(), X2.ravel()], axis=1)
 
+    if not REUSE:
+        Z, Sims = J(grid_points, obs, ks, observables, out_scaler, in_normalized=False)
+        Z = Z.reshape(X1.shape)
+        np.save("play_dummy/synth_data/grided_objective.npy", Z)
+        np.save("play_dummy/synth_data/grided_sims.npy", Sims)
 
-    Z, Sims = J(grid_points, obs, ks, observables, out_scaler, in_normalized=False)
-    Z = Z.reshape(X1.shape)
-    np.save("play_dummy/synth_data/grided_objective.npy", Z)
-    np.save("play_dummy/synth_data/grided_sims.npy", Sims)
-
-    # Z = np.load("play_dummy/synth_data/grided_output.npy")
+    else:
+        Z = np.load("play_dummy/synth_data/grided_objective.npy")
 
 
     plt.figure(figsize=(8, 6))
-    contour = plt.contour(X1, X2, Z, levels=20, cmap="viridis")  # Contour lines
-    plt.contourf(X1, X2, Z, levels=20, cmap="viridis", alpha=0.75)  # Filled contours
+    plt.contour(X1, X2, Z, levels=200, cmap="viridis")  # Contour lines
+   # plt.contourf(X1, X2, Z, levels=200, cmap="plasma", alpha=0.75)  # Filled contours
     plt.colorbar(label="objective for given planet")  # Add colorbar
     plt.xlabel("struct.mass_tot")
     plt.ylabel("struct.corefrac")
