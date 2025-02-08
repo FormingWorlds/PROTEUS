@@ -446,25 +446,28 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "planets/l9859d.toml"
-    folder = "LOV_d2"
+    config = "planets/l9859b.toml"
+    folder = "ECC_b2"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
     symlink = None
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
-    pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_linspace("Redox state", -5, 5, 10)
+    # pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
+    # pg.set_dimension_linspace("Redox state", -5, 5, 10)
 
     # pg.add_dimension("Tidal", "orbit.dummy.H_tide")
     # pg.set_dimension_direct("Tidal", [0.0, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5])
 
-    pg.add_dimension("Core", "struct.corefrac")
-    pg.set_dimension_linspace("Core", 0.5, 0.9, 10)
+    # pg.add_dimension("Core", "struct.corefrac")
+    # pg.set_dimension_linspace("Core", 0.5, 0.9, 10)
 
     # pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
     # pg.set_dimension_linspace("Hydrogen", 60, 500, 10)
+
+    pg.add_dimension("Ecc", "orbit.eccentricity")
+    pg.set_dimension_logspace("Ecc", 1e-3, 0.2, 12)
 
     # -----
     # Print state of parameter grid

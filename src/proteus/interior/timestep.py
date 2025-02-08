@@ -123,10 +123,6 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
             i1 = int(-1 * ILOOK)
         i2 = -1
 
-        # Estimate time until solidification
-        dt_solid = _estimate_solid(hf_all, i1, i2)
-        dt_radeq = _estimate_radeq(hf_all, i1, i2)
-
         # Proportional time-step calculation
         if config.params.dt.method == 'proportional':
             log.info("Time-stepping intent: proportional")
@@ -173,8 +169,10 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
                 log.info("Time-stepping intent: slow down")
 
             # Do not allow step size to exceed predicted point of termination
-            dtswitch = min(dtswitch, dt_solid)
-            dtswitch = min(dtswitch, dt_radeq)
+            if config.params.stop.solid.enabled:
+                dtswitch = min(dtswitch, _estimate_solid(hf_all, i1, i2))
+            if config.params.stop.radeqm.enabled:
+                dtswitch = min(dtswitch, _estimate_radeq(hf_all, i1, i2))
 
         # Always use the maximum time-step, which can be adjusted in the cfg file
         elif config.params.dt.method == 'maximum':

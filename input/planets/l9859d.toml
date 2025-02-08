@@ -33,8 +33,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # time-stepping
     [params.dt]
-        minimum      = 2e1    # yr, minimum time-step
-        maximum      = 1e7    # yr, maximum time-step
+        minimum      = 1e1    # yr, minimum time-step
+        maximum      = 3e5    # yr, maximum time-step
         initial      = 2e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
@@ -64,7 +64,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 1e+9     # yr, model will terminate when t > maximum
+            maximum = 200e6     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -73,7 +73,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         # radiative equilibrium
         [params.stop.radeqm]
-            enabled = true
+            enabled = false
             atol    = 4e-1    # absolute tolerance [W m-2]
             rtol    = 3e-2    # relative tolerance
 
@@ -196,7 +196,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 280       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-6   # solver tolerance
-        tsurf_atol      = 15.0      # tsurf_poststep_change
+        tsurf_atol      = 10.0      # tsurf_poststep_change
         tsurf_rtol      = 0.004      # tsurf_poststep_change_frac
         ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]

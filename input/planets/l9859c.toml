@@ -27,14 +27,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "l9859c"
         logging     = "INFO"
-        plot_mod    = 20      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 30      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
     # time-stepping
     [params.dt]
-        minimum      = 3e1    # yr, minimum time-step
-        maximum      = 1e7    # yr, maximum time-step
+        minimum      = 1e1    # yr, minimum time-step
+        maximum      = 3e5    # yr, maximum time-step
         initial      = 2e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
@@ -44,8 +44,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             propconst    = 52.0   # Proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.025  # Step size atol
-            rtol         = 0.09   # Step size rtol
+            atol         = 0.02  # Step size atol
+            rtol         = 0.07   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -64,7 +64,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 1e+9     # yr, model will terminate when t > maximum
+            maximum = 200e6     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -73,9 +73,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         # radiative equilibrium
         [params.stop.radeqm]
-            enabled = true
+            enabled = false
             atol    = 4e-1    # absolute tolerance [W m-2]
-            rtol    = 4e-2    # relative tolerance
+            rtol    = 3e-2    # relative tolerance
 
         [params.stop.escape]
             enabled   = true
@@ -111,7 +111,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "lovepy"
 
     [orbit.dummy]
-        H_tide  = 0.0  # Fixed tidal power density [W kg-1]
+        H_tide  = 0.0       # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
 
     [orbit.lovepy]
@@ -136,11 +136,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
     surf_greyalbedo = 0.2       # surface grey albedo
     albedo_pl       = 0.0   	# Enforced Bond albedo (do not use with `rayleigh = true`)
-    rayleigh        = false     # Enable rayleigh scattering
+    rayleigh        = true     # Enable rayleigh scattering
     tmp_minimum     = 0.5           # temperature floor on solver
     tmp_maximum     = 5000.0        # temperature ceiling on solver
 
-    module  = "dummy"           # Which atmosphere module to use
+    module  = "agni"           # Which atmosphere module to use
 
     [atmos_clim.agni]
         p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
@@ -150,7 +150,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solution_atol   = 3e-2          # solver absolute tolerance
-        solution_rtol   = 1e-1          # solver relative tolerance
+        solution_rtol   = 9e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
 
@@ -196,8 +196,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 280       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-6   # solver tolerance
-        tsurf_atol      = 15.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.005      # tsurf_poststep_change_frac
+        tsurf_atol      = 10.0      # tsurf_poststep_change
+        tsurf_rtol      = 0.004      # tsurf_poststep_change_frac
         ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
