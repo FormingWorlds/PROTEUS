@@ -4,7 +4,7 @@ import filecmp
 from pathlib import Path
 
 import pytest
-from helpers import PROTEUS_ROOT, NEGLECT, df_intersect, resize_to_match
+from helpers import NEGLECT, PROTEUS_ROOT, df_intersect, resize_to_match
 from matplotlib.testing.compare import compare_images
 from numpy.testing import assert_allclose
 from pandas.testing import assert_frame_equal

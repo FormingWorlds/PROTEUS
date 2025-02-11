@@ -3,7 +3,7 @@ from __future__ import annotations
 import filecmp
 
 import pytest
-from helpers import PROTEUS_ROOT, NEGLECT, df_intersect
+from helpers import NEGLECT, PROTEUS_ROOT, df_intersect
 from pandas.testing import assert_frame_equal
 
 from proteus import Proteus
