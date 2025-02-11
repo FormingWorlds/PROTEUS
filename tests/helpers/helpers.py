@@ -32,4 +32,3 @@ def df_intersect(df1, df2):
 
     # Return
     return out1, out2
-

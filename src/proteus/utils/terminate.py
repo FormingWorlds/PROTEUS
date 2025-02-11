@@ -218,4 +218,3 @@ def check_termination(handler: Proteus) -> bool:
     # Reset statusfile to 'Running'
     UpdateStatusfile(handler.directories, 1)
     return False
-
