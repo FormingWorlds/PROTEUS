@@ -135,6 +135,7 @@ def check_termination(handler: Proteus) -> bool:
     Decide if the model should stop or not.
 
     The model will stop when two sequential iterations satisfy the convergence criteria.
+    This occurs when finished_prev = True  and  finished_both = True.
 
     Parameters:
     --------------
@@ -149,13 +150,13 @@ def check_termination(handler: Proteus) -> bool:
 
     # Quantify model state at this iteration
     finished = False
-    handler.finished2 = False
+    handler.finished_both = False
 
     # Check if keepalive file has been removed
     #    This means that the model should exit ASAP, regardless of the other criteria.
     if _check_keepalive(handler):
-        handler.finished2 = True
-        handler.finished1 = True
+        handler.finished_both = True
+        handler.finished_prev = True
         return True
 
     # Stop simulation when planet is completely solidified
@@ -171,7 +172,7 @@ def check_termination(handler: Proteus) -> bool:
         finished = finished or _check_escape(handler)
         # By pass two-iteration check here, otherwise we will get a divide-by-zero
         #   error in the next iteration's calculation.
-        handler.finished1 = handler.finished1 or handler.has_escaped
+        handler.finished_prev = handler.finished_prev or handler.has_escaped
 
     # Maximum time reached
     if handler.config.params.stop.time.enabled:
@@ -188,8 +189,8 @@ def check_termination(handler: Proteus) -> bool:
     # Non-strict check
     if not handler.config.params.stop.strict:
         if finished:
-            handler.finished1 = True
-            handler.finished2 = True
+            handler.finished_prev = True
+            handler.finished_both = True
             log.info("Convergence criteria satisfied")
             log.debug("Model will exit")
             return True
@@ -197,21 +198,21 @@ def check_termination(handler: Proteus) -> bool:
     # Strict check
     # Ensure that criteria are satisfied for two sequential iterations
     else:
-        if handler.finished1:
+        if handler.finished_prev:
             # previous iteration satisfied the criteria...
             if finished:
                 # convergence is also satisfied at this iteration
-                handler.finished2 = True
+                handler.finished_both = True
                 log.info("Convergence criteria satisfied twice")
                 log.debug("Model will exit")
                 return True
             else:
                 # convergence no longer satisfied - reset flags
-                handler.finished1 = False
+                handler.finished_prev = False
                 log.warning("Convergence criteria no longer satisfied")
         else:
             # previous iteration DID NOT satisfy criteria...
-            handler.finished1 = finished
+            handler.finished_prev = finished
             if finished:
                 log.info("Convergence criteria satisfied once")
 

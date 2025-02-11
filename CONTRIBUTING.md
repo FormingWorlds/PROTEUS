@@ -28,6 +28,15 @@ conda activate proteus
 pip install -e .[develop]
 ```
 
+### Code style
+
+Variables should be written in lowercase with underscores: `example_variable`.
+Functions should be written in lowercase with underscores: `example_function()`.
+Constants should be written in block capitals: `CONSTANT_VALUE`.
+Lines of code should avoid being longer than 92 characters.
+Functions should include a docstring where possible, describing their purpose and params.
+Indentation deeper than 3 levels should be avoided.
+
 ### Linting
 
 Linting is a term for static code analysis to flag programming errors,

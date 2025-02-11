@@ -72,8 +72,8 @@ class Proteus:
         self.atmos_o = None     # Atmosphere object from atmos_clim/common.py
 
         # Model has finished?
-        self.finished1 = False          # Satisfied finishing criteria once
-        self.finished2 = False          # Satisfied finishing criteria twice
+        self.finished_prev = False          # Satisfied termination in prev iteration
+        self.finished_both = False          # Satisfied termination in current and previous
         self.has_escaped = False        # Atmosphere has escaped
         self.lockfile = "/tmp/none"     # Path to keepalive file
 
@@ -274,7 +274,7 @@ class Proteus:
 
         # Main loop
         UpdateStatusfile(self.directories, 1)
-        while not self.finished2:
+        while not self.finished_both:
             # New rows
             if self.loops["total"] > 0:
                 # Create new row to hold the updated variables. This will be
@@ -444,7 +444,7 @@ class Proteus:
 
             # Make plots
             if multiple(self.loops["total"], self.config.params.out.plot_mod) \
-                and not self.finished2:
+                and not self.finished_both:
 
                 log.info("Making plots")
                 UpdatePlots(self.hf_all, self.directories, self.config)
