@@ -416,17 +416,15 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
                 break
     return atmos
 
-def _solve_once(atmos, dirs:dict, config:Config):
+def _solve_once(atmos, condense:bool):
     """Use AGNI to solve radiative transfer with prescribed T(p) profile
 
     Parameters
     ----------
         atmos : AGNI.atmosphere.Atmos_t
             Atmosphere struct
-        dirs : dict
-            Dictionary containing paths to directories
-        config : Config
-            Configuration options and other variables
+        condense: bool
+            Enforce condensation curves
 
     Returns
     ----------
@@ -440,8 +438,9 @@ def _solve_once(atmos, dirs:dict, config:Config):
     #    dry convection
     jl.AGNI.setpt.dry_adiabat_b(atmos)
     #    condensation above
-    for gas in gas_list:
-        jl.AGNI.setpt.saturation_b(atmos, str(gas))
+    if condense:
+        for gas in gas_list:
+            jl.AGNI.setpt.saturation_b(atmos, str(gas))
     #    temperature floor in stratosphere
     jl.AGNI.setpt.stratosphere_b(atmos, 0.5)
 
@@ -486,7 +485,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     if config.atmos_clim.agni.solve_energy:
         atmos = _solve_energy(atmos, loops_total, dirs, config)
     else:
-        atmos = _solve_once(atmos, dirs, config)
+        atmos = _solve_once(atmos, config.atmos_clim.agni.condensation)
 
     # Write output data
     ncdf_path = os.path.join(dirs["output"],"data",time_str+"_atm.nc")

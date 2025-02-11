@@ -149,6 +149,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 60            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
+        solve_energy    = true         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-2          # solver absolute tolerance
         solution_rtol   = 5e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method

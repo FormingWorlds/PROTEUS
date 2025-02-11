@@ -11,9 +11,8 @@ from scipy.integrate import solve_ivp
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.atmos_clim.common import get_spfile_path
+from proteus.atmos_clim.common import Atmos_t, get_spfile_path
 from proteus.utils.helper import UpdateStatusfile, safe_rm
-from proteus.atmos_clim.common import Atmos_t
 
 # atm = None
 log = logging.getLogger("fwl."+__name__)
