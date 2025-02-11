@@ -104,6 +104,8 @@ class Agni:
         Number of atmospheric grid levels.
     chemistry: str | None
         Treatment of self-consistent atmospheric chemsitry. Choices: "none", "eq".
+    solve_energy: bool
+        Solve for an energy-conserving atmosphere solution.
     solution_atol: float
         Absolute tolerance on the atmosphere solution.
     solution_rtol: float
@@ -120,6 +122,7 @@ class Agni:
     surf_material: str
     num_levels: int = field(validator=ge(15))
     chemistry: str = field(validator=in_((None, "eq")), converter=none_if_none)
+    solve_energy: bool
     solution_atol: float = field(validator=gt(0))
     solution_rtol: float = field(validator=gt(0))
     overlap_method: str = field(validator=check_overlap)

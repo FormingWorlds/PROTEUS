@@ -66,7 +66,10 @@ class Proteus:
         self.loops = None
 
         # Interior
-        self.interior_o = None      # Interior object from common.py
+        self.interior_o = None      # Interior object from interior/common.py
+
+        # Atmosphere
+        self.atmos_o = None     # Atmosphere object from atmos_clim/common.py
 
         # Model has finished?
         self.finished1 = False          # Satisfied finishing criteria once
@@ -107,13 +110,18 @@ class Proteus:
             Run in offline mode; do not try to connect to the internet.
         """
 
-        # Import
-        from proteus.atmos_clim import RunAtmosphere
+        # Import things needed to run PROTEUS
+        #    atmos
+        from proteus.atmos_clim import run_atmosphere
+        from proteus.atmos_clim.common import Atmos_t
+        #    escape and outgas
         from proteus.escape.wrapper import RunEscape
+        from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
+        #    interior
         from proteus.interior.common import Interior_t
         from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure
+        #    orbit and star
         from proteus.orbit.wrapper import init_orbit, run_orbit
-        from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
         from proteus.star.wrapper import (
             get_new_spectrum,
             init_star,
@@ -122,6 +130,7 @@ class Proteus:
             update_stellar_quantities,
             write_spectrum,
         )
+        #    lookup and reference data
         from proteus.utils.data import download_sufficient_data
 
         # First things
@@ -175,8 +184,9 @@ class Proteus:
         # Download basic data
         download_sufficient_data(self.config)
 
-        # Initialise interior struct object.
+        # Initialise interior and atmosphere objects
         self.interior_o = Interior_t(get_nlevb(self.config))
+        self.atmos_o    = Atmos_t()
 
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
@@ -382,7 +392,7 @@ class Proteus:
             ############### ATMOSPHERE CLIMATE
             if not self.has_escaped:
                 PrintHalfSeparator()
-                RunAtmosphere(self.config, self.directories, self.loops,
+                run_atmosphere(self.atmos_o, self.config, self.directories, self.loops,
                                 self.star_wl, self.star_fl, update_stellar_spectrum,
                                 self.hf_all, self.hf_row)
 

@@ -250,8 +250,8 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict):
 
     Parameters
     ----------
-        atmos : atmosphere.Atmos_t
-            Atmosphere struct
+        atmos : AGNI.atmosphere.Atmos_t
+            AGNI atmosphere struct
         hf_row : dict
             Dictionary containing simulation variables for current iteration
         dirs : dict
@@ -259,7 +259,7 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict):
 
     Returns
     ----------
-        atmos : atmosphere.Atmos_t
+        atmos : AGNI.atmosphere.Atmos_t
             Atmosphere struct
 
     """
@@ -312,16 +312,12 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict):
     return atmos
 
 
-
-def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
-    """Run AGNI atmosphere model.
-
-    Calculates the temperature structure of the atmosphere and the fluxes, etc.
-    Stores the new flux boundary condition to be provided to SPIDER.
+def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
+    """Use AGNI to solve for energy-conserving solution.
 
     Parameters
     ----------
-        atmos : atmosphere.Atmos_t
+        atmos : AGNI.atmosphere.Atmos_t
             Atmosphere struct
         loops_total : int
             Model total loops counter.
@@ -329,21 +325,12 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             Dictionary containing paths to directories
         config : Config
             Configuration options and other variables
-        hf_row : dict
-            Dictionary containing simulation variables for current iteration
 
     Returns
     ----------
-        atmos : atmosphere.Atmos_t
+        atmos : AGNI.atmosphere.Atmos_t
             Atmosphere struct
-        output : dict
-            Output variables, as a dictionary
-
     """
-
-    # Inform
-    log.info("Running AGNI...")
-    time_str = "%d"%hf_row["Time"]
 
     # atmosphere solver plotting frequency
     modplot = 0
@@ -427,6 +414,79 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             if attempts >= 2:
                 log.error("Maximum attempts when executing AGNI")
                 break
+    return atmos
+
+def _solve_once(atmos, dirs:dict, config:Config):
+    """Use AGNI to solve radiative transfer with prescribed T(p) profile
+
+    Parameters
+    ----------
+        atmos : AGNI.atmosphere.Atmos_t
+            Atmosphere struct
+        dirs : dict
+            Dictionary containing paths to directories
+        config : Config
+            Configuration options and other variables
+
+    Returns
+    ----------
+        atmos : AGNI.atmosphere.Atmos_t
+            Atmosphere struct
+    """
+
+    # set temperature profile
+    #    rainout volatiles
+    jl.AGNI.setpt.prevent_surfsupersat_b(atmos)
+    #    dry convection
+    jl.AGNI.setpt.dry_adiabat_b(atmos)
+    #    condensation above
+    for gas in gas_list:
+        jl.AGNI.setpt.saturation_b(atmos, str(gas))
+    #    temperature floor in stratosphere
+    jl.AGNI.setpt.stratosphere_b(atmos, 0.5)
+
+    # solve fluxes
+    jl.AGNI.energy.calc_fluxes_b(atmos, False, False, False, False, calc_cf=True)
+
+    return atmos
+
+def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
+    """Run AGNI atmosphere model.
+
+    Calculates the temperature structure of the atmosphere and the fluxes, etc.
+    Stores the new flux boundary condition to be provided to SPIDER.
+
+    Parameters
+    ----------
+        atmos : AGNI.atmosphere.Atmos_t
+            Atmosphere struct
+        loops_total : int
+            Model total loops counter.
+        dirs : dict
+            Dictionary containing paths to directories
+        config : Config
+            Configuration options and other variables
+        hf_row : dict
+            Dictionary containing simulation variables for current iteration
+
+    Returns
+    ----------
+        atmos : AGNI.atmosphere.Atmos_t
+            Atmosphere struct
+        output : dict
+            Output variables, as a dictionary
+
+    """
+
+    # Inform
+    log.info("Running AGNI...")
+    time_str = "%d"%hf_row["Time"]
+
+    # solve atmosphere
+    if config.atmos_clim.agni.solve_energy:
+        atmos = _solve_energy(atmos, loops_total, dirs, config)
+    else:
+        atmos = _solve_once(atmos, dirs, config)
 
     # Write output data
     ncdf_path = os.path.join(dirs["output"],"data",time_str+"_atm.nc")

@@ -15,6 +15,12 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
+# Atmosphere structure class
+class Atmos_t():
+    def __init__(self):
+        # Atmosphere object internal to JANUS or AGNI
+        self._atm = None
+
 def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
     """Read data from atmosphere NetCDF output file.
 
