@@ -11,15 +11,15 @@ from scipy.integrate import solve_ivp
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.atmos_clim.common import get_spfile_path
+from proteus.atmos_clim.common import Atmos_t, get_spfile_path
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 
-atm = None
+# atm = None
 log = logging.getLogger("fwl."+__name__)
 
-def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
-                  wl: list, fl:list,
-                  update_stellar_spectrum:bool, hf_all:pd.DataFrame, hf_row:dict):
+def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
+                     wl: list, fl:list,
+                     update_stellar_spectrum:bool, hf_all:pd.DataFrame, hf_row:dict):
     """Run Atmosphere submodule.
 
     Generic function to run an atmospheric simulation with either JANUS, AGNI or dummy.
@@ -27,6 +27,8 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
 
     Parameters
     ----------
+        atmos_o: Atmos_t
+            Atmosphere struct
         config : Config
             Configuration options and other variables
         dirs : dict
@@ -47,7 +49,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
     """
 
     #Warning! Find a way to store atm object for AGNI
-    global atm
+    # global atm
 
     # Warnings
     if config.atmos_clim.albedo_pl > 1.0e-9:
@@ -73,7 +75,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
         from proteus.atmos_clim.janus import InitAtm, InitStellarSpectrum, RunJANUS
 
         # Run JANUS
-        no_atm = bool(atm is None)
+        no_atm = bool(atmos_o._atm is None)
         #Enforce surface temperature at first iteration
         if no_atm:
             hf_row["T_surf"] = hf_row["T_magma"]
@@ -85,9 +87,9 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
                 UpdateStatusfile(dirs, 20)
                 raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
             InitStellarSpectrum(dirs, wl, fl, spectral_file_nostar)
-            atm = InitAtm(dirs, config)
+            atmos_o._atm = InitAtm(dirs, config)
 
-        atm_output = RunJANUS(atm, dirs, config, hf_row, hf_all)
+        atm_output = RunJANUS(atmos_o._atm, dirs, config, hf_row, hf_all)
 
     elif config.atmos_clim.module == 'agni':
         # Import
@@ -102,7 +104,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
         # Run AGNI
         # Initialise atmosphere struct
         spfile_path = os.path.join(dirs["output"] , "runtime.sf")
-        no_atm = bool(atm is None)
+        no_atm = bool(atmos_o._atm is None)
         if no_atm or update_stellar_spectrum:
             log.debug("Initialise new atmosphere struct")
 
@@ -117,22 +119,23 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
                 safe_rm(spfile_path+"_k")
 
                 # deallocate old atmosphere
-                deallocate_atmos(atm)
+                deallocate_atmos(atmos_o._atm)
 
             # allocate new
-            atm = init_agni_atmos(dirs, config, hf_row)
+            atmos_o._atm = init_agni_atmos(dirs, config, hf_row)
 
             # Check allocation was ok
-            if not bool(atm.is_alloc):
+            if not bool(atmos_o._atm.is_alloc):
                 log.error("Failed to allocate atmos struct")
                 UpdateStatusfile(dirs, 22)
                 exit(1)
 
         # Update profile
-        atm = update_agni_atmos(atm, hf_row, dirs)
+        atmos_o._atm = update_agni_atmos(atmos_o._atm, hf_row, dirs)
 
         # Run solver
-        atm, atm_output = run_agni(atm, loop_counter["total"], dirs, config, hf_row)
+        atmos_o._atm, atm_output = run_agni(atmos_o._atm,
+                                            loop_counter["total"], dirs, config, hf_row)
 
     elif config.atmos_clim.module == 'dummy':
         # Import

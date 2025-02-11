@@ -66,11 +66,14 @@ class Proteus:
         self.loops = None
 
         # Interior
-        self.interior_o = None      # Interior object from common.py
+        self.interior_o = None      # Interior object from interior/common.py
+
+        # Atmosphere
+        self.atmos_o = None     # Atmosphere object from atmos_clim/common.py
 
         # Model has finished?
-        self.finished1 = False          # Satisfied finishing criteria once
-        self.finished2 = False          # Satisfied finishing criteria twice
+        self.finished_prev = False          # Satisfied termination in prev iteration
+        self.finished_both = False          # Satisfied termination in current and previous
         self.has_escaped = False        # Atmosphere has escaped
         self.lockfile = "/tmp/none"     # Path to keepalive file
 
@@ -107,11 +110,19 @@ class Proteus:
             Run in offline mode; do not try to connect to the internet.
         """
 
-        # Import
-        from proteus.atmos_clim import RunAtmosphere
+        # Import things needed to run PROTEUS
+        #    atmos
+        from proteus.atmos_clim import run_atmosphere
+        from proteus.atmos_clim.common import Atmos_t
+
+        #    escape and outgas
         from proteus.escape.wrapper import RunEscape
+
+        #    interior
         from proteus.interior.common import Interior_t
         from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure
+
+        #    orbit and star
         from proteus.orbit.wrapper import init_orbit, run_orbit
         from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
         from proteus.star.wrapper import (
@@ -122,6 +133,8 @@ class Proteus:
             update_stellar_quantities,
             write_spectrum,
         )
+
+        #    lookup and reference data
         from proteus.utils.data import download_sufficient_data
 
         # First things
@@ -175,8 +188,9 @@ class Proteus:
         # Download basic data
         download_sufficient_data(self.config)
 
-        # Initialise interior struct object.
+        # Initialise interior and atmosphere objects
         self.interior_o = Interior_t(get_nlevb(self.config))
+        self.atmos_o    = Atmos_t()
 
         # Is the model resuming from a previous state?
         if not self.config.params.resume:
@@ -260,7 +274,7 @@ class Proteus:
 
         # Main loop
         UpdateStatusfile(self.directories, 1)
-        while not self.finished2:
+        while not self.finished_both:
             # New rows
             if self.loops["total"] > 0:
                 # Create new row to hold the updated variables. This will be
@@ -382,7 +396,7 @@ class Proteus:
             ############### ATMOSPHERE CLIMATE
             if not self.has_escaped:
                 PrintHalfSeparator()
-                RunAtmosphere(self.config, self.directories, self.loops,
+                run_atmosphere(self.atmos_o, self.config, self.directories, self.loops,
                                 self.star_wl, self.star_fl, update_stellar_spectrum,
                                 self.hf_all, self.hf_row)
 
@@ -391,6 +405,10 @@ class Proteus:
             ############### HOUSEKEEPING AND CONVERGENCE CHECK
 
             PrintHalfSeparator()
+
+            # Update model wall-clock runtime
+            run_time = datetime.now() - start_time
+            self.hf_row["runtime"] = float(run_time.total_seconds())
 
             # Update init loop counter
             # Next init iter
@@ -426,7 +444,7 @@ class Proteus:
 
             # Make plots
             if multiple(self.loops["total"], self.config.params.out.plot_mod) \
-                and not self.finished2:
+                and not self.finished_both:
 
                 log.info("Making plots")
                 UpdatePlots(self.hf_all, self.directories, self.config)

@@ -51,6 +51,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     #     Set enabled=true/false in each section to enable/disable that termination criterion
     [params.stop]
 
+        # Require criteria to be satisfied twice before model will exit?
+        strict = false
+
         # required number of iterations
         [params.stop.iters]
             enabled = true
@@ -146,6 +149,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
+        solve_energy    = false         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-3          # solver absolute tolerance
         solution_rtol   = 2e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
@@ -182,7 +186,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e6   # Initial heat flux guess [W m-2]
     radiogenic_heat = false  # enable radiogenic heat production
-    tidal_heat      = true  # enable tidal heat production
+    tidal_heat      = false  # enable tidal heat production
     rheo_phi_loc    = 0.4    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]

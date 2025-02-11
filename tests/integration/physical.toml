@@ -50,6 +50,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # termination criteria
     [params.stop]
 
+        strict = true
+
         # required number of iterations
         [params.stop.iters]
             enabled = true
@@ -145,6 +147,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
+        solve_energy    = false         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-3          # solver absolute tolerance
         solution_rtol   = 2e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method

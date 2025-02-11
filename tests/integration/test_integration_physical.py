@@ -4,7 +4,7 @@ import filecmp
 from pathlib import Path
 
 import pytest
-from helpers import PROTEUS_ROOT, resize_to_match
+from helpers import NEGLECT, PROTEUS_ROOT, df_intersect, resize_to_match
 from matplotlib.testing.compare import compare_images
 from numpy.testing import assert_allclose
 from pandas.testing import assert_frame_equal
@@ -27,7 +27,6 @@ IMAGE_LIST = (
         "plot_elements.png",
         "plot_fluxes_atmosphere.png",
         "plot_interior_cmesh.png",
-        #"plot_sflux_cross.png",
         "plot_emission.png",
         "plot_interior.png",
         "plot_sflux.png",
@@ -46,9 +45,12 @@ def test_physical_run(physical_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
-    neglect = ["CH4_mol_atm", "CH4_mol_total", "CH4_kg_atm", "CH4_kg_total", "CH4_bar"]
-    hf_all = hf_all.drop(columns=neglect)
-    hf_ref = hf_ref.drop(columns=neglect)
+    # Get intersection
+    hf_all, hf_ref = df_intersect(hf_all, hf_ref)
+
+    # Neglect some columns
+    hf_all = hf_all.drop(columns=NEGLECT, errors='ignore')
+    hf_ref = hf_ref.drop(columns=NEGLECT, errors='ignore')
 
     # Check helpfile
     assert_frame_equal(hf_all, hf_ref, rtol=5e-3)

@@ -51,6 +51,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     #     Set enabled=true/false in each section to enable/disable that termination criterion
     [params.stop]
 
+        # Require criteria to be satisfied twice before model will exit?
+        strict = false
+
         # required number of iterations
         [params.stop.iters]
             enabled = true
@@ -146,6 +149,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 40           # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
+        solve_energy    = false         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-3          # solver absolute tolerance
         solution_rtol   = 2e-2          # solver relative tolerance
         overlap_method    = "ee"          # gas overlap method
