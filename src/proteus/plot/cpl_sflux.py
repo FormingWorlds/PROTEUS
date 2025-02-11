@@ -127,12 +127,11 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0,
         log.warning("Only one spectrum was found")
 
     ax.set_yscale("log")
-    ax.set_ylabel(r"Flux [erg / (s cm$^2$ nm)]")
+    ax.set_ylabel(r"TOA spectral flux density [erg / (s cm$^2$ nm)]")
 
     ax.set_xscale("log")
     ax.set_xlabel("Wavelength [nm]")
     ax.set_xlim([0.5,max(1.0,wl_max)])
-    ax.set_title("TOA flux versus wavelength")
 
     # Plot historical spectra
     for i in range(N):
@@ -147,7 +146,7 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0,
     # Plot current spectrum (use the copy made in the output directory)
     if plt_modern:
         X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
-        ax.plot(X[0],X[1],color='black',label='Modern',lw=0.8,alpha=0.9)
+        ax.plot(X[0],X[1],color='black',label='Modern (1 AU)',lw=0.8,alpha=0.9)
 
     if plt_modern or justone:
         ax.legend()
