@@ -265,7 +265,7 @@ class Grid():
         num_threads = min(num_threads, self.size)
 
         # do not use more threads than are available
-        num_threads = min(num_threads, os.process_cpu_count())
+        num_threads = min(num_threads, os.cpu_count())
 
         # Print warning
         if not test_run:
