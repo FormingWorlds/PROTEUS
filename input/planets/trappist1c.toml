@@ -27,7 +27,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "trappist1c"
         logging     = "INFO"
-        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 10      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
@@ -64,16 +64,16 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 4.567e+9     # yr, model will terminate when t > maximum
+            maximum = 7.6e+9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
-            enabled  = true
+            enabled  = false
             phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
-            enabled = true
+            enabled = false
             atol    = 0.1     # absolute tolerance [W m-2]
             rtol    = 1e-3    # relative tolerance
 
@@ -128,12 +128,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = true      # do not allow the planet to heat up
+    prevent_warming = false      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
     cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
-    surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
+    surf_state      = "fixed"    # surface scheme: "mixed_layer" | "fixed" | "skin"
     surf_greyalbedo = 0.2       # surface grey albedo
     albedo_pl       = 0.0   	# Enforced Bond albedo (do not use with `rayleigh = true`)
     rayleigh        = true      # Enable rayleigh scattering
@@ -149,11 +149,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 60            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
-        solve_energy    = true         # solve for energy-conserving atmosphere profile
+        solve_energy    = false         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-2          # solver absolute tolerance
         solution_rtol   = 5e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = true          # volatile condensation
+        real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
@@ -171,11 +172,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
-    module = "none"    # Which escape module to use
+    module = "zephyrus"    # Which escape module to use
 
     [escape.zephyrus]
         Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-        efficiency  = 1.0           # Escape efficiency factor
+        efficiency  = 0.1           # Escape efficiency factor
         tidal       = false         # Tidal contribution enabled
 
     [escape.dummy]
@@ -194,12 +195,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 220       # Number of SPIDER grid levels
+        num_levels      = 100       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-10   # solver tolerance
+        tolerance       = 1.0e-7   # solver tolerance
         tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
-        ini_entropy     = 3300.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
@@ -247,11 +248,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
-        H_oceans    = 8.0       # Hydrogen inventory in units of equivalent Earth oceans
-        # H_ppmw      = 0.0     # Hydrogen inventory in ppmw relative to mantle mass
+        # H_oceans    = 8.0       # Hydrogen inventory in units of equivalent Earth oceans
+        H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
 
-        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
+        # CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
+        C_ppmw      = 109.0       # Carbon inventory in ppmw relative to mantle mass
 
         # NH_ratio    = 0.0       # N/H mass ratio in mantle/atmosphere system
         N_ppmw      = 2.01      # Nitrogen inventory in ppmw relative to mantle mass

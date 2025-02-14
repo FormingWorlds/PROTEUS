@@ -205,6 +205,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         condensates=condensates,
                         use_all_gases=include_all,
                         fastchem_work = fc_dir,
+                        real_gas = config.atmos_clim.agni.real_gas,
 
                         skin_d=config.atmos_clim.surface_d,
                         skin_k=config.atmos_clim.surface_k,
@@ -432,9 +433,14 @@ def _solve_once(atmos, condense:bool):
             Atmosphere struct
     """
 
+    log.info("    T_surf = %.3f K"%float(atmos.tmp_surf))
+
     # set temperature profile
     #    rainout volatiles
-    jl.AGNI.setpt.prevent_surfsupersat_b(atmos)
+    rained = jl.AGNI.setpt.prevent_surfsupersat_b(atmos)
+    rained = bool(rained)
+    if rained:
+        log.info("    gases are condensing at the surface")
     #    dry convection
     jl.AGNI.setpt.dry_adiabat_b(atmos)
     #    condensation above
