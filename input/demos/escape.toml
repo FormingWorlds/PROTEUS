@@ -154,6 +154,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         solution_rtol   = 2e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = true         # volatile condensation
+        real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
         p_top           = 1.0e-7        # bar, top of atmosphere grid pressure
