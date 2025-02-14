@@ -19,6 +19,12 @@ def warn_if_dummy(instance, attribute, value):
     if (instance.module == 'dummy') and value:
         raise ValueError('Dummy atmos_clim module is incompatible with Rayleigh scattering')
 
+def agni_solve_skin(instance, attribute, value):
+    # agni must solve_energy=true if surf_state=skin
+    no_solve = (instance.module == 'agni') and (not instance.agni.solve_energy)
+    if no_solve and (value == 'skin'):
+        raise ValueError("Must set `agni.solve_energy=true` if using `surf_state='skin'`")
+
 def check_overlap(instance, attribute, value):
     _overlaps = ("ro", "ee", "rorr")
     if value not in _overlaps:
@@ -67,7 +73,10 @@ class AtmosClim:
     surface_k: float = field(validator=gt(0))
     cloud_enabled: bool
     cloud_alpha: float = field(validator=(ge(0), le(1)))
-    surf_state: str = field(validator=in_(('mixed_layer', 'fixed', 'skin')))
+    surf_state: str = field(validator=(
+                                        in_(('mixed_layer', 'fixed', 'skin')),
+                                        agni_solve_skin
+                                    ))
     surf_greyalbedo:float = field(validator=(ge(0),le(1)))
     albedo_pl: float = field(validator=(ge(0), le(1)))
     rayleigh: bool = field(validator=warn_if_dummy)
@@ -114,6 +123,8 @@ class Agni:
         Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
     condensation: bool
         Enable volatile condensation/phase change in the atmosphere.
+    real_gas: bool
+        Use real gas equations of state in atmosphere, where possible.
     """
 
     p_top: float = field(validator=gt(0))
@@ -127,6 +138,7 @@ class Agni:
     solution_rtol: float = field(validator=gt(0))
     overlap_method: str = field(validator=check_overlap)
     condensation: bool
+    real_gas: bool
 
     @property
     def chemistry_int(self) -> int:
