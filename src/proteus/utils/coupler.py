@@ -17,7 +17,6 @@ import pandas as pd
 from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.interior.wrapper import read_interior_data
 from proteus.plot.cpl_atmosphere import plot_atmosphere
-from proteus.plot.cpl_elements import plot_elements
 from proteus.plot.cpl_emission import plot_emission
 from proteus.plot.cpl_escape import plot_escape
 from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
@@ -507,7 +506,6 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     dummy_int = config.interior.module == 'dummy'
     spider    = config.interior.module == 'spider'
     aragog    = config.interior.module == 'aragog'
-    escape    = config.escape.module is not None
 
     # Get all output times
     output_times = []
@@ -522,9 +520,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     plot_global(hf_all, output_dir, config)
 
     # Elemental mass inventory
-    if escape:
-        plot_elements(hf_all, output_dir, config.params.out.plot_fmt)
-        plot_escape(hf_all, output_dir, escape_model=config.escape.module, plot_format=config.params.out.plot_fmt)
+    plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:

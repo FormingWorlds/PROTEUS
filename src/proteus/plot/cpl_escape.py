@@ -8,50 +8,97 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import M_earth, s2yr
+from proteus.utils.constants import element_list, secs_per_year
+from proteus.utils.plot import get_colour
 
 if TYPE_CHECKING:
     from proteus import Proteus
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_escape(hf_all:pd.DataFrame, output_dir:str, escape_model, plot_format="pdf", t0=100.0) :
+def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf", t0=1e4) :
 
-    time = np.array(hf_all["Time"])
-    if np.amax(time) < 2:
+    if len(hf_all["Time"]) < 3:
         log.debug("Insufficient data to make plot_escape")
         return
 
+    hf_crop = hf_all.iloc[4:]
+    time = np.array(hf_crop["Time"])
+
+    if np.amax(time) < t0:
+        t0 = 1.0
+
     log.info("Plot escape")
 
-    # make plot
+    # mass unit
+    M_uval = 1e20     # kg
+    M_ulbl = r"$10^{20}$kg"
+
+    # create plot
     lw = 1.2
-    scale = 1.1
-    fig,ax1 = plt.subplots(1,1, figsize=(7*scale,4*scale))
+    scale = 1.2
+    fig,axs = plt.subplots(2,1, figsize=(5*scale,5*scale), sharex=True)
 
-    if not escape_model:
-        escape_model_label = 'No escape'
-    elif escape_model == 'zephyrus':
-        escape_model_label = 'Energy-limited escape (Zephyrus)'
-    elif escape_model == 'dummy':
-        escape_model_label = 'Dummy escape'
+    # get axes
+    axt = axs[0]
+    axb = axs[1]
+    axr = axb.twinx()
 
-    y = hf_all['esc_rate_total']
-    ax1.plot(time, y, lw=lw, ls='solid', label=f'{escape_model_label}')
+    # By element
+    total = np.zeros(len(time))
+    for e in element_list:
 
-    # decorate
-    ax1.set_ylabel(r'Mass loss rate [kg $s^{-1}$]')
-    ax1.set_yscale("log")
-    ax1.set_xlabel("Time [yr]")
-    ax1.set_xscale("log")
-    ax1.set_xlim(left=t0, right=np.amax(time))
-    ax1.grid(alpha=0.2)
-    ax1.legend()
-    ax2 = ax1.twinx()
-    ylims = ax1.get_ylim()
-    ax2.set_ylim((ylims[0]/ s2yr) / M_earth,(ylims[1] / s2yr) / M_earth)
-    ax2.set_yscale('log')
-    ax2.set_ylabel(r'Mass loss rate [$M_{\oplus}$ $yr^{-1}$]')
+        _lw = lw
+        if e == 'H':
+            _lw = lw * 1.8
+        col = get_colour(e)
+
+        # Plot planetary inventory of this element
+        y = np.array(hf_crop[e+"_kg_total"])/M_uval
+        total += y
+        axt.plot(time, y, lw=_lw, ls='dotted', color=col)
+
+        # Plot atmospheric inventory of this element
+        y = np.array(hf_crop[e+"_kg_atm"])/M_uval
+        axt.plot(time, y, lw=_lw, ls='solid', color=col, label=e)
+
+    # Planetary element sum inventory
+    axt.plot(time, total, lw=lw, ls='dotted',  label='Total',  c='k')
+
+    # Atmosphere mass
+    M_atm = np.array(hf_crop["M_atm"])/M_uval
+    axt.plot(time, M_atm, lw=lw, ls='solid', label='Atm.', c='k')
+
+    # Decorate top plot
+    axt.set_ylabel(r"Mass [%s]"%M_ulbl)
+    axt.set_yscale("log")
+    axt.legend(loc='upper left', bbox_to_anchor=(1.0, 1.02), labelspacing=0.2)
+
+    # Plot escape rate (kg / yr)
+    y = np.array(hf_crop['esc_rate_total']) * secs_per_year * 1e6 / M_uval
+    axb.plot(time, y, lw=lw, color='k')
+    axb.axvline(time[np.argmax(y)], color='k')
+
+    axb.set_ylabel('Escape rate [%s / yr]'%M_ulbl)
+    axb.set_xlabel("Time [yr]")
+    axb.set_xscale("log")
+    axb.set_xlim(left=t0, right=np.amax(time)*1.1)
+
+    # Plot surface pressure
+    col = 'seagreen'
+
+    y = np.array(hf_crop["P_surf"])
+    axr.plot(time, y, lw=lw, color=col)
+    tmax = time[np.argmax(y)]
+    axr.axvline(tmax, color=col, ls='dashdot', label=r"Maximum P$_\text{surf}$")
+    axt.axvline(tmax, color=col, ls='dashdot')
+
+    axr.set_ylabel('Surface pressure [bar]', color=col)
+    axr.tick_params(axis='y', color=col, labelcolor=col)
+    axr.legend(loc='lower left')
+
+    # Adjust
+    fig.subplots_adjust(hspace=0.02)
 
     plt.close()
     plt.ioff()
@@ -68,10 +115,8 @@ def plot_escape_entry(handler: Proteus):
     plot_escape(
         hf_all=hf_all,
         output_dir=handler.directories["output"],
-        escape_model=handler.config.escape.module,
         plot_format=handler.config.params.out.plot_fmt,
     )
-
 
 if __name__ == "__main__":
     from proteus.plot._cpl_helpers import get_handler_from_argv

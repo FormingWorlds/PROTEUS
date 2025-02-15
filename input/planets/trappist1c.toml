@@ -25,8 +25,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "trappist1c_2"
-        logging     = "DEBUG"
+        path        = "trappist1c_3"
+        logging     = "INFO"
         plot_mod    = 10      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
@@ -176,7 +176,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [escape.zephyrus]
         Pxuv        = 1e-3          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-        efficiency  = 0.1           # Escape efficiency factor
+        efficiency  = 0.05           # Escape efficiency factor
         tidal       = false         # Tidal contribution enabled
 
     [escape.dummy]
