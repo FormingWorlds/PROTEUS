@@ -359,7 +359,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         # default parameters
         linesearch  = 2
         easy_start  = False
-        dx_atol     = 100.0
+        dx_atol     = config.interior.spider.tsurf_atol+10.0
         dx_rtol     = 0.05
         ls_increase = 2.2
         perturb_all = True

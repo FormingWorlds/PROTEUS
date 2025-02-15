@@ -16,19 +16,16 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf", t0=1e4) :
+def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf") :
 
-    if len(hf_all["Time"]) < 2:
+    if len(hf_all["Time"]) < 3:
         log.debug("Insufficient data to make plot_escape")
         return
 
-    hf_crop = hf_all.iloc[3:]
-    time = np.array(hf_crop["Time"])
-
-    if np.amax(time) < t0:
-        t0 = 1.0
-
     log.info("Plot escape")
+
+    hf_crop = hf_all.iloc[2:]
+    time = np.array(hf_crop["Time"])
 
     # mass unit
     M_uval = 1e20     # kg
@@ -77,24 +74,22 @@ def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf", t0=1e4) 
     # Plot escape rate (kg / yr)
     y = np.array(hf_crop['esc_rate_total']) * secs_per_year * 1e6 / M_uval
     axb.plot(time, y, lw=lw, color='k')
-    axb.axvline(time[np.argmax(y)], color='k')
-
-    axb.set_ylabel('Escape rate [%s / yr]'%M_ulbl)
+    axb.set_ylabel('Escape rate [%s / Myr]'%M_ulbl)
     axb.set_xlabel("Time [yr]")
-    axb.set_xscale("log")
-    axb.set_xlim(left=t0, right=np.amax(time)*1.1)
+    axb.set_xlim(left=0, right=np.amax(time)*1.01)
 
     # Plot surface pressure
-    col = 'seagreen'
+    color = 'seagreen'
+    alpha = 0.8
 
     y = np.array(hf_crop["P_surf"])
-    axr.plot(time, y, lw=lw, color=col)
+    axr.plot(time, y, lw=lw, color=color, alpha=alpha)
     tmax = time[np.argmax(y)]
-    axr.axvline(tmax, color=col, ls='dashdot', label=r"Maximum P$_\text{surf}$")
-    axt.axvline(tmax, color=col, ls='dashdot')
+    axr.axvline(tmax, color=color, alpha=alpha, ls='dashdot', label=r"Maximum P$_\text{surf}$")
+    axt.axvline(tmax, color=color, alpha=alpha, ls='dashdot')
 
-    axr.set_ylabel('Surface pressure [bar]', color=col)
-    axr.tick_params(axis='y', color=col, labelcolor=col)
+    axr.set_ylabel('Surface pressure [bar]', color=color)
+    axr.tick_params(axis='y', color=color, labelcolor=color)
     axr.legend(loc='lower left')
 
     # Adjust

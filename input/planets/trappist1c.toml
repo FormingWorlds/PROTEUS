@@ -25,7 +25,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "trappist1c_3"
+        path        = "trappist1c"
         logging     = "INFO"
         plot_mod    = 10      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -68,8 +68,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         # solidification
         [params.stop.solid]
-            enabled  = false
-            phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
+            enabled  = true
+            phi_crit = 0.01  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
@@ -145,8 +145,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Dayspring"   # which gas opacities to include
-        spectral_bands  = "48"         # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
+        spectral_bands  = "256"         # how many spectral bands?
+        num_levels      = 35            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
@@ -186,18 +186,18 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [interior]
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e5   # Initial heat flux guess [W m-2]
-    radiogenic_heat = false  # enable radiogenic heat production
+    radiogenic_heat = true  # enable radiogenic heat production
     tidal_heat      = false  # enable tidal heat production
     rheo_phi_loc    = 0.4    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
-    module = "dummy"   # Which interior module to use
+    module = "spider"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 100       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-7   # solver tolerance
+        tolerance       = 1.0e-6   # solver tolerance
         tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
         ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
