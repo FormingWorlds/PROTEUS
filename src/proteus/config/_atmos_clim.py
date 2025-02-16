@@ -92,8 +92,13 @@ class AtmosClim:
     @property
     def surf_state_int(self) -> int:
         """Return integer state for agni."""
-        return ('mixed_layer', 'fixed', 'skin').index(self.surf_state)
-
+        match self.surf_state:
+            case 'fixed':
+                return 1
+            case 'skin':
+                return 2
+            case _:
+                raise ValueError(f"Invalid surf_state for AGNI: '{self.surf_state}'")
 
 @define
 class Agni:

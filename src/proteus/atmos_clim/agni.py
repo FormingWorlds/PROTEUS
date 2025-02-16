@@ -227,15 +227,17 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
     # Otherwise, set to initial guess
     else:
-        tmp_top = 1100.0
+        tmp_top = 2200.0
+        tmp_top = min(tmp_top, hf_row["T_surf"])
         if hf_row["atm_kg_per_mol"] < 10.0 * 1e-3:
-            log.debug("Initialised isothermal (%.2f K)"%tmp_top)
+            log.debug("Initialised adiabatic (top = %.2f K)"%tmp_top)
             # isothermal if atmosphere has low mmw
-            jl.AGNI.setpt.isothermal_b(atmos, tmp_top)
+            jl.AGNI.setpt.dry_adiabat_b(atmos)
+            jl.AGNI.setpt.stratosphere_b(atmos, tmp_top)
         else:
             # loglinear otherwise
             log.debug("Initialised log-linear (top = %.2f K)"%tmp_top)
-            jl.AGNI.setpt.loglinear_b(atmos, min(tmp_top, hf_row["T_surf"]))
+            jl.AGNI.setpt.loglinear_b(atmos, tmp_top)
 
     # Logging
     sync_log_files(dirs["output"])
@@ -376,7 +378,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         # try different solver parameters if struggling
         if attempts == 2:
             linesearch  = 1
-            dx_atol     = 300.0
+            dx_atol     = 200.0
             ls_increase = 1.1
 
         dx_max = dx_rtol * abs(float(atmos.tmp_surf)) + dx_atol
