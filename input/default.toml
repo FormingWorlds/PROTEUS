@@ -146,14 +146,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
         spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
+        num_levels      = 60            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = false         # solve for energy-conserving atmosphere profile
         solution_atol   = 3e-2          # solver absolute tolerance
         solution_rtol   = 9e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = false         # volatile condensation
+        condensation    = true         # volatile condensation
         real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
@@ -172,7 +172,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
-    module = "none"    # Which escape module to use
+    module = "zephyrus"    # Which escape module to use
 
     [escape.zephyrus]
         Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
