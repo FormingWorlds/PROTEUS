@@ -18,7 +18,8 @@ log = logging.getLogger("fwl."+__name__)
 
 def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf") :
 
-    if len(hf_all["Time"]) < 3:
+    time = hf_all["Time"]
+    if (len(time) < 3) or (np.amax(time) < 2):
         log.debug("Insufficient data to make plot_escape")
         return
 
