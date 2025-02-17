@@ -361,27 +361,27 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         # default parameters
         linesearch  = 2
         easy_start  = False
-        dx_atol     = config.interior.spider.tsurf_atol+10.0
-        dx_rtol     = 0.05
-        ls_increase = 2.2
-        perturb_all = True
+        dx_max      = config.interior.spider.tsurf_atol+5.0
+        ls_increase = 1.02
+        perturb_all = False
         max_steps   = 100
 
         # first iteration parameters
         if loops_total == 0:
             linesearch  = 2
             easy_start  = True
-            dx_atol     = 200.0
+            perturb_all = True
+            dx_max      = 200.0
             ls_increase = 1.1
             max_steps   = 200
 
         # try different solver parameters if struggling
         if attempts == 2:
             linesearch  = 1
-            dx_atol     = 200.0
+            dx_max     *= 2.0
             ls_increase = 1.1
+            perturb_all = True
 
-        dx_max = dx_rtol * abs(float(atmos.tmp_surf)) + dx_atol
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
             linesearch, str(easy_start), dx_max, ls_increase

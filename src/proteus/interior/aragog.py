@@ -44,8 +44,11 @@ def RunAragog(config:Config, dirs:dict,
     global aragog_solver
 
     # Setup Aragog logger
+    file_level = logging.ERROR
+    if config.params.out.logging == "DEBUG":
+        file_level = logging.DEBUG
     aragog_file_logger(console_level = logging.WARNING,
-                       file_level = logging.getLevelName(config.params.out.logging),
+                       file_level = file_level,
                        log_dir = dirs["output"])
 
     # Compute time step

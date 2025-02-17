@@ -446,8 +446,8 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "planets/trappist1c.toml"
-    folder = "T1c_escape"
+    config = "planets/l9859d_escape.toml"
+    folder = "l98d_escape2"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
