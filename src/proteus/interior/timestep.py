@@ -20,14 +20,24 @@ SFINC = 1.10    # Scale factor for step size increase
 SFDEC = 0.75    # Scale factor for step size decrease
 SMALL = 1e-8   # Small number
 
+def _hf_from_iters(hf_all:pd.DataFrame, i1:int, i2:int):
+    # Get helpfile rows for two different iterations
+
+    # i2 must be larger than i1
+    if i1 >= i2:
+        log.error("Cannot compare helpfile rows (i1=%d  >=  i2=%d)"%(i1, i2))
+
+    # Return HF rows at the requested iterations
+    return dict(hf_all.iloc[i1]), dict(hf_all.iloc[i2])
+
+
 def _estimate_solid(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
     '''
     Estimate the time remaining until the planet solidifies.
     '''
 
     # HF at times
-    h1 = hf_all.iloc[i1]
-    h2 = hf_all.iloc[i2]
+    h1, h2 = _hf_from_iters(hf_all, i1, i2)
 
     # Melt fractions
     p1 = h1["Phi_global"]
@@ -59,8 +69,7 @@ def _estimate_radeq(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
     '''
 
     # HF at times
-    h1 = hf_all.iloc[i1]
-    h2 = hf_all.iloc[i2]
+    h1, h2 = _hf_from_iters(hf_all, i1, i2)
 
     # Flux residuals
     f2 = h2["F_atm"] - h2["F_tidal"] - h2["F_radio"]
@@ -84,6 +93,35 @@ def _estimate_radeq(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
     log.debug("Energy balance expected in %.3e yrs"%dt_radeq)
 
     return dt_radeq
+
+
+def _estimate_escape(hf_all:pd.DataFrame, i1:int, i2:int) -> float:
+    '''
+    Estimate the time remaining until the surface pressure is zero.
+    '''
+
+    # HF at times
+    h1, h2 = _hf_from_iters(hf_all, i1, i2)
+
+    # Surface pressures
+    p1 = h1["P_surf"]
+    p2 = h2["P_surf"]
+
+    # Change in time and global melt frac
+    dt = h2["Time"] - h1["Time"]
+    dp = p2 - p1
+
+    # Estimate how long Δt until p=0
+    if abs(dp/p2) < SMALL:
+        # already escaped
+        dt_escape = np.inf
+    else:
+        #  dp/dt * Δt + p2 = 0    ->   Δt = -p2/(dp/dt)
+        dt_escape = abs(-1.0 * p2 / (dp/dt))
+
+    log.debug("Escape expected in %.3e yrs"%dt_escape)
+
+    return dt_escape
 
 
 def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_sf:float) -> float:
@@ -173,6 +211,8 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
                 dtswitch = min(dtswitch, _estimate_solid(hf_all, i1, i2))
             if config.params.stop.radeqm.enabled:
                 dtswitch = min(dtswitch, _estimate_radeq(hf_all, i1, i2))
+            if config.params.stop.escape.enabled:
+                dtswitch = min(dtswitch, _estimate_escape(hf_all, i1, i2)*1.1)
 
         # Always use the maximum time-step, which can be adjusted in the cfg file
         elif config.params.dt.method == 'maximum':

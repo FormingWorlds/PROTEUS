@@ -43,6 +43,7 @@ _preset_colours  = {
     "Fe": "#888888",
     "Si": "#aa2277",
     "Mg": "#996633",
+    "Na": "#ccff00",
 
     # Energy fluxes
     "OLR":   "#dc143c",

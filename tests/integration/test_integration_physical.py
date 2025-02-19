@@ -24,7 +24,6 @@ IMAGE_LIST = (
         "plot_global_log.png",
         "plot_observables.png",
         "plot_structure.png",
-        "plot_elements.png",
         "plot_fluxes_atmosphere.png",
         "plot_interior_cmesh.png",
         "plot_emission.png",

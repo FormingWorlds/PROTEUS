@@ -25,18 +25,18 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "default"
+        path        = "earth"
         logging     = "INFO"
-        plot_mod    = 10      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
     # time-stepping
     [params.dt]
-        minimum      = 1e1    # yr, minimum time-step
-        maximum      = 3e5    # yr, maximum time-step
-        initial      = 2e3    # yr, inital step size
-        starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
+        minimum      = 3e2    # yr, minimum time-step
+        maximum      = 1e7    # yr, maximum time-step
+        initial      = 1e3    # yr, inital step size
+        starspec     = 3e6    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
 
@@ -44,7 +44,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             propconst    = 52.0   # Proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.02  # Step size atol
+            atol         = 0.02   # Step size atol
             rtol         = 0.07   # Step size rtol
 
     # Termination criteria
@@ -57,25 +57,25 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # required number of iterations
         [params.stop.iters]
             enabled = true
-            minimum = 8
+            minimum = 5
             maximum = 9000
 
         # required time constraints
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 200e6     # yr, model will terminate when t > maximum
+            maximum = 4.567e+9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
             enabled  = true
-            phi_crit = 0.02  # non-dim., model will terminate when global melt fraction < phi_crit
+            phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
-            enabled = false
-            atol    = 4e-1    # absolute tolerance [W m-2]
-            rtol    = 3e-2    # relative tolerance
+            enabled = true
+            atol    = 0.1     # absolute tolerance [W m-2]
+            rtol    = 1e-3    # relative tolerance
 
         [params.stop.escape]
             enabled   = true
@@ -87,31 +87,31 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [star]
 
     # Physical parameters
-    mass    = 0.273      # M_sun
+    mass    = 1.0      # M_sun
     age_ini = 0.100     # Gyr, model initialisation/start age
 
     module  = "mors"
     [star.mors]
         rot_pctle = 50.0    # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
-        age_now = 4.94     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/l-98-59.txt" # stellar spectrum
+        age_now = 0.414     # Gyr, current age of star used for scaling
+        spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
 
     [star.dummy]
-        radius  = 1.0       # R_sun
+        radius  = 0.912     # R_sun
         Teff    = 5772.0    # K
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.02191    # AU
-    eccentricity    = 0.167      # dimensionless
-    zenith_angle    = 54.74     # degrees
-    s0_factor       = 0.25      # dimensionless
+    semimajoraxis   = 1.0       # AU
+    eccentricity    = 0.0167    # dimensionless
+    zenith_angle    = 48.19     # degrees
+    s0_factor       = 0.375     # dimensionless
 
     module  = "none"
 
     [orbit.dummy]
-        H_tide  = 0.0       # Fixed tidal power density [W kg-1]
+        H_tide  = 1e-11  # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
 
     [orbit.lovepy]
@@ -119,8 +119,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
-    mass_tot    = 0.47       # M_earth
+    set_by      = 'radius_int' # Variable to set interior structure: 'radius_int' or 'mass_tot'
+    mass_tot    = 1.0       # M_earth
     radius_int  = 1.0       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
@@ -128,7 +128,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = false     # do not allow the planet to heat up
+    prevent_warming = true      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
@@ -136,24 +136,24 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     surf_state      = "fixed"    # surface scheme: "mixed_layer" | "fixed" | "skin"
     surf_greyalbedo = 0.2       # surface grey albedo
     albedo_pl       = 0.0   	# Enforced Bond albedo (do not use with `rayleigh = true`)
-    rayleigh        = true     # Enable rayleigh scattering
+    rayleigh        = true      # Enable rayleigh scattering
     tmp_minimum     = 0.5           # temperature floor on solver
     tmp_maximum     = 5000.0        # temperature ceiling on solver
 
-    module  = "agni"           # Which atmosphere module to use
+    module  = "janus"           # Which atmosphere module to use
 
     [atmos_clim.agni]
-        p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
-        spectral_group  = "Dayspring"   # which gas opacities to include
+        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+        spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
         num_levels      = 60            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
-        surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
-        solve_energy    = false         # solve for energy-conserving atmosphere profile
-        solution_atol   = 3e-2          # solver absolute tolerance
-        solution_rtol   = 9e-2          # solver relative tolerance
-        overlap_method  = "ee"          # gas overlap method
-        condensation    = true         # volatile condensation
+        surf_material   = "greybody"    # surface material file for scattering
+        solve_energy    = true         # solve for energy-conserving atmosphere profile
+        solution_atol   = 1e-2          # solver absolute tolerance
+        solution_rtol   = 5e-2          # solver relative tolerance
+        overlap_method    = "ee"          # gas overlap method
+        condensation    = true          # volatile condensation
         real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
@@ -164,19 +164,19 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
         num_levels      = 90            # Number of atmospheric grid levels
         tropopause      = "none"        # none | skin | dynamic
-        overlap_method    = "ee"          # gas overlap method
+        overlap_method  = "ee"          # gas overlap method
 
     [atmos_clim.dummy]
-        gamma           = 0.0           # atmosphere opacity between 0 and 1
+        gamma           = 0.7           # atmosphere opacity between 0 and 1
 
 # Volatile escape - physics table
 [escape]
 
-    module = "zephyrus"    # Which escape module to use
+    module = "none"    # Which escape module to use
 
     [escape.zephyrus]
         Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-        efficiency  = 0.5           # Escape efficiency factor
+        efficiency  = 1.0           # Escape efficiency factor
         tidal       = false         # Tidal contribution enabled
 
     [escape.dummy]
@@ -188,32 +188,32 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     F_initial       = 1e5   # Initial heat flux guess [W m-2]
     radiogenic_heat = true  # enable radiogenic heat production
     tidal_heat      = false  # enable tidal heat production
-    rheo_phi_loc    = 0.3    # Centre of rheological transition
+    rheo_phi_loc    = 0.4    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 80       # Number of SPIDER grid levels
+        num_levels      = 220       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1e-6   # solver tolerance
-        tsurf_atol      = 10.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.004      # tsurf_poststep_change_frac
-        ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
+        tolerance       = 1.0e-10   # solver tolerance
+        tsurf_atol      = 20.0      # tsurf_poststep_change
+        tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
+        ini_entropy     = 3300.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        num_levels      = 200       # Number of Aragog grid levels
-        tolerance       = 1.0e-9   # solver tolerance
+        num_levels      = 220       # Number of Aragog grid levels
+        tolerance       = 1.0e-10   # solver tolerance
         ini_tmagma      = 3200.0    # Initial magma surface temperature [K]
 
     [interior.dummy]
-        ini_tmagma      = 3000.0    # Initial magma surface temperature [K]
+        ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = 0         # log10(ΔIW), atmosphere/interior boundary oxidation state
+    fO2_shift_IW    = 4         # log10(ΔIW), atmosphere/interior boundary oxidation state
 
     module = "calliope"         # Which outgassing module to use
 
@@ -251,14 +251,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # H_oceans    = 0.0       # Hydrogen inventory in units of equivalent Earth oceans
         H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
 
-        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
+        # CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
+        C_ppmw      = 109.0       # Carbon inventory in ppmw relative to mantle mass
 
-        NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
-        # N_ppmw      = 2.01       # Nitrogen inventory in ppmw relative to mantle mass
+        # NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
+        N_ppmw      = 2.01       # Nitrogen inventory in ppmw relative to mantle mass
 
-        SH_ratio    = 2.16       # S/H mass ratio in mantle/atmosphere system
-        # S_ppmw      = 0.0     # Sulfur inventory in ppmw relative to mantle mass
+        # SH_ratio    = 2.16       # S/H mass ratio in mantle/atmosphere system
+        S_ppmw      = 235.0     # Sulfur inventory in ppmw relative to mantle mass
+
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [delivery.volatiles]

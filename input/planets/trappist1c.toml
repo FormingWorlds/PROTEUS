@@ -44,8 +44,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             propconst    = 52.0   # Proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.02   # Step size atol
-            rtol         = 0.07   # Step size rtol
+            atol         = 0.04   # Step size atol
+            rtol         = 0.10   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -68,8 +68,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         # solidification
         [params.stop.solid]
-            enabled  = false
-            phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
+            enabled  = true
+            phi_crit = 0.01  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
@@ -144,16 +144,16 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Honeyside"   # which gas opacities to include
+        spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
-        num_levels      = 60            # Number of atmospheric grid levels
+        num_levels      = 35            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
-        solve_energy    = false         # solve for energy-conserving atmosphere profile
+        solve_energy    = true         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-2          # solver absolute tolerance
         solution_rtol   = 5e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = true          # volatile condensation
+        condensation    = false          # volatile condensation
         real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
@@ -175,8 +175,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "zephyrus"    # Which escape module to use
 
     [escape.zephyrus]
-        Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-        efficiency  = 0.1           # Escape efficiency factor
+        Pxuv        = 1e-3          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
+        efficiency  = 0.05           # Escape efficiency factor
         tidal       = false         # Tidal contribution enabled
 
     [escape.dummy]
@@ -197,7 +197,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [interior.spider]
         num_levels      = 100       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-7   # solver tolerance
+        tolerance       = 1.0e-6   # solver tolerance
         tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
         ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
@@ -213,7 +213,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = 4         # log10(ΔIW), atmosphere/interior boundary oxidation state
+    fO2_shift_IW    = 1         # log10(ΔIW), atmosphere/interior boundary oxidation state
 
     module = "calliope"         # Which outgassing module to use
 
@@ -248,17 +248,17 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
-        # H_oceans    = 8.0       # Hydrogen inventory in units of equivalent Earth oceans
-        H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_oceans    = 12.0       # Hydrogen inventory in units of equivalent Earth oceans
+        # H_ppmw      = 109.0       # Hydrogen inventory in ppmw relative to mantle mass
 
-        # CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        C_ppmw      = 109.0       # Carbon inventory in ppmw relative to mantle mass
+        CH_ratio    = 1.0         # C/H mass ratio in mantle/atmosphere system
+        # C_ppmw      = 109.0     # Carbon inventory in ppmw relative to mantle mass
 
-        # NH_ratio    = 0.0       # N/H mass ratio in mantle/atmosphere system
-        N_ppmw      = 2.01      # Nitrogen inventory in ppmw relative to mantle mass
+        NH_ratio    = 0.01844     # N/H mass ratio in mantle/atmosphere system
+        # N_ppmw      = 2.01      # Nitrogen inventory in ppmw relative to mantle mass
 
-        # SH_ratio    = 0.0       # S/H mass ratio in mantle/atmosphere system
-        S_ppmw      = 235.0     # Sulfur inventory in ppmw relative to mantle mass
+        SH_ratio    = 2.155963    # S/H mass ratio in mantle/atmosphere system
+        # S_ppmw      = 235.0     # Sulfur inventory in ppmw relative to mantle mass
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [delivery.volatiles]

@@ -227,8 +227,17 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
     # Otherwise, set to initial guess
     else:
-        jl.AGNI.setpt.isothermal_b(atmos, 1200.0)
-        # jl.AGNI.setpt.loglinear_b(atmos, min(900.0, hf_row["T_surf"]))
+        tmp_top = 2200.0
+        tmp_top = min(tmp_top, hf_row["T_surf"])
+        if hf_row["atm_kg_per_mol"] < 10.0 * 1e-3:
+            log.debug("Initialised adiabatic (top = %.2f K)"%tmp_top)
+            # isothermal if atmosphere has low mmw
+            jl.AGNI.setpt.dry_adiabat_b(atmos)
+            jl.AGNI.setpt.stratosphere_b(atmos, tmp_top)
+        else:
+            # loglinear otherwise
+            log.debug("Initialised log-linear (top = %.2f K)"%tmp_top)
+            jl.AGNI.setpt.loglinear_b(atmos, tmp_top)
 
     # Logging
     sync_log_files(dirs["output"])

@@ -42,6 +42,14 @@ sudo apt install libnetcdff-dev
 
 You will need to setup Python (>=3.10) on your system. This can be done via brew on MacOS, or with your package manager on Linux. Alternatively, you can use [miniforge](https://github.com/conda-forge/miniforge) or [pyenv](https://github.com/pyenv/pyenv).
 
+## Julia environment
+
+You will need to install Julia on your system. This should only be done using the official installer, not via your package manager.
+
+    ```console
+    curl -fsSL https://install.julialang.org | sh
+    ```
+
 ## Download the framework
 
 1. Setup environment variables
@@ -78,7 +86,20 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     The environemnt variable `RAD_DIR` must always point to the SOCRATES installation path.
     It is highly recommended that you add this to your shell rc file (e.g. `~/.bashrc`).
 
-5. **Optional** developer installation steps
+5. Radiative-convective atmosphere model (**AGNI**)
+
+    Installation steps can be found at the [AGNI wiki](https://nichollsh.github.io/AGNI/dev/setup/).
+    They are also reproduced below.
+
+    ```console
+    git clone git@github.com:nichollsh/AGNI.git
+    cd AGNI
+    julia -e 'using Pkg; Pkg.activate("."); Pkg.build()'
+    julia test/runtests.jl
+    cd ../
+    ```
+
+6. **Optional** developer installation steps
 
     Follow the steps in this section if you want to create editable installations of these submodules.
     Otherwise, go to the next step section.
@@ -118,7 +139,7 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
         pip install -e ZEPHYRUS/.
         ```
 
-6. Setup numerical computing library (**PETSc**)
+7. Setup numerical computing library (**PETSc**)
 
     You will need to do this particular step in an environment with Python <=3.12.
 
@@ -126,58 +147,26 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
     ./tools/get_petsc.sh
     ```
 
-7. Setup interior evolution model (**SPIDER**)
+8. Setup interior evolution model (**SPIDER**)
 
     ```console
     ./tools/get_spider.sh
     ```
 
-8. Setup PROTEUS coupled framework
+9. Setup PROTEUS coupled framework
 
     ```console
     pip install -e .
     ```
 
 
-9. Done! 🚀
+10. Done! 🚀
     Any remaining dependencies will be downloaded when the model is first run.
 
 ## Optional modules
 
-### Radiative-convective atmosphere model (**AGNI**)
 
-Installation steps can be found at the [AGNI wiki](https://nichollsh.github.io/AGNI/dev/setup/).
-They are also reproduced below.
-
-1. Setup Julia
-
-    ```console
-    curl -fsSL https://install.julialang.org | sh
-    ```
-
-2. Clone the model
-
-    ```console
-    git clone git@github.com:nichollsh/AGNI.git
-    cd AGNI
-    ```
-
-3. Build AGNI
-
-    ```console
-    julia -e 'using Pkg; Pkg.activate("."); Pkg.build()'
-    ```
-
-4. Go back to the PROTEUS directory
-
-    ```console
-    cd ../
-    ```
-
-Consult the AGNI wiki if you encouter issues.
-
-
-### Multi-phase tidal heating model (**Lovepy**)
+### Multi-phase tidal heating model (**LovePy**)
 
 Lovepy is written in Julia. You can use the same environment as AGNI if you wish, but you
 should make sure to follow the installation steps below.
