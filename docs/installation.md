@@ -95,6 +95,7 @@ You will need to install Julia on your system. This should only be done using th
     git clone git@github.com:nichollsh/AGNI.git
     cd AGNI
     julia -e 'using Pkg; Pkg.activate("."); Pkg.build()'
+    julia test/runtests.jl
     cd ../
     ```
 
