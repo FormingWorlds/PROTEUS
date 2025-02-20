@@ -56,7 +56,7 @@ def activate_julia(dirs:dict):
     jl.seval('default(label=nothing, dpi=250)')
 
     # Import AGNI
-    jl.seval("using AGNI")
+    jl.seval("import AGNI")
 
     # Setup logging from AGNI
     #    This handle will be kept open throughout the PROTEUS simulation, so the file
@@ -504,7 +504,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
     # Write output data
     ncdf_path = os.path.join(dirs["output"],"data",time_str+"_atm.nc")
-    jl.AGNI.dump.write_ncdf(atmos, ncdf_path)
+    jl.AGNI.save.write_ncdf(atmos, ncdf_path)
 
     # Make plots
     if multiple(loops_total, config.params.out.plot_mod):
