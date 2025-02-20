@@ -10,7 +10,7 @@ import numpy as np
 from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
-from proteus.atmos_clim.common import get_height_from_pressure, get_spfile_path
+from proteus.atmos_clim.common import get_radius_from_pressure, get_spfile_path
 from proteus.utils.constants import gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, multiple, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
@@ -442,8 +442,6 @@ def _solve_once(atmos, condense:bool):
             Atmosphere struct
     """
 
-    log.info("    T_surf = %.3f K"%float(atmos.tmp_surf))
-
     # set temperature profile
     #    rainout volatiles
     rained = jl.AGNI.setpt.prevent_surfsupersat_b(atmos)
@@ -525,7 +523,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
     rho_obs = float(atmos.transspec_rho)
     p_obs   = float(atmos.transspec_p) # set by peak of contribution function
-    z_obs   = float(atmos.transspec_r) - hf_row["R_int"] # transspec_r = R_int + z_obs
+    r_obs   = float(atmos.transspec_r)
 
     # ---------------------------
     # Parse results
@@ -550,8 +548,10 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
-    log.info("SOCRATES fluxes (net@BOA, net@TOA, OLR): %.2e, %.2e, %.2e  W m-2" %
-                                        (net_flux[-1], net_flux[0] ,LW_flux_up[0]))
+    log.info("    T_surf = %.3f K"%float(atmos.tmp_surf))
+    log.info("    R_obs  = %.3f km"%float(r_obs/1e3))
+    log.info("    F_top  = %.2e W m-2"%float(net_flux[0]))
+    log.info("    F_bot  = %.2e W m-2"%float(net_flux[-1]))
 
     # XUV height in atm
     if config.escape.module == 'zephyrus':
@@ -560,7 +560,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     else:
         # escape level set to surface
         p_xuv = hf_row["P_surf"] # [bar]
-    p_xuv, z_xuv = get_height_from_pressure(atmos.p, atmos.z, p_xuv*1e5) # [Pa], [m]
+    p_xuv, r_xuv = get_radius_from_pressure(atmos.p, atmos.r, p_xuv*1e5) # [Pa], [m]
 
     # final things to store
     output = {}
@@ -569,10 +569,10 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     output["F_sct"]  = SW_flux_up[0]
     output["T_surf"] = T_surf
     output["p_obs"]  = p_obs/1e5 # convert [Pa] to [bar]
-    output["z_obs"]  = z_obs
+    output["R_obs"]  = r_obs
     output["rho_obs"]= rho_obs
     output["albedo"] = SW_flux_up[0]/SW_flux_down[0]
     output["p_xuv"]  = p_xuv/1e5        # Closest pressure from Pxuv    [bars]
-    output["z_xuv"]  = z_xuv            # Height at Pxuv                [m]
+    output["R_xuv"]  = r_xuv            # Radius at Pxuv                [m]
 
     return atmos, output

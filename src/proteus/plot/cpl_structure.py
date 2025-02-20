@@ -44,8 +44,8 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
 
     # helpfile data
     R_int = np.array(hf_all["R_int"], dtype=float)[hf_idxs]
-    R_obs = np.array(hf_all["z_obs"], dtype=float)[hf_idxs] + R_int
-    R_xuv = np.array(hf_all["z_xuv"], dtype=float)[hf_idxs] + R_int
+    R_obs = np.array(hf_all["R_obs"], dtype=float)[hf_idxs]
+    R_xuv = np.array(hf_all["R_xuv"], dtype=float)[hf_idxs]
 
     # scale to Earth radius
     for r in (R_int, R_obs, R_xuv):

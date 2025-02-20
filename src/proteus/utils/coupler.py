@@ -360,7 +360,7 @@ def GetHelpfileKeys():
 
             # Observational (from infinity)
             "p_obs",    # observered radius [bar]
-            "z_obs",    # observed height relative to R_int [m]
+            "R_obs",    # observed height relative to R_int [m]
             "rho_obs",  # observed bulk density [kg m-3]
             "transit_depth", "contrast_ratio", # [1], [1]
             "bond_albedo", # bond albedo [1]
@@ -369,7 +369,7 @@ def GetHelpfileKeys():
             "Imk2", # [1]
 
             # Escape
-            "esc_rate_total", "p_xuv", "z_xuv", "R_xuv", # [kg s-1], [bar], [m], [m]
+            "esc_rate_total", "p_xuv", "R_xuv", # [kg s-1], [bar], [m]
 
             # Atmospheric composition
             "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]

@@ -109,11 +109,11 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     output["F_atm"]   = F_atm_lim             # Net flux at TOA
     output["F_olr"]   = fluxes["fl_U_LW"]     # OLR
     output["F_sct"]   = fluxes["fl_U_SW"]     # Scattered SW flux
-    output["z_obs"]   = 0.0
+    output["R_obs"]   = R_int
     output["rho_obs"] = 3 * M_int / (4*np.pi*R_int**3)
     output["albedo"]  = fluxes["fl_U_SW"]/fluxes["fl_D_SW"]
     output["p_xuv"]   = P_surf
-    output["z_xuv"]   = 0.0
+    output["R_xuv"]   = R_int
     output["p_obs"]   = P_surf
 
     return output
