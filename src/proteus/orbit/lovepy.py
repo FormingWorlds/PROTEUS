@@ -18,11 +18,11 @@ def import_lovepy():
 
 def _jlarr(arr:np.array):
     # Make copy of array, reverse order, and convert to Julia type
-    return juliacall.convert(jl.Array[jl.prec, 1], arr[::-1])
+    return juliacall.convert(jl.Array[jl.LovePy.prec, 1], arr[::-1])
 
 def _jlsca(sca:float):
     # Make a copy of a scalar, and convert to Julia type
-    return juliacall.convert(jl.prec, sca)
+    return juliacall.convert(jl.LovePy.prec, sca)
 
 def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t,
                     visc_thresh:float, ncalc:int=1200) -> float:
