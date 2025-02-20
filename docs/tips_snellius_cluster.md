@@ -9,9 +9,9 @@
       module load 2023
       module load Python/3.11.3-GCCcore-12.3.0
       module load SciPy-bundle/2023.07-gfbf-2023a
+      export LD_LIBRARY_PATH=""
       module load netCDF-Fortran/4.6.1-gompi-2023a
 
-      export LD_LIBRARY_PATH=""
       export FWL_DATA=${HOME}/your_path_to_fwl_data
       export RAD_DIR=${HOME}/your_path_to_socrates
     }
