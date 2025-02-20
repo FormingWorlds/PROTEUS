@@ -11,6 +11,7 @@ import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import platformdirs
+
 from aragog import Output, Solver, aragog_file_logger
 from aragog.parser import (
     Parameters,
@@ -24,7 +25,6 @@ from aragog.parser import (
     _ScalingsParameters,
     _SolverParameters,
 )
-
 from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
