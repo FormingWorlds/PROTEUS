@@ -13,4 +13,3 @@ julia -e 'using Pkg; Pkg.rm("LovePy"); Pkg.add(url="https://github.com/nichollsh
 julia -e 'using LovePy; println("Installed to: "*pathof(LovePy))'
 
 echo "Done!"
-
