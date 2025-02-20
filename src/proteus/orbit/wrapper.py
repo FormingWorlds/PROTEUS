@@ -28,11 +28,8 @@ def init_orbit(handler:Proteus):
         log.warning("Tidal heating is disabled within interior configuration!")
 
     if module == "lovepy":
-        import os
-
         from proteus.orbit.lovepy import import_lovepy
-        lib = os.path.join(handler.directories["proteus"], "src/proteus/orbit/lovepy.jl")
-        import_lovepy(lib)
+        import_lovepy()
 
 def update_separation(hf_row:dict):
     '''

@@ -40,11 +40,13 @@ sudo apt install libnetcdff-dev
 
 ## Python environment
 
-You will need to setup Python (>=3.10) on your system. This can be done via brew on MacOS, or with your package manager on Linux. Alternatively, you can use [miniforge](https://github.com/conda-forge/miniforge) or [pyenv](https://github.com/pyenv/pyenv).
+You will need to install Python (>=3.10) on your system.
+This can be done via brew on MacOS, or with your package manager on Linux. Alternatively, you can use [miniforge](https://github.com/conda-forge/miniforge) or [pyenv](https://github.com/pyenv/pyenv).
 
-## Julia environment
+## Install Julia
 
-You will need to install Julia on your system. This should only be done using the official installer, not via your package manager.
+If you already have Julia installed, skip this step.
+This should only be done using the official installer, not via your package manager.
 
     ```console
     curl -fsSL https://install.julialang.org | sh
@@ -94,10 +96,11 @@ You will need to install Julia on your system. This should only be done using th
     ```console
     git clone git@github.com:nichollsh/AGNI.git
     cd AGNI
-    julia -e 'using Pkg; Pkg.activate("."); Pkg.build()'
-    julia test/runtests.jl
+    bash src/get_agni.sh
     cd ../
     ```
+
+    Use this `get_agni` script to keep AGNI and its data files up to date.
 
 6. **Optional** developer installation steps
 
@@ -171,30 +174,8 @@ You will need to install Julia on your system. This should only be done using th
 Lovepy is written in Julia. You can use the same environment as AGNI if you wish, but you
 should make sure to follow the installation steps below.
 
-1. Clone the model
-
     ```console
-    git clone git@github.com:hamishHay/lovepy.git
-    cd lovepy
-    git checkout julia_solid_body
-    ```
-
-2. Get dependencies
-
-    ```console
-    julia -e 'using Pkg; Pkg.add("DoubleFloats"); Pkg.add("AssociatedLegendrePolynomials")'
-    ```
-
-3. Pre-compile the code
-
-    ```console
-    julia -e 'include("TidalLoveNumbers.jl")'
-    ```
-
-4. Go back to the PROTEUS directory
-
-    ```console
-    cd ../
+    ./tools/get_lovepy.sh
     ```
 
 ### Chemical kinetics atmosphere model (**VULCAN**)

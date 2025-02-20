@@ -147,25 +147,22 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
     # Store atmosphere module output variables
     hf_row["rho_obs"]= atm_output["rho_obs"] # [kg m-3]
     hf_row["p_obs"]  = atm_output["p_obs"]   # [bar]
-    hf_row["z_obs"]  = atm_output["z_obs"]   # [m]
+    hf_row["R_obs"]  = atm_output["R_obs"]   # [m]
     hf_row["F_atm"]  = atm_output["F_atm"]
     hf_row["F_olr"]  = atm_output["F_olr"]
     hf_row["F_sct"]  = atm_output["F_sct"]
     hf_row["T_surf"] = atm_output["T_surf"]
     hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
     hf_row["bond_albedo"]= atm_output["albedo"]
-    hf_row["p_xuv"]  = atm_output["p_xuv"]                  # Closest pressure from Pxuv    [bar]
-    hf_row["z_xuv"]  = atm_output["z_xuv"]                  # Height at Pxuv                [m]
-    hf_row["R_xuv"]  = hf_row["R_int"] + hf_row["z_xuv"]    # Radius at z_xuv [m]
+    hf_row["p_xuv"]  = atm_output["p_xuv"]    # Closest pressure to Pxuv    [bar]
+    hf_row["R_xuv"]  = atm_output["R_xuv"]    # Radius at p_xuv [m]
 
     # Calculate observables (measured at infinite distance)
-    R_obs = hf_row["z_obs"] + hf_row["R_int"] # observed radius [m]
-    hf_row["transit_depth"] =  (R_obs / hf_row["R_star"])**2.0
+    hf_row["transit_depth"] =  (hf_row["R_obs"]  / hf_row["R_star"])**2.0
     hf_row["contrast_ratio"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
-                                 (R_obs / hf_row["separation"])**2.0
+                                 (hf_row["R_obs"] / hf_row["separation"])**2.0
 
 def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
-
     # This scheme is not typically used, but it maintained here from legacy code
     # We could consider removing it in the future.
 

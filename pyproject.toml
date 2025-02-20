@@ -99,7 +99,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 96
-target-version = "py310"
+target-version = "py312"
 extend-exclude = ["*ipynb"]
 
 [tool.ruff.lint]

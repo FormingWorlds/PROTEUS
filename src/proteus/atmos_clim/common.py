@@ -24,7 +24,7 @@ class Atmos_t():
 def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
     """Read data from atmosphere NetCDF output file.
 
-    Automatically reads pressure (p), temperature (t), height (z) arrays with
+    Automatically reads pressure (p), temperature (t), radius (z) arrays with
     cell-centre (N) and cell-edge (N+1) values interleaved into a single combined array of
     length (2*N+1).
 
@@ -54,8 +54,19 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
     t = np.array(ds.variables["tmp"][:])
     tl = np.array(ds.variables["tmpl"][:])
 
-    z = np.array(ds.variables["z"][:])
-    zl = np.array(ds.variables["zl"][:])
+    rp = float(ds.variables["planet_radius"][0])
+    if "z" in ds.variables.keys():
+        # probably from JANUS, which stores heights
+        z  = np.array(ds.variables["z"][:])
+        zl = np.array(ds.variables["zl"][:])
+        r  = np.array(z) + rp
+        rl = np.array(zl) + rp
+    else:
+        # probably from AGNI, which stores radii
+        r  = np.array(ds.variables["r"][:])
+        rl = np.array(ds.variables["rl"][:])
+        z  = np.array(r) - rp
+        zl = np.array(rl) - rp
 
     nlev_c = len(p)
 
@@ -64,6 +75,7 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
     out["p"] = [pl[0]]
     out["t"] = [tl[0]]
     out["z"] = [zl[0]]
+    out["r"] = [rl[0]]
     for i in range(nlev_c):
         out["p"].append(p[i])
         out["p"].append(pl[i+1])
@@ -73,6 +85,9 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
 
         out["z"].append(z[i])
         out["z"].append(zl[i+1])
+
+        out["r"].append(r[i])
+        out["r"].append(rl[i+1])
 
     # Read extra keys
     for key in extra_keys:
@@ -123,16 +138,16 @@ def get_spfile_path(fwl_dir:str, config:Config):
     # Construct file path
     return os.path.join(fwl_dir,"spectral_files",group,bands,group)+".sf"
 
-def get_height_from_pressure(p_arr, z_arr, p_tgt):
+def get_radius_from_pressure(p_arr, r_arr, p_tgt):
     """
-    Get the geometric height [m] corresponding to a given pressure.
+    Get the geometric radius corresponding to a given pressure.
 
     Parameters:
     ----------------
         p_arr: list
             Pressure array
-        z_arr: list
-            Height array
+        r_arr: list
+            Radius array
         p_tgt: float
             Target pressure
 
@@ -140,11 +155,9 @@ def get_height_from_pressure(p_arr, z_arr, p_tgt):
     ----------------
         p_close: float
             Closest pressure in the array
-        z_close: float
-            Closest height in the array
+        r_close: float
+            Closest radius in the array
     """
 
     p_close, idx = find_nearest(p_arr, p_tgt)
-    z_close = z_arr[idx]
-
-    return float(p_close), z_close
+    return float(p_close), float(r_arr[idx])

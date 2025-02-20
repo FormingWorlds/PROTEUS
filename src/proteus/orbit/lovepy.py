@@ -12,18 +12,17 @@ from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("fwl."+__name__)
 
-def import_lovepy(lib:str):
+def import_lovepy():
     log.debug("Import lovepy...")
-    jl.seval('using DoubleFloats')
-    jl.seval('include("%s")'%lib)
+    jl.seval("using LovePy")
 
 def _jlarr(arr:np.array):
     # Make copy of array, reverse order, and convert to Julia type
-    return juliacall.convert(jl.Array[jl.prec, 1], arr[::-1])
+    return juliacall.convert(jl.Array[jl.LovePy.prec, 1], arr[::-1])
 
 def _jlsca(sca:float):
     # Make a copy of a scalar, and convert to Julia type
-    return juliacall.convert(jl.prec, sca)
+    return juliacall.convert(jl.LovePy.prec, sca)
 
 def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t,
                     visc_thresh:float, ncalc:int=1200) -> float:
@@ -72,7 +71,7 @@ def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t,
     # Calculate heating using lovepy
     try:
         power_prf, power_blk, Imk2 = \
-            jl.calculate_heating(_jlsca(omega),
+            jl.calc_lovepy_tides(_jlsca(omega),
                                  _jlsca(hf_row["eccentricity"]),
                                  _jlarr(lov_density),
                                  _jlarr(lov_radius),
