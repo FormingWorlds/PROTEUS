@@ -80,6 +80,7 @@ class Volatiles:
     N2: float = field(default=0, validator=ge(0))
     S2: float = field(default=0, validator=ge(0))
     SO2: float = field(default=0, validator=ge(0))
+    H2S: float = field(default=0, validator=ge(0))
     NH3: float = field(default=0, validator=ge(0))
     H2: float = field(default=0, validator=ge(0))
     CH4: float = field(default=0, validator=ge(0))
