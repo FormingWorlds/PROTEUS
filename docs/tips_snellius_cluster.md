@@ -29,3 +29,8 @@
     9) XZ/5.4.5-GCCcore-13.3.0        19) OpenMPI/5.0.3-GCC-13.3.0            29) netCDF-Fortran/4.6.1-gompi-2024a
     10) libxml2/2.12.7-GCCcore-13.3.0  20) gompi/2024a
     ```
+
+Note that when logging into `snellius.surf.nl`, you will not always connect to the same computer. For example,
+sometimes your hostname might be `int5` while other times it could be `int6`. This means that `tmux` sessions
+might suddenly appear to vanish, but in reality they are running on a different node. You can access a particular
+session (e.g. `int5`) by running `ssh int5` once logged into Snellius.
