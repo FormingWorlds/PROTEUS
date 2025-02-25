@@ -48,6 +48,17 @@ Most Linux distributions do not come with `ksh` installed, while MacOS seems to.
 
 One step under *Setup SOCRATES* involves replacing `ksh` with `bash` in all of the SOCRATES executables.
 
+## Linux: cannot compile PETSc.
+
+This could be due to a mismatch between your MPICH version and SLURM. Generally this problem only occurs on HPC servers, such as for Snellius.
+You need to disable the ``--download-mpich`` flag in the `get_petsc` script.
+
+## Linux: `netcdff.so` not found
+
+This happens with SOCRATES cannot find the NetCDF-Fortran library. Make sure that it's installed.
+You can also try adding the library location to your `LD_LIBRARY_PATH` variable. Find the location
+of the NetCDF-fortran library using `nf-config --flibs`.
+
 ## MacOS: The FastChem code distributed with VULCAN won\'t compile
 
 With the new Apple Silicon hardware (M1/M2), the option `-march=native` sometimes causes issues.

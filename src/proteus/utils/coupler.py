@@ -652,8 +652,7 @@ def SetDirectories(config: Config) -> dict[str, str]:
     # FWL data folder
     if os.environ.get('FWL_DATA') is None:
         UpdateStatusfile(dirs, 20)
-        raise Exception("The FWL_DATA environment variable needs to be set up!"
-                        "Did you source PROTEUS.env?")
+        raise Exception("The FWL_DATA environment variable has not been set")
     else:
         dirs["fwl"] = os.environ.get('FWL_DATA')
 
