@@ -160,9 +160,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         spectral_group  = "Frostflow"   # which gas opacities to include
         spectral_bands  = "16"          # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 90           # Number of atmospheric grid levels
-        tropopause      = "none"        # none | skin | dynamic
-        overlap_method    = "ro"          # gas overlap method
+        num_levels      = 130           # Number of atmospheric grid levels
+        tropopause      = "skin"        # none | skin | dynamic
+        overlap_method  = "ro"          # gas overlap method
 
     [atmos_clim.dummy]
         gamma           = 0.8           # atmosphere opacity between 0 and 1
