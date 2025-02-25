@@ -48,7 +48,7 @@ const_R_gas = 8.31446261815324 # Universal gas constant, J.K-1.mol-1
 B_ein = 2.5
 
 # Supported gases
-vol_list = ["H2O", "CO2", "H2", "CH4", "CO", "N2", "S2", "SO2", "H2S"]
+vol_list = ["H2O", "CO2", "H2", "CH4", "CO", "N2", "NH3", "S2", "SO2", "H2S"]
 vap_list = ["SiO", "SiO2", "MgO", "FeO2"]
 gas_list = vol_list + vap_list
 

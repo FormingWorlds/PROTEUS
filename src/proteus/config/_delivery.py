@@ -66,6 +66,8 @@ class Volatiles:
         Initial atmospheric partial surface pressure of SO2 [bar].
     H2S: float
         Initial atmospheric partial surface pressure of H2S [bar].
+    NH3: float
+        Initial atmospheric partial surface pressure of NH3 [bar].
     H2: float
         Initial atmospheric partial surface pressure of H2 [bar].
     CH4: float
@@ -78,7 +80,7 @@ class Volatiles:
     N2: float = field(default=0, validator=ge(0))
     S2: float = field(default=0, validator=ge(0))
     SO2: float = field(default=0, validator=ge(0))
-    H2S: float = field(default=0, validator=ge(0))
+    NH3: float = field(default=0, validator=ge(0))
     H2: float = field(default=0, validator=ge(0))
     CH4: float = field(default=0, validator=ge(0))
     CO: float = field(default=0, validator=ge(0))

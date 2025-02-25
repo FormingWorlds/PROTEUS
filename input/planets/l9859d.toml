@@ -213,7 +213,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = -2         # log10(ΔIW), atmosphere/interior boundary oxidation state
+    fO2_shift_IW    = -3         # log10(ΔIW), atmosphere/interior boundary oxidation state
 
     module = "calliope"         # Which outgassing module to use
 
@@ -258,7 +258,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
         # N_ppmw      = 2.01       # Nitrogen inventory in ppmw relative to mantle mass
 
-        SH_ratio    = 40.0       # S/H mass ratio in mantle/atmosphere system
+        SH_ratio    = 4.0       # S/H mass ratio in mantle/atmosphere system
         # S_ppmw      = 0.0     # Sulfur inventory in ppmw relative to mantle mass
 
     # Set initial volatile inventory by partial pressures in atmosphere
