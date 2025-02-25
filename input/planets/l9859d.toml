@@ -27,7 +27,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "l9859d"
         logging     = "INFO"
-        plot_mod    = 30      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 10      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
@@ -154,7 +154,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         solution_rtol   = 1e-1          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
-        real_gas        = true          # use real-gas equations of state
+        real_gas        = false          # use real-gas equations of state
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
@@ -209,7 +209,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_tmagma      = 3200.0    # Initial magma surface temperature [K]
 
     [interior.dummy]
-        ini_tmagma      = 2000.0    # Initial magma surface temperature [K]
+        ini_tmagma      = 2500.0    # Initial magma surface temperature [K]
 
 # Outgassing - physics table
 [outgas]

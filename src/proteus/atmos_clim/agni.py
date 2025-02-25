@@ -365,6 +365,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         ls_increase = 1.02
         perturb_all = False
         max_steps   = 100
+        chem_type   = int(config.atmos_clim.agni.chemistry_int)
 
         # first iteration parameters
         if loops_total == 0:
@@ -374,6 +375,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
             dx_max      = 200.0
             ls_increase = 1.1
             max_steps   = 200
+            chem_type   = 0     # no chemistry
 
         # try different solver parameters if struggling
         if attempts == 2:
@@ -391,7 +393,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         agni_success = jl.AGNI.solver.solve_energy_b(atmos,
                             sol_type  = int(config.atmos_clim.surf_state_int),
                             method    = int(1),
-                            chem_type = int(config.atmos_clim.agni.chemistry_int),
+                            chem_type = chem_type,
 
                             conduct=False, convect=True, sens_heat=True,
                             latent=config.atmos_clim.agni.condensation, rainout=True,
