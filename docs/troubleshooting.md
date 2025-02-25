@@ -50,7 +50,7 @@ One step under *Setup SOCRATES* involves replacing `ksh` with `bash` in all of t
 
 ## Linux: cannot compile PETSc.
 
-This could be due to a mismatch between your MPICH version and SLURM. Generally this problem only occurs on HPC servers.
+This could be due to a mismatch between your MPICH version and SLURM. Generally this problem only occurs on HPC servers, such as for Snellius.
 You need to disable the ``--download-mpich`` flag in the `get_petsc` script.
 
 ## Linux: `netcdff.so` not found
