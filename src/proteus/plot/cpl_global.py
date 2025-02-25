@@ -36,7 +36,10 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
     leg_kwargs = {
         "frameon":1,
         "fancybox":True,
-        "framealpha":0.9
+        "framealpha":0.9,
+        "labelspacing":0.2,
+        "columnspacing":1.1,
+        "handletextpad":0.7
     }
 
     # Magnitude of change in instellation flux
