@@ -365,6 +365,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         ls_increase = 1.02
         perturb_all = False
         max_steps   = 100
+        chem_type   = int(config.atmos_clim.agni.chemistry_int)
 
         # first iteration parameters
         if loops_total == 0:
@@ -374,6 +375,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
             dx_max      = 200.0
             ls_increase = 1.1
             max_steps   = 200
+            chem_type   = 0     # no chemistry
 
         # try different solver parameters if struggling
         if attempts == 2:
@@ -391,7 +393,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         agni_success = jl.AGNI.solver.solve_energy_b(atmos,
                             sol_type  = int(config.atmos_clim.surf_state_int),
                             method    = int(1),
-                            chem_type = int(config.atmos_clim.agni.chemistry_int),
+                            chem_type = chem_type,
 
                             conduct=False, convect=True, sens_heat=True,
                             latent=config.atmos_clim.agni.condensation, rainout=True,
@@ -530,14 +532,14 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     # ---------------------------
 
     log.debug("Parse results")
-    net_flux =      np.array(atmos.flux_n)
+    tot_flux =      np.array(atmos.flux_tot)
     LW_flux_up =    np.array(atmos.flux_u_lw)
     SW_flux_up =    np.array(atmos.flux_u_sw)
     SW_flux_down =  np.array(atmos.flux_d_sw)
     T_surf =        float(atmos.tmp_surf)
 
     # New flux from SOCRATES
-    F_atm_new = net_flux[0]
+    F_atm_new = tot_flux[0]
 
     # Enforce positive limit on F_atm, if enabled
     if config.atmos_clim.prevent_warming:
@@ -550,8 +552,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
     log.info("    T_surf = %.3f K"%float(atmos.tmp_surf))
     log.info("    R_obs  = %.3f km"%float(r_obs/1e3))
-    log.info("    F_top  = %.2e W m-2"%float(net_flux[0]))
-    log.info("    F_bot  = %.2e W m-2"%float(net_flux[-1]))
+    log.info("    F_top  = %.2e W m-2"%float(tot_flux[0]))
+    log.info("    F_bot  = %.2e W m-2"%float(tot_flux[-1]))
 
     # XUV height in atm
     if config.escape.module == 'zephyrus':

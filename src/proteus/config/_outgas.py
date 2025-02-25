@@ -44,6 +44,10 @@ class Calliope:
         If True, include S2 outgassing.
     include_SO2: bool
         If True, include SO2 outgassing.
+    include_H2S: bool
+        If True, include H2S outgassing.
+    include_NH3: bool
+        If True, include NH3 outgassing.
     include_H2: bool
         If True, include H2 outgassing.
     include_CH4: bool
@@ -57,6 +61,8 @@ class Calliope:
     include_N2: bool = False
     include_S2: bool = False
     include_SO2: bool = False
+    include_H2S: bool = False
+    include_NH3: bool = False
     include_H2: bool = False
     include_CH4: bool = False
     include_CO: bool = False
