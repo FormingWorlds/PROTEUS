@@ -40,7 +40,7 @@ sudo apt install libnetcdff-dev
 
 ## Python environment
 
-You will need to install Python (>=3.10) on your system.
+You will need to install Python (>=3.11) on your system.
 This can be done via brew on MacOS, or with your package manager on Linux. Alternatively, you can use [miniforge](https://github.com/conda-forge/miniforge) or [pyenv](https://github.com/pyenv/pyenv).
 
 ## Install Julia
@@ -144,7 +144,7 @@ This should only be done using the official installer, not via your package mana
 
 7. Setup numerical computing library (**PETSc**)
 
-    You will need to do this particular step in an environment with Python <=3.12.
+    You will need to do this particular step in an environment with Python <= 3.12.
 
     ```console
     ./tools/get_petsc.sh
