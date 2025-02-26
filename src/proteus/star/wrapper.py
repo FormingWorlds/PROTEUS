@@ -190,8 +190,9 @@ def update_stellar_quantities(hf_row:dict, config:Config, stellar_track=None):
     update_stellar_mass(hf_row, config)
 
     # Update value for instellation flux
-    log.info("Update instellation")
+    log.info("Update instellation and Teff")
     update_instellation(hf_row, config, stellar_track)
+    update_stellar_temperature(hf_row, config, stellar_track)
 
     # Calculate new eqm temperature
     log.info("Update equilibrium temperature")
@@ -228,6 +229,25 @@ def update_stellar_radius(hf_row:dict, config:Config, stellar_track=None):
 
     # Dimensionalise and store in dictionary
     hf_row["R_star"] = R_star * R_sun
+
+def update_stellar_temperature(hf_row:dict, config:Config, stellar_track=None):
+    '''
+    Update stellar temperature in hf_row, stored in SI units.
+    '''
+
+    # Dummy case
+    if config.star.module == 'dummy':
+        hf_row["T_star"] = config.star.dummy.Teff
+
+    # Mors cases
+    elif config.star.module == 'mors':
+
+        # which track?
+        match config.star.mors.tracks:
+            case 'spada':
+                hf_row["T_star"] = stellar_track.Value(hf_row["age_star"] / 1e6, "Teff")
+            case 'baraffe':
+                hf_row["T_star"] = stellar_track.BaraffeStellarTeff(hf_row["age_star"])
 
 def update_instellation(hf_row:dict, config:Config, stellar_track=None):
     '''

@@ -357,6 +357,7 @@ def GetHelpfileKeys():
 
             # Stellar
             "M_star", "R_star", "age_star", # [kg], [m], [yr]
+            "T_star", # [K]
 
             # Observational (from infinity)
             "p_obs",    # observered radius [bar]
