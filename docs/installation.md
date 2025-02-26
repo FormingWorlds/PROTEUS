@@ -178,6 +178,19 @@ should make sure to follow the installation steps below.
     ./tools/get_lovepy.sh
     ```
 
+### Synthetic observations calculator (**PLATON**)
+
+[PLATON](https://platon.readthedocs.io/en/latest/intro.html) is a forward modelling and
+retrieval tool for exoplanet atmospheres. In PROTEUS, this is used to generate synthetic
+transmission and secondary eclipse observations. To get PLATON, use the script below.
+
+    ```console
+    ./tools/get_platon.sh
+    ```
+
+    Note that this script will take some time to run, as PLATON will first need to download
+    about 10 GB of opacity data from the internet.
+
 ### Chemical kinetics atmosphere model (**VULCAN**)
 
 1. Clone the model

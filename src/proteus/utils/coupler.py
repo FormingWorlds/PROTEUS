@@ -24,7 +24,8 @@ from proteus.plot.cpl_fluxes_global import plot_fluxes_global
 from proteus.plot.cpl_global import plot_global
 from proteus.plot.cpl_interior import plot_interior
 from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
-from proteus.plot.cpl_observables import plot_observables
+from proteus.plot.cpl_bolometry import plot_bolometry
+from proteus.plot.cpl_spectra import plot_spectra
 from proteus.plot.cpl_population import (
     plot_population_mass_radius,
     plot_population_time_density,
@@ -570,9 +571,10 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     if end:
         plot_global(hf_all,         output_dir, config, logt=False)
         plot_fluxes_global(hf_all,  output_dir, config)
-        plot_observables(hf_all,    output_dir, plot_format=config.params.out.plot_fmt)
+        plot_bolometry(hf_all,      output_dir, plot_format=config.params.out.plot_fmt)
+        plot_spectra(output_dir, plot_format=config.params.out.plot_fmt)
 
-        # Check that the simulation ran for long enough to make data
+        # Check that the simulation ran for long enough to make useful plots
         if len(hf_all["Time"]) >= 3:
             plot_population_mass_radius (hf_all, output_dir, fwl_dir,
                                             config.params.out.plot_fmt)

@@ -137,6 +137,9 @@ class Proteus:
         #    lookup and reference data
         from proteus.utils.data import download_sufficient_data
 
+        #    synthetic observations
+        from proteus.observe.wrapper import transit_depth_spec
+
         # First things
         start_time = datetime.now()
         self.config.params.resume = resume
@@ -451,10 +454,12 @@ class Proteus:
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
-        # FINAL THINGS BEFORE EXIT
-        PrintSeparator()
+        # Calculate transit and eclipse depths
+        transit_depth_spec(self.config, self.hf_row, self.directories["output"])
+        eclipse_depth_spec(self.config, self.hf_row, self.directories["output"])
 
         # Clean up files
+        PrintSeparator()
         safe_rm(self.lockfile)
 
         # Plot and write conditions at the end of simulation

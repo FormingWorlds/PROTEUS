@@ -15,6 +15,7 @@ from ._outgas import Outgas
 from ._params import Params
 from ._star import Star
 from ._struct import Struct
+from ._observe import Observe
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -58,6 +59,8 @@ class Config:
         Outgassing parameters (fO2, etc) and included volatiles.
     delivery: Delivery
         Initial volatile inventory, and delivery model selection.
+    observe: Observe
+        Synthetic observations.
     """
 
     version: str = field(validator=validators.in_(('2.0',)))
@@ -72,6 +75,7 @@ class Config:
     interior: Interior = field(validator=(tides_enabled_orbit,))
     outgas: Outgas
     delivery: Delivery
+    observe: Observe
 
     def write(self, out:str):
         """

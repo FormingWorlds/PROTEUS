@@ -14,6 +14,7 @@
 #   [interior] magma ocean model selection and parameters
 #   [outgas]   outgassing parameters (fO2) and included volatiles
 #   [delivery] initial volatile inventory, and delivery model selection
+#   [observe]  synthetic observations
 
 # ----------------------------------------------------
 # Metadata
@@ -274,3 +275,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         H2   = 0.0
         CH4  = 0.0
         CO   = 0.0
+
+# Calculate synthetic observations
+[observe]
+
+    # Module with which to calculate the synthetic observables
+    module = 'platon'
+
+    # Number of samples to process 
+    samples = 1

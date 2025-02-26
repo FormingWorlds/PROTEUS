@@ -14,14 +14,14 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 
-def plot_observables(hf_all:pd.DataFrame, output_dir: str, plot_format: str="pdf", t0: float=100.0):
+def plot_bolometry(hf_all:pd.DataFrame, output_dir: str, plot_format: str="pdf", t0: float=100.0):
 
     time = np.array(hf_all["Time"] )
     if np.amax(time) < 2:
-        log.debug("Insufficient data to make plot_observables")
+        log.debug("Insufficient data to make plot_bolometry")
         return
 
-    log.info("Plot observables")
+    log.info("Plot bolometry")
 
     # make plot
     lw = 1.2
@@ -49,18 +49,18 @@ def plot_observables(hf_all:pd.DataFrame, output_dir: str, plot_format: str="pdf
     plt.close()
     plt.ioff()
 
-    fpath = os.path.join(output_dir, "plot_observables.%s"%plot_format)
+    fpath = os.path.join(output_dir, "plot_bolometry.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 
-def plot_observables_entry(handler: Proteus):
+def plot_bolometry_entry(handler: Proteus):
     # read helpfile
     hf_all = pd.read_csv(os.path.join(handler.directories['output'], "runtime_helpfile.csv"), sep=r"\s+")
 
     # make plot
-    plot_observables(
-        hf_all=hf_all,
-        output_dir=handler.directories["output"],
+    plot_bolometry(
+        hf_all,
+        handler.directories["output"],
         plot_format=handler.config.params.out.plot_fmt,
     )
 
@@ -68,4 +68,4 @@ def plot_observables_entry(handler: Proteus):
 if __name__ == "__main__":
     from proteus.plot._cpl_helpers import get_handler_from_argv
     handler = get_handler_from_argv()
-    plot_observables_entry(handler)
+    plot_bolometry_entry(handler)
