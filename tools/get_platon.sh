@@ -3,6 +3,9 @@
 
 echo "Installing PLATON into Python environment..."
 
+# Download dependencies
+pip install cupy
+
 # Make room
 workpath="platon/"
 rm -rf $workpath

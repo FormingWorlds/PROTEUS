@@ -5,6 +5,7 @@ import os
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
 import numpy as np
 import pandas as pd
 
@@ -38,9 +39,9 @@ def plot_spectra(output_dir: str, plot_format: str="pdf", t0: float=100.0):
         eclipse_de = data[:,1]
 
     # make plot
-    lw = 1.2
+    lw = 1.0
     scale = 1.1
-    fig,axs = plt.subplots(1,2, figsize=(7*scale,7*scale), sharex=True)
+    fig,axs = plt.subplots(2,1, figsize=(7*scale,7*scale), sharex=True)
     axt = axs[0]
     axb = axs[1]
 
@@ -54,6 +55,9 @@ def plot_spectra(output_dir: str, plot_format: str="pdf", t0: float=100.0):
 
     axb.set_xlabel(r"Wavelength [$\mu$m]")
     axb.set_xscale("log")
+    axb.set_xlim(left=0.3, right=25.0)
+    axb.set_xticks([0.3, 0.5, 0.7, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 10, 15, 20])
+    axb.xaxis.set_major_formatter(FormatStrFormatter("%g"))
 
     plt.close()
     plt.ioff()
@@ -63,7 +67,7 @@ def plot_spectra(output_dir: str, plot_format: str="pdf", t0: float=100.0):
 
 def plot_spectra_entry(handler: Proteus):
     # make plots
-    plot_transit(
+    plot_spectra(
         handler.directories["output"],
         plot_format=handler.config.params.out.plot_fmt,
     )

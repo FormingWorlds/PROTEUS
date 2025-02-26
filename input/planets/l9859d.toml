@@ -45,7 +45,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.dt.adaptive]
             atol         = 0.02  # Step size atol
-            rtol         = 0.07   # Step size rtol
+            rtol         = 0.06   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -195,7 +195,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 80       # Number of SPIDER grid levels
+        num_levels      = 70       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-6   # solver tolerance
         tsurf_atol      = 5.0      # tsurf_poststep_change
@@ -259,7 +259,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
         # N_ppmw      = 2.01       # Nitrogen inventory in ppmw relative to mantle mass
 
-        SH_ratio    = 3.8       # S/H mass ratio in mantle/atmosphere system
+        SH_ratio    = 4.0       # S/H mass ratio in mantle/atmosphere system
         # S_ppmw      = 0.0     # Sulfur inventory in ppmw relative to mantle mass
 
     # Set initial volatile inventory by partial pressures in atmosphere

@@ -191,6 +191,9 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     # Delivery module
     log.info("Delivery module   %s" % config.delivery.module)
 
+    # Observations module
+    log.info("Observe module    %s" % config.observe.module)
+
     # End spacer
     log.info(" ")
 
@@ -268,7 +271,7 @@ def print_citation(config:Config):
             pass
 
     # Delivery module
-    match config.orbit.module:
+    match config.delivery.module:
         case _:
             pass
 

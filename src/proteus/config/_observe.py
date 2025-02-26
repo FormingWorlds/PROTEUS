@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from attrs import define, field
 from attrs.validators import in_, ge
-
+from ._converters import none_if_none
 
 @define
 class Observe:

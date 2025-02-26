@@ -138,7 +138,7 @@ class Proteus:
         from proteus.utils.data import download_sufficient_data
 
         #    synthetic observations
-        from proteus.observe.wrapper import transit_depth_spec
+        from proteus.observe.wrapper import transit_depth_spec, eclipse_depth_spec
 
         # First things
         start_time = datetime.now()
