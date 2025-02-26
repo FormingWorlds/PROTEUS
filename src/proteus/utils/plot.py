@@ -30,6 +30,8 @@ _preset_colours  = {
     "N2" : "#870036",
     "S2" : "#FF8FA1",
     "SO2": "#00008B",
+    "H2S": "#2eff71",
+    "NH3": "#675200",
 
     # Volatile elements
     "H": "#0000aa",

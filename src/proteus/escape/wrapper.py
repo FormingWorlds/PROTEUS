@@ -80,7 +80,8 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
     Fxuv_star_SI = ((stellar_track.Value(age_star, 'Lx') + stellar_track.Value(age_star, 'Leuv'))
                              / (4 * np.pi * (hf_row["semimajorax"] * 1e2)**2)) * ergcm2stoWm2
 
-    log.info(f"Interpolated Fxuv_star_SI at age_star = {age_star} Myr is {Fxuv_star_SI} [W/m2]")
+    log.info("    age_star     = %.1e Myr"%age_star)
+    log.info("    Fxuv_star_SI = %.1e W m-2"%Fxuv_star_SI)
 
     # Compute energy-limited escape
     mlr = EL_escape(config.escape.zephyrus.tidal, #tidal contribution (True/False)
