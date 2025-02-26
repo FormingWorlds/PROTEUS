@@ -227,7 +227,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
     # Otherwise, set to initial guess
     else:
-        tmp_top = 2200.0
+        tmp_top = 1000.0
         tmp_top = min(tmp_top, hf_row["T_surf"])
         if hf_row["atm_kg_per_mol"] < 10.0 * 1e-3:
             log.debug("Initialised adiabatic (top = %.2f K)"%tmp_top)
@@ -375,7 +375,6 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
             dx_max      = 200.0
             ls_increase = 1.1
             max_steps   = 200
-            chem_type   = 0     # no chemistry
 
         # try different solver parameters if struggling
         if attempts == 2:

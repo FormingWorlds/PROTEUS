@@ -25,7 +25,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "l9859d"
+        path        = "l9859d_spider"
         logging     = "INFO"
         plot_mod    = 10      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -108,7 +108,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 
-    module  = "none"
+    module  = "lovepy"
 
     [orbit.dummy]
         H_tide  = 0.0       # Fixed tidal power density [W kg-1]
@@ -154,7 +154,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         solution_rtol   = 1e-1          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
-        real_gas        = false          # use real-gas equations of state
+        real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
@@ -186,21 +186,21 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [interior]
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e5   # Initial heat flux guess [W m-2]
-    radiogenic_heat = false  # enable radiogenic heat production
-    tidal_heat      = false  # enable tidal heat production
+    radiogenic_heat = true  # enable radiogenic heat production
+    tidal_heat      = true  # enable tidal heat production
     rheo_phi_loc    = 0.3    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
-    module = "dummy"   # Which interior module to use
+    module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 280       # Number of SPIDER grid levels
+        num_levels      = 80       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-6   # solver tolerance
-        tsurf_atol      = 10.0      # tsurf_poststep_change
+        tsurf_atol      = 5.0      # tsurf_poststep_change
         tsurf_rtol      = 0.004      # tsurf_poststep_change_frac
-        ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
@@ -259,7 +259,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
         # N_ppmw      = 2.01       # Nitrogen inventory in ppmw relative to mantle mass
 
-        SH_ratio    = 4.0       # S/H mass ratio in mantle/atmosphere system
+        SH_ratio    = 3.8       # S/H mass ratio in mantle/atmosphere system
         # S_ppmw      = 0.0     # Sulfur inventory in ppmw relative to mantle mass
 
     # Set initial volatile inventory by partial pressures in atmosphere
