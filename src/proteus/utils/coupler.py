@@ -511,6 +511,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     dummy_int = config.interior.module == 'dummy'
     spider    = config.interior.module == 'spider'
     aragog    = config.interior.module == 'aragog'
+    observed  = bool(config.observe.module is not None)
 
     # Get all output times
     output_times = []
@@ -575,7 +576,9 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_global(hf_all,         output_dir, config, logt=False)
         plot_fluxes_global(hf_all,  output_dir, config)
         plot_bolometry(hf_all,      output_dir, plot_format=config.params.out.plot_fmt)
-        plot_spectra(output_dir, plot_format=config.params.out.plot_fmt)
+
+        if observed:
+            plot_spectra(output_dir, plot_format=config.params.out.plot_fmt)
 
         # Check that the simulation ran for long enough to make useful plots
         if len(hf_all["Time"]) >= 3:

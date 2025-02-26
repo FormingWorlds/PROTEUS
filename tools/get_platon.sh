@@ -4,7 +4,7 @@
 echo "Installing PLATON into Python environment..."
 
 # Download dependencies
-pip install cupy
+pip install astropy
 
 # Make room
 workpath="platon/"

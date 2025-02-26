@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-
 def plot_spectra(output_dir: str, plot_format: str="pdf", t0: float=100.0):
 
     log.info("Plot transit/eclipse spectra")
@@ -59,9 +58,7 @@ def plot_spectra(output_dir: str, plot_format: str="pdf", t0: float=100.0):
     axb.set_xticks([0.3, 0.5, 0.7, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 10, 15, 20])
     axb.xaxis.set_major_formatter(FormatStrFormatter("%g"))
 
-    plt.close()
-    plt.ioff()
-
+    fig.tight_layout()
     fpath = os.path.join(output_dir, "plot_spectra.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
