@@ -14,6 +14,7 @@
 #   [interior] magma ocean model selection and parameters
 #   [outgas]   outgassing parameters (fO2) and included volatiles
 #   [delivery] initial volatile inventory, and delivery model selection
+#   [observe]  synthetic observations
 
 # ----------------------------------------------------
 # Metadata
@@ -26,7 +27,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # output files
     [params.out]
         path        = "default"
-        logging     = "INFO"
+        logging     = "DEBUG"
         plot_mod    = 2      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
@@ -274,3 +275,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         H2   = 0.0
         CH4  = 0.0
         CO   = 0.0
+
+# Calculate simulated observations
+[observe]
+
+    # Module with which to calculate the synthetic observables (none, platon)
+    synthesis = "platon"

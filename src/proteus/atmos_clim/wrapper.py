@@ -157,7 +157,7 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
     hf_row["p_xuv"]  = atm_output["p_xuv"]    # Closest pressure to Pxuv    [bar]
     hf_row["R_xuv"]  = atm_output["R_xuv"]    # Radius at p_xuv [m]
 
-    # Calculate observables (measured at infinite distance)
+    # Calculate bolometric observables (measured at infinite distance)
     hf_row["transit_depth"] =  (hf_row["R_obs"]  / hf_row["R_star"])**2.0
     hf_row["contrast_ratio"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
                                  (hf_row["R_obs"] / hf_row["separation"])**2.0

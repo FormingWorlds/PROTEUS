@@ -122,6 +122,9 @@ class Proteus:
         from proteus.interior.common import Interior_t
         from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure
 
+        #    synthetic observations
+        from proteus.observe.wrapper import eclipse_depth_synth, transit_depth_synth
+
         #    orbit and star
         from proteus.orbit.wrapper import init_orbit, run_orbit
         from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
@@ -451,13 +454,20 @@ class Proteus:
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
-        # FINAL THINGS BEFORE EXIT
+        # Postprocessing steps
+        log.info(" ")
         PrintSeparator()
+        log.info("Performing postprocessing steps")
+        if self.config.observe.synthesis is not None:
+            transit_depth_synth(self.config, self.hf_row, self.directories["output"])
+            eclipse_depth_synth(self.config, self.hf_row, self.directories["output"])
 
-        # Clean up files
+        # Tidy up before exit...
+        log.info("Tidy up before exit")
         safe_rm(self.lockfile)
 
         # Plot and write conditions at the end of simulation
+        log.info("Writing data and plots")
         WriteHelpfileToCSV(self.directories["output"], self.hf_all)
         UpdatePlots(self.hf_all, self.directories, self.config, end=True)
 

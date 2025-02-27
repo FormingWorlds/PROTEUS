@@ -48,9 +48,9 @@ This can be done via brew on MacOS, or with your package manager on Linux. Alter
 If you already have Julia installed, skip this step.
 This should only be done using the official installer, not via your package manager.
 
-    ```console
-    curl -fsSL https://install.julialang.org | sh
-    ```
+```console
+curl -fsSL https://install.julialang.org | sh
+```
 
 ## Download the framework
 
@@ -82,7 +82,7 @@ This should only be done using the official installer, not via your package mana
     The code can be setup in `./socrates/` using the following script.
 
     ```console
-    source tools/get_socrates.sh
+    ./tools/get_socrates.sh
     ```
 
     The environemnt variable `RAD_DIR` must always point to the SOCRATES installation path.
@@ -174,9 +174,23 @@ This should only be done using the official installer, not via your package mana
 Lovepy is written in Julia. You can use the same environment as AGNI if you wish, but you
 should make sure to follow the installation steps below.
 
-    ```console
-    ./tools/get_lovepy.sh
-    ```
+```console
+./tools/get_lovepy.sh
+```
+
+### Synthetic observations calculator (**PLATON**)
+
+[PLATON](https://platon.readthedocs.io/en/latest/intro.html) is a forward modelling and
+retrieval tool for exoplanet atmospheres. In PROTEUS, this tool is used to generate
+synthetic transmission and secondary eclipse observations. To get PLATON and its
+dependencies, use the script below.
+
+```console
+./tools/get_platon.sh
+```
+
+Note that this script will take some time to run; PLATON will need to download
+about 10 GB of opacity data from the internet.
 
 ### Chemical kinetics atmosphere model (**VULCAN**)
 

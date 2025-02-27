@@ -22,7 +22,7 @@ IMAGE_LIST = (
         "plot_atmosphere.png",
         "plot_escape.png",
         "plot_global_log.png",
-        "plot_observables.png",
+        "plot_bolometry.png",
         "plot_structure.png",
         "plot_fluxes_atmosphere.png",
         "plot_interior_cmesh.png",

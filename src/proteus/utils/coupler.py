@@ -17,6 +17,7 @@ import pandas as pd
 from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.interior.wrapper import read_interior_data
 from proteus.plot.cpl_atmosphere import plot_atmosphere
+from proteus.plot.cpl_bolometry import plot_bolometry
 from proteus.plot.cpl_emission import plot_emission
 from proteus.plot.cpl_escape import plot_escape
 from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
@@ -24,13 +25,13 @@ from proteus.plot.cpl_fluxes_global import plot_fluxes_global
 from proteus.plot.cpl_global import plot_global
 from proteus.plot.cpl_interior import plot_interior
 from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
-from proteus.plot.cpl_observables import plot_observables
 from proteus.plot.cpl_population import (
     plot_population_mass_radius,
     plot_population_time_density,
 )
 from proteus.plot.cpl_sflux import plot_sflux
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross
+from proteus.plot.cpl_spectra import plot_spectra
 from proteus.plot.cpl_structure import plot_structure
 from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
@@ -190,6 +191,13 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     # Delivery module
     log.info("Delivery module   %s" % config.delivery.module)
 
+    # Observations module
+    write = "Observe module    %s" % config.observe.synthesis
+    if config.observe.synthesis == "platon":
+        from platon import __version__ as platon_version
+        write += " version " + platon_version
+    log.info(write)
+
     # End spacer
     log.info(" ")
 
@@ -267,7 +275,7 @@ def print_citation(config:Config):
             pass
 
     # Delivery module
-    match config.orbit.module:
+    match config.delivery.module:
         case _:
             pass
 
@@ -357,6 +365,7 @@ def GetHelpfileKeys():
 
             # Stellar
             "M_star", "R_star", "age_star", # [kg], [m], [yr]
+            "T_star", # [K]
 
             # Observational (from infinity)
             "p_obs",    # observered radius [bar]
@@ -506,6 +515,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     dummy_int = config.interior.module == 'dummy'
     spider    = config.interior.module == 'spider'
     aragog    = config.interior.module == 'aragog'
+    observed  = bool(config.observe.synthesis is not None)
 
     # Get all output times
     output_times = []
@@ -569,9 +579,12 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     if end:
         plot_global(hf_all,         output_dir, config, logt=False)
         plot_fluxes_global(hf_all,  output_dir, config)
-        plot_observables(hf_all,    output_dir, plot_format=config.params.out.plot_fmt)
+        plot_bolometry(hf_all,      output_dir, plot_format=config.params.out.plot_fmt)
 
-        # Check that the simulation ran for long enough to make data
+        if observed:
+            plot_spectra(output_dir, plot_format=config.params.out.plot_fmt)
+
+        # Check that the simulation ran for long enough to make useful plots
         if len(hf_all["Time"]) >= 3:
             plot_population_mass_radius (hf_all, output_dir, fwl_dir,
                                             config.params.out.plot_fmt)
