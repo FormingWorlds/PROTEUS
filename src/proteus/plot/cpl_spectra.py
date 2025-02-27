@@ -5,8 +5,8 @@ import os
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FormatStrFormatter
 import pandas as pd
+from matplotlib.ticker import FormatStrFormatter
 
 from proteus.utils.plot import get_colour, latexify
 

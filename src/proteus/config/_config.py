@@ -10,12 +10,12 @@ from ._converters import dict_replace_none
 from ._delivery import Delivery
 from ._escape import Escape
 from ._interior import Interior
+from ._observe import Observe
 from ._orbit import Orbit
 from ._outgas import Outgas
 from ._params import Params
 from ._star import Star
 from ._struct import Struct
-from ._observe import Observe
 
 log = logging.getLogger('fwl.' + __name__)
 

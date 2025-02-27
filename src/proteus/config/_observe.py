@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import in_, ge
+from attrs.validators import in_
+
 from ._converters import none_if_none
+
 
 @define
 class Observe:
@@ -13,4 +15,3 @@ class Observe:
     """
 
     synthesis: str = field(validator=in_((None,'platon')), converter=none_if_none)
-

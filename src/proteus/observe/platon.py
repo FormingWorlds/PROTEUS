@@ -5,12 +5,11 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
-import os
 
 from proteus.utils.constants import gas_list
 
 if TYPE_CHECKING:
-    from proteus.config import Config
+    pass
 
 log = logging.getLogger("fwl."+__name__)
 

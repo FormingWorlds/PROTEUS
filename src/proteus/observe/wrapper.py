@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
-import numpy as np
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -29,4 +28,3 @@ def eclipse_depth_synth(config:Config, hf_row:dict, outdir:str):
     if config.observe.synthesis == "platon":
         from proteus.observe.platon import eclipse_depth
         eclipse_depth(hf_row, outdir)
-

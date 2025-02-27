@@ -122,6 +122,9 @@ class Proteus:
         from proteus.interior.common import Interior_t
         from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure
 
+        #    synthetic observations
+        from proteus.observe.wrapper import eclipse_depth_synth, transit_depth_synth
+
         #    orbit and star
         from proteus.orbit.wrapper import init_orbit, run_orbit
         from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
@@ -136,9 +139,6 @@ class Proteus:
 
         #    lookup and reference data
         from proteus.utils.data import download_sufficient_data
-
-        #    synthetic observations
-        from proteus.observe.wrapper import transit_depth_synth, eclipse_depth_synth
 
         # First things
         start_time = datetime.now()
