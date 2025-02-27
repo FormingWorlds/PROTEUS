@@ -279,4 +279,4 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [observe]
 
     # Module with which to calculate the synthetic observables
-    synthesis = "none"
+    synthesis = "platon"

@@ -192,7 +192,11 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     log.info("Delivery module   %s" % config.delivery.module)
 
     # Observations module
-    log.info("Observe module    %s" % config.observe.synthesis)
+    write = "Observe module    %s" % config.observe.synthesis
+    if config.observe.synthesis == "platon":
+        from platon import __version__ as platon_version
+        write += " version " + platon_version
+    log.info(write)
 
     # End spacer
     log.info(" ")
