@@ -6,17 +6,21 @@ from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
-import numpy as np
 import pandas as pd
+
+from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
     from proteus import Proteus
 
 log = logging.getLogger("fwl."+__name__)
 
-def plot_spectra(output_dir: str, plot_format: str="pdf", t0: float=100.0):
+WAVE_KEY = "Wavelength/um"
 
-    log.info("Plot transit/eclipse spectra")
+def plot_spectra(output_dir: str, plot_format: str="pdf",
+                    wlmin:float=0.7, wlmax:float=20.0):
+
+    log.info("Plot transit and eclipse spectra")
 
     # read data
     ftransit = os.path.join(output_dir, "data", "obs_synth_transit.csv")
@@ -24,41 +28,54 @@ def plot_spectra(output_dir: str, plot_format: str="pdf", t0: float=100.0):
         log.warning(f"Could not find file '{ftransit}'")
         return
     else:
-        data = np.loadtxt(ftransit)
-        transit_wl = data[:,0]
-        transit_de = data[:,1]
+        df_transit = pd.read_csv(ftransit)
 
     feclipse = os.path.join(output_dir, "data", "obs_synth_eclipse.csv")
     if not os.path.isfile(feclipse):
         log.warning(f"Could not find file '{feclipse}'")
         return
     else:
-        data = np.loadtxt(feclipse)
-        eclipse_wl = data[:,0]
-        eclipse_de = data[:,1]
+        df_eclipse = pd.read_csv(feclipse)
 
     # make plot
-    lw = 1.0
+    lw = 0.8
     scale = 1.1
     fig,axs = plt.subplots(2,1, figsize=(7*scale,7*scale), sharex=True)
     axt = axs[0]
     axb = axs[1]
 
     # transit
-    axt.plot(transit_wl, transit_de, lw=lw, color='k')
+    for i,df in enumerate([df_transit, df_eclipse]):
+        wl = df[WAVE_KEY]
+        for key in df.keys():
+            if key != WAVE_KEY:
+                lbl = key.split("_")[-1].split("/")[0]
+                if lbl == "full":
+                    lbl = "Full"
+                    zorder = 6
+                    color = 'black'
+                else:
+                    zorder = 4
+                    color = get_colour(lbl)
+                    lbl = latexify(lbl)
+                axs[i].plot(wl, df[key], lw=lw, label=lbl, color=color, zorder=zorder)
+
+        axs[i].grid(zorder=-2, alpha=0.3)
+
     axt.set_ylabel("Transit depth [ppm]")
+    leg = axt.legend(ncols=2)
+    for line in leg.get_lines():
+        line.set_linewidth(4.0)
 
-    # eclipse
-    axb.plot(eclipse_wl, eclipse_de, lw=lw, color='k')
+
     axb.set_ylabel("Eclipse depth [ppm]")
-
     axb.set_xlabel(r"Wavelength [$\mu$m]")
     axb.set_xscale("log")
-    axb.set_xlim(left=0.3, right=25.0)
+    axb.set_xlim(left=wlmin, right=wlmax)
     axb.set_xticks([0.3, 0.5, 0.7, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 10, 15, 20])
     axb.xaxis.set_major_formatter(FormatStrFormatter("%g"))
 
-    fig.tight_layout()
+    fig.subplots_adjust(hspace=0.01)
     fpath = os.path.join(output_dir, "plot_spectra.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 

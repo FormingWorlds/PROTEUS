@@ -27,7 +27,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # output files
     [params.out]
         path        = "default"
-        logging     = "INFO"
+        logging     = "DEBUG"
         plot_mod    = 2      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
@@ -282,5 +282,5 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # Module with which to calculate the synthetic observables
     module = 'platon'
 
-    # Number of samples to process 
+    # Number of samples to process
     samples = 1

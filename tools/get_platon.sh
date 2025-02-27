@@ -11,7 +11,7 @@ workpath="platon/"
 rm -rf $workpath
 
 # Download
-git clone https://github.com/ideasrule/platon.git $workpath
+git clone https://github.com/nichollsh/platon.git $workpath
 
 # Change dir and install
 olddir=$(pwd)
