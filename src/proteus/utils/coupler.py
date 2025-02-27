@@ -369,10 +369,10 @@ def GetHelpfileKeys():
 
             # Observational (from infinity)
             "p_obs",    # observered radius [bar]
-            "R_obs",    # observed height relative to R_int [m]
+            "R_obs",    # observed radius [m]
             "rho_obs",  # observed bulk density [kg m-3]
             "transit_depth", "contrast_ratio", # [1], [1]
-            "bond_albedo", # bond albedo [1]
+            "bond_albedo", # bolometric bond albedo [1]
 
             # Imaginary part of k2 Love Number
             "Imk2", # [1]
@@ -422,6 +422,14 @@ def GetHelpfileKeys():
             if k in keys:
                 continue
             keys.append(k)
+
+    # Diagnostic variables...
+
+    # Roche limit (orbital separation at which planet will disintegrate)
+    keys.append("roche_limit") # [m]
+
+    # Hill radius (radius from planet at which the atmosphere becomes unbound)
+    keys.append("hill_radius") # [m]
 
     # Non-physical variables
     keys.append("runtime") # [s]

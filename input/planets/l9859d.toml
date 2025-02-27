@@ -34,7 +34,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # time-stepping
     [params.dt]
         minimum      = 1e1    # yr, minimum time-step
-        maximum      = 2e6    # yr, maximum time-step
+        maximum      = 4e6    # yr, maximum time-step
         initial      = 2e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
@@ -45,7 +45,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.dt.adaptive]
             atol         = 0.02  # Step size atol
-            rtol         = 0.06   # Step size rtol
+            rtol         = 0.08   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -143,10 +143,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "agni"           # Which atmosphere module to use
 
     [atmos_clim.agni]
-        p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
-        spectral_group  = "Dayspring"   # which gas opacities to include
+        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+        spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "48"         # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
+        num_levels      = 50            # Number of atmospheric grid levels
         chemistry       = "eq"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
@@ -175,7 +175,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "zephyrus"    # Which escape module to use
 
     [escape.zephyrus]
-        Pxuv        = 1e-3          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
+        Pxuv        = 5e-5          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
         efficiency  = 0.1           # Escape efficiency factor
         tidal       = true         # Tidal contribution enabled
 
@@ -250,8 +250,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
-        H_oceans    = 10.0       # Hydrogen inventory in units of equivalent Earth oceans
-        # H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
+        # H_oceans    = 10.0       # Hydrogen inventory in units of equivalent Earth oceans
+        H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 0.1       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
@@ -259,7 +259,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
         # N_ppmw      = 2.01       # Nitrogen inventory in ppmw relative to mantle mass
 
-        SH_ratio    = 4.0       # S/H mass ratio in mantle/atmosphere system
+        SH_ratio    = 5.0       # S/H mass ratio in mantle/atmosphere system
         # S_ppmw      = 0.0     # Sulfur inventory in ppmw relative to mantle mass
 
     # Set initial volatile inventory by partial pressures in atmosphere
