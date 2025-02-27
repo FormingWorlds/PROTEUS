@@ -79,13 +79,15 @@ def transit_depth(hf_row:dict, outdir:str):
                                         method=PLATON_METHOD,
                                         downsample=PLATON_DOWNSAMPLE)
 
+    # arguments
+    compute_args = {"logZ":None, "CO_ratio":None,
+                    "gases":gases, "vmrs":vmrs,
+                    "custom_T_profile":tmp,
+                    "custom_P_profile":prs,
+                    "T_star":hf_row["T_star"]}
+
     # compute full spectrum
-    wl, de, _ = transcalc.compute_depths(Rs, Mp, Rp, None,
-                                            logZ=None, CO_ratio=None,
-                                            gases=gases, vmrs=vmrs,
-                                            custom_T_profile=tmp,
-                                            custom_P_profile=prs,
-                                            T_star=hf_row["T_star"])
+    wl, de, _ = transcalc.compute_depths(Rs, Mp, Rp, None, **compute_args)
     wl = np.array(wl) * 1e6 # convert to um
     de = np.array(de) * 1e6 # convert to ppm
     X = [wl, de]
@@ -94,12 +96,7 @@ def transit_depth(hf_row:dict, outdir:str):
     # loop over removing different gases
     for gas in gases:
         _, de, _ = transcalc.compute_depths(Rs, Mp, Rp, None,
-                                            logZ=None, CO_ratio=None,
-                                            gases=gases, vmrs=vmrs,
-                                            custom_T_profile=tmp,
-                                            custom_P_profile=prs,
-                                            T_star=hf_row["T_star"],
-                                            zero_opacities=[gas])
+                                            zero_opacities=[gas], **compute_args)
         X.append(np.array(de) * 1e6)
         header += ",%s/ppm"%gas
 
@@ -126,24 +123,34 @@ def eclipse_depth(hf_row:dict, outdir:str):
 
     # Convert to platon format
     prf = _get_prof(atm)
-    gas,vmr = _get_abund(hf_row)
+    gases,vmrs = _get_abund(hf_row)
 
     # create a EclipseDepthCalculator object
     log.debug("Compute eclipse depth spectrum")
-    eclipcalc = EclipseDepthCalculator( include_opacities=gas,
+    eclipcalc = EclipseDepthCalculator( include_opacities=gases,
                                         include_condensation=False,
                                         method=PLATON_METHOD,
                                         downsample=PLATON_DOWNSAMPLE)
 
-    # compute spectrum
-    wl, de, _ = eclipcalc.compute_depths(prf, Rs, Mp, Rp, Ts,
-                                                logZ=None, CO_ratio=None,
-                                                gases=gas, vmrs=vmr)
+    # compute full spectrum
+    compute_args = {
+        "logZ":None, "CO_ratio":None,
+        "gases":gases, "vmrs":vmrs
+    }
+    wl, de, _ = eclipcalc.compute_depths(prf, Rs, Mp, Rp, Ts, **compute_args)
     wl = np.array(wl) * 1e6 # convert to um
     de = np.array(de) * 1e6 # convert to ppm
+    X = [wl, de]
+    header = "Wavelength/um,None/ppm"
+
+    # loop over removing different gases
+    for gas in gases:
+        _, de, _ = eclipcalc.compute_depths(prf, Rs, Mp, Rp, Ts,
+                                            zero_opacities=[gas], **compute_args)
+        X.append(np.array(de) * 1e6)
+        header += ",%s/ppm"%gas
 
     # write file
     log.debug("Writing eclipse depth spectra")
-    header = "Wavelength/um,None/ppm"
-    np.savetxt(get_eclipse_fpath(outdir), np.array([wl, de]).T,
+    np.savetxt(get_eclipse_fpath(outdir), np.array(X).T,
                     fmt=WRITE_FMT, header=header, delimiter=',',comments="")

@@ -463,14 +463,11 @@ class Proteus:
             eclipse_depth_synth(self.config, self.hf_row, self.directories["output"])
 
         # Tidy up before exit...
-        log.info(" ")
-        PrintSeparator()
         log.info("Tidy up before exit")
-
-        # Clean up files
         safe_rm(self.lockfile)
 
         # Plot and write conditions at the end of simulation
+        log.info("Writing data and plots")
         WriteHelpfileToCSV(self.directories["output"], self.hf_all)
         UpdatePlots(self.hf_all, self.directories, self.config, end=True)
 

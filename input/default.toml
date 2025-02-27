@@ -279,5 +279,5 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Calculate simulated observations
 [observe]
 
-    # Module with which to calculate the synthetic observables
-    synthesis = "none"
+    # Module with which to calculate the synthetic observables (none, platon)
+    synthesis = "platon"

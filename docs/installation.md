@@ -181,7 +181,7 @@ should make sure to follow the installation steps below.
 ### Synthetic observations calculator (**PLATON**)
 
 [PLATON](https://platon.readthedocs.io/en/latest/intro.html) is a forward modelling and
-retrieval tool for exoplanet atmospheres. In PROTEUS, this code is used to generate
+retrieval tool for exoplanet atmospheres. In PROTEUS, this tool is used to generate
 synthetic transmission and secondary eclipse observations. To get PLATON and its
 dependencies, use the script below.
 

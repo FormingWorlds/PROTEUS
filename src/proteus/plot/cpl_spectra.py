@@ -38,9 +38,9 @@ def plot_spectra(output_dir: str, plot_format: str="pdf",
         df_eclipse = pd.read_csv(feclipse)
 
     # make plot
-    lw = 0.5
+    lw = 0.3
     scale = 1.1
-    fig,axs = plt.subplots(2,1, figsize=(7*scale,7*scale), sharex=True)
+    fig,axs = plt.subplots(2,1, figsize=(8*scale,7*scale), sharex=True)
     axt = axs[0]
     axb = axs[1]
 
@@ -61,12 +61,12 @@ def plot_spectra(output_dir: str, plot_format: str="pdf",
 
         axs[i].grid(zorder=-2, alpha=0.3)
 
-    axt.set_ylabel("Transit depth [ppm]")
-    leg = axt.legend(ncols=3, title="Removed gases", loc='lower right')
+    axt.set_ylabel("Primary transit depth [ppm]")
+    leg = axb.legend(ncols=3, title="Removed gases", loc='upper left')
     for line in leg.get_lines():
         line.set_linewidth(4.0)
 
-    axb.set_ylabel("Eclipse depth [ppm]")
+    axb.set_ylabel("Secondary eclipse depth [ppm]")
     axb.set_xlabel(r"Wavelength [$\mu$m]")
     axb.set_xscale("log")
     axb.set_xticks([0.3, 0.5, 0.7, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16, 20])
