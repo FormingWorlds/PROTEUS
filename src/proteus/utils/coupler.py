@@ -428,8 +428,8 @@ def GetHelpfileKeys():
 
     # Diagnostic variables...
 
-    # Weak temperature gradient parameter
-    keys.append("wtg_param") # [1]
+    # Weak temperature gradient parameter at the surface
+    keys.append("wtg_surf") # [1]
 
     # Roche limit (orbital separation at which planet will disintegrate)
     keys.append("roche_limit") # [m]

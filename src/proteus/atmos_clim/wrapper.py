@@ -162,10 +162,10 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
     update_bolometry(hf_row)
 
     # Estimate WTG parameter
-    update_wtg_param(hf_row)
+    update_wtg_surf(hf_row)
 
 
-def update_wtg_param(hf_row:dict):
+def update_wtg_surf(hf_row:dict):
     '''
     Update WTG parameter.
 
@@ -174,7 +174,7 @@ def update_wtg_param(hf_row:dict):
 
     omega = 2 * pi / hf_row["axial_period"]     # Angular rotation rate
     R_mix = const_R / hf_row["atm_kg_per_mol"]  # Specific gas constant
-    hf_row["wtg_param"] = (R_mix * hf_row["T_surf"])**0.5 / (omega * hf_row["R_int"])
+    hf_row["wtg_surf"] = (R_mix * hf_row["T_surf"])**0.5 / (omega * hf_row["R_int"])
 
 
 def update_bolometry(hf_row:dict):
