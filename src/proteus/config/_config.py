@@ -31,6 +31,11 @@ def tides_enabled_orbit(instance, attribute, value):
     if (instance.interior.tidal_heat) and (instance.orbit.module is None):
         raise ValueError("Interior tidal heating requires an orbit module to be enabled")
 
+def observe_resolved_atmosphere(instance, attribute, value):
+    # Synthetic observations require a spatially resolved atmosphere profile
+    if (instance.observe.synthesis is not None) and (instance.atmos_clim.module == "dummy"):
+        raise ValueError("Interior tidal heating requires an orbit module to be enabled")
+
 @define
 class Config:
     """Root config parameters.

@@ -274,3 +274,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         H2   = 0.0
         CH4  = 0.0
         CO   = 0.0
+
+# Calculate simulated observations
+[observe]
+
+    # Module with which to calculate the synthetic observables
+    synthesis = "none"

@@ -192,7 +192,7 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     log.info("Delivery module   %s" % config.delivery.module)
 
     # Observations module
-    log.info("Observe module    %s" % config.observe.module)
+    log.info("Observe module    %s" % config.observe.synthesis)
 
     # End spacer
     log.info(" ")
@@ -511,7 +511,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     dummy_int = config.interior.module == 'dummy'
     spider    = config.interior.module == 'spider'
     aragog    = config.interior.module == 'aragog'
-    observed  = bool(config.observe.module is not None)
+    observed  = bool(config.observe.synthesis is not None)
 
     # Get all output times
     output_times = []

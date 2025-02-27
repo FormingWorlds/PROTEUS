@@ -138,7 +138,7 @@ class Proteus:
         from proteus.utils.data import download_sufficient_data
 
         #    synthetic observations
-        from proteus.observe.wrapper import transit_depth_spec, eclipse_depth_spec
+        from proteus.observe.wrapper import transit_depth_synth, eclipse_depth_synth
 
         # First things
         start_time = datetime.now()
@@ -457,12 +457,15 @@ class Proteus:
         # Postprocessing steps
         log.info(" ")
         PrintSeparator()
-        transit_depth_spec(self.config, self.hf_row, self.directories["output"])
-        eclipse_depth_spec(self.config, self.hf_row, self.directories["output"])
+        log.info("Performing postprocessing steps")
+        if self.config.observe.synthesis is not None:
+            transit_depth_synth(self.config, self.hf_row, self.directories["output"])
+            eclipse_depth_synth(self.config, self.hf_row, self.directories["output"])
 
         # Tidy up before exit...
         log.info(" ")
         PrintSeparator()
+        log.info("Tidy up before exit")
 
         # Clean up files
         safe_rm(self.lockfile)
