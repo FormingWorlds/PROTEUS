@@ -49,7 +49,7 @@ def update_separation(hf_row:dict):
 
 def update_period(hf_row:dict):
     '''
-    Calculate orbital period on an elliptical path.
+    Calculate orbital and axial periods, on an elliptical path.
 
     Assuming that M_volatiles << M_star + M_mantle + M_core.
     https://en.wikipedia.org/wiki/Elliptic_orbit#Orbital_period
@@ -74,7 +74,11 @@ def update_period(hf_row:dict):
     sma = hf_row["semimajorax"]
 
     # Orbital period [seconds]
-    hf_row["period"] = 2 * np.pi * (sma*sma*sma/mu)**0.5
+    hf_row["orbital_period"] = 2 * np.pi * (sma*sma*sma/mu)**0.5
+
+    # Axial period [seconds]
+    #   Assuming that the planet is tidally locked
+    hf_row["axial_period"] = hf_row["orbital_period"]
 
 def update_hillradius(hf_row:dict):
     '''
@@ -136,10 +140,10 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     hf_row["semimajorax"]  = config.orbit.semimajoraxis * AU
     hf_row["eccentricity"] = config.orbit.eccentricity
 
-    # Update orbital separation and period
+    # Update orbital separation, orbital period, axial period
     update_separation(hf_row)
     update_period(hf_row)
-    log.info("    period = %.3f days"%(hf_row["period"]/secs_per_day))
+    log.info("    period = %.3f days"%(hf_row["orbital_period"]/secs_per_day))
 
     # Update Roche limit
     update_rochelimit(hf_row)

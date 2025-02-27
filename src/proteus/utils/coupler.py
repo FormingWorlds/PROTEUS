@@ -344,7 +344,10 @@ def GetHelpfileKeys():
             "semimajorax", "separation", # [m], [m],
 
             # Orbital period and eccentricity
-            "period", "eccentricity", # [s], [1]
+            "orbital_period", "eccentricity", # [s], [1]
+
+            # Day length
+            "axial_period", # [s]
 
             # Dry interior radius (calculated) and mass (from config)
             "R_int", "M_int", # [m], [kg]
@@ -371,7 +374,7 @@ def GetHelpfileKeys():
             "p_obs",    # observered radius [bar]
             "R_obs",    # observed radius [m]
             "rho_obs",  # observed bulk density [kg m-3]
-            "transit_depth", "contrast_ratio", # [1], [1]
+            "transit_depth", "eclipse_depth", # [1], [1]
             "bond_albedo", # bolometric bond albedo [1]
 
             # Imaginary part of k2 Love Number
@@ -425,13 +428,16 @@ def GetHelpfileKeys():
 
     # Diagnostic variables...
 
+    # Weak temperature gradient parameter
+    keys.append("wtg_param") # [1]
+
     # Roche limit (orbital separation at which planet will disintegrate)
     keys.append("roche_limit") # [m]
 
     # Hill radius (radius from planet at which the atmosphere becomes unbound)
     keys.append("hill_radius") # [m]
 
-    # Non-physical variables
+    # Wall-clock runtime
     keys.append("runtime") # [s]
 
     return keys

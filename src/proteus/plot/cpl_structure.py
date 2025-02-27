@@ -118,9 +118,10 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
 
     # Decorate plot
     ax.set(xlabel=r"Radius [R$_{\oplus}$]", ylabel="Temperature [K]")
-    ax.legend()
+    # ax.legend()
     ax.grid(zorder=-2, alpha=0.1)
-    leg = ax.legend(framealpha=1.0, loc='upper left', zorder=99)
+    leg = ax.legend(framealpha=1.0, loc='upper left')
+    leg.set_zorder(99)
     ax.add_artist(leg)
 
     ax.xaxis.set_major_locator(MultipleLocator(0.20))
@@ -141,7 +142,7 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
     hdls = []
     hdls.append(ax.scatter(-100, 0, c='k', s=ms, marker=esc_m, label="Escape level"))
     hdls.append(ax.scatter(-100, 0, c='k', s=ms, marker=obs_m, label="Observed level"))
-    ax.legend(handles=hdls, loc='lower right', framealpha=1.0, zorder=99)
+    ax.legend(handles=hdls, loc='lower right', framealpha=1.0).set_zorder(99)
 
     plt.close()
     plt.ioff()

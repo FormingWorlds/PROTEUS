@@ -48,7 +48,7 @@ def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t,
     """
 
     # Calculate angular frequency of rotation
-    omega = 2 * np.pi / hf_row["period"]
+    omega = 2 * np.pi / hf_row["orbital_period"]
 
     # Truncate arrays based on valid viscosity range
     i_top = interior_o.nlev_s-1
