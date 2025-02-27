@@ -89,7 +89,7 @@ def transit_depth(hf_row:dict, outdir:str):
     wl = np.array(wl) * 1e6 # convert to um
     de = np.array(de) * 1e6 # convert to ppm
     X = [wl, de]
-    header = "Wavelength/um,full/ppm"
+    header = "Wavelength/um,None/ppm"
 
     # loop over removing different gases
     for gas in gases:
@@ -101,7 +101,7 @@ def transit_depth(hf_row:dict, outdir:str):
                                             T_star=hf_row["T_star"],
                                             zero_opacities=[gas])
         X.append(np.array(de) * 1e6)
-        header += ",no_%s/ppm"%gas
+        header += ",%s/ppm"%gas
 
     # write file
     log.debug("Writing transit depth spectrum")
@@ -144,6 +144,6 @@ def eclipse_depth(hf_row:dict, outdir:str):
 
     # write file
     log.debug("Writing eclipse depth spectra")
-    header = "Wavelength/um,full/ppm"
+    header = "Wavelength/um,None/ppm"
     np.savetxt(get_eclipse_fpath(outdir), np.array([wl, de]).T,
                     fmt=WRITE_FMT, header=header, delimiter=',',comments="")

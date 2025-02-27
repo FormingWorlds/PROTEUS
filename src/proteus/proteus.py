@@ -454,12 +454,17 @@ class Proteus:
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
-        # Calculate transit and eclipse depths
+        # Postprocessing steps
+        log.info(" ")
+        PrintSeparator()
         transit_depth_spec(self.config, self.hf_row, self.directories["output"])
         eclipse_depth_spec(self.config, self.hf_row, self.directories["output"])
 
-        # Clean up files
+        # Tidy up before exit...
+        log.info(" ")
         PrintSeparator()
+
+        # Clean up files
         safe_rm(self.lockfile)
 
         # Plot and write conditions at the end of simulation
