@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
-                logt: bool=True, tmin: float=1e1):
+                logt: bool=True, tmin: float=1e3):
 
     if np.amax(hf_all["Time"]) < 3:
         log.debug("Insufficient data to make plot_global")
@@ -138,23 +138,24 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
 
     # Set xlim
     xmin = max(tmin, 1.0)
+    xmax = np.amax(hf["Time"])
+    if xmin > xmax/2:
+        xmin = 1.0
     if logt:
-        xmax = max(1.0e6,np.amax(hf["Time"]))
+        xmax = max(1.0e6,xmax)
         xlim = (xmin,10 ** np.ceil(np.log10(xmax*1.1)))
     else:
-        xmax = np.amax(hf["Time"])
-        xlim = (1.0, xmax)
+        xlim = (xmin, xmax)
     for ax in axs:
         ax.set_xlim(xlim[0],  max(xlim[1], xlim[0]+1))
 
-
     # PLOT ax_tl
+    ax_tl.plot( hf["Time"], F_delta_inst, color=get_colour("star"), lw=lw, alpha=al,  label=r"|$\Delta$Inst.|")
+    ax_tl.plot( hf["Time"], hf["F_tidal"], color=get_colour("tidal"), lw=lw, alpha=al,  label="Tidal")
+    ax_tl.plot( hf["Time"], hf["F_radio"], color=get_colour("radio"), lw=lw, alpha=al,  label="Radio.")
     ax_tl.plot( hf["Time"], hf["F_int"],  color=get_colour("int"),  lw=lw, alpha=al,  label="Int.", linestyle='dashed')
     ax_tl.plot( hf["Time"], hf["F_atm"],  color=get_colour("atm"),  lw=lw, alpha=al,  label="Atm."  )
     ax_tl.plot( hf["Time"], hf["F_olr"],  color=get_colour("OLR"),  lw=lw, alpha=al,  label="OLR"   )
-    ax_tl.plot( hf["Time"], hf["F_tidal"], color=get_colour("tidal"), lw=lw, alpha=al,  label="Tidal")
-    ax_tl.plot( hf["Time"], hf["F_radio"], color=get_colour("radio"), lw=lw, alpha=al,  label="Radio.")
-    ax_tl.plot( hf["Time"], F_delta_inst, color=get_colour("star"), lw=lw, alpha=al,  label=r"|$\Delta$Inst.|")
     ax_tl.legend(loc='center left', **leg_kwargs)
     ymin, ymax = 0.0, 100.0
     for k in ("F_int","F_atm","F_olr","F_tidal","F_radio"):
@@ -227,7 +228,7 @@ def plot_global_entry(handler: Proteus):
             output_dir=handler.directories['output'],
             config=handler.config,
             logt=logt,
-            tmin=1e1,
+            tmin=1e3,
         )
 
 if __name__ == "__main__":
