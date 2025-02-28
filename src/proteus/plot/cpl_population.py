@@ -5,9 +5,9 @@ import os
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MultipleLocator
 import numpy as np
 import pandas as pd
+from matplotlib.ticker import MultipleLocator
 
 from proteus.utils.constants import M_earth, M_jupiter, R_earth, R_jupiter
 

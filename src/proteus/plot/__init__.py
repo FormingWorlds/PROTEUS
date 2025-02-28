@@ -15,6 +15,7 @@ from proteus.plot.cpl_sflux import plot_sflux_entry
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross_entry
 from proteus.plot.cpl_spectra import plot_spectra_entry
 from proteus.plot.cpl_structure import plot_structure_entry
+
 # from proteus.plot.cpl_offchem_grid_cross import plot_offchem_grid_cross_entry
 # from proteus.plot.cpl_offchem_species import plot_offchem_species_entry
 # from proteus.plot.cpl_offchem_time import plot_offchem_time_entry
