@@ -311,7 +311,7 @@ def sample_times(times:list, nsamp:int, tmin:float=1.0):
     return out_t, out_i
 
 
-def sample_output(handler: Proteus, extension:str = ".nc", tmin:float = 1.0, nsamp:int=8):
+def sample_output(handler: Proteus, extension:str = "_atm.nc", tmin:float = 1.0, nsamp:int=8):
 
     # get all files
     files = glob.glob(os.path.join(handler.directories["output"], "data", "*"+extension))

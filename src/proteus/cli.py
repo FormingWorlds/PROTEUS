@@ -46,7 +46,7 @@ def list_plots(ctx, param, value):
     expose_value=False,
     callback=list_plots,
 )
-def plot(plots: str, config_path: Path):
+def plot(plots, config_path: Path):
     """(Re-)generate plots from completed run"""
     from .plot import plot_dispatch
 
@@ -54,10 +54,16 @@ def plot(plots: str, config_path: Path):
 
     handler = Proteus(config_path=config_path)
 
+    if "all" in plots:
+        plots = list(plot_dispatch.keys())
+
     for plot in plots:
-        click.echo(f'Plotting: {plot}')
-        plot_func = plot_dispatch[plot]
-        plot_func(handler=handler)
+        if plot not in plot_dispatch.keys():
+            click.echo(f"Invalid plot: {plot}")
+        else:
+            click.echo(f'Plotting: {plot}')
+            plot_func = plot_dispatch[plot]
+            plot_func(handler=handler)
 
 
 @click.command()
