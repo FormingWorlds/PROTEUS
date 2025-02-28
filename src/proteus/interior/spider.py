@@ -413,7 +413,7 @@ def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
                      and np.amin(interior_o.visc)>=config.orbit.lovepy.visc_thresh
                     )
     if config.interior.tidal_heat and tides_active:
-        dT_max = 3.0
+        dT_max = 2.0
         log.info("Tidal heating active; limiting dT_magma to %.2f K"%dT_max)
 
     # make attempts

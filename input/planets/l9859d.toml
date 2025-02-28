@@ -33,8 +33,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # time-stepping
     [params.dt]
-        minimum      = 1e1    # yr, minimum time-step
-        maximum      = 4e6    # yr, maximum time-step
+        minimum      = 1e3    # yr, minimum time-step
+        maximum      = 5e6    # yr, maximum time-step
         initial      = 2e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
@@ -44,8 +44,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             propconst    = 52.0   # Proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.02  # Step size atol
-            rtol         = 0.08   # Step size rtol
+            atol         = 0.03  # Step size atol
+            rtol         = 0.10   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion

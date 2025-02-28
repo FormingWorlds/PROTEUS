@@ -34,6 +34,21 @@ def plot_fluxes_atmosphere(output_dir:str, plot_format="pdf"):
     atm_fl_D    = np.array(ds.variables['fl_D'   ][:])
     atm_fl_U    = np.array(ds.variables['fl_U'   ][:])
     atm_fl_N    = np.array(ds.variables['fl_N'   ][:])
+
+    key = 'fl_cnvct'
+    if key in ds.variables.keys():
+        atm_fl_C = np.array(ds.variables[key][:])
+    else:
+        # key not available with JANUS
+        atm_fl_C = np.zeros_like(atm_pl)
+
+    key = 'fl_tot'
+    if key in ds.variables.keys():
+        atm_fl_T = np.array(ds.variables[key][:])
+    else:
+        # key not available with JANUS
+        atm_fl_T = np.zeros_like(atm_pl)
+
     ds.close()
 
     scale = 1.0
@@ -43,6 +58,7 @@ def plot_fluxes_atmosphere(output_dir:str, plot_format="pdf"):
 
     pl = atm_pl * 1.e-5
 
+
     ax.plot(atm_fl_U      ,pl,color='red',label='UP',lw=1)
     ax.plot(atm_fl_U_SW   ,pl,color='red',label='UP SW',linestyle='dotted',lw=2)
     ax.plot(atm_fl_U_LW   ,pl,color='red',label='UP LW',linestyle='dashed',lw=1)
@@ -51,7 +67,10 @@ def plot_fluxes_atmosphere(output_dir:str, plot_format="pdf"):
     ax.plot(-1.0*atm_fl_D_SW   ,pl,color='green',label='DN SW',linestyle='dotted',lw=3)
     ax.plot(-1.0*atm_fl_D_LW   ,pl,color='green',label='DN LW',linestyle='dashed',lw=2)
 
-    ax.plot(atm_fl_N ,pl,color='black',label='NET')
+    ax.plot(atm_fl_N ,pl,color='black',label='Radiative')
+    ax.plot(atm_fl_C   ,pl,color='dodgerblue',label='Convect',linestyle='dashed',lw=1)
+    ax.plot(atm_fl_T   ,pl,color='goldenrod',label='Total',linestyle='solid',lw=1)
+
 
     ax.set_xscale("symlog")
     ax.set_xlabel("Upward-directed flux [W m-2]")
