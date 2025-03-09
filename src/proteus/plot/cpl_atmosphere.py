@@ -31,42 +31,47 @@ def plot_atmosphere( output_dir:str, times:list, profiles:list, plot_format="pdf
     sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)
     sm.set_array([])
 
-    scale = 1.2
+    scale = 1.15
     fig,(ax0,ax1) = plt.subplots(2,1, sharex=True, figsize=(5*scale,7*scale))
+
+    zmax = 100.0
+    pmax = 1.0
 
     for i, t in enumerate( times ):
         prof = profiles[i]
         label = latex_float(t)+" yr"
         color = sm.to_rgba(t)
-        ax0.plot( prof["t"], prof["z"]/1e3, color=color, label=label, lw=1.5)
-        ax1.plot( prof["t"], prof["p"]/1e5, color=color, label=label, lw=1.5)
+
+        zarr = prof["z"]/1e3
+        parr =  prof["p"]/1e5
+
+        zmax = max(zmax, np.amax(zarr))
+        pmax = max(pmax, np.amax(parr))
+
+        ax0.plot( prof["t"], zarr, color=color, label=label, lw=1.5, zorder=i+2)
+        ax1.plot( prof["t"], parr, color=color, label=label, lw=1.5, zorder=i+2)
 
     #####  T-Z
-    # fig_o.set_myaxes( ax0, xlabel='$T$ (K)', ylabel='$z_\mathrm{atm}$\n(km)', xmin=xmin, xmax=xmax, ymin=0, ymax=ymax_atm_z, xticks=xticks )
     ax0.set_ylabel(r"Height [km]")
+    ax0.set_ylim(bottom=0.0, top=zmax)
 
     #####  T-P
-    # fig_o.set_myaxes( ax1, xlabel='$T$ (K)', ylabel='$P_\mathrm{atm}$\n(bar)', xmin=xmin, xmax=xmax, xticks=xticks )
     ax1.set_xlabel("Temperature [K]")
     ax1.set_ylabel("Pressure [bar]")
     ax1.invert_yaxis()
     ax1.set_yscale("log")
-
-    # Legend
-    ax1.legend( fontsize=8, fancybox=True, framealpha=0.5 )
+    ax1.set_ylim(bottom=pmax, top=np.amin(parr))
     ax1.yaxis.set_major_locator(LogLocator(numticks=1000))
 
+    # Legend
+    ax1.legend( fontsize=8, fancybox=True, framealpha=0.5).set_zorder(99)
     fig.subplots_adjust(hspace=0.02)
-
-    plt.close()
-    plt.ioff()
-
     fpath = os.path.join(output_dir, "plot_atmosphere.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 
 def plot_atmosphere_entry(handler: Proteus):
-    plot_times, _ = sample_output(handler, tmin=1e4)
+    plot_times, _ = sample_output(handler, tmin=1e4, extension="_atm.nc")
     print("Snapshots:", plot_times)
 
     # Plot fixed set from above

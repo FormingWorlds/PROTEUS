@@ -30,13 +30,13 @@ def plot_bolometry(hf_all:pd.DataFrame, output_dir: str, plot_format: str="pdf",
 
     # left axis
     axl.plot(time, hf_all["transit_depth"]*1e6, lw=lw, color='k')
-    axl.set_ylabel("Transit depth [ppm]")
+    axl.set_ylabel("Bolometric transit depth [ppm]")
 
     # right axis
     axr = axl.twinx()
     color = "tab:red"
-    axr.plot(time, hf_all["contrast_ratio"]*1e9, lw=lw, color=color)
-    axr.set_ylabel("Bolometric contrast ratio [ppb]")
+    axr.plot(time, hf_all["eclipse_depth"]*1e6, lw=lw, color=color)
+    axr.set_ylabel("Bolometric eclipse depth [ppm]")
     axr.yaxis.label.set_color(color)
     axr.tick_params(axis='y', colors=color)
 

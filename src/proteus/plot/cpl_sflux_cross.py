@@ -154,7 +154,7 @@ def plot_sflux_cross_entry(handler: Proteus):
     wl_targets = [1.0, 12.0, 50.0, 121.0, 200.0, 400.0, 500.0, 2000.0]
 
     if handler.config.star.module == "mors":
-        modern_age = handler.config.star.age_now * 1e9
+        modern_age = handler.config.star.mors.age_now * 1e9
     else:
         modern_age = -1
 

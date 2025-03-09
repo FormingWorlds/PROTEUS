@@ -63,6 +63,7 @@ def plot_spectra(output_dir: str, plot_format: str="pdf",
 
     axt.set_ylabel("Primary transit depth [ppm]")
     leg = axb.legend(ncols=3, title="Removed gases", loc='upper left')
+    leg.set_zorder(99)
     for line in leg.get_lines():
         line.set_linewidth(4.0)
 
