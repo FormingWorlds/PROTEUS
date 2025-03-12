@@ -172,6 +172,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
+    reservoir = "bulk"  # Escaping reservoir: "bulk", "outgas", "pxuv".
     module = "zephyrus"    # Which escape module to use
 
     [escape.zephyrus]

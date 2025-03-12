@@ -117,9 +117,6 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
             Volatile element whole-planet inventories [kg]
     """
 
-    # bulk escape rate, kg/s
-    esc = hf_row["esc_rate_total"]
-
     # which reservoir?
     match reservoir:
         case "bulk":
@@ -154,7 +151,7 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
             continue
 
         # subtract lost mass from total mass of element e
-        tgt[e] = tgt[e] - esc * emr[e] * dt * secs_per_year
+        tgt[e] = tgt[e] - hf_row["esc_rate_total"] * emr[e] * dt * secs_per_year
 
         # do not allow negative masses
         tgt[e] = max(0.0, tgt[e])
