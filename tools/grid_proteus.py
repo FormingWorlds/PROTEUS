@@ -447,7 +447,7 @@ if __name__=='__main__':
     # -----
 
     config = "planets/l9859d.toml"
-    folder = "l98d_escape5"
+    folder = "l98d_escape7"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
@@ -464,10 +464,10 @@ if __name__=='__main__':
     # pg.set_dimension_linspace("Core", 0.5, 0.9, 10)
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_arange("Hydrogen", 100, 1300, 200)
+    pg.set_dimension_logspace("Hydrogen", 1e2, 3e3, 7)
 
-    # pg.add_dimension("Ecc", "orbit.eccentricity")
-    # pg.set_dimension_logspace("Ecc", 1e-3, 0.2, 12)
+    pg.add_dimension("Mass", "struct.mass_tot")
+    pg.set_dimension_direct("Mass", [1.94, 2.14, 2.31])
 
     # -----
     # Print state of parameter grid

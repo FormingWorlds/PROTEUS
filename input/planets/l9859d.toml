@@ -27,15 +27,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.out]
         path        = "l9859d_spider"
         logging     = "INFO"
-        plot_mod    = 10      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 15      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
     # time-stepping
     [params.dt]
         minimum      = 1e3    # yr, minimum time-step
-        maximum      = 5e6    # yr, maximum time-step
-        initial      = 2e3    # yr, inital step size
+        maximum      = 1e7    # yr, maximum time-step
+        initial      = 1e4    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
@@ -45,7 +45,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.dt.adaptive]
             atol         = 0.03  # Step size atol
-            rtol         = 0.10   # Step size rtol
+            rtol         = 0.11   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -145,13 +145,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "48"         # how many spectral bands?
-        num_levels      = 50            # Number of atmospheric grid levels
-        chemistry       = "eq"        # "none" | "eq"
+        spectral_bands  = "256"         # how many spectral bands?
+        num_levels      = 48            # Number of atmospheric grid levels
+        chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
-        solution_atol   = 1e-1          # solver absolute tolerance
-        solution_rtol   = 1e-1          # solver relative tolerance
+        solution_atol   = 0.10          # solver absolute tolerance
+        solution_rtol   = 0.15          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
         real_gas        = true          # use real-gas equations of state
@@ -176,7 +176,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [escape.zephyrus]
         Pxuv        = 5e-5          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-        efficiency  = 0.1           # Escape efficiency factor
+        efficiency  = 0.05           # Escape efficiency factor
         tidal       = true         # Tidal contribution enabled
 
     [escape.dummy]
@@ -195,12 +195,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 70       # Number of SPIDER grid levels
+        num_levels      = 65       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1e-6   # solver tolerance
+        tolerance       = 1e-6   # solver tolerance-
         tsurf_atol      = 5.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.004      # tsurf_poststep_change_frac
-        ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
+        tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
+        ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]

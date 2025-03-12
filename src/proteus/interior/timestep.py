@@ -16,7 +16,7 @@ log = logging.getLogger("fwl."+__name__)
 
 # Constants
 ILOOK = 2       # Ideal number of steps to look back
-SFINC = 1.10    # Scale factor for step size increase
+SFINC = 1.30    # Scale factor for step size increase
 SFDEC = 0.75    # Scale factor for step size decrease
 SMALL = 1e-8   # Small number
 
