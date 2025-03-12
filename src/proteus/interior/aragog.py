@@ -133,8 +133,8 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
             )
 
     initial_condition = _InitialConditionParameters(
+            initial_condition = 3 # 1 = linear profile, 2 = user-defined profile, 3 = adiabatic profile
             surface_temperature = config.interior.aragog.ini_tmagma, # initial top temperature (K)
-            basal_temperature = config.interior.aragog.ini_tmagma, # initial bottom temperature (K)
             )
 
     # Get look up data directory, will be configurable in the future
@@ -228,7 +228,7 @@ def UpdateAragogSolver(dt:float, hf_row:dict, interior_o:Interior_t,
 
     # Update initial condition
     Tfield = Tfield / aragog_solver.parameters.scalings.temperature
-    aragog_solver.parameters.initial_condition.from_field = True
+    aragog_solver.parameters.initial_condition.initial_condition = 2 # switch to user-defined init
     aragog_solver.parameters.initial_condition.init_temperature = Tfield
 
     # Update boundary conditions
