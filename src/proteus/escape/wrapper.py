@@ -128,30 +128,27 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
         case _:
             raise ValueError(f"Invalid escape reservoir '{reservoir}'")
 
-    # calculate total mass of volatile elements (except oxygen, which is set by fO2)
-    tgt = {}
+    # calculate mass of volatile elements in reservoir (except oxygen, which is set by fO2)
+    res = {}
     for e in element_list:
         if e=='O':
             continue
-        tgt[e] = hf_row[e+key]
-    M_vols = sum(list(tgt.values()))
+        res[e] = hf_row[e+key]
+    M_vols = sum(list(res.values()))
 
     # calculate the current mass mixing ratio for each element
     #     if escape is unfractionating, this should be conserved
     emr = {}
-    for e in element_list:
-        if e=='O':
-            continue
-        emr[e] = tgt[e]/M_vols
-        log.debug("    %s (%s) mass ratio = %.2e "%(e,reservoir,emr[e]))
+    for e in res.keys():
+        emr[e] = res[e]/M_vols
+        log.debug("    %2s (%s) mass ratio = %.2e "%(e,reservoir,emr[e]))
 
-    # for each element, calculate new whole-planet mass inventory
-    for e in element_list:
-        if e=='O':
-            continue
-
-        # subtract lost mass from total mass of element e
-        tgt[e] = tgt[e] - hf_row["esc_rate_total"] * emr[e] * dt * secs_per_year
+    # for each element, calculate new TOTAL mass inventory
+    tgt = {}
+    for e in res.keys():
+        # subtract lost mass from TOTAL mass of element e
+        tgt[e]  = hf_row[e+"_kg_total"]
+        tgt[e] -= hf_row["esc_rate_total"] * emr[e] * dt * secs_per_year
 
         # do not allow negative masses
         tgt[e] = max(0.0, tgt[e])

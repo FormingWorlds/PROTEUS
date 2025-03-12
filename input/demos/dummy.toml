@@ -29,7 +29,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         logging     = "ERROR"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
-        write_mod   = 100      # Write CSV frequency, 0: wait until completion | n: every n iterations
+        write_mod   = 50      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
     # time-stepping
     [params.dt]
@@ -64,7 +64,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 2e8     # yr, model will terminate when t > maximum
+            maximum = 2e9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -78,7 +78,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             rtol    = 1e-3    # relative tolerance
 
         [params.stop.escape]
-            enabled   = false
+            enabled   = true
             mass_frac = 3e-4      # Stop when atm_mass < this frac of initial mass
 
 
@@ -172,7 +172,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
-    reservoir = "bulk"  # Escaping reservoir: "bulk", "outgas", "pxuv".
+    reservoir = "outgas"  # Escaping reservoir: "bulk", "outgas", "pxuv".
     module = "dummy"     # Which escape module to use
 
     [escape.zephyrus]
@@ -181,7 +181,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         tidal       = false         # Tidal contribution enabled
 
     [escape.dummy]
-        rate        = 2.0e4           # Bulk unfractionated escape rate [kg s-1]
+        rate        = 1.0e5           # Bulk unfractionated escape rate [kg s-1]
 
 # Interior - physics table
 [interior]
