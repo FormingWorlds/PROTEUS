@@ -143,7 +143,7 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
         if e=='O':
             continue
         emr[e] = tgt[e]/M_vols
-        log.debug("    %s (%s) mass ratio = %.2e "%(e,reservoir,emr))
+        log.debug("    %s (%s) mass ratio = %.2e "%(e,reservoir,emr[e]))
 
     # for each element, calculate new whole-planet mass inventory
     for e in element_list:

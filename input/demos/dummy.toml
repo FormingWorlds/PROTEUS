@@ -173,7 +173,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [escape]
 
     reservoir = "bulk"  # Escaping reservoir: "bulk", "outgas", "pxuv".
-    module = "none"     # Which escape module to use
+    module = "dummy"     # Which escape module to use
 
     [escape.zephyrus]
         Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
