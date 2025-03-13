@@ -133,7 +133,7 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
             )
 
     initial_condition = _InitialConditionParameters(
-            initial_condition = 3 # 1 = linear profile, 2 = user-defined profile, 3 = adiabatic profile
+            initial_condition = 3, # 1 = linear profile, 2 = user-defined profile, 3 = adiabatic profile
             surface_temperature = config.interior.aragog.ini_tmagma, # initial top temperature (K)
             )
 
