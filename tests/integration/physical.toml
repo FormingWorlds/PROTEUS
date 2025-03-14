@@ -77,7 +77,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.stop.escape]
             enabled   = false
-            mass_frac = 3e-4      # Stop when atm_mass < this frac of initial mass
+            p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
 
 
 # ----------------------------------------------------

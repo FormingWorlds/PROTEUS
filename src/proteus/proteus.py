@@ -388,7 +388,7 @@ class Proteus:
 
             # Check for when atmosphere has escaped.
             #    This will mean that the mixing ratios become undefined, so use value of 0.
-            if self.hf_row["P_surf"] < 1.0e-10:
+            if self.hf_row["P_surf"] < self.config.params.stop.escape.p_stop:
                 self.has_escaped = True
                 for gas in gas_list:
                     self.hf_row[gas+"_vmr"] = 0.0
@@ -459,6 +459,8 @@ class Proteus:
         PrintSeparator()
         log.info("Performing postprocessing steps")
         if self.config.observe.synthesis is not None:
+            if self.has_escaped:
+                log.warning("Generating synthetic observations for bare rock")
             transit_depth_synth(self.config, self.hf_row, self.directories["output"])
             eclipse_depth_synth(self.config, self.hf_row, self.directories["output"])
 

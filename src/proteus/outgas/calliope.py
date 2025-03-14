@@ -166,3 +166,7 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
     for k in solvevol_result.keys():
         if k in hf_row.keys():
             hf_row[k] = solvevol_result[k]
+
+    # print info
+    log.info("    total  : %-8.2f bar"%hf_row["P_surf"])
+    log.info("    mmw    : %-8.4f g mol-1"%(hf_row["atm_kg_per_mol"]*1e3))

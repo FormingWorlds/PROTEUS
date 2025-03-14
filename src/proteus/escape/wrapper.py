@@ -82,8 +82,8 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
     Fxuv_star_SI = ((stellar_track.Value(age_star, 'Lx') + stellar_track.Value(age_star, 'Leuv'))
                              / (4 * np.pi * (hf_row["semimajorax"] * 1e2)**2)) * ergcm2stoWm2
 
-    log.info("    age_star     = %.1e Myr"%age_star)
-    log.info("    Fxuv_star_SI = %.1e W m-2"%Fxuv_star_SI)
+    log.info("    age_star = %.1e Myr"%age_star)
+    log.info("    F_xuv    = %.1e W m-2"%Fxuv_star_SI)
 
     # Compute energy-limited escape
     mlr = EL_escape(config.escape.zephyrus.tidal, #tidal contribution (True/False)
@@ -145,10 +145,15 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
 
     # for each element, calculate new TOTAL mass inventory
     tgt = {}
+    log.info("Elemental escape fluxes:")
     for e in res.keys():
+
+        # elemental escape flux [kg/year]
+        esc_rate_elem = hf_row["esc_rate_total"] * emr[e] * secs_per_year
+        log.info("    %2s = %.2e kg yr-1"%(e,esc_rate_elem))
+
         # subtract lost mass from TOTAL mass of element e
-        tgt[e]  = hf_row[e+"_kg_total"]
-        tgt[e] -= hf_row["esc_rate_total"] * emr[e] * dt * secs_per_year
+        tgt[e] = hf_row[e+"_kg_total"] - esc_rate_elem * dt
 
         # do not allow negative masses
         tgt[e] = max(0.0, tgt[e])

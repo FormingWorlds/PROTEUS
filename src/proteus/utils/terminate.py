@@ -77,11 +77,11 @@ def _check_radeqm(handler: Proteus) -> bool:
 def _check_escape(handler: Proteus) -> bool:
     log.debug("Check escape")
 
-    M_atm = handler.hf_row["M_atm"]
-    M_ref = handler.config.params.stop.escape.mass_frac * handler.hf_all.iloc[0]["M_atm"]
-    log.debug("    val, req = %.3e, %.3e  W m-2"%(M_atm, M_ref))
+    P_surf = handler.hf_row["P_surf"]
+    P_stop = handler.config.params.stop.escape.p_stop
+    log.debug("    val, req = %.3e, %.3e  bar"%(P_surf, P_stop))
 
-    if handler.has_escaped or (M_atm <= M_ref):
+    if handler.has_escaped or (P_surf <= P_stop):
         UpdateStatusfile(handler.directories, 15)
         _msg_termination("Atmosphere has escaped")
         return True
