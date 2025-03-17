@@ -45,7 +45,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.dt.adaptive]
             atol         = 0.02  # Step size atol
-            rtol         = 0.10   # Step size rtol
+            rtol         = 0.11   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -64,7 +64,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 4e9     # yr, model will terminate when t > maximum
+            maximum = 5e9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
