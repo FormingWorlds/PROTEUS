@@ -460,9 +460,10 @@ class Proteus:
         log.info("Performing postprocessing steps")
         if self.config.observe.synthesis is not None:
             if self.has_escaped:
-                log.warning("Generating synthetic observations for bare rock")
-            transit_depth_synth(self.config, self.hf_row, self.directories["output"])
-            eclipse_depth_synth(self.config, self.hf_row, self.directories["output"])
+                log.warning("Cannot generate synthetic observations after atmosphere loss")
+            else:
+                transit_depth_synth(self.config, self.hf_row, self.directories["output"])
+                eclipse_depth_synth(self.config, self.hf_row, self.directories["output"])
 
         # Tidy up before exit...
         log.info("Tidy up before exit")

@@ -355,9 +355,9 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         # default parameters
         linesearch  = 2
         easy_start  = False
-        dx_max      = config.interior.spider.tsurf_atol+5.0
-        ls_increase = 1.02
-        perturb_all = False
+        dx_max      = config.interior.spider.tsurf_atol*2+5.0
+        ls_increase = 1.01
+        perturb_all = True
         max_steps   = 100
         chem_type   = int(config.atmos_clim.agni.chemistry_int)
 
