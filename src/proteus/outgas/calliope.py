@@ -162,7 +162,11 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
         log.warning("Outgassing temperature clipped to %.1f K"%solvevol_inp["T_magma"])
 
     # get atmospheric compositison
-    solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp)
+    solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp, rtol=1e-6)
     for k in solvevol_result.keys():
         if k in hf_row.keys():
             hf_row[k] = solvevol_result[k]
+
+    # print info
+    log.info("    total  : %-8.2f bar"%hf_row["P_surf"])
+    log.info("    mmw    : %-8.4f g mol-1"%(hf_row["atm_kg_per_mol"]*1e3))

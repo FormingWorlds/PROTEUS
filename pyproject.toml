@@ -37,9 +37,9 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
@@ -47,8 +47,8 @@ dependencies = [
     "cattrs",
     "fwl-janus>=24.11.05",
     "fwl-mors>=25.02.26",
-    "fwl-calliope>=25.02.26",
-    "fwl-zephyrus>=24.10.15",
+    "fwl-calliope>=25.03.14",
+    "fwl-zephyrus>=25.03.11",
     "aragog>=0.1.9a0",
     "cmcrameri",
     "juliacall",

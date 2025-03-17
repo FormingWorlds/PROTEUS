@@ -53,7 +53,11 @@ def run_dummy_int(config:Config, dirs:dict,
     # Interior structure
     output["M_mantle"] = calculate_simple_mantle_mass(hf_row["R_int"], config.struct.corefrac)
 
-    # Parameters
+    # Numerical parameters
+    tsurf_atol  = 30.0 # max abs change in surface temperature
+    tsurf_rtol  = 0.02 # max rel change in surface temperature
+
+    # Physical parameters
     tmp_init = config.interior.dummy.ini_tmagma # Initial magma temperature
     tmp_liq  = 2700.0    # Liquidus
     tmp_sol  = 1700.0    # Solidus
@@ -88,7 +92,7 @@ def run_dummy_int(config:Config, dirs:dict,
     # Total flux loss
     F_loss = output["F_int"] - output["F_tidal"] - output["F_radio"]
 
-    # Rate of surface temperature change (this will be negative)
+    # Rate of surface temperature change (this will be negative) [K/s]
     dTdt = -F_loss * area / cp_int
 
     # Timestepping
@@ -96,8 +100,15 @@ def run_dummy_int(config:Config, dirs:dict,
         output["T_magma"] = tmp_init
         dt = 0.0
     else:
+        # calculate new time-step [years]
         dt = next_step(config, dirs, hf_row, hf_all, 1.0)
-        output["T_magma"] = hf_row["T_magma"] + dTdt * dt * secs_per_year
+
+        # limit time-step based on max change to T_magma
+        dtmp_max = hf_row["T_magma"] * tsurf_rtol + tsurf_atol
+        dt = min(dt, abs(dtmp_max / dTdt) / secs_per_year) # years
+
+        # update T_magma
+        output["T_magma"] = hf_row["T_magma"] +  dTdt * dt * secs_per_year
 
     # Store scalars
     output["Phi_global"]        = _calc_phi(output["T_magma"])

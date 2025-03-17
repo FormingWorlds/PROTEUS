@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
+TRUNC_MASS = 1e5
+
 def calc_target_elemental_inventories(dirs:dict, config:Config, hf_row:dict):
     """
     Calculate total amount of volatile elements in the planet
@@ -30,9 +32,9 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
 
     # Floating point errors can be problematic here.
     #    Ensure that zero mass values stay at zero by setting all element mass inventories
-    #    which are less than 10 kg equal to zero.
+    #    which are less than TRUNC_MASS to be equal to zero.
     for e in element_list:
-        if hf_row[e + "_kg_total"] < 10.0:
+        if hf_row[e + "_kg_total"] < TRUNC_MASS:
             hf_row[e + "_kg_total"] = 0.0
 
     # Run outgassing calculation

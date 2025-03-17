@@ -174,7 +174,11 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     log.info(write)
 
     # Escape module
-    log.info("Escape module     %s" % config.escape.module)
+    write = "Escape module     %s" % config.escape.module
+    if config.escape.module == 'zephyrus':
+        from zephyrus import __version__ as zephyrus_version
+        write += " version " + zephyrus_version
+    log.info(write)
 
     # Star module
     write = "Star module       %s" % config.star.module
@@ -308,8 +312,8 @@ def PrintCurrentState(hf_row:dict):
     log.info("Runtime info...")
     log.info("    Wall time  = %s  "         % _get_current_time())
     log.info("    Model time = %.2e   yr"    % float(hf_row["Time"]))
-    log.info("    T_surf     = %4.3f   K"    % float(hf_row["T_surf"]))
-    log.info("    T_magma    = %4.3f   K"    % float(hf_row["T_magma"]))
+    log.info("    T_surf     = %8.3f   K"    % float(hf_row["T_surf"]))
+    log.info("    T_magma    = %8.3f   K"    % float(hf_row["T_magma"]))
     log.info("    P_surf     = %.2e   bar"   % float(hf_row["P_surf"]))
     log.info("    Phi_global = %.2e   "      % float(hf_row["Phi_global"]))
     log.info("    F_atm      = %.2e   W m-2" % float(hf_row["F_atm"]))
