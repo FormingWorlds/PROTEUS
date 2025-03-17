@@ -222,7 +222,7 @@ class StopEscape:
     enabled: bool
         Enable criteria if True
     p_stop: float
-        Model will termiante when surface pressure is less than this value [bar].
+        Model will terminate when surface pressure is less than this value [bar].
     """
     enabled: bool
     p_stop:float = field(validator=(gt(0),lt(1e6)))
