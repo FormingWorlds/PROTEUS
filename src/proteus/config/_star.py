@@ -5,6 +5,7 @@ from attrs.validators import ge, gt, in_, le
 
 from ._converters import none_if_none
 
+
 def rot_valid(instance, attribute, value):
 
     set_pcntle = instance.rot_pcntle is not None
