@@ -174,7 +174,11 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     log.info(write)
 
     # Escape module
-    log.info("Escape module     %s" % config.escape.module)
+    write = "Escape module     %s" % config.escape.module
+    if config.escape.module == 'zephyrus':
+        from zephyrus import __version__ as zephyrus_version
+        write += " version " + zephyrus_version
+    log.info(write)
 
     # Star module
     write = "Star module       %s" % config.star.module

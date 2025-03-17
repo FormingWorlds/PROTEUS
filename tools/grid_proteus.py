@@ -464,7 +464,7 @@ if __name__=='__main__':
     pg.set_dimension_direct("Sulfur", [6.0, 9.0, 12.0])
 
     # pg.add_dimension("Mass", "struct.mass_tot")
-    # pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
+    # pg.set_dime nsion_direct("Mass", [1.85, 2.14, 2.39])
 
     # -----
     # Print state of parameter grid
