@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image
 
 PROTEUS_ROOT = Path(__file__).parents[2]
-NEGLECT = ["N2_mol_atm", "CH4_mol_atm", "CH4_mol_total", "CH4_kg_atm", "CH4_kg_total", "CH4_bar", "runtime"]
+NEGLECT = ["N2_mol_atm", "N2_mol_total", "CH4_mol_atm", "CH4_mol_total", "CH4_kg_atm", "CH4_kg_total", "CH4_bar", "runtime"]
 
 def resize_to_match(image1_path, image2_path):
     img1 = Image.open(image1_path)
