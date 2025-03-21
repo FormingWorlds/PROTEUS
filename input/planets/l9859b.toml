@@ -79,7 +79,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.stop.escape]
             enabled   = true
-            mass_frac = 3e-4      # Stop when atm_mass < this frac of initial mass
+            p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
 
 
 # ----------------------------------------------------
@@ -92,7 +92,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     module  = "mors"
     [star.mors]
-        rot_pctle = 50.0    # rotation percentile
+        rot_pcntle = 50.0       # rotation percentile
+        rot_period = 'none'     # rotation period [days]
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 4.94     # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/l-98-59.txt" # stellar spectrum
@@ -172,6 +173,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
+    reservoir = "bulk"  # Escaping reservoir: "bulk", "outgas", "pxuv".
     module = "none"    # Which escape module to use
 
     [escape.zephyrus]

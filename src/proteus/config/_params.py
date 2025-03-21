@@ -221,8 +221,8 @@ class StopEscape:
     ----------
     enabled: bool
         Enable criteria if True
-    mass_frac: float
-        Model will termiante when atmosphere mass is less than this fraction of the initial atmosphere mass [dimensionless].
+    p_stop: float
+        Model will terminate when surface pressure is less than this value [bar].
     """
     enabled: bool
-    mass_frac: float = field(validator=(gt(0), lt(1)))
+    p_stop:float = field(validator=(gt(0),lt(1e6)))

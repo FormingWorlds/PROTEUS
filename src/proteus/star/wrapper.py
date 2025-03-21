@@ -43,8 +43,10 @@ def init_star(handler:Proteus):
 
             case 'spada':
                 # creates track data
+                pcntle = handler.config.star.mors.rot_pcntle
+                period = handler.config.star.mors.rot_period
                 handler.stellar_track = mors.Star(Mstar = handler.config.star.mass,
-                                                  percentile = handler.config.star.mors.rot_pctle)
+                                                  percentile = pcntle, Prot=period)
 
                 # load modern spectrum
                 # calculate band-integrated fluxes

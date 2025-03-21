@@ -12,6 +12,8 @@ class Escape:
 
     Attributes
     ----------
+    reservoir: str
+        Element reservoir representing the escaping composition. Choices: bulk, outgas, pxuv
     module: str | None
         Escape module to use. Choices: "none", "dummy", "zephyrus".
     zephyrus: Zephyrus
@@ -19,6 +21,7 @@ class Escape:
     dummy: EscapeDummy
         Parameters for dummy escape module.
     """
+    reservoir: str = field(validator=in_(('bulk','outgas','pxuv')))
     module: str | None = field(
         validator=in_((None, 'dummy', 'zephyrus')), converter=none_if_none
         )

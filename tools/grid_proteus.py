@@ -447,27 +447,24 @@ if __name__=='__main__':
     # -----
 
     config = "planets/l9859d.toml"
-    folder = "l98d_escape5"
+    folder = "l98d_escape12"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
     symlink = None
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
-    # pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    # pg.set_dimension_linspace("Redox state", -4, 4, 5)
-
-    # pg.add_dimension("Tidal", "orbit.dummy.H_tide")
-    # pg.set_dimension_direct("Tidal", [0.0, 1e-9, 1e-8, 1e-7, 1e-6, 1e-5])
-
-    # pg.add_dimension("Core", "struct.corefrac")
-    # pg.set_dimension_linspace("Core", 0.5, 0.9, 10)
+    pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
+    pg.set_dimension_direct("Redox state", [-5, -4, -3, -2, -1])
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_arange("Hydrogen", 100, 1300, 200)
+    pg.set_dimension_direct("Hydrogen", [1e3, 8e3, 1e4])
 
-    # pg.add_dimension("Ecc", "orbit.eccentricity")
-    # pg.set_dimension_logspace("Ecc", 1e-3, 0.2, 12)
+    pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
+    pg.set_dimension_direct("Sulfur", [6.0, 9.0, 12.0])
+
+    # pg.add_dimension("Mass", "struct.mass_tot")
+    # pg.set_dime nsion_direct("Mass", [1.85, 2.14, 2.39])
 
     # -----
     # Print state of parameter grid

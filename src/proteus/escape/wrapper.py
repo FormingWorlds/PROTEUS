@@ -5,7 +5,6 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
-from zephyrus.escape import EL_escape
 
 from proteus.utils.constants import element_list, ergcm2stoWm2, secs_per_year
 
@@ -46,9 +45,10 @@ def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
         % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"])
         )
 
-    solvevol_target = SpeciesEscapeFromTotalEscape(hf_row, dt)
+    # calculate new elemental inventories
+    solvevol_target = calc_new_elements(hf_row, dt, config.escape.reservoir)
 
-    # store in hf_row as elements
+    # store new elemental inventories
     for e in element_list:
         if e == "O":
             continue
@@ -71,6 +71,8 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
             Bulk escape rate [kg s-1]
     """
 
+    from zephyrus.escape import EL_escape
+
     log.info("Running EL escape (ZEPHYRUS) ...")
 
     # Get the age of the star at time t to compute XUV flux at that time
@@ -80,8 +82,8 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
     Fxuv_star_SI = ((stellar_track.Value(age_star, 'Lx') + stellar_track.Value(age_star, 'Leuv'))
                              / (4 * np.pi * (hf_row["semimajorax"] * 1e2)**2)) * ergcm2stoWm2
 
-    log.info("    age_star     = %.1e Myr"%age_star)
-    log.info("    Fxuv_star_SI = %.1e W m-2"%Fxuv_star_SI)
+    log.info("    age_star = %.1e Myr"%age_star)
+    log.info("    F_xuv    = %.1e W m-2"%Fxuv_star_SI)
 
     # Compute energy-limited escape
     mlr = EL_escape(config.escape.zephyrus.tidal, #tidal contribution (True/False)
@@ -92,38 +94,68 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
                     config.escape.zephyrus.efficiency, #efficiency factor
                     hf_row["R_int"], #planetary radius [m]
                     hf_row["R_xuv"], #XUV optically thick planetary radius [m]
-                    Fxuv_star_SI)   # [kg s-1]
+                    Fxuv_star_SI,   # [kg s-1]
+                    scaling = 3)
 
     return mlr
 
-def SpeciesEscapeFromTotalEscape(hf_row:dict, dt:float):
+def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
+    """Calculate new elemental inventory based on escape rate.
 
-    out = {}
-    esc = hf_row["esc_rate_total"]
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+        dt : float
+            Time-step length [years]
+        reservoir: str
+            Element reservoir representing the escaping composition (bulk, outgas, pxuv)
 
-    # calculate total mass of volatiles (except oxygen, which is set by fO2)
-    M_vols = 0.0
+    Returns
+    -------
+        tgt : dict
+            Volatile element whole-planet inventories [kg]
+    """
+
+    # which reservoir?
+    match reservoir:
+        case "bulk":
+            key = "_kg_total"
+        case "outgas":
+            key = "_kg_atm"
+        case "pxuv":
+            raise ValueError("Fractionation at p_xuv is not yet supported")
+        case _:
+            raise ValueError(f"Invalid escape reservoir '{reservoir}'")
+
+    # calculate mass of volatile elements in reservoir (except oxygen, which is set by fO2)
+    res = {}
     for e in element_list:
         if e=='O':
             continue
-        M_vols += hf_row[e+"_kg_total"]
+        res[e] = hf_row[e+key]
+    M_vols = sum(list(res.values()))
 
-    # for each elem, calculate new total inventory while
-    # maintaining a constant mass mixing ratio
+    # calculate the current mass mixing ratio for each element
+    #     if escape is unfractionating, this should be conserved
+    emr = {}
+    for e in res.keys():
+        emr[e] = res[e]/M_vols
+        log.debug("    %2s (%s) mass ratio = %.2e "%(e,reservoir,emr[e]))
 
-    for e in element_list:
-        if e=='O':
-            continue
+    # for each element, calculate new TOTAL mass inventory
+    tgt = {}
+    log.info("Elemental escape fluxes:")
+    for e in res.keys():
 
-        # current elemental mass ratio in total
-        emr = hf_row[e+"_kg_total"]/M_vols
+        # elemental escape flux [kg/year]
+        esc_rate_elem = hf_row["esc_rate_total"] * emr[e] * secs_per_year
+        log.info("    %2s = %.2e kg yr-1"%(e,esc_rate_elem))
 
-        log.debug("    %s mass ratio = %.2e "%(e,emr))
-
-        # new total mass of element e, keeping a constant mixing ratio of that element
-        out[e] = emr * (M_vols - esc * dt * secs_per_year)
+        # subtract lost mass from TOTAL mass of element e
+        tgt[e] = hf_row[e+"_kg_total"] - esc_rate_elem * dt
 
         # do not allow negative masses
-        out[e] = max(0.0, out[e])
+        tgt[e] = max(0.0, tgt[e])
 
-    return out
+    return tgt
