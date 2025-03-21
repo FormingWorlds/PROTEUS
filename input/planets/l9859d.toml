@@ -33,8 +33,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # time-stepping
     [params.dt]
-        minimum      = 1e3    # yr, minimum time-step
-        maximum      = 1e7    # yr, maximum time-step
+        minimum      = 1e4    # yr, minimum time-step
+        maximum      = 3e7    # yr, maximum time-step
         initial      = 2e3    # yr, inital step size
         starspec     = 9e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
@@ -44,8 +44,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             propconst    = 52.0   # Proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.02  # Step size atol
-            rtol         = 0.11   # Step size rtol
+            atol         = 0.03  # Step size atol
+            rtol         = 0.13   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -79,7 +79,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.stop.escape]
             enabled   = true
-            p_stop    = 10.0  # bar, model will terminate with p_surf < p_stop
+            p_stop    = 2.0  # bar, model will terminate with p_surf < p_stop
 
 
 # ----------------------------------------------------
@@ -121,7 +121,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Planetary structure - physics table
 [struct]
     set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
-    mass_tot    = 2.14       # M_earth
+    mass_tot    = 2.31       # M_earth
     radius_int  = 1.0       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
@@ -148,11 +148,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "48"         # how many spectral bands?
         num_levels      = 38            # Number of atmospheric grid levels
-        chemistry       = "none"        # "none" | "eq"
+        chemistry       = "eq"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
         solution_atol   = 0.10          # solver absolute tolerance
-        solution_rtol   = 0.10          # solver relative tolerance
+        solution_rtol   = 0.12          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
         real_gas        = true          # use real-gas equations of state
@@ -197,7 +197,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 70       # Number of SPIDER grid levels
+        num_levels      = 80       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-7   # solver tolerance-
         tsurf_atol      = 5.0      # tsurf_poststep_change
@@ -255,7 +255,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # H_oceans    = 10.0       # Hydrogen inventory in units of equivalent Earth oceans
         H_ppmw      = 1e4     # Hydrogen inventory in ppmw relative to mantle mass
 
-        CH_ratio    = 0.7       # C/H mass ratio in mantle/atmosphere system
+        CH_ratio    = 0.6       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
 
         NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system

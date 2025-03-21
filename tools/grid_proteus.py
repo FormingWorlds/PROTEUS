@@ -447,7 +447,7 @@ if __name__=='__main__':
     # -----
 
     config = "planets/l9859d.toml"
-    folder = "l98d_escape12"
+    folder = "l98d_escape16"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
@@ -458,15 +458,15 @@ if __name__=='__main__':
     pg.set_dimension_direct("Redox state", [-5, -4, -3, -2, -1])
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_direct("Hydrogen", [1e3, 8e3, 1e4])
+    pg.set_dimension_direct("Hydrogen", [3e2, 3e3, 6e3, 9e3])
 
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
     pg.set_dimension_direct("Sulfur", [6.0, 9.0, 12.0])
 
     # pg.add_dimension("Mass", "struct.mass_tot")
-    # pg.set_dime nsion_direct("Mass", [1.85, 2.14, 2.39])
+    # pg.set_dimension_direct("Mass", [2.14, 2.25, 2.39])
 
-    # -----
+    # ----- 
     # Print state of parameter grid
     # -----
     pg.print_setup()
