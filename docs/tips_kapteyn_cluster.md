@@ -14,17 +14,13 @@
 
 ## Queuing Manager : Condormaster
 
-To use the queuing manager on the Kapteyn cluster, you first need to SSH into Norma1 or Norma2.
+To use the queuing manager on the Kapteyn cluster, you first need to SSH into Norma1 or Norma2 (```ssh norma1```).
 
-To access Condormaster, run the following command:
-
-```ssh condormaster```
+To access Condormaster, run the following command : ```ssh condormaster```
 
 
 ### Submitting a Job on Condormaster
-To run a job using Condormaster, you first need to write a submit script. Begin by navigating to your home directory and creating a new submit script using:
-
-```nano name_of_your_script.submit```
+To run a job using Condormaster, you first need to write a submit script. Begin by navigating to your home directory and creating a new submit script using : ```nano name_of_your_script.submit```
 
 You can copy and paste the example submit script below and modify it according to your needs.
 
@@ -45,36 +41,27 @@ To exit nano, press `Ctrl+X`, then press `Enter` when prompted to save the file.
 
 ### Updating the Submit Script
 Modify the following variables according to your job:
+
 1. **`executable`**: Specify the path to the Python environment you use to run PROTEUS.
+
 2. **`arguments`**: Update the path to the config file for your PROTEUS simulation. If using `tools/grid_proteus.py`, modify the entire command accordingly.
+
 3. **`notify_user`**: Enter your email address to receive job completion notifications.
 
-For further details, refer to the documentation on the Kapteyn intranet: [How to use Condor?] (https://www.astro.rug.nl/intranet/computing/index.php)
+
+For further details, refer to the documentation on the Kapteyn intranet: [How to use Condor ?](https://www.astro.rug.nl/intranet/computing/index.php) (Go to Computing > Howto's > linux > How to use Condor ?)
 This documentation is updated regularly, so be sure to check for the latest information.
 
 ### Submitting and Monitoring Jobs
-To submit your script, run:
+To submit your script, run: ```condor submit name_of_your_script.submit```
 
-```condor submit name_of_your_script.submit```
-
-To check the status of your job, use:
-
-```condor_q```
-or
-```condor_q -better-analyze```
-
+To check the status of your job, use: ```condor_q``` or ```condor_q -better-analyze```.
 The second command provides a more detailed job status analysis.
 
-Another useful command is:
-
-```condor_status```
-
-This displays the jobs currently running on Condormaster, including both your jobs and those of other users.
+Another useful command is ```condor_status```. This displays the jobs currently running on Condormaster, including both your jobs and those of other users.
 
 ### Exiting Condormaster
-To exit Condormaster and return to Norma1/Norma2, run:
-
-```exit```
+To exit Condormaster and return to Norma1/Norma2, run: ```exit```
 
 ## Troubleshooting
 
