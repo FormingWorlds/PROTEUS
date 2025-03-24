@@ -50,10 +50,10 @@ Modify the following variables according to your job:
 
 
 For further details, refer to the documentation on the Kapteyn intranet: [How to use Condor ?](https://www.astro.rug.nl/intranet/computing/index.php) (Go to Computing > Howto's > linux > How to use Condor ?)
-This documentation is updated regularly, so be sure to check for the latest information.
+This documentation is updated regularly, so be sure to check for the latest information. The HTCondor doucumentation can be found here [HT Condor manual](https://htcondor.readthedocs.io/en/latest/users-manual/submitting-a-job.html).
 
 ### Submitting and Monitoring Jobs
-To submit your script, run: ```condor submit name_of_your_script.submit```
+To submit your script, run: ```condor_submit name_of_your_script.submit```
 
 To check the status of your job, use: ```condor_q``` or ```condor_q -better-analyze```.
 The second command provides a more detailed job status analysis.
