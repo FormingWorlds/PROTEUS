@@ -37,7 +37,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    set_by      = 'radius_int' # Variable to set interior structure: 'radius_int' or 'mass_tot'
     radius_int  = 1.073       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
@@ -71,7 +70,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Interior - physics table
 [interior]
-    F_initial       = 1e5   # Initial heat flux guess [W m-2]
     radiogenic_heat = true  # enable radiogenic heat production
     tidal_heat      = false  # enable tidal heat production
 

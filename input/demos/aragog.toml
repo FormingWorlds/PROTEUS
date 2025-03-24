@@ -1,22 +1,4 @@
 # PROTEUS configuration file (version 2.0)
-
-# Root tables should be physical, with the exception of "params"
-# Software related options should go within the appropriate physical table
-
-# The general structure is:
-#   [root]     metadata
-#   [params]   parameters for code execution, output files, time-stepping, convergence
-#   [star]     stellar parameters, model selection
-#   [orbit]    planetary orbital parameters
-#   [struct]   planetary structure (mass, radius)
-#   [atmos]    atmosphere parameters, model selection
-#   [escape]   escape parameters, model selection
-#   [interior] magma ocean model selection and parameters
-#   [outgas]   outgassing parameters (fO2) and included volatiles
-#   [delivery] initial volatile inventory, and delivery model selection
-
-# ----------------------------------------------------
-# Metadata
 version = "2.0"
 author  = "Harrison Nicholls, Tim Lichtenberg"
 
@@ -31,73 +13,27 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 5      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
-    # time-stepping
     [params.dt]
         minimum      = 3e1    # yr, minimum time-step
         maximum      = 1e7    # yr, maximum time-step
         initial      = 3e1    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e1    # yr, interval to re-calculate the instellation
-        method       = "adaptive"  # proportional | adaptive | maximum
 
-        [params.dt.proportional]
-            propconst    = 52.0   # Proportionality constant
-
-        [params.dt.adaptive]
-            atol         = 0.02   # Step size atol
-            rtol         = 0.09   # Step size rtol
-
-    # Termination criteria
-    #     Set enabled=true/false in each section to enable/disable that termination criterion
     [params.stop]
-
-        # Require criteria to be satisfied twice before model will exit?
-        strict = false
-
-        # required number of iterations
-        [params.stop.iters]
-            enabled = true
-            minimum = 5
-            maximum = 9000
-
-        # required time constraints
-        [params.stop.time]
-            enabled = true
-            minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 4.567e+9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
             enabled  = false
             phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
 
-        # radiative equilibrium
-        [params.stop.radeqm]
-            enabled = true
-            atol    = 0.2     # absolute tolerance [W m-2]
-            rtol    = 1e-3    # relative tolerance
-
-        [params.stop.escape]
-            enabled   = true
-            p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
-
 
 # ----------------------------------------------------
 # Star
 [star]
-
-    # Physical parameters
     mass    = 1.0       # M_sun
     age_ini = 0.100     # Gyr, model initialisation/start age
-
     module  = "dummy"
-    [star.mors]
-        rot_pcntle = 50.0       # rotation percentile
-        rot_period = 'none'     # rotation period [days]
-        tracks  = "baraffe" # evolution tracks: spada | baraffe
-        age_now = 4.567     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
-
     [star.dummy]
         radius  = 1.0       # R_sun
         Teff    = 5772.0    # K
@@ -109,37 +45,17 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
 
-    module  = "none"
-
-    [orbit.dummy]
-        H_tide  = 1e-7  # Fixed tidal power density [W kg-1]
-        Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
-
-    [orbit.lovepy]
-        visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
-
 # Planetary structure - physics table
 [struct]
-    set_by      = 'radius_int' # Variable to set interior structure: 'radius_int' or 'mass_tot'
-    mass_tot    = 1.0       # M_earth
     radius_int  = 0.9       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
-    core_density = 10738.33      # Core density [kg m-3]
-    core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = false      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
-    cloud_enabled   = false     # enable water cloud radiative effects
-    cloud_alpha     = 0.0       # condensate retention fraction (1 -> fully retained)
     surf_state      = "fixed"   # surface scheme: "mixed_layer" | "fixed" | "skin"
-    surf_greyalbedo  = 0.1      # surface grey albedo
-    albedo_pl       = 0.0   	# Bond albedo (scattering)
     rayleigh        = false      # enable rayleigh scattering
-    tmp_minimum     = 0.5           # temperature floor on solver
-    tmp_maximum     = 5000.0        # temperature ceiling on solver
 
     module  = "agni"           # Which atmosphere module to use
 
@@ -157,34 +73,17 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         condensation    = false          # volatile condensation
         real_gas        = true          # use real-gas equations of state
 
-    [atmos_clim.janus]
-        p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
-        p_obs           = 1.0e-3        # bar, observed pressure level
-        spectral_group  = "Frostflow"   # which gas opacities to include
-        spectral_bands  = "16"          # how many spectral bands?
-        F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 40           # Number of atmospheric grid levels
-        tropopause      = "none"        # none | skin | dynamic
-        overlap_method    = "ee"          # gas overlap method
-
     [atmos_clim.dummy]
         gamma           = 0.8           # atmosphere opacity between 0 and 1
 
-# Volatile escape - physics table
 [escape]
 
     reservoir = "bulk"  # Escaping reservoir: "bulk", "outgas", "pxuv".
     module = "dummy"    # Which escape module to use
 
-    [escape.zephyrus]
-        Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-        efficiency  = 1.0           # Escape efficiency factor
-        tidal       = false         # Tidal contribution enabled
-
     [escape.dummy]
         rate        = 2.0e4         # Bulk unfractionated escape rate [kg s-1]
 
-# Interior - physics table
 [interior]
     grain_size      = 0.1   # crystal settling grain size [m]
     F_initial       = 1e6   # Initial heat flux guess [W m-2]
@@ -220,22 +119,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "calliope"         # Which outgassing module to use
 
     [outgas.calliope]
-        include_H2O  = true     # Include H2O compound
-        include_CO2  = true     # Include CO2 compound
-        include_N2   = true     # Include N2 compound
-        include_S2   = true     # Include S2 compound
         include_SO2  = false     # Include SO2 compound
         include_H2S  = false     # Include H2S compound
         include_NH3  = false     # Include NH3 compound
         include_H2   = false     # Include H2 compound
         include_CH4  = false     # Include CH4 compound
         include_CO   = false     # Include CO compound
-        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
-    [outgas.atmodeller]
-        some_parameter = "some_value"
-
-# Volatile delivery - physics table
 [delivery]
 
     # Radionuclide parameters
@@ -250,20 +140,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # No module for accretion as of yet
     module = "none"
 
-    # Set initial volatile inventory by planetary element abundances
-    [delivery.elements]
-        # H_oceans    = 0.0       # Hydrogen inventory in units of equivalent Earth oceans
-        H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
-
-        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
-
-        # NH_ratio    = 0.0       # N/H mass ratio in mantle/atmosphere system
-        N_ppmw      = 2.0       # Nitrogen inventory in ppmw relative to mantle mass
-
-        SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
-        # S_ppmw      = 1.0     # Sulfur inventory in ppmw relative to mantle mass
-
     # Set initial volatile inventory by partial pressures in atmosphere
     [delivery.volatiles]
         H2O  = 20.0          # partial pressure of H2O
@@ -277,8 +153,5 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         CH4  = 0.0
         CO   = 0.0
 
-# Calculate simulated observations
 [observe]
-
-    # Module with which to calculate the synthetic observables
     synthesis = "none"

@@ -389,9 +389,9 @@ class Proteus:
             # Add atmosphere mass to interior mass, to get total planet mass
             self.hf_row["M_planet"] = self.hf_row["M_int"] + self.hf_row["M_atm"]
 
-            # Check for when atmosphere has escaped.
+            # Check for when atmosphere has completely escaped (P_surf < 0.01)
             #    This will mean that the mixing ratios become undefined, so use value of 0.
-            if self.hf_row["P_surf"] < self.config.params.stop.escape.p_stop:
+            if self.hf_row["P_surf"] < 0.01:
                 self.has_escaped = True
                 for gas in gas_list:
                     self.hf_row[gas+"_vmr"] = 0.0
