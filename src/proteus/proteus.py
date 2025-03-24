@@ -237,12 +237,15 @@ class Proteus:
 
             # Inform user
             log.info("Initial inventory set by '%s'"%self.config.delivery.initial)
-            log.info("Included gases")
+            log.info("Included gases:")
             for s in inc_gases:
-                log.info("    %s  %-8s : %6.2f bar" %
-                            ("vapour  " if s in vap_list else "volatile", s,
-                            self.hf_row[s + "_bar"])
-                        )
+                write = "    "
+                write += "vapour  " if s in vap_list else "volatile"
+                write += "  %-8s" % s
+                if self.config.delivery.initial == "volatiles":
+                    write += " : %6.2f bar"%self.hf_row[s + "_bar"]
+                log.info(write)
+
         else:
             # Resuming from disk
             log.info("Resuming the simulation from the disk")

@@ -5,6 +5,33 @@ from attrs.validators import ge, in_, le
 
 from ._converters import none_if_none
 
+@define
+class Zephyrus:
+    """Parameters for Zephyrus module.
+
+    Attributes
+    ----------
+    Pxuv: float
+        Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
+    efficiency: float
+        Escape efficiency factor
+    tidal: bool
+        Tidal contribution enabled
+    """
+    Pxuv: float = field(default=1e-2, validator=[ge(1e-10), le(1e1)])
+    efficiency: float = field(default=0.5,validator=(ge(0.0), le(1.0)))
+    tidal: bool = field(default=False)
+
+@define
+class EscapeDummy:
+    """Dummy module.
+
+    Attributes
+    ----------
+    rate: float
+        Bulk unfractionated escape rate [kg s-1]
+    """
+    rate: float = field(default=2e-3, validator=ge(0))
 
 @define
 class Escape:
@@ -21,40 +48,12 @@ class Escape:
     dummy: EscapeDummy
         Parameters for dummy escape module.
     """
-    reservoir: str = field(validator=in_(('bulk','outgas','pxuv')))
+
     module: str | None = field(
         validator=in_((None, 'dummy', 'zephyrus')), converter=none_if_none
         )
 
-    zephyrus: Zephyrus
-    dummy: EscapeDummy
+    zephyrus: Zephyrus = field(factory=Zephyrus)
+    dummy: EscapeDummy = field(factory=EscapeDummy)
 
-
-@define
-class Zephyrus:
-    """Parameters for Zephyrus module.
-
-    Attributes
-    ----------
-    Pxuv: float
-        Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-    efficiency: float
-        Escape efficiency factor
-    tidal: bool
-        Tidal contribution enabled
-    """
-    Pxuv: float = field(default=1e-2, validator=[ge(1e-10), le(1e1)])
-    efficiency: float = field(default=1.0,validator=(ge(0.0), le(1.0)))
-    tidal: bool = field(default=False)
-
-
-@define
-class EscapeDummy:
-    """Dummy module.
-
-    Attributes
-    ----------
-    rate: float
-        Bulk unfractionated escape rate [kg s-1]
-    """
-    rate: float = field(validator=ge(0))
+    reservoir: str = field(default='outgas', validator=in_(('bulk','outgas','pxuv')))

@@ -22,6 +22,46 @@ def rot_valid(instance, attribute, value):
     if set_period and (instance.rot_period <= 0):
         raise ValueError("Rotation period must be greater than zero")
 
+@define
+class Mors:
+    """Module parameters for MORS module.
+
+    Attributes
+    ----------
+    rot_pcntle: float
+        Rotation, as percentile of stellar population. Set to 'none' if using rot_period.
+    rot_period: float
+        Rotation rate [days]. Set to 'none' if using rot_pcntle.
+    tracks: str
+        Stellar evolution track to be used. Choices: 'spada', 'baraffe'.
+    age_now: float
+        Observed estimated age of the star [Gyr].
+    spec: str
+        Name of file containing stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars) for potential file names.
+    """
+    rot_pcntle: float | str = field(default='none',
+                                    validator=rot_valid, converter=none_if_none)
+    rot_period: float | str = field(default='none',
+                                    validator=rot_valid, converter=none_if_none)
+    tracks: str             = field(default='spada',
+                                    validator=in_(('spada', 'baraffe')))
+    age_now: float          = field(default=4.94, validator=gt(0))
+    spec: str               = field(default="stellar_spectra/Named/sun.txt")
+
+@define
+class StarDummy:
+    """Dummy star module.
+
+    Attributes
+    ----------
+    radius: float
+        Observed radius [R_sun].
+    Teff: float
+        Observed effective temperature [K].
+    """
+    radius: float = field(default=1.0,    validator=gt(0))
+    Teff: float   = field(default=5772.0, validator=gt(0))
+
 
 @define
 class Star:
@@ -44,51 +84,15 @@ class Star:
     dummy: StarDummy
         Parameters for the dummy star module
     """
-    mass: float = field(validator=(ge(0.1), le(1.25)))
-    age_ini: float = field(validator=gt(0))
 
     module: str | None = field(
         validator=in_((None, 'mors', 'dummy')),
         converter=none_if_none,
     )
 
-    mors: Mors
-    dummy: StarDummy
+    mass: float = field(validator=(ge(0.1), le(1.25)))
+    age_ini: float = field(validator=gt(0))
 
+    mors: Mors       = field(factory=Mors)
+    dummy: StarDummy = field(factory=StarDummy)
 
-@define
-class Mors:
-    """Module parameters for MORS module.
-
-    Attributes
-    ----------
-    rot_pcntle: float
-        Rotation, as percentile of stellar population. Set to 'none' if using rot_period.
-    rot_period: float
-        Rotation rate [days]. Set to 'none' if using rot_pcntle.
-    tracks: str
-        Stellar evolution track to be used. Choices: 'spada', 'baraffe'.
-    age_now: float
-        Observed estimated age of the star [Gyr].
-    spec: str
-        Name of file containing stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars) for potential file names.
-    """
-    rot_pcntle: float | str = field(validator=rot_valid,  converter=none_if_none)
-    rot_period: float | str = field(validator=rot_valid, converter=none_if_none)
-    tracks: str = field(validator=in_(('spada', 'baraffe')))
-    age_now: float = field(validator=gt(0))
-    spec: str
-
-@define
-class StarDummy:
-    """Dummy star module.
-
-    Attributes
-    ----------
-    radius: float
-        Observed radius [R_sun].
-    Teff: float
-        Observed effective temperature [K].
-    """
-    radius: float = field(validator=gt(0))
-    Teff: float = field(validator=gt(0))

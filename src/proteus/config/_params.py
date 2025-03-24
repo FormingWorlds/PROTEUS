@@ -51,11 +51,36 @@ class OutputParams:
         Write CSV frequency. 0: wait until completion. n: every n iterations.
     """
     path: str
-    logging: str = field(validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    plot_mod: int = field(validator=ge(0))
-    plot_fmt: str = field(validator=in_(('pdf', 'png')))
-    write_mod: int = field(validator=ge(0))
+    logging: str    = field(validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
+    plot_mod: int   = field(default=1,      validator=ge(0))
+    plot_fmt: str   = field(default='png',  validator=in_(('pdf', 'png')))
+    write_mod: int  = field(default=1,      validator=ge(0))
 
+@define
+class DtProportional:
+    """Parameters used to configure the proportional time-stepping scheme.
+
+    Attributes
+    ----------
+    propconst: float
+        Proportionality constant.
+    """
+    propconst: float = field(default=52.0, validator=gt(0))
+
+
+@define
+class DtAdaptive:
+    """Parameters used to configure the adaptive time-stepping scheme.
+
+    Attributes
+    ----------
+    atol: float
+        Absolute tolerance on time-step size [yr].
+    rtol: float
+        Relative tolerance on time-step size [dimensionless].
+    """
+    atol: float = field(validator=gt(0))
+    rtol: float = field(validator=gt(0))
 
 @define
 class TimeStepParams:
@@ -80,41 +105,21 @@ class TimeStepParams:
     adaptive: DtAdaptive
         Parameters used to configure the adaptive time-stepping scheme.
     """
-    minimum: float = field(validator=gt(0))
-    maximum: float = field(validator=gt(0))
-    initial: float = field(validator=gt(0))
+
+
     starspec: float = field(validator=ge(0))
     starinst: float = field(validator=ge(0))
-    method: str = field(validator=in_(('proportional', 'adaptive', 'maximum')))
-    proportional: DtProportional
-    adaptive: DtAdaptive
 
+    method: str = field(default='adaptive',
+                        validator=in_(('proportional', 'adaptive', 'maximum')))
 
-@define
-class DtProportional:
-    """Parameters used to configure the proportional time-stepping scheme.
+    proportional: DtProportional = field(factory=DtProportional)
+    adaptive: DtAdaptive         = field(factory=DtAdaptive)
 
-    Attributes
-    ----------
-    propconst: float
-        Proportionality constant.
-    """
-    propconst: float = field(validator=gt(0))
+    minimum: float = field(default=3e2, validator=gt(0))
+    maximum: float = field(default=1e7, validator=gt(0))
+    initial: float = field(default=1e3, validator=gt(0))
 
-
-@define
-class DtAdaptive:
-    """Parameters used to configure the adaptive time-stepping scheme.
-
-    Attributes
-    ----------
-    atol: float
-        Absolute tolerance on time-step size [yr].
-    rtol: float
-        Relative tolerance on time-step size [dimensionless].
-    """
-    atol: float = field(validator=gt(0))
-    rtol: float = field(validator=gt(0))
 
 
 @define
@@ -136,13 +141,13 @@ class StopParams:
     escape: StopEscape
         Parameters for escape criteria.
     """
-    strict: bool
     iters: StopIters
     time: StopTime
     solid: StopSolid
     radeqm: StopRadeqm
     escape: StopEscape
 
+    strict: bool        = field(default=False)
 
 @define
 class StopIters:
@@ -158,8 +163,8 @@ class StopIters:
         Maximum number of iterations.
     """
     enabled: bool
-    minimum: int = field(validator=ge(0))
-    maximum: int = field(validator=max_bigger_than_min)
+    minimum: int  = field(default=5, validator=ge(0))
+    maximum: int  = field(default=9000, validator=max_bigger_than_min)
 
 
 @define
@@ -176,8 +181,8 @@ class StopTime:
         Model will terminate when this time is reached [yr].
     """
     enabled: bool
-    minimum: float = field(validator=ge(0))
     maximum: float = field(validator=max_bigger_than_min)
+    minimum: float = field(default=1e3, validator=ge(0))
 
 
 @define
