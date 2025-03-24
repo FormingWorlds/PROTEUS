@@ -206,6 +206,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
+        logging         = "ERROR"
         num_levels      = 200       # Number of Aragog grid levels
         tolerance       = 1.0e-9   # solver tolerance
         ini_tmagma      = 3200.0    # Initial magma surface temperature [K]
