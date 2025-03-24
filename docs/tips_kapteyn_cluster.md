@@ -12,6 +12,70 @@
 
 - To launch a simulation on the Kapteyn cluster, avoid using `screen` sessions (it behaves inconsistently on the cluster). Instead, use the similar tool `tmux`. You can find detailed documentation [here](https://tmuxcheatsheet.com/).
 
+## Queuing Manager : Condormaster
+
+To use the queuing manager on the Kapteyn cluster, you first need to SSH into Norma1 or Norma2.
+
+To access Condormaster, run the following command:
+
+```ssh condormaster```
+
+
+### Submitting a Job on Condormaster
+To run a job using Condormaster, you first need to write a submit script. Begin by navigating to your home directory and creating a new submit script using:
+
+```nano name_of_your_script.submit```
+
+You can copy and paste the example submit script below and modify it according to your needs.
+
+```
+    getenv = True
+    universe = vanilla
+    executable = /dataserver/users/formingworlds/postolec/miniconda3/bin/conda
+    arguments = run --name proteus --no-capture-output proteus start --config /dataserver/users/formingworlds/postolec/PROTEUS/input/demos/escape.toml
+    log = condor_outputs/log/logfile.$(PROCESS)
+    output = condor_outputs/output/outfile.$(PROCESS)
+    error = condor_outputs/output/errfile.$(PROCESS)
+    notify_user = youremail@astro.rug.nl
+    Requirements = (Cluster == "normas")
+    queue 1
+```
+
+To exit nano, press `Ctrl+X`, then press `Enter` when prompted to save the file.
+
+### Updating the Submit Script
+Modify the following variables according to your job:
+1. **`executable`**: Specify the path to the Python environment you use to run PROTEUS.
+2. **`arguments`**: Update the path to the config file for your PROTEUS simulation. If using `tools/grid_proteus.py`, modify the entire command accordingly.
+3. **`notify_user`**: Enter your email address to receive job completion notifications.
+
+For further details, refer to the documentation on the Kapteyn intranet: [How to use Condor?] (https://www.astro.rug.nl/intranet/computing/index.php)
+This documentation is updated regularly, so be sure to check for the latest information.
+
+### Submitting and Monitoring Jobs
+To submit your script, run:
+
+```condor submit name_of_your_script.submit```
+
+To check the status of your job, use:
+
+```condor_q```
+or
+```condor_q -better-analyze```
+
+The second command provides a more detailed job status analysis.
+
+Another useful command is:
+
+```condor_status```
+
+This displays the jobs currently running on Condormaster, including both your jobs and those of other users.
+
+### Exiting Condormaster
+To exit Condormaster and return to Norma1/Norma2, run:
+
+```exit```
+
 ## Troubleshooting
 
 ### NetCDF Error

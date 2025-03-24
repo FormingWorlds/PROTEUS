@@ -25,7 +25,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "escape"
+        path        = "escape2"
         logging     = "INFO"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
@@ -145,9 +145,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Frostflow"   # which gas opacities to include
+        spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
-        num_levels      = 250           # Number of atmospheric grid levels
+        num_levels      = 60           # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = false         # solve for energy-conserving atmosphere profile
@@ -160,12 +160,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [atmos_clim.janus]
         p_top           = 1.0e-7        # bar, top of atmosphere grid pressure
         p_obs           = 1.0e-3        # bar, observed pressure level
-        spectral_group  = "Frostflow"   # which gas opacities to include
+        spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "256"         # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 250           # Number of atmospheric grid levels
+        num_levels      = 60           # Number of atmospheric grid levels
         tropopause      = "skin"        # none | skin | dynamic
-        overlap_method    = "ee"          # gas overlap method
+        overlap_method  = "ee"          # gas overlap method
 
     [atmos_clim.dummy]
         gamma           = 0.7           # atmosphere opacity between 0 and 1
@@ -224,12 +224,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         include_CO2  = true     # Include CO2 compound
         include_N2   = true     # Include N2 compound
         include_S2   = true     # Include S2 compound
-        include_SO2  = false    # Include SO2 compound
+        include_SO2  = true    # Include SO2 compound
         include_H2S  = true     # Include H2S compound
         include_NH3  = true     # Include NH3 compound
-        include_H2   = false    # Include H2 compound
-        include_CH4  = false    # Include CH4 compound
-        include_CO   = false    # Include CO compound
+        include_H2   = true    # Include H2 compound
+        include_CH4  = true    # Include CH4 compound
+        include_CO   = true    # Include CO compound
         T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
     [outgas.atmodeller]
@@ -245,14 +245,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     radio_Th   = 0.124  # ppmw of thorium (all isotopes)
 
     # Which initial inventory to use?
-    initial = 'volatiles'        # "elements" | "volatiles"
+    initial = 'elements'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"
 
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
-        H_oceans    = 6.0       # Hydrogen inventory in units of equivalent Earth oceans
+        H_oceans    = 1.0       # Hydrogen inventory in units of equivalent Earth oceans
         # H_ppmw      = 0.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
@@ -267,7 +267,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [delivery.volatiles]
-        H2O  = 30.0         # partial pressure of H2O
+        H2O  = 0.0         # partial pressure of H2O
         CO2  = 0.0          # partial pressure of CO2
         N2   = 0.0          # etc
         S2   = 0.0
