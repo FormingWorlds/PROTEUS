@@ -255,8 +255,15 @@ def GetAragogOutput(hf_row:dict, interior_o:Interior_t):
     output["RF_depth"] = aragog_output.rheological_front
     output["F_int"] = aragog_output.convective_heat_flux_basic[-1,-1] # Need to be revised for consistency
 
-    output["M_mantle_liquid"] = output["M_mantle"] * output["Phi_global"]
-    output["M_mantle_solid"] = output["M_mantle"] * (1.0 - output["Phi_global"])
+    if (output["Phi_global"] > (1.0-1.0e-8)):
+        output["M_mantle_liquid"] = output["M_mantle"]
+        output["M_mantle_solid"] = 0.0
+    elif (output["Phi_global"] < 1.e-8):
+        output["M_mantle_liquid"] = 0.0
+        output["M_mantle_solid"] = output["M_mantle"]
+    else:
+        output["M_mantle_liquid"] = output["M_mantle"] * output["Phi_global"]
+        output["M_mantle_solid"] = output["M_mantle"] * (1.0 - output["Phi_global"])
 
     # Calculate surface area
     radii = aragog_output.radii_km_basic * 1e3 # [m]
