@@ -29,13 +29,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         logging     = "INFO"
         plot_mod    = 30      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
-        write_mod   = 2      # Write CSV frequency, 0: wait until completion | n: every n iterations
+        write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
     # time-stepping
     [params.dt]
-        minimum      = 1e4    # yr, minimum time-step
+        minimum_abs  = 1e4    # absolute minimum time-step [years]
+        minimum_rel  = 1e-3   # relative minimum time-step [dimensionless]
         maximum      = 3e7    # yr, maximum time-step
-        initial      = 2e3    # yr, inital step size
+        initial      = 1e4    # yr, inital step size
         starspec     = 9e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
@@ -44,8 +45,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             propconst    = 52.0   # Proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.03  # Step size atol
-            rtol         = 0.13   # Step size rtol
+            atol         = 0.02  # Step size atol
+            rtol         = 0.12   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -79,7 +80,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.stop.escape]
             enabled   = true
-            p_stop    = 2.0  # bar, model will terminate with p_surf < p_stop
+            p_stop    = 5.0  # bar, model will terminate with p_surf < p_stop
 
 
 # ----------------------------------------------------
@@ -147,8 +148,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         p_top           = 2.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "48"         # how many spectral bands?
-        num_levels      = 38            # Number of atmospheric grid levels
-        chemistry       = "eq"        # "none" | "eq"
+        num_levels      = 40            # Number of atmospheric grid levels
+        chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
         solution_atol   = 0.10          # solver absolute tolerance
@@ -197,7 +198,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 80       # Number of SPIDER grid levels
+        num_levels      = 75       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-7   # solver tolerance-
         tsurf_atol      = 5.0      # tsurf_poststep_change

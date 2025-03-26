@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import platform
-import subprocess
+import subprocess as sp
 import sys
 from typing import TYPE_CHECKING
 
@@ -162,7 +162,8 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
 def _try_spider( dirs:dict, config:Config,
                 IC_INTERIOR:int,
                 hf_all:pd.DataFrame, hf_row:dict,
-                step_sf:float, atol_sf:float, dT_max:float ):
+                step_sf:float, atol_sf:float, dT_max:float,
+                timeout:float=900 ):
     '''
     Try to run spider with the current configuration.
     '''
@@ -173,7 +174,7 @@ def _try_spider( dirs:dict, config:Config,
         raise FileNotFoundError("SPIDER executable could not be found at '%s'"%spider_exec)
 
     # Bounds on tolereances
-    step_sf = min(1.0, max(1.0e-10, step_sf))
+    step_sf = min(1.0,    max(1.0e-10, step_sf))
     atol_sf = min(1.0e10, max(1.0e-10, atol_sf))
 
     # Recalculate time stepping
@@ -383,11 +384,21 @@ def _try_spider( dirs:dict, config:Config,
     spider_print = open(dirs["output"]+"spider_recent.log",'w')
     spider_print.write(call_string+"\n")
     spider_print.flush()
-    proc = subprocess.run([call_string],shell=True,stdout=spider_print, env=spider_env)
-    spider_print.close()
+    spider_succ = True
+    try:
+        proc = sp.run([call_string], shell=True, timeout=timeout,
+                                stdout=spider_print, env=spider_env)
+    except sp.TimeoutExpired:
+        log.error("SPIDER process timed-out")
+        spider_succ = False
+    except Exception as e:
+        log.error("SPIDER encountered ")
+        spider_succ = False
+    else:
+        spider_succ = bool(proc.returncode == 0)
 
-    # Check status
-    return bool(proc.returncode == 0)
+    spider_print.close()
+    return spider_succ
 
 
 def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
@@ -438,8 +449,8 @@ def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
             else:
                 # try again (change tolerance and step size)
                 log.warning("Trying again")
-                step_sf *= 0.5
-                atol_sf *= 4.0
+                step_sf *= 0.1
+                atol_sf *= 5.0
 
     # check status
     if spider_success:

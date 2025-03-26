@@ -10,6 +10,8 @@ import subprocess
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+import matplotlib as mpl # noqa
+mpl.use('Agg') # noqa
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd

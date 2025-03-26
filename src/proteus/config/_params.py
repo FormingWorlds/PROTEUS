@@ -63,8 +63,10 @@ class TimeStepParams:
 
     Attributes
     ----------
-    minimum: float
-        Minimum time-step size [yr].
+    minimum_abs: float
+        Minimum time-step size, absolute [yr].
+    minimum_rel: float
+        Minimum time-step size, relative to integration time.
     maximum: float
         Maximum time-step size [yr].
     initial: float
@@ -80,7 +82,8 @@ class TimeStepParams:
     adaptive: DtAdaptive
         Parameters used to configure the adaptive time-stepping scheme.
     """
-    minimum: float = field(validator=gt(0))
+    minimum_abs: float = field(validator=gt(0))
+    minimum_rel: float = field(validator=gt(0))
     maximum: float = field(validator=gt(0))
     initial: float = field(validator=gt(0))
     starspec: float = field(validator=ge(0))

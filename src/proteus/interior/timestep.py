@@ -15,9 +15,9 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 # Constants
-ILOOK = 2       # Ideal number of steps to look back
-SFINC = 1.15    # Scale factor for step size increase
-SFDEC = 0.75    # Scale factor for step size decrease
+LBAVG = 4      # Number of steps to average over
+SFINC = 1.15   # Scale factor for step size increase
+SFDEC = 0.8    # Scale factor for step size decrease
 SMALL = 1e-8   # Small number
 
 def _hf_from_iters(hf_all:pd.DataFrame, i1:int, i2:int):
@@ -153,13 +153,14 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
         dtswitch = 1.0
         log.info("Time-stepping intent: static")
 
+    elif LBAVG+5 >= len(hf_all["Time"]):
+        dtswitch = config.params.dt.initial
+        log.info("Time-stepping intent: initial")
+
     else:
-        # How far to look back?
-        if ILOOK >= len(hf_all["Time"]):
-            i1 = -2
-        else:
-            i1 = int(-1 * ILOOK)
         i2 = -1
+        i1 = -2
+        i0 = i1 - LBAVG
 
         # Proportional time-step calculation
         if config.params.dt.method == 'proportional':
@@ -176,26 +177,20 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
                 dtprev = config.params.dt.initial
             log.debug("Previous step size: %.2e yr"%dtprev)
 
-            # Change in F_int
-            F_int_2  = hf_all.iloc[i2]["F_int"]
-            F_int_1  = hf_all.iloc[i1]["F_int"]
-            F_int_12 = abs(F_int_2 - F_int_1)
-
             # Change in F_atm
-            F_atm_2  = hf_all.iloc[i2]["F_atm"]
-            F_atm_1  = hf_all.iloc[i1]["F_atm"]
+            F_atm_2  = hf_all["F_atm"].iloc[i2]
+            F_atm_1  = np.median(hf_all["F_atm"].iloc[i0:i1])
             F_atm_12 = abs(F_atm_2 - F_atm_1)
 
             # Change in global melt fraction
-            phi_2  = hf_all.iloc[i2]["Phi_global"]
-            phi_1  = hf_all.iloc[i1]["Phi_global"]
+            phi_2  = hf_all["Phi_global"].iloc[i2]
+            phi_1  = np.median(hf_all["Phi_global"].iloc[i0:i1])
             phi_12 = abs(phi_2 - phi_1)
 
             # Determine new time-step given the tolerances
             dt_rtol = config.params.dt.adaptive.rtol
             dt_atol = config.params.dt.adaptive.atol
             speed_up = True
-            speed_up = speed_up and ( F_int_12 < dt_rtol*abs(F_int_2) + dt_atol )
             speed_up = speed_up and ( F_atm_12 < dt_rtol*abs(F_atm_2) + dt_atol )
             speed_up = speed_up and ( phi_12   < dt_rtol*abs(phi_2  ) + dt_atol )
 
@@ -227,9 +222,12 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
         # Step scale factor (is always <= 1.0)
         dtswitch *= step_sf
 
-        # Step-size limits
-        dtswitch = min(dtswitch, config.params.dt.maximum )    # Ceiling
-        dtswitch = max(dtswitch, config.params.dt.minimum )    # Floor
+        # Max step size
+        dtswitch = min(dtswitch, config.params.dt.maximum )
 
-    log.info("New time-step is %1.2e years" % dtswitch)
+        # Min step size
+        dtmin = config.params.dt.minimum_abs + config.params.dt.minimum_rel * hf_row["Time"]
+        dtswitch = max(dtswitch, dtmin)
+
+    log.info("New time-step target is %.2e years" % dtswitch)
     return dtswitch

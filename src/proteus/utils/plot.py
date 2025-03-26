@@ -52,8 +52,8 @@ _preset_colours  = {
     "ASF":   "#4169e1",
     "sct":   "#2e8b57",
     "tidal": "#daa520",
-    "radio": "#1e90ff",
-    "star":  "#ffbbcc",
+    "radio": "#C720DD",
+    "star":  "#FF8FA1",
 
     # Model components
     "atm"     : "#444444",

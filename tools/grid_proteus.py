@@ -103,7 +103,7 @@ class Grid():
                 subfolders = [ f.path.split("/")[-1].lower() for f in os.scandir(self.outdir) if f.is_dir() ]
                 if ".git" in subfolders:
                     raise Exception("Not emptying directory - it contains a Git repository!")
-                time.sleep(2.0)
+                time.sleep(4.0)
                 shutil.rmtree(self.outdir)
 
         # Create new output location
@@ -120,7 +120,7 @@ class Grid():
                 subfolders = [ f.path.split("/")[-1].lower() for f in os.scandir(self.symlink_dir) if f.is_dir() ]
                 if ".git" in subfolders:
                     raise Exception("Not emptying directory - it contains a Git repository!")
-                time.sleep(2.0)
+                time.sleep(4.0)
                 shutil.rmtree(self.symlink_dir)
             os.makedirs(self.symlink_dir)
             os.symlink(self.symlink_dir, self.outdir)
@@ -447,26 +447,27 @@ if __name__=='__main__':
     # -----
 
     config = "planets/l9859d.toml"
-    folder = "l98d_escape16"
+    folder = "l98d_escape17"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
-    symlink = None
+    symlink = "/scratch/users/nicholls/"+folder
+    # symlink = None
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
     pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
     pg.set_dimension_direct("Redox state", [-5, -4, -3, -2, -1])
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_direct("Hydrogen", [3e2, 3e3, 6e3, 9e3])
+    pg.set_dimension_direct("Hydrogen", [3e2, 3e3, 5e3, 7e3, 9e3])
 
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    pg.set_dimension_direct("Sulfur", [6.0, 9.0, 12.0])
+    pg.set_dimension_direct("Sulfur", [2.0, 6.0, 8.0, 10.0])
 
     # pg.add_dimension("Mass", "struct.mass_tot")
     # pg.set_dimension_direct("Mass", [2.14, 2.25, 2.39])
 
-    # ----- 
+    # -----
     # Print state of parameter grid
     # -----
     pg.print_setup()
@@ -476,7 +477,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(100, test_run=False)
+    pg.run(80, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.
