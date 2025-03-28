@@ -34,7 +34,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # time-stepping
     [params.dt]
         minimum_abs  = 1e4    # absolute minimum time-step [years]
-        minimum_rel  = 1e-3   # relative minimum time-step [dimensionless]
+        minimum_rel  = 3e-3   # relative minimum time-step [dimensionless]
         maximum      = 3e7    # yr, maximum time-step
         initial      = 1e4    # yr, inital step size
         starspec     = 9e9    # yr, interval to re-calculate the stellar spectrum
@@ -46,7 +46,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.dt.adaptive]
             atol         = 0.02  # Step size atol
-            rtol         = 0.12   # Step size rtol
+            rtol         = 0.11   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -148,11 +148,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         p_top           = 2.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "48"         # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
+        num_levels      = 38            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
-        solution_atol   = 0.10          # solver absolute tolerance
+        solution_atol   = 1.0          # solver absolute tolerance
         solution_rtol   = 0.12          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
@@ -198,7 +198,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 75       # Number of SPIDER grid levels
+        num_levels      = 80       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-7   # solver tolerance-
         tsurf_atol      = 5.0      # tsurf_poststep_change
@@ -256,7 +256,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # H_oceans    = 10.0       # Hydrogen inventory in units of equivalent Earth oceans
         H_ppmw      = 1e4     # Hydrogen inventory in ppmw relative to mantle mass
 
-        CH_ratio    = 0.6       # C/H mass ratio in mantle/atmosphere system
+        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
 
         NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
