@@ -225,10 +225,11 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
         # Max step size
         dtswitch = min(dtswitch, config.params.dt.maximum )
 
-        # Min step size (applied only when step_sf = 1)
+        # Min step size
+        dtminimum = config.params.dt.minimum_abs
         if step_sf > 0.99:
-            dtswitch = max(dtswitch, config.params.dt.minimum_abs + \
-                                     config.params.dt.minimum_rel * hf_row["Time"])
+            dtminimum += config.params.dt.minimum_rel * hf_row["Time"]
+        dtswitch = max(dtswitch, dtminimum)
 
     log.info("New time-step target is %.2e years" % dtswitch)
     return dtswitch
