@@ -17,7 +17,7 @@ import pandas as pd
 # Import PROTEUS
 from proteus import Proteus
 from proteus.config import Config
-from proteus.utils.constants import vol_list, R_sun, AU_cm
+from proteus.utils.constants import vol_list, R_sun, AU
 from proteus.utils.helper import find_nearest, safe_rm
 from proteus.atmos_clim.common import read_ncdf_profile
 
@@ -71,10 +71,16 @@ def run_once(dirs:dict, config:Config) -> bool:
     star_wl = np.array(sflux_data[0])
     star_fl = np.array(sflux_data[1]) * hf_row["separation"]**2 / hf_row["R_star"]**2
 
+    # Remove small values
+    min_fl = 1e-20
+    star_wl = star_wl[star_fl > min_fl]
+    star_fl = star_fl[star_fl > min_fl]
+
     # Write spectrum
     star_write = vulcan_out + "star.txt"
-    np.savetxt(star_write, np.array([star_wl, star_fl]).T,
-                header="# WL(nm)    Flux(ergs/cm**2/s/nm)")
+    # np.savetxt(star_write, np.array([star_wl, star_fl]).T,
+    #             header="# WL(nm)    Flux(ergs/cm**2/s/nm)",
+    #             fmt=["%.4f","%.4e"])
 
     # Write TP profile
     vul_PT = np.array(
@@ -82,7 +88,7 @@ def run_once(dirs:dict, config:Config) -> bool:
          np.array(atmos["t"])[::-1]
         ]
     ).T
-    header  = "#(dyne/cm2)\t(K) "
+    header  = "#(dyne/cm2)\t(K)\n"
     header += "Pressure\tTemp"
     prof_write = vulcan_out + "profile.txt"
     np.savetxt(prof_write, vul_PT,  delimiter="\t", header=header, comments='', fmt="%1.5e")
@@ -92,10 +98,11 @@ def run_once(dirs:dict, config:Config) -> bool:
     # ------------------------------------------------------------
 
     config = f"""\
-        # VULCAN CONFIGURATION FILE"
+        # VULCAN CONFIGURATION FILE
+        # CREATED AUTOMATICALLY BY PROTEUS
 
-        atom_list               = ['H', 'O', 'C', 'N']
-        network                 = 'thermo/NCHO_photo_network.txt'
+        atom_list               = ['H', 'O', 'C', 'N', 'S']
+        network                 = 'thermo/SNCHO_photo_network.txt'
         use_lowT_limit_rates    = False
         gibbs_text              = 'thermo/gibbs_text.txt' # (all the nasa9 files must be placed in the folder: thermo/NASA9/)
         cross_folder            = 'thermo/photo_cross/'
@@ -120,7 +127,7 @@ def run_once(dirs:dict, config:Config) -> bool:
 
         # ====== Setting up the elemental abundance ======
         ini_mix = 'const_mix'
-        const_mix = {vmr_as_str}
+        const_mix = {{ {vmr_as_str} }}
 
 
         # ====== Setting up photochemistry ======
@@ -128,7 +135,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         use_photo       = True
         r_star          = {hf_row["R_star"] / R_sun}     # stellar radius (R_sun)
         Rp              = {hf_row["R_int"] * 100.0}      # Planetary radius (cm)
-        orbit_radius    = {hf_row["separation"] * AU_cm} # planet-star distance in A.U.
+        orbit_radius    = {hf_row["separation"] / AU}    # planet-star distance in A.U.
         gs              = {hf_row["gravity"] * 100}      # surface gravity (cm/s^2)  (HD189:2140  HD209:936)
         sl_angle        = {config.orbit.zenith_angle * np.pi / 180.0}   # the zenith angle
         f_diurnal       = {config.orbit.s0_factor}
@@ -162,7 +169,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         # ====== Setting up the boundary conditions ======
         use_topflux     = False
         use_botflux     = False
-        use_fix_sp_bot  = {{ {vmr_as_str} }} # fixed mixing ratios at the lower boundary
+        use_fix_sp_bot  = {{}} #{{ {vmr_as_str} }} # fixed mixing ratios at the lower boundary
         diff_esc        = [] # species for diffusion-limit escape at TOA
         max_flux        = 1e13  # upper limit for the diffusion-limit fluxes
 
@@ -184,6 +191,8 @@ def run_once(dirs:dict, config:Config) -> bool:
 
         # ====== Setting up numerical parameters for the ODE solver ======
         ode_solver      = 'Ros2' # case sensitive
+        trun_min        = 1e2
+        runtime         = 1.E22
         use_print_prog  = True
         use_print_delta = False
         print_prog_num  = 500  # print the progress every x steps
@@ -192,9 +201,6 @@ def run_once(dirs:dict, config:Config) -> bool:
         dt_max          = runtime*1e-5
         dt_var_max      = 2.
         dt_var_min      = 0.5
-
-        trun_min        = 1e2
-        runtime         = 1.E22
 
         count_min       = 120
         count_max       = int(3E4)
@@ -217,7 +223,7 @@ def run_once(dirs:dict, config:Config) -> bool:
 
         # ====== Setting up for output and plotting ======
         plot_TP         = False
-        use_live_plot   = False
+        use_live_plot   = True
         use_live_flux   = False
         use_plot_end    = False
         use_plot_evo    = False
@@ -245,8 +251,13 @@ def run_once(dirs:dict, config:Config) -> bool:
     # RUN VULCAN
     # ------------------------------------------------------------
 
-    cmd = [f"cd {dirs["vulcan"]}", "python vulcan.py"]
-    proc = sp.run(cmd, shell=True, stdout=sp.STDOUT)
+    cmd = [f"cd {dirs["vulcan"]}; python vulcan.py"]
+
+    logfile = vulcan_out + "offline.log"
+    with open(logfile,'w') as hdl:
+        proc = sp.run(cmd, shell=True, stdout=hdl, stderr=hdl)
+
+    print(proc.stdout)
 
     # ------------------------------------------------------------
     # MAKE PLOTS
@@ -260,7 +271,7 @@ def run_once(dirs:dict, config:Config) -> bool:
 if __name__ == '__main__':
 
     # Parameters
-    cfgfile =       "output/l9859d/init_coupler.toml"  # Config file used for PROTEUS
+    cfgfile =       "output/dummy_aragog/init_coupler.toml"  # Config file used for PROTEUS
 
     # Read config and dirs
     handler = Proteus(config_path=cfgfile)
