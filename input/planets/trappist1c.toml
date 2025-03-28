@@ -82,6 +82,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_entropy     = 3300.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
+    [interior.aragog]
+        logging         = "ERROR"
+        num_levels      = 220       # Number of Aragog grid levels
+        tolerance       = 1.0e-10   # solver tolerance
+        ini_tmagma      = 3200.0    # Initial magma surface temperature [K]
+
+    [interior.dummy]
+        ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
+
 # Outgassing - physics table
 [outgas]
     fO2_shift_IW    = 4         # log10(ΔIW), atmosphere/interior boundary oxidation state

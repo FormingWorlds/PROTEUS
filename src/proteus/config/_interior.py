@@ -56,6 +56,8 @@ class Aragog:
 
     Attributes
     ----------
+    logging: str
+        Log verbosity of Aragog. Choices: 'INFO', 'DEBUG', 'ERROR', 'WARNING'.
     num_levels: int
         Number of Aragog grid levels (basic mesh).
     tolerance: float
@@ -64,6 +66,8 @@ class Aragog:
         Initial magma surface temperature [K].
     """
 
+    logging: str        = field(default='ERROR',
+                                validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
     ini_tmagma: float   = field(default=None)
     num_levels: int     = field(default=100,    validator=ge(40))
     tolerance: float    = field(default=1e-10,  validator=gt(0))

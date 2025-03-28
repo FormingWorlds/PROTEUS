@@ -44,9 +44,7 @@ def RunAragog(config:Config, dirs:dict,
     global aragog_solver
 
     # Setup Aragog logger
-    file_level = logging.ERROR
-    if config.params.out.logging == "DEBUG":
-        file_level = logging.DEBUG
+    file_level = logging.getLevelName(config.interior.aragog.logging)
     aragog_file_logger(console_level = logging.WARNING,
                        file_level = file_level,
                        log_dir = dirs["output"])
@@ -133,8 +131,8 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
             )
 
     initial_condition = _InitialConditionParameters(
+            initial_condition = 3, # 1 = linear profile, 2 = user-defined profile, 3 = adiabatic profile
             surface_temperature = config.interior.aragog.ini_tmagma, # initial top temperature (K)
-            basal_temperature = config.interior.aragog.ini_tmagma, # initial bottom temperature (K)
             )
 
     # Get look up data directory, will be configurable in the future
@@ -228,7 +226,7 @@ def UpdateAragogSolver(dt:float, hf_row:dict, interior_o:Interior_t,
 
     # Update initial condition
     Tfield = Tfield / aragog_solver.parameters.scalings.temperature
-    aragog_solver.parameters.initial_condition.from_field = True
+    aragog_solver.parameters.initial_condition.initial_condition = 2 # switch to user-defined init
     aragog_solver.parameters.initial_condition.init_temperature = Tfield
 
     # Update boundary conditions
@@ -253,12 +251,19 @@ def GetAragogOutput(hf_row:dict, interior_o:Interior_t):
 
     output["M_mantle"] = aragog_output.mantle_mass
     output["T_magma"] = aragog_output.solution_top_temperature
-    output["Phi_global"] = float(aragog_output.melt_fraction_global)
-    output["RF_depth"] = float(aragog_output.rheological_front)
+    output["Phi_global"] = aragog_output.melt_fraction_global
+    output["RF_depth"] = aragog_output.rheological_front
     output["F_int"] = aragog_output.convective_heat_flux_basic[-1,-1] # Need to be revised for consistency
 
-    output["M_mantle_liquid"] = output["M_mantle"] * output["Phi_global"]
-    output["M_mantle_solid"] = output["M_mantle"] - output["M_mantle_liquid"]
+    if (output["Phi_global"] > (1.0-1.0e-8)):
+        output["M_mantle_liquid"] = output["M_mantle"]
+        output["M_mantle_solid"] = 0.0
+    elif (output["Phi_global"] < 1.e-8):
+        output["M_mantle_liquid"] = 0.0
+        output["M_mantle_solid"] = output["M_mantle"]
+    else:
+        output["M_mantle_liquid"] = output["M_mantle"] * output["Phi_global"]
+        output["M_mantle_solid"] = output["M_mantle"] * (1.0 - output["Phi_global"])
 
     # Calculate surface area
     radii = aragog_output.radii_km_basic * 1e3 # [m]
