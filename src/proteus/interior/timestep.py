@@ -16,7 +16,7 @@ log = logging.getLogger("fwl."+__name__)
 
 # Constants
 LBAVG = 4      # Number of steps to average over
-SFINC = 1.15   # Scale factor for step size increase
+SFINC = 1.2    # Scale factor for step size increase
 SFDEC = 0.8    # Scale factor for step size decrease
 SMALL = 1e-8   # Small number
 
@@ -225,9 +225,10 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
         # Max step size
         dtswitch = min(dtswitch, config.params.dt.maximum )
 
-        # Min step size
-        dtmin = config.params.dt.minimum_abs + config.params.dt.minimum_rel * hf_row["Time"]
-        dtswitch = max(dtswitch, dtmin)
+        # Min step size (applied only when step_sf = 1)
+        if step_sf > 0.99:
+            dtswitch = max(dtswitch, config.params.dt.minimum_abs + \
+                                     config.params.dt.minimum_rel * hf_row["Time"])
 
     log.info("New time-step target is %.2e years" % dtswitch)
     return dtswitch
