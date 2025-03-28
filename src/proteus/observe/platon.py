@@ -108,7 +108,7 @@ def transit_depth(hf_row:dict, outdir:str):
 
 def eclipse_depth(hf_row:dict, outdir:str):
     from platon.eclipse_depth_calculator import EclipseDepthCalculator
-    
+
     from proteus.observe.common import get_eclipse_fpath
 
 
