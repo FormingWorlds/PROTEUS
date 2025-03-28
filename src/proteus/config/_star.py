@@ -107,4 +107,3 @@ class Star:
 
     mors: Mors       = field(factory=Mors,      validator=valid_mors)
     dummy: StarDummy = field(factory=StarDummy, validator=valid_stardummy)
-

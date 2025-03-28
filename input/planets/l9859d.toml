@@ -44,7 +44,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "mors"
     [star.mors]
         rot_pcntle = 50.0       # rotation percentile
-        # tracks  = "spada" # evolution tracks: spada | baraffe
+        tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 4.94     # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/l-98-59.txt" # stellar spectrum
 
