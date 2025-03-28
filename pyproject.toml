@@ -11,7 +11,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 authors = [
 	{name = "Tim Lichtenberg", email = "tim.lichtenberg@rug.nl"},
-	{name = "Harrison Nicholls, email = harrison.nicholls@physics.ox.ac.uk"},
+	{name = "Harrison Nicholls", email = "harrison.nicholls@physics.ox.ac.uk"},
 	{name = "Laurent Soucasse", email = "l.soucasse@esciencecenter.nl"},
 	{name = "Stef Smeets", email = "s.smeets@esciencecenter.nl"},
 	{name = "Dan J. Bower", email = "dbower@ethz.ch"},
