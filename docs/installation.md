@@ -38,23 +38,24 @@ sudo port install netcdf-fortran +gcc8
 sudo apt install libnetcdff-dev
 ```
 
-## Python environment
+## Setup a Python environment
 
-You will need to install Python (>=3.11) on your system.
-This can be done via brew on MacOS, or with your package manager on Linux. Alternatively, you can use [miniforge](https://github.com/conda-forge/miniforge) or [pyenv](https://github.com/pyenv/pyenv).
+We recommend that you use Python version 3.12 for running PROTEUS.
+Python is most easily obtained and managed using [miniforge](https://github.com/conda-forge/miniforge).
+Alteranatively, you can download it from the official website and use [pyenv](https://github.com/pyenv/pyenv).
 
 ## Install Julia
 
-If you already have Julia installed, skip this step.
-This should only be done using the official installer, not via your package manager.
+Some of the PROTEUS modules are written in Julia, which is broadly similar to Python.
+You should only obtain Julia using the official installer, **not** via your package manager.
 
 ```console
 curl -fsSL https://install.julialang.org | sh
 ```
 
-## Download the framework
+## Set up the PROTEUS framework
 
-1. Setup environment variables
+1. Set environment variables
 
     The environment variable `FWL_DATA` points to the folder where input data are stored.
     This variable must always be set, so it is best to add this line to your shell rc file.
@@ -73,11 +74,10 @@ curl -fsSL https://install.julialang.org | sh
 3. Create a virtual environment
 
     ```console
-    python -m venv .venv
-    source .venv/bin/activate
+    conda create -n proteus python=3.12
     ```
 
-4. Setup radiative transfer code (**SOCRATES**)
+4. Radiative transfer code (**SOCRATES**)
 
     The code can be setup in `./socrates/` using the following script.
 
@@ -85,8 +85,13 @@ curl -fsSL https://install.julialang.org | sh
     ./tools/get_socrates.sh
     ```
 
-    The environemnt variable `RAD_DIR` must always point to the SOCRATES installation path.
-    It is highly recommended that you add this to your shell rc file (e.g. `~/.bashrc`).
+    The environment variable `RAD_DIR` must always point to the SOCRATES installation path.
+    It is highly recommended that you add this to your shell rc file (e.g. `~/.bashrc`), which
+    can be done by running the following command.
+
+    ```console
+    echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.bashrc"
+    ```
 
 5. Radiative-convective atmosphere model (**AGNI**)
 
@@ -111,35 +116,35 @@ curl -fsSL https://install.julialang.org | sh
 
         ```console
         git clone git@github.com:FormingWorlds/MORS
-        pip install -e MORS/.
+        python -m pip install -e MORS/.
         ```
 
     - JANUS atmosphere model
 
         ```console
         git clone git@github.com:FormingWorlds/JANUS
-        pip install -e JANUS/.
+        python -m pip install -e JANUS/.
         ```
 
     - CALLIOPE outgassing model
 
         ```console
         git clone git@github.com:FormingWorlds/CALLIOPE
-        pip install -e CALLIOPE/.
+        python -m pip install -e CALLIOPE/.
         ```
 
     - ARAGOG interior model
 
         ```console
         git clone git@github.com:ExPlanetology/aragog.git
-        pip install -e aragog/.
+        python -m pip install -e aragog/.
         ```
 
     - ZEPHYRUS escape model
 
         ```console
         git clone git@github.com:FormingWorlds/ZEPHYRUS
-        pip install -e ZEPHYRUS/.
+        python -m pip install -e ZEPHYRUS/.
         ```
 
 7. Setup numerical computing library (**PETSc**)
@@ -159,7 +164,7 @@ curl -fsSL https://install.julialang.org | sh
 9. Setup PROTEUS coupled framework
 
     ```console
-    pip install -e .
+    python -m pip install -e .
     ```
 
 
@@ -197,7 +202,7 @@ about 10 GB of opacity data from the internet.
 1. Clone the model
 
     ```console
-    git clone git@github.com:exoclime/VULCAN.git
+    git clone git@github.com:nichollsh/VULCAN.git
     cd VULCAN
     ```
 
@@ -213,9 +218,4 @@ about 10 GB of opacity data from the internet.
     ```console
     make
     cd ../../
-    ```
-3. Install Python dependencies
-
-    ```console
-    pip install sympy
     ```

@@ -4,29 +4,6 @@ from attrs import define, field, validators
 
 
 @define
-class Outgas:
-    """Outgassing parameters (fO2) and included volatiles.
-
-    Attributes
-    ----------
-    fO2_shift_IW: float
-        Homogeneous oxygen fugacity in the magma ocean used to represent redox state (log10 units relative to Iron-Wustite).
-    module: str
-        Outgassing module to be used. Choices: 'calliope', 'atmodeller'.
-    calliope: Calliope
-        Parameters for CALLIOPE module.
-    atmodeller: Atmodeller
-        Parameters for atmodeller module.
-    """
-    fO2_shift_IW: float
-
-    module: str = field(validator=validators.in_(('calliope', 'atmodeller')))
-
-    calliope: Calliope
-    atmodeller: Atmodeller
-
-
-@define
 class Calliope:
     """Module parameters for Calliope.
 
@@ -55,22 +32,21 @@ class Calliope:
     include_CO: bool
         If True, include CO outgassing.
     """
-    T_floor: float  = field(validator=validators.gt(0.0))
-    include_H2O: bool = False
-    include_CO2: bool = False
-    include_N2: bool = False
-    include_S2: bool = False
-    include_SO2: bool = False
-    include_H2S: bool = False
-    include_NH3: bool = False
-    include_H2: bool = False
-    include_CH4: bool = False
-    include_CO: bool = False
+    T_floor: float      = field(default=700.0, validator=validators.gt(0.0))
+    include_H2O: bool   = True
+    include_CO2: bool   = True
+    include_N2: bool    = True
+    include_S2: bool    = True
+    include_SO2: bool   = True
+    include_H2S: bool   = True
+    include_NH3: bool   = True
+    include_H2: bool    = True
+    include_CH4: bool   = True
+    include_CO: bool    = True
 
     def is_included(self, vol: str) -> bool:
         """Helper method for getting flag if `vol` is included in outgassing."""
         return getattr(self, f'include_{vol}')
-
 
 @define
 class Atmodeller:
@@ -81,4 +57,26 @@ class Atmodeller:
     some_parameter: str
         Not used currently.
     """
-    some_parameter: str
+    some_parameter: str = field(default="some_value")
+
+@define
+class Outgas:
+    """Outgassing parameters (fO2) and included volatiles.
+
+    Attributes
+    ----------
+    fO2_shift_IW: float
+        Homogeneous oxygen fugacity in the magma ocean used to represent redox state (log10 units relative to Iron-Wustite).
+    module: str
+        Outgassing module to be used. Choices: 'calliope', 'atmodeller'.
+    calliope: Calliope
+        Parameters for CALLIOPE module.
+    atmodeller: Atmodeller
+        Parameters for atmodeller module.
+    """
+    fO2_shift_IW: float
+
+    module: str = field(validator=validators.in_(('calliope', 'atmodeller')))
+
+    calliope: Calliope      = field(factory=Calliope)
+    atmodeller: Atmodeller  = field(factory=Atmodeller)

@@ -14,4 +14,5 @@ class Observe:
         Module to use for calculating synthetic spectra.
     """
 
-    synthesis: str = field(validator=in_((None,'platon')), converter=none_if_none)
+    synthesis: str = field(validator=in_((None,'platon')),
+                            converter=none_if_none)

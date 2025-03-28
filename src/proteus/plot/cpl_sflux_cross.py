@@ -4,7 +4,6 @@ import glob
 import logging
 from typing import TYPE_CHECKING
 
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from cmcrameri import cm
@@ -56,8 +55,6 @@ def plot_sflux_cross(
     modern_age : float
         Current age of star. If not provided, then won't be plotted
     """
-
-    mpl.use('Agg')
 
     # Wavelength targets default value
     if not wl_targets:

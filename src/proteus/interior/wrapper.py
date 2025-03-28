@@ -56,7 +56,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     # Initial guess for interior radius and gravity
     int_o = Interior_t(get_nlevb(config))
     int_o.ic = 1
-    hf_row["R_int"]   = config.struct.radius_int * R_earth
+    hf_row["R_int"] = R_earth
     calculate_core_mass(hf_row, config)
     hf_row["gravity"] = 9.81
 
@@ -120,7 +120,7 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
         hf_row["R_int"] = config.struct.radius_int * R_earth
         calculate_core_mass(hf_row, config)
         # initial guess for mass, which will be updated by the interior model
-        hf_row["M_int"] = config.struct.mass_tot * M_earth
+        hf_row["M_int"] = 1.2 * M_earth
         update_gravity(hf_row)
 
     # Set by total mass (mantle + core + volatiles)
