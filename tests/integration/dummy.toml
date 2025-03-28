@@ -1,20 +1,5 @@
 # PROTEUS configuration file (version 2.0)
 
-# Root tables should be physical, with the exception of "params"
-# Software related options should go within the appropriate physical table
-
-# The general structure is:
-#   [root]     metadata
-#   [params]   parameters for code execution, output files, time-stepping, convergence
-#   [star]     stellar parameters, model selection
-#   [orbit]    planetary orbital parameters
-#   [struct]   planetary structure (mass, radius)
-#   [atmos]    atmosphere parameters, model selection
-#   [escape]   escape parameters, model selection
-#   [interior] magma ocean model selection and parameters
-#   [outgas]   outgassing parameters (fO2) and included volatiles
-#   [delivery] initial volatile inventory, and delivery model selection
-
 # ----------------------------------------------------
 # Metadata
 version = "2.0"
@@ -89,12 +74,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     age_ini = 0.100     # Gyr, model initialisation/start age
 
     module  = "dummy"
-    [star.mors]
-        rot_pcntle = 50.0       # rotation percentile
-        rot_period = 'none'     # rotation period [days]
-        tracks  = "baraffe" # evolution tracks: spada | baraffe
-        age_now = 4.567     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
 
     [star.dummy]
         radius  = 1.0       # R_sun
@@ -118,9 +97,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    set_by      = 'mass_tot'
     mass_tot    = 1.0       # M_earth
-    radius_int  = 1.0       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
@@ -141,30 +118,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     module  = "dummy"           # Which atmosphere module to use
 
-    [atmos_clim.agni]
-        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Frostflow"   # which gas opacities to include
-        spectral_bands  = "48"          # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
-        chemistry       = "none"        # "none" | "eq"
-        surf_material   = "greybody"    # surface material file for scattering
-        solve_energy    = true         # solve for energy-conserving atmosphere profile
-        solution_atol   = 1e-3          # solver absolute tolerance
-        solution_rtol   = 2e-2          # solver relative tolerance
-        overlap_method  = "ee"          # gas overlap method
-        condensation    = true          # volatile condensation
-        real_gas        = true          # use real-gas equations of state
-
-    [atmos_clim.janus]
-        p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
-        p_obs           = 1.0e-3        # bar, observed pressure level
-        spectral_group  = "Frostflow"   # which gas opacities to include
-        spectral_bands  = "48"          # how many spectral bands?
-        F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 40           # Number of atmospheric grid levels
-        tropopause      = "none"        # none | skin | dynamic
-        overlap_method    = "ee"          # gas overlap method
-
     [atmos_clim.dummy]
         gamma           = 0.7           # atmosphere opacity between 0 and 1
 
@@ -173,11 +126,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     reservoir = "bulk"  # Escaping reservoir: "bulk", "outgas", "pxuv".
     module = "dummy"    # Which escape module to use
-
-    [escape.zephyrus]
-        Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-        efficiency  = 0.5           # Escape efficiency factor
-        tidal       = false         # Tidal contribution enabled
 
     [escape.dummy]
         rate        = 2.0e4         # Bulk unfractionated escape rate [kg s-1]
@@ -193,20 +141,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
     module = "dummy"   # Which interior module to use
-
-    [interior.spider]
-        num_levels      = 220       # Number of SPIDER grid levels
-        mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-10   # solver tolerance
-        tsurf_atol      = 30.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
-        ini_entropy     = 2700.0    # Surface entropy conditions [J K-1 kg-1]
-        ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
-
-    [interior.aragog]
-        num_levels      = 220       # Number of Aragog grid levels
-        tolerance       = 1.0e-10   # solver tolerance
-        ini_tmagma      = 3200.0    # Initial magma surface temperature [K]
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
@@ -229,9 +163,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         include_CH4  = true     # Include CH4 compound
         include_CO   = true     # Include CO compound
         T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
-
-    [outgas.atmodeller]
-        some_parameter = "some_value"
 
 # Volatile delivery - physics table
 [delivery]
@@ -262,18 +193,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # SH_ratio    = 0.0       # S/H mass ratio in mantle/atmosphere system
         S_ppmw      = 200.0     # Sulfur inventory in ppmw relative to mantle mass
 
-    # Set initial volatile inventory by partial pressures in atmosphere
-    [delivery.volatiles]
-        H2O  = 0.0          # partial pressure of H2O
-        CO2  = 0.0          # partial pressure of CO2
-        N2   = 0.0          # etc
-        S2   = 0.0
-        SO2  = 0.0
-        H2S  = 0.0
-        NH3  = 0.0
-        H2   = 0.0
-        CH4  = 0.0
-        CO   = 0.0
 
 # Calculate simulated observations
 [observe]
