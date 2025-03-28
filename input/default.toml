@@ -94,7 +94,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "mors"
     [star.mors]
         rot_pcntle = 50.0       # rotation percentile
-        rot_period = 'none'     # rotation period [days]
+        # rot_period = 80.6     # rotation period [days]
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 4.94     # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/l-98-59.txt" # stellar spectrum
@@ -121,9 +121,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
     mass_tot    = 0.47       # M_earth
-    radius_int  = 1.0       # R_earth
+    # radius_int  = 0.9       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
