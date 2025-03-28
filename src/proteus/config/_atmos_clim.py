@@ -19,16 +19,24 @@ def warn_if_dummy(instance, attribute, value):
     if (instance.module == 'dummy') and value:
         raise ValueError('Dummy atmos_clim module is incompatible with Rayleigh scattering')
 
-def agni_solve_skin(instance, attribute, value):
-    # agni must solve_energy=true if surf_state=skin
-    no_solve = (instance.module == 'agni') and (not instance.agni.solve_energy)
-    if no_solve and (value == 'skin'):
-        raise ValueError("Must set `agni.solve_energy=true` if using `surf_state='skin'`")
-
 def check_overlap(instance, attribute, value):
     _overlaps = ("ro", "ee", "rorr")
     if value not in _overlaps:
         raise ValueError("Overlap type must be one of " + str(_overlaps))
+
+def valid_agni(instance, attribute, value):
+    if instance.module != "agni":
+        return
+
+    # agni must solve_energy=true if surf_state=skin
+    if (not instance.agni.solve_energy) and (instance.surf_state == 'skin'):
+        raise ValueError("Must set `agni.solve_energy=true` if using `surf_state='skin'`")
+
+    # set spectral files?
+    if not instance.agni.spectral_group:
+        raise ValueError("Must set instance.agni.spectral_group")
+    if not instance.agni.spectral_bands:
+        raise ValueError("Must set instance.agni.spectral_bands")
 
 
 @define
@@ -63,9 +71,9 @@ class Agni:
         Use real gas equations of state in atmosphere, where possible.
     """
 
+    spectral_group: str     = field(default=None)
+    spectral_bands: str     = field(default=None)
     p_top: float            = field(default=1e-5, validator=gt(0))
-    spectral_group: str     = field(default="Honeyside")
-    spectral_bands: str     = field(default="48")
     surf_material: str      = field(default="surface_albedos/Hammond24/lunarmarebasalt.dat")
     num_levels: int         = field(default=40, validator=ge(15))
     chemistry: str          = field(default="none",
@@ -82,6 +90,16 @@ class Agni:
     def chemistry_int(self) -> int:
         """Return integer state for agni."""
         return 1 if self.chemistry else 0
+
+def valid_janus(instance, attribute, value):
+    if instance.module != "janus":
+        return
+
+    # set spectral files?
+    if not instance.janus.spectral_group:
+        raise ValueError("Must set instance.janus.spectral_group")
+    if not instance.janus.spectral_bands:
+        raise ValueError("Must set instance.janus.spectral_bands")
 
 @define
 class Janus:
@@ -107,10 +125,10 @@ class Janus:
         Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
     """
 
+    spectral_group: str     = field(default=None)
+    spectral_bands: str     = field(default=None)
     p_top: float            = field(default=1e-5, validator=gt(0))
     p_obs: float            = field(default=1e-3, validator=gt(0))
-    spectral_group: str     = field(default="Honeyside")
-    spectral_bands: str     = field(default="48")
     F_atm_bc: int           = field(default=0, validator=in_((0, 1)))
     num_levels: int         = field(default=90, validator=ge(15))
     tropopause: str | None  = field(default="none",
@@ -171,14 +189,13 @@ class AtmosClim:
 
     module: str = field(validator=in_(('dummy', 'agni', 'janus')))
 
-    agni: Agni   = field(factory=Agni)
-    janus: Janus = field(factory=Janus)
+    agni: Agni   = field(factory=Agni,  validator=valid_agni)
+    janus: Janus = field(factory=Janus, validator=valid_janus)
     dummy: Dummy = field(factory=Dummy)
 
     surf_state: str         = field(default='skin',
                                     validator=(
                                         in_(('mixed_layer', 'fixed', 'skin')),
-                                        agni_solve_skin
                                     ))
     prevent_warming: bool   = field(default=False)
     surface_d: float        = field(default=0.01, validator=gt(0))

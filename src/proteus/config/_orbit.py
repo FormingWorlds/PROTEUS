@@ -34,7 +34,7 @@ class OrbitDummy:
     Phi_tide: str   = field(default="<0.3", validator=phi_tide_validator)
 
 @define
-class OrbitLovepy:
+class Lovepy:
     """Lovepy tides module.
 
     Attributes
@@ -79,6 +79,9 @@ class Orbit:
     ))
     s0_factor: float = field(validator=gt(0))
 
-    dummy: OrbitDummy   = field(factory=OrbitDummy)
-    lovepy: OrbitLovepy = field(factory=OrbitLovepy)
+    dummy:  OrbitDummy  = field(factory=OrbitDummy)
+    lovepy: Lovepy      = field(factory=Lovepy)
+
+
+
 

@@ -3,11 +3,13 @@ from __future__ import annotations
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
+def valid_spider(instance, attribute, value):
+    if instance.module != "spider":
+        return
 
-def no_radio_if_dummy(instance, attribute, value):
-    if (instance.module == 'dummy') and value:
-        raise ValueError("Radiogenic heating is not supported by the dummy interior module")
-
+    ini_entropy = instance.spider.ini_entropy
+    if (not ini_entropy) or (ini_entropy <= 200.0) :
+        raise ValueError("`interior.spider.ini_entropy` must be >200")
 
 @define
 class Spider:
@@ -30,13 +32,22 @@ class Spider:
     ini_dsdr: float
         Initial interior specific entropy gradient [J K-1 kg-1 m-1].
     """
+    ini_entropy: float  = field(default=None)
+    ini_dsdr: float     = field(default=-4.698e-6,  validator=lt(0))
     num_levels: int     = field(default=80,         validator=ge(40))
     mixing_length: int  = field(default=2,          validator=in_((1,2)))
     tolerance: float    = field(default=1e-10,      validator=gt(0))
     tsurf_atol: float   = field(default=20.0,       validator=gt(0))
     tsurf_rtol: float   = field(default=0.01,       validator=gt(0))
-    ini_entropy: float  = field(default=3300.0,     validator=gt(0))
-    ini_dsdr: float     = field(default=-4.698e-6,  validator=lt(0))
+
+
+def valid_aragog(instance, attribute, value):
+    if instance.module != "aragog":
+        return
+
+    ini_tmagma = instance.aragog.ini_tmagma
+    if (not ini_tmagma) or (ini_tmagma <= 200.0) :
+        raise ValueError("`interior.aragog.ini_tmagma` must be >200")
 
 @define
 class Aragog:
@@ -52,12 +63,23 @@ class Aragog:
         Initial magma surface temperature [K].
     """
 
-    num_levels: int     = field(default=200,    validator=ge(40))
-    ini_tmagma: float   = field(default=3200.0, validator=gt(0))
+    ini_tmagma: float   = field(default=None)
+    num_levels: int     = field(default=100,    validator=ge(40))
     tolerance: float    = field(default=1e-10,  validator=gt(0))
 
+def valid_interiordummy(instance, attribute, value):
+    if instance.module != "dummy":
+        return
+
+    ini_tmagma = instance.dummy.ini_tmagma
+    if (not ini_tmagma) or (ini_tmagma <= 200.0) :
+        raise ValueError("`interior.dummy.ini_tmagma` must be >200")
+
+    if instance.radiogenic_heat:
+        raise ValueError("Dummy interior module does not support radiogenic heating")
+
 @define
-class Dummy:
+class InteriorDummy:
     """Parameters for Dummy interior module.
 
     Attributes
@@ -66,7 +88,7 @@ class Dummy:
         Initial magma surface temperature [K].
     """
 
-    ini_tmagma: float = field(default=3500.0, validator=gt(0))
+    ini_tmagma: float = field(default=None)
 
 @define
 class Interior:
@@ -99,19 +121,17 @@ class Interior:
         Parameters for running the dummy module.
     """
 
-    module: str     = field(validator=in_(('spider', 'aragog', 'dummy')))
+    module: str             = field(validator=in_(('spider', 'aragog', 'dummy')))
 
-    radiogenic_heat: bool   = field(validator=no_radio_if_dummy)
-    tidal_heat: bool
+    radiogenic_heat: bool   = field(default=True)
+    tidal_heat: bool        = field(default=True)
 
-    spider: Spider  = field(factory=Spider)
-    aragog: Aragog  = field(factory=Aragog)
-    dummy: Dummy    = field(factory=Dummy)
+    spider: Spider          = field(factory=Spider,        validator=valid_spider)
+    aragog: Aragog          = field(factory=Aragog,        validator=valid_aragog)
+    dummy: InteriorDummy    = field(factory=InteriorDummy, validator=valid_interiordummy)
 
-    grain_size: float       = field(default=0.1,   validator=gt(0))
-    F_initial: float        = field(default=1e5,   validator=gt(0))
-    rheo_phi_loc: float     = field(default=0.3, validator=(gt(0),lt(1)))
-    rheo_phi_wid: float     = field(default=0.15, validator=(gt(0),lt(1)))
-    bulk_modulus: float     = field(default=260e9, validator=gt(0))
-
-
+    grain_size: float       = field(default=0.1,    validator=gt(0))
+    F_initial: float        = field(default=1e5,    validator=gt(0))
+    rheo_phi_loc: float     = field(default=0.3,    validator=(gt(0),lt(1)))
+    rheo_phi_wid: float     = field(default=0.15,   validator=(gt(0),lt(1)))
+    bulk_modulus: float     = field(default=260e9,  validator=gt(0))

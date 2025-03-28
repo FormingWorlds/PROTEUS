@@ -8,9 +8,9 @@ def mass_radius_valid(instance, attribute, value):
 
     # must set either mass_tot or radius_int
     if (instance.radius_int is None) and (instance.mass_tot is None):
-        raise ValueError("Must set `radius_int` or `mass_tot` to define structure")
+        raise ValueError("Must set one of `radius_int` or `mass_tot`")
     if (instance.radius_int is not None) and (instance.mass_tot is not None):
-        raise ValueError("Must set either `radius_int` OR `mass_tot` to define structure")
+        raise ValueError("Must set either `radius_int` or `mass_tot`, not both")
 
     if instance.mass_tot is not None:
         if instance.mass_tot < 0:

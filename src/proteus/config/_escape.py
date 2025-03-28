@@ -5,6 +5,18 @@ from attrs.validators import ge, in_, le
 
 from ._converters import none_if_none
 
+def valid_zephyrus(instance, attribute, value):
+    if instance.module != "zephyrus":
+        return
+
+    Pxuv = instance.zephyrus.Pxuv
+    if (not Pxuv) or (Pxuv < 0) or (Pxuv > 10):
+        raise ValueError("`zephyrus.Pxuv` must be >0 and < 10 bar")
+
+    efficiency = instance.zephyrus.efficiency
+    if (not efficiency) or (efficiency <= 0) or (efficiency > 1):
+        raise ValueError("`zephyrus.efficiency` must be >0 and <=1")
+
 @define
 class Zephyrus:
     """Parameters for Zephyrus module.
@@ -18,9 +30,17 @@ class Zephyrus:
     tidal: bool
         Tidal contribution enabled
     """
-    Pxuv: float = field(default=1e-2, validator=[ge(1e-10), le(1e1)])
-    efficiency: float = field(default=0.5,validator=(ge(0.0), le(1.0)))
-    tidal: bool = field(default=False)
+    Pxuv: float       = field(default=None)
+    efficiency: float = field(default=None)
+    tidal: bool       = field(default=False)
+
+def valid_escapedummy(instance, attribute, value):
+    if instance.module != "dummy":
+        return
+
+    rate = instances.dummy.rate
+    if (not rate) or (rate < 0) :
+        raise ValueError("`escape.dummy.rate` must be >0")
 
 @define
 class EscapeDummy:
@@ -31,7 +51,7 @@ class EscapeDummy:
     rate: float
         Bulk unfractionated escape rate [kg s-1]
     """
-    rate: float = field(default=2e-3, validator=ge(0))
+    rate: float = field(default=None)
 
 @define
 class Escape:
@@ -53,7 +73,7 @@ class Escape:
         validator=in_((None, 'dummy', 'zephyrus')), converter=none_if_none
         )
 
-    zephyrus: Zephyrus = field(factory=Zephyrus)
-    dummy: EscapeDummy = field(factory=EscapeDummy)
+    zephyrus: Zephyrus = field(factory=Zephyrus,    validator=valid_zephyrus)
+    dummy: EscapeDummy = field(factory=EscapeDummy, validator=valid_escapedummy)
 
     reservoir: str = field(default='outgas', validator=in_(('bulk','outgas','pxuv')))

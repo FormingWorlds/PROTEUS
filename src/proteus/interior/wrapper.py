@@ -56,7 +56,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     # Initial guess for interior radius and gravity
     int_o = Interior_t(get_nlevb(config))
     int_o.ic = 1
-    hf_row["R_int"]   = config.struct.radius_int * R_earth
+    hf_row["R_int"] = R_earth
     calculate_core_mass(hf_row, config)
     hf_row["gravity"] = 9.81
 

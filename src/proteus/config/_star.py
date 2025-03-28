@@ -6,20 +6,28 @@ from attrs.validators import ge, gt, in_, le
 from ._converters import none_if_none
 
 
-def rot_valid(instance, attribute, value):
+def valid_mors(instance, attribute, value):
+    if instance.module != "mors":
+        return
 
-    set_pcntle = instance.rot_pcntle is not None
-    set_period = instance.rot_period is not None
+    if (instance.mors.age_now is None) or (instance.mors.age_now <= 0):
+        raise ValueError("mors.age_now must be > 0")
+
+    if instance.mors.spec is None:
+        raise ValueError("Must provide mors.spec")
+
+    set_pcntle = instance.mors.rot_pcntle is not None
+    set_period = instance.mors.rot_period is not None
 
     if set_pcntle and set_period:
         raise ValueError("Stellar rotation must be set by percentile or period, not both")
     if (not set_pcntle) and (not set_period):
         raise ValueError("Stellar rotation must be set either by percentile or period")
 
-    if set_pcntle and not (0 <= instance.rot_pcntle <= 100):
+    if set_pcntle and not (0 <= instance.mors.rot_pcntle <= 100):
         raise ValueError("Rotation percentile must be >=0 and <=100")
 
-    if set_period and (instance.rot_period <= 0):
+    if set_period and (instance.mors.rot_period <= 0):
         raise ValueError("Rotation period must be greater than zero")
 
 @define
@@ -29,9 +37,9 @@ class Mors:
     Attributes
     ----------
     rot_pcntle: float
-        Rotation, as percentile of stellar population. Set to 'none' if using rot_period.
+        Rotation, as percentile of stellar population.
     rot_period: float
-        Rotation rate [days]. Set to 'none' if using rot_pcntle.
+        Rotation rate [days].
     tracks: str
         Stellar evolution track to be used. Choices: 'spada', 'baraffe'.
     age_now: float
@@ -39,14 +47,19 @@ class Mors:
     spec: str
         Name of file containing stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars) for potential file names.
     """
-    rot_pcntle: float | str = field(default='none',
-                                    validator=rot_valid, converter=none_if_none)
-    rot_period: float | str = field(default='none',
-                                    validator=rot_valid, converter=none_if_none)
-    tracks: str             = field(default='spada',
-                                    validator=in_(('spada', 'baraffe')))
-    age_now: float          = field(default=4.94, validator=gt(0))
-    spec: str               = field(default="stellar_spectra/Named/sun.txt")
+    age_now: float    = field(default=None)
+    spec: str         = field(default=None)
+    rot_pcntle: float = field(default=None)
+    rot_period: float = field(default=None)
+    tracks: str       = field(default='spada', validator=in_(('spada', 'baraffe')))
+
+def valid_stardummy(instance, attribute, value):
+    if instance.module != "dummy":
+        return
+    if (instance.dummy.radius is None) or (instance.dummy.radius <= 0):
+        raise ValueError("star.dummy.radius must be > 0")
+    if (instance.dummy.Teff is None) or (instance.dummy.Teff <= 0):
+        raise ValueError("star.dummy.Teff must be > 0")
 
 @define
 class StarDummy:
@@ -59,9 +72,8 @@ class StarDummy:
     Teff: float
         Observed effective temperature [K].
     """
-    radius: float = field(default=1.0,    validator=gt(0))
-    Teff: float   = field(default=5772.0, validator=gt(0))
-
+    radius: float = field(default=None)
+    Teff: float   = field(default=None)
 
 @define
 class Star:
@@ -93,6 +105,6 @@ class Star:
     mass: float = field(validator=(ge(0.1), le(1.25)))
     age_ini: float = field(validator=gt(0))
 
-    mors: Mors       = field(factory=Mors)
-    dummy: StarDummy = field(factory=StarDummy)
+    mors: Mors       = field(factory=Mors,      validator=valid_mors)
+    dummy: StarDummy = field(factory=StarDummy, validator=valid_stardummy)
 
