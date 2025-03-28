@@ -57,7 +57,6 @@ def _get_prof(atm:dict):
 
 def transit_depth(hf_row:dict, outdir:str):
     from platon.transit_depth_calculator import TransitDepthCalculator
-
     from proteus.observe.common import get_transit_fpath
 
     # All planet quantities in SI
@@ -108,7 +107,6 @@ def transit_depth(hf_row:dict, outdir:str):
 
 def eclipse_depth(hf_row:dict, outdir:str):
     from platon.eclipse_depth_calculator import EclipseDepthCalculator
-
     from proteus.observe.common import get_eclipse_fpath
 
 

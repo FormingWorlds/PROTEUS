@@ -20,7 +20,6 @@ from proteus.utils.coupler import (
     PrintCurrentState,
     ReadHelpfileFromCSV,
     SetDirectories,
-    UpdatePlots,
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
     print_citation,
@@ -111,6 +110,7 @@ class Proteus:
         """
 
         # Import things needed to run PROTEUS
+        #    plotting
         #    atmos
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Atmos_t
@@ -136,6 +136,7 @@ class Proteus:
             update_stellar_quantities,
             write_spectrum,
         )
+        from proteus.utils.coupler import UpdatePlots
 
         #    lookup and reference data
         from proteus.utils.data import download_sufficient_data

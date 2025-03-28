@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import gt, in_, lt
+from attrs.validators import gt, lt
+
 from ._converters import none_if_none
+
 
 def mass_radius_valid(instance, attribute, value):
 

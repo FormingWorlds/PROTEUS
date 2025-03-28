@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import ge, in_, le
+from attrs.validators import in_
 
 from ._converters import none_if_none
+
 
 def valid_zephyrus(instance, attribute, value):
     if instance.module != "zephyrus":
@@ -38,7 +39,7 @@ def valid_escapedummy(instance, attribute, value):
     if instance.module != "dummy":
         return
 
-    rate = instances.dummy.rate
+    rate = instance.dummy.rate
     if (not rate) or (rate < 0) :
         raise ValueError("`escape.dummy.rate` must be >0")
 

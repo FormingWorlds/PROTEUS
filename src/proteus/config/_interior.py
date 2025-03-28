@@ -3,6 +3,7 @@ from __future__ import annotations
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
+
 def valid_spider(instance, attribute, value):
     if instance.module != "spider":
         return
