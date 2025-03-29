@@ -29,6 +29,14 @@ def run_once(dirs:dict, config:Config) -> bool:
     success = True
 
     # ------------------------------------------------------------
+    # CHECK CONFIG
+    # ------------------------------------------------------------
+
+    if config.atmos_clim.module == 'dummy':
+        print("Cannot run offline chemistry from `atmos_clim.module = 'dummy'`")
+        return False
+
+    # ------------------------------------------------------------
     # READ DATA FROM PROTEUS RUN
     # ------------------------------------------------------------
 
@@ -298,6 +306,8 @@ def run_once(dirs:dict, config:Config) -> bool:
         proc = sp.run(cmd, shell=True, stdout=hdl, stderr=hdl)
 
     print("Return code: " + str(proc.returncode))
+    if proc.returncode:
+        success = False
 
     # ------------------------------------------------------------
     # MAKE PLOTS
