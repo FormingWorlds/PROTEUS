@@ -42,7 +42,7 @@ sudo apt install libnetcdff-dev
 
 We recommend that you use Python version 3.12 for running PROTEUS.
 Python is most easily obtained and managed using [miniforge](https://github.com/conda-forge/miniforge).
-Alteranatively, you can download it from the official website and use [pyenv](https://github.com/pyenv/pyenv).
+Alternatively, you can download it from the official website and use [pyenv](https://github.com/pyenv/pyenv).
 
 ## Install Julia
 
