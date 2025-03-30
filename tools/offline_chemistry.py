@@ -29,12 +29,17 @@ def run_once(dirs:dict, config:Config) -> bool:
     success = True
 
     # ------------------------------------------------------------
-    # CHECK CONFIG
+    # CONFIGURATION
     # ------------------------------------------------------------
 
     if config.atmos_clim.module != 'agni':
         print("Offline chemistry is only supported for `atmos_clim.module = 'agni'`")
         return False
+
+    num_levels  = 110           # number of levels
+    min_fl      = 1e-20         # stellar flux floor
+    clip_vmr    = 1e-10         # neglect species with surface VMR < clip_vmr
+    vulcan_name = 'recent.vul'  # name for output file
 
     # ------------------------------------------------------------
     # READ DATA FROM PROTEUS RUN
@@ -78,7 +83,6 @@ def run_once(dirs:dict, config:Config) -> bool:
     star_fl = np.array(sflux_data[1]) * hf_row["separation"]**2 / hf_row["R_star"]**2
 
     # Remove small values
-    min_fl = 1e-20
     star_wl = star_wl[star_fl > min_fl]
     star_fl = star_fl[star_fl > min_fl]
 
@@ -135,7 +139,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         vmr = hf_row[gas+"_vmr"]
         if gas in backs.keys():
             backs[gas] = vmr
-        if vmr > 1e-8:
+        if vmr > clip_vmr:
             vmr_as_str += "'%s':%.8e, "%(gas, vmr)
     vmr_as_str = vmr_as_str[:-2]
 
@@ -156,8 +160,8 @@ def run_once(dirs:dict, config:Config) -> bool:
         com_file                = 'thermo/all_compose.txt'
 
         atm_base                = '{background}'
-        rocky                   = True  # for the surface gravity
-        nz                      = 80   # number of vertical layers
+        rocky                   = True           # for the surface gravity
+        nz                      = {num_levels}   # number of vertical layers
         P_b                     = {np.amax(atmos["p"])*10}  # pressure at the bottom (dyne/cm^2)
         P_t                     = {np.amin(atmos["p"])*10}  # pressure at the top (dyne/cm^2)
         atm_type                = 'file'
@@ -170,7 +174,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         output_dir              = '{vulcan_out}'
         plot_dir                = '{vulcan_plt}'
         movie_dir               = '{vulcan_plt}/movie/'
-        out_name                = 'recent.vul'
+        out_name                = '{vulcan_name}'
 
         # ====== Setting up the elemental abundance ======
         ini_mix = 'const_mix'
@@ -211,7 +215,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         K_max       = 1e5        # for Kzz_prof = 'Pfunc'
         K_p_lev     = 0.1      # for Kzz_prof = 'Pfunc'
 
-        update_frq  = 200    # frequency for updating dz and dzi due to change of mu
+        update_frq  = 50    # frequency for updating dz and dzi due to change of mu
 
         # ====== Setting up the boundary conditions ======
         use_topflux     = False
@@ -243,7 +247,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         use_print_prog  = True
         use_print_delta = False
         print_prog_num  = 100  # print the progress every x steps
-        dttry           = 1.E-3
+        dttry           = 1.E-5
         dt_min          = 1.E-9
         dt_max          = runtime*1e-4
         dt_var_max      = 2.
@@ -257,7 +261,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         pos_cut         = 0
         nega_cut        = -1.
         loss_eps        = 1e-1
-        yconv_cri       = 0.01 # for checking steady-state
+        yconv_cri       = 0.02  # for checking steady-state
         slope_cri       = 1.e-4
         yconv_min       = 0.1
         flux_cri        = 0.1
@@ -278,7 +282,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         use_flux_movie  = False
         plot_height     = False
         use_PIL         = True
-        live_plot_frq   = 10
+        live_plot_frq   = 20
         save_movie_rate = live_plot_frq
         y_time_freq     = 1  #  storing data for every 'y_time_freq' step
         plot_spec       = {plt_str}

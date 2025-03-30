@@ -99,7 +99,7 @@ class TimeStepParams:
     adaptive: DtAdaptive         = field(factory=DtAdaptive)
 
     minimum: float      = field(default=3e2,  validator=gt(0))
-    minimum_rel: float  = field(default=1e-5, validator=gt(0))
+    minimum_rel: float  = field(default=1e-6, validator=gt(0))
     maximum: float      = field(default=1e7,  validator=gt(0))
     initial: float      = field(default=1e3,  validator=gt(0))
 
