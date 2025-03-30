@@ -69,7 +69,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         # solidification
         [params.stop.solid]
-            enabled  = false
+            enabled  = true
             phi_crit = 0.02  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
@@ -130,7 +130,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = false     # do not allow the planet to heat up
+    prevent_warming = true     # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
@@ -152,7 +152,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
-        solution_atol   = 1.0          # solver absolute tolerance
+        solution_atol   = 0.5          # solver absolute tolerance
         solution_rtol   = 0.12          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
