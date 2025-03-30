@@ -121,7 +121,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    mass_tot    = 0.47       # M_earth
+    mass_tot    = 1.0       # M_earth
     # radius_int  = 0.9       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
