@@ -45,6 +45,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     eccentricity    = 0.0       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
+    module = 'none'
 
 # Planetary structure - physics table
 [struct]
