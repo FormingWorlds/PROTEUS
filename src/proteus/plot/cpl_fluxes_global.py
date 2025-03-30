@@ -4,7 +4,6 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -37,7 +36,6 @@ def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, config: Config, t0:
     F_radio = np.array(hf_crop["F_radio"])
 
     # Create plot
-    mpl.use('Agg')
     scale = 1.2
     fig,ax = plt.subplots(1,1,figsize=(6*scale,5*scale))
     lw = 2.0

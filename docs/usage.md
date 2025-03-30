@@ -1,8 +1,11 @@
 # Usage
 
-## Running PROTEUS
+## Running PROTEUS from the terminal
 
-You can directly run PROTEUS using the Python command:
+Proteus has a command-line interface that can be accessed by running `proteus` on the command line.
+Try `proteus --help` to see the available commands!
+
+You can directly run PROTEUS using the command:
 
 ```console
 proteus start --config [cfgfile]
@@ -11,25 +14,18 @@ proteus start --config [cfgfile]
 Where `[cfgfile]` is the path to the required configuration file.
 Pass the flag `--resume` in to resume the simulation from the disk.
 
-You can also run PROTEUS inside a Screen session using:
+See the [config guide](https://fwl-proteus.readthedocs.io/en/latest/config/) for information
+on how to edit the configurations files, and an explanation of their structure.
 
-```console
-tools/RunPROTEUS.sh [cfgfile] [alias] [resume] [detach]
-```
+## Running grids of simulations
 
-Which runs PROTEUS using the config file `[cfgfile]` inside a Screen
-session with the name `[alias]`. The `[resume]` parameter (y/n) tells
-the model whether to resume from a previous state. The `[detach]`
-parameter (y/n) tells the session whether to immediately detach or not.
-This allows multiple instances of the model to be dispatched easily and
-safely.
+It is often useful to run grids of models, where each point in a grid represents a different
+set of parameters. This can be done using the script `tools/GridPROTEUS.py`.
 
-## CLI
+You can configure a grid of your choosing by editing the variables in this file.
 
-Proteus has a command-line interface that can be accessed by running `proteus` on the command line.
-Try `proteus --help` to see the available commands!
 
-### `proteus doctor`
+## Version checking
 
 The `proteus doctor` commnd helps you to diagnose issues with your proteus installation.
 It tells you about outdated or missing packages, and whether all environment variables have been set.

@@ -16,8 +16,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.common import read_atmosphere_data
-from proteus.interior.wrapper import read_interior_data
 from proteus.plot.cpl_atmosphere import plot_atmosphere
 from proteus.plot.cpl_bolometry import plot_bolometry
 from proteus.plot.cpl_emission import plot_emission
@@ -525,6 +523,9 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         end : bool
             Is this function being called at the end of the simulation?
     """
+
+    from proteus.atmos_clim.common import read_atmosphere_data
+    from proteus.interior.wrapper import read_interior_data
 
     # Directories
     output_dir = dirs["output"]

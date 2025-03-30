@@ -56,7 +56,6 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0,
 
     """
 
-    mpl.use('Agg')
     star_cmap = plt.get_cmap('Spectral')
 
     # Find and sort files
