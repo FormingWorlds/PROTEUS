@@ -18,6 +18,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         starspec     = 9e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
+        [params.dt.adaptive]
+            atol         = 0.02  # Step size atol
+            rtol         = 0.10   # Step size rtol
 
     [params.stop]
 
