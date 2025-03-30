@@ -146,15 +146,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [atmos_clim.agni]
         p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
         spectral_group  = "Dayspring"   # which gas opacities to include
-        spectral_bands  = "256"         # how many spectral bands?
-        num_levels      = 60            # Number of atmospheric grid levels
+        spectral_bands  = "48"         # how many spectral bands?
+        num_levels      = 120            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = false         # solve for energy-conserving atmosphere profile
         solution_atol   = 3e-2          # solver absolute tolerance
         solution_rtol   = 9e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = true         # volatile condensation
+        condensation    = false         # volatile condensation
         real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
@@ -194,7 +194,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
-    module = "spider"   # Which interior module to use
+    module = "aragog"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 80       # Number of SPIDER grid levels
@@ -206,8 +206,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        logging         = "ERROR"
-        num_levels      = 200       # Number of Aragog grid levels
+        num_levels      = 100       # Number of Aragog grid levels
         tolerance       = 1.0e-9   # solver tolerance
         ini_tmagma      = 3200.0    # Initial magma surface temperature [K]
 

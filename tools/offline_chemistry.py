@@ -116,13 +116,13 @@ def run_once(dirs:dict, config:Config) -> bool:
 
     if 'N' in e_incl:
         network = "NCHO_photo_network.txt"
-        plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'NH3', 'N2']"
+        plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'N2']"
         sct_str = "['H2', 'O2', 'N2']"
         ele_str = "['H', 'O', 'C', 'N']"
 
         if 'S' in e_incl:
             network = "SNCHO_photo_network.txt"
-            plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'NH3', 'SO2', 'H2S']"
+            plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'SO2', 'H2S', 'S2']"
             ele_str = "['H', 'O', 'C', 'N', 'S']"
 
     print(f"Using '{network}' ")
@@ -322,7 +322,7 @@ def run_once(dirs:dict, config:Config) -> bool:
 if __name__ == '__main__':
 
     # Parameters
-    cfgfile =       "output/dummy_aragog/init_coupler.toml"  # Config file used for PROTEUS
+    cfgfile =       "output/default/init_coupler.toml"  # Config file used for PROTEUS
 
     # Read config and dirs
     handler = Proteus(config_path=cfgfile)

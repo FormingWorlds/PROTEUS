@@ -32,6 +32,10 @@ def valid_agni(instance, attribute, value):
     if (not instance.agni.solve_energy) and (instance.surf_state == 'skin'):
         raise ValueError("Must set `agni.solve_energy=true` if using `surf_state='skin'`")
 
+    # cannot set condensation and chemistry at the same time
+    if instance.agni.chemistry and instance.agni.condensation:
+        raise ValueError("`atmos_clim.agni`: Cannot enable condensation and chemistry at the same time")
+
     # set spectral files?
     if not instance.agni.spectral_group:
         raise ValueError("Must set instance.agni.spectral_group")

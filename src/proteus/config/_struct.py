@@ -46,12 +46,12 @@ class Struct:
 
     corefrac: float     = field(validator=(gt(0), lt(1)))
 
-    mass_tot: float | None    = field(default='none',
-                                      validator=mass_radius_valid,
-                                      converter=none_if_none)
-    radius_int: float | None  = field(default='none',
-                                      validator=mass_radius_valid,
-                                      converter=none_if_none)
+    mass_tot            = field(default='none',
+                                validator=mass_radius_valid,
+                                converter=none_if_none)
+    radius_int          = field(default='none',
+                                validator=mass_radius_valid,
+                                converter=none_if_none)
 
     core_density: float = field(default=10738.33, validator=gt(0))
     core_heatcap: float = field(default=880.0,    validator=gt(0))
