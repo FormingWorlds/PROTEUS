@@ -69,7 +69,9 @@ class TimeStepParams:
     Attributes
     ----------
     minimum: float
-        Minimum time-step size [yr].
+        Minimum absolute time-step size [yr].
+    minimum_rel: float
+        Minimum relative time-step size [dimensionless].
     maximum: float
         Maximum time-step size [yr].
     initial: float
@@ -96,9 +98,10 @@ class TimeStepParams:
     proportional: DtProportional = field(factory=DtProportional)
     adaptive: DtAdaptive         = field(factory=DtAdaptive)
 
-    minimum: float = field(default=3e2, validator=gt(0))
-    maximum: float = field(default=1e7, validator=gt(0))
-    initial: float = field(default=1e3, validator=gt(0))
+    minimum: float      = field(default=3e2,  validator=gt(0))
+    minimum_rel: float  = field(default=1e-5, validator=gt(0))
+    maximum: float      = field(default=1e7,  validator=gt(0))
+    initial: float      = field(default=1e3,  validator=gt(0))
 
 
 @define

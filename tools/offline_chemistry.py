@@ -32,8 +32,8 @@ def run_once(dirs:dict, config:Config) -> bool:
     # CHECK CONFIG
     # ------------------------------------------------------------
 
-    if config.atmos_clim.module == 'dummy':
-        print("Cannot run offline chemistry from `atmos_clim.module = 'dummy'`")
+    if config.atmos_clim.module != 'agni':
+        print("Offline chemistry is only supported for `atmos_clim.module = 'agni'`")
         return False
 
     # ------------------------------------------------------------
@@ -54,7 +54,8 @@ def run_once(dirs:dict, config:Config) -> bool:
     hf_row = hf_row.to_dict(orient='records')[0]
 
     # Read atmosphere data
-    atmos = read_ncdf_profile(os.path.join(dirs["output"], "data", "%d_atm.nc"%year))
+    atmos = read_ncdf_profile(os.path.join(dirs["output"], "data", "%d_atm.nc"%year),
+                              extra_keys=["pl","tmpl", "x_gas", "Kzz"])
     print("  ok")
 
     # ------------------------------------------------------------
@@ -88,8 +89,8 @@ def run_once(dirs:dict, config:Config) -> bool:
                 fmt=["%.4f","%.4e"])
 
     # Write TP profile
-    p_arr = np.array(atmos["p"]) * 10.0 # dyne/cm^2
-    t_arr = np.clip(atmos["t"], a_min=180.0, a_max=None)
+    p_arr = np.array(atmos["pl"]) * 10.0 # dyne/cm^2
+    t_arr = np.clip(atmos["tmpl"], a_min=180.0, a_max=None)
     header  = "#(dyne/cm2)\t(K)\n"
     header += "Pressure\tTemp"
     prof_write = vulcan_out + "profile.txt"
@@ -210,7 +211,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         K_max       = 1e5        # for Kzz_prof = 'Pfunc'
         K_p_lev     = 0.1      # for Kzz_prof = 'Pfunc'
 
-        update_frq  = 100    # frequency for updating dz and dzi due to change of mu
+        update_frq  = 200    # frequency for updating dz and dzi due to change of mu
 
         # ====== Setting up the boundary conditions ======
         use_topflux     = False
@@ -242,9 +243,9 @@ def run_once(dirs:dict, config:Config) -> bool:
         use_print_prog  = True
         use_print_delta = False
         print_prog_num  = 100  # print the progress every x steps
-        dttry           = 1.E-4
+        dttry           = 1.E-3
         dt_min          = 1.E-9
-        dt_max          = runtime*1e-5
+        dt_max          = runtime*1e-4
         dt_var_max      = 2.
         dt_var_min      = 0.5
 
@@ -264,11 +265,11 @@ def run_once(dirs:dict, config:Config) -> bool:
         conver_ignore   = [] # added 2023. to get rid off non-convergent species, e.g. HC3N without sinks
 
         # ====== Setting up numerical parameters for Ros2 ODE solver ======
-        rtol             = 0.2 # relative tolerence for adjusting the stepsize
+        rtol             = 0.6 # relative tolerence for adjusting the stepsize
         post_conden_rtol = 0.1 # switched to this value after fix_species_time
 
         # ====== Setting up for output and plotting ======
-        plot_TP         = True
+        plot_TP         = False
         use_live_plot   = True
         use_live_flux   = False
         use_plot_end    = False

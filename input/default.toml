@@ -34,7 +34,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # time-stepping
     [params.dt]
-        minimum      = 1e1    # yr, minimum time-step
+        minimum      = 1e1    # absolute minimum time-step [years]
+        minimum_rel  = 1e-5   # relative minimum time-step [dimensionless]
         maximum      = 3e5    # yr, maximum time-step
         initial      = 2e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum

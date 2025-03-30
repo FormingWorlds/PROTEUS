@@ -11,7 +11,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # time-stepping
     [params.dt]
-        minimum_abs  = 1e4    # absolute minimum time-step [years]
+        minimum      = 1e4    # absolute minimum time-step [years]
         minimum_rel  = 3e-3   # relative minimum time-step [dimensionless]
         maximum      = 3e7    # yr, maximum time-step
         initial      = 1e4    # yr, inital step size

@@ -226,7 +226,7 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
         dtswitch = min(dtswitch, config.params.dt.maximum )
 
         # Min step size
-        dtminimum = config.params.dt.minimum_abs
+        dtminimum = config.params.dt.minimum
         if step_sf > 0.99:
             dtminimum += config.params.dt.minimum_rel * hf_row["Time"]
         dtswitch = max(dtswitch, dtminimum)
