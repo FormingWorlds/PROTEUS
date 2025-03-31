@@ -26,18 +26,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.stop.time]
             enabled = true
-            maximum = 200e6     # yr, model will terminate when t > maximum
+            maximum = 5e9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
             enabled  = true
-            phi_crit = 0.02  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
-            enabled = true
-            atol    = 4e-1    # absolute tolerance [W m-2]
-            rtol    = 3e-2    # relative tolerance
+            enabled = false
 
         [params.stop.escape]
             enabled   = true
@@ -49,11 +46,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [star]
 
     mass    = 0.273      # M_sun
-    age_ini = 0.100     # Gyr, model initialisation/start age
+    age_ini = 0.05     # Gyr, model initialisation/start age
 
     module  = "mors"
     [star.mors]
-        rot_pcntle = 50.0       # rotation percentile
+        rot_period = 80.9       # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 4.94     # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/l-98-59.txt" # stellar spectrum
@@ -83,9 +80,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "agni"           # Which atmosphere module to use
 
     [atmos_clim.agni]
-        p_top           = 1.0e-4        # bar, top of atmosphere grid pressure
+        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "256"         # how many spectral bands?
+        spectral_bands  = "48"         # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
@@ -105,7 +102,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 [interior]
     F_initial       = 1e5   # Initial heat flux guess [W m-2]
-    radiogenic_heat = false  # enable radiogenic heat production
+    radiogenic_heat = true  # enable radiogenic heat production
     tidal_heat      = true  # enable tidal heat production
     rheo_phi_loc    = 0.3    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
@@ -117,9 +114,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 80       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-6   # solver tolerance
-        tsurf_atol      = 10.0      # tsurf_poststep_change
+        tsurf_atol      = 7.0      # tsurf_poststep_change
         tsurf_rtol      = 0.004      # tsurf_poststep_change_frac
-        ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 3500.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
 
@@ -145,4 +142,4 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # S_ppmw      = 0.0     # Sulfur inventory in ppmw relative to mantle mass
 
 [observe]
-    synthesis = "none"
+    synthesis = "platon"
