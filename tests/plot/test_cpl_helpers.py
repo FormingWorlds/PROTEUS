@@ -10,7 +10,7 @@ from proteus.plot._cpl_helpers import get_handler_from_argv
 
 
 def test_get_handler_from_argv():
-    config_path = str(PROTEUS_ROOT / 'input' / 'default.toml')
+    config_path = str(PROTEUS_ROOT / 'input' / 'minimal.toml')
 
     with patch.object(sys, 'argv', [None, config_path]):
         handler = get_handler_from_argv()

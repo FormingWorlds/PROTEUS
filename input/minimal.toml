@@ -42,9 +42,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     module = "zephyrus"
 
 [interior]
-    module = "aragog"
-    [interior.aragog]
-        ini_tmagma      = 3000.0    # Initial magma surface temperature [K]
+    module = "spider"
+    [interior.spider]
+        ini_entropy      = 3000.0  # Surface entropy conditions [J K-1 kg-1]
 
 [outgas]
     fO2_shift_IW    = 4         # log10(ΔIW), atmosphere/interior boundary oxidation state

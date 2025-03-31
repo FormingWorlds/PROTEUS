@@ -109,7 +109,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.1       # AU
+    semimajoraxis   = 1.0       # AU
     eccentricity    = 0.0       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
@@ -197,19 +197,18 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
-    module = "aragog"   # Which interior module to use
+    module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 100       # Number of SPIDER grid levels
+        num_levels      = 80       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-10   # solver tolerance
-        tsurf_atol      = 30.0      # tsurf_poststep_change
+        tolerance       = 1.0e-7    # solver tolerance
+        tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
-        ini_entropy     = 2700.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        logging         = "INFO"   # Log level for aragog
         num_levels      = 80       # Number of Aragog grid levels
         tolerance       = 1.0e-7    # solver tolerance
         ini_tmagma      = 3000.0    # Initial magma surface temperature [K]
@@ -256,17 +255,17 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
-        H_oceans    = 1.0       # Hydrogen inventory in units of equivalent Earth oceans
+        H_oceans    = 5.0       # Hydrogen inventory in units of equivalent Earth oceans
         #H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
 
-        # NH_ratio    = 0.0       # N/H mass ratio in mantle/atmosphere system
-        N_ppmw      = 1.0       # Nitrogen inventory in ppmw relative to mantle mass
+        NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
+        # N_ppmw      = 0.5      # Nitrogen inventory in ppmw relative to mantle mass
 
-        #SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
-        S_ppmw      = 1.0     # Sulfur inventory in ppmw relative to mantle mass
+        SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
+        # S_ppmw      = 2.0     # Sulfur inventory in ppmw relative to mantle mass
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [delivery.volatiles]

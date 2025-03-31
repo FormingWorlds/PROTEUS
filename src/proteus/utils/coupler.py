@@ -633,7 +633,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
                                     plot_format=config.params.out.plot_fmt)
 
     # Close all figures
-    plt.close()
+    plt.close("all")
 
 
 def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
