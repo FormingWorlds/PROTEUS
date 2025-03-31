@@ -197,7 +197,7 @@ class AtmosClim:
     janus: Janus = field(factory=Janus, validator=valid_janus)
     dummy: Dummy = field(factory=Dummy)
 
-    surf_state: str         = field(default='fixed',
+    surf_state: str         = field(default='skin',
                                     validator=(
                                         in_(('mixed_layer', 'fixed', 'skin')),
                                     ))
