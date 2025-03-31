@@ -9,17 +9,19 @@ from __future__ import annotations
 
 import glob
 import os
-from textwrap import dedent
 import subprocess as sp
+from textwrap import dedent
+
 import numpy as np
 import pandas as pd
 
 # Import PROTEUS
 from proteus import Proteus
-from proteus.config import Config
-from proteus.utils.constants import vol_list, R_sun, AU, element_list
-from proteus.utils.helper import find_nearest, safe_rm
 from proteus.atmos_clim.common import read_ncdf_profile
+from proteus.config import Config
+from proteus.utils.constants import AU, R_sun, element_list, vol_list
+from proteus.utils.helper import find_nearest
+
 
 def run_once(dirs:dict, config:Config) -> bool:
     """
@@ -336,4 +338,3 @@ if __name__ == '__main__':
 
     # Do it
     run_once(dirs, config)
-
