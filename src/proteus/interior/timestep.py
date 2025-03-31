@@ -16,7 +16,7 @@ log = logging.getLogger("fwl."+__name__)
 
 # Constants
 LBAVG = 3      # Number of steps to average over
-SFINC = 1.2    # Scale factor for step size increase
+SFINC = 1.5    # Scale factor for step size increase
 SFDEC = 0.8    # Scale factor for step size decrease
 SMALL = 1e-8   # Small number
 

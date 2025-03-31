@@ -173,9 +173,17 @@ def _try_spider( dirs:dict, config:Config,
     if not os.path.isfile(spider_exec):
         raise FileNotFoundError("SPIDER executable could not be found at '%s'"%spider_exec)
 
-    # Bounds on tolereances
-    step_sf = min(1.0,    max(1.0e-10, step_sf))
-    atol_sf = min(1.0e10, max(1.0e-10, atol_sf))
+    # Scale factors for when SPIDER is failing to converge
+    step_sf = min(1.0, max(1.0e-10, step_sf))
+    atol_sf = min(1.0, max(1.0e-10, atol_sf))
+
+    # Solver tolerances
+    spider_atol = atol_sf * config.interior.spider.tolerance
+    spider_rtol = atol_sf * config.interior.spider.tolerance_rel
+
+    # Bounds on tolerances
+    spider_rtol = min(spider_rtol, 1e-1)
+    spider_atol = max(spider_atol, 1e-11)
 
     # Recalculate time stepping
     if IC_INTERIOR == 2:
@@ -253,8 +261,11 @@ def _try_spider( dirs:dict, config:Config,
 
     # Mixing length parameterization: 1: variable | 2: constant
     call_sequence.extend(["-mixing_length", str(config.interior.spider.mixing_length)])
-    call_sequence.extend(["-ts_sundials_atol", str(config.interior.spider.tolerance * atol_sf)])
-    call_sequence.extend(["-ts_sundials_rtol", str(config.interior.spider.tolerance * atol_sf)])
+
+    # Solver tolerances
+    call_sequence.extend(["-ts_sundials_atol", str(spider_atol)])
+    call_sequence.extend(["-ts_sundials_rtol", str(spider_rtol)])
+    call_sequence.extend(["-ts_sundials_type", str(config.interior.spider.solver_type)])
 
     # Rollback
     call_sequence.extend(["-activate_poststep", "-activate_rollback"])
@@ -445,8 +456,8 @@ def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
             else:
                 # try again (change tolerance and step size)
                 log.warning("Trying again")
-                step_sf *= 0.1
-                atol_sf *= 5.0
+                step_sf *= 0.2
+                atol_sf *= 6.0
 
     # check status
     if spider_success:

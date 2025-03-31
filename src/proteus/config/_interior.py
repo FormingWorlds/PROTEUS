@@ -23,7 +23,9 @@ class Spider:
     mixing_length: int
         Parameterisation used to determine convective mixing length.
     tolerance: float
-        Solver tolerance.
+        Absolute solver tolerance.
+    tolerance_rel: float
+        Relative solver tolerance.
     tsurf_atol: float
         Absolute tolerance on change in T_mantle during a single interior iteration.
     tsurf_rtol: float
@@ -32,14 +34,18 @@ class Spider:
         Initial specific surface entropy [J K-1 kg-1].
     ini_dsdr: float
         Initial interior specific entropy gradient [J K-1 kg-1 m-1].
+    solver_type: str
+        Numerical integrator. Choices: 'adams', 'bdf'.
     """
-    ini_entropy: float  = field(default=None)
-    ini_dsdr: float     = field(default=-4.698e-6,  validator=lt(0))
-    num_levels: int     = field(default=80,         validator=ge(40))
-    mixing_length: int  = field(default=2,          validator=in_((1,2)))
-    tolerance: float    = field(default=1e-10,      validator=gt(0))
-    tsurf_atol: float   = field(default=20.0,       validator=gt(0))
-    tsurf_rtol: float   = field(default=0.01,       validator=gt(0))
+    ini_entropy: float   = field(default=None)
+    ini_dsdr: float      = field(default=-4.698e-6,  validator=lt(0))
+    num_levels: int      = field(default=80,         validator=ge(40))
+    mixing_length: int   = field(default=2,          validator=in_((1,2)))
+    tolerance: float     = field(default=1e-10,      validator=gt(0))
+    tolerance_rel: float = field(default=1e-6,       validator=gt(0))
+    solver_type: str     = field(default="bdf",      validator=in_(("adams", "bdf")))
+    tsurf_atol: float    = field(default=20.0,       validator=gt(0))
+    tsurf_rtol: float    = field(default=0.01,       validator=gt(0))
 
 
 def valid_aragog(instance, attribute, value):
