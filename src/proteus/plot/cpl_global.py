@@ -148,12 +148,12 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
         ax.set_xlim(xlim[0],  max(xlim[1], xlim[0]+1))
 
     # PLOT ax_tl
-    ax_tl.plot( hf["Time"], hf["F_radio"], color=get_colour("radio"), lw=lw, alpha=al,  label="Radio")
-    ax_tl.plot( hf["Time"], hf["F_tidal"], color=get_colour("tidal"), lw=lw, alpha=al,  label="Tidal")
-    ax_tl.plot( hf["Time"], hf["F_int"],   color=get_colour("int"),   lw=lw, alpha=al,  label="Net (int.)", ls='dashed')
-    ax_tl.plot( hf["Time"], hf["F_atm"],   color=get_colour("atm"),   lw=lw, alpha=al,  label="Net (atm.)"  )
-    ax_tl.plot( hf["Time"], hf["F_olr"],   color=get_colour("OLR"),   lw=lw, alpha=al,  label="OLR" )
-    ax_tl.plot( hf["Time"], F_asf,         color=get_colour("ASF"),   lw=lw, alpha=al,  label="ASF" ,ls='dashed' )
+    ax_tl.plot( hf["Time"], hf["F_radio"], color=get_colour("radio"), lw=lw,     alpha=al,  label="Radio")
+    ax_tl.plot( hf["Time"], hf["F_tidal"], color=get_colour("tidal"), lw=lw,     alpha=al,  label="Tidal")
+    ax_tl.plot( hf["Time"], hf["F_int"],   color=get_colour("int"),   lw=lw*1.5, alpha=al,  label="Net (int.)", ls='dashed')
+    ax_tl.plot( hf["Time"], hf["F_atm"],   color=get_colour("atm"),   lw=lw*1.5, alpha=al,  label="Net (atm.)" )
+    ax_tl.plot( hf["Time"], hf["F_olr"],   color=get_colour("OLR"),   lw=lw*0.8, alpha=al,  label="OLR" )
+    ax_tl.plot( hf["Time"], F_asf,         color=get_colour("ASF"),   lw=lw,     alpha=al,  label="ASF" ,ls='dashed' )
     ax_tl.legend(loc='center left', **leg_kwargs)
     ymin, ymax = 0.0, 100.0
     for k in ("F_int","F_atm","F_olr","F_tidal","F_radio", F_asf):

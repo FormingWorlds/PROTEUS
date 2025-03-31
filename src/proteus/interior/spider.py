@@ -392,7 +392,7 @@ def _try_spider( dirs:dict, config:Config,
         log.error("SPIDER process timed-out")
         spider_succ = False
     except Exception as e:
-        log.error("SPIDER encountered ")
+        log.error("SPIDER encountered an error: "+str(type(e)))
         spider_succ = False
     else:
         spider_succ = bool(proc.returncode == 0)

@@ -69,8 +69,8 @@ class Aragog:
     logging: str        = field(default='ERROR',
                                 validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
     ini_tmagma: float   = field(default=None)
-    num_levels: int     = field(default=100,    validator=ge(40))
-    tolerance: float    = field(default=1e-10,  validator=gt(0))
+    num_levels: int     = field(default=80,    validator=ge(40))
+    tolerance: float    = field(default=1e-7,  validator=gt(0))
 
 def valid_interiordummy(instance, attribute, value):
     if instance.module != "dummy":
@@ -136,7 +136,7 @@ class Interior:
     dummy: InteriorDummy    = field(factory=InteriorDummy, validator=valid_interiordummy)
 
     grain_size: float       = field(default=0.1,    validator=gt(0))
-    F_initial: float        = field(default=1e5,    validator=gt(0))
+    F_initial: float        = field(default=1e3,    validator=gt(0))
     rheo_phi_loc: float     = field(default=0.3,    validator=(gt(0),lt(1)))
     rheo_phi_wid: float     = field(default=0.15,   validator=(gt(0),lt(1)))
     bulk_modulus: float     = field(default=260e9,  validator=gt(0))

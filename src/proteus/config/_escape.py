@@ -31,8 +31,8 @@ class Zephyrus:
     tidal: bool
         Tidal contribution enabled
     """
-    Pxuv: float       = field(default=None)
-    efficiency: float = field(default=None)
+    Pxuv: float       = field(default=5e-5)
+    efficiency: float = field(default=0.1)
     tidal: bool       = field(default=False)
 
 def valid_escapedummy(instance, attribute, value):

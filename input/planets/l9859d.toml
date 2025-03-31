@@ -97,7 +97,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         real_gas        = true          # use real-gas equations of state
 
 [escape]
-    module = "none"
+    module = "zephyrus"
+    [escape.zephyrus]
+        Pxuv = 5e-5
+        efficiency = 0.1
+        tidal = false
 
 [interior]
     F_initial       = 1e5   # Initial heat flux guess [W m-2]

@@ -46,6 +46,9 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
     """
 
     # open file
+    if not os.path.isfile(nc_fpath):
+        log.error(f"Could not find NetCDF file '{nc_fpath}'")
+        return None
     ds = nc.Dataset(nc_fpath)
 
     p = np.array(ds.variables["p"][:])
@@ -94,7 +97,8 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
 
         # Check that key exists
         if key not in ds.variables.keys():
-            print(f"Could not read '{key}' from NetCDF file")
+            log.error(f"Could not read '{key}' from NetCDF file")
+            continue
 
         # Reading composition
         if key == "x_gas":
