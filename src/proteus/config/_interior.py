@@ -68,7 +68,7 @@ class Aragog:
 
     logging: str        = field(default='ERROR',
                                 validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    ini_tmagma: float   = field(default=None)
+    ini_tmagma          = field(default=None)
     num_levels: int     = field(default=80,    validator=ge(40))
     tolerance: float    = field(default=1e-7,  validator=gt(0))
 
@@ -93,7 +93,7 @@ class InteriorDummy:
         Initial magma surface temperature [K].
     """
 
-    ini_tmagma: float = field(default=None)
+    ini_tmagma = field(default=None)
 
 @define
 class Interior:

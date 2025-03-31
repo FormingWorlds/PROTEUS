@@ -52,7 +52,7 @@ class EscapeDummy:
     rate: float
         Bulk unfractionated escape rate [kg s-1]
     """
-    rate: float = field(default=None)
+    rate = field(default=None)
 
 @define
 class Escape:

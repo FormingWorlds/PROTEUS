@@ -385,7 +385,7 @@ class Grid():
             count_run = np.count_nonzero(status == 1)
             count_end = np.count_nonzero(status == 2)
             if (step%print_interval == 0):
-                log.info("%3d queued (%5.1f%%), %3d running (%5.1f%%), %3d completed (%5.1f%%)" % (
+                log.info("%3d queued (%5.1f%%), %3d running (%5.1f%%), %3d exited (%5.1f%%)" % (
                         count_que, 100.0*count_que/self.size,
                         count_run, 100.0*count_run/self.size,
                         count_end, 100.0*count_end/self.size
@@ -450,8 +450,8 @@ if __name__=='__main__':
     folder = "l98d_escape20"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
-    # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
-    symlink = "/scratch/users/nicholls/"+folder
+    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
+    # symlink = "/scratch/users/nicholls/"+folder
     # symlink = None
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 

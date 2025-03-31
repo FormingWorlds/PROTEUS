@@ -72,8 +72,8 @@ class StarDummy:
     Teff: float
         Observed effective temperature [K].
     """
-    radius: float = field(default=None)
-    Teff: float   = field(default=None)
+    radius = field(default=None)
+    Teff   = field(default=None)
 
 @define
 class Star:
