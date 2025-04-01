@@ -59,6 +59,12 @@ This happens with SOCRATES cannot find the NetCDF-Fortran library. Make sure tha
 You can also try adding the library location to your `LD_LIBRARY_PATH` variable. Find the location
 of the NetCDF-fortran library using `nf-config --flibs`.
 
+## All: `libudev.so.1` not found
+
+This happens when compiling SPIDER within a Python environment that is incompatible with PETSc.
+Try compiling SPIDER (and/or PETSc) in your system's base Python environment, and ensure that you
+are not using Python >=3.13, as SPIDER is only supported for Python versions <=3.12 currently.
+
 ## MacOS: The FastChem code distributed with VULCAN won\'t compile
 
 With the new Apple Silicon hardware (M1/M2), the option `-march=native` sometimes causes issues.
