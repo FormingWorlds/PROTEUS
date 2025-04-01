@@ -265,7 +265,7 @@ def run_once(dirs:dict, config:Config) -> bool:
 
         # ====== steady state check ======
         st_factor = 0.5
-        conv_step = 200
+        conv_step = 100
 
         # ====== Setting up numerical parameters for the ODE solver ======
         ode_solver      = 'Ros2' # case sensitive
@@ -282,13 +282,13 @@ def run_once(dirs:dict, config:Config) -> bool:
 
         count_min       = 120
         count_max       = int(3E4)
-        atol            = 1.E-1 # Try decreasing this if the solutions are not stable
+        atol            = 5.E-2 # Try decreasing this if the solutions are not stable
         mtol            = 1.E-22
         mtol_conv       = 1.E-20
         pos_cut         = 0
         nega_cut        = -1.
         loss_eps        = 1e-1
-        yconv_cri       = 0.02  # for checking steady-state
+        yconv_cri       = 0.04  # for checking steady-state
         slope_cri       = 1.e-4
         yconv_min       = 0.1
         flux_cri        = 0.1
@@ -296,7 +296,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         conver_ignore   = [] # added 2023. to get rid off non-convergent species, e.g. HC3N without sinks
 
         # ====== Setting up numerical parameters for Ros2 ODE solver ======
-        rtol             = 2.0 # relative tolerence for adjusting the stepsize
+        rtol             = 1.1 # relative tolerence for adjusting the stepsize
         post_conden_rtol = 0.1 # switched to this value after fix_species_time
 
         # ====== Setting up for output and plotting ======

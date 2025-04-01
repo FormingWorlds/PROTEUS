@@ -178,6 +178,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 [escape]
 
     module = "zephyrus"    # Which escape module to use
+    reservoir = "outgas"   # Reservoir that sets escaping gas composition
 
     [escape.zephyrus]
         Pxuv        = 5e-5          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
@@ -204,6 +205,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1.0e-7    # absolute solver tolerance
         tolerance_rel   = 1.0e-5    # relative solver tolerance
+        solver_type     = "bdf"     # SUNDIALS solver method
         tsurf_atol      = 20.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
         ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
