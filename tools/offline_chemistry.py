@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import glob
 import os
-import sys
+import pickle
 import shutil
 import subprocess as sp
+import sys
 from textwrap import dedent
 
 import numpy as np
 import pandas as pd
-import pickle
 
 # Import PROTEUS
 from proteus import Proteus
@@ -356,6 +356,8 @@ def run_once(dirs:dict, config:Config) -> bool:
 
     with open(result_file,'rb') as hdl:
         result_data = pickle.read(hdl)
+
+    print(result_data)
 
     # ------------------------------------------------------------
     # MAKE PLOTS
