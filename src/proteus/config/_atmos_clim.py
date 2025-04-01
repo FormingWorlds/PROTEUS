@@ -9,11 +9,9 @@ from ._converters import none_if_none
 
 log = logging.getLogger('fwl.' + __name__)
 
-
 def tmp_max_bigger_than_tmp_min(instance, attribute, value):
     if value <= instance.tmp_minimum:
         raise ValueError("'tmp_maximum' has to be bigger than 'tmp_minimum'.")
-
 
 def warn_if_dummy(instance, attribute, value):
     if (instance.module == 'dummy') and value:
@@ -38,10 +36,9 @@ def valid_agni(instance, attribute, value):
 
     # set spectral files?
     if not instance.agni.spectral_group:
-        raise ValueError("Must set instance.agni.spectral_group")
+        raise ValueError("Must set atmos_clim.agni.spectral_group")
     if not instance.agni.spectral_bands:
-        raise ValueError("Must set instance.agni.spectral_bands")
-
+        raise ValueError("Must set atmos_clim.agni.spectral_bands")
 
 @define
 class Agni:
@@ -77,15 +74,15 @@ class Agni:
 
     spectral_group: str     = field(default=None)
     spectral_bands: str     = field(default=None)
-    p_top: float            = field(default=1e-5, validator=gt(0))
+    p_top: float            = field(default=1e-4, validator=gt(0))
     surf_material: str      = field(default="surface_albedos/Hammond24/lunarmarebasalt.dat")
     num_levels: int         = field(default=40, validator=ge(15))
     chemistry: str          = field(default="none",
                                     validator=in_((None, "eq")),
                                     converter=none_if_none)
     solve_energy: bool      = field(default=True)
-    solution_atol: float    = field(default=0.1,  validator=gt(0))
-    solution_rtol: float    = field(default=0.1,  validator=gt(0))
+    solution_atol: float    = field(default=2.0,  validator=gt(0))
+    solution_rtol: float    = field(default=0.2,  validator=gt(0))
     overlap_method: str     = field(default='ee', validator=check_overlap)
     condensation: bool      = field(default=False)
     real_gas: bool          = field(default=True)
@@ -101,9 +98,9 @@ def valid_janus(instance, attribute, value):
 
     # set spectral files?
     if not instance.janus.spectral_group:
-        raise ValueError("Must set instance.janus.spectral_group")
+        raise ValueError("Must set atmos_clim.janus.spectral_group")
     if not instance.janus.spectral_bands:
-        raise ValueError("Must set instance.janus.spectral_bands")
+        raise ValueError("Must set atmos_clim.janus.spectral_bands")
 
 @define
 class Janus:
@@ -132,7 +129,7 @@ class Janus:
     spectral_group: str     = field(default=None)
     spectral_bands: str     = field(default=None)
     p_top: float            = field(default=1e-5, validator=gt(0))
-    p_obs: float            = field(default=1e-3, validator=gt(0))
+    p_obs: float            = field(default=2e-3, validator=gt(0))
     F_atm_bc: int           = field(default=0, validator=in_((0, 1)))
     num_levels: int         = field(default=90, validator=ge(15))
     tropopause: str | None  = field(default="none",

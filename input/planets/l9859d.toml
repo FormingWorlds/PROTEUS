@@ -20,7 +20,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         method       = "adaptive"  # proportional | adaptive | maximum
         [params.dt.adaptive]
             atol         = 0.03  # Step size atol
-            rtol         = 0.11   # Step size rtol
+            rtol         = 0.10   # Step size rtol
 
     [params.stop]
 
@@ -87,7 +87,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
-        solution_atol   = 0.5          # solver absolute tolerance
+        solution_atol   = 1.0          # solver absolute tolerance
         solution_rtol   = 0.13          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
@@ -101,7 +101,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         tidal = false
 
 [interior]
-    F_initial       = 1e5   # Initial heat flux guess [W m-2]
+    F_initial       = 1e4   # Initial heat flux guess [W m-2]
     radiogenic_heat = true  # enable radiogenic heat production
     tidal_heat      = true  # enable tidal heat production
     rheo_phi_loc    = 0.3    # Centre of rheological transition
@@ -111,13 +111,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 80       # Number of SPIDER grid levels
+        num_levels      = 70       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-6      # absolute solver tolerance
         tolerance_rel   = 1e-5      # relative solver tolerance
         tsurf_atol      = 5.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
-        ini_entropy     = 3500.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 3200.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
 

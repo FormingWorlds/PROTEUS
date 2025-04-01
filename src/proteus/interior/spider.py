@@ -456,7 +456,7 @@ def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
             else:
                 # try again (change tolerance and step size)
                 log.warning("Trying again")
-                step_sf *= 0.4
+                step_sf *= 0.1
                 atol_sf *= 10.0
 
     # check status
