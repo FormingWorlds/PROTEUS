@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
+import platformdirs
+import os
+from pathlib import Path
 
+FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 def valid_spider(instance, attribute, value):
     if instance.module != "spider":
@@ -11,6 +15,12 @@ def valid_spider(instance, attribute, value):
     ini_entropy = instance.spider.ini_entropy
     if (not ini_entropy) or (ini_entropy <= 200.0) :
         raise ValueError("`interior.spider.ini_entropy` must be >200")
+
+def path_exists(instance, attribute, value):
+    """Validator to check if the full directory path exists."""
+    full_path = FWL_DATA_DIR / "interior_lookup_tables/Melting_curves" / value
+    if not os.path.isdir(full_path):
+        raise ValueError(f"Directory '{full_path}' does not exist.")
 
 @define
 class Spider:
@@ -127,7 +137,7 @@ class Interior:
     """
 
     module: str             = field(validator=in_(('spider', 'aragog', 'dummy')))
-
+    melting_dir: str        = field(validator=path_exists)
     radiogenic_heat: bool   = field(default=True)
     tidal_heat: bool        = field(default=True)
 
@@ -140,3 +150,4 @@ class Interior:
     rheo_phi_loc: float     = field(default=0.3,    validator=(gt(0),lt(1)))
     rheo_phi_wid: float     = field(default=0.15,   validator=(gt(0),lt(1)))
     bulk_modulus: float     = field(default=260e9,  validator=gt(0))
+

@@ -137,6 +137,7 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
 
     # Get look up data directory, will be configurable in the future
     LOOK_UP_DIR = FWL_DATA_DIR / "interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018/"
+    MELTING_DIR=  FWL_DATA_DIR / "interior_lookup_tables/Melting_curves/"
 
     phase_liquid = _PhaseParameters(
             density = LOOK_UP_DIR / "density_melt.dat",
@@ -162,8 +163,8 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
             latent_heat_of_fusion = 4e6,
             rheological_transition_melt_fraction = config.interior.rheo_phi_loc,
             rheological_transition_width = config.interior.rheo_phi_wid,
-            solidus = LOOK_UP_DIR / "solidus.dat",
-            liquidus = LOOK_UP_DIR / "liquidus.dat",
+            solidus = MELTING_DIR / config.interior.melting_dir / "solidus.dat",
+            liquidus= MELTING_DIR / config.interior.melting_dir / "liquidus.dat",
             phase = "mixed",
             phase_transition_width = 0.1,
             grain_size = config.interior.grain_size,
