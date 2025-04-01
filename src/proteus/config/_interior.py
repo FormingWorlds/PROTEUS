@@ -41,7 +41,7 @@ class Spider:
     ini_dsdr: float      = field(default=-4.698e-6,  validator=lt(0))
     num_levels: int      = field(default=80,         validator=ge(40))
     mixing_length: int   = field(default=2,          validator=in_((1,2)))
-    tolerance: float     = field(default=1e-10,      validator=gt(0))
+    tolerance: float     = field(default=1e-7,      validator=gt(0))
     tolerance_rel: float = field(default=1e-6,       validator=gt(0))
     solver_type: str     = field(default="bdf",      validator=in_(("adams", "bdf")))
     tsurf_atol: float    = field(default=20.0,       validator=gt(0))

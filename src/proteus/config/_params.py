@@ -32,7 +32,7 @@ class OutputParams:
     path: str
     logging: str    = field(default='INFO',
                             validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    plot_mod: int   = field(default=1,      validator=ge(0))
+    plot_mod: int   = field(default=5,      validator=ge(0))
     plot_fmt: str   = field(default='png',  validator=in_(('pdf', 'png')))
     write_mod: int  = field(default=1,      validator=ge(0))
 

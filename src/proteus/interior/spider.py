@@ -174,8 +174,8 @@ def _try_spider( dirs:dict, config:Config,
         raise FileNotFoundError("SPIDER executable could not be found at '%s'"%spider_exec)
 
     # Scale factors for when SPIDER is failing to converge
-    step_sf = min(1.0, max(1.0e-10, step_sf))
-    atol_sf = min(1.0, max(1.0e-10, atol_sf))
+    step_sf = max(1.0e-10, step_sf)
+    atol_sf = max(1.0e-10, atol_sf)
 
     # Solver tolerances
     spider_atol = atol_sf * config.interior.spider.tolerance
@@ -456,8 +456,8 @@ def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
             else:
                 # try again (change tolerance and step size)
                 log.warning("Trying again")
-                step_sf *= 0.2
-                atol_sf *= 6.0
+                step_sf *= 0.9
+                atol_sf *= 8.0
 
     # check status
     if spider_success:

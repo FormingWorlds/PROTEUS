@@ -11,22 +11,22 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # time-stepping
     [params.dt]
-        minimum      = 1e3    # absolute minimum time-step [years]
-        minimum_rel  = 2e-3   # relative minimum time-step [dimensionless]
-        maximum      = 3e7    # yr, maximum time-step
+        minimum      = 3e2    # absolute minimum time-step [years]
+        minimum_rel  = 5e-3   # relative minimum time-step [dimensionless]
+        maximum      = 1e8    # yr, maximum time-step
         initial      = 1e4    # yr, inital step size
         starspec     = 9e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
         [params.dt.adaptive]
-            atol         = 0.02  # Step size atol
+            atol         = 0.03  # Step size atol
             rtol         = 0.11   # Step size rtol
 
     [params.stop]
 
         [params.stop.time]
             enabled = true
-            maximum = 5e9     # yr, model will terminate when t > maximum
+            maximum = 6e9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -71,7 +71,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     corefrac    = 0.55      # non-dim., radius fraction
 
 [atmos_clim]
-    prevent_warming = true     # do not allow the planet to heat up
+    prevent_warming = false     # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
@@ -88,7 +88,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
         solution_atol   = 0.5          # solver absolute tolerance
-        solution_rtol   = 0.12          # solver relative tolerance
+        solution_rtol   = 0.13          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
         real_gas        = true          # use real-gas equations of state
@@ -111,7 +111,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 80       # Number of SPIDER grid levels
+        num_levels      = 100       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-6      # absolute solver tolerance
         tolerance_rel   = 1e-4      # relative solver tolerance

@@ -447,7 +447,7 @@ if __name__=='__main__':
     # -----
 
     config = "planets/l9859d.toml"
-    folder = "l98d_escape20"
+    folder = "l98d_escape21"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
@@ -477,7 +477,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(100, test_run=False)
+    pg.run(62, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.
