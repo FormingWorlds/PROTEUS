@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import glob
 import os
+import sys
+import shutil
 import subprocess as sp
 from textwrap import dedent
 
 import numpy as np
 import pandas as pd
+import pickle
 
 # Import PROTEUS
 from proteus import Proteus
@@ -38,10 +41,16 @@ def run_once(dirs:dict, config:Config) -> bool:
         print("Offline chemistry is only supported for `atmos_clim.module = 'agni'`")
         return False
 
-    num_levels  = 110           # number of levels
     min_fl      = 1e-20         # stellar flux floor
     clip_vmr    = 1e-10         # neglect species with surface VMR < clip_vmr
     vulcan_name = 'recent.vul'  # name for output file
+    make_funs   = True          # make functions from chemical network
+    ini_mix     = 'table'       # initial mixing ratios (table, const_mix)
+
+    # make folder
+    work_dir = os.path.join(dirs["output"],"offchem") + "/"
+    shutil.rmtree(work_dir, ignore_errors=True)
+    os.makedirs(work_dir)
 
     # ------------------------------------------------------------
     # READ DATA FROM PROTEUS RUN
@@ -70,8 +79,8 @@ def run_once(dirs:dict, config:Config) -> bool:
     # ------------------------------------------------------------
 
     # Output folder
-    vulcan_out = os.path.join(dirs["vulcan"], "output") + "/"
-    vulcan_plt = os.path.join(dirs["vulcan"], "plot") + "/"
+    vulcan_out = work_dir
+    vulcan_plt = work_dir
     print("Writing input data...", end='')
 
     # Find a reasonable file for the stellar flux
@@ -89,7 +98,7 @@ def run_once(dirs:dict, config:Config) -> bool:
     star_fl = star_fl[star_fl > min_fl]
 
     # Write spectrum
-    star_write = vulcan_out + "star.txt"
+    star_write = work_dir + "star.dat"
     np.savetxt(star_write, np.array([star_wl, star_fl]).T,
                 header="# WL(nm)    Flux(ergs/cm**2/s/nm)",
                 fmt=["%.4f","%.4e"])
@@ -97,12 +106,27 @@ def run_once(dirs:dict, config:Config) -> bool:
     # Write TP profile
     p_arr = np.array(atmos["pl"]) * 10.0 # dyne/cm^2
     t_arr = np.clip(atmos["tmpl"], a_min=180.0, a_max=None)
+    num_levels = len(p_arr)
     header  = "#(dyne/cm2)\t(K)\n"
     header += "Pressure\tTemp"
-    prof_write = vulcan_out + "profile.txt"
+    prof_write = work_dir + "profile.dat"
     np.savetxt(prof_write, np.array([p_arr[::-1], t_arr[::-1]]).T,
                delimiter="\t", header=header, comments='', fmt="%1.5e")
     print("  ok")
+
+    # Write mixing ratios
+    vmr_write = work_dir + "vmrs.dat"
+    x_gas = [list(p_arr)]
+    header = "#Input composition arrays \nPressure\t"
+    for key in atmos.keys():
+        if "_vmr" in key:
+            gas = key.split("_")[0]
+            arr = list(atmos[key])
+            arr.append(arr[-1]) # extend by 1 level
+            x_gas.append(arr)
+            header += gas + " "
+    x_gas = np.array(x_gas).T
+    np.savetxt(vmr_write, x_gas, delimiter='\t', comments='', header=header)
 
     # ------------------------------------------------------------
     # CREATE VULCAN CONFIG
@@ -136,14 +160,14 @@ def run_once(dirs:dict, config:Config) -> bool:
 
     # Parse atmospheric composition into string, work out background gas
     backs = {'H2':0.0, 'N2':0.0, 'O2':0.0, 'CO2':0.0}
-    vmr_as_str = ""
+    outgas_str = ""
     for gas in vol_list:
         vmr = hf_row[gas+"_vmr"]
         if gas in backs.keys():
             backs[gas] = vmr
         if vmr > clip_vmr:
-            vmr_as_str += "'%s':%.8e, "%(gas, vmr)
-    vmr_as_str = vmr_as_str[:-2]
+            outgas_str += "'%s':%.8e, "%(gas, vmr)
+    outgas_str = outgas_str[:-2]
 
     # Set background gas
     background = max(backs, key=backs.get)
@@ -175,12 +199,13 @@ def run_once(dirs:dict, config:Config) -> bool:
 
         output_dir              = '{vulcan_out}'
         plot_dir                = '{vulcan_plt}'
-        movie_dir               = '{vulcan_plt}/movie/'
+        movie_dir               = '{vulcan_plt}/frames/'
         out_name                = '{vulcan_name}'
 
         # ====== Setting up the elemental abundance ======
-        ini_mix = 'const_mix'
-        const_mix = {{ {vmr_as_str} }}
+        ini_mix = '{ini_mix}'
+        const_mix = {{ {outgas_str} }}
+        vul_ini = '{vmr_write}'
 
 
         # ====== Setting up photochemistry ======
@@ -222,7 +247,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         # ====== Setting up the boundary conditions ======
         use_topflux     = False
         use_botflux     = False
-        use_fix_sp_bot  = {{ {vmr_as_str} }} # fixed mixing ratios at the lower boundary
+        use_fix_sp_bot  = {{ {outgas_str} }} # fixed mixing ratios at the lower boundary
         diff_esc        = [] # species for diffusion-limit escape at TOA
         max_flux        = 1e13  # upper limit for the diffusion-limit fluxes
 
@@ -248,9 +273,9 @@ def run_once(dirs:dict, config:Config) -> bool:
         runtime         = 1.E22
         use_print_prog  = True
         use_print_delta = False
-        print_prog_num  = 100  # print the progress every x steps
+        print_prog_num  = 20  # print the progress every x steps
         dttry           = 1.E-5
-        dt_min          = 1.E-9
+        dt_min          = 1.E-7
         dt_max          = runtime*1e-4
         dt_var_max      = 2.
         dt_var_min      = 0.5
@@ -271,7 +296,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         conver_ignore   = [] # added 2023. to get rid off non-convergent species, e.g. HC3N without sinks
 
         # ====== Setting up numerical parameters for Ros2 ODE solver ======
-        rtol             = 0.6 # relative tolerence for adjusting the stepsize
+        rtol             = 2.0 # relative tolerence for adjusting the stepsize
         post_conden_rtol = 0.1 # switched to this value after fix_species_time
 
         # ====== Setting up for output and plotting ======
@@ -280,16 +305,16 @@ def run_once(dirs:dict, config:Config) -> bool:
         use_live_flux   = False
         use_plot_end    = False
         use_plot_evo    = False
-        use_save_movie  = False
+        use_save_movie  = True
         use_flux_movie  = False
         plot_height     = False
         use_PIL         = True
-        live_plot_frq   = 20
+        live_plot_frq   = 50
         save_movie_rate = live_plot_frq
         y_time_freq     = 1  #  storing data for every 'y_time_freq' step
         plot_spec       = {plt_str}
         # output:
-        output_humanread = True
+        output_humanread = False
         use_shark        = False
         save_evolution   = False   # save the evolution of chemistry (y_time and t_time) for every save_evo_frq step
         save_evo_frq     = 10
@@ -305,22 +330,38 @@ def run_once(dirs:dict, config:Config) -> bool:
     # RUN VULCAN
     # ------------------------------------------------------------
 
-    cmd = [f"cd {dirs["vulcan"]}; python vulcan.py"]
-    logfile = vulcan_out + "offline.log"
+    cmd = [sys.executable, "vulcan.py"]
+    if not make_funs:
+        cmd.append(" -n")
+        print("Skipping make_chem_funs step")
 
-    with open(logfile,'w') as hdl:
-        print("Running VULCAN...")
-        proc = sp.run(cmd, shell=True, stdout=hdl, stderr=hdl)
+    logfile = vulcan_out + "recent.log"
+
+    print("Running VULCAN...")
+    with open(logfile, 'w') as hdl:
+        proc = sp.run(cmd, cwd=dirs["vulcan"], stdout=hdl, stderr=hdl, bufsize=1, text=True)
 
     print("Return code: " + str(proc.returncode))
     if proc.returncode:
         success = False
 
     # ------------------------------------------------------------
+    # READ AND PARSE OUTPUT FILES
+    # ------------------------------------------------------------
+
+    result_file = vulcan_out + vulcan_name
+    if not os.path.exists(result_file):
+        print(f"Could not find output file {result_file}")
+        return False
+
+    with open(result_file,'rb') as hdl:
+        result_data = pickle.read(hdl)
+
+    # ------------------------------------------------------------
     # MAKE PLOTS
     # ------------------------------------------------------------
 
-    # Outsource?
+    # TBD
 
     print("Done!")
     return success
@@ -329,7 +370,7 @@ def run_once(dirs:dict, config:Config) -> bool:
 if __name__ == '__main__':
 
     # Parameters
-    cfgfile =       "output/default/init_coupler.toml"  # Config file used for PROTEUS
+    cfgfile =       "output/minimal/init_coupler.toml"  # Config file used for PROTEUS
 
     # Read config and dirs
     handler = Proteus(config_path=cfgfile)
