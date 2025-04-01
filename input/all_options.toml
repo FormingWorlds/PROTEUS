@@ -18,6 +18,7 @@
 #   [interior] magma ocean model selection and parameters
 #   [outgas]   outgassing parameters (fO2) and included volatiles
 #   [delivery] initial volatile inventory, and delivery model selection
+#   [observe]  synthetic observations
 
 # ----------------------------------------------------
 # Metadata
