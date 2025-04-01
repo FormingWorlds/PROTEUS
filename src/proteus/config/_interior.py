@@ -4,8 +4,6 @@ from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
 
-
-
 def valid_spider(instance, attribute, value):
     if instance.module != "spider":
         return
@@ -146,4 +144,3 @@ class Interior:
     rheo_phi_loc: float     = field(default=0.3,    validator=(gt(0),lt(1)))
     rheo_phi_wid: float     = field(default=0.15,   validator=(gt(0),lt(1)))
     bulk_modulus: float     = field(default=260e9,  validator=gt(0))
-
