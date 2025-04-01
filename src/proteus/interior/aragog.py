@@ -137,7 +137,7 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
 
     # Get look up data directory, will be configurable in the future
     LOOK_UP_DIR = FWL_DATA_DIR / "interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018/"
-    MELTING_DIR=  FWL_DATA_DIR / "interior_lookup_tables/Melting_curves/"
+    MELTING_DIR=  FWL_DATA_DIR / "interior_lookup_tables/1TPa-dK09-elec-free/Melting_curves/"
 
     phase_liquid = _PhaseParameters(
             density = LOOK_UP_DIR / "density_melt.dat",

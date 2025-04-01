@@ -180,6 +180,16 @@ def download_interior_lookuptables():
     log.debug("Get interior lookup tables")
     DownloadLookupTableData()
 
+def download_melting_curves():
+    """
+    Download melting curve data
+    """
+    download(
+        folder = 'Melting_curves',
+        target = "interior_lookup_tables",
+        osf_id = 'fzwr4',
+        desc = 'melting curve data'
+    )
 
 def _get_sufficient(config:Config):
     # Star stuff
@@ -214,6 +224,7 @@ def _get_sufficient(config:Config):
     # Interior look up tables
     if config.interior.module == "aragog":
         download_interior_lookuptables()
+        download_melting_curves()
 
 
 def download_sufficient_data(config:Config):
