@@ -85,7 +85,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 
         [params.stop.escape]
             enabled   = true
-            mass_frac = 3e-4      # Stop when atm_mass < this frac of initial mass
+            p_stop = 5.0      # Stop surface pressure is less than this value
 
 
 # ----------------------------------------------------
@@ -128,7 +128,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 [struct]
     mass_tot    = "none"       # M_earth
     radius_int  = 1.0    # R_earth
-    corefrac    = 0.65      # non-dim., radius fraction
+    corefrac    = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
 
@@ -165,8 +165,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
         p_obs           = 1.0e-3        # bar, observed pressure level
-        spectral_group  = "Frostflow"   # which gas opacities to include
-        spectral_bands  = "16"          # how many spectral bands?
+        spectral_group  = "Honeyside"   # which gas opacities to include
+        spectral_bands  = "48"          # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
         num_levels      = 40           # Number of atmospheric grid levels
         tropopause      = "none"        # none | skin | dynamic

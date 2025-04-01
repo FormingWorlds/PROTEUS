@@ -446,15 +446,23 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "planets/l9859d.toml"
+    # Output folder name, created inside `PROTEUS/output/`
     folder = "l98d_escape21"
 
+    # Base config file
+    config = "planets/l9859d.toml"
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
+
+    # Set this string to have the output files created at an alternative location. The
+    #   output 'folder' in `PROTEUS/output/` will then by symbolically linked to this
+    #   alternative location. Useful for when data should be saved on a storage server.
     symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
-    # symlink = "/scratch/users/nicholls/"+folder
     # symlink = None
+
+    # Initialise grid object
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
+    # Add dimensions to grid...
     pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
     pg.set_dimension_direct("Redox state", [-4.5, -4.0, -3.5, -3, -2.5, -2.0, -1.5])
 
@@ -479,7 +487,7 @@ if __name__=='__main__':
     # -----
     pg.run(100, test_run=False)
 
-    # When this script ends, it means that all processes ARE complete or they
-    # have been killed or crashed.
+    # When this script ends, it means that all processes have exited. They may have
+    # completed, or alternatively they have been killed or crashed.
     print("Exit GridPROTEUS")
     exit(0)
