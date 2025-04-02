@@ -12,6 +12,10 @@ def valid_spider(instance, attribute, value):
     if (not ini_entropy) or (ini_entropy <= 200.0) :
         raise ValueError("`interior.spider.ini_entropy` must be >200")
 
+def valid_path(instance, attribute, value):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"'{attribute.name}' must be a non-empty string")
+
 @define
 class Spider:
     """Parameters for SPIDER module.
@@ -127,7 +131,7 @@ class Interior:
     """
 
     module: str             = field(validator=in_(('spider', 'aragog', 'dummy')))
-
+    melting_dir: str        = field(default="Monteux-600",validator=valid_path)
     radiogenic_heat: bool   = field(default=True)
     tidal_heat: bool        = field(default=True)
 

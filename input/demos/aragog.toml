@@ -8,7 +8,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # output files
     [params.out]
         path        = "dummy_aragog"
-        logging     = "DEBUG"
+        logging     = "INFO"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 5      # Write CSV frequency, 0: wait until completion | n: every n iterations
@@ -45,10 +45,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
 
+    module          ="none"
+
 # Planetary structure - physics table
 [struct]
     radius_int  = 0.9       # R_earth
-    corefrac    = 0.55      # non-dim., radius fraction
+    corefrac    = 0.65      # non-dim., radius fraction
 
 # Atmosphere - physics table
 [atmos_clim]
@@ -92,7 +94,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     rheo_phi_loc    = 0.4    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
-
+    melting_dir     ="Monteux-600" #Liquidus from Monteux+2016 and solidus=liquidus-600
     module = "aragog"   # Which interior module to use
 
     [interior.spider]
@@ -105,7 +107,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        num_levels      = 100       # Number of Aragog grid levels
+        num_levels      = 40       # Number of Aragog grid levels
         tolerance       = 1.0e-7   # solver tolerance
         ini_tmagma      = 3300.0    # Initial magma surface temperature [K]
 
@@ -135,10 +137,24 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     radio_Th   = 0.124  # ppmw of thorium (all isotopes)
 
     # Which initial inventory to use?
-    initial = 'volatiles'        # "elements" | "volatiles"
+    initial = 'elements'        # "elements" | "volatiles"
 
     # No module for accretion as of yet
     module = "none"
+
+    # Set initial volatile inventory by planetary element abundances
+    [delivery.elements]
+        H_oceans    = 1.0       # Hydrogen inventory in units of equivalent Earth oceans
+        #H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
+
+        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
+        # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
+
+        # NH_ratio    = 0.0       # N/H mass ratio in mantle/atmosphere system
+        N_ppmw      = 1.0       # Nitrogen inventory in ppmw relative to mantle mass
+
+        #SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
+        S_ppmw      = 1.0     # Sulfur inventory in ppmw relative to mantle mass
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [delivery.volatiles]
