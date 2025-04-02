@@ -131,7 +131,7 @@ class Interior:
     """
 
     module: str             = field(validator=in_(('spider', 'aragog', 'dummy')))
-    melting_dir: str        = field(validator=valid_path)
+    melting_dir: str        = field(default="Monteux-600",validator=valid_path)
     radiogenic_heat: bool   = field(default=True)
     tidal_heat: bool        = field(default=True)
 
