@@ -279,7 +279,7 @@ def _try_spider( dirs:dict, config:Config,
     # Energy transport physics
     call_sequence.extend(["-CONDUCTION", "1"]) # conduction
     call_sequence.extend(["-CONVECTION", "1"]) # convection
-    call_sequence.extend(["-MIXING    ", "1"]) # mixing (latent heat transport)
+    call_sequence.extend(["-MIXING",     "1"]) # mixing (latent heat transport)
     call_sequence.extend(["-SEPARATION", "1"]) # gravitational separation of solid/melt
 
     # Tidal heating
@@ -397,8 +397,8 @@ def _try_spider( dirs:dict, config:Config,
     spider_print.flush()
     spider_succ = True
     try:
-        proc = sp.run([call_string], shell=True, timeout=timeout,
-                                stdout=spider_print, env=spider_env)
+        proc = sp.run(call_sequence, timeout=timeout, text=True,
+                                stdout=spider_print, stderr=spider_print, env=spider_env)
     except sp.TimeoutExpired:
         log.error("SPIDER process timed-out")
         spider_succ = False
