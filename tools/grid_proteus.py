@@ -447,7 +447,7 @@ if __name__=='__main__':
     # -----
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "l98d_escape21"
+    folder = "l98d_escape21_hr"
 
     # Base config file
     config = "planets/l9859d.toml"
@@ -456,8 +456,7 @@ if __name__=='__main__':
     # Set this string to have the output files created at an alternative location. The
     #   output 'folder' in `PROTEUS/output/` will then by symbolically linked to this
     #   alternative location. Useful for when data should be saved on a storage server.
-    # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
-    symlink = "/local/scratch/nichollsh/output/"+folder
+    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
     # symlink = None
 
     # Initialise grid object
@@ -486,7 +485,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(90, test_run=False)
+    pg.run(100, test_run=False)
 
     # When this script ends, it means that all processes have exited. They may have
     # completed, or alternatively they have been killed or crashed.

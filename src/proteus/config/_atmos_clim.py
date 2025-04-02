@@ -74,18 +74,18 @@ class Agni:
 
     spectral_group: str     = field(default=None)
     spectral_bands: str     = field(default=None)
-    p_top: float            = field(default=1e-4, validator=gt(0))
+    p_top: float            = field(default=1e-5, validator=gt(0))
     surf_material: str      = field(default="surface_albedos/Hammond24/lunarmarebasalt.dat")
     num_levels: int         = field(default=40, validator=ge(15))
     chemistry: str          = field(default="none",
                                     validator=in_((None, "eq")),
                                     converter=none_if_none)
     solve_energy: bool      = field(default=True)
-    solution_atol: float    = field(default=2.0,  validator=gt(0))
+    solution_atol: float    = field(default=1.0,  validator=gt(0))
     solution_rtol: float    = field(default=0.2,  validator=gt(0))
     overlap_method: str     = field(default='ee', validator=check_overlap)
     condensation: bool      = field(default=False)
-    real_gas: bool          = field(default=True)
+    real_gas: bool          = field(default=False)
 
     @property
     def chemistry_int(self) -> int:

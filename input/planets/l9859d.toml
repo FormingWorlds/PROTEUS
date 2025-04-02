@@ -26,11 +26,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.stop.time]
             enabled = true
-            maximum = 6e9     # yr, model will terminate when t > maximum
+            maximum = 4.94e9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
             enabled  = true
+            phi_crit = 0.01
 
         # radiative equilibrium
         [params.stop.radeqm]
@@ -80,14 +81,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module  = "agni"           # Which atmosphere module to use
 
     [atmos_clim.agni]
-        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+        p_top           = 2.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "48"         # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
-        solution_atol   = 1.0          # solver absolute tolerance
+        solution_atol   = 2.0          # solver absolute tolerance
         solution_rtol   = 0.13          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
@@ -111,7 +112,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 70       # Number of SPIDER grid levels
+        num_levels      = 140       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-6      # absolute solver tolerance
         tolerance_rel   = 1e-5      # relative solver tolerance

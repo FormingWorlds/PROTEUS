@@ -169,7 +169,7 @@ class StopRadeqm:
         Relative tolerance on energy balance.
     """
     enabled: bool   = field(default=True)
-    atol: float     = field(default=0.1,  validator=gt(0))
+    atol: float     = field(default=1.0,  validator=gt(0))
     rtol: float     = field(default=1e-3, validator=ge(0))
 
 

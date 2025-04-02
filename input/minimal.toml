@@ -56,7 +56,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
-        H_oceans    = 5.0       # Hydrogen inventory in units of equivalent Earth oceans
+        H_oceans    = 6.0       # Hydrogen inventory in units of equivalent Earth oceans
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         N_ppmw      = 1.0       # Nitrogen inventory in ppmw relative to mantle mass
         SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
