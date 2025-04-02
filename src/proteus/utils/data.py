@@ -187,7 +187,7 @@ def download_melting_curves():
     download(
         folder = 'Melting_curves',
         target = "interior_lookup_tables",
-        osf_id = 'fzwr4',
+        osf_id = 'phsxf',
         desc = 'melting curve data'
     )
 
