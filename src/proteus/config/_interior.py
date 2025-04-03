@@ -43,12 +43,12 @@ class Spider:
     """
     ini_entropy: float   = field(default=None)
     ini_dsdr: float      = field(default=-4.698e-6,  validator=lt(0))
-    num_levels: int      = field(default=200,        validator=ge(40))
+    num_levels: int      = field(default=190,        validator=ge(40))
     mixing_length: int   = field(default=2,          validator=in_((1,2)))
     tolerance: float     = field(default=1e-10,      validator=gt(0))
-    tolerance_rel: float = field(default=1e-9,       validator=gt(0))
+    tolerance_rel: float = field(default=1e-10,      validator=gt(0))
     solver_type: str     = field(default="bdf",      validator=in_(("adams", "bdf")))
-    tsurf_atol: float    = field(default=10.0,        validator=gt(0))
+    tsurf_atol: float    = field(default=10.0,       validator=gt(0))
     tsurf_rtol: float    = field(default=0.01,       validator=gt(0))
 
 

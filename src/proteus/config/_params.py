@@ -136,7 +136,7 @@ class StopTime:
         Model will terminate when this time is reached [yr].
     """
     enabled: bool  = field(default=True)
-    maximum: float = field(default=5e9, validator=max_bigger_than_min)
+    maximum: float = field(default=6e9, validator=max_bigger_than_min)
     minimum: float = field(default=1e3, validator=ge(0))
 
 
@@ -151,7 +151,7 @@ class StopSolid:
     phi_crit: float
         Model will terminate when global melt fraction is less than this value [dimensionless].
     """
-    phi_crit: float = field(default=0.005, validator=(gt(0), lt(1)))
+    phi_crit: float = field(default=0.01, validator=(gt(0), lt(1)))
     enabled: bool   = field(default=True)
 
 
