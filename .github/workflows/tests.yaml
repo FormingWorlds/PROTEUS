@@ -36,7 +36,9 @@ jobs:
 
     env:
       FWL_DATA: ${{ github.workspace }}/fwl_data
+      PROTEUS_DIR: ${{ github.workspace }}
       RAD_DIR: ${{ github.workspace }}/SOCRATES
+      AGNI_DIR: ${{ github.workspace }}/AGNI
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -93,21 +95,21 @@ jobs:
           cd $RAD_DIR
           ./configure
           ./build_code
-          cd ..
+          cd $PROTEUS_DIR
 
       # Get AGNI and build it
-      - name: Checkout SOCRATES radiative transfer model
+      - name: Checkout AGNI
         uses: actions/checkout@v4
         with:
-          repository: 'nichollsh/SOCRATES'
-          path: ${{ env.RAD_DIR }}
+          repository: 'nichollsh/AGNI'
+          path: ${{ env.AGNI_DIR }}
 
       - name: Build AGNI
         run: |
           export LD_LIBRARY_PATH=""
-          cd AGNI
+          cd $AGNI_DIR
           julia --project=. -e 'using Pkg; Pkg.build()'
-          cd ..
+          cd $PROTEUS_DIR
 
       # Setup Python using the version defined in the matrix
       - name: Set up Python ${{ matrix.python-version }}
