@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from helpers import NEGLECT, PROTEUS_ROOT, df_intersect
 from numpy.testing import assert_allclose
