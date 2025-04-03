@@ -102,8 +102,8 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
     boundary_conditions = _BoundaryConditionsParameters(
             outer_boundary_condition = 4, # 4 = prescribed heat flux
             outer_boundary_value = hf_row["F_atm"], # first guess surface heat flux [W/m2]
-            inner_boundary_condition = 1, # 1 = core cooling model, 3 = prescribed temperature
-            inner_boundary_value = 4000, # core temperature [K], if inner_boundary_condition = 3
+            inner_boundary_condition =  config.interior.aragog.inner_boundary_condition,
+            inner_boundary_value = config.interior.aragog.inner_boundary_value, # core temperature [K], if inner_boundary_condition = 3
             emissivity = 1, # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature = hf_row["T_eqm"], # only used in gray body BC, outer_boundary_condition = 1
             core_density = config.struct.core_density, # used if inner_boundary_condition = 1
@@ -121,10 +121,10 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
             )
 
     energy = _EnergyParameters(
-            conduction = True,
-            convection = True,
-            gravitational_separation = False,
-            mixing = False,
+            conduction = config.interior.aragog.conduction,
+            convection = config.interior.aragog.convection,
+            gravitational_separation = config.interior.aragog.gravitational_separation,
+            mixing = config.interior.aragog.mixing,
             radionuclides = config.interior.radiogenic_heat,
             tidal = config.interior.tidal_heat,
             tidal_array = interior_o.tides

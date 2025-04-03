@@ -63,8 +63,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [atmos_clim.agni]
         p_top           = 1.0e-7        # bar, top of atmosphere grid pressure
-        spectral_group  = "Dayspring"   # which gas opacities to include
-        spectral_bands  = "16"          # how many spectral bands?
+        spectral_group  = "Honeyside"   # which gas opacities to include
+        spectral_bands  = "48"          # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
@@ -110,6 +110,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 40       # Number of Aragog grid levels
         tolerance       = 1.0e-7   # solver tolerance
         ini_tmagma      = 3300.0    # Initial magma surface temperature [K]
+        inner_boundary_condition   = 1 # 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
+        inner_boundary_value       = 4000# core temperature [K], if inner_boundary_condition = 3
+        conduction                 = true #How to manage this with SPIDER?
+        convection                 = true
+        gravitational_separation   = false
+        mixing                     = false
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]

@@ -70,11 +70,18 @@ class Aragog:
         Initial magma surface temperature [K].
     """
 
-    logging: str        = field(default='ERROR',
-                                validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    ini_tmagma: float   = field(default=None)
-    num_levels: int     = field(default=100,    validator=ge(40))
-    tolerance: float    = field(default=1e-10,  validator=gt(0))
+    logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
+    ini_tmagma: float                   = field(default=None)
+    num_levels: int                     = field(default=100,    validator=ge(40))
+    tolerance: float                    = field(default=1e-10,  validator=gt(0))
+    inner_boundary_condition: int       = field(default=1, validator=ge(0))
+    inner_boundary_value:float          = field(default=4000, validator=ge(0))#what would be the minimum?
+    conduction: bool                    = field(default=True)
+    convection: bool                    = field(default=True)
+    gravitational_separation: bool      = field(default=False)
+    mixing: bool                        = field(default=False)
+
+
 
 def valid_interiordummy(instance, attribute, value):
     if instance.module != "dummy":
