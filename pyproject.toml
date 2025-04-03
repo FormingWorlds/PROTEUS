@@ -57,7 +57,9 @@ dependencies = [
     "numpy",
     "pandas",
     "scipy",
-    "sympy"
+    "sympy",
+    "nose",
+    "astropy"
 ]
 
 [project.urls]

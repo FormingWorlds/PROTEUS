@@ -27,7 +27,9 @@ class Spider:
     mixing_length: int
         Parameterisation used to determine convective mixing length.
     tolerance: float
-        Solver tolerance.
+        Absolute solver tolerance.
+    tolerance_rel: float
+        Relative solver tolerance.
     tsurf_atol: float
         Absolute tolerance on change in T_mantle during a single interior iteration.
     tsurf_rtol: float
@@ -36,14 +38,18 @@ class Spider:
         Initial specific surface entropy [J K-1 kg-1].
     ini_dsdr: float
         Initial interior specific entropy gradient [J K-1 kg-1 m-1].
+    solver_type: str
+        Numerical integrator. Choices: 'adams', 'bdf'.
     """
-    ini_entropy: float  = field(default=None)
-    ini_dsdr: float     = field(default=-4.698e-6,  validator=lt(0))
-    num_levels: int     = field(default=80,         validator=ge(40))
-    mixing_length: int  = field(default=2,          validator=in_((1,2)))
-    tolerance: float    = field(default=1e-10,      validator=gt(0))
-    tsurf_atol: float   = field(default=20.0,       validator=gt(0))
-    tsurf_rtol: float   = field(default=0.01,       validator=gt(0))
+    ini_entropy: float   = field(default=None)
+    ini_dsdr: float      = field(default=-4.698e-6,  validator=lt(0))
+    num_levels: int      = field(default=190,        validator=ge(40))
+    mixing_length: int   = field(default=2,          validator=in_((1,2)))
+    tolerance: float     = field(default=1e-10,      validator=gt(0))
+    tolerance_rel: float = field(default=1e-10,      validator=gt(0))
+    solver_type: str     = field(default="bdf",      validator=in_(("adams", "bdf")))
+    tsurf_atol: float    = field(default=10.0,       validator=gt(0))
+    tsurf_rtol: float    = field(default=0.01,       validator=gt(0))
 
 
 def valid_aragog(instance, attribute, value):
@@ -94,7 +100,6 @@ class Aragog:
     mixing: bool                        = field(default=False)
 
 
-
 def valid_interiordummy(instance, attribute, value):
     if instance.module != "dummy":
         return
@@ -116,7 +121,7 @@ class InteriorDummy:
         Initial magma surface temperature [K].
     """
 
-    ini_tmagma: float = field(default=None)
+    ini_tmagma = field(default=None)
 
 @define
 class Interior:
@@ -161,7 +166,7 @@ class Interior:
     dummy: InteriorDummy    = field(factory=InteriorDummy, validator=valid_interiordummy)
 
     grain_size: float       = field(default=0.1,    validator=gt(0))
-    F_initial: float        = field(default=1e5,    validator=gt(0))
+    F_initial: float        = field(default=1e3,    validator=gt(0))
     rheo_phi_loc: float     = field(default=0.3,    validator=(gt(0),lt(1)))
     rheo_phi_wid: float     = field(default=0.15,   validator=(gt(0),lt(1)))
     bulk_modulus: float     = field(default=260e9,  validator=gt(0))

@@ -213,10 +213,24 @@ def run_interior(dirs:dict, config:Config,
         M_volatiles += hf_row[e+"_kg_total"]
     hf_row["M_tot"] = hf_row["M_int"] + M_volatiles
 
-    # Prevent increasing melt fraction
-    if config.atmos_clim.prevent_warming and (interior_o.ic==2):
-        hf_row["Phi_global"] = min(hf_row["Phi_global"], hf_all.iloc[-1]["Phi_global"])
-        hf_row["T_magma"] = min(hf_row["T_magma"], hf_all.iloc[-1]["T_magma"])
+    # Apply step limiters
+    if hf_row["Time"] > 0:
+
+        # Prevent increasing melt fraction, if enabled
+        T_magma_prev    = float( hf_all.iloc[-1]["T_magma"] )
+        Phi_global_prev = float( hf_all.iloc[-1]["Phi_global"] )
+        if config.atmos_clim.prevent_warming and (interior_o.ic==2):
+            hf_row["Phi_global"] = min(hf_row["Phi_global"],Phi_global_prev)
+            hf_row["T_magma"] = min(hf_row["T_magma"],T_magma_prev)
+
+        # Do not allow massive increases to T_surf, always
+        dT_delta  = config.interior.spider.tsurf_atol
+        dT_delta += config.interior.spider.tsurf_rtol * T_magma_prev
+        if hf_row["T_magma"] > T_magma_prev + dT_delta:
+            log.warning("Prevented large increase to T_magma!")
+            log.warning("   Clipped from %.2f K"%hf_row["T_magma"])
+            hf_row["T_magma"]    = T_magma_prev + dT_delta
+            hf_row["Phi_global"] = Phi_global_prev
 
     # Print result of interior module
     if verbose:

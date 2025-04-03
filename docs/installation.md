@@ -105,7 +105,9 @@ curl -fsSL https://install.julialang.org | sh
     cd ../
     ```
 
-    Use this `get_agni` script to keep AGNI and its data files up to date.
+    Use this `get_agni.sh` script to keep AGNI and its data files up to date. It is
+    important that AGNI is available at `./AGNI/` inside your PROTEUS folder. This can be
+    either a symbolic link or the true location of the submodule.
 
 6. **Optional** developer installation steps
 

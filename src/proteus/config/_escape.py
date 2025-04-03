@@ -31,8 +31,8 @@ class Zephyrus:
     tidal: bool
         Tidal contribution enabled
     """
-    Pxuv: float       = field(default=None)
-    efficiency: float = field(default=None)
+    Pxuv: float       = field(default=5e-5)
+    efficiency: float = field(default=0.1)
     tidal: bool       = field(default=False)
 
 def valid_escapedummy(instance, attribute, value):
@@ -52,7 +52,7 @@ class EscapeDummy:
     rate: float
         Bulk unfractionated escape rate [kg s-1]
     """
-    rate: float = field(default=None)
+    rate = field(default=None)
 
 @define
 class Escape:

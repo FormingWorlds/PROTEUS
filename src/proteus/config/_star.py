@@ -47,11 +47,11 @@ class Mors:
     spec: str
         Name of file containing stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars) for potential file names.
     """
-    age_now: float    = field(default=None)
-    spec: str         = field(default=None)
-    rot_pcntle: float = field(default=None)
-    rot_period: float = field(default=None)
-    tracks: str       = field(default='spada', validator=in_(('spada', 'baraffe')))
+    age_now: float  = field(default=None)
+    spec: str       = field(default=None)
+    rot_pcntle      = field(default=None, converter=none_if_none)
+    rot_period      = field(default=None, converter=none_if_none)
+    tracks: str     = field(default='spada', validator=in_(('spada', 'baraffe')))
 
 def valid_stardummy(instance, attribute, value):
     if instance.module != "dummy":
@@ -72,8 +72,8 @@ class StarDummy:
     Teff: float
         Observed effective temperature [K].
     """
-    radius: float = field(default=None)
-    Teff: float   = field(default=None)
+    radius = field(default=None)
+    Teff   = field(default=None)
 
 @define
 class Star:

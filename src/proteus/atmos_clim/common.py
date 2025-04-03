@@ -46,6 +46,9 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
     """
 
     # open file
+    if not os.path.isfile(nc_fpath):
+        log.error(f"Could not find NetCDF file '{nc_fpath}'")
+        return None
     ds = nc.Dataset(nc_fpath)
 
     p = np.array(ds.variables["p"][:])
@@ -91,7 +94,24 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
 
     # Read extra keys
     for key in extra_keys:
-        if key in ds.variables.keys():
+
+        # Check that key exists
+        if key not in ds.variables.keys():
+            log.error(f"Could not read '{key}' from NetCDF file")
+            continue
+
+        # Reading composition
+        if key == "x_gas":
+
+            gas_l = ds.variables["gases"][:] # names (bytes matrix)
+            gas_x = ds.variables["x_gas"][:] # vmrs (float matrix)
+
+            # get data for each gas
+            for igas,gas in enumerate(gas_l):
+                gas_lbl = "".join(  [c.decode(encoding="utf-8") for c in gas] ).strip()
+                out[gas_lbl+"_vmr"] = np.array(gas_x[:,igas])
+
+        else:
             out[key] = np.array(ds.variables[key][:])
 
     # close file

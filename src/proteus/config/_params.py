@@ -32,7 +32,7 @@ class OutputParams:
     path: str
     logging: str    = field(default='INFO',
                             validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    plot_mod: int   = field(default=1,      validator=ge(0))
+    plot_mod: int   = field(default=10,      validator=ge(0))
     plot_fmt: str   = field(default='png',  validator=in_(('pdf', 'png')))
     write_mod: int  = field(default=1,      validator=ge(0))
 
@@ -69,7 +69,9 @@ class TimeStepParams:
     Attributes
     ----------
     minimum: float
-        Minimum time-step size [yr].
+        Minimum absolute time-step size [yr].
+    minimum_rel: float
+        Minimum relative time-step size [dimensionless].
     maximum: float
         Maximum time-step size [yr].
     initial: float
@@ -96,9 +98,10 @@ class TimeStepParams:
     proportional: DtProportional = field(factory=DtProportional)
     adaptive: DtAdaptive         = field(factory=DtAdaptive)
 
-    minimum: float = field(default=3e2, validator=gt(0))
-    maximum: float = field(default=1e7, validator=gt(0))
-    initial: float = field(default=1e3, validator=gt(0))
+    minimum: float      = field(default=3e2,  validator=gt(0))
+    minimum_rel: float  = field(default=1e-6, validator=gt(0))
+    maximum: float      = field(default=1e7,  validator=gt(0))
+    initial: float      = field(default=1e3,  validator=gt(0))
 
 
 @define
@@ -133,7 +136,7 @@ class StopTime:
         Model will terminate when this time is reached [yr].
     """
     enabled: bool  = field(default=True)
-    maximum: float = field(default=5e9, validator=max_bigger_than_min)
+    maximum: float = field(default=6e9, validator=max_bigger_than_min)
     minimum: float = field(default=1e3, validator=ge(0))
 
 
@@ -148,7 +151,7 @@ class StopSolid:
     phi_crit: float
         Model will terminate when global melt fraction is less than this value [dimensionless].
     """
-    phi_crit: float = field(default=0.005, validator=(gt(0), lt(1)))
+    phi_crit: float = field(default=0.01, validator=(gt(0), lt(1)))
     enabled: bool   = field(default=True)
 
 
@@ -166,7 +169,7 @@ class StopRadeqm:
         Relative tolerance on energy balance.
     """
     enabled: bool   = field(default=True)
-    atol: float     = field(default=0.1,  validator=gt(0))
+    atol: float     = field(default=1.0,  validator=gt(0))
     rtol: float     = field(default=1e-3, validator=ge(0))
 
 

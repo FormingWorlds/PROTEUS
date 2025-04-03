@@ -11,10 +11,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         logging     = "INFO"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
-        write_mod   = 5      # Write CSV frequency, 0: wait until completion | n: every n iterations
+        write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
 
     [params.dt]
-        minimum      = 3e1    # yr, minimum time-step
+        minimum_abs  = 1e1    # yr, minimum time-step
+        minimum_rel  = 1e-4
         maximum      = 1e7    # yr, maximum time-step
         initial      = 3e1    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
@@ -44,6 +45,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     eccentricity    = 0.0       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
+    module = 'none'
 
     module          ="none"
 
