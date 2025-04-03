@@ -446,8 +446,8 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "demos/aragog.toml"
-    folder = "dummy_vs_agni"
+    config = "planets/l9859d.toml"
+    folder = "l98d_escape12"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
@@ -457,6 +457,11 @@ if __name__=='__main__':
     pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
     pg.set_dimension_direct("Redox state", [-5, -4, -3, -2, -1])
 
+    pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
+    pg.set_dimension_direct("Hydrogen", [1e3, 8e3, 1e4])
+
+    pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
+    pg.set_dimension_direct("Sulfur", [6.0, 9.0, 12.0])
 
     # pg.add_dimension("Mass", "struct.mass_tot")
     # pg.set_dime nsion_direct("Mass", [1.85, 2.14, 2.39])
@@ -471,7 +476,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(5, test_run=False)
+    pg.run(100, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.

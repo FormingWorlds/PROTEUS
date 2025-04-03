@@ -139,7 +139,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     rheo_phi_loc    = 0.4    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
-    melting_dir     ="Monteux-600"
+    melting_dir     = "Monteux-600"
 
     module = "dummy"   # Which interior module to use
 

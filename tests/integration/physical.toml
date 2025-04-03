@@ -188,7 +188,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     rheo_phi_loc    = 0.4           # Centre of rheological transition
     rheo_phi_wid    = 0.15          # Width of rheological transition
     bulk_modulus    = 260e9         # Bulk modulus [Pa]
-    melting_dir     ="Monteux-600"
+    melting_dir     = "Monteux-600" # Liquidus from Monteux+2016 and solidus=liquidus-600
+
     module = "aragog"               # Which interior module to use
 
     [interior.spider]
@@ -207,10 +208,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_tmagma                    = 3000.0   # Initial magma surface temperature [K]
         inner_boundary_condition      = 1        # 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
         inner_boundary_value          = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
-        conduction                    = true
-        convection                    = true
-        gravitational_separation      = false
-        mixing                        = false
+        conduction                    = true     # enable conductive heat transfer
+        convection                    = true     # enable convective heat transfer
+        gravitational_separation      = false    # enable gravitational separation
+        mixing                        = false    # enable mixing
 
 
     [interior.dummy]
