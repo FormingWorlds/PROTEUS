@@ -102,7 +102,7 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
     boundary_conditions = _BoundaryConditionsParameters(
             outer_boundary_condition = 4, # 4 = prescribed heat flux
             outer_boundary_value = hf_row["F_atm"], # first guess surface heat flux [W/m2]
-            inner_boundary_condition =  config.interior.aragog.inner_boundary_condition,
+            inner_boundary_condition =  config.interior.aragog.inner_boundary_condition,# 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
             inner_boundary_value = config.interior.aragog.inner_boundary_value, # core temperature [K], if inner_boundary_condition = 3
             emissivity = 1, # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature = hf_row["T_eqm"], # only used in gray body BC, outer_boundary_condition = 1
