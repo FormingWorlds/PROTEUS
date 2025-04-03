@@ -68,13 +68,32 @@ class Aragog:
         Solver tolerance.
     ini_tmagma: float
         Initial magma surface temperature [K].
+    inner_boundary_condition: int
+        Type of inner boundary condition. Choices:  1 (core cooling), 2 (prescribed heat flux), 3 (prescribed temperature).
+    inner_boundary_value: float
+        Value of the inner boundary condition, either temperature or heat flux, depending on the chosen condition.
+    conduction: bool
+        Whether to include conductive heat transfer in the model. Default is True.
+    convection: bool
+        Whether to include convective heat transfer in the model. Default is True.
+    gravitational_separation: bool
+        Whether to include gravitational separation in the model. Default is False.
+    mixing: bool
+        Whether to include mixing in the model. Default is False.
     """
 
-    logging: str        = field(default='ERROR',
-                                validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    ini_tmagma: float   = field(default=None)
-    num_levels: int     = field(default=100,    validator=ge(40))
-    tolerance: float    = field(default=1e-10,  validator=gt(0))
+    logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
+    ini_tmagma: float                   = field(default=None)
+    num_levels: int                     = field(default=100,    validator=ge(40))
+    tolerance: float                    = field(default=1e-10,  validator=gt(0))
+    inner_boundary_condition: int       = field(default=1, validator=ge(0))
+    inner_boundary_value:float          = field(default=4000, validator=ge(0))
+    conduction: bool                    = field(default=True)
+    convection: bool                    = field(default=True)
+    gravitational_separation: bool      = field(default=False)
+    mixing: bool                        = field(default=False)
+
+
 
 def valid_interiordummy(instance, attribute, value):
     if instance.module != "dummy":
@@ -128,6 +147,8 @@ class Interior:
         Parameters for running the aragog module.
     dummy: Dummy
         Parameters for running the dummy module.
+    melting_dir: str
+        Set of melting curves to use in the model.
     """
 
     module: str             = field(validator=in_(('spider', 'aragog', 'dummy')))

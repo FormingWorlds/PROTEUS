@@ -59,12 +59,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     surf_state      = "fixed"   # surface scheme: "mixed_layer" | "fixed" | "skin"
     rayleigh        = false      # enable rayleigh scattering
 
-    module  = "agni"           # Which atmosphere module to use
+    module  = "dummy"           # Which atmosphere module to use
 
     [atmos_clim.agni]
         p_top           = 1.0e-7        # bar, top of atmosphere grid pressure
-        spectral_group  = "Dayspring"   # which gas opacities to include
-        spectral_bands  = "16"          # how many spectral bands?
+        spectral_group  = "Honeyside"   # which gas opacities to include
+        spectral_bands  = "48"          # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
@@ -76,7 +76,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.dummy]
-        gamma           = 0.8           # atmosphere opacity between 0 and 1
+        gamma           = 0.01           # atmosphere opacity between 0 and 1
 
 [escape]
 
@@ -87,14 +87,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         rate        = 2.0e4         # Bulk unfractionated escape rate [kg s-1]
 
 [interior]
-    grain_size      = 0.1   # crystal settling grain size [m]
-    F_initial       = 1e6   # Initial heat flux guess [W m-2]
-    radiogenic_heat = false  # enable radiogenic heat production
-    tidal_heat      = false  # enable tidal heat production
-    rheo_phi_loc    = 0.4    # Centre of rheological transition
-    rheo_phi_wid    = 0.15   # Width of rheological transition
-    bulk_modulus    = 260e9   # Bulk modulus [Pa]
-    melting_dir     ="Monteux-600" #Liquidus from Monteux+2016 and solidus=liquidus-600
+    grain_size      = 0.1               # crystal settling grain size [m]
+    F_initial       = 1e6               # Initial heat flux guess [W m-2]
+    radiogenic_heat = false             # enable radiogenic heat production
+    tidal_heat      = false             # enable tidal heat production
+    rheo_phi_loc    = 0.4               # Centre of rheological transition
+    rheo_phi_wid    = 0.15              # Width of rheological transition
+    bulk_modulus    = 260e9             # Bulk modulus [Pa]
+    melting_dir     = "Monteux-600"     # Liquidus from Monteux+2016 and solidus=liquidus-600
+
     module = "aragog"   # Which interior module to use
 
     [interior.spider]
@@ -107,9 +108,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        num_levels      = 40       # Number of Aragog grid levels
-        tolerance       = 1.0e-7   # solver tolerance
-        ini_tmagma      = 3300.0    # Initial magma surface temperature [K]
+        num_levels                      = 50       # Number of Aragog grid levels
+        tolerance                       = 1.0e-7   # solver tolerance
+        ini_tmagma                      = 3300.0   # Initial magma surface temperature [K]
+        inner_boundary_condition        = 1        # 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
+        inner_boundary_value            = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
+        conduction                      = true     # enable conductive heat transfer
+        convection                      = true     # enable convective heat transfer
+        gravitational_separation        = false    # enable gravitational separation
+        mixing                          = false    # enable mixing
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
