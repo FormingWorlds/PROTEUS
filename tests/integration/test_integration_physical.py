@@ -80,7 +80,8 @@ def test_physical_atmosphere(physical_run):
     # Compare to expected array values.
     # Cannot simply compare the files as black-boxes, because they contain date information
     for key in fields:
-        assert_allclose(out[key], ref[key], rtol=1e-3)
+        assert_allclose(out[key], ref[key], rtol=1e-3,
+                        err_msg=f"Key {key} does not match reference data")
 
 def test_physical_interior(physical_run):
     # Keys to load and test
@@ -100,7 +101,8 @@ def test_physical_interior(physical_run):
     # Compare to expected array values.
     # Cannot simply compare the files as black-boxes, because they contain date information
     for key in fields:
-        assert_allclose(out[key], ref[key], rtol=1e-3)
+        assert_allclose(out[key], ref[key], rtol=1e-3,
+                        err_msg=f"Key {key} does not match reference data")
 
 
 @pytest.mark.xfail(raises=AssertionError)
