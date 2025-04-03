@@ -81,8 +81,8 @@ class Agni:
                                     validator=in_((None, "eq")),
                                     converter=none_if_none)
     solve_energy: bool      = field(default=True)
-    solution_atol: float    = field(default=1.0,  validator=gt(0))
-    solution_rtol: float    = field(default=0.2,  validator=gt(0))
+    solution_atol: float    = field(default=0.5,  validator=gt(0))
+    solution_rtol: float    = field(default=0.15,  validator=gt(0))
     overlap_method: str     = field(default='ee', validator=check_overlap)
     condensation: bool      = field(default=False)
     real_gas: bool          = field(default=False)

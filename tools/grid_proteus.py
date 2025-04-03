@@ -447,7 +447,7 @@ if __name__=='__main__':
     # -----
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "l98d_escape21_hr"
+    folder = "l98d_escape22"
 
     # Base config file
     config = "planets/l9859d.toml"
@@ -467,7 +467,7 @@ if __name__=='__main__':
     pg.set_dimension_direct("Redox state", [-4.5, -4.0, -3.5, -3, -2.5, -2.0, -1.5])
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_direct("Hydrogen", [1e3, 3e3, 5e3, 7e3, 9e3, 11e3])
+    pg.set_dimension_direct("Hydrogen", [1000, 3000, 5000, 7000, 9000, 11000])
 
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
     pg.set_dimension_direct("Sulfur", [2.5, 5.0, 7.5, 10.0, 12.5])
@@ -485,7 +485,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(95, test_run=False)
+    pg.run(100, test_run=False)
 
     # When this script ends, it means that all processes have exited. They may have
     # completed, or alternatively they have been killed or crashed.

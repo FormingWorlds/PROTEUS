@@ -8,13 +8,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         path        = "l9859d"
         logging     = "INFO"
         plot_mod    = 40      # Plotting frequency, 0: wait until completion | n: every n iterations
+        write_mod   = 5
 
     # time-stepping
     [params.dt]
         minimum      = 3e2    # absolute minimum time-step [years]
         minimum_rel  = 5e-3   # relative minimum time-step [dimensionless]
         maximum      = 1e8    # yr, maximum time-step
-        initial      = 4e2    # yr, inital step size
+        initial      = 1e4    # yr, inital step size
         starspec     = 9e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
@@ -72,7 +73,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     corefrac    = 0.55      # non-dim., radius fraction
 
 [atmos_clim]
-    prevent_warming = false     # do not allow the planet to heat up
+    prevent_warming = true     # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
@@ -112,13 +113,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 160       # Number of SPIDER grid levels
+        num_levels      = 180       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1e-5      # absolute solver tolerance
-        tolerance_rel   = 1e-4      # relative solver tolerance
-        tsurf_atol      = 5.0      # tsurf_poststep_change
+        tolerance       = 1e-10      # absolute solver tolerance
+        tolerance_rel   = 1e-9      # relative solver tolerance
+        tsurf_atol      = 10.0      # tsurf_poststep_change
         tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
-        ini_entropy     = 3200.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 2950.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
 

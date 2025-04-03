@@ -30,7 +30,7 @@ class OrbitDummy:
     Phi_tide: str
         Inequality which, if locally true, determines in which regions tides are applied.
     """
-    H_tide: float   = field(default=1e-11,  validator=ge(0))
+    H_tide: float   = field(default=0.0, validator=ge(0.0))
     Phi_tide: str   = field(default="<0.3", validator=phi_tide_validator)
 
 @define
