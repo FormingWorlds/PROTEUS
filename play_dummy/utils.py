@@ -74,7 +74,7 @@ def run_proteus(parameters, run_name, observables = None, ref_config = "input/de
         except subprocess.CalledProcessError as e:
             if attempt < max_attempts:
                 print(f"Attempt {attempt} failed: {e}. Retrying with perturbed parameters...")
-                parameters["struct.corefrac"] += 1e-10
+                parameters["struct.corefrac"] += 1e-8
             else:
                 raise RuntimeError(f"Simulator failed with error: {e}\n\n The inputs were: \n\n {parameters}")
 
