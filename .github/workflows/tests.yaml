@@ -53,6 +53,15 @@ jobs:
           sudo ln -s /opt/homebrew/Cellar/gcc/12.*/lib/gcc/12/*.dylib /opt/homebrew/lib/
           which gfortran
 
+      # Setup Julia
+      - name: Setup Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+
+      - name: Cache Julia
+        uses: julia-actions/cache@v2
+
       # Checkout PROTEUS
       - name: Checkout PROTEUS
         uses: actions/checkout@v4
@@ -84,6 +93,20 @@ jobs:
           cd $RAD_DIR
           ./configure
           ./build_code
+          cd ..
+
+      # Get AGNI and build it
+      - name: Checkout SOCRATES radiative transfer model
+        uses: actions/checkout@v4
+        with:
+          repository: 'nichollsh/SOCRATES'
+          path: ${{ env.RAD_DIR }}
+
+      - name: Build AGNI
+        run: |
+          export LD_LIBRARY_PATH=""
+          cd AGNI
+          julia --project=. -e 'using Pkg; Pkg.build()'
           cd ..
 
       # Setup Python using the version defined in the matrix
