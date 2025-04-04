@@ -447,7 +447,7 @@ if __name__=='__main__':
     # -----
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "l98d_escape22"
+    folder = "l98d_escape23"
 
     # Base config file
     config = "planets/l9859d.toml"
@@ -485,7 +485,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(100, test_run=False)
+    pg.run(108, test_run=False)
 
     # When this script ends, it means that all processes have exited. They may have
     # completed, or alternatively they have been killed or crashed.

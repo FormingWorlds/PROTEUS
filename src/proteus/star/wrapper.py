@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import AU, M_sun, R_sun, const_sigma
+from proteus.utils.constants import AU, M_sun, R_sun, const_sigma, ergcm2stoWm2
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -187,17 +187,20 @@ def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
 def update_stellar_quantities(hf_row:dict, config:Config, stellar_track=None):
 
     # Update value for star's radius and mass
-    log.info("Update stellar radius and mass")
+    log.debug("Update stellar radius and mass")
     update_stellar_radius(hf_row, config, stellar_track)
     update_stellar_mass(hf_row, config)
 
     # Update value for instellation flux
-    log.info("Update instellation and Teff")
+    log.debug("Update stellar fluxes and temperature")
     update_instellation(hf_row, config, stellar_track)
     update_stellar_temperature(hf_row, config, stellar_track)
+    log.info("    F_ins      = %.2e   W m-2"%hf_row["F_ins"])
+    log.info("    F_xuv      = %.2e   W m-2"%hf_row["F_xuv"])
+    log.info("    T_star     = %.2f    K"%hf_row["T_star"])
 
     # Calculate new eqm temperature
-    log.info("Update equilibrium temperature")
+    log.debug("Update equilibrium temperature")
     update_equilibrium_temperature(hf_row, config)
 
     # Calculate new skin temperature
@@ -260,6 +263,7 @@ def update_instellation(hf_row:dict, config:Config, stellar_track=None):
     if config.star.module == 'dummy':
         from proteus.star.dummy import calc_instellation
         S_0 = calc_instellation(config.star.dummy.Teff, hf_row["R_star"], hf_row["separation"])
+        Fxuv_SI = 0.0
 
     # Mors cases
     elif config.star.module == 'mors':
@@ -267,15 +271,30 @@ def update_instellation(hf_row:dict, config:Config, stellar_track=None):
         # which track?
         match config.star.mors.tracks:
             case 'spada':
-                S_0 = stellar_track.Value(hf_row["age_star"] / 1e6, "Lbol") * 1e-7 \
+
+                age_star = hf_row["age_star"] / 1e6
+
+                # Bolometric flux
+                S_0 = stellar_track.Value(age_star, "Lbol") * 1e-7 \
                         / (4.0 * np.pi * hf_row["separation"]**2.0 )
 
+                # Interpolating the XUV flux at the age of the star
+                Lxuv_cgs = stellar_track.Value(age_star, 'Lx') + \
+                                stellar_track.Value(age_star, 'Leuv')
+                Fxuv_SI = Lxuv_cgs/(4*np.pi * (hf_row["separation"]*1e2)**2) * ergcm2stoWm2
+
             case 'baraffe':
+
+                # Bolometric flux
                 S_0 = stellar_track.BaraffeSolarConstant(hf_row["age_star"],
                                                     hf_row["separation"]/AU)
 
+                # XUV flux not provided by Baraffe tracks
+                Fxuv_SI = 0.0
+
     # Update hf_row dictionary
     hf_row["F_ins"] = S_0
+    hf_row["F_xuv"] = Fxuv_SI
 
 def update_equilibrium_temperature(hf_row:dict, config:Config):
     '''

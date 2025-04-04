@@ -4,9 +4,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import numpy as np
-
-from proteus.utils.constants import element_list, ergcm2stoWm2, secs_per_year
+from proteus.utils.constants import element_list, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -33,10 +31,13 @@ def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
     if not config.escape.module:
         # solvevol_target is undefined?
         pass
+
     elif config.escape.module == 'zephyrus':
         hf_row["esc_rate_total"] = RunZEPHYRUS(config, hf_row, stellar_track)
+
     elif config.escape.module == 'dummy':
         hf_row["esc_rate_total"] = config.escape.dummy.rate
+
     else:
         raise ValueError(f"Invalid escape model: {config.escape.module}")
 
@@ -75,16 +76,6 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
 
     log.info("Running EL escape (ZEPHYRUS) ...")
 
-    # Get the age of the star at time t to compute XUV flux at that time
-    age_star = hf_row["age_star"] / 1e6 # [Myrs]
-
-    # Interpolating the XUV flux at the age of the star
-    Fxuv_star_SI = ((stellar_track.Value(age_star, 'Lx') + stellar_track.Value(age_star, 'Leuv'))
-                             / (4 * np.pi * (hf_row["semimajorax"] * 1e2)**2)) * ergcm2stoWm2
-
-    log.info("    age_star = %.1e Myr"%age_star)
-    log.info("    F_xuv    = %.1e W m-2"%Fxuv_star_SI)
-
     # Compute energy-limited escape
     mlr = EL_escape(config.escape.zephyrus.tidal, #tidal contribution (True/False)
                     hf_row["semimajorax"], #planetary semi-major axis [m]
@@ -92,9 +83,9 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
                     hf_row["M_planet"], #planetary mass [kg]
                     config.star.mass, #stellar mass [kg]
                     config.escape.zephyrus.efficiency, #efficiency factor
-                    hf_row["R_int"], #planetary radius [m]
-                    hf_row["R_xuv"], #XUV optically thick planetary radius [m]
-                    Fxuv_star_SI,   # [kg s-1]
+                    hf_row["R_int"],    # planetary radius [m]
+                    hf_row["R_xuv"],    # XUV optically thick planetary radius [m]
+                    hf_row["F_xuv"],    # [W m-2]
                     scaling = 3)
 
     return mlr

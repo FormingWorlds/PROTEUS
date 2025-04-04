@@ -14,14 +14,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [params.dt]
         minimum      = 3e2    # absolute minimum time-step [years]
         minimum_rel  = 5e-3   # relative minimum time-step [dimensionless]
-        maximum      = 1e8    # yr, maximum time-step
+        maximum      = 2e8    # yr, maximum time-step
         initial      = 1e4    # yr, inital step size
         starspec     = 9e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
         [params.dt.adaptive]
             atol         = 0.03  # Step size atol
-            rtol         = 0.11   # Step size rtol
+            rtol         = 0.12   # Step size rtol
 
     [params.stop]
 
