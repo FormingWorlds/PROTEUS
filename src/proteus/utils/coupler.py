@@ -319,7 +319,6 @@ def PrintCurrentState(hf_row:dict):
     log.info("    Phi_global = %.2e   "      % float(hf_row["Phi_global"]))
     log.info("    F_atm      = %.2e   W m-2" % float(hf_row["F_atm"]))
     log.info("    F_int      = %.2e   W m-2" % float(hf_row["F_int"]))
-    log.info("    F_ins      = %.2e   W m-2" % float(hf_row["F_ins"]))
 
 def CreateLockFile(output_dir:str):
     '''
@@ -363,8 +362,9 @@ def GetHelpfileKeys():
             # Temperatures
             "T_surf", "T_magma", "T_eqm", "T_skin", # all [K]
 
-            # Energy fluxes, all [W m-2]
-            "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins", "F_tidal", "F_radio",
+            # Planet energy fluxes, all in units of [W m-2]
+            "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins", "F_xuv",
+            "F_tidal", "F_radio",
 
             # Interior properties
             "gravity", "Phi_global", "RF_depth", # [m s-2] , [1] , [1]

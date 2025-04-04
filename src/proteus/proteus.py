@@ -365,7 +365,7 @@ class Proteus:
                                 self.hf_row, self.directories["output"])
 
             else:
-                log.info("New spectrum not required at this time")
+                log.info("Updated spectrum not required")
 
             ############### / STELLAR FLUX MANAGEMENT
 
