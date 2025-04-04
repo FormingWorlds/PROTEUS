@@ -1,0 +1,122 @@
+# PROTEUS configuration file (version 2.0)
+version = "2.0"
+author  = "Harrison Nicholls, Tim Lichtenberg"
+
+[params]
+    # output files
+    [params.out]
+        path        = "physical_agni"
+        logging     = "ERROR"
+        plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
+        write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
+
+    # time-stepping
+    [params.dt]
+        maximum      = 4e3    # yr, maximum time-step
+        starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
+        starinst     = 1e1    # yr, interval to re-calculate the instellation
+        method       = "maximum"  # proportional | adaptive | maximum
+
+    # termination criteria
+    [params.stop]
+        [params.stop.time]
+            enabled = true
+            maximum = 1e5 # years
+
+
+# ----------------------------------------------------
+# Star
+[star]
+
+    # Physical parameters
+    mass    = 0.273      # M_sun
+    age_ini = 0.200     # Gyr, model initialisation/start age
+    module  = "mors"
+    [star.mors]
+        rot_period = 80.9       # rotation percentile
+        tracks  = "spada" # evolution tracks: spada | baraffe
+        age_now = 4.94     # Gyr, current age of star used for scaling
+        spec    = "stellar_spectra/Named/l-98-59.txt" # stellar spectrum
+
+# Orbital system
+[orbit]
+    semimajoraxis   = 0.0486    # AU
+    eccentricity    = 0.098      # dimensionless
+    zenith_angle    = 54.74     # degrees
+    s0_factor       = 0.25      # dimensionless
+    module  = "none"
+
+# Planetary structure - physics table
+[struct]
+    mass_tot    = 2.14       # M_earth
+    corefrac    = 0.55      # non-dim., radius fraction
+
+# Atmosphere - physics table
+[atmos_clim]
+    surf_state      = "fixed"   # surface scheme: "mixed_layer" | "fixed" | "skin"
+    rayleigh        = true      # enable rayleigh scattering
+
+    module  = "agni"           # Which atmosphere module to use
+
+    [atmos_clim.agni]
+        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_bands  = "48"          # how many spectral bands?
+        num_levels      = 60            # Number of atmospheric grid levels
+        chemistry       = "none"        # "none" | "eq"
+        surf_material   = "surface_albedos/Hammond24/lunarmarebasalt.dat"    # surface material file for scattering
+        solve_energy    = false         # solve for energy-conserving atmosphere profile
+        solution_atol   = 1e-3          # solver absolute tolerance
+        solution_rtol   = 2e-2          # solver relative tolerance
+        overlap_method  = "ee"          # gas overlap method
+        condensation    = true          # volatile condensation
+        real_gas        = true          # use real-gas equations of state
+
+# Volatile escape - physics table
+[escape]
+
+    reservoir = "bulk"  # Escaping reservoir: "bulk", "outgas", "pxuv".
+    module = "zephyrus"    # Which escape module to use
+
+    [escape.zephyrus]
+        Pxuv        = 1e-4          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
+        efficiency  = 0.1           # Escape efficiency factor
+
+# Interior - physics table
+[interior]
+    radiogenic_heat = false          # enable radiogenic heat production
+    tidal_heat      = false         # enable tidal heat production
+    module = "dummy"               # Which interior module to use
+
+    [interior.dummy]
+        ini_tmagma            = 3000.0   # Initial magma surface temperature [K]
+
+
+# Outgassing - physics table
+[outgas]
+    fO2_shift_IW    = -2         # log10(ΔIW), atmosphere/interior boundary oxidation state
+    module = "calliope"         # Which outgassing module to use
+
+# Volatile delivery - physics table
+[delivery]
+
+    # Which initial inventory to use?
+    initial = 'elements'        # "elements" | "volatiles"
+
+    # No module for accretion as of yet
+    module = "none"
+
+    # Set initial volatile inventory by planetary element abundances
+    [delivery.elements]
+        H_oceans    = 6.0       # Hydrogen inventory in units of equivalent Earth oceans
+        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
+        N_ppmw      = 2.0      # Nitrogen inventory in ppmw relative to mantle mass
+        SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
+
+
+# Calculate simulated observations
+[observe]
+
+    # Module with which to calculate the synthetic observables
+    synthesis = "none"

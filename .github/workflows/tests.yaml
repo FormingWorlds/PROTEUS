@@ -36,7 +36,9 @@ jobs:
 
     env:
       FWL_DATA: ${{ github.workspace }}/fwl_data
+      PROTEUS_DIR: ${{ github.workspace }}
       RAD_DIR: ${{ github.workspace }}/SOCRATES
+      AGNI_DIR: ${{ github.workspace }}/AGNI
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -52,6 +54,15 @@ jobs:
           sudo ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
           sudo ln -s /opt/homebrew/Cellar/gcc/12.*/lib/gcc/12/*.dylib /opt/homebrew/lib/
           which gfortran
+
+      # Setup Julia
+      - name: Setup Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+
+      - name: Cache Julia
+        uses: julia-actions/cache@v2
 
       # Checkout PROTEUS
       - name: Checkout PROTEUS
@@ -84,7 +95,21 @@ jobs:
           cd $RAD_DIR
           ./configure
           ./build_code
-          cd ..
+          cd $PROTEUS_DIR
+
+      # Get AGNI and build it
+      - name: Checkout AGNI
+        uses: actions/checkout@v4
+        with:
+          repository: 'nichollsh/AGNI'
+          path: ${{ env.AGNI_DIR }}
+
+      - name: Build AGNI
+        run: |
+          export LD_LIBRARY_PATH=""
+          cd $AGNI_DIR
+          julia --project=. -e 'using Pkg; Pkg.build()'
+          cd $PROTEUS_DIR
 
       # Setup Python using the version defined in the matrix
       - name: Set up Python ${{ matrix.python-version }}
