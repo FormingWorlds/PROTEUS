@@ -5,7 +5,8 @@ from pathlib import Path
 
 import click
 
-from .proteus import Proteus
+from proteus import Proteus
+from proteus import __version__ as proteus_version
 
 config_option = click.option(
     '-c',
@@ -18,7 +19,7 @@ config_option = click.option(
 
 
 @click.group()
-@click.version_option(package_name='fwl-proteus')
+@click.version_option(version=proteus_version)
 def cli():
     pass
 
