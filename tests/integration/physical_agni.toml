@@ -45,7 +45,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     eccentricity    = 0.098      # dimensionless
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
-    module  = "none"
+    module  = "lovepy"
+
+    [orbit.lovepy]
+        visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 # Planetary structure - physics table
 [struct]
@@ -86,7 +89,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Interior - physics table
 [interior]
     radiogenic_heat = false          # enable radiogenic heat production
-    tidal_heat      = false         # enable tidal heat production
+    tidal_heat      = true         # enable tidal heat production
     module = "dummy"               # Which interior module to use
 
     [interior.dummy]

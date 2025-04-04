@@ -135,6 +135,7 @@ htmlcov/
 .tox/
 .nox/
 .coverage
+coverage.json
 .coverage.*
 .cache
 nosetests.xml
