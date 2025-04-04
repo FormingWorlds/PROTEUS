@@ -16,11 +16,6 @@ from proteus.plot.cpl_sflux_cross import plot_sflux_cross_entry
 from proteus.plot.cpl_spectra import plot_spectra_entry
 from proteus.plot.cpl_structure import plot_structure_entry
 
-# from proteus.plot.cpl_offchem_grid_cross import plot_offchem_grid_cross_entry
-# from proteus.plot.cpl_offchem_species import plot_offchem_species_entry
-# from proteus.plot.cpl_offchem_time import plot_offchem_time_entry
-# from proteus.plot.cpl_offchem_year import plot_offchem_year_entry
-
 plot_dispatch = {
     'atmosphere':           plot_atmosphere_entry,
     'atmosphere_cbar':      plot_atmosphere_cbar_entry,
@@ -37,8 +32,4 @@ plot_dispatch = {
     'structure':            plot_structure_entry,
     'emission':             plot_emission_entry,
     'population':           plot_population_entry,
-    # 'offchem_grid_cross':   plot_offchem_grid_cross_entry,
-    # 'offchem_species':      plot_offchem_species_entry,
-    # 'offchem_time':         plot_offchem_time_entry,
-    # 'offchem_year':         plot_offchem_year_entry,
 }

@@ -32,6 +32,10 @@ def test_version():
 def test_get():
     # run PROTEUS get command
     response = runner.invoke(cli.get, ["reference"])
+    assert response.exit_code == 0
 
-    # return ok?
+    response = runner.invoke(cli.get, ["surfaces"])
+    assert response.exit_code == 0
+
+    response = runner.invoke(cli.get, ["spectral","-n", "Frostflow", "-b", "16"])
     assert response.exit_code == 0

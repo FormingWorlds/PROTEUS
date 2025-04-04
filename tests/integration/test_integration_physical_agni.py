@@ -8,6 +8,7 @@ from pandas.testing import assert_frame_equal
 from proteus import Proteus
 from proteus.atmos_clim.common import read_ncdf_profile as read_atmosphere
 from proteus.utils.coupler import ReadHelpfileFromCSV
+from proteus.plot.cpl_atmosphere_cbar import plot_atmosphere_cbar_entry
 
 out_dir = PROTEUS_ROOT / 'output' / 'physical_agni'
 ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'physical_agni'
@@ -16,8 +17,13 @@ config_path = PROTEUS_ROOT /'tests' / 'integration' / 'physical_agni.toml'
 
 @pytest.fixture(scope="module")
 def agni_run():
+
+    # Run simulation
     runner = Proteus(config_path=config_path)
     runner.start()
+
+    # Make extra plots
+    plot_atmosphere_cbar_entry(runner)
 
     return runner
 

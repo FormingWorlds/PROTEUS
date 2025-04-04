@@ -86,6 +86,9 @@ def _generate_colour(gas:str):
 
     # For each atom, add the contriution of its rgb components
     for e in atoms.keys():
+        if e not in _preset_colours.keys():
+            log.warning(f"Using fallback colour for '{gas}'")
+            return _preset_colours["_fallback"]
         red += int(_preset_colours[e][1:2],base=16)*atoms[e]
         gre += int(_preset_colours[e][3:4],base=16)*atoms[e]
         blu += int(_preset_colours[e][5:6],base=16)*atoms[e]
