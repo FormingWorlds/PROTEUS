@@ -4,9 +4,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import numpy as np
-
-from proteus.utils.constants import element_list, ergcm2stoWm2, secs_per_year
+from proteus.utils.constants import element_list, secs_per_year
 
 if TYPE_CHECKING:
     from proteus.config import Config
