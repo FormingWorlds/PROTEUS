@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from proteus.utils.plot import get_colour, _preset_colours, latexify
+from proteus.utils.plot import _preset_colours, get_colour, latexify
 
 def test_get_colour():
     # Test default colours
