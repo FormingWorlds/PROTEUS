@@ -41,7 +41,7 @@ class Spider:
     solver_type: str
         Numerical integrator. Choices: 'adams', 'bdf'.
     """
-    ini_entropy: float   = field(default=None)
+    ini_entropy          = field(default=None)
     ini_dsdr: float      = field(default=-4.698e-6,  validator=lt(0))
     num_levels: int      = field(default=190,        validator=ge(40))
     mixing_length: int   = field(default=2,          validator=in_((1,2)))
@@ -89,7 +89,7 @@ class Aragog:
     """
 
     logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    ini_tmagma: float                   = field(default=None)
+    ini_tmagma                          = field(default=None)
     num_levels: int                     = field(default=100,    validator=ge(40))
     tolerance: float                    = field(default=1e-10,  validator=gt(0))
     inner_boundary_condition: int       = field(default=1, validator=ge(0))
