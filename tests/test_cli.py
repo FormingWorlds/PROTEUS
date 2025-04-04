@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from click.testing import CliRunner
 
-from proteus import cli
 from proteus import __version__ as proteus_version
+from proteus import cli
 
 runner = CliRunner()
 
