@@ -14,7 +14,6 @@ import shutil
 import subprocess as sp
 import sys
 from textwrap import dedent
-
 import numpy as np
 import pandas as pd
 
@@ -46,6 +45,13 @@ def run_once(dirs:dict, config:Config) -> bool:
     vulcan_name = 'recent.vul'  # name for output file
     make_funs   = True          # make functions from chemical network
     ini_mix     = 'table'       # initial mixing ratios (table, const_mix)
+    Kzz_on      = False         # use Kzz
+    moldiff_on  = False         # use molecular diffusion
+    updraft_on  = False         # use updraft velocity
+    photo_on    = False          # use photochemistry
+    fix_surf    = False         # fix surface species
+    network     = "CHO"        # chemical network string
+    save_frames = False
 
     # make folder
     work_dir = os.path.join(dirs["output"],"offchem") + "/"
@@ -137,26 +143,36 @@ def run_once(dirs:dict, config:Config) -> bool:
     for e in element_list:
         if hf_row[e+"_kg_atm"] > 1e10:
             e_incl.append(e)
-    print(f"Elements: {e_incl}")
+    print(f"Found elements: {e_incl}")
 
     # Determine network and species of interest
-    network = "CHO_photo_network.txt"
-    ele_str = "['H', 'O', 'C']"
-    plt_str = "['H2',  'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2']"
-    sct_str = "['H2', 'O2']"
+    if network == "CHO":
+        ele_str = "['H', 'O', 'C']"
+        plt_str = "['H2',  'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2']"
+        sct_str = "['H2', 'O2']"
+        if photo_on:
+            network_file = "CHO_photo_network.txt"
+        else:
+            network_file = "CHO_thermo_network.txt"
 
-    if 'N' in e_incl:
-        network = "NCHO_photo_network.txt"
+    elif network == "NCHO":
         plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'N2']"
         sct_str = "['H2', 'O2', 'N2']"
         ele_str = "['H', 'O', 'C', 'N']"
+        if photo_on:
+            network_file = "NCHO_photo_network.txt"
+        else:
+            network_file = "NCHO_thermo_network.txt"
 
-        if 'S' in e_incl:
-            network = "SNCHO_photo_network.txt"
-            plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'SO2', 'H2S', 'S2']"
-            ele_str = "['H', 'O', 'C', 'N', 'S']"
+    elif network == "SNCHO":
+        plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'SO2', 'H2S', 'S2']"
+        ele_str = "['H', 'O', 'C', 'N', 'S']"
+        if photo_on:
+            network_file = "SNCHO_photo_network.txt"
+        else:
+            raise ValueError("Photochemistry is required when using sulfur network")
 
-    print(f"Using '{network}' ")
+    print(f"Using '{network_file}' ")
 
     # Parse atmospheric composition into string, work out background gas
     backs = {'H2':0.0, 'N2':0.0, 'O2':0.0, 'CO2':0.0}
@@ -169,6 +185,12 @@ def run_once(dirs:dict, config:Config) -> bool:
             outgas_str += "'%s':%.8e, "%(gas, vmr)
     outgas_str = outgas_str[:-2]
 
+    # Surface boundary condition
+    if fix_surf:
+        fixsurf_str = outgas_str
+    else:
+        fixsurf_str = ""
+
     # Set background gas
     background = max(backs, key=backs.get)
     print(f"Background gas is '{background}'")
@@ -179,7 +201,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         # CREATED AUTOMATICALLY BY PROTEUS
 
         atom_list               = {ele_str}
-        network                 = 'thermo/{network}'
+        network                 = 'thermo/{network_file}'
         use_lowT_limit_rates    = False
         gibbs_text              = 'thermo/gibbs_text.txt' # (all the nasa9 files must be placed in the folder: thermo/NASA9/)
         cross_folder            = 'thermo/photo_cross/'
@@ -210,7 +232,7 @@ def run_once(dirs:dict, config:Config) -> bool:
 
         # ====== Setting up photochemistry ======
         use_ion         = False
-        use_photo       = True
+        use_photo       = {photo_on}
         r_star          = {hf_row["R_star"] / R_sun}     # stellar radius (R_sun)
         Rp              = {hf_row["R_int"] * 100.0}      # Planetary radius (cm)
         orbit_radius    = {hf_row["separation"] / AU}    # planet-star distance in A.U.
@@ -230,13 +252,13 @@ def run_once(dirs:dict, config:Config) -> bool:
         final_update_photo_frq  = 5
 
         # ====== Mixing processes ======
-        use_moldiff = True
+        use_moldiff = {moldiff_on}
 
-        use_vz      = False
+        use_vz      = {updraft_on}
         vz_prof     = 'const'  # Options: 'const' or 'file'
         const_vz    = 0 # (cm/s) Only reads when use_vz = True and vz_prof = 'const'
 
-        use_Kzz     = True
+        use_Kzz     = {Kzz_on}
         Kzz_prof    = 'Pfunc' # Options: 'const','file' or 'Pfunc' (Kzz increased with P^-0.4)
         const_Kzz   = 1.E10 # (cm^2/s) Only reads when use_Kzz = True and Kzz_prof = 'const'
         K_max       = 1e5        # for Kzz_prof = 'Pfunc'
@@ -247,7 +269,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         # ====== Setting up the boundary conditions ======
         use_topflux     = False
         use_botflux     = False
-        use_fix_sp_bot  = {{ {outgas_str} }} # fixed mixing ratios at the lower boundary
+        use_fix_sp_bot  = {{ {fixsurf_str} }} # fixed mixing ratios at the lower boundary
         diff_esc        = [] # species for diffusion-limit escape at TOA
         max_flux        = 1e13  # upper limit for the diffusion-limit fluxes
 
@@ -274,8 +296,8 @@ def run_once(dirs:dict, config:Config) -> bool:
         use_print_prog  = True
         use_print_delta = False
         print_prog_num  = 20  # print the progress every x steps
-        dttry           = 1.E-5
-        dt_min          = 1.E-7
+        dttry           = 1.E-6
+        dt_min          = 1.E-8
         dt_max          = runtime*1e-4
         dt_var_max      = 2.
         dt_var_min      = 0.5
@@ -290,13 +312,13 @@ def run_once(dirs:dict, config:Config) -> bool:
         loss_eps        = 1e-1
         yconv_cri       = 0.04  # for checking steady-state
         slope_cri       = 1.e-4
-        yconv_min       = 0.1
+        yconv_min       = 0.5
         flux_cri        = 0.1
         flux_atol       = 1. # the tol for actinc flux (# photons cm-2 s-1 nm-1)
         conver_ignore   = [] # added 2023. to get rid off non-convergent species, e.g. HC3N without sinks
 
         # ====== Setting up numerical parameters for Ros2 ODE solver ======
-        rtol             = 1.1 # relative tolerence for adjusting the stepsize
+        rtol             = 0.7 # relative tolerence for adjusting the stepsize
         post_conden_rtol = 0.1 # switched to this value after fix_species_time
 
         # ====== Setting up for output and plotting ======
@@ -305,10 +327,10 @@ def run_once(dirs:dict, config:Config) -> bool:
         use_live_flux   = False
         use_plot_end    = False
         use_plot_evo    = False
-        use_save_movie  = True
+        use_save_movie  = {save_frames}
         use_flux_movie  = False
         plot_height     = False
-        use_PIL         = True
+        use_PIL         = False
         live_plot_frq   = 50
         save_movie_rate = live_plot_frq
         y_time_freq     = 1  #  storing data for every 'y_time_freq' step
@@ -354,16 +376,35 @@ def run_once(dirs:dict, config:Config) -> bool:
         print(f"Could not find output file {result_file}")
         return False
 
+    # load data from file
     with open(result_file,'rb') as hdl:
-        result_data = pickle.read(hdl)
+        result = pickle.load(hdl)
+    result_dict = {}
 
-    print(result_data)
+    # read t, p, z, kzz
+    result_dict["tmp"] = np.array(result["atm"]["Tco"])
+    result_dict["p"]   = np.array(result["atm"]["pco"]) / 10         # convert to Pa
+    result_dict["z"]   = np.array(result["atm"]["zco"][:-1]) / 100   # convert to m
+    result_dict["kzz"] = np.array(result["atm"]["Kzz"])
+    result_dict["kzz"] = np.insert(result_dict["kzz"],0,result_dict["kzz"][0])
 
-    # ------------------------------------------------------------
-    # MAKE PLOTS
-    # ------------------------------------------------------------
+    # read mixing ratios
+    result_gas = result["variable"]["species"]
+    for i,gas in enumerate(result_gas):
+        result_dict[gas] = np.array(result["variable"]["ymix"][i])
 
-    # TBD
+    # write csv file
+    csv_file = result_file + ".csv"
+    print(f"Writing to {csv_file}")
+    header = ""
+    Xarr = []
+    for key in result_dict.keys():
+        header += str(key).ljust(14, ' ') + "\t"  # compose header
+        Xarr.append(list(result_dict[key]))
+    Xarr = np.array(Xarr).T  # transpose such that column=variable
+    Xarr = Xarr[::-1]        # flip arrays to match AGNI format
+    np.savetxt(csv_file, Xarr, delimiter='\t', fmt="%.8e",
+                header=header, comments="")
 
     print("Done!")
     return success
