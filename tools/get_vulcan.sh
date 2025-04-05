@@ -12,8 +12,8 @@ rm -rf $workpath
 git clone git@github.com:nichollsh/VULCAN.git $workpath
 
 # Compile fastchem
-cd "$workpath/fastchem_vulcan/"
-make
+# cd "$workpath/fastchem_vulcan/"
+# make
 
 # Done
 cd $olddir

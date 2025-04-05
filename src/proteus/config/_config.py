@@ -6,6 +6,7 @@ import tomlkit
 from attrs import asdict, define, field, validators
 
 from ._atmos_clim import AtmosClim
+from ._atmos_chem import AtmosChem
 from ._converters import dict_replace_none
 from ._delivery import Delivery
 from ._escape import Escape
@@ -55,7 +56,9 @@ class Config:
     struct: Struct
         Planetary structure calculation (mass, radius).
     atmos_clim: AtmosClim
-        Planetary atmosphere parameters, model selection.
+        Planetary atmosphere climate parameters, model selection.
+    atmos_chem: AtmosChem
+        Planetary atmosphere chemistry parameters, model selection.
     escape: Escape
         Atmospheric escape parameters, model selection.
     interior: Interior
@@ -76,6 +79,7 @@ class Config:
     orbit: Orbit
     struct: Struct
     atmos_clim: AtmosClim
+    atmos_chem: AtmosChem
     escape: Escape = field(validator=(spada_zephyrus,))
     interior: Interior = field(validator=(tides_enabled_orbit,))
     outgas: Outgas

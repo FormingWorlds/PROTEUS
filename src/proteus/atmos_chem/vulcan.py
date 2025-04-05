@@ -1,11 +1,8 @@
-#!/usr/bin/env python3
-
-"""
-Code for running offline chemistry based on PROTEUS output.
-Configuration options are near the bottom of this file.
-"""
-
+# Run VULCAN chemical kinetics module
 from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
 
 import glob
 import os
@@ -18,14 +15,18 @@ import numpy as np
 import pandas as pd
 
 # Import PROTEUS
-from proteus import Proteus
 from proteus.atmos_clim.common import read_ncdf_profile
-from proteus.config import Config
 from proteus.utils.constants import AU, R_sun, element_list, vol_list
 from proteus.utils.helper import find_nearest
 
+if TYPE_CHECKING:
+    from proteus.config import Config
 
-def run_once(dirs:dict, config:Config) -> bool:
+log = logging.getLogger("fwl."+__name__)
+
+VULCAN_NAME = "recent.vul"
+
+def run_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     """
     Run VULCAN as a subprocess, postprocessing the final PROTEUS output state.
     """
@@ -37,21 +38,8 @@ def run_once(dirs:dict, config:Config) -> bool:
     # ------------------------------------------------------------
 
     if config.atmos_clim.module != 'agni':
-        print("Offline chemistry is only supported for `atmos_clim.module = 'agni'`")
+        log.warning("VULCAN offline chemistry only supported with AGNI")
         return False
-
-    min_fl      = 1e-20         # stellar flux floor
-    clip_vmr    = 1e-10         # neglect species with surface VMR < clip_vmr
-    vulcan_name = 'recent.vul'  # name for output file
-    make_funs   = True          # make functions from chemical network
-    ini_mix     = 'table'       # initial mixing ratios (table, const_mix)
-    Kzz_on      = False         # use Kzz
-    moldiff_on  = False         # use molecular diffusion
-    updraft_on  = False         # use updraft velocity
-    photo_on    = False          # use photochemistry
-    fix_surf    = False         # fix surface species
-    network     = "CHO"        # chemical network string
-    save_frames = False
 
     # make folder
     work_dir = os.path.join(dirs["output"],"offchem") + "/"
@@ -62,23 +50,13 @@ def run_once(dirs:dict, config:Config) -> bool:
     # READ DATA FROM PROTEUS RUN
     # ------------------------------------------------------------
 
-    # Get final time for which we have data
-    files = glob.glob(os.path.join(dirs["output"], "data", "*_atm.nc"))
-    times = [int(f.split("/")[-1].split("_atm.nc")[0]) for f in files]
-    year  = sorted(times)[-1]
-    print("Locating data for t=%.2e yr..."%year, end='')
-
-    # Read helpfile
-    hf_all = pd.read_csv(os.path.join(dirs['output'], "runtime_helpfile.csv"), sep=r"\s+")
-
-    # Get helpfile row for this year
-    hf_row = hf_all.iloc[(hf_all['Time']-year).abs().argsort()[:1]]
-    hf_row = hf_row.to_dict(orient='records')[0]
+    # Get all times for which we have data
+    year = hf_row["Time"]
+    log.debug("Reading data for t=%.2e yr"%year)
 
     # Read atmosphere data
-    atmos = read_ncdf_profile(os.path.join(dirs["output"], "data", "%d_atm.nc"%year),
-                              extra_keys=["pl","tmpl", "x_gas", "Kzz"])
-    print("  ok")
+    ncdf_path = os.path.join(dirs["output"], "data", "%d_atm.nc"%year)
+    atmos = read_ncdf_profile(ncdf_path, extra_keys=["pl","tmpl", "x_gas", "Kzz"])
 
     # ------------------------------------------------------------
     # WRITE VULCAN INPUT FILES
@@ -87,7 +65,7 @@ def run_once(dirs:dict, config:Config) -> bool:
     # Output folder
     vulcan_out = work_dir
     vulcan_plt = work_dir
-    print("Writing input data...", end='')
+    log.debug("Writing VULCAN input data")
 
     # Find a reasonable file for the stellar flux
     ls = glob.glob(dirs["output"]+"/data/*.sflux")
@@ -100,8 +78,8 @@ def run_once(dirs:dict, config:Config) -> bool:
     star_fl = np.array(sflux_data[1]) * hf_row["separation"]**2 / hf_row["R_star"]**2
 
     # Remove small values
-    star_wl = star_wl[star_fl > min_fl]
-    star_fl = star_fl[star_fl > min_fl]
+    star_wl = star_wl[star_fl > config.atmos_chem.vulcan.clip_fl]
+    star_fl = star_fl[star_fl > config.atmos_chem.vulcan.clip_fl]
 
     # Write spectrum
     star_write = work_dir + "star.dat"
@@ -118,7 +96,6 @@ def run_once(dirs:dict, config:Config) -> bool:
     prof_write = work_dir + "profile.dat"
     np.savetxt(prof_write, np.array([p_arr[::-1], t_arr[::-1]]).T,
                delimiter="\t", header=header, comments='', fmt="%1.5e")
-    print("  ok")
 
     # Write mixing ratios
     vmr_write = work_dir + "vmrs.dat"
@@ -143,36 +120,37 @@ def run_once(dirs:dict, config:Config) -> bool:
     for e in element_list:
         if hf_row[e+"_kg_atm"] > 1e10:
             e_incl.append(e)
-    print(f"Found elements: {e_incl}")
+    log.debug(f"Found elements: {e_incl}")
 
     # Determine network and species of interest
-    if network == "CHO":
-        ele_str = "['H', 'O', 'C']"
-        plt_str = "['H2',  'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2']"
-        sct_str = "['H2', 'O2']"
-        if photo_on:
-            network_file = "CHO_photo_network.txt"
-        else:
-            network_file = "CHO_thermo_network.txt"
+    match config.atmos_chem.vulcan.network:
+        case "CHO":
+            ele_str = "['H', 'O', 'C']"
+            plt_str = "['H2',  'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2']"
+            sct_str = "['H2', 'O2']"
+            if config.atmos_chem.photo_on:
+                network_file = "CHO_photo_network.txt"
+            else:
+                network_file = "CHO_thermo_network.txt"
 
-    elif network == "NCHO":
-        plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'N2']"
-        sct_str = "['H2', 'O2', 'N2']"
-        ele_str = "['H', 'O', 'C', 'N']"
-        if photo_on:
-            network_file = "NCHO_photo_network.txt"
-        else:
-            network_file = "NCHO_thermo_network.txt"
+        case "NCHO":
+            plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'N2']"
+            sct_str = "['H2', 'O2', 'N2']"
+            ele_str = "['H', 'O', 'C', 'N']"
+            if config.atmos_chem.photo_on:
+                network_file = "NCHO_photo_network.txt"
+            else:
+                network_file = "NCHO_thermo_network.txt"
 
-    elif network == "SNCHO":
-        plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'SO2', 'H2S', 'S2']"
-        ele_str = "['H', 'O', 'C', 'N', 'S']"
-        if photo_on:
-            network_file = "SNCHO_photo_network.txt"
-        else:
-            raise ValueError("Photochemistry is required when using sulfur network")
+        case "SNCHO":
+            plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'SO2', 'H2S', 'S2']"
+            ele_str = "['H', 'O', 'C', 'N', 'S']"
+            if config.atmos_chem.photo_on:
+                network_file = "SNCHO_photo_network.txt"
+            else:
+                raise ValueError("Photochemistry is required when using sulfur network")
 
-    print(f"Using '{network_file}' ")
+    log.debug(f"Using '{network_file}' ")
 
     # Parse atmospheric composition into string, work out background gas
     backs = {'H2':0.0, 'N2':0.0, 'O2':0.0, 'CO2':0.0}
@@ -181,22 +159,22 @@ def run_once(dirs:dict, config:Config) -> bool:
         vmr = hf_row[gas+"_vmr"]
         if gas in backs.keys():
             backs[gas] = vmr
-        if vmr > clip_vmr:
+        if vmr > config.atmos_chem.vulcan.clip_vmr:
             outgas_str += "'%s':%.8e, "%(gas, vmr)
     outgas_str = outgas_str[:-2]
 
     # Surface boundary condition
-    if fix_surf:
+    if config.atmos_chem.vulcan.fix_surf:
         fixsurf_str = outgas_str
     else:
         fixsurf_str = ""
 
     # Set background gas
     background = max(backs, key=backs.get)
-    print(f"Background gas is '{background}'")
+    log.debug(f"Background gas is '{background}'")
 
-    print("Writing VULCAN config...", end='')
-    config = f"""\
+    log.debuf("Writing VULCAN config")
+    vulcan_config = f"""\
         # VULCAN CONFIGURATION FILE
         # CREATED AUTOMATICALLY BY PROTEUS
 
@@ -222,17 +200,17 @@ def run_once(dirs:dict, config:Config) -> bool:
         output_dir              = '{vulcan_out}'
         plot_dir                = '{vulcan_plt}'
         movie_dir               = '{vulcan_plt}/frames/'
-        out_name                = '{vulcan_name}'
+        out_name                = '{VULCAN_NAME}'
 
         # ====== Setting up the elemental abundance ======
-        ini_mix = '{ini_mix}'
+        ini_mix = '{config.atmos_chem.vulcan.ini_mix}'
         const_mix = {{ {outgas_str} }}
         vul_ini = '{vmr_write}'
 
 
         # ====== Setting up photochemistry ======
         use_ion         = False
-        use_photo       = {photo_on}
+        use_photo       = {config.atmos_chem.photo_on}
         r_star          = {hf_row["R_star"] / R_sun}     # stellar radius (R_sun)
         Rp              = {hf_row["R_int"] * 100.0}      # Planetary radius (cm)
         orbit_radius    = {hf_row["separation"] / AU}    # planet-star distance in A.U.
@@ -252,13 +230,13 @@ def run_once(dirs:dict, config:Config) -> bool:
         final_update_photo_frq  = 5
 
         # ====== Mixing processes ======
-        use_moldiff = {moldiff_on}
+        use_moldiff = {config.atmos_chem.moldiff_on}
 
-        use_vz      = {updraft_on}
+        use_vz      = {config.atmos_chem.updraft_on}
         vz_prof     = 'const'  # Options: 'const' or 'file'
         const_vz    = 0 # (cm/s) Only reads when use_vz = True and vz_prof = 'const'
 
-        use_Kzz     = {Kzz_on}
+        use_Kzz     = {config.atmos_chem.Kzz_on}
         Kzz_prof    = 'Pfunc' # Options: 'const','file' or 'Pfunc' (Kzz increased with P^-0.4)
         const_Kzz   = 1.E10 # (cm^2/s) Only reads when use_Kzz = True and Kzz_prof = 'const'
         K_max       = 1e5        # for Kzz_prof = 'Pfunc'
@@ -327,7 +305,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         use_live_flux   = False
         use_plot_end    = False
         use_plot_evo    = False
-        use_save_movie  = {save_frames}
+        use_save_movie  = {config.atmos_chem.vulcan.save_frames}
         use_flux_movie  = False
         plot_height     = False
         use_PIL         = False
@@ -342,28 +320,26 @@ def run_once(dirs:dict, config:Config) -> bool:
         save_evo_frq     = 10
         """
 
-    config = dedent(config)
+    vulcan_config = dedent(vulcan_config)
     with open(os.path.join(dirs["vulcan"], "vulcan_cfg.py"), 'w') as hdl:
-        hdl.write(config)
-
-    print("  ok")
+        hdl.write(vulcan_config)
 
     # ------------------------------------------------------------
     # RUN VULCAN
     # ------------------------------------------------------------
 
     cmd = [sys.executable, "vulcan.py"]
-    if not make_funs:
+    if not config.atmos_chem.vulcan.make_funs:
         cmd.append(" -n")
-        print("Skipping make_chem_funs step")
+        log.debug("Skipping VULCAN make_chem_funs step")
 
     logfile = vulcan_out + "recent.log"
 
-    print("Running VULCAN...")
+    log.info("Running VULCAN subprocess")
     with open(logfile, 'w') as hdl:
         proc = sp.run(cmd, cwd=dirs["vulcan"], stdout=hdl, stderr=hdl, bufsize=1, text=True)
 
-    print("Return code: " + str(proc.returncode))
+    log.debug("Return code: " + str(proc.returncode))
     if proc.returncode:
         success = False
 
@@ -371,9 +347,9 @@ def run_once(dirs:dict, config:Config) -> bool:
     # READ AND PARSE OUTPUT FILES
     # ------------------------------------------------------------
 
-    result_file = vulcan_out + vulcan_name
+    result_file = vulcan_out + VULCAN_NAME
     if not os.path.exists(result_file):
-        print(f"Could not find output file {result_file}")
+        log.warning(f"Could not find output file {result_file}")
         return False
 
     # load data from file
@@ -395,7 +371,7 @@ def run_once(dirs:dict, config:Config) -> bool:
 
     # write csv file
     csv_file = result_file + ".csv"
-    print(f"Writing to {csv_file}")
+    log.debug(f"Writing to {csv_file}")
     header = ""
     Xarr = []
     for key in result_dict.keys():
@@ -406,19 +382,5 @@ def run_once(dirs:dict, config:Config) -> bool:
     np.savetxt(csv_file, Xarr, delimiter='\t', fmt="%.8e",
                 header=header, comments="")
 
-    print("Done!")
+    log.info("    done")
     return success
-
-# If run directly
-if __name__ == '__main__':
-
-    # Parameters
-    cfgfile =       "output/minimal/init_coupler.toml"  # Config file used for PROTEUS
-
-    # Read config and dirs
-    handler = Proteus(config_path=cfgfile)
-    config  = handler.config
-    dirs    = handler.directories
-
-    # Do it
-    run_once(dirs, config)

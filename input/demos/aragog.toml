@@ -47,8 +47,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     s0_factor       = 0.375     # dimensionless
     module = 'none'
 
-    module          ="none"
-
 # Planetary structure - physics table
 [struct]
     radius_int  = 0.9       # R_earth
@@ -180,3 +178,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 [observe]
     synthesis = "none"
+
+[atmos_chem]
+    module = "none"

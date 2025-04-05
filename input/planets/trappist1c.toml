@@ -120,3 +120,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Calculate simulated observations
 [observe]
     synthesis = "none"
+
+[atmos_chem]
+    module = "none"
