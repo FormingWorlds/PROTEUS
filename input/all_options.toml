@@ -289,3 +289,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 
     # Module with which to calculate the synthetic observables
     synthesis = "none"
+
+[atmos_chem]
+    module = "none"
