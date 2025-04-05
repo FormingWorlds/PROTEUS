@@ -55,13 +55,20 @@ curl -fsSL https://install.julialang.org | sh
 
 ## Set up the PROTEUS framework
 
-1. Set environment variables
+1. Create and set environment variables
 
     The environment variable `FWL_DATA` points to the folder where input data are stored.
     This variable must always be set, so it is best to add this line to your shell rc file.
 
     ```console
-    export FWL_DATA=/your/local/path/
+    mkdir /your/local/path/FWL_DATA
+    echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.bashrc"
+    ```
+
+    Reload your shell rc file to make the changes effective.
+
+    ```console
+    source "$HOME/.bashrc"
     ```
 
 2. Download PROTEUS base
@@ -91,6 +98,12 @@ curl -fsSL https://install.julialang.org | sh
 
     ```console
     echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.bashrc"
+    ```
+
+    Reload your shell rc file to make the changes effective.
+
+    ```console
+    source "$HOME/.bashrc"
     ```
 
 5. Radiative-convective atmosphere model (**AGNI**)
@@ -215,7 +228,7 @@ about 10 GB of opacity data from the internet.
     ```
 
     On MacOS you will need to edit `make.globaloptions` to reflect  a GNU-compatible `g++` executable, not the Apple one (see
-     [Troubleshooting](./troubleshooting.md) if the next step results in an error.
+     [Troubleshooting](./troubleshooting.md)), if the next step results in an error.
 
     ```console
     make
