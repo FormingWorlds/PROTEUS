@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.utils.constants import AU, M_sun, R_sun, const_sigma, ergcm2stoWm2
+from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -48,9 +49,13 @@ def init_star(handler:Proteus):
                 # creates track data
                 pcntle = handler.config.star.mors.rot_pcntle
                 period = handler.config.star.mors.rot_period
-                handler.stellar_track = mors.Star(Mstar = handler.config.star.mass,
+                try:
+                    handler.stellar_track = mors.Star(Mstar = handler.config.star.mass,
                                                   Age = age_now_Myr,
                                                   percentile = pcntle, Prot=period)
+                except Exception as e:
+                    UpdateStatusfile(handler.directories, 23)
+                    raise e
 
                 # load modern spectrum
                 # calculate band-integrated fluxes
