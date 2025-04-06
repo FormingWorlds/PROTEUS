@@ -1,14 +1,13 @@
-# Tips & Tricks for the Kapteyn Cluster
+# Kapteyn Cluster Guide
+
 
 ## Access the Kapteyn cluster via VS Code
 
-Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.google.com/document/d/1Hm1J8x9CQ10dnyDJo1iohZHU6go_hxiUR7gTD2csv-M/edit?usp=sharing) to set up your VS Code environment for the Kapteyn cluster.
+Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.google.com/document/d/1Hm1J8x9CQ10dnyDJo1iohZHU6go_hxiUR7gTD2csv-M/edit?usp=sharing) to set up your VS Code environment for the Kapteyn cluster. This allows you to use the Kapteyn cluster as a remote server, enabling you to edit PROTEUS files and run simulations directly from your local machine.
 
 ## Installation
 
-1. Connect via to the cluster via SSH. Use `norma2` whenever possible.
-
-2. If you have not followed the VS Code Instructions above, then now manage your authentication keys to avoid entering your password every time you connect (optional). You can find the instructions on the Kapteyn intranet: [How to generate authentication keys for SSH, SFTP, and SCP](https://www.astro.rug.nl/intranet/computing/index.php) (Go to Computing > Howto's > How to generate authentication keys for ssh, sftp and scp):
+1. If you have not followed the VS Code Instructions above, then now manage your authentication keys to avoid entering your password every time you connect (optional). You can find the instructions on the Kapteyn intranet: [How to generate authentication keys for SSH, SFTP, and SCP](https://www.astro.rug.nl/intranet/computing/index.php) (Go to Computing > Howto's > How to generate authentication keys for ssh, sftp and scp):
 
     ```console
     ssh-keygen -t rsa
@@ -20,26 +19,37 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     ```
     You can now log in without entering your password.
 
-2. Create a folder with your username in `/dataserver/users/formingworlds/`. If you cannot create a folder, please contact Tim to get access rights.
+2. Connect to the cluster via SSH. Use `norma2` whenever possible.
 
-3. Follow the installation instructions [here](./installation.md). You do not need to install the `netcdf` and `netcdf-fortran` libraries, as they are already installed on the Kapteyn cluster. Use
+    ```console
+    ssh norma2
+    ```
 
-4. Use [miniforge](https://github.com/conda-forge/miniforge) to install the required Python version. The recommended version is 3.12:
+3. Create a folder with your username in `/dataserver/users/formingworlds/`. If you cannot create a folder in there, please contact Tim Lichtenberg to get access rights.
+
+    ```console
+    mkdir -p /dataserver/users/formingworlds/<username>
+    cd /dataserver/users/formingworlds/<username>
+    ```
+
+4. Follow the installation instructions [here](./installation.md). You do not need to install the `netcdf` and `netcdf-fortran` libraries, as they are already installed on the Kapteyn cluster.
+
+5. Use [miniforge](https://github.com/conda-forge/miniforge) to install the required Python version. The recommended version is 3.12.
 
     ```console
     curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
     bash Miniforge3-$(uname)-$(uname -m).sh
     ```
 
-5. Increase the file limit for your user by adding to your shell rc file (e.g., '~/.bashrc'):
-```console
-echo "ulimit -Sn 4000000" >> "$HOME/.bashrc"
-echo "ulimit -Hn 5000000" >> "$HOME/.bashrc"
-```
-Then, reload your shell rc file to make the changes effective:
-```console
-source "$HOME/.bashrc"
-```
+6. To avoid the cluster terminating PROTEUS jobs, increase the temporary file limit for your user by adding to your shell rc file (e.g., '~/.bashrc'):
+    ```console
+    echo "ulimit -Sn 4000000" >> "$HOME/.bashrc"
+    echo "ulimit -Hn 5000000" >> "$HOME/.bashrc"
+    ```
+    Then, reload your shell rc file to make the changes effective:
+    ```console
+    source "$HOME/.bashrc"
+    ```
 
 ## Usage of PROTEUS on the Kapteyn cluster
 
@@ -49,9 +59,9 @@ source "$HOME/.bashrc"
     tmux new -s <session_name>
     ```
 - To start a first simulation, use the command:
-```console
-proteus start --config {PATH/TO/YOUR/PROTEUS}/input/minimal.toml
-```
+    ```console
+    proteus start --config {PATH/TO/YOUR/PROTEUS}/input/minimal.toml
+    ```
 - To detach from the session, press `Ctrl + b`, then `d`. You can reattach to the session later with:
     ```console
     tmux attach -t <session_name>
