@@ -42,10 +42,14 @@ def init_star(handler:Proteus):
         match handler.config.star.mors.tracks:
 
             case 'spada':
+
+                age_now_Myr = handler.config.star.mors.age_now * 1000 # convert Gyr to Myr
+
                 # creates track data
                 pcntle = handler.config.star.mors.rot_pcntle
                 period = handler.config.star.mors.rot_period
                 handler.stellar_track = mors.Star(Mstar = handler.config.star.mass,
+                                                  Age = age_now_Myr,
                                                   percentile = pcntle, Prot=period)
 
                 # load modern spectrum
@@ -56,9 +60,7 @@ def init_star(handler:Proteus):
 
                 # calculate other properties from modern spectrum
                 handler.star_props = get_spada_synthesis_properties(
-                    handler.stellar_track,
-                    handler.config.star.mors.age_now * 1000, # convert Gyr to Myr
-                )
+                                                handler.stellar_track, age_now_Myr )
 
             case 'baraffe':
                 # creates track data

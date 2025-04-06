@@ -237,10 +237,10 @@ def run_once(dirs:dict, config:Config) -> bool:
         const_vz    = 0 # (cm/s) Only reads when use_vz = True and vz_prof = 'const'
 
         use_Kzz     = True
-        Kzz_prof    = 'Pfunc' # Options: 'const','file' or 'Pfunc' (Kzz increased with P^-0.4)
-        const_Kzz   = 1.E10 # (cm^2/s) Only reads when use_Kzz = True and Kzz_prof = 'const'
-        K_max       = 1e5        # for Kzz_prof = 'Pfunc'
-        K_p_lev     = 0.1      # for Kzz_prof = 'Pfunc'
+        Kzz_prof    = 'const' # Options: 'const','file' or 'Pfunc' (Kzz increased with P^-0.4)
+        const_Kzz   = 1.E5 # (cm^2/s) Only reads when use_Kzz = True and Kzz_prof = 'const'
+        K_max       = 1e9        # for Kzz_prof = 'Pfunc'
+        K_p_lev     = 10      # for Kzz_prof = 'Pfunc'
 
         update_frq  = 50    # frequency for updating dz and dzi due to change of mu
 
@@ -274,15 +274,15 @@ def run_once(dirs:dict, config:Config) -> bool:
         use_print_prog  = True
         use_print_delta = False
         print_prog_num  = 20  # print the progress every x steps
-        dttry           = 1.E-5
-        dt_min          = 1.E-7
+        dttry           = 1.E-6
+        dt_min          = 1.E-8
         dt_max          = runtime*1e-4
         dt_var_max      = 2.
         dt_var_min      = 0.5
 
         count_min       = 120
         count_max       = int(3E4)
-        atol            = 5.E-2 # Try decreasing this if the solutions are not stable
+        atol            = 1.E-2 # Try decreasing this if the solutions are not stable
         mtol            = 1.E-22
         mtol_conv       = 1.E-20
         pos_cut         = 0
@@ -300,7 +300,7 @@ def run_once(dirs:dict, config:Config) -> bool:
         post_conden_rtol = 0.1 # switched to this value after fix_species_time
 
         # ====== Setting up for output and plotting ======
-        plot_TP         = False
+        plot_TP         = True
         use_live_plot   = True
         use_live_flux   = False
         use_plot_end    = False
@@ -372,7 +372,7 @@ def run_once(dirs:dict, config:Config) -> bool:
 if __name__ == '__main__':
 
     # Parameters
-    cfgfile =       "output/minimal/init_coupler.toml"  # Config file used for PROTEUS
+    cfgfile =       "output/l98d_escape24/case_00078/init_coupler.toml"  # Config file used for PROTEUS
 
     # Read config and dirs
     handler = Proteus(config_path=cfgfile)
