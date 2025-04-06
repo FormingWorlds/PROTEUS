@@ -1,28 +1,39 @@
 ---
-title: 'PROTEUS: A radiative-convective model for lava planet atmospheres.'
+title: 'PROTEUS: A modular framework for the coupled evpolution of the atmospheres and interiors evolution of lava planets.'
 tags:
   - astronomy
-  - physics,
+  - geophysics
   - exoplanets
-  - planets
+  - planetary science
+  - atmospheres
+  - planetary evolution
+  - lava planets
 authors:
   - name: Tim Lichtenberg
     orcid: 0000-0002-3286-7683
     affiliation: 1
-  - name: Mariana V. Sastre
-    affiliation: 1
-  - name: Emma Postolec
-    affiliation: 1
   - name: Harrison Nicholls
     orcid: 0000-0002-8368-4641
     affiliation: 2
+  - name: Mariana Sastre
+    orcid: 0009-0008-7799-7976
+    affiliation: 1
+  - name: Emma Postolec
+    affiliation: 1
   - name: Laurent Soucasse
     orcid: 0000-0002-5422-8794
     affiliation: 3
   - name: Stef Smeets
     affiliation: 3
   - name: Dan J. Bower
-    affiliation: 4, 5
+    orcid: 0000-0002-0673-4860
+    affiliation: 4
+  - name: Mark Hammond
+    orcid: 0000-0002-6893-522X
+    affiliation: 2
+  - name: Raymond T. Pierrehumbert
+    orcid: 0000-0002-5887-1197
+    affiliation: 2
 affiliations:
  - name: Kapteyn Astronomical Institute, University of Groningen, P.O. Box 800, 9700 AV Groningen, The Netherlands
    index: 1
@@ -30,11 +41,9 @@ affiliations:
    index: 2
  - name: Netherlands eScience Center, Science Park 402, NL-1098 XH Amsterdam, The Netherlands
    index: 3
- - name: Center for Space and Habitability, University of Bern, Gesellschaftsstrasse 6, 3012 Bern, Switzerland
-   index: 4
  - name: Institute of Geochemistry and Petrology, ETH Zurich, Clausiusstrasse 25, 8092 Zürich, Switzerland
-   index: 5
-date: January 2025
+   index: 4
+date: June 2025
 bibliography: paper.bib
 
 ---
