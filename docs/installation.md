@@ -8,40 +8,63 @@ first check the `troubleshooting`{.interpreted-text role="doc"} page. If
 that does not help you further, please contact the developers (see
 `contact`{.interpreted-text role="doc"}).
 
-## System configuration (MacOS)
+## System configuration
+
+Follow the instructions below depending on your system configuration.
+
+### Local Mac OS machine
 
 1.  Open the terminal to install the developer tools
 
-```console
-xcode-select --install
-```
+    ```console
+    xcode-select --install
+    ```
 
 2.  Install `FORTRAN NetCDF` library via the most appropriate method for
-    you
+    you.
 
-```console
-brew install netcdf
-brew install netcdf-fortran
-```
+    **[Homebrew](https://brew.sh/)** (recommended)
+    ```console
+    brew install netcdf
+    brew install netcdf-fortran
+    ```
 
-Or
+    **[MacPorts](https://www.macports.org/)**
+    ```console
+    sudo port install netcdf-fortran +gcc8
+    ```
 
-```console
-sudo port install netcdf-fortran +gcc8
-```
-
-## System configuration (Linux)
+### Local Linux machine
 
 1. Install `FORTRAN NetCDF` via your package manager (e.g\...)
 
-```console
-sudo apt install libnetcdff-dev
-```
+    ```console
+    sudo apt install libnetcdff-dev
+    ```
+
+### Local Windows machine
+
+Generally it is not recommended to install and use PROTEUS on Windows machines. The remainder of the installation instructions are written with Linux and Mac OS in mind. However, for attempting that, check out the section on Windows instructions in [VS Code Instructions Kapteyn Cluster](https://docs.google.com/document/d/1Hm1J8x9CQ10dnyDJo1iohZHU6go_hxiUR7gTD2csv-M/edit?usp=sharing).
+
+### Remote clusters
+
+Check out the [Kapteyn cluster guide](./tips_kapteyn_cluster.md) and [Snellius cluster guide](./tips_snellius_cluster.md) for more information.
 
 ## Setup a Python environment
 
-We recommend that you use Python version 3.12 for running PROTEUS.
-Python is most easily obtained and managed using [miniforge](https://github.com/conda-forge/miniforge).
+We recommend that you use Python version 3.12 for running PROTEUS. Python is most easily obtained and managed using [miniforge](https://github.com/conda-forge/miniforge).
+
+```console
+brew install --cask miniforge
+```
+
+**or**
+
+```console
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh
+```
+
 Alternatively, you can download it from the official website and use [pyenv](https://github.com/pyenv/pyenv).
 
 ## Install Julia
@@ -65,10 +88,15 @@ curl -fsSL https://install.julialang.org | sh
     echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.bashrc"
     ```
 
-    Reload your shell rc file to make the changes effective.
+    Reload your shell rc file to make the changes effective. Depending on your shell,
+    you can do this by running:
 
     ```console
     source "$HOME/.bashrc"
+    ```
+    **or**
+    ```console
+    source "$HOME/.zshrc"
     ```
 
 2. Download PROTEUS base
@@ -100,10 +128,15 @@ curl -fsSL https://install.julialang.org | sh
     echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.bashrc"
     ```
 
-    Reload your shell rc file to make the changes effective.
+    Reload your shell rc file to make the changes effective. Depending on your shell,
+    you can do this by running:
 
     ```console
     source "$HOME/.bashrc"
+    ```
+    **or**
+    ```console
+    source "$HOME/.zshrc"
     ```
 
 5. Radiative-convective atmosphere model (**AGNI**)
