@@ -34,6 +34,8 @@ Follow the instructions below depending on your system configuration.
     sudo port install netcdf-fortran +gcc8
     ```
 
+3. Pay attention to replace `.bashrc` throughout the instructions below with `.zshrc` if you are on Mac OS >10.15 (Catalina) and using the default shell.
+
 ### Local Linux machine
 
 1. Install `FORTRAN NetCDF` via your package manager (e.g\...)
@@ -56,6 +58,7 @@ We recommend that you use Python version 3.12 for running PROTEUS. Python is mos
 
 ```console
 brew install --cask miniforge
+conda init "$(basename "${SHELL}")"
 ```
 
 **or**
@@ -81,22 +84,17 @@ curl -fsSL https://install.julialang.org | sh
 1. Create and set environment variables
 
     The environment variable `FWL_DATA` points to the folder where input data are stored.
-    This variable must always be set, so it is best to add this line to your shell rc file.
+    This variable must always be set, so it is best to add this line to your shell rc file .
 
     ```console
     mkdir /your/local/path/FWL_DATA
     echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.bashrc"
     ```
 
-    Reload your shell rc file to make the changes effective. Depending on your shell,
-    you can do this by running:
+    Reload your shell rc file to make the changes effective.
 
     ```console
     source "$HOME/.bashrc"
-    ```
-    **or**
-    ```console
-    source "$HOME/.zshrc"
     ```
 
 2. Download PROTEUS base
@@ -133,10 +131,6 @@ curl -fsSL https://install.julialang.org | sh
 
     ```console
     source "$HOME/.bashrc"
-    ```
-    **or**
-    ```console
-    source "$HOME/.zshrc"
     ```
 
 5. Radiative-convective atmosphere model (**AGNI**)
