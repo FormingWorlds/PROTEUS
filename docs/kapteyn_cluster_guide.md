@@ -83,16 +83,25 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
 
 ## Queuing Manager : Condormaster
 
-To use the queuing manager on the Kapteyn cluster, you first need to SSH into Norma1 or Norma2 (```ssh norma1```).
+- To use the queuing manager on the Kapteyn cluster, you first need to SSH into Norma1 or Norma2.
+    ```console
+    ssh norma1
+    ```
 
-To access Condormaster, run the following command : ```ssh condormaster```
+- To access Condormaster, run the following command :
+    ```console
+    ssh condormaster
+    ```
 
 ### Submitting a Job on Condormaster
-To run a job using Condormaster, you first need to write a submit script. Begin by navigating to your home directory and creating a new submit script using : ```nano name_of_your_script.submit```
+- To run a job using Condormaster, you first need to write a submit script. Begin by navigating to your home directory and creating a new submit script using :
+    ```console
+    nano name_of_your_script.submit
+    ```
 
-You can copy and paste the example submit script (to start a single PROTEUS simulation) below and modify it according to your needs.
+- You can copy and paste the example submit script below (to start a single PROTEUS simulation) and modify it according to your needs.
 
-```
+```console
     getenv = True
     universe = vanilla
     executable = /dataserver/users/formingworlds/postolec/miniconda3/bin/conda
@@ -108,31 +117,52 @@ You can copy and paste the example submit script (to start a single PROTEUS simu
 To exit nano, press `Ctrl+X`, then press `Enter` when prompted to save the file.
 
 ### Updating the Submit Script
-Modify the following variables according to your job:
+Modify the following variables according to your needs :
 
-1. **`executable`**: Specify the absolute path to the Python environment (pyenv or  conda) you use to run PROTEUS. If you want to run another (python) script, you can modify the ```executable``` line with the absolute path to your script :
+- **`executable`**: Specify the absolute path to the Python environment (pyenv or  conda) you use to run PROTEUS. If you want to run another (python) script, you can modify the ```executable``` line with the absolute path to your script :
+
 ``` executable = /dataserver/users/formingworlds/lania/mscthesis/results/testscript.py```
 
-2. **`arguments`**: Update the path to the config file for your PROTEUS simulation. If using `tools/grid_proteus.py`, modify the entire command accordingly. If you want to run another (python) script, you can modify the ```arguments``` line with the absolute path to your input and output directory : ``` arguments = -input [absolute path to input file] -outputdirectory [absolute path to output directory]```
+- **`arguments`**: Update the path to the config file for your PROTEUS simulation. If using `tools/grid_proteus.py`, modify the entire command accordingly. If you want to run another (python) script, you can modify the ```arguments``` line with the absolute path to your input and output directory :
 
-3. **`notify_user`**: Enter your email address to receive job completion notifications.
+``` arguments = -input [absolute path to input file] -outputdirectory [absolute path to output directory]```
+
+- **`notify_user`**: Enter your email address to receive job completion notifications.
 
 - **`output`** : The outfile will contain the outputs/print statements of your job.
+
 - **`error`** : The errfile file will contain the handled exceptions or runtime errors occuring while your job was running.
 
 For further details, refer to the documentation on the Kapteyn intranet: [How to use Condor ?](https://www.astro.rug.nl/intranet/computing/index.php) (Go to Computing > Howto's > linux > How to use Condor ?)
-This documentation is updated regularly, so be sure to check for the latest information. The HTCondor documentation can be found here [HT Condor manual](https://htcondor.readthedocs.io/en/latest/users-manual/submitting-a-job.html).
+This documentation is updated regularly, so be sure to check for the latest information. Also for more details about condor, the HTCondor documentation can be found here [HT Condor manual](https://htcondor.readthedocs.io/en/latest/users-manual/submitting-a-job.html).
 
 ### Submitting and Monitoring Jobs
-To submit your script, run: ```condor_submit name_of_your_script.submit```
+- To submit your script, run: ```condor_submit name_of_your_script.submit```
+    ```console
+    condor_submit name_of_your_script.submit
+    ```
 
-To check the status of your job, use: ```condor_q``` or ```condor_q -better-analyze```.
+- To check the status of your job, use:
+    ```console
+    condor_q
+    ```
+or
+    ```console
+    condor_q -better-analyze
+    ```
 The second command provides a more detailed job status analysis.
 
-Another useful command is ```condor_status```. This displays the jobs currently running on Condormaster, including both your jobs and those of other users.
+- Another useful command is
+    ```console
+    condor_status
+    ```
+This displays the jobs currently running on Condormaster, including both your jobs and those of other users.
 
 ### Exiting Condormaster
-To exit Condormaster and return to Norma1/Norma2, run: ```exit```
+- To exit Condormaster and return to Norma1/Norma2, run:
+    ```console
+    exit
+    ```
 
 ## Troubleshooting
 
