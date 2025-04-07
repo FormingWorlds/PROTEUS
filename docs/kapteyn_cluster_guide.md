@@ -90,7 +90,7 @@ To access Condormaster, run the following command : ```ssh condormaster```
 ### Submitting a Job on Condormaster
 To run a job using Condormaster, you first need to write a submit script. Begin by navigating to your home directory and creating a new submit script using : ```nano name_of_your_script.submit```
 
-You can copy and paste the example submit script below and modify it according to your needs.
+You can copy and paste the example submit script (to start a single PROTEUS simulation) below and modify it according to your needs.
 
 ```
     getenv = True
@@ -110,12 +110,15 @@ To exit nano, press `Ctrl+X`, then press `Enter` when prompted to save the file.
 ### Updating the Submit Script
 Modify the following variables according to your job:
 
-1. **`executable`**: Specify the path to the Python environment you use to run PROTEUS.
+1. **`executable`**: Specify the absolute path to the Python environment (pyenv or  conda) you use to run PROTEUS. If you want to run another (python) script, you can modify the ```executable``` line with the absolute path to your script :
+``` executable = /dataserver/users/formingworlds/lania/mscthesis/results/testscript.py```
 
-2. **`arguments`**: Update the path to the config file for your PROTEUS simulation. If using `tools/grid_proteus.py`, modify the entire command accordingly.
+2. **`arguments`**: Update the path to the config file for your PROTEUS simulation. If using `tools/grid_proteus.py`, modify the entire command accordingly. If you want to run another (python) script, you can modify the ```arguments``` line with the absolute path to your input and output directory : ``` arguments = -input [absolute path to input file] -outputdirectory [absolute path to output directory]```
 
 3. **`notify_user`**: Enter your email address to receive job completion notifications.
 
+- **`output`** : The outfile will contain the outputs/print statements of your job.
+- **`error`** : The errfile file will contain the handled exceptions or runtime errors occuring while your job was running.
 
 For further details, refer to the documentation on the Kapteyn intranet: [How to use Condor ?](https://www.astro.rug.nl/intranet/computing/index.php) (Go to Computing > Howto's > linux > How to use Condor ?)
 This documentation is updated regularly, so be sure to check for the latest information. The HTCondor documentation can be found here [HT Condor manual](https://htcondor.readthedocs.io/en/latest/users-manual/submitting-a-job.html).

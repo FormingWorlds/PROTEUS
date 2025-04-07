@@ -27,7 +27,7 @@ on how to edit the configurations files, and an explanation of their structure.
 ## Running grids of simulations
 
 It is often useful to run grids of models, where each point in a grid represents a different
-set of parameters. This can be done using the script `tools/GridPROTEUS.py`.
+set of parameters. This can be done using the script `tools/grid_proteus.py`.
 
 You can configure a grid of your choosing by editing the variables in this file.
 
