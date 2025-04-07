@@ -485,7 +485,16 @@ class Proteus:
         print_citation(self.config)
 
     def run_offchem(self):
-        # Run offline chemistry, invoked via CLI
-        from proteus.atmos_chem.wrapper import run_offchem
-        run_offchem(self.directories, self.config, self.hf_row)
+        # Load data from helpfile
+        hf_all = ReadHelpfileFromCSV(self.directories["output"])
 
+        # Check length
+        if len(hf_all) < 1:
+            raise Exception("Simulation is too short to be postprocessed")
+
+        # Get last row
+        hf_row = hf_all.iloc[-1].to_dict()
+
+        # Run offline chemistry, invoked via CLI
+        from proteus.atmos_chem.wrapper import run_offline
+        run_offline(self.directories, self.config, hf_row)

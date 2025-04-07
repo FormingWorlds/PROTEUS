@@ -16,19 +16,19 @@ class Vulcan:
     Attributes
     ----------
     clip_fl : float
-        Stellar flux floor.
+        Stellar flux floor [ergs cm-2 s-1 nm-1].
     clip_vmr : float
         Neglect species with surface VMR < clip_vmr.
     make_funs : bool
         Make functions from chemical network.
     ini_mix : str
-        Initial mixing ratios (table, const_mix).
+        Initial mixing ratios. Options: table, const_mix.
     fix_surf : bool
-        Fix surface species.
+        Fix the surface mixing ratios based on outgassed composition.
     network : str
-        Chemical network string (CHO, NCHO, SNCHO)
+        Chemical network. Options: CHO, NCHO, SNCHO.
     save_frames : bool
-        Save animation.
+        Save simulation state as plots.
 
     """
 
@@ -55,12 +55,14 @@ class AtmosChem:
         VULCAN  module options
     Kzz_on : bool
         Use Kzz.
+    Kzz_const : float
+        Constant Kzz value [cm2/s]. If 'none', Kzz is read from NetCDF file.
     moldiff_on : bool
         Use molecular diffusion.
-    updraft_on : bool
-        Use updraft velocity.
     photo_on : bool
         Use photochemistry.
+    updraft_on : bool
+        Use updraft velocity.
 
     """
 
@@ -68,7 +70,8 @@ class AtmosChem:
 
     vulcan: Vulcan      = field(factory=Vulcan)
 
-    Kzz_on:bool         = field(default=False)
-    moldiff_on:bool     = field(default=False)
+    Kzz_on:bool         = field(default=True)
+    Kzz_const           = field(default=None, converter=none_if_none)
+    moldiff_on:bool     = field(default=True)
+    photo_on:bool       = field(default=True)
     updraft_on:bool     = field(default=False)
-    photo_on:bool       = field(default=False)

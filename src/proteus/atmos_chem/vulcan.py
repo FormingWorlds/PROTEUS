@@ -86,14 +86,19 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
                 header="# WL(nm)    Flux(ergs/cm**2/s/nm)",
                 fmt=["%.4f","%.4e"])
 
-    # Write TP profile
+    # Get TP profile
     p_arr = np.array(atmos["pl"]) * 10.0 # dyne/cm^2
     t_arr = np.clip(atmos["tmpl"], a_min=180.0, a_max=None)
+
+    # Get Kzz profile
+    k_arr = np.array(atmos["Kzz"]) * 1e4 # cm^2/s
+
+    # Write TPK profile
     num_levels = len(p_arr)
-    header  = "#(dyne/cm2)\t(K)\n"
-    header += "Pressure\tTemp"
+    header  = "#(dyne/cm2)\t(K)\t(cm2/s)\n"
+    header += "Pressure\tTemp\tKzz"
     prof_write = work_dir + "profile.dat"
-    np.savetxt(prof_write, np.array([p_arr[::-1], t_arr[::-1]]).T,
+    np.savetxt(prof_write, np.array([p_arr[::-1], t_arr[::-1], k_arr[::-1]]).T,
                delimiter="\t", header=header, comments='', fmt="%1.5e")
 
     # Write mixing ratios
@@ -126,7 +131,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
         case "CHO":
             ele_str = "['H', 'O', 'C']"
             plt_str = "['H2',  'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2']"
-            sct_str = "['H2', 'O2']"
+            sct_str = "['H2', 'O2', 'CO2']"
             if config.atmos_chem.photo_on:
                 network_file = "CHO_photo_network.txt"
             else:
@@ -134,7 +139,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
 
         case "NCHO":
             plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'N2']"
-            sct_str = "['H2', 'O2', 'N2']"
+            sct_str = "['H2', 'O2', 'N2', 'CO2']"
             ele_str = "['H', 'O', 'C', 'N']"
             if config.atmos_chem.photo_on:
                 network_file = "NCHO_photo_network.txt"
@@ -142,12 +147,17 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
                 network_file = "NCHO_thermo_network.txt"
 
         case "SNCHO":
-            plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'SO2', 'H2S', 'S2']"
+            plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'SO2', 'H2S', 'S2', 'S8']"
+            sct_str = "['H2', 'O2', 'N2', 'CO2']"
             ele_str = "['H', 'O', 'C', 'N', 'S']"
             if config.atmos_chem.photo_on:
                 network_file = "SNCHO_photo_network.txt"
             else:
                 raise ValueError("Photochemistry is required when using sulfur network")
+
+        case _:
+            log.error(f"Network not recognised: '{config.atmos_chem.vulcan.network}'")
+            return False
 
     log.debug(f"Using '{network_file}' ")
 
@@ -172,7 +182,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     background = max(backs, key=backs.get)
     log.debug(f"Background gas is '{background}'")
 
-    log.debuf("Writing VULCAN config")
+    log.debug("Writing VULCAN config")
     vulcan_config = f"""\
         # VULCAN CONFIGURATION FILE
         # CREATED AUTOMATICALLY BY PROTEUS
@@ -299,8 +309,8 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
         post_conden_rtol = 0.1 # switched to this value after fix_species_time
 
         # ====== Setting up for output and plotting ======
-        plot_TP         = False
-        use_live_plot   = True
+        plot_TP         = {config.atmos_chem.vulcan.save_frames}
+        use_live_plot   = {config.atmos_chem.vulcan.save_frames}
         use_live_flux   = False
         use_plot_end    = False
         use_plot_evo    = False
@@ -319,9 +329,14 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
         save_evo_frq     = 10
         """
 
-    vulcan_config = dedent(vulcan_config)
-    with open(os.path.join(dirs["vulcan"], "vulcan_cfg.py"), 'w') as hdl:
-        hdl.write(vulcan_config)
+
+    # Write config file
+    vulcan_fpath  = work_dir + "vulcan_cfg.txt"
+    with open(vulcan_fpath, 'w') as hdl:
+        hdl.write(dedent(vulcan_config))
+
+    # Copy config file to VULCAN directory
+    shutil.copyfile(vulcan_fpath, os.path.join(dirs["vulcan"], "vulcan_cfg.py")),
 
     # ------------------------------------------------------------
     # RUN VULCAN
