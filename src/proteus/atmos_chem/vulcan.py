@@ -1,18 +1,17 @@
 # Run VULCAN chemical kinetics module
 from __future__ import annotations
 
-import logging
-from typing import TYPE_CHECKING
-
 import glob
+import logging
 import os
 import pickle
 import shutil
 import subprocess as sp
 import sys
 from textwrap import dedent
+from typing import TYPE_CHECKING
+
 import numpy as np
-import pandas as pd
 
 # Import PROTEUS
 from proteus.atmos_clim.common import read_ncdf_profile
