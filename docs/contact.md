@@ -14,6 +14,7 @@ Issue sites:
 - [JANUS/Issues](https://github.com/FormingWorlds/JANUS/issues)
 - [AGNI/Issues](https://github.com/nichollsh/AGNI/issues)
 - [aragog/Issues](https://github.com/ExPlanetology/aragog/issues)
+- [ZEPHYRUS/Issues](https://github.com/FormingWorlds/ZEPHYRUS/issues)
 
 For general enquiries please write an email to
 <contact@formingworlds.space>.

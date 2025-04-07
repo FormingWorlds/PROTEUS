@@ -87,7 +87,6 @@ To use the queuing manager on the Kapteyn cluster, you first need to SSH into No
 
 To access Condormaster, run the following command : ```ssh condormaster```
 
-
 ### Submitting a Job on Condormaster
 To run a job using Condormaster, you first need to write a submit script. Begin by navigating to your home directory and creating a new submit script using : ```nano name_of_your_script.submit```
 
@@ -119,7 +118,7 @@ Modify the following variables according to your job:
 
 
 For further details, refer to the documentation on the Kapteyn intranet: [How to use Condor ?](https://www.astro.rug.nl/intranet/computing/index.php) (Go to Computing > Howto's > linux > How to use Condor ?)
-This documentation is updated regularly, so be sure to check for the latest information. The HTCondor doucumentation can be found here [HT Condor manual](https://htcondor.readthedocs.io/en/latest/users-manual/submitting-a-job.html).
+This documentation is updated regularly, so be sure to check for the latest information. The HTCondor documentation can be found here [HT Condor manual](https://htcondor.readthedocs.io/en/latest/users-manual/submitting-a-job.html).
 
 ### Submitting and Monitoring Jobs
 To submit your script, run: ```condor_submit name_of_your_script.submit```
