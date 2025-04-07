@@ -53,16 +53,16 @@ class AtmosChem:
         Chemistry module
     vulcan : Vulcan
         VULCAN  module options
+    photo_on : bool
+        Use photochemistry.
     Kzz_on : bool
         Use Kzz.
     Kzz_const : float
         Constant Kzz value [cm2/s]. If 'none', Kzz is read from NetCDF file.
     moldiff_on : bool
         Use molecular diffusion.
-    photo_on : bool
-        Use photochemistry.
-    updraft_on : bool
-        Use updraft velocity.
+    updraft_const : float
+        Updraft velocity [cm/s].
 
     """
 
@@ -70,8 +70,8 @@ class AtmosChem:
 
     vulcan: Vulcan      = field(factory=Vulcan)
 
+    photo_on:bool       = field(default=True)
     Kzz_on:bool         = field(default=True)
     Kzz_const           = field(default=None, converter=none_if_none)
     moldiff_on:bool     = field(default=True)
-    photo_on:bool       = field(default=True)
-    updraft_on:bool     = field(default=False)
+    updraft_const:float = field(default=0.0)

@@ -182,6 +182,16 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     background = max(backs, key=backs.get)
     log.debug(f"Background gas is '{background}'")
 
+    # Kzz value if constant
+
+    if config.atmos_chem.Kzz_const is not None:
+        Kzz_src = "const"
+        Kzz_val = config.atmos_chem.Kzz_const
+    else:
+        # if None, will get Kzz from profile
+        Kzz_src = "file"
+        Kzz_val = 1e5 # <- dummy value, will be replaced by profile
+
     log.debug("Writing VULCAN config")
     vulcan_config = f"""\
         # VULCAN CONFIGURATION FILE
@@ -241,13 +251,13 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
         # ====== Mixing processes ======
         use_moldiff = {config.atmos_chem.moldiff_on}
 
-        use_vz      = {config.atmos_chem.updraft_on}
+        use_vz      = True
         vz_prof     = 'const'  # Options: 'const' or 'file'
-        const_vz    = 0 # (cm/s) Only reads when use_vz = True and vz_prof = 'const'
+        const_vz    = {config.atmos_chem.updraft_const} # (cm/s)
 
         use_Kzz     = {config.atmos_chem.Kzz_on}
-        Kzz_prof    = 'Pfunc' # Options: 'const','file' or 'Pfunc' (Kzz increased with P^-0.4)
-        const_Kzz   = 1.E10 # (cm^2/s) Only reads when use_Kzz = True and Kzz_prof = 'const'
+        Kzz_prof    = '{Kzz_src}' # Options: 'const','file'
+        const_Kzz   = {Kzz_val} # Only reads when Kzz_prof = 'const'
         K_max       = 1e5        # for Kzz_prof = 'Pfunc'
         K_p_lev     = 0.1      # for Kzz_prof = 'Pfunc'
 
@@ -381,7 +391,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     # read mixing ratios
     result_gas = result["variable"]["species"]
     for i,gas in enumerate(result_gas):
-        result_dict[gas] = np.array(result["variable"]["ymix"][i])
+        result_dict[gas] = np.array(result["variable"]["ymix"][:,i])
 
     # write csv file
     csv_file = result_file + ".csv"
