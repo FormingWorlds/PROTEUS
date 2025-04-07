@@ -60,3 +60,7 @@ def test_agni_atmosphere(agni_run):
     for key in fields:
         assert_allclose(out[key], ref[key], rtol=1e-3,
                         err_msg=f"Key {key} does not match reference data")
+
+
+def test_agni_offchem(agni_run):
+    agni_run.run_offchem()

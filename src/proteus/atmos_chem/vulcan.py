@@ -366,6 +366,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     log.debug("Return code: " + str(proc.returncode))
     if proc.returncode:
         success = False
+        log.error("VULCAN subprocess failed")
 
     # ------------------------------------------------------------
     # READ AND PARSE OUTPUT FILES
