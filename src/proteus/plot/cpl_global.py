@@ -42,9 +42,7 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
         "handletextpad":0.7
     }
 
-    # Magnitude of change in instellation flux
-    F_delta_inst = np.abs(hf["F_ins"] - hf["F_ins"].iloc[0])
-
+    F_asf = np.array(hf["F_ins"]) * config.orbit.s0_factor * (1.0 - config.atmos_clim.albedo_pl) * np.cos(config.orbit.zenith_angle * np.pi/180.0)
 
     #    Volatile parameters (keys=vols, vals=quantites_over_time)
     vol_present = {} # Is present ever? (true/false)
@@ -150,17 +148,21 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
         ax.set_xlim(xlim[0],  max(xlim[1], xlim[0]+1))
 
     # PLOT ax_tl
-    ax_tl.plot( hf["Time"], F_delta_inst, color=get_colour("star"), lw=lw, alpha=al,  label=r"|$\Delta$Inst.|")
-    ax_tl.plot( hf["Time"], hf["F_tidal"], color=get_colour("tidal"), lw=lw, alpha=al,  label="Tidal")
-    ax_tl.plot( hf["Time"], hf["F_radio"], color=get_colour("radio"), lw=lw, alpha=al,  label="Radio.")
-    ax_tl.plot( hf["Time"], hf["F_int"],  color=get_colour("int"),  lw=lw, alpha=al,  label="Int.", linestyle='dashed')
-    ax_tl.plot( hf["Time"], hf["F_atm"],  color=get_colour("atm"),  lw=lw, alpha=al,  label="Atm."  )
-    ax_tl.plot( hf["Time"], hf["F_olr"],  color=get_colour("OLR"),  lw=lw, alpha=al,  label="OLR"   )
+    ax_tl.plot( hf["Time"], hf["F_radio"], color=get_colour("radio"), lw=lw,     alpha=al,  label="Radio")
+    ax_tl.plot( hf["Time"], hf["F_tidal"], color=get_colour("tidal"), lw=lw,     alpha=al,  label="Tidal")
+    ax_tl.plot( hf["Time"], hf["F_int"],   color=get_colour("int"),   lw=lw*1.5, alpha=al,  label="Net (int.)", ls='dashed')
+    ax_tl.plot( hf["Time"], hf["F_atm"],   color=get_colour("atm"),   lw=lw*1.5, alpha=al,  label="Net (atm.)" )
+    ax_tl.plot( hf["Time"], hf["F_olr"],   color=get_colour("OLR"),   lw=lw*0.8, alpha=al,  label="OLR" )
+    ax_tl.plot( hf["Time"], F_asf,         color=get_colour("ASF"),   lw=lw,     alpha=al,  label="ASF" ,ls='dashed' )
     ax_tl.legend(loc='center left', **leg_kwargs)
     ymin, ymax = 0.0, 100.0
-    for k in ("F_int","F_atm","F_olr","F_tidal","F_radio"):
-        ymin = min(ymin, np.amin(hf[k]))
-        ymax = max(ymax, np.amax(hf[k]))
+    for k in ("F_int","F_atm","F_olr","F_tidal","F_radio", F_asf):
+        if type(k) is str:
+            arr = np.array(hf[k])
+        else:
+            arr = np.array(k)
+        ymin = min(ymin, np.amin(arr))
+        ymax = max(ymax, np.amax(arr))
     ax_tl.set_ylim(bottom=ymin/1.5, top=ymax*1.5)
 
     # PLOT ax_cl

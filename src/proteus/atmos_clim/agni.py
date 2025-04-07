@@ -358,13 +358,12 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         dx_max      = config.interior.spider.tsurf_atol*2+5.0
         ls_increase = 1.01
         perturb_all = True
-        max_steps   = 100
+        max_steps   = 70
         chem_type   = int(config.atmos_clim.agni.chemistry_int)
 
         # first few iterations
         if loops_total < 3:
             dx_max = 200.0
-            perturb_all = True
             ls_increase = 1.1
             max_steps   = 200
 
@@ -378,7 +377,6 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
             linesearch  = 1
             dx_max     *= 2.0
             ls_increase = 1.1
-            perturb_all = True
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -424,15 +422,15 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
                 break
     return atmos
 
-def _solve_once(atmos, condense:bool):
+def _solve_once(atmos, config:Config):
     """Use AGNI to solve radiative transfer with prescribed T(p) profile
 
     Parameters
     ----------
         atmos : AGNI.atmosphere.Atmos_t
             Atmosphere struct
-        condense: bool
-            Enforce condensation curves
+        config : Config
+            PROTEUS config object
 
     Returns
     ----------
@@ -449,11 +447,16 @@ def _solve_once(atmos, condense:bool):
     #    dry convection
     jl.AGNI.setpt.dry_adiabat_b(atmos)
     #    condensation above
-    if condense:
+    if config.atmos_clim.agni.condensation:
         for gas in gas_list:
             jl.AGNI.setpt.saturation_b(atmos, str(gas))
     #    temperature floor in stratosphere
     jl.AGNI.setpt.stratosphere_b(atmos, 0.5)
+
+    # do chemistry
+    chem_int = config.atmos_clim.agni.chemistry_int
+    if chem_int > 0:
+        jl.AGNI.chemistry.fastchem_eqm_b(atmos, chem_int, True)
 
     # solve fluxes
     jl.AGNI.energy.calc_fluxes_b(atmos, False, False, False, False, calc_cf=True)
@@ -496,7 +499,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     if config.atmos_clim.agni.solve_energy:
         atmos = _solve_energy(atmos, loops_total, dirs, config)
     else:
-        atmos = _solve_once(atmos, config.atmos_clim.agni.condensation)
+        atmos = _solve_once(atmos, config)
 
     # Write output data
     ncdf_path = os.path.join(dirs["output"],"data",time_str+"_atm.nc")

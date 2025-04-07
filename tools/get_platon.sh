@@ -3,9 +3,6 @@
 
 echo "Installing PLATON into Python environment..."
 
-# Download dependencies
-pip install astropy
-
 # Make room
 workpath="platon/"
 rm -rf $workpath
@@ -16,7 +13,7 @@ git clone https://github.com/nichollsh/platon.git $workpath
 # Change dir and install
 olddir=$(pwd)
 cd $workpath
-pip install -e .
+python -m pip install -U -e .
 cd $olddir
 
 # Import platon and run example - trigger data download

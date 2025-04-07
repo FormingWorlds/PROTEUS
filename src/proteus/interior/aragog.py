@@ -102,8 +102,8 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
     boundary_conditions = _BoundaryConditionsParameters(
             outer_boundary_condition = 4, # 4 = prescribed heat flux
             outer_boundary_value = hf_row["F_atm"], # first guess surface heat flux [W/m2]
-            inner_boundary_condition = 1, # 1 = core cooling model, 3 = prescribed temperature
-            inner_boundary_value = 4000, # core temperature [K], if inner_boundary_condition = 3
+            inner_boundary_condition =  config.interior.aragog.inner_boundary_condition,# 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
+            inner_boundary_value = config.interior.aragog.inner_boundary_value, # core temperature [K], if inner_boundary_condition = 3
             emissivity = 1, # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature = hf_row["T_eqm"], # only used in gray body BC, outer_boundary_condition = 1
             core_density = config.struct.core_density, # used if inner_boundary_condition = 1
@@ -121,10 +121,10 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
             )
 
     energy = _EnergyParameters(
-            conduction = True,
-            convection = True,
-            gravitational_separation = False,
-            mixing = False,
+            conduction = config.interior.aragog.conduction,
+            convection = config.interior.aragog.convection,
+            gravitational_separation = config.interior.aragog.gravitational_separation,
+            mixing = config.interior.aragog.mixing,
             radionuclides = config.interior.radiogenic_heat,
             tidal = config.interior.tidal_heat,
             tidal_array = interior_o.tides
@@ -137,6 +137,7 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
 
     # Get look up data directory, will be configurable in the future
     LOOK_UP_DIR = FWL_DATA_DIR / "interior_lookup_tables/1TPa-dK09-elec-free/MgSiO3_Wolf_Bower_2018/"
+    MELTING_DIR=  FWL_DATA_DIR / "interior_lookup_tables/Melting_curves/"
 
     phase_liquid = _PhaseParameters(
             density = LOOK_UP_DIR / "density_melt.dat",
@@ -162,8 +163,8 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
             latent_heat_of_fusion = 4e6,
             rheological_transition_melt_fraction = config.interior.rheo_phi_loc,
             rheological_transition_width = config.interior.rheo_phi_wid,
-            solidus = LOOK_UP_DIR / "solidus.dat",
-            liquidus = LOOK_UP_DIR / "liquidus.dat",
+            solidus = MELTING_DIR / config.interior.melting_dir / "solidus.dat",
+            liquidus= MELTING_DIR / config.interior.melting_dir / "liquidus.dat",
             phase = "mixed",
             phase_transition_width = 0.1,
             grain_size = config.interior.grain_size,

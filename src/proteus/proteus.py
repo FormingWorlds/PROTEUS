@@ -20,7 +20,6 @@ from proteus.utils.coupler import (
     PrintCurrentState,
     ReadHelpfileFromCSV,
     SetDirectories,
-    UpdatePlots,
     WriteHelpfileToCSV,
     ZeroHelpfileRow,
     print_citation,
@@ -111,6 +110,7 @@ class Proteus:
         """
 
         # Import things needed to run PROTEUS
+        #    plotting
         #    atmos
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Atmos_t
@@ -136,6 +136,7 @@ class Proteus:
             update_stellar_quantities,
             write_spectrum,
         )
+        from proteus.utils.coupler import UpdatePlots
 
         #    lookup and reference data
         from proteus.utils.data import download_sufficient_data
@@ -237,12 +238,15 @@ class Proteus:
 
             # Inform user
             log.info("Initial inventory set by '%s'"%self.config.delivery.initial)
-            log.info("Included gases")
+            log.info("Included gases:")
             for s in inc_gases:
-                log.info("    %s  %-8s : %6.2f bar" %
-                            ("vapour  " if s in vap_list else "volatile", s,
-                            self.hf_row[s + "_bar"])
-                        )
+                write = "    "
+                write += "vapour  " if s in vap_list else "volatile"
+                write += "  %-8s" % s
+                if self.config.delivery.initial == "volatiles":
+                    write += " : %6.2f bar"%self.hf_row[s + "_bar"]
+                log.info(write)
+
         else:
             # Resuming from disk
             log.info("Resuming the simulation from the disk")
@@ -361,7 +365,7 @@ class Proteus:
                                 self.hf_row, self.directories["output"])
 
             else:
-                log.info("New spectrum not required at this time")
+                log.info("Updated spectrum not required")
 
             ############### / STELLAR FLUX MANAGEMENT
 
@@ -386,9 +390,9 @@ class Proteus:
             # Add atmosphere mass to interior mass, to get total planet mass
             self.hf_row["M_planet"] = self.hf_row["M_int"] + self.hf_row["M_atm"]
 
-            # Check for when atmosphere has escaped.
+            # Check for when atmosphere has completely escaped (P_surf < 0.01)
             #    This will mean that the mixing ratios become undefined, so use value of 0.
-            if self.hf_row["P_surf"] < self.config.params.stop.escape.p_stop:
+            if self.hf_row["P_surf"] < 0.01:
                 self.has_escaped = True
                 for gas in gas_list:
                     self.hf_row[gas+"_vmr"] = 0.0

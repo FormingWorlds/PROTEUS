@@ -56,7 +56,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     # Initial guess for interior radius and gravity
     int_o = Interior_t(get_nlevb(config))
     int_o.ic = 1
-    hf_row["R_int"]   = config.struct.radius_int * R_earth
+    hf_row["R_int"] = R_earth
     calculate_core_mass(hf_row, config)
     hf_row["gravity"] = 9.81
 
@@ -120,7 +120,7 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
         hf_row["R_int"] = config.struct.radius_int * R_earth
         calculate_core_mass(hf_row, config)
         # initial guess for mass, which will be updated by the interior model
-        hf_row["M_int"] = config.struct.mass_tot * M_earth
+        hf_row["M_int"] = 1.2 * M_earth
         update_gravity(hf_row)
 
     # Set by total mass (mantle + core + volatiles)
@@ -213,10 +213,24 @@ def run_interior(dirs:dict, config:Config,
         M_volatiles += hf_row[e+"_kg_total"]
     hf_row["M_tot"] = hf_row["M_int"] + M_volatiles
 
-    # Prevent increasing melt fraction
-    if config.atmos_clim.prevent_warming and (interior_o.ic==2):
-        hf_row["Phi_global"] = min(hf_row["Phi_global"], hf_all.iloc[-1]["Phi_global"])
-        hf_row["T_magma"] = min(hf_row["T_magma"], hf_all.iloc[-1]["T_magma"])
+    # Apply step limiters
+    if hf_row["Time"] > 0:
+
+        # Prevent increasing melt fraction, if enabled
+        T_magma_prev    = float( hf_all.iloc[-1]["T_magma"] )
+        Phi_global_prev = float( hf_all.iloc[-1]["Phi_global"] )
+        if config.atmos_clim.prevent_warming and (interior_o.ic==2):
+            hf_row["Phi_global"] = min(hf_row["Phi_global"],Phi_global_prev)
+            hf_row["T_magma"] = min(hf_row["T_magma"],T_magma_prev)
+
+        # Do not allow massive increases to T_surf, always
+        dT_delta  = config.interior.spider.tsurf_atol
+        dT_delta += config.interior.spider.tsurf_rtol * T_magma_prev
+        if hf_row["T_magma"] > T_magma_prev + dT_delta:
+            log.warning("Prevented large increase to T_magma!")
+            log.warning("   Clipped from %.2f K"%hf_row["T_magma"])
+            hf_row["T_magma"]    = T_magma_prev + dT_delta
+            hf_row["Phi_global"] = Phi_global_prev
 
     # Print result of interior module
     if verbose:

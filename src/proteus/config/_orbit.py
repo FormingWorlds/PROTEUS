@@ -19,6 +19,31 @@ def phi_tide_validator(instance, attribute, value):
         if (number < 0.0) or (number > 1.0):
             raise ValueError(f"Phi_tide value must be between 0 and 1, got {number}")
 
+@define
+class OrbitDummy:
+    """Dummy orbit module.
+
+    Attributes
+    ----------
+    H_tide: float
+        Fixed global heating rate from tides [W kg-1].
+    Phi_tide: str
+        Inequality which, if locally true, determines in which regions tides are applied.
+    """
+    H_tide: float   = field(default=0.0, validator=ge(0.0))
+    Phi_tide: str   = field(default="<0.3", validator=phi_tide_validator)
+
+@define
+class Lovepy:
+    """Lovepy tides module.
+
+    Attributes
+    ----------
+    visc_thresh: float
+        Minimum viscosity required for heating [Pa s].
+    """
+    visc_thresh: float = field(default=1e9, validator=gt(0))
+
 
 @define
 class Orbit:
@@ -37,6 +62,12 @@ class Orbit:
     module: str | None
         Select orbit module to use. Choices: 'none', 'dummy', 'lovepy'.
     """
+
+    module: str | None = field(
+        validator=in_((None, 'dummy', 'lovepy')),
+        converter=none_if_none,
+    )
+
     semimajoraxis: float = field(validator=gt(0))
     eccentricity: float = field(validator=(
         ge(0),
@@ -48,36 +79,5 @@ class Orbit:
     ))
     s0_factor: float = field(validator=gt(0))
 
-    module: str | None = field(
-        validator=in_((None, 'dummy', 'lovepy')),
-        converter=none_if_none,
-    )
-
-    dummy: OrbitDummy
-    lovepy: OrbitLovepy
-
-
-@define
-class OrbitDummy:
-    """Dummy orbit module.
-
-    Attributes
-    ----------
-    H_tide: float
-        Fixed global heating rate from tides [W kg-1].
-    Phi_tide: str
-        Inequality which, if locally true, determines in which regions tides are applied.
-    """
-    H_tide: float   = field(validator=ge(0))
-    Phi_tide: str = field(validator=phi_tide_validator)
-
-@define
-class OrbitLovepy:
-    """Lovepy tides module.
-
-    Attributes
-    ----------
-    visc_thresh: float
-        Minimum viscosity required for heating [Pa s].
-    """
-    visc_thresh: float = field(validator=gt(0))
+    dummy:  OrbitDummy  = field(factory=OrbitDummy)
+    lovepy: Lovepy      = field(factory=Lovepy)

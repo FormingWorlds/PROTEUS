@@ -103,7 +103,7 @@ class Grid():
                 subfolders = [ f.path.split("/")[-1].lower() for f in os.scandir(self.outdir) if f.is_dir() ]
                 if ".git" in subfolders:
                     raise Exception("Not emptying directory - it contains a Git repository!")
-                time.sleep(2.0)
+                time.sleep(4.0)
                 shutil.rmtree(self.outdir)
 
         # Create new output location
@@ -120,7 +120,7 @@ class Grid():
                 subfolders = [ f.path.split("/")[-1].lower() for f in os.scandir(self.symlink_dir) if f.is_dir() ]
                 if ".git" in subfolders:
                     raise Exception("Not emptying directory - it contains a Git repository!")
-                time.sleep(2.0)
+                time.sleep(4.0)
                 shutil.rmtree(self.symlink_dir)
             os.makedirs(self.symlink_dir)
             os.symlink(self.symlink_dir, self.outdir)
@@ -385,7 +385,7 @@ class Grid():
             count_run = np.count_nonzero(status == 1)
             count_end = np.count_nonzero(status == 2)
             if (step%print_interval == 0):
-                log.info("%3d queued (%5.1f%%), %3d running (%5.1f%%), %3d completed (%5.1f%%)" % (
+                log.info("%3d queued (%5.1f%%), %3d running (%5.1f%%), %3d exited (%5.1f%%)" % (
                         count_que, 100.0*count_que/self.size,
                         count_run, 100.0*count_run/self.size,
                         count_end, 100.0*count_end/self.size
@@ -446,25 +446,34 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "planets/l9859d.toml"
-    folder = "l98d_escape12"
+    # Output folder name, created inside `PROTEUS/output/`
+    folder = "l98d_escape23"
 
+    # Base config file
+    config = "planets/l9859d.toml"
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
-    # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
-    symlink = None
+
+    # Set this string to have the output files created at an alternative location. The
+    #   output 'folder' in `PROTEUS/output/` will then by symbolically linked to this
+    #   alternative location. Useful for when data should be saved on a storage server.
+    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
+    # symlink = None
+
+    # Initialise grid object
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
+    # Add dimensions to grid...
     pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_direct("Redox state", [-5, -4, -3, -2, -1])
+    pg.set_dimension_direct("Redox state", [-4.5, -4.0, -3.5, -3, -2.5, -2.0, -1.5])
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_direct("Hydrogen", [1e3, 8e3, 1e4])
+    pg.set_dimension_direct("Hydrogen", [1000, 3000, 5000, 7000, 9000, 11000])
 
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    pg.set_dimension_direct("Sulfur", [6.0, 9.0, 12.0])
+    pg.set_dimension_direct("Sulfur", [2.5, 5.0, 7.5, 10.0, 12.5])
 
     # pg.add_dimension("Mass", "struct.mass_tot")
-    # pg.set_dime nsion_direct("Mass", [1.85, 2.14, 2.39])
+    # pg.set_dimension_direct("Mass", [2.14, 2.25, 2.39])
 
     # -----
     # Print state of parameter grid
@@ -476,9 +485,9 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(100, test_run=False)
+    pg.run(108, test_run=False)
 
-    # When this script ends, it means that all processes ARE complete or they
-    # have been killed or crashed.
+    # When this script ends, it means that all processes have exited. They may have
+    # completed, or alternatively they have been killed or crashed.
     print("Exit GridPROTEUS")
     exit(0)

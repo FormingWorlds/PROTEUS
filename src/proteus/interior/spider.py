@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import platform
-import subprocess
+import subprocess as sp
 import sys
 from typing import TYPE_CHECKING
 
@@ -162,7 +162,8 @@ def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
 def _try_spider( dirs:dict, config:Config,
                 IC_INTERIOR:int,
                 hf_all:pd.DataFrame, hf_row:dict,
-                step_sf:float, atol_sf:float, dT_max:float ):
+                step_sf:float, atol_sf:float, dT_max:float,
+                timeout:float=900 ):
     '''
     Try to run spider with the current configuration.
     '''
@@ -172,9 +173,17 @@ def _try_spider( dirs:dict, config:Config,
     if not os.path.isfile(spider_exec):
         raise FileNotFoundError("SPIDER executable could not be found at '%s'"%spider_exec)
 
-    # Bounds on tolereances
-    step_sf = min(1.0, max(1.0e-10, step_sf))
-    atol_sf = min(1.0e10, max(1.0e-10, atol_sf))
+    # Scale factors for when SPIDER is failing to converge
+    step_sf = max(1.0e-10, step_sf)
+    atol_sf = max(1.0e-10, atol_sf)
+
+    # Solver tolerances
+    spider_atol = atol_sf * config.interior.spider.tolerance
+    spider_rtol = atol_sf * config.interior.spider.tolerance_rel
+
+    # Bounds on tolerances
+    spider_rtol = min(spider_rtol, 1e-1)
+    spider_atol = max(spider_atol, 1e-11)
 
     # Recalculate time stepping
     if IC_INTERIOR == 2:
@@ -252,8 +261,11 @@ def _try_spider( dirs:dict, config:Config,
 
     # Mixing length parameterization: 1: variable | 2: constant
     call_sequence.extend(["-mixing_length", str(config.interior.spider.mixing_length)])
-    call_sequence.extend(["-ts_sundials_atol", str(config.interior.spider.tolerance * atol_sf)])
-    call_sequence.extend(["-ts_sundials_rtol", str(config.interior.spider.tolerance * atol_sf)])
+
+    # Solver tolerances
+    call_sequence.extend(["-ts_sundials_atol", str(spider_atol)])
+    call_sequence.extend(["-ts_sundials_rtol", str(spider_rtol)])
+    call_sequence.extend(["-ts_sundials_type", str(config.interior.spider.solver_type)])
 
     # Rollback
     call_sequence.extend(["-activate_poststep", "-activate_rollback"])
@@ -267,7 +279,7 @@ def _try_spider( dirs:dict, config:Config,
     # Energy transport physics
     call_sequence.extend(["-CONDUCTION", "1"]) # conduction
     call_sequence.extend(["-CONVECTION", "1"]) # convection
-    call_sequence.extend(["-MIXING    ", "1"]) # mixing (latent heat transport)
+    call_sequence.extend(["-MIXING",     "1"]) # mixing (latent heat transport)
     call_sequence.extend(["-SEPARATION", "1"]) # gravitational separation of solid/melt
 
     # Tidal heating
@@ -383,11 +395,21 @@ def _try_spider( dirs:dict, config:Config,
     spider_print = open(dirs["output"]+"spider_recent.log",'w')
     spider_print.write(call_string+"\n")
     spider_print.flush()
-    proc = subprocess.run([call_string],shell=True,stdout=spider_print, env=spider_env)
-    spider_print.close()
+    spider_succ = True
+    try:
+        proc = sp.run(call_sequence, timeout=timeout, text=True,
+                                stdout=spider_print, stderr=spider_print, env=spider_env)
+    except sp.TimeoutExpired:
+        log.error("SPIDER process timed-out")
+        spider_succ = False
+    except Exception as e:
+        log.error("SPIDER encountered an error: "+str(type(e)))
+        spider_succ = False
+    else:
+        spider_succ = bool(proc.returncode == 0)
 
-    # Check status
-    return bool(proc.returncode == 0)
+    spider_print.close()
+    return spider_succ
 
 
 def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
@@ -408,11 +430,7 @@ def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
 
     # Maximum dT
     dT_max = 1e99
-    tides_active = (np.amax(interior_o.tides) > 1e-10) or (
-                     config.orbit.module=="lovepy" \
-                     and np.amin(interior_o.visc)>=config.orbit.lovepy.visc_thresh
-                    )
-    if config.interior.tidal_heat and tides_active:
+    if config.interior.tidal_heat and (np.amax(interior_o.tides) > 1e-10):
         dT_max = 4.0
         log.info("Tidal heating active; limiting dT_magma to %.2f K"%dT_max)
 
@@ -438,8 +456,8 @@ def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
             else:
                 # try again (change tolerance and step size)
                 log.warning("Trying again")
-                step_sf *= 0.5
-                atol_sf *= 4.0
+                step_sf *= 0.1
+                atol_sf *= 10.0
 
     # check status
     if spider_success:

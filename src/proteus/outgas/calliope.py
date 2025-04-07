@@ -41,6 +41,22 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     solvevol_inp["T_magma"]     =  hf_row["T_magma"]
     solvevol_inp['fO2_shift_IW'] = config.outgas.fO2_shift_IW
 
+    # Volatile inventory
+    for s in vol_list:
+        solvevol_inp[f'{s}_initial_bar'] = config.delivery.volatiles.get_pressure(s)
+
+        included = config.outgas.calliope.is_included(s)
+        solvevol_inp[f'{s}_included'] = int(included)
+
+        if (s in ("H2O","CO2","N2","S2")) and not included:
+            UpdateStatusfile(dirs, 20)
+            log.error(f"Missing required volatile {s}")
+            exit(1)
+
+    # Set by volatiles?
+    if config.delivery.initial == 'volatiles':
+        return solvevol_inp
+
     # Calculate hydrogen inventory...
 
     #    absolute part (H_kg = H_oceans * number_ocean_moles * molar_mass['H2'])
@@ -112,18 +128,6 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     solvevol_inp['nitrogen_ppmw'] =         N_ppmw
     solvevol_inp['sulfur_ppmw'] =           S_ppmw
 
-    # Volatile inventory
-    for s in vol_list:
-        solvevol_inp[f'{s}_initial_bar'] = config.delivery.volatiles.get_pressure(s)
-
-        included = config.outgas.calliope.is_included(s)
-        solvevol_inp[f'{s}_included'] = int(included)
-
-        if (s in ("H2O","CO2","N2","S2")) and not included:
-            UpdateStatusfile(dirs, 20)
-            log.error(f"Missing required volatile {s}")
-            exit(1)
-
     return solvevol_inp
 
 
@@ -162,7 +166,7 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
         log.warning("Outgassing temperature clipped to %.1f K"%solvevol_inp["T_magma"])
 
     # get atmospheric compositison
-    solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp, rtol=1e-6)
+    solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp, rtol=1e-7)
     for k in solvevol_result.keys():
         if k in hf_row.keys():
             hf_row[k] = solvevol_result[k]
