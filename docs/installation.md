@@ -241,23 +241,9 @@ about 10 GB of opacity data from the internet.
 
 ### Chemical kinetics atmosphere model (**VULCAN**)
 
-1. Clone the model
+VULCAN is written in Python, however, it is not available in a cohesive package format.
+Obtain VULCAN using the script below.
 
-    ```console
-    git clone git@github.com:nichollsh/VULCAN.git
-    cd VULCAN
-    ```
-
-2. Compile the FastChem extension
-
-    ```console
-    cd fastchem_vulcan
-    ```
-
-    On MacOS you will need to edit `make.globaloptions` to reflect  a GNU-compatible `g++` executable, not the Apple one (see
-     [Troubleshooting](./troubleshooting.md)), if the next step results in an error.
-
-    ```console
-    make
-    cd ../../
-    ```
+```console
+./tools/get_vulcan.sh
+```
