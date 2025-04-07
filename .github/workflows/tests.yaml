@@ -133,6 +133,11 @@ jobs:
       - name: Install Python dependencies
         run: python -m pip install -e .[develop]
 
+      # Get VULCAN
+      - name: Get VULCAN
+        run: |
+          ./tools/get_vulcan.sh
+
       # Get lookup data for PROTEUS
       - name: Get FWL data from cache
         uses: actions/cache@v4

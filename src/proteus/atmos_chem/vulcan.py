@@ -26,7 +26,7 @@ log = logging.getLogger("fwl."+__name__)
 
 VULCAN_NAME = "recent.vul"
 
-def run_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
+def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     """
     Run VULCAN as a subprocess, postprocessing the final PROTEUS output state.
     """

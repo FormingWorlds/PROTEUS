@@ -483,3 +483,9 @@ class Proteus:
 
         # Print citation
         print_citation(self.config)
+
+    def run_offchem(self):
+        # Run offline chemistry, invoked via CLI
+        from proteus.atmos_chem.wrapper import run_offchem
+        run_offchem(self.directories, self.config, self.hf_row)
+

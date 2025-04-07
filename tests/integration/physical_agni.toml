@@ -125,4 +125,4 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     synthesis = "none"
 
 [atmos_chem]
-    module = "none"
+    module = "vulcan"
