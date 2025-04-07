@@ -1,4 +1,6 @@
-# Install PROTEUS on the Snellius Cluster
+# Snellius Cluster Guide
+
+## Installation
 
 1. Connect via SSH. See instructions from SURF [here](https://servicedesk.surf.nl/wiki/display/WIKI/SSH+public-key+authentication).
 
