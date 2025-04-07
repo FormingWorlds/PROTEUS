@@ -307,8 +307,8 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
         pos_cut         = 0
         nega_cut        = -1.
         loss_eps        = 1e-1
-        yconv_cri       = 0.04  # for checking steady-state
-        slope_cri       = 1.e-4
+        yconv_cri       = {config.atmos_chem.vulcan.yconv_cri}  # for checking steady-state
+        slope_cri       = {config.atmos_chem.vulcan.slope_cri}  # for checking steady-state
         yconv_min       = 0.5
         flux_cri        = 0.1
         flux_atol       = 1. # the tol for actinc flux (# photons cm-2 s-1 nm-1)

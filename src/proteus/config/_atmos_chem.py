@@ -29,7 +29,10 @@ class Vulcan:
         Chemical network. Options: CHO, NCHO, SNCHO.
     save_frames : bool
         Save simulation state as plots.
-
+    yconv_cri : float
+        Steady state - max change in mixing ratio over test period
+    slope_cri : float
+        Steady state - max rate of change of mixing ratio over test period
     """
 
     clip_fl: float      = field(default=1e-20)
@@ -41,6 +44,8 @@ class Vulcan:
     network:str         = field(default="SNCHO",
                                 validator=in_(("CHO", "NCHO", "SNCHO")))
     save_frames:bool    = field(default=False)
+    yconv_cri: float    = field(default=0.05)
+    slope_cri: float    = field(default=1e-4)
 
 
 @define
