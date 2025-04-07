@@ -33,7 +33,7 @@ You can configure a grid of your choosing by editing the variables in this file.
 
 ## Usage on clusters
 
-If you are running PROTEUS on a cluster, you may need to use a job scheduler or `tmux` to run the simulations. Check out the [Kapteyn cluster guide](./tips_kapteyn_cluster.md) and [Snellius cluster guide](./tips_snellius_cluster.md) for more information.
+If you are running PROTEUS on a cluster, you may need to use a job scheduler or `tmux` to run the simulations. Check out the [Kapteyn cluster guide](./kapteyn_cluster_guide.md) and [Snellius cluster guide](./snellius_cluster_guide.md) for more information.
 
 
 ## Version checking

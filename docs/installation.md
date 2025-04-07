@@ -50,7 +50,7 @@ Generally it is not recommended to install and use PROTEUS on Windows machines. 
 
 ### Remote clusters
 
-Check out the [Kapteyn cluster guide](./tips_kapteyn_cluster.md) and [Snellius cluster guide](./tips_snellius_cluster.md) for more information.
+Check out the [Kapteyn cluster guide](./kapteyn_cluster_guide.md) and [Snellius cluster guide](./snellius_cluster_guide.md) for more information.
 
 ## Setup a Python environment
 
