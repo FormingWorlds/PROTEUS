@@ -8,7 +8,14 @@ workpath="platon/"
 rm -rf $workpath
 
 # Download
-git clone https://github.com/nichollsh/platon.git $workpath
+echo "Cloning from GitHub"
+if [ "$use_ssh" = true ]; then
+    uri="git@github.com:nichollsh/platon.git"
+else
+    uri="https://github.com/nichollsh/platon.git"
+fi
+echo "    $uri -> $workpath"
+git clone "$uri" "$workpath"
 
 # Change dir and install
 olddir=$(pwd)
