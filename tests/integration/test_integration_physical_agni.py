@@ -45,7 +45,7 @@ def test_agni_atmosphere(agni_run):
     # Keys to load and test
     _out   = out_dir / 'data' / '99002_atm.nc'
     _ref   = ref_dir / '99002_atm.nc'
-    fields = ["t", "p", "z", "fl_U_LW", "fl_D_SW", "fl_cnvct"]
+    fields = ["tmpl", "pl", "zl", "fl_U_LW", "fl_D_SW", "fl_cnvct", "Kzz"]
 
     # Load atmosphere output
     out = read_atmosphere(_out, extra_keys=fields)
