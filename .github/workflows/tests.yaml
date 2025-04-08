@@ -116,6 +116,11 @@ jobs:
         run: |
           ./tools/get_lovepy.sh
 
+      # Get VULCAN
+      - name: Get VULCAN
+        run: |
+          ./tools/get_vulcan.sh
+
       # Setup Python using the version defined in the matrix
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
@@ -132,11 +137,6 @@ jobs:
 
       - name: Install Python dependencies
         run: python -m pip install -e .[develop]
-
-      # Get VULCAN
-      - name: Get VULCAN
-        run: |
-          ./tools/get_vulcan.sh
 
       # Get lookup data for PROTEUS
       - name: Get FWL data from cache

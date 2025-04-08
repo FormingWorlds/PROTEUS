@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+import numpy as np
 from helpers import NEGLECT, PROTEUS_ROOT, df_intersect
 from numpy.testing import assert_allclose
 from pandas.testing import assert_frame_equal
@@ -45,13 +46,15 @@ def test_agni_atmosphere(agni_run):
     # Keys to load and test
     _out   = out_dir / 'data' / '99002_atm.nc'
     _ref   = ref_dir / '99002_atm.nc'
-    fields = ["tmpl", "pl", "zl", "fl_U_LW", "fl_D_SW", "fl_cnvct", "Kzz"]
+    fields = ["tmpl", "pl", "rl", "fl_U_LW", "fl_D_SW", "fl_cnvct", "Kzz"]
 
     # Load atmosphere output
     out = read_atmosphere(_out, extra_keys=fields)
 
     # Compare to config
-    assert len(out["t"]) == agni_run.config.atmos_clim.agni.num_levels*2+1
+    assert len(out["tmpl"]) == agni_run.config.atmos_clim.agni.num_levels+1
+    assert np.all(out["Kzz"] >= 0)
+    assert np.all(out["rl"][:-1] - out["rl"][1:] > 0)
 
     # Load atmosphere reference
     ref = read_atmosphere(_ref, extra_keys=fields)
@@ -63,4 +66,15 @@ def test_agni_atmosphere(agni_run):
 
 
 def test_agni_offchem(agni_run):
-    agni_run.run_offchem()
+
+    # run offline chemistry and load result
+    df = agni_run.run_offchem()
+
+    # Print result, captured if assertions fail
+    print(df)
+
+    # validate output
+    assert df is not None
+    assert "Kzz" in df.columns
+    assert "H2O" in df.columns
+    assert df["H2O"].iloc[0] > 0

@@ -346,7 +346,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
         hdl.write(dedent(vulcan_config))
 
     # Copy config file to VULCAN directory
-    shutil.copyfile(vulcan_fpath, os.path.join(dirs["vulcan"], "vulcan_cfg.py")),
+    shutil.copyfile(vulcan_fpath, os.path.join(dirs["vulcan"], "vulcan_cfg.py"))
 
     # ------------------------------------------------------------
     # RUN VULCAN
@@ -386,8 +386,8 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     result_dict["tmp"] = np.array(result["atm"]["Tco"])
     result_dict["p"]   = np.array(result["atm"]["pco"]) / 10         # convert to Pa
     result_dict["z"]   = np.array(result["atm"]["zco"][:-1]) / 100   # convert to m
-    result_dict["kzz"] = np.array(result["atm"]["Kzz"])
-    result_dict["kzz"] = np.insert(result_dict["kzz"],0,result_dict["kzz"][0])
+    result_dict["Kzz"] = np.array(result["atm"]["Kzz"])
+    result_dict["Kzz"] = np.insert(result_dict["Kzz"],0,result_dict["Kzz"][0])
 
     # read mixing ratios
     result_gas = result["variable"]["species"]
@@ -409,3 +409,18 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
 
     log.info("    done")
     return success
+
+def read_result(outdir:str):
+    """
+    Read VULCAN output file and return as DataFrame.
+    """
+    import pandas as pd
+
+    # Read CSV file
+    csv_file = os.path.join(outdir, "offchem", VULCAN_NAME + ".csv")
+
+    if not os.path.exists(csv_file):
+        log.warning(f"Could not read VULCAN output file {csv_file}")
+        return None
+
+    return pd.read_csv(csv_file, sep=r"\s+")

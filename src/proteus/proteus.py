@@ -501,4 +501,7 @@ class Proteus:
 
         # Run offline chemistry, invoked via CLI
         from proteus.atmos_chem.wrapper import run_offline
-        run_offline(self.directories, self.config, hf_row)
+        result = run_offline(self.directories, self.config, hf_row)
+
+        # return dataframe
+        return result
