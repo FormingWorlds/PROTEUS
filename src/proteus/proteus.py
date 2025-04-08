@@ -27,6 +27,7 @@ from proteus.utils.logs import (
     setup_logger,
 )
 
+
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
 
@@ -95,20 +96,6 @@ class Proteus:
 
         # Import things needed to run PROTEUS
         #    generic things and plotting
-        from proteus.utils.coupler import (
-            UpdatePlots,
-            CreateHelpfileFromDict,
-            CreateLockFile,
-            ExtendHelpfile,
-            PrintCurrentState,
-            WriteHelpfileToCSV,
-            ZeroHelpfileRow,
-            print_citation,
-            print_header,
-            print_module_configuration,
-            print_stoptime,
-            print_system_configuration,
-        )
         #    atmos
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Atmos_t
@@ -133,6 +120,21 @@ class Proteus:
             update_stellar_mass,
             update_stellar_quantities,
             write_spectrum,
+        )
+        from proteus.utils.coupler import (
+            CreateHelpfileFromDict,
+            CreateLockFile,
+            ExtendHelpfile,
+            PrintCurrentState,
+            ReadHelpfileFromCSV,
+            UpdatePlots,
+            WriteHelpfileToCSV,
+            ZeroHelpfileRow,
+            print_citation,
+            print_header,
+            print_module_configuration,
+            print_stoptime,
+            print_system_configuration,
         )
 
         #    lookup and reference data
