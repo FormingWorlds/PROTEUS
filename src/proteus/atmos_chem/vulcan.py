@@ -24,10 +24,25 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 VULCAN_NAME = "recent.vul"
+OUTPUT_NAME = "recent.csv"
 
 def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     """
     Run VULCAN as a subprocess, postprocessing the final PROTEUS output state.
+
+    Parameters
+    ----------
+    dirs : dict
+        Dictionary of directories.
+    config : Config
+        Configuration object.
+    hf_row : dict
+        Dictionary of current helpfile row.
+
+    Returns
+    ----------
+    success : bool
+        Did VULCAN run successfully?
     """
 
     success = True
@@ -392,35 +407,21 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     # read mixing ratios
     result_gas = result["variable"]["species"]
     for i,gas in enumerate(result_gas):
-        result_dict[gas] = np.array(result["variable"]["ymix"][:,i])
+        if "_" not in gas:
+            result_dict[gas] = np.array(result["variable"]["ymix"][:,i])
 
-    # write csv file
-    csv_file = result_file + ".csv"
+    # write csv file, in a human-readable format
+    csv_file = vulcan_out + OUTPUT_NAME
     log.debug(f"Writing to {csv_file}")
     header = ""
     Xarr = []
     for key in result_dict.keys():
         header += str(key).ljust(14, ' ') + "\t"  # compose header
         Xarr.append(list(result_dict[key]))
-    Xarr = np.array(Xarr).T  # transpose such that column=variable
+    Xarr = np.array(Xarr).T  # transpose such that each column is a single variable
     Xarr = Xarr[::-1]        # flip arrays to match AGNI format
     np.savetxt(csv_file, Xarr, delimiter='\t', fmt="%.8e",
                 header=header, comments="")
 
     log.info("    done")
     return success
-
-def read_result(outdir:str):
-    """
-    Read VULCAN output file and return as DataFrame.
-    """
-    import pandas as pd
-
-    # Read CSV file
-    csv_file = os.path.join(outdir, "offchem", VULCAN_NAME + ".csv")
-
-    if not os.path.exists(csv_file):
-        log.warning(f"Could not read VULCAN output file {csv_file}")
-        return None
-
-    return pd.read_csv(csv_file, sep=r"\s+")
