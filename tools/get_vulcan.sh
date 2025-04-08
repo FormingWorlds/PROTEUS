@@ -4,7 +4,6 @@
 echo "Set up VULCAN..."
 
 # Make room
-olddir=$(pwd)
 workpath="VULCAN/"
 rm -rf $workpath
 
@@ -16,5 +15,4 @@ git clone git@github.com:nichollsh/VULCAN.git $workpath
 # make
 
 # Done
-cd $olddir
 echo "Done!"

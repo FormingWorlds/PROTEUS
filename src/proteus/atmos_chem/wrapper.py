@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import logging
 import os
-import pandas as pd
-
 from typing import TYPE_CHECKING
+
+import pandas as pd
 
 log = logging.getLogger("fwl."+__name__)
 
