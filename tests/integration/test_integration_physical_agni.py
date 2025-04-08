@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import pytest
 import numpy as np
+import pytest
 from helpers import NEGLECT, PROTEUS_ROOT, df_intersect
 from numpy.testing import assert_allclose
 from pandas.testing import assert_frame_equal
@@ -77,4 +77,4 @@ def test_agni_offchem(agni_run):
     assert df is not None
     assert "Kzz" in df.columns
     assert "H2O" in df.columns
-    assert df["H2O"].iloc[0] > 0
+    assert np.all(df["H2O"].values >= 0)

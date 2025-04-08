@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
-import pandas as pd
 import os
+import pandas as pd
+
+from typing import TYPE_CHECKING
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -70,4 +71,3 @@ def run_offline(dirs:dict, config:Config, hf_row:dict) -> pd.DataFrame:
         raise ValueError(f"Invalid atmos_chem module: {config.atmos_chem.module}")
 
     return read_result(dirs["output"])
-
