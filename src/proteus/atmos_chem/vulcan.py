@@ -187,6 +187,12 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
             outgas_str += "'%s':%.8e, "%(gas, vmr)
     outgas_str = outgas_str[:-2]
 
+    # Translate initial composition to VULCAN's string
+    if config.atmos_chem.vulcan.ini_mix == "profile":
+        ini_mix = "table"
+    else:
+        ini_mix = "const_mix"
+
     # Surface boundary condition
     if config.atmos_chem.vulcan.fix_surf:
         fixsurf_str = outgas_str
@@ -198,7 +204,6 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     log.debug(f"Background gas is '{background}'")
 
     # Kzz value if constant
-
     if config.atmos_chem.Kzz_const is not None:
         Kzz_src = "const"
         Kzz_val = config.atmos_chem.Kzz_const
@@ -237,7 +242,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
         out_name                = '{VULCAN_NAME}'
 
         # ====== Setting up the elemental abundance ======
-        ini_mix = '{config.atmos_chem.vulcan.ini_mix}'
+        ini_mix = '{ini_mix}'
         const_mix = {{ {outgas_str} }}
         vul_ini = '{vmr_write}'
 

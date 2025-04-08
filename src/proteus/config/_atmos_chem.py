@@ -22,7 +22,7 @@ class Vulcan:
     make_funs : bool
         Make functions from chemical network.
     ini_mix : str
-        Initial mixing ratios. Options: table, const_mix.
+        Initial mixing ratios. Options: profile, outgas.
     fix_surf : bool
         Fix the surface mixing ratios based on outgassed composition.
     network : str
@@ -38,8 +38,8 @@ class Vulcan:
     clip_fl: float      = field(default=1e-20)
     clip_vmr:float      = field(default=1e-10)
     make_funs:bool      = field(default=True)
-    ini_mix:str         = field(default="table",
-                                validator=in_(("table", "const_mix")))
+    ini_mix:str         = field(default="profile",
+                                validator=in_(("profile", "outgas")))
     fix_surf:bool       = field(default=False)
     network:str         = field(default="SNCHO",
                                 validator=in_(("CHO", "NCHO", "SNCHO")))
