@@ -128,3 +128,4 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "vulcan"
     [atmos_chem.vulcan]
         save_frames = true
+        network = "CHO"

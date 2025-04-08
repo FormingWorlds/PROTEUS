@@ -13,21 +13,6 @@ from proteus.utils.constants import (
     vap_list,
     vol_list,
 )
-from proteus.utils.coupler import (
-    CreateHelpfileFromDict,
-    CreateLockFile,
-    ExtendHelpfile,
-    PrintCurrentState,
-    ReadHelpfileFromCSV,
-    SetDirectories,
-    WriteHelpfileToCSV,
-    ZeroHelpfileRow,
-    print_citation,
-    print_header,
-    print_module_configuration,
-    print_stoptime,
-    print_system_configuration,
-)
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -41,8 +26,6 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
-from proteus.utils.terminate import check_termination, print_termination_criteria
-
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
@@ -96,6 +79,7 @@ class Proteus:
 
     def init_directories(self):
         """Initialize directories dictionary"""
+        from proteus.utils.coupler import SetDirectories
         self.directories = SetDirectories(self.config)
 
     def start(self, *, resume: bool = False, offline: bool = False):
@@ -110,7 +94,21 @@ class Proteus:
         """
 
         # Import things needed to run PROTEUS
-        #    plotting
+        #    generic things and plotting
+        from proteus.utils.coupler import (
+            UpdatePlots,
+            CreateHelpfileFromDict,
+            CreateLockFile,
+            ExtendHelpfile,
+            PrintCurrentState,
+            WriteHelpfileToCSV,
+            ZeroHelpfileRow,
+            print_citation,
+            print_header,
+            print_module_configuration,
+            print_stoptime,
+            print_system_configuration,
+        )
         #    atmos
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Atmos_t
@@ -136,10 +134,13 @@ class Proteus:
             update_stellar_quantities,
             write_spectrum,
         )
-        from proteus.utils.coupler import UpdatePlots
 
         #    lookup and reference data
         from proteus.utils.data import download_sufficient_data
+
+        # termination criteria
+        from proteus.utils.terminate import check_termination, print_termination_criteria
+
 
         # First things
         start_time = datetime.now()
@@ -486,6 +487,7 @@ class Proteus:
 
     def run_offchem(self):
         # Load data from helpfile
+        from proteus.utils.coupler import ReadHelpfileFromCSV
         hf_all = ReadHelpfileFromCSV(self.directories["output"])
 
         # Check length
