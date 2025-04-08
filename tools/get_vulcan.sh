@@ -8,7 +8,14 @@ workpath="VULCAN/"
 rm -rf $workpath
 
 # Download
-git clone git@github.com:nichollsh/VULCAN.git $workpath
+echo "Cloning from GitHub"
+if [ "$use_ssh" = true ]; then
+    uri="git@github.com:nichollsh/VULCAN.git"
+else
+    uri="https://github.com/nichollsh/VULCAN.git"
+fi
+echo "    $uri -> $workpath"
+git clone "$uri" "$workpath"
 
 # Compile fastchem
 # cd "$workpath/fastchem_vulcan/"
