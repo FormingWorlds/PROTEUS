@@ -321,7 +321,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
 
         count_min       = 120
         count_max       = int(3E4)
-        atol            = 1.E-2 # Try decreasing this if the solutions are not stable
+        atol            = 5.E-2 # Try decreasing this if the solutions are not stable
         mtol            = 1.E-22
         mtol_conv       = 1.E-20
         pos_cut         = 0
