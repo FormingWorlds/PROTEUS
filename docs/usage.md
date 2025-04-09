@@ -55,3 +55,16 @@ Environment variables
 FWL_DATA: Variable not set.
 RAD_DIR: Variable not set.
 ```
+
+## Offline chemistry, postprocessing of results
+
+It is possible to postprocess the result of a PROTEUS run using the "offline chemistry"
+functionality. This uses the simulation results as an input to the VULCAN kinetics model,
+which captures the additional physics of photochemistry and diffusion.
+
+You can access this functionality with the command line interface:
+
+```console
+proteus offchem --config [cfgfile]
+```
+This will run VULCAN as a subprocess. This command should not be used in batch processing.
