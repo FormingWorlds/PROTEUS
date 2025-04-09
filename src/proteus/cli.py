@@ -152,6 +152,19 @@ def spider():
     from .utils.data import get_spider
     get_spider()
 
+@click.command()
+def doctor():
+    """Diagnose your PROTEUS installation"""
+    from .doctor import doctor_entry
+    doctor_entry()
+
+@click.command()
+@config_option
+def offchem(config_path: Path):
+    """Run offline chemistry on PROTEUS output files"""
+    runner = Proteus(config_path=config_path)
+    runner.run_offchem()
+
 
 cli.add_command(get)
 get.add_command(spectral)
@@ -161,16 +174,8 @@ get.add_command(stellar)
 get.add_command(socrates)
 get.add_command(petsc)
 get.add_command(spider)
-
-
-@click.command()
-def doctor():
-    """Diagnose your PROTEUS installation"""
-    from .doctor import doctor_entry
-    doctor_entry()
-
-
 cli.add_command(doctor)
+cli.add_command(offchem)
 
 if __name__ == '__main__':
     cli()
