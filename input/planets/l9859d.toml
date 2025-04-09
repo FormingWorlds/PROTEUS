@@ -52,9 +52,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     module  = "mors"
     [star.mors]
-        rot_period = 80.9       # rotation percentile
+        rot_period = 80.9       # rotation period
         tracks  = "spada" # evolution tracks: spada | baraffe
-        age_now = 4.94     # Gyr, current age of star used for scaling
+        age_now = 4.40     # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/l-98-59.txt" # stellar spectrum
 
 
@@ -113,7 +113,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 170       # Number of SPIDER grid levels
+        num_levels      = 180       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1e-10      # absolute solver tolerance
         tolerance_rel   = 1e-9      # relative solver tolerance
@@ -135,7 +135,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
-        SH_ratio    = 2.16       # S/H mass ratio in mantle/atmosphere system
+        SH_ratio    = 7.5       # S/H mass ratio in mantle/atmosphere system
 
 [observe]
     synthesis = "platon"

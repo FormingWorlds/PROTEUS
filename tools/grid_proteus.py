@@ -447,7 +447,7 @@ if __name__=='__main__':
     # -----
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "l98d_escape23"
+    folder = "l98d_escape25"
 
     # Base config file
     config = "planets/l9859d.toml"
@@ -470,10 +470,10 @@ if __name__=='__main__':
     pg.set_dimension_direct("Hydrogen", [1000, 3000, 5000, 7000, 9000, 11000])
 
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    pg.set_dimension_direct("Sulfur", [2.5, 5.0, 7.5, 10.0, 12.5])
+    pg.set_dimension_direct("Sulfur", [2, 7, 12])
 
-    # pg.add_dimension("Mass", "struct.mass_tot")
-    # pg.set_dimension_direct("Mass", [2.14, 2.25, 2.39])
+    pg.add_dimension("Mass", "struct.mass_tot")
+    pg.set_dimension_direct("Mass", [1.94, 2.14, 2.39])
 
     # -----
     # Print state of parameter grid
@@ -485,7 +485,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(108, test_run=False)
+    pg.run(95, test_run=False)
 
     # When this script ends, it means that all processes have exited. They may have
     # completed, or alternatively they have been killed or crashed.
