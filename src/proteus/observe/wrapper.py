@@ -9,22 +9,56 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def transit_depth_synth(config:Config, hf_row:dict, outdir:str):
+from proteus.observe.common import OBS_SOURCES
+
+def calc_synthetic_spectra(hf_row:dict, outdir:str, config:Config):
     '''
-    Calculate transit depth spectrum from the simulation.
+    Calculate "perfect" synthetic spectra. Does not model instrumentation.
+
+    Results are saved to files on the disk.
+
+    Parameters
+    ----------
+    hf_row : dict
+        The row of the helpfile for the current time-step.
+    outdir : str
+        The output directory for the PROTEUS run.
+    config : Config
+        PROTEUS config object.
     '''
 
-    log.info("Calculating transit depth spectrum")
     if config.observe.synthesis == "platon":
-        from proteus.observe.platon import transit_depth
-        transit_depth(hf_row, outdir)
+        from proteus.observe.platon import transit_depth, eclipse_depth
+    else:
+        raise ValueError(f"Unknown synthesis module '{config.observe.synthesis}'")
 
-def eclipse_depth_synth(config:Config, hf_row:dict, outdir:str):
+    # First, run synthetic observations
+    for source in OBS_SOURCES:
+        log.debug(f"Observing atmosphere set by '{source}'")
+
+        # Compute transit and eclipse depth spectra
+        transit_depth(hf_row, outdir, config, source)
+        eclipse_depth(hf_row, outdir, config, source)
+
+def run_observe(hf_row:dict, outdir:str, config:Config):
     '''
-    Calculate eclipse depth from the simulation
+    Observe the planet!
+
+    First, run the synthetic observations with "perfect" viewing conditions.
+    These results are processed further by specific telescope simulators.
+
+    Parameters
+    ----------
+    hf_row : dict
+        The row of the helpfile for the current time-step.
+    outdir : str
+        The output directory for the PROTEUS run.
+    config : Config
+        PROTEUS config object.
     '''
 
-    log.info("Calculating eclipse depth spectrum")
-    if config.observe.synthesis == "platon":
-        from proteus.observe.platon import eclipse_depth
-        eclipse_depth(hf_row, outdir)
+    # Synthetic spectra
+    calc_synthetic_spectra(hf_row, outdir, config)
+
+    # Telescope simulators go here
+    # TODO: add telescope simulators

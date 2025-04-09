@@ -205,6 +205,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Temp download files
+data.zip
+
 # Spyder project settings
 .spyderproject
 .spyproject

@@ -108,7 +108,7 @@ class Proteus:
         from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure
 
         #    synthetic observations
-        from proteus.observe.wrapper import eclipse_depth_synth, transit_depth_synth
+        from proteus.observe.wrapper import run_observe
 
         #    orbit and star
         from proteus.orbit.wrapper import init_orbit, run_orbit
@@ -154,6 +154,7 @@ class Proteus:
         if not self.config.params.resume:
             CleanDir(self.directories["output"])
             CleanDir(os.path.join(self.directories["output"], "data"))
+            CleanDir(os.path.join(self.directories["output"], "observe"))
 
         # Get next logfile path
         logindex = 1 + GetCurrentLogfileIndex(self.directories["output"])
@@ -467,10 +468,9 @@ class Proteus:
         log.info("Performing postprocessing steps")
         if self.config.observe.synthesis is not None:
             if self.has_escaped:
-                log.warning("Cannot generate synthetic observations after atmosphere loss")
+                log.warning("Cannot observe planet after complete volatile loss")
             else:
-                transit_depth_synth(self.config, self.hf_row, self.directories["output"])
-                eclipse_depth_synth(self.config, self.hf_row, self.directories["output"])
+                run_observe(self.hf_row, self.directories["output"], self.config)
 
         # Tidy up before exit...
         log.info("Tidy up before exit")

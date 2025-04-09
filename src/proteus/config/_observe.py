@@ -1,10 +1,25 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import in_
+from attrs.validators import ge, gt, lt, in_
 
 from ._converters import none_if_none
 
+
+@define
+class Platon:
+    """Parameters for the PLATON module.
+
+    Attributes
+    ----------
+    downsample: float
+        Downsample binning factor for the spectrum.
+    vmr_clip: float
+        Minimum VMR for a species to be included in the radiative transfer.
+    """
+
+    downsample: float   = field(default=8.0, validator=ge(1))
+    vmr_clip: float     = field(default=1e-8, validator=(gt(0), lt(1)))
 
 @define
 class Observe:
@@ -14,5 +29,7 @@ class Observe:
         Module to use for calculating synthetic spectra.
     """
 
-    synthesis: str = field(validator=in_((None,'platon')),
+    synthesis: str  = field(validator=in_((None,'platon')),
                             converter=none_if_none)
+
+    platon: Platon  = field(factory=Platon)
