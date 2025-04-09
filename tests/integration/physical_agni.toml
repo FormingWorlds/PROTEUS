@@ -126,6 +126,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 [atmos_chem]
     module = "vulcan"
+    when = "offline"
+    
     [atmos_chem.vulcan]
         save_frames = false
         network = "CHO"

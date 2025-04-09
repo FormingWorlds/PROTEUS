@@ -23,7 +23,6 @@ def plot_spectra(output_dir: str, plot_format: str="pdf",
     '''
     Plot the transit and eclipse spectra.
 
-
     Parameters
     ----------
     output_dir : str

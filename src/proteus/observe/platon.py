@@ -29,14 +29,14 @@ def _get_atm_profile(outdir:str, hf_row:dict) -> dict:
         return None
     return atm_arr[-1]
 
-def _get_atm_offchem(outdir:str, hf_row:dict) -> dict:
+def _get_atm_offchem(outdir:str, hf_row:dict, chem_module:str) -> dict:
     '''
     Reads the atmosphere data from the csv file produced by the 'atmos_chem' module.
     '''
 
     # Read file
     from proteus.atmos_chem.wrapper import read_result
-    df = read_result(outdir)
+    df = read_result(outdir, chem_module)
 
     # Check file exists
     if df is None:
@@ -47,7 +47,7 @@ def _get_atm_offchem(outdir:str, hf_row:dict) -> dict:
     df["rl"] = df["rl"] + hf_row["R_int"] # convert height to radius
     return df
 
-def _get_mix(hf_row:dict, atm:dict, source:str, vmr_clip:float) -> tuple:
+def _get_mix(hf_row:dict, atm:dict, source:str, clip_vmr:float) -> tuple:
     '''
     Get the gas abundance profiles and names of included gases.
 
@@ -59,7 +59,7 @@ def _get_mix(hf_row:dict, atm:dict, source:str, vmr_clip:float) -> tuple:
         The atmosphere data as a dictionary.
     source : str
         Method for setting the mixing ratios: "outgas", "profile", or "offchem".
-    vmr_clip : float
+    clip_vmr : float
         Minimum VMR for a species to be included in the radiative transfer.
     '''
 
@@ -92,7 +92,7 @@ def _get_mix(hf_row:dict, atm:dict, source:str, vmr_clip:float) -> tuple:
                 vmr = np.array(atm[gas])
 
         # neglect trace gases
-        if np.amax(vmr) >= vmr_clip:
+        if np.amax(vmr) >= clip_vmr:
             vmr_incl.append(vmr)
             gas_incl.append(gas)
 
@@ -178,7 +178,7 @@ def transit_depth(hf_row:dict, outdir:str, config:Config, source:str):
 
     # Get profile from the required source
     if source == "offchem":
-        atm = _get_atm_offchem(outdir, hf_row)
+        atm = _get_atm_offchem(outdir, hf_row, config.atmos_chem.module)
     elif source in ("outgas", "profile"):
         atm = _get_atm_profile(outdir, hf_row)
 
@@ -189,7 +189,7 @@ def transit_depth(hf_row:dict, outdir:str, config:Config, source:str):
     prs, tmp, rad = _get_ptr(atm)
 
     # Get composition from requested source
-    gases,vmrs = _get_mix(hf_row, atm, source, config.observe.platon.vmr_clip)
+    gases,vmrs = _get_mix(hf_row, atm, source, config.observe.platon.clip_vmr)
 
     # Construct the abundance dictionary
     abund = _construct_abundances(atm, gases, vmrs)
@@ -262,7 +262,7 @@ def eclipse_depth(hf_row:dict, outdir:str, config:Config, source:str):
 
     # Get profile from the required source
     if source == "offchem":
-        atm = _get_atm_offchem(outdir, hf_row)
+        atm = _get_atm_offchem(outdir, hf_row, config.atmos_chem.module)
     elif source in ("outgas", "profile"):
         atm = _get_atm_profile(outdir, hf_row)
 
@@ -275,7 +275,7 @@ def eclipse_depth(hf_row:dict, outdir:str, config:Config, source:str):
     prf = _get_prof(atm)
 
     # Get composition from requested source
-    gases,vmrs = _get_mix(hf_row, atm, source, config.observe.platon.vmr_clip)
+    gases,vmrs = _get_mix(hf_row, atm, source, config.observe.platon.clip_vmr)
 
     # Construct the abundance dictionary
     abund = _construct_abundances(atm, gases, vmrs)

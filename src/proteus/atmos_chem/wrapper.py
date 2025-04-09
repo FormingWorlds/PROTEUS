@@ -12,7 +12,7 @@ log = logging.getLogger("fwl."+__name__)
 if TYPE_CHECKING:
     from proteus.config import Config
 
-def read_result(outdir:str) -> pd.DataFrame:
+def read_result(outdir:str, module:str) -> pd.DataFrame:
     """
     Read offline chemistry model output file and return as DataFrame.
 
@@ -20,6 +20,8 @@ def read_result(outdir:str) -> pd.DataFrame:
     ----------
     outdir : str
         Path to output directory of PROTEUS run.
+    module : str
+        Name of the atmospheric chemistry module used.
 
     Returns
     ----------
@@ -28,7 +30,7 @@ def read_result(outdir:str) -> pd.DataFrame:
     """
 
     # Path to CSV file
-    csv_file = os.path.join(outdir, "offchem", "recent.csv")
+    csv_file = os.path.join(outdir, "offchem", module+".csv")
     if not os.path.exists(csv_file):
         log.warning(f"Could not read offline chemistry output: '{csv_file}'")
         return None
@@ -36,9 +38,11 @@ def read_result(outdir:str) -> pd.DataFrame:
     # Read into DF and return
     return pd.read_csv(csv_file, delimiter=r"\s+")
 
-def run_offline(dirs:dict, config:Config, hf_row:dict) -> pd.DataFrame:
+def run_chemistry(dirs:dict, config:Config, hf_row:dict) -> pd.DataFrame:
     """
     Run atmospheric chemistry model offline, to postprocess final PROTEUS iteration.
+
+    Results are saved to files on the disk, and returned as a DataFrame.
 
     Parameters
     ----------
@@ -55,19 +59,20 @@ def run_offline(dirs:dict, config:Config, hf_row:dict) -> pd.DataFrame:
             DataFrame containing the results of the offline chemistry model.
     """
 
-    log.info("Running offline atmospheric chemistry...")
+    log.info("Running atmospheric chemistry...")
+    module = config.atmos_chem.module
 
-    if not config.atmos_chem.module:
+    if not module:
         # no chemistry
-        log.warning("Cannot run offline chemistry, no module specified")
+        log.warning("Cannot run atmospheric chemistry, no module specified")
         return None
 
-    elif config.atmos_chem.module == 'vulcan':
+    elif module == 'vulcan':
         log.debug("Using VULCAN kinetics model")
         from proteus.atmos_chem.vulcan import run_vulcan_offline
         run_vulcan_offline(dirs, config, hf_row)
 
     else:
-        raise ValueError(f"Invalid atmos_chem module: {config.atmos_chem.module}")
+        raise ValueError(f"Invalid atmos_chem module: {module}")
 
-    return read_result(dirs["output"])
+    return read_result(dirs["output"], module)

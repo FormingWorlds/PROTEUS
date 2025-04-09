@@ -14,12 +14,12 @@ class Platon:
     ----------
     downsample: float
         Downsample binning factor for the spectrum.
-    vmr_clip: float
+    clip_vmr: float
         Minimum VMR for a species to be included in the radiative transfer.
     """
 
     downsample: float   = field(default=8.0, validator=ge(1))
-    vmr_clip: float     = field(default=1e-8, validator=(gt(0), lt(1)))
+    clip_vmr: float     = field(default=1e-8, validator=(gt(0), lt(1)))
 
 @define
 class Observe:

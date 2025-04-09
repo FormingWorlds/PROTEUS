@@ -163,7 +163,7 @@ def doctor():
 def offchem(config_path: Path):
     """Run offline chemistry on PROTEUS output files"""
     runner = Proteus(config_path=config_path)
-    runner.run_offchem()
+    runner.run_offline_chemistry()
 
 
 cli.add_command(get)

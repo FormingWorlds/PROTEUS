@@ -34,7 +34,7 @@ def calc_synthetic_spectra(hf_row:dict, outdir:str, config:Config):
 
     # First, run synthetic observations
     for source in OBS_SOURCES:
-        log.debug(f"Observing atmosphere set by '{source}'")
+        log.debug(f"Synthesising observations for atmosphere set by '{source}'")
 
         # Compute transit and eclipse depth spectra
         transit_depth(hf_row, outdir, config, source)
@@ -56,6 +56,8 @@ def run_observe(hf_row:dict, outdir:str, config:Config):
     config : Config
         PROTEUS config object.
     '''
+
+    log.info("Observing the planet...")
 
     # Synthetic spectra
     calc_synthetic_spectra(hf_row, outdir, config)

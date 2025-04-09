@@ -95,8 +95,7 @@ class Proteus:
         """
 
         # Import things needed to run PROTEUS
-        #    generic things and plotting
-        #    atmos
+        #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Atmos_t
 
@@ -106,6 +105,9 @@ class Proteus:
         #    interior
         from proteus.interior.common import Interior_t
         from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure
+
+        #    atmospheric chemistry
+        from proteus.atmos_chem.wrapper import run_chemistry
 
         #    synthetic observations
         from proteus.observe.wrapper import run_observe
@@ -462,13 +464,21 @@ class Proteus:
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
-        # Postprocessing steps
-        log.info(" ")
-        PrintSeparator()
-        log.info("Performing postprocessing steps")
-        if self.config.observe.synthesis is not None:
+        # Run offline chemistry
+        if self.config.atmos_chem.when == "offline":
+            log.info(" ")
+            PrintSeparator()
             if self.has_escaped:
-                log.warning("Cannot observe planet after complete volatile loss")
+                log.warning("Cannot calculate atmospheric chemistry after dessication")
+            else:
+                run_chemistry(self.directories, self.config, self.hf_row)
+
+        # Synthetic observations
+        if self.config.observe.synthesis is not None:
+            log.info(" ")
+            PrintSeparator()
+            if self.has_escaped:
+                log.warning("Cannot observe planet after dessication")
             else:
                 run_observe(self.hf_row, self.directories["output"], self.config)
 
@@ -500,8 +510,8 @@ class Proteus:
         hf_row = hf_all.iloc[-1].to_dict()
 
         # Run offline chemistry, invoked via CLI
-        from proteus.atmos_chem.wrapper import run_offline
-        result = run_offline(self.directories, self.config, hf_row)
+        from proteus.atmos_chem.wrapper import run_chemistry
+        result = run_chemistry(self.directories, self.config, hf_row)
 
         # return dataframe
         return result
