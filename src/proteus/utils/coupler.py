@@ -17,23 +17,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.plot.cpl_atmosphere import plot_atmosphere
-from proteus.plot.cpl_bolometry import plot_bolometry
-from proteus.plot.cpl_emission import plot_emission
-from proteus.plot.cpl_escape import plot_escape
-from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
-from proteus.plot.cpl_fluxes_global import plot_fluxes_global
-from proteus.plot.cpl_global import plot_global
-from proteus.plot.cpl_interior import plot_interior
-from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
-from proteus.plot.cpl_population import (
-    plot_population_mass_radius,
-    plot_population_time_density,
-)
-from proteus.plot.cpl_sflux import plot_sflux
-from proteus.plot.cpl_sflux_cross import plot_sflux_cross
-from proteus.plot.cpl_spectra import plot_spectra
-from proteus.plot.cpl_structure import plot_structure
 from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -537,16 +520,40 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     Parameters
     ----------
-        dirs : dict
-            Directories dictionary
-        config : Config
-            PROTEUS options dictionary.
-        end : bool
-            Is this function being called at the end of the simulation?
+    hf_all : pd.DataFrame
+        Dataframe containing all the output data
+    dirs : dict
+        Dictionary of directories
+    config : Config
+        PROTEUS configuration object
+    end : bool
+        Is this function being called at the end of the simulation?
+    num_snapshots : int
+        Number of snapshots to include in each plot.
     """
 
+    # Import utilities
     from proteus.atmos_clim.common import read_atmosphere_data
     from proteus.interior.wrapper import read_interior_data
+
+    # Import plotting functions
+    from proteus.plot.cpl_atmosphere import plot_atmosphere
+    from proteus.plot.cpl_bolometry import plot_bolometry
+    from proteus.plot.cpl_emission import plot_emission
+    from proteus.plot.cpl_escape import plot_escape
+    from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
+    from proteus.plot.cpl_fluxes_global import plot_fluxes_global
+    from proteus.plot.cpl_global import plot_global
+    from proteus.plot.cpl_interior import plot_interior
+    from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
+    from proteus.plot.cpl_population import (
+        plot_population_mass_radius,
+        plot_population_time_density,
+    )
+    from proteus.plot.cpl_sflux import plot_sflux
+    from proteus.plot.cpl_sflux_cross import plot_sflux_cross
+    from proteus.plot.cpl_spectra import plot_spectra
+    from proteus.plot.cpl_structure import plot_structure
 
     # Directories
     output_dir = dirs["output"]
