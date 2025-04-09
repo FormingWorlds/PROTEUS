@@ -93,20 +93,20 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 [star]
 
     # Physical parameters
-    mass    = 1.0       # M_sun
-    age_ini = 0.100     # Gyr, model initialisation/start age
+    mass    = 1.0       # stellar mass [M_sun]
+    age_ini = 0.100     # model initialisation age [Gyr]
 
     module  = "mors"
     [star.mors]
-        rot_pcntle = 50.0    # rotation percentile
-        rot_period = "none"
-        tracks  = "spada"   # evolution tracks: spada | baraffe
-        age_now = 4.567     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
+        rot_pcntle = 50.0       # rotation percentile
+        rot_period = "none"     # rotation period [days]
+        tracks  = "spada"       # evolution tracks: spada | baraffe
+        age_now = 4.567         # current age of star [Gyr]
+        spec    = "stellar_spectra/Named/sun.txt" # path to stellar spectrum file
 
     [star.dummy]
-        radius  = 1.0       # R_sun
-        Teff    = 5772.0    # K
+        radius  = 1.0       # Stellar radius [R_sun]
+        Teff    = 5772.0    # Star's brightness temperature [K]
 
 # Orbital system
 [orbit]

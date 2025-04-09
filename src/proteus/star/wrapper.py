@@ -20,6 +20,14 @@ if TYPE_CHECKING:
 def init_star(handler:Proteus):
     '''
     Star-related things to be done when the simulation begins.
+    This includes:
+        - Preparing the stellar model
+        - Reading the present-day stellar spectrum
+
+    Parameters
+    ----------
+        handler : Proteus
+            Proteus object instance
     '''
 
     log.info("Preparing stellar model")
@@ -46,13 +54,27 @@ def init_star(handler:Proteus):
 
                 age_now_Myr = handler.config.star.mors.age_now * 1000 # convert Gyr to Myr
 
-                # creates track data
+                # Get rotation period or percentile (one of these is None)
                 pcntle = handler.config.star.mors.rot_pcntle
                 period = handler.config.star.mors.rot_period
+
+                if pcntle is not None:
+                    # Rotation set by percentile.
+                    #  The reference age must be 1 Myr for consistency with the assumptions
+                    #  withing `mors.star.Percentile()`.
+                    age_rot_Myr = 1.0
+                    period = None
+                else:
+                    # Rotation set by rotation period.
+                    #  The reference age is set by the current age, for which we have
+                    #  measurements of the envelope's rotation period.
+                    age_rot_Myr = age_now_Myr
+
+                # load and fit track data
                 try:
                     handler.stellar_track = mors.Star(Mstar = handler.config.star.mass,
-                                                  Age = age_now_Myr,
-                                                  percentile = pcntle, Prot=period)
+                                                        Age = age_rot_Myr,
+                                                        percentile = pcntle, Prot=period)
                 except Exception as e:
                     UpdateStatusfile(handler.directories, 23)
                     raise e
@@ -164,13 +186,36 @@ def get_new_spectrum(t_star:float, config:Config,
 
 def scale_spectrum_to_toa(fl_arr, sep:float):
     '''
-    Scale stellar fluxes from 1 AU to top of atmosphere
+    Scale stellar fluxes from 1 AU to top of the planet's atmosphere.
+
+    Parameters
+    ----------
+        fl_arr : iterable
+            Stellar fluxes at 1 AU
+        sep : float
+            Planet-star distance, in units of AU
+
+    Returns
+    ----------
+        fl_arr : np.ndarray
+            Incoming stellar radiation scaled to the correct distance.
     '''
     return np.array(fl_arr) * ( (AU / sep)**2 )
 
 def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
     '''
     Write stellar spectrum to file.
+
+    Parameters
+    ----------
+        wl_arr : np.ndarray
+            Wavelength array [nm]
+        fl_arr : np.ndarray
+            Stellar fluxes at 1 AU [erg s-1 cm-2 nm-1]
+        hf_row : dict
+            Current helpfile row
+        output_dir : str
+            Proteus output directory
     '''
 
     log.debug("Writing stellar spectrum to file")
@@ -192,6 +237,20 @@ def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
     )
 
 def update_stellar_quantities(hf_row:dict, config:Config, stellar_track=None):
+    """
+    Wrapper function to update stellar quantities, such as luminosity and radius.
+
+    Modifies hf_row in-place. This function is called during the PROTEUS simulation loop.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Current helpfile row
+        config : Config
+            Proteus configuration object
+        stellar_track
+            Mors stellar track object, if applicable.
+    """
 
     # Update value for star's radius and mass
     log.debug("Update stellar radius and mass")
