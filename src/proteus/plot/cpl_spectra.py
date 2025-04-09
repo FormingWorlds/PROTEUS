@@ -5,11 +5,10 @@ import os
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
-import pandas as pd
 from matplotlib.ticker import FormatStrFormatter
 
-from proteus.utils.plot import get_colour, latexify
 from proteus.observe.common import read_eclipse, read_transit
+from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
     from proteus import Proteus

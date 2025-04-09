@@ -4,12 +4,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from proteus.observe.common import OBS_SOURCES
+
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
-
-from proteus.observe.common import OBS_SOURCES
 
 def calc_synthetic_spectra(hf_row:dict, outdir:str, config:Config):
     '''
@@ -28,7 +28,7 @@ def calc_synthetic_spectra(hf_row:dict, outdir:str, config:Config):
     '''
 
     if config.observe.synthesis == "platon":
-        from proteus.observe.platon import transit_depth, eclipse_depth
+        from proteus.observe.platon import eclipse_depth, transit_depth
     else:
         raise ValueError(f"Unknown synthesis module '{config.observe.synthesis}'")
 
