@@ -228,7 +228,7 @@ def transit_depth(hf_row:dict, outdir:str, config:Config, source:str):
     # write file
     X = np.array(X).T
     log.debug("Writing transit depth spectrum")
-    np.savetxt(get_transit_fpath(outdir, "synthesis", source), X,
+    np.savetxt(get_transit_fpath(outdir, source, "synthesis"), X,
                     delimiter='\t', fmt="%.8e", header=header, comments="")
 
     return X
@@ -311,7 +311,7 @@ def eclipse_depth(hf_row:dict, outdir:str, config:Config, source:str):
     # write file
     X = np.array(X).T
     log.debug("Writing eclipse depth spectra")
-    np.savetxt(get_eclipse_fpath(outdir, "synthesis", source), X,
+    np.savetxt(get_eclipse_fpath(outdir, source, "synthesis"), X,
                     delimiter='\t', fmt="%.8e", header=header, comments="")
 
     return X

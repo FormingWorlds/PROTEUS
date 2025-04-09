@@ -287,8 +287,8 @@ def print_citation(config:Config):
         case _:
             pass
 
-    # Observations module
-    match config.observe.module:
+    # Observations synthesis module
+    match config.observe.synthesis:
         case "platon":
             _cite("Zhang et al. (2024)",
                     "https://doi.org/10.48550/arXiv.2410.22398")
@@ -296,12 +296,13 @@ def print_citation(config:Config):
             pass
 
     # Atmospheric chemistry module
-    match config.atmos_chem.module:
-        case "vulcan":
-            _cite("Tsai et al. (2021)",
-                    "https://doi.org/10.3847/1538-4357/ac29bc")
-        case _:
-            pass
+    if config.atmos_chem.when != "manually":
+        match config.atmos_chem.module:
+            case "vulcan":
+                _cite("Tsai et al. (2021)",
+                        "https://doi.org/10.3847/1538-4357/ac29bc")
+            case _:
+                pass
 
 def print_header():
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
