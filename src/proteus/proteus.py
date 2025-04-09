@@ -469,7 +469,7 @@ class Proteus:
             log.info(" ")
             PrintSeparator()
             if self.has_escaped:
-                log.warning("Cannot calculate atmospheric chemistry after dessication")
+                log.warning("Cannot calculate atmospheric chemistry after desiccation")
             else:
                 run_chemistry(self.directories, self.config, self.hf_row)
 
@@ -478,7 +478,7 @@ class Proteus:
             log.info(" ")
             PrintSeparator()
             if self.has_escaped:
-                log.warning("Cannot observe planet after dessication")
+                log.warning("Cannot observe planet after desiccation")
             else:
                 run_observe(self.hf_row, self.directories["output"], self.config)
 
