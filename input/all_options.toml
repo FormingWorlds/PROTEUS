@@ -284,6 +284,31 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
         CH4  = 0.0
         CO   = 0.0
 
+# Atmospheric chemistry postprocessing
+[atmos_chem]
+
+    # Atmospheric chemistry module
+    module          = "vulcan"
+
+    # Physics flags
+    photo_on        = true      # Enable photochemistry
+    Kzz_on          = true      # Enable eddy diffusion
+    Kzz_const       = "none"    # Constant eddy diffusion coefficient (none => use profile)
+    moldiff_on      = true      # Enable molecular diffusion in the atmosphere
+    updraft_const   = 0.0       # Set constant updraft velocity
+
+    # Vulcan-specific atmospheric chemistry parameters
+    [atmos_chem.vulcan]
+        clip_fl = 1e-20     # Floor on stellar spectrum [erg s-1 cm-2 nm-1]
+        clip_vmr = 1e-10    # Neglect species with vmr < clip_vmr
+        make_funs = true    # Generate reaction network functions
+        ini_mix = "profile" # Initial mixing ratios (profile, outgas)
+        fix_surf = false    # Fixed surface mixing ratios
+        network = "SNCHO"   # Class of chemical network to use (CHO, NCHO, SNCHO)
+        save_frames = true  # Plot frames during iterations
+        yconv_cri = 0.05    # Convergence criterion, value of mixing ratios
+        slope_cri = 0.0001  # Convergence criterion, rate of change of mixing ratios
+
 # Calculate simulated observations
 [observe]
 

@@ -13,21 +13,6 @@ from proteus.utils.constants import (
     vap_list,
     vol_list,
 )
-from proteus.utils.coupler import (
-    CreateHelpfileFromDict,
-    CreateLockFile,
-    ExtendHelpfile,
-    PrintCurrentState,
-    ReadHelpfileFromCSV,
-    SetDirectories,
-    WriteHelpfileToCSV,
-    ZeroHelpfileRow,
-    print_citation,
-    print_header,
-    print_module_configuration,
-    print_stoptime,
-    print_system_configuration,
-)
 from proteus.utils.helper import (
     CleanDir,
     PrintHalfSeparator,
@@ -41,7 +26,6 @@ from proteus.utils.logs import (
     GetLogfilePath,
     setup_logger,
 )
-from proteus.utils.terminate import check_termination, print_termination_criteria
 
 
 class Proteus:
@@ -96,6 +80,7 @@ class Proteus:
 
     def init_directories(self):
         """Initialize directories dictionary"""
+        from proteus.utils.coupler import SetDirectories
         self.directories = SetDirectories(self.config)
 
     def start(self, *, resume: bool = False, offline: bool = False):
@@ -110,7 +95,7 @@ class Proteus:
         """
 
         # Import things needed to run PROTEUS
-        #    plotting
+        #    generic things and plotting
         #    atmos
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Atmos_t
@@ -136,10 +121,28 @@ class Proteus:
             update_stellar_quantities,
             write_spectrum,
         )
-        from proteus.utils.coupler import UpdatePlots
+        from proteus.utils.coupler import (
+            CreateHelpfileFromDict,
+            CreateLockFile,
+            ExtendHelpfile,
+            PrintCurrentState,
+            ReadHelpfileFromCSV,
+            UpdatePlots,
+            WriteHelpfileToCSV,
+            ZeroHelpfileRow,
+            print_citation,
+            print_header,
+            print_module_configuration,
+            print_stoptime,
+            print_system_configuration,
+        )
 
         #    lookup and reference data
         from proteus.utils.data import download_sufficient_data
+
+        # termination criteria
+        from proteus.utils.terminate import check_termination, print_termination_criteria
+
 
         # First things
         start_time = datetime.now()
@@ -483,3 +486,22 @@ class Proteus:
 
         # Print citation
         print_citation(self.config)
+
+    def run_offchem(self):
+        # Load data from helpfile
+        from proteus.utils.coupler import ReadHelpfileFromCSV
+        hf_all = ReadHelpfileFromCSV(self.directories["output"])
+
+        # Check length
+        if len(hf_all) < 1:
+            raise Exception("Simulation is too short to be postprocessed")
+
+        # Get last row
+        hf_row = hf_all.iloc[-1].to_dict()
+
+        # Run offline chemistry, invoked via CLI
+        from proteus.atmos_chem.wrapper import run_offline
+        result = run_offline(self.directories, self.config, hf_row)
+
+        # return dataframe
+        return result

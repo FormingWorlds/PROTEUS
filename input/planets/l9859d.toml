@@ -132,17 +132,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "none"
 
     [delivery.elements]
-        # H_oceans    = 0.0       # Hydrogen inventory in units of equivalent Earth oceans
         H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
-
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
-
         NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
-        # N_ppmw      = 2.01       # Nitrogen inventory in ppmw relative to mantle mass
-
         SH_ratio    = 7.5       # S/H mass ratio in mantle/atmosphere system
-        # S_ppmw      = 0.0     # Sulfur inventory in ppmw relative to mantle mass
 
 [observe]
     synthesis = "platon"
+
+[atmos_chem]
+    module = "none"

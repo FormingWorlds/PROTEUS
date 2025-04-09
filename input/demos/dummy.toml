@@ -116,3 +116,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 [observe]
     synthesis = "none"
+
+[atmos_chem]
+    module = "none"

@@ -459,7 +459,10 @@ def _solve_once(atmos, config:Config):
         jl.AGNI.chemistry.fastchem_eqm_b(atmos, chem_int, True)
 
     # solve fluxes
-    jl.AGNI.energy.calc_fluxes_b(atmos, False, False, False, False, calc_cf=True)
+    jl.AGNI.energy.calc_fluxes_b(atmos, False, True, False, False, calc_cf=True)
+
+    # fill kzz values
+    jl.AGNI.energy.fill_Kzz_b(atmos)
 
     return atmos
 
