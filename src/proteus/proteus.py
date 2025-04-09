@@ -95,6 +95,9 @@ class Proteus:
         """
 
         # Import things needed to run PROTEUS
+        #    atmospheric chemistry
+        from proteus.atmos_chem.wrapper import run_chemistry
+
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Atmos_t
@@ -105,9 +108,6 @@ class Proteus:
         #    interior
         from proteus.interior.common import Interior_t
         from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure
-
-        #    atmospheric chemistry
-        from proteus.atmos_chem.wrapper import run_chemistry
 
         #    synthetic observations
         from proteus.observe.wrapper import run_observe

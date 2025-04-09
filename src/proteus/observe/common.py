@@ -27,4 +27,3 @@ def read_eclipse(outdir:str, source:str, stage:str):
     if not os.path.isfile(fpath):
         raise FileNotFoundError(f"Eclipse spectrum file '{fpath}' not found.")
     return pd.read_csv(fpath, sep=r"\s+")
-
