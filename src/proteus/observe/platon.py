@@ -315,4 +315,3 @@ def eclipse_depth(hf_row:dict, outdir:str, config:Config, source:str):
                     delimiter='\t', fmt="%.8e", header=header, comments="")
 
     return X
-
