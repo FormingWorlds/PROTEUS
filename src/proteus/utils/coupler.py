@@ -196,7 +196,10 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     # Delivery module
     log.info("Delivery module   %s" % config.delivery.module)
 
-    # Observations module
+    # Atmospheric chemistry module
+    log.info("Atmos_chem module %s" % config.atmos_chem.module)
+
+    # Observations synthesis module
     write = "Observe module    %s" % config.observe.synthesis
     if config.observe.synthesis == "platon":
         from platon import __version__ as platon_version
@@ -219,7 +222,7 @@ def print_citation(config:Config):
     # Core PROTEUS papers
     _cite("Lichtenberg et al. (2021)",
             "https://doi.org/10.1029/2020JE006711")
-    _cite("Nicholls et al. (2024a)",
+    _cite("Nicholls et al. (2024)",
             "https://doi.org/10.1029/2024JE008576")
 
     # Atmosphere module
@@ -228,7 +231,7 @@ def print_citation(config:Config):
             _cite("Graham et al. (2021)",
                     "https://doi.org/10.3847/PSJ/ac214c")
         case 'agni':
-            _cite("Nicholls et al. (2024b)",
+            _cite("Nicholls et al. (2025)",
                     "https://doi.org/10.1093/mnras/stae2772")
         case _:
             pass
@@ -247,7 +250,7 @@ def print_citation(config:Config):
     # Outgassing module
     match config.outgas.module:
         case 'calliope':
-            # Covered by Nicholls et al. (2024a,b)
+            # Covered by Nicholls et al. (2024, 2025)
             pass
         case 'atmodeller':
             # _cite("Bower et al. (2025)", "in prep")
@@ -281,6 +284,22 @@ def print_citation(config:Config):
 
     # Delivery module
     match config.delivery.module:
+        case _:
+            pass
+
+    # Observations module
+    match config.observe.module:
+        case "platon":
+            _cite("Zhang et al. (2024)",
+                    "https://doi.org/10.48550/arXiv.2410.22398")
+        case _:
+            pass
+
+    # Atmospheric chemistry module
+    match config.atmos_chem.module:
+        case "vulcan":
+            _cite("Tsai et al. (2021)",
+                    "https://doi.org/10.3847/1538-4357/ac29bc")
         case _:
             pass
 
