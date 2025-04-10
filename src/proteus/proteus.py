@@ -497,7 +497,7 @@ class Proteus:
         # Print citation
         print_citation(self.config)
 
-    def run_offchem(self):
+    def run_offline_chemistry(self):
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
         hf_all = ReadHelpfileFromCSV(self.directories["output"])

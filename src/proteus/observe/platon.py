@@ -35,7 +35,7 @@ def _get_atm_offchem(outdir:str, hf_row:dict, chem_module:str) -> dict:
     '''
 
     # Read file
-    from proteus.atmos_chem.wrapper import read_result
+    from proteus.atmos_chem.common import read_result
     df = read_result(outdir, chem_module)
 
     # Check file exists

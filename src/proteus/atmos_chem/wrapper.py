@@ -1,8 +1,7 @@
-# Generic interior wrapper
+# Generic atmospheric chemistry wrapper
 from __future__ import annotations
 
 import logging
-import os
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -12,31 +11,7 @@ log = logging.getLogger("fwl."+__name__)
 if TYPE_CHECKING:
     from proteus.config import Config
 
-def read_result(outdir:str, module:str) -> pd.DataFrame:
-    """
-    Read offline chemistry model output file and return as DataFrame.
-
-    Parameters
-    ----------
-    outdir : str
-        Path to output directory of PROTEUS run.
-    module : str
-        Name of the atmospheric chemistry module used.
-
-    Returns
-    ----------
-    result : pd.DataFrame
-        DataFrame containing the results of the offline chemistry model.
-    """
-
-    # Path to CSV file
-    csv_file = os.path.join(outdir, "offchem", module+".csv")
-    if not os.path.exists(csv_file):
-        log.warning(f"Could not read offline chemistry output: '{csv_file}'")
-        return None
-
-    # Read into DF and return
-    return pd.read_csv(csv_file, delimiter=r"\s+")
+from proteus.atmos_chem.common import read_result
 
 def run_chemistry(dirs:dict, config:Config, hf_row:dict) -> pd.DataFrame:
     """
