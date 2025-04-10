@@ -122,7 +122,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [observe]
 
     # Module with which to calculate the synthetic observables
-    synthesis = "platon"
+    synthesis = "none"
 
 [atmos_chem]
     module = "vulcan"
