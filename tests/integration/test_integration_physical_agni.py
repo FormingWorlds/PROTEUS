@@ -68,7 +68,7 @@ def test_agni_atmosphere(agni_run):
 def test_agni_offchem(agni_run):
 
     # run offline chemistry and load result
-    df = agni_run.run_offchem()
+    df = agni_run.offline_chemistry()
 
     # Print result, captured if assertions fail
     print(df)
