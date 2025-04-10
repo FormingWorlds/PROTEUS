@@ -119,8 +119,6 @@ def _construct_abundances(atm:dict, gas_incl:list, vmr_incl:list,
         The pressure grid from PLATON [Pa].
     '''
 
-    nlev_l = len(atm["pl"])
-
     # Dictionary of abundances
     # Key: gas name, Value: 2D array of shape (T,P)
     abundances = {}
