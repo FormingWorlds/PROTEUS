@@ -171,10 +171,11 @@ def run_interior(dirs:dict, config:Config,
 
     elif config.interior.module == 'aragog':
         # Import
-        from proteus.interior.aragog import RunAragog
+        from proteus.interior.aragog import AragogRunner
 
         # Run Aragog
-        sim_time, output = RunAragog(config, dirs, hf_row, hf_all, interior_o)
+        sim_time, output = AragogRunner().run(config, dirs, hf_row, hf_all,
+                                              interior_o)
 
     elif config.interior.module == 'dummy':
         # Import
