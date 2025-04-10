@@ -5,6 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+from scipy.interpolate import PchipInterpolator
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -85,6 +86,7 @@ def _get_mix(hf_row:dict, atm:dict, source:str, clip_vmr:float) -> tuple:
             # from NetCDF file
             if key in atm.keys():
                 vmr = np.array(atm[key])
+                vmr = np.append(vmr[0], vmr)
 
         elif source == "offchem":
             # from atmos_chem output file
@@ -98,7 +100,8 @@ def _get_mix(hf_row:dict, atm:dict, source:str, clip_vmr:float) -> tuple:
 
     return gas_incl, vmr_incl
 
-def _construct_abundances(atm:dict, gas_incl:list, vmr_incl:list) -> dict:
+def _construct_abundances(atm:dict, gas_incl:list, vmr_incl:list,
+                          T_grid:list, P_grid:list) -> dict:
     '''
     Constructs the abundance dictionary for PLATON from the gas names and VMR arrays.
 
@@ -109,23 +112,31 @@ def _construct_abundances(atm:dict, gas_incl:list, vmr_incl:list) -> dict:
     gas_incl : list
         The list of gas names.
     vmr_incl : list
-        The list of VMR arrays.
+        The list of VMR profiles.
+    T_grid : list
+        The temperature grid from PLATON [K]
+    P_grid : list
+        The pressure grid from PLATON [Pa].
     '''
 
     nlev_l = len(atm["pl"])
 
+    # Dictionary of abundances
+    # Key: gas name, Value: 2D array of shape (T,P)
     abundances = {}
+
+    # For each included gas...
     for i, gas in enumerate(gas_incl):
 
-        # 1D array of VMR versus height
-        arr_1d = vmr_incl[i]
+        # Create interpolator of VMR versus pressure (height)
+        itp_1d = PchipInterpolator(np.log10(atm["pl"]), vmr_incl[i])
 
-        # Projected onto 2D array of shape (T,P)
-        arr_2d = np.zeros((nlev_l, nlev_l))
-        for j in range(nlev_l):
-            arr_2d[:, j] = arr_1d[:]
-
+        # Projected onto PLATON internal T,P grid
+        arr_2d = np.zeros((len(T_grid), len(P_grid)))
+        for j,p in enumerate(P_grid):
+            arr_2d[:, j] = itp_1d(np.log10(p))
         abundances[gas] = arr_2d
+
     return abundances
 
 def _get_ptr(atm:dict):
@@ -191,15 +202,20 @@ def transit_depth(hf_row:dict, outdir:str, config:Config, source:str):
     # Get composition from requested source
     gases,vmrs = _get_mix(hf_row, atm, source, config.observe.platon.clip_vmr)
 
-    # Construct the abundance dictionary
-    abund = _construct_abundances(atm, gases, vmrs)
-
     # create a TransitDepthCalculator object
     log.debug("Compute transit depth spectra")
     transcalc = TransitDepthCalculator( include_opacities=gases,
                                         include_condensation=False,
                                         method=PLATON_METHOD,
                                         downsample=config.observe.platon.downsample)
+
+    # Get PLATON internal T,P grids
+    # Note: this is not the same as the profile T,P arrays
+    T_grid = transcalc.atm.T_grid
+    P_grid = transcalc.atm.P_grid
+
+    # Construct the abundance dictionary
+    abund = _construct_abundances(atm, gases, vmrs, T_grid, P_grid)
 
     # arguments
     compute_args = {"logZ":None, "CO_ratio":None,
@@ -277,8 +293,6 @@ def eclipse_depth(hf_row:dict, outdir:str, config:Config, source:str):
     # Get composition from requested source
     gases,vmrs = _get_mix(hf_row, atm, source, config.observe.platon.clip_vmr)
 
-    # Construct the abundance dictionary
-    abund = _construct_abundances(atm, gases, vmrs)
 
     # create a EclipseDepthCalculator object
     log.debug("Compute eclipse depth spectrum")
@@ -286,6 +300,14 @@ def eclipse_depth(hf_row:dict, outdir:str, config:Config, source:str):
                                         include_condensation=False,
                                         method=PLATON_METHOD,
                                         downsample=config.observe.platon.downsample)
+
+    # Get PLATON internal T,P grids
+    # Note: this is not the same as the profile T,P arrays
+    T_grid = eclipcalc.atm.T_grid
+    P_grid = eclipcalc.atm.P_grid
+
+    # Construct the abundance dictionary
+    abund = _construct_abundances(atm, gases, vmrs, T_grid, P_grid)
 
     # compute full spectrum
     compute_args = {

@@ -497,7 +497,7 @@ class Proteus:
         # Print citation
         print_citation(self.config)
 
-    def run_offline_chemistry(self):
+    def observe(self):
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
         hf_all = ReadHelpfileFromCSV(self.directories["output"])
@@ -509,9 +509,23 @@ class Proteus:
         # Get last row
         hf_row = hf_all.iloc[-1].to_dict()
 
-        # Run offline chemistry, invoked via CLI
-        from proteus.atmos_chem.wrapper import run_chemistry
-        result = run_chemistry(self.directories, self.config, hf_row)
+        # Run observations pipeline, typically invoked via CLI
+        from proteus.observe.wrapper import run_observe
+        run_observe(hf_row, self.directories["output"], self.config)
 
-        # return dataframe
-        return result
+
+    def offline_chemistry(self):
+        # Load data from helpfile
+        from proteus.utils.coupler import ReadHelpfileFromCSV
+        hf_all = ReadHelpfileFromCSV(self.directories["output"])
+
+        # Check length
+        if len(hf_all) < 1:
+            raise Exception("Simulation is too short to be postprocessed")
+
+        # Get last row
+        hf_row = hf_all.iloc[-1].to_dict()
+
+        # Run offline chemistry, typically invoked via CLI
+        from proteus.atmos_chem.wrapper import run_chemistry
+        run_chemistry(self.directories, self.config, hf_row)

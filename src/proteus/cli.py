@@ -163,8 +163,14 @@ def doctor():
 def offchem(config_path: Path):
     """Run offline chemistry on PROTEUS output files"""
     runner = Proteus(config_path=config_path)
-    runner.run_offline_chemistry()
+    runner.offline_chemistry()
 
+@click.command()
+@config_option
+def observe(config_path: Path):
+    """Run synthetic observations pipeline"""
+    runner = Proteus(config_path=config_path)
+    runner.observe()
 
 cli.add_command(get)
 get.add_command(spectral)
@@ -176,6 +182,7 @@ get.add_command(petsc)
 get.add_command(spider)
 cli.add_command(doctor)
 cli.add_command(offchem)
+cli.add_command(observe)
 
 if __name__ == '__main__':
     cli()
