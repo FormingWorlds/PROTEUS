@@ -6,12 +6,13 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from proteus.atmos_chem.common import read_result
+
 log = logging.getLogger("fwl."+__name__)
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.atmos_chem.common import read_result
 
 def run_chemistry(dirs:dict, config:Config, hf_row:dict) -> pd.DataFrame:
     """

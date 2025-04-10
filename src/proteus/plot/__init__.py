@@ -3,9 +3,9 @@ from __future__ import annotations
 from proteus.plot.cpl_atmosphere import plot_atmosphere_entry
 from proteus.plot.cpl_atmosphere_cbar import plot_atmosphere_cbar_entry
 from proteus.plot.cpl_bolometry import plot_bolometry_entry
+from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere_entry
 from proteus.plot.cpl_emission import plot_emission_entry
 from proteus.plot.cpl_escape import plot_escape_entry
-from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere_entry
 from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere_entry
 from proteus.plot.cpl_fluxes_global import plot_fluxes_global_entry
 from proteus.plot.cpl_global import plot_global_entry

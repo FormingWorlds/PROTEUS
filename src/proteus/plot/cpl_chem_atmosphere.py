@@ -1,21 +1,19 @@
 from __future__ import annotations
 
+import glob
 import logging
 import os
-import glob
 from typing import TYPE_CHECKING
 
-import matplotlib as mpl
-import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import LogLocator
 
-from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.atmos_chem.common import read_result
-from proteus.utils.plot import latexify, get_colour
+from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.utils.constants import vol_list
 from proteus.utils.helper import natural_sort
+from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
     from proteus import Proteus
