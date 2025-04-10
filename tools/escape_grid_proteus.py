@@ -446,11 +446,11 @@ if __name__=='__main__':
     # Define parameter grid
     # -----
 
-    config = "demos/nogit_escape_grids.toml"
-    folder = "escape_grid_April_2025_atm_a_0.1_eps_Pxuv_f02_CH_ratio_Hocean_Mstar_1Msun"
+    config = "demos/escape_grids.toml"
+    folder = "escape_grid_April_2025_Norma2_atm_a_1.0_eps_Pxuv_f02_CH_ratio_Hocean_Mstar_1Msun"
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
-    symlink = "/scratch/users/postolec/Grid_results_Norma1_2nd_April_2025/"+folder
+    symlink = "/scratch/users/postolec/Grid_results_Norma2_9_April_2025/"+folder
     # symlink = None
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
@@ -458,10 +458,10 @@ if __name__=='__main__':
     pg.set_dimension_direct("Module atmosphere", ['agni', 'janus'])
 
     pg.add_dimension("Semi-major axis", "orbit.semimajoraxis")
-    pg.set_dimension_direct("Semi-major axis", [0.1]) #[0.5, 1.0, 1.5]
+    pg.set_dimension_direct("Semi-major axis", [1.0]) #[0.5, 1.0, 1.5]
 
     pg.add_dimension("Escape efficiency factor", "escape.zephyrus.efficiency")
-    pg.set_dimension_direct("Escape efficiency factor", [0, 0.1, 0.5, 1.0]) #[0.1, 0.3, 0.5, 0.7, 1.0])
+    pg.set_dimension_direct("Escape efficiency factor", [0.1, 0.5, 1.0]) #[0.1, 0.3, 0.5, 0.7, 1.0])
 
     pg.add_dimension("Pxuv", "escape.zephyrus.Pxuv")
     pg.set_dimension_direct("Pxuv", [1e-5, 1e-2, 1e2]) #[1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1]
