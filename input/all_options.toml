@@ -287,8 +287,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 # Atmospheric chemistry postprocessing
 [atmos_chem]
 
-    # Atmospheric chemistry module
-    module          = "vulcan"
+    module  = "vulcan"          # Atmospheric chemistry module
+    when    = "manually"        # When to run chemistry (manually, offline, online)
 
     # Physics flags
     photo_on        = true      # Enable photochemistry

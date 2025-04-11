@@ -56,15 +56,33 @@ FWL_DATA: Variable not set.
 RAD_DIR: Variable not set.
 ```
 
-## Offline chemistry, postprocessing of results
+## Postprocessing of results with 'offline' chemistry
 
-It is possible to postprocess the result of a PROTEUS run using the "offline chemistry"
-functionality. This uses the simulation results as an input to the VULCAN kinetics model,
-which captures the additional physics of photochemistry and diffusion.
+PROTEUS includes an "offline" chemistry functionality, which uses results of a simulation
+as an input to the VULCAN chemical kinetics model, capturing the additional physics.
 
-You can access this functionality with the command line interface:
+You can access the offline chemistry via the command line interface:
 
 ```console
 proteus offchem --config [cfgfile]
 ```
 This will run VULCAN as a subprocess. This command should not be used in batch processing.
+
+PROTEUS will perform this step automatically when the configuration variable
+`atmos_chem.when` is set to `"offline"`.
+
+
+## Postprocessing of results with synthetic observations
+
+Similarly to the offline chemistry, PROTEUS results can be postprocessed to generate
+synthetic observations. Transmission and emission spectra are generated based on the
+modelled temperature-pressure profile, as well as atmospheric composition. The composition
+can be set by the output of the offline chemistry calculation (see config file).
+
+You can access the synthetic observation functionality via the command line interface:
+
+```console
+proteus observe --config [cfgfile]
+```
+
+PROTEUS will perform this step automatically if enabled in the configuration file.

@@ -23,8 +23,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-VULCAN_NAME = "recent.vul"
-OUTPUT_NAME = "recent.csv"
+VULCAN_NAME = "vulcan.pkl"
+OUTPUT_NAME = "vulcan.csv"
 
 def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     """

@@ -205,6 +205,11 @@ ENV/
 env.bak/
 venv.bak/
 
+# Platon temp/downloaded files
+data.zip
+transit_depth.png
+eclipse_depth.png
+
 # Spyder project settings
 .spyderproject
 .spyproject

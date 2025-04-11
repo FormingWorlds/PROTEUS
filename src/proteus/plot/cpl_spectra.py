@@ -5,9 +5,9 @@ import os
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
-import pandas as pd
 from matplotlib.ticker import FormatStrFormatter
 
+from proteus.observe.common import read_eclipse, read_transit
 from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
@@ -18,24 +18,29 @@ log = logging.getLogger("fwl."+__name__)
 WAVE_KEY = "Wavelength/um"
 
 def plot_spectra(output_dir: str, plot_format: str="pdf",
-                    wlmin:float=0.5, wlmax:float=20.0):
+                    wlmin:float=0.5, wlmax:float=20.0, source:str="profile"):
+    '''
+    Plot the transit and eclipse spectra.
+
+    Parameters
+    ----------
+    output_dir : str
+        Output directory for the PROTEUS run.
+    plot_format : str
+        Format of the plot.
+    wlmin : float
+        Minimum wavelength to plot.
+    wlmax : float
+        Maximum wavelength to plot.
+    source : str
+        Method for setting atmospheric composition: "outgas", "profile", "offchem".
+    '''
 
     log.info("Plot transit and eclipse spectra")
 
     # read data
-    ftransit = os.path.join(output_dir, "data", "obs_synth_transit.csv")
-    if not os.path.isfile(ftransit):
-        log.warning(f"Could not find file '{ftransit}'")
-        return
-    else:
-        df_transit = pd.read_csv(ftransit)
-
-    feclipse = os.path.join(output_dir, "data", "obs_synth_eclipse.csv")
-    if not os.path.isfile(feclipse):
-        log.warning(f"Could not find file '{feclipse}'")
-        return
-    else:
-        df_eclipse = pd.read_csv(feclipse)
+    df_transit = read_transit(output_dir, "synthesis", source)
+    df_eclipse = read_eclipse(output_dir, "synthesis", source)
 
     # make plot
     lw = 0.3

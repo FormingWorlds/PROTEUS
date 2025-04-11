@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from .wrapper import run_offline
+from .wrapper import run_chemistry
 
 __all__ = [
-    'run_offline',
+    'run_chemistry',
 ]

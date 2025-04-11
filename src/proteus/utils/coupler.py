@@ -17,23 +17,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.plot.cpl_atmosphere import plot_atmosphere
-from proteus.plot.cpl_bolometry import plot_bolometry
-from proteus.plot.cpl_emission import plot_emission
-from proteus.plot.cpl_escape import plot_escape
-from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
-from proteus.plot.cpl_fluxes_global import plot_fluxes_global
-from proteus.plot.cpl_global import plot_global
-from proteus.plot.cpl_interior import plot_interior
-from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
-from proteus.plot.cpl_population import (
-    plot_population_mass_radius,
-    plot_population_time_density,
-)
-from proteus.plot.cpl_sflux import plot_sflux
-from proteus.plot.cpl_sflux_cross import plot_sflux_cross
-from proteus.plot.cpl_spectra import plot_spectra
-from proteus.plot.cpl_structure import plot_structure
 from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -196,7 +179,10 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     # Delivery module
     log.info("Delivery module   %s" % config.delivery.module)
 
-    # Observations module
+    # Atmospheric chemistry module
+    log.info("Atmos_chem module %s" % config.atmos_chem.module)
+
+    # Observations synthesis module
     write = "Observe module    %s" % config.observe.synthesis
     if config.observe.synthesis == "platon":
         from platon import __version__ as platon_version
@@ -219,7 +205,7 @@ def print_citation(config:Config):
     # Core PROTEUS papers
     _cite("Lichtenberg et al. (2021)",
             "https://doi.org/10.1029/2020JE006711")
-    _cite("Nicholls et al. (2024a)",
+    _cite("Nicholls et al. (2024)",
             "https://doi.org/10.1029/2024JE008576")
 
     # Atmosphere module
@@ -228,7 +214,7 @@ def print_citation(config:Config):
             _cite("Graham et al. (2021)",
                     "https://doi.org/10.3847/PSJ/ac214c")
         case 'agni':
-            _cite("Nicholls et al. (2024b)",
+            _cite("Nicholls et al. (2025)",
                     "https://doi.org/10.1093/mnras/stae2772")
         case _:
             pass
@@ -247,7 +233,7 @@ def print_citation(config:Config):
     # Outgassing module
     match config.outgas.module:
         case 'calliope':
-            # Covered by Nicholls et al. (2024a,b)
+            # Covered by Nicholls et al. (2024, 2025)
             pass
         case 'atmodeller':
             # _cite("Bower et al. (2025)", "in prep")
@@ -283,6 +269,23 @@ def print_citation(config:Config):
     match config.delivery.module:
         case _:
             pass
+
+    # Observations synthesis module
+    match config.observe.synthesis:
+        case "platon":
+            _cite("Zhang et al. (2024)",
+                    "https://doi.org/10.48550/arXiv.2410.22398")
+        case _:
+            pass
+
+    # Atmospheric chemistry module
+    if config.atmos_chem.when != "manually":
+        match config.atmos_chem.module:
+            case "vulcan":
+                _cite("Tsai et al. (2021)",
+                        "https://doi.org/10.3847/1538-4357/ac29bc")
+            case _:
+                pass
 
 def print_header():
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
@@ -513,20 +516,46 @@ def ReadHelpfileFromCSV(output_dir:str):
 def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
 
-    Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
+    Calls various plotting functions which show information about the
+    interior/atmosphere's energy and composition.
 
     Parameters
     ----------
-        dirs : dict
-            Directories dictionary
-        config : Config
-            PROTEUS options dictionary.
-        end : bool
-            Is this function being called at the end of the simulation?
+    hf_all : pd.DataFrame
+        Dataframe containing all the output data
+    dirs : dict
+        Dictionary of directories
+    config : Config
+        PROTEUS configuration object
+    end : bool
+        Is this function being called at the end of the simulation?
+    num_snapshots : int
+        Number of snapshots to include in each plot.
     """
 
+    # Import utilities
     from proteus.atmos_clim.common import read_atmosphere_data
     from proteus.interior.wrapper import read_interior_data
+
+    # Import plotting functions
+    from proteus.plot.cpl_atmosphere import plot_atmosphere
+    from proteus.plot.cpl_bolometry import plot_bolometry
+    from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
+    from proteus.plot.cpl_emission import plot_emission
+    from proteus.plot.cpl_escape import plot_escape
+    from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
+    from proteus.plot.cpl_fluxes_global import plot_fluxes_global
+    from proteus.plot.cpl_global import plot_global
+    from proteus.plot.cpl_interior import plot_interior
+    from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
+    from proteus.plot.cpl_population import (
+        plot_population_mass_radius,
+        plot_population_time_density,
+    )
+    from proteus.plot.cpl_sflux import plot_sflux
+    from proteus.plot.cpl_sflux_cross import plot_sflux_cross
+    from proteus.plot.cpl_spectra import plot_spectra
+    from proteus.plot.cpl_structure import plot_structure
 
     # Directories
     output_dir = dirs["output"]
@@ -580,31 +609,43 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_interior(output_dir, plot_times, int_data,
                               config.interior.module, config.params.out.plot_fmt)
 
-    # Temperature profiles
+    # Atmosphere profiles
     if not dummy_atm:
         atm_data = read_atmosphere_data(output_dir, plot_times)
 
-        # Atmosphere only
+        # Atmosphere temperature/height profiles
         plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
-        # Atmosphere and interior, stacked
+        # Atmosphere and interior, stacked radially
         if not dummy_int:
             plot_structure(hf_all, output_dir, plot_times, int_data, atm_data,
                             config.interior.module, config.params.out.plot_fmt)
 
-        # Flux profiles
+        # Energy flux profiles
         if config.atmos_clim.module == 'janus':
             # only do this for JANUS, AGNI does it automatically
             plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
 
     # Only at the end of the simulation
     if end:
+
+        # Global plot with linear-time axis
         plot_global(hf_all,         output_dir, config, logt=False)
+
+        # Energy flux balance
         plot_fluxes_global(hf_all,  output_dir, config)
+
+        # Bolometric observables
         plot_bolometry(hf_all,      output_dir, plot_format=config.params.out.plot_fmt)
 
+        # Spectral observables
         if observed:
             plot_spectra(output_dir, plot_format=config.params.out.plot_fmt)
+
+        # Atmospheric chemistry
+        if not dummy_atm:
+            plot_chem_atmosphere(output_dir, config.atmos_chem.module,
+                                plot_format=config.params.out.plot_fmt)
 
         # Check that the simulation ran for long enough to make useful plots
         if len(hf_all["Time"]) >= 3:
@@ -706,6 +747,3 @@ def SetDirectories(config: Config) -> dict[str, str]:
         dirs[key] = os.path.abspath(dirs[key])+"/"
 
     return dirs
-
-
-# End of file

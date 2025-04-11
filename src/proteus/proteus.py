@@ -95,8 +95,10 @@ class Proteus:
         """
 
         # Import things needed to run PROTEUS
-        #    generic things and plotting
-        #    atmos
+        #    atmospheric chemistry
+        from proteus.atmos_chem.wrapper import run_chemistry
+
+        #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
         from proteus.atmos_clim.common import Atmos_t
 
@@ -108,7 +110,7 @@ class Proteus:
         from proteus.interior.wrapper import get_nlevb, run_interior, solve_structure
 
         #    synthetic observations
-        from proteus.observe.wrapper import eclipse_depth_synth, transit_depth_synth
+        from proteus.observe.wrapper import run_observe
 
         #    orbit and star
         from proteus.orbit.wrapper import init_orbit, run_orbit
@@ -154,6 +156,8 @@ class Proteus:
         if not self.config.params.resume:
             CleanDir(self.directories["output"])
             CleanDir(os.path.join(self.directories["output"], "data"))
+            CleanDir(os.path.join(self.directories["output"], "observe"))
+            CleanDir(os.path.join(self.directories["output"], "offchem"))
 
         # Get next logfile path
         logindex = 1 + GetCurrentLogfileIndex(self.directories["output"])
@@ -461,16 +465,23 @@ class Proteus:
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
-        # Postprocessing steps
-        log.info(" ")
-        PrintSeparator()
-        log.info("Performing postprocessing steps")
-        if self.config.observe.synthesis is not None:
+        # Run offline chemistry
+        if self.config.atmos_chem.when == "offline":
+            log.info(" ")
+            PrintSeparator()
             if self.has_escaped:
-                log.warning("Cannot generate synthetic observations after atmosphere loss")
+                log.warning("Cannot calculate atmospheric chemistry after desiccation")
             else:
-                transit_depth_synth(self.config, self.hf_row, self.directories["output"])
-                eclipse_depth_synth(self.config, self.hf_row, self.directories["output"])
+                run_chemistry(self.directories, self.config, self.hf_row)
+
+        # Synthetic observations
+        if self.config.observe.synthesis is not None:
+            log.info(" ")
+            PrintSeparator()
+            if self.has_escaped:
+                log.warning("Cannot observe planet after desiccation")
+            else:
+                run_observe(self.hf_row, self.directories["output"], self.config)
 
         # Tidy up before exit...
         log.info("Tidy up before exit")
@@ -487,7 +498,7 @@ class Proteus:
         # Print citation
         print_citation(self.config)
 
-    def run_offchem(self):
+    def observe(self):
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
         hf_all = ReadHelpfileFromCSV(self.directories["output"])
@@ -499,9 +510,26 @@ class Proteus:
         # Get last row
         hf_row = hf_all.iloc[-1].to_dict()
 
-        # Run offline chemistry, invoked via CLI
-        from proteus.atmos_chem.wrapper import run_offline
-        result = run_offline(self.directories, self.config, hf_row)
+        # Run observations pipeline, typically invoked via CLI
+        from proteus.observe.wrapper import run_observe
+        run_observe(hf_row, self.directories["output"], self.config)
 
-        # return dataframe
+
+    def offline_chemistry(self):
+        # Load data from helpfile
+        from proteus.utils.coupler import ReadHelpfileFromCSV
+        hf_all = ReadHelpfileFromCSV(self.directories["output"])
+
+        # Check length
+        if len(hf_all) < 1:
+            raise Exception("Simulation is too short to be postprocessed")
+
+        # Get last row
+        hf_row = hf_all.iloc[-1].to_dict()
+
+        # Run offline chemistry, typically invoked via CLI
+        from proteus.atmos_chem.wrapper import run_chemistry
+        result = run_chemistry(self.directories, self.config, hf_row)
+
+        # return the dataframe
         return result

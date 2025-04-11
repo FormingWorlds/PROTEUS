@@ -58,6 +58,8 @@ class AtmosChem:
         Chemistry module
     vulcan : Vulcan
         VULCAN  module options
+    when : str
+        When to run the chemistry module. Options: manually, offline, online.
     photo_on : bool
         Use photochemistry.
     Kzz_on : bool
@@ -75,6 +77,8 @@ class AtmosChem:
 
     vulcan: Vulcan      = field(factory=Vulcan)
 
+    when: str           = field(default="manually",
+                                validator=in_(("manually", "offline", "online")))
     photo_on:bool       = field(default=True)
     Kzz_on:bool         = field(default=True)
     Kzz_const           = field(default=None, converter=none_if_none)
