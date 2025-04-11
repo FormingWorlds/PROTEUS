@@ -7,8 +7,8 @@ from numpy.testing import assert_allclose
 from pandas.testing import assert_frame_equal
 
 from proteus import Proteus
-from proteus.atmos_clim.common import read_ncdf_profile as read_atmosphere
 from proteus.atmos_chem.common import read_result
+from proteus.atmos_clim.common import read_ncdf_profile as read_atmosphere
 from proteus.plot.cpl_atmosphere_cbar import plot_atmosphere_cbar_entry
 from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
 from proteus.utils.coupler import ReadHelpfileFromCSV
