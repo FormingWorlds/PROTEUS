@@ -516,7 +516,8 @@ def ReadHelpfileFromCSV(output_dir:str):
 def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
 
-    Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
+    Calls various plotting functions which show information about the
+    interior/atmosphere's energy and composition.
 
     Parameters
     ----------
@@ -542,6 +543,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     from proteus.plot.cpl_emission import plot_emission
     from proteus.plot.cpl_escape import plot_escape
     from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
+    from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
     from proteus.plot.cpl_fluxes_global import plot_fluxes_global
     from proteus.plot.cpl_global import plot_global
     from proteus.plot.cpl_interior import plot_interior
@@ -607,31 +609,43 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_interior(output_dir, plot_times, int_data,
                               config.interior.module, config.params.out.plot_fmt)
 
-    # Temperature profiles
+    # Atmosphere profiles
     if not dummy_atm:
         atm_data = read_atmosphere_data(output_dir, plot_times)
 
-        # Atmosphere only
+        # Atmosphere temperature/height profiles
         plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
-        # Atmosphere and interior, stacked
+        # Atmosphere and interior, stacked radially
         if not dummy_int:
             plot_structure(hf_all, output_dir, plot_times, int_data, atm_data,
                             config.interior.module, config.params.out.plot_fmt)
 
-        # Flux profiles
+        # Energy flux profiles
         if config.atmos_clim.module == 'janus':
             # only do this for JANUS, AGNI does it automatically
             plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
 
     # Only at the end of the simulation
     if end:
+
+        # Global plot with linear-time axis
         plot_global(hf_all,         output_dir, config, logt=False)
+
+        # Energy flux balance
         plot_fluxes_global(hf_all,  output_dir, config)
+
+        # Bolometric observables
         plot_bolometry(hf_all,      output_dir, plot_format=config.params.out.plot_fmt)
 
+        # Spectral observables
         if observed:
             plot_spectra(output_dir, plot_format=config.params.out.plot_fmt)
+
+        # Atmospheric chemistry
+        if not dummy_atm:
+            plot_chem_atmosphere(output_dir, config.atmos_chem.module,
+                                plot_format=config.params.out.plot_fmt)
 
         # Check that the simulation ran for long enough to make useful plots
         if len(hf_all["Time"]) >= 3:
@@ -733,6 +747,3 @@ def SetDirectories(config: Config) -> dict[str, str]:
         dirs[key] = os.path.abspath(dirs[key])+"/"
 
     return dirs
-
-
-# End of file
