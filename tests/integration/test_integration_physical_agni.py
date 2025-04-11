@@ -8,7 +8,9 @@ from pandas.testing import assert_frame_equal
 
 from proteus import Proteus
 from proteus.atmos_clim.common import read_ncdf_profile as read_atmosphere
+from proteus.atmos_chem.common import read_result
 from proteus.plot.cpl_atmosphere_cbar import plot_atmosphere_cbar_entry
+from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
 out_dir = PROTEUS_ROOT / 'output' / 'physical_agni'
@@ -68,13 +70,23 @@ def test_agni_atmosphere(agni_run):
 def test_agni_offchem(agni_run):
 
     # run offline chemistry and load result
-    df = agni_run.offline_chemistry()
+    df_out = agni_run.offline_chemistry()
 
     # Print result, captured if assertions fail
-    print(df)
+    print(df_out)
 
     # validate output
-    assert df is not None
-    assert "Kzz" in df.columns
-    assert "H2O" in df.columns
-    assert np.all(df["H2O"].values >= 0)
+    assert df_out is not None
+    assert "Kzz" in df_out.columns
+    assert "H2O" in df_out.columns
+    assert np.all(df_out["H2O"].values >= 0)
+
+    # load reference data
+    module = agni_run.config.atmos_chem.module
+    df_ref = read_result(out_dir, module)
+
+    # validate dataframes
+    assert_frame_equal(df_out, df_ref, rtol=5e-3)
+
+    # make plot
+    plot_chem_atmosphere(out_dir, module, plot_format=agni_run.config.params.out.plot_fmt)

@@ -157,6 +157,7 @@ class Proteus:
             CleanDir(self.directories["output"])
             CleanDir(os.path.join(self.directories["output"], "data"))
             CleanDir(os.path.join(self.directories["output"], "observe"))
+            CleanDir(os.path.join(self.directories["output"], "offchem"))
 
         # Get next logfile path
         logindex = 1 + GetCurrentLogfileIndex(self.directories["output"])

@@ -43,7 +43,7 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
     files = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
     nc_fpath = natural_sort(files)[-1]
     atm_profile = read_ncdf_profile(nc_fpath,
-                                    extra_keys=["pl", "tmpl", "x_gas"])
+                                        extra_keys=["pl", "tmpl", "x_gas"])
 
     parr = atm_profile["pl"] * 1e-5  # convert to bar
 
@@ -57,9 +57,9 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
     year = float(nc_fpath.split("/")[-1].split("_atm")[0])
 
     # Read offline chemistry output if available
-    offchem = chem_module and (chem_module != "none")
-    if offchem:
-        atm_offchem = read_result(output_dir, chem_module)
+    atm_offchem = read_result(output_dir, chem_module)
+    has_offchem = atm_offchem is not None
+    if has_offchem:
         atm_offchem.drop(columns=["tmp","p","z","Kzz"], inplace=True)
 
     # init plot
@@ -85,7 +85,7 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
                 ax.plot(xarr, parr[1:], ls = 'dashed', color=col, lw=lw, alpha=al)
 
         # plot from offline chemistry, if available (solid lines)
-        if offchem and (gas in atm_offchem.keys()):
+        if has_offchem and (gas in atm_offchem.keys()):
             xarr = list(atm_offchem[gas].values)
             if np.amax(xarr) >= xmin:
                 vmr = float(xarr[-1])  # prefer vmr from offline chemistry

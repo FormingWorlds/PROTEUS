@@ -540,10 +540,10 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Import plotting functions
     from proteus.plot.cpl_atmosphere import plot_atmosphere
     from proteus.plot.cpl_bolometry import plot_bolometry
+    from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
     from proteus.plot.cpl_emission import plot_emission
     from proteus.plot.cpl_escape import plot_escape
     from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
-    from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
     from proteus.plot.cpl_fluxes_global import plot_fluxes_global
     from proteus.plot.cpl_global import plot_global
     from proteus.plot.cpl_interior import plot_interior
