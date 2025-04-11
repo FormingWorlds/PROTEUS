@@ -25,6 +25,11 @@ def read_result(outdir:str, module:str) -> pd.DataFrame:
         DataFrame containing the results of the offline chemistry model.
     """
 
+    # Module valid?
+    if (module is None) or (module == "none"):
+        log.warning("Cannot read chemistry output for `atmos_chem.module='none'`")
+        return None
+
     # Path to CSV file
     csv_file = os.path.join(outdir, "offchem", module+".csv")
     if not os.path.exists(csv_file):
