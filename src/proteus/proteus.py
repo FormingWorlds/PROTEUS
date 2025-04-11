@@ -528,4 +528,7 @@ class Proteus:
 
         # Run offline chemistry, typically invoked via CLI
         from proteus.atmos_chem.wrapper import run_chemistry
-        run_chemistry(self.directories, self.config, hf_row)
+        result = run_chemistry(self.directories, self.config, hf_row)
+
+        # return the dataframe
+        return result
