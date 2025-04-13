@@ -11,11 +11,13 @@ import scipy.optimize as optimise
 from proteus.interior.common import Interior_t
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
+from proteus.interior.aragog import AragogRunner
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
+AragogRunnerInstance = AragogRunner()
 
 def update_gravity(hf_row:dict):
     '''
@@ -170,11 +172,8 @@ def run_interior(dirs:dict, config:Config,
         sim_time, output = ReadSPIDER(dirs, config, hf_row["R_int"], interior_o)
 
     elif config.interior.module == 'aragog':
-        # Import
-        from proteus.interior.aragog import AragogRunner
-
         # Run Aragog
-        sim_time, output = AragogRunner().run(config, dirs, hf_row, hf_all,
+        sim_time, output = AragogRunnerInstance.run(config, dirs, hf_row, hf_all,
                                               interior_o)
 
     elif config.interior.module == 'dummy':
