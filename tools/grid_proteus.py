@@ -251,6 +251,7 @@ class Grid():
 
 
     def write_config_files(self):
+        """Write config files."""
         # Read base config file
         base_config = read_config_object(self.conf)
 
@@ -445,6 +446,18 @@ class Grid():
 
 
     def slurm_config(self, max_jobs:int=10, test_run:bool=False):
+        """Write slurm config file.
+
+        Uses a slurm job array, see link for more info:
+        https://slurm.schedmd.com/job_array.html
+
+        Parameters
+        ----------
+        max_jobs : int
+            Maximum number of jobs to run
+        test_run : bool
+            If true, generate dummy commands to test the code.
+        """
         log.info("Generating PROTEUS slurm config for accross parameter grid '%s'" % self.name)
 
         log.info("Output path: '%s'" % self.outdir)
