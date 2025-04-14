@@ -2,7 +2,10 @@
 
 ## Stars
 Data taken primarily from MUSCLES and NREL.
-Available options can be found by running `ls $FWL_DATA/stellar_spectra/Named`.
+Available options can be found by running the following command:
+```console
+ls $FWL_DATA/stellar_spectra/Named
+```
 
 ### Epsilon Eridani
 
@@ -115,7 +118,10 @@ Available options can be found by running `ls $FWL_DATA/stellar_spectra/Named`.
 
 ## Surfaces
 Single-scattering albedo data taken from Hammond et al., (2024): [Zenodo data](https://zenodo.org/records/13691960).
-Available options can be found by running the command `ls $FWL_DATA/surface_albedos/Hammond24`
+Available options can be found by running the command:
+```console
+ls $FWL_DATA/surface_albedos/Hammond24
+```
 
 ## Exoplanet population data
 These are obtained from the DACE PlanetS database ([Parc et al., 2024](https://arxiv.org/abs/2406.04311)).
