@@ -39,8 +39,8 @@ def plot_spectra(output_dir: str, plot_format: str="pdf",
     log.info("Plot transit and eclipse spectra")
 
     # read data
-    df_transit = read_transit(output_dir, "synthesis", source)
-    df_eclipse = read_eclipse(output_dir, "synthesis", source)
+    df_transit = read_transit(output_dir, source, "synthesis")
+    df_eclipse = read_eclipse(output_dir, source, "synthesis")
 
     # make plot
     lw = 0.3

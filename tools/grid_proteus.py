@@ -181,9 +181,9 @@ class Grid():
         self.dim_avars[name] = [float(v) for v in self.dim_avars[name]]
 
     # Set a dimension directly
-    def set_dimension_direct(self,name:str,values:list):
+    def set_dimension_direct(self,name:str,values:list,sort:bool=True):
         the_list = list(set(values))  # remove duplicates
-        if not isinstance(values[0],str): # sort if numeric
+        if (not isinstance(values[0],str)) and sort: # sort if numeric
             the_list = sorted(the_list)
         self.dim_avars[name] = the_list
 
@@ -447,7 +447,7 @@ if __name__=='__main__':
     # -----
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "l98d_escape25"
+    folder = "l98d_escape28"
 
     # Base config file
     config = "planets/l9859d.toml"
@@ -464,16 +464,16 @@ if __name__=='__main__':
 
     # Add dimensions to grid...
     pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_direct("Redox state", [-4.5, -4.0, -3.5, -3, -2.5, -2.0, -1.5])
+    pg.set_dimension_direct("Redox state", [-4.5, -4.0, -3.5, -3, -2.5, -2.0, -1.5, -1.0])
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_direct("Hydrogen", [1000, 3000, 5000, 7000, 9000, 11000])
+    pg.set_dimension_direct("Hydrogen", [16000, 13000, 10000, 7000, 4000, 1000], sort=False)
 
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
     pg.set_dimension_direct("Sulfur", [2, 7, 12])
 
     pg.add_dimension("Mass", "struct.mass_tot")
-    pg.set_dimension_direct("Mass", [1.94, 2.14, 2.39])
+    pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
 
     # -----
     # Print state of parameter grid
@@ -485,7 +485,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(95, test_run=False)
+    pg.run(108, test_run=False)
 
     # When this script ends, it means that all processes have exited. They may have
     # completed, or alternatively they have been killed or crashed.
