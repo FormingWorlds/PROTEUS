@@ -12,11 +12,12 @@ socrates_star.txt
 radiation_code.lock
 screenlog.0
 
-# Output folders
+# Output files
 old/
 output/*
 output.link
 output
+slurm*.out
 
 # Development installations
 fwl_data
@@ -206,7 +207,7 @@ env.bak/
 venv.bak/
 
 # Platon temp/downloaded files
-data.zip
+*.zip
 transit_depth.png
 eclipse_depth.png
 

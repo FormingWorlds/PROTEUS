@@ -11,8 +11,7 @@ connectivity: [see instructions here](https://wiki.hpc.rug.nl/habrok/connecting_
 
 ## Configure environment
 
-Once you are connected to one of the interactive servers, use these steps to configure
-your environment for running PROTEUS.
+Once you are connected to one of the interactive servers, use these steps to configure your environment **before running PROTEUS**.
 
 1. Add the appropriate modules to your shell RC file:
     ```console
@@ -24,30 +23,25 @@ your environment for running PROTEUS.
 
 3. You can now follow the usual installation steps [here](./installation.md).
 
-### Submitting and Monitoring Jobs
-- To submit your script, run: ```condor_submit name_of_your_script.submit```
+## File system partitioning
+
+The standard size of your home folder is 50 GB. This is sufficient for installing PROTEUS and its submodules, but not for storing output data.
+You should store output data in your personal folder within `/scratch/`, which is accessible to the compute nodes.
+Since `/scratch/` is frequently emptied, you should then copy important data to `/projects/` for long term storage.
+
+See the [information on the HPC wiki](https://wiki.hpc.rug.nl/habrok/job_management/partitions) for details.
+
+## Submitting and Monitoring Jobs
+
+There is information on the HPC wiki on [how to submit jobs](https://wiki.hpc.rug.nl/habrok/job_management/scheduling_system) to the Habrok cluster.
+
+- To submit your script, run:
     ```console
-    condor_submit name_of_your_script.submit
+    sbatch name_of_your_script.sh
     ```
 
-- To check the status of your job, use:
+- To check the status of your jobs, use:
     ```console
-    condor_q
+    squeue -u $USER
     ```
-or
-    ```console
-    condor_q -better-analyze
-    ```
-The second command provides a more detailed job status analysis.
 
-- Another useful command is
-    ```console
-    condor_status
-    ```
-This displays the jobs currently running on Condormaster, including both your jobs and those of other users.
-
-### Exiting Condormaster
-- To exit Condormaster and return to Norma1/Norma2, run:
-    ```console
-    exit
-    ```
