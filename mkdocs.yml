@@ -17,12 +17,13 @@ nav:
   - Code of Conduct: CODE_OF_CONDUCT.md
   - Source code: https://github.com/FormingWorlds/PROTEUS
   - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
-  - 🌟 MORS: https://fwl-proteus.readthedocs.io/projects/mors/
-  - 🌥 JANUS: https://fwl-proteus.readthedocs.io/projects/janus/
-  - 💨 ZEPHYRUS: https://github.com/FormingWorlds/ZEPHYRUS/
-  - ⚡️ AGNI: https://nichollsh.github.io/AGNI/dev/
-  - 🌒 LovePy: https://github.com/nichollsh/lovepy
-  - 🧪 VULCAN: https://github.com/nichollsh/VULCAN
+  - 🔗 MORS: https://fwl-proteus.readthedocs.io/projects/mors/
+  - 🔗 JANUS: https://fwl-proteus.readthedocs.io/projects/janus/
+  - 🔗 ZEPHYRUS: https://github.com/FormingWorlds/ZEPHYRUS/
+  - 🔗 CALLIOPE: https://github.com/FormingWorlds/CALLIOPE
+  - 🔗 AGNI: https://nichollsh.github.io/AGNI/dev/
+  - 🔗 LovePy: https://github.com/nichollsh/lovepy
+  - 🔗 VULCAN: https://github.com/nichollsh/VULCAN
 
 theme:
   name: material
