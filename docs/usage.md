@@ -31,9 +31,38 @@ set of parameters. This can be done using the script `tools/grid_proteus.py`.
 
 You can configure a grid of your choosing by editing the variables in this file.
 
-## Usage on clusters
+## Running PROTEUS on remote machines / servers
 
-If you are running PROTEUS on a cluster, you may need to use a job scheduler or `tmux` to run the simulations. Check out the [Kapteyn cluster guide](./kapteyn_cluster_guide.md) and [Snellius cluster guide](./snellius_cluster_guide.md) for more information.
+Using PROTEUS on a remote machine (e.g. Habrok, the Kapteyn cluster, etc.) is best done through tmux.
+Tmux allows you to leave programs running in the 'background' for long periods of time.
+You can find detailed documentation [here](https://tmuxcheatsheet.com/).
+
+- For example, you can start a new tmux session with the command:
+    ```console
+    tmux new -s <session_name>
+    ```
+- Inside the tmux session, start your simulation:
+    ```console
+    proteus start --config input/all_options.toml
+    ```
+- To detach from the session, press `Ctrl + b`, then `d`. You can reattach to the session later with:
+    ```console
+    tmux attach -t <session_name>
+    ```
+- To list all tmux sessions, use:
+    ```console
+    tmux ls
+    ```
+- To kill a tmux session, use:
+    ```console
+    tmux kill-session -t <session_name>
+    ```
+- The above started simulation will store the output data in the PROTEUS `output/` folder. You can check the progress of the simulation by looking at the log files in this folder. The log files are named according to the simulation name and contain information about the simulation's progress and any errors that may have occurred.
+- If you want to check if you are using CPUs on the cluster, use the command:
+    ```console
+    htop
+    ```
+- Press `Ctrl + c` to exit the `htop` command.
 
 
 ## Version checking
