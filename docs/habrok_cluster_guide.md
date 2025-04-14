@@ -25,9 +25,11 @@ Host habrok1
 
 Once you are connected to one of the interactive servers, use these steps to configure your environment **before running PROTEUS**.
 
-1. Add the appropriate modules to your shell RC file:
+1. We need to configure the correct modules. Run the following commands to set your bashrc file:
     ```console
     echo "module purge" >>  "$HOME/.bashrc"
+    ```
+    ```console
     echo "module load netCDF-Fortran"  >>  "$HOME/.bashrc"
     ```
 
