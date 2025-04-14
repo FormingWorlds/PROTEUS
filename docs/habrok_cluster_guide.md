@@ -48,6 +48,7 @@ See the [information on the HPC wiki](https://wiki.hpc.rug.nl/habrok/job_managem
 The best way to organise this is to create a symbolic link from the PROTEUS output folder to `/scratch`.
 Once you have installed PROTEUS, this can be done by running the following commands inside your PROTEUS folder:
 ```console
+rm -rf output
 mkdir /scratch/$USER/proteus_output
 ln -sf /scratch/$USER/proteus_output output
 ```
