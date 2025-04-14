@@ -47,8 +47,8 @@ class Mors:
     spec: str
         Name of file containing stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars) for potential file names.
     """
-    age_now: float  = field(default=None)
-    spec: str       = field(default=None)
+    age_now         = field(default=None)
+    spec            = field(default=None)
     rot_pcntle      = field(default=None, converter=none_if_none)
     rot_period      = field(default=None, converter=none_if_none)
     tracks: str     = field(default='spada', validator=in_(('spada', 'baraffe')))
