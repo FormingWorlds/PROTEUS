@@ -38,4 +38,3 @@ sudo apt install libnetcdff-dev gfortran
 ## Microsoft Windows
 
 Generally it is not recommended to install and use PROTEUS on Windows machines. The remainder of the installation instructions are written with Linux and Mac OS in mind. However, for attempting that, check out the section on Windows instructions in [VS Code Instructions Kapteyn Cluster](https://docs.google.com/document/d/1Hm1J8x9CQ10dnyDJo1iohZHU6go_hxiUR7gTD2csv-M/edit?usp=sharing).
-
