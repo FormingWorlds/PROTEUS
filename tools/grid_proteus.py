@@ -472,8 +472,8 @@ if __name__=='__main__':
     # pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
     # pg.set_dimension_direct("Sulfur", [2, 7, 12])
 
-    # pg.add_dimension("Mass", "struct.mass_tot")
-    # pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
+    pg.add_dimension("Mass", "struct.mass_tot")
+    pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
 
     # -----
     # Print state of parameter grid
@@ -485,7 +485,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(36, test_run=False)
+    pg.run(80, test_run=False)
 
     # When this script ends, it means that all processes have exited. They may have
     # completed, or alternatively they have been killed or crashed.
