@@ -13,10 +13,29 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     ssh-keygen -t rsa
     ```
     Press Enter to accept the default file location and enter a passphrase if desired. This will create a public/private key pair in `~/.ssh/`.
+
     Then, copy the public key to the Kapteyn cluster:
     ```console
     ssh-copy-id -i ~/.ssh/id_rsa.pub <username>@kapteyn.astro.rug.nl
     ```
+
+    Finally, add the following entry in your `~/.ssh/config` file, making sure to add your username where appropriate.
+    ```
+    Host kapteyngateway
+        HostName kapteyn.astro.rug.nl
+        User YOUR_USERNAME_HERE
+        IdentityFile ~/.ssh/id_rsa
+        ForwardAgent yes
+
+    Host norma2
+        HostName norma2
+        User YOUR_USERNAME_HERE
+        IdentityFile ~/.ssh/id_rsa
+        ProxyJump kapteyngateway
+        ServerAliveInterval 120
+        ServerAliveCountMax 60
+    ```
+
     You can now log in without entering your password.
 
 2. Connect to the cluster via SSH. Use `norma2` whenever possible.

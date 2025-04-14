@@ -5,8 +5,21 @@
 You will need a RUG account, with an account name (e.g. `p321401`) and two-factor
 Follow [the instructions](https://wiki.hpc.rug.nl/habrok/connecting_to_the_system/connecting) on the online documentation.
 
-We recommend that you also add your public ssh key to Habrok. Doing so allows password-free
-connectivity: [see instructions here](https://wiki.hpc.rug.nl/habrok/connecting_to_the_system/ssh_key_login).
+We recommend that you also add your public ssh key to Habrok. Doing so allows password-free connectivity:
+```console
+ssh-keygen -t rsa
+ssh-copy-id -i ~/.ssh/id_rsa.pub YOUR_USERNAME@login1.hb.hpc.rug.nl
+```
+
+Once you have added your SSH key to Habrok, modify the entry below and insert it into your `~/.ssh/config` file
+```
+Host habrok1
+    HostName interactive1.hb.hpc.rug.nl
+    User YOUR_USERNAME
+    IdentityFile ~/.ssh/id_rsa
+    ServerAliveInterval 120
+    ServerAliveCountMax 60
+```
 
 ## Configure environment
 

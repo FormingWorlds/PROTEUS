@@ -447,7 +447,7 @@ if __name__=='__main__':
     # -----
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "l98d_escape28"
+    folder = "scratch/l98d_habrok"
 
     # Base config file
     config = "planets/l9859d.toml"
@@ -456,8 +456,8 @@ if __name__=='__main__':
     # Set this string to have the output files created at an alternative location. The
     #   output 'folder' in `PROTEUS/output/` will then by symbolically linked to this
     #   alternative location. Useful for when data should be saved on a storage server.
-    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
-    # symlink = None
+    # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
+    symlink = None
 
     # Initialise grid object
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
@@ -469,11 +469,11 @@ if __name__=='__main__':
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
     pg.set_dimension_direct("Hydrogen", [16000, 13000, 10000, 7000, 4000, 1000], sort=False)
 
-    pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    pg.set_dimension_direct("Sulfur", [2, 7, 12])
+    # pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
+    # pg.set_dimension_direct("Sulfur", [2, 7, 12])
 
-    pg.add_dimension("Mass", "struct.mass_tot")
-    pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
+    # pg.add_dimension("Mass", "struct.mass_tot")
+    # pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
 
     # -----
     # Print state of parameter grid
@@ -485,7 +485,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(108, test_run=False)
+    pg.run(36, test_run=False)
 
     # When this script ends, it means that all processes have exited. They may have
     # completed, or alternatively they have been killed or crashed.
