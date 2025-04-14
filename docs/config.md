@@ -161,4 +161,3 @@ for more information how to work with attrs.
       show_root_heading: False
       show_root_toc_entry: False
       members_order: source
-
