@@ -4,7 +4,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 [params]
     [params.out]
-        path        = "scratch/dummy"
+        path        = "dummy"
         logging     = "ERROR"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         write_mod   = 50      # Write CSV frequency, 0: wait until completion | n: every n iterations
