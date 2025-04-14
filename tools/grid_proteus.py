@@ -4,17 +4,14 @@
 
 from __future__ import annotations
 
-import gc
 import itertools
 import logging
-import multiprocessing
 import os
 import shutil
-import subprocess
 import sys
 import time
 from copy import deepcopy
-from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 
@@ -249,42 +246,12 @@ class Grid():
         log.info(" ")
 
 
-    # Run PROTEUS across this Grid
-    def run(self,num_threads:int,test_run:bool=False):
+    def slurm_config(self, max_jobs:int=10, test_run:bool=False):
         log.info("Running PROTEUS across parameter grid '%s'" % self.name)
 
-        time_start = datetime.now()
         log.info("Output path: '%s'" % self.outdir)
         if self.using_symlink:
             log.info("Symlink target: '%s'" % self.symlink_dir)
-
-        check_interval = 15.0 # seconds
-        print_interval = 8   # step interval at which to print (8*15 seconds = 2 minutes)
-
-        # do not need more threads than there are points
-        num_threads = min(num_threads, self.size)
-
-        # do not use more threads than are available
-        num_threads = min(num_threads, os.cpu_count())
-
-        # Print warning
-        if not test_run:
-            log.info(" ")
-            log.info("Confirm that the grid above is what you had intended.")
-            log.info("There are %d grid points. There will be %d threads." % (self.size, num_threads))
-            log.info("Do not close this program! It must stay alive to manage each of the subproceses.")
-            log.info(" ")
-
-            log.info("Sleeping...")
-            for i in range(7,0,-1):
-                log.info("    %d " % i)
-                time.sleep(1.0)
-            log.info(" ")
-
-        # Print more often if this is a test
-        else:
-            check_interval = 1.0
-            print_interval = 1
 
         # Read base config file
         base_config = read_config_object(self.conf)
@@ -297,7 +264,8 @@ class Grid():
             thisconf:Config = deepcopy(base_config)
 
             # Set case dir relative to PROTEUS/output/
-            thisconf.params.out.path = self.name+"/case_%05d/"%i
+            path = f"{self.name}/case_{i:05d}"
+            thisconf.params.out.path = path
 
             # Set other parameters
             for key in gp.keys():
@@ -321,143 +289,71 @@ class Grid():
             thisconf.write(self._get_tmpcfg(i))
             os.sync()
 
-        gc.collect()
+        commands = []
 
-        # Thread targget
-        def _thread_target(cfg_path):
-            if test_run:
-                command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
-            else:
-                command = ["proteus","start","--offline","--config",cfg_path]
-            subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
-
-        # Setup threads
-        threads = []
         for i in range(self.size):
             cfg_path = self._get_tmpcfg(i)
 
-            # Check cfg exists
-            cfgexists = False
-            waitfor   = 4.0
-            for _ in range(int(waitfor*100)):  # do n=100*wait_for checks
-                time.sleep(0.01)
-                if os.path.exists(cfg_path):
-                    cfgexists = True
-                    break
-            if not cfgexists:
-               raise Exception("Config file could not be found for case %d!" % i)
+            if not os.path.exists(cfg_path):
+               raise IOError(f"Config file could not be found for case {i}!")
 
-            # Add process
-            threads.append(multiprocessing.Process(target=_thread_target, args=(cfg_path,)))
-
-        # Track statuses
-        # 0: queued
-        # 1: running
-        # 2: done
-        status = np.zeros(self.size)
-        done = False   # All done?
-        log.info("Starting process manager (%d grid points, %d threads)" % (self.size,num_threads))
-        step = 0
-        while not done:
-            # Check alive
-            n_run = 0
-            for i in range(self.size):
-                # if not marked as running, don't do anything here
-                if status[i] != 1:
-                    continue
-
-                # marked as running
-                if threads[i].is_alive():
-                    # it is still going
-                    status[i] = 1
-                    n_run += 1
-                else:
-                    # it has completed
-                    if status[i] == 1:
-                        status[i] = 2
-                        threads[i].join()   # make everything wait until it's completed
-                        threads[i].close()  # release resources
-                        gc.collect()
-
-            # Print info
-            count_que = np.count_nonzero(status == 0)
-            count_run = np.count_nonzero(status == 1)
-            count_end = np.count_nonzero(status == 2)
-            if (step%print_interval == 0):
-                log.info("%3d queued (%5.1f%%), %3d running (%5.1f%%), %3d exited (%5.1f%%)" % (
-                        count_que, 100.0*count_que/self.size,
-                        count_run, 100.0*count_run/self.size,
-                        count_end, 100.0*count_end/self.size
-                        )
-                    )
-
-            # Done?
-            if np.count_nonzero(status == 2) == self.size:
-                done = True
-                log.info("All cases have exited")
-                break
-
-            # Start new?
-            start_new = np.count_nonzero(status == 1) < num_threads
-            if start_new:
-                for i in range(self.size):
-                    if status[i] == 0:
-                        status[i] = 1
-                        start_new = False
-                        threads[i].start()
-                        break
-
-            # Short sleeps while doing initial dispatch
-            if step < num_threads:
-                time.sleep(2.0)
+            if test_run:
+                command = f'/bin/echo Dummmy output. Config file is at {cfg_path}'
             else:
-                time.sleep(check_interval)
-            step += 1
-            # / end while loop
+                command = f"proteus start --offline --config {cfg_path}"
 
-        # Check all cases' status files
-        for i in range(self.size):
-            # find file
-            status_path = os.path.join(self.outdir, "case_%05d"%i, "status")
-            if not os.path.exists(status_path):
-                raise Exception("Cannot find status file at '%s'" % status_path)
+            commands.append(command)
 
-            # read file
-            with open(status_path,'r') as hdl:
-                lines = hdl.readlines()
-            this_stat = int(lines[0])
+        scripts = '\n'.join(f'    {cmd}' for cmd in commands)
 
-            # if still marked as running, it must have died at some point
-            if ( 0 <= this_stat <= 9 ):
-                log.warning("Case %05d has status=running but it is not alive. Setting status=died."%i)
-                with open(status_path,'w') as hdl:
-                    hdl.write("25\n")
-                    hdl.write("Error (died)\n")
+        array_size = len(commands)
 
-        time_end = datetime.now()
-        log.info("All processes finished at: "+str(time_end.strftime('%Y-%m-%d_%H:%M:%S')))
-        log.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
+        logs_dir = Path(self.outdir)
+
+        out_file = logs_dir / 'proteus-%A_%a.out'
+        err_file = logs_dir / 'proteus-%A_%a.err'
+
+        string = f"""#!/bin/sh
+#SBATCH -J proteus.grid.array
+#SBATCH -i /dev/null
+#SBATCH -o {out_file}
+#SBATCH -e {err_file}
+#SBATCH --array=0-{array_size-1}%{max_jobs}
+
+scripts=(
+{scripts}
+)
+i=$SLURM_ARRAY_TASK_ID
+while [ $i -le {len(commands)} ]; do
+    echo executing ${{scripts[$i]}}
+    ${{scripts[$i]}} || true
+    i=$((i+{array_size}))
+done
+"""
+
+        fname = 'proteus_slurm_array.sh'
+        with open(fname, 'w') as f:
+            f.write(string)
+
+        log.info('Slurm file written to %s', fname)
+        log.info('Submit to Slurm using `sbatch %s`', fname)
+
 
 if __name__=='__main__':
     print("Start GridPROTEUS")
 
-    # -----
-    # Define parameter grid
-    # -----
-
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "l98d_escape28"
+    folder = "grid_test"
 
     # Base config file
-    config = "planets/l9859d.toml"
+    config = "demos/dummy.toml"
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
 
     # Set this string to have the output files created at an alternative location. The
     #   output 'folder' in `PROTEUS/output/` will then by symbolically linked to this
     #   alternative location. Useful for when data should be saved on a storage server.
-    symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
-    # symlink = None
+    # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
+    symlink = None
 
     # Initialise grid object
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
@@ -475,19 +371,8 @@ if __name__=='__main__':
     pg.add_dimension("Mass", "struct.mass_tot")
     pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
 
-    # -----
-    # Print state of parameter grid
-    # -----
     pg.print_setup()
     pg.generate()
     pg.print_grid()
 
-    # -----
-    # Start PROTEUS processes
-    # -----
-    pg.run(108, test_run=False)
-
-    # When this script ends, it means that all processes have exited. They may have
-    # completed, or alternatively they have been killed or crashed.
-    print("Exit GridPROTEUS")
-    exit(0)
+    pg.slurm_config(max_jobs=10, test_run=False)
