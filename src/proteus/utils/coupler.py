@@ -290,7 +290,7 @@ def print_citation(config:Config):
 def print_header():
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     log.info("                   PROTEUS framework                   ")
-    log.info("            Copyright (C) 2025 Forming Worlds          ")
+    log.info("            Copyright (C) %4d Forming Worlds          "%(datetime.now().year))
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     log.info(" ")
 
