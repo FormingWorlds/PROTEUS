@@ -19,6 +19,11 @@ class Elements:
         Absolute hydrogen inventory, units of equivalent Earth oceans.
     H_ppmw: float
         Relative hydrogen inventory, ppmw relative to mantle mass.
+    
+    use_metallicity: bool
+    	whether or not to specify the elemental abundances in terms of solar metallicity  
+    metallicity: float
+    	Metallicity relative to solar metallicity
 
     CH_ratio: float
         Carbon metallicity. C/H mass ratio in combined mantle+atmosphere system.
@@ -35,9 +40,12 @@ class Elements:
     S_ppmw: float
         Absolute sulfur inventory, ppmw relative to mantle mass.
     """
+    use_metallicity: float
+    metallicity: float = field(default=1000.0, validator=ge(0))
+    
     H_oceans: float = field(default=0.0, validator=ge(0))
     H_ppmw: float   = field(default=0.0, validator=ge(0))
-
+    
     CH_ratio: float = field(default=0.0, validator=ge(0))
     C_ppmw: float   = field(default=0.0, validator=ge(0))
 

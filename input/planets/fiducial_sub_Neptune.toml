@@ -87,10 +87,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [star]
 
     # Physical parameters
-    mass    = 0.495      # M_sun
+    mass    = 0.465      # M_sun
     age_ini = 0.100     # Gyr, model initialisation/start age
 
-    module  = "mors"
+    module  = "dummy"
     [star.mors]
         rot_pctle = 50.0    # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
@@ -106,8 +106,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [orbit]
     semimajororfinst = 'semimajoraxis'	# whether to define orbit using semi major axis or instellation flux
     instellationflux = 0.00031444801576249726	# instellation flux received from the planet in Earth units.
-    semimajoraxis    = 0.1591              	# AU
-    eccentricity     = 0.09       		# dimensionless
+    semimajoraxis    = 0.1              	# AU
+    eccentricity     = 0.0       		# dimensionless
     zenith_angle     = 54.74     		# degrees
     s0_factor        = 0.25      		# dimensionless
 
@@ -123,7 +123,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Planetary structure - physics table
 [struct]
     set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
-    mass_tot    = 8.63       # M_earth
+    mass_tot    = 5.0       # M_earth
     radius_int  = 1.0       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
@@ -216,7 +216,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = -5        # log10(ΔIW), atmosphere/interior boundary oxidation state
+    fO2_shift_IW    = -3        # log10(ΔIW), atmosphere/interior boundary oxidation state
 
     module = "calliope"         # Which outgassing module to use
 
@@ -255,7 +255,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         metallicity = 1000.0	 # metallicity relative to solar metallicity
         
         # H_oceans    = 60.0     # Hydrogen inventory in units of equivalent Earth oceans
-        H_ppmw      = 100000.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_ppmw      = 1000.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 0.29       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 10.0     # Carbon inventory in ppmw relative to mantle mass

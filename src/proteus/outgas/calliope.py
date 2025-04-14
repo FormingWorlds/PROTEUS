@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from proteus.config import Config
 
+from proteus.utils.constants import element_list, gas_list, C_solar, N_solar, S_solar
 from calliope.constants import molar_mass, ocean_moles
 from calliope.solve import (
     equilibrium_atmosphere,
@@ -78,40 +79,61 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
         invalid = True
         H_kg = -1 # dummy value
 
-    # Calculate carbon inventory (we need CH_ratio for calliope)
-    CH_ratio = float(config.delivery.elements.CH_ratio)
-    C_ppmw   = float(config.delivery.elements.C_ppmw)
-    if CH_ratio > 1e-10:
-        # check that C_ppmw isn't also set
-        if C_ppmw > 1e-10:
-            log.error("Carbon inventory must be specified by CH_ratio or C_ppmw, not both")
-            invalid = True
-    else:
-        # calculate C/H ratio for calliope from C_kg and H_kg
-        CH_ratio = config.delivery.elements.C_ppmw * 1e-6 * hf_row["M_mantle"] / H_kg
-
-    # Calculate nitrogen inventory (we need N_ppmw for calliope)
-    NH_ratio = float(config.delivery.elements.NH_ratio)
-    N_ppmw   = float(config.delivery.elements.N_ppmw)
-    if NH_ratio > 1e-10:
-        # check that N_ppmw isn't also set
-        if N_ppmw > 1e-10:
-            log.error("Nitrogen inventory must be specified by NH_ratio or N_ppmw, not both")
-            invalid = True
-        # calculate N_ppmw
+    # calculating elemental abundances using metallicity
+    if config.delivery.elements.use_metallicity:
+    
+        CH_ratio = config.delivery.elements.metallicity * C_solar
+        NH_ratio = 0.0
+        SH_ratio = 0.0
+        
+        if config.delivery.elements.NH_ratio > 0.0:
+        
+            NH_ratio = config.delivery.elements.metallicity * N_solar
+            
         N_ppmw = 1e6 * NH_ratio * H_kg / hf_row["M_mantle"]
-
-    # Calculate sulfur inventory (we need S_ppmw for calliope)
-    SH_ratio = float(config.delivery.elements.SH_ratio)
-    S_ppmw   = float(config.delivery.elements.S_ppmw)
-    if SH_ratio > 1e-10:
-        # check that S_ppmw isn't also set
-        if S_ppmw> 1e-10:
-            log.error("Sulfur inventory must be specified by SH_ratio or S_ppmw, not both")
-            invalid = True
-        # calculate S_ppmw
+            
+        if config.delivery.elements.SH_ratio > 0.0:
+        
+            SH_ratio = config.delivery.elements.metallicity * S_solar
+            
         S_ppmw = 1e6 * SH_ratio * H_kg / hf_row["M_mantle"]
+    
+    else:
+    
+        # Calculate carbon inventory (we need CH_ratio for calliope)
+        CH_ratio = float(config.delivery.elements.CH_ratio)
+        C_ppmw   = float(config.delivery.elements.C_ppmw)
+        if CH_ratio > 1e-10:
+	    # check that C_ppmw isn't also set
+    	    if C_ppmw > 1e-10:
+    	        log.error("Carbon inventory must be specified by CH_ratio or C_ppmw, not both")
+    	        invalid = True
+        else:
+    	    # calculate C/H ratio for calliope from C_kg and H_kg
+    	    CH_ratio = config.delivery.elements.C_ppmw * 1e-6 * hf_row["M_mantle"] / H_kg
 
+        # Calculate nitrogen inventory (we need N_ppmw for calliope)
+        NH_ratio = float(config.delivery.elements.NH_ratio)
+        N_ppmw   = float(config.delivery.elements.N_ppmw)
+        if NH_ratio > 1e-10:
+	    # check that N_ppmw isn't also set
+    	    if N_ppmw > 1e-10:
+    	        log.error("Nitrogen inventory must be specified by NH_ratio or N_ppmw, not both")
+    	        invalid = True
+    	    # calculate N_ppmw
+    	    N_ppmw = 1e6 * NH_ratio * H_kg / hf_row["M_mantle"]
+
+        # Calculate sulfur inventory (we need S_ppmw for calliope)
+        SH_ratio = float(config.delivery.elements.SH_ratio)
+        S_ppmw   = float(config.delivery.elements.S_ppmw)
+        if SH_ratio > 1e-10:
+	    # check that S_ppmw isn't also set
+    	    if S_ppmw> 1e-10:
+    	        log.error("Sulfur inventory must be specified by SH_ratio or S_ppmw, not both")
+    	        invalid = True
+    	    # calculate S_ppmw
+    	    S_ppmw = 1e6 * SH_ratio * H_kg / hf_row["M_mantle"]
+    
     # Volatile abundances are over-specified in the config file.
     # The code exits here, rather than above, in case there are multiple
     #   instances of volatiles being over-specified in the file.

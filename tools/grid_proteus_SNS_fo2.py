@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import time
+import argparse
 from copy import deepcopy
 from datetime import datetime
 
@@ -143,6 +144,9 @@ class Grid():
 
         # Dimension variables (incl hypervariables)
         self.dim_avars = {}
+        
+        # Grid indices (only relevant if restarting from previous simulation)
+        self.grid_indices = []
 
         # Flattened Grid
         self.flat = []   # List of grid points, each is a dictionary
@@ -206,7 +210,7 @@ class Grid():
     def print_grid(self):
         log.info("Flattened grid points")
         for i,gp in enumerate(self.flat):
-            log.info("    %d: %s" % (i,gp))
+            log.info("    %d: %s" % (self.grid_indices[i],gp))
         log.info(" ")
 
     def _get_tmpcfg(self, idx:int):
@@ -236,18 +240,28 @@ class Grid():
 
         # Re-assign keys to values
         log.info("    mapping keys")
-        for fl in flat_values:
+        for count,fl in enumerate(flat_values):
             gp = {}
 
             for i in range(len(fl)):
                 gp[self.dim_param[i]] = fl[i]
-
+            
+            # output_path = f'/run/media/rdc49/Expansion/PhD/Simulation_Output_Data/{project}/{folder}'
+            
+            # if restart_from_previous:
+                
+            #     if os.path.isfile(output_path+"/case_%05d/"%count+"/keepalive"):
+            #         self.flat.append(gp)
+            #         self.grid_indices.append(count)
+                    
+            # else:
+                
             self.flat.append(gp)
+            self.grid_indices.append(count)
 
         self.size = len(self.flat)
         log.info("    done")
         log.info(" ")
-
 
     # Run PROTEUS across this Grid
     def run(self,num_threads:int,test_run:bool=False):
@@ -289,20 +303,19 @@ class Grid():
         # Loop over grid points to write config files
         log.info("Writing config files")
         for i,gp in enumerate(self.flat):
-
+            
+            #print(f'{i,gp}\n')
             # Create new config
             thisconf:Config = deepcopy(base_config)
 
             # Set case dir relative to PROTEUS/output/
-            thisconf.params.out.path = self.name+"/case_%05d/"%i
+            thisconf.params.out.path = self.name+"/case_%05d/"%self.grid_indices[i]
 
             # Set other parameters
             for key in gp.keys():
-                print(key)
                 val = gp[key]
                 bits = key.split(".")
                 depth = len(bits)-1
-                
                 # Descend down attributes tree until we are setting the right value
                 #    This could be done with recursion, but we only ever go 2 layers deep
                 #    at most, so it can easily be handled by 'brute force' like this.
@@ -314,10 +327,9 @@ class Grid():
                     setattr(   getattr( getattr(thisconf,bits[0]),  bits[1] ), bits[2],val)
                 else:
                     raise Exception("Requested key is too deep for configuration tree")
-
             # Write this configuration file
             thisconf.write(self._get_tmpcfg(i))
-            os.sync()
+            #os.sync()
 
         gc.collect()
 
@@ -417,7 +429,7 @@ class Grid():
         # Check all cases' status files
         for i in range(self.size):
             # find file
-            status_path = os.path.join(self.outdir, "case_%05d"%i, "status")
+            status_path = os.path.join(self.outdir, "case_%05d"%self.grid_indices[i], "status")
             if not os.path.exists(status_path):
                 raise Exception("Cannot find status file at '%s'" % status_path)
 
@@ -443,32 +455,35 @@ if __name__=='__main__':
     # -----
     # Define parameter grid
     # -----
-
+    
     config = "planets/fiducial_sub_Neptune.toml"
-    folder = "sub_neptune_fo2_grid"
-    project = 'Sub_Neptune_Solidification_Project'
+    folder = 'SNS_fo2_study'
+    
+    restart_from_previous = False
 
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
-    # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
     symlink = None
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
-
-    pg.add_dimension("fO2", "outgas.fO2_shift_IW")
-    pg.set_dimension_direct("fO2", [-4,0,2,4])
 
     # -----
     # Print state of parameter grid
     # -----
     pg.print_setup()
+        
+    pg.add_dimension("hbudget", "delivery.elements.H_ppmw")
+    pg.set_dimension_direct("hbudget", [100,1000,10000])
+    
+    pg.add_dimension("fo2", "outgas.fO2_shift_IW")
+    pg.set_dimension_direct("fo2", np.linspace(-4,4,9))
+    
     pg.generate()
+        
     pg.print_grid()
 
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(8, test_run=False)
-
-    shutil.move(f'/data/rdc49-2/PROTEUS/output/{folder}',f'/data/rdc49-2/Simulation_Output_Data/{project}/{folder}')    
+    pg.run(27, test_run=False)
 
     # When this script ends, it means that all processes ARE complete or they
     # have been killed or crashed.

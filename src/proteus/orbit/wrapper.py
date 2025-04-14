@@ -31,7 +31,7 @@ def init_orbit(handler:Proteus):
         from proteus.orbit.lovepy import import_lovepy
         import_lovepy()
 
-def update_separation(hf_row:dict):
+def update_separation(hf_row:dict, config:Config):
     '''
     Calculate time-averaged orbital separation on an elliptical path.
     https://physics.stackexchange.com/a/715749
@@ -40,13 +40,33 @@ def update_separation(hf_row:dict):
     -------------
         hf_row: dict
             Current helpfile row
+        config : Config
+            Model configuration.
     '''
 
     sma = hf_row["semimajorax"] # already in SI units
     ecc = hf_row["eccentricity"]
+    
+    #this obtains the orbital separation based on the instellation flux
+    if config.orbit.semimajororfinst == 'instellationflux' and config.star.module == 'dummy':
+    	
+    	instellationflux = config.orbit.instellationflux
+    	stellarteff      = config.star.dummy.Teff
+    	
+    	# Coefficients related to stellar flux scaling
+    	a = 0.8  
+    	b = 2.3  
 
-    hf_row["separation"] = sma *  (1 + 0.5*ecc*ecc)
+    	# Exponent derived from stellar flux-temperature relationship
+    	exponent = 2 / (1 - 2 * a / b)
+    	
+    	hf_row["separation"] = instellationflux ** (-1/2) * (stellarteff/5780) ** exponent * AU
+    
+    #otherwise calculate orbital separation using semi-major axis
+    else:
 
+    	hf_row["separation"] = sma *  (1 + 0.5*ecc*ecc)
+    
 def update_period(hf_row:dict):
     '''
     Calculate orbital and axial periods, on an elliptical path.
@@ -140,8 +160,8 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     hf_row["semimajorax"]  = config.orbit.semimajoraxis * AU
     hf_row["eccentricity"] = config.orbit.eccentricity
 
-    # Update orbital separation, orbital period, axial period
-    update_separation(hf_row)
+    # Update orbital separation and period
+    update_separation(hf_row, config)
     update_period(hf_row)
     log.info("    period = %.3f days"%(hf_row["orbital_period"]/secs_per_day))
 

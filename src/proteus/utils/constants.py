@@ -60,6 +60,10 @@ s2yr          = 1/(3600*24*365)       # convert [seconds]      to [years]
 Rs      = 6.957e8                      # Solar radius                          [m]
 Ms      = 1.98847e30                   # Solar mass                            [kg]
 age_sun = 4.603e9                      # Age of the Sun                        [yr]
+Teffs   = 5780                         # Effective temperature of the sun      [K]
+C_solar = 2.884e-4		       # Solar C/H ratio
+N_solar = 6.761e-5		       # Solar N/H ratio
+S_solar = 1.318e-5		       # Solar S/H ratio
 # Earth parameters
 Me_atm            = 5.15e18            # Mass of the Earth atmopshere          [kg]
 Fxuv_earth_10Myr  = 14.67              # Fxuv received on Earth at t = 10 Myr -> see Fig 9. Wordsworth+18 [W m-2]

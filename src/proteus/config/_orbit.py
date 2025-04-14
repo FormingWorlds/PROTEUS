@@ -51,8 +51,12 @@ class Orbit:
 
     Attributes
     ----------
+    semimajororfinst: str
+    	Whether to use the semi-major axis or instellation flux to define the planet's orbit
     semimajoraxis: float
         Semi-major axis of the planet's orbit [AU].
+    instellationflux: float
+        Instellation flux received from the planet in Earth units.
     eccentricity: float
         Eccentricity of the planet's orbit.
     zenith_angle: float
@@ -62,13 +66,13 @@ class Orbit:
     module: str | None
         Select orbit module to use. Choices: 'none', 'dummy', 'lovepy'.
     """
-
     module: str | None = field(
         validator=in_((None, 'dummy', 'lovepy')),
         converter=none_if_none,
     )
-
+    semimajororfinst: str = field(validator=in_(('semimajoraxis','instellationflux')))
     semimajoraxis: float = field(validator=gt(0))
+    instellationflux: float = field(validator=gt(0))
     eccentricity: float = field(validator=(
         ge(0),
         lt(1),

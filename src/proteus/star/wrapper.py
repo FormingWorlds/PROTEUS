@@ -161,7 +161,7 @@ def get_new_spectrum(t_star:float, config:Config,
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import generate_spectrum
-        wl, fl = generate_spectrum(config.star.dummy.Teff, config.star.dummy.radius * R_sun)
+        wl, fl = generate_spectrum(config.star.dummy.Teff, config.star.dummy.calculate_radius, config.star.dummy.radius * R_sun)
 
     # Mors cases
     elif config.star.module == 'mors':
