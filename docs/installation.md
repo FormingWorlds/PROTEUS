@@ -16,9 +16,10 @@ Follow the instructions below depending on your system configuration.
 For installing PROTEUS on a local machine (e.g. your laptop), follow the appropriate section in the [Local machine guide](./local_machine_guide.md).
 
 If you are using a specific server, use the following guides:
-* [Kapteyn cluster](./kapteyn_cluster_guide.md)
-* [Habrok cluster](./habrok_cluster_guide.md)
-* [Snellius cluster guide](./snellius_cluster_guide.md).
+
+* Kapteyn cluster [guide](./kapteyn_cluster_guide.md)
+* Habrok cluster [guide](./habrok_cluster_guide.md)
+* Snellius cluster [guide](./snellius_cluster_guide.md).
 
 
 ## Setup a Python environment
