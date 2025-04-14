@@ -43,4 +43,3 @@ There is information on the HPC wiki on [how to submit jobs](https://wiki.hpc.ru
     ```console
     squeue -u $USER
     ```
-
