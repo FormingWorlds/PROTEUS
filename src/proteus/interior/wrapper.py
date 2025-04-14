@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
-AragogRunnerInstance = AragogRunner()
 
 def update_gravity(hf_row:dict):
     '''
@@ -172,9 +171,11 @@ def run_interior(dirs:dict, config:Config,
         sim_time, output = ReadSPIDER(dirs, config, hf_row["R_int"], interior_o)
 
     elif config.interior.module == 'aragog':
+        AragogRunnerInstance = AragogRunner(config, dirs, hf_row, hf_all, 
+                                            interior_o)
         # Run Aragog
-        sim_time, output = AragogRunnerInstance.run(config, dirs, hf_row, hf_all,
-                                              interior_o)
+        sim_time, output = AragogRunnerInstance.run_solver(hf_row, interior_o,
+                                                           dirs)
 
     elif config.interior.module == 'dummy':
         # Import

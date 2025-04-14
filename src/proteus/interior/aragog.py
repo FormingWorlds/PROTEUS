@@ -36,15 +36,13 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA',
                                    platformdirs.user_data_dir('fwl_data')))
 
 class AragogRunner:
-    def __init__(self):
+    def __init__(self, config: Config, dirs: dict, hf_row: dict, hf_all:
+                 pd.DataFrame, interior_o: Interior_t):
         self.aragog_solver = None
-
-    def run(self, config: Config, dirs: dict, hf_row: dict, hf_all:
-            pd.DataFrame, interior_o: Interior_t):
         AragogRunner.setup_logger(config, dirs)
         dt = self.compute_time_step(config, dirs, hf_row, hf_all, interior_o)
         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
-        return self.run_solver(hf_row, interior_o, dirs)
+        self.aragog_solver.initialize()
 
     @staticmethod
     def setup_logger(config: Config, dirs: dict):
@@ -266,7 +264,6 @@ class AragogRunner:
 
     def run_solver(self, hf_row, interior_o, dirs):
         # Run Aragog solver
-        self.aragog_solver.initialize()
         self.aragog_solver.solve()
 
         # Get Aragog output
