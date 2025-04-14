@@ -152,3 +152,13 @@ for more information how to work with attrs.
       show_root_heading: False
       show_root_toc_entry: False
       members_order: source
+
+## Synthetic observations
+
+::: proteus.config._observe
+    options:
+      heading_level: 3
+      show_root_heading: False
+      show_root_toc_entry: False
+      members_order: source
+
