@@ -138,7 +138,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         SH_ratio    = 7.5       # S/H mass ratio in mantle/atmosphere system
 
 [observe]
-    synthesis = "none"
+    synthesis = "platon"
 
 [atmos_chem]
     module = "none"

@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --export=ALL
-#SBATCH --time=10:00:00
+#SBATCH --time=5-00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=80
+#SBATCH --cpus-per-task=90
 #SBATCH --job-name=grid_proteus
-#SBATCH --mem=60000
+#SBATCH --mem-per-cpu=3G
 ./tools/grid_proteus.py
 echo "Done with sbatch on grid_proteus"

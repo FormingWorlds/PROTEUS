@@ -485,7 +485,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(80, test_run=False)
+    pg.run(90, test_run=False)
 
     # When this script ends, it means that all processes have exited. They may have
     # completed, or alternatively they have been killed or crashed.

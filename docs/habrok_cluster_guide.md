@@ -45,6 +45,14 @@ Since `/scratch/` is frequently emptied, you should then copy important data to 
 
 See the [information on the HPC wiki](https://wiki.hpc.rug.nl/habrok/job_management/partitions) for details.
 
+The best way to organise this is to create a symbolic link from the PROTEUS output folder to `/scratch`.
+Once you have installed PROTEUS, this can be done by running the following commands inside your PROTEUS folder:
+```console
+mkdir /scratch/$USER/proteus_output
+ln -sf /scratch/$USER/proteus_output output
+```
+Anything written to `output/` will then be stored inside the `/scratch` partition.
+
 ## Submitting and Monitoring Jobs
 
 There is information on the HPC wiki on [how to submit jobs](https://wiki.hpc.rug.nl/habrok/job_management/scheduling_system) to the Habrok cluster.
