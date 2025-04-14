@@ -2,8 +2,7 @@
 
 ## Access the Habrok Cluster
 
-You will need a RUG account, with an account name  (e.g. `p321401`) and two-factor
-authentication (2FA) already set up. The cluster is accessed via SSH.
+You will need a RUG account, with an account name (e.g. `p321401`) and two-factor
 Follow [the instructions](https://wiki.hpc.rug.nl/habrok/connecting_to_the_system/connecting) on the online documentation.
 
 We recommend that you also add your public ssh key to Habrok. Doing so allows password-free
