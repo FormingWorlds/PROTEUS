@@ -467,10 +467,10 @@ if __name__=='__main__':
     pg.set_dimension_direct("Redox state", [-4.5, -4.0, -3.5, -3, -2.5, -2.0, -1.5, -1.0])
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_direct("Hydrogen", [16000, 13000, 10000, 7000, 4000, 1000], sort=False)
+    pg.set_dimension_direct("Hydrogen", [16000, 14500, 13000, 10000, 7000, 4000, 1000], sort=False)
 
-    # pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    # pg.set_dimension_direct("Sulfur", [2, 7, 12])
+    pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
+    pg.set_dimension_direct("Sulfur", [2, 8, 10, 12])
 
     pg.add_dimension("Mass", "struct.mass_tot")
     pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
@@ -485,7 +485,7 @@ if __name__=='__main__':
     # -----
     # Start PROTEUS processes
     # -----
-    pg.run(90, test_run=False)
+    pg.run(100, test_run=False)
 
     # When this script ends, it means that all processes have exited. They may have
     # completed, or alternatively they have been killed or crashed.
