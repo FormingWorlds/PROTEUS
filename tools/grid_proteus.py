@@ -77,6 +77,8 @@ def setup_logger(logpath:str="new.log",level=1,logterm=True):
 # Object for handling the parameter grid
 class Grid():
 
+    CONFIG_BASENAME = "case_%05d.toml"
+
     def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
 
         # Grid's own name (for versioning, etc.)
@@ -211,7 +213,7 @@ class Grid():
         log.info(" ")
 
     def _get_tmpcfg(self, idx:int):
-        return os.path.join(self.tmpdir,"case_%05d.toml" % idx)
+        return os.path.join(self.tmpdir, self.CONFIG_BASENAME % idx)
 
     # Generate the Grid based on the current configuration
     def generate(self):
@@ -466,24 +468,10 @@ class Grid():
 
         self.write_config_files()
 
-        commands = []
-
-        for i in range(self.size):
-            cfg_path = self._get_tmpcfg(i)
-
-            if not os.path.exists(cfg_path):
-               raise IOError(f"Config file could not be found for case {i}!")
-
-            if test_run:
-                command = f'/bin/echo Dummmy output. Config file is at {cfg_path}'
-            else:
-                command = f"proteus start --offline --config {cfg_path}"
-
-            commands.append(command)
-
-        scripts = '\n'.join(f'    {cmd}' for cmd in commands)
-
-        array_size = len(commands)
+        if test_run:
+            command = '/bin/echo Dummmy output. Config file is at'
+        else:
+            command = "proteus start --offline --config"
 
         logs_dir = Path(self.outdir)
 
@@ -495,17 +483,17 @@ class Grid():
 #SBATCH -i /dev/null
 #SBATCH -o {out_file}
 #SBATCH -e {err_file}
-#SBATCH --array=0-{array_size-1}%{max_jobs}
+#SBATCH --array=0-{self.size-1}%{max_jobs}
 
-scripts=(
-{scripts}
-)
 i=$SLURM_ARRAY_TASK_ID
-while [ $i -le {len(commands)} ]; do
-    echo executing ${{scripts[$i]}}
-    ${{scripts[$i]}} || true
-    i=$((i+{array_size}))
+
+while [ $i -le {self.size} ]; do
+    printf -v cfg "{self.tmpdir}/{self.CONFIG_BASENAME}" $((i+1))
+    echo executing proteus with config $cfg
+    {command} $cfg
+    i=$((i+{self.size}))
 done
+
 """
 
         fname = 'proteus_slurm_array.sh'
@@ -554,5 +542,6 @@ if __name__=='__main__':
 
     # Generate Slurm batch file, use `sbatch` to submit
     pg.slurm_config(max_jobs=10, test_run=False)
+
     # Alternatively, let grid_proteus.py manage the jobs
     # pg.run(108, test_run=False)
