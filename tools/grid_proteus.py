@@ -15,6 +15,8 @@ import sys
 import time
 from copy import deepcopy
 from datetime import datetime
+from getpass import getuser
+from pathlib import Path
 
 import numpy as np
 
@@ -75,6 +77,8 @@ def setup_logger(logpath:str="new.log",level=1,logterm=True):
 
 # Object for handling the parameter grid
 class Grid():
+
+    CONFIG_BASENAME = "case_%05d.toml"
 
     def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
 
@@ -210,7 +214,7 @@ class Grid():
         log.info(" ")
 
     def _get_tmpcfg(self, idx:int):
-        return os.path.join(self.tmpdir,"case_%05d.toml" % idx)
+        return os.path.join(self.tmpdir, self.CONFIG_BASENAME % idx)
 
     # Generate the Grid based on the current configuration
     def generate(self):
@@ -249,7 +253,44 @@ class Grid():
         log.info(" ")
 
 
-    # Run PROTEUS across this Grid
+    def write_config_files(self):
+        """Write config files."""
+        # Read base config file
+        base_config = read_config_object(self.conf)
+
+        # Loop over grid points to write config files
+        log.info("Writing config files")
+        for i,gp in enumerate(self.flat):
+
+            # Create new config
+            thisconf:Config = deepcopy(base_config)
+
+            # Set case dir relative to PROTEUS/output/
+            thisconf.params.out.path = self.name+"/case_%05d/"%i
+
+            # Set other parameters
+            for key in gp.keys():
+                val = gp[key]
+                bits = key.split(".")
+                depth = len(bits)-1
+
+                # Descend down attributes tree until we are setting the right value
+                #    This could be done with recursion, but we only ever go 2 layers deep
+                #    at most, so it can easily be handled by 'brute force' like this.
+                if depth == 0:
+                    setattr(thisconf,bits[0],val)
+                elif depth == 1:
+                    setattr(getattr(thisconf,bits[0]), bits[1],val)
+                elif depth == 2:
+                    setattr(   getattr( getattr(thisconf,bits[0]),  bits[1] ), bits[2],val)
+                else:
+                    raise Exception("Requested key is too deep for configuration tree")
+
+            # Write this configuration file
+            thisconf.write(self._get_tmpcfg(i))
+            os.sync()
+
+
     def run(self,num_threads:int,test_run:bool=False):
         log.info("Running PROTEUS across parameter grid '%s'" % self.name)
 
@@ -286,40 +327,7 @@ class Grid():
             check_interval = 1.0
             print_interval = 1
 
-        # Read base config file
-        base_config = read_config_object(self.conf)
-
-        # Loop over grid points to write config files
-        log.info("Writing config files")
-        for i,gp in enumerate(self.flat):
-
-            # Create new config
-            thisconf:Config = deepcopy(base_config)
-
-            # Set case dir relative to PROTEUS/output/
-            thisconf.params.out.path = self.name+"/case_%05d/"%i
-
-            # Set other parameters
-            for key in gp.keys():
-                val = gp[key]
-                bits = key.split(".")
-                depth = len(bits)-1
-
-                # Descend down attributes tree until we are setting the right value
-                #    This could be done with recursion, but we only ever go 2 layers deep
-                #    at most, so it can easily be handled by 'brute force' like this.
-                if depth == 0:
-                    setattr(thisconf,bits[0],val)
-                elif depth == 1:
-                    setattr(getattr(thisconf,bits[0]), bits[1],val)
-                elif depth == 2:
-                    setattr(   getattr( getattr(thisconf,bits[0]),  bits[1] ), bits[2],val)
-                else:
-                    raise Exception("Requested key is too deep for configuration tree")
-
-            # Write this configuration file
-            thisconf.write(self._get_tmpcfg(i))
-            os.sync()
+        self.write_config_files()
 
         gc.collect()
 
@@ -439,18 +447,81 @@ class Grid():
         log.info("All processes finished at: "+str(time_end.strftime('%Y-%m-%d_%H:%M:%S')))
         log.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
+
+    def slurm_config(self, max_jobs:int=10, test_run:bool=False):
+        """Write slurm config file.
+
+        Uses a slurm job array, see link for more info:
+        https://slurm.schedmd.com/job_array.html
+
+        Parameters
+        ----------
+        max_jobs : int
+            Maximum number of jobs to run
+        test_run : bool
+            If true, generate dummy commands to test the code.
+        """
+        log.info("Generating PROTEUS slurm config for accross parameter grid '%s'" % self.name)
+
+        log.info("Output path: '%s'" % self.outdir)
+        if self.using_symlink:
+            log.info("Symlink target: '%s'" % self.symlink_dir)
+
+        self.write_config_files()
+
+        if test_run:
+            command = '/bin/echo Dummmy output. Config file is at'
+        else:
+            command = "proteus start --offline --config"
+
+        out_dir = Path(self.outdir)
+
+        out_file = out_dir / 'proteus-%A_%a.out'
+        err_file = out_dir / 'proteus-%A_%a.err'
+
+        string = f"""#!/bin/sh
+#SBATCH -J proteus.grid.array
+#SBATCH -i /dev/null
+#SBATCH -o {out_file}
+#SBATCH -e {err_file}
+#SBATCH --array=0-{self.size-1}%{max_jobs}
+
+i=$SLURM_ARRAY_TASK_ID
+
+while [ $i -le {self.size} ]; do
+    printf -v cfg "{self.tmpdir}/{self.CONFIG_BASENAME}" $((i+1))
+    echo executing proteus with config $cfg
+    {command} $cfg
+    i=$((i+{self.size}))
+done
+
+"""
+
+        slurm_path = out_dir / 'proteus_slurm_array.sh'
+        with open(slurm_path, 'w') as f:
+            f.write(string)
+
+        user = getuser()
+        log.info('Slurm file written to %s', slurm_path)
+        log.info('')
+        log.info('Submit to Slurm using:')
+        log.info('    `sbatch %s`', slurm_path.name)
+        log.info('')
+        log.info('To look at the slurm queueu:')
+        log.info('    `squeue` or `squeue -u %s`', user)
+        log.info('')
+        log.info('To cancel a job or all your jobs:')
+        log.info('    `scancel [jobid]` or `scancel -u %s`', user)
+
+
 if __name__=='__main__':
     print("Start GridPROTEUS")
-
-    # -----
-    # Define parameter grid
-    # -----
 
     # Output folder name, created inside `PROTEUS/output/`
     folder = "scratch/l98d_habrok"
 
     # Base config file
-    config = "planets/l9859d.toml"
+    config = "demos/dummy.toml"
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
 
     # Set this string to have the output files created at an alternative location. The
@@ -475,19 +546,12 @@ if __name__=='__main__':
     pg.add_dimension("Mass", "struct.mass_tot")
     pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
 
-    # -----
-    # Print state of parameter grid
-    # -----
     pg.print_setup()
     pg.generate()
     pg.print_grid()
 
-    # -----
-    # Start PROTEUS processes
-    # -----
-    pg.run(100, test_run=False)
+    # Generate Slurm batch file, use `sbatch` to submit
+    pg.slurm_config(max_jobs=10, test_run=False)
 
-    # When this script ends, it means that all processes have exited. They may have
-    # completed, or alternatively they have been killed or crashed.
-    print("Exit GridPROTEUS")
-    exit(0)
+    # Alternatively, let grid_proteus.py manage the jobs
+    # pg.run(100, test_run=False)
