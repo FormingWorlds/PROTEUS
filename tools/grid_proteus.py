@@ -334,7 +334,7 @@ class Grid():
         # Thread targget
         def _thread_target(cfg_path):
             if test_run:
-                command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
+                command = ['/bin/echo','Dummy output. Config file is at "' + cfg_path + '"']
             else:
                 command = ["proteus","start","--offline","--config",cfg_path]
             subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -482,7 +482,7 @@ class Grid():
         self.write_config_files()
 
         if test_run:
-            command = '/bin/echo Dummmy output. Config file is at'
+            command = '/bin/echo Dummy output. Config file is at: '
         else:
             command = "proteus start --offline --config"
 

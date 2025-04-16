@@ -69,11 +69,12 @@ With the grid configured to your liking, you can then dispatch the grid in two w
 Firstly, you can set `use_slurm=False`. In this case, `grid_proteus.py` will manage the
 individual subprocesses which compose the grid. The variable `max_jobs` specifies the maximum number of CPU cores
 which should be utilised by the grid at any one time. This is limited by the number of CPU
-cores available on your machine. This method without SLURM, and can be applied on servers or on multicore personal computers.
+cores available on your machine. This method works without SLURM, and can be applied on servers or on multicore personal computers.
 
-Alternatively, we can access high performance compute nodes through the SLURM workload
+Alternatively, you can access high performance compute nodes through the SLURM workload
 manager (e.g. on Habrok and Snellius). To do this, set `use_slurm=True`.
 This will produce a file in the specified output folder, which you can dispatch to the compute nodes with `sbatch`.
+You can then view the status of these jobs with `squeue -u $USER`.
 
 
 ## Version checking
