@@ -34,6 +34,13 @@ def calc_synthetic_spectra(hf_row:dict, outdir:str, config:Config):
 
     # First, run synthetic observations
     for source in OBS_SOURCES:
+
+        # Can we use this source?
+        if (source == "profile") and (config.atmos_clim.module == "dummy"):
+            continue
+        if (source == "offchem") and (config.atmos_chem.module is None):
+            continue
+
         log.debug(f"Synthesising observations for atmosphere set by '{source}'")
 
         # Compute transit and eclipse depth spectra

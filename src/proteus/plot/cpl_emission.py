@@ -48,7 +48,7 @@ def plot_emission(output_dir:str, times:list, plot_format="pdf",
         label = latex_float(t)+" yr"
         color = sm.to_rgba(t)
 
-        atm_file = os.path.join(output_dir, "data", "%d_atm.nc"%t)
+        atm_file = os.path.join(output_dir, "data", "%.0f_atm.nc"%t)
         ds = nc.Dataset(atm_file)
 
         x_arr = []
