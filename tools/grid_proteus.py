@@ -473,10 +473,10 @@ class Grid():
         else:
             command = "proteus start --offline --config"
 
-        logs_dir = Path(self.outdir)
+        out_dir = Path(self.outdir)
 
-        out_file = logs_dir / 'proteus-%A_%a.out'
-        err_file = logs_dir / 'proteus-%A_%a.err'
+        out_file = out_dir / 'proteus-%A_%a.out'
+        err_file = out_dir / 'proteus-%A_%a.err'
 
         string = f"""#!/bin/sh
 #SBATCH -J proteus.grid.array
@@ -496,12 +496,12 @@ done
 
 """
 
-        fname = 'proteus_slurm_array.sh'
-        with open(fname, 'w') as f:
+        slurm_path = out_dir / 'proteus_slurm_array.sh'
+        with open(slurm_path, 'w') as f:
             f.write(string)
 
-        log.info('Slurm file written to %s', fname)
-        log.info('Submit to Slurm using `sbatch %s`', fname)
+        log.info('Slurm file written to %s', slurm_path)
+        log.info('Submit to Slurm using `sbatch %s`', slurm_path)
 
 
 if __name__=='__main__':
