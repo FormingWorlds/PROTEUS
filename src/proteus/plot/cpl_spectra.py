@@ -39,8 +39,20 @@ def plot_spectra(output_dir: str, plot_format: str="pdf",
     log.info("Plot transit and eclipse spectra")
 
     # read data
-    df_transit = read_transit(output_dir, source, "synthesis")
-    df_eclipse = read_eclipse(output_dir, source, "synthesis")
+    try:
+        df_transit = read_transit(output_dir, source, "synthesis")
+    except FileNotFoundError:
+        log.warning(f"Could not read synthetic transit spectrum ({source}) file")
+        df_transit = None
+
+    try:
+        df_eclipse = read_eclipse(output_dir, source, "synthesis")
+    except FileNotFoundError:
+        log.warning(f"Could not read synthetic eclipse spectrum ({source}) file")
+        df_eclipse = None
+
+    if df_transit is None and df_eclipse is None:
+        return
 
     # make plot
     lw = 0.3
@@ -49,8 +61,10 @@ def plot_spectra(output_dir: str, plot_format: str="pdf",
     axt = axs[0]
     axb = axs[1]
 
-    # transit
+    # plot spectra
     for i,df in enumerate([df_transit, df_eclipse]):
+        if df is None:
+            continue
         wl = df[WAVE_KEY]
         for key in df.keys():
             if key != WAVE_KEY:

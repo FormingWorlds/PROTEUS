@@ -4,76 +4,39 @@ These instructions will guide you through the typical installation
 process. The setup is written for MacOS and Linux. Depending on your
 system settings and installed libraries your procedure may differ. If
 one or more of the steps below do not work for you we encourage you to
-first check the `troubleshooting`{.interpreted-text role="doc"} page. If
+first check the [troubleshooting](./troubleshooting.md) page. If
 that does not help you further, please contact the developers (see
-`contact`{.interpreted-text role="doc"}).
+[contact](./contact.md).
 
-## System configuration
+## System pre-configuration
 
+Setting up PROTEUS and its submodules requires extra steps to be performed before following the rest of this guide.
 Follow the instructions below depending on your system configuration.
 
-### Local Mac OS machine
+For installing PROTEUS on a local machine (e.g. your laptop), follow the appropriate section in the [Local machine guide](./local_machine_guide.md).
 
-1.  Open the terminal to install the developer tools
+If you are using a specific server, use the following guides:
 
-    ```console
-    xcode-select --install
-    ```
+* Kapteyn cluster [guide](./kapteyn_cluster_guide.md)
+* Habrok cluster [guide](./habrok_cluster_guide.md)
+* Snellius cluster [guide](./snellius_cluster_guide.md).
 
-2.  Install `FORTRAN NetCDF` library via the most appropriate method for
-    you.
-
-    **[Homebrew](https://brew.sh/)** (recommended)
-    ```console
-    brew install netcdf
-    brew install netcdf-fortran
-    ```
-
-    **[MacPorts](https://www.macports.org/)**
-    ```console
-    sudo port install netcdf-fortran +gcc8
-    ```
-
-3. Pay attention to replace `.bashrc` throughout the instructions below with `.zshrc` if you are on Mac OS >10.15 (Catalina) and using the default shell.
-
-### Local Linux machine
-
-1. Install `FORTRAN NetCDF` via your package manager (e.g\...)
-
-    ```console
-    sudo apt install libnetcdff-dev
-    ```
-
-### Local Windows machine
-
-Generally it is not recommended to install and use PROTEUS on Windows machines. The remainder of the installation instructions are written with Linux and Mac OS in mind. However, for attempting that, check out the section on Windows instructions in [VS Code Instructions Kapteyn Cluster](https://docs.google.com/document/d/1Hm1J8x9CQ10dnyDJo1iohZHU6go_hxiUR7gTD2csv-M/edit?usp=sharing).
-
-### Remote clusters
-
-Check out the [Kapteyn cluster guide](./kapteyn_cluster_guide.md) and [Snellius cluster guide](./snellius_cluster_guide.md) for more information.
 
 ## Setup a Python environment
 
-We recommend that you use Python version 3.12 for running PROTEUS. Python is most easily obtained and managed using [miniforge](https://github.com/conda-forge/miniforge).
-
-```console
-brew install --cask miniforge
-conda init "$(basename "${SHELL}")"
-```
-
-**or**
-
+We recommend that you use Python version 3.12 for running PROTEUS.
+Python is most easily obtained and managed using [miniforge](https://github.com/conda-forge/miniforge).
 ```console
 curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
 bash Miniforge3-$(uname)-$(uname -m).sh
 ```
 
-Alternatively, you can download it from the official website and use [pyenv](https://github.com/pyenv/pyenv).
+Alternatively, you can download Python from the official website and use [pyenv](https://github.com/pyenv/pyenv).
 
 ## Install Julia
 
 Some of the PROTEUS modules are written in Julia, which is broadly similar to Python.
-You should only obtain Julia using the official installer, **not** via your package manager.
+You should only obtain Julia using the official installer, **not** via your computer's package manager.
 
 ```console
 curl -fsSL https://install.julialang.org | sh
@@ -237,7 +200,7 @@ dependencies, use the script below.
 ```
 
 Note that this script will take some time to run; PLATON will need to download
-about 10 GB of opacity data from the internet.
+about 10 GB of data from the internet.
 
 ### Chemical kinetics atmosphere model (**VULCAN**)
 

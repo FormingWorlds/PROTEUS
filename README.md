@@ -12,7 +12,7 @@
 
 ## Installation & run instructions
 
-See the [installation guide](https://fwl-proteus.readthedocs.io/en/latest/installation/) and [usage guide](https://fwl-proteus.readthedocs.io/en/latest/usage/) for initial steps and troubleshooting advice. Only attempt to run PROTEUS after you have followed all of the installation instructions.
+See the [installation guide](./installation.md) and [usage guide](./usage.md) for initial steps and troubleshooting advice. Only attempt to run PROTEUS after you have followed all of the installation instructions.
 
 ## Contributors
 
@@ -33,13 +33,13 @@ Raymond Pierrehumbert   | raymond.pierrehumbert[at]physics.ox.ac.uk             
 | Object                | Description                                               |
 | -                     | -                                                         |
 | `README.md`           | Overview file                                             |
-| `pyproject.toml`	    | Project configuration file                                |
+| `pyproject.toml`      | Project configuration file                                |
 | `CODE_OF_CONDUCT.md`  | Project code of conduct                                   |
 | `LICENSE.txt`         | Project license                                           |
 | `src/proteus`         | Source code for PROTEUS                                   |
 | `output/`             | Output folder with subfolders for each model run          |
 | `input/`              | Example configuration files for running the model         |
-| `docs/`		            | Documentation source files                                |
+| `docs/`               | Documentation source files                                |
 | `examples/`           | Example cases that the model should be able to reproduce  |
 | `tests/`              | Unit tests for the code                                   |
 | `tools/`              | Tools for setting up the environment                      |

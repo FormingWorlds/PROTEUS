@@ -518,7 +518,7 @@ if __name__=='__main__':
     print("Start GridPROTEUS")
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "grid_test"
+    folder = "scratch/l98d_habrok"
 
     # Base config file
     config = "demos/dummy.toml"
@@ -538,10 +538,10 @@ if __name__=='__main__':
     pg.set_dimension_direct("Redox state", [-4.5, -4.0, -3.5, -3, -2.5, -2.0, -1.5, -1.0])
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_direct("Hydrogen", [16000, 13000, 10000, 7000, 4000, 1000], sort=False)
+    pg.set_dimension_direct("Hydrogen", [16000, 14500, 13000, 10000, 7000, 4000, 1000], sort=False)
 
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    pg.set_dimension_direct("Sulfur", [2, 7, 12])
+    pg.set_dimension_direct("Sulfur", [2, 8, 10, 12])
 
     pg.add_dimension("Mass", "struct.mass_tot")
     pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
@@ -554,4 +554,4 @@ if __name__=='__main__':
     pg.slurm_config(max_jobs=10, test_run=False)
 
     # Alternatively, let grid_proteus.py manage the jobs
-    # pg.run(108, test_run=False)
+    # pg.run(100, test_run=False)

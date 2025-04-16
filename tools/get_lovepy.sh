@@ -9,7 +9,7 @@ fi
 
 # Install LovePy package
 echo "Installing LovePy into Julia environment..."
-julia -e 'using Pkg; Pkg.add(url="https://github.com/nichollsh/LovePy")'
-julia -e 'using LovePy; println("Installed to: "*pathof(LovePy))'
+LD_LIBRARY_PATH="" julia -e 'using Pkg; Pkg.add(url="https://github.com/nichollsh/LovePy")'
+LD_LIBRARY_PATH="" julia -e 'using LovePy; println("Installed to: "*pathof(LovePy))'
 
 echo "Done!"
