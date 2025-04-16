@@ -448,7 +448,8 @@ class Grid():
         log.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
 
-    def slurm_config(self, max_jobs:int, test_run:bool=False):
+    def slurm_config(self, max_jobs:int, test_run:bool=False,
+                        max_days:int=1, max_mem:float=3.0):
         """Write slurm config file.
 
         Uses a slurm job array, see link for more info:
@@ -460,13 +461,24 @@ class Grid():
             Maximum number of jobs to run
         test_run : bool
             If true, generate dummy commands to test the code.
+        max_days : int
+            Maximum number of days to run
+        max_mem : float
+            Maximum memory per CPU in GB
         """
-        log.info("Generating PROTEUS slurm config for accross parameter grid '%s'" % self.name)
+
+        max_days = int(max_days) # ensure integer
+
+        log.info("Generating PROTEUS slurm config for parameter grid '%s'" % self.name)
+        log.info("Will run for up to %d days per job" % max_days)
+        log.info("Will use up to %.1f GB of memory per job" % max_mem)
+        log.info(" ")
 
         log.info("Output path: '%s'" % self.outdir)
         if self.using_symlink:
             log.info("Symlink target: '%s'" % self.symlink_dir)
 
+        log.info(" ")
         self.write_config_files()
 
         if test_run:
@@ -474,10 +486,13 @@ class Grid():
         else:
             command = "proteus start --offline --config"
 
-        log_file = self.logdir / 'proteus-%A_%a.log'
+        log_file = os.path.join(self.logdir, 'proteus-%A_%a.log')
 
         string = f"""#!/bin/sh
 #SBATCH -J proteus.grid.array
+#SBATCH --export=ALL
+#SBATCH --time={max_days}-00
+#SBATCH --mem-per-cpu={max_mem}G
 #SBATCH -i /dev/null
 #SBATCH -o {log_file}
 #SBATCH --array=0-{self.size-1}%{max_jobs}
@@ -498,16 +513,17 @@ done
             f.write(string)
 
         user = getuser()
-        log.info('Slurm file written to %s', slurm_path)
         log.info('')
         log.info('Submit to Slurm using:')
-        log.info('    `sbatch %s`', slurm_path.name)
+        log.info('    `sbatch %s`', slurm_path)
         log.info('')
-        log.info('To look at the slurm queueu:')
+        log.info('To look at the Slurm queue:')
         log.info('    `squeue` or `squeue -u %s`', user)
         log.info('')
-        log.info('To cancel a job or all your jobs:')
-        log.info('    `scancel [jobid]` or `scancel -u %s`', user)
+        log.info('To cancel a job, or all of your jobs:')
+        log.info('    `scancel [jobid]`, or `scancel -u %s`', user)
+
+        time.sleep(2.0)
 
 
 if __name__=='__main__':
@@ -517,10 +533,12 @@ if __name__=='__main__':
     folder = "scratch/grid_test"
 
     # Use SLURM?
-    use_slurm = False
+    use_slurm = True
 
-    # Maximum number of concurrent tasks
-    max_jobs = 50
+    # Execution limits
+    max_jobs = 50       # maximum number of concurrent tasks
+    max_days = 1        # maximum number of days to run
+    max_mem  = 3.0      # maximum memory per CPU in GB
 
     # Base config file
     config = "demos/dummy.toml"
@@ -542,8 +560,8 @@ if __name__=='__main__':
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
     pg.set_dimension_direct("Hydrogen", [16000, 14500, 13000, 10000, 7000, 4000, 1000], sort=False)
 
-    pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    pg.set_dimension_direct("Sulfur", [2, 8, 10, 12])
+    # pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
+    # pg.set_dimension_direct("Sulfur", [2, 8, 10, 12])
 
     pg.add_dimension("Mass", "struct.mass_tot")
     pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
@@ -556,7 +574,8 @@ if __name__=='__main__':
     # Run the grid
     if use_slurm:
         # Generate Slurm batch file, use `sbatch` to submit
-        pg.slurm_config(max_jobs, test_run=False)
+        pg.slurm_config(max_jobs, test_run=False, max_days=max_days, max_mem=max_mem)
     else:
         # Alternatively, let grid_proteus.py manage the jobs
         pg.run(max_jobs, test_run=False)
+        log.info("GridPROTEUS finished")
