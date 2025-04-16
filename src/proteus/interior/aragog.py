@@ -36,6 +36,22 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA',
                                    platformdirs.user_data_dir('fwl_data')))
 
 class AragogRunner:
+    _instances = {}
+
+    def __new__(cls, *args, **kwargs):
+        # Build a cache key from the object identities of all args and kwargs
+        key = (
+            tuple(id(arg) for arg in args),
+            tuple(sorted((k, id(v)) for k, v in kwargs.items()))
+        )
+
+        if key in cls._instances:
+            return cls._instances[key]
+
+        instance = super().__new__(cls)
+        cls._instances[key] = instance
+        return instance
+
     def __init__(self, config: Config, dirs: dict, hf_row: dict, hf_all:
                  pd.DataFrame, interior_o: Interior_t):
         self.aragog_solver = None
