@@ -67,3 +67,7 @@ There is information on the HPC wiki on [how to submit jobs](https://wiki.hpc.ru
     ```console
     squeue -u $USER
     ```
+
+## Running grids
+
+See the section on running grids in the [usage guide](./usage.md#running-grids-of-simulations)

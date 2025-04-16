@@ -448,7 +448,7 @@ class Grid():
         log.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
 
-    def slurm_config(self, max_jobs:int=10, test_run:bool=False):
+    def slurm_config(self, max_jobs:int, test_run:bool=False):
         """Write slurm config file.
 
         Uses a slurm job array, see link for more info:
@@ -516,6 +516,12 @@ if __name__=='__main__':
     # Output folder name, created inside `PROTEUS/output/`
     folder = "scratch/grid_test"
 
+    # Use SLURM?
+    use_slurm = False
+
+    # Maximum number of concurrent tasks
+    max_jobs = 50
+
     # Base config file
     config = "demos/dummy.toml"
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
@@ -542,12 +548,15 @@ if __name__=='__main__':
     pg.add_dimension("Mass", "struct.mass_tot")
     pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
 
+    # Print information
     pg.print_setup()
     pg.generate()
     pg.print_grid()
 
-    # Generate Slurm batch file, use `sbatch` to submit
-    pg.slurm_config(max_jobs=10, test_run=False)
-
-    # Alternatively, let grid_proteus.py manage the jobs
-    # pg.run(100, test_run=False)
+    # Run the grid
+    if use_slurm:
+        # Generate Slurm batch file, use `sbatch` to submit
+        pg.slurm_config(max_jobs, test_run=False)
+    else:
+        # Alternatively, let grid_proteus.py manage the jobs
+        pg.run(max_jobs, test_run=False)

@@ -24,12 +24,6 @@ This will run a simulation and output the results to the `<PROTEUS path>/output/
 See the [config guide](https://fwl-proteus.readthedocs.io/en/latest/config/) for information
 on how to edit the configurations files, and an explanation of their structure.
 
-## Running grids of simulations
-
-It is often useful to run grids of models, where each point in a grid represents a different
-set of parameters. This can be done using the script `tools/grid_proteus.py`.
-
-You can configure a grid of your choosing by editing the variables in this file.
 
 ## Running PROTEUS on remote machines / servers
 
@@ -63,6 +57,23 @@ You can find detailed documentation [here](https://tmuxcheatsheet.com/).
     htop
     ```
 - Press `Ctrl + c` to exit the `htop` command.
+
+## Running grids of simulations
+
+It is often useful to run grids of models, where each point in a grid represents a different
+set of parameters. This can be done using the script `tools/grid_proteus.py`.
+
+You can configure a grid of your choosing by editing the variables at the end of this file.
+With the grid configured to your liking, you can then dispatch the grid in two ways.
+
+Firstly, you can set `use_slurm=False`. In this case, `grid_proteus.py` will manage the
+individual subprocesses which compose the grid. The variable `max_jobs` specifies the maximum number of CPU cores
+which should be utilised by the grid at any one time. This is limited by the number of CPU
+cores available on your machine. This method without SLURM, and can be applied on servers or on multicore personal computers.
+
+Alternatively, we can access high performance compute nodes through the SLURM workload
+manager (e.g. on Habrok and Snellius). To do this, set `use_slurm=True`.
+This will produce a file in the specified output folder, which you can dispatch to the compute nodes with `sbatch`.
 
 
 ## Version checking
