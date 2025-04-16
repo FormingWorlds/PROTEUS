@@ -449,7 +449,7 @@ class Grid():
 
 
     def slurm_config(self, max_jobs:int, test_run:bool=False,
-                        max_days:int=1, max_mem:float=3.0):
+                        max_days:int=1, max_mem:int=3):
         """Write slurm config file.
 
         Uses a slurm job array, see link for more info:
@@ -463,7 +463,7 @@ class Grid():
             If true, generate dummy commands to test the code.
         max_days : int
             Maximum number of days to run
-        max_mem : float
+        max_mem : int
             Maximum memory per CPU in GB
         """
 
@@ -471,7 +471,7 @@ class Grid():
 
         log.info("Generating PROTEUS slurm config for parameter grid '%s'" % self.name)
         log.info("Will run for up to %d days per job" % max_days)
-        log.info("Will use up to %.1f GB of memory per job" % max_mem)
+        log.info("Will use up to %d GB of memory per job" % max_mem)
         log.info(" ")
 
         log.info("Output path: '%s'" % self.outdir)
@@ -530,18 +530,18 @@ if __name__=='__main__':
     print("Start GridPROTEUS")
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "scratch/grid_test"
+    folder = "scratch/l98d_habrok2"
 
     # Use SLURM?
     use_slurm = True
 
     # Execution limits
-    max_jobs = 50       # maximum number of concurrent tasks
-    max_days = 1        # maximum number of days to run
-    max_mem  = 3.0      # maximum memory per CPU in GB
+    max_jobs = 20       # maximum number of concurrent tasks
+    max_days = 2         # maximum number of days to run
+    max_mem  = 3         # maximum memory per CPU in GB
 
     # Base config file
-    config = "demos/dummy.toml"
+    config = "planets/l9859d.toml"
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
 
     # Set this string to have the output files created at an alternative location. The
@@ -555,13 +555,13 @@ if __name__=='__main__':
 
     # Add dimensions to grid...
     pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_direct("Redox state", [-4.5, -4.0, -3.5, -3, -2.5, -2.0, -1.5, -1.0])
+    pg.set_dimension_arange("Redox state", -4.5, 0.0, 0.5)
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_direct("Hydrogen", [16000, 14500, 13000, 10000, 7000, 4000, 1000], sort=False)
+    pg.set_dimension_arange("Hydrogen", 16000, 1000, -3000)
 
-    # pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    # pg.set_dimension_direct("Sulfur", [2, 8, 10, 12])
+    pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
+    pg.set_dimension_direct("Sulfur", [2, 8, 10, 12])
 
     pg.add_dimension("Mass", "struct.mass_tot")
     pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
