@@ -15,6 +15,7 @@ import sys
 import time
 from copy import deepcopy
 from datetime import datetime
+from getpass import getuser
 from pathlib import Path
 
 import numpy as np
@@ -500,8 +501,17 @@ done
         with open(slurm_path, 'w') as f:
             f.write(string)
 
+        user = getuser()
         log.info('Slurm file written to %s', slurm_path)
-        log.info('Submit to Slurm using `sbatch %s`', slurm_path)
+        log.info('')
+        log.info('Submit to Slurm using:')
+        log.info('    `sbatch %s`', slurm_path.name)
+        log.info('')
+        log.info('To look at the slurm queueu:')
+        log.info('    `squeue` or `squeue -u %s`', user)
+        log.info('')
+        log.info('To cancel a job or all your jobs:')
+        log.info('    `scancel [jobid]` or `scancel -u %s`', user)
 
 
 if __name__=='__main__':
