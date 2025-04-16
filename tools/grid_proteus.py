@@ -16,7 +16,6 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
-from pathlib import Path
 
 import numpy as np
 
@@ -85,7 +84,6 @@ class Grid():
         # Grid's own name (for versioning, etc.)
         self.name = str(name).strip()
         self.outdir = PROTEUS_DIR+"/output/"+self.name+"/"
-        self.tmpdir = "/tmp/"+self.name+"/"
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
             raise Exception("Base config file '%s' does not exist!" % self.conf)
@@ -95,8 +93,9 @@ class Grid():
             raise Exception("Symlinked directory is set to a blank path")
 
         # Paths
-        self.outdir = os.path.abspath(self.outdir)
-        self.tmpdir = os.path.abspath(self.tmpdir)
+        self.outdir = os.path.abspath(self.outdir) + "/"
+        self.cfgdir = os.path.join(self.outdir, "cfgs") + "/"
+        self.logdir = os.path.join(self.outdir, "logs") + "/"
 
         # Remove old output location
         if os.path.exists(self.outdir):
@@ -129,10 +128,11 @@ class Grid():
             os.makedirs(self.symlink_dir)
             os.symlink(self.symlink_dir, self.outdir)
 
-        # Make temp dir
-        if os.path.exists(self.tmpdir):
-            shutil.rmtree(self.tmpdir)
-        os.makedirs(self.tmpdir)
+        # Make subdirectories
+        for dir in [self.cfgdir, self.logdir]:
+            if os.path.exists(dir):
+                shutil.rmtree(dir)
+            os.makedirs(dir)
 
         # Setup logging
         setup_logger(logpath=os.path.join(self.outdir,"manager.log"), logterm=True, level=1)
@@ -214,7 +214,7 @@ class Grid():
         log.info(" ")
 
     def _get_tmpcfg(self, idx:int):
-        return os.path.join(self.tmpdir, self.CONFIG_BASENAME % idx)
+        return os.path.join(self.cfgdir, self.CONFIG_BASENAME % idx)
 
     # Generate the Grid based on the current configuration
     def generate(self):
@@ -474,22 +474,18 @@ class Grid():
         else:
             command = "proteus start --offline --config"
 
-        out_dir = Path(self.outdir)
-
-        out_file = out_dir / 'proteus-%A_%a.out'
-        err_file = out_dir / 'proteus-%A_%a.err'
+        log_file = self.logdir / 'proteus-%A_%a.log'
 
         string = f"""#!/bin/sh
 #SBATCH -J proteus.grid.array
 #SBATCH -i /dev/null
-#SBATCH -o {out_file}
-#SBATCH -e {err_file}
+#SBATCH -o {log_file}
 #SBATCH --array=0-{self.size-1}%{max_jobs}
 
 i=$SLURM_ARRAY_TASK_ID
 
 while [ $i -le {self.size} ]; do
-    printf -v cfg "{self.tmpdir}/{self.CONFIG_BASENAME}" $((i+1))
+    printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}" $((i+1))
     echo executing proteus with config $cfg
     {command} $cfg
     i=$((i+{self.size}))
@@ -497,7 +493,7 @@ done
 
 """
 
-        slurm_path = out_dir / 'proteus_slurm_array.sh'
+        slurm_path = os.path.join(self.outdir, 'slurm_dispatch.sh')
         with open(slurm_path, 'w') as f:
             f.write(string)
 
@@ -518,7 +514,7 @@ if __name__=='__main__':
     print("Start GridPROTEUS")
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "scratch/l98d_habrok"
+    folder = "scratch/grid_test"
 
     # Base config file
     config = "demos/dummy.toml"
