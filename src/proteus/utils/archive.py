@@ -3,9 +3,9 @@
 # Import utils-specific modules
 from __future__ import annotations
 
+import glob
 import logging
 import os
-import glob
 import tarfile
 
 from proteus.utils.helper import safe_rm

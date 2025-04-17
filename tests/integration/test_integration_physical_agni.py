@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import numpy as np
 import os
+
+import numpy as np
 import pytest
 from helpers import NEGLECT, PROTEUS_ROOT, df_intersect
 from numpy.testing import assert_allclose

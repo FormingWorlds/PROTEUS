@@ -8,7 +8,7 @@ Try `proteus --help` to see the available commands!
 You can directly run PROTEUS using the command:
 
 ```console
-proteus start --config [cfgfile]
+proteus start -c [cfgfile]
 ```
 
 Where `[cfgfile]` is the path to the required configuration file.
@@ -17,7 +17,7 @@ Pass the flag `--resume` in to resume the simulation from the disk.
 A good first test is to run the `minimal.toml` config, which is located in the `input` folder:
 
 ```console
-proteus start --config <PROTEUS path>/input/minimal.toml
+proteus start -c <PROTEUS path>/input/minimal.toml
 ```
 This will run a simulation and output the results to the `<PROTEUS path>/output/` folder.
 
@@ -37,7 +37,7 @@ You can find detailed documentation [here](https://tmuxcheatsheet.com/).
     ```
 - Inside the tmux session, start your simulation:
     ```console
-    proteus start --config input/all_options.toml
+    proteus start -c input/all_options.toml
     ```
 - To detach from the session, press `Ctrl + b`, then `d`. You can reattach to the session later with:
     ```console
@@ -119,7 +119,7 @@ as an input to the VULCAN chemical kinetics model, capturing the additional phys
 You can access the offline chemistry via the command line interface:
 
 ```console
-proteus offchem --config [cfgfile]
+proteus offchem -c [cfgfile]
 ```
 This will run VULCAN as a subprocess. This command should not be used in batch processing.
 
@@ -137,7 +137,25 @@ can be set by the output of the offline chemistry calculation (see config file).
 You can access the synthetic observation functionality via the command line interface:
 
 ```console
-proteus observe --config [cfgfile]
+proteus observe -c [cfgfile]
 ```
 
 PROTEUS will perform this step automatically if enabled in the configuration file.
+
+## Archiving output files
+
+Running PROTEUS can generate a large number of files, which is problematic when also running
+large grids of simulations. To counter this, the `params.out.archive_mod` configuration
+option can be used to tell PROTEUS when to archive its output files. This will gather the
+output files of each run into `.tar` files.
+
+Archiving the output files makes them inaccessible for analysis or plotting. To extract the
+archives from a run, use the proteus command line interface:
+```console
+proteus extract-archives -c [cfgfile]
+```
+
+This is reversible. To pack the data files into `.tar` archives again:
+```console
+proteus create-archives -c [cfgfile]
+```

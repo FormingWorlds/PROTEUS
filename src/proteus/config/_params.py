@@ -8,6 +8,7 @@ from attrs.validators import ge, gt, in_, lt
 
 from ._converters import none_if_none
 
+
 def valid_path(instance, attribute, value):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"'{attribute.name}' must be a non-empty string")
