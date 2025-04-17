@@ -19,7 +19,6 @@ from proteus.utils.helper import (
     PrintSeparator,
     UpdateStatusfile,
     multiple,
-    safe_rm,
 )
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
@@ -137,6 +136,7 @@ class Proteus:
             print_module_configuration,
             print_stoptime,
             print_system_configuration,
+            remove_excess_files,
         )
 
         #    lookup and reference data
@@ -158,6 +158,7 @@ class Proteus:
             CleanDir(os.path.join(self.directories["output"], "data"))
             CleanDir(os.path.join(self.directories["output"], "observe"))
             CleanDir(os.path.join(self.directories["output"], "offchem"))
+            CleanDir(os.path.join(self.directories["output"], "plots"))
 
         # Get next logfile path
         logindex = 1 + GetCurrentLogfileIndex(self.directories["output"])
@@ -483,14 +484,14 @@ class Proteus:
             else:
                 run_observe(self.hf_row, self.directories["output"], self.config)
 
-        # Tidy up before exit...
-        log.info("Tidy up before exit")
-        safe_rm(self.lockfile)
-
         # Plot and write conditions at the end of simulation
         log.info("Writing data and plots")
         WriteHelpfileToCSV(self.directories["output"], self.hf_all)
         UpdatePlots(self.hf_all, self.directories, self.config, end=True)
+
+        # Tidy up before exit...
+        log.info("Tidy up before exit")
+        remove_excess_files(self.directories["output"])
 
         # Stop time and model duration
         print_stoptime(start_time)

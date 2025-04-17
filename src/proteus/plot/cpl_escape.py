@@ -99,7 +99,7 @@ def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf") :
     plt.close()
     plt.ioff()
 
-    fpath = os.path.join(output_dir, "plot_escape.%s"%plot_format)
+    fpath = os.path.join(output_dir, "plots", "plot_escape.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 

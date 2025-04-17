@@ -82,8 +82,9 @@ def plot_fluxes_atmosphere(output_dir:str, plot_format="pdf"):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_atmosphere.%s"%plot_format,
-                bbox_inches='tight', dpi=200)
+
+    fpath = os.path.join(output_dir, "plots", "plot_fluxes_atmosphere.%s"%plot_format)
+    fig.savefig(fpath, bbox_inches='tight', dpi=200)
 
 
 def plot_fluxes_atmosphere_entry(handler: Proteus):

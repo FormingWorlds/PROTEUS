@@ -151,11 +151,12 @@ def plot_interior_cmesh(output_dir: str, times: list | np.ndarray, data: list,
         cf = ax4.pcolormesh(times, arr_yb, arr_z4.T, cmap=cmap, norm=norm, rasterized=True, extend='min')
     cb = fig.colorbar(cf, cax=cax, orientation='vertical', extend='under')
     cb.set_label("Convective flux \n [kW m$^{-2}$]")
+    ax4.set_xticks(np.linspace(times[0], times[-1], 5))
+
+    fig.subplots_adjust(top=0.98, bottom=0.07, right=0.85, left=0.13, hspace=0.11)
 
     # Save plot
-    ax4.set_xticks(np.linspace(times[0], times[-1], 5))
-    fname = os.path.join(output_dir,"plot_interior_cmesh.%s"%plot_format)
-    fig.subplots_adjust(top=0.98, bottom=0.07, right=0.85, left=0.13, hspace=0.11)
+    fname = os.path.join(output_dir,"plots", "plot_interior_cmesh.%s"%plot_format)
     fig.savefig(fname, dpi=200)
 
 

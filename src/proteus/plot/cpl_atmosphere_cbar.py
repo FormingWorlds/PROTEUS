@@ -65,7 +65,7 @@ def plot_atmosphere_cbar(output_dir, times, profiles, plot_format="pdf"):
     cbar.set_label("Time [yr]")
 
     # Save plot
-    fname = os.path.join(output_dir,"plot_atmosphere_cbar.%s"%plot_format)
+    fname = os.path.join(output_dir,"plots","plot_atmosphere_cbar.%s"%plot_format)
     fig.savefig(fname, bbox_inches='tight', dpi=200)
 
 

@@ -67,8 +67,9 @@ def plot_fluxes_global(hf_all:pd.DataFrame, output_dir: str, config: Config, t0:
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_global.%s" % config.params.out.plot_fmt,
-                bbox_inches='tight', dpi=200)
+
+    fpath = os.path.join(output_dir, "plots", "plot_fluxes_global.%s"%config.params.out.plot_fmt)
+    fig.savefig(fpath, bbox_inches='tight', dpi=200)
 
 
 def plot_fluxes_global_entry(handler: Proteus):

@@ -192,7 +192,8 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
     fig.subplots_adjust(wspace=0.05)
     plt.close()
     plt.ioff()
-    fpath = os.path.join(output_dir, "plot_interior.%s"%plot_format)
+
+    fpath = os.path.join(output_dir, "plots", "plot_interior.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 

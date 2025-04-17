@@ -133,8 +133,8 @@ def plot_population_mass_radius(hf_all:pd.DataFrame, output_dir: str, fwl_dir:st
     ax.grid(alpha=0.2, zorder=-2)
 
     ax.legend(loc='lower right', ncol=2, **LEG_KWARGS)
-    fig.savefig(output_dir+"/plot_population_mass_radius."+plot_format,
-                bbox_inches='tight', dpi=200)
+    fpath = os.path.join(output_dir, "plots", "plot_population_mass_radius.%s"%plot_format)
+    fig.savefig(fpath, bbox_inches='tight', dpi=200)
 
 
 def plot_population_time_density(hf_all:pd.DataFrame, output_dir: str, fwl_dir:str,
@@ -203,8 +203,8 @@ def plot_population_time_density(hf_all:pd.DataFrame, output_dir: str, fwl_dir:s
     ax.grid(alpha=0.2, zorder=-2)
 
     ax.legend(**LEG_KWARGS)
-    fig.savefig(output_dir+"/plot_population_time_density."+plot_format,
-                bbox_inches='tight', dpi=200)
+    fpath = os.path.join(output_dir, "plots", "plot_population_time_density.%s"%plot_format)
+    fig.savefig(fpath, bbox_inches='tight', dpi=200)
 
 
 def plot_population_entry(handler: Proteus):

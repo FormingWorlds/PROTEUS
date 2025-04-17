@@ -122,7 +122,7 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
               labelspacing=0.3, columnspacing=1.0, handlelength=1.5, handletextpad=0.3)
 
     # Save file
-    fpath = os.path.join(output_dir, "plot_chem_atmosphere.%s"%plot_format)
+    fpath = os.path.join(output_dir, "plots", "plot_chem_atmosphere.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 def plot_chem_atmosphere_entry(handler: Proteus):

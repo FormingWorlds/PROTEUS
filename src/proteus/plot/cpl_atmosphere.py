@@ -66,7 +66,7 @@ def plot_atmosphere( output_dir:str, times:list, profiles:list, plot_format="pdf
     # Legend
     ax1.legend( fontsize=8, fancybox=True, framealpha=0.5).set_zorder(99)
     fig.subplots_adjust(hspace=0.02)
-    fpath = os.path.join(output_dir, "plot_atmosphere.%s"%plot_format)
+    fpath = os.path.join(output_dir, "plots", "plot_atmosphere.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 

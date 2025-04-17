@@ -43,34 +43,6 @@ def _new(dir:str, tar:str) -> None:
         for f in files:
             tar_file.add(os.path.join(dir,f))
 
-def _append(file:str, tar:str) -> None:
-    """
-    Add file to an existing tar file.
-
-    Arguments
-    ---------
-    file : str
-        The file to add to the tar file.
-    tar : str
-        The name of the tar file to add to.
-    """
-
-    log.debug(f"Appending {file} to {tar}")
-
-    # Check if the tar file exists
-    if not os.path.exists(tar):
-        log.error(f"Tar file {tar} does not exist. Cannot append to it.")
-        return
-
-    # Check if the file exists
-    if not os.path.exists(file):
-        log.error(f"File {file} does not exist. Cannot append to tar.")
-        return
-
-    # Append file to existing tar file
-    with tarfile.open(tar, "a") as tar_file:
-        tar_file.add(file)
-
 
 def archive(dir:str, protect:list = []) -> str:
     """
@@ -109,6 +81,34 @@ def archive(dir:str, protect:list = []) -> str:
 
     # Return path to the tar file
     return tar
+
+def append(tar:str,file:str) -> None:
+    """
+    Add file to an existing tar file.
+
+    Arguments
+    ---------
+    tar : str
+        The name of the tar file to add to.
+    file : str
+        The file to add to the tar file.
+    """
+
+    log.debug(f"Appending {file} to {tar}")
+
+    # Check if the tar file exists
+    if not os.path.exists(tar):
+        log.error(f"Tar file {tar} does not exist. Cannot append to it.")
+        return
+
+    # Check if the file exists
+    if not os.path.exists(file):
+        log.error(f"File {file} does not exist. Cannot append to tar.")
+        return
+
+    # Append file to existing tar file
+    with tarfile.open(tar, "a") as tar_file:
+        tar_file.add(file)
 
 def extract(dir:str, remove_after:bool=True) -> None:
     """

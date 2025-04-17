@@ -26,6 +26,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
+LOCKFILE_NAME="keepalive"
+
 def _get_current_time():
     '''
     Get the current system time as a formatted string.
@@ -327,7 +329,7 @@ def CreateLockFile(output_dir:str):
     '''
     Create a lock file which, if removed, will signal for the simulation to stop.
     '''
-    keepalive_file = os.path.join(output_dir,"keepalive")
+    keepalive_file = os.path.join(output_dir,LOCKFILE_NAME)
     safe_rm(keepalive_file)
     with open(keepalive_file, 'w') as fp:
         fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
@@ -676,16 +678,47 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Close all figures
     plt.close("all")
 
+def remove_excess_files(outdir:str, keep_spectralfiles:bool=False):
+    """Remove excess files from the output directory
 
-def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
+    Parameters
+    ----------
+    outdir: str
+        Path to the simulation's output directory
+    keep_spectralfiles: bool
+        Whether to keep spectral files or not
+    """
+
+    # Files to remove, relative to outdir
+    rm_paths = [
+        "agni_recent.log",
+        "data/.spider_tmp",
+        "data/tides_recent.dat",
+        "runtime.sf",
+        "runtime.sf_k",
+        LOCKFILE_NAME
+    ]
+
+    # Loop over files
+    for f in rm_paths:
+        f = os.path.join(outdir, f)
+
+        # Skip protected files
+        if keep_spectralfiles:
+            if f.split(".")[-1] in ("sf", "sf_k"):
+                continue
+
+        # Remove the file
+        log.debug(f"Removing {f}")
+        safe_rm(f)
+
+def get_proteus_directories(outdir) -> dict[str, str]:
     """Create dict of proteus directories from root dir.
 
     Parameters
     ----------
-    root_dir : str
-        Proteus root directory
-    out_dir : str, optional
-        Name out output directory
+    outdir : str
+        Name of the simulation's output directory
 
     Returns
     -------
@@ -702,7 +735,7 @@ def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
         "spider":   os.path.join(root_dir, "SPIDER"),
         "tools":    os.path.join(root_dir, "tools"),
         "vulcan":   os.path.join(root_dir, "VULCAN"),
-        "output":   os.path.join(root_dir, "output", out_dir),
+        "output":   os.path.join(root_dir, "output", outdir),
         "utils":    os.path.join(root_dir, "src", "proteus", "utils")
     }
 
@@ -723,7 +756,7 @@ def SetDirectories(config: Config) -> dict[str, str]:
     dirs : dict
         Dictionary of paths to important directories
     """
-    dirs = get_proteus_directories(out_dir=config.params.out.path)
+    dirs = get_proteus_directories(config.params.out.path)
 
     # FWL data folder
     if os.environ.get('FWL_DATA') is None:

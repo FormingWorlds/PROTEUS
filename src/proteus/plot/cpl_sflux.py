@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import glob
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import matplotlib as mpl
@@ -152,8 +153,8 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0,
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_sflux.%s"%plot_format,
-                bbox_inches='tight', dpi=200)
+    fpath = os.path.join(output_dir, "plots", "plot_sflux.%s"%plot_format)
+    fig.savefig(fpath, bbox_inches='tight', dpi=200)
 
 
 def plot_sflux_entry(handler: Proteus):
