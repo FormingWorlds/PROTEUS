@@ -6,11 +6,21 @@ from __future__ import annotations
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
+from ._converters import none_if_none
+
+def valid_path(instance, attribute, value):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"'{attribute.name}' must be a non-empty string")
 
 def max_bigger_than_min(instance, attribute, value):
     if value <= instance.minimum:
         raise ValueError("'maximum' has to be bigger than 'minimum'.")
 
+def valid_archive_mod(instance, attribute, value):
+    if value is None:
+        return
+    if value < 0:
+        raise ValueError("'archive_mod' must be None or greater than 0.")
 
 @define
 class OutputParams:
@@ -28,13 +38,17 @@ class OutputParams:
         Plotting output file format. Choices: "png", "pdf".
     write_mod: int
         Write CSV frequency. 0: wait until completion. n: every n iterations.
+    archive_mod: int | None
+        Archive frequency. 0: wait until completion. n: every n iterations. None: no archiving.
     """
-    path: str
-    logging: str    = field(default='INFO',
-                            validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    plot_mod: int   = field(default=10,      validator=ge(0))
-    plot_fmt: str   = field(default='png',  validator=in_(('pdf', 'png')))
-    write_mod: int  = field(default=1,      validator=ge(0))
+    path: str               = field(validator=valid_path)
+    logging: str            = field(default='INFO',
+                                    validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
+    plot_mod: int           = field(default=10,     validator=ge(0))
+    plot_fmt: str           = field(default='png',  validator=in_(('pdf', 'png')))
+    write_mod: int          = field(default=1,      validator=ge(0))
+    archive_mod             = field(default=None,   validator=valid_archive_mod,
+                                    converter=none_if_none)
 
 @define
 class DtProportional:
