@@ -20,6 +20,7 @@ import pandas as pd
 from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
+import proteus.utils.archive as archive
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -740,7 +741,7 @@ def get_proteus_directories(outdir) -> dict[str, str]:
     }
 
 
-def SetDirectories(config: Config) -> dict[str, str]:
+def set_directories(config: Config) -> dict[str, str]:
     """Set directories dictionary
 
     Sets paths to the required directories, based on the configuration provided
@@ -780,3 +781,7 @@ def SetDirectories(config: Config) -> dict[str, str]:
         dirs[key] = os.path.abspath(dirs[key])+"/"
 
     return dirs
+
+
+
+

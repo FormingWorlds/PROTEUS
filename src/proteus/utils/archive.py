@@ -5,25 +5,38 @@ from __future__ import annotations
 
 import logging
 import os
+import glob
 import tarfile
 
 log = logging.getLogger("fwl."+__name__)
 
+def _tarfile_from_dir(dir:str) -> str:
+    name = os.path.split(dir)[-1]
+    return os.path.join(dir, f"{name}.tar")
 
-def _new(dir:str, tar:str) -> None:
+def create(dir:str, remove_files:bool=True) -> str:
     """
-    Archive a directory into a tar file.
+    Create a new tar archive from a directory of files, placing the tar inside that directory.
 
-    Assumes that the directory contains loose files. Does not store subdirectories.
+    Optionally removes all files in that directory (other than the tar file).
 
     Arguments
     ---------
     dir : str
         The directory to archive.
-    tar : str
-        The name of the tar file to create.
+    remove_files:bool
+        Whether to remove the appended files from the directory.
+
+    Returns
+    -------
+    str
+        The path to the tar file created.
     """
-    log.debug(f"Archiving {dir} to {tar}")
+
+    # Tar file path
+    dir = os.path.abspath(dir)
+    tar = _tarfile_from_dir(dir)
+    log.debug(f"Creating new archive of {dir}")
 
     # Check if the directory exists
     if not os.path.exists(dir):
@@ -36,96 +49,92 @@ def _new(dir:str, tar:str) -> None:
         os.remove(tar)
 
     # List files in directory
-    files = os.listdir(dir)
+    files = glob.glob(os.path.join(dir, "*"))
+    files = [os.path.abspath(f) for f in files]
 
     # Add files to new tar file
     with tarfile.open(tar, "w") as tar_file:
         for f in files:
-            tar_file.add(os.path.join(dir,f))
-
-
-def archive(dir:str, protect:list = []) -> str:
-    """
-    Create a new archive from a directory of files, placing it inside that directory.
-
-    Removes all files in that directory other than the tar file created, and those provided
-    in the list protect.
-
-    Arguments
-    ---------
-    dir : str
-        The directory to archive.
-    protect : list
-        A list of file names to protect from deletion.
-
-    Returns
-    -------
-    str
-        The path to the tar file created.
-    """
-
-    # Tar file
-    name = f"{os.path.basename(dir)}.tar"
-    tar = os.path.join(dir, name)
-
-    # Protect tar file
-    protect.append(name)
-
-    # Create a new archive in that directory
-    _new(dir, tar)
+            tar_file.add(f, arcname=os.path.split(f)[-1])
 
     # Remove files in that directory other than the tar file
-    for f in os.listdir(dir):
-        if f not in protect:
-            os.remove(os.path.join(dir, f))
+    if remove_files:
+        for f in files:
+            if f != tar:  # do not remove the tar file itself
+                os.remove(os.path.join(dir, f))
 
     # Return path to the tar file
     return tar
 
-def append(tar:str,file:str) -> None:
+def append(dir:str, remove_files:bool=True) -> str:
     """
-    Add file to an existing tar file.
+    Add files within `dir`, into `dir/dir.tar` excluding those in `exclude`.
+
+    The tar file must already exist.
 
     Arguments
     ---------
-    tar : str
-        The name of the tar file to add to.
-    file : str
-        The file to add to the tar file.
+    dir:str
+        Path to the archived directory.
+    remove_files:bool
+        Whether to remove the appended files from the directory.
+
+    Returns
+    -------
+    str
+        The path to the tar file which was updated.
     """
 
-    log.debug(f"Appending {file} to {tar}")
+    # Paths
+    dir = os.path.abspath(dir)
+    tar = _tarfile_from_dir(dir)
+    log.debug(f"Appending files to archive in {dir}")
 
     # Check if the tar file exists
     if not os.path.exists(tar):
         log.error(f"Tar file {tar} does not exist. Cannot append to it.")
         return
 
-    # Check if the file exists
-    if not os.path.exists(file):
-        log.error(f"File {file} does not exist. Cannot append to tar.")
-        return
+    # List files in directory
+    files = glob.glob(os.path.join(dir, "*"))
+    files = [os.path.abspath(f) for f in files]
 
     # Append file to existing tar file
     with tarfile.open(tar, "a") as tar_file:
-        tar_file.add(file)
+        for f in files:
+            tar_file.add(f, arcname=os.path.split(f)[-1])
 
-def extract(dir:str, remove_after:bool=True) -> None:
+    # Remove appended files
+    if remove_files:
+        for f in files:
+            if f != tar:  # do not remove the tar file itself
+                os.remove(f)
+
+    return tar
+
+def extract(dir:str, remove_tar:bool=True) -> str:
     """
     Extract the tar file contained within a directory, placing the content within that directory.
 
-    Removes the tar file afterwards.
+    Removes the tar file afterwards if `remove_tar` is set to True.
 
     Arguments
     ---------
     dir : str
         The directory to extract.
-    remove_after : bool
+    remove_tar : bool
         Whether to remove the tar file after extraction.
+
+    Returns
+    -------
+    str
+        The path to the tar file which was extracted.
     """
 
-    tar = os.path.join(dir, f"{os.path.basename(dir)}.tar")
-    log.debug(f"Extracting {tar} to {dir}/")
+    # Paths
+    dir = os.path.abspath(dir)
+    tar = _tarfile_from_dir(dir)
+    log.debug(f"Extracting tar file inside {dir}")
 
     # Check if the directory exists
     if not os.path.exists(dir):
@@ -139,8 +148,38 @@ def extract(dir:str, remove_after:bool=True) -> None:
 
     # Extract tar file
     with tarfile.open(tar, "r") as tar_file:
-        tar_file.extractall()
+        tar_file.extractall(dir)
 
     # Remove tar file
-    if remove_after:
+    if remove_tar:
         os.remove(tar)
+
+def update(dir:str, remove_files:bool=True) -> None:
+    """
+    Create and/or update a data file archive.
+
+    This function archives the folder located at `dir/`. The files inside `dir/`
+    are stored inside a tar file called `dir.tar` located in `dir/`.
+    The tar files is created if it  does not already exist.
+    Otherwise, it is updated with the contents of `dir/`, except for the files listed in exclude.
+
+    All paths should be absolute.
+
+    Arguments
+    ---------
+    dir : str
+        The directory to archive.
+    remove_files : bool
+        Whether to remove the archived files from the directory.
+    """
+
+    # Paths
+    dir = os.path.abspath(dir)
+    tar = _tarfile_from_dir(dir)
+
+    # Update archive
+    if os.path.exists(tar):
+        append(dir, remove_files=remove_files)
+    # Create new archive
+    else:
+        create(dir, remove_files=remove_files)

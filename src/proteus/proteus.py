@@ -79,8 +79,8 @@ class Proteus:
 
     def init_directories(self):
         """Initialize directories dictionary"""
-        from proteus.utils.coupler import SetDirectories
-        self.directories = SetDirectories(self.config)
+        from proteus.utils.coupler import set_directories
+        self.directories = set_directories(self.config)
 
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
