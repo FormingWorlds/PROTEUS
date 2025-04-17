@@ -42,13 +42,13 @@ def create(dir:str, remove_files:bool=True) -> str:
 
     # Check if the directory exists
     if not os.path.exists(dir):
-        log.error(f"Directory {dir} does not exist. Cannot archive.")
+        log.error(f"Directory {dir} does not exist. Cannot archive it.")
         return
 
     # Check if the tar file exists
     if os.path.exists(tar):
-        log.warning(f"Tar file {tar} already exists. Overwriting.")
-        safe_rm(tar)
+        log.error(f"Tar file {tar} already exists. Will not overwrite it.")
+        return
 
     # List files in directory
     files = glob.glob(os.path.join(dir, "*"))

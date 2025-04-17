@@ -506,7 +506,8 @@ class Proteus:
 
         # Tidy up
         log.debug("Tidy up before exit")
-        remove_excess_files(self.directories["output"])
+        remove_excess_files(self.directories["output"],
+                            rm_spectralfiles=self.config.params.out.remove_sf)
 
         # Archive the folder ./output/data/, and remove files
         if self.config.params.out.archive_mod is not None:

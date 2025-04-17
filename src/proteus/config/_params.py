@@ -40,14 +40,17 @@ class OutputParams:
         Plotting frequency. 0: wait until completion. n: every n iterations. None: never plot.
     archive_mod: int | None
         Archive frequency. 0: wait until completion. n: every n iterations. None: never archive.
+    remove_sf: bool
+        Remove SOCRATES spectral files after model terminates.
     """
-    path: str     = field(validator=valid_path)
-    logging: str  = field(default='INFO',
+    path: str       = field(validator=valid_path)
+    logging: str    = field(default='INFO',
                                     validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    plot_fmt: str = field(default='png',  validator=in_(('pdf', 'png')))
-    write_mod:int = field(default=1,      validator=ge(0))
-    plot_mod      = field(default=10,     validator=valid_mod, converter=none_if_none)
-    archive_mod   = field(default=None,   validator=valid_mod, converter=none_if_none)
+    plot_fmt: str   = field(default='png',  validator=in_(('pdf', 'png')))
+    write_mod:int   = field(default=1,      validator=ge(0))
+    plot_mod        = field(default=10,     validator=valid_mod, converter=none_if_none)
+    archive_mod     = field(default=None,   validator=valid_mod, converter=none_if_none)
+    remove_sf:bool  = field(default=False)
 
 @define
 class DtProportional:

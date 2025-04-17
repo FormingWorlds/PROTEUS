@@ -679,34 +679,32 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Close all figures
     plt.close("all")
 
-def remove_excess_files(outdir:str, keep_spectralfiles:bool=False):
+def remove_excess_files(outdir:str, rm_spectralfiles:bool=False):
     """Remove excess files from the output directory
 
     Parameters
     ----------
     outdir: str
         Path to the simulation's output directory
-    keep_spectralfiles: bool
-        Whether to keep spectral files or not
+    rm_spectralfiles: bool
+        Whether to remove spectral files
     """
 
     # Files to remove, relative to outdir
     rm_paths = [
         "agni_recent.log",
         "data/.spider_tmp",
-        "runtime.sf",
-        "runtime.sf_k",
         LOCKFILE_NAME
     ]
+
+    # Remove spectral files if requested
+    if rm_spectralfiles:
+        rm_paths.append("runtime.sf")
+        rm_paths.append("runtime.sf_k")
 
     # Loop over files
     for f in rm_paths:
         f = os.path.join(outdir, f)
-
-        # Skip protected files
-        if keep_spectralfiles:
-            if f.split(".")[-1] in ("sf", "sf_k"):
-                continue
 
         # Remove the file
         log.debug(f"Removing {f}")
