@@ -66,19 +66,29 @@ set of parameters. This can be done using the script `tools/grid_proteus.py`.
 You can configure a grid of your choosing by editing the variables at the end of this file.
 With the grid configured to your liking, you can then dispatch the grid in two ways.
 
+### Without Slurm
+
 Firstly, you can set `use_slurm=False`. In this case, `grid_proteus.py` will manage the
 individual subprocesses which compose the grid. The variable `max_jobs` specifies the maximum number of CPU cores
 which should be utilised by the grid at any one time. This is limited by the number of CPU
 cores available on your machine. This method works without SLURM, and can be applied on servers or on multicore personal computers.
 
-Alternatively, you can access high performance compute nodes through the SLURM workload
-manager (e.g. on Habrok and Snellius). To do this, set `use_slurm=True`.
-This will produce a file in the specified output folder, which you can dispatch to the compute nodes with `sbatch`.
-You can then view the status of these jobs with `squeue -u $USER`.
+You will need to make sure that the `grid_proteus.py` process stays open in order to mange the subprocesses.
 
-In `grid_proteus.py` you can set `max_mem` and `max_days` to specify how much memory should be allocated
-to each job (each simulation). These are nominally 3 GB and 2 days. Ensure that these are within the
-limits of the server you are working on.
+### With Slurm
+
+Alternatively, you can access high performance compute nodes through the SLURM workload
+manager (e.g. on Habrok and Snellius). This is a two-step process. To do this, set `use_slurm=True` in `grid_proteus.py`,
+and set `max_mem` and `max_days` to specify how much memory should be allocated to each job (each simulation).
+These are nominally 3 GB and 2 days respectively. Ensure that these values are within the limits of the server you are working on.
+
+With these options enabled, running `grid_proteus.py` will produce a script called `slurm_dispatch.sh` in the
+specified output folder, as well as write the required configuration files to a subfolder called `cfgs/`.
+
+To dispatch your grid via Slurm, run `sbatch <path>` where `<path>` is the path to the dispatch script created
+by `grid_proteus.py`. You will be prompted to do this in the terminal.
+
+Monitor your running jobs with `squeue -u $USER`. To cancel **all** of your running jobs, use `scancel -u $USER`.
 
 
 ## Version checking
