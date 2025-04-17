@@ -126,13 +126,19 @@ def _construct_abundances(atm:dict, gas_incl:list, vmr_incl:list,
     # For each included gas...
     for i, gas in enumerate(gas_incl):
 
+        # Extend arrays
+        parr = list(atm["pl"])
+        parr = [1e-6] + parr + [1e13]  # extend
+        varr = list(vmr_incl[i])
+        varr = [varr[0]] + varr + [varr[-1]]  # extend
+
         # Create interpolator of VMR versus pressure (height)
-        itp_1d = PchipInterpolator(np.log10(atm["pl"]), vmr_incl[i])
+        itp_1d = PchipInterpolator(np.log10(parr), np.log10(varr))
 
         # Projected onto PLATON internal T,P grid
         arr_2d = np.zeros((len(T_grid), len(P_grid)))
         for j,p in enumerate(P_grid):
-            arr_2d[:, j] = itp_1d(np.log10(p))
+            arr_2d[:, j] = 10**itp_1d(np.log10(p))
         abundances[gas] = arr_2d
 
     return abundances

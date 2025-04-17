@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 # Import PROTEUS
-from proteus.atmos_clim.common import read_ncdf_profile
+from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.utils.constants import AU, R_sun, element_list, vol_list
 from proteus.utils.helper import find_nearest
 
@@ -69,8 +69,8 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     log.debug("Reading data for t=%.2e yr"%year)
 
     # Read atmosphere data
-    ncdf_path = os.path.join(dirs["output"], "data", "%d_atm.nc"%year)
-    atmos = read_ncdf_profile(ncdf_path, extra_keys=["pl","tmpl", "x_gas", "Kzz"])
+    atmos = read_atmosphere_data(dirs["output"], [year],
+                                    extra_keys=["pl","tmpl", "x_gas", "Kzz"])[0]
 
     # ------------------------------------------------------------
     # WRITE VULCAN INPUT FILES

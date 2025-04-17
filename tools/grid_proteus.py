@@ -16,7 +16,6 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
-from pathlib import Path
 
 import numpy as np
 
@@ -85,7 +84,6 @@ class Grid():
         # Grid's own name (for versioning, etc.)
         self.name = str(name).strip()
         self.outdir = PROTEUS_DIR+"/output/"+self.name+"/"
-        self.tmpdir = "/tmp/"+self.name+"/"
         self.conf = str(base_config_path)
         if not os.path.exists(self.conf):
             raise Exception("Base config file '%s' does not exist!" % self.conf)
@@ -95,8 +93,9 @@ class Grid():
             raise Exception("Symlinked directory is set to a blank path")
 
         # Paths
-        self.outdir = os.path.abspath(self.outdir)
-        self.tmpdir = os.path.abspath(self.tmpdir)
+        self.outdir = os.path.abspath(self.outdir) + "/"
+        self.cfgdir = os.path.join(self.outdir, "cfgs") + "/"
+        self.logdir = os.path.join(self.outdir, "logs") + "/"
 
         # Remove old output location
         if os.path.exists(self.outdir):
@@ -129,10 +128,11 @@ class Grid():
             os.makedirs(self.symlink_dir)
             os.symlink(self.symlink_dir, self.outdir)
 
-        # Make temp dir
-        if os.path.exists(self.tmpdir):
-            shutil.rmtree(self.tmpdir)
-        os.makedirs(self.tmpdir)
+        # Make subdirectories
+        for dir in [self.cfgdir, self.logdir]:
+            if os.path.exists(dir):
+                shutil.rmtree(dir)
+            os.makedirs(dir)
 
         # Setup logging
         setup_logger(logpath=os.path.join(self.outdir,"manager.log"), logterm=True, level=1)
@@ -214,7 +214,7 @@ class Grid():
         log.info(" ")
 
     def _get_tmpcfg(self, idx:int):
-        return os.path.join(self.tmpdir, self.CONFIG_BASENAME % idx)
+        return os.path.join(self.cfgdir, self.CONFIG_BASENAME % idx)
 
     # Generate the Grid based on the current configuration
     def generate(self):
@@ -334,7 +334,7 @@ class Grid():
         # Thread targget
         def _thread_target(cfg_path):
             if test_run:
-                command = ['/bin/echo','Dummmy output. Config file is at "' + cfg_path + '"']
+                command = ['/bin/echo','Dummy output. Config file is at "' + cfg_path + '"']
             else:
                 command = ["proteus","start","--offline","--config",cfg_path]
             subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -448,7 +448,8 @@ class Grid():
         log.info("Total runtime: %.1f hours "%((time_end-time_start).total_seconds()/3600.0))
 
 
-    def slurm_config(self, max_jobs:int=10, test_run:bool=False):
+    def slurm_config(self, max_jobs:int, test_run:bool=False,
+                        max_days:int=1, max_mem:int=3):
         """Write slurm config file.
 
         Uses a slurm job array, see link for more info:
@@ -460,36 +461,46 @@ class Grid():
             Maximum number of jobs to run
         test_run : bool
             If true, generate dummy commands to test the code.
+        max_days : int
+            Maximum number of days to run
+        max_mem : int
+            Maximum memory per CPU in GB
         """
-        log.info("Generating PROTEUS slurm config for accross parameter grid '%s'" % self.name)
+
+        max_days = int(max_days) # ensure integer
+
+        log.info("Generating PROTEUS slurm config for parameter grid '%s'" % self.name)
+        log.info("Will run for up to %d days per job" % max_days)
+        log.info("Will use up to %d GB of memory per job" % max_mem)
+        log.info(" ")
 
         log.info("Output path: '%s'" % self.outdir)
         if self.using_symlink:
             log.info("Symlink target: '%s'" % self.symlink_dir)
 
+        log.info(" ")
         self.write_config_files()
 
         if test_run:
-            command = '/bin/echo Dummmy output. Config file is at'
+            command = '/bin/echo Dummy output. Config file is at: '
         else:
             command = "proteus start --offline --config"
 
-        out_dir = Path(self.outdir)
-
-        out_file = out_dir / 'proteus-%A_%a.out'
-        err_file = out_dir / 'proteus-%A_%a.err'
+        log_file = os.path.join(self.logdir, 'proteus-%A_%a.log')
 
         string = f"""#!/bin/sh
 #SBATCH -J proteus.grid.array
+#SBATCH --export=ALL
+#SBATCH --time={max_days}-00
+#SBATCH --mem-per-cpu={max_mem}G
 #SBATCH -i /dev/null
-#SBATCH -o {out_file}
-#SBATCH -e {err_file}
+#SBATCH -o {log_file}
 #SBATCH --array=0-{self.size-1}%{max_jobs}
 
 i=$SLURM_ARRAY_TASK_ID
 
-while [ $i -le {self.size} ]; do
-    printf -v cfg "{self.tmpdir}/{self.CONFIG_BASENAME}" $((i+1))
+while [ $i -lt {self.size} ]; do
+    printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}" $((i))
     echo executing proteus with config $cfg
     {command} $cfg
     i=$((i+{self.size}))
@@ -497,28 +508,37 @@ done
 
 """
 
-        slurm_path = out_dir / 'proteus_slurm_array.sh'
+        slurm_path = os.path.join(self.outdir, 'slurm_dispatch.sh')
         with open(slurm_path, 'w') as f:
             f.write(string)
 
         user = getuser()
-        log.info('Slurm file written to %s', slurm_path)
         log.info('')
         log.info('Submit to Slurm using:')
-        log.info('    `sbatch %s`', slurm_path.name)
+        log.info('    `sbatch %s`', slurm_path)
         log.info('')
-        log.info('To look at the slurm queueu:')
+        log.info('To look at the Slurm queue:')
         log.info('    `squeue` or `squeue -u %s`', user)
         log.info('')
-        log.info('To cancel a job or all your jobs:')
-        log.info('    `scancel [jobid]` or `scancel -u %s`', user)
+        log.info('To cancel a job, or all of your jobs:')
+        log.info('    `scancel [jobid]`, or `scancel -u %s`', user)
+
+        time.sleep(2.0)
 
 
 if __name__=='__main__':
     print("Start GridPROTEUS")
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "scratch/l98d_habrok"
+    folder = "scratch/grid_test"
+
+    # Use SLURM?
+    use_slurm = True
+
+    # Execution limits
+    max_jobs = 20       # maximum number of concurrent tasks
+    max_days = 1         # maximum number of days to run
+    max_mem  = 3         # maximum memory per CPU in GB
 
     # Base config file
     config = "demos/dummy.toml"
@@ -535,10 +555,10 @@ if __name__=='__main__':
 
     # Add dimensions to grid...
     pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_direct("Redox state", [-4.5, -4.0, -3.5, -3, -2.5, -2.0, -1.5, -1.0])
+    pg.set_dimension_arange("Redox state", -4.5, 0.0, 0.5)
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_direct("Hydrogen", [16000, 14500, 13000, 10000, 7000, 4000, 1000], sort=False)
+    pg.set_dimension_arange("Hydrogen", 16000, 1000, -3000)
 
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
     pg.set_dimension_direct("Sulfur", [2, 8, 10, 12])
@@ -546,12 +566,16 @@ if __name__=='__main__':
     pg.add_dimension("Mass", "struct.mass_tot")
     pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
 
+    # Print information
     pg.print_setup()
     pg.generate()
     pg.print_grid()
 
-    # Generate Slurm batch file, use `sbatch` to submit
-    pg.slurm_config(max_jobs=10, test_run=False)
-
-    # Alternatively, let grid_proteus.py manage the jobs
-    # pg.run(100, test_run=False)
+    # Run the grid
+    if use_slurm:
+        # Generate Slurm batch file, use `sbatch` to submit
+        pg.slurm_config(max_jobs, test_run=False, max_days=max_days, max_mem=max_mem)
+    else:
+        # Alternatively, let grid_proteus.py manage the jobs
+        pg.run(max_jobs, test_run=False)
+        log.info("GridPROTEUS finished")

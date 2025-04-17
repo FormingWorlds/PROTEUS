@@ -54,9 +54,15 @@ ln -sf /scratch/$USER/proteus_output output
 ```
 Anything written to `output/` will then be stored inside the `/scratch` partition.
 
-## Submitting and Monitoring Jobs
+## Resource limits
 
-There is information on the HPC wiki on [how to submit jobs](https://wiki.hpc.rug.nl/habrok/job_management/scheduling_system) to the Habrok cluster.
+Each PROTEUS simulation should be allocated at least 2 GB of memory - ideally 3 GB.
+Habrok [limits job runtime](https://wiki.hpc.rug.nl/habrok/job_management/partitions) to a maximum of 10 days on the "regular" node partition.
+The parallel and GPU partitions are limited to 5 and 3 days respectively; they should be avoided since PROTEUS will not benefit from these.
+
+## Submitting jobs, and running grids of simulations
+
+There is information on the HPC wiki on [how to submit jobs](https://wiki.hpc.rug.nl/habrok/job_management/scheduling_system) with SLURM.
 
 - To submit your script, run:
     ```console
@@ -67,3 +73,5 @@ There is information on the HPC wiki on [how to submit jobs](https://wiki.hpc.ru
     ```console
     squeue -u $USER
     ```
+
+See the section on running grids in the PROTEUS [usage guide](./usage.md#running-grids-of-simulations)
