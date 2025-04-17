@@ -124,8 +124,6 @@ def extract(dir:str, remove_after:bool=True) -> None:
         Whether to remove the tar file after extraction.
     """
 
-    dir = os.path.abspath(dir)
-
     tar = os.path.join(dir, f"{os.path.basename(dir)}.tar")
     log.debug(f"Extracting {tar} to {dir}/")
 
