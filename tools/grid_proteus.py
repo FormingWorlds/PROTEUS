@@ -536,7 +536,7 @@ if __name__=='__main__':
     use_slurm = True
 
     # Execution limits
-    max_jobs = 20       # maximum number of concurrent tasks
+    max_jobs = 200       # maximum number of concurrent tasks
     max_days = 2         # maximum number of days to run
     max_mem  = 3         # maximum memory per CPU in GB
 

@@ -76,6 +76,10 @@ manager (e.g. on Habrok and Snellius). To do this, set `use_slurm=True`.
 This will produce a file in the specified output folder, which you can dispatch to the compute nodes with `sbatch`.
 You can then view the status of these jobs with `squeue -u $USER`.
 
+In `grid_proteus.py` you can set `max_mem` and `max_days` to specify how much memory should be allocated
+to each job (each simulation). These are nominally 3 GB and 2 days. Ensure that these are within the
+limits of the server you are working on.
+
 
 ## Version checking
 
