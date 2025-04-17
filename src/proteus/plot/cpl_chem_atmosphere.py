@@ -41,6 +41,9 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
 
     # Get last output NetCDF file
     files = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
+    if len(files) == 0:
+        log.warning("No atmosphere NetCDF files found in output folder")
+        return
     nc_fpath = natural_sort(files)[-1]
     atm_profile = read_ncdf_profile(nc_fpath,
                                         extra_keys=["pl", "tmpl", "x_gas"])

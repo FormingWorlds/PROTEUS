@@ -21,7 +21,7 @@ log = logging.getLogger("fwl."+__name__)
 
 def plot_atmosphere( output_dir:str, times:list, profiles:list, plot_format="pdf"):
 
-    if np.amax(times) < 2:
+    if (len(times) < 1) or (np.amax(times) < 2):
         log.debug("Insufficient data to make plot_atmosphere")
         return
 

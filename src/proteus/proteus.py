@@ -495,17 +495,23 @@ class Proteus:
             else:
                 run_observe(self.hf_row, self.directories["output"], self.config)
 
-        # Plot and write conditions at the end of simulation
+        # Write conditions at the end of simulation
         log.info("Writing data and plots")
         WriteHelpfileToCSV(self.directories["output"], self.hf_all)
-        UpdatePlots(self.hf_all, self.directories, self.config, end=True)
 
-        # Tidy up before exit...
-        log.info("Tidy up before exit")
+        # Make final plots
+        if self.config.params.out.plot_mod is not None:
+            log.info("Making final plots")
+            UpdatePlots(self.hf_all, self.directories, self.config, end=True)
+
+        # Tidy up
+        log.debug("Tidy up before exit")
         remove_excess_files(self.directories["output"])
 
         # Archive the folder ./output/data/, and remove files
-        archive.update(self.directories["output/data"], remove_files=True)
+        if self.config.params.out.archive_mod is not None:
+            log.info("Archiving output data into tar files")
+            archive.update(self.directories["output/data"], remove_files=True)
 
         # Stop time and model duration
         print_stoptime(start_time)

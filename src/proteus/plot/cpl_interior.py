@@ -203,6 +203,9 @@ def plot_interior_entry(handler: Proteus):
         extension = ".json"
     elif module == "aragog":
         extension = "_int.nc"
+    else:
+        log.warning(f"Cannot make interior plot for module '{module}'")
+        return
     plot_times,_ = sample_output(handler, extension=extension, tmin=1e3)
     print("Snapshots:", plot_times)
 

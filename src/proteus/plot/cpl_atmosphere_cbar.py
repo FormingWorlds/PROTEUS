@@ -22,6 +22,10 @@ log = logging.getLogger("fwl."+__name__)
 
 def plot_atmosphere_cbar(output_dir, times, profiles, plot_format="pdf"):
 
+    if len(times) < 2:
+        log.warning("Insufficient data to make plot_atmosphere_cbar")
+        return
+
     log.info("Plot atmosphere temperatures colourbar")
 
     norm = mpl.colors.LogNorm(vmin=max(times[0],1), vmax=times[-1])

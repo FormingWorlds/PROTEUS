@@ -16,11 +16,11 @@ def max_bigger_than_min(instance, attribute, value):
     if value <= instance.minimum:
         raise ValueError("'maximum' has to be bigger than 'minimum'.")
 
-def valid_archive_mod(instance, attribute, value):
+def valid_mod(instance, attribute, value):
     if value is None:
         return
     if value < 0:
-        raise ValueError("'archive_mod' must be None or greater than 0.")
+        raise ValueError(f"Parameter '{attribute}' must be None or greater than 0.")
 
 @define
 class OutputParams:
@@ -32,23 +32,22 @@ class OutputParams:
         Path to output folder relative to `PROTEUS/output/`.
     logging: str
         Log verbosity. Choices: 'INFO', 'DEBUG', 'ERROR', 'WARNING'.
-    plot_mod: int
-        Plotting frequency. 0: wait until completion. n: every n iterations.
     plot_fmt: str
         Plotting output file format. Choices: "png", "pdf".
     write_mod: int
         Write CSV frequency. 0: wait until completion. n: every n iterations.
+    plot_mod: int | None
+        Plotting frequency. 0: wait until completion. n: every n iterations. None: never plot.
     archive_mod: int | None
-        Archive frequency. 0: wait until completion. n: every n iterations. None: no archiving.
+        Archive frequency. 0: wait until completion. n: every n iterations. None: never archive.
     """
-    path: str               = field(validator=valid_path)
-    logging: str            = field(default='INFO',
+    path: str     = field(validator=valid_path)
+    logging: str  = field(default='INFO',
                                     validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    plot_mod: int           = field(default=10,     validator=ge(0))
-    plot_fmt: str           = field(default='png',  validator=in_(('pdf', 'png')))
-    write_mod: int          = field(default=1,      validator=ge(0))
-    archive_mod             = field(default=None,   validator=valid_archive_mod,
-                                    converter=none_if_none)
+    plot_fmt: str = field(default='png',  validator=in_(('pdf', 'png')))
+    write_mod:int = field(default=1,      validator=ge(0))
+    plot_mod      = field(default=10,     validator=valid_mod, converter=none_if_none)
+    archive_mod   = field(default=None,   validator=valid_mod, converter=none_if_none)
 
 @define
 class DtProportional:

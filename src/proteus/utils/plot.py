@@ -319,7 +319,7 @@ def sample_output(handler: Proteus, extension:str = "_atm.nc", tmin:float = 1.0,
     # get all files
     files = glob.glob(os.path.join(handler.directories["output"], "data", "*"+extension))
     if len(files) < 1:
-        return []
+        return [], []
 
     # get times
     times = [int(f.split("/")[-1].split(extension)[0]) for f in files]

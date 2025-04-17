@@ -26,15 +26,15 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
                         times: list, int_data:list, atm_data:list,
                         module:str, plot_format: str="pdf"):
 
-    if np.amax(times) < 2:
+    if (len(times) < 2) or (np.amax(times) < 2):
         log.debug("Insufficient data to make plot_structure")
         return
 
-    log.info("Plot structure")
-
     if module not in ('spider','aragog'):
-        log.debug("Cannot make structure plot with module '%s'"%module)
+        log.debug("Cannot make structure plot with interior module '%s'"%module)
         return
+
+    log.info("Plot structure")
 
     # helpfile indicies
     hf_idxs = []

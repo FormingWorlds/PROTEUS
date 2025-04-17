@@ -130,7 +130,7 @@ def read_atmosphere_data(output_dir:str, times:list, extra_keys=[]):
     profiles = [read_ncdf_profile(os.path.join(output_dir, "data", "%.0f_atm.nc"%t),
                                     extra_keys=extra_keys) for t in times]
     if len(profiles) < 1:
-        log.warning("No NetCDF files found in output folder")
+        log.warning("No atmosphere NetCDF files found in output folder")
     return profiles
 
 def get_spfile_name_and_bands(config:Config):

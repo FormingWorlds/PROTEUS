@@ -22,6 +22,9 @@ def plot_fluxes_atmosphere(output_dir:str, plot_format="pdf"):
     log.info("Plot atmosphere fluxes")
 
     files = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
+    if len(files) == 0:
+        log.warning("No atmosphere NetCDF files found in output folder")
+        return
     nc_fpath = natural_sort(files)[-1]
 
     # Read netCDF

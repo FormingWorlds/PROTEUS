@@ -168,6 +168,9 @@ def plot_interior_cmesh_entry(handler: Proteus):
         extension = ".json"
     elif module == "aragog":
         extension = "_int.nc"
+    else:
+        log.warning(f"Cannot make interior_cmesh plot for module '{module}'")
+        return
 
     # Get data
     plot_times,_ = sample_output(handler, extension=extension, tmin=1e3, nsamp=99999)
