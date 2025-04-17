@@ -499,8 +499,8 @@ class Grid():
 
 i=$SLURM_ARRAY_TASK_ID
 
-while [ $i -le {self.size} ]; do
-    printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}" $((i+1))
+while [ $i -lt {self.size} ]; do
+    printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}" $((i))
     echo executing proteus with config $cfg
     {command} $cfg
     i=$((i+{self.size}))
@@ -530,18 +530,18 @@ if __name__=='__main__':
     print("Start GridPROTEUS")
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "scratch/l98d_habrok2"
+    folder = "scratch/grid_test"
 
     # Use SLURM?
     use_slurm = True
 
     # Execution limits
-    max_jobs = 200       # maximum number of concurrent tasks
-    max_days = 2         # maximum number of days to run
+    max_jobs = 20       # maximum number of concurrent tasks
+    max_days = 1         # maximum number of days to run
     max_mem  = 3         # maximum memory per CPU in GB
 
     # Base config file
-    config = "planets/l9859d.toml"
+    config = "demos/dummy.toml"
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
 
     # Set this string to have the output files created at an alternative location. The
