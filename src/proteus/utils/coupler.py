@@ -694,7 +694,6 @@ def remove_excess_files(outdir:str, keep_spectralfiles:bool=False):
     rm_paths = [
         "agni_recent.log",
         "data/.spider_tmp",
-        "data/tides_recent.dat",
         "runtime.sf",
         "runtime.sf_k",
         LOCKFILE_NAME
@@ -736,8 +735,12 @@ def get_proteus_directories(outdir) -> dict[str, str]:
         "spider":   os.path.join(root_dir, "SPIDER"),
         "tools":    os.path.join(root_dir, "tools"),
         "vulcan":   os.path.join(root_dir, "VULCAN"),
-        "output":   os.path.join(root_dir, "output", outdir),
-        "utils":    os.path.join(root_dir, "src", "proteus", "utils")
+        "utils":    os.path.join(root_dir, "src", "proteus", "utils"),
+        "output":           os.path.join(root_dir, "output", outdir),
+        "output/data":      os.path.join(root_dir, "output", outdir, "data"),
+        "output/observe":   os.path.join(root_dir, "output", outdir, "observe"),
+        "output/offchem":   os.path.join(root_dir, "output", outdir, "offchem"),
+        "output/plots":     os.path.join(root_dir, "output", outdir, "plots"),
     }
 
 
@@ -781,7 +784,3 @@ def set_directories(config: Config) -> dict[str, str]:
         dirs[key] = os.path.abspath(dirs[key])+"/"
 
     return dirs
-
-
-
-

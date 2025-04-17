@@ -8,6 +8,8 @@ import os
 import glob
 import tarfile
 
+from proteus.utils.helper import safe_rm
+
 log = logging.getLogger("fwl."+__name__)
 
 def _tarfile_from_dir(dir:str) -> str:
@@ -46,7 +48,7 @@ def create(dir:str, remove_files:bool=True) -> str:
     # Check if the tar file exists
     if os.path.exists(tar):
         log.warning(f"Tar file {tar} already exists. Overwriting.")
-        os.remove(tar)
+        safe_rm(tar)
 
     # List files in directory
     files = glob.glob(os.path.join(dir, "*"))
@@ -61,7 +63,7 @@ def create(dir:str, remove_files:bool=True) -> str:
     if remove_files:
         for f in files:
             if f != tar:  # do not remove the tar file itself
-                os.remove(os.path.join(dir, f))
+                safe_rm(os.path.join(dir, f))
 
     # Return path to the tar file
     return tar
@@ -108,15 +110,16 @@ def append(dir:str, remove_files:bool=True) -> str:
     if remove_files:
         for f in files:
             if f != tar:  # do not remove the tar file itself
-                os.remove(f)
+                safe_rm(f)
 
     return tar
 
-def extract(dir:str, remove_tar:bool=True) -> str:
+def extract(dir:str, remove_tar:bool=False, ignore_warnings:bool=False) -> str:
     """
     Extract the tar file contained within a directory, placing the content within that directory.
 
     Removes the tar file afterwards if `remove_tar` is set to True.
+    Does not complain if the tar file does not exist, if `ignore_warnings` is set to True.
 
     Arguments
     ---------
@@ -124,6 +127,8 @@ def extract(dir:str, remove_tar:bool=True) -> str:
         The directory to extract.
     remove_tar : bool
         Whether to remove the tar file after extraction.
+    ignore_warnings : bool
+        Whether to complain if the tar file does not exist.
 
     Returns
     -------
@@ -143,7 +148,8 @@ def extract(dir:str, remove_tar:bool=True) -> str:
 
     # Check if the tar file exists
     if not os.path.exists(tar):
-        log.error(f"Tar file {tar} does not exist. Cannot extract it.")
+        if not ignore_warnings:
+            log.error(f"Tar file {tar} does not exist. Cannot extract it.")
         return
 
     # Extract tar file
@@ -152,7 +158,7 @@ def extract(dir:str, remove_tar:bool=True) -> str:
 
     # Remove tar file
     if remove_tar:
-        os.remove(tar)
+        safe_rm(tar)
 
 def update(dir:str, remove_files:bool=True) -> None:
     """
@@ -183,3 +189,31 @@ def update(dir:str, remove_files:bool=True) -> None:
     # Create new archive
     else:
         create(dir, remove_files=remove_files)
+
+def remove_old(dir:str, now:float) -> None:
+    """
+    Remove files from the directory, except archives and those at the current time.
+    The files which are kept are those that contain the current time in their name.
+
+    Arguments
+    ---------
+    dir : str
+        The directory to remove old files from.
+    now : float
+        The current time [years], used to determine which files should be kept.
+    """
+
+    # Paths
+    dir = os.path.abspath(dir)
+
+    # Files
+    files = glob.glob(os.path.join(dir, "*"))
+
+    # Keep files if this substring is inside their name
+    keep = "%.0f" % now
+
+    # Remove old files
+    for f in files:
+        if (keep in os.path.split(f)[-1]) or f.endswith(".tar"):
+            continue
+        safe_rm(f)

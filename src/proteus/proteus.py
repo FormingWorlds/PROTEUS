@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
+import proteus.utils.archive as archive
 from proteus.config import read_config_object
 from proteus.utils.constants import (
     gas_list,
@@ -122,6 +123,8 @@ class Proteus:
             update_stellar_quantities,
             write_spectrum,
         )
+
+        #   other utilities
         from proteus.utils.coupler import (
             CreateHelpfileFromDict,
             CreateLockFile,
@@ -152,13 +155,13 @@ class Proteus:
         self.config.params.offline = offline
         UpdateStatusfile(self.directories, 0)
 
-        # Clean output directory
+        # Clean output directory if starting fresh
         if not self.config.params.resume:
             CleanDir(self.directories["output"])
-            CleanDir(os.path.join(self.directories["output"], "data"))
-            CleanDir(os.path.join(self.directories["output"], "observe"))
-            CleanDir(os.path.join(self.directories["output"], "offchem"))
-            CleanDir(os.path.join(self.directories["output"], "plots"))
+            CleanDir(self.directories["output/data"])
+            CleanDir(self.directories["output/observe"])
+            CleanDir(self.directories["output/offchem"])
+            CleanDir(self.directories["output/plots"])
 
         # Get next logfile path
         logindex = 1 + GetCurrentLogfileIndex(self.directories["output"])
@@ -258,6 +261,9 @@ class Proteus:
         else:
             # Resuming from disk
             log.info("Resuming the simulation from the disk")
+
+            # Extract all archived data files
+            self.extract_archives()
 
             # Interior initial condition
             self.interior_o.ic = 2
@@ -449,6 +455,11 @@ class Proteus:
             if multiple(self.loops["total"], self.config.params.out.write_mod):
                     WriteHelpfileToCSV(self.directories["output"], self.hf_all)
 
+            # Update or create data archive
+            if multiple(self.loops["total"], self.config.params.out.archive_mod):
+                archive.update(self.directories["output/data"], remove_files=False)
+                archive.remove_old(self.directories["output/data"], self.hf_row["Time"])
+
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)
 
@@ -493,13 +504,31 @@ class Proteus:
         log.info("Tidy up before exit")
         remove_excess_files(self.directories["output"])
 
+        # Archive the folder ./output/data/, and remove files
+        archive.update(self.directories["output/data"], remove_files=True)
+
         # Stop time and model duration
         print_stoptime(start_time)
 
         # Print citation
         print_citation(self.config)
 
+    def extract_archives(self):
+        """
+        Extract archived data files in subfolders of the output directory
+        """
+        archive.extract(self.directories["output/data"], remove_tar=True)
+
+    def create_archives(self):
+        """
+        Pack data files in subfolders of the output directory into archival tar files
+        """
+        archive.create(self.directories["output/data"], remove_files=True)
+
     def observe(self):
+        # Extract archived data
+        self.extract_archives()
+
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
         hf_all = ReadHelpfileFromCSV(self.directories["output"])
@@ -517,6 +546,9 @@ class Proteus:
 
 
     def offline_chemistry(self):
+        # Extract archived data
+        self.extract_archives()
+
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
         hf_all = ReadHelpfileFromCSV(self.directories["output"])
