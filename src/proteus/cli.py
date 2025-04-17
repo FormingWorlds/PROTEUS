@@ -180,31 +180,25 @@ def doctor():
 cli.add_command(doctor)
 
 # ----------------
-# 'archive' command and subcommands
+# 'archive' commands
 # ----------------
-
-@click.group()
-def archive():
-    """Handle data archiving and extraction"""
-    pass
 
 @click.command()
 @config_option
-def create(config_path: Path):
+def create_archives(config_path: Path):
     """Pack the output files in tar archives"""
     runner = Proteus(config_path=config_path)
     runner.create_archives()
 
 @click.command()
 @config_option
-def extract(config_path: Path):
+def extract_archives(config_path: Path):
     """Unpack the output files from existing tar archives"""
     runner = Proteus(config_path=config_path)
     runner.extract_archives()
 
-cli.add_command(archive)
-archive.add_command(create)
-archive.add_command(extract)
+cli.add_command(create_archives)
+cli.add_command(extract_archives)
 
 # ----------------
 # 'offchem' and 'observe' postprocessing commands
