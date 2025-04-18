@@ -11,8 +11,8 @@ nav:
   - Troubleshooting: troubleshooting.md
   - Data files: data.md
   - Kapteyn cluster: kapteyn_cluster_guide.md
-  - Snellius cluster: snellius_cluster_guide.md
   - Habrok cluster: habrok_cluster_guide.md
+  - Snellius cluster: snellius_cluster_guide.md
   - Contact: contact.md
   - Contributing: CONTRIBUTING.md
   - Code of Conduct: CODE_OF_CONDUCT.md
