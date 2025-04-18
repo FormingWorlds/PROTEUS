@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import glob
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -143,8 +144,9 @@ def plot_sflux_cross(
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_sflux_cross.%s"%plot_format,
-                bbox_inches="tight", dpi=200)
+    fpath = os.path.join(output_dir, "plots", "plot_sflux_cross.%s"%plot_format)
+    fig.savefig(fpath, bbox_inches='tight', dpi=200)
+
 
 
 def plot_sflux_cross_entry(handler: Proteus):

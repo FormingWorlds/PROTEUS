@@ -241,7 +241,7 @@ def WriteAragogOutput(output_dir:str, time:float):
 
     aragog_output: Output = Output(aragog_solver)
 
-    fpath = os.path.join(output_dir,"data","%d_int.nc"%time)
+    fpath = os.path.join(output_dir,"data","%.0f_int.nc"%time)
     aragog_output.write_at_time(fpath,-1)
 
 def GetAragogOutput(hf_row:dict, interior_o:Interior_t):
@@ -296,7 +296,7 @@ def GetAragogOutput(hf_row:dict, interior_o:Interior_t):
 def read_last_Tfield(output_dir:str, time:float):
 
     # Read Aragog output at last run
-    fpath = os.path.join(output_dir,"data","%d_int.nc"%time)
+    fpath = os.path.join(output_dir,"data","%.0f_int.nc"%time)
     out = read_ncdf(fpath)
 
     # Get temperature field at basic nodes and interpolate to staggered nodes
@@ -324,4 +324,4 @@ def read_ncdf(fpath:str):
     return out
 
 def read_ncdfs(output_dir:str, times:list):
-    return [read_ncdf(os.path.join(output_dir, "data", "%d_int.nc"%t)) for t in times]
+    return [read_ncdf(os.path.join(output_dir, "data", "%.0f_int.nc"%t)) for t in times]

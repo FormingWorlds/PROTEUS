@@ -8,6 +8,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         logging     = "ERROR"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         write_mod   = 50      # Write CSV frequency, 0: wait until completion | n: every n iterations
+        archive_mod = 'none'
 
     [params.dt]
         minimum      = 1e2    # yr, minimum time-step

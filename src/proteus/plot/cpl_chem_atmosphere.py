@@ -41,6 +41,9 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
 
     # Get last output NetCDF file
     files = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
+    if len(files) == 0:
+        log.warning("No atmosphere NetCDF files found in output folder")
+        return
     nc_fpath = natural_sort(files)[-1]
     atm_profile = read_ncdf_profile(nc_fpath,
                                         extra_keys=["pl", "tmpl", "x_gas"])
@@ -64,11 +67,11 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
 
     # init plot
     scale = 1.2
-    fig,ax = plt.subplots(1,1, figsize=(8*scale,5*scale))
+    fig,ax = plt.subplots(1,1, figsize=(6*scale,5*scale))
 
     # plot species profiles
     lw = 1.0
-    al = 0.9
+    al = 0.8
     vmr_surf = []
     for i,gas in enumerate(plot_gases):
 
@@ -76,24 +79,29 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
         lbl = latexify(gas)
         vmr = 0.0
 
+        _lw = lw
+        if gas in vol_list:
+            _lw *= 2
+
         # plot from netCDF (dashed lines)
         key = gas+"_vmr"
         if key in atm_profile.keys():
             xarr = list(atm_profile[key])
+            xarr = [xarr[0]] + xarr
             if np.amax(xarr) >= xmin:
                 vmr = float(xarr[-1])
-                ax.plot(xarr, parr[1:], ls = 'dashed', color=col, lw=lw, alpha=al)
+                ax.plot(xarr, parr, ls = 'dashed', color=col, lw=_lw, alpha=al)
 
         # plot from offline chemistry, if available (solid lines)
         if has_offchem and (gas in atm_offchem.keys()):
             xarr = list(atm_offchem[gas].values)
             if np.amax(xarr) >= xmin:
                 vmr = float(xarr[-1])  # prefer vmr from offline chemistry
-                ax.plot(xarr, parr, ls = 'solid', color=col, lw=lw, alpha=al)
+                ax.plot(xarr, parr, ls = 'solid', color=col, lw=_lw, alpha=al)
 
         # create legend entry and store surface vmr
         if vmr > 0.0:
-            ax.plot(1e30, 1e30, ls='solid', color=col, lw=lw, alpha=al, label=lbl)
+            ax.plot(1e30, 1e30, ls='solid', color=col, lw=_lw, alpha=al, label=lbl)
             vmr_surf.append(vmr)
 
     # Decorate
@@ -117,7 +125,7 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
               labelspacing=0.3, columnspacing=1.0, handlelength=1.5, handletextpad=0.3)
 
     # Save file
-    fpath = os.path.join(output_dir, "plot_chem_atmosphere.%s"%plot_format)
+    fpath = os.path.join(output_dir, "plots", "plot_chem_atmosphere.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 def plot_chem_atmosphere_entry(handler: Proteus):

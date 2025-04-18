@@ -22,6 +22,9 @@ def plot_fluxes_atmosphere(output_dir:str, plot_format="pdf"):
     log.info("Plot atmosphere fluxes")
 
     files = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
+    if len(files) == 0:
+        log.warning("No atmosphere NetCDF files found in output folder")
+        return
     nc_fpath = natural_sort(files)[-1]
 
     # Read netCDF
@@ -82,8 +85,9 @@ def plot_fluxes_atmosphere(output_dir:str, plot_format="pdf"):
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_fluxes_atmosphere.%s"%plot_format,
-                bbox_inches='tight', dpi=200)
+
+    fpath = os.path.join(output_dir, "plots", "plot_fluxes_atmosphere.%s"%plot_format)
+    fig.savefig(fpath, bbox_inches='tight', dpi=200)
 
 
 def plot_fluxes_atmosphere_entry(handler: Proteus):

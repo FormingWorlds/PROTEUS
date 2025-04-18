@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
+import proteus.utils.archive as archive
 from proteus.config import read_config_object
 from proteus.utils.constants import (
     gas_list,
@@ -19,7 +20,6 @@ from proteus.utils.helper import (
     PrintSeparator,
     UpdateStatusfile,
     multiple,
-    safe_rm,
 )
 from proteus.utils.logs import (
     GetCurrentLogfileIndex,
@@ -80,8 +80,8 @@ class Proteus:
 
     def init_directories(self):
         """Initialize directories dictionary"""
-        from proteus.utils.coupler import SetDirectories
-        self.directories = SetDirectories(self.config)
+        from proteus.utils.coupler import set_directories
+        self.directories = set_directories(self.config)
 
     def start(self, *, resume: bool = False, offline: bool = False):
         """Start PROTEUS simulation.
@@ -123,6 +123,8 @@ class Proteus:
             update_stellar_quantities,
             write_spectrum,
         )
+
+        #   other utilities
         from proteus.utils.coupler import (
             CreateHelpfileFromDict,
             CreateLockFile,
@@ -137,6 +139,7 @@ class Proteus:
             print_module_configuration,
             print_stoptime,
             print_system_configuration,
+            remove_excess_files,
         )
 
         #    lookup and reference data
@@ -152,12 +155,13 @@ class Proteus:
         self.config.params.offline = offline
         UpdateStatusfile(self.directories, 0)
 
-        # Clean output directory
+        # Clean output directory if starting fresh
         if not self.config.params.resume:
             CleanDir(self.directories["output"])
-            CleanDir(os.path.join(self.directories["output"], "data"))
-            CleanDir(os.path.join(self.directories["output"], "observe"))
-            CleanDir(os.path.join(self.directories["output"], "offchem"))
+            CleanDir(self.directories["output/data"])
+            CleanDir(self.directories["output/observe"])
+            CleanDir(self.directories["output/offchem"])
+            CleanDir(self.directories["output/plots"])
 
         # Get next logfile path
         logindex = 1 + GetCurrentLogfileIndex(self.directories["output"])
@@ -257,6 +261,9 @@ class Proteus:
         else:
             # Resuming from disk
             log.info("Resuming the simulation from the disk")
+
+            # Extract all archived data files
+            self.extract_archives()
 
             # Interior initial condition
             self.interior_o.ic = 2
@@ -448,6 +455,11 @@ class Proteus:
             if multiple(self.loops["total"], self.config.params.out.write_mod):
                     WriteHelpfileToCSV(self.directories["output"], self.hf_all)
 
+            # Update or create data archive
+            if multiple(self.loops["total"], self.config.params.out.archive_mod):
+                archive.update(self.directories["output/data"], remove_files=False)
+                archive.remove_old(self.directories["output/data"], self.hf_row["Time"])
+
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)
 
@@ -483,14 +495,24 @@ class Proteus:
             else:
                 run_observe(self.hf_row, self.directories["output"], self.config)
 
-        # Tidy up before exit...
-        log.info("Tidy up before exit")
-        safe_rm(self.lockfile)
-
-        # Plot and write conditions at the end of simulation
+        # Write conditions at the end of simulation
         log.info("Writing data and plots")
         WriteHelpfileToCSV(self.directories["output"], self.hf_all)
-        UpdatePlots(self.hf_all, self.directories, self.config, end=True)
+
+        # Make final plots
+        if self.config.params.out.plot_mod is not None:
+            log.info("Making final plots")
+            UpdatePlots(self.hf_all, self.directories, self.config, end=True)
+
+        # Tidy up
+        log.debug("Tidy up before exit")
+        remove_excess_files(self.directories["output"],
+                            rm_spectralfiles=self.config.params.out.remove_sf)
+
+        # Archive the folder ./output/data/, and remove files
+        if self.config.params.out.archive_mod is not None:
+            log.info("Archiving output data into tar files")
+            archive.update(self.directories["output/data"], remove_files=True)
 
         # Stop time and model duration
         print_stoptime(start_time)
@@ -498,7 +520,22 @@ class Proteus:
         # Print citation
         print_citation(self.config)
 
+    def extract_archives(self):
+        """
+        Extract archived data files in subfolders of the output directory
+        """
+        archive.extract(self.directories["output/data"], remove_tar=True)
+
+    def create_archives(self):
+        """
+        Pack data files in subfolders of the output directory into archival tar files
+        """
+        archive.create(self.directories["output/data"], remove_files=True)
+
     def observe(self):
+        # Extract archived data
+        self.extract_archives()
+
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
         hf_all = ReadHelpfileFromCSV(self.directories["output"])
@@ -516,6 +553,9 @@ class Proteus:
 
 
     def offline_chemistry(self):
+        # Extract archived data
+        self.extract_archives()
+
         # Load data from helpfile
         from proteus.utils.coupler import ReadHelpfileFromCSV
         hf_all = ReadHelpfileFromCSV(self.directories["output"])
