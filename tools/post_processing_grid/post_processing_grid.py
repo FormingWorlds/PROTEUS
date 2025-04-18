@@ -5,6 +5,11 @@ import toml
 import seaborn as sns
 import matplotlib.pyplot as plt
 import re
+import numpy as np
+import matplotlib.colors as mcolors
+import matplotlib.cm as cm
+from matplotlib.ticker import FuncFormatter
+
 
 def load_grid_cases(grid_dir: Path):
     """
@@ -140,9 +145,13 @@ def plot_grid_status(cases_data, plot_dir: Path, status_colors: dict = None):
     plt.yticks(fontsize=12)  
     plt.xticks(fontsize=12)
     plt.tight_layout()
-    output_path = plot_dir+'simulations_status_summary.png'
+    output_path = plot_dir+'grid_status_summary.png'
     plt.savefig(output_path, dpi=300)
     plt.close()
+
+    print('-----------------------------------------------------------')
+    print(f"Plot grid_status_summary.png saved to {output_path}")
+    print('-----------------------------------------------------------')
 
 def get_grid_parameters(grid_dir: str):
     """
@@ -286,13 +295,80 @@ def extract_solidification_time(cases_data, phi_crit):
     
     return solidification_times
 
+def plot_cumulative_distributions_by_grid(parameters_to_extract, grid_parameters, data, xlabel, ylabel, color_map, plot_path):
+    """
+    Function to plot cumulative distribution for multiple parameters.
+
+    parameters_to_extract : list of str
+        List of the parameters you want to extract and plot (e.g., ['esc_rate_total', 'Phi_global', 'P_surf', 'atm_kg_per_mol'])
+        
+    grid_parameters : list of dicts
+        Each dictionary in the list will define grid parameters like 'sma_values', 'eps_values', etc.
+        
+    data : dict
+        Dictionary containing data for each parameter. Format: {parameter_name: data}
+
+    xlabel : str
+        Label for the x-axis.
+
+    ylabel : str
+        Label for the y-axis.
+
+    color_map : list of matplotlib colormaps
+        List of colormap objects, each corresponding to different grid parameters.
+
+    plot_path : str
+        Path where the resulting plot should be saved.
+    """
+    
+    # Create subplots based on number of parameters
+    fig, axes = plt.subplots(len(parameters_to_extract), len(grid_parameters), figsize=(14, 10), sharex='col')
+
+    # For each parameter to extract, plot a column of cumulative distributions
+    for param_idx, param in enumerate(parameters_to_extract):
+        for grid_idx, grid_param in enumerate(grid_parameters):
+            # Extract grid values and corresponding color map
+            grid_values = grid_param['values']
+            cmap = color_map[grid_idx]
+            norm = mcolors.Normalize(vmin=min(grid_values), vmax=max(grid_values))
+            
+            # Create a list of colors for the grid values
+            colors = [cmap(norm(value)) for value in grid_values]
+
+            # Plot for each value in grid_parameters
+            for i, grid_value in enumerate(grid_values):
+                parameter_data = data[param].get(grid_value, [])
+                if parameter_data:
+                    sns.kdeplot(parameter_data, cumulative=True, color=colors[i], ax=axes[param_idx, grid_idx], bw_adjust=0.3, common_grid=True)
+
+            # Set labels and grids for the plot
+            axes[param_idx, grid_idx].set_xlabel(xlabel, fontsize=12)
+            axes[param_idx, grid_idx].set_ylabel(ylabel, fontsize=12)
+            axes[param_idx, grid_idx].set_ylim(0, 1.05)
+            axes[param_idx, grid_idx].grid(alpha=0.2)
+    
+    # Colorbars
+    for grid_idx, grid_param in enumerate(grid_parameters):
+        # Create a color map for each grid parameter
+        sm = plt.cm.ScalarMappable(cmap=color_map[grid_idx], norm=mcolors.Normalize(vmin=min(grid_param['values']), vmax=max(grid_param['values'])))
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax=axes[:, grid_idx], orientation='vertical')
+        cbar.set_label(grid_param['label'], fontsize=10)
+        cbar.set_ticks(grid_param['values'])
+        cbar.formatter = FuncFormatter(lambda x, _: f'{x:.1f}')
+        cbar.update_ticks()
+
+    fig.text(0.075, 0.5, 'Normalized cumulative fraction of simulations', va='center', ha='center', rotation='vertical', fontsize=16)
+
+    # Save the plot
+    plt.savefig(plot_path+'test_figure.png', dpi=300)
 
 
 if __name__ == '__main__':
 
     # Paths
     grid_path = '/home2/p315557/outputs_Norma2/good_grids/escape_grid_4_params_Pxuv_a_epsilon_fO2/'
-    plots_path = '/home2/p315557/PROTEUS/post_processing_grids/plots/escape_grid_4_params_Pxuv_a_epsilon_fO2/'
+    plots_path = '/home2/p315557/PROTEUS/tools/post_processing_grid/plots/escape_grid_4_params_Pxuv_a_epsilon_fO2/'
 
     # Plots : True or False
     plot=True
@@ -311,6 +387,16 @@ if __name__ == '__main__':
     output_to_extract = ['esc_rate_total', 'Phi_global', 'P_surf', 'atm_kg_per_mol']
     for param in output_to_extract:
         extracted_values = extract_grid_output(cases_data, param)
+
+    print('FIX SOLIDIFICATION TIME FUNCTION AND PLOT FUNCTION')
     # Extract the solidification time
     phi_crit = 0.005 # Critical melt fraction for solidification
     solidification_times = extract_solidification_time(cases_data, phi_crit)
+
+    # Plot cumulative distributions for the extracted parameters
+    xlabel = 'X-axis Label'  # Example label for the x-axis
+    ylabel = 'Normalized cumulative fraction of simulations'  # Example label for the y-axis
+    color_map = cm.viridis  # Example colormap for plotting
+
+    # Call the function to plot cumulative distributions for the extracted parameters
+    plot_cumulative_distributions_by_grid(cases_data, output_to_extract, xlabel, ylabel, color_map, plots_path)
