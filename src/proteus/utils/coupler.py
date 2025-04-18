@@ -709,7 +709,7 @@ def remove_excess_files(outdir:str, rm_spectralfiles:bool=False):
         log.debug(f"Removing {f}")
         safe_rm(f)
 
-def get_proteus_directories(outdir) -> dict[str, str]:
+def get_proteus_directories(outdir="_unset") -> dict[str, str]:
     """Create dict of proteus directories from root dir.
 
     Parameters
@@ -757,7 +757,7 @@ def set_directories(config: Config) -> dict[str, str]:
     dirs : dict
         Dictionary of paths to important directories
     """
-    dirs = get_proteus_directories(config.params.out.path)
+    dirs = get_proteus_directories(outdir=config.params.out.path)
 
     # FWL data folder
     if os.environ.get('FWL_DATA') is None:
