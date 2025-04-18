@@ -222,7 +222,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
         nc_times = [ int(s.split("/")[-1].split("_")[0]) for s in nc_files]
         nc_path  = os.path.join(dirs["output"],
-                                "data", "%d_atm.nc"%int(sorted(nc_times)[-1]))
+                                "data", "%.0f_atm.nc"%int(sorted(nc_times)[-1]))
         jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
 
     # Otherwise, set to initial guess
@@ -459,7 +459,10 @@ def _solve_once(atmos, config:Config):
         jl.AGNI.chemistry.fastchem_eqm_b(atmos, chem_int, True)
 
     # solve fluxes
-    jl.AGNI.energy.calc_fluxes_b(atmos, False, False, False, False, calc_cf=True)
+    jl.AGNI.energy.calc_fluxes_b(atmos, False, True, False, False, calc_cf=True)
+
+    # fill kzz values
+    jl.AGNI.energy.fill_Kzz_b(atmos)
 
     return atmos
 

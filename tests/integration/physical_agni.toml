@@ -34,9 +34,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     age_ini = 0.200     # Gyr, model initialisation/start age
     module  = "mors"
     [star.mors]
-        rot_period = 80.9       # rotation percentile
+        rot_period = 80.9       # rotation period
         tracks  = "spada" # evolution tracks: spada | baraffe
-        age_now = 4.94     # Gyr, current age of star used for scaling
+        age_now = 4.0     # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/l-98-59.txt" # stellar spectrum
 
 # Orbital system
@@ -123,3 +123,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Module with which to calculate the synthetic observables
     synthesis = "none"
+
+[atmos_chem]
+    module = "vulcan"
+    when = "manually"
+
+    [atmos_chem.vulcan]
+        save_frames = false
+        network = "CHO"

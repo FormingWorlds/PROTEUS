@@ -12,11 +12,12 @@ socrates_star.txt
 radiation_code.lock
 screenlog.0
 
-# Output folders
+# Output files
 old/
 output/*
 output.link
 output
+slurm*.out
 
 # Development installations
 fwl_data
@@ -205,6 +206,11 @@ ENV/
 env.bak/
 venv.bak/
 
+# Platon temp/downloaded files
+*.zip
+transit_depth.png
+eclipse_depth.png
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -232,3 +238,7 @@ cython_debug/
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
 
 .ruff_cache
+
+# Created automatically during PR #351
+Manifest.toml
+Project.toml

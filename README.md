@@ -33,13 +33,13 @@ Raymond Pierrehumbert   | raymond.pierrehumbert[at]physics.ox.ac.uk             
 | Object                | Description                                               |
 | -                     | -                                                         |
 | `README.md`           | Overview file                                             |
-| `pyproject.toml`	    | Project configuration file                                |
+| `pyproject.toml`      | Project configuration file                                |
 | `CODE_OF_CONDUCT.md`  | Project code of conduct                                   |
 | `LICENSE.txt`         | Project license                                           |
 | `src/proteus`         | Source code for PROTEUS                                   |
 | `output/`             | Output folder with subfolders for each model run          |
 | `input/`              | Example configuration files for running the model         |
-| `docs/`		            | Documentation source files                                |
+| `docs/`               | Documentation source files                                |
 | `examples/`           | Example cases that the model should be able to reproduce  |
 | `tests/`              | Unit tests for the code                                   |
 | `tools/`              | Tools for setting up the environment                      |

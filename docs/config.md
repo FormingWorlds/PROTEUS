@@ -72,7 +72,7 @@ for more information how to work with attrs.
       show_root_toc_entry: False
       members_order: source
 
-## Star
+## Stellar evolution
 
 ::: proteus.config._star
     options:
@@ -81,7 +81,7 @@ for more information how to work with attrs.
       show_root_toc_entry: False
       members_order: source
 
-## Star system and planetary orbit
+## Orbital evolution and tides
 
 ::: proteus.config._orbit
     options:
@@ -93,6 +93,15 @@ for more information how to work with attrs.
 ## Interior structure
 
 ::: proteus.config._struct
+    options:
+      heading_level: 3
+      show_root_heading: False
+      show_root_toc_entry: False
+      members_order: source
+
+## Magma ocean and planetary interior
+
+::: proteus.config._interior
     options:
       heading_level: 3
       show_root_heading: False
@@ -117,16 +126,16 @@ for more information how to work with attrs.
       show_root_toc_entry: False
       members_order: source
 
-## Magma ocean / mantle
+## Atmospheric chemistry
 
-::: proteus.config._interior
+::: proteus.config._atmos_chem
     options:
       heading_level: 3
       show_root_heading: False
       show_root_toc_entry: False
       members_order: source
 
-## Outgassing
+## Volatile outgassing
 
 ::: proteus.config._outgas
     options:
@@ -135,9 +144,18 @@ for more information how to work with attrs.
       show_root_toc_entry: False
       members_order: source
 
-## Delivery of elements
+## Elemental delivery and accretion
 
 ::: proteus.config._delivery
+    options:
+      heading_level: 3
+      show_root_heading: False
+      show_root_toc_entry: False
+      members_order: source
+
+## Synthetic observations
+
+::: proteus.config._observe
     options:
       heading_level: 3
       show_root_heading: False

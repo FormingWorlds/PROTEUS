@@ -5,9 +5,9 @@ import os
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
-import pandas as pd
 from matplotlib.ticker import FormatStrFormatter
 
+from proteus.observe.common import read_eclipse, read_transit
 from proteus.utils.plot import get_colour, latexify
 
 if TYPE_CHECKING:
@@ -18,24 +18,41 @@ log = logging.getLogger("fwl."+__name__)
 WAVE_KEY = "Wavelength/um"
 
 def plot_spectra(output_dir: str, plot_format: str="pdf",
-                    wlmin:float=0.5, wlmax:float=20.0):
+                    wlmin:float=0.5, wlmax:float=20.0, source:str="profile"):
+    '''
+    Plot the transit and eclipse spectra.
+
+    Parameters
+    ----------
+    output_dir : str
+        Output directory for the PROTEUS run.
+    plot_format : str
+        Format of the plot.
+    wlmin : float
+        Minimum wavelength to plot.
+    wlmax : float
+        Maximum wavelength to plot.
+    source : str
+        Method for setting atmospheric composition: "outgas", "profile", "offchem".
+    '''
 
     log.info("Plot transit and eclipse spectra")
 
     # read data
-    ftransit = os.path.join(output_dir, "data", "obs_synth_transit.csv")
-    if not os.path.isfile(ftransit):
-        log.warning(f"Could not find file '{ftransit}'")
-        return
-    else:
-        df_transit = pd.read_csv(ftransit)
+    try:
+        df_transit = read_transit(output_dir, source, "synthesis")
+    except FileNotFoundError:
+        log.warning(f"Could not read synthetic transit spectrum ({source}) file")
+        df_transit = None
 
-    feclipse = os.path.join(output_dir, "data", "obs_synth_eclipse.csv")
-    if not os.path.isfile(feclipse):
-        log.warning(f"Could not find file '{feclipse}'")
+    try:
+        df_eclipse = read_eclipse(output_dir, source, "synthesis")
+    except FileNotFoundError:
+        log.warning(f"Could not read synthetic eclipse spectrum ({source}) file")
+        df_eclipse = None
+
+    if df_transit is None and df_eclipse is None:
         return
-    else:
-        df_eclipse = pd.read_csv(feclipse)
 
     # make plot
     lw = 0.3
@@ -44,8 +61,10 @@ def plot_spectra(output_dir: str, plot_format: str="pdf",
     axt = axs[0]
     axb = axs[1]
 
-    # transit
+    # plot spectra
     for i,df in enumerate([df_transit, df_eclipse]):
+        if df is None:
+            continue
         wl = df[WAVE_KEY]
         for key in df.keys():
             if key != WAVE_KEY:
