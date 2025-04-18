@@ -127,6 +127,11 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
         res[e] = hf_row[e+key]
     M_vols = sum(list(res.values()))
 
+    # To avoid division by zero or very small values error for M_vols
+    if M_vols < 10.0:
+        log.warning("M_vols is too small (%.2e). Setting all target elements to zero." % M_vols)
+        return {e: 0.0 for e in res.keys()}
+
     # calculate the current mass mixing ratio for each element
     #     if escape is unfractionating, this should be conserved
     emr = {}
