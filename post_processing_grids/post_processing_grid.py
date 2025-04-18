@@ -292,7 +292,7 @@ if __name__ == '__main__':
 
     # Paths
     grid_path = '/home2/p315557/outputs_Norma2/good_grids/escape_grid_4_params_Pxuv_a_epsilon_fO2/'
-    plots_path = '/home2/p315557/PROTEUS/post_processing_grids/plots'
+    plots_path = '/home2/p315557/PROTEUS/post_processing_grids/plots/escape_grid_4_params_Pxuv_a_epsilon_fO2/'
 
     # Plots : True or False
     plot=True
