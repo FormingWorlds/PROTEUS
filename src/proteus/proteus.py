@@ -94,9 +94,6 @@ class Proteus:
             Run in offline mode; do not try to connect to the internet.
         """
 
-        # Import julia first, to avoid LLVM segfault
-        import juliacall # noqa
-
         # Import things needed to run PROTEUS
         #    atmospheric chemistry
         from proteus.atmos_chem.wrapper import run_chemistry

@@ -60,7 +60,7 @@ jobs:
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: '1.11'
+          version: '1.11.3'
 
       - name: Cache Julia
         uses: julia-actions/cache@v2
