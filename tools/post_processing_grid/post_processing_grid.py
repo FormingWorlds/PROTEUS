@@ -346,55 +346,42 @@ def save_grid_data_to_csv(grid_name, cases_data, grid_parameters, extracted_valu
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Prepare the header
-    header = [
-        "#############################################################################################################",
-        f"Grid name:                {grid_name}",
-        f"Total number of cases:    {len(cases_data)}",
-        f"phi_crit:                 {phi_crit}",
-        "----------------------------------------------------------",
-        " Grid Parameters",
-        "----------------------------------------------------------"
-    ]
-    
-    max_label_length = max(len(param) for param in grid_parameters.keys())  
-    for param, values in grid_parameters.items():
-        aligned_param = f"{param: <{max_label_length}}"  
-        values_str = f"[{', '.join(map(str, values))}]"  
-        header.append(f"{aligned_param}: {values_str}")
-    
-    header.extend([
-        "----------------------------------------------------------",
-        "This file contains the following columns:",
-        f"| Case number | {' | '.join(extracted_value.keys())} |",
-        "#############################################################################################################"
-    ])
+    # Path and name to save the CSV file
+    csv_file = output_dir / f"{grid_name}_extracted_data.csv"  
 
-    # Prepare the CSV file path
-    csv_file = output_dir / f"{grid_name}_simulation_data.csv"
-
-    # Define the column headers for the CSV file
-    csv_headers = ["Case number"] + list(extracted_value.keys())
-
-    # Open the CSV file for writing
     with open(csv_file, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        
-        # Write the header as comments at the top of the file
-        for line in header:
-            writer.writerow([f"#{line}"])  # Add a '#' to make it a comment in the CSV file
-        
-        # Write the header for the data section
-        writer.writerow(csv_headers)
-        
-        # Write the data for each case
+
+        # Write the header
+        writer.writerow(["#############################################################################################################"])
+        writer.writerow([f"Grid name:                {grid_name}"])
+        writer.writerow([f"Total number of cases:    {len(cases_data)}"])
+        writer.writerow([f"phi_crit:                 {phi_crit}"])
+        writer.writerow(["----------------------------------------------------------"])
+        writer.writerow([" Grid Parameters"])
+        writer.writerow(["----------------------------------------------------------"])
+        max_label_length = max(len(param) for param in grid_parameters.keys())
+        for param, values in grid_parameters.items():
+            aligned_param = f"{param: <{max_label_length}}"
+            values_str = f"[{', '.join(map(str, values))}]"
+            writer.writerow([f"{aligned_param}: {values_str}"])
+        writer.writerow(["----------------------------------------------------------"])
+        writer.writerow(["This file contains the following columns:"])
+        writer.writerow([f"| Case number | Status | {' | '.join(extracted_value.keys())} |"])
+        writer.writerow(["#############################################################################################################"])
+        writer.writerow([])
+
+        # Write the data for each case of the grid
+        statuses = [case.get('status', 'unknown') or 'unknown' for case in cases_data]
         for case_index, case_data in enumerate(cases_data):
-            row = [case_index + 1]  # Start with the case number
+            row = [case_index, f"'{statuses[case_index]}'"]  
             for param in extracted_value.keys():
-                row.append(extracted_value[param][case_index])  # Extract the value for the current case
+                row.append(extracted_value[param][case_index])  
             writer.writerow(row)
 
     print(f"Data has been successfully saved to {csv_file}.")
+    print('-----------------------------------------------------------')
+
 
 if __name__ == '__main__':
 
@@ -425,3 +412,8 @@ if __name__ == '__main__':
     
     # Save all the extracted data to a CSV file 
     save_grid_data_to_csv(grid_name, cases_data, grid_parameters, extracted_value, solidification_times, phi_crit, data_dir)
+
+    print('-----------------------------------------------------------')
+    print("Post-processing completed. Let's do some plots !")
+    print('(Please check for any warning messages above before going further.)')
+    print('-----------------------------------------------------------')    
