@@ -208,24 +208,24 @@ def update(dir:str, remove_files:bool=True) -> None:
     dir = os.path.abspath(dir)
 
     # Update archive
-    if archive_exists(dir, ignore_warnings=False):
+    if archive_exists(dir, ignore_warnings=True):
         append(dir, remove_files=remove_files)
 
     # Create new archive
     else:
         create(dir, remove_files=remove_files)
 
-def remove_old(dir:str, now:float) -> None:
+def remove_old(dir:str, before:float) -> None:
     """
-    Remove files from the directory, except archives and those at the current time.
-    The files which are kept are those that contain the current time in their name.
+    Remove files from the directory, except archives and those corresponding to times
+    greater than or equal to `before`.
 
     Arguments
     ---------
     dir : str
         The directory to remove old files from.
-    now : float
-        The current time [years], used to determine which files should be kept.
+    before : float
+        Remove files corresponding to simulated times before this time [years].
     """
 
     # Paths
@@ -234,11 +234,22 @@ def remove_old(dir:str, now:float) -> None:
     # Files
     files = glob.glob(os.path.join(dir, "*"))
 
-    # Keep files if this substring is inside their name
-    keep = "%.0f" % now
-
-    # Remove old files
+    # Remove files
     for f in files:
-        if (keep in os.path.split(f)[-1]) or f.endswith(".tar"):
-            continue
-        safe_rm(f)
+        name = os.path.split(f)[-1]
+
+        # Keep archives
+        if name.endswith(".tar"):
+            keep = True
+
+        # Keep nc and json files, for time >= before
+        elif name.endswith(".nc") or name.endswith(".json"):
+            age = int(name.split(".")[0].split("_")[0])
+            keep = age >= before
+
+        # Do not keep other files
+        else:
+            keep = False
+
+        if not keep:
+            safe_rm(f)

@@ -2,7 +2,7 @@
 
 ## Running PROTEUS from the terminal
 
-Proteus has a command-line interface that can be accessed by running `proteus` on the command line.
+PROTEUS has a command-line interface that can be accessed by running `proteus` on the command line.
 Try `proteus --help` to see the available commands!
 
 You can directly run PROTEUS using the command:
@@ -91,26 +91,6 @@ by `grid_proteus.py`. You will be prompted to do this in the terminal.
 Monitor your running jobs with `squeue -u $USER`. To cancel **all** of your running jobs, use `scancel -u $USER`.
 
 
-## Version checking
-
-The `proteus doctor` commnd helps you to diagnose issues with your proteus installation.
-It tells you about outdated or missing packages, and whether all environment variables have been set.
-
-```console
-$ proteus doctor
-Dependencies
-fwl-proteus: ok
-fwl-mors: Update available 24.10.27 -> 24.11.18
-fwl-calliope: ok
-fwl-zephyrus: ok
-aragog: Update available 0.1.0a0 -> 0.1.5a0
-AGNI: No package metadata was found for AGNI is not installed.
-
-Environment variables
-FWL_DATA: Variable not set.
-RAD_DIR: Variable not set.
-```
-
 ## Postprocessing of results with 'offline' chemistry
 
 PROTEUS includes an "offline" chemistry functionality, which uses results of a simulation
@@ -158,4 +138,24 @@ proteus extract-archives -c [cfgfile]
 This is reversible. To pack the data files into `.tar` archives again:
 ```console
 proteus create-archives -c [cfgfile]
+```
+
+## Version checking
+
+The `proteus doctor` command helps you to diagnose issues with your proteus installation.
+It tells you about outdated or missing packages, and whether all environment variables have been set.
+
+```console
+$ proteus doctor
+Dependencies
+fwl-proteus: ok
+fwl-mors: Update available 24.10.27 -> 24.11.18
+fwl-calliope: ok
+fwl-zephyrus: ok
+aragog: Update available 0.1.0a0 -> 0.1.5a0
+AGNI: No package metadata was found for AGNI is not installed.
+
+Environment variables
+FWL_DATA: Variable not set.
+RAD_DIR: Variable not set.
 ```

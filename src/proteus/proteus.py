@@ -473,8 +473,11 @@ class Proteus:
             # Update or create data archive
             if multiple(self.loops["total"], self.config.params.out.archive_mod):
                 log.info("Updating output data archive")
+                # do not remove ALL files
                 archive.update(self.directories["output/data"], remove_files=False)
-                archive.remove_old(self.directories["output/data"], self.hf_row["Time"])
+                # remove all files EXCEPT the latest ones
+                archive.remove_old(self.directories["output/data"],
+                                        self.hf_row["Time"]*0.9)
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
