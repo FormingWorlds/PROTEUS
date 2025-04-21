@@ -77,11 +77,11 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
             log.info("Found solution after %d iterations" % int(r.iterations))
         else:
             UpdateStatusfile(dirs, 22)
-            raise Exception("Could not find solution for T_surf with dummy_atmosphere")
+            raise RuntimeError("Could not find solution for T_surf with dummy_atmosphere")
 
     else:
         UpdateStatusfile(dirs, 20)
-        raise Exception("Invalid surface state chosen for dummy_atmosphere")
+        raise ValueError("Invalid surface state chosen for dummy_atmosphere")
 
     # Require that the net flux must be upward
     F_atm_lim = fluxes["fl_N"]

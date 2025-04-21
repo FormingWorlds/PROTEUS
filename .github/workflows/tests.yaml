@@ -39,6 +39,7 @@ jobs:
       PROTEUS_DIR: ${{ github.workspace }}
       RAD_DIR: ${{ github.workspace }}/SOCRATES
       AGNI_DIR: ${{ github.workspace }}/AGNI
+      JULIA_NUM_THREADS: 1
 
     runs-on: ${{ matrix.os }}
     steps:

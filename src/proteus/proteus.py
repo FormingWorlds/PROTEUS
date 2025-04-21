@@ -262,7 +262,19 @@ class Proteus:
             # Resuming from disk
             log.info("Resuming the simulation from the disk")
 
+            # Read helpfile from disk
+            self.hf_all = ReadHelpfileFromCSV(self.directories["output"])
+
+            # Check length
+            if len(self.hf_all) <= self.loops["init_loops"] + 1:
+                UpdateStatusfile(self.directories, 20)
+                raise RuntimeError("Simulation is too short to be resumed")
+
+            # Get last row from helpfile dataframe
+            self.hf_row = self.hf_all.iloc[-1].to_dict()
+
             # Extract all archived data files
+            log.debug("Extracting archived data files")
             self.extract_archives()
 
             # Interior initial condition
@@ -271,16 +283,6 @@ class Proteus:
             # Restore tides data
             if self.config.orbit.module is not None:
                 self.interior_o.resume_tides(self.directories["output"])
-
-            # Read helpfile from disk
-            self.hf_all = ReadHelpfileFromCSV(self.directories["output"])
-
-            # Check length
-            if len(self.hf_all) <= self.loops["init_loops"] + 1:
-                raise Exception("Simulation is too short to be resumed")
-
-            # Get last row
-            self.hf_row = self.hf_all.iloc[-1].to_dict()
 
             # Set loop counters
             self.loops["total"] = len(self.hf_all)
@@ -472,12 +474,11 @@ class Proteus:
 
             # Update or create data archive
             if multiple(self.loops["total"], self.config.params.out.archive_mod):
-                log.info("Updating output data archive")
+                log.info("Updating archive of model output data")
                 # do not remove ALL files
                 archive.update(self.directories["output/data"], remove_files=False)
                 # remove all files EXCEPT the latest ones
-                archive.remove_old(self.directories["output/data"],
-                                        self.hf_row["Time"]*0.9)
+                archive.remove_old(self.directories["output/data"],self.hf_row["Time"]*0.99)
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 

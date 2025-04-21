@@ -765,7 +765,7 @@ def set_directories(config: Config) -> dict[str, str]:
     # FWL data folder
     if os.environ.get('FWL_DATA') is None:
         UpdateStatusfile(dirs, 20)
-        raise Exception("The FWL_DATA environment variable has not been set")
+        raise EnvironmentError("The FWL_DATA environment variable has not been set")
     else:
         dirs["fwl"] = os.environ.get('FWL_DATA')
 
@@ -775,7 +775,7 @@ def set_directories(config: Config) -> dict[str, str]:
 
         if os.environ.get('RAD_DIR') is None:
             UpdateStatusfile(dirs, 20)
-            raise Exception("The RAD_DIR environment variable has not been set")
+            raise EnvironmentError("The RAD_DIR environment variable has not been set")
         else:
             dirs["rad"] = os.environ.get('RAD_DIR')
 

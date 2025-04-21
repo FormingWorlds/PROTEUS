@@ -80,7 +80,7 @@ def _construct_voldict(hf_row:dict, dirs:dict):
     # Check that the total VMR is not zero
     if vol_sum < 1e-4:
         UpdateStatusfile(dirs, 20)
-        raise Exception("All volatiles have a volume mixing ratio of zero")
+        raise ValueError("All volatiles have a volume mixing ratio of zero")
 
     return vol_dict
 
