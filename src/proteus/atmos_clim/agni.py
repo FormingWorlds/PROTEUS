@@ -510,14 +510,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
 
     # Make plots
     if multiple(loops_total, config.params.out.plot_mod):
-
-        fmt = config.params.out.plot_fmt
-        jl.AGNI.plotting.plot_fluxes(atmos, os.path.join(dirs["output"],
-                                                    "plot_fluxes_atmosphere.%s"%fmt))
-        jl.AGNI.plotting.plot_vmr(atmos, os.path.join(dirs["output"],
-                                                    "plot_vmr.%s"%fmt))
-        jl.AGNI.plotting.plot_contfunc1(atmos, os.path.join(dirs["output"],
-                                                    "plot_cff.%s"%fmt))
+        cff = os.path.join(dirs["output/plots"], f"plot_cff.{config.params.out.plot_fmt}")
+        jl.AGNI.plotting.plot_contfunc1(atmos, cff)
 
     # ---------------------------
     # Calculate observables

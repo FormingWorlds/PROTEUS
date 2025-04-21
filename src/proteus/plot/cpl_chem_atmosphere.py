@@ -27,7 +27,7 @@ GASES_STANDARD = ("C2H4", "CO", "H2O", "H2SO4", "N2", "O2", "O3", "OH", "H", "SO
                   "N", "O", "S", "SO", "CS2",)
 
 def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
-                            plot_gases:list=None, xmin:float=1e-14):
+                            plot_gases:list=None, plot_offchem:bool=True, xmin:float=1e-14):
 
     log.info("Plot atmosphere chemical composition")
 
@@ -59,18 +59,21 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
     # Get year
     year = float(nc_fpath.split("/")[-1].split("_atm")[0])
 
-    # Read offline chemistry output if available
-    atm_offchem = read_result(output_dir, chem_module)
-    has_offchem = atm_offchem is not None
-    if has_offchem:
-        atm_offchem.drop(columns=["tmp","p","z","Kzz"], inplace=True)
+    # Read offline chemistry output if available and requested
+    if plot_offchem:
+        atm_offchem = read_result(output_dir, chem_module)
+        has_offchem = atm_offchem is not None
+        if has_offchem:
+            atm_offchem.drop(columns=["tmp","p","z","Kzz"], inplace=True)
+    else:
+        has_offchem = False
 
     # init plot
     scale = 1.2
     fig,ax = plt.subplots(1,1, figsize=(6*scale,5*scale))
 
     # plot species profiles
-    lw = 1.0
+    lw = 0.9
     al = 0.8
     vmr_surf = []
     for i,gas in enumerate(plot_gases):
@@ -81,7 +84,7 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
 
         _lw = lw
         if gas in vol_list:
-            _lw *= 2
+            _lw *= 1.25
 
         # plot from netCDF (dashed lines)
         key = gas+"_vmr"

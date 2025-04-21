@@ -618,15 +618,18 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         # Atmosphere temperature/height profiles
         plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
+        # Atmospheric chemistry
+        plot_chem_atmosphere(output_dir, config.atmos_chem.module,
+                                plot_format=config.params.out.plot_fmt,
+                                plot_offchem=False)
+
         # Atmosphere and interior, stacked radially
         if not dummy_int:
             plot_structure(hf_all, output_dir, plot_times, int_data, atm_data,
                             config.interior.module, config.params.out.plot_fmt)
 
         # Energy flux profiles
-        if config.atmos_clim.module == 'janus':
-            # only do this for JANUS, AGNI does it automatically
-            plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
+        plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
 
     # Only at the end of the simulation
     if end:

@@ -65,11 +65,8 @@ def plot_sflux_cross(
     files = glob.glob(output_dir+"/data/*.sflux")
     files = natural_sort(files)
 
-    if (len(files) == 0):
-        log.warning("No files found when trying to make sflux_cross plot")
-        return
-    if (len(files) == 1):
-        log.warning("Cannot make sflux_cross plot with only 1 stellar spectrum sample")
+    if len(files) <= 1:
+        log.warning("Insufficient data to make plot_sflux_cross")
         return
 
     log.info("Plot stellar flux (crossection)")
@@ -123,7 +120,8 @@ def plot_sflux_cross(
 
     # Load modern spectrum
     if modern_age > 0:
-        X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
+        modern_fpath = os.path.join(output_dir, "data", "-1.sflux")
+        X = np.loadtxt(modern_fpath, skiprows=2).T
 
     # Plot bins over time
     for i in range(N):

@@ -48,13 +48,21 @@ _preset_colours  = {
     "Mg": "#996633",
     "Na": "#ccff00",
 
-    # Energy fluxes
+    # GLobal energy fluxes
     "OLR":   "#dc143c",
     "ASF":   "#4169e1",
     "sct":   "#2e8b57",
     "tidal": "#daa520",
     "radio": "#C720DD",
     "star":  "#FF8FA1",
+
+    # Atmosphere energy fluxes (copied from AGNI)
+    "flux_r": "#c0c0c0",
+    "flux_n": "#000000",
+    "flux_c": "#6495ed",
+    "flux_t": "#ff4400",
+    "flux_o": "#66CD00",
+    "flux_p": "#ecb000",
 
     # Model components
     "atm"     : "#444444",
@@ -324,7 +332,7 @@ def sample_output(handler: Proteus, extension:str = "_atm.nc", tmin:float = 1.0,
     if len(files) < 1:
 
         # Maybe archived...
-        if archive_exists(handler.directories["output"]):
+        if archive_exists(handler.directories["output/data"]):
             log.error("No output files found, but tar archive exists. Extract it first.")
             return [], []
 

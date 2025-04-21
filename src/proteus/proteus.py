@@ -455,11 +455,6 @@ class Proteus:
             if multiple(self.loops["total"], self.config.params.out.write_mod):
                     WriteHelpfileToCSV(self.directories["output"], self.hf_all)
 
-            # Update or create data archive
-            if multiple(self.loops["total"], self.config.params.out.archive_mod):
-                archive.update(self.directories["output/data"], remove_files=False)
-                archive.remove_old(self.directories["output/data"], self.hf_row["Time"])
-
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)
 
@@ -474,6 +469,12 @@ class Proteus:
 
                 log.info("Making plots")
                 UpdatePlots(self.hf_all, self.directories, self.config)
+
+            # Update or create data archive
+            if multiple(self.loops["total"], self.config.params.out.archive_mod):
+                log.info("Updating output data archive")
+                archive.update(self.directories["output/data"], remove_files=False)
+                archive.remove_old(self.directories["output/data"], self.hf_row["Time"])
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 

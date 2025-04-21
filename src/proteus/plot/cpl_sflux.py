@@ -64,7 +64,7 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0,
     files = natural_sort(files_unsorted)
 
     if (len(files) == 0):
-        log.warning("No files found when trying to plot stellar flux")
+        log.warning("Insufficient data to make plot_sflux")
         return
 
     log.info("Plot stellar flux")
@@ -145,7 +145,8 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0,
 
     # Plot current spectrum (use the copy made in the output directory)
     if plt_modern:
-        X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
+        modern_fpath = os.path.join(output_dir, "data", "-1.sflux")
+        X = np.loadtxt(modern_fpath,skiprows=2).T
         ax.plot(X[0],X[1],color='black',label='Modern (1 AU)',lw=0.8,alpha=0.9)
 
     if plt_modern or justone:

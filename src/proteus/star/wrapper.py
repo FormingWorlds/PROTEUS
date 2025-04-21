@@ -45,7 +45,7 @@ def init_star(handler:Proteus):
                                         handler.config.star.mors.spec)
 
         # Copy modern spectrum to output folder, for posterity.
-        star_backup_path = os.path.join(handler.directories["output"], "-1.sflux")
+        star_backup_path = os.path.join(handler.directories["output/data"], "-1.sflux")
         shutil.copyfile(star_modern_path, star_backup_path)
 
         match handler.config.star.mors.tracks:
