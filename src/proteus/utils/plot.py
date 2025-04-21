@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from proteus.utils.archive import archive_exists
 from proteus.utils.helper import mol_to_ele
 
 log = logging.getLogger("fwl."+__name__)
@@ -316,9 +317,18 @@ def sample_times(times:list, nsamp:int, tmin:float=1.0):
 
 def sample_output(handler: Proteus, extension:str = "_atm.nc", tmin:float = 1.0, nsamp:int=8):
 
-    # get all files
-    files = glob.glob(os.path.join(handler.directories["output"], "data", "*"+extension))
+    # get all files in directory
+    files = glob.glob(os.path.join(handler.directories["output/data"], "*"+extension))
+
+    # No files found?
     if len(files) < 1:
+
+        # Maybe archived...
+        if archive_exists(handler.directories["output"]):
+            log.error("No output files found, but tar archive exists. Extract it first.")
+            return [], []
+
+        # Return empty
         return [], []
 
     # get times

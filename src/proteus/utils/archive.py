@@ -16,6 +16,32 @@ def _tarfile_from_dir(dir:str) -> str:
     name = os.path.split(dir)[-1]
     return os.path.join(dir, f"{name}.tar")
 
+def archive_exists(dir:str, ignore_warnings:bool=False) -> bool:
+    """
+    Check if the archive tar file exists inside a directory.
+
+    Arguments
+    ---------
+    dir : str
+        The directory to check.
+
+    Returns
+    -------
+    bool
+        Whether the tar file exists.
+    """
+
+    # Tar file path
+    tar = _tarfile_from_dir(os.path.abspath(dir))
+
+    # Exists?
+    exists = os.path.exists(tar)
+
+    if (not exists) and (not ignore_warnings):
+        log.warning(f"The archive tar file does not exist: {tar}")
+
+    return exists
+
 def create(dir:str, remove_files:bool=True) -> str:
     """
     Create a new tar archive from a directory of files, placing the tar inside that directory.
@@ -37,7 +63,6 @@ def create(dir:str, remove_files:bool=True) -> str:
 
     # Tar file path
     dir = os.path.abspath(dir)
-    tar = _tarfile_from_dir(dir)
     log.debug(f"Creating new archive of {dir}")
 
     # Check if the directory exists
@@ -46,8 +71,8 @@ def create(dir:str, remove_files:bool=True) -> str:
         return
 
     # Check if the tar file exists
-    if os.path.exists(tar):
-        log.error(f"Tar file {tar} already exists. Will not overwrite it.")
+    if archive_exists(dir, ignore_warnings=False):
+        log.error(f"Archive tar file for {dir} already exists. Will not create a new one.")
         return
 
     # List files in directory
@@ -55,6 +80,7 @@ def create(dir:str, remove_files:bool=True) -> str:
     files = [os.path.abspath(f) for f in files]
 
     # Add files to new tar file
+    tar = _tarfile_from_dir(dir)
     with tarfile.open(tar, "w") as tar_file:
         for f in files:
             tar_file.add(f, arcname=os.path.split(f)[-1])
@@ -89,12 +115,11 @@ def append(dir:str, remove_files:bool=True) -> str:
 
     # Paths
     dir = os.path.abspath(dir)
-    tar = _tarfile_from_dir(dir)
     log.debug(f"Appending files to archive in {dir}")
 
     # Check if the tar file exists
-    if not os.path.exists(tar):
-        log.error(f"Tar file {tar} does not exist. Cannot append to it.")
+    if not archive_exists(dir, ignore_warnings=False):
+        log.error("Cannot append to archive.")
         return
 
     # List files in directory
@@ -102,6 +127,7 @@ def append(dir:str, remove_files:bool=True) -> str:
     files = [os.path.abspath(f) for f in files]
 
     # Append file to existing tar file
+    tar = _tarfile_from_dir(dir)
     with tarfile.open(tar, "a") as tar_file:
         for f in files:
             tar_file.add(f, arcname=os.path.split(f)[-1])
@@ -143,13 +169,12 @@ def extract(dir:str, remove_tar:bool=False, ignore_warnings:bool=False) -> str:
 
     # Check if the directory exists
     if not os.path.exists(dir):
-        log.error(f"Directory {dir} does not exist. Cannot extract into it.")
+        log.error(f"Directory {dir} does not exist.")
+        log.error("Cannot extract archive.")
         return
 
     # Check if the tar file exists
-    if not os.path.exists(tar):
-        if not ignore_warnings:
-            log.error(f"Tar file {tar} does not exist. Cannot extract it.")
+    if not archive_exists(dir, ignore_warnings=ignore_warnings):
         return
 
     # Extract tar file
@@ -181,11 +206,11 @@ def update(dir:str, remove_files:bool=True) -> None:
 
     # Paths
     dir = os.path.abspath(dir)
-    tar = _tarfile_from_dir(dir)
 
     # Update archive
-    if os.path.exists(tar):
+    if archive_exists(dir, ignore_warnings=False):
         append(dir, remove_files=remove_files)
+
     # Create new archive
     else:
         create(dir, remove_files=remove_files)
