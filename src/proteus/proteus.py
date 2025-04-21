@@ -473,7 +473,9 @@ class Proteus:
                 UpdatePlots(self.hf_all, self.directories, self.config)
 
             # Update or create data archive
-            if multiple(self.loops["total"], self.config.params.out.archive_mod):
+            if multiple(self.loops["total"], self.config.params.out.archive_mod) \
+                and not self.finished_both:
+
                 log.info("Updating archive of model output data")
                 # do not remove ALL files
                 archive.update(self.directories["output/data"], remove_files=False)
@@ -510,6 +512,7 @@ class Proteus:
             UpdatePlots(self.hf_all, self.directories, self.config, end=True)
 
         # Tidy up
+        log.info(" ")
         log.debug("Tidy up before exit")
         remove_excess_files(self.directories["output"],
                             rm_spectralfiles=self.config.params.out.remove_sf)
