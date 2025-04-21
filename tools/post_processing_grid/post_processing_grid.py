@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.colors as mcolors
 import matplotlib.cm as cm
 from matplotlib.ticker import FuncFormatter
+import csv
 
 
 def load_grid_cases(grid_dir: Path):
@@ -149,9 +150,7 @@ def plot_grid_status(cases_data, plot_dir: Path, status_colors: dict = None):
     plt.savefig(output_path, dpi=300)
     plt.close()
 
-    print('-----------------------------------------------------------')
     print(f"Plot grid_status_summary.png saved to {output_path}")
-    print('-----------------------------------------------------------')
 
 def get_grid_parameters(grid_dir: str):
     """
@@ -243,15 +242,13 @@ def extract_grid_output(cases_data, parameter_name):
                 columns_printed = True
     
     # Print the extracted values
-    print('-----------------------------------------------------------')
     print(f"Extracted output (at last time step) : {parameter_name} ")
-    print('-----------------------------------------------------------')
 
     return parameter_values
 
 def extract_solidification_time(cases_data, phi_crit):
     """
-    Extract the solidification time for planet that reach Phi_global < phi_crit.
+    Extract the solidification time for planets that reach Phi_global < phi_crit.
 
     Parameters
     ----------
@@ -265,7 +262,7 @@ def extract_solidification_time(cases_data, phi_crit):
     -------
     solidification_times : list
         A list containing the solidification times for all solidified planets of the grid. 
-        If a planet never solidifies, it will not be included in the list.
+        If a planet never solidifies, it will have NaN in the list.
     """
     solidification_times = []
     columns_printed = False
@@ -279,124 +276,152 @@ def extract_solidification_time(cases_data, phi_crit):
                 first_index = condition.idxmax()  # gives the first True index
                 solid_time = df.loc[first_index, 'Time']
                 solidification_times.append(solid_time)
-                print(f"[Case {i}] Solidification at index {first_index} → Time = {solid_time}, Phi = {df.loc[first_index, 'Phi_global']}")
-
+            else:
+                solidification_times.append(np.nan)  # Append NaN if condition is not met
         else:
             if not columns_printed:
                 print("Warning: 'Phi_global' and/or 'Time' columns not found in some cases.")
                 print(f"Available columns: {', '.join(df.columns)}")
                 columns_printed = True
+            solidification_times.append(np.nan)  # Append NaN if columns are missing
+
+    # Count the number of cases labeled as 10 Completed (solidified)
+    status_10_cases = [case for case in cases_data if (case.get('status') or '').strip() == '10 Completed (solidified)']
+    completed_count = len(status_10_cases)
+
+    # Count only valid solidification times (non-NaN)
+    valid_solidification_times = [time for time in solidification_times if not np.isnan(time)]
+    valid_solidified_count = len(valid_solidification_times)
 
     print('-----------------------------------------------------------')
-    print(f"Extracted solidification times ")
-    print('at timesteps when Phi_global < {phi_crit}')
-    print('-----------------------------------------------------------')
-    print(len(solidification_times))
+    print(f"Extracted solidification times (Phi_global < {phi_crit})")
+    print(f"→ Found {valid_solidified_count} valid solidified cases based on Phi_global")
+    print(f"→ Found {completed_count} cases with status '10 Completed (solidified)' ")
     
+    if valid_solidified_count != completed_count:
+        print("WARNING: The number of valid solidified planets does not match the number of planets with status: '10 Completed (solidified)'")
+        print("\nChecking final Phi_global values for all status '10 Completed (solidified)' cases:")
+        for i, case in enumerate(status_10_cases):
+            df = case['output_values']
+            if 'Phi_global' in df.columns:
+                final_phi = df['Phi_global'].iloc[-1]
+                #print(f"[Status Case {i}] Final Phi_global = {final_phi}")
+            else:
+                print(f"[Status Case {i}] Phi_global column missing.")
+    else:
+        print("Solidified planets count matches the number of planets with status: '10 Completed (solidified)'.")
+    print('-----------------------------------------------------------')
+
     return solidification_times
 
-def plot_cumulative_distributions_by_grid(parameters_to_extract, grid_parameters, data, xlabel, ylabel, color_map, plot_path):
+def save_grid_data_to_csv(grid_name, cases_data, grid_parameters, extracted_value, output_to_extract, phi_crit, output_dir: Path):
     """
-    Function to plot cumulative distribution for multiple parameters.
+    Save all simulation information (status, grid parameters, output values, solidification times)
+    into CSV files for later analysis (doing plots).
 
-    parameters_to_extract : list of str
-        List of the parameters you want to extract and plot (e.g., ['esc_rate_total', 'Phi_global', 'P_surf', 'atm_kg_per_mol'])
-        
-    grid_parameters : list of dicts
-        Each dictionary in the list will define grid parameters like 'sma_values', 'eps_values', etc.
-        
-    data : dict
-        Dictionary containing data for each parameter. Format: {parameter_name: data}
+    Parameters
+    ----------
+    grid_name : str
+        Name of the grid.
 
-    xlabel : str
-        Label for the x-axis.
+    cases_data : list
+        List of dictionaries containing the status of all the simulations cases in the grid.
 
-    ylabel : str
-        Label for the y-axis.
+    grid_parameters : dict
+        Dictionary containing the grid parameters.
 
-    color_map : list of matplotlib colormaps
-        List of colormap objects, each corresponding to different grid parameters.
+     extracted_value : dict
+        Dictionary containing the extracted output values for each parameter.
 
-    plot_path : str
-        Path where the resulting plot should be saved.
+    output_to_extract : list
+        List of output values extracted from each simulation in the grid.
+    
+    phi_crit : float
+        Critical melt fraction value to determine if the planet solidifies.
+
+    output_dir : Path
+        Directory where the CSV file will be saved.
     """
+    # Ensure the output directory exists
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Prepare the header
+    header = [
+        "#############################################################################################################",
+        f"Grid name:                {grid_name}",
+        f"Total number of cases:    {len(cases_data)}",
+        f"phi_crit:                 {phi_crit}",
+        "----------------------------------------------------------",
+        " Grid Parameters",
+        "----------------------------------------------------------"
+    ]
     
-    # Create subplots based on number of parameters
-    fig, axes = plt.subplots(len(parameters_to_extract), len(grid_parameters), figsize=(14, 10), sharex='col')
-
-    # For each parameter to extract, plot a column of cumulative distributions
-    for param_idx, param in enumerate(parameters_to_extract):
-        for grid_idx, grid_param in enumerate(grid_parameters):
-            # Extract grid values and corresponding color map
-            grid_values = grid_param['values']
-            cmap = color_map[grid_idx]
-            norm = mcolors.Normalize(vmin=min(grid_values), vmax=max(grid_values))
-            
-            # Create a list of colors for the grid values
-            colors = [cmap(norm(value)) for value in grid_values]
-
-            # Plot for each value in grid_parameters
-            for i, grid_value in enumerate(grid_values):
-                parameter_data = data[param].get(grid_value, [])
-                if parameter_data:
-                    sns.kdeplot(parameter_data, cumulative=True, color=colors[i], ax=axes[param_idx, grid_idx], bw_adjust=0.3, common_grid=True)
-
-            # Set labels and grids for the plot
-            axes[param_idx, grid_idx].set_xlabel(xlabel, fontsize=12)
-            axes[param_idx, grid_idx].set_ylabel(ylabel, fontsize=12)
-            axes[param_idx, grid_idx].set_ylim(0, 1.05)
-            axes[param_idx, grid_idx].grid(alpha=0.2)
+    max_label_length = max(len(param) for param in grid_parameters.keys())  
+    for param, values in grid_parameters.items():
+        aligned_param = f"{param: <{max_label_length}}"  
+        values_str = f"[{', '.join(map(str, values))}]"  
+        header.append(f"{aligned_param}: {values_str}")
     
-    # Colorbars
-    for grid_idx, grid_param in enumerate(grid_parameters):
-        # Create a color map for each grid parameter
-        sm = plt.cm.ScalarMappable(cmap=color_map[grid_idx], norm=mcolors.Normalize(vmin=min(grid_param['values']), vmax=max(grid_param['values'])))
-        sm.set_array([])
-        cbar = fig.colorbar(sm, ax=axes[:, grid_idx], orientation='vertical')
-        cbar.set_label(grid_param['label'], fontsize=10)
-        cbar.set_ticks(grid_param['values'])
-        cbar.formatter = FuncFormatter(lambda x, _: f'{x:.1f}')
-        cbar.update_ticks()
+    header.extend([
+        "----------------------------------------------------------",
+        "This file contains the following columns:",
+        f"| Case number | {' | '.join(extracted_value.keys())} |",
+        "#############################################################################################################"
+    ])
 
-    fig.text(0.075, 0.5, 'Normalized cumulative fraction of simulations', va='center', ha='center', rotation='vertical', fontsize=16)
+    # Prepare the CSV file path
+    csv_file = output_dir / f"{grid_name}_simulation_data.csv"
 
-    # Save the plot
-    plt.savefig(plot_path+'test_figure.png', dpi=300)
+    # Define the column headers for the CSV file
+    csv_headers = ["Case number"] + list(extracted_value.keys())
 
+    # Open the CSV file for writing
+    with open(csv_file, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        
+        # Write the header as comments at the top of the file
+        for line in header:
+            writer.writerow([f"#{line}"])  # Add a '#' to make it a comment in the CSV file
+        
+        # Write the header for the data section
+        writer.writerow(csv_headers)
+        
+        # Write the data for each case
+        for case_index, case_data in enumerate(cases_data):
+            row = [case_index + 1]  # Start with the case number
+            for param in extracted_value.keys():
+                row.append(extracted_value[param][case_index])  # Extract the value for the current case
+            writer.writerow(row)
+
+    print(f"Data has been successfully saved to {csv_file}.")
 
 if __name__ == '__main__':
 
-    # Paths
-    grid_path = '/home2/p315557/outputs_Norma2/good_grids/escape_grid_4_params_Pxuv_a_epsilon_fO2/'
-    plots_path = '/home2/p315557/PROTEUS/tools/post_processing_grid/plots/escape_grid_4_params_Pxuv_a_epsilon_fO2/'
+    # Paths to the grid and the plot folder
+    grid_name = 'escape_grid_4_params_Pxuv_a_epsilon_fO2'
+    grid_path = '/home2/p315557/outputs_Norma2/good_grids/' + grid_name + '/'
+    plots_path = '/home2/p315557/PROTEUS/tools/post_processing_grid/plots/' + grid_name + '/'
+    data_dir = '/home2/p315557/PROTEUS/tools/post_processing_grid/processed_data/' + grid_name + '/'
 
-    # Plots : True or False
-    plot=True
+    # User choose the parameters to post-process the grid
+    plot=True                                                                   # True or False
+    output_to_extract = ['esc_rate_total',                                      # List of output values to extract from the runtime_helpfile
+                        'Phi_global', 
+                        'P_surf',   
+                        'atm_kg_per_mol']
+    phi_crit = 0.005                                                            # Critical melt fraction for solidification 
+    extracted_value = {}
 
-    # Load simulation cases
-    cases_data = load_grid_cases(grid_path)
-
-    # Plot = True or False, if True, it will plot the status of all grid simulations
+    # Post-processing the grid  
+    cases_data = load_grid_cases(grid_path)                                     # Load all simulation cases
     if plot:
-        plot_grid_status(cases_data, plots_path)
-
-    # Extract grid parameters
-    grid_parameters = get_grid_parameters(grid_path)
-
-    # List of output to extract
-    output_to_extract = ['esc_rate_total', 'Phi_global', 'P_surf', 'atm_kg_per_mol']
+        plot_grid_status(cases_data, plots_path)                                # Plot the summary histogram of the grid status
+    grid_parameters = get_grid_parameters(grid_path)                            # Extract grid parameters
     for param in output_to_extract:
-        extracted_values = extract_grid_output(cases_data, param)
-
-    print('FIX SOLIDIFICATION TIME FUNCTION AND PLOT FUNCTION')
-    # Extract the solidification time
-    phi_crit = 0.005 # Critical melt fraction for solidification
-    solidification_times = extract_solidification_time(cases_data, phi_crit)
-
-    # Plot cumulative distributions for the extracted parameters
-    xlabel = 'X-axis Label'  # Example label for the x-axis
-    ylabel = 'Normalized cumulative fraction of simulations'  # Example label for the y-axis
-    color_map = cm.viridis  # Example colormap for plotting
-
-    # Call the function to plot cumulative distributions for the extracted parameters
-    plot_cumulative_distributions_by_grid(cases_data, output_to_extract, xlabel, ylabel, color_map, plots_path)
+        extracted_value[param] = extract_grid_output(cases_data, param)        # Extract output values
+    solidification_times = extract_solidification_time(cases_data, phi_crit)    # Extract the solidification time
+    extracted_value['solidification_time'] = solidification_times
+    
+    # Save all the extracted data to a CSV file 
+    save_grid_data_to_csv(grid_name, cases_data, grid_parameters, extracted_value, solidification_times, phi_crit, data_dir)
