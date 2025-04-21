@@ -2,14 +2,11 @@ import os
 from pathlib import Path
 import pandas as pd
 import toml
-import seaborn as sns
-import matplotlib.pyplot as plt
 import re
 import numpy as np
-import matplotlib.colors as mcolors
-import matplotlib.cm as cm
-from matplotlib.ticker import FuncFormatter
 import csv
+import ast
+from typing import Tuple, Dict, List, Any
 
 
 def load_grid_cases(grid_dir: Path):
@@ -75,83 +72,6 @@ def load_grid_cases(grid_dir: Path):
     print('-----------------------------------------------------------')
     return combined_data
 
-def plot_grid_status(cases_data, plot_dir: Path, status_colors: dict = None):
-    """
-    Plot the status of simulation from the PROTEUS grid.
-
-    Parameters
-    ----------
-    cases_data : list
-        List of dictionaries containing the status of all simulation from the grid.
-
-    plot_dir : Path
-        Path to the plots directory
-
-    status_colors : dict, optional
-        A dictionary mapping statuses to specific colors. If None, a default palette is used.
-
-    Returns
-    -------
-        Plot saved to the specified directory.
-    """
-
-    # Extract and clean statuses
-    statuses = [case.get('status', 'unknown') or 'unknown' for case in cases_data]
-    status_counts = pd.Series(statuses).value_counts().sort_values(ascending=False)
-    # print("Unique statuses found:", pd.Series(statuses).unique())
-    
-    # Set colors for the bars
-    if status_colors:
-        palette = {str(status): status_colors.get(str(status), 'gray') for status in status_counts.index}
-    else:
-        palette = sns.color_palette("Accent", len(status_counts))
-        palette = dict(zip(status_counts.index, palette))
-
-    # Prepare dataframe for plotting
-    plot_df = pd.DataFrame({
-        'Status': status_counts.index,
-        'Count': status_counts.values
-    })
-
-    #sns.set(style="white")
-    plt.figure(figsize=(10, 7))
-    ax = sns.barplot(
-        data=plot_df,
-        x='Status',
-        y='Count',
-        hue='Status',  # required to apply the palette
-        palette=palette,
-        dodge=False,
-        edgecolor='black'  # edge color added here
-    )
-    
-    # Remove legend if it was created
-    if ax.legend_:
-        ax.legend_.remove()
-
-    # Add text on top of bars
-    total_simulations = len(cases_data)
-    for i, count in enumerate(status_counts.values):
-        percentage = (count / total_simulations) * 100
-        ax.text(
-            i, count + 1,
-            f"{count} ({percentage:.1f}%)",
-            ha='center', va='bottom', fontsize=10
-        )
-
-
-    plt.title(f"Total number of simulations: {total_simulations}", fontsize=16)
-    plt.xlabel("Simulation status", fontsize=16)
-    plt.ylabel("Number of simulations", fontsize=16)
-    plt.yticks(fontsize=12)  
-    plt.xticks(fontsize=12)
-    plt.tight_layout()
-    output_path = plot_dir+'grid_status_summary.png'
-    plt.savefig(output_path, dpi=300)
-    plt.close()
-
-    print(f"Plot grid_status_summary.png saved to {output_path}")
-
 def get_grid_parameters(grid_dir: str):
     """
     Extracts grid parameters names and values from the manager.log file
@@ -166,46 +86,51 @@ def get_grid_parameters(grid_dir: str):
     dict
         A dictionary where each key is the parameter name and the value is a list of parameter values.
     """
-    # Dictionary to store the parameters and their values
-    parameters_dict = {}
-
-    # Open and read the log file
     log_file = os.path.join(grid_dir, 'manager.log')
+
+    if not os.path.exists(log_file):
+        print(f"Error: manager.log not found at {log_file}")
+        return {}, {}
+
     with open(log_file, 'r') as file:
         lines = file.readlines()
 
-    # Regular expression patterns to find the relevant lines
-    param_pattern = re.compile(r'-- dimension: (.+)')
-    value_pattern = re.compile(r'values\s+:\s+\[([^\]]+)\]')
+    param_grid = {}
+    case_params = {}
 
-    current_dimension = None
+    dimension_pattern = re.compile(r"parameter:\s*(\S+)")
+    values_pattern = re.compile(r"values\s*:\s*\[(.*?)\]")
+    case_line_pattern = re.compile(r"\]\s+(\d+):\s+(\{.*\})")  # Fixed pattern
+
+    current_param = None
 
     for line in lines:
-        # Look for dimension lines to start processing the parameters
-        dimension_match = param_pattern.search(line)
-        if dimension_match:
-            current_dimension = dimension_match.group(1).strip()
+        line = line.strip()
 
-        # If we have found a dimension, look for the values line
-        if current_dimension and 'values' in line:
-            value_match = value_pattern.search(line)
-            if value_match:
-                # Extract the values from the line and convert them into a list of floats or strings
-                values_str = value_match.group(1).strip()
-                values = [eval(value.strip()) for value in values_str.split(',')]
+        dim_match = dimension_pattern.search(line)
+        if dim_match:
+            current_param = dim_match.group(1)
+            continue
 
-                # Store the values under the current dimension
-                parameters_dict[current_dimension] = values
-                current_dimension = None  # Reset current dimension after processing
+        val_match = values_pattern.search(line)
+        if val_match and current_param:
+            try:
+                val_list = ast.literal_eval(f"[{val_match.group(1)}]")
+                param_grid[current_param] = val_list
+                current_param = None
+            except Exception as e:
+                print(f"Error parsing values for {current_param}: {e}")
 
-    # Print the extracted parameters
-    print('-----------------------------------------------------------')
-    print("Extracted Parameters:")
-    print("-----------------------------------------------------------")
-    for param, values in parameters_dict.items():
-        print(f"{param}: {values}")
-    print("-----------------------------------------------------------")
-    return parameters_dict
+        case_match = case_line_pattern.search(line)
+        if case_match:
+            case_num = int(case_match.group(1))
+            case_dict_str = case_match.group(2)
+            try:
+                case_params[case_num] = ast.literal_eval(case_dict_str)
+            except Exception as e:
+                print(f"Error parsing case {case_num}: {e}")
+
+    return param_grid, case_params
 
 def extract_grid_output(cases_data, parameter_name):
     """
@@ -314,7 +239,7 @@ def extract_solidification_time(cases_data, phi_crit):
 
     return solidification_times
 
-def save_grid_data_to_csv(grid_name, cases_data, grid_parameters, extracted_value, output_to_extract, phi_crit, output_dir: Path):
+def save_grid_data_to_csv(grid_name, cases_data, grid_parameters, case_params, extracted_value, output_to_extract, phi_crit, output_dir: Path):
     """
     Save all simulation information (status, grid parameters, output values, solidification times)
     into CSV files for later analysis (doing plots).
@@ -330,6 +255,9 @@ def save_grid_data_to_csv(grid_name, cases_data, grid_parameters, extracted_valu
     grid_parameters : dict
         Dictionary containing the grid parameters.
 
+    case_params :  Dict[int, Dict[str, Any]]
+        Dictionary containing each case number with the name and values of the tested parameters in this grid.
+
      extracted_value : dict
         Dictionary containing the extracted output values for each parameter.
 
@@ -342,20 +270,20 @@ def save_grid_data_to_csv(grid_name, cases_data, grid_parameters, extracted_valu
     output_dir : Path
         Directory where the CSV file will be saved.
     """
-    # Ensure the output directory exists
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Path and name to save the CSV file
-    csv_file = output_dir / f"{grid_name}_extracted_data.csv"  
+    # CSV file path
+    csv_file = output_dir / f"{grid_name}_extracted_data.csv"
 
     with open(csv_file, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
 
-        # Write the header
+        # Header block
         writer.writerow(["#############################################################################################################"])
         writer.writerow([f"Grid name:                {grid_name}"])
         writer.writerow([f"Total number of cases:    {len(cases_data)}"])
+        writer.writerow([f"Dimension of the grid:    {len(grid_parameters)}"])
         writer.writerow([f"phi_crit:                 {phi_crit}"])
         writer.writerow(["----------------------------------------------------------"])
         writer.writerow([" Grid Parameters"])
@@ -366,33 +294,43 @@ def save_grid_data_to_csv(grid_name, cases_data, grid_parameters, extracted_valu
             values_str = f"[{', '.join(map(str, values))}]"
             writer.writerow([f"{aligned_param}: {values_str}"])
         writer.writerow(["----------------------------------------------------------"])
-        writer.writerow(["This file contains the following columns:"])
-        writer.writerow([f"| Case number | Status | {' | '.join(extracted_value.keys())} |"])
+        writer.writerow(["Extracted output values:" f"[{', '.join(extracted_value.keys())}]"])    
+        writer.writerow(["----------------------------------------------------------"])
+        writer.writerow([f"| Case number | Status | {' | '.join(grid_parameters.keys())} | {' | '.join(extracted_value.keys())} |"])
         writer.writerow(["#############################################################################################################"])
         writer.writerow([])
 
-        # Write the data for each case of the grid
-        statuses = [case.get('status', 'unknown') or 'unknown' for case in cases_data]
+        # CSV table header
+        writer.writerow(["Case number", "Status"] + list(grid_parameters.keys()) + list(extracted_value.keys()))
+
+        # Data rows
         for case_index, case_data in enumerate(cases_data):
-            row = [case_index, f"'{statuses[case_index]}'"]  
+            status = case_data.get('status', 'unknown') or 'unknown'
+            row = [case_index, f"'{status}'"]
+
+            # Use case_params (from get_grid_parameters) to pull values for each param
+            case_param_values = case_params.get(case_index, {})
+
+            for param in grid_parameters.keys():
+                row.append(case_param_values.get(param, 'NA'))
+
+            # Add extracted output values
             for param in extracted_value.keys():
-                row.append(extracted_value[param][case_index])  
+                value_list = extracted_value.get(param, [])
+                row.append(value_list[case_index] if case_index < len(value_list) else 'NA')
+
             writer.writerow(row)
 
-    print(f"Data has been successfully saved to {csv_file}.")
+    print(f"Extracted data has been successfully saved to {csv_file}.")
     print('-----------------------------------------------------------')
-
 
 if __name__ == '__main__':
 
-    # Paths to the grid and the plot folder
+    # Paths to the grid folder
     grid_name = 'escape_grid_4_params_Pxuv_a_epsilon_fO2'
-    grid_path = '/home2/p315557/outputs_Norma2/good_grids/' + grid_name + '/'
-    plots_path = '/home2/p315557/PROTEUS/tools/post_processing_grid/plots/' + grid_name + '/'
-    data_dir = '/home2/p315557/PROTEUS/tools/post_processing_grid/processed_data/' + grid_name + '/'
-
+    grid_path = f'/home2/p315557/outputs_Norma2/good_grids/{grid_name}/'
+    data_dir = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_processed_data/{grid_name}/'
     # User choose the parameters to post-process the grid
-    plot=True                                                                   # True or False
     output_to_extract = ['esc_rate_total',                                      # List of output values to extract from the runtime_helpfile
                         'Phi_global', 
                         'P_surf',   
@@ -402,16 +340,14 @@ if __name__ == '__main__':
 
     # Post-processing the grid  
     cases_data = load_grid_cases(grid_path)                                     # Load all simulation cases
-    if plot:
-        plot_grid_status(cases_data, plots_path)                                # Plot the summary histogram of the grid status
-    grid_parameters = get_grid_parameters(grid_path)                            # Extract grid parameters
+    grid_parameters, case_init_param = get_grid_parameters(grid_path)           # Extract grid parameters
     for param in output_to_extract:
-        extracted_value[param] = extract_grid_output(cases_data, param)        # Extract output values
+        extracted_value[param] = extract_grid_output(cases_data, param)         # Extract output values
     solidification_times = extract_solidification_time(cases_data, phi_crit)    # Extract the solidification time
     extracted_value['solidification_time'] = solidification_times
     
     # Save all the extracted data to a CSV file 
-    save_grid_data_to_csv(grid_name, cases_data, grid_parameters, extracted_value, solidification_times, phi_crit, data_dir)
+    save_grid_data_to_csv(grid_name, cases_data, grid_parameters, case_init_param, extracted_value, solidification_times, phi_crit, data_dir)
 
     print('-----------------------------------------------------------')
     print("Post-processing completed. Let's do some plots !")
