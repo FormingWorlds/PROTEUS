@@ -490,7 +490,7 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     sim_time = get_all_output_times(dirs["output"])[-1]  # yr, as an integer value
 
     # load data file
-    json_path   = os.path.join(dirs["output/data"], "data", "%.0f.json"%sim_time)
+    json_path   = os.path.join(dirs["output/data"], "%.0f.json"%sim_time)
     json_file   = MyJSON( json_path )
     if json_file.data_d is None:
         UpdateStatusfile(dirs, 21)
