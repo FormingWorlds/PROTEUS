@@ -14,16 +14,43 @@ proteus start -c [cfgfile]
 Where `[cfgfile]` is the path to the required configuration file.
 Pass the flag `--resume` in to resume the simulation from the disk.
 
-A good first test is to run the `minimal.toml` config, which is located in the `input` folder:
+A good first test is to run the `all_options.toml` config, which is located in the `input` folder:
 
 ```console
-proteus start -c <PROTEUS path>/input/minimal.toml
+proteus start -c input/all_options.toml
 ```
-This will run a simulation and output the results to the `<PROTEUS path>/output/` folder.
+This will run a simulation and write the results to the `output/` folder inside your PROTEUS
+directory.
 
 See the [config guide](https://fwl-proteus.readthedocs.io/en/latest/config/) for information
 on how to edit the configurations files, and an explanation of their structure.
 
+## Output and results
+
+Simulations with PROTEUS create several types of output files. For the `all_options` example,
+the results are located at `output/all_options/`. The tree below outlines the purposes of
+some files and subfolders contained within the simulation's output folder.
+
+```
+all_options/
+ ├─runtime_helpfile.csv         <---- table containing the main simulation results
+ ├─proteus_00.log               <---- the log file from the simulation
+ ├─init_coupler.toml            <---- a completed copy of the configuration file
+ ├─status                       <---- status of the simulation
+ ├─data/
+ │ ├─files ending in _atm.nc    <---- atmosphere data
+ │ ├─files ending in .json      <---- interior data
+ │ └─data.tar                   <---- atmosphere & interior data archive
+ ├─observe/
+ │ └─files ending in .csv       <---- synthetic/simulated observations of the planet
+ ├─offchem/
+ │ └─vulcan.csv                 <---- atmospheric mixing ratios calculated with VULCAN
+ ├─plots
+ │ ├─plot_chem_atmosphere.png   <---- plot of atmospheric mixing ratios
+ │ ├─plot_escape.png            <---- plot of volatile inventories over time
+ │ ├─plot_global_log.png        <---- plot containing an overview of the simulation
+ │ └─other files                <---- any other plots
+```
 
 ## Running PROTEUS on remote machines / servers
 

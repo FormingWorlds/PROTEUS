@@ -113,13 +113,15 @@ def test_physical_plot(physical_run, image):
     ref_img = ref_dir / image
     tolerance = 3
 
-    # Resize images if needed
+    # Open images, and resize them to have the same dimensions
     out_img, ref_img = resize_to_match(out_img, ref_img)
 
+    # Working directory for comparing the images
     results_dir = Path('result_images')
     results_dir.mkdir(exist_ok=True, parents=True)
 
-    actual = results_dir / "plots" / image
+    # Paths to the resized images
+    actual = results_dir / image
     expected = results_dir / f'{actual.stem}-expected{actual.suffix}'
 
     # Save resized images to temporary paths
