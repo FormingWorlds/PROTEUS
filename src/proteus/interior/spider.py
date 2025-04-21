@@ -194,7 +194,7 @@ def _try_spider( dirs:dict, config:Config,
     if IC_INTERIOR == 2:
 
         # Get step number from last JSON file
-        json_path   = os.path.join(dirs["output/data"], "data", "%.0f.json"%hf_row["Time"])
+        json_path   = os.path.join(dirs["output/data"], "%.0f.json"%hf_row["Time"])
         json_file   = MyJSON( json_path )
         if json_file.data_d is None:
             UpdateStatusfile(dirs, 21)
@@ -218,14 +218,14 @@ def _try_spider( dirs:dict, config:Config,
         dtmacro     = 0
         dtswitch    = 0
 
-    empty_file = os.path.join(dirs["output"],"data", ".spider_tmp")
+    empty_file = os.path.join(dirs["output/data"], ".spider_tmp")
     open(empty_file, 'w').close()
 
     ### SPIDER base call sequence
     call_sequence = [
                         spider_exec,
                         "-options_file",           empty_file,
-                        "-outputDirectory",        dirs["output"]+'data/',
+                        "-outputDirectory",        dirs["output/data"],
                         "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
                         "-OXYGEN_FUGACITY_offset", "%.6e"%(config.outgas.fO2_shift_IW),  # Relative to the specified buffer
                         "-surface_bc_value",       "%.6e"%(hf_row["F_atm"]),
@@ -254,8 +254,8 @@ def _try_spider( dirs:dict, config:Config,
     # Initial condition
     if IC_INTERIOR == 2:
         # get last JSON File
-        last_filename = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
-        last_filename = os.path.join(dirs["output"], "data", last_filename)
+        last_filename = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output/data"]+"/*.json")])[-1]
+        last_filename = os.path.join(dirs["output/data"], last_filename)
         call_sequence.extend([
                                 "-ic_interior_filename", str(last_filename),
                                 "-activate_poststep",
