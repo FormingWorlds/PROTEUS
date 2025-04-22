@@ -48,7 +48,10 @@ def RunAragog(config:Config, dirs:dict,
     aragog_file_logger(console_level = logging.WARNING,
                        file_level = file_level,
                        log_dir = dirs["output"])
-
+    
+    # Copying the EOS data to the aragog directory
+    CopyEOSFile(config, hf_row, dirs)
+    
     # Compute time step
     if interior_o.ic==1:
         dt = 0.0
@@ -59,7 +62,7 @@ def RunAragog(config:Config, dirs:dict,
 
     # Setup Aragog parameters from options at first iteration
     if (aragog_solver is None):
-        SetupAragogSolver(config, hf_row, interior_o)
+        SetupAragogSolver(config, hf_row, interior_o, dirs)
         # Update state from stored data if resuming a simulation
         if config.params.resume:
             UpdateAragogSolver(dt, hf_row, interior_o, output_dir=dirs["output"])
@@ -80,8 +83,25 @@ def RunAragog(config:Config, dirs:dict,
 
     return sim_time, output
 
+def CopyEOSFile(config:Config, hf_row:dict, dirs:dict):
+    
+    EOS_file = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.eos_filepath}")
+    
+    EOS_output_file = os.path.join(dirs["aragog"],"data/curr_EOS_data.dat")
+    
+    data = np.loadtxt(EOS_file, skiprows=1)
+    
+    radius = data[:, 0]
+    
+    inner_radius = config.struct.corefrac * hf_row["R_int"]
+    outer_radius = hf_row["R_int"]
+    
+    mask = (radius >= inner_radius) & (radius <= outer_radius)
+    filtered_data = data[mask]
+    
+    np.savetxt(EOS_output_file, filtered_data, fmt='%.6e')
 
-def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
+def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t, dirs:dict):
 
     global aragog_solver
 
@@ -115,9 +135,11 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
             inner_radius = config.struct.corefrac * hf_row["R_int"], # core radius [m]
             number_of_nodes = config.interior.aragog.num_levels, # basic nodes
             mixing_length_profile = "constant",
+            eos_method = config.interior.aragog.eos_method, # 1: Adams-Williamson / 2: User defined
             surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration = hf_row["gravity"], # [m/s-2]
             adiabatic_bulk_modulus = config.interior.bulk_modulus, # AW-EOS parameter [Pa]
+            eos_file = f"{dirs['aragog']}/data/curr_EOS_data.dat", # file to read eos data from
             )
 
     energy = _EnergyParameters(
