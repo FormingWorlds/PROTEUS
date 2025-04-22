@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
+PLATON_TLIMS = (100.0+0.5, 4000.0-0.5)
 PLATON_METHOD="xsec"
 PLATON_GASES=("H2", "H", "He", "H2O", "CH4", "CO", "CO2", "O", "C", "N", "NH3", "N2",
                 "O2", "O3", "H2S", "HCN", "NO", "NO2", "OH", "PH3", "SiO", "SO2", "TiO",
@@ -151,7 +152,7 @@ def _get_ptr(atm:dict):
     rad = np.array(atm["rl"]) # m
     if prs[1] < prs[0]:
         prs = prs[::-1]
-        tmp = tmp[::-1]
+        tmp = np.clip(tmp[::-1], a_min=PLATON_TLIMS[0], a_max=PLATON_TLIMS[1])
         rad = rad[::-1]
     return prs, tmp, rad
 

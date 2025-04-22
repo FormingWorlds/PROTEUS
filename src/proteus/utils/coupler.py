@@ -502,8 +502,18 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
     if os.path.exists(fpath):
         os.remove(fpath)
 
+    # set float format precision
+    fmt_dict = {}
+    for k in current_hf.keys():
+        if (k == "Time") or ("_kg_" in k):
+            # higher precision for time and mass
+            fmt_dict[k] = "%.10e"
+        else:
+            # lower precision for everything else
+            fmt_dict[k] = "%.7e"
+
     # write new file
-    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.8e")
+    current_hf.to_csv(fpath, index=False, sep="\t", float_format=fmt_dict)
     return fpath
 
 def ReadHelpfileFromCSV(output_dir:str):
