@@ -217,7 +217,7 @@ def next_step(config:Config, dirs:dict, hf_row:dict, hf_all:pd.DataFrame, step_s
         # Handle all other inputs
         else:
             UpdateStatusfile(dirs, 20)
-            raise Exception(f"Invalid time-stepping method: {config.params.dt.method}")
+            raise ValueError(f"Invalid time-stepping method: {config.params.dt.method}")
 
         # Step scale factor (is always <= 1.0)
         dtswitch *= step_sf

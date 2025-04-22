@@ -530,18 +530,18 @@ if __name__=='__main__':
     print("Start GridPROTEUS")
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "scratch/grid_test"
+    folder = "scratch/l98d_habrok2"
 
     # Use SLURM?
     use_slurm = True
 
     # Execution limits
-    max_jobs = 20       # maximum number of concurrent tasks
+    max_jobs = 190       # maximum number of concurrent tasks
     max_days = 1         # maximum number of days to run
     max_mem  = 3         # maximum memory per CPU in GB
 
     # Base config file
-    config = "demos/dummy.toml"
+    config = "planets/l9859d.toml"
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
 
     # Set this string to have the output files created at an alternative location. The
@@ -561,7 +561,7 @@ if __name__=='__main__':
     pg.set_dimension_arange("Hydrogen", 16000, 1000, -3000)
 
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    pg.set_dimension_direct("Sulfur", [2, 8, 10, 12])
+    pg.set_dimension_direct("Sulfur", [2, 6, 8, 10])
 
     pg.add_dimension("Mass", "struct.mass_tot")
     pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])

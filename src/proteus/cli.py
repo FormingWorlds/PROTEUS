@@ -23,6 +23,9 @@ config_option = click.option(
 def cli():
     pass
 
+# ----------------
+# 'plot' command
+# ----------------
 
 def list_plots(ctx, param, value):
     if not value or ctx.resilient_parsing:
@@ -66,6 +69,11 @@ def plot(plots, config_path: Path):
             plot_func = plot_dispatch[plot]
             plot_func(handler=handler)
 
+cli.add_command(plot)
+
+# ----------------
+# 'start' command
+# ----------------
 
 @click.command()
 @config_option
@@ -88,16 +96,16 @@ def start(config_path: Path, resume: bool, offline: bool):
     runner = Proteus(config_path=config_path)
     runner.start(resume=resume, offline=offline)
 
-
-cli.add_command(plot)
 cli.add_command(start)
 
+# --------------
+# 'get' command, with subcommands
+# --------------
 
 @click.group()
 def get():
     """Get data and modules"""
     pass
-
 
 @click.command()
 @click.option('-n', '--name',  'name',  type=str, help='Name of spectral file group')
@@ -109,7 +117,6 @@ def spectral(**kwargs):
     """
     from .utils.data import download_spectral_file
     download_spectral_file(kwargs["name"],kwargs["bands"])
-
 
 @click.command()
 def stellar():
@@ -133,7 +140,6 @@ def reference():
     download_exoplanet_data()
     download_massradius_data()
 
-
 @click.command()
 def socrates():
     """Set up SOCRATES"""
@@ -152,11 +158,51 @@ def spider():
     from .utils.data import get_spider
     get_spider()
 
+cli.add_command(get)
+get.add_command(spectral)
+get.add_command(surfaces)
+get.add_command(reference)
+get.add_command(stellar)
+get.add_command(socrates)
+get.add_command(petsc)
+get.add_command(spider)
+
+# ----------------
+# doctor utility
+# ----------------
+
 @click.command()
 def doctor():
     """Diagnose your PROTEUS installation"""
     from .doctor import doctor_entry
     doctor_entry()
+
+cli.add_command(doctor)
+
+# ----------------
+# 'archive' commands
+# ----------------
+
+@click.command()
+@config_option
+def create_archives(config_path: Path):
+    """Pack the output files in tar archives"""
+    runner = Proteus(config_path=config_path)
+    runner.create_archives()
+
+@click.command()
+@config_option
+def extract_archives(config_path: Path):
+    """Unpack the output files from existing tar archives"""
+    runner = Proteus(config_path=config_path)
+    runner.extract_archives()
+
+cli.add_command(create_archives)
+cli.add_command(extract_archives)
+
+# ----------------
+# 'offchem' and 'observe' postprocessing commands
+# ----------------
 
 @click.command()
 @config_option
@@ -172,17 +218,9 @@ def observe(config_path: Path):
     runner = Proteus(config_path=config_path)
     runner.observe()
 
-cli.add_command(get)
-get.add_command(spectral)
-get.add_command(surfaces)
-get.add_command(reference)
-get.add_command(stellar)
-get.add_command(socrates)
-get.add_command(petsc)
-get.add_command(spider)
-cli.add_command(doctor)
 cli.add_command(offchem)
 cli.add_command(observe)
+
 
 if __name__ == '__main__':
     cli()

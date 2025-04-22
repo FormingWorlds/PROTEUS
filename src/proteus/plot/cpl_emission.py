@@ -120,7 +120,7 @@ def plot_emission(output_dir:str, times:list, plot_format="pdf",
     plt.close()
     plt.ioff()
 
-    fpath = os.path.join(output_dir, "plot_emission.%s"%plot_format)
+    fpath = os.path.join(output_dir, "plots", "plot_emission.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 def plot_emission_entry(handler: Proteus):

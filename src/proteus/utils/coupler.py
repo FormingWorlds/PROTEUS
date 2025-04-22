@@ -26,6 +26,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
+LOCKFILE_NAME="keepalive"
+
 def _get_current_time():
     '''
     Get the current system time as a formatted string.
@@ -327,7 +329,7 @@ def CreateLockFile(output_dir:str):
     '''
     Create a lock file which, if removed, will signal for the simulation to stop.
     '''
-    keepalive_file = os.path.join(output_dir,"keepalive")
+    keepalive_file = os.path.join(output_dir,LOCKFILE_NAME)
     safe_rm(keepalive_file)
     with open(keepalive_file, 'w') as fp:
         fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
@@ -616,15 +618,18 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         # Atmosphere temperature/height profiles
         plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
+        # Atmospheric chemistry
+        plot_chem_atmosphere(output_dir, config.atmos_chem.module,
+                                plot_format=config.params.out.plot_fmt,
+                                plot_offchem=False)
+
         # Atmosphere and interior, stacked radially
         if not dummy_int:
             plot_structure(hf_all, output_dir, plot_times, int_data, atm_data,
                             config.interior.module, config.params.out.plot_fmt)
 
         # Energy flux profiles
-        if config.atmos_clim.module == 'janus':
-            # only do this for JANUS, AGNI does it automatically
-            plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
+        plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
 
     # Only at the end of the simulation
     if end:
@@ -676,16 +681,44 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Close all figures
     plt.close("all")
 
+def remove_excess_files(outdir:str, rm_spectralfiles:bool=False):
+    """Remove excess files from the output directory
 
-def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
+    Parameters
+    ----------
+    outdir: str
+        Path to the simulation's output directory
+    rm_spectralfiles: bool
+        Whether to remove spectral files
+    """
+
+    # Files to remove, relative to outdir
+    rm_paths = [
+        "agni_recent.log",
+        "data/.spider_tmp",
+        LOCKFILE_NAME
+    ]
+
+    # Remove spectral files if requested
+    if rm_spectralfiles:
+        rm_paths.append("runtime.sf")
+        rm_paths.append("runtime.sf_k")
+
+    # Loop over files
+    for f in rm_paths:
+        f = os.path.join(outdir, f)
+
+        # Remove the file
+        log.debug(f"Removing {f}")
+        safe_rm(f)
+
+def get_proteus_directories(outdir="_unset") -> dict[str, str]:
     """Create dict of proteus directories from root dir.
 
     Parameters
     ----------
-    root_dir : str
-        Proteus root directory
-    out_dir : str, optional
-        Name out output directory
+    outdir : str
+        Name of the simulation's output directory
 
     Returns
     -------
@@ -702,12 +735,16 @@ def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
         "spider":   os.path.join(root_dir, "SPIDER"),
         "tools":    os.path.join(root_dir, "tools"),
         "vulcan":   os.path.join(root_dir, "VULCAN"),
-        "output":   os.path.join(root_dir, "output", out_dir),
-        "utils":    os.path.join(root_dir, "src", "proteus", "utils")
+        "utils":    os.path.join(root_dir, "src", "proteus", "utils"),
+        "output":           os.path.join(root_dir, "output", outdir),
+        "output/data":      os.path.join(root_dir, "output", outdir, "data"),
+        "output/observe":   os.path.join(root_dir, "output", outdir, "observe"),
+        "output/offchem":   os.path.join(root_dir, "output", outdir, "offchem"),
+        "output/plots":     os.path.join(root_dir, "output", outdir, "plots"),
     }
 
 
-def SetDirectories(config: Config) -> dict[str, str]:
+def set_directories(config: Config) -> dict[str, str]:
     """Set directories dictionary
 
     Sets paths to the required directories, based on the configuration provided
@@ -723,12 +760,12 @@ def SetDirectories(config: Config) -> dict[str, str]:
     dirs : dict
         Dictionary of paths to important directories
     """
-    dirs = get_proteus_directories(out_dir=config.params.out.path)
+    dirs = get_proteus_directories(outdir=config.params.out.path)
 
     # FWL data folder
     if os.environ.get('FWL_DATA') is None:
         UpdateStatusfile(dirs, 20)
-        raise Exception("The FWL_DATA environment variable has not been set")
+        raise EnvironmentError("The FWL_DATA environment variable has not been set")
     else:
         dirs["fwl"] = os.environ.get('FWL_DATA')
 
@@ -738,7 +775,7 @@ def SetDirectories(config: Config) -> dict[str, str]:
 
         if os.environ.get('RAD_DIR') is None:
             UpdateStatusfile(dirs, 20)
-            raise Exception("The RAD_DIR environment variable has not been set")
+            raise EnvironmentError("The RAD_DIR environment variable has not been set")
         else:
             dirs["rad"] = os.environ.get('RAD_DIR')
 

@@ -8,13 +8,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         path        = "l9859d"
         logging     = "INFO"
         plot_mod    = 40      # Plotting frequency, 0: wait until completion | n: every n iterations
-        write_mod   = 5
+        write_mod   = 2
+        archive_mod = 5
+        remove_sf   = true
 
     # time-stepping
     [params.dt]
         minimum      = 3e2    # absolute minimum time-step [years]
         minimum_rel  = 8e-3   # relative minimum time-step [dimensionless]
-        maximum      = 2e8    # yr, maximum time-step
+        maximum      = 1e8    # yr, maximum time-step
         initial      = 1e4    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
@@ -140,5 +142,27 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [observe]
     synthesis = "platon"
 
+# Atmospheric chemistry postprocessing
 [atmos_chem]
-    module = "none"
+
+    module  = "vulcan"          # Atmospheric chemistry module
+    when    = "manually"        # When to run chemistry (manually, offline, online)
+
+    # Physics flags
+    photo_on        = true      # Enable photochemistry
+    Kzz_on          = true      # Enable eddy diffusion
+    Kzz_const       = 1e5      # Constant eddy diffusion coefficient (none => use profile)
+    moldiff_on      = true      # Enable molecular diffusion in the atmosphere
+    updraft_const   = 0.0       # Set constant updraft velocity
+
+    # Vulcan-specific atmospheric chemistry parameters
+    [atmos_chem.vulcan]
+        clip_fl = 1e-20     # Floor on stellar spectrum [erg s-1 cm-2 nm-1]
+        clip_vmr = 1e-10    # Neglect species with vmr < clip_vmr
+        make_funs = true    # Generate reaction network functions
+        ini_mix = "profile" # Initial mixing ratios (profile, outgas)
+        fix_surf = false    # Fixed surface mixing ratios
+        network = "SNCHO"   # Class of chemical network to use (CHO, NCHO, SNCHO)
+        save_frames = true  # Plot frames during iterations
+        yconv_cri = 0.05    # Convergence criterion, value of mixing ratios
+        slope_cri = 0.0001  # Convergence criterion, rate of change of mixing ratios
