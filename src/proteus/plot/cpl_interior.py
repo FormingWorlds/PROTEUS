@@ -192,7 +192,8 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
     fig.subplots_adjust(wspace=0.05)
     plt.close()
     plt.ioff()
-    fpath = os.path.join(output_dir, "plot_interior.%s"%plot_format)
+
+    fpath = os.path.join(output_dir, "plots", "plot_interior.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 
@@ -202,6 +203,9 @@ def plot_interior_entry(handler: Proteus):
         extension = ".json"
     elif module == "aragog":
         extension = "_int.nc"
+    else:
+        log.warning(f"Cannot make interior plot for module '{module}'")
+        return
     plot_times,_ = sample_output(handler, extension=extension, tmin=1e3)
     print("Snapshots:", plot_times)
 

@@ -41,9 +41,11 @@ def PrintHalfSeparator():
 
 def multiple(a:int,b:int) -> bool:
     '''
-    Return true if a is an integer multiple of b. Return false if b is zero.
+    Return true if a is an integer multiple of b. Otherwise, return false.
+
+    This is a more robust version of the modulo operator, which can fail if a or b are None, or if b is 0.
     '''
-    if b == 0:
+    if (a is None) or (b is None) or (b == 0):
         return False
     else:
         return bool(a%b == 0)
