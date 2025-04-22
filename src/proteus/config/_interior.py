@@ -89,7 +89,7 @@ class Aragog:
     eos_method: int
     	1: Adams-Williamson / 2: User defined
     eos_filepath: str
-        filepath for the file containing the eos data
+        location of file containing EOS data
     """
 
     logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))

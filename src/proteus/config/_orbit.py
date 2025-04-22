@@ -82,6 +82,3 @@ class Orbit:
         lt(90),
     ))
     s0_factor: float = field(validator=gt(0))
-
-    dummy:  OrbitDummy  = field(factory=OrbitDummy)
-    lovepy: Lovepy      = field(factory=Lovepy)
