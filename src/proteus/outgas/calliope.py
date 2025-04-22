@@ -50,8 +50,7 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
 
         if (s in ("H2O","CO2","N2","S2")) and not included:
             UpdateStatusfile(dirs, 20)
-            log.error(f"Missing required volatile {s}")
-            exit(1)
+            raise ValueError(f"Missing required volatile {s}")
 
     # Set by volatiles?
     if config.delivery.initial == 'volatiles':
@@ -120,7 +119,7 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
         log.error("  a) set X by metallicity, e.g. XH_ratio=1.2 and X_ppmw=0")
         log.error("  b) set X by concentration, e.g. XH_ratio=0 and X_ppmw=2.01")
         UpdateStatusfile(dirs, 20)
-        exit(1)
+        raise ValueError("Invalid volatile inventory configuration")
 
     # Pass elemental inventory
     solvevol_inp['hydrogen_earth_oceans'] = H_kg / mass_ocean

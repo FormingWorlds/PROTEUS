@@ -83,7 +83,8 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
             spectral_file_nostar = get_spfile_path(dirs["fwl"], config)
             if not os.path.exists(spectral_file_nostar):
                 UpdateStatusfile(dirs, 20)
-                raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
+                raise FileNotFoundError(
+                            "Spectral file does not exist at '%s'" % spectral_file_nostar)
             InitStellarSpectrum(dirs, wl, fl, spectral_file_nostar)
             atmos_o._atm = InitAtm(dirs, config)
 
@@ -124,9 +125,8 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
 
             # Check allocation was ok
             if not bool(atmos_o._atm.is_alloc):
-                log.error("Failed to allocate atmos struct")
                 UpdateStatusfile(dirs, 22)
-                exit(1)
+                raise RuntimeError("Atmosphere struct not allocated")
 
         # Update profile
         atmos_o._atm = update_agni_atmos(atmos_o._atm, hf_row, dirs)

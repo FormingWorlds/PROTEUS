@@ -215,8 +215,8 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
     else:
         plt_name += "_lin"
 
-    fig.savefig(output_dir+"/%s.%s"%(plt_name,config.params.out.plot_fmt),
-                bbox_inches='tight', dpi=200)
+    fname = os.path.join(output_dir,"plots","%s.%s"%(plt_name,config.params.out.plot_fmt))
+    fig.savefig(fname,bbox_inches='tight', dpi=200)
 
 
 def plot_global_entry(handler: Proteus):

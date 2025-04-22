@@ -2,28 +2,55 @@
 
 ## Running PROTEUS from the terminal
 
-Proteus has a command-line interface that can be accessed by running `proteus` on the command line.
+PROTEUS has a command-line interface that can be accessed by running `proteus` on the command line.
 Try `proteus --help` to see the available commands!
 
 You can directly run PROTEUS using the command:
 
 ```console
-proteus start --config [cfgfile]
+proteus start -c [cfgfile]
 ```
 
 Where `[cfgfile]` is the path to the required configuration file.
 Pass the flag `--resume` in to resume the simulation from the disk.
 
-A good first test is to run the `minimal.toml` config, which is located in the `input` folder:
+A good first test is to run the `all_options.toml` config, which is located in the `input` folder:
 
 ```console
-proteus start --config <PROTEUS path>/input/minimal.toml
+proteus start -c input/all_options.toml
 ```
-This will run a simulation and output the results to the `<PROTEUS path>/output/` folder.
+This will run a simulation and write the results to the `output/` folder inside your PROTEUS
+directory.
 
 See the [config guide](https://fwl-proteus.readthedocs.io/en/latest/config/) for information
 on how to edit the configurations files, and an explanation of their structure.
 
+## Output and results
+
+Simulations with PROTEUS create several types of output files. For the `all_options` example,
+the results are located at `output/all_options/`. The tree below outlines the purposes of
+some files and subfolders contained within the simulation's output folder.
+
+```
+all_options/
+ ├─runtime_helpfile.csv         <---- table containing the main simulation results
+ ├─proteus_00.log               <---- the log file from the simulation
+ ├─init_coupler.toml            <---- a completed copy of the configuration file
+ ├─status                       <---- status of the simulation
+ ├─data/
+ │ ├─files ending in _atm.nc    <---- atmosphere data
+ │ ├─files ending in .json      <---- interior data
+ │ └─data.tar                   <---- atmosphere & interior data archive
+ ├─observe/
+ │ └─files ending in .csv       <---- synthetic/simulated observations of the planet
+ ├─offchem/
+ │ └─vulcan.csv                 <---- atmospheric mixing ratios calculated with VULCAN
+ ├─plots
+ │ ├─plot_chem_atmosphere.png   <---- plot of atmospheric mixing ratios
+ │ ├─plot_escape.png            <---- plot of volatile inventories over time
+ │ ├─plot_global_log.png        <---- plot containing an overview of the simulation
+ │ └─other files                <---- any other plots
+```
 
 ## Running PROTEUS on remote machines / servers
 
@@ -37,7 +64,7 @@ You can find detailed documentation [here](https://tmuxcheatsheet.com/).
     ```
 - Inside the tmux session, start your simulation:
     ```console
-    proteus start --config input/all_options.toml
+    proteus start -c input/all_options.toml
     ```
 - To detach from the session, press `Ctrl + b`, then `d`. You can reattach to the session later with:
     ```console
@@ -91,26 +118,6 @@ by `grid_proteus.py`. You will be prompted to do this in the terminal.
 Monitor your running jobs with `squeue -u $USER`. To cancel **all** of your running jobs, use `scancel -u $USER`.
 
 
-## Version checking
-
-The `proteus doctor` commnd helps you to diagnose issues with your proteus installation.
-It tells you about outdated or missing packages, and whether all environment variables have been set.
-
-```console
-$ proteus doctor
-Dependencies
-fwl-proteus: ok
-fwl-mors: Update available 24.10.27 -> 24.11.18
-fwl-calliope: ok
-fwl-zephyrus: ok
-aragog: Update available 0.1.0a0 -> 0.1.5a0
-AGNI: No package metadata was found for AGNI is not installed.
-
-Environment variables
-FWL_DATA: Variable not set.
-RAD_DIR: Variable not set.
-```
-
 ## Postprocessing of results with 'offline' chemistry
 
 PROTEUS includes an "offline" chemistry functionality, which uses results of a simulation
@@ -119,7 +126,7 @@ as an input to the VULCAN chemical kinetics model, capturing the additional phys
 You can access the offline chemistry via the command line interface:
 
 ```console
-proteus offchem --config [cfgfile]
+proteus offchem -c [cfgfile]
 ```
 This will run VULCAN as a subprocess. This command should not be used in batch processing.
 
@@ -137,7 +144,45 @@ can be set by the output of the offline chemistry calculation (see config file).
 You can access the synthetic observation functionality via the command line interface:
 
 ```console
-proteus observe --config [cfgfile]
+proteus observe -c [cfgfile]
 ```
 
 PROTEUS will perform this step automatically if enabled in the configuration file.
+
+## Archiving output files
+
+Running PROTEUS can generate a large number of files, which is problematic when also running
+large grids of simulations. To counter this, the `params.out.archive_mod` configuration
+option can be used to tell PROTEUS when to archive its output files. This will gather the
+output files of each run into `.tar` files.
+
+Archiving the output files makes them inaccessible for analysis or plotting. To extract the
+archives from a run, use the proteus command line interface:
+```console
+proteus extract-archives -c [cfgfile]
+```
+
+This is reversible. To pack the data files into `.tar` archives again:
+```console
+proteus create-archives -c [cfgfile]
+```
+
+## Version checking
+
+The `proteus doctor` command helps you to diagnose issues with your proteus installation.
+It tells you about outdated or missing packages, and whether all environment variables have been set.
+
+```console
+$ proteus doctor
+Dependencies
+fwl-proteus: ok
+fwl-mors: Update available 24.10.27 -> 24.11.18
+fwl-calliope: ok
+fwl-zephyrus: ok
+aragog: Update available 0.1.0a0 -> 0.1.5a0
+AGNI: No package metadata was found for AGNI is not installed.
+
+Environment variables
+FWL_DATA: Variable not set.
+RAD_DIR: Variable not set.
+```

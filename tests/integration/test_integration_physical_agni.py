@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pytest
 from helpers import NEGLECT, PROTEUS_ROOT, df_intersect
@@ -31,6 +33,10 @@ def agni_run():
     return runner
 
 def test_agni_run(agni_run):
+    '''
+    Test that the AGNI run completes without error and produces correct output
+    '''
+
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
@@ -44,7 +50,34 @@ def test_agni_run(agni_run):
     # Check helpfile
     assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
 
+@pytest.mark.dependency()
+def test_agni_archive(agni_run):
+    '''
+    Test that the archive files are able to be extracted and created again
+
+    The archive files were automatically created during the run.
+    '''
+
+    data_dir = agni_run.directories["output/data"]
+
+    # Check that the archive file exists
+    assert os.path.isfile(os.path.join(data_dir, "data.tar"))
+
+    # Check that the already-archived files do not exist loosely in the data directory
+    assert not os.path.isfile(os.path.join(data_dir, "0_atm.nc"))
+
+    # Extract archives
+    agni_run.extract_archives()
+
+    # Check that the extracted files now exist
+    assert os.path.isfile(os.path.join(data_dir, "0_atm.nc"))
+
+@pytest.mark.dependency(depends=["test_agni_archive"])
 def test_agni_atmosphere(agni_run):
+    '''
+    Test that the modelled profiles match the reference data
+    '''
+
     # Keys to load and test
     _out   = out_dir / 'data' / '99002_atm.nc'
     _ref   = ref_dir / '99002_atm.nc'
@@ -66,8 +99,11 @@ def test_agni_atmosphere(agni_run):
         assert_allclose(out[key], ref[key], rtol=1e-3,
                         err_msg=f"Key {key} does not match reference data")
 
-
+@pytest.mark.dependency(depends=["test_agni_archive"])
 def test_agni_offchem(agni_run):
+    '''
+    Test that the offline chemistry is working and matches reference data
+    '''
 
     # run offline chemistry and load result
     df_out = agni_run.offline_chemistry()

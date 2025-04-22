@@ -109,16 +109,18 @@ def test_physical_interior(physical_run):
 @pytest.mark.parametrize("image", IMAGE_LIST)
 def test_physical_plot(physical_run, image):
 
-    out_img = out_dir / image
+    out_img = out_dir / "plots" / image
     ref_img = ref_dir / image
     tolerance = 3
 
-    # Resize images if needed
+    # Open images, and resize them to have the same dimensions
     out_img, ref_img = resize_to_match(out_img, ref_img)
 
+    # Working directory for comparing the images
     results_dir = Path('result_images')
     results_dir.mkdir(exist_ok=True, parents=True)
 
+    # Paths to the resized images
     actual = results_dir / image
     expected = results_dir / f'{actual.stem}-expected{actual.suffix}'
 

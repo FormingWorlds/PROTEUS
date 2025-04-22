@@ -7,7 +7,6 @@ import logging
 import os
 import platform
 import subprocess as sp
-import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -29,28 +28,26 @@ class MyJSON( object ):
 
     def __init__( self, filename ):
         self.filename = filename
+        self.data_d = None
         self._load()
 
     def _load( self ):
-        '''load and store json data from file'''
-        try:
-            json_data  = open( self.filename )
-        except FileNotFoundError:
-            log.error('cannot find file: %s' % self.filename )
-            log.error('please specify times for which data exists')
-            sys.exit(1)
-        self.data_d = json.load( json_data )
-        json_data.close()
+        '''
+        Load json data from file, and store in the class.
+
+        Returns False if file not found.
+        '''
+        if not os.path.isfile( self.filename ):
+            return False
+        with open( self.filename ) as json_data:
+            self.data_d = json.load( json_data )
+        return True
 
     # was get_field_data
     def get_dict( self, keys ):
         '''get all data relating to a particular field'''
-        try:
-            dict_d = recursive_get( self.data_d, keys )
-            return dict_d
-        except NameError:
-            log.error('dictionary for %s does not exist', keys )
-            sys.exit(1)
+        dict_d = recursive_get( self.data_d, keys )
+        return dict_d
 
     # was get_field_units
     def get_dict_units( self, keys ):
@@ -118,8 +115,31 @@ class MyJSON( object ):
         SOLID = (phi<0.05)
         return SOLID
 
-def read_jsons(output_dir:str, times:list):
-    return [MyJSON(os.path.join(output_dir, "data", "%d.json"%t)) for t in times]
+def read_jsons(output_dir:str, times:list) -> list[MyJSON]:
+    """
+    Read JSON files from the output/data/ directory for the specified times.
+
+    Parameters
+    ----------
+    output_dir : str
+        Path to the output directory.
+    times : list
+        List of times (in years) for which to read the JSON files.
+
+    Returns
+    -------
+    jsons : list[MyJSON]
+        List of MyJSON objects containing the data from the JSON files.
+    """
+    jsons = []
+    for t in times:
+        _f = os.path.join(output_dir, "data", "%.0f.json"%t)  # path to file
+        _j = MyJSON(_f)  # load json file
+        if _j.data_d is None:
+            _j = None  # set to None if data could not be read
+        else:
+            jsons.append(_j)  # otherwise, append to list
+    return jsons
 
 def get_all_output_times(odir:str):
     '''
@@ -142,21 +162,6 @@ def get_all_output_times(odir:str):
     time_a = np.array( time_l )
 
     return time_a
-
-def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
-    '''Similar to above, but only loop over all times once and get
-       all requested (surface / zero index) data in one go'''
-
-    data_l = []
-
-    filename = indir + '/data/{}.json'.format(time)
-    myjson_o = MyJSON( filename )
-    for key in keys_t:
-        value = myjson_o.get_dict_values( key )
-        data_l.append( value )
-
-
-    return np.array(data_l)
 
 #====================================================================
 def _try_spider( dirs:dict, config:Config,
@@ -188,9 +193,13 @@ def _try_spider( dirs:dict, config:Config,
     # Recalculate time stepping
     if IC_INTERIOR == 2:
 
-        # Current step number
-        json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(hf_row["Time"])) )
-        step        = json_file.get_dict(['step'])
+        # Get step number from last JSON file
+        json_path   = os.path.join(dirs["output/data"], "%.0f.json"%hf_row["Time"])
+        json_file   = MyJSON( json_path )
+        if json_file.data_d is None:
+            UpdateStatusfile(dirs, 21)
+            raise ValueError("JSON file '%s' could not be loaded" % json_path)
+        step = json_file.get_dict(['step'])
 
         # Get new time-step
         dtswitch = next_step(config, dirs, hf_row, hf_all, step_sf)
@@ -209,14 +218,14 @@ def _try_spider( dirs:dict, config:Config,
         dtmacro     = 0
         dtswitch    = 0
 
-    empty_file = os.path.join(dirs["output"],"data", ".spider_tmp")
+    empty_file = os.path.join(dirs["output/data"], ".spider_tmp")
     open(empty_file, 'w').close()
 
     ### SPIDER base call sequence
     call_sequence = [
                         spider_exec,
                         "-options_file",           empty_file,
-                        "-outputDirectory",        dirs["output"]+'data/',
+                        "-outputDirectory",        dirs["output/data"],
                         "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
                         "-OXYGEN_FUGACITY_offset", "%.6e"%(config.outgas.fO2_shift_IW),  # Relative to the specified buffer
                         "-surface_bc_value",       "%.6e"%(hf_row["F_atm"]),
@@ -245,8 +254,8 @@ def _try_spider( dirs:dict, config:Config,
     # Initial condition
     if IC_INTERIOR == 2:
         # get last JSON File
-        last_filename = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
-        last_filename = os.path.join(dirs["output"], "data", last_filename)
+        last_filename = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output/data"]+"/*.json")])[-1]
+        last_filename = os.path.join(dirs["output/data"], last_filename)
         call_sequence.extend([
                                 "-ic_interior_filename", str(last_filename),
                                 "-activate_poststep",
@@ -480,35 +489,35 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     ### Read in last SPIDER base parameters
     sim_time = get_all_output_times(dirs["output"])[-1]  # yr, as an integer value
 
-    # SPIDER keys from JSON file that are read in
-    keys_t = ( ('atmosphere','mass_liquid'),
-                ('atmosphere','mass_solid'),
-                ('atmosphere','mass_mantle'),
-                ('atmosphere','mass_core'),
-                ('atmosphere','temperature_surface'),
-                ('rheological_front_phi','phi_global'),
-                ('atmosphere','Fatm'),
-                ('rheological_front_dynamic','depth'),
-                )
+    # load data file
+    json_path   = os.path.join(dirs["output/data"], "%.0f.json"%sim_time)
+    json_file   = MyJSON( json_path )
+    if json_file.data_d is None:
+        UpdateStatusfile(dirs, 21)
+        raise ValueError("JSON file '%s' could not be loaded" % json_path)
 
-    data_a = get_dict_surface_values_for_specific_time( keys_t, sim_time, indir=dirs["output"] )
+    # read scalars
+    json_keys = {
+            "M_mantle_liquid" : ('atmosphere','mass_liquid'),
+            "M_mantle_solid"  : ('atmosphere','mass_solid'),
+            "M_mantle"        : ('atmosphere','mass_mantle'),
+            "M_core"          : ('atmosphere','mass_core'),
+            "T_magma"         : ('atmosphere','temperature_surface'),
+            "Phi_global"      : ('rheological_front_phi','phi_global'),
+            "F_int"           : ('atmosphere','Fatm'),
+            "RF_depth"        : ('rheological_front_dynamic','depth'),
+    }
 
-    json_file = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
+    # Fill the new dict with scalars, and scale values as required
+    for key in json_keys:
+        output[key] = float(json_file.get_dict_values(json_keys[key]))
+    output["RF_depth"] /= R_int
+
+    # read arrays
     area_b   = json_file.get_dict_values(['data','area_b'])
     Hradio_s = json_file.get_dict_values(['data','Hradio_s'])
     Htidal_s = json_file.get_dict_values(['data','Htidal_s'])
     mass_s   = json_file.get_dict_values(['data','mass_s'])
-
-    # Fill the new dict
-    output["M_mantle_liquid"] = float(data_a[0])
-    output["M_mantle_solid"]  = float(data_a[1])
-    output["M_mantle"]        = float(data_a[2])
-
-    # Surface properties
-    output["T_magma"]         = float(data_a[4])
-    output["Phi_global"]      = float(data_a[5])  # global melt fraction
-    output["F_int"]           = float(data_a[6])  # Heat flux from interior
-    output["RF_depth"]        = float(data_a[7])/R_int  # depth of rheological front
 
     # Tidal heating
     output["F_tidal"] = np.dot(Htidal_s, mass_s)/area_b[0]

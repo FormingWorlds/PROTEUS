@@ -6,11 +6,22 @@ from __future__ import annotations
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
+from ._converters import none_if_none
+
+
+def valid_path(instance, attribute, value):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"'{attribute.name}' must be a non-empty string")
 
 def max_bigger_than_min(instance, attribute, value):
     if value <= instance.minimum:
         raise ValueError("'maximum' has to be bigger than 'minimum'.")
 
+def valid_mod(instance, attribute, value):
+    if value is None:
+        return
+    if value < 0:
+        raise ValueError(f"Parameter '{attribute}' must be None or greater than 0.")
 
 @define
 class OutputParams:
@@ -22,19 +33,25 @@ class OutputParams:
         Path to output folder relative to `PROTEUS/output/`.
     logging: str
         Log verbosity. Choices: 'INFO', 'DEBUG', 'ERROR', 'WARNING'.
-    plot_mod: int
-        Plotting frequency. 0: wait until completion. n: every n iterations.
     plot_fmt: str
         Plotting output file format. Choices: "png", "pdf".
     write_mod: int
         Write CSV frequency. 0: wait until completion. n: every n iterations.
+    plot_mod: int | None
+        Plotting frequency. 0: wait until completion. n: every n iterations. None: never plot.
+    archive_mod: int | None
+        Archive frequency. 0: wait until completion. n: every n iterations. None: never archive.
+    remove_sf: bool
+        Remove SOCRATES spectral files after model terminates.
     """
-    path: str
+    path: str       = field(validator=valid_path)
     logging: str    = field(default='INFO',
-                            validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    plot_mod: int   = field(default=10,      validator=ge(0))
+                                    validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
     plot_fmt: str   = field(default='png',  validator=in_(('pdf', 'png')))
-    write_mod: int  = field(default=1,      validator=ge(0))
+    write_mod:int   = field(default=1,      validator=ge(0))
+    plot_mod        = field(default=10,     validator=valid_mod, converter=none_if_none)
+    archive_mod     = field(default=None,   validator=valid_mod, converter=none_if_none)
+    remove_sf:bool  = field(default=False)
 
 @define
 class DtProportional:

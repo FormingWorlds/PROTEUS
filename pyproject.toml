@@ -58,7 +58,6 @@ dependencies = [
     "pandas",
     "scipy",
     "sympy",
-    "nose",
     "astropy"
 ]
 
@@ -75,6 +74,7 @@ develop = [
     "pillow",
     "pip-tools",
     "pytest >= 8.1",
+    "pytest-dependency",
     "pre-commit",
     "ruff",
 ]
