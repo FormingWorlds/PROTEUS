@@ -66,7 +66,7 @@ def download(
     desc: str,
     max_tries: int = 3,
     wait_time: float = 5,
-):
+) -> bool:
     """
     Generic download function.
 
@@ -84,6 +84,11 @@ def download(
         Number of tries to download the file
     wait_time: float
         Time to wait between tries
+
+    Returns
+    -------
+    bool
+        True if the file was downloaded successfully, False otherwise
     """
     log.debug(f"Get {desc}?")
 
@@ -105,9 +110,10 @@ def download(
                     sleep(wait_time)
                 else:
                     log.error(f"    Failed to download {desc} after {max_tries} attempts")
-                    raise
+                    return False
     else:
         log.debug(f"    {desc} already exists")
+    return True
 
 
 def download_surface_albedos():

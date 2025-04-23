@@ -140,15 +140,6 @@ jobs:
         run:
           python -m pip install -e .[develop]
 
-      # Linux only: set path to OpenSSL library
-      - name: Set library path for OpenSSL
-        if: runner.os == 'Ubuntu'
-        run: |
-          # export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/:$LD_LIBRARY_PATH"
-          echo $LD_LIBRARY_PATH
-          echo $(which openssl)
-          echo $(openssl version)
-
       # Get lookup data for PROTEUS
       - name: Get FWL data from cache
         uses: actions/cache@v4
