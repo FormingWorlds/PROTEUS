@@ -11,8 +11,8 @@ from typing import Tuple, Dict, List, Any
 
 def load_grid_cases(grid_dir: Path):
     """
-    Load information for each simulation of a PROTEUS grid. 
-    Read 'runtime_helpfile.csv', 'init_coupler.toml' and status 
+    Load information for each simulation of a PROTEUS grid.
+    Read 'runtime_helpfile.csv', 'init_coupler.toml' and status
     files for each simulation of the grid.
 
     Parameters
@@ -28,7 +28,7 @@ def load_grid_cases(grid_dir: Path):
                 - 'output_values' (pandas.DataFrame): Data from `runtime_helpfile.csv`.
                 - 'status' (str): Status string from the `status` file, or 'unknown' if unavailable.
     """
-    
+
     combined_data = []
     grid_dir = Path(grid_dir)
 
@@ -61,7 +61,7 @@ def load_grid_cases(grid_dir: Path):
     # Count the number of simulations per status
     statuses = [str(case.get('status', 'unknown')).strip() or 'unknown' for case in combined_data]
     status_counts = pd.Series(statuses).value_counts().sort_values(ascending=False)
-    
+
     print('-----------------------------------------------------------')
     print(f"Total number of simulations: {len(statuses)}")
     print('-----------------------------------------------------------')
@@ -74,12 +74,12 @@ def load_grid_cases(grid_dir: Path):
 def get_grid_parameters(grid_dir: str):
     """
     Extract grid parameter names and values from the 'manager.log' file.
-    
+
     Parameters
     ----------
     grid_dir : str
         Path to the directory of the PROTEUS grid
-    
+
     Returns
     -------
     param_grid : dict
@@ -106,7 +106,7 @@ def get_grid_parameters(grid_dir: str):
     # Expressions to match the relevant lines
     dimension_pattern = re.compile(r"parameter:\s*(\S+)")
     values_pattern = re.compile(r"values\s*:\s*\[(.*?)\]")
-    case_line_pattern = re.compile(r"\]\s+(\d+):\s+(\{.*\})") 
+    case_line_pattern = re.compile(r"\]\s+(\d+):\s+(\{.*\})")
 
     current_param = None
     for line in lines:
@@ -170,7 +170,7 @@ def extract_grid_output(cases_data: list, parameter_name: str):
                 print(f"Warning: Parameter '{parameter_name}' does not exist in case '{case['init_parameters'].get('name', 'Unknown')}'")
                 print(f"Available columns in this case: {', '.join(df.columns)}")
                 columns_printed = True
-    
+
     # Print the extracted output values for the specified parameter
     print(f"Extracted output (at last time step) : {parameter_name} ")
 
@@ -178,7 +178,7 @@ def extract_grid_output(cases_data: list, parameter_name: str):
 
 def extract_solidification_time(cases_data: list, phi_crit: float):
     """
-    Extract the solidification time at the time step where the condition 
+    Extract the solidification time at the time step where the condition
     'Phi_global' < phi_crit is first satisfied for each planet.
 
     Parameters
@@ -193,20 +193,20 @@ def extract_solidification_time(cases_data: list, phi_crit: float):
     Returns
     -------
     solidification_times : list
-        A list containing the solidification times for all solidified planets of the grid. 
+        A list containing the solidification times for all solidified planets of the grid.
         If a planet never solidifies, it will have a NaN in the list.
     """
 
     solidification_times = []
     columns_printed = False
-    
+
     for i, case in enumerate(cases_data):
         df = case['output_values']
         # Check if the required columns exist in the dataframe
         if 'Phi_global' in df.columns and 'Time' in df.columns:
             condition = df['Phi_global'] < phi_crit
             if condition.any():
-                first_index = condition.idxmax()  
+                first_index = condition.idxmax()
                 solid_time = df.loc[first_index, 'Time'] # Get the index of the time at which the condition is first satisfied
                 solidification_times.append(solid_time)
             else:
@@ -247,10 +247,10 @@ def extract_solidification_time(cases_data: list, phi_crit: float):
 
     return solidification_times
 
-def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dict, case_params: Dict[int, Dict[str, Any]], 
+def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dict, case_params: Dict[int, Dict[str, Any]],
                           extracted_value: dict, output_to_extract: list, phi_crit: float, output_dir: Path):
     """
-    Save all simulation information (status, grid parameters, output values) into a CSV file 
+    Save all simulation information (status, grid parameters, output values) into a CSV file
     for later analysis (using plot_grid.py to make plots for instance).
 
     Parameters
@@ -269,25 +269,25 @@ def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dic
 
      extracted_value : dict
         A list containing the extracted values of the specified parameter for all cases of the grid.
-        
+
     output_to_extract : list
         List of output values extracted from each simulation in the grid.
-    
+
     phi_crit : float
         The critical melt fraction value used to determine if a planet is considered solidified.
         A typical value is 0.005.
 
     output_dir : Path
-        The directory where the generated CSV file will be saved. If the directory does not exist, 
+        The directory where the generated CSV file will be saved. If the directory does not exist,
         it will be created.
     """
     # Check if the output directory exist, if not create it
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # CSV file path
     csv_file = output_dir / f"{grid_name}_extracted_data.csv"
-    
+
     with open(csv_file, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
 
@@ -306,7 +306,7 @@ def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dic
             values_str = f"[{', '.join(map(str, values))}]"
             writer.writerow([f"{aligned_param}: {values_str}"])
         writer.writerow(["----------------------------------------------------------"])
-        writer.writerow(["Extracted output values:" f"[{', '.join(extracted_value.keys())}]"])    
+        writer.writerow(["Extracted output values:" f"[{', '.join(extracted_value.keys())}]"])
         writer.writerow(["----------------------------------------------------------"])
         writer.writerow([f"| Case number | Status | {' | '.join(grid_parameters.keys())} | {' | '.join(extracted_value.keys())} |"])
         writer.writerow(["#############################################################################################################"])
@@ -336,15 +336,15 @@ def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dic
 if __name__ == '__main__':
 
     # User needs to specify paths
-    grid_name   = 'escape_grid_4_params_Pxuv_a_epsilon_fO2'
-    grid_path   = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_grid/{grid_name}/'
-    data_dir    = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_processed_data/{grid_name}/'
-   
+    grid_name   = 'escape_grid_atm_a_f02_H_Mstar'
+    grid_path   = f'/Users/emmapostolec/Downloads/output_norma2_rsync/{grid_name}/'
+    data_dir    = f'/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/tools/post_processing_grid/nogit_processed_data/{grid_name}/'
+
     # User choose the parameters to post-process the grid
     output_to_extract = ['esc_rate_total','Phi_global', 'P_surf','atm_kg_per_mol']      # Output columns to extract from 'runtime_helpfile.csv' of each case
     phi_crit = 0.005                                                                    # Critical melt fraction for the solidification condition
-    
-    # Post-processing the grid    
+
+    # Post-processing the grid
     extracted_value = {}                                                                # Initialize the dictionary to store extracted values
     cases_data = load_grid_cases(grid_path)                                             # Load all simulation cases
     grid_parameters, case_init_param = get_grid_parameters(grid_path)                   # Extract grid parameters
@@ -352,11 +352,10 @@ if __name__ == '__main__':
         extracted_value[param] = extract_grid_output(cases_data, param)                 # Extract output values
     solidification_times = extract_solidification_time(cases_data, phi_crit)            # Extract the solidification time
     extracted_value['solidification_time'] = solidification_times                       # Add solidification time to the extracted_values
-    save_grid_data_to_csv(grid_name, cases_data, grid_parameters, case_init_param,      
-                      extracted_value, solidification_times, phi_crit, data_dir)        # Save all the extracted data to a CSV file 
+    save_grid_data_to_csv(grid_name, cases_data, grid_parameters, case_init_param,
+                      extracted_value, solidification_times, phi_crit, data_dir)        # Save all the extracted data to a CSV file
 
     # Done with the post-processing step :)
-    print('-----------------------------------------------------------')
     print("Post-processing completed. Let's do some plots !")
     print('(Please check for any warning messages above before going further.)')
-    print('-----------------------------------------------------------')    
+    print('-----------------------------------------------------------')
