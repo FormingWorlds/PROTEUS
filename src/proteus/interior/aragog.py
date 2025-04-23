@@ -279,9 +279,10 @@ class AragogRunner:
             self.aragog_solver.parameters.scalings.power_per_mass)
 
     def run_solver(self, hf_row, interior_o, dirs):
+        print(f"Initial sim time: {self.aragog_solver.parameters.solver.start_time}")
         # Run Aragog solver
         self.aragog_solver.solve()
-
+        print(f"Final sim time: {self.aragog_solver.parameters.solver.end_time}")
         # Get Aragog output
         output = self.get_output(hf_row, interior_o)
         sim_time = self.aragog_solver.parameters.solver.end_time
