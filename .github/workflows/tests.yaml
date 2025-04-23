@@ -24,7 +24,7 @@ jobs:
         python-version: ['3.11', '3.13']
         include:
           - os: ubuntu-latest
-            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin
+            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin; sudo apt-get install openssl=3.5.0
             CC: gcc
             CXX: g++
             FC: gfortran
@@ -156,7 +156,7 @@ jobs:
 
       # Run PROTEUS tests
       - name: Test with pytest
-        run: coverage run -m pytest
+        run: LD_LIBRARY_PATH="" coverage run -m pytest
 
       # Upload result if tests fail
       - name: Upload result as artifact
@@ -165,7 +165,7 @@ jobs:
         with:
           name: integration-physical
           path: |
-            output/physical/plot_*.png
+            output/physical/plot/plot_*.png
             output/physical/runtime_helpfile.csv
 
       - name: Report coverage
