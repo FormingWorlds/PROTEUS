@@ -1,37 +1,34 @@
-import os
 from pathlib import Path
 import pandas as pd
 import toml
+import os
 import re
+import ast
 import numpy as np
 import csv
-import ast
 from typing import Tuple, Dict, List, Any
 
 
 def load_grid_cases(grid_dir: Path):
     """
-    Load information for each simulation of a PROTEUS grid.
-
-    Read runtime_helpfile.csv, init_parameters (from toml file), and status 
+    Load information for each simulation of a PROTEUS grid. 
+    Read 'runtime_helpfile.csv', 'init_coupler.toml' and status 
     files for each simulation of the grid.
 
     Parameters
     ----------
-        grid_dir : Path
-            Path to the grid directory containing the case_* folders
+        grid_dir : Path or str
+            Path to the grid directory containing the 'case_*' folders
 
     Returns
     ----------
         combined_data : list
             List of dictionaries, each containing:
-                - 'init_parameters' (dict):
-                    Parameters loaded from init_coupler.toml
-                - 'output_values' (pandas.DataFrame):
-                    Data from runtime_helpfile.csv
-                - 'status' (str or None):
-                    Status string from status file (if available)
+                - 'init_parameters' (dict): Parameters loaded from `init_coupler.toml`.
+                - 'output_values' (pandas.DataFrame): Data from `runtime_helpfile.csv`.
+                - 'status' (str): Status string from the `status` file, or 'unknown' if unavailable.
     """
+    
     combined_data = []
     grid_dir = Path(grid_dir)
 
@@ -61,8 +58,10 @@ def load_grid_cases(grid_dir: Path):
             except Exception as e:
                 print(f"Error processing {case.name}: {e}")
 
+    # Count the number of simulations per status
     statuses = [str(case.get('status', 'unknown')).strip() or 'unknown' for case in combined_data]
     status_counts = pd.Series(statuses).value_counts().sort_values(ascending=False)
+    
     print('-----------------------------------------------------------')
     print(f"Total number of simulations: {len(statuses)}")
     print('-----------------------------------------------------------')
@@ -74,44 +73,50 @@ def load_grid_cases(grid_dir: Path):
 
 def get_grid_parameters(grid_dir: str):
     """
-    Extracts grid parameters names and values from the manager.log file
+    Extract grid parameter names and values from the 'manager.log' file.
     
     Parameters
     ----------
     grid_dir : str
-        Path to the grid directory
+        Path to the directory of the PROTEUS grid
     
     Returns
     -------
-    dict
-        A dictionary where each key is the parameter name and the value is a list of parameter values.
+    param_grid : dict
+        A dictionary where each key is a parameter name, and its corresponding values used for the entire grid is a list.
+
+    case_params : dict
+        Dictionary containing each case number with the name and values of the tested parameters in this grid.
     """
+
     log_file = os.path.join(grid_dir, 'manager.log')
 
+    # Check if the 'manager.log' file exists
     if not os.path.exists(log_file):
         print(f"Error: manager.log not found at {log_file}")
         return {}, {}
 
+    # Read all lines from the 'manager.log' file
     with open(log_file, 'r') as file:
         lines = file.readlines()
 
     param_grid = {}
     case_params = {}
 
+    # Expressions to match the relevant lines
     dimension_pattern = re.compile(r"parameter:\s*(\S+)")
     values_pattern = re.compile(r"values\s*:\s*\[(.*?)\]")
-    case_line_pattern = re.compile(r"\]\s+(\d+):\s+(\{.*\})")  # Fixed pattern
+    case_line_pattern = re.compile(r"\]\s+(\d+):\s+(\{.*\})") 
 
     current_param = None
-
     for line in lines:
         line = line.strip()
-
+        # Check if the line defines a new parameter
         dim_match = dimension_pattern.search(line)
         if dim_match:
             current_param = dim_match.group(1)
             continue
-
+        # Check if the line defines values for the current parameter
         val_match = values_pattern.search(line)
         if val_match and current_param:
             try:
@@ -120,7 +125,7 @@ def get_grid_parameters(grid_dir: str):
                 current_param = None
             except Exception as e:
                 print(f"Error parsing values for {current_param}: {e}")
-
+        # Check if the line contains case-specific data
         case_match = case_line_pattern.search(line)
         if case_match:
             case_num = int(case_match.group(1))
@@ -132,7 +137,7 @@ def get_grid_parameters(grid_dir: str):
 
     return param_grid, case_params
 
-def extract_grid_output(cases_data, parameter_name):
+def extract_grid_output(cases_data: list, parameter_name: str):
     """
     Extract a specific parameter from the 'output_values' of each simulation case.
 
@@ -147,14 +152,14 @@ def extract_grid_output(cases_data, parameter_name):
     Returns
     -------
     parameter_values : list
-        A list containing the extracted values of the specified parameter for all cases.
+        A list containing the extracted values of the specified parameter for all cases of the grid.
     """
+
     parameter_values = []
     columns_printed = False  # Flag to print columns only once
 
     for case in cases_data:
         df = case['output_values']
-        
         # Check if the parameter exists in the output dataframe
         if parameter_name in df.columns:
             # Extract the last value of the parameter from the last row
@@ -166,14 +171,15 @@ def extract_grid_output(cases_data, parameter_name):
                 print(f"Available columns in this case: {', '.join(df.columns)}")
                 columns_printed = True
     
-    # Print the extracted values
+    # Print the extracted output values for the specified parameter
     print(f"Extracted output (at last time step) : {parameter_name} ")
 
     return parameter_values
 
-def extract_solidification_time(cases_data, phi_crit):
+def extract_solidification_time(cases_data: list, phi_crit: float):
     """
-    Extract the solidification time for planets that reach Phi_global < phi_crit.
+    Extract the solidification time at the time step where the condition 
+    'Phi_global' < phi_crit is first satisfied for each planet.
 
     Parameters
     ----------
@@ -181,28 +187,30 @@ def extract_solidification_time(cases_data, phi_crit):
         List of dictionaries containing simulation data.
 
     phi_crit : float
-        The critical value of melt fraction at which a planet is considered solidified.
+        The critical melt fraction value below which a planet is considered solidified.
+        A typical value is 0.005.
 
     Returns
     -------
     solidification_times : list
         A list containing the solidification times for all solidified planets of the grid. 
-        If a planet never solidifies, it will have NaN in the list.
+        If a planet never solidifies, it will have a NaN in the list.
     """
+
     solidification_times = []
     columns_printed = False
     
     for i, case in enumerate(cases_data):
         df = case['output_values']
-
+        # Check if the required columns exist in the dataframe
         if 'Phi_global' in df.columns and 'Time' in df.columns:
             condition = df['Phi_global'] < phi_crit
             if condition.any():
-                first_index = condition.idxmax()  # gives the first True index
-                solid_time = df.loc[first_index, 'Time']
+                first_index = condition.idxmax()  
+                solid_time = df.loc[first_index, 'Time'] # Get the index of the time at which the condition is first satisfied
                 solidification_times.append(solid_time)
             else:
-                solidification_times.append(np.nan)  # Append NaN if condition is not met
+                solidification_times.append(np.nan)  # Append NaN if condition is not satisfied
         else:
             if not columns_printed:
                 print("Warning: 'Phi_global' and/or 'Time' columns not found in some cases.")
@@ -210,10 +218,9 @@ def extract_solidification_time(cases_data, phi_crit):
                 columns_printed = True
             solidification_times.append(np.nan)  # Append NaN if columns are missing
 
-    # Count the number of cases labeled as 10 Completed (solidified)
+    # Count the number of cases with a status = '10 Completed (solidified)'
     status_10_cases = [case for case in cases_data if (case.get('status') or '').strip() == '10 Completed (solidified)']
     completed_count = len(status_10_cases)
-
     # Count only valid solidification times (non-NaN)
     valid_solidification_times = [time for time in solidification_times if not np.isnan(time)]
     valid_solidified_count = len(valid_solidification_times)
@@ -222,27 +229,29 @@ def extract_solidification_time(cases_data, phi_crit):
     print(f"Extracted solidification times (Phi_global < {phi_crit})")
     print(f"→ Found {valid_solidified_count} valid solidified cases based on Phi_global")
     print(f"→ Found {completed_count} cases with status '10 Completed (solidified)' ")
-    
+    # Check if the number of valid solidified cases matches the number of cases with status '10 Completed (solidified)' in the grid, to be sure the extraction is correct
     if valid_solidified_count != completed_count:
         print("WARNING: The number of valid solidified planets does not match the number of planets with status: '10 Completed (solidified)'")
-        print("\nChecking final Phi_global values for all status '10 Completed (solidified)' cases:")
-        for i, case in enumerate(status_10_cases):
-            df = case['output_values']
-            if 'Phi_global' in df.columns:
-                final_phi = df['Phi_global'].iloc[-1]
-                #print(f"[Status Case {i}] Final Phi_global = {final_phi}")
-            else:
-                print(f"[Status Case {i}] Phi_global column missing.")
+        # To debug, the user can uncomment the following lines to print the solidification times for all plaent with '10 Completed (solidified)'
+        # print("\nChecking final Phi_global values for all status '10 Completed (solidified)' cases:")
+        # for i, case in enumerate(status_10_cases):
+        #     df = case['output_values']
+        #     if 'Phi_global' in df.columns:
+        #         final_phi = df['Phi_global'].iloc[-1]
+        #         print(f"[Status Case {i}] Final Phi_global = {final_phi}")
+        #     else:
+        #         print(f"[Status Case {i}] Phi_global column missing.")
     else:
         print("Solidified planets count matches the number of planets with status: '10 Completed (solidified)'.")
     print('-----------------------------------------------------------')
 
     return solidification_times
 
-def save_grid_data_to_csv(grid_name, cases_data, grid_parameters, case_params, extracted_value, output_to_extract, phi_crit, output_dir: Path):
+def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dict, case_params: Dict[int, Dict[str, Any]], 
+                          extracted_value: dict, output_to_extract: list, phi_crit: float, output_dir: Path):
     """
-    Save all simulation information (status, grid parameters, output values, solidification times)
-    into CSV files for later analysis (doing plots).
+    Save all simulation information (status, grid parameters, output values) into a CSV file 
+    for later analysis (using plot_grid.py to make plots for instance).
 
     Parameters
     ----------
@@ -250,32 +259,35 @@ def save_grid_data_to_csv(grid_name, cases_data, grid_parameters, case_params, e
         Name of the grid.
 
     cases_data : list
-        List of dictionaries containing the status of all the simulations cases in the grid.
+        List of dictionaries containing simulation data.
 
     grid_parameters : dict
-        Dictionary containing the grid parameters.
+        A dictionary where each key is a parameter name, and its corresponding values used for the entire grid is a list.
 
-    case_params :  Dict[int, Dict[str, Any]]
+    case_params : dict
         Dictionary containing each case number with the name and values of the tested parameters in this grid.
 
      extracted_value : dict
-        Dictionary containing the extracted output values for each parameter.
-
+        A list containing the extracted values of the specified parameter for all cases of the grid.
+        
     output_to_extract : list
         List of output values extracted from each simulation in the grid.
     
     phi_crit : float
-        Critical melt fraction value to determine if the planet solidifies.
+        The critical melt fraction value used to determine if a planet is considered solidified.
+        A typical value is 0.005.
 
     output_dir : Path
-        Directory where the CSV file will be saved.
+        The directory where the generated CSV file will be saved. If the directory does not exist, 
+        it will be created.
     """
+    # Check if the output directory exist, if not create it
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-
+    
     # CSV file path
     csv_file = output_dir / f"{grid_name}_extracted_data.csv"
-
+    
     with open(csv_file, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
 
@@ -303,22 +315,19 @@ def save_grid_data_to_csv(grid_name, cases_data, grid_parameters, case_params, e
         # CSV table header
         writer.writerow(["Case number", "Status"] + list(grid_parameters.keys()) + list(extracted_value.keys()))
 
-        # Data rows
+        # Write data rows
         for case_index, case_data in enumerate(cases_data):
             status = case_data.get('status', 'unknown') or 'unknown'
             row = [case_index, f"'{status}'"]
-
-            # Use case_params (from get_grid_parameters) to pull values for each param
+            # Add grid parameters values for each case
             case_param_values = case_params.get(case_index, {})
-
             for param in grid_parameters.keys():
                 row.append(case_param_values.get(param, 'NA'))
-
-            # Add extracted output values
+            # Add extracted output values for each case
             for param in extracted_value.keys():
                 value_list = extracted_value.get(param, [])
                 row.append(value_list[case_index] if case_index < len(value_list) else 'NA')
-
+            # Write the row to the CSV file
             writer.writerow(row)
 
     print(f"Extracted data has been successfully saved to {csv_file}.")
@@ -326,29 +335,27 @@ def save_grid_data_to_csv(grid_name, cases_data, grid_parameters, case_params, e
 
 if __name__ == '__main__':
 
-    # Paths to the grid folder
-    grid_name = 'escape_grid_4_params_Pxuv_a_epsilon_fO2'
-    grid_path = f'/home2/p315557/outputs_Norma2/good_grids/{grid_name}/'
-    data_dir = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_processed_data/{grid_name}/'
+    # User needs to specify paths
+    grid_name   = 'escape_grid_4_params_Pxuv_a_epsilon_fO2'
+    grid_path   = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_grid/{grid_name}/'
+    data_dir    = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_processed_data/{grid_name}/'
+   
     # User choose the parameters to post-process the grid
-    output_to_extract = ['esc_rate_total',                                      # List of output values to extract from the runtime_helpfile
-                        'Phi_global', 
-                        'P_surf',   
-                        'atm_kg_per_mol']
-    phi_crit = 0.005                                                            # Critical melt fraction for solidification 
-    extracted_value = {}
-
-    # Post-processing the grid  
-    cases_data = load_grid_cases(grid_path)                                     # Load all simulation cases
-    grid_parameters, case_init_param = get_grid_parameters(grid_path)           # Extract grid parameters
-    for param in output_to_extract:
-        extracted_value[param] = extract_grid_output(cases_data, param)         # Extract output values
-    solidification_times = extract_solidification_time(cases_data, phi_crit)    # Extract the solidification time
-    extracted_value['solidification_time'] = solidification_times
+    output_to_extract = ['esc_rate_total','Phi_global', 'P_surf','atm_kg_per_mol']      # Output columns to extract from 'runtime_helpfile.csv' of each case
+    phi_crit = 0.005                                                                    # Critical melt fraction for the solidification condition
     
-    # Save all the extracted data to a CSV file 
-    save_grid_data_to_csv(grid_name, cases_data, grid_parameters, case_init_param, extracted_value, solidification_times, phi_crit, data_dir)
+    # Post-processing the grid    
+    extracted_value = {}                                                                # Initialize the dictionary to store extracted values
+    cases_data = load_grid_cases(grid_path)                                             # Load all simulation cases
+    grid_parameters, case_init_param = get_grid_parameters(grid_path)                   # Extract grid parameters
+    for param in output_to_extract:
+        extracted_value[param] = extract_grid_output(cases_data, param)                 # Extract output values
+    solidification_times = extract_solidification_time(cases_data, phi_crit)            # Extract the solidification time
+    extracted_value['solidification_time'] = solidification_times                       # Add solidification time to the extracted_values
+    save_grid_data_to_csv(grid_name, cases_data, grid_parameters, case_init_param,      
+                      extracted_value, solidification_times, phi_crit, data_dir)        # Save all the extracted data to a CSV file 
 
+    # Done with the post-processing step :)
     print('-----------------------------------------------------------')
     print("Post-processing completed. Let's do some plots !")
     print('(Please check for any warning messages above before going further.)')
