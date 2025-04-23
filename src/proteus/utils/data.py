@@ -5,6 +5,7 @@ import logging
 import os
 import subprocess as sp
 from pathlib import Path
+from time import sleep
 from typing import TYPE_CHECKING
 
 import platformdirs
@@ -62,8 +63,9 @@ def download(
     folder: str,
     target: str,
     osf_id: str,
-    desc: str
-
+    desc: str,
+    max_tries: int = 3,
+    wait_time: float = 5,
 ):
     """
     Generic download function.
@@ -78,6 +80,10 @@ def download(
         OSF project id
     desc: str
         Description for logging
+    max_tries: int
+        Number of tries to download the file
+    wait_time: float
+        Time to wait between tries
     """
     log.debug(f"Get {desc}?")
 
@@ -87,7 +93,19 @@ def download(
     if not (data_dir / folder).exists():
         storage = get_osf(osf_id)
         log.info(f"Downloading {desc} to {data_dir}")
-        download_folder(storage=storage, folders=[folder], data_dir=data_dir)
+        for i in range(max_tries):
+            log.debug(f"    attempt {i+1}")
+            try:
+                download_folder(storage=storage, folders=[folder], data_dir=data_dir)
+                break
+            except RuntimeError as e:
+                log.warning(f"    {desc} download failed: {e}")
+                if i < max_tries - 1:
+                    log.info(f"    Retrying in {wait_time} seconds...")
+                    sleep(wait_time)
+                else:
+                    log.error(f"    Failed to download {desc} after {max_tries} attempts")
+                    raise
     else:
         log.debug(f"    {desc} already exists")
 
