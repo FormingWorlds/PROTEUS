@@ -1,6 +1,7 @@
-import pandas as pd
-from io import StringIO
 from pathlib import Path
+from io import StringIO
+
+import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -987,19 +988,18 @@ def generate_grid_plot_clean(extracted_outputs, grouped_data, grid_params, plots
 
 if __name__ == '__main__':
 
-    # Paths to the csv file and plot directory
-    grid_name = 'escape_grid_4_params_Pxuv_a_epsilon_fO2'
-    data_dir = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_processed_data/{grid_name}/{grid_name}_extracted_data.csv'
-    plots_path = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_plots/{grid_name}/'
+    # User needs to specify paths
+    grid_name   = 'escape_grid_4_params_Pxuv_a_epsilon_fO2'
+    data_dir    = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_processed_data/{grid_name}/{grid_name}_extracted_data.csv'
+    plots_path  = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_plots/{grid_name}/'
 
-    # Load the data and check if the plot directory exists
-    df, grid_params, extracted_outputs = load_extracted_data(data_dir)
-    plot_dir_exists(plots_path)
-    # Group extracted outputs by grid parameters
-    grouped_data = group_output_by_parameter(df, grid_params, extracted_outputs)
+    # Load and organize data before plotting
+    df, grid_params, extracted_outputs = load_extracted_data(data_dir)                  # Load the data
+    plot_dir_exists(plots_path)                                                         # Check if the plot directory exists. If not, create it.
+    grouped_data = group_output_by_parameter(df, grid_params, extracted_outputs)        # Group extracted outputs by grid parameters
 
-    # Plot the grid status
-    plot_grid_status(df, plots_path)      
+    # Plots
+    plot_grid_status(df, plots_path)                                                    # Plot the grid status in an histogram      
 
     # Single plots 
     param_label_map = {
