@@ -24,7 +24,7 @@ jobs:
         python-version: ['3.11', '3.13']
         include:
           - os: ubuntu-latest
-            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin; sudo apt-get install openssl=3.5.0
+            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin; sudo apt-get install openssl=3.3.0
             CC: gcc
             CXX: g++
             FC: gfortran
