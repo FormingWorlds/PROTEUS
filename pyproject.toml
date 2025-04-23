@@ -45,7 +45,6 @@ classifiers = [
 dependencies = [
     "attrs",
     "cattrs",
-    "openssl<=3.3.0",
     "fwl-janus>=24.11.05",
     "fwl-mors>=25.02.26",
     "fwl-calliope>=25.03.14",

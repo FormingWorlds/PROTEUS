@@ -21,10 +21,10 @@ jobs:
     strategy:
       matrix:
         os: ['ubuntu-latest', 'macos-latest']
-        python-version: ['3.11', '3.12']
+        python-version: ['3.11', '3.13']
         include:
           - os: ubuntu-latest
-            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin
+            INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin libssl-dev
             CC: gcc
             CXX: g++
             FC: gfortran
@@ -137,7 +137,8 @@ jobs:
           key: ${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml') }}
 
       - name: Install Python dependencies
-        run: python -m pip install -e .[develop]
+        run:
+          python -m pip install -e .[develop]
 
       # Get lookup data for PROTEUS
       - name: Get FWL data from cache
@@ -157,6 +158,8 @@ jobs:
       # Run PROTEUS tests
       - name: Test with pytest
         run: coverage run -m pytest
+        env:
+          LD_LIBRARY_PATH: ""
 
       # Upload result if tests fail
       - name: Upload result as artifact
