@@ -484,6 +484,10 @@ class Proteus:
 
             ############### / HOUSEKEEPING AND CONVERGENCE CHECK
 
+        # Write conditions at the end of simulation
+        log.info("Writing data")
+        WriteHelpfileToCSV(self.directories["output"], self.hf_all)
+
         # Run offline chemistry
         if self.config.atmos_chem.when == "offline":
             log.info(" ")
@@ -501,10 +505,6 @@ class Proteus:
                 log.warning("Cannot observe planet after desiccation")
             else:
                 run_observe(self.hf_row, self.directories["output"], self.config)
-
-        # Write conditions at the end of simulation
-        log.info("Writing data and plots")
-        WriteHelpfileToCSV(self.directories["output"], self.hf_all)
 
         # Make final plots
         if self.config.params.out.plot_mod is not None:

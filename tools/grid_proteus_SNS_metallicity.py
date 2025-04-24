@@ -460,7 +460,14 @@ if __name__=='__main__':
     folder = 'SNS_metallicity_study'
     
     restart_from_previous = False
+    
+    # Execution limits
+    max_jobs = 300       # maximum number of concurrent tasks
+    max_days = 1         # maximum number of days to run
+    max_mem  = 3         # maximum memory per CPU in GB
 
+    # Base config file
+    config = "planets/l9859d.toml"
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
     symlink = None
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
