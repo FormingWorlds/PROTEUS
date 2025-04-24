@@ -25,7 +25,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "fiducial_sub_Neptune"
+        path        = "fiducial_sub_Neptune_2"
         logging     = "DEBUG"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -100,13 +100,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [star.dummy]
         radius           = 1.0       # R_sun
         calculate_radius = true	     # calculate radius using empirical mass-luminosity and mass-radius relations
-        Teff             = 2700.0    # K
+        Teff             = 3300.0    # K
 
 # Orbital system
 [orbit]
     semimajororfinst = 'semimajoraxis'	# whether to define orbit using semi major axis or instellation flux
     instellationflux = 3e-4             	# instellation flux received from the planet in Earth units.
-    semimajoraxis    = 0.1              	# AU
+    semimajoraxis    = 0.11288378916846889      # AU
     eccentricity     = 0.0       		# dimensionless
     zenith_angle     = 54.74     		# degrees
     s0_factor        = 0.25      		# dimensionless
@@ -256,7 +256,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         metallicity = 1000.0	 # metallicity relative to solar metallicity
         
         # H_oceans    = 60.0     # Hydrogen inventory in units of equivalent Earth oceans
-        H_ppmw      = 1000.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_ppmw      = 10000.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 0.29       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 10.0     # Carbon inventory in ppmw relative to mantle mass

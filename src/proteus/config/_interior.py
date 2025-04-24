@@ -93,7 +93,7 @@ class Aragog:
     """
 
     logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    ini_tmagma                          = field(default=None)
+    ini_tmagma: float                   = field(default=None)
     num_levels: int                     = field(default=100,    validator=ge(40))
     tolerance: float                    = field(default=1e-10,  validator=gt(0))
     inner_boundary_condition: int       = field(default=1, validator=ge(0))
@@ -102,8 +102,8 @@ class Aragog:
     convection: bool                    = field(default=True)
     gravitational_separation: bool      = field(default=False)
     mixing: bool                        = field(default=False)
-    eos_method: int                     = field(validator=in_((1,2)))
-    eos_filepath: str
+    eos_filepath: str                   = field(default="claire_density_profiles/SB11_MgFeppv.dat")
+    eos_method: int                     = field(default=1, validator=in_((1,2)))
 
 
 def valid_interiordummy(instance, attribute, value):
