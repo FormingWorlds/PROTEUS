@@ -47,7 +47,9 @@ def run_escape(config:Config, hf_row:dict, dt:float, stellar_track):
         )
 
     # calculate new elemental inventories
-    solvevol_target = calc_new_elements(hf_row, dt, config.escape.reservoir)
+    solvevol_target = calc_new_elements(hf_row, dt,
+                                            config.escape.reservoir,
+                                            min_thresh=config.outgas.mass_thresh)
 
     # store new elemental inventories
     for e in element_list:

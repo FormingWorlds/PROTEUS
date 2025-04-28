@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
 from proteus.utils.constants import gas_list
+from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -20,8 +21,6 @@ def calc_target_elemental_inventories(dirs:dict, config:Config, hf_row:dict):
 
     if config.outgas.module == 'calliope':
         calc_target_masses(dirs, config, hf_row)
-    else:
-        raise ValueError("Unsupported outgassing module selected!")
 
 def check_desiccation(config:Config, hf_row:dict) -> bool:
     """
@@ -66,9 +65,12 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
 
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
-        calc_surface_pressures(dirs, config, hf_row)
-    else:
-        raise ValueError("Unsupported outgassing module selected!")
+        try:
+            calc_surface_pressures(dirs, config, hf_row)
+        except RuntimeError as e:
+            log.error("Outgassing calculation failed: " + str(e))
+            UpdateStatusfile(dirs, 27)
+            raise e
 
     # calculate total atmosphere mass (from sum of volatile masses)
     # this will need to be changed when rock vapours are included
