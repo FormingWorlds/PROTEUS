@@ -10,7 +10,6 @@ import numpy as np
 import proteus.utils.archive as archive
 from proteus.config import read_config_object
 from proteus.utils.constants import (
-    gas_list,
     vap_list,
     vol_list,
 )
@@ -119,6 +118,7 @@ class Proteus:
         #    outgassing
         from proteus.outgas.wrapper import (
             calc_target_elemental_inventories,
+            check_desiccation,
             run_desiccated,
             run_outgassing
         )
@@ -282,6 +282,9 @@ class Proteus:
             # Get last row from helpfile dataframe
             self.hf_row = self.hf_all.iloc[-1].to_dict()
 
+            # Check if the planet is desiccated
+            self.desiccated = check_desiccation(self.config, self.hf_row)
+
             # Extract all archived data files
             log.debug("Extracting archived data files")
             self.extract_archives()
@@ -296,6 +299,7 @@ class Proteus:
             # Set loop counters
             self.loops["total"] = len(self.hf_all)
             self.init_stage = False
+
         log.info(" ")
 
         # Prepare star stuff
@@ -394,7 +398,7 @@ class Proteus:
             ############### / STELLAR FLUX MANAGEMENT
 
             ############### ESCAPE
-            if self.loops["total"] > self.loops["init_loops"]+2:
+            if (self.loops["total"] > self.loops["init_loops"]+2) and (not self.desiccated):
                 PrintHalfSeparator()
                 run_escape(self.config, self.hf_row, self.interior_o.dt, self.stellar_track)
 
@@ -408,11 +412,16 @@ class Proteus:
             if self.init_stage:
                 calc_target_elemental_inventories(self.directories, self.config, self.hf_row)
 
+            else:
+                # Check if desiccation has occurred
+                self.desiccated = check_desiccation(self.config, self.hf_row)
+
             # handle desiccated planet
-            self.desiccated = run_desiccated(self.config, self.hf_row)
+            if self.desiccated:
+                run_desiccated(self.config, self.hf_row)
 
             # solve for atmosphere composition
-            if not self.desiccated:
+            else:
                 run_outgassing(self.directories, self.config, self.hf_row)
 
             # Add atmosphere mass to interior mass, to get total planet mass

@@ -5,6 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
+from proteus.outgas.common import expected_keys
 from proteus.utils.constants import gas_list
 
 if TYPE_CHECKING:
@@ -21,6 +22,33 @@ def calc_target_elemental_inventories(dirs:dict, config:Config, hf_row:dict):
         calc_target_masses(dirs, config, hf_row)
     else:
         raise ValueError("Unsupported outgassing module selected!")
+
+def check_desiccation(config:Config, hf_row:dict) -> bool:
+    """
+    Check if the planet has desiccated. This is done by checking if all volatile masses
+    are below a threshold.
+
+    Parameters
+    ----------
+        config : Config
+            Configuration object
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+
+    Returns
+    -------
+        bool
+            True if desiccation occurred, False otherwise
+    """
+
+    # check if desiccation has occurred
+    for g in gas_list:
+        if hf_row[g + "_kg_total"] > config.outgas.mass_thresh:
+            log.debug("Not desiccated, %s = %.2e kg" % (g, hf_row[g + "_kg_total"]))
+            return False # return, and allow run_outgassing to proceed
+
+    return True
+
 
 def run_outgassing(dirs:dict, config:Config, hf_row:dict):
     '''
@@ -48,7 +76,7 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
     for s in gas_list:
         hf_row["M_atm"] += hf_row[s + "_kg_atm"]
 
-def run_desiccated(config:Config, hf_row:dict) -> bool:
+def run_desiccated(config:Config, hf_row:dict):
     '''
     Handle desiccation of the planet. This substitutes for run_outgassing when the planet
     has lost its entire volatile inventory.
@@ -59,20 +87,14 @@ def run_desiccated(config:Config, hf_row:dict) -> bool:
             Configuration object
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
-
-    Returns
-    -------
-        bool
-            True if desiccation occurred, False otherwise
     '''
 
-    # check if desiccation has occurred
-    desiccated = False
-    for g in gas_list:
-        if hf_row[g + "_kg_total"] > config.outgas.mass_thresh:
-            desiccated = False
-            break
-        else:
-            desiccated = True
-
     # if desiccated, set all gas masses to zero
+    log.info("Desiccation has occurred - no volatiles remaining")
+
+    excepted_keys = ["atm_kg_per_mol"]
+
+    # Set most values to zero
+    for k in expected_keys():
+        if k not in excepted_keys:
+            hf_row[k] = 0.0

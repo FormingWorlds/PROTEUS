@@ -129,6 +129,11 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str, min_thresh:float=1e1
         res[e] = hf_row[e+key]
     M_vols = sum(list(res.values()))
 
+    # check if we just desiccated the planet...
+    if M_vols < min_thresh:
+        log.debug("    Total mass of volatiles below threshold in escape calculation")
+        return res
+
     # calculate the current mass mixing ratio for each element
     #     if escape is unfractionating, this should be conserved
     emr = {}
