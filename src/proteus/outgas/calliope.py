@@ -146,6 +146,59 @@ def calc_target_masses(dirs:dict, config:Config, hf_row:dict):
             continue
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
+
+def construct_guess(hf_row:Config, target:dict):
+    """
+    Construct guess for CALLIOPE
+
+    Parameters
+    ----------
+    hf_row : dict
+        Dictionary containing the current state of the planet
+    target : dict
+        Dictionary containing the target elemental inventories [kg]
+
+    Returns
+    -------
+    p_guess : dict
+        Dictionary containing the guess for the surface pressures [bar]
+    """
+
+    log.debug("Initial guess for CALLIOPE")
+
+    # During initial phase, allow CALLIOPE to make its own guess
+    if hf_row["Time"] < 1:
+        log.debug("    providing None, allowing CALLIOPE to guess")
+        return None
+
+    # Dictionary of partial pressures [bar] for H2O, CO2, N2, S2
+    p_guess = {}
+
+    # Use previous value from hf_row
+    log.debug("    using previous partial pressures from hf_row")
+    for s in ("H2O", "CO2", "N2", "S2"):
+        p_guess[s] = hf_row[f"{s}_bar"]
+
+    # Check if elemental inventory is zero => guess zero pressure
+    for s in p_guess.keys():
+
+        # get elemens in this volatile
+        elems = [e for e in s if e in ("H","C","N","S")]
+
+        # check if any of the elements are zero in the planet
+        is_zero = False
+        for e in elems:
+            if target[e] < 1e-2: # kg
+                is_zero = True
+                break
+
+        # if any of the elements are zero, set guess to zero
+        if is_zero:
+            p_guess[s] = 0.0
+            log.debug("    %s: guess set to zero"%s)
+
+    return p_guess
+
 def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
     # make solvevol options
     solvevol_inp = construct_options(dirs, config, hf_row)
@@ -155,9 +208,10 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
     for e in element_list:
         if e == "O":
             continue
-
-        # save to dict
         solvevol_target[e] = hf_row[e + "_kg_total"]
+
+    # construct guess for CALLIOPE
+    p_guess = construct_guess(hf_row, solvevol_target)
 
     # Do not allow low temperatures
     if solvevol_inp["T_magma"] < config.outgas.calliope.T_floor:
@@ -165,7 +219,8 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
         log.warning("Outgassing temperature clipped to %.1f K"%solvevol_inp["T_magma"])
 
     # get atmospheric compositison
-    solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp, rtol=1e-7)
+    solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp,
+                                                rtol=1e-7, p_guess=p_guess)
     for k in solvevol_result.keys():
         if k in hf_row.keys():
             hf_row[k] = solvevol_result[k]

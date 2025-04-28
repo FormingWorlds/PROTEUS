@@ -8,6 +8,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Parameters
 [params]
     [params.out]
+        logging     = "DEBUG"
         path        = "escape"
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
 
