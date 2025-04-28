@@ -398,9 +398,12 @@ def get_Zalmoxis():
     # Define the EOS folder path
     eos_folder = FWL_DATA_DIR / "EOS_material_properties" / "EOS_Seager2007"
 
-    # Ensure the folder exists
-    if not eos_folder.exists() or not eos_folder.is_dir():
-        raise FileNotFoundError(f"The folder '{eos_folder}' does not exist.")
+    # Download the EOS material properties if not already present
+    if not eos_folder.exists():
+        log.debug("Get EOS material properties from Seager et al. (2007)")
+        download_EOS_material_properties()
+    else:
+        log.debug("EOS material properties already downloaded")
 
     # Build the material_properties dictionary
     material_properties = {

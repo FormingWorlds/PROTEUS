@@ -28,7 +28,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     module          = "dummy"
 
 [struct]
-    radius_int  = 1.0    # R_earth
+
+    mass_tot    = 1.0    # M_earth
     corefrac    = 0.55   # non-dim., radius fraction
     coremassfrac = 0.32  # non-dim., mass fraction
     weight_iron_frac = 0.35 # non-dim., iron fraction in the core
