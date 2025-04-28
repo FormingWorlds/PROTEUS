@@ -21,6 +21,7 @@ log = logging.getLogger("fwl."+__name__)
 
 # Constants
 mass_ocean = ocean_moles * molar_mass['H2']
+ZERO_THRESH = 1e6 # kg
 
 def construct_options(dirs:dict, config:Config, hf_row:dict):
     """
@@ -147,9 +148,11 @@ def calc_target_masses(dirs:dict, config:Config, hf_row:dict):
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
 
-def construct_guess(hf_row:Config, target:dict):
+def construct_guess(hf_row:dict, target:dict) -> dict | None:
     """
-    Construct guess for CALLIOPE
+    Construct initial guess for CALLIOPE.
+
+    Returns None for time=0, otherwise returns a dictionary of partial pressures.
 
     Parameters
     ----------
@@ -160,7 +163,7 @@ def construct_guess(hf_row:Config, target:dict):
 
     Returns
     -------
-    p_guess : dict
+    p_guess : dict | None
         Dictionary containing the guess for the surface pressures [bar]
     """
 
@@ -176,19 +179,18 @@ def construct_guess(hf_row:Config, target:dict):
 
     # Use previous value from hf_row
     log.debug("    using previous partial pressures from hf_row")
-    for s in ("H2O", "CO2", "N2", "S2"):
+    for s in vol_list:
         p_guess[s] = hf_row[f"{s}_bar"]
 
     # Check if elemental inventory is zero => guess zero pressure
-    for s in p_guess.keys():
-
-        # get elemens in this volatile
-        elems = [e for e in s if e in ("H","C","N","S")]
+    for s in vol_list:
 
         # check if any of the elements are zero in the planet
         is_zero = False
-        for e in elems:
-            if target[e] < 1e-2: # kg
+        for e in element_list:
+            if e == "O":
+                continue
+            if (e in s) and (target[e] < ZERO_THRESH): # kg
                 is_zero = True
                 break
 
@@ -199,28 +201,67 @@ def construct_guess(hf_row:Config, target:dict):
 
     return p_guess
 
+def flag_included_volatiles(guess:dict, config:Config) -> dict:
+    """
+    Determine which volatiles are included in the outgassing calculation
+
+    Parameters
+    ----------
+    guess : dict
+        Dictionary containing the guess for the surface pressures [bar]
+    config : Config
+        Configuration object
+
+    Returns
+    -------
+    p_included : dict
+        Dictionary containing the inclusion status of each volatile (true/false)
+    """
+
+    # Included based on config
+    p_included = {}
+    for s in vol_list:
+        p_included[s] = bool(getattr(config.outgas.calliope, f"include_{s}"))
+
+    # If guess is none, just do what config suggests
+    if guess is None:
+        return p_included
+
+    # Check if partial pressure is zero => do not include volatile
+    for s in vol_list:
+        p_included[s] = p_included[s] and (guess[s] > 0.0)
+
+    return p_included
+
 def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
     # make solvevol options
-    solvevol_inp = construct_options(dirs, config, hf_row)
+    opts = construct_options(dirs, config, hf_row)
 
     # convert masses to dict for calliope
-    solvevol_target = {}
+    target = {}
     for e in element_list:
         if e == "O":
             continue
-        solvevol_target[e] = hf_row[e + "_kg_total"]
+        target[e] = hf_row[e + "_kg_total"]
 
     # construct guess for CALLIOPE
-    p_guess = construct_guess(hf_row, solvevol_target)
+    p_guess = construct_guess(hf_row, target)
+
+    # check if gas is included or not
+    p_incl = flag_included_volatiles(p_guess, config)
+
+    # Set included
+    for s in vol_list:
+        opts[f'{s}_included'] = int(p_incl[s])
 
     # Do not allow low temperatures
-    if solvevol_inp["T_magma"] < config.outgas.calliope.T_floor:
-        solvevol_inp["T_magma"] = config.outgas.calliope.T_floor
-        log.warning("Outgassing temperature clipped to %.1f K"%solvevol_inp["T_magma"])
+    if opts["T_magma"] < config.outgas.calliope.T_floor:
+        opts["T_magma"] = config.outgas.calliope.T_floor
+        log.warning("Outgassing temperature clipped to %.1f K"%opts["T_magma"])
 
     # get atmospheric compositison
-    solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp,
-                                                rtol=1e-7, p_guess=p_guess)
+    solvevol_result = equilibrium_atmosphere(target, opts,
+                                                rtol=1e-10, p_guess=p_guess)
     for k in solvevol_result.keys():
         if k in hf_row.keys():
             hf_row[k] = solvevol_result[k]

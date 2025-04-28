@@ -90,7 +90,7 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
 
     return mlr
 
-def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
+def calc_new_elements(hf_row:dict, dt:float, reservoir:str, min_thresh:float=1e10):
     """Calculate new elemental inventory based on escape rate.
 
     Parameters
@@ -101,6 +101,8 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
             Time-step length [years]
         reservoir: str
             Element reservoir representing the escaping composition (bulk, outgas, pxuv)
+        min_thresh: float
+            Minimum threshold for element mass [kg]. Inventories below this are set to zero.
 
     Returns
     -------
@@ -145,6 +147,11 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
 
         # subtract lost mass from TOTAL mass of element e
         tgt[e] = hf_row[e+"_kg_total"] - esc_rate_elem * dt
+
+        # below threshold, set to zero
+        if tgt[e] < min_thresh:
+            log.debug("    %2s total inventory below thresh, set to zero"%(e))
+            tgt[e] = 0.0
 
         # do not allow negative masses
         tgt[e] = max(0.0, tgt[e])
