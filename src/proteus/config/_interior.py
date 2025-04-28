@@ -170,3 +170,57 @@ class Interior:
     rheo_phi_loc: float     = field(default=0.3,    validator=(gt(0),lt(1)))
     rheo_phi_wid: float     = field(default=0.15,   validator=(gt(0),lt(1)))
     bulk_modulus: float     = field(default=260e9,  validator=gt(0))
+
+@define
+class Zalmoxis:
+    """Parameters for Zalmoxis module.
+
+    Attributes
+    ----------
+    choice: str
+        EOS choice of Zalmoxis. Choices: "Tabulated".
+    num_levels: int
+        Number of Zalmoxis radius layers.
+    max_iterations_outer: int
+        Maximum number of iterations for the outer loop.
+    tolerance_outer: float
+        Convergence tolerance for the outer loop.
+    tolerance_radius: float
+        Convergence tolerance for the cmb radius calculation in the outer loop.
+    max_iterations_inner: int
+        Maximum number of iterations for the inner loop.
+    tolerance_inner: float
+        Convergence tolerance for the inner loop.
+    relative_tolerance: float
+        Relative tolerance for solve_ivp.
+    absolute_tolerance: float
+        Absolute tolerance for solve_ivp.
+    target_surface_pressure: float
+        Target surface pressure for the pressure adjustment.
+    pressure_tolerance: float
+        Convergence tolerance for the pressure adjustment.
+    max_iterations_pressure: int
+        Maximum number of iterations for the pressure adjustment.
+    pressure_adjustment_factor: float
+        Reduction factor for adjusting the pressure in the pressure adjustment.
+    """
+
+    EOSchoice: str                    = field(default="Tabulated", validator=in_(("Tabulated")))
+
+    num_levels: int                   = field(default=100,    validator=ge(100))
+
+    max_iterations_outer: int         = field(default=20,    validator=ge(1))
+    tolerance_outer: float            = field(default=1e-3, validator=ge(0))
+    tolerance_radius: float           = field(default=1e-3, validator=ge(0))
+    max_iterations_inner: int         = field(default=100,  validator=ge(1))
+    tolerance_inner: float            = field(default=1e-4, validator=ge(0))
+    relative_tolerance: float         = field(default=1e-5, validator=ge(0))
+    absolute_tolerance: float         = field(default=1e-6, validator=ge(0))
+
+    target_surface_pressure: float    = field(default=101325, validator=ge(0))
+    pressure_tolerance: float         = field(default=1e11,  validator=ge(0))
+    max_iterations_pressure: int      = field(default=200,   validator=ge(1))
+    pressure_adjustment_factor: float = field(default=1.1, validator=ge(0))
+
+
+

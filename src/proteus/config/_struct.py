@@ -38,6 +38,10 @@ class Struct:
         Radius of the atmosphere-mantle boundary [R_earth]
     corefrac: float
         Fraction of the planet's interior radius corresponding to the core.
+    coremassfrac: float
+        Fraction of the planet's total interior mass corresponding to the core.
+    weight_iron_frac: float
+        Fraction of the planet's core mass that is iron.
     core_density: float
         Density of the planet's core [kg m-3]
     core_heatcap: float
@@ -45,6 +49,8 @@ class Struct:
     """
 
     corefrac: float     = field(validator=(gt(0), lt(1)))
+    coremassfrac: float = field(validator=(gt(0), lt(1)))
+    weight_iron_frac: float = field(validator=(gt(0), lt(1)))
 
     mass_tot            = field(default='none',
                                 validator=mass_radius_valid,
