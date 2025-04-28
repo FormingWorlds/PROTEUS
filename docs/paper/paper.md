@@ -1,14 +1,18 @@
 ---
-title: 'PROTEUS: A modular framework for the coupled evpolution of the atmospheres and interiors evolution of lava planets.'
+title: 'The PROTEUS framework for planetary evolution'
+subtitle: 'A modular numerical model of coupled evolution of the atmospheres and interiors of rocky planets'
 tags:
   - astronomy
-  - geophysics
   - exoplanets
   - planetary science
-  - atmospheres
+  - geophysics
+  - atmospheric science
+  - geochemistry
+  - geodynamics
   - planetary evolution
   - lava planets
 authors:
+  - name: PROTEUS Collaboration
   - name: Tim Lichtenberg
     orcid: 0000-0002-3286-7683
     affiliation: 1
@@ -23,26 +27,33 @@ authors:
   - name: Laurent Soucasse
     orcid: 0000-0002-5422-8794
     affiliation: 3
-  - name: Stef Smeets
-    affiliation: 3
   - name: Dan J. Bower
     orcid: 0000-0002-0673-4860
     affiliation: 4
+  - name: Stef Smeets
+    orcid: 0000-0002-5413-9038
+    affiliation: 3
   - name: Mark Hammond
     orcid: 0000-0002-6893-522X
     affiliation: 2
+  - name: Shang-Min Tsai
+    orcid: 0000-0002-8163-4608
+    affiliation: 5
   - name: Raymond T. Pierrehumbert
     orcid: 0000-0002-5887-1197
     affiliation: 2
 affiliations:
- - name: Kapteyn Astronomical Institute, University of Groningen, P.O. Box 800, 9700 AV Groningen, The Netherlands
+ - name: Kapteyn Astronomical Institute, University of Groningen, Groningen, The Netherlands
    index: 1
- - name: Department of Physics, University of Oxford, Parks Road, Oxford OX1 3PU, UK
+ - name: Department of Physics, University of Oxford, Oxford, United Kingdom
    index: 2
- - name: Netherlands eScience Center, Science Park 402, NL-1098 XH Amsterdam, The Netherlands
+ - name: Netherlands eScience Center, Amsterdam, The Netherlands
    index: 3
- - name: Institute of Geochemistry and Petrology, ETH Zurich, Clausiusstrasse 25, 8092 Zürich, Switzerland
+ - name: Institute of Geochemistry and Petrology, ETH Zurich, Zurich, Switzerland
    index: 4
+ - name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei, Taiwan
+   index: 5
+
 date: June 2025
 bibliography: paper.bib
 
