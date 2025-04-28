@@ -165,10 +165,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
             plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'SO2', 'H2S', 'S2', 'S8']"
             sct_str = "['H2', 'O2', 'N2', 'CO2']"
             ele_str = "['H', 'O', 'C', 'N', 'S']"
-            if config.atmos_chem.photo_on:
-                network_file = "SNCHO_photo_network.txt"
-            else:
-                raise ValueError("Photochemistry is required when using sulfur network")
+            network_file = "SNCHO_photo_network.txt"
 
         case _:
             log.error(f"Network not recognised: '{config.atmos_chem.vulcan.network}'")

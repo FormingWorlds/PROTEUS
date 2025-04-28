@@ -15,8 +15,8 @@ def valid_zephyrus(instance, attribute, value):
         raise ValueError("`zephyrus.Pxuv` must be >0 and < 10 bar")
 
     efficiency = instance.zephyrus.efficiency
-    if (not efficiency) or (efficiency <= 0) or (efficiency > 1):
-        raise ValueError("`zephyrus.efficiency` must be >0 and <=1")
+    if (not efficiency) or (efficiency < 0) or (efficiency > 1):
+        raise ValueError("`zephyrus.efficiency` must be >=0 and <=1")
 
 @define
 class Zephyrus:
