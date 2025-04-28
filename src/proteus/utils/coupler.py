@@ -417,25 +417,6 @@ def GetHelpfileKeys():
         keys.append(e+"_kg_liquid")
         keys.append(e+"_kg_total")
 
-    # elemental ratios
-    for e1 in element_list:
-        for e2 in element_list:
-            if e1==e2:
-                continue
-
-            # reversed ratio
-            k = "%s/%s_atm"%(e2,e1)
-            if k in keys:
-                # skip this, since it's redundant to store (for example) the
-                # ratio of H/C when we already have C/H.
-                continue
-
-            # intended ratio to be stored
-            k = "%s/%s_atm"%(e1,e2)
-            if k in keys:
-                continue
-            keys.append(k)
-
     # Diagnostic variables...
 
     # Weak temperature gradient parameter at the surface

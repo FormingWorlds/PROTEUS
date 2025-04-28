@@ -28,7 +28,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 2e+9     # yr, model will terminate when t > maximum
+            maximum = 5e+9     # yr, model will terminate when t > maximum
 
         [params.stop.solid]
             enabled  = false

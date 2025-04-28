@@ -14,6 +14,7 @@ from calliope.solve import (
     get_target_from_pressures,
 )
 
+from proteus.outgas.common import expected_keys
 from proteus.utils.constants import element_list, vol_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -21,7 +22,6 @@ log = logging.getLogger("fwl."+__name__)
 
 # Constants
 mass_ocean = ocean_moles * molar_mass['H2']
-ZERO_THRESH = 1e6 # kg
 
 def construct_options(dirs:dict, config:Config, hf_row:dict):
     """
@@ -148,7 +148,7 @@ def calc_target_masses(dirs:dict, config:Config, hf_row:dict):
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
 
-def construct_guess(hf_row:dict, target:dict) -> dict | None:
+def construct_guess(hf_row:dict, target:dict, mass_thresh:float) -> dict | None:
     """
     Construct initial guess for CALLIOPE.
 
@@ -160,6 +160,8 @@ def construct_guess(hf_row:dict, target:dict) -> dict | None:
         Dictionary containing the current state of the planet
     target : dict
         Dictionary containing the target elemental inventories [kg]
+    mass_thresh : float
+        Minimum threshold for element mass [kg]. Inventories below this are set to zero.
 
     Returns
     -------
@@ -190,7 +192,7 @@ def construct_guess(hf_row:dict, target:dict) -> dict | None:
         for e in element_list:
             if e == "O":
                 continue
-            if (e in s) and (target[e] < ZERO_THRESH): # kg
+            if (e in s) and (target[e] < mass_thresh): # kg
                 is_zero = True
                 break
 
@@ -228,8 +230,8 @@ def flag_included_volatiles(guess:dict, config:Config) -> dict:
         return p_included
 
     # Check if partial pressure is zero => do not include volatile
-    for s in vol_list:
-        p_included[s] = p_included[s] and (guess[s] > 0.0)
+    # for s in vol_list:
+    #     p_included[s] = p_included[s] and (guess[s] > 0.0)
 
     return p_included
 
@@ -245,7 +247,7 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
         target[e] = hf_row[e + "_kg_total"]
 
     # construct guess for CALLIOPE
-    p_guess = construct_guess(hf_row, target)
+    p_guess = construct_guess(hf_row, target, config.outgas.mass_thresh)
 
     # check if gas is included or not
     p_incl = flag_included_volatiles(p_guess, config)
@@ -261,9 +263,12 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
 
     # get atmospheric compositison
     solvevol_result = equilibrium_atmosphere(target, opts,
-                                                rtol=1e-10, p_guess=p_guess)
-    for k in solvevol_result.keys():
-        if k in hf_row.keys():
+                                                rtol=1e-4, atol=config.outgas.mass_thresh,
+                                                p_guess=p_guess)
+
+    # Get result
+    for k in expected_keys():
+        if k in solvevol_result:
             hf_row[k] = solvevol_result[k]
 
     # print info

@@ -15,7 +15,6 @@ from proteus.atmos_clim.common import Atmos_t, get_spfile_path
 from proteus.utils.constants import const_R
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 
-# atm = None
 log = logging.getLogger("fwl."+__name__)
 
 def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
+def run_escape(config:Config, hf_row:dict, dt:float, stellar_track):
     """Run Escape submodule.
 
     Generic function to run escape calculation using ZEPHYRUS or dummy.
@@ -33,7 +33,7 @@ def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
         pass
 
     elif config.escape.module == 'zephyrus':
-        hf_row["esc_rate_total"] = RunZEPHYRUS(config, hf_row, stellar_track)
+        hf_row["esc_rate_total"] = run_zephyrus(config, hf_row, stellar_track)
 
     elif config.escape.module == 'dummy':
         hf_row["esc_rate_total"] = config.escape.dummy.rate
@@ -55,7 +55,7 @@ def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
             continue
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
-def RunZEPHYRUS(config, hf_row, stellar_track):
+def run_zephyrus(config, hf_row, stellar_track):
     """Run energy-limited escape (for now) model.
 
     Parameters

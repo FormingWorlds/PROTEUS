@@ -68,7 +68,9 @@ class Outgas:
     fO2_shift_IW: float
         Homogeneous oxygen fugacity in the magma ocean used to represent redox state (log10 units relative to Iron-Wustite).
     module: str
-        Outgassing module to be used. Choices: 'calliope', 'atmodeller'.
+        Outgassing module to be used. Choices: 'calliope' only.
+    mass_thresh: float
+        Minimum threshold for element mass [kg]. Inventories below this are set to zero.
     calliope: Calliope
         Parameters for CALLIOPE module.
     atmodeller: Atmodeller
@@ -76,7 +78,9 @@ class Outgas:
     """
     fO2_shift_IW: float
 
-    module: str = field(validator=validators.in_(('calliope', 'atmodeller')))
+    module: str = field(validator=validators.in_(('calliope',)))
+
+    mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
 
     calliope: Calliope      = field(factory=Calliope)
     atmodeller: Atmodeller  = field(factory=Atmodeller)
