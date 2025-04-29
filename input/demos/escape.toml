@@ -15,10 +15,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # time-stepping
     [params.dt]
         minimum      = 3e2    # yr, minimum time-step
-        maximum      = 3e7    # yr, maximum time-step
+        maximum      = 3e6    # yr, maximum time-step
         initial      = 1e4    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 100    # yr, interval to re-calculate the instellation
+
+        method = 'maximum'
+
         [params.dt.adaptive]
             atol         = 0.02   # Step size atol
             rtol         = 0.07   # Step size rtol
@@ -77,7 +80,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     surf_greyalbedo  = 0.1      # surface grey albedo
     rayleigh        = false      # enable rayleigh scattering
 
-    module  = "dummy"           # Which atmosphere module to use
+    module  = "agni"           # Which atmosphere module to use
 
     [atmos_clim.dummy]
         gamma = 0.98

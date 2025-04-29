@@ -94,7 +94,10 @@ def run_desiccated(config:Config, hf_row:dict):
     # if desiccated, set all gas masses to zero
     log.info("Desiccation has occurred - no volatiles remaining")
 
+    # Do not set these to zero - avoid divide by zero elsewhere in the code
     excepted_keys = ["atm_kg_per_mol"]
+    for g in gas_list:
+        excepted_keys.append(f"{g}_vmr")
 
     # Set most values to zero
     for k in expected_keys():

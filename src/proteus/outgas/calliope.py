@@ -263,8 +263,9 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
 
     # get atmospheric compositison
     solvevol_result = equilibrium_atmosphere(target, opts,
-                                                rtol=1e-4, atol=config.outgas.mass_thresh,
-                                                nguess=int(5e4), nsolve=40,
+                                                rtol=1e-4,
+                                                atol=config.outgas.mass_thresh,
+                                                nguess=int(1e4), nsolve=100,
                                                 p_guess=p_guess)
 
     # Get result
