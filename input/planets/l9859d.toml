@@ -9,7 +9,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         logging     = "INFO"
         plot_mod    = 40      # Plotting frequency, 0: wait until completion | n: every n iterations
         write_mod   = 2
-        archive_mod = 5
+        archive_mod = 0
         remove_sf   = true
 
     # time-stepping
