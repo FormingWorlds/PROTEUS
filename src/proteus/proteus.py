@@ -474,7 +474,7 @@ class Proteus:
             PrintCurrentState(self.hf_row)
 
             # Check for convergence
-            if self.loops["total"] >= self.loops["init_loops"]:
+            if not self.init_stage:
                 log.info("Checking convergence criteria")
                 check_termination(self)
 
