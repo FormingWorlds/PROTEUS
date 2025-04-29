@@ -120,7 +120,7 @@ class Proteus:
             calc_target_elemental_inventories,
             check_desiccation,
             run_desiccated,
-            run_outgassing
+            run_outgassing,
         )
 
         #   stellar spectrum and evolution

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
-from proteus.utils.constants import gas_list, element_list
+from proteus.utils.constants import element_list, gas_list
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:

@@ -1,7 +1,8 @@
 # Shared code for outgassing wrapper
 from __future__ import annotations
 
-from proteus.utils.constants import gas_list, element_list
+from proteus.utils.constants import element_list, gas_list
+
 
 def expected_keys():
     copy_keys = ["P_surf", "M_atm", "atm_kg_per_mol"]
