@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
-from proteus.utils.constants import gas_list
+from proteus.utils.constants import gas_list, element_list
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -41,9 +41,9 @@ def check_desiccation(config:Config, hf_row:dict) -> bool:
     """
 
     # check if desiccation has occurred
-    for g in gas_list:
-        if hf_row[g + "_kg_total"] > config.outgas.mass_thresh:
-            log.debug("Not desiccated, %s = %.2e kg" % (g, hf_row[g + "_kg_total"]))
+    for e in element_list:
+        if hf_row[e + "_kg_total"] > config.outgas.mass_thresh:
+            log.debug("Not desiccated, %s = %.2e kg" % (e, hf_row[e + "_kg_total"]))
             return False # return, and allow run_outgassing to proceed
 
     return True
@@ -68,7 +68,7 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
         try:
             calc_surface_pressures(dirs, config, hf_row)
         except RuntimeError as e:
-            log.error("Outgassing calculation failed: " + str(e))
+            log.error("Outgassing calculation failed")
             UpdateStatusfile(dirs, 27)
             raise e
 
