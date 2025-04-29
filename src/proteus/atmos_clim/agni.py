@@ -178,6 +178,11 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         if not os.path.isfile(surface_material):
             raise FileNotFoundError(surface_material)
 
+    # Boundary pressures
+    p_surf = hf_row["P_surf"]
+    p_top  = config.atmos_clim.agni.p_top
+    p_surf = max(p_surf, p_top * 1.1) # this will happen if the atmosphere is stripped
+
     # Setup struct
     jl.AGNI.atmosphere.setup_b(atmos,
                         dirs["agni"], dirs["output"], input_sf,
@@ -191,8 +196,8 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         hf_row["gravity"], hf_row["R_int"],
 
                         int(config.atmos_clim.agni.num_levels),
-                        hf_row["P_surf"],
-                        config.atmos_clim.agni.p_top,
+                        p_surf,
+                        p_top,
 
                         vol_dict, "",
 
@@ -496,7 +501,7 @@ def _solve_transparent(atmos, config:Config):
     max_steps = 120
 
     jl.AGNI.solver.solve_transparent_b(atmos,
-                                        int(config.atmos_clim.surf_state_int),
+                                        sol_type=int(config.atmos_clim.surf_state_int),
                                         conv_atol=atol, conv_rtol=rtol,
                                         max_steps=int(max_steps))
     return atmos
@@ -539,7 +544,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     if bool(atmos.transparent):
         # no opacity
         log.info("Using transparent solver")
-        atmos = _solve_transparent(atmos)
+        atmos = _solve_transparent(atmos, config)
 
     else:
         # has opacity
