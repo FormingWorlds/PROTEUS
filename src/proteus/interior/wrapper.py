@@ -12,8 +12,6 @@ from proteus.interior.common import Interior_t
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
 
-from proteus.interior.zalmoxis import get_density_from_eos, interior_structure_odes
-
 if TYPE_CHECKING:
     from proteus.config import Config
 

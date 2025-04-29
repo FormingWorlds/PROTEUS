@@ -375,7 +375,7 @@ def get_spider(dirs=None):
 
     log.debug("    done")
 
-def download_EOS_material_properties():
+def download_Seager_EOS():
     """
     Download EOS material properties from Seager et al. (2007)
     """
@@ -387,7 +387,7 @@ def download_EOS_material_properties():
     desc='EOS Seager2007 material files'
 )
 
-def get_Zalmoxis():
+def get_Seager_EOS():
     """
     Builds the material_properties dictionary for Seager et al. (2007) EOS data needed by Zalmoxis.
     The function reads the file paths from the FWL_DATA/EOS_material_properties/EOS_Seager2007 folder.
@@ -401,7 +401,7 @@ def get_Zalmoxis():
     # Download the EOS material properties if not already present
     if not eos_folder.exists():
         log.debug("Get EOS material properties from Seager et al. (2007)")
-        download_EOS_material_properties()
+        download_Seager_EOS()
     else:
         log.debug("EOS material properties already downloaded")
 

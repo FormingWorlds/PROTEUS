@@ -39,7 +39,7 @@ class Struct:
     corefrac: float
         Fraction of the planet's interior radius corresponding to the core.
     coremassfrac: float
-        Fraction of the planet's total interior mass corresponding to the core.
+        Fraction of the planet's interior mass corresponding to the core.
     weight_iron_frac: float
         Fraction of the planet's core mass that is iron.
     core_density: float
