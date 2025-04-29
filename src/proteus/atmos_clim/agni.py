@@ -275,6 +275,13 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, transparent:bool):
     atmos.instellation = float(hf_row["F_ins"])
 
     # ---------------------
+    # Update compositions
+    vol_dict = _construct_voldict(hf_row, dirs)
+    for g in vol_dict.keys():
+        atmos.gas_vmr[g][:]  = vol_dict[g]
+        atmos.gas_ovmr[g][:] = vol_dict[g]
+
+    # ---------------------
     # Update surface temperature(s)
     atmos.tmp_surf  = float(hf_row["T_surf"] )
     atmos.tmp_magma = float(hf_row["T_magma"])
@@ -283,14 +290,7 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, transparent:bool):
     # Transparent mode?
     if transparent:
         jl.AGNI.atmosphere.make_transparent_b(atmos)
-        return
-
-    # ---------------------
-    # Update compositions
-    vol_dict = _construct_voldict(hf_row, dirs)
-    for g in vol_dict.keys():
-        atmos.gas_vmr[g][:]  = vol_dict[g]
-        atmos.gas_ovmr[g][:] = vol_dict[g]
+        return atmos
 
     # ---------------------
     # Store old/current log-pressure vs temperature arrays
@@ -476,7 +476,7 @@ def _solve_once(atmos, config:Config):
 
 def _solve_transparent(atmos, config:Config):
     """
-    Use AGNI to solve energy balance with transparent atmosphere
+    Use AGNI to solve for the surface temperature under a transparent atmosphere
 
     Parameters
     ----------
@@ -493,10 +493,12 @@ def _solve_transparent(atmos, config:Config):
 
     atol = float(config.atmos_clim.agni.solution_atol)
     rtol = float(config.atmos_clim.agni.solution_rtol)
+    max_steps = 120
 
     jl.AGNI.solver.solve_transparent_b(atmos,
                                         int(config.atmos_clim.surf_state_int),
-                                        conv_atol=atol, conv_rtol=rtol)
+                                        conv_atol=atol, conv_rtol=rtol,
+                                        max_steps=int(max_steps))
     return atmos
 
 def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
@@ -534,15 +536,18 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     time_str = "%d"%hf_row["Time"]
 
     # Solve atmosphere
-    if transparent:
+    if bool(atmos.transparent):
         # no opacity
+        log.info("Using transparent solver")
         atmos = _solve_transparent(atmos)
 
     else:
         # has opacity
         if config.atmos_clim.agni.solve_energy:
+            log.info("Using nonlinear solver to conserve fluxes")
             atmos = _solve_energy(atmos, loops_total, dirs, config)
         else:
+            log.info("Using prescribed temperature profile")
             atmos = _solve_once(atmos, config)
 
     # Write output data

@@ -100,11 +100,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     reservoir = "outgas"  # Escaping reservoir: "bulk", "outgas", "pxuv".
 
-    module = "zephyrus"    # Which escape module to use
+    module = "dummy"    # Which escape module to use
     [escape.zephyrus]
         Pxuv        = 1e-4          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
         efficiency  = 1.0           # Escape efficiency factor
         tidal       = false         # Tidal contribution enabled
+
+    [escape.dummy]
+        rate = 1e7
 
 
 [interior]

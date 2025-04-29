@@ -230,8 +230,8 @@ def flag_included_volatiles(guess:dict, config:Config) -> dict:
         return p_included
 
     # Check if partial pressure is zero => do not include volatile
-    # for s in vol_list:
-    #     p_included[s] = p_included[s] and (guess[s] > 0.0)
+    for s in vol_list:
+        p_included[s] = p_included[s] and (guess[s] > 0.0)
 
     return p_included
 
@@ -264,7 +264,7 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
     # get atmospheric compositison
     solvevol_result = equilibrium_atmosphere(target, opts,
                                                 rtol=1e-4, atol=config.outgas.mass_thresh,
-                                                nguess=int(2e4), nsolve=200,
+                                                nguess=int(5e4), nsolve=40,
                                                 p_guess=p_guess)
 
     # Get result
