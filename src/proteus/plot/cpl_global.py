@@ -58,7 +58,7 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
         this_vmr = np.array(hf[vol+"_vmr"])
         vol_present[vol] = True
 
-        if (np.amax(this_vmr) < 1.0e-20) or not config.outgas.calliope.is_included(vol):
+        if np.amax(this_vmr) < 1.0e-10:
             vol_present[vol] = False
             continue
         vol_vmr[vol] = this_vmr

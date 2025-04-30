@@ -69,7 +69,7 @@ def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf") :
 
     # Decorate top plot
     axt.set_ylabel(r"Mass [%s]"%M_ulbl)
-    axt.set_yscale("log")
+    axt.set_yscale("symlog", linthresh=1e-4)
     axt.legend(loc='upper left', bbox_to_anchor=(1.0, 1.02), labelspacing=0.2)
 
     # Plot escape rate (kg / yr)

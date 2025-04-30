@@ -530,13 +530,13 @@ if __name__=='__main__':
     print("Start GridPROTEUS")
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "scratch/l98d_habrok2"
+    folder = "scratch/l98d_habrok3"
 
     # Use SLURM?
     use_slurm = True
 
     # Execution limits
-    max_jobs = 300       # maximum number of concurrent tasks
+    max_jobs = 300      # maximum number of concurrent tasks
     max_days = 1         # maximum number of days to run
     max_mem  = 3         # maximum memory per CPU in GB
 
@@ -565,6 +565,19 @@ if __name__=='__main__':
 
     pg.add_dimension("Mass", "struct.mass_tot")
     pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
+
+
+    # pg.add_dimension("Eccentricity", "orbit.eccentricity")
+    # pg.set_dimension_linspace("Eccentricity", 0.0, 0.15, 25)
+
+    # pg.add_dimension("Core fraction", "struct.corefrac")
+    # pg.set_dimension_linspace("Core fraction", 0.35, 0.95, 25)
+
+    # pg.add_dimension("Efficiency", "escape.zephyrus.efficiency")
+    # pg.set_dimension_linspace("Efficiency", 1e-5, 0.5, 26)
+
+    # pg.add_dimension("Bands", "atmos_clim.agni.spectral_bands")
+    # pg.set_dimension_direct("Bands", ["16", "48", "256"])
 
     # Print information
     pg.print_setup()

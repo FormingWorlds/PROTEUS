@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
+def run_escape(config:Config, hf_row:dict, dt:float, stellar_track):
     """Run Escape submodule.
 
     Generic function to run escape calculation using ZEPHYRUS or dummy.
@@ -33,7 +33,7 @@ def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
         pass
 
     elif config.escape.module == 'zephyrus':
-        hf_row["esc_rate_total"] = RunZEPHYRUS(config, hf_row, stellar_track)
+        hf_row["esc_rate_total"] = run_zephyrus(config, hf_row, stellar_track)
 
     elif config.escape.module == 'dummy':
         hf_row["esc_rate_total"] = config.escape.dummy.rate
@@ -47,7 +47,9 @@ def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
         )
 
     # calculate new elemental inventories
-    solvevol_target = calc_new_elements(hf_row, dt, config.escape.reservoir)
+    solvevol_target = calc_new_elements(hf_row, dt,
+                                            config.escape.reservoir,
+                                            min_thresh=config.outgas.mass_thresh)
 
     # store new elemental inventories
     for e in element_list:
@@ -55,7 +57,7 @@ def RunEscape(config:Config, hf_row:dict, dt:float, stellar_track):
             continue
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
-def RunZEPHYRUS(config, hf_row, stellar_track):
+def run_zephyrus(config, hf_row, stellar_track):
     """Run energy-limited escape (for now) model.
 
     Parameters
@@ -90,7 +92,7 @@ def RunZEPHYRUS(config, hf_row, stellar_track):
 
     return mlr
 
-def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
+def calc_new_elements(hf_row:dict, dt:float, reservoir:str, min_thresh:float=1e10):
     """Calculate new elemental inventory based on escape rate.
 
     Parameters
@@ -101,6 +103,8 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
             Time-step length [years]
         reservoir: str
             Element reservoir representing the escaping composition (bulk, outgas, pxuv)
+        min_thresh: float
+            Minimum threshold for element mass [kg]. Inventories below this are set to zero.
 
     Returns
     -------
@@ -127,6 +131,11 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
         res[e] = hf_row[e+key]
     M_vols = sum(list(res.values()))
 
+    # check if we just desiccated the planet...
+    if M_vols < min_thresh:
+        log.debug("    Total mass of volatiles below threshold in escape calculation")
+        return res
+
     # calculate the current mass mixing ratio for each element
     #     if escape is unfractionating, this should be conserved
     emr = {}
@@ -145,6 +154,11 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str):
 
         # subtract lost mass from TOTAL mass of element e
         tgt[e] = hf_row[e+"_kg_total"] - esc_rate_elem * dt
+
+        # below threshold, set to zero
+        if tgt[e] < min_thresh:
+            log.debug("    %2s total inventory below thresh, set to zero"%(e))
+            tgt[e] = 0.0
 
         # do not allow negative masses
         tgt[e] = max(0.0, tgt[e])

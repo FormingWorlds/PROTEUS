@@ -81,7 +81,7 @@ def _check_escape(handler: Proteus) -> bool:
     P_stop = handler.config.params.stop.escape.p_stop
     log.debug("    val, req = %.3e, %.3e  bar"%(P_surf, P_stop))
 
-    if handler.has_escaped or (P_surf <= P_stop):
+    if P_surf <= P_stop:
         UpdateStatusfile(handler.directories, 15)
         _msg_termination("Atmosphere has escaped")
         return True
@@ -170,9 +170,6 @@ def check_termination(handler: Proteus) -> bool:
     # Atmosphere has escaped
     if handler.config.params.stop.escape.enabled:
         finished = finished or _check_escape(handler)
-        # By pass two-iteration check here, otherwise we will get a divide-by-zero
-        #   error in the next iteration's calculation.
-        handler.finished_prev = handler.finished_prev or handler.has_escaped
 
     # Maximum time reached
     if handler.config.params.stop.time.enabled:
