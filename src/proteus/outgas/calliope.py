@@ -44,9 +44,14 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
 
     # Volatile inventory
     for s in vol_list:
-        solvevol_inp[f'{s}_initial_bar'] = config.delivery.volatiles.get_pressure(s)
+        if s != "O2":
+            pressure = config.delivery.volatiles.get_pressure(s)
+            included = config.outgas.calliope.is_included(s)
+        else:
+            pressure = 0.0
+            included = True
 
-        included = config.outgas.calliope.is_included(s)
+        solvevol_inp[f'{s}_initial_bar'] = float(pressure)
         solvevol_inp[f'{s}_included'] = int(included)
 
         if (s in ("H2O","CO2","N2","S2")) and not included:
@@ -143,8 +148,6 @@ def calc_target_masses(dirs:dict, config:Config, hf_row:dict):
 
     # store in hf_row as elements
     for e in solvevol_target.keys():
-        if e == "O":
-            continue
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
 
@@ -223,7 +226,10 @@ def flag_included_volatiles(guess:dict, config:Config) -> dict:
     # Included based on config
     p_included = {}
     for s in vol_list:
-        p_included[s] = bool(getattr(config.outgas.calliope, f"include_{s}"))
+        if s == "O2":
+            p_included[s] = True
+        else:
+            p_included[s] = bool(getattr(config.outgas.calliope, f"include_{s}"))
 
     # If guess is none, just do what config suggests
     if guess is None:
@@ -231,7 +237,8 @@ def flag_included_volatiles(guess:dict, config:Config) -> dict:
 
     # Check if partial pressure is zero => do not include volatile
     for s in vol_list:
-        p_included[s] = p_included[s] and (guess[s] > 0.0)
+        if s != "O2":
+            p_included[s] = p_included[s] and (guess[s] > 0.0)
 
     return p_included
 
@@ -242,8 +249,6 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
     # convert masses to dict for calliope
     target = {}
     for e in element_list:
-        if e == "O":
-            continue
         target[e] = hf_row[e + "_kg_total"]
 
     # construct guess for CALLIOPE

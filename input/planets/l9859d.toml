@@ -41,7 +41,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             enabled = false
 
         [params.stop.escape]
-            enabled   = true
+            enabled   = false
             p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
 
 
@@ -101,7 +101,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "zephyrus"
     [escape.zephyrus]
         Pxuv = 5e-5
-        efficiency = 0.1
+        efficiency = 0.5
         tidal = false
 
 [interior]

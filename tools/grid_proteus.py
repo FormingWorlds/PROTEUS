@@ -530,18 +530,18 @@ if __name__=='__main__':
     print("Start GridPROTEUS")
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "scratch/l98d_sens_escape"
+    folder = "scratch/l98d_habrok3"
 
     # Use SLURM?
     use_slurm = True
 
     # Execution limits
-    max_jobs = 30      # maximum number of concurrent tasks
+    max_jobs = 300      # maximum number of concurrent tasks
     max_days = 1         # maximum number of days to run
     max_mem  = 3         # maximum memory per CPU in GB
 
     # Base config file
-    config = "nogit_295.toml"
+    config = "planets/l9859d.toml"
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
 
     # Set this string to have the output files created at an alternative location. The
@@ -554,17 +554,17 @@ if __name__=='__main__':
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
     # Add dimensions to grid...
-    # pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    # pg.set_dimension_arange("Redox state", -4.5, 0.0, 0.5)
+    pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
+    pg.set_dimension_arange("Redox state", -4.5, 0.0, 0.5)
 
-    # pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    # pg.set_dimension_arange("Hydrogen", 16000, 1000, -3000)
+    pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
+    pg.set_dimension_arange("Hydrogen", 16000, 1000, -3000)
 
-    # pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    # pg.set_dimension_direct("Sulfur", [2, 6, 8, 10])
+    pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
+    pg.set_dimension_direct("Sulfur", [2, 6, 8, 10])
 
-    # pg.add_dimension("Mass", "struct.mass_tot")
-    # pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
+    pg.add_dimension("Mass", "struct.mass_tot")
+    pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
 
 
     # pg.add_dimension("Eccentricity", "orbit.eccentricity")
@@ -573,8 +573,8 @@ if __name__=='__main__':
     # pg.add_dimension("Core fraction", "struct.corefrac")
     # pg.set_dimension_linspace("Core fraction", 0.35, 0.95, 25)
 
-    pg.add_dimension("Efficiency", "escape.zephyrus.efficiency")
-    pg.set_dimension_linspace("Efficiency", 1e-5, 0.5, 26)
+    # pg.add_dimension("Efficiency", "escape.zephyrus.efficiency")
+    # pg.set_dimension_linspace("Efficiency", 1e-5, 0.5, 26)
 
     # pg.add_dimension("Bands", "atmos_clim.agni.spectral_bands")
     # pg.set_dimension_direct("Bands", ["16", "48", "256"])

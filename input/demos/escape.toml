@@ -80,7 +80,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     surf_greyalbedo  = 0.1      # surface grey albedo
     rayleigh        = false      # enable rayleigh scattering
 
-    module  = "agni"           # Which atmosphere module to use
+    module  = "dummy"           # Which atmosphere module to use
 
     [atmos_clim.dummy]
         gamma = 0.98
@@ -123,7 +123,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_tmagma = 3000.0
 
 [outgas]
-    fO2_shift_IW    = 4         # log10(ΔIW), atmosphere/interior boundary oxidation state
+    fO2_shift_IW    = 5         # log10(ΔIW), atmosphere/interior boundary oxidation state
 
     module = "calliope"         # Which outgassing module to use
 

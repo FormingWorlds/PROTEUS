@@ -21,7 +21,9 @@ def expected_keys():
     # elements
     for e in element_list:
         for r in res_list:
-            if r != "total":
+            # do not overwrite total inventory, since this will be modified by escape
+            # except oxygen, since we assume it's set by fO2
+            if (r != "total") or (e == 'O'):
                 copy_keys.append(f"{e}_kg_{r}")
 
     return copy_keys

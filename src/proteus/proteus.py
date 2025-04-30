@@ -244,8 +244,12 @@ class Proteus:
             # Store partial pressures and list of included volatiles
             inc_gases = []
             for s in vol_list:
-                pp_val = self.config.delivery.volatiles.get_pressure(s)
-                include = self.config.outgas.calliope.is_included(s)
+                if s != "O2":
+                    pp_val = self.config.delivery.volatiles.get_pressure(s)
+                    include = self.config.outgas.calliope.is_included(s)
+                else:
+                    pp_val = 0.0
+                    include = True
 
                 if include:
                     inc_gases.append(s)
