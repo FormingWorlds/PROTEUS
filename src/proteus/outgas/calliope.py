@@ -249,7 +249,8 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
     # convert masses to dict for calliope
     target = {}
     for e in element_list:
-        target[e] = hf_row[e + "_kg_total"]
+        if e != 'O':
+            target[e] = hf_row[e + "_kg_total"]
 
     # construct guess for CALLIOPE
     p_guess = construct_guess(hf_row, target, config.outgas.mass_thresh)
