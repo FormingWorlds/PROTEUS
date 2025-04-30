@@ -2,7 +2,7 @@
 
 import logging
 from typing import TYPE_CHECKING
-import time
+import time, os
 
 from scipy.interpolate import interp1d
 import numpy as np
@@ -15,6 +15,10 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
+
+# Path to location at which to save the output data from Zalmoxis
+def get_zalmoxis_output_filepath(outdir: str):
+    return os.path.join(outdir, "data", "zalmoxis_output.dat")
 
 def get_density_from_eos(pressure, material, eos_choice, interpolation_functions={}):
     """Calculates density with caching for tabulated EOS.
@@ -101,7 +105,7 @@ def interior_structure_odes(radius, y, cmb_mass, eos_choice, interpolation_cache
     # Return the derivatives
     return [dMdr, dgdr, dPdr]
 
-def zalmoxis_solver(config:Config, hf_row:dict):
+def zalmoxis_solver(config:Config, outdir:str):
 
     """
     Zalmoxis interior model solver.
@@ -285,10 +289,12 @@ def zalmoxis_solver(config:Config, hf_row:dict):
     log.info(f"Core-mantle boundary mass fraction: {cmb_mass / calculated_mass:.2f}")
     log.info(f"Core radius fraction: {cmb_radius / planet_radius:.2f}")
 
-    # Update the hf_row dictionary with the calculated grid values for the planet
-    hf_row["radius"] = radii
-    hf_row["density"] = density
-    hf_row["gravity"] = gravity
-    hf_row["pressure"] = pressure
-    hf_row["mass_enclosed"] = mass_enclosed
+    # Get the output location for Zalmoxis output
+    output_zalmoxis = get_zalmoxis_output_filepath(outdir)
+    log.info(f"Saving Zalmoxis output to {output_zalmoxis}")
+
+    # Save final grids for radius, density, gravity, pressure, and mass enclosed to the output file
+    with open(output_zalmoxis, 'w') as f:
+        for i in range(len(radii)):
+            f.write(f"{radii[i]} {density[i]} {gravity[i]} {pressure[i]} {mass_enclosed[i]}\n")
 
