@@ -105,7 +105,7 @@ def get_nlevb(config:Config):
     log.info("R_int: %.1e m  = %.3f R_earth"%(hf_row["R_int"], hf_row["R_int"]/R_earth))
     log.info(" ")"""
 
-def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
+def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, outdir:str):
     '''
     Solve for the planet structure based on the method set in the configuration file.
 
@@ -128,7 +128,7 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     elif config.struct.set_by == 'mass_tot':
         #determine_interior_radius(dirs, config, hf_all, hf_row)
         # Call the function and unpack the returned tuple
-        radii, density, gravity, pressure, mass_enclosed = zalmoxis_solver(config)
+        radii, density, gravity, pressure, mass_enclosed = zalmoxis_solver(config, outdir)
         hf_row["R_int"] = radii[-1]
         hf_row["M_int"] = mass_enclosed[-1]
 

@@ -230,7 +230,7 @@ class Proteus:
             self.hf_row["T_eqm"] = 2000.0
 
             # Solve interior structure
-            solve_structure(self.directories, self.config, self.hf_all, self.hf_row)
+            solve_structure(self.directories, self.config, self.hf_all, self.hf_row, self.directories["output"])
 
             # Store partial pressures and list of included volatiles
             inc_gases = []
