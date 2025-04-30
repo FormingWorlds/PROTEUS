@@ -1,7 +1,6 @@
 # Zalmoxis interior module
 
 import logging
-from typing import TYPE_CHECKING
 import time, os
 
 from scipy.interpolate import interp1d
@@ -10,9 +9,7 @@ from scipy.integrate import solve_ivp
 
 from proteus.utils.constants import const_G, earth_center_pressure, R_earth, M_earth
 from proteus.utils.data import get_Seager_EOS
-
-if TYPE_CHECKING:
-    from proteus.config import Config
+from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -105,7 +102,7 @@ def interior_structure_odes(radius, y, cmb_mass, eos_choice, interpolation_cache
     # Return the derivatives
     return [dMdr, dgdr, dPdr]
 
-def zalmoxis_solver(config:Config, outdir:str):
+def zalmoxis_solver(config:Config):
 
     """
     Zalmoxis interior model solver.
@@ -185,7 +182,7 @@ def zalmoxis_solver(config:Config, outdir:str):
                 y0 = [0, 0, pressure_guess]
 
                 # Solve the ODEs using solve_ivp
-                sol = solve_ivp(lambda r, y: interior_structure_odes(r, y, cmb_mass, radius_guess, eos_choice, interpolation_cache),
+                sol = solve_ivp(lambda r, y: interior_structure_odes(r, y, cmb_mass, eos_choice, interpolation_cache),
                     (radii[0], radii[-1]), y0, t_eval=radii, rtol=relative_tolerance, atol=absolute_tolerance, method='RK45', dense_output=True)
 
                 # Extract mass, gravity, and pressure grids from the solution
@@ -289,12 +286,13 @@ def zalmoxis_solver(config:Config, outdir:str):
     log.info(f"Core-mantle boundary mass fraction: {cmb_mass / calculated_mass:.2f}")
     log.info(f"Core radius fraction: {cmb_radius / planet_radius:.2f}")
 
-    # Get the output location for Zalmoxis output
+    """# Get the output location for Zalmoxis output
     output_zalmoxis = get_zalmoxis_output_filepath(outdir)
     log.info(f"Saving Zalmoxis output to {output_zalmoxis}")
 
     # Save final grids for radius, density, gravity, pressure, and mass enclosed to the output file
     with open(output_zalmoxis, 'w') as f:
         for i in range(len(radii)):
-            f.write(f"{radii[i]} {density[i]} {gravity[i]} {pressure[i]} {mass_enclosed[i]}\n")
+            f.write(f"{radii[i]} {density[i]} {gravity[i]} {pressure[i]} {mass_enclosed[i]}\n")"""
 
+    return radii, density, gravity, pressure, mass_enclosed

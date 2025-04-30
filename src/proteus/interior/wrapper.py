@@ -11,6 +11,7 @@ import scipy.optimize as optimise
 from proteus.interior.common import Interior_t
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
+from proteus.interior.zalmoxis import zalmoxis_solver
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -42,7 +43,7 @@ def get_nlevb(config:Config):
             return 2
     raise ValueError(f"Invalid interior module selected '{config.interior.module}'")
 
-def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
+"""def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     '''
     Determine the interior radius (R_int) of the planet.
 
@@ -102,7 +103,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     log.info("Found solution for interior structure")
     log.info("M_tot: %.1e kg = %.3f M_earth"%(hf_row["M_tot"], hf_row["M_tot"]/M_earth))
     log.info("R_int: %.1e m  = %.3f R_earth"%(hf_row["R_int"], hf_row["R_int"]/R_earth))
-    log.info(" ")
+    log.info(" ")"""
 
 def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     '''
@@ -125,7 +126,12 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
 
     # Set by total mass (mantle + core + volatiles)
     elif config.struct.set_by == 'mass_tot':
-        determine_interior_radius(dirs, config, hf_all, hf_row)
+        #determine_interior_radius(dirs, config, hf_all, hf_row)
+        # Call the function and unpack the returned tuple
+        radii, density, gravity, pressure, mass_enclosed = zalmoxis_solver(config)
+        hf_row["R_int"] = radii[-1]
+        hf_row["M_int"] = mass_enclosed[-1]
+
 
     # Otherwise, error
     else:

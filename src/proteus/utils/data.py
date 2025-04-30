@@ -408,9 +408,13 @@ def get_Seager_EOS():
     # Build the material_properties dictionary
     material_properties = {
         "mantle": {
+            # Lower mantle properties based on bridgmanite and ferropericlase
+            "rho0": 4110,  # Reference density [kg/m^3] at 24 GPa (top of lower mantle)
             "eos_file": eos_folder / "eos_seager07_silicate.txt"  # Path to silicate mantle file
         },
         "core": {
+            # For liquid iron alloy outer core
+            "rho0": 9900,  # Reference density [kg/m^3] at 135 GPa (core-mantle boundary)
             "eos_file": eos_folder / "eos_seager07_iron.txt"  # Path to iron core file
         }
     }
