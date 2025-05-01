@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import logging
-import numpy as np
 from typing import TYPE_CHECKING
+
+import numpy as np
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
