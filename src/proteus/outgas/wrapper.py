@@ -80,6 +80,12 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
     for s in gas_list:
         hf_row["M_atm"] += hf_row[s + "_kg_atm"]
 
+    # print info
+    for s in gas_list:
+        log.info("    %-6s : %-8.2f bar (%.2e VMR)" % (s,hf_row[s+"_bar"], hf_row[s+"_vmr"]))
+    log.info("    total  : %-8.2f bar"%hf_row["P_surf"])
+    log.info("    mmw    : %-8.4f g mol-1"%(hf_row["atm_kg_per_mol"]*1e3))
+
 def run_desiccated(config:Config, hf_row:dict):
     '''
     Handle desiccation of the planet. This substitutes for run_outgassing when the planet

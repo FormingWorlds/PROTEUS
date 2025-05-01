@@ -289,12 +289,14 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, transparent:bool):
     # ---------------------
     # Update surface temperature(s)
     atmos.tmp_surf  = float(hf_row["T_surf"] )
-    atmos.tmp_magma = float(hf_row["T_magma"])
+    atmos.tmp_magma = float(atmos.tmp_surf)
 
     # ---------------------
     # Transparent mode?
     if transparent:
         jl.AGNI.atmosphere.make_transparent_b(atmos)
+        atmos.tmp[:]  = float(atmos.tmp_surf)
+        atmos.tmpl[:] = float(atmos.tmp_surf)
         return atmos
 
     # ---------------------

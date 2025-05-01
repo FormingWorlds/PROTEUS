@@ -269,16 +269,12 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
 
     # get atmospheric compositison
     solvevol_result = equilibrium_atmosphere(target, opts,
-                                                rtol=1e-4,
+                                                rtol=1e-5,
                                                 atol=config.outgas.mass_thresh,
-                                                nguess=int(1e4), nsolve=int(1e4),
+                                                nguess=int(1e3), nsolve=int(2e4),
                                                 p_guess=p_guess)
 
     # Get result
     for k in expected_keys():
         if k in solvevol_result:
             hf_row[k] = solvevol_result[k]
-
-    # print info
-    log.info("    total  : %-8.2f bar"%hf_row["P_surf"])
-    log.info("    mmw    : %-8.4f g mol-1"%(hf_row["atm_kg_per_mol"]*1e3))
