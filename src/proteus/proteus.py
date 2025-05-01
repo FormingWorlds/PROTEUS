@@ -10,7 +10,6 @@ import numpy as np
 import proteus.utils.archive as archive
 from proteus.config import read_config_object
 from proteus.utils.constants import (
-    gas_list,
     vap_list,
     vol_list,
 )
@@ -46,6 +45,7 @@ class Proteus:
         self.hf_all = None
 
         # Loop counters
+        self.init_stage = False
         self.loops = None
 
         # Interior
@@ -57,8 +57,8 @@ class Proteus:
         # Model has finished?
         self.finished_prev = False          # Satisfied termination in prev iteration
         self.finished_both = False          # Satisfied termination in current and previous
-        self.has_escaped = False        # Atmosphere has escaped
-        self.lockfile = "/tmp/none"     # Path to keepalive file
+        self.desiccated = False             # Entire volatile inventory has been lost
+        self.lockfile = "/tmp/none"         # Path to keepalive file
 
         # Default values for mors.spada cases
         self.star_props  = None
@@ -103,7 +103,7 @@ class Proteus:
         from proteus.atmos_clim.common import Atmos_t
 
         #    escape and outgas
-        from proteus.escape.wrapper import RunEscape
+        from proteus.escape.wrapper import run_escape
 
         #    interior
         from proteus.interior.common import Interior_t
@@ -112,9 +112,18 @@ class Proteus:
         #    synthetic observations
         from proteus.observe.wrapper import run_observe
 
-        #    orbit and star
+        #    orbit
         from proteus.orbit.wrapper import init_orbit, run_orbit
-        from proteus.outgas.wrapper import calc_target_elemental_inventories, run_outgassing
+
+        #    outgassing
+        from proteus.outgas.wrapper import (
+            calc_target_elemental_inventories,
+            check_desiccation,
+            run_desiccated,
+            run_outgassing,
+        )
+
+        #   stellar spectrum and evolution
         from proteus.star.wrapper import (
             get_new_spectrum,
             init_star,
@@ -190,9 +199,9 @@ class Proteus:
             "total": 0,  # Total number of iters performed
             "total_min": self.config.params.stop.iters.minimum,
             "total_loops": self.config.params.stop.iters.maximum,
-            "init": 0,  # Number of init iters performed
             "init_loops": 3,  # Maximum number of init iters
         }
+        self.init_stage = True
 
         # Write config to output directory, for future reference
         self.config.write(os.path.join(self.directories["output"], "init_coupler.toml"))
@@ -235,8 +244,12 @@ class Proteus:
             # Store partial pressures and list of included volatiles
             inc_gases = []
             for s in vol_list:
-                pp_val = self.config.delivery.volatiles.get_pressure(s)
-                include = self.config.outgas.calliope.is_included(s)
+                if s != "O2":
+                    pp_val = self.config.delivery.volatiles.get_pressure(s)
+                    include = self.config.outgas.calliope.is_included(s)
+                else:
+                    pp_val = 0.0
+                    include = True
 
                 if include:
                     inc_gases.append(s)
@@ -273,6 +286,9 @@ class Proteus:
             # Get last row from helpfile dataframe
             self.hf_row = self.hf_all.iloc[-1].to_dict()
 
+            # Check if the planet is desiccated
+            self.desiccated = check_desiccation(self.config, self.hf_row)
+
             # Extract all archived data files
             log.debug("Extracting archived data files")
             self.extract_archives()
@@ -286,7 +302,8 @@ class Proteus:
 
             # Set loop counters
             self.loops["total"] = len(self.hf_all)
-            self.loops["init"] = self.loops["init_loops"] + 1
+            self.init_stage = False
+
         log.info(" ")
 
         # Prepare star stuff
@@ -307,13 +324,12 @@ class Proteus:
             log.info(" ")
             PrintSeparator()
             log.info("Loop counters")
-            log.info("init      total")
+            log.info("current    init    maximum")
             log.info(
-                "%1d/%1d     %04d/%04d "
+                " %6d    %4d     %6d "
                 % (
-                    self.loops["init"],
-                    self.loops["init_loops"],
                     self.loops["total"],
+                    self.loops["init_loops"],
                     self.loops["total_loops"],
                 )
             )
@@ -386,40 +402,40 @@ class Proteus:
             ############### / STELLAR FLUX MANAGEMENT
 
             ############### ESCAPE
-            if (self.loops["total"] >= self.loops["init_loops"]):
+            if (self.loops["total"] > self.loops["init_loops"]+2) and (not self.desiccated):
                 PrintHalfSeparator()
-                RunEscape(self.config, self.hf_row, self.interior_o.dt, self.stellar_track)
+                run_escape(self.config, self.hf_row, self.interior_o.dt, self.stellar_track)
 
             ############### / ESCAPE
 
             ############### OUTGASSING
             PrintHalfSeparator()
 
-            #    recalculate mass targets during init phase, since these will be adjusted
+            # Recalculate mass targets during init phase, since these will be adjusted
             #    depending on the true melt fraction and T_magma found by SPIDER at runtime.
-            if self.loops["init"] < self.loops["init_loops"]:
+            if self.init_stage:
                 calc_target_elemental_inventories(self.directories, self.config, self.hf_row)
 
+            else:
+                # Check if desiccation has occurred
+                self.desiccated = check_desiccation(self.config, self.hf_row)
+
+            # handle desiccated planet
+            if self.desiccated:
+                run_desiccated(self.config, self.hf_row)
+
             # solve for atmosphere composition
-            run_outgassing(self.directories, self.config, self.hf_row)
+            else:
+                run_outgassing(self.directories, self.config, self.hf_row)
 
             # Add atmosphere mass to interior mass, to get total planet mass
             self.hf_row["M_planet"] = self.hf_row["M_int"] + self.hf_row["M_atm"]
 
-            # Check for when atmosphere has completely escaped (P_surf < 0.01)
-            #    This will mean that the mixing ratios become undefined, so use value of 0.
-            if self.hf_row["P_surf"] < 0.01:
-                self.has_escaped = True
-                for gas in gas_list:
-                    self.hf_row[gas+"_vmr"] = 0.0
-                self.hf_row["atm_kg_per_mol"] = 0.0
-
             ############### / OUTGASSING
 
             ############### ATMOSPHERE CLIMATE
-            if not self.has_escaped:
-                PrintHalfSeparator()
-                run_atmosphere(self.atmos_o, self.config, self.directories, self.loops,
+            PrintHalfSeparator()
+            run_atmosphere(self.atmos_o, self.config, self.directories, self.loops,
                                 self.star_wl, self.star_fl, update_stellar_spectrum,
                                 self.hf_all, self.hf_row)
 
@@ -433,17 +449,18 @@ class Proteus:
             run_time = datetime.now() - start_time
             self.hf_row["runtime"] = float(run_time.total_seconds())
 
-            # Update init loop counter
-            # Next init iter
-            if self.loops["init"] < self.loops["init_loops"]:
-                self.loops["init"] += 1
-                self.hf_row["Time"] = 0.0
-            # Reset restart flag once SPIDER has correct heat flux
-            if self.loops["total"] >= self.loops["init_loops"]:
-                self.interior_o.ic = 2
-
             # Adjust total iteration counters
             self.loops["total"] += 1
+
+            # Init stage?
+            if self.loops["total"] > self.loops["init_loops"]:
+                self.init_stage = False
+
+            # Keep time at zero during init stage
+            if self.init_stage:
+                self.hf_row["Time"] = 0.0
+            else:
+                self.interior_o.ic = 2
 
             # Update full helpfile
             if self.loops["total"] > 1:
@@ -461,7 +478,7 @@ class Proteus:
             PrintCurrentState(self.hf_row)
 
             # Check for convergence
-            if self.loops["total"] >= self.loops["init_loops"]:
+            if not self.init_stage:
                 log.info("Checking convergence criteria")
                 check_termination(self)
 
@@ -492,7 +509,7 @@ class Proteus:
         if self.config.atmos_chem.when == "offline":
             log.info(" ")
             PrintSeparator()
-            if self.has_escaped:
+            if self.desiccated:
                 log.warning("Cannot calculate atmospheric chemistry after desiccation")
             else:
                 run_chemistry(self.directories, self.config, self.hf_row)
@@ -501,7 +518,7 @@ class Proteus:
         if self.config.observe.synthesis is not None:
             log.info(" ")
             PrintSeparator()
-            if self.has_escaped:
+            if self.desiccated:
                 log.warning("Cannot observe planet after desiccation")
             else:
                 run_observe(self.hf_row, self.directories["output"], self.config)

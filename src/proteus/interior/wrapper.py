@@ -51,7 +51,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     achieves the target mass provided by the user in the config file.
     '''
 
-    log.info("Using %s interior module to solve strcture"%config.interior.module)
+    log.info("Using %s interior module to solve structure"%config.interior.module)
 
     # Initial guess for interior radius and gravity
     int_o = Interior_t(get_nlevb(config))

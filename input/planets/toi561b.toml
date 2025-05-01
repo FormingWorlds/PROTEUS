@@ -8,7 +8,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
 [params]
     # output files
     [params.out]
-        path        = "scratch/toi_561b_tests/toi561b_test_escape_1.5Gyr_bug_branch_stop_escape_true"
+        path        = "toi561b"
         logging     = "DEBUG"
         plot_mod    = 5         # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"     # Plotting image file format, "png" or "pdf" recommended
@@ -62,7 +62,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
             rtol    = 1e-3      # relative tolerance
 
         [params.stop.escape]
-            enabled   = true
+            enabled   = fasle
             p_stop    = 1.0     # bar, model will terminate with p_surf < p_stop
 
 
@@ -71,24 +71,24 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
 [star]
 
     # Physical parameters
-    mass    = 0.806       # M_sun from Lacedelli et al., 2022
-    age_ini = 0.100       # Gyr, model initialisation/start age
+    mass    = 0.806       # from Lacedelli et al., 2022 [M_sun]
+    age_ini = 0.05       # Gyr, model initialisation/start age
 
     module  = "mors"
     [star.mors]
         rot_pcntle = 50.0       # rotation percentile
         rot_period = 'none'     # rotation period [days]
         tracks  = "spada"       # evolution tracks: spada | baraffe
-        age_now = 10           # 10 Gyr, current age of star used for scaling from Weiss et al., 2021
+        age_now = 11            # [Gyr] from Lacedelli et al., 2022
         spec    = "stellar_spectra/Named/sun.txt"   # stellar spectrum
 
     [star.dummy]
-        radius  = 0.843     # R_sun from Lacedelli et al., 2022
-        Teff    = 5372.0    # K from Lacedelli et al., 2022
+        radius  = 0.843     # from Lacedelli et al., 2022 [R_sun]
+        Teff    = 5372.0    # from Lacedelli et al., 2022 [K]
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.0106    # AU from Brinkman et al. 2023
+    semimajoraxis   = 0.0106    # AU from Patel et al. 2023
     eccentricity    = 0.0       # dimensionless from Brinkman et al. 2023
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
@@ -105,7 +105,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
 # Planetary structure - physics table
 [struct]
     #mass_tot    = 2.24         # M_earth from Brinkman et al. 2023
-    radius_int  = 1.37          # R_earth from Brinkman et al. 2023
+    radius_int  = 1.4195        # R_earth from Patel et al. 2023
     corefrac    = 0.55          # non-dim., radius fraction 0.20 from Brinkman et al. 2023
     core_density = 10738.33     # Core density [kg m-3]
     core_heatcap = 880.0        # Core specific heat capacity [J K-1 kg-1]
@@ -124,7 +124,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
     tmp_minimum     = 0.5       # temperature floor on solver
     tmp_maximum     = 5000.0    # temperature ceiling on solver
 
-    module  = "janus"           # Which atmosphere module to use
+    module  = "agni"           # Which atmosphere module to use
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
@@ -161,7 +161,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
 
     [escape.zephyrus]
         Pxuv        = 1e-2          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-        efficiency  = 1.0           # Escape efficiency factor
+        efficiency  = 0.3           # Escape efficiency factor
         tidal       = false         # Tidal contribution enabled
 
     [escape.dummy]

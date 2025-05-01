@@ -46,7 +46,7 @@ const_G = 6.67428e-11        #Gravitational constant (2006 measurements)
 B_ein = 2.5
 
 # Supported gases
-vol_list = ["H2O", "CO2", "H2", "CH4", "CO", "N2", "NH3", "S2", "SO2", "H2S"]
+vol_list = ["H2O", "CO2", "O2", "H2", "CH4", "CO", "N2", "NH3", "S2", "SO2", "H2S"]
 vap_list = ["SiO", "SiO2", "MgO", "FeO2"]
 gas_list = vol_list + vap_list
 
