@@ -268,11 +268,17 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
         log.warning("Outgassing temperature clipped to %.1f K"%opts["T_magma"])
 
     # get atmospheric compositison
-    solvevol_result = equilibrium_atmosphere(target, opts,
+    try:
+        solvevol_result = equilibrium_atmosphere(target, opts,
                                                 rtol=1e-5,
                                                 atol=config.outgas.mass_thresh,
                                                 nguess=int(1e3), nsolve=int(2e4),
-                                                p_guess=p_guess)
+                                                p_guess=p_guess,
+                                                print_result=False)
+    except RuntimeError as e:
+        log.error("Outgassing calculation with CALLIOPE failed")
+        UpdateStatusfile(dirs, 27)
+        raise e
 
     # Get result
     for k in expected_keys():

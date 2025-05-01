@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
 from proteus.utils.constants import element_list, gas_list
-from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -67,22 +66,25 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
 
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
-        try:
-            calc_surface_pressures(dirs, config, hf_row)
-        except RuntimeError as e:
-            log.error("Outgassing calculation failed")
-            UpdateStatusfile(dirs, 27)
-            raise e
+        calc_surface_pressures(dirs, config, hf_row)
 
     # calculate total atmosphere mass (from sum of volatile masses)
-    # this will need to be changed when rock vapours are included
     hf_row["M_atm"] = 0.0
     for s in gas_list:
         hf_row["M_atm"] += hf_row[s + "_kg_atm"]
 
-    # print info
+    # print outgassed partial pressures
     for s in gas_list:
-        log.info("    %-6s : %-8.2f bar (%.2e VMR)" % (s,hf_row[s+"_bar"], hf_row[s+"_vmr"]))
+        _p = hf_row[s+"_bar"]
+        _x = hf_row[s+"_vmr"]
+        _s = "    %-6s : %-8.2f bar (%.2e VMR)" % (s,_p,_x)
+        if _p > 0.01:
+            log.info(_s)
+        else:
+            # don't spam log with species of negligible abundance
+            log.debug(_s)
+
+    # print total pressure and mmw
     log.info("    total  : %-8.2f bar"%hf_row["P_surf"])
     log.info("    mmw    : %-8.4f g mol-1"%(hf_row["atm_kg_per_mol"]*1e3))
 
