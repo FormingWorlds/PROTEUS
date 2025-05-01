@@ -272,7 +272,6 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, transparent:bool):
     ----------
         atmos : AGNI.atmosphere.Atmos_t
             Atmosphere struct
-
     """
 
     # ---------------------
@@ -289,7 +288,7 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, transparent:bool):
     # ---------------------
     # Update surface temperature(s)
     atmos.tmp_surf  = float(hf_row["T_surf"] )
-    atmos.tmp_magma = float(atmos.tmp_surf)
+    atmos.tmp_magma = float(hf_row["T_magma"])
 
     # ---------------------
     # Transparent mode?
