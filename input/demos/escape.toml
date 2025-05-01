@@ -80,7 +80,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     surf_greyalbedo  = 0.1      # surface grey albedo
     rayleigh        = false      # enable rayleigh scattering
 
-    module  = "agni"           # Which atmosphere module to use
+    module  = "dummy"           # Which atmosphere module to use
 
     [atmos_clim.dummy]
         gamma = 0.98
