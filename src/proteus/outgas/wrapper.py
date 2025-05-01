@@ -43,7 +43,7 @@ def check_desiccation(config:Config, hf_row:dict) -> bool:
     # check if desiccation has occurred
     for e in element_list:
         if hf_row[e + "_kg_total"] > config.outgas.mass_thresh:
-            log.debug("Not desiccated, %s = %.2e kg" % (e, hf_row[e + "_kg_total"]))
+            log.info("Not desiccated, %s = %.2e kg" % (e, hf_row[e + "_kg_total"]))
             return False # return, and allow run_outgassing to proceed
 
     return True

@@ -89,13 +89,25 @@ def _check_escape(handler: Proteus) -> bool:
     return False
 
 # Maximum time
-def _check_time(handler: Proteus) -> bool:
+def _check_maxtime(handler: Proteus) -> bool:
     log.debug("Check maximum time")
 
     if handler.hf_row["Time"] >= handler.config.params.stop.time.maximum:
         UpdateStatusfile(handler.directories, 13)
         _msg_termination("Target time reached")
         return True
+    return False
+
+# Minimum time (return true when exit is allowed)
+def _check_mintime(handler: Proteus, finished:bool) -> bool:
+    log.debug("Check minimum time")
+
+    if handler.hf_row["Time"] < handler.config.params.stop.time.minimum:
+        if finished:
+            # Model thinks that it is done
+            log.warning("Minimum amount of time not yet attained; continuing...")
+            UpdateStatusfile(handler.directories, 1)
+        return False # do not exit
     return False
 
 # Maximum iterations
@@ -173,11 +185,15 @@ def check_termination(handler: Proteus) -> bool:
 
     # Maximum time reached
     if handler.config.params.stop.time.enabled:
-        finished = finished or _check_time(handler)
+        finished = finished or _check_maxtime(handler)
 
     # Maximum loops reached
     if handler.config.params.stop.iters.enabled:
         finished = finished or _check_maxiter(handler)
+
+    # Minimum time reached
+    if handler.config.params.stop.time.enabled:
+        finished = finished and _check_mintime(handler, finished)
 
     # Minimum loops reached
     if handler.config.params.stop.iters.enabled:

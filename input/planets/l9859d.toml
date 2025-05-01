@@ -23,7 +23,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         method       = "adaptive"  # proportional | adaptive | maximum
         [params.dt.adaptive]
             atol         = 0.03  # Step size atol
-            rtol         = 0.12   # Step size rtol
+            rtol         = 0.13   # Step size rtol
 
     [params.stop]
 
@@ -33,7 +33,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         # solidification
         [params.stop.solid]
-            enabled  = true
+            enabled  = false
             phi_crit = 0.01
 
         # radiative equilibrium
