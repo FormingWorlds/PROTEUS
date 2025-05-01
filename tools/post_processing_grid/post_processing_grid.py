@@ -26,49 +26,77 @@ def load_grid_cases(grid_dir: Path):
             List of dictionaries, each containing:
                 - 'init_parameters' (dict): Parameters loaded from `init_coupler.toml`.
                 - 'output_values' (pandas.DataFrame): Data from `runtime_helpfile.csv`.
-                - 'status' (str): Status string from the `status` file, or 'unknown' if unavailable.
+                - 'status' (str): Status string from the `status` file, or 'Unknown' if unavailable.
     """
 
     combined_data = []
     grid_dir = Path(grid_dir)
 
-    # Load all cases from the grid
-    for case in grid_dir.glob('case_*'):
+    # Collect and sort the case directories
+    case_dirs = list(grid_dir.glob('case_*'))
+    case_dirs.sort(key=lambda p: int(p.name.split('_')[1]))
+
+    for case in case_dirs:
         runtime_file = case / 'runtime_helpfile.csv'
         init_file = case / 'init_coupler.toml'
         status_file = case / 'status'
 
-        if runtime_file.exists() and init_file.exists():
+        # Load init parameters
+        init_params = {}
+        if init_file.exists():
+            try:
+                init_params = toml.load(open(init_file))
+            except Exception as e:
+                print(f"Error reading init file in {case.name}: {e}")
+
+        # Read runtime_helpfile.csv if available
+        df = None
+        if runtime_file.exists():
             try:
                 df = pd.read_csv(runtime_file, sep='\t')
-                init_params = toml.load(open(init_file))
-
-                # Read status file if it exists, otherwise set to None
-                status = None
-                if status_file.exists():
-                    with open(status_file, 'r') as sf:
-                        status = sf.read().replace('\n', ' ').strip()
-
-                combined_data.append({
-                    'init_parameters': init_params,
-                    'output_values': df,
-                    'status': status
-                })
-
             except Exception as e:
-                print(f"Error processing {case.name}: {e}")
+                print(f"WARNING : Error reading runtime_helpfile.csv for {case.name}: {e}")
 
-    # Count the number of simulations per status
-    statuses = [str(case.get('status', 'unknown')).strip() or 'unknown' for case in combined_data]
+        # Read status file if available
+        status = 'Unknown'
+        if status_file.exists():
+            try:
+                raw_lines = [ln.strip() for ln in status_file.read_text(encoding='utf-8').splitlines() if ln.strip()]
+                if len(raw_lines) >= 2:
+                    status = raw_lines[1]
+                elif raw_lines:
+                    status = raw_lines[0]
+                else:
+                    status = 'Empty'
+            except Exception as e:
+                print(f"WARNING : Error reading status file in {case.name}: {e}")
+        else:
+            print(f"WARNING : Missing status file in {case.name}")
+
+        # # THIS IS ONLY FOR MY CURRENT GRID ON HABROK 
+        # if status in ('Unknown', 'Empty'):
+        #     status = 'Disk quota exceeded'
+
+        combined_data.append({
+            'init_parameters': init_params,
+            'output_values'  : df,
+            'status'         : status
+        })
+
+    # --- summary printout ---
+    statuses = [c['status'] for c in combined_data]
     status_counts = pd.Series(statuses).value_counts().sort_values(ascending=False)
 
     print('-----------------------------------------------------------')
     print(f"Total number of simulations: {len(statuses)}")
     print('-----------------------------------------------------------')
     print("Number of simulations per status:")
-    for status, count in status_counts.items():
-        print(f"  - '{status}': {count}")
+    for st, count in status_counts.items():
+        print(f"  - {st:<45} : {count}")
     print('-----------------------------------------------------------')
+
+    return combined_data
+
     return combined_data
 
 def get_grid_parameters(grid_dir: str):
@@ -160,9 +188,9 @@ def extract_grid_output(cases_data: list, parameter_name: str):
 
     for case in cases_data:
         df = case['output_values']
-        # Check if the parameter exists in the output dataframe
+        if df is None:
+            continue  # Skip cases with no output
         if parameter_name in df.columns:
-            # Extract the last value of the parameter from the last row
             parameter_value = df[parameter_name].iloc[-1]
             parameter_values.append(parameter_value)
         else:
@@ -203,6 +231,10 @@ def extract_solidification_time(cases_data: list, phi_crit: float):
     for i, case in enumerate(cases_data):
         df = case['output_values']
         # Check if the required columns exist in the dataframe
+        if df is None:
+            solidification_times.append(np.nan)
+            continue
+
         if 'Phi_global' in df.columns and 'Time' in df.columns:
             condition = df['Phi_global'] < phi_crit
             if condition.any():
@@ -219,7 +251,7 @@ def extract_solidification_time(cases_data: list, phi_crit: float):
             solidification_times.append(np.nan)  # Append NaN if columns are missing
 
     # Count the number of cases with a status = '10 Completed (solidified)'
-    status_10_cases = [case for case in cases_data if (case.get('status') or '').strip() == '10 Completed (solidified)']
+    status_10_cases = [case for case in cases_data if (case.get('status') or '').strip() == 'Completed (solidified)']
     completed_count = len(status_10_cases)
     # Count only valid solidification times (non-NaN)
     valid_solidification_times = [time for time in solidification_times if not np.isnan(time)]
@@ -228,7 +260,7 @@ def extract_solidification_time(cases_data: list, phi_crit: float):
     print('-----------------------------------------------------------')
     print(f"Extracted solidification times (Phi_global < {phi_crit})")
     print(f"→ Found {valid_solidified_count} valid solidified cases based on Phi_global")
-    print(f"→ Found {completed_count} cases with status '10 Completed (solidified)' ")
+    print(f"→ Found {completed_count} cases with status 'Completed (solidified)' ")
     # Check if the number of valid solidified cases matches the number of cases with status '10 Completed (solidified)' in the grid, to be sure the extraction is correct
     if valid_solidified_count != completed_count:
         print("WARNING: The number of valid solidified planets does not match the number of planets with status: '10 Completed (solidified)'")
@@ -242,7 +274,7 @@ def extract_solidification_time(cases_data: list, phi_crit: float):
         #     else:
         #         print(f"[Status Case {i}] Phi_global column missing.")
     else:
-        print("Solidified planets count matches the number of planets with status: '10 Completed (solidified)'.")
+        print("Solidified planets count matches the number of planets with status: 'Completed (solidified)'.")
     print('-----------------------------------------------------------')
 
     return solidification_times
@@ -317,7 +349,7 @@ def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dic
 
         # Write data rows
         for case_index, case_data in enumerate(cases_data):
-            status = case_data.get('status', 'unknown') or 'unknown'
+            status = case_data.get('status', 'Unknown') or 'Unknown'
             row = [case_index, f"'{status}'"]
             # Add grid parameters values for each case
             case_param_values = case_params.get(case_index, {})
@@ -336,9 +368,9 @@ def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dic
 if __name__ == '__main__':
 
     # User needs to specify paths
-    grid_name   = 'escape_grid_atm_a_f02_H_Mstar'
-    grid_path   = f'/Users/emmapostolec/Downloads/output_norma2_rsync/{grid_name}/'
-    data_dir    = f'/Users/emmapostolec/Documents/PHD/SCIENCE/CODES/PROTEUS/tools/post_processing_grid/nogit_processed_data/{grid_name}/'
+    grid_name   = 'escape_grid_habrok_6_params_1Msun_agni'
+    grid_path   = f'//projects/p315557/{grid_name}/'
+    data_dir    = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_processed_data/{grid_name}/'
 
     # User choose the parameters to post-process the grid
     output_to_extract = ['esc_rate_total','Phi_global', 'P_surf','atm_kg_per_mol']      # Output columns to extract from 'runtime_helpfile.csv' of each case
@@ -357,5 +389,5 @@ if __name__ == '__main__':
 
     # Done with the post-processing step :)
     print("Post-processing completed. Let's do some plots !")
-    print('(Please check for any warning messages above before going further.)')
+    print('(Please check for any WARNING messages above before going further.)')
     print('-----------------------------------------------------------')
