@@ -105,10 +105,11 @@ def _check_mintime(handler: Proteus, finished:bool) -> bool:
     if handler.hf_row["Time"] < handler.config.params.stop.time.minimum:
         if finished:
             # Model thinks that it is done
-            log.warning("Minimum amount of time not yet attained; continuing...")
+            log.warning("Minimum integration time has not been reached")
+            log.warning("    Model will continue")
             UpdateStatusfile(handler.directories, 1)
         return False # do not exit
-    return False
+    return True
 
 # Maximum iterations
 def _check_maxiter(handler: Proteus) -> bool:
@@ -128,7 +129,8 @@ def _check_miniter(handler: Proteus, finished:bool) -> bool:
     if handler.loops["total"] <= handler.loops["total_min"]:
         if finished:
             # Model thinks that it is done
-            log.warning("Minimum number of iterations not yet attained; continuing...")
+            log.warning("Minimum number of iterations has not been reached")
+            log.warning("    Model will continue")
             UpdateStatusfile(handler.directories, 1)
         return False # do not exit
     return True
@@ -138,7 +140,7 @@ def _check_keepalive(handler: Proteus) -> bool:
 
     if not os.path.exists(handler.lockfile):
         UpdateStatusfile(handler.directories, 25)
-        _msg_termination("Model exit was requested")
+        _msg_termination("Model termination was requested")
         return True
     return False
 
@@ -204,7 +206,7 @@ def check_termination(handler: Proteus) -> bool:
         if finished:
             handler.finished_prev = True
             handler.finished_both = True
-            log.info("Convergence criteria satisfied")
+            log.info("Termination criteria satisfied")
             log.debug("Model will exit")
             return True
 
@@ -216,18 +218,18 @@ def check_termination(handler: Proteus) -> bool:
             if finished:
                 # convergence is also satisfied at this iteration
                 handler.finished_both = True
-                log.info("Convergence criteria satisfied twice")
+                log.info("Termination criteria satisfied twice")
                 log.debug("Model will exit")
                 return True
             else:
                 # convergence no longer satisfied - reset flags
                 handler.finished_prev = False
-                log.warning("Convergence criteria no longer satisfied")
+                log.warning("Termination criteria no longer satisfied")
         else:
             # previous iteration DID NOT satisfy criteria...
             handler.finished_prev = finished
             if finished:
-                log.info("Convergence criteria satisfied once")
+                log.info("Termination criteria satisfied once")
 
     # Reset statusfile to 'Running'
     UpdateStatusfile(handler.directories, 1)

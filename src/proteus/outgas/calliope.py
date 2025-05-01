@@ -243,6 +243,10 @@ def flag_included_volatiles(guess:dict, config:Config) -> dict:
     return p_included
 
 def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
+
+    # Inform
+    log.debug("Running CALLIOPE...")
+
     # make solvevol options
     opts = construct_options(dirs, config, hf_row)
 
@@ -270,11 +274,12 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
     # get atmospheric compositison
     try:
         solvevol_result = equilibrium_atmosphere(target, opts,
-                                                rtol=1e-5,
-                                                atol=config.outgas.mass_thresh,
-                                                nguess=int(1e3), nsolve=int(2e4),
-                                                p_guess=p_guess,
-                                                print_result=False)
+                                                    xtol=1e-5,
+                                                    rtol=1e-5,
+                                                    atol=config.outgas.mass_thresh,
+                                                    nguess=int(1e3), nsolve=int(2e4),
+                                                    p_guess=p_guess,
+                                                    print_result=False)
     except RuntimeError as e:
         log.error("Outgassing calculation with CALLIOPE failed")
         UpdateStatusfile(dirs, 27)

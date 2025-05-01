@@ -48,6 +48,8 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
 
     """
 
+    log.info("Solving atmosphere...")
+
     # Warnings
     if config.atmos_clim.albedo_pl > 1.0e-9:
         if config.atmos_clim.rayleigh:

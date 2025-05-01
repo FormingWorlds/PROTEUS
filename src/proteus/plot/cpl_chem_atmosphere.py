@@ -60,7 +60,7 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
     year = float(nc_fpath.split("/")[-1].split("_atm")[0])
 
     # Read offline chemistry output if available and requested
-    if plot_offchem:
+    if plot_offchem and (chem_module is not None) and (chem_module != "none"):
         atm_offchem = read_result(output_dir, chem_module)
         has_offchem = atm_offchem is not None
         if has_offchem:

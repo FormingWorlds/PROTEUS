@@ -8,14 +8,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Parameters
 [params]
     [params.out]
-        logging     = "DEBUG"
+        logging     = "INFO"
         path        = "escape"
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping
     [params.dt]
         minimum      = 3e2    # yr, minimum time-step
-        maximum      = 3e6    # yr, maximum time-step
+        maximum      = 8e7    # yr, maximum time-step
         initial      = 1e4    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 100    # yr, interval to re-calculate the instellation
@@ -30,8 +30,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.stop.time]
             enabled = true
-            minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 1e+9     # yr, model will terminate when t > maximum
+            minimum = 8e8     # yr, model will certainly run to t > minimum
+            maximum = 2e9     # yr, model will terminate when t > maximum
 
         [params.stop.solid]
             enabled  = false
@@ -43,7 +43,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             rtol    = 1e-3    # relative tolerance
 
         [params.stop.escape]
-            enabled   = false
+            enabled   = true
             p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
 
 
@@ -110,7 +110,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         tidal       = false         # Tidal contribution enabled
 
     [escape.dummy]
-        rate = 1e7
+        rate = 1e6
 
 
 [interior]

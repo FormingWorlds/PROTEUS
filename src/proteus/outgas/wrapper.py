@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import numpy as np
 from typing import TYPE_CHECKING
 
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
@@ -64,6 +65,8 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
             Dictionary of helpfile variables, at this iteration only
     '''
 
+    log.info("Solving outgassing...")
+
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
         calc_surface_pressures(dirs, config, hf_row)
@@ -73,11 +76,13 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
     for s in gas_list:
         hf_row["M_atm"] += hf_row[s + "_kg_atm"]
 
-    # print outgassed partial pressures
-    for s in gas_list:
+    # print outgassed partial pressures (in order of descending abundance)
+    mask = [hf_row[s+"_vmr"] for s in gas_list]
+    for i in np.argsort(mask)[::-1]:
+        s = gas_list[i]
         _p = hf_row[s+"_bar"]
         _x = hf_row[s+"_vmr"]
-        _s = "    %-6s : %-8.2f bar (%.2e VMR)" % (s,_p,_x)
+        _s = "    %-6s     = %-9.2f bar (%.2e VMR)" % (s,_p,_x)
         if _p > 0.01:
             log.info(_s)
         else:
@@ -85,8 +90,8 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
             log.debug(_s)
 
     # print total pressure and mmw
-    log.info("    total  : %-8.2f bar"%hf_row["P_surf"])
-    log.info("    mmw    : %-8.4f g mol-1"%(hf_row["atm_kg_per_mol"]*1e3))
+    log.info("    total      = %-9.2f bar"%hf_row["P_surf"])
+    log.info("    mmw        = %-9.5f g mol-1"%(hf_row["atm_kg_per_mol"]*1e3))
 
 def run_desiccated(config:Config, hf_row:dict):
     '''

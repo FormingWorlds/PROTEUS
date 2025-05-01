@@ -539,7 +539,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     """
 
     # Inform
-    log.info("Running AGNI...")
+    log.debug("Running AGNI...")
     time_str = "%d"%hf_row["Time"]
 
     # Solve atmosphere
