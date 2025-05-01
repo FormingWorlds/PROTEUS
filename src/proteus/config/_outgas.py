@@ -43,6 +43,8 @@ class Calliope:
     include_H2: bool    = True
     include_CH4: bool   = True
     include_CO: bool    = True
+    rtol: float         = field(default=1e-3, validator=validators.gt(0.0))
+    xtol: float         = field(default=1e-5, validator=validators.gt(0.0))
 
     def is_included(self, vol: str) -> bool:
         """Helper method for getting flag if `vol` is included in outgassing."""
@@ -80,7 +82,7 @@ class Outgas:
 
     module: str = field(validator=validators.in_(('calliope',)))
 
-    mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
+    mass_thresh: float = field(default=2e16, validator=validators.gt(0.0))
 
     calliope: Calliope      = field(factory=Calliope)
     atmodeller: Atmodeller  = field(factory=Atmodeller)
