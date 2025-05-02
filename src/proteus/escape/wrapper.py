@@ -157,7 +157,8 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str, min_thresh:float=1e1
 
         # elemental escape flux [kg/year]
         esc_rate_elem = hf_row["esc_rate_total"] * emr[e] * secs_per_year
-        log.info("    %2s = %.2e kg yr-1"%(e,esc_rate_elem))
+        if esc_rate_elem > 1:
+            log.info("    %2s = %.2e kg yr-1"%(e,esc_rate_elem))
 
         # subtract lost mass from TOTAL mass of element e
         tgt[e] = hf_row[e+"_kg_total"] - esc_rate_elem * dt

@@ -272,7 +272,6 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, transparent:bool):
     ----------
         atmos : AGNI.atmosphere.Atmos_t
             Atmosphere struct
-
     """
 
     # ---------------------
@@ -295,6 +294,8 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, transparent:bool):
     # Transparent mode?
     if transparent:
         jl.AGNI.atmosphere.make_transparent_b(atmos)
+        atmos.tmp[:]  = float(atmos.tmp_surf)
+        atmos.tmpl[:] = float(atmos.tmp_surf)
         return atmos
 
     # ---------------------
@@ -537,7 +538,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     """
 
     # Inform
-    log.info("Running AGNI...")
+    log.debug("Running AGNI...")
     time_str = "%d"%hf_row["Time"]
 
     # Solve atmosphere

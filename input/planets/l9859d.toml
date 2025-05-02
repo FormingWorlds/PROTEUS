@@ -15,7 +15,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # time-stepping
     [params.dt]
         minimum      = 3e2    # absolute minimum time-step [years]
-        minimum_rel  = 8e-3   # relative minimum time-step [dimensionless]
+        minimum_rel  = 1e-2   # relative minimum time-step [dimensionless]
         maximum      = 1e8    # yr, maximum time-step
         initial      = 1e4    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
@@ -23,12 +23,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         method       = "adaptive"  # proportional | adaptive | maximum
         [params.dt.adaptive]
             atol         = 0.03  # Step size atol
-            rtol         = 0.12   # Step size rtol
+            rtol         = 0.13   # Step size rtol
 
     [params.stop]
 
         [params.stop.time]
             enabled = true
+            minimum = 1e9
             maximum = 4.89e9     # yr, model will terminate when t > maximum
 
         # solidification
@@ -75,7 +76,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     corefrac    = 0.55      # non-dim., radius fraction
 
 [atmos_clim]
-    prevent_warming = true     # do not allow the planet to heat up
+    prevent_warming = false     # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
@@ -101,7 +102,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "zephyrus"
     [escape.zephyrus]
         Pxuv = 5e-5
-        efficiency = 0.5
+        efficiency = 0.1
         tidal = false
 
 [interior]
@@ -134,10 +135,10 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "none"
 
     [delivery.elements]
-        H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
-        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
+        H_ppmw      = 800.0     # Hydrogen inventory in ppmw relative to mantle mass
+        CH_ratio    = 1.0        # C/H mass ratio in mantle/atmosphere system
         NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
-        SH_ratio    = 7.5       # S/H mass ratio in mantle/atmosphere system
+        SH_ratio    = 4.0       # S/H mass ratio in mantle/atmosphere system
 
 [observe]
     synthesis = "platon"

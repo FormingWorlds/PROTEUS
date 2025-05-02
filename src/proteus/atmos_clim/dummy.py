@@ -16,7 +16,7 @@ log = logging.getLogger("fwl."+__name__)
 
 # Run the dummy atmosphere module
 def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:float, M_int:float, P_surf:float):
-    log.info("Running dummy atmosphere...")
+    log.debug("Running dummy atmosphere...")
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
     # It represents a measure of the radiating temperature of the atmosphere above the

@@ -70,6 +70,8 @@ class Agni:
         Enable volatile condensation/phase change in the atmosphere.
     real_gas: bool
         Use real gas equations of state in atmosphere, where possible.
+    psurf_thresh: float
+        Use the transparent-atmosphere solver when P_surf is less than this value [bar].
     """
 
     spectral_group: str     = field(default=None)
@@ -86,6 +88,7 @@ class Agni:
     overlap_method: str     = field(default='ee', validator=check_overlap)
     condensation: bool      = field(default=False)
     real_gas: bool          = field(default=False)
+    psurf_thresh: bool      = field(default=0.1, validator=ge(0))
 
     @property
     def chemistry_int(self) -> int:

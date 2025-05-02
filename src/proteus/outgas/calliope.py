@@ -243,13 +243,18 @@ def flag_included_volatiles(guess:dict, config:Config) -> dict:
     return p_included
 
 def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
+
+    # Inform
+    log.debug("Running CALLIOPE...")
+
     # make solvevol options
     opts = construct_options(dirs, config, hf_row)
 
     # convert masses to dict for calliope
     target = {}
     for e in element_list:
-        target[e] = hf_row[e + "_kg_total"]
+        if e != 'O':
+            target[e] = hf_row[e + "_kg_total"]
 
     # construct guess for CALLIOPE
     p_guess = construct_guess(hf_row, target, config.outgas.mass_thresh)
@@ -267,17 +272,20 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
         log.warning("Outgassing temperature clipped to %.1f K"%opts["T_magma"])
 
     # get atmospheric compositison
-    solvevol_result = equilibrium_atmosphere(target, opts,
-                                                rtol=1e-4,
-                                                atol=config.outgas.mass_thresh,
-                                                nguess=int(1e4), nsolve=100,
-                                                p_guess=p_guess)
+    try:
+        solvevol_result = equilibrium_atmosphere(target, opts,
+                                                    xtol=config.outgas.calliope.xtol,
+                                                    rtol=config.outgas.calliope.rtol,
+                                                    atol=config.outgas.mass_thresh,
+                                                    nguess=int(1e3), nsolve=int(3e3),
+                                                    p_guess=p_guess,
+                                                    print_result=False)
+    except RuntimeError as e:
+        log.error("Outgassing calculation with CALLIOPE failed")
+        UpdateStatusfile(dirs, 27)
+        raise e
 
     # Get result
     for k in expected_keys():
         if k in solvevol_result:
             hf_row[k] = solvevol_result[k]
-
-    # print info
-    log.info("    total  : %-8.2f bar"%hf_row["P_surf"])
-    log.info("    mmw    : %-8.4f g mol-1"%(hf_row["atm_kg_per_mol"]*1e3))

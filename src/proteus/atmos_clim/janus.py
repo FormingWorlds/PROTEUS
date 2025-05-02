@@ -176,7 +176,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     from janus.utils.observed_rho import calc_observed_rho
 
     # Runtime info
-    log.info("Running JANUS...")
+    log.debug("Running JANUS...")
     time = hf_row["Time"]
 
 
