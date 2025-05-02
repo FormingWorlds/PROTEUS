@@ -29,11 +29,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.stop.time]
             enabled = true
+            minimum = 1e9
             maximum = 4.89e9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
-            enabled  = false
+            enabled  = true
             phi_crit = 0.01
 
         # radiative equilibrium

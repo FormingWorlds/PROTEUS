@@ -44,7 +44,7 @@ class Calliope:
     include_CH4: bool   = True
     include_CO: bool    = True
     rtol: float         = field(default=1e-4, validator=validators.gt(0.0))
-    xtol: float         = field(default=1e-5, validator=validators.gt(0.0))
+    xtol: float         = field(default=1e-4, validator=validators.gt(0.0))
 
     def is_included(self, vol: str) -> bool:
         """Helper method for getting flag if `vol` is included in outgassing."""
