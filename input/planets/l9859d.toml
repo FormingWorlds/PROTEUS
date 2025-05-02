@@ -15,7 +15,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # time-stepping
     [params.dt]
         minimum      = 3e2    # absolute minimum time-step [years]
-        minimum_rel  = 8e-3   # relative minimum time-step [dimensionless]
+        minimum_rel  = 1e-2   # relative minimum time-step [dimensionless]
         maximum      = 1e8    # yr, maximum time-step
         initial      = 1e4    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
@@ -75,7 +75,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     corefrac    = 0.55      # non-dim., radius fraction
 
 [atmos_clim]
-    prevent_warming = true     # do not allow the planet to heat up
+    prevent_warming = false     # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
@@ -101,7 +101,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "zephyrus"
     [escape.zephyrus]
         Pxuv = 5e-5
-        efficiency = 0.5
+        efficiency = 0.1
         tidal = false
 
 [interior]
