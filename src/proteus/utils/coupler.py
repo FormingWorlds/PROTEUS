@@ -298,7 +298,7 @@ def print_header():
 
 def print_stoptime(start_time):
     end_time = datetime.now()
-    log.info("Simulation stopped at: " + end_time.strftime("%Y-%m-%d_%H:%M:%S"))
+    log.info("Simulation stopped at: " + _get_current_time())
 
     run_time = end_time - start_time
     run_time = run_time.total_seconds()
@@ -631,7 +631,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         # Atmospheric chemistry
         if not dummy_atm:
             plot_chem_atmosphere(output_dir, config.atmos_chem.module,
-                                plot_format=config.params.out.plot_fmt)
+                                    plot_format=config.params.out.plot_fmt)
 
         # Check that the simulation ran for long enough to make useful plots
         if len(hf_all["Time"]) >= 3:

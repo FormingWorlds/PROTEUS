@@ -48,6 +48,8 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
 
     """
 
+    log.info("Solving atmosphere...")
+
     # Warnings
     if config.atmos_clim.albedo_pl > 1.0e-9:
         if config.atmos_clim.rayleigh:
@@ -128,7 +130,7 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
                 raise RuntimeError("Atmosphere struct not allocated")
 
         # Check if atmosphere is transparent
-        transparent = bool(hf_row["P_surf"] < 1e-3)  # bar
+        transparent = bool(hf_row["P_surf"] < config.atmos_clim.agni.psurf_thresh)  # bar
 
         # Update profile
         atmos_o._atm = update_agni_atmos(atmos_o._atm, hf_row, dirs, transparent)

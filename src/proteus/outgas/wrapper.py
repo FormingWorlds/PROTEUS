@@ -4,10 +4,11 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from proteus.outgas.calliope import calc_surface_pressures, calc_target_masses
 from proteus.outgas.common import expected_keys
 from proteus.utils.constants import element_list, gas_list
-from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -42,8 +43,10 @@ def check_desiccation(config:Config, hf_row:dict) -> bool:
 
     # check if desiccation has occurred
     for e in element_list:
+        if e == 'O':
+            continue
         if hf_row[e + "_kg_total"] > config.outgas.mass_thresh:
-            log.debug("Not desiccated, %s = %.2e kg" % (e, hf_row[e + "_kg_total"]))
+            log.info("Not desiccated, %s = %.2e kg" % (e, hf_row[e + "_kg_total"]))
             return False # return, and allow run_outgassing to proceed
 
     return True
@@ -63,20 +66,33 @@ def run_outgassing(dirs:dict, config:Config, hf_row:dict):
             Dictionary of helpfile variables, at this iteration only
     '''
 
+    log.info("Solving outgassing...")
+
     # Run outgassing calculation
     if config.outgas.module == 'calliope':
-        try:
-            calc_surface_pressures(dirs, config, hf_row)
-        except RuntimeError as e:
-            log.error("Outgassing calculation failed")
-            UpdateStatusfile(dirs, 27)
-            raise e
+        calc_surface_pressures(dirs, config, hf_row)
 
     # calculate total atmosphere mass (from sum of volatile masses)
-    # this will need to be changed when rock vapours are included
     hf_row["M_atm"] = 0.0
     for s in gas_list:
         hf_row["M_atm"] += hf_row[s + "_kg_atm"]
+
+    # print outgassed partial pressures (in order of descending abundance)
+    mask = [hf_row[s+"_vmr"] for s in gas_list]
+    for i in np.argsort(mask)[::-1]:
+        s = gas_list[i]
+        _p = hf_row[s+"_bar"]
+        _x = hf_row[s+"_vmr"]
+        _s = "    %-6s     = %-9.2f bar (%.2e VMR)" % (s,_p,_x)
+        if _p > 0.01:
+            log.info(_s)
+        else:
+            # don't spam log with species of negligible abundance
+            log.debug(_s)
+
+    # print total pressure and mmw
+    log.info("    total      = %-9.2f bar"%hf_row["P_surf"])
+    log.info("    mmw        = %-9.5f g mol-1"%(hf_row["atm_kg_per_mol"]*1e3))
 
 def run_desiccated(config:Config, hf_row:dict):
     '''
