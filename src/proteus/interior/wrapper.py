@@ -43,7 +43,7 @@ def get_nlevb(config:Config):
             return 2
     raise ValueError(f"Invalid interior module selected '{config.interior.module}'")
 
-"""def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
+def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     '''
     Determine the interior radius (R_int) of the planet.
 
@@ -103,7 +103,7 @@ def get_nlevb(config:Config):
     log.info("Found solution for interior structure")
     log.info("M_tot: %.1e kg = %.3f M_earth"%(hf_row["M_tot"], hf_row["M_tot"]/M_earth))
     log.info("R_int: %.1e m  = %.3f R_earth"%(hf_row["R_int"], hf_row["R_int"]/R_earth))
-    log.info(" ")"""
+    log.info(" ")
 
 def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, outdir:str):
     '''
@@ -127,10 +127,14 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, 
     # Set by total mass (mantle + core + volatiles)
     elif config.struct.set_by == 'mass_tot':
         #determine_interior_radius(dirs, config, hf_all, hf_row)
-        # Call the function and unpack the returned tuple
-        radii, density, gravity, pressure, mass_enclosed = zalmoxis_solver(config, outdir)
-        hf_row["R_int"] = radii[-1]
-        hf_row["M_int"] = mass_enclosed[-1]
+
+        # Call Zalmoxis and get the interior structure
+        radii, pressure, density, gravity, mass_enclosed, core_radius_fraction = zalmoxis_solver(config, outdir, hf_row)
+
+        # Update the surface radius, interior radius, and mass
+        #hf_row["R_int"] = radii[-1]
+        #hf_row["M_int"] = mass_enclosed[-1]
+        #hf_row["gravity"] = gravity[-1]
 
 
     # Otherwise, error
@@ -180,7 +184,7 @@ def run_interior(dirs:dict, config:Config,
         from proteus.interior.aragog import RunAragog
 
         # Run Aragog
-        sim_time, output = RunAragog(config, dirs, hf_row, hf_all, interior_o)
+        sim_time, output = RunAragog(config, dirs, hf_row, hf_all, interior_o, dirs["output"])
 
     elif config.interior.module == 'dummy':
         # Import

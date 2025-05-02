@@ -102,7 +102,7 @@ def interior_structure_odes(radius, y, cmb_mass, eos_choice, interpolation_cache
     # Return the derivatives
     return [dMdr, dgdr, dPdr]
 
-def zalmoxis_solver(config:Config, outdir:str):
+def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
 
     """
     Zalmoxis interior model solver.
@@ -272,6 +272,9 @@ def zalmoxis_solver(config:Config, outdir:str):
     # Calculate the average density of the planet using the calculated mass and radius
     average_density = calculated_mass / (4/3 * np.pi * planet_radius**3)
 
+    # Calculate the core radius fraction
+    core_radius_fraction = cmb_radius / planet_radius
+
     # Final results of the Zalmoxis interior model
     log.info("Zalmoxis interior structure model results:")
     log.info(f"Interior mass: {calculated_mass:.2e} kg or {calculated_mass / M_earth:.2f} M_earth")
@@ -284,15 +287,26 @@ def zalmoxis_solver(config:Config, outdir:str):
     log.info(f"Pressure at the center: {pressure[0]:.2e} Pa")
     log.info(f"Average density: {average_density:.2f} kg/m^3")
     log.info(f"Core-mantle boundary mass fraction: {cmb_mass / calculated_mass:.2f}")
-    log.info(f"Core radius fraction: {cmb_radius / planet_radius:.2f}")
+    log.info(f"Core radius fraction: {core_radius_fraction:.2f}")
+
+    # Update the surface radius, interior radius, and mass
+    #hf_row["R_int"] = radii[-1]
+    #hf_row["M_int"] = mass_enclosed[-1]
+    #hf_row["gravity"] = gravity[-1]
 
     # Get the output location for Zalmoxis output
     output_zalmoxis = get_zalmoxis_output_filepath(outdir)
     log.info(f"Saving Zalmoxis output to {output_zalmoxis}")
 
-    # Save final grids for radius, density, gravity, pressure, and mass enclosed to the output file
-    with open(output_zalmoxis, 'w') as f:
-        for i in range(len(radii)):
-            f.write(f"{radii[i]} {density[i]} {gravity[i]} {pressure[i]} {mass_enclosed[i]}\n")
+    # Select values from the arrays for the mantle (to match the mesh needed for Aragog)
+    mantle_radii = radii[cmb_index:]
+    mantle_pressure = pressure[cmb_index:]
+    mantle_density = density[cmb_index:]
+    mantle_gravity = gravity[cmb_index:]
 
-    return radii, density, gravity, pressure, mass_enclosed
+    # Save final grids to the output file for the mantle
+    with open(output_zalmoxis, 'w') as f:
+        for i in range(len(mantle_radii)):
+            f.write(f"{mantle_radii[i]:.15e} {mantle_pressure[i]:.15e} {mantle_density[i]:.15e}\n")
+
+    return radii, pressure, density, gravity, mass_enclosed, core_radius_fraction
