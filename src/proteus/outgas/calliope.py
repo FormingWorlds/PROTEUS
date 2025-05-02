@@ -14,6 +14,7 @@ from calliope.solve import (
     get_target_from_pressures,
 )
 
+from proteus.outgas.common import expected_keys
 from proteus.utils.constants import element_list, vol_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -43,9 +44,14 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
 
     # Volatile inventory
     for s in vol_list:
-        solvevol_inp[f'{s}_initial_bar'] = config.delivery.volatiles.get_pressure(s)
+        if s != "O2":
+            pressure = config.delivery.volatiles.get_pressure(s)
+            included = config.outgas.calliope.is_included(s)
+        else:
+            pressure = 0.0
+            included = True
 
-        included = config.outgas.calliope.is_included(s)
+        solvevol_inp[f'{s}_initial_bar'] = float(pressure)
         solvevol_inp[f'{s}_included'] = int(included)
 
         if (s in ("H2O","CO2","N2","S2")) and not included:
@@ -142,34 +148,144 @@ def calc_target_masses(dirs:dict, config:Config, hf_row:dict):
 
     # store in hf_row as elements
     for e in solvevol_target.keys():
-        if e == "O":
-            continue
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
+
+def construct_guess(hf_row:dict, target:dict, mass_thresh:float) -> dict | None:
+    """
+    Construct initial guess for CALLIOPE.
+
+    Returns None for time=0, otherwise returns a dictionary of partial pressures.
+
+    Parameters
+    ----------
+    hf_row : dict
+        Dictionary containing the current state of the planet
+    target : dict
+        Dictionary containing the target elemental inventories [kg]
+    mass_thresh : float
+        Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+
+    Returns
+    -------
+    p_guess : dict | None
+        Dictionary containing the guess for the surface pressures [bar]
+    """
+
+    log.debug("Initial guess for CALLIOPE")
+
+    # During initial phase, allow CALLIOPE to make its own guess
+    if hf_row["Time"] < 1:
+        log.debug("    providing None, allowing CALLIOPE to guess")
+        return None
+
+    # Dictionary of partial pressures [bar] for H2O, CO2, N2, S2
+    p_guess = {}
+
+    # Use previous value from hf_row
+    log.debug("    using previous partial pressures from hf_row")
+    for s in vol_list:
+        p_guess[s] = hf_row[f"{s}_bar"]
+
+    # Check if elemental inventory is zero => guess zero pressure
+    for s in vol_list:
+
+        # check if any of the elements are zero in the planet
+        is_zero = False
+        for e in element_list:
+            if e == "O":
+                continue
+            if (e in s) and (target[e] < mass_thresh): # kg
+                is_zero = True
+                break
+
+        # if any of the elements are zero, set guess to zero
+        if is_zero:
+            p_guess[s] = 0.0
+            log.debug("    %s: guess set to zero"%s)
+
+    return p_guess
+
+def flag_included_volatiles(guess:dict, config:Config) -> dict:
+    """
+    Determine which volatiles are included in the outgassing calculation
+
+    Parameters
+    ----------
+    guess : dict
+        Dictionary containing the guess for the surface pressures [bar]
+    config : Config
+        Configuration object
+
+    Returns
+    -------
+    p_included : dict
+        Dictionary containing the inclusion status of each volatile (true/false)
+    """
+
+    # Included based on config
+    p_included = {}
+    for s in vol_list:
+        if s == "O2":
+            p_included[s] = True
+        else:
+            p_included[s] = bool(getattr(config.outgas.calliope, f"include_{s}"))
+
+    # If guess is none, just do what config suggests
+    if guess is None:
+        return p_included
+
+    # Check if partial pressure is zero => do not include volatile
+    for s in vol_list:
+        if s != "O2":
+            p_included[s] = p_included[s] and (guess[s] > 0.0)
+
+    return p_included
+
 def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
+
+    # Inform
+    log.debug("Running CALLIOPE...")
+
     # make solvevol options
-    solvevol_inp = construct_options(dirs, config, hf_row)
+    opts = construct_options(dirs, config, hf_row)
 
     # convert masses to dict for calliope
-    solvevol_target = {}
+    target = {}
     for e in element_list:
-        if e == "O":
-            continue
+        if e != 'O':
+            target[e] = hf_row[e + "_kg_total"]
 
-        # save to dict
-        solvevol_target[e] = hf_row[e + "_kg_total"]
+    # construct guess for CALLIOPE
+    p_guess = construct_guess(hf_row, target, config.outgas.mass_thresh)
+
+    # check if gas is included or not
+    p_incl = flag_included_volatiles(p_guess, config)
+
+    # Set included
+    for s in vol_list:
+        opts[f'{s}_included'] = int(p_incl[s])
 
     # Do not allow low temperatures
-    if solvevol_inp["T_magma"] < config.outgas.calliope.T_floor:
-        solvevol_inp["T_magma"] = config.outgas.calliope.T_floor
-        log.warning("Outgassing temperature clipped to %.1f K"%solvevol_inp["T_magma"])
+    if opts["T_magma"] < config.outgas.calliope.T_floor:
+        opts["T_magma"] = config.outgas.calliope.T_floor
+        log.warning("Outgassing temperature clipped to %.1f K"%opts["T_magma"])
 
     # get atmospheric compositison
-    solvevol_result = equilibrium_atmosphere(solvevol_target, solvevol_inp, rtol=1e-7)
-    for k in solvevol_result.keys():
-        if k in hf_row.keys():
-            hf_row[k] = solvevol_result[k]
+    try:
+        solvevol_result = equilibrium_atmosphere(target, opts,
+                                                    xtol=config.outgas.calliope.xtol,
+                                                    rtol=config.outgas.calliope.rtol,
+                                                    atol=config.outgas.mass_thresh,
+                                                    nguess=int(1e3), nsolve=int(3e3),
+                                                    p_guess=p_guess,
+                                                    print_result=False)
+    except RuntimeError as e:
+        log.error("Outgassing calculation with CALLIOPE failed")
+        UpdateStatusfile(dirs, 27)
+        raise e
 
-    # print info
-    log.info("    total  : %-8.2f bar"%hf_row["P_surf"])
-    log.info("    mmw    : %-8.4f g mol-1"%(hf_row["atm_kg_per_mol"]*1e3))
+    # Get result
+    for k in expected_keys():
+        if k in solvevol_result:
+            hf_row[k] = solvevol_result[k]

@@ -132,7 +132,7 @@ def CommentFromStatus(status:int):
         case 10:
             desc = "Completed (solidified)"
         case 11:
-            desc = "Completed (steady-state)"
+            desc = "UNUSED_STATUS_CODE (11)"
         case 12:
             desc = "Completed (maximum iterations)"
         case 13:
@@ -140,7 +140,7 @@ def CommentFromStatus(status:int):
         case 14:
             desc = "Completed (net flux is small)"
         case 15:
-            desc = "Completed (atmosphere escaped)"
+            desc = "Completed (volatiles escaped)"
         # Error cases
         case 20:
             desc = "Error (generic case, or configuration issue)"
@@ -156,6 +156,8 @@ def CommentFromStatus(status:int):
             desc = "Error (died, or exit requested by user)"
         case 26:
             desc = "Error (Tides/orbit model)"
+        case 27:
+            desc = "Error (Outgassing model)"
         # Default case
         case _:
             desc = "UNHANDLED STATUS (%d)" % status

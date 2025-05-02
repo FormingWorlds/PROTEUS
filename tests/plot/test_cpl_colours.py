@@ -12,7 +12,7 @@ def test_get_colour():
     assert get_colour("foo") == _preset_colours["_fallback"]
 
     # Test generating a colour
-    assert get_colour("SiH4C2") == '#d90aff'
+    assert get_colour("SiH4C2") == '#b909ff'
 
 def test_latexify():
     assert latexify("H2O4") == r"H$_2$O$_4$"

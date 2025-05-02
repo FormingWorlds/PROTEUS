@@ -15,7 +15,6 @@ from proteus.atmos_clim.common import Atmos_t, get_spfile_path
 from proteus.utils.constants import const_R
 from proteus.utils.helper import UpdateStatusfile, safe_rm
 
-# atm = None
 log = logging.getLogger("fwl."+__name__)
 
 def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
@@ -48,6 +47,8 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
             Dictionary containing simulation variables for current iteration
 
     """
+
+    log.info("Solving atmosphere...")
 
     # Warnings
     if config.atmos_clim.albedo_pl > 1.0e-9:
@@ -128,12 +129,16 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
                 UpdateStatusfile(dirs, 22)
                 raise RuntimeError("Atmosphere struct not allocated")
 
+        # Check if atmosphere is transparent
+        transparent = bool(hf_row["P_surf"] < config.atmos_clim.agni.psurf_thresh)  # bar
+
         # Update profile
-        atmos_o._atm = update_agni_atmos(atmos_o._atm, hf_row, dirs)
+        atmos_o._atm = update_agni_atmos(atmos_o._atm, hf_row, dirs, transparent)
 
         # Run solver
         atmos_o._atm, atm_output = run_agni(atmos_o._atm,
-                                            loop_counter["total"], dirs, config, hf_row)
+                                            loop_counter["total"], dirs, config, hf_row,
+                                            transparent)
 
     elif config.atmos_clim.module == 'dummy':
         # Import

@@ -178,6 +178,11 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         if not os.path.isfile(surface_material):
             raise FileNotFoundError(surface_material)
 
+    # Boundary pressures
+    p_surf = hf_row["P_surf"]
+    p_top  = config.atmos_clim.agni.p_top
+    p_surf = max(p_surf, p_top * 1.1) # this will happen if the atmosphere is stripped
+
     # Setup struct
     jl.AGNI.atmosphere.setup_b(atmos,
                         dirs["agni"], dirs["output"], input_sf,
@@ -191,8 +196,8 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         hf_row["gravity"], hf_row["R_int"],
 
                         int(config.atmos_clim.agni.num_levels),
-                        hf_row["P_surf"],
-                        config.atmos_clim.agni.p_top,
+                        p_surf,
+                        p_top,
 
                         vol_dict, "",
 
@@ -247,7 +252,7 @@ def deallocate_atmos(atmos):
     safe_rm(str(atmos.fastchem_work))
 
 
-def update_agni_atmos(atmos, hf_row:dict, dirs:dict):
+def update_agni_atmos(atmos, hf_row:dict, dirs:dict, transparent:bool):
     """Update atmosphere struct.
 
     Sets the new boundary conditions and composition.
@@ -260,13 +265,18 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict):
             Dictionary containing simulation variables for current iteration
         dirs : dict
             Directories dictionary
+        transparent : bool
+            If True, the atmosphere is configured to be transparent to radiation
 
     Returns
     ----------
         atmos : AGNI.atmosphere.Atmos_t
             Atmosphere struct
-
     """
+
+    # ---------------------
+    # Update instellation flux
+    atmos.instellation = float(hf_row["F_ins"])
 
     # ---------------------
     # Update compositions
@@ -274,6 +284,19 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict):
     for g in vol_dict.keys():
         atmos.gas_vmr[g][:]  = vol_dict[g]
         atmos.gas_ovmr[g][:] = vol_dict[g]
+
+    # ---------------------
+    # Update surface temperature(s)
+    atmos.tmp_surf  = float(hf_row["T_surf"] )
+    atmos.tmp_magma = float(hf_row["T_magma"])
+
+    # ---------------------
+    # Transparent mode?
+    if transparent:
+        jl.AGNI.atmosphere.make_transparent_b(atmos)
+        atmos.tmp[:]  = float(atmos.tmp_surf)
+        atmos.tmpl[:] = float(atmos.tmp_surf)
+        return atmos
 
     # ---------------------
     # Store old/current log-pressure vs temperature arrays
@@ -298,20 +321,11 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict):
     jl.AGNI.atmosphere.generate_pgrid_b(atmos)
 
     # ---------------------
-    # Update surface temperature(s)
-    atmos.tmp_surf  = float(hf_row["T_surf"] )
-    atmos.tmp_magma = float(hf_row["T_magma"])
-
-    # ---------------------
     # Set temperatures at all levels
     for i in range(nlev_c):
         atmos.tmp[i]  = float( itp(np.log10(atmos.p[i]))  )
         atmos.tmpl[i] = float( itp(np.log10(atmos.pl[i])) )
     atmos.tmpl[-1]    = float( itp(np.log10(atmos.pl[-1])))
-
-    # ---------------------
-    # Update instellation flux
-    atmos.instellation = float(hf_row["F_ins"])
 
     return atmos
 
@@ -466,7 +480,35 @@ def _solve_once(atmos, config:Config):
 
     return atmos
 
-def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
+def _solve_transparent(atmos, config:Config):
+    """
+    Use AGNI to solve for the surface temperature under a transparent atmosphere
+
+    Parameters
+    ----------
+        atmos : AGNI.atmosphere.Atmos_t
+            Atmosphere struct
+        config : Config
+            PROTEUS config object
+
+    Returns
+    ----------
+        atmos : AGNI.atmosphere.Atmos_t
+            Atmosphere struct
+    """
+
+    atol = float(config.atmos_clim.agni.solution_atol)
+    rtol = float(config.atmos_clim.agni.solution_rtol)
+    max_steps = 120
+
+    jl.AGNI.solver.solve_transparent_b(atmos,
+                                        sol_type=int(config.atmos_clim.surf_state_int),
+                                        conv_atol=atol, conv_rtol=rtol,
+                                        max_steps=int(max_steps))
+    return atmos
+
+def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
+                hf_row:dict, transparent:bool):
     """Run AGNI atmosphere model.
 
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -484,6 +526,8 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
+        transparent : bool
+            Find solution assuming a transparent atmosphere
 
     Returns
     ----------
@@ -491,18 +535,26 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
             Atmosphere struct
         output : dict
             Output variables, as a dictionary
-
     """
 
     # Inform
-    log.info("Running AGNI...")
+    log.debug("Running AGNI...")
     time_str = "%d"%hf_row["Time"]
 
-    # solve atmosphere
-    if config.atmos_clim.agni.solve_energy:
-        atmos = _solve_energy(atmos, loops_total, dirs, config)
+    # Solve atmosphere
+    if bool(atmos.transparent):
+        # no opacity
+        log.info("Using transparent solver")
+        atmos = _solve_transparent(atmos, config)
+
     else:
-        atmos = _solve_once(atmos, config)
+        # has opacity
+        if config.atmos_clim.agni.solve_energy:
+            log.info("Using nonlinear solver to conserve fluxes")
+            atmos = _solve_energy(atmos, loops_total, dirs, config)
+        else:
+            log.info("Using prescribed temperature profile")
+            atmos = _solve_once(atmos, config)
 
     # Write output data
     ncdf_path = os.path.join(dirs["output"],"data",time_str+"_atm.nc")

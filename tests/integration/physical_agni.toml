@@ -6,7 +6,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # output files
     [params.out]
         path        = "physical_agni"
-        logging     = "ERROR"
+        logging     = "DEBUG"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
@@ -100,7 +100,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = -2         # log10(ΔIW), atmosphere/interior boundary oxidation state
+    fO2_shift_IW    = -2        # log10(ΔIW), atmosphere/interior boundary oxidation state
     module = "calliope"         # Which outgassing module to use
 
 # Volatile delivery - physics table
