@@ -536,7 +536,7 @@ if __name__=='__main__':
     use_slurm = True
 
     # Execution limits
-    max_jobs = 350      # maximum number of concurrent tasks
+    max_jobs = 320      # maximum number of concurrent tasks
     max_days = 1         # maximum number of days to run
     max_mem  = 3         # maximum memory per CPU in GB
 
@@ -561,7 +561,7 @@ if __name__=='__main__':
     pg.set_dimension_arange("Hydrogen", 16000, 1000, -3000)
 
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    pg.set_dimension_direct("Sulfur", [2, 6, 8, 10])
+    pg.set_dimension_direct("Sulfur", [2, 4, 6, 8, 10])
 
     pg.add_dimension("Mass", "struct.mass_tot")
     pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])

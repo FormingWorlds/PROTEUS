@@ -9,7 +9,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         logging     = "INFO"
         plot_mod    = 40      # Plotting frequency, 0: wait until completion | n: every n iterations
         write_mod   = 2
-        archive_mod = 0
+        archive_mod = 250
         remove_sf   = true
 
     # time-stepping
@@ -29,13 +29,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.stop.time]
             enabled = true
-            minimum = 1e9
             maximum = 4.89e9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
             enabled  = true
-            phi_crit = 0.01
+            phi_crit = 0.005
 
         # radiative equilibrium
         [params.stop.radeqm]
@@ -76,7 +75,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     corefrac    = 0.55      # non-dim., radius fraction
 
 [atmos_clim]
-    prevent_warming = false     # do not allow the planet to heat up
+    prevent_warming = true     # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
