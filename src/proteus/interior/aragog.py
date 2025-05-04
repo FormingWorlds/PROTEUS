@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import netCDF4 as nc
 import numpy as np
 import pandas as pd
+import hashlib
 import platformdirs
 from aragog import Output, Solver, aragog_file_logger
 from aragog.parser import (
@@ -35,26 +36,66 @@ if TYPE_CHECKING:
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA',
                                    platformdirs.user_data_dir('fwl_data')))
 
-class AragogRunner:
+def _summarize_for_hash(obj):
+    """Generate a fast, approximate hashable summary of an object."""
+    if isinstance(obj, (int, float, str, bool, type(None))):
+        return obj
+    elif isinstance(obj, (list, tuple)):
+        return tuple(_summarize_for_hash(x) for x in obj)
+    elif isinstance(obj, dict):
+        return tuple(sorted((k, _summarize_for_hash(v)) for k, v in obj.items()))
+    elif isinstance(obj, np.ndarray):
+        if obj.size > 5000:  # Heuristic threshold
+            return (
+                obj.shape,
+                obj.dtype.str,
+                round(float(np.nanmean(obj)), 6),
+                round(float(np.nanstd(obj)), 6),
+                round(float(np.nanmin(obj)), 6),
+                round(float(np.nanmax(obj)), 6),
+            )
+        else:
+            return tuple(obj.ravel().tolist())
+    elif hasattr(obj, '__dict__'):
+        return _summarize_for_hash(vars(obj))
+    else:
+        return str(type(obj)) + repr(obj)
+
+
+class MultitonBase:
     _instances = {}
 
     def __new__(cls, *args, **kwargs):
-        # Build a cache key from the object identities of all args and kwargs
-        key = (
-            tuple(id(arg) for arg in args),
-            tuple(sorted((k, id(v)) for k, v in kwargs.items()))
-        )
-
-        if key in cls._instances:
-            return cls._instances[key]
+        try:
+            key = cls._build_key(args, kwargs)
+            if key in cls._instances:
+                return cls._instances[key]
+        except Exception as e:
+            print(("[Multiton warning] Falling back to uncached instance "
+                  f"due to: {e}"))
+            return super().__new__(cls)
 
         instance = super().__new__(cls)
-        instance._initialized = False
         cls._instances[key] = instance
         return instance
 
+    @classmethod
+    def _build_key(cls, args, kwargs):
+        summary = (
+            tuple(_summarize_for_hash(arg) for arg in args),
+            tuple(sorted((k, _summarize_for_hash(v)) for k, v
+                         in kwargs.items()))
+        )
+        return summary
+
+
+class AragogRunner(MultitonBase):
+
     def __init__(self, config: Config, dirs: dict, hf_row: dict, hf_all:
                  pd.DataFrame, interior_o: Interior_t):
+        if getattr(self, "_initialized", False):
+            return
+        self._initialized = True
         AragogRunner.setup_logger(config, dirs)
         dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all,
                                             interior_o)
