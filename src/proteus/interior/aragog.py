@@ -112,20 +112,17 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t, outdir:
             )
 
     # Call Zalmoxis and get the interior structure
-    radii, pressure, density, gravity, mass_enclosed, core_radius_fraction = zalmoxis_solver(config, outdir, hf_row)
+    core_radius_fraction = zalmoxis_solver(config, outdir, hf_row)
 
     mesh = _MeshParameters(
             outer_radius = hf_row["R_int"], # planet radius [m]
-            #outer_radius = radii[-1], # planet radius [m] from Zalmoxis
             #inner_radius = config.struct.corefrac * hf_row["R_int"], # core radius [m]
             inner_radius = core_radius_fraction * hf_row["R_int"], # core radius [m]
-            #inner_radius = core_radius_fraction * radii[-1], # core radius [m] from Zalmoxis
             number_of_nodes = config.interior.aragog.num_levels, # basic nodes
             mixing_length_profile = "constant",
             eos_method = 2, # User defined EOS
             surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration = hf_row["gravity"], # [m/s-2]
-            #gravitational_acceleration = gravity[-1], # [m/s-2] from Zalmoxis
             adiabatic_bulk_modulus = config.interior.bulk_modulus, # AW-EOS parameter [Pa]
             eos_file = os.path.join(outdir, "data", "zalmoxis_output.dat")
             )

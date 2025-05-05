@@ -289,10 +289,10 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
     log.info(f"Core-mantle boundary mass fraction: {cmb_mass / calculated_mass:.2f}")
     log.info(f"Core radius fraction: {core_radius_fraction:.2f}")
 
-    # Update the surface radius, interior radius, and mass
-    #hf_row["R_int"] = radii[-1]
-    #hf_row["M_int"] = mass_enclosed[-1]
-    #hf_row["gravity"] = gravity[-1]
+    # Update the surface radius, interior radius, and mass in the hf_row
+    hf_row["R_int"] = radii[-1]
+    hf_row["M_int"] = mass_enclosed[-1]
+    hf_row["gravity"] = gravity[-1]
 
     # Get the output location for Zalmoxis output
     output_zalmoxis = get_zalmoxis_output_filepath(outdir)
@@ -309,4 +309,4 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
         for i in range(len(mantle_radii)):
             f.write(f"{mantle_radii[i]:.15e} {mantle_pressure[i]:.15e} {mantle_density[i]:.15e}\n")
 
-    return radii, pressure, density, gravity, mass_enclosed, core_radius_fraction
+    return core_radius_fraction

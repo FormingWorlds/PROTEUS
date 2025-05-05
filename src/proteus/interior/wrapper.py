@@ -129,13 +129,7 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, 
         #determine_interior_radius(dirs, config, hf_all, hf_row)
 
         # Call Zalmoxis and get the interior structure
-        radii, pressure, density, gravity, mass_enclosed, core_radius_fraction = zalmoxis_solver(config, outdir, hf_row)
-
-        # Update the surface radius, interior radius, and mass
-        #hf_row["R_int"] = radii[-1]
-        #hf_row["M_int"] = mass_enclosed[-1]
-        #hf_row["gravity"] = gravity[-1]
-
+        core_radius_fraction = zalmoxis_solver(config, outdir, hf_row)
 
     # Otherwise, error
     else:
