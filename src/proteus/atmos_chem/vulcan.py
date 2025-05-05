@@ -51,7 +51,8 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
         Did VULCAN run successfully?
     """
 
-    log.debug(f"Using VULCAN imported from: {vulcan.__file__}")
+    log.debug(f"Using VULCAN from: {vulcan.__file__}")
+    log.debug(f"    version {vulcan.__version__}")
 
     success = True
 
@@ -64,9 +65,8 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
         return False
 
     # make folder
-    work_dir = os.path.join(dirs["output"],"offchem") + "/"
-    shutil.rmtree(work_dir, ignore_errors=True)
-    os.makedirs(work_dir)
+    shutil.rmtree(dirs["output/offchem"], ignore_errors=True)
+    os.makedirs(dirs["output/offchem"])
 
     # ------------------------------------------------------------
     # READ DATA FROM PROTEUS RUN
@@ -85,8 +85,8 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     # ------------------------------------------------------------
 
     # Output folder
-    vulcan_out = work_dir
-    vulcan_plt = work_dir
+    vulcan_out = dirs["output/offchem"]
+    vulcan_plt = dirs["output/offchem"]
     log.debug("Writing VULCAN input data")
 
     # Find a reasonable file for the stellar flux
@@ -104,7 +104,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     star_fl = star_fl[star_fl > config.atmos_chem.vulcan.clip_fl]
 
     # Write spectrum
-    star_write = work_dir + "star.dat"
+    star_write = dirs["output/offchem"] + "star.dat"
     np.savetxt(star_write, np.array([star_wl, star_fl]).T,
                 header="# WL(nm)    Flux(ergs/cm**2/s/nm)",
                 fmt=["%.4f","%.4e"])
@@ -119,12 +119,12 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     # Write TPK profile
     header  = "#(dyne/cm2)\t(K)\t(cm2/s)\n"
     header += "Pressure\tTemp\tKzz"
-    prof_write = work_dir + "profile.dat"
+    prof_write = dirs["output/offchem"] + "profile.dat"
     np.savetxt(prof_write, np.array([p_arr[::-1], t_arr[::-1], k_arr[::-1]]).T,
                delimiter="\t", header=header, comments='', fmt="%1.5e")
 
     # Write mixing ratios
-    vmr_write = work_dir + "vmrs.dat"
+    vmr_write = dirs["output/offchem"] + "vmrs.dat"
     x_gas = [list(p_arr)]
     header = "#Input composition arrays \nPressure\t"
     for key in atmos.keys():
@@ -276,16 +276,16 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     vcfg.runtime            = 1.E22
     vcfg.use_print_prog     = True
     vcfg.use_print_delta    = False
-    vcfg.print_prog_num     = 20    # print the progress every x steps
-    vcfg.dttry              = 1.E-6
-    vcfg.dt_min             = 1.E-8
+    vcfg.print_prog_num     = 1    # print the progress every x steps
+    vcfg.dttry              = 1.E-8
+    vcfg.dt_min             = 1.E-9
     vcfg.dt_max             = vcfg.runtime*1e-4
     vcfg.dt_var_max         = 2.
     vcfg.dt_var_min         = 0.5
     vcfg.count_min          = 120
     vcfg.count_max          = int(3E4)
-    vcfg.atol               = 5.E-2 # Decrease this if the solutions are not stable
-    vcfg.rtol               = 0.7   # relative tolerence for adjusting the stepsize
+    vcfg.atol               = 1.E-1 # Decrease this if the solutions are not stable
+    vcfg.rtol               = 0.9   # relative tolerence for adjusting the stepsize
     vcfg.pos_cut            = 0
     vcfg.nega_cut           = -1.
     vcfg.loss_eps           = 1e-1
@@ -301,11 +301,14 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     vcfg.plot_TP            = config.atmos_chem.vulcan.save_frames
     vcfg.use_live_plot      = config.atmos_chem.vulcan.save_frames
     vcfg.use_save_movie     = config.atmos_chem.vulcan.save_frames
-    vcfg.save_movie_rate    = 50
+    vcfg.save_movie_rate    = 20
     vcfg.plot_spec          = plt_arr
     vcfg.plot_height        = False
     vcfg.save_evolution     = False
     vcfg.output_humanread   = False
+
+    # for k in vars(vcfg).keys():
+    #     print(f"{k}: ", vars(vcfg)[])
 
     # ------------------------------------------------------------
     # RUN VULCAN
