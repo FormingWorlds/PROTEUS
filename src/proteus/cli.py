@@ -6,6 +6,7 @@ from pathlib import Path
 import click
 
 from proteus import Proteus
+from proteus.utils.logs import setup_logger
 from proteus import __version__ as proteus_version
 
 config_option = click.option(
@@ -209,6 +210,8 @@ cli.add_command(extract_archives)
 def offchem(config_path: Path):
     """Run offline chemistry on PROTEUS output files"""
     runner = Proteus(config_path=config_path)
+    setup_logger(logpath=runner.directories["output"]+"offchem.log",
+                 logterm=True, level=runner.config.params.out.logging)
     runner.offline_chemistry()
 
 @click.command()
@@ -216,6 +219,8 @@ def offchem(config_path: Path):
 def observe(config_path: Path):
     """Run synthetic observations pipeline"""
     runner = Proteus(config_path=config_path)
+    setup_logger(logpath=runner.directories["output"]+"observe.log",
+                 logterm=True, level=runner.config.params.out.logging)
     runner.observe()
 
 cli.add_command(offchem)
