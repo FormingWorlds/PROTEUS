@@ -7,12 +7,14 @@ echo "Set up VULCAN..."
 workpath="VULCAN/"
 rm -rf $workpath
 
+use_ssh=false
+
 # Download
 echo "Cloning from GitHub"
 if [ "$use_ssh" = true ]; then
-    uri="git@github.com:nichollsh/VULCAN.git"
+    uri="git@github.com:FormingWorlds/VULCAN.git"
 else
-    uri="https://github.com/nichollsh/VULCAN.git"
+    uri="https://github.com/FormingWorlds/VULCAN.git"
 fi
 echo "    $uri -> $workpath"
 git clone "$uri" "$workpath"
