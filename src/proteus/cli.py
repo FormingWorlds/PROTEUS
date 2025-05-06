@@ -6,8 +6,8 @@ from pathlib import Path
 import click
 
 from proteus import Proteus
-from proteus.utils.logs import setup_logger
 from proteus import __version__ as proteus_version
+from proteus.utils.logs import setup_logger
 
 config_option = click.option(
     '-c',

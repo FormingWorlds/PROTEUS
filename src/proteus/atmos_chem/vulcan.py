@@ -18,11 +18,10 @@ from proteus.utils.helper import find_nearest
 
 # Import VULCAN
 # This is horrible, and should be changed when VULCAN is converted into a Python package
-import sys
 VULCAN_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                            "..","..","..","VULCAN"))
 sys.path.append(VULCAN_PATH)
-import vulcan
+import vulcan # noqa
 
 if TYPE_CHECKING:
     from proteus.config import Config
