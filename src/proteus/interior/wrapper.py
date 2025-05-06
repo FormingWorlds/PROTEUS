@@ -126,10 +126,14 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, 
 
     # Set by total mass (mantle + core + volatiles)
     elif config.struct.set_by == 'mass_tot':
-        #determine_interior_radius(dirs, config, hf_all, hf_row)
-
-        # Call Zalmoxis and get the interior structure
-        core_radius_fraction = zalmoxis_solver(config, outdir, hf_row)
+        # Choose the method to determine the interior radius
+        match config.struct.module:
+            case "self":
+                return determine_interior_radius(dirs, config, hf_all, hf_row)
+            case "zalmoxis":
+                # Call Zalmoxis and get the interior structure
+                return zalmoxis_solver(config, outdir, hf_row)
+        raise ValueError(f"Invalid structure interior module selected '{config.interior.module}'")
 
     # Otherwise, error
     else:

@@ -15,6 +15,12 @@ log = logging.getLogger("fwl."+__name__)
 
 # Path to location at which to save the output data from Zalmoxis
 def get_zalmoxis_output_filepath(outdir: str):
+    """Returns the output file path for Zalmoxis data.
+    Args:
+        outdir (str): Output directory.
+    Returns:
+        str: Path to the output file.
+    """
     return os.path.join(outdir, "data", "zalmoxis_output.dat")
 
 def get_density_from_eos(pressure, material, eos_choice, interpolation_functions={}):
@@ -72,7 +78,6 @@ def interior_structure_odes(radius, y, cmb_mass, eos_choice, interpolation_cache
     cmb_mass (float): The core-mantle boundary mass [kg].
     eos_choice (str): The equation of state choice for material properties.
     interpolation_cache (dict): A cache for interpolation to speed up calculations.
-    num_layers (int): The number of layers in the planetary model.
 
     Returns the list of derivatives of mass, gravity, and pressure with respect to radius.
     """
@@ -105,8 +110,40 @@ def interior_structure_odes(radius, y, cmb_mass, eos_choice, interpolation_cache
 def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
 
     """
-    Zalmoxis interior model solver.
+    Solves the interior structure of a planet using the Zalmoxis model.
 
+        This function calculates the interior structure of a planet, including its
+        core-mantle boundary radius, total mass, density, pressure, and gravity
+        profiles. It uses an iterative solver to converge on the planet's interior
+        properties based on input parameters and material properties.
+
+        Parameters:
+            config (Config): Configuration object containing structural and solver parameters.
+            outdir (str): Directory path where the output files will be saved.
+            hf_row (dict): Dictionary to store the calculated surface radius, mass, and gravity.
+
+        Returns:
+            float: The calculated core-mantle boundary radius of the planet.
+
+        Key Steps:
+            1. Retrieve material properties and setup initial assumptions.
+            2. Initialize guesses for the planet radius and CMB radius.
+            3. Iteratively solve for the planet's interior structure:
+                - Outer loop: Converge on the total mass and radius.
+                - Inner loop: Adjust density based on pressure and mass profiles.
+                - Innermost loop: Adjust pressure to match the target surface pressure.
+            4. Calculate final properties such as average density, core radius fraction,
+               and CMB mass fraction.
+            5. Save the mantle's radius, pressure, and density profiles to an output file.
+
+        Notes:
+            - The function uses the Noack et al. 2020 scaling law for initial radius guesses.
+            - Convergence criteria are based on tolerances for mass, radius, and pressure.
+
+        Output:
+            - Saves the mantle's radius, pressure, and density profiles to a file in the
+              specified output directory.
+            - Updates the `hf_row` dictionary with the calculated surface radius, mass, and gravity.
     """
     # Get material properties for Zalmoxis
     material_properties = get_Seager_EOS()
@@ -115,28 +152,27 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
     planet_mass = config.struct.mass_tot * M_earth
 
     # Setup assumptions
-    core_radius_fraction = config.struct.corefrac
-    core_mass_fraction = config.struct.coremassfrac
-    weight_iron_fraction = config.struct.weight_iron_frac
-    eos_choice = config.interior.zalmoxis.EOSchoice
+    core_mass_fraction = config.struct.zalmoxis.coremassfrac
+    weight_iron_fraction = config.struct.zalmoxis.weight_iron_frac
+    eos_choice = config.struct.zalmoxis.EOSchoice
 
     # Setup calculation parameters for the iterative solver
-    num_layers = config.interior.zalmoxis.num_levels
-    max_iterations_outer = config.interior.zalmoxis.max_iterations_outer
-    tolerance_outer = config.interior.zalmoxis.tolerance_outer
-    tolerance_radius = config.interior.zalmoxis.tolerance_radius
-    max_iterations_inner = config.interior.zalmoxis.max_iterations_inner
-    tolerance_inner = config.interior.zalmoxis.tolerance_inner
-    relative_tolerance = config.interior.zalmoxis.relative_tolerance
-    absolute_tolerance = config.interior.zalmoxis.absolute_tolerance
-    target_surface_pressure = config.interior.zalmoxis.target_surface_pressure
-    pressure_tolerance = config.interior.zalmoxis.pressure_tolerance
-    max_iterations_pressure = config.interior.zalmoxis.max_iterations_pressure
-    pressure_adjustment_factor = config.interior.zalmoxis.pressure_adjustment_factor
+    num_layers = config.struct.zalmoxis.num_levels
+    max_iterations_outer = config.struct.zalmoxis.max_iterations_outer
+    tolerance_outer = config.struct.zalmoxis.tolerance_outer
+    tolerance_radius = config.struct.zalmoxis.tolerance_radius
+    max_iterations_inner = config.struct.zalmoxis.max_iterations_inner
+    tolerance_inner = config.struct.zalmoxis.tolerance_inner
+    relative_tolerance = config.struct.zalmoxis.relative_tolerance
+    absolute_tolerance = config.struct.zalmoxis.absolute_tolerance
+    target_surface_pressure = config.struct.zalmoxis.target_surface_pressure
+    pressure_tolerance = config.struct.zalmoxis.pressure_tolerance
+    max_iterations_pressure = config.struct.zalmoxis.max_iterations_pressure
+    pressure_adjustment_factor = config.struct.zalmoxis.pressure_adjustment_factor
 
     # Setup initial guesses for the planet radius and core-mantle boundary radius
     radius_guess = 1000*(7030-1840*weight_iron_fraction)*(planet_mass/M_earth)**0.282 # Initial guess for the interior planet radius [m] based on the scaling law in Noack et al. 2020
-    cmb_radius = core_radius_fraction * radius_guess # Initial guess for the core-mantle boundary radius [m]
+    cmb_radius = 0 # Initial guess for the core-mantle boundary radius [m]
     cmb_radius_previous = cmb_radius # Initial guess for the previous core-mantle boundary radius [m]
 
     # Solve the interior structure
@@ -161,10 +197,10 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
         # Setup initial guess for the density grid
         for i in range(num_layers):
             if radii[i] < cmb_radius:
-                log.info(f"Density at outer iteration {outer_iter+1} and radius {radii[i]} belongs to the core.")
+                #log.info(f"Density at outer iteration {outer_iter+1} and radius {radii[i]} belongs to the core.")
                 density[i] = material_properties["core"]["rho0"]
             else:
-                log.info(f"Density at outer iteration {outer_iter+1} and radius {radii[i]} belongs to the mantle.")
+                #log.info(f"Density at outer iteration {outer_iter+1} and radius {radii[i]} belongs to the mantle.")
                 density[i] = material_properties["mantle"]["rho0"]
 
         for inner_iter in range(max_iterations_inner): # Inner loop for density adjustment
@@ -198,7 +234,7 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
 
                 # Check for convergence of the surface pressure and overall pressure positivity
                 if abs(pressure_diff) < pressure_tolerance and np.all(pressure > 0):
-                    log.info(f"Surface pressure converged after {pressure_iter + 1} iterations and all pressures are positive.")
+                    #log.info(f"Surface pressure converged after {pressure_iter + 1} iterations and all pressures are positive.")
                     break  # Exit the pressure adjustment loop
 
                 # Update the pressure guess at the center of the planet based on the pressure difference at the surface using an adjustment factor
@@ -228,7 +264,7 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
             # Check for convergence of density using relative difference between old and new density
             relative_diff_inner = np.max(np.abs((density - old_density) / (old_density + 1e-20)))
             if relative_diff_inner < tolerance_inner:
-                log.info(f"Inner loop converged after {inner_iter + 1} iterations.")
+                #log.info(f"Inner loop converged after {inner_iter + 1} iterations.")
                 break # Exit the inner loop
 
         # Extract the calculated total interior mass of the planet from the last element of the mass array
@@ -257,7 +293,7 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
 
         # End timing the outer loop
         end_time = time.time()
-        log.info(f"Outer iteration {outer_iter+1} took {end_time - start_time:.2f} seconds")
+        #log.info(f"Outer iteration {outer_iter+1} took {end_time - start_time:.2f} seconds")
 
         # Check if maximum iterations for outer loop are reached
         if outer_iter == max_iterations_outer - 1:
@@ -309,4 +345,4 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
         for i in range(len(mantle_radii)):
             f.write(f"{mantle_radii[i]:.15e} {mantle_pressure[i]:.15e} {mantle_density[i]:.15e}\n")
 
-    return core_radius_fraction
+    return cmb_radius

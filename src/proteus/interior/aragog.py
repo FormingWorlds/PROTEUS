@@ -111,21 +111,30 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t, outdir:
             core_heat_capacity = 880, # used if inner_boundary_condition = 1
             )
 
-    # Call Zalmoxis and get the interior structure
-    core_radius_fraction = zalmoxis_solver(config, outdir, hf_row)
+    # Define the inner_radius for the mesh
+    if config.struct.module == 'self':
+        inner_radius = config.struct.corefrac * hf_row["R_int"] # core radius [m]
+    elif config.struct.module == 'zalmoxis':
+        # Define the inner_radius based on the core radius from Zalmoxis
+        inner_radius = zalmoxis_solver(config, outdir, hf_row) # core radius [m]
+    else:
+        raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
+
 
     mesh = _MeshParameters(
             outer_radius = hf_row["R_int"], # planet radius [m]
-            #inner_radius = config.struct.corefrac * hf_row["R_int"], # core radius [m]
-            inner_radius = core_radius_fraction * hf_row["R_int"], # core radius [m]
+            inner_radius = inner_radius, # core radius [m]
             number_of_nodes = config.interior.aragog.num_levels, # basic nodes
             mixing_length_profile = "constant",
-            eos_method = 2, # User defined EOS
             surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration = hf_row["gravity"], # [m/s-2]
             adiabatic_bulk_modulus = config.interior.bulk_modulus, # AW-EOS parameter [Pa]
-            eos_file = os.path.join(outdir, "data", "zalmoxis_output.dat")
             )
+
+    # Update the mesh object if the module is 'zalmoxis'
+    if config.struct.module == 'zalmoxis':
+        mesh.eos_method = 2  # User-defined EOS
+        mesh.eos_file = os.path.join(outdir, "data", "zalmoxis_output.dat") # Zalmoxis output file with mantle parameters
 
     energy = _EnergyParameters(
             conduction = config.interior.aragog.conduction,
