@@ -146,8 +146,11 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0,
     # Plot current spectrum (use the copy made in the output directory)
     if plt_modern:
         modern_fpath = os.path.join(output_dir, "data", "-1.sflux")
-        X = np.loadtxt(modern_fpath,skiprows=2).T
-        ax.plot(X[0],X[1],color='black',label='Modern (1 AU)',lw=0.8,alpha=0.9)
+        if os.path.isfile(modern_fpath):
+            X = np.loadtxt(modern_fpath,skiprows=2).T
+            ax.plot(X[0],X[1],color='black',label='Modern (1 AU)',lw=0.8,alpha=0.9)
+        else:
+            log.warning(f"Could not find file {modern_fpath}")
 
     if plt_modern or justone:
         ax.legend(loc='lower left')
