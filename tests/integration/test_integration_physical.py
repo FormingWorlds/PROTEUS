@@ -33,6 +33,7 @@ IMAGE_LIST = (
         "plot_population_mass_radius.png"
         )
 
+
 @pytest.fixture(scope="module")
 def physical_run():
     runner = Proteus(config_path=config_path)
