@@ -656,7 +656,7 @@ def generate_single_plots(extracted_outputs, grouped_data, grid_params, plots_pa
 if __name__ == '__main__':
 
     # User needs to specify paths
-    grid_name   = 'escape_grid_habrok_6_params_1Msun_agni'
+    grid_name   = 'escape_grid_habrok_5_params_a_0.1_1Msun_agni'
     data_dir    = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_processed_data/{grid_name}/'
     plots_path  = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_plots/{grid_name}/'
 

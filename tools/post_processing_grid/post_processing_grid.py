@@ -368,8 +368,8 @@ def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dic
 if __name__ == '__main__':
 
     # User needs to specify paths
-    grid_name   = 'escape_grid_habrok_6_params_1Msun_agni'
-    grid_path   = f'//projects/p315557/{grid_name}/'
+    grid_name   = 'escape_grid_habrok_5_params_a_0.1_1Msun_agni'
+    grid_path   = f'/home2/p315557/PROTEUS/output/scratch/{grid_name}/'
     data_dir    = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_processed_data/{grid_name}/'
 
     # User choose the parameters to post-process the grid
