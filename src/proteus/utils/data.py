@@ -374,3 +374,49 @@ def get_spider(dirs=None):
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 
     log.debug("    done")
+
+def download_Seager_EOS():
+    """
+    Download EOS material properties from Seager et al. (2007)
+    """
+
+    download(
+    folder='EOS_Seager2007',
+    target='EOS_material_properties',
+    osf_id='dpkjb',
+    desc='EOS Seager2007 material files'
+)
+
+def get_Seager_EOS():
+    """
+    Builds the material_properties dictionary for Seager et al. (2007) EOS data needed by Zalmoxis.
+    The function reads the file paths from the FWL_DATA/EOS_material_properties/EOS_Seager2007 folder.
+
+    Returns:
+        dict: Material properties dictionary with paths to EOS data for mantle and core.
+    """
+    # Define the EOS folder path
+    eos_folder = FWL_DATA_DIR / "EOS_material_properties" / "EOS_Seager2007"
+
+    # Download the EOS material properties if not already present
+    if not eos_folder.exists():
+        log.debug("Get EOS material properties from Seager et al. (2007)")
+        download_Seager_EOS()
+    else:
+        log.debug("EOS material properties already downloaded")
+
+    # Build the material_properties dictionary
+    material_properties = {
+        "mantle": {
+            # Lower mantle properties based on bridgmanite and ferropericlase
+            "rho0": 4110,  # Reference density [kg/m^3] at 24 GPa (top of lower mantle)
+            "eos_file": eos_folder / "eos_seager07_silicate.txt"  # Path to silicate mantle file
+        },
+        "core": {
+            # For liquid iron alloy outer core
+            "rho0": 9900,  # Reference density [kg/m^3] at 135 GPa (core-mantle boundary)
+            "eos_file": eos_folder / "eos_seager07_iron.txt"  # Path to iron core file
+        }
+    }
+    return material_properties
+

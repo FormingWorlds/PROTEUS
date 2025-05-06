@@ -28,6 +28,7 @@ from aragog.parser import (
 from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
+from proteus.interior.zalmoxis import zalmoxis_solver
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -39,7 +40,7 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 
 # Run the Aragog interior module
 def RunAragog(config:Config, dirs:dict,
-                hf_row:dict, hf_all:pd.DataFrame, interior_o:Interior_t):
+                hf_row:dict, hf_all:pd.DataFrame, interior_o:Interior_t, outdir:str):
 
     global aragog_solver
 
@@ -59,7 +60,7 @@ def RunAragog(config:Config, dirs:dict,
 
     # Setup Aragog parameters from options at first iteration
     if (aragog_solver is None):
-        SetupAragogSolver(config, hf_row, interior_o)
+        SetupAragogSolver(config, hf_row, interior_o, outdir)
         # Update state from stored data if resuming a simulation
         if config.params.resume:
             UpdateAragogSolver(dt, hf_row, interior_o, output_dir=dirs["output"])
@@ -81,7 +82,7 @@ def RunAragog(config:Config, dirs:dict,
     return sim_time, output
 
 
-def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
+def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t, outdir:str):
 
     global aragog_solver
 
@@ -110,15 +111,30 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t):
             core_heat_capacity = 880, # used if inner_boundary_condition = 1
             )
 
+    # Define the inner_radius for the mesh
+    if config.struct.module == 'self':
+        inner_radius = config.struct.corefrac * hf_row["R_int"] # core radius [m]
+    elif config.struct.module == 'zalmoxis':
+        # Define the inner_radius based on the core radius from Zalmoxis
+        inner_radius = zalmoxis_solver(config, outdir, hf_row) # core radius [m]
+    else:
+        raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
+
+
     mesh = _MeshParameters(
             outer_radius = hf_row["R_int"], # planet radius [m]
-            inner_radius = config.struct.corefrac * hf_row["R_int"], # core radius [m]
+            inner_radius = inner_radius, # core radius [m]
             number_of_nodes = config.interior.aragog.num_levels, # basic nodes
             mixing_length_profile = "constant",
             surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration = hf_row["gravity"], # [m/s-2]
             adiabatic_bulk_modulus = config.interior.bulk_modulus, # AW-EOS parameter [Pa]
             )
+
+    # Update the mesh object if the module is 'zalmoxis'
+    if config.struct.module == 'zalmoxis':
+        mesh.eos_method = 2  # User-defined EOS
+        mesh.eos_file = os.path.join(outdir, "data", "zalmoxis_output.dat") # Zalmoxis output file with mantle parameters
 
     energy = _EnergyParameters(
             conduction = config.interior.aragog.conduction,
