@@ -47,7 +47,6 @@ class AragogRunner():
         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
         interior_o.aragog_solver.initialize()
         self.aragog_solver = interior_o.aragog_solver
-        print("Aragog solver initialized")
 
     @staticmethod
     def setup_logger(config: Config, dirs: dict):
@@ -275,10 +274,8 @@ class AragogRunner():
             interior_o.aragog_solver.parameters.scalings.power_per_mass)
 
     def run_solver(self, hf_row, interior_o, dirs):
-        print(f"Initial sim time: {self.aragog_solver.parameters.solver.start_time}")
         # Run Aragog solver
         self.aragog_solver.solve()
-        print(f"Final sim time: {self.aragog_solver.parameters.solver.end_time}")
         # Get Aragog output
         output = self.get_output(hf_row, interior_o)
         sim_time = self.aragog_solver.parameters.solver.end_time
