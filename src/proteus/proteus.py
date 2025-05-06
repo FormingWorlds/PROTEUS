@@ -26,6 +26,7 @@ from proteus.utils.logs import (
     setup_logger,
 )
 
+os.environ["OMP_NUM_THREADS"] = "4"
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:
