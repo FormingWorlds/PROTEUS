@@ -286,6 +286,10 @@ def plot_hist_kde(values, ax, color, plot_hist=True, plot_kde=True, cumulative=T
         Additional kwargs for sns.histplot.
     """
 
+    # Apply log transform if needed
+    if log_x:
+        values = np.log10(values)
+    
     if plot_hist:
         sns.histplot(
             values,
@@ -311,10 +315,13 @@ def plot_hist_kde(values, ax, color, plot_hist=True, plot_kde=True, cumulative=T
             **kde_kwargs
         )
 
-    # Axis scaling
+    # Set axis labels and formatting
     if log_x:
-        ax.set_xscale('log')
-        ax.get_xaxis().set_major_formatter(ticker.FuncFormatter(safe_log_formatter))
+        # Keep axis in linear scale (values already log-transformed),
+        # but show ticks as powers of 10
+        ax.set_xlabel("log10(x)")
+        ax.set_xticks(np.log10(ticks := np.geomspace(np.nanmin(10**values), np.nanmax(10**values), num=5)))
+        ax.set_xticklabels([f"{int(tick):.0e}" for tick in ticks])
     else:
         ax.set_xscale('linear')
 
@@ -399,7 +406,8 @@ def plot_distributions(data_dict, xlabel, ylabel, colormap, vmin=None, vmax=None
         values = values[np.isfinite(values)]  # Remove inf and NaN
         if log_x:
             values = values[values > 0]       # Remove zero and negatives
-
+            values = np.log10(values)
+        
         if len(values) < 2:
             print(f"Skipping key {key} due to insufficient valid data points.")
             continue
@@ -407,8 +415,8 @@ def plot_distributions(data_dict, xlabel, ylabel, colormap, vmin=None, vmax=None
         color = colormap(norm(key))
 
         plot_hist_kde(values=values, ax=ax, color=color, plot_hist=plot_hist, plot_kde=plot_kde, cumulative=cumulative, log_x=log_x, bins=bins, bw_adjust=0.3, hist_element="step", kde_kwargs={}, hist_kwargs={})
-
-    ax.set_xlabel(xlabel, fontsize=12)
+    
+    ax.set_xlabel(f"log10({xlabel})" if log_x else xlabel, fontsize=12)
     ax.set_ylabel(ylabel, fontsize=12)
     ax.set_ylim(0, 1.02)
     ax.grid(alpha=0.2)
@@ -432,6 +440,8 @@ def plot_distributions(data_dict, xlabel, ylabel, colormap, vmin=None, vmax=None
     if save_path:
         plt.savefig(save_path, dpi=300)
         plt.close(fig)
+
+
 
 def generate_single_plots(extracted_outputs, grouped_data, grid_params, plots_path, param_label_map, colormaps_by_param, output_label_map, log_scale_grid_params, log_x=True, plot_hist=True, plot_kde=True, cumulative=True, bins=100):
     """
@@ -511,6 +521,9 @@ def generate_single_plots(extracted_outputs, grouped_data, grid_params, plots_pa
                 if param in log_scale_grid_params
                 else mcolors.Normalize(vmin=vmin, vmax=vmax)
             )
+
+            df = pd.DataFrame(data_dict)
+            keys = list(df.columns)
 
             plot_distributions(
                 data_dict=data_dict,
