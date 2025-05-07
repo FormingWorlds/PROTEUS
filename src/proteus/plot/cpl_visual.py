@@ -111,7 +111,7 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
             ax.add_patch(cir)
 
     # annotate planet
-    ax.text(0,0, "Planet", color='white', fontsize=12, ha='center', va='center', zorder=999)
+    ax.text(0,0.5*R_int/obs, "Planet", color='white', fontsize=12, ha='center', va='center', zorder=999)
 
     # annotate time and distance
     ann = r"Viewing from %.1f R$_\oplus$"%(obs/R_earth) + " at %6.1f Myr"%(time/1e6)
@@ -128,18 +128,33 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
                 ha='center', va='center', zorder=999)
 
     # scale bar
-    x = -R_int / obs
-    y = R_earth / obs
-    ax.annotate("", xy=(x, -y/2), xytext=(x, y/2), arrowprops=dict(arrowstyle="<->", lw=1, color='w'), zorder=999)
-    ax.text(x, 0, r" R$_\oplus$", ha='left', va='center', fontsize=12, color='w', zorder=999)
+    for r in np.arange(0,20,1):
+        x = r * R_earth / obs / 2**0.5
+        if abs(x) > r_lim:
+            break
+        ax.scatter(x, -x, s=20, color='w', zorder=999)
+        if r > 0:
+            ax.text(x, -x, r"  %.0f R$_\oplus$"%r, ha='left', va='center', fontsize=8, color='w', zorder=999)
+    ax.plot([0,x],[0,-x],lw=1,color='w',zorder=99)
 
     # decorate
-    fc = 0.01
-    ax.set_facecolor((fc,fc,fc))
+    ax.set_facecolor('k')
     ax.set_xlim(-r_lim, r_lim)
     ax.set_ylim(-r_lim, r_lim)
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
+
+    # inset spectrum
+    axr = ax.inset_axes((0.08, 0.08, 0.32,0.25))
+    axr.set_facecolor('k')
+    imax = np.argmin(np.abs(wl-2500))
+    axr.plot(wl[:imax], lw[0,:imax]+sw[0,:imax], color='w', lw=1.3)
+    axr.spines[['bottom','left']].set_color('w')
+    axr.spines[['right', 'top']].set_visible(False)
+    axr.tick_params(axis='both', colors='w', labelsize=8)
+    axr.set_xlabel("Wavelength [nm]", color='w', fontsize=8)
+    axr.set_ylabel("Emission", color='w', fontsize=8)
+    axr.set_ylim(bottom=0)
 
     plt.close()
     plt.ioff()
