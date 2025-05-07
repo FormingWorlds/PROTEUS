@@ -548,6 +548,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config.interior.module == 'dummy'
+    agni      = config.atmos_clim.module == 'agni'
     spider    = config.interior.module == 'spider'
     aragog    = config.interior.module == 'aragog'
     observed  = bool(config.observe.synthesis is not None)
@@ -629,14 +630,13 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         if observed:
             plot_spectra(output_dir, plot_format=config.params.out.plot_fmt)
 
-        # Plots which require a real atmosphere module
+        # Chemical profiles
         if not dummy_atm:
-
-            # Chemical profiles
             plot_chem_atmosphere(output_dir, config.atmos_chem.module,
                                     plot_format=config.params.out.plot_fmt)
 
-            # Visualise planet and star
+        # Visualise planet and star
+        if agni:
             plot_visual(hf_all, output_dir, idx=-1, plot_format=config.params.out.plot_fmt)
 
         # Check that the simulation ran for long enough to make useful plots

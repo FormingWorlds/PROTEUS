@@ -42,11 +42,16 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
         if os.path.exists(os.path.join(output_dir,"data","data.tar")):
             log.warning("You may need to extract archived data files")
         return
-    ds = read_ncdf_profile(fpath, extra_keys=[
-                                    "ba_U_LW", "ba_U_SW", "ba_D_SW",
-                                    "bandmin", "bandmax",
-                                    "pl", "tmpl", "rl"])
 
+    # Read data
+    keys = ["ba_U_LW", "ba_U_SW", "ba_D_SW", "bandmin", "bandmax", "pl", "tmpl", "rl"]
+    ds = read_ncdf_profile(fpath, extra_keys=keys)
+
+    # Check that we have all the keys
+    for k in keys:
+        if k not in ds.keys():
+            log.error(f"Could not read key '{k}' from NetCDF file")
+            return
 
     scale = 1.7
     fig,ax = plt.subplots(1,1, figsize=(4*scale,4*scale))
