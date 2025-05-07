@@ -11,7 +11,7 @@ from matplotlib import patches, ticker
 
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.utils.constants import R_earth
-from proteus.utils.visual import cs_hdtv as colsys
+from proteus.utils.visual import cs_srgb as colsys
 from proteus.utils.visual import interp_spec
 
 if TYPE_CHECKING:

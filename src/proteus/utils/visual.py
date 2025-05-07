@@ -4,6 +4,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.interpolate import PchipInterpolator
 
+# CIE Color Matching Functions
 cmf = np.array([
         [380, 0.0014, 0.0000, 0.0065],
         [385, 0.0022, 0.0001, 0.0105],
@@ -169,11 +170,16 @@ class ColourSystem:
         xyz = self.spec_to_xyz(spec)
         return self.xyz_to_rgb(xyz, out_fmt)
 
+# Interpolate input spectrum (nanometre) to required wavelength axis
 def interp_spec(wl, fl):
     itp = PchipInterpolator(wl, fl)
     return itp(cmf[:,0])
 
+# set whitepoint
+# https://en.wikipedia.org/wiki/Standard_illuminant?useskin=vector
 illuminant_D65 = xyz_from_xy(0.3127, 0.3291)
+
+# define colorspaces
 cs_hdtv = ColourSystem(red=xyz_from_xy(0.67, 0.33),
                        green=xyz_from_xy(0.21, 0.71),
                        blue=xyz_from_xy(0.15, 0.06),
