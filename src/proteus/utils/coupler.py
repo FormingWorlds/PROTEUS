@@ -522,6 +522,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Import plotting functions
     from proteus.plot.cpl_atmosphere import plot_atmosphere
+    from proteus.plot.cpl_visual import plot_visual
     from proteus.plot.cpl_bolometry import plot_bolometry
     from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
     from proteus.plot.cpl_emission import plot_emission
@@ -628,10 +629,15 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         if observed:
             plot_spectra(output_dir, plot_format=config.params.out.plot_fmt)
 
-        # Atmospheric chemistry
+        # Plots which require a real atmosphere module
         if not dummy_atm:
+
+            # Chemical profiles
             plot_chem_atmosphere(output_dir, config.atmos_chem.module,
                                     plot_format=config.params.out.plot_fmt)
+
+            # Visualise planet and star
+            plot_visual(hf_all, output_dir, idx=-1, plot_format=config.params.out.plot_fmt)
 
         # Check that the simulation ran for long enough to make useful plots
         if len(hf_all["Time"]) >= 3:

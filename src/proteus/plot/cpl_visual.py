@@ -37,7 +37,12 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
     # Get output NetCDF file
     time  = hf_all["Time"].iloc[idx]
     fpath = os.path.join(output_dir,"data","%.0f_atm.nc"%time)
-    ds    = read_ncdf_profile(fpath, extra_keys=[
+    if not os.path.exists(fpath):
+        log.warning(f"Cannot find file {fpath}")
+        if os.path.exists(os.path.join(output_dir,"data","data.tar")):
+            log.warning("You may need to extract archived data files")
+        return
+    ds = read_ncdf_profile(fpath, extra_keys=[
                                     "ba_U_LW", "ba_U_SW", "ba_D_SW",
                                     "bandmin", "bandmax",
                                     "pl", "tmpl", "rl"])
@@ -65,6 +70,7 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
 
     # get spectrum
     wl = 0.5*(bandmin+bandmax) * 1e9
+    wd = (bandmax-bandmin) * 1e9
     st = st_arr
     sw = sw_arr
     lw = lw_arr
@@ -125,8 +131,8 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
     x_star = r_lim * 0.75
     cir = patches.Circle((x_star,x_star), radius=r_star, fc=col, zorder=2,)
     ax.add_patch(cir)
-    ax.text(x_star, x_star, "Star", color='white', fontsize=11,
-                ha='center', va='center', zorder=999)
+    ax.text(x_star, x_star-r_star, "Star", color='white', fontsize=11,
+                ha='center', va='top', zorder=999)
 
     # scale bar
     for r in np.arange(0,20,1):
@@ -149,16 +155,25 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
     axr = ax.inset_axes((0.07, 0.04, 0.39,0.21))
     axr.set_alpha(0.0)
     axr.set_facecolor((0,0,0,0))
+    #    crop to wavelength region
     imax = np.argmin(np.abs(wl-6e3))
-    fl  = lw[0,:]+sw[0,:]
-    wd  = (ds["bandmax"]-ds["bandmin"]) * 1e9
+    fl  = lw[0,:imax]+sw[0,:imax]
+    wl  = wl[:imax]
+    wd  = wd[:imax]
     fl  = fl / wd
+
+    #    flux units
     if np.amax(fl) < 1:
         fl *= 1e3
         un = "mW"
+    elif np.amax(fl) > 1e3:
+        fl /= 1e3
+        un = "kw"
     else:
         un = "W"
-    axr.bar(wl[:imax], fl[:imax], width=wd[:imax], color='w', lw=1.3)
+
+    #   plot and decorate
+    axr.bar(wl, fl, width=wd, color='w', lw=1.3)
     axr.spines[['bottom','left']].set_color('w')
     axr.spines[['right', 'top']].set_visible(False)
     axr.tick_params(axis='both', colors='w', labelsize=8)
