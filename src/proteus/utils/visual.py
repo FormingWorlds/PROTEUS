@@ -1,4 +1,5 @@
 # https://scipython.com/blog/converting-a-spectrum-to-a-colour/
+from __future__ import annotations
 
 import numpy as np
 from scipy.interpolate import PchipInterpolator

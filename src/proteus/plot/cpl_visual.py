@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-import pandas as pd
 import logging
 import os
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
-from matplotlib import patches
-from matplotlib import ticker
 import numpy as np
+import pandas as pd
+from matplotlib import patches, ticker
 
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.utils.constants import R_earth
-from proteus.utils.visual import interp_spec
 from proteus.utils.visual import cs_hdtv as colsys
+from proteus.utils.visual import interp_spec
 
 if TYPE_CHECKING:
     from proteus import Proteus
