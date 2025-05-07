@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import glob
+import pandas as pd
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -20,23 +20,25 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 
-def plot_visual(output_dir:str, plot_format="pdf"):
-
+def plot_visual(hf_all:pd.DataFrame, output_dir:str,
+                    idx=-1, plot_format="pdf"):
 
     log.info("Plot visual")
 
-    # Get last output NetCDF file
-    files = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
-    if len(files) == 0:
-        log.warning("No atmosphere NetCDF files found in output folder")
-        return
+    # Orbital separation
+    sep = float(hf_all["separation"].iloc[idx])
 
-    fpath = natural_sort(files)[-1]
-    time  = float(fpath.split("/")[-1].split("_")[0])
+    # Set viewing distance
+    # obs = R_earth * 12
+    obs = hf_all["R_obs"].iloc[idx] * 10
+
+    # Get last output NetCDF file
+    time  = hf_all["Time"].iloc[idx]
+    fpath = os.path.join(output_dir,"data","%.0f_atm.nc"%time)
     ds    = read_ncdf_profile(fpath, extra_keys=[
                                     "ba_U_LW", "ba_U_SW", "ba_D_SW",
                                     "bandmin", "bandmax",
-                                    "pl", "tmpl", "rl"])
+                                    "p", "tmp", "r"])
 
 
     scale = 1.7
@@ -59,12 +61,12 @@ def plot_visual(output_dir:str, plot_format="pdf"):
 
     # get spectrum
     wl = 0.5*(bandmin+bandmax)
-    fl_nrm = np.amax(y_arr)
+    fl_nrm = max(np.amax(y_arr), np.amax(s_arr))
     st = s_arr / fl_nrm
     fl = y_arr / fl_nrm
 
     # radii
-    r_arr = ds["rl"] / R_earth
+    r_arr = ds["r"] / obs
     r_min, r_max = np.amin(r_arr), np.amax(r_arr)
     r_lim = r_max * 1.15
     n_lev = len(r_arr)
@@ -76,34 +78,37 @@ def plot_visual(output_dir:str, plot_format="pdf"):
 
     # plot shells
     for i in range(n_lev):
-        fl_lev = fl[i,:]-fl[-1,:]
+        fl_lev = fl[i,:]-fl[i+1,:]
         spec = interp_spec(wl, fl_lev)
-        print(spec)
         col = cs_srgb.spec_to_rgb(spec)
-        rad = r_arr[i]
+
         alp = 1 / n_lev
-        cir = patches.Circle((0,0), radius=rad, fc=col,
+        cir = patches.Circle((0,0), radius=r_arr[i], fc=col,
                                 alpha=alp, zorder=5,)
         ax.add_patch(cir)
 
     # annotate planet
-    ax.text(0,0, "Planet", color='black', fontsize=12, ha='center', va='center')
+    ax.text(0,r_min, "Planet", color='white', fontsize=12, ha='center', va='bottom', zorder=6)
 
-    # annotate time
-    ax.text(-r_max,r_max, "t = %.1f Myr"%(time/1e6), color='white', fontsize=12)
+    # annotate time and distance
+    ann = r"Viewing from %.1f R$_\oplus$"%(obs/R_earth) + " at %6.1f Myr"%(time/1e6)
+    ax.text(0.5, 0.00, ann, color='white', fontsize=12,
+                transform=ax.transAxes, ha='center', va='bottom')
 
     # plot star
     col = cs_srgb.spec_to_rgb(interp_spec(wl, st))
-    r_star = 1.1*(r_lim**2-r_max**2)**0.5
+    r_star = hf_all["R_star"].iloc[idx] / (sep + obs)
     cir = patches.Circle((r_max,r_max), radius=r_star, fc=col, zorder=2,)
     ax.add_patch(cir)
-    ax.text(r_max, r_max, "Star", color='black', fontsize=12,
-                ha='center', va='center', zorder=3)
+    ax.text(r_lim-r_star/2, r_lim-r_star/2, "Star", color='white', fontsize=12,
+                ha='right', va='top', zorder=3)
 
+    # decorate
     ax.set_facecolor('k')
-
     ax.set_xlim(-r_lim, r_lim)
     ax.set_ylim(-r_lim, r_lim)
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
 
     plt.close()
     plt.ioff()
@@ -112,7 +117,13 @@ def plot_visual(output_dir:str, plot_format="pdf"):
     fig.savefig(fpath, dpi=250, bbox_inches='tight')
 
 def plot_visual_entry(handler: Proteus):
+
+    # read helpfile
+    hf_all = pd.read_csv(os.path.join(handler.directories['output'],
+                                      "runtime_helpfile.csv"), sep=r"\s+")
+
     plot_visual(
+        hf_all,
         handler.directories["output"],
         plot_format=handler.config.params.out.plot_fmt,
    )
