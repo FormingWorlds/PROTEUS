@@ -522,7 +522,6 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Import plotting functions
     from proteus.plot.cpl_atmosphere import plot_atmosphere
-    from proteus.plot.cpl_visual import plot_visual
     from proteus.plot.cpl_bolometry import plot_bolometry
     from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
     from proteus.plot.cpl_emission import plot_emission
@@ -540,6 +539,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     from proteus.plot.cpl_sflux_cross import plot_sflux_cross
     from proteus.plot.cpl_spectra import plot_spectra
     from proteus.plot.cpl_structure import plot_structure
+    from proteus.plot.cpl_visual import plot_visual
 
     # Directories
     output_dir = dirs["output"]
