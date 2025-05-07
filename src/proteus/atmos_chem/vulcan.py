@@ -6,9 +6,7 @@ import logging
 import os
 import pickle
 import shutil
-import subprocess as sp
 import sys
-from textwrap import dedent
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -17,6 +15,13 @@ import numpy as np
 from proteus.atmos_clim.common import read_atmosphere_data
 from proteus.utils.constants import AU, R_sun, element_list, vol_list
 from proteus.utils.helper import find_nearest
+
+# Import VULCAN
+# This is horrible, and should be changed when VULCAN is converted into a Python package
+VULCAN_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                           "..","..","..","VULCAN"))
+sys.path.append(VULCAN_PATH)
+import vulcan # noqa
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -45,6 +50,9 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
         Did VULCAN run successfully?
     """
 
+    log.debug(f"Using VULCAN from: {vulcan.__file__}")
+    log.debug(f"    version {vulcan.__version__}")
+
     success = True
 
     # ------------------------------------------------------------
@@ -56,9 +64,8 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
         return False
 
     # make folder
-    work_dir = os.path.join(dirs["output"],"offchem") + "/"
-    shutil.rmtree(work_dir, ignore_errors=True)
-    os.makedirs(work_dir)
+    shutil.rmtree(dirs["output/offchem"], ignore_errors=True)
+    os.makedirs(dirs["output/offchem"])
 
     # ------------------------------------------------------------
     # READ DATA FROM PROTEUS RUN
@@ -77,8 +84,8 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     # ------------------------------------------------------------
 
     # Output folder
-    vulcan_out = work_dir
-    vulcan_plt = work_dir
+    vulcan_out = dirs["output/offchem"]
+    vulcan_plt = dirs["output/offchem"]
     log.debug("Writing VULCAN input data")
 
     # Find a reasonable file for the stellar flux
@@ -96,7 +103,7 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     star_fl = star_fl[star_fl > config.atmos_chem.vulcan.clip_fl]
 
     # Write spectrum
-    star_write = work_dir + "star.dat"
+    star_write = dirs["output/offchem"] + "star.dat"
     np.savetxt(star_write, np.array([star_wl, star_fl]).T,
                 header="# WL(nm)    Flux(ergs/cm**2/s/nm)",
                 fmt=["%.4f","%.4e"])
@@ -109,15 +116,14 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     k_arr = np.array(atmos["Kzz"]) * 1e4 # cm^2/s
 
     # Write TPK profile
-    num_levels = len(p_arr)
     header  = "#(dyne/cm2)\t(K)\t(cm2/s)\n"
     header += "Pressure\tTemp\tKzz"
-    prof_write = work_dir + "profile.dat"
+    prof_write = dirs["output/offchem"] + "profile.dat"
     np.savetxt(prof_write, np.array([p_arr[::-1], t_arr[::-1], k_arr[::-1]]).T,
                delimiter="\t", header=header, comments='', fmt="%1.5e")
 
     # Write mixing ratios
-    vmr_write = work_dir + "vmrs.dat"
+    vmr_write = dirs["output/offchem"] + "vmrs.dat"
     x_gas = [list(p_arr)]
     header = "#Input composition arrays \nPressure\t"
     for key in atmos.keys():
@@ -134,6 +140,10 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     # CREATE VULCAN CONFIG
     # ------------------------------------------------------------
 
+    # Base config
+    log.debug("Creating VULCAN config")
+    vcfg = vulcan.Config()
+
     # Which elements are included?
     e_incl = []
     for e in element_list:
@@ -144,27 +154,27 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     # Determine network and species of interest
     match config.atmos_chem.vulcan.network:
         case "CHO":
-            ele_str = "['H', 'O', 'C']"
-            plt_str = "['H2',  'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2']"
-            sct_str = "['H2', 'O2', 'CO2']"
+            ele_arr = ['H', 'O', 'C']
+            plt_arr = ['H2',  'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2']
+            sct_arr = ['H2', 'O2', 'CO2']
             if config.atmos_chem.photo_on:
                 network_file = "CHO_photo_network.txt"
             else:
                 network_file = "CHO_thermo_network.txt"
 
         case "NCHO":
-            plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'N2']"
-            sct_str = "['H2', 'O2', 'N2', 'CO2']"
-            ele_str = "['H', 'O', 'C', 'N']"
+            plt_arr = ['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'N2']
+            sct_arr = ['H2', 'O2', 'N2', 'CO2']
+            ele_arr = ['H', 'O', 'C', 'N']
             if config.atmos_chem.photo_on:
                 network_file = "NCHO_photo_network.txt"
             else:
                 network_file = "NCHO_thermo_network.txt"
 
         case "SNCHO":
-            plt_str = "['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'SO2', 'H2S', 'S2', 'S8']"
-            sct_str = "['H2', 'O2', 'N2', 'CO2']"
-            ele_str = "['H', 'O', 'C', 'N', 'S']"
+            plt_arr = ['H2', 'H', 'H2O', 'CH4', 'CO', 'CO2', 'C2H2', 'NH3', 'SO2', 'H2S', 'S2', 'S8']
+            sct_arr = ['H2', 'O2', 'N2', 'CO2']
+            ele_arr = ['H', 'O', 'C', 'N', 'S']
             network_file = "SNCHO_photo_network.txt"
 
         case _:
@@ -172,218 +182,145 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
             return False
 
     log.debug(f"Using '{network_file}' ")
+    vcfg.network    = os.path.join(vulcan.paths.THERMO_DIR, network_file)
+    vcfg.atom_list  = ele_arr
+    vcfg.use_photo  = config.atmos_chem.photo_on
+    vcfg.use_ion    = False
 
     # Parse atmospheric composition into string, work out background gas
     backs = {'H2':0.0, 'N2':0.0, 'O2':0.0, 'CO2':0.0}
-    outgas_str = ""
+    vcfg.const_mix = {}
     for gas in vol_list:
         vmr = hf_row[gas+"_vmr"]
         if gas in backs.keys():
             backs[gas] = vmr
         if vmr > config.atmos_chem.vulcan.clip_vmr:
-            outgas_str += "'%s':%.8e, "%(gas, vmr)
-    outgas_str = outgas_str[:-2]
+            vcfg.const_mix[gas] = vmr
 
     # Translate initial composition to VULCAN's string
     if config.atmos_chem.vulcan.ini_mix == "profile":
-        ini_mix = "table"
+        vcfg.ini_mix = "table"
     else:
-        ini_mix = "const_mix"
+        vcfg.ini_mix = "const_mix"
+    vcfg.vul_ini = vmr_write
+    vcfg.scat_sp = sct_arr
+    vcfg.T_cross_sp = []
 
     # Surface boundary condition
+    vcfg.use_botflux = False
     if config.atmos_chem.vulcan.fix_surf:
-        fixsurf_str = outgas_str
+        vcfg.use_fix_sp_bot = vcfg.const_mix
     else:
-        fixsurf_str = ""
+        vcfg.use_fix_sp_bot = {}
+
+    # TOA boundary condition
+    vcfg.use_topflux = False
+    vcfg.diff_esc    = [] # species for diffusion-limit escape at TOA
 
     # Set background gas
-    background = max(backs, key=backs.get)
-    log.debug(f"Background gas is '{background}'")
+    vcfg.atm_base = max(backs, key=backs.get)
+    log.debug(f"Background gas is '{vcfg.atm_base}'")
 
-    # Kzz value if constant
+    # TP profile
+    vcfg.nz         =   len(p_arr)
+    vcfg.P_b        =   np.amax(atmos["p"])*10
+    vcfg.P_t        =   np.amin(atmos["p"])*10
+    vcfg.atm_type   =   "file"
+    vcfg.atm_file   =   prof_write
+    vcfg.rocky      =   True
+    vcfg.Rp         =   hf_row["R_int"] * 100.0  # Planetary radius (cm)
+    vcfg.gs         =   hf_row["gravity"] * 100  # surface gravity (cm/s^2)
+
+    # Spectrum
+    vcfg.sflux_file   = star_write
+    vcfg.r_star       = hf_row["R_star"] / R_sun     # stellar radius (R_sun)
+    vcfg.orbit_radius = hf_row["separation"] / AU    # planet-star distance in A.U.
+    vcfg.sl_angle     = config.orbit.zenith_angle * np.pi / 180.0   # the zenith angle
+    vcfg.f_diurnal    = config.orbit.s0_factor
+
+    # Mixing processes
+    vcfg.update_frq  = 50    # frequency for updating dz and dzi due to change of mu
+    vcfg.use_moldiff = config.atmos_chem.moldiff_on
+    vcfg.use_vz      = True
+    vcfg.vz_prof     = 'const'  # Options: 'const' or 'file'
+    vcfg.const_vz    = config.atmos_chem.updraft_const # (cm/s)
+    vcfg.use_Kzz     = config.atmos_chem.Kzz_on
     if config.atmos_chem.Kzz_const is not None:
-        Kzz_src = "const"
-        Kzz_val = config.atmos_chem.Kzz_const
+        vcfg.Kzz_prof = "const"
+        vcfg.const_Kzz = config.atmos_chem.Kzz_const
     else:
         # if None, will get Kzz from profile
-        Kzz_src = "file"
-        Kzz_val = 1e5 # <- dummy value, will be replaced by profile
+        vcfg.Kzz_prof = "file"
+        vcfg.const_Kzz = 1e5 # <- dummy value, will be replaced when VULCAN is run
 
-    log.debug("Writing VULCAN config")
-    vulcan_config = f"""\
-        # VULCAN CONFIGURATION FILE
-        # CREATED AUTOMATICALLY BY PROTEUS
+    # Condensation
+    vcfg.use_condense        = False
+    vcfg.use_settling        = False
+    vcfg.start_conden_time   = 1e10
+    vcfg.condense_sp         = []
+    vcfg.non_gas_sp          = []
+    vcfg.fix_species         = []
+    vcfg.fix_species_time    = 0
 
-        atom_list               = {ele_str}
-        network                 = 'thermo/{network_file}'
-        use_lowT_limit_rates    = False
-        gibbs_text              = 'thermo/gibbs_text.txt' # (all the nasa9 files must be placed in the folder: thermo/NASA9/)
-        cross_folder            = 'thermo/photo_cross/'
-        com_file                = 'thermo/all_compose.txt'
+    # Convergence
+    vcfg.st_factor          = 0.5
+    vcfg.conv_step          = 100
+    vcfg.yconv_cri          = config.atmos_chem.vulcan.yconv_cri  # check steady-state
+    vcfg.slope_cri          = config.atmos_chem.vulcan.slope_cri  # check steady-state
+    vcfg.yconv_min          = 0.5
 
-        atm_base                = '{background}'
-        rocky                   = True           # for the surface gravity
-        nz                      = {num_levels}   # number of vertical layers
-        P_b                     = {np.amax(atmos["p"])*10}  # pressure at the bottom (dyne/cm^2)
-        P_t                     = {np.amin(atmos["p"])*10}  # pressure at the top (dyne/cm^2)
-        atm_type                = 'file'
-        atm_file                = '{prof_write}'
+    # Time-stepping
+    vcfg.ode_solver         = 'Ros2'
+    vcfg.trun_min           = 1e2
+    vcfg.runtime            = 1.E22
+    vcfg.use_print_prog     = True
+    vcfg.use_print_delta    = False
+    vcfg.print_prog_num     = 1    # print the progress every x steps
+    vcfg.dttry              = 1.E-8
+    vcfg.dt_min             = 1.E-9
+    vcfg.dt_max             = vcfg.runtime*1e-4
+    vcfg.dt_var_max         = 2.
+    vcfg.dt_var_min         = 0.5
+    vcfg.count_min          = 120
+    vcfg.count_max          = int(3E4)
+    vcfg.atol               = 1.E-1 # Decrease this if the solutions are not stable
+    vcfg.rtol               = 0.9   # relative tolerence for adjusting the stepsize
+    vcfg.pos_cut            = 0
+    vcfg.nega_cut           = -1.
+    vcfg.loss_eps           = 1e-1
+    vcfg.flux_cri           = 0.1
 
-        sflux_file              = '{star_write}'
-        top_BC_flux_file        = 'atm/BC_top.txt' # the file for the top boundary conditions
-        bot_BC_flux_file        = 'atm/BC_bot.txt' # the file for the lower boundary conditions
+    # Folders
+    vcfg.output_dir         =   vulcan_out
+    vcfg.plot_dir           =   vulcan_plt
+    vcfg.movie_dir          =   vulcan_plt+"/frames/"
+    vcfg.out_name           =   VULCAN_NAME
 
-        output_dir              = '{vulcan_out}'
-        plot_dir                = '{vulcan_plt}'
-        movie_dir               = '{vulcan_plt}/frames/'
-        out_name                = '{VULCAN_NAME}'
+    # Plotting
+    vcfg.plot_TP            = config.atmos_chem.vulcan.save_frames
+    vcfg.use_live_plot      = config.atmos_chem.vulcan.save_frames
+    vcfg.use_save_movie     = config.atmos_chem.vulcan.save_frames
+    vcfg.save_movie_rate    = 20
+    vcfg.plot_spec          = plt_arr
+    vcfg.plot_height        = False
+    vcfg.save_evolution     = False
+    vcfg.output_humanread   = False
 
-        # ====== Setting up the elemental abundance ======
-        ini_mix = '{ini_mix}'
-        const_mix = {{ {outgas_str} }}
-        vul_ini = '{vmr_write}'
-
-
-        # ====== Setting up photochemistry ======
-        use_ion         = False
-        use_photo       = {config.atmos_chem.photo_on}
-        r_star          = {hf_row["R_star"] / R_sun}     # stellar radius (R_sun)
-        Rp              = {hf_row["R_int"] * 100.0}      # Planetary radius (cm)
-        orbit_radius    = {hf_row["separation"] / AU}    # planet-star distance in A.U.
-        gs              = {hf_row["gravity"] * 100}      # surface gravity (cm/s^2)  (HD189:2140  HD209:936)
-        sl_angle        = {config.orbit.zenith_angle * np.pi / 180.0}   # the zenith angle
-        f_diurnal       = {config.orbit.s0_factor}
-        scat_sp         = {sct_str}
-        T_cross_sp      = []
-
-        edd             = 0.5 # the Eddington coefficient
-        dbin1           = 0.1  # the uniform bin width < dbin_12trans (nm)
-        dbin2           = 2.   # the uniform bin width > dbin_12trans (nm)
-        dbin_12trans    = 240. # the wavelength switching from dbin1 to dbin2 (nm)
-
-        # the frequency to update the actinic flux and optical depth
-        ini_update_photo_frq    = 100
-        final_update_photo_frq  = 5
-
-        # ====== Mixing processes ======
-        use_moldiff = {config.atmos_chem.moldiff_on}
-
-        use_vz      = True
-        vz_prof     = 'const'  # Options: 'const' or 'file'
-        const_vz    = {config.atmos_chem.updraft_const} # (cm/s)
-
-        use_Kzz     = {config.atmos_chem.Kzz_on}
-        Kzz_prof    = '{Kzz_src}' # Options: 'const','file'
-        const_Kzz   = {Kzz_val} # Only reads when Kzz_prof = 'const'
-        K_max       = 1e5        # for Kzz_prof = 'Pfunc'
-        K_p_lev     = 0.1      # for Kzz_prof = 'Pfunc'
-
-        update_frq  = 50    # frequency for updating dz and dzi due to change of mu
-
-        # ====== Setting up the boundary conditions ======
-        use_topflux     = False
-        use_botflux     = False
-        use_fix_sp_bot  = {{ {fixsurf_str} }} # fixed mixing ratios at the lower boundary
-        diff_esc        = [] # species for diffusion-limit escape at TOA
-        max_flux        = 1e13  # upper limit for the diffusion-limit fluxes
-
-        # ====== Reactions to be switched off  ======
-        remove_list = [] # in pairs e.g. [1,2]
-
-        # == Condensation ======
-        use_condense        = False
-        use_settling        = False
-        start_conden_time   = 1e10
-        condense_sp         = []
-        non_gas_sp          = []
-        fix_species         = []      # fixed the condensable species after condensation-evapoation EQ has reached
-        fix_species_time    = 0  # after this time to fix the condensable species
-
-        # ====== steady state check ======
-        st_factor = 0.5
-        conv_step = 100
-
-        # ====== Setting up numerical parameters for the ODE solver ======
-        ode_solver      = 'Ros2' # case sensitive
-        trun_min        = 1e2
-        runtime         = 1.E22
-        use_print_prog  = True
-        use_print_delta = False
-        print_prog_num  = 20  # print the progress every x steps
-        dttry           = 1.E-6
-        dt_min          = 1.E-8
-        dt_max          = runtime*1e-4
-        dt_var_max      = 2.
-        dt_var_min      = 0.5
-
-        count_min       = 120
-        count_max       = int(3E4)
-        atol            = 5.E-2 # Try decreasing this if the solutions are not stable
-        mtol            = 1.E-22
-        mtol_conv       = 1.E-20
-        pos_cut         = 0
-        nega_cut        = -1.
-        loss_eps        = 1e-1
-        yconv_cri       = {config.atmos_chem.vulcan.yconv_cri}  # for checking steady-state
-        slope_cri       = {config.atmos_chem.vulcan.slope_cri}  # for checking steady-state
-        yconv_min       = 0.5
-        flux_cri        = 0.1
-        flux_atol       = 1. # the tol for actinc flux (# photons cm-2 s-1 nm-1)
-        conver_ignore   = [] # added 2023. to get rid off non-convergent species, e.g. HC3N without sinks
-
-        # ====== Setting up numerical parameters for Ros2 ODE solver ======
-        rtol             = 0.7 # relative tolerence for adjusting the stepsize
-        post_conden_rtol = 0.1 # switched to this value after fix_species_time
-
-        # ====== Setting up for output and plotting ======
-        plot_TP         = {config.atmos_chem.vulcan.save_frames}
-        use_live_plot   = {config.atmos_chem.vulcan.save_frames}
-        use_live_flux   = False
-        use_plot_end    = False
-        use_plot_evo    = False
-        use_save_movie  = {config.atmos_chem.vulcan.save_frames}
-        use_flux_movie  = False
-        plot_height     = False
-        use_PIL         = False
-        live_plot_frq   = 50
-        save_movie_rate = live_plot_frq
-        y_time_freq     = 1  #  storing data for every 'y_time_freq' step
-        plot_spec       = {plt_str}
-        # output:
-        output_humanread = False
-        use_shark        = False
-        save_evolution   = False   # save the evolution of chemistry (y_time and t_time) for every save_evo_frq step
-        save_evo_frq     = 10
-        """
-
-
-    # Write config file
-    vulcan_fpath  = work_dir + "vulcan_cfg.txt"
-    with open(vulcan_fpath, 'w') as hdl:
-        hdl.write(dedent(vulcan_config))
-
-    # Copy config file to VULCAN directory
-    shutil.copyfile(vulcan_fpath, os.path.join(dirs["vulcan"], "vulcan_cfg.py"))
+    # for k in vars(vcfg).keys():
+    #     print(f"{k}: ", vars(vcfg)[])
 
     # ------------------------------------------------------------
     # RUN VULCAN
     # ------------------------------------------------------------
 
-    cmd = [sys.executable, "vulcan.py"]
-    if not config.atmos_chem.vulcan.make_funs:
-        cmd.append(" -n")
-        log.debug("Skipping VULCAN make_chem_funs step")
+    # Make chemical network
+    if config.atmos_chem.vulcan.make_funs:
+        log.debug("Performing `make_chem_funs` step...")
+        vulcan.make_all(vcfg)
+        log.debug("    done")
 
-    logfile = vulcan_out + "recent.log"
-
-    log.info("Running VULCAN subprocess")
-    with open(logfile, 'w') as hdl:
-        proc = sp.run(cmd, cwd=dirs["vulcan"], stdout=hdl, stderr=hdl, bufsize=1, text=True)
-
-    log.debug("Return code: " + str(proc.returncode))
-    if proc.returncode:
-        success = False
-        log.error("VULCAN subprocess failed")
+    # Call the solver
+    vulcan.main(vcfg)
 
     # ------------------------------------------------------------
     # READ AND PARSE OUTPUT FILES
