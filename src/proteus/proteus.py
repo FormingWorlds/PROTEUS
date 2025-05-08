@@ -323,7 +323,7 @@ class Proteus:
 
             ############### ORBIT AND TIDES
             PrintHalfSeparator()
-            run_orbit(self.hf_row, self.config, self.directories, self.interior_o)
+            run_orbit(self.hf_row, self.hf_all, self.config, self.directories, self.interior_o)
 
             ############### / ORBIT AND TIDES
 

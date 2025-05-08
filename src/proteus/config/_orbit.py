@@ -29,9 +29,12 @@ class OrbitDummy:
         Fixed global heating rate from tides [W kg-1].
     Phi_tide: str
         Inequality which, if locally true, determines in which regions tides are applied.
+    E_max: float
+        Fixed global energy budget availible for tidal heating [J].
     """
     H_tide: float   = field(default=0.0, validator=ge(0.0))
     Phi_tide: str   = field(default="<0.3", validator=phi_tide_validator)
+    E_max: float    = field(default=None)
 
 @define
 class Lovepy:

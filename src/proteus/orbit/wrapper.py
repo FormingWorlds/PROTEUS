@@ -117,8 +117,71 @@ def update_rochelimit(hf_row:dict):
 
     hf_row["roche_limit"] = Rpl * (2 * Mst/Mpl)**(1.0/3)
 
+def update_energy_budget(hf_row:dict, dirs:dict):
+    '''
+    Calculate total dissipated energy.
 
-def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
+    First calculate the total mass of all shells that make up the mantle, then
+    retrieve the density and power density per shell and multiply the results to
+    find the total power. The total energy is found by multiplying the power by
+    the time between data points.
+
+    Parameters
+    -------------
+        hf_row: dict
+            Current helpfile row
+        dirs: dict
+            Dictionary of directories.
+    '''
+
+    from proteus.interior.spider import get_all_output_times, get_dict_surface_values_for_specific_time
+
+    sim_time = get_all_output_times(dirs["output"])[-1]  # yr, as an integer value
+    if sim_time == 0:
+        log.info("Skipping energy budget in first iteration")
+        return 0
+    else:
+        last_sim_time = get_all_output_times(dirs["output"])[-2]  # yr, as an integer value
+
+    keys_t = (('data', 'rho_s'), ('data', 'radius_s'), ('data', 'Htidal_s'))
+
+    data_a = get_dict_surface_values_for_specific_time(keys_t, sim_time, indir=dirs["output"])
+    data_b = get_dict_surface_values_for_specific_time(keys_t, last_sim_time, indir=dirs["output"])
+
+    if data_a is not None and len(data_a) > 0:
+        sep_a = np.abs(np.diff(data_a[1]))
+        vol_a = 4/3 * np.pi * ((data_a[1][:-1] + sep_a)**3 - (data_a[1][:-1])**3)
+
+        avg_rho_a = np.convolve(data_a[0], [0.5, 0.5], "valid")
+        avg_Htide_a = np.convolve(data_a[2], [0.5, 0.5], "valid")
+
+        sep_b = np.abs(np.diff(data_b[1]))
+        vol_b = 4/3 * np.pi * ((data_b[1][:-1] + sep_b)**3 - (data_b[1][:-1])**3)
+
+        avg_rho_b = np.convolve(data_b[0], [0.5, 0.5], "valid")
+        avg_Htide_b = np.convolve(data_b[2], [0.5, 0.5], "valid")
+
+        new_tidal = np.sum(vol_a * avg_rho_a * avg_Htide_a)
+        last_tidal = np.sum(vol_b * avg_rho_b * avg_Htide_b)
+        hf_row["tot_tidal"] = new_tidal
+
+        total_power = last_tidal + new_tidal
+
+        log.info(f"Power: {last_tidal:.2e} --> {new_tidal:.2e} W")
+
+        total_E = total_power * (sim_time - last_sim_time) * 31556926
+        hf_row["tot_tid_E"] = total_E
+
+        log.info("Total Power  = %.1e W)"%hf_row["tot_tidal"])
+        log.info("Total Energy = %.1e J)"%hf_row["tot_tid_E"])
+
+        return total_E
+
+    else:
+        #log.warning("Skipping energy budget")
+        raise ValueError('Could not access interior data.')
+
+def run_orbit(hf_row:dict, hf_all:dict, config:Config, dirs:dict, interior_o:Interior_t):
     """Update parameters relating to orbital evolution and tides.
 
     Parameters
@@ -164,6 +227,24 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     # Call tides module
     if config.orbit.module == 'dummy':
+
+        if config.orbit.dummy.E_max:
+            try:
+                total_E_last = hf_all["tot_tid_E"].iloc[-1]
+            except:
+                total_E_last = 0
+
+            if total_E_last > config.orbit.dummy.E_max:
+                hf_row["tot_tid_E"] = total_E_last
+                return
+
+            else:
+                total_E = update_energy_budget(hf_row, dirs)
+
+                if total_E > config.orbit.dummy.E_max:
+                    log.info("Reached tidal heating budget! (= %.1e J)"%hf_row["tot_tid_E"])
+                    return
+
         from proteus.orbit.dummy import run_dummy_orbit
         hf_row["Imk2"] = run_dummy_orbit(config, interior_o)
 

@@ -393,6 +393,9 @@ def GetHelpfileKeys():
 
             # Atmospheric composition
             "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]
+
+            # Tidal stuff
+            "tot_tidal", "tot_tid_E", # [J s-1], [J]
             ]
 
     # gases
