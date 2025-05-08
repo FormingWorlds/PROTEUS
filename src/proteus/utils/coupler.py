@@ -539,6 +539,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     from proteus.plot.cpl_sflux_cross import plot_sflux_cross
     from proteus.plot.cpl_spectra import plot_spectra
     from proteus.plot.cpl_structure import plot_structure
+    from proteus.plot.cpl_visual import plot_visual
 
     # Directories
     output_dir = dirs["output"]
@@ -547,6 +548,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config.interior.module == 'dummy'
+    agni      = config.atmos_clim.module == 'agni'
     spider    = config.interior.module == 'spider'
     aragog    = config.interior.module == 'aragog'
     observed  = bool(config.observe.synthesis is not None)
@@ -628,10 +630,14 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         if observed:
             plot_spectra(output_dir, plot_format=config.params.out.plot_fmt)
 
-        # Atmospheric chemistry
+        # Chemical profiles
         if not dummy_atm:
             plot_chem_atmosphere(output_dir, config.atmos_chem.module,
                                     plot_format=config.params.out.plot_fmt)
+
+        # Visualise planet and star
+        if agni:
+            plot_visual(hf_all, output_dir, idx=-1, plot_format=config.params.out.plot_fmt)
 
         # Check that the simulation ran for long enough to make useful plots
         if len(hf_all["Time"]) >= 3:

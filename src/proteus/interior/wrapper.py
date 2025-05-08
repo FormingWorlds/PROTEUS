@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
+from proteus.interior.aragog import AragogRunner
 from proteus.interior.common import Interior_t
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
@@ -178,11 +179,11 @@ def run_interior(dirs:dict, config:Config,
         sim_time, output = ReadSPIDER(dirs, config, hf_row["R_int"], interior_o)
 
     elif config.interior.module == 'aragog':
-        # Import
-        from proteus.interior.aragog import RunAragog
-
+        AragogRunnerInstance = AragogRunner(config, dirs, hf_row, hf_all,
+                                            interior_o)
         # Run Aragog
-        sim_time, output = RunAragog(config, dirs, hf_row, hf_all, interior_o, dirs["output"])
+        sim_time, output = AragogRunnerInstance.run_solver(hf_row, interior_o,
+                                                           dirs)
 
     elif config.interior.module == 'dummy':
         # Import

@@ -73,6 +73,8 @@ class Interior_t():
         # Current time step length [yr]
         self.dt = 1.0
 
+        self.aragog_solver = None
+
         # Number of levels
         self.nlev_b = int(nlev_b)
         self.nlev_s = self.nlev_b - 1

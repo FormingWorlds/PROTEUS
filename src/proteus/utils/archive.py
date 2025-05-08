@@ -71,7 +71,7 @@ def create(dir:str, remove_files:bool=True) -> str:
         return
 
     # Check if the tar file exists
-    if archive_exists(dir, ignore_warnings=False):
+    if archive_exists(dir, ignore_warnings=True):
         log.error(f"Archive tar file for {dir} already exists. Will not create a new one.")
         return
 
