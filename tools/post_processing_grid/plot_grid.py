@@ -678,52 +678,166 @@ if __name__ == '__main__':
     plot_dir_exists(plots_path)                                                         # Check if the plot directory exists. If not, create it.
     grouped_data = group_output_by_parameter(df, grid_params, extracted_outputs)        # Group extracted outputs by grid parameters
 
-    # Plots
-    plot_grid_status(df, plots_path)                                                    # Plot the grid status in an histogram
+    ## Plots
+    #plot_grid_status(df, plots_path)                                                    # Plot the grid status in an histogram
 
-    # Single plots
-    param_label_map = {
-    "orbit.semimajoraxis": "Semi-major axis [AU]",
-    "escape.zephyrus.Pxuv": r"$P_{XUV}$ [bar]",
-    "escape.zephyrus.efficiency": r"Escape efficiency factor, $\epsilon$",
-    "outgas.fO2_shift_IW":r"$log_{10}$($fO_2$) [$\Delta$ IW]",
-    #"atmos_clim.module": "Atmospheric module",
-    "delivery.elements.CH_ratio": "C/H ratio",
-    "delivery.elements.H_oceans": "[H] [oceans]",
-    "star.mass": r"Stellar mass [M$_\odot$]"}
-    output_label_map = {
-    "solidification_time": "Solidification time [yr]",
-    "esc_rate_total": "Total escape rate [kg/s]",
-    "Phi_global": "Melt fraction [%]",
-    "P_surf": "Surface pressure [bar]",
-    "atm_kg_per_mol": "Atmospheric mass [kg/mol]"}
-    colormaps_by_param = {
-        "orbit.semimajoraxis": cm.plasma,
-        "escape.zephyrus.Pxuv": cm.cividis,
-        "escape.zephyrus.efficiency": cm.spring,
-        "outgas.fO2_shift_IW": cm.coolwarm,
-        "delivery.elements.CH_ratio":cm.copper,
-        #"atmos_clim.module": cm.Dark2,
-        "delivery.elements.H_oceans": cm.winter,
-        #"star.mass": cm.RdYlBu
-        }
+    ############## TEST PLOT ##############
+    # # Extract the grouped dict
+    # grouped_values = grouped_data['P_surf_per_escape.zephyrus.Pxuv']
 
-    log_scale_grid_params = ["escape.zephyrus.Pxuv"]
+    # # Set up colormap and normalization
+    # colormap = cm.cividis
+    # param_vals = sorted(grouped_values.keys())
+    # norm = plt.Normalize(vmin=min(param_vals), vmax=max(param_vals))
 
-    generate_single_plots(
-    extracted_outputs=extracted_outputs,
-    grouped_data=grouped_data,
-    grid_params=grid_params,
-    plots_path=plots_path,
-    param_label_map=param_label_map,
-    colormaps_by_param=colormaps_by_param,
-    output_label_map=output_label_map,
-    log_scale_grid_params=log_scale_grid_params,
-    log_x=True,
-    plot_hist=True,
-    plot_kde=True,
-    cumulative=True,
-    bins=100)
+    # # Create a single plot with all curves
+    # fig, ax = plt.subplots(figsize=(7, 5))
+
+    # for pxuv_val in param_vals:
+    #     values = grouped_values[pxuv_val].dropna().values  # Clean NaNs
+    #     if len(values) == 0:
+    #         continue  # Skip empty
+
+    #     plot_hist_kde(
+    #         values=values,
+    #         ax=ax,
+    #         color=colormap(norm(pxuv_val)),
+    #         plot_hist=True, 
+    #         plot_kde=True,
+    #         cumulative=True,
+    #         log_x=False,       # Log-scale for P_surf
+    #         bins=10
+    #     )
+
+    # # Add colorbar for Pxuv mapping
+    # sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
+    # sm.set_array([])
+    # cbar = plt.colorbar(sm, ax=ax)
+    # cbar.set_label(r"$P_{XUV}$ [bar]")
+
+    # ax.set_ylabel("Cumulative density")
+    # ax.set_xlabel("Surface pressure [bar]")
+    # ax.set_title("Cumulative P_surf distributions for different $P_{XUV}$ values")
+
+    # plt.tight_layout()
+    # plt.savefig(plots_path + "test_plot_P_surf_per_Pxuv.png", dpi=300)
+    # plt.close()
+
+    plt.figure(figsize=(10, 6))
+    for pxuv in grid_params['escape.zephyrus.Pxuv'] : 
+        sns.histplot(data=np.array(grouped_data['P_surf_per_escape.zephyrus.Pxuv'][pxuv]),
+                    bins=5,
+                    kde=True,
+                    kde_kws={'bw_adjust': 0.5},
+                    stat="density",
+                    element="step",
+                    cumulative=False,
+                    log_scale=False,
+                    fill=False,
+                    linewidth=1.5, 
+                    color=cm.cividis(pxuv)
+                    )
+    plt.xlabel("Surface pressure [bar]")
+    plt.ylabel("Empirical cumulative density")    
+    plt.savefig(plots_path + "test_plot_P_surf_per_Pxuv.png", dpi=300)
+
+    # grouped_data = {
+    #     'P_surf_per_escape.zephyrus.Pxuv': {
+    #         1e-05: np.random.lognormal(mean=0, sigma=1, size=500),
+    #         0.01:  np.random.lognormal(mean=1, sigma=1, size=500),
+    #         10.0:  np.random.lognormal(mean=2, sigma=1, size=500)
+    #     }
+    # }
+    # pxuv_vals = [1e-05, 0.01, 10.0]
+
+    # # --- figure + axis ---
+    # fig, ax = plt.subplots(figsize=(10, 6))
+
+    # # --- set up normalization + ScalarMappable for the colorbar ---
+    # norm = mcolors.LogNorm(vmin=min(pxuv_vals), vmax=max(pxuv_vals))
+    # # if you want linear scaling, use Normalize instead:
+    # # norm = mcolors.Normalize(vmin=min(pxuv_vals), vmax=max(pxuv_vals))
+
+    # sm = cm.ScalarMappable(norm=norm, cmap='cividis')
+    # sm.set_array([])  # dummy array for the mappable
+
+    # # --- loop over pxuv values, plotting each line ---
+    # for pxuv in pxuv_vals:
+    #     color = cm.cividis(norm(pxuv))
+    #     sns.histplot(
+    #         data=grouped_data['P_surf_per_escape.zephyrus.Pxuv'][pxuv],
+    #         bins=30,
+    #         kde=True,
+    #         kde_kws={'bw_adjust': 0.1},
+    #         stat="density",
+    #         element="step",
+    #         cumulative=True,
+    #         fill=False,
+    #         linewidth=1.5,
+    #         color=color,
+    #         ax=ax
+    #     )
+
+    # # --- labels ---
+    # ax.set_xlabel("Surface pressure [bar]")
+    # ax.set_ylabel("Cumulative density")
+
+    # # --- move y-axis ticks & label to the right ---
+    # # ax.yaxis.tick_right()
+    # # ax.yaxis.set_label_position("right")
+    # # ax.tick_params(axis='y', labelright=True, labelleft=False)
+
+    # # --- add the colorbar ---
+    # cbar = fig.colorbar(sm, ax=ax, pad=0.02)
+    # cbar.set_label("Pxuv value")
+
+    # # --- save or show ---
+    # plt.tight_layout()
+    # plt.savefig(plots_path + "test_plot_P_surf_per_Pxuv.png", dpi=300)
+
+    # # Single plots
+    # param_label_map = {
+    # "orbit.semimajoraxis": "Semi-major axis [AU]",
+    # "escape.zephyrus.Pxuv": r"$P_{XUV}$ [bar]",
+    # "escape.zephyrus.efficiency": r"Escape efficiency factor, $\epsilon$",
+    # "outgas.fO2_shift_IW":r"$log_{10}$($fO_2$) [$\Delta$ IW]",
+    # #"atmos_clim.module": "Atmospheric module",
+    # "delivery.elements.CH_ratio": "C/H ratio",
+    # "delivery.elements.H_oceans": "[H] [oceans]",
+    # "star.mass": r"Stellar mass [M$_\odot$]"}
+    # output_label_map = {
+    # "solidification_time": "Solidification time [yr]",
+    # "esc_rate_total": "Total escape rate [kg/s]",
+    # "Phi_global": "Melt fraction [%]",
+    # "P_surf": "Surface pressure [bar]",
+    # "atm_kg_per_mol": "Atmospheric mass [kg/mol]"}
+    # colormaps_by_param = {
+    #     "orbit.semimajoraxis": cm.plasma,
+    #     "escape.zephyrus.Pxuv": cm.cividis,
+    #     "escape.zephyrus.efficiency": cm.spring,
+    #     "outgas.fO2_shift_IW": cm.coolwarm,
+    #     "delivery.elements.CH_ratio":cm.copper,
+    #     #"atmos_clim.module": cm.Dark2,
+    #     "delivery.elements.H_oceans": cm.winter,
+    #     #"star.mass": cm.RdYlBu
+    #     }
+
+    # log_scale_grid_params = ["escape.zephyrus.Pxuv"]
+
+    # generate_single_plots(
+    # extracted_outputs=extracted_outputs,
+    # grouped_data=grouped_data,
+    # grid_params=grid_params,
+    # plots_path=plots_path,
+    # param_label_map=param_label_map,
+    # colormaps_by_param=colormaps_by_param,
+    # output_label_map=output_label_map,
+    # log_scale_grid_params=log_scale_grid_params,
+    # log_x=True,
+    # plot_hist=True,
+    # plot_kde=True,
+    # cumulative=True,
+    # bins=100)
 
     # generate_grid_plot(
     # extracted_outputs=extracted_outputs,
@@ -735,6 +849,6 @@ if __name__ == '__main__':
     # output_label_map=output_label_map,
     # log_scale_grid_params=log_scale_grid_params)
 
-    print('-----------------------------------------------------')
-    print("All plots completed. Let's do some analyse now :) !")
-    print('-----------------------------------------------------')
+    # print('-----------------------------------------------------')
+    # print("All plots completed. Let's do some analyse now :) !")
+    # print('-----------------------------------------------------')
