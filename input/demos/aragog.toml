@@ -117,7 +117,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         convection                      = true     # enable convective heat transfer
         gravitational_separation        = false    # enable gravitational separation
         mixing                          = false    # enable mixing
-        tsurf_poststep_change           = 30       # threshold of maximum change on surface temperature
+        tsurf_poststep_change           = 30       # threshold of maximum change on surface temperature, compares current and first Tsurf
         event_triggering                = false    # enable events triggering to avoid abrupt jumps in surface temperature
 
     [interior.dummy]
