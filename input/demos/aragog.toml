@@ -117,6 +117,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         convection                      = true     # enable convective heat transfer
         gravitational_separation        = false    # enable gravitational separation
         mixing                          = false    # enable mixing
+        tsurf_poststep_change           = 30       # threshold of maximum change on surface temperature
+        event_triggering                = false    # enable events triggering to avoid abrupt jumps in surface temperature
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
