@@ -214,9 +214,17 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        num_levels      = 100       # Number of Aragog grid levels
-        tolerance       = 1.0e-7    # solver tolerance
-        ini_tmagma      = 3000.0    # Initial magma surface temperature [K]
+        num_levels                      = 50       # Number of Aragog grid levels
+        tolerance                       = 1.0e-7   # solver tolerance
+        ini_tmagma                      = 3300.0   # Initial magma surface temperature [K]
+        inner_boundary_condition        = 1        # 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
+        inner_boundary_value            = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
+        conduction                      = true     # enable conductive heat transfer
+        convection                      = true     # enable convective heat transfer
+        gravitational_separation        = false    # enable gravitational separation
+        mixing                          = false    # enable mixing
+        tsurf_poststep_change           = 30       # threshold of maximum change on surface temperature
+        event_triggering                = false    # enable events triggering to avoid abrupt jumps in surface temperature
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
