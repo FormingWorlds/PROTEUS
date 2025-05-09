@@ -103,7 +103,7 @@ class Aragog:
     gravitational_separation: bool      = field(default=False)
     mixing: bool                        = field(default=False)
     tsurf_poststep_change: float        = field(default=30, validator=ge(0))
-    event_triggering:bool               = field(default=False)
+    event_triggering:bool               = field(default=True)
 
 
 def valid_interiordummy(instance, attribute, value):
