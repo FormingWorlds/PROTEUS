@@ -408,13 +408,13 @@ def get_Seager_EOS():
     # Build the material_properties dictionary
     material_properties = {
         "mantle": {
-            # Lower mantle properties based on bridgmanite and ferropericlase
-            "rho0": 4110,  # Reference density [kg/m^3] at 24 GPa (top of lower mantle)
+            # Mantle properties based on bridgmanite
+            "rho0": 4100,  # From Table 1 of Seager et al. (2007) for bridgmanite
             "eos_file": eos_folder / "eos_seager07_silicate.txt"  # Path to silicate mantle file
         },
         "core": {
             # For liquid iron alloy outer core
-            "rho0": 9900,  # Reference density [kg/m^3] at 135 GPa (core-mantle boundary)
+            "rho0": 8300,  # From Table 1 of Seager et al. (2007) for the epsilon phase of iron of Fe
             "eos_file": eos_folder / "eos_seager07_iron.txt"  # Path to iron core file
         }
     }
