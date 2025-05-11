@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.cm as cm
 import matplotlib.ticker as ticker
-from matplotlib.ticker import LogFormatterMathtext
+from matplotlib.ticker import FixedLocator, LogFormatterMathtext
+from matplotlib.colors import BoundaryNorm
 
 def load_extracted_data(data_path : str | Path, grid_name :str):
 
@@ -682,60 +683,6 @@ if __name__ == '__main__':
     # # Plots
     # plot_grid_status(df, plots_path)                                                    # Plot the grid status in an histogram
 
-    ############## TEST PLOT ##############
-
-    ###### PRINT TO TEST/VERIFY DATA ######
-    # print('Phi_global :')
-    # print(df['Phi_global'].describe())
-    # print('Solidification time :')
-    # print(df['solidification_time'].describe())
-    # print('Escape rate :')
-    # print(df['esc_rate_total'].describe())
-    # print('P_surf :')
-    # print(df['P_surf'].describe())
-    # print(df)                               
-    # print(df.columns)                     # Print the columns of the DataFrame
-    #print(grouped_data.keys())                # Print the keys of the grouped data
-    # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][1.0]))
-    # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][5.0]))
-    # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][10.0]))  
-    ###################################
-
-
-    elements = grid_params['delivery.elements.H_oceans']
-    # Colorbar setup
-    norm = mpl.colors.Normalize(vmin=min(elements), vmax=max(elements))
-    cmap = cm.winter
-
-    # Figure setup
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for value_init_param in grid_params['delivery.elements.H_oceans'] :
-        sns.ecdfplot(data=np.array(grouped_data['solidification_time_per_delivery.elements.H_oceans'][value_init_param]),
-                    log_scale=True,
-                    stat="proportion",
-                    color=cmap(norm(param)),
-                    linewidth=2,
-                    ax=ax
-                    )
-
-    # Name of the axis
-    ax.set_xlabel("Solidification time [yr]", fontsize=14)
-    ax.set_ylabel("Normalized cumulative fraction of simulations", fontsize=14)
-    # Grid 
-    ax.grid(alpha=0.1)
-    # Colorbar setup
-    sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])  
-    cbar = fig.colorbar(sm, ax=ax, pad=0.02, aspect=30)
-    cbar.set_label("[H] [oceans]", fontsize=14)
-    cbar.set_ticks(elements)
-    # Save the figure
-    plt.tight_layout()
-    plt.savefig(plots_path + "test/" + "test_plot_ecdf_solidfication_time_per_delivery.elements.H_oceans.png", dpi=300)
-
-    print(grid_params.keys())
-
-################################### 
     # # Single plots
     # param_label_map = {
     # "orbit.semimajoraxis": "Semi-major axis [AU]",
@@ -793,3 +740,135 @@ if __name__ == '__main__':
     # print('-----------------------------------------------------')
     # print("All plots completed. Let's do some analyse now :) !")
     # print('-----------------------------------------------------')
+
+    ############## TEST PLOT ##############
+
+    ###### PRINT TO TEST/VERIFY DATA ######
+    # print('Phi_global :')
+    # print(df['Phi_global'].describe())
+    # print('Solidification time :')
+    # print(df['solidification_time'].describe())
+    # print('Escape rate :')
+    # print(df['esc_rate_total'].describe())
+    # print('P_surf :')
+    # print(df['P_surf'].describe())
+    # print(df)                               
+    # print(df.columns)                     # Print the columns of the DataFrame
+    #print(grouped_data.keys())                # Print the keys of the grouped data
+    # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][1.0]))
+    # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][5.0]))
+    # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][10.0]))  
+    ###################################
+
+
+    # elements = grid_params['delivery.elements.H_oceans']
+    # # Colorbar setup
+    # norm = mpl.colors.Normalize(vmin=min(elements), vmax=max(elements))
+    # cmap = cm.winter
+
+    # # Figure setup
+    # fig, ax = plt.subplots(figsize=(10, 6))
+    # for value_init_param in grid_params['delivery.elements.H_oceans'] :
+    #     sns.ecdfplot(data=np.array(grouped_data['solidification_time_per_delivery.elements.H_oceans'][value_init_param]),
+    #                 log_scale=True,
+    #                 stat="proportion",
+    #                 color=cmap(norm(param)),
+    #                 linewidth=2,
+    #                 ax=ax
+    #                 )
+
+    # # Name of the axis
+    # ax.set_xlabel("Solidification time [yr]", fontsize=14)
+    # ax.set_ylabel("Normalized cumulative fraction of simulations", fontsize=14)
+    # # Grid 
+    # ax.grid(alpha=0.1)
+    # # Colorbar setup
+    # sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
+    # sm.set_array([])  
+    # cbar = fig.colorbar(sm, ax=ax, pad=0.02, aspect=30)
+    # cbar.set_label("[H] [oceans]", fontsize=14)
+    # cbar.set_ticks(elements)
+    # # Save the figure
+    # plt.tight_layout()
+    # plt.savefig(plots_path + "test/" + "test_plot_ecdf_solidfication_time_per_delivery.elements.H_oceans.png", dpi=300)
+
+#################################
+
+    param_settings = {
+        "orbit.semimajoraxis":          {"label": "Semi-major axis [AU]",                   "colormap": cm.plasma,     "log_scale": False},
+        "escape.zephyrus.Pxuv":         {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,    "log_scale": True},
+        "escape.zephyrus.efficiency":   {"label": r"Escape efficiency factor $\epsilon$",   "colormap": cm.spring,     "log_scale": False},
+        "outgas.fO2_shift_IW":          {"label": r"$\log_{10}(fO_2)$ [IW]",                "colormap": cm.coolwarm,   "log_scale": False},
+        "atmos_clim.module":            {"label": "Atmosphere module",                      "colormap": cm.Dark2,      "log_scale": False},
+        "delivery.elements.CH_ratio":   {"label": "C/H ratio",                              "colormap": cm.copper,     "log_scale": False},
+        "delivery.elements.H_oceans":   {"label": "[H] [Earth's oceans]",                   "colormap": cm.winter,     "log_scale": False}}
+
+
+    for param_name, settings in param_settings.items():
+        tested_param = grid_params[param_name]
+        if len(tested_param) <= 1:
+            continue
+
+        # Extract the label and colormap from the settings 
+        param_label = settings["label"]
+        cmap = settings["colormap"]
+        do_log_color = settings.get("log_scale", False)
+
+        # Check if the parameter is numeric
+        is_numeric = np.issubdtype(np.array(tested_param).dtype, np.number)
+        if is_numeric:
+            if do_log_color:
+                norm = mpl.colors.LogNorm(vmin=min(tested_param), vmax=max(tested_param))
+            else:
+                norm = mpl.colors.Normalize(vmin=min(tested_param), vmax=max(tested_param))
+            color_func = lambda v: cmap(norm(v))
+            colorbar_needed = True
+        else:
+            unique_vals = list(sorted(set(tested_param)))
+            cmap = mpl.cm.get_cmap(cmap, len(unique_vals)) 
+            color_map = {val: cmap(i) for i, val in enumerate(unique_vals)}
+            color_func = lambda val: color_map[val]
+            colorbar_needed = False
+        # Figure
+        fig, ax = plt.subplots(figsize=(10, 6))
+        for val in tested_param:
+            data_key = f'solidification_time_per_{param_name}'
+            if val not in grouped_data[data_key]:
+                continue
+            sns.ecdfplot(
+                data=np.array(grouped_data[data_key][val]),
+                log_scale=True,
+                stat="proportion",
+                color=color_func(val),
+                linewidth=3,
+                ax=ax)
+        ax.set_xlabel("Solidification time [yr]", fontsize=14)
+        ax.set_ylabel("Normalized cumulative fraction of simulations", fontsize=14)
+        ax.grid(alpha=0.1)
+
+        # Create the colorbar or legend depending on the tested parameter
+        if colorbar_needed:
+            sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
+            cbar = fig.colorbar(sm, ax=ax, pad=0.02, aspect=30)
+            cbar.set_label(settings["label"], fontsize=14)
+            if do_log_color:
+                tick_values = sorted(set(tested_param))
+                cbar.set_ticks(tick_values)
+                #cbar.ax.yaxis.set_major_locator(FixedLocator(tick_values))
+                #cbar.ax.yaxis.set_major_formatter(LogFormatterMathtext(base=10))
+                #cbar.update_ticks()
+            else:
+                cbar.set_ticks(sorted(set(tested_param)))
+        else:
+            handles = [mpl.lines.Line2D([0], [0], color=color_map[val], lw=3, label=str(val)) for val in unique_vals]
+            ax.legend(handles=handles, loc='lower right')
+
+        # Save the plot
+        filename = f"ecdf_solidification_time_per_{param_name.replace('.', '_')}_normalized.png"
+        output_path = os.path.join(plots_path, "ecdf_by_param")
+        os.makedirs(output_path, exist_ok=True)
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_path, filename), dpi=300)
+        plt.close()
+
+print(extracted_outputs)
