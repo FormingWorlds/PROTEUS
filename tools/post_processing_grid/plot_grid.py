@@ -683,48 +683,8 @@ if __name__ == '__main__':
     # plot_grid_status(df, plots_path)                                                    # Plot the grid status in an histogram
 
     ############## TEST PLOT ##############
-    # # Extract the grouped dict
-    # grouped_values = grouped_data['P_surf_per_escape.zephyrus.Pxuv']
 
-    # # Set up colormap and normalization
-    # colormap = cm.cividis
-    # param_vals = sorted(grouped_values.keys())
-    # norm = plt.Normalize(vmin=min(param_vals), vmax=max(param_vals))
-
-    # # Create a single plot with all curves
-    # fig, ax = plt.subplots(figsize=(7, 5))
-
-    # for pxuv_val in param_vals:
-    #     values = grouped_values[pxuv_val].dropna().values  # Clean NaNs
-    #     if len(values) == 0:
-    #         continue  # Skip empty
-
-    #     plot_hist_kde(
-    #         values=values,
-    #         ax=ax,
-    #         color=colormap(norm(pxuv_val)),
-    #         plot_hist=True, 
-    #         plot_kde=True,
-    #         cumulative=True,
-    #         log_x=False,       # Log-scale for P_surf
-    #         bins=10
-    #     )
-
-    # # Add colorbar for Pxuv mapping
-    # sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
-    # sm.set_array([])
-    # cbar = plt.colorbar(sm, ax=ax)
-    # cbar.set_label(r"$P_{XUV}$ [bar]")
-
-    # ax.set_ylabel("Cumulative density")
-    # ax.set_xlabel("Surface pressure [bar]")
-    # ax.set_title("Cumulative P_surf distributions for different $P_{XUV}$ values")
-
-    # plt.tight_layout()
-    # plt.savefig(plots_path + "test_plot_P_surf_per_Pxuv.png", dpi=300)
-    # plt.close()
-
-###### PRINT TO TEST/VERIFY DATA ######
+    ###### PRINT TO TEST/VERIFY DATA ######
     # print('Phi_global :')
     # print(df['Phi_global'].describe())
     # print('Solidification time :')
@@ -739,7 +699,7 @@ if __name__ == '__main__':
     # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][1.0]))
     # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][5.0]))
     # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][10.0]))  
-###################################
+    ###################################
 
 
     elements = grid_params['delivery.elements.H_oceans']
@@ -749,8 +709,8 @@ if __name__ == '__main__':
 
     # Figure setup
     fig, ax = plt.subplots(figsize=(10, 6))
-    for param in grid_params['delivery.elements.H_oceans'] :
-        sns.ecdfplot(data=np.array(grouped_data['solidification_time_per_delivery.elements.H_oceans'][param]),
+    for value_init_param in grid_params['delivery.elements.H_oceans'] :
+        sns.ecdfplot(data=np.array(grouped_data['solidification_time_per_delivery.elements.H_oceans'][value_init_param]),
                     log_scale=True,
                     stat="proportion",
                     color=cmap(norm(param)),
@@ -775,60 +735,7 @@ if __name__ == '__main__':
 
     print(grid_params.keys())
 
-    # grouped_data = {
-    #     'P_surf_per_escape.zephyrus.Pxuv': {
-    #         1e-05: np.random.lognormal(mean=0, sigma=1, size=500),
-    #         0.01:  np.random.lognormal(mean=1, sigma=1, size=500),
-    #         10.0:  np.random.lognormal(mean=2, sigma=1, size=500)
-    #     }
-    # }
-    # pxuv_vals = [1e-05, 0.01, 10.0]
-
-    # # --- figure + axis ---
-    # fig, ax = plt.subplots(figsize=(10, 6))
-
-    # # --- set up normalization + ScalarMappable for the colorbar ---
-    # norm = mcolors.LogNorm(vmin=min(pxuv_vals), vmax=max(pxuv_vals))
-    # # if you want linear scaling, use Normalize instead:
-    # # norm = mcolors.Normalize(vmin=min(pxuv_vals), vmax=max(pxuv_vals))
-
-    # sm = cm.ScalarMappable(norm=norm, cmap='cividis')
-    # sm.set_array([])  # dummy array for the mappable
-
-    # # --- loop over pxuv values, plotting each line ---
-    # for pxuv in pxuv_vals:
-    #     color = cm.cividis(norm(pxuv))
-    #     sns.histplot(
-    #         data=grouped_data['P_surf_per_escape.zephyrus.Pxuv'][pxuv],
-    #         bins=30,
-    #         kde=True,
-    #         kde_kws={'bw_adjust': 0.1},
-    #         stat="density",
-    #         element="step",
-    #         cumulative=True,
-    #         fill=False,
-    #         linewidth=1.5,
-    #         color=color,
-    #         ax=ax
-    #     )
-
-    # # --- labels ---
-    # ax.set_xlabel("Surface pressure [bar]")
-    # ax.set_ylabel("Cumulative density")
-
-    # # --- move y-axis ticks & label to the right ---
-    # # ax.yaxis.tick_right()
-    # # ax.yaxis.set_label_position("right")
-    # # ax.tick_params(axis='y', labelright=True, labelleft=False)
-
-    # # --- add the colorbar ---
-    # cbar = fig.colorbar(sm, ax=ax, pad=0.02)
-    # cbar.set_label("Pxuv value")
-
-    # # --- save or show ---
-    # plt.tight_layout()
-    # plt.savefig(plots_path + "test_plot_P_surf_per_Pxuv.png", dpi=300)
-
+################################### 
     # # Single plots
     # param_label_map = {
     # "orbit.semimajoraxis": "Semi-major axis [AU]",
