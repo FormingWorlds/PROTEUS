@@ -5,6 +5,7 @@ import os
 import pandas as pd
 import numpy as np
 import seaborn as sns
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.cm as cm
@@ -669,7 +670,7 @@ def generate_single_plots(extracted_outputs, grouped_data, grid_params, plots_pa
 if __name__ == '__main__':
 
     # User needs to specify paths
-    grid_name   = 'escape_grid_habrok_5_params_a_0.1_1Msun_agni'
+    grid_name   = 'escape_grid_habrok_7_params_1Msun'
     data_dir    = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_processed_data/{grid_name}/'
     plots_path  = f'/home2/p315557/PROTEUS/tools/post_processing_grid/nogit_plots/{grid_name}/'
 
@@ -678,8 +679,8 @@ if __name__ == '__main__':
     plot_dir_exists(plots_path)                                                         # Check if the plot directory exists. If not, create it.
     grouped_data = group_output_by_parameter(df, grid_params, extracted_outputs)        # Group extracted outputs by grid parameters
 
-    ## Plots
-    #plot_grid_status(df, plots_path)                                                    # Plot the grid status in an histogram
+    # # Plots
+    # plot_grid_status(df, plots_path)                                                    # Plot the grid status in an histogram
 
     ############## TEST PLOT ##############
     # # Extract the grouped dict
@@ -723,23 +724,56 @@ if __name__ == '__main__':
     # plt.savefig(plots_path + "test_plot_P_surf_per_Pxuv.png", dpi=300)
     # plt.close()
 
-    plt.figure(figsize=(10, 6))
-    for pxuv in grid_params['escape.zephyrus.Pxuv'] : 
-        sns.histplot(data=np.array(grouped_data['P_surf_per_escape.zephyrus.Pxuv'][pxuv]),
-                    bins=5,
-                    kde=True,
-                    kde_kws={'bw_adjust': 0.5},
-                    stat="density",
-                    element="step",
-                    cumulative=False,
-                    log_scale=False,
-                    fill=False,
-                    linewidth=1.5, 
-                    color=cm.cividis(pxuv)
+###### PRINT TO TEST/VERIFY DATA ######
+    # print('Phi_global :')
+    # print(df['Phi_global'].describe())
+    # print('Solidification time :')
+    # print(df['solidification_time'].describe())
+    # print('Escape rate :')
+    # print(df['esc_rate_total'].describe())
+    # print('P_surf :')
+    # print(df['P_surf'].describe())
+    # print(df)                               
+    # print(df.columns)                     # Print the columns of the DataFrame
+    #print(grouped_data.keys())                # Print the keys of the grouped data
+    # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][1.0]))
+    # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][5.0]))
+    # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][10.0]))  
+###################################
+
+
+    elements = grid_params['delivery.elements.H_oceans']
+    # Colorbar setup
+    norm = mpl.colors.Normalize(vmin=min(elements), vmax=max(elements))
+    cmap = cm.winter
+
+    # Figure setup
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for param in grid_params['delivery.elements.H_oceans'] :
+        sns.ecdfplot(data=np.array(grouped_data['solidification_time_per_delivery.elements.H_oceans'][param]),
+                    log_scale=True,
+                    stat="proportion",
+                    color=cmap(norm(param)),
+                    linewidth=2,
+                    ax=ax
                     )
-    plt.xlabel("Surface pressure [bar]")
-    plt.ylabel("Empirical cumulative density")    
-    plt.savefig(plots_path + "test_plot_P_surf_per_Pxuv.png", dpi=300)
+
+    # Name of the axis
+    ax.set_xlabel("Solidification time [yr]", fontsize=14)
+    ax.set_ylabel("Normalized cumulative fraction of simulations", fontsize=14)
+    # Grid 
+    ax.grid(alpha=0.1)
+    # Colorbar setup
+    sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])  
+    cbar = fig.colorbar(sm, ax=ax, pad=0.02, aspect=30)
+    cbar.set_label("[H] [oceans]", fontsize=14)
+    cbar.set_ticks(elements)
+    # Save the figure
+    plt.tight_layout()
+    plt.savefig(plots_path + "test/" + "test_plot_ecdf_solidfication_time_per_delivery.elements.H_oceans.png", dpi=300)
+
+    print(grid_params.keys())
 
     # grouped_data = {
     #     'P_surf_per_escape.zephyrus.Pxuv': {
