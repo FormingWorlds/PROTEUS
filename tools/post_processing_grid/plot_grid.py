@@ -256,418 +256,6 @@ def plot_grid_status(cases_data, plot_dir: Path, status_colors: dict = None):
 
     print(f"Grid status histogram successfully saved to {output_path}")
 
-def plot_hist_kde(values, ax, color, plot_hist=True, plot_kde=True, cumulative=True, log_x=False, bins=100, bw_adjust=0.3, hist_element="step", kde_kwargs={}, hist_kwargs={}):
-    """
-    Plot a cumulative or non-cumulative histograms and/or KDE curves on the given x-axis.
-
-    Parameters
-    ----------
-    values : array-like
-        Data points on the x-axis used to calculate the histogram/KDE.
-    ax : matplotlib.axes.Axes
-        Axis to draw the plot on.
-    color : str
-        Color for both histogram and KDE.
-    plot_hist : bool
-        Whether to plot a histogram.
-    plot_kde : bool
-        Whether to plot a KDE curve.
-    cumulative : bool
-        Whether to plot the cumulative distribution.
-    log_x : bool
-        Whether to use a logarithmic x-axis.
-    bw_adjust : float
-        Bandwidth adjustment for KDE.
-    bins : int
-        Number of bins for the histogram.
-    hist_element : str
-        'step' or 'bars' for histogram style.
-    kde_kwargs : dict
-        Additional kwargs for sns.kdeplot.
-    hist_kwargs : dict
-        Additional kwargs for sns.histplot.
-    """
-
-    # Apply log transform if needed
-    if log_x:
-        values = np.log10(values)
-    
-    if plot_hist:
-        sns.histplot(
-            values,
-            bins=bins,
-            cumulative=cumulative,
-            stat="density",
-            element=hist_element,
-            color=color,
-            ax=ax,
-            kde=False,
-            **hist_kwargs
-        )
-
-    if plot_kde:
-        sns.kdeplot(
-            values,
-            cumulative=cumulative,
-            bw_adjust=bw_adjust,
-            clip=(np.min(values), np.max(values)),
-            common_grid=True,
-            color=color,
-            ax=ax,
-            **kde_kwargs
-        )
-
-    # Set axis labels and formatting
-    if log_x:
-        # Keep axis in linear scale (values already log-transformed),
-        # but show ticks as powers of 10
-        ax.set_xlabel("log10(x)")
-        ax.set_xticks(np.log10(ticks := np.geomspace(np.nanmin(10**values), np.nanmax(10**values), num=5)))
-        ax.set_xticklabels([f"{int(tick):.0e}" for tick in ticks])
-    else:
-        ax.set_xscale('linear')
-
-def safe_log_formatter(x, _):
-    try:
-        if x > 0:
-            return r'$10^{{{}}}$'.format(int(np.log10(x)))
-        else:
-            return ''
-    except Exception:
-        return ''
-
-def plot_distributions(data_dict, xlabel, ylabel, colormap, vmin=None, vmax=None, key_label="Parameter", ax=None, save_path=None, bw_adjust=0.3, log_x=True, tick_values=None, norm=None, plot_hist=True, plot_kde=True, cumulative=True, bins=100):
-    """
-    Plot cumulative KDE curves for one of the output parameters of the grid (like esc_rate_total, solidification_time) on the x-axis.
-    The different curves correspond to a input parameter from the grid with a color mapped on the right side of the plot.
-
-    Parameters
-    ----------
-    data_dict : dict
-        Dictionary of datasets, where each key represents a unique variable (e.g., semi-major axis),
-        and each value is a list or array of values (e.g., solidification times).
-
-    xlabel : str
-        Label for the x-axis.
-
-    ylabel : str
-        Label for the y-axis.
-
-    cmap : matplotlib.colors.Colormap
-        The colormap used to assign colors to each dataset based on their corresponding key value.
-
-    vmin : float
-        The minimum value of the key variable to normalize the colormap.
-
-    vmax : float
-        The maximum value of the key variable to normalize the colormap.
-
-    ax : matplotlib.axes.Axes, optional
-        The axis to plot on. If None, a new figure and axis will be created.
-
-    save_path : str, optional
-        Path to save the generated plot. If None, the plot will not be saved.
-    
-    bw_adjust : float, optional, default=0.3
-        Bandwidth adjustment factor : controls the smoothness of the KDE.
-        Smaller values make the KDE more sensitive to data, while larger values smooth it out.
-    
-    log_x : bool, optional
-        If True, sets the x-axis to logarithmic scale.
-
-
-    tick_values : list of float, optional
-        Values to use as ticks on the colorbar. Useful for discrete parameter steps.
-
-
-    Returns
-    -------
-    '"""
-
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 6))
-    else:
-        fig = ax.figure
-
-    keys = sorted(data_dict.keys())
-    if vmin is None:
-        vmin = min(keys)
-    if vmax is None:
-        vmax = max(keys)
-
-    # Use provided or default norm
-    if norm is None:
-        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-    sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
-
-    # Plot each group
-    for key in keys:
-        values = np.array(data_dict[key])
-
-        # Filter out invalid values for log scale
-        values = values[np.isfinite(values)]  # Remove inf and NaN
-        if log_x:
-            values = values[values > 0]       # Remove zero and negatives
-            values = np.log10(values)
-        
-        if len(values) < 2:
-            print(f"Skipping key {key} due to insufficient valid data points.")
-            continue
-
-        color = colormap(norm(key))
-
-        plot_hist_kde(values=values, ax=ax, color=color, plot_hist=plot_hist, plot_kde=plot_kde, cumulative=cumulative, log_x=log_x, bins=bins, bw_adjust=0.3, hist_element="step", kde_kwargs={}, hist_kwargs={})
-    
-    ax.set_xlabel(f"log10({xlabel})" if log_x else xlabel, fontsize=12)
-    ax.set_ylabel(ylabel, fontsize=12)
-    ax.set_ylim(0, 1.02)
-    ax.grid(alpha=0.2)
-
-    # Colorbar setup
-    sm.set_array(np.linspace(vmin, vmax, 100))
-    cbar = fig.colorbar(sm, ax=ax)
-    cbar.set_label(key_label, fontsize=12)
-
-    # Use grid param values as colorbar ticks
-    if tick_values is not None:
-        cbar.set_ticks(tick_values)
-        if isinstance(norm, mcolors.LogNorm):
-            # Format log ticks with LaTeX-style math text (e.g., 10⁻³)
-            cbar.set_ticklabels([f"$10^{{{int(np.log10(t))}}}$" for t in tick_values])
-            cbar.ax.yaxis.set_major_formatter(LogFormatterMathtext())
-        else:
-            # Linear scale ticks
-            cbar.set_ticklabels([str(t) for t in tick_values])
-
-    if save_path:
-        plt.savefig(save_path, dpi=300)
-        plt.close(fig)
-
-
-
-def generate_single_plots(extracted_outputs, grouped_data, grid_params, plots_path, param_label_map, colormaps_by_param, output_label_map, log_scale_grid_params, log_x=True, plot_hist=True, plot_kde=True, cumulative=True, bins=100):
-    """
-    Generate and save normalized cumulative distribution plots for each output vs. grid parameter.
-
-    Parameters:
-    ----------
-    extracted_outputs : list of str
-        List of extracted output quantities to plot.
-
-    grouped_data : dict
-        Data for each output/parameter pair. (like solidification_time_per_semimajoraxis)
-
-    grid_params : dict
-        Parameter values used in the grid.
-
-    plots_path : str
-        Directory where plots will be saved.
-
-    param_label_map : dict
-        Dictionary containing the label of the grid parameter for the plot.
-
-    colormaps_by_param : dict
-        Dictionary containing the colormap to use for each grid parameter for the plot.
-
-    output_label_map : dict, optional
-        Dictionary containing the label of the extracted output quantity for the plot.
-
-    log_scale_grid_params : list of str, optional
-        Parameters to use log scale for colormap normalization. (like escape.zephyrus.Pxuv)
-    """
-
-    if param_label_map is None:
-        raise ValueError("param_label_map must be provided.")
-
-    if colormaps_by_param is None:
-        raise ValueError("colormaps_by_param must be provided.")
-
-    if output_label_map is None:
-        raise ValueError("output_label_map must be provided.")
-
-    if log_scale_grid_params is None:
-        log_scale_grid_params = []
-
-    for output_name in extracted_outputs:
-        for param, cmap in colormaps_by_param.items():
-            data_key = f"{output_name}_per_{param}"
-
-            if data_key not in grouped_data:
-                print(f"WARNING: Skipping {data_key} — not found in grouped_data")
-                continue
-
-            data_dict_raw = grouped_data[data_key]
-            data_dict = data_dict_raw.copy()
-
-            if output_name == "Phi_global":
-                data_dict = {k: [v_i * 100 for v_i in v] for k, v in data_dict.items()}
-
-            tick_values = grid_params.get(param)
-            vmin = min(tick_values)
-            vmax = max(tick_values)
-
-            xlabel = output_label_map.get(output_name, output_name.replace("_", " ").title())
-            ylabel = "Normalized cumulative fraction of simulations"
-            key_label = param_label_map.get(param, param.replace("_", " ").title())
-
-            save_dir = Path(plots_path) / 'single_plot'
-            plot_dir_exists(save_dir)
-
-            save_name = f"cumulative_{output_name}_vs_{param.replace('.', '_')}.png"
-            save_path = save_dir / save_name
-
-            fig, ax = plt.subplots(figsize=(10, 6))
-
-            norm = (
-                mcolors.LogNorm(vmin=vmin, vmax=vmax)
-                if param in log_scale_grid_params
-                else mcolors.Normalize(vmin=vmin, vmax=vmax)
-            )
-
-            df = pd.DataFrame(data_dict)
-            keys = list(df.columns)
-
-            plot_distributions(
-                data_dict=data_dict,
-                xlabel=xlabel,
-                ylabel=ylabel,
-                colormap=cmap,
-                vmin=vmin,
-                vmax=vmax,
-                key_label=key_label,
-                log_x=log_x,
-                tick_values=tick_values,
-                save_path=save_path,
-                norm=norm,
-                ax=ax,
-                bw_adjust=0.3,
-                plot_hist=plot_hist,
-                plot_kde=plot_kde,
-                cumulative=cumulative,         
-                bins=bins   
-            )
-            plt.close(fig)
-
-    print("All single plots saved.")
-
-# def generate_grid_plot(extracted_outputs, grouped_data, grid_params, plots_path, param_label_map, colormaps_by_param, output_label_map, log_scale_grid_params, log_x=True, bins=100):
-#     """
-#     Generate and save normalized cumulative distribution plots for each output vs. grid parameters.
-#     This creates a subplot where each column corresponds to one extracted output, and each row corresponds to one grid parameter.
-
-#     Parameters:
-#     ----------
-#     extracted_outputs : list of str
-#         List of extracted output quantities to plot.
-
-#     grouped_data : dict
-#         Data for each output/parameter pair. (like solidification_time_per_semimajoraxis)
-
-#     grid_params : dict
-#         Parameter values used in the grid.
-
-#     plots_path : str
-#         Directory where plots will be saved.
-
-#     param_label_map : dict
-#         Dictionary containing the label of the grid parameter for the plot.
-
-#     colormaps_by_param : dict
-#         Dictionary containing the colormap to use for each grid parameter for the plot.
-
-#     output_label_map : dict, optional
-#         Dictionary containing the label of the extracted output quantity for the plot.
-
-#     log_scale_grid_params : list of str, optional
-#         Parameters to use log scale for colormap normalization. (like escape.zephyrus.Pxuv)
-#     """
-
-#     if param_label_map is None:
-#         raise ValueError("param_label_map must be provided.")
-#     if colormaps_by_param is None:
-#         raise ValueError("colormaps_by_param must be provided.")
-#     if output_label_map is None:
-#         raise ValueError("output_label_map must be provided.")
-#     if log_scale_grid_params is None:
-#         log_scale_grid_params = []
-
-#     num_cols = len(extracted_outputs)
-#     num_rows = len(grid_params)
-
-#     # Create subplots with the appropriate layout
-#     fig, axes = plt.subplots(num_rows, num_cols, figsize=(num_cols * 16, num_rows * 12))
-#     plt.subplots_adjust(hspace=0.15, wspace=0.15)
-
-#     if num_rows == 1:
-#         axes = np.expand_dims(axes, axis=0)  # Make sure it's 2D if only one row.
-
-#     for i, output_name in enumerate(extracted_outputs):
-#         for j, (param, cmap) in enumerate(colormaps_by_param.items()):
-#             data_key = f"{output_name}_per_{param}"
-
-#             if data_key not in grouped_data:
-#                 print(f"WARNING: Skipping {data_key} — not found in grouped_data")
-#                 continue
-
-#             data_dict_raw = grouped_data[data_key]
-#             data_dict = data_dict_raw.copy()
-
-#             if output_name == "Phi_global":
-#                 data_dict = {k: [v_i * 100 for v_i in v] for k, v in data_dict.items()}
-
-#             tick_values = grid_params.get(param)
-#             vmin = min(tick_values)
-#             vmax = max(tick_values)
-
-#             xlabel = output_label_map.get(output_name, output_name.replace("_", " ").title())
-#             ylabel = "Normalized cumulative fraction of simulations"
-#             key_label = param_label_map.get(param, param.replace("_", " ").title())
-
-#             # Select the axis for this subplot
-#             ax = axes[j, i]
-
-#             norm = (
-#                 mcolors.LogNorm(vmin=vmin, vmax=vmax)
-#                 if param in log_scale_grid_params
-#                 else mcolors.Normalize(vmin=vmin, vmax=vmax)
-#             )
-
-#             plot_kde_cumulative(
-#                 data_dict=data_dict,
-#                 xlabel=xlabel,
-#                 ylabel=ylabel,
-#                 cmap=cmap,
-#                 vmin=vmin,
-#                 vmax=vmax,
-#                 key_label=key_label,
-#                 log_x=log_x,
-#                 tick_values=tick_values,
-#                 save_path=None,  # Don't save the plot yet
-#                 norm=norm,
-#                 ax=ax
-#             )
-
-#             # Set titles for each subplot
-#             if i == 0:
-#                 ax.set_ylabel(ylabel, fontsize=12)
-#             if j == num_rows - 1:
-#                 ax.set_xlabel(xlabel, fontsize=12)
-
-#             # Customize plot with grid and ticks
-#             ax.grid(alpha=0.2)
-#             ax.set_ylim(0, 1.02)
-
-#     # Save the complete subplot figure
-#     save_dir = Path(plots_path) / 'grid_plot'
-#     plot_dir_exists(save_dir)
-
-#     save_name = "cumulative_grid_plot.png"
-#     save_path = save_dir / save_name
-#     plt.savefig(save_path, dpi=300)
-#     plt.close(fig)
-
-#     print(f"All subplot plots saved to {save_path}")
-
 if __name__ == '__main__':
 
     # User needs to specify paths
@@ -680,195 +268,93 @@ if __name__ == '__main__':
     plot_dir_exists(plots_path)                                                         # Check if the plot directory exists. If not, create it.
     grouped_data = group_output_by_parameter(df, grid_params, extracted_outputs)        # Group extracted outputs by grid parameters
 
-    # # Plots
-    # plot_grid_status(df, plots_path)                                                    # Plot the grid status in an histogram
+    # Plots
+    plot_grid_status(df, plots_path)                                                    # Plot the grid status in an histogram
 
-    # # Single plots
-    # param_label_map = {
-    # "orbit.semimajoraxis": "Semi-major axis [AU]",
-    # "escape.zephyrus.Pxuv": r"$P_{XUV}$ [bar]",
-    # "escape.zephyrus.efficiency": r"Escape efficiency factor, $\epsilon$",
-    # "outgas.fO2_shift_IW":r"$log_{10}$($fO_2$) [$\Delta$ IW]",
-    # #"atmos_clim.module": "Atmospheric module",
-    # "delivery.elements.CH_ratio": "C/H ratio",
-    # "delivery.elements.H_oceans": "[H] [oceans]",
-    # "star.mass": r"Stellar mass [M$_\odot$]"}
-    # output_label_map = {
-    # "solidification_time": "Solidification time [yr]",
-    # "esc_rate_total": "Total escape rate [kg/s]",
-    # "Phi_global": "Melt fraction [%]",
-    # "P_surf": "Surface pressure [bar]",
-    # "atm_kg_per_mol": "Atmospheric mass [kg/mol]"}
-    # colormaps_by_param = {
-    #     "orbit.semimajoraxis": cm.plasma,
-    #     "escape.zephyrus.Pxuv": cm.cividis,
-    #     "escape.zephyrus.efficiency": cm.spring,
-    #     "outgas.fO2_shift_IW": cm.coolwarm,
-    #     "delivery.elements.CH_ratio":cm.copper,
-    #     #"atmos_clim.module": cm.Dark2,
-    #     "delivery.elements.H_oceans": cm.winter,
-    #     #"star.mass": cm.RdYlBu
-    #     }
-
-    # log_scale_grid_params = ["escape.zephyrus.Pxuv"]
-
-    # generate_single_plots(
-    # extracted_outputs=extracted_outputs,
-    # grouped_data=grouped_data,
-    # grid_params=grid_params,
-    # plots_path=plots_path,
-    # param_label_map=param_label_map,
-    # colormaps_by_param=colormaps_by_param,
-    # output_label_map=output_label_map,
-    # log_scale_grid_params=log_scale_grid_params,
-    # log_x=True,
-    # plot_hist=True,
-    # plot_kde=True,
-    # cumulative=True,
-    # bins=100)
-
-    # generate_grid_plot(
-    # extracted_outputs=extracted_outputs,
-    # grouped_data=grouped_data,
-    # grid_params=grid_params,
-    # plots_path=plots_path,
-    # param_label_map=param_label_map,
-    # colormaps_by_param=colormaps_by_param,
-    # output_label_map=output_label_map,
-    # log_scale_grid_params=log_scale_grid_params)
-
-    # print('-----------------------------------------------------')
-    # print("All plots completed. Let's do some analyse now :) !")
-    # print('-----------------------------------------------------')
-
-    ############## TEST PLOT ##############
-
-    ###### PRINT TO TEST/VERIFY DATA ######
-    # print('Phi_global :')
-    # print(df['Phi_global'].describe())
-    # print('Solidification time :')
-    # print(df['solidification_time'].describe())
-    # print('Escape rate :')
-    # print(df['esc_rate_total'].describe())
-    # print('P_surf :')
-    # print(df['P_surf'].describe())
-    # print(df)                               
-    # print(df.columns)                     # Print the columns of the DataFrame
-    #print(grouped_data.keys())                # Print the keys of the grouped data
-    # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][1.0]))
-    # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][5.0]))
-    # print(len(grouped_data['solidification_time_per_delivery.elements.H_oceans'][10.0]))  
-    ###################################
-
-
-    # elements = grid_params['delivery.elements.H_oceans']
-    # # Colorbar setup
-    # norm = mpl.colors.Normalize(vmin=min(elements), vmax=max(elements))
-    # cmap = cm.winter
-
-    # # Figure setup
-    # fig, ax = plt.subplots(figsize=(10, 6))
-    # for value_init_param in grid_params['delivery.elements.H_oceans'] :
-    #     sns.ecdfplot(data=np.array(grouped_data['solidification_time_per_delivery.elements.H_oceans'][value_init_param]),
-    #                 log_scale=True,
-    #                 stat="proportion",
-    #                 color=cmap(norm(param)),
-    #                 linewidth=2,
-    #                 ax=ax
-    #                 )
-
-    # # Name of the axis
-    # ax.set_xlabel("Solidification time [yr]", fontsize=14)
-    # ax.set_ylabel("Normalized cumulative fraction of simulations", fontsize=14)
-    # # Grid 
-    # ax.grid(alpha=0.1)
-    # # Colorbar setup
-    # sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
-    # sm.set_array([])  
-    # cbar = fig.colorbar(sm, ax=ax, pad=0.02, aspect=30)
-    # cbar.set_label("[H] [oceans]", fontsize=14)
-    # cbar.set_ticks(elements)
-    # # Save the figure
-    # plt.tight_layout()
-    # plt.savefig(plots_path + "test/" + "test_plot_ecdf_solidfication_time_per_delivery.elements.H_oceans.png", dpi=300)
-
-#################################
-
+    # Single plot of all input parameters and extracted outputs
+###################################################
+    # Define input parameter settings
     param_settings = {
-        "orbit.semimajoraxis":          {"label": "Semi-major axis [AU]",                   "colormap": cm.plasma,     "log_scale": False},
-        "escape.zephyrus.Pxuv":         {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,    "log_scale": True},
-        "escape.zephyrus.efficiency":   {"label": r"Escape efficiency factor $\epsilon$",   "colormap": cm.spring,     "log_scale": False},
-        "outgas.fO2_shift_IW":          {"label": r"$\log_{10}(fO_2)$ [IW]",                "colormap": cm.coolwarm,   "log_scale": False},
-        "atmos_clim.module":            {"label": "Atmosphere module",                      "colormap": cm.Dark2,      "log_scale": False},
-        "delivery.elements.CH_ratio":   {"label": "C/H ratio",                              "colormap": cm.copper,     "log_scale": False},
-        "delivery.elements.H_oceans":   {"label": "[H] [Earth's oceans]",                   "colormap": cm.winter,     "log_scale": False}}
+        "orbit.semimajoraxis":        {"label": "Semi-major axis [AU]",                   "colormap": cm.plasma,   "log_scale": False},
+        "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
+        "escape.zephyrus.efficiency": {"label": r"Escape efficiency factor $\epsilon$",   "colormap": cm.spring,   "log_scale": False},
+        "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2)$ [IW]",                "colormap": cm.coolwarm, "log_scale": False},
+        "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.Dark2,    "log_scale": False},
+        "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
+        "delivery.elements.H_oceans": {"label": "[H] [Earth's oceans]",                   "colormap": cm.winter,   "log_scale": False}}
+
+    # Define extracted output settings
+    output_settings = {
+        'esc_rate_total':      {"label": "Total escape rate [kg/s]",        "log_scale": True,  "scale": 1.0},
+        'Phi_global':          {"label": "Melt fraction [%]",               "log_scale": False, "scale": 100.0},
+        'P_surf':              {"label": "Surface pressure [bar]",          "log_scale": True,  "scale": 1.0},
+        'atm_kg_per_mol':      {"label": "Atmospheric mass [kg/mol]",       "log_scale": True,  "scale": 1.0},
+        'solidification_time': {"label": "Solidification time [yr]",        "log_scale": True,  "scale": 1.0}}
 
 
-    for param_name, settings in param_settings.items():
-        tested_param = grid_params[param_name]
-        if len(tested_param) <= 1:
-            continue
-
-        # Extract the label and colormap from the settings 
-        param_label = settings["label"]
-        cmap = settings["colormap"]
-        do_log_color = settings.get("log_scale", False)
-
-        # Check if the parameter is numeric
-        is_numeric = np.issubdtype(np.array(tested_param).dtype, np.number)
-        if is_numeric:
-            if do_log_color:
-                norm = mpl.colors.LogNorm(vmin=min(tested_param), vmax=max(tested_param))
-            else:
-                norm = mpl.colors.Normalize(vmin=min(tested_param), vmax=max(tested_param))
-            color_func = lambda v: cmap(norm(v))
-            colorbar_needed = True
-        else:
-            unique_vals = list(sorted(set(tested_param)))
-            cmap = mpl.cm.get_cmap(cmap, len(unique_vals)) 
-            color_map = {val: cmap(i) for i, val in enumerate(unique_vals)}
-            color_func = lambda val: color_map[val]
-            colorbar_needed = False
-        # Figure
-        fig, ax = plt.subplots(figsize=(10, 6))
-        for val in tested_param:
-            data_key = f'solidification_time_per_{param_name}'
-            if val not in grouped_data[data_key]:
+    # Loop over extracted outputs and input parameters
+    for output_name, out_settings in output_settings.items():
+        for param_name, settings in param_settings.items():
+            tested_param = grid_params[param_name]  # Get the values of the input parameter
+            if len(tested_param) <= 1:
                 continue
-            sns.ecdfplot(
-                data=np.array(grouped_data[data_key][val]),
-                log_scale=True,
+            # Extract plot settings for this input parameter
+            param_label = settings["label"]
+            cmap = settings["colormap"]
+            color_log = settings.get("log_scale", False)
+            # Extract plot settings for this output
+            x_label = out_settings["label"]
+            x_log = out_settings.get("log_scale", False)
+            scale = out_settings.get("scale", 1.0)
+
+            # Determine colormap and color function if the parameter is numeric or string
+            is_numeric = np.issubdtype(np.array(tested_param).dtype, np.number)
+            if is_numeric:
+                norm = mpl.colors.LogNorm(vmin=min(tested_param), vmax=max(tested_param)) if color_log else mpl.colors.Normalize(vmin=min(tested_param), vmax=max(tested_param))
+                color_func = lambda v: cmap(norm(v))
+                colorbar_needed = True
+            else:
+                unique_vals = sorted(set(tested_param))
+                cats_cmap = mpl.cm.get_cmap(cmap, len(unique_vals))
+                color_map = {val: cats_cmap(i) for i, val in enumerate(unique_vals)}
+                color_func = lambda val: color_map[val]
+                colorbar_needed = False
+
+            # Create figure
+            fig, ax = plt.subplots(figsize=(10, 6))
+            data_key = f'{output_name}_per_{param_name}'
+            for val in tested_param:
+                if val not in grouped_data[data_key]:
+                    continue
+                raw = np.array(grouped_data[data_key][val]) * scale
+                sns.ecdfplot(
+                data=raw,
+                log_scale=x_log,
                 stat="proportion",
                 color=color_func(val),
                 linewidth=3,
                 ax=ax)
-        ax.set_xlabel("Solidification time [yr]", fontsize=14)
-        ax.set_ylabel("Normalized cumulative fraction of simulations", fontsize=14)
-        ax.grid(alpha=0.1)
+            # Set axis labels
+            ax.set_xlabel(x_label, fontsize=14)
+            ax.set_ylabel("Normalized cumulative fraction of simulations", fontsize=14)
+            ax.grid(alpha=0.1)
 
-        # Create the colorbar or legend depending on the tested parameter
-        if colorbar_needed:
-            sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
-            cbar = fig.colorbar(sm, ax=ax, pad=0.02, aspect=30)
-            cbar.set_label(settings["label"], fontsize=14)
-            if do_log_color:
-                tick_values = sorted(set(tested_param))
-                cbar.set_ticks(tick_values)
-                #cbar.ax.yaxis.set_major_locator(FixedLocator(tick_values))
-                #cbar.ax.yaxis.set_major_formatter(LogFormatterMathtext(base=10))
-                #cbar.update_ticks()
+            # Add colorbar or legend
+            if colorbar_needed:
+                sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
+                cbar = fig.colorbar(sm, ax=ax, pad=0.02, aspect=30)
+                cbar.set_label(param_label, fontsize=14)
+                ticks = sorted(set(tested_param))
+                cbar.set_ticks(ticks)
             else:
-                cbar.set_ticks(sorted(set(tested_param)))
-        else:
-            handles = [mpl.lines.Line2D([0], [0], color=color_map[val], lw=3, label=str(val)) for val in unique_vals]
-            ax.legend(handles=handles, loc='lower right')
+                handles = [mpl.lines.Line2D([0], [0], color=color_map[val], lw=3, label=str(val)) for val in unique_vals]
+                ax.legend(handles=handles, loc='lower right')
 
-        # Save the plot
-        filename = f"ecdf_solidification_time_per_{param_name.replace('.', '_')}_normalized.png"
-        output_path = os.path.join(plots_path, "ecdf_by_param")
-        os.makedirs(output_path, exist_ok=True)
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_path, filename), dpi=300)
-        plt.close()
-
-print(extracted_outputs)
+            # Save the figure
+            output_dir = os.path.join(plots_path, "ecdf_by_param_and_output")
+            os.makedirs(output_dir, exist_ok=True)
+            fname = f"ecdf_{output_name}_per_{param_name.replace('.', '_')}.png"
+            plt.tight_layout()
+            plt.savefig(os.path.join(output_dir, fname), dpi=300)
+            plt.close()
+###################################################
