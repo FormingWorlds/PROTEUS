@@ -34,7 +34,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 [atmos_clim]
     module  = "janus"           # Which atmosphere module to use
 
-    [atmos_clim.agni]
+    [atmos_clim.janus]
         spectral_group  = "Frostflow"   # which gas opacities to include
         spectral_bands  = "16"          # how many spectral bands?
 
