@@ -7,7 +7,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "dummy_aragog"
+        path        = "test_rheo_triggering_spider"
         logging     = "INFO"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -63,7 +63,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [atmos_clim.agni]
         p_top           = 1.0e-7        # bar, top of atmosphere grid pressure
-        spectral_group  = "Honeyside"   # which gas opacities to include
+        spectral_group  = "Frostflow"   # which gas opacities to include
         spectral_bands  = "48"          # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
@@ -91,20 +91,20 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     F_initial       = 1e6               # Initial heat flux guess [W m-2]
     radiogenic_heat = false             # enable radiogenic heat production
     tidal_heat      = false             # enable tidal heat production
-    rheo_phi_loc    = 0.4               # Centre of rheological transition
-    rheo_phi_wid    = 0.15              # Width of rheological transition
+    rheo_phi_loc    = 0.6               # Centre of rheological transition
+    rheo_phi_wid    = 0.2              # Width of rheological transition
     bulk_modulus    = 260e9             # Bulk modulus [Pa]
     melting_dir     = "Monteux-600"     # Liquidus from Monteux+2016 and solidus=liquidus-600
 
-    module = "aragog"   # Which interior module to use
+    module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 220       # Number of SPIDER grid levels
+        num_levels      = 50       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-10   # solver tolerance
+        tolerance       = 1.0e-7   # solver tolerance
         tsurf_atol      = 30.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
-        ini_entropy     = 2700.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 2973.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
@@ -118,7 +118,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         gravitational_separation        = false    # enable gravitational separation
         mixing                          = false    # enable mixing
         tsurf_poststep_change           = 30       # threshold of maximum change on surface temperature, compares current and first Tsurf
-        event_triggering                = false    # enable events triggering to avoid abrupt jumps in surface temperature
+        event_triggering                = true    # enable events triggering to avoid abrupt jumps in surface temperature
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]

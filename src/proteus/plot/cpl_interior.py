@@ -224,3 +224,4 @@ if __name__ == "__main__":
     from proteus.plot._cpl_helpers import get_handler_from_argv
     handler = get_handler_from_argv()
     plot_interior_entry(handler)
+

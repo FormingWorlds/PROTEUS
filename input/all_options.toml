@@ -196,8 +196,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     F_initial       = 1e3   # Initial heat flux guess [W m-2]
     radiogenic_heat = false  # enable radiogenic heat production
     tidal_heat      = false  # enable tidal heat production
-    rheo_phi_loc    = 0.3    # Centre of rheological transition
-    rheo_phi_wid    = 0.15   # Width of rheological transition
+    rheo_phi_loc    = 0.6    # Centre of rheological transition
+    rheo_phi_wid    = 0.2   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
     module = "spider"   # Which interior module to use
@@ -224,7 +224,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
         gravitational_separation        = false    # enable gravitational separation
         mixing                          = false    # enable mixing
         tsurf_poststep_change           = 30       # threshold of maximum change on surface temperature
-        event_triggering                = false    # enable events triggering to avoid abrupt jumps in surface temperature
+        event_triggering                = true    # enable events triggering to avoid abrupt jumps in surface temperature
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
