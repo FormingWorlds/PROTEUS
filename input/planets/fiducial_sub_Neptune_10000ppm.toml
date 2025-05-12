@@ -25,7 +25,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "aragog_EOS_lookup_test"
+        path        = "fiducial_sub_Neptune_10000ppm"
         logging     = "DEBUG"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -64,12 +64,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 1.0e+10   # yr, model will terminate when t > maximum
+            maximum = 2.0e+10   # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
             enabled  = true
-            phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
+            phi_crit = 0.01  # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
@@ -87,26 +87,26 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [star]
 
     # Physical parameters
-    mass    = 1.0      # M_sun
+    mass    = 0.465      # M_sun
     age_ini = 0.100     # Gyr, model initialisation/start age
 
-    module  = "mors"
+    module  = "dummy"
     [star.mors]
         rot_pctle = 50.0    # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 2.4     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
+        spec    = "stellar_spectra/Named/gj849.txt" # stellar spectrum
 
     [star.dummy]
         radius           = 1.0       # R_sun
         calculate_radius = true	     # calculate radius using empirical mass-luminosity and mass-radius relations
-        Teff             = 2700.0    # K
+        Teff             = 3500.0    # K
 
 # Orbital system
 [orbit]
     semimajororfinst = 'semimajoraxis'	# whether to define orbit using semi major axis or instellation flux
-    instellationflux = 0.00031444801576249726	# instellation flux received from the planet in Earth units.
-    semimajoraxis    = 1.0              	# AU
+    instellationflux = 3e-4             	# instellation flux received from the planet in Earth units.
+    semimajoraxis    = 0.1              	# AU
     eccentricity     = 0.0       		# dimensionless
     zenith_angle     = 54.74     		# degrees
     s0_factor        = 0.25      		# dimensionless
@@ -123,8 +123,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Planetary structure - physics table
 [struct]
     set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
-    mass_tot    = 1.0       # M_earth
-    radius_int  = 1.0       # R_earth
+    mass_tot    = 5.0       # M_earth
     corefrac    = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
@@ -150,7 +149,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "48"          # how many spectral bands?
         num_levels      = 30            # Number of atmospheric grid levels
-        chemistry       = "eq"        # "none" | "eq"
+        chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-2          # solver absolute tolerance
@@ -195,7 +194,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
-    module = "aragog"   # Which interior module to use
+    module = "spider"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 110       # Number of SPIDER grid levels
@@ -210,7 +209,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 100       					# Number of Aragog grid levels
         tolerance       = 1.0e-7    					# solver tolerance
         ini_tmagma      = 3000.0    					# Initial magma surface temperature [K]
-        eos_method  	= 2	    					# 1: Adams-Williamson / 2: User defined
+        eos_method  	= 1	    					# 1: Adams-Williamson / 2: User defined
         eos_filepath    = 'claire_density_profiles/SB11_MgFeppv.dat'	# the file containing the EOS data
 
     [interior.dummy]
@@ -218,7 +217,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = -2        # log10(ΔIW), atmosphere/interior boundary oxidation state
+    fO2_shift_IW    = -3        # log10(ΔIW), atmosphere/interior boundary oxidation state
 
     module = "calliope"         # Which outgassing module to use
 
@@ -257,7 +256,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         metallicity = 1000.0	 # metallicity relative to solar metallicity
         
         # H_oceans    = 60.0     # Hydrogen inventory in units of equivalent Earth oceans
-        H_ppmw      = 100.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_ppmw      = 10000.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 0.29       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 10.0     # Carbon inventory in ppmw relative to mantle mass
@@ -279,3 +278,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         H2   = 0.0
         CH4  = 0.0
         CO   = 0.0
+        
+[observe]
+    synthesis = "none"
+
+[atmos_chem]
+    module = "none"

@@ -63,6 +63,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     surf_state      = "fixed"
     rayleigh        = true
     module          = "agni"
+    spectral_group  = 
 
 [escape]
     module = "none"
@@ -71,7 +72,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     radiogenic_heat = true
     tidal_heat      = false
 
-    module = "spider"
+    module = "aragog"
 
 [outgas]
     fO2_shift_IW    = 4

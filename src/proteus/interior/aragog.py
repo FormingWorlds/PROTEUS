@@ -49,9 +49,6 @@ def RunAragog(config:Config, dirs:dict,
                        file_level = file_level,
                        log_dir = dirs["output"])
     
-    # Copying the EOS data to the aragog directory
-    CopyEOSFile(config, hf_row, dirs)
-    
     # Compute time step
     if interior_o.ic==1:
         dt = 0.0
@@ -82,24 +79,6 @@ def RunAragog(config:Config, dirs:dict,
     WriteAragogOutput(dirs["output"],sim_time)
 
     return sim_time, output
-
-def CopyEOSFile(config:Config, hf_row:dict, dirs:dict):
-    
-    EOS_file = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.eos_filepath}")
-    
-    EOS_output_file = os.path.join(dirs["aragog"],"data/curr_EOS_data.dat")
-    
-    data = np.loadtxt(EOS_file, skiprows=1)
-    
-    radius = data[:, 0]
-    
-    inner_radius = config.struct.corefrac * hf_row["R_int"]
-    outer_radius = hf_row["R_int"]
-    
-    mask = (radius >= inner_radius) & (radius <= outer_radius)
-    filtered_data = data[mask]
-    
-    np.savetxt(EOS_output_file, filtered_data, fmt='%.6e')
 
 def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t, dirs:dict):
 
@@ -135,11 +114,11 @@ def SetupAragogSolver(config:Config, hf_row:dict, interior_o:Interior_t, dirs:di
             inner_radius = config.struct.corefrac * hf_row["R_int"], # core radius [m]
             number_of_nodes = config.interior.aragog.num_levels, # basic nodes
             mixing_length_profile = "constant",
-            eos_method = config.interior.aragog.eos_method, # 1: Adams-Williamson / 2: User defined
+            eos_method = config.struct.eos_method, # 1: Adams-Williamson / 2: User defined
             surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration = hf_row["gravity"], # [m/s-2]
             adiabatic_bulk_modulus = config.interior.bulk_modulus, # AW-EOS parameter [Pa]
-            eos_file = f"{dirs['aragog']}/data/curr_EOS_data.dat", # file to read eos data from
+            eos_file = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.struct.eos_filepath}"), # file to read eos data from
             )
 
     energy = _EnergyParameters(

@@ -66,13 +66,8 @@ class Orbit:
     module: str | None
         Select orbit module to use. Choices: 'none', 'dummy', 'lovepy'.
     """
-    module: str | None = field(
-        validator=in_((None, 'dummy', 'lovepy')),
-        converter=none_if_none,
-    )
-    semimajororfinst: str = field(validator=in_(('semimajoraxis','instellationflux')))
+    module: str | None = field(validator=in_((None, 'dummy', 'lovepy')),converter=none_if_none)
     semimajoraxis: float = field(validator=gt(0))
-    instellationflux: float = field(validator=gt(0))
     eccentricity: float = field(validator=(
         ge(0),
         lt(1),
@@ -82,3 +77,5 @@ class Orbit:
         lt(90),
     ))
     s0_factor: float = field(validator=gt(0))
+    semimajororfinst: str = field(default='semimajoraxis',validator=in_(('semimajoraxis','instellationflux')))
+    instellationflux: float = field(default=1.0,validator=gt(0))

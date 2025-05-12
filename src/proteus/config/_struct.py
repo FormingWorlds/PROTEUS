@@ -42,6 +42,10 @@ class Struct:
         Density of the planet's core [kg m-3]
     core_heatcap: float
         Specific heat capacity of the planet's core [J kg-1 K-1]
+    eos_method: int
+    	# 1: Adams-Williamson / 2: User defined
+    eos_filepath: str
+        location of file containing EOS data
     """
 
     corefrac: float     = field(validator=(gt(0), lt(1)))
@@ -53,8 +57,10 @@ class Struct:
                                 validator=mass_radius_valid,
                                 converter=none_if_none)
 
-    core_density: float = field(default=10738.33, validator=gt(0))
-    core_heatcap: float = field(default=880.0,    validator=gt(0))
+    core_density: float          = field(default=10738.33, validator=gt(0))
+    core_heatcap: float 	 = field(default=880.0,    validator=gt(0))
+    eos_method: int 		 = field(default=1)
+    eos_filepath: str            = field(default="claire_density_profiles/SB11_MgFeppv.dat")
 
     @property
     def set_by(self) -> str:

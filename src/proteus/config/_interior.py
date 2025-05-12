@@ -86,10 +86,6 @@ class Aragog:
         Whether to include gravitational separation in the model. Default is False.
     mixing: bool
         Whether to include mixing in the model. Default is False.
-    eos_method: int
-    	1: Adams-Williamson / 2: User defined
-    eos_filepath: str
-        location of file containing EOS data
     """
 
     logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
@@ -102,8 +98,6 @@ class Aragog:
     convection: bool                    = field(default=True)
     gravitational_separation: bool      = field(default=False)
     mixing: bool                        = field(default=False)
-    eos_filepath: str                   = field(default="claire_density_profiles/SB11_MgFeppv.dat")
-    eos_method: int                     = field(default=1, validator=in_((1,2)))
 
 
 def valid_interiordummy(instance, attribute, value):

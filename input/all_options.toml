@@ -179,7 +179,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 # Volatile escape - physics table
 [escape]
 
-    module = "zephyrus"    # Which escape module to use
+    module = 'none'    # Which escape module to use
     reservoir = "outgas"   # Reservoir that sets escaping gas composition
 
     [escape.zephyrus]
@@ -200,7 +200,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
-    module = "spider"   # Which interior module to use
+    module = "aragog"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 150       # Number of SPIDER grid levels

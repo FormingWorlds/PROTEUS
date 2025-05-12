@@ -25,7 +25,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "fiducial_sub_Neptune_2"
+        path        = "aragog_eos_lookup_test"
         logging     = "DEBUG"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -64,7 +64,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 1.0e+10   # yr, model will terminate when t > maximum
+            maximum = 2.0e+10   # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -100,13 +100,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [star.dummy]
         radius           = 1.0       # R_sun
         calculate_radius = true	     # calculate radius using empirical mass-luminosity and mass-radius relations
-        Teff             = 3300.0    # K
+        Teff             = 3500.0    # K
 
 # Orbital system
 [orbit]
     semimajororfinst = 'semimajoraxis'	# whether to define orbit using semi major axis or instellation flux
     instellationflux = 3e-4             	# instellation flux received from the planet in Earth units.
-    semimajoraxis    = 0.11288378916846889      # AU
+    semimajoraxis    = 0.1              	# AU
     eccentricity     = 0.0       		# dimensionless
     zenith_angle     = 54.74     		# degrees
     s0_factor        = 0.25      		# dimensionless
@@ -122,11 +122,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
-    mass_tot    = 5.0       # M_earth
-    corefrac    = 0.55      # non-dim., radius fraction
+    set_by       = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
+    mass_tot     = 5.0       # M_earth
+    corefrac     = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
+    eos_method   = 2	    					# 1: Adams-Williamson / 2: User defined
+    eos_filepath = 'claire_density_profiles/SB11_MgFeppv.dat'	# the file containing the EOS data
 
 # Atmosphere - physics table
 [atmos_clim]
@@ -194,7 +196,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
-    module = "spider"   # Which interior module to use
+    module = "aragog"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 110       # Number of SPIDER grid levels
@@ -209,8 +211,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 100       					# Number of Aragog grid levels
         tolerance       = 1.0e-7    					# solver tolerance
         ini_tmagma      = 3000.0    					# Initial magma surface temperature [K]
-        eos_method  	= 1	    					# 1: Adams-Williamson / 2: User defined
-        eos_filepath    = 'claire_density_profiles/SB11_MgFeppv.dat'	# the file containing the EOS data
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
@@ -256,7 +256,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         metallicity = 1000.0	 # metallicity relative to solar metallicity
         
         # H_oceans    = 60.0     # Hydrogen inventory in units of equivalent Earth oceans
-        H_ppmw      = 10000.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_ppmw      = 1000.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 0.29       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 10.0     # Carbon inventory in ppmw relative to mantle mass

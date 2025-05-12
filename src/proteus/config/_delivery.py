@@ -40,7 +40,7 @@ class Elements:
     S_ppmw: float
         Absolute sulfur inventory, ppmw relative to mantle mass.
     """
-    use_metallicity: float
+    use_metallicity: float = field(default=False)
     metallicity: float = field(default=1000.0, validator=ge(0))
     
     H_oceans: float = field(default=0.0, validator=ge(0))

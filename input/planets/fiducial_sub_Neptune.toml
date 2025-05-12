@@ -64,7 +64,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 1.0e+10   # yr, model will terminate when t > maximum
+            maximum = 2.0e+10   # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -74,7 +74,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         # radiative equilibrium
         [params.stop.radeqm]
             enabled = true
-            atol    = 0.1     # absolute tolerance [W m-2]
+            atol    = 0.2     # absolute tolerance [W m-2]
             rtol    = 1e-3    # relative tolerance
 
         [params.stop.escape]
@@ -100,7 +100,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [star.dummy]
         radius           = 1.0       # R_sun
         calculate_radius = true	     # calculate radius using empirical mass-luminosity and mass-radius relations
-        Teff             = 2700.0    # K
+        Teff             = 3500.0    # K
 
 # Orbital system
 [orbit]
