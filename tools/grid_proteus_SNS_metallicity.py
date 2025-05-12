@@ -455,6 +455,12 @@ if __name__=='__main__':
     # -----
     # Define parameter grid
     # -----
+    
+    # Output folder name, created inside `PROTEUS/output/`
+    folder = "scratch/l98d_habrok3"
+
+    # Use SLURM?
+    use_slurm = True
 
     config = "planets/fiducial_sub_Neptune.toml"
     folder = 'SNS_metallicity_study'
@@ -462,7 +468,7 @@ if __name__=='__main__':
     restart_from_previous = False
     
     # Execution limits
-    max_jobs = 300       # maximum number of concurrent tasks
+    max_jobs = 320      # maximum number of concurrent tasks
     max_days = 1         # maximum number of days to run
     max_mem  = 3         # maximum memory per CPU in GB
 
@@ -475,6 +481,23 @@ if __name__=='__main__':
     # -----
     # Print state of parameter grid
     # -----
+
+    # Add dimensions to grid...
+
+
+    # pg.add_dimension("Eccentricity", "orbit.eccentricity")
+    # pg.set_dimension_linspace("Eccentricity", 0.0, 0.15, 25)
+
+    # pg.add_dimension("Core fraction", "struct.corefrac")
+    # pg.set_dimension_linspace("Core fraction", 0.35, 0.95, 25)
+
+    # pg.add_dimension("Efficiency", "escape.zephyrus.efficiency")
+    # pg.set_dimension_linspace("Efficiency", 1e-5, 0.5, 26)
+
+    # pg.add_dimension("Bands", "atmos_clim.agni.spectral_bands")
+    # pg.set_dimension_direct("Bands", ["16", "48", "256"])
+
+    # Print information
     pg.print_setup()
         
     pg.add_dimension("hbudget", "delivery.elements.H_ppmw")

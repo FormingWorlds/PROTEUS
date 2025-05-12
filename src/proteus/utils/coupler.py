@@ -298,7 +298,7 @@ def print_header():
 
 def print_stoptime(start_time):
     end_time = datetime.now()
-    log.info("Simulation stopped at: " + end_time.strftime("%Y-%m-%d_%H:%M:%S"))
+    log.info("Simulation stopped at: " + _get_current_time())
 
     run_time = end_time - start_time
     run_time = run_time.total_seconds()
@@ -416,25 +416,6 @@ def GetHelpfileKeys():
         keys.append(e+"_kg_solid")
         keys.append(e+"_kg_liquid")
         keys.append(e+"_kg_total")
-
-    # elemental ratios
-    for e1 in element_list:
-        for e2 in element_list:
-            if e1==e2:
-                continue
-
-            # reversed ratio
-            k = "%s/%s_atm"%(e2,e1)
-            if k in keys:
-                # skip this, since it's redundant to store (for example) the
-                # ratio of H/C when we already have C/H.
-                continue
-
-            # intended ratio to be stored
-            k = "%s/%s_atm"%(e1,e2)
-            if k in keys:
-                continue
-            keys.append(k)
 
     # Diagnostic variables...
 
@@ -558,6 +539,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     from proteus.plot.cpl_sflux_cross import plot_sflux_cross
     from proteus.plot.cpl_spectra import plot_spectra
     from proteus.plot.cpl_structure import plot_structure
+    from proteus.plot.cpl_visual import plot_visual
 
     # Directories
     output_dir = dirs["output"]
@@ -566,6 +548,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config.interior.module == 'dummy'
+    agni      = config.atmos_clim.module == 'agni'
     spider    = config.interior.module == 'spider'
     aragog    = config.interior.module == 'aragog'
     observed  = bool(config.observe.synthesis is not None)
@@ -647,10 +630,14 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         if observed:
             plot_spectra(output_dir, plot_format=config.params.out.plot_fmt)
 
-        # Atmospheric chemistry
+        # Chemical profiles
         if not dummy_atm:
             plot_chem_atmosphere(output_dir, config.atmos_chem.module,
-                                plot_format=config.params.out.plot_fmt)
+                                    plot_format=config.params.out.plot_fmt)
+
+        # Visualise planet and star
+        if agni:
+            plot_visual(hf_all, output_dir, idx=-1, plot_format=config.params.out.plot_fmt)
 
         # Check that the simulation ran for long enough to make useful plots
         if len(hf_all["Time"]) >= 3:
