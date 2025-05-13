@@ -86,7 +86,6 @@ class Zalmoxis:
 
     max_iterations_outer: int         = field(default=20, validator=ge(1))
     tolerance_outer: float            = field(default=1e-3, validator=ge(0))
-    tolerance_radius: float           = field(default=1e-3, validator=ge(0))
     max_iterations_inner: int         = field(default=100, validator=ge(1))
     tolerance_inner: float            = field(default=1e-4, validator=ge(0))
     relative_tolerance: float         = field(default=1e-5, validator=ge(0))

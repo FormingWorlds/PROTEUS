@@ -145,8 +145,6 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
               specified output directory.
             - Updates the `hf_row` dictionary with the calculated surface radius, mass, and gravity.
     """
-    # Get material properties for Zalmoxis
-    material_properties = get_Seager_EOS()
 
     # Setup target planet mass (input parameter)
     planet_mass = config.struct.mass_tot * M_earth
@@ -160,7 +158,6 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
     num_layers = config.struct.zalmoxis.num_levels
     max_iterations_outer = config.struct.zalmoxis.max_iterations_outer
     tolerance_outer = config.struct.zalmoxis.tolerance_outer
-    tolerance_radius = config.struct.zalmoxis.tolerance_radius
     max_iterations_inner = config.struct.zalmoxis.max_iterations_inner
     tolerance_inner = config.struct.zalmoxis.tolerance_inner
     relative_tolerance = config.struct.zalmoxis.relative_tolerance
@@ -170,10 +167,9 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
     max_iterations_pressure = config.struct.zalmoxis.max_iterations_pressure
     pressure_adjustment_factor = config.struct.zalmoxis.pressure_adjustment_factor
 
-    # Setup initial guesses for the planet radius and core-mantle boundary radius
+    # Setup initial guesses for the planet radius and core-mantle boundary mass
     radius_guess = 1000*(7030-1840*weight_iron_fraction)*(planet_mass/M_earth)**0.282 # Initial guess for the interior planet radius [m] based on the scaling law in Noack et al. 2020
-    cmb_radius = 0 # Initial guess for the core-mantle boundary radius [m]
-    cmb_radius_previous = cmb_radius # Initial guess for the previous core-mantle boundary radius [m]
+    cmb_mass = 0 # Initial guess for the core-mantle boundary mass [kg]
 
     # Solve the interior structure
     for outer_iter in range(max_iterations_outer): # Outer loop for radius and mass convergence
@@ -193,15 +189,6 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
 
         # Setup initial guess for the pressure at the center of the planet (needed for solving the ODEs)
         pressure[0] = earth_center_pressure
-
-        # Setup initial guess for the density grid
-        for i in range(num_layers):
-            if radii[i] < cmb_radius:
-                #log.info(f"Density at outer iteration {outer_iter+1} and radius {radii[i]} belongs to the core.")
-                density[i] = 0
-            else:
-                #log.info(f"Density at outer iteration {outer_iter+1} and radius {radii[i]} belongs to the mantle.")
-                density[i] = 0
 
         for inner_iter in range(max_iterations_inner): # Inner loop for density adjustment
             old_density = density.copy() # Store the old density for convergence check
@@ -242,7 +229,7 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
 
             # Update density grid based on the calculated pressure and mass enclosed
             for i in range(num_layers):
-                # Define the material type based on the calculated enclosed mass up to the core-mantle boundary
+                # Define the material type based on the mass enclosed within a certain mass fraction
                 if mass_enclosed[i] < cmb_mass:
                     # Core
                     material = "core"
@@ -279,17 +266,13 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
         # Update the core-mantle boundary mass based on the core mass fraction and calculated total interior mass of the planet
         cmb_mass = core_mass_fraction * calculated_mass
 
-        # Calculate relative differences of the calculated total interior mass and core-mantle boundary radius
-        relative_diff_outer = abs((calculated_mass - planet_mass) / planet_mass)
-        relative_diff_radius = abs((cmb_radius - cmb_radius_previous) / cmb_radius)
+        # Calculate relative differences of the calculated total interior mass
+        relative_diff_outer_mass = abs((calculated_mass - planet_mass) / planet_mass)
 
         # Check for convergence of the calculated total interior mass and core-mantle boundary radius of the planet
-        if relative_diff_outer < tolerance_outer and relative_diff_radius < tolerance_radius:
-            log.info(f"Outer loop (cmb radius and total mass) converged after {outer_iter + 1} iterations.")
+        if relative_diff_outer_mass < tolerance_outer:
+            log.info(f"Outer loop (total mass) converged after {outer_iter + 1} iterations.")
             break  # Exit the outer loop
-
-        # Update previous core-mantle boundary radius for the next iteration
-        cmb_radius_previous = cmb_radius
 
         # End timing the outer loop
         end_time = time.time()
@@ -297,38 +280,40 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
 
         # Check if maximum iterations for outer loop are reached
         if outer_iter == max_iterations_outer - 1:
-            log.warning(f"Maximum outer iterations ({max_iterations_outer}) reached. Radius and mass may not be fully converged.")
+            log.warning(f"Maximum outer iterations ({max_iterations_outer}) reached. Total mass may not be fully converged.")
 
     # Extract the final calculated total interior radius of the planet
-    planet_radius = radius_guess
+    planet_radius = radii[-1]
 
     # Extract the index of the core-mantle boundary mass in the mass array
     cmb_index = np.argmax(mass_enclosed >= cmb_mass)
 
-    # Calculate the average density of the planet using the calculated mass and radius
-    average_density = calculated_mass / (4/3 * np.pi * planet_radius**3)
+    # Extract the core-mantle boundary radius from the radii array
+    cmb_radius = radii[cmb_index]
 
-    # Calculate the core radius fraction
-    core_radius_fraction = cmb_radius / planet_radius
+    # Calculate the average density of the planet using the calculated mass and radius
+    average_density = mass_enclosed[-1] / (4/3 * np.pi * planet_radius**3)
 
     # Final results of the Zalmoxis interior model
     log.info("Zalmoxis interior structure model results:")
-    log.info(f"Interior mass: {calculated_mass:.2e} kg or {calculated_mass / M_earth:.2f} M_earth")
+    log.info(f"Interior mass: {mass_enclosed[-1]:.2e} kg or {mass_enclosed[-1] / M_earth:.2f} M_earth")
     log.info(f"Interior radius: {planet_radius:.2e} m or {planet_radius / R_earth:.2f} R_earth")
     log.info(f"Core radius: {cmb_radius:.2e} m")
-    log.info(f"Core-mantle boundary mass: {cmb_mass:.2e} kg")
+    log.info(f"Core-mantle boundary mass: {mass_enclosed[cmb_index]:.2e} kg")
     log.info(f"Mantle density at the core-mantle boundary: {density[cmb_index]:.2f} kg/m^3")
     log.info(f"Core density at the core-mantle boundary: {density[cmb_index - 1]:.2f} kg/m^3")
     log.info(f"Pressure at the core-mantle boundary: {pressure[cmb_index]:.2e} Pa")
     log.info(f"Pressure at the center: {pressure[0]:.2e} Pa")
     log.info(f"Average density: {average_density:.2f} kg/m^3")
-    log.info(f"Core-mantle boundary mass fraction: {cmb_mass / calculated_mass:.2f}")
-    log.info(f"Core radius fraction: {core_radius_fraction:.2f}")
+    log.info(f"Core-mantle boundary mass fraction: {mass_enclosed[cmb_index] / mass_enclosed[-1]:.3f}")
+    log.info(f"Core radius fraction: {cmb_radius / planet_radius:.2f}")
 
     # Update the surface radius, interior radius, and mass in the hf_row
-    hf_row["R_int"] = radii[-1]
+    hf_row["R_int"] = planet_radius
     hf_row["M_int"] = mass_enclosed[-1]
     hf_row["gravity"] = gravity[-1]
+
+    log.info(f"Compare cmb radius to planet radius: {cmb_radius} vs {hf_row["R_int"]}")
 
     # Get the output location for Zalmoxis output
     output_zalmoxis = get_zalmoxis_output_filepath(outdir)
@@ -343,6 +328,6 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
     # Save final grids to the output file for the mantle
     with open(output_zalmoxis, 'w') as f:
         for i in range(len(mantle_radii)):
-            f.write(f"{mantle_radii[i]:.15e} {mantle_pressure[i]:.15e} {mantle_density[i]:.15e}\n")
+            f.write(f"{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e}\n")
 
     return cmb_radius
