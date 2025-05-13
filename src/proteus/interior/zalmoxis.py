@@ -198,10 +198,10 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
         for i in range(num_layers):
             if radii[i] < cmb_radius:
                 #log.info(f"Density at outer iteration {outer_iter+1} and radius {radii[i]} belongs to the core.")
-                density[i] = material_properties["core"]["rho0"]
+                density[i] = 0
             else:
                 #log.info(f"Density at outer iteration {outer_iter+1} and radius {radii[i]} belongs to the mantle.")
-                density[i] = material_properties["mantle"]["rho0"]
+                density[i] = 0
 
         for inner_iter in range(max_iterations_inner): # Inner loop for density adjustment
             old_density = density.copy() # Store the old density for convergence check

@@ -32,7 +32,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     mass_tot    = 1.0    # M_earth
     corefrac    = 0.55   # non-dim., radius fraction
     [struct.zalmoxis]
-    coremassfrac = 0.32  # non-dim., mass fraction
+    coremassfrac = 0.325  # non-dim., mass fraction
     weight_iron_frac = 0.35 # non-dim., iron fraction in the core
     num_levels      = 100            # Number of Zalmoxis radius layers
     EOSchoice          = "Tabulated" # EOS choice of Zalmoxis
