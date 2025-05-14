@@ -298,22 +298,20 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
     log.info("Zalmoxis interior structure model results:")
     log.info(f"Interior mass: {mass_enclosed[-1]:.2e} kg or {mass_enclosed[-1] / M_earth:.2f} M_earth")
     log.info(f"Interior radius: {planet_radius:.2e} m or {planet_radius / R_earth:.2f} R_earth")
-    log.info(f"Core radius: {cmb_radius:.2e} m")
+    log.info(f"Core radius: {cmb_radius:.2e} or {cmb_radius / R_earth:.2f} m")
     log.info(f"Core-mantle boundary mass: {mass_enclosed[cmb_index]:.2e} kg")
-    log.info(f"Mantle density at the core-mantle boundary: {density[cmb_index]:.2f} kg/m^3")
-    log.info(f"Core density at the core-mantle boundary: {density[cmb_index - 1]:.2f} kg/m^3")
+    log.info(f"Mantle density at the core-mantle boundary: {density[cmb_index]:.2e} kg/m^3")
+    log.info(f"Core density at the core-mantle boundary: {density[cmb_index - 1]:.2e} kg/m^3")
     log.info(f"Pressure at the core-mantle boundary: {pressure[cmb_index]:.2e} Pa")
     log.info(f"Pressure at the center: {pressure[0]:.2e} Pa")
-    log.info(f"Average density: {average_density:.2f} kg/m^3")
+    log.info(f"Average density: {average_density:.2e} kg/m^3")
     log.info(f"Core-mantle boundary mass fraction: {mass_enclosed[cmb_index] / mass_enclosed[-1]:.3f}")
-    log.info(f"Core radius fraction: {cmb_radius / planet_radius:.2f}")
+    log.info(f"Core radius fraction: {cmb_radius / planet_radius:.3f}")
 
     # Update the surface radius, interior radius, and mass in the hf_row
     hf_row["R_int"] = planet_radius
     hf_row["M_int"] = mass_enclosed[-1]
     hf_row["gravity"] = gravity[-1]
-
-    log.info(f"Compare cmb radius to planet radius: {cmb_radius} vs {hf_row["R_int"]}")
 
     # Get the output location for Zalmoxis output
     output_zalmoxis = get_zalmoxis_output_filepath(outdir)

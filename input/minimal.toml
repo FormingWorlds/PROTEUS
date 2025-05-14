@@ -29,7 +29,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 
 [struct]
     module = "zalmoxis"
-    mass_tot    = 3    # M_earth
+    mass_tot    = 1    # M_earth
     corefrac    = 0.55   # non-dim., radius fraction
     [struct.zalmoxis]
     coremassfrac = 0.325  # non-dim., mass fraction
