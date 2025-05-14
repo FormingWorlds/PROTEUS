@@ -54,7 +54,7 @@ dependencies = [
     "juliacall",
     "matplotlib",
     "netCDF4",
-    "numpy",
+    "numpy>=2.0",
     "pandas",
     "scipy",
     "sympy",
