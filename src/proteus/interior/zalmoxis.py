@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from proteus.utils.constants import const_G, earth_center_pressure, R_earth, M_earth
+from proteus.utils.constants import const_G, earth_center_pressure, R_earth, M_earth, element_list
 from proteus.utils.data import get_Seager_EOS
 from proteus.config import Config
 
@@ -146,8 +146,25 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
             - Updates the `hf_row` dictionary with the calculated surface radius, mass, and gravity.
     """
 
-    # Setup target planet mass (input parameter)
-    planet_mass = config.struct.mass_tot * M_earth
+    # Setup target planet mass (input parameter) as the total mass of the planet (dry mass + volatiles) [kg]
+    total_planet_mass = config.struct.mass_tot * M_earth
+
+    log.info(f"Total target planet mass (dry mass + volatiles): {total_planet_mass} kg")
+
+    # Calculate the total mass of volatiles in the planet
+    M_volatiles = 0.0
+    for e in element_list:
+        if (e == 'O'):
+            # do not include oxygen, because it varies over time in order to set fO2.
+            continue
+        M_volatiles += hf_row[e+"_kg_total"]
+
+    log.info(f"Volatile mass: {M_volatiles} kg")
+
+    # Calculate the target planet mass (dry mass) by subtracting the mass of volatiles from the total planet mass
+    planet_mass = total_planet_mass - M_volatiles
+
+    log.info(f"Target planet mass (dry mass): {planet_mass} kg ")
 
     # Setup assumptions
     core_mass_fraction = config.struct.zalmoxis.coremassfrac
@@ -296,7 +313,7 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
 
     # Final results of the Zalmoxis interior model
     log.info("Zalmoxis interior structure model results:")
-    log.info(f"Interior mass: {mass_enclosed[-1]:.2e} kg or {mass_enclosed[-1] / M_earth:.2f} M_earth")
+    log.info(f"Interior (dry calculated mass) mass: {mass_enclosed[-1]:.2e} kg or {mass_enclosed[-1] / M_earth:.2f} M_earth")
     log.info(f"Interior radius: {planet_radius:.2e} m or {planet_radius / R_earth:.2f} R_earth")
     log.info(f"Core radius: {cmb_radius:.2e} or {cmb_radius / R_earth:.2f} m")
     log.info(f"Core-mantle boundary mass: {mass_enclosed[cmb_index]:.2e} kg")
