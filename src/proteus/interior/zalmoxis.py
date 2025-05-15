@@ -313,7 +313,7 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
 
     # Final results of the Zalmoxis interior model
     log.info("Zalmoxis interior structure model results:")
-    log.info(f"Interior (dry calculated mass) mass: {mass_enclosed[-1]:.2e} kg or {mass_enclosed[-1] / M_earth:.2f} M_earth")
+    log.info(f"Interior (dry calculated mass) mass: {mass_enclosed[-1]} kg or approximately {mass_enclosed[-1] / M_earth:.2f} M_earth")
     log.info(f"Interior radius: {planet_radius:.2e} m or {planet_radius / R_earth:.2f} R_earth")
     log.info(f"Core radius: {cmb_radius:.2e} or {cmb_radius / R_earth:.2f} m")
     log.info(f"Core-mantle boundary mass: {mass_enclosed[cmb_index]:.2e} kg")
