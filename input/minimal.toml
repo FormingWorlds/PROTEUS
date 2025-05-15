@@ -32,11 +32,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     corefrac    = 0.55   # non-dim., radius fraction
 
 [atmos_clim]
-    module  = "agni"           # Which atmosphere module to use
+    module  = "janus"           # Which atmosphere module to use
 
-    [atmos_clim.agni]
-        spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "48"          # how many spectral bands?
+    [atmos_clim.janus]
+        spectral_group  = "Frostflow"   # which gas opacities to include
+        spectral_bands  = "16"          # how many spectral bands?
 
 [escape]
     module = "zephyrus"
