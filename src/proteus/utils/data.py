@@ -405,8 +405,8 @@ def get_Seager_EOS():
     else:
         log.debug("EOS material properties already downloaded")
 
-    # Build the material_properties dictionary
-    material_properties = {
+    # Build the material_properties_iron_silicate_planets dictionary for iron/silicate planets according to Seager et al. (2007)
+    material_properties_iron_silicate_planets = {
         "mantle": {
             # Mantle properties based on bridgmanite
             "rho0": 4100,  # From Table 1 of Seager et al. (2007) for bridgmanite
@@ -418,5 +418,23 @@ def get_Seager_EOS():
             "eos_file": eos_folder / "eos_seager07_iron.txt"  # Path to iron core file
         }
     }
-    return material_properties
+    # Build the material_properties_water_planets dictionary for water planets according to Seager et al. (2007)
+    material_properties_water_planets = {
+        "core": {
+            # For liquid iron alloy outer core
+            "rho0": 8300,  # From Table 1 of Seager et al. (2007) for the epsilon phase of iron of Fe in kg/m^3
+            "eos_file": eos_folder / "eos_seager07_iron.txt"  # Name of the file with tabulated EOS data
+        },
+        "bridgmanite_shell": {
+                # Inner mantle properties based on bridgmanite
+                "rho0": 4100,  # From Table 1 of Seager et al. (2007) for bridgmanite in kg/m^3
+                "eos_file": eos_folder / "eos_seager07_silicate.txt"  # Name of the file with tabulated EOS data
+        },
+        "water_ice_layer": {
+            # Outer water ice layer in ice VII phase
+                "rho0": 1460,  # From Table 1 of Seager et al. (2007) for H2O in ice VII phase in kg/m^3
+                "eos_file": eos_folder / "eos_seager07_water.txt"  # Name of the file with tabulated EOS data
+        }
+    }
+    return material_properties_iron_silicate_planets, material_properties_water_planets
 

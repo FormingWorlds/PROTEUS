@@ -29,13 +29,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 
 [struct]
     module = "zalmoxis"
-    mass_tot    = 1    # M_earth
-    corefrac    = 0.55   # non-dim., radius fraction
+    mass_tot    = 1                # M_earth
+    corefrac    = 0.55             # non-dim., radius fraction
     [struct.zalmoxis]
-    coremassfrac = 0.325  # non-dim., mass fraction
-    weight_iron_frac = 0.35 # non-dim., iron fraction in the core
-    num_levels      = 100            # Number of Zalmoxis radius layers
-    EOSchoice          = "Tabulated" # EOS choice of Zalmoxis
+    coremassfrac = 0.325           # non-dim., core mass fraction
+    inner_mantle_mass_fraction = 0.5 # non-dim., inner mantle mass fraction
+    weight_iron_frac = 0.35        # non-dim., iron fraction in the core
+    num_levels = 100               # Number of Zalmoxis radius layers
+    EOSchoice = "Tabulated:iron/silicate"        # EOS choice of Zalmoxis
 
 
 [atmos_clim]

@@ -46,9 +46,11 @@ class Zalmoxis:
     Attributes
     ----------
     EOSchoice: str
-        EOS choice of Zalmoxis. Choices: "Tabulated".
+        EOS choice of Zalmoxis. Choices: "Tabulated:iron/silicate", "Tabulated:water".
     coremassfrac: float
         Fraction of the planet's interior mass corresponding to the core.
+    inner_mantle_mass_fraction: float
+        Fraction of the planet's interior mass corresponding to the inner mantle (needed for modeling more than 2 layers).
     weight_iron_frac: float
         Fraction of the planet's core mass that is iron.
     num_levels: int
@@ -77,9 +79,10 @@ class Zalmoxis:
         Reduction factor for adjusting the pressure in the pressure adjustment.
     """
 
-    EOSchoice: str                    = field(default="Tabulated", validator=in_(("Tabulated")))
+    EOSchoice: str                    = field(default="Tabulated:iron/silicate", validator=in_(("Tabulated:iron/silicate", "Tabulated:water")))
 
     coremassfrac: float               = field(default=0.32, validator=(gt(0), lt(1)))
+    inner_mantle_mass_fraction: float  = field(default=0.0, validator=(ge(0), lt(1)))
     weight_iron_frac: float           = field(default=0.35, validator=(gt(0), lt(1)))
 
     num_levels: int                   = field(default=100)
