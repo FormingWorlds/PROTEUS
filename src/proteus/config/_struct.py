@@ -29,15 +29,37 @@ def mass_radius_valid(instance, attribute, value):
             raise ValueError("The interior radius must be < 10 R_earth")
 
 def valid_zalmoxis(instance, attribute, value):
+    """Validate the Zalmoxis parameters.
+    This function checks the values of the Zalmoxis parameters and raises
+    ValueError if any of them are invalid. Specifically, it checks:
+    - `max_iterations_outer` must be > 2
+    - `max_iterations_inner` must be > 12
+    - `max_iterations_pressure` must be > 12
+    - `inner_mantle_mass_fraction` must be 0 when `EOSchoice` is 'Tabulated:iron/silicate'
+    - `coremassfrac` and `inner_mantle_mass_fraction` must add up to <= 75% when `EOSchoice` is 'Tabulated:water'
+    """
     if instance.module != "zalmoxis":
         return
 
-    if attribute.name == "max_iterations_outer" and value < 3:
-        raise ValueError(f"`interior.zalmoxis.{attribute.name}` must be > 2")
-    if attribute.name == "max_iterations_inner" and value < 13:
-        raise ValueError(f"`interior.zalmoxis.{attribute.name}` must be > 12")
-    if attribute.name == "max_iterations_pressure" and value < 13:
-        raise ValueError(f"`interior.zalmoxis.{attribute.name}` must be > 12")
+    max_iterations_outer = instance.zalmoxis.max_iterations_outer
+    max_iterations_inner = instance.zalmoxis.max_iterations_inner
+    max_iterations_pressure = instance.zalmoxis.max_iterations_pressure
+    EOSchoice = instance.zalmoxis.EOSchoice
+    core_mass_fraction = instance.zalmoxis.coremassfrac
+    inner_mantle_mass_fraction = instance.zalmoxis.inner_mantle_mass_fraction
+
+    if max_iterations_outer < 3:
+        raise ValueError("`interior.zalmoxis.max_iterations_outer` must be > 2")
+    if max_iterations_inner < 13:
+        raise ValueError("`interior.zalmoxis.max_iterations_inner` must be > 12")
+    if max_iterations_pressure < 13:
+        raise ValueError("`interior.zalmoxis.max_iterations_pressure` must be > 12")
+    if EOSchoice == "Tabulated:iron/silicate":
+        if inner_mantle_mass_fraction != 0:
+            raise ValueError("`interior.zalmoxis.inner_mantle_mass_fraction` must be 0 when `EOSchoice` is 'Tabulated:iron/silicate' (only 2 layers are modeled).")
+    if EOSchoice == "Tabulated:water":
+        if core_mass_fraction + inner_mantle_mass_fraction > 0.75:
+            raise ValueError("`interior.zalmoxis.coremassfrac` and `interior.zalmoxis.inner_mantle_mass_fraction` must add up to <= 75% when `EOSchoice` is 'Tabulated:water' (see the definition of water planets according to Seager 2007).")
 
 @define
 class Zalmoxis:
@@ -81,8 +103,8 @@ class Zalmoxis:
 
     EOSchoice: str                    = field(default="Tabulated:iron/silicate", validator=in_(("Tabulated:iron/silicate", "Tabulated:water")))
 
-    coremassfrac: float               = field(default=0.32, validator=(gt(0), lt(1)))
-    inner_mantle_mass_fraction: float  = field(default=0.0, validator=(ge(0), lt(1)))
+    coremassfrac: float               = field(default=0.325, validator=(gt(0), lt(1)))
+    inner_mantle_mass_fraction: float  = field(default=0, validator=(ge(0), lt(1)))
     weight_iron_frac: float           = field(default=0.35, validator=(gt(0), lt(1)))
 
     num_levels: int                   = field(default=100)
