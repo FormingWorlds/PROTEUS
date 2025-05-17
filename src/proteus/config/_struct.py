@@ -74,7 +74,7 @@ class Zalmoxis:
     inner_mantle_mass_fraction: float
         Fraction of the planet's interior mass corresponding to the inner mantle (needed for modeling more than 2 layers).
     weight_iron_frac: float
-        Fraction of the planet's core mass that is iron.
+        Fraction of the planet's mass that is iron.
     num_levels: int
         Number of Zalmoxis radius layers.
     max_iterations_outer: int
@@ -105,7 +105,7 @@ class Zalmoxis:
 
     coremassfrac: float               = field(default=0.325, validator=(gt(0), lt(1)))
     inner_mantle_mass_fraction: float  = field(default=0, validator=(ge(0), lt(1)))
-    weight_iron_frac: float           = field(default=0.35, validator=(gt(0), lt(1)))
+    weight_iron_frac: float           = field(default=0.325, validator=(gt(0), lt(1)))
 
     num_levels: int                   = field(default=100)
 

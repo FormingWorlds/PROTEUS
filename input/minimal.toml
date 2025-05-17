@@ -36,7 +36,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     [struct.zalmoxis]
     coremassfrac = 0.325           # non-dim., core mass fraction
     inner_mantle_mass_fraction = 0 # non-dim., inner mantle mass fraction
-    weight_iron_frac = 0.35        # non-dim., iron fraction in the core
+    weight_iron_frac = 0.325        # non-dim., iron fraction in the planet
     num_levels = 100               # Number of Zalmoxis radius layers
     EOSchoice = "Tabulated:iron/silicate"        # EOS choice of Zalmoxis
 
