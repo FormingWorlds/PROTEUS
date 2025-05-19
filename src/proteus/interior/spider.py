@@ -354,7 +354,7 @@ def _try_spider( dirs:dict, config:Config,
     call_sequence.extend(["-param_utbl_const", "1.0E-7"]) # value of parameterisation
 
     # fO2 buffer chosen to define fO2 (7: Iron-Wustite)
-    call_sequence.extend(["-OXYGEN_FUGACITY", "7"])
+    call_sequence.extend(["-OXYGEN_FUGACITY", "2"])
 
     # radionuclides
     if config.interior.radiogenic_heat:
