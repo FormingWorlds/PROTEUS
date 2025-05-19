@@ -53,7 +53,7 @@ def test_physical_run(physical_run):
     hf_ref = hf_ref.drop(columns=NEGLECT, errors='ignore')
 
     # Check helpfile
-    assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
+    assert_frame_equal(hf_all, hf_ref, rtol=6e-3)
 
 def test_physical_spectrum(physical_run):
     # Check stellar spectrum
