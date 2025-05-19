@@ -389,11 +389,16 @@ def download_Seager_EOS():
 
 def get_Seager_EOS():
     """
-    Builds the material_properties dictionary for Seager et al. (2007) EOS data needed by Zalmoxis.
-    The function reads the file paths from the FWL_DATA/EOS_material_properties/EOS_Seager2007 folder.
+    Build and return material properties dictionaries for Seager et al. (2007) EOS data.
+
+    This function constructs dictionaries containing material properties for iron/silicate planets
+    and water planets based on the Seager et al. (2007) equation of state (EOS) data. The data files
+    are expected to be located in the FWL_DATA/EOS_material_properties/EOS_Seager2007 folder.
 
     Returns:
-        dict: Material properties dictionary with paths to EOS data for mantle and core.
+        tuple: A tuple containing two dictionaries:
+            - material_properties_iron_silicate_planets: Material properties for iron/silicate planets.
+            - material_properties_water_planets: Material properties for water planets.
     """
     # Define the EOS folder path
     eos_folder = FWL_DATA_DIR / "EOS_material_properties" / "EOS_Seager2007"
