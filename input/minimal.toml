@@ -37,8 +37,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     coremassfrac = 0.325           # non-dim., core mass fraction
     inner_mantle_mass_fraction = 0 # non-dim., inner mantle mass fraction
     weight_iron_frac = 0.325        # non-dim., iron fraction in the planet
-    num_levels = 100               # Number of Zalmoxis radius layers
-    EOSchoice = "Tabulated:iron/silicate"        # EOS choice of Zalmoxis
+    num_levels = 100               # number of Zalmoxis radius layers
+    EOSchoice = "Tabulated:iron/silicate"        # iron/silicate for super-Earths, water for water planets with Earth-like rocky cores
 
 
 [atmos_clim]
