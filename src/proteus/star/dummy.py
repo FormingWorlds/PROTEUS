@@ -5,14 +5,14 @@ import logging
 
 import numpy as np
 
-from proteus.utils.constants import AU, const_sigma
+from proteus.utils.constants import AU, const_sigma, R_sun, Teffs
 from proteus.utils.phys import planck_wav
 
 log = logging.getLogger("fwl."+__name__)
 
 PLANCK_MIN_TEMPERATURE:float = 0.1
 
-def generate_spectrum(tmp:float, R_star:float):
+def generate_spectrum(tmp:float, calculate_radius:bool, R_star:float):
     '''
     Get stellar spectrum at 1 AU, assuming that the star emits like a blackbody.
 
@@ -20,6 +20,8 @@ def generate_spectrum(tmp:float, R_star:float):
     -----------
         tmp : float
             Temperature [K]
+        calculat_radius: bool
+    	    Whether or not to calculate the radius based off of empirical mass-luminosity and mass-radius relation
         R_star : float
             Stellar radius [m]
 
@@ -50,7 +52,12 @@ def generate_spectrum(tmp:float, R_star:float):
         # Evaluate planck function in each bin
         for i,wav in enumerate(wl_arr):
             fl_arr[i] = planck_wav(tmp, wav) # W m-2 m-1 at stellar surface
-
+	
+	# Calculating stellar radius based off of empirical relation
+        if calculate_radius:
+	
+            R_star = R_sun*(tmp/Teffs)**1.82
+	
         # Scale from stellar surface to 1 AU
         fl_arr *= (R_star/AU)**2
 
