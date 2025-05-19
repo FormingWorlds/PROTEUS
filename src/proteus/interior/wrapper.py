@@ -134,7 +134,7 @@ def solve_structure_from_file(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     
     update_gravity(hf_row)
     
-    log.info(f'Read data from {config.struct.eos_filepath}: M_int={hf_row["M_int"]} and R_int={hf_row["R_int"]}\n')
+    log.info(f'Read data from {config.struct.eos_filepath}: M_int={hf_row["M_int"]/M_earth} and R_int={hf_row["R_int"]/R_earth}\n')
     
 def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     '''

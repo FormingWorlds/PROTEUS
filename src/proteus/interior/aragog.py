@@ -146,9 +146,11 @@ class AragogRunner():
             # 1 = linear profile
             # 2 = user-defined profile
             # 3 = adiabatic profile
-            initial_condition = 3,
+            initial_condition = config.interior.aragog.initial_condition,
             # initial top temperature (K)
             surface_temperature = config.interior.aragog.ini_tmagma,
+            basal_temperature = config.interior.aragog.basal_temperature,
+            init_file = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.init_file}")
             )
 
         # Get look up data directory, will be configurable in the future
