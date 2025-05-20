@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import gt, lt, ge, in_
+from attrs.validators import ge, gt, in_, lt
 
 from ._converters import none_if_none
 

@@ -1,15 +1,22 @@
 # Zalmoxis interior module
+from __future__ import annotations
 
 import logging
-import time, os
+import os
 
-from scipy.interpolate import interp1d
 import numpy as np
 from scipy.integrate import solve_ivp
+from scipy.interpolate import interp1d
 
-from proteus.utils.constants import const_G, earth_center_pressure, R_earth, M_earth, element_list
-from proteus.utils.data import get_Seager_EOS
 from proteus.config import Config
+from proteus.utils.constants import (
+    M_earth,
+    R_earth,
+    const_G,
+    earth_center_pressure,
+    element_list,
+)
+from proteus.utils.data import get_Seager_EOS
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -210,8 +217,6 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
 
     # Solve the interior structure
     for outer_iter in range(max_iterations_outer): # Outer loop for radius and mass convergence
-        # Start timing the outer loop
-        start_time = time.time()
         # Setup initial guess for the radial grid based on the radius guess
         radii = np.linspace(0, radius_guess, num_layers)
 
@@ -329,8 +334,6 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
             log.info(f"Outer loop (total mass) converged after {outer_iter + 1} iterations.")
             break  # Exit the outer loop
 
-        # End timing the outer loop
-        end_time = time.time()
         #log.info(f"Outer iteration {outer_iter+1} took {end_time - start_time:.2f} seconds")
 
         # Check if maximum iterations for outer loop are reached
@@ -376,7 +379,6 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
     mantle_radii = radii[cmb_index:]
     mantle_pressure = pressure[cmb_index:]
     mantle_density = density[cmb_index:]
-    mantle_gravity = gravity[cmb_index:]
 
     # Save final grids to the output file for the mantle
     with open(output_zalmoxis, 'w') as f:
