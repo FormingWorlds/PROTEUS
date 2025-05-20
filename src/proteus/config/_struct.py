@@ -145,8 +145,8 @@ class Struct:
     module: str             = field(validator=in_(('self', 'zalmoxis')))
     zalmoxis: Zalmoxis      = field(factory=Zalmoxis, validator=valid_zalmoxis)
 
-    mass_tot: float         = field(default='none', validator=mass_radius_valid, converter=none_if_none)
-    radius_int: float       = field(default='none', validator=mass_radius_valid, converter=none_if_none)
+    mass_tot                = field(default='none', validator=mass_radius_valid, converter=none_if_none)
+    radius_int              = field(default='none', validator=mass_radius_valid, converter=none_if_none)
 
     core_density: float     = field(default=10738.33, validator=gt(0))
     core_heatcap: float     = field(default=880.0,    validator=gt(0))
