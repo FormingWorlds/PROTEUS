@@ -353,7 +353,7 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
     average_density = mass_enclosed[-1] / (4/3 * np.pi * planet_radius**3)
 
     # Final results of the Zalmoxis interior model
-    log.info("Zalmoxis interior structure model results:")
+    log.info("Found solution for interior structure with Zalmoxis")
     log.info(f"Interior (dry calculated mass) mass: {mass_enclosed[-1]} kg or approximately {mass_enclosed[-1] / M_earth:.2f} M_earth")
     log.info(f"Interior radius: {planet_radius:.2e} m or {planet_radius / R_earth:.2f} R_earth")
     log.info(f"Core radius: {cmb_radius:.2e} or {cmb_radius / R_earth:.2f} m")
@@ -369,6 +369,7 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
     # Update the surface radius, interior radius, and mass in the hf_row
     hf_row["R_int"] = planet_radius
     hf_row["M_int"] = mass_enclosed[-1]
+    hf_row["M_core"] = mass_enclosed[cmb_index]
     hf_row["gravity"] = gravity[-1]
 
     # Get the output location for Zalmoxis output
