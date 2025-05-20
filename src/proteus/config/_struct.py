@@ -47,7 +47,10 @@ def valid_zalmoxis(instance, attribute, value):
     EOSchoice = instance.zalmoxis.EOSchoice
     core_mass_fraction = instance.zalmoxis.coremassfrac
     inner_mantle_mass_fraction = instance.zalmoxis.inner_mantle_mass_fraction
+    mass_tot = instance.mass_tot
 
+    if mass_tot is None:
+        raise ValueError("`mass_tot` must be set when using the Zalmoxis module.")
     if max_iterations_outer < 3:
         raise ValueError("`interior.zalmoxis.max_iterations_outer` must be > 2")
     if max_iterations_inner < 13:
@@ -81,8 +84,6 @@ class Zalmoxis:
         Maximum number of iterations for the outer loop.
     tolerance_outer: float
         Convergence tolerance for the outer loop [kg].
-    tolerance_radius: float
-        Convergence tolerance for the cmb radius calculation in the outer loop [m].
     max_iterations_inner: int
         Maximum number of iterations for the inner loop.
     tolerance_inner: float
@@ -142,7 +143,7 @@ class Struct:
     corefrac: float         = field(validator=(gt(0), lt(1)))
 
     module: str             = field(validator=in_(('self', 'zalmoxis')))
-    zalmoxis: Zalmoxis      = field(factory=Zalmoxis,      validator=valid_zalmoxis)
+    zalmoxis: Zalmoxis      = field(factory=Zalmoxis, validator=valid_zalmoxis)
 
     mass_tot: float         = field(default='none', validator=mass_radius_valid, converter=none_if_none)
     radius_int: float       = field(default='none', validator=mass_radius_valid, converter=none_if_none)

@@ -28,17 +28,17 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     module          = "dummy"
 
 [struct]
-    mass_tot    = 1                # M_earth
+    mass_tot    = 1.0                # M_earth
     corefrac    = 0.55             # non-dim., radius fraction
 
     module = "zalmoxis"
 
     [struct.zalmoxis]
-    coremassfrac = 0.325           # non-dim., core mass fraction
-    inner_mantle_mass_fraction = 0 # non-dim., inner mantle mass fraction
-    weight_iron_frac = 0.325        # non-dim., iron fraction in the planet
-    num_levels = 100               # number of Zalmoxis radius layers
-    EOSchoice = "Tabulated:iron/silicate"        # iron/silicate for super-Earths, water for water planets with Earth-like rocky cores
+    coremassfrac = 0.325                   # non-dim., core mass fraction
+    inner_mantle_mass_fraction = 0         # non-dim., inner mantle mass fraction
+    weight_iron_frac = 0.325               # non-dim., iron fraction in the planet
+    num_levels = 100                       # number of Zalmoxis radius layers
+    EOSchoice = "Tabulated:iron/silicate"  # iron/silicate for super-Earths, water for water planets with Earth-like rocky cores
 
 
 [atmos_clim]
@@ -57,9 +57,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     [interior.spider]
         ini_entropy      = 2700.0  # Surface entropy conditions [J K-1 kg-1]
     [interior.aragog]
-        num_levels      = 100       # Number of Aragog grid levels
+        num_levels      = 50       # Number of Aragog grid levels
         tolerance       = 1.0e-7    # solver tolerance
-        ini_tmagma      = 3000.0    # Initial magma surface temperature [K]
+        ini_tmagma      = 3300.0    # Initial magma surface temperature [K]
 
 [outgas]
     fO2_shift_IW    = 2         # log10(ΔIW), atmosphere/interior boundary oxidation state

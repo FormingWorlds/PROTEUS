@@ -133,6 +133,7 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, 
                 return determine_interior_radius(dirs, config, hf_all, hf_row)
             case "zalmoxis":
                 # Call Zalmoxis and get the interior structure
+                log.info("Using Zalmoxis to solve for interior structure")
                 return zalmoxis_solver(config, outdir, hf_row)
         raise ValueError(f"Invalid structure interior module selected '{config.interior.module}'")
 
