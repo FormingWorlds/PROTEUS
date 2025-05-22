@@ -4,7 +4,7 @@ from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
 from ._converters import none_if_none
-
+from typing import Optional
 
 def mass_radius_valid(instance, attribute, value):
 
@@ -142,8 +142,8 @@ class Struct:
 
     corefrac: float         = field(validator=(gt(0), lt(1)))
 
-    module: str             = field(validator=in_(('self', 'zalmoxis')))
-    zalmoxis: Zalmoxis      = field(factory=Zalmoxis, validator=valid_zalmoxis)
+    module: Optional[str] = field(default='self', validator=lambda inst, attr, val: val is None or val in ('self', 'zalmoxis'))
+    zalmoxis: Optional[Zalmoxis] = field(default=None, validator=lambda inst, attr, val: val is None or valid_zalmoxis(inst, attr, val))
 
     mass_tot                = field(default='none', validator=mass_radius_valid, converter=none_if_none)
     radius_int              = field(default='none', validator=mass_radius_valid, converter=none_if_none)
