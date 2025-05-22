@@ -164,7 +164,7 @@ class AragogRunner():
             # 1 = linear profile
             # 2 = user-defined profile
             # 3 = adiabatic profile
-            initial_condition = 1,
+            initial_condition = 3,
             # initial top temperature (K)
             surface_temperature = config.interior.aragog.ini_tmagma,
             # initial bottom temperature (K)
