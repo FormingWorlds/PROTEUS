@@ -159,4 +159,3 @@ class Struct:
         if self.radius_int is not None:
             return 'radius_int'
         return None
-

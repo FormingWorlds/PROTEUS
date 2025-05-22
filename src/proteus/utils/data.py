@@ -442,4 +442,3 @@ def get_Seager_EOS():
         }
     }
     return material_properties_iron_silicate_planets, material_properties_water_planets
-

@@ -99,4 +99,3 @@ radnuc_data = {
 
 # Constants from Zalmoxis
 earth_center_pressure = 364e9     # Pa
-
