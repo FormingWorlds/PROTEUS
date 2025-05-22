@@ -10,6 +10,7 @@ import scipy.optimize as optimise
 
 from proteus.interior.aragog import AragogRunner
 from proteus.interior.common import Interior_t
+from proteus.interior.zalmoxis import zalmoxis_solver
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -105,7 +106,17 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     log.info("R_int: %.1e m  = %.3f R_earth"%(hf_row["R_int"], hf_row["R_int"]/R_earth))
     log.info(" ")
 
-def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
+def determine_interior_radius_with_zalmoxis(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, outdir:str):
+    '''
+    Determine the interior radius (R_int) of the planet using Zalmoxis.'''
+
+    log.info("Using Zalmoxis to solve for interior structure")
+    int_o = Interior_t(get_nlevb(config))
+    int_o.ic = 1
+    zalmoxis_solver(config, outdir, hf_row)
+    run_interior(dirs, config, hf_all, hf_row, int_o)
+
+def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, outdir:str):
     '''
     Solve for the planet structure based on the method set in the configuration file.
 
@@ -126,7 +137,13 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
 
     # Set by total mass (mantle + core + volatiles)
     elif config.struct.set_by == 'mass_tot':
-        determine_interior_radius(dirs, config, hf_all, hf_row)
+        # Choose the method to determine the interior radius
+        match config.struct.module:
+            case "self":
+                return determine_interior_radius(dirs, config, hf_all, hf_row)
+            case "zalmoxis":
+                return determine_interior_radius_with_zalmoxis(dirs, config, hf_all, hf_row, outdir)
+        raise ValueError(f"Invalid structure interior module selected '{config.interior.module}'")
 
     # Otherwise, error
     else:
