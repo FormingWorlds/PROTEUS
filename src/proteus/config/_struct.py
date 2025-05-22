@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from attrs import define, field
 from attrs.validators import ge, gt, in_, lt
 
 from ._converters import none_if_none
-from typing import Optional
+
 
 def mass_radius_valid(instance, attribute, value):
 
