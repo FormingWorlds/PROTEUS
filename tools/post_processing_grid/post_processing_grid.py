@@ -232,7 +232,7 @@ def extract_solidification_time(cases_data: list, phi_crit: float):
         df = case['output_values']
         # Check if the required columns exist in the dataframe
         if df is None:
-            solidification_times.append(np.nan)
+            solidification_times.append(0.0)
             continue
 
         if 'Phi_global' in df.columns and 'Time' in df.columns:
@@ -242,7 +242,7 @@ def extract_solidification_time(cases_data: list, phi_crit: float):
                 solid_time = df.loc[first_index, 'Time'] # Get the index of the time at which the condition is first satisfied
                 solidification_times.append(solid_time)
             else:
-                solidification_times.append(np.nan)  # Append NaN if condition is not satisfied
+                solidification_times.append(0.0)  # Append NaN if condition is not satisfied
         else:
             if not columns_printed:
                 print("Warning: 'Phi_global' and/or 'Time' columns not found in some cases.")

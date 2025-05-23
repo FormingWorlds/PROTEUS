@@ -267,193 +267,192 @@ if __name__ == '__main__':
     # Plots
     plot_grid_status(df, plots_path)                                                    # Plot the grid status in an histogram
 
-    # Single plot of all input parameters and extracted outputs
-# ###################################################
-#     # Define input parameter settings
-#     param_settings = {
-#         "orbit.semimajoraxis":        {"label": "Semi-major axis [AU]",                   "colormap": cm.plasma,   "log_scale": False},
-#         "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
-#         "escape.zephyrus.efficiency": {"label": r"Escape efficiency factor $\epsilon$",   "colormap": cm.spring,   "log_scale": False},
-#         "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2)$ [IW]",                "colormap": cm.coolwarm, "log_scale": False},
-#         "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.Dark2,    "log_scale": False},
-#         "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
-#         "delivery.elements.H_oceans": {"label": "[H] [Earth's oceans]",                   "colormap": cm.winter,   "log_scale": False}}
+    # # Single plot of all input parameters and extracted outputs
+    # # Define input parameter settings
+    # param_settings = {
+    #     "orbit.semimajoraxis":        {"label": "Semi-major axis [AU]",                   "colormap": cm.plasma,   "log_scale": False},
+    #     "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
+    #     "escape.zephyrus.efficiency": {"label": r"Escape efficiency factor $\epsilon$",   "colormap": cm.spring,   "log_scale": False},
+    #     "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2)$ [IW]",                "colormap": cm.coolwarm, "log_scale": False},
+    #     "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.Dark2,    "log_scale": False},
+    #     "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
+    #     "delivery.elements.H_oceans": {"label": "[H] [Earth's oceans]",                   "colormap": cm.winter,   "log_scale": False}}
 
-#     # Define extracted output settings
-#     output_settings = {
-#         'esc_rate_total':      {"label": "Total escape rate [kg/s]",        "log_scale": True,  "scale": 1.0},
-#         'Phi_global':          {"label": "Melt fraction [%]",               "log_scale": False, "scale": 100.0},
-#         'P_surf':              {"label": "Surface pressure [bar]",          "log_scale": True,  "scale": 1.0},
-#         'atm_kg_per_mol':      {"label": "Atmospheric mass [kg/mol]",       "log_scale": True,  "scale": 1.0},
-#         'solidification_time': {"label": "Solidification time [yr]",        "log_scale": True,  "scale": 1.0}}
+    # # Define extracted output settings
+    # output_settings = {
+    #     #'esc_rate_total':      {"label": "Total escape rate [kg/s]",                  "log_scale": True,  "scale": 1.0},
+    #     #'Phi_global':          {"label": "Melt fraction [%]",                         "log_scale": False, "scale": 100.0},
+    #     #'P_surf':              {"label": "Surface pressure [bar]",                    "log_scale": True,  "scale": 1.0},
+    #     #'atm_kg_per_mol':      {"label": "Mean molecular weight (MMW) [g/mol]",       "log_scale": False,  "scale": 1000.0},
+    #     'solidification_time': {"label": "Solidification time [yr]",                  "log_scale": True,  "scale": 1.0}}
 
 
-#     # Loop over extracted outputs and input parameters
-#     for output_name, out_settings in output_settings.items():
-#         for param_name, settings in param_settings.items():
-#             tested_param = grid_params[param_name]  # Get the values of the input parameter
-#             if len(tested_param) <= 1:
-#                 continue
-#             # Extract plot settings for this input parameter
-#             param_label = settings["label"]
-#             cmap = settings["colormap"]
-#             color_log = settings.get("log_scale", False)
-#             # Extract plot settings for this output
-#             x_label = out_settings["label"]
-#             x_log = out_settings.get("log_scale", False)
-#             scale = out_settings.get("scale", 1.0)
+    # # Loop over extracted outputs and input parameters
+    # for output_name, out_settings in output_settings.items():
+    #     for param_name, settings in param_settings.items():
+    #         tested_param = grid_params[param_name]  # Get the values of the input parameter
+    #         if len(tested_param) <= 1:
+    #             continue
+    #         # Extract plot settings for this input parameter
+    #         param_label = settings["label"]
+    #         cmap = settings["colormap"]
+    #         color_log = settings.get("log_scale", False)
+    #         # Extract plot settings for this output
+    #         x_label = out_settings["label"]
+    #         x_log = out_settings.get("log_scale", False)
+    #         scale = out_settings.get("scale", 1.0)
 
-#             # Determine colormap and color function if the parameter is numeric or string
-#             is_numeric = np.issubdtype(np.array(tested_param).dtype, np.number)
-#             if is_numeric:
-#                 norm = mpl.colors.LogNorm(vmin=min(tested_param), vmax=max(tested_param)) if color_log else mpl.colors.Normalize(vmin=min(tested_param), vmax=max(tested_param))
-#                 color_func = lambda v: cmap(norm(v))
-#                 colorbar_needed = True
-#             else:
-#                 unique_vals = sorted(set(tested_param))
-#                 cats_cmap = mpl.cm.get_cmap(cmap, len(unique_vals))
-#                 color_map = {val: cats_cmap(i) for i, val in enumerate(unique_vals)}
-#                 color_func = lambda val: color_map[val]
-#                 colorbar_needed = False
+    #         # Determine colormap and color function if the parameter is numeric or string
+    #         is_numeric = np.issubdtype(np.array(tested_param).dtype, np.number)
+    #         if is_numeric:
+    #             norm = mpl.colors.LogNorm(vmin=min(tested_param), vmax=max(tested_param)) if color_log else mpl.colors.Normalize(vmin=min(tested_param), vmax=max(tested_param))
+    #             color_func = lambda v: cmap(norm(v))
+    #             colorbar_needed = True
+    #         else:
+    #             unique_vals = sorted(set(tested_param))
+    #             cats_cmap = mpl.cm.get_cmap(cmap, len(unique_vals))
+    #             color_map = {val: cats_cmap(i) for i, val in enumerate(unique_vals)}
+    #             color_func = lambda val: color_map[val]
+    #             colorbar_needed = False
 
-#             # Create figure
-#             fig, ax = plt.subplots(figsize=(10, 6))
-#             data_key = f'{output_name}_per_{param_name}'
-#             for val in tested_param:
-#                 if val not in grouped_data[data_key]:
-#                     continue
-#                 raw = np.array(grouped_data[data_key][val]) * scale
-#                 sns.ecdfplot(
-#                 data=raw,
-#                 log_scale=x_log,
-#                 stat="proportion",
-#                 color=color_func(val),
-#                 linewidth=3,
-#                 ax=ax)
-#             # Set axis labels
-#             ax.set_xlabel(x_label, fontsize=14)
-#             ax.set_ylabel("Normalized cumulative fraction of simulations", fontsize=14)
-#             ax.grid(alpha=0.1)
+    #         # Create figure
+    #         fig, ax = plt.subplots(figsize=(10, 6))
+    #         data_key = f'{output_name}_per_{param_name}'
+    #         for val in tested_param:
+    #             if val not in grouped_data[data_key]:
+    #                 continue
+    #             raw = np.array(grouped_data[data_key][val]) * scale
+    #             sns.ecdfplot(
+    #             data=raw,
+    #             log_scale=x_log,
+    #             stat="proportion",
+    #             color=color_func(val),
+    #             linewidth=3,
+    #             ax=ax)
+    #         # Set axis labels
+    #         ax.set_xlabel(x_label, fontsize=14)
+    #         ax.set_ylabel("Normalized cumulative fraction of simulations", fontsize=14)
+    #         ax.grid(alpha=0.1)
 
-#             # Add colorbar or legend
-#             if colorbar_needed:
-#                 sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
-#                 cbar = fig.colorbar(sm, ax=ax, pad=0.02, aspect=30)
-#                 cbar.set_label(param_label, fontsize=14)
-#                 ticks = sorted(set(tested_param))
-#                 cbar.set_ticks(ticks)
-#             else:
-#                 handles = [mpl.lines.Line2D([0], [0], color=color_map[val], lw=3, label=str(val)) for val in unique_vals]
-#                 ax.legend(handles=handles, loc='lower right')
+    #         # Add colorbar or legend
+    #         if colorbar_needed:
+    #             sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
+    #             cbar = fig.colorbar(sm, ax=ax, pad=0.02, aspect=30)
+    #             cbar.set_label(param_label, fontsize=14)
+    #             ticks = sorted(set(tested_param))
+    #             cbar.set_ticks(ticks)
+    #         else:
+    #             handles = [mpl.lines.Line2D([0], [0], color=color_map[val], lw=3, label=str(val)) for val in unique_vals]
+    #             ax.legend(handles=handles, loc='lower right')
 
-#             # Save the figure
-#             output_dir = os.path.join(plots_path, "ecdf_by_param_and_output")
-#             os.makedirs(output_dir, exist_ok=True)
-#             fname = f"ecdf_{output_name}_per_{param_name.replace('.', '_')}.png"
-#             plt.tight_layout()
-#             plt.savefig(os.path.join(output_dir, fname), dpi=300)
-#             plt.close()
-#    print(f"All single plots are available in the ecdf_by_param_and_output/ folder")
-# ###################################################
+    #         # Save the figure
+    #         output_dir = os.path.join(plots_path, "test_solid_ecdf_by_param_and_output")
+    #         os.makedirs(output_dir, exist_ok=True)
+    #         fname = f"ecdf_{output_name}_per_{param_name.replace('.', '_')}.png"
+    #         plt.tight_layout()
+    #         plt.savefig(os.path.join(output_dir, fname), dpi=300)
+    #         plt.close()
+    # print(f"All single plots are available in the ecdf_by_param_and_output/ folder")
 
     # Grid plot 
 
-    # Define input parameter settings
-    param_settings = {
-        "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.Dark2,    "log_scale": False},
-        "orbit.semimajoraxis":        {"label": "a [AU]",                                 "colormap": cm.plasma,   "log_scale": False},
-        "escape.zephyrus.efficiency": {"label": r"$\epsilon$",                            "colormap": cm.spring,   "log_scale": False},
-        "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
-        "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2 / IW)$",                "colormap": cm.coolwarm, "log_scale": False},
-        "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
-        "delivery.elements.H_oceans": {"label": "[H] [oceans]",                           "colormap": cm.winter,   "log_scale": False}}
+    # # Define input parameter settings
+    # param_settings = {
+    #     "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.Dark2,    "log_scale": False},
+    #     "orbit.semimajoraxis":        {"label": "a [AU]",                                 "colormap": cm.plasma,   "log_scale": False},
+    #     "escape.zephyrus.efficiency": {"label": r"$\epsilon$",                            "colormap": cm.spring,   "log_scale": False},
+    #     "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
+    #     "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2 / IW)$",                "colormap": cm.coolwarm, "log_scale": False},
+    #     "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
+    #     "delivery.elements.H_oceans": {"label": "[H] [oceans]",                           "colormap": cm.winter,   "log_scale": False}}
 
-    # Define extracted output settings
-    output_settings = {
-        'solidification_time': {"label": "Solidification [yr]",             "log_scale": True,  "scale": 1.0},
-        'Phi_global':          {"label": "Melt fraction [%]",               "log_scale": False, "scale": 100.0},
-        'P_surf':              {"label": "Surface pressure [bar]",          "log_scale": True,  "scale": 1.0},
-        'esc_rate_total':      {"label": "Escape rate [kg/s]",              "log_scale": True,  "scale": 1.0},
-        'atm_kg_per_mol':      {"label": "Atm mass [kg/mol]",               "log_scale": True,  "scale": 1.0}}
+    # # Define extracted output settings
+    # output_settings = {
+    #     'solidification_time': {"label": "Solidification [yr]",             "log_scale": True,  "scale": 1.0},
+    #     'Phi_global':          {"label": "Melt fraction [%]",               "log_scale": False, "scale": 100.0},
+    #     'P_surf':              {"label": "Surface pressure [bar]",          "log_scale": True,  "scale": 1.0},
+    #     'esc_rate_total':      {"label": "Escape rate [kg/s]",              "log_scale": True,  "scale": 1.0},
+    #     'atm_kg_per_mol':      {"label": "MMW [g/mol]",                     "log_scale": False,  "scale": 1000.0}}
 
+    # # Prepare parameter and output lists
+    # param_names = list(param_settings.keys())
+    # out_names = list(output_settings.keys())
 
-    # Prepare parameter and output lists
-    param_names = list(param_settings.keys())
-    out_names = list(output_settings.keys())
-
-    # Create subplot grid: rows = parameters, columns = outputs
-    n_rows = len(param_names)
-    n_cols = len(out_names)
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 2.5 * n_rows), squeeze=False)
+    # # Create subplot grid: rows = parameters, columns = outputs
+    # n_rows = len(param_names)
+    # n_cols = len(out_names)
+    # fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 2.5 * n_rows), squeeze=False)
     
-    # Loop through parameters (rows) and outputs (columns)
-    for i, param_name in enumerate(param_names):
-        tested_param = grid_params[param_name]
-        settings = param_settings[param_name]
-        # Determine coloring
-        is_numeric = np.issubdtype(np.array(tested_param).dtype, np.number)
-        if is_numeric:
-            norm = mpl.colors.LogNorm(vmin=min(tested_param), vmax=max(tested_param)) if settings.get("log_scale", False) else mpl.colors.Normalize(vmin=min(tested_param), vmax=max(tested_param))
-            color_func = lambda v: settings["colormap"](norm(v))
-            colorbar_needed = True
-        else:
-            unique_vals = sorted(set(tested_param))
-            cmap = mpl.cm.get_cmap(settings["colormap"], len(unique_vals))
-            color_map = {val: cmap(j) for j, val in enumerate(unique_vals)}
-            color_func = lambda v: color_map[v]
-            colorbar_needed = False
+    # # Loop through parameters (rows) and outputs (columns)
+    # for i, param_name in enumerate(param_names):
+    #     tested_param = grid_params[param_name]
+    #     settings = param_settings[param_name]
+    #     # Determine coloring
+    #     is_numeric = np.issubdtype(np.array(tested_param).dtype, np.number)
+    #     if is_numeric:
+    #         norm = mpl.colors.LogNorm(vmin=min(tested_param), vmax=max(tested_param)) if settings.get("log_scale", False) else mpl.colors.Normalize(vmin=min(tested_param), vmax=max(tested_param))
+    #         color_func = lambda v: settings["colormap"](norm(v))
+    #         colorbar_needed = True
+    #     else:
+    #         unique_vals = sorted(set(tested_param))
+    #         cmap = mpl.cm.get_cmap(settings["colormap"], len(unique_vals))
+    #         color_map = {val: cmap(j) for j, val in enumerate(unique_vals)}
+    #         color_func = lambda v: color_map[v]
+    #         colorbar_needed = False
 
-        for j, output_name in enumerate(out_names):
-            ax = axes[i][j]
-            out_settings = output_settings[output_name]
-            # Plot each ECDF
-            for val in tested_param:
-                data_key = f"{output_name}_per_{param_name}"
-                if val not in grouped_data[data_key]:
-                    continue
-                raw = np.array(grouped_data[data_key][val]) * out_settings.get("scale", 1.0)
-                sns.ecdfplot(
-                    data=raw,
-                    log_scale=out_settings.get("log_scale", False),
-                    #stat="proportion",
-                    color=color_func(val),
-                    linewidth=4,
-                    ax=ax
-                )
-            # Labels and grid
-            if i == n_rows - 1:
-                ax.set_xlabel(out_settings["label"], fontsize=22)
-                ax.xaxis.set_label_coords(0.5, -0.3)
-                ax.tick_params(axis='x', labelsize=22)
-            else :
-                ax.tick_params(axis='x', labelbottom=False)
-            if j == 0:
-                ax.set_ylabel("")
-                ticks = [0.0, 0.5, 1.0]
-                ax.set_yticks(ticks)
-                ax.tick_params(axis='y', labelsize=22)  # show tick labels with size
-            else:
-                ax.set_ylabel("")
-                ax.set_yticks(ticks)
-                ax.tick_params(axis='y', labelleft=False)
-            # Grid
-            ax.grid(alpha=0.4)
-        # Colorbar or legend
-        if colorbar_needed:
-            sm = mpl.cm.ScalarMappable(cmap=settings["colormap"], norm=norm)
-            cbar = fig.colorbar(sm, ax=ax, pad=0.08, aspect=10)
-            cbar.set_label(settings["label"], fontsize=24)
-            cbar.ax.yaxis.set_label_coords(5.5, 0.5)
-            ticks = sorted(set(tested_param))
-            cbar.set_ticks(ticks)
-            cbar.ax.tick_params(labelsize=22) 
-        else:
-            handles = [mpl.lines.Line2D([0], [0], color=color_map[val], lw=4, label=str(val)) for val in unique_vals]
-            ax.legend(handles=handles, fontsize=24,bbox_to_anchor=(1.01, 1), loc='upper left')
+    #     for j, output_name in enumerate(out_names):
+    #         ax = axes[i][j]
+    #         out_settings = output_settings[output_name]
+    #         # Plot each ECDF
+    #         for val in tested_param:
+    #             data_key = f"{output_name}_per_{param_name}"
+    #             if val not in grouped_data[data_key]:
+    #                 continue
+    #             raw = np.array(grouped_data[data_key][val]) * out_settings.get("scale", 1.0)
+    #             sns.ecdfplot(
+    #                 data=raw,
+    #                 log_scale=out_settings.get("log_scale", False),
+    #                 #stat="proportion",
+    #                 color=color_func(val),
+    #                 linewidth=4,
+    #                 ax=ax
+    #             )
+    #         # Labels and grid
+    #         if i == n_rows - 1:
+    #             ax.set_xlabel(out_settings["label"], fontsize=22)
+    #             ax.xaxis.set_label_coords(0.5, -0.3)
+    #             ax.tick_params(axis='x', labelsize=22)
+    #         else :
+    #             ax.tick_params(axis='x', labelbottom=False)
+    #         if j == 0:
+    #             ax.set_ylabel("")
+    #             ticks = [0.0, 0.5, 1.0]
+    #             ax.set_yticks(ticks)
+    #             ax.tick_params(axis='y', labelsize=22)  # show tick labels with size
+    #         else:
+    #             ax.set_ylabel("")
+    #             ax.set_yticks(ticks)
+    #             ax.tick_params(axis='y', labelleft=False)
+    #         # Grid
+    #         ax.grid(alpha=0.4)
+    #     # Colorbar or legend
+    #     if colorbar_needed:
+    #         sm = mpl.cm.ScalarMappable(cmap=settings["colormap"], norm=norm)
+    #         cbar = fig.colorbar(sm, ax=ax, pad=0.08, aspect=10)
+    #         cbar.set_label(settings["label"], fontsize=24)
+    #         cbar.ax.yaxis.set_label_coords(5.5, 0.5)
+    #         ticks = sorted(set(tested_param))
+    #         cbar.set_ticks(ticks)
+    #         cbar.ax.tick_params(labelsize=22) 
+    #     else:
+    #         handles = [mpl.lines.Line2D([0], [0], color=color_map[val], lw=4, label=str(val)) for val in unique_vals]
+    #         ax.legend(handles=handles, fontsize=24,bbox_to_anchor=(1.01, 1), loc='upper left')
 
-    # Add a single shared y-axis label
-    fig.text(0.04, 0.5, 'Normalized cumulative fraction of simulations', va='center', rotation='vertical', fontsize=40)
-    # Adjust layout and save
-    plt.tight_layout(rect=[0.08, 0.02, 1, 0.97])
-    fig.savefig(os.path.join(plots_path, "ecdf_param_output_grid.png"), dpi=300)
-    plt.close(fig)
+    # # Add a single shared y-axis label
+    # fig.text(0.04, 0.5, 'Normalized cumulative fraction of simulations', va='center', rotation='vertical', fontsize=40)
+    # # Adjust layout and save
+    # plt.tight_layout(rect=[0.08, 0.02, 1, 0.97])
+    # fig.savefig(os.path.join(plots_path, "ecdf_param_output_grid_test_solid.png"), dpi=300)
+    # plt.close(fig)
+
+    # print(f"Grid plot is available in the ecdf_param_output_grid.png file")
