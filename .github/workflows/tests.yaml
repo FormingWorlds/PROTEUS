@@ -21,7 +21,7 @@ jobs:
     strategy:
       matrix:
         os: ['ubuntu-latest', 'macos-latest']
-        python-version: ['3.11', '3.13']
+        python-version: ['3.12','3.13']
         include:
           - os: ubuntu-latest
             INSTALL_DEPS: sudo apt-get update; sudo apt-get install libnetcdff-dev netcdf-bin libssl-dev

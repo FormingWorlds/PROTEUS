@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
 name = "fwl-proteus"
-version = "25.03.28"
+version = "25.05.20"
 description = "Coupled atmosphere-interior framework to simulate the temporal evolution of rocky planets"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,7 +15,7 @@ authors = [
 	{name = "Laurent Soucasse", email = "l.soucasse@esciencecenter.nl"},
 	{name = "Stef Smeets", email = "s.smeets@esciencecenter.nl"},
 	{name = "Dan J. Bower", email = "dbower@ethz.ch"},
-	{name = "Mariana V. Sastre", email = "m.c.villamil.sastre@rug.nl"},
+	{name = "Mariana Sastre", email = "m.c.villamil.sastre@rug.nl"},
 	{name = "Emma Postolec", email = "e.n.postolec@rug.nl"},
 	{name = "Mark Hammond", email = "mark.hammond@physics.ox.ac.uk"},
 	{name = "Patrick Sanan", email = "patrick.sanan@gmail.com"},
@@ -49,12 +49,12 @@ dependencies = [
     "fwl-mors>=25.02.26",
     "fwl-calliope>=25.05.01",
     "fwl-zephyrus>=25.03.11",
-    "aragog>=0.1.11a0",
+    "aragog>=v0.2.5-alpha",
     "cmcrameri",
     "juliacall",
     "matplotlib",
     "netCDF4",
-    "numpy",
+    "numpy>=2.0.0",
     "pandas",
     "scipy",
     "sympy",
@@ -126,7 +126,7 @@ indent-style = "space"
 
 [tool.bumpversion]
 # https://callowayproject.github.io/bump-my-version/howtos/calver/
-current_version = "25.03.28"
+current_version = "25.05.20"
 parse = """(?x)                      # Verbose mode
     (?P<release>                     # The release part
         (?:[1-9][0-9])\\.            # YY.
