@@ -97,5 +97,5 @@ radnuc_data = {
     },
 }
 
-# Constants from Zalmoxis
-earth_center_pressure = 364e9     # Pa
+# Constants for Zalmoxis from Nimmo 2015
+earth_center_pressure = 365e9     # Pa
