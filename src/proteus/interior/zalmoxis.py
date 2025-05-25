@@ -356,7 +356,7 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
     log.info("Found solution for interior structure with Zalmoxis")
     log.info(f"Interior (dry calculated mass) mass: {mass_enclosed[-1]} kg or approximately {mass_enclosed[-1] / M_earth:.2f} M_earth")
     log.info(f"Interior radius: {planet_radius:.2e} m or {planet_radius / R_earth:.2f} R_earth")
-    log.info(f"Core radius: {cmb_radius:.2e} or {cmb_radius / R_earth:.2f} m")
+    log.info(f"Core radius: {cmb_radius:.2e} or {cmb_radius / R_earth:.2f} R_earth")
     log.info(f"Core-mantle boundary mass: {mass_enclosed[cmb_index]:.2e} kg")
     log.info(f"Mantle density at the core-mantle boundary: {density[cmb_index]:.2e} kg/m^3")
     log.info(f"Core density at the core-mantle boundary: {density[cmb_index - 1]:.2e} kg/m^3")
@@ -365,6 +365,7 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
     log.info(f"Average density: {average_density:.2e} kg/m^3")
     log.info(f"Core-mantle boundary mass fraction: {mass_enclosed[cmb_index] / mass_enclosed[-1]:.3f}")
     log.info(f"Core radius fraction: {cmb_radius / planet_radius:.3f}")
+    log.info(f"Inner mantle radius fraction: {radii[np.argmax(mass_enclosed >= inner_mantle_mass)] / planet_radius:.3f}")
 
     # Update the surface radius, interior radius, and mass in the hf_row
     hf_row["R_int"] = planet_radius
