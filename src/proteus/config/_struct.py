@@ -65,9 +65,7 @@ def valid_zalmoxis(instance, attribute, value):
     if EOSchoice == "Tabulated:water":
         if core_mass_fraction + inner_mantle_mass_fraction > 0.75:
             raise ValueError("`interior.zalmoxis.coremassfrac` and `interior.zalmoxis.inner_mantle_mass_fraction` must add up to <= 75% when `EOSchoice` is 'Tabulated:water' (see the definition of water planets according to Seager 2007).")
-    if EOSchoice == "Tabulated:water":
-        if core_mass_fraction + inner_mantle_mass_fraction < 0.5:
-            raise ValueError("`interior.zalmoxis.coremassfrac` and `interior.zalmoxis.inner_mantle_mass_fraction` must add up to >= 50% when `EOSchoice` is 'Tabulated:water' (see the theoretical maximal water content of volatile-rich worlds according to Lodders 2003).")
+
 @define
 class Zalmoxis:
     """Parameters for Zalmoxis module.
