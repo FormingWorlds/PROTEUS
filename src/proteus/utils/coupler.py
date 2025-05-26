@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 LOCKFILE_NAME="keepalive"
+AGNI_MIN_VERSION="1.5.0"
 
 def _get_current_time():
     '''
@@ -161,7 +162,7 @@ def validate_module_versions(dirs:dict, config:Config):
             if not _valid_ver(janus_version, _get_expver("fwl-janus"), "JANUS"):
                 valid = False
         case 'agni':
-            if not _valid_ver(_get_agni_version(dirs), _get_expver("fwl-janus"), "AGNI"):
+            if not _valid_ver(_get_agni_version(dirs), AGNI_MIN_VERSION, "AGNI"):
                 valid = False
 
     # Outgassing module
