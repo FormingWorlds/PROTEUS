@@ -45,7 +45,6 @@ class AragogRunner():
         dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all,
                                             interior_o)
         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
-        interior_o.aragog_solver.initialize()
         self.aragog_solver = interior_o.aragog_solver
 
     @staticmethod
@@ -73,8 +72,10 @@ class AragogRunner():
             if config.params.resume:
                 AragogRunner.update_solver(dt, hf_row, interior_o,
                                    output_dir=dirs["output"])
+            interior_o.aragog_solver.initialize()
         else:
             AragogRunner.update_solver(dt, hf_row, interior_o)
+            interior_o.aragog_solver.initialize()
 
     @staticmethod
     def setup_solver(config:Config, hf_row:dict, interior_o:Interior_t, outdir:str):
