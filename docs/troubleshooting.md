@@ -14,6 +14,31 @@ Have you added your SSH key to GitHub? See these pages for guidance:
 * [Adding a new SSH key to your Github account](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account)
 * [Testing your SSH connection](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection)
 
+## All: Out-of-date modules detected
+
+You will have an error that looks like this:
+```console
+[ INFO  ] Validating module versions
+[ ERROR ] (MODULENAME) module is out of date: (INSTALLED VER) < (REQUIRED VER)
+Uncaught exception
+    ...
+OSError: Out-of-date modules detected. Refer to the Troubleshooting guide on the wiki
+```
+This is because one of the required PROTEUS modules is outdated on your machine. You need to update the abovenamed module before running PROTEUS again.
+
+If you have not manually installed this module, simply go to the **PROTEUS** folder and then run these commands:
+```console
+python -m pip install -e .
+```
+
+If you have a "developer" installation of the module, go to the **module's own folder** and run:
+```console
+git checkout main
+git pull
+python -m pip install -U -e .
+```
+
+
 ## MacOS: PETSc tests error
 
 Error when running the PETSc tests, looking like something along the lines of:

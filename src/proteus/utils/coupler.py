@@ -1,4 +1,4 @@
-# Functions used to help run PROTEUS which are mostly submodule agnostic.
+# Functions used to help run PROTEUS which are mostly module agnostic.
 
 # Import utils-specific modules
 from __future__ import annotations
@@ -89,6 +89,106 @@ def _get_julia_version():
     Get the installed Julia version
     '''
     return subprocess.check_output(["julia","--version"]).decode("utf-8").split()[-1]
+
+def validate_module_versions(dirs:dict, config:Config):
+    '''
+    Check that modules are using compatible versions.
+    '''
+
+    log.info("Validating module versions")
+
+    # Read PROTEUS dependencies
+    from importlib.metadata import requires
+    deps_raw = requires("fwl-proteus")
+
+    # Get minimum required version for a module (return None if no version specified)
+    def _get_expver(mod):
+        for v in deps_raw:
+            if "=" not in v:
+                continue
+            vmod = v.split("=")[0].strip(">")  # get name of module
+            vver = v.split("=")[1]             # get req version of module
+            if mod == vmod:
+                return vver
+        return None
+
+    # Split version string into major/minor/patch components
+    def _split_ver(vver):
+        vver = vver.split("-")[0].strip("v")
+        s = vver.split(".")
+        major = int(s[0])
+        minor = int(s[1])
+        try:
+            patch = int(s[2])
+        except:
+            patch = 0
+        return major, minor, patch
+
+    # Check if actual version is compatible with expected version
+    def _valid_ver(act_str, exp_str, name):
+        # return True of expected is None
+        if exp_str is None:
+            return True
+
+        # convert from string to m/m/p format
+        vact = _split_ver(act_str)
+        vexp = _split_ver(exp_str)
+
+        # Check major, minor, patch
+        for i in range(3):
+            if vact[i] < vexp[i]:
+                log.error(f"{name} module is out of date: {act_str} < {exp_str}")
+                return False
+        return True
+
+    # Loop through required modules...
+    valid = True
+
+    # Interior module
+    match config.interior.module:
+        case 'spider':
+            # do not validate SPIDER version
+            pass
+        case 'aragog':
+            from aragog import __version__ as aragog_version
+            if not _valid_ver(aragog_version, _get_expver("aragog"), "Aragog"):
+                valid = False
+
+    # Atmosphere module
+    match config.atmos_clim.module:
+        case 'janus':
+            from janus import __version__ as janus_version
+            if not _valid_ver(janus_version, _get_expver("fwl-janus"), "JANUS"):
+                valid = False
+        case 'agni':
+            if not _valid_ver(_get_agni_version(dirs), _get_expver("fwl-janus"), "AGNI"):
+                valid = False
+
+    # Outgassing module
+    if config.outgas.module == 'calliope':
+        from calliope import __version__ as calliope_version
+        if not _valid_ver(calliope_version, _get_expver("fwl-calliope"), "CALLIOPE"):
+            valid = False
+
+    # Escape module
+    if config.escape.module == 'zephyrus':
+        from zephyrus import __version__ as zephyrus_version
+        if not _valid_ver(zephyrus_version, _get_expver("fwl-zephyrus"), "ZEPHYRUS"):
+            valid = False
+
+    # Star module
+    if config.star.module == 'mors':
+        from mors import __version__ as mors_version
+        if not _valid_ver(mors_version, _get_expver("fwl-mors"), "MORS"):
+            valid = False
+
+    # Exit
+    if not valid:
+        UpdateStatusfile(dirs, 20)
+        raise EnvironmentError("Out-of-date modules detected. " \
+        "Refer to the Troubleshooting guide on the wiki:\n"\
+        "https://fwl-proteus.readthedocs.io/en/latest/troubleshooting/")
+    log.info(" ")
 
 def print_system_configuration(dirs:dict):
     '''
