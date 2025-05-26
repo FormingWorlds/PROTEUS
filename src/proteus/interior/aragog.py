@@ -36,16 +36,63 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA',
                                    platformdirs.user_data_dir('fwl_data')))
 
 
+# class AragogRunner():
+#
+#     def __init__(self, config: Config, dirs: dict, hf_row: dict, hf_all:
+#                  pd.DataFrame, interior_o: Interior_t):
+#         AragogRunner.setup_logger(config, dirs)
+#         dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all,
+#                                             interior_o)
+#         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
+#         interior_o.aragog_solver.initialize()
+#         self.aragog_solver = interior_o.aragog_solver
+#
+#     @staticmethod
+#     def setup_logger(config: Config, dirs: dict):
+#         file_level = logging.getLevelName(config.interior.aragog.logging)
+#         aragog_file_logger(console_level=logging.WARNING, file_level=file_level,
+#                            log_dir=dirs["output"])
+#
+#     @staticmethod
+#     def compute_time_step(config: Config, dirs: dict, hf_row: dict,
+#                           hf_all: pd.DataFrame, interior_o: Interior_t) -> (
+#             float):
+#         if interior_o.ic == 1:
+#             interior_o.aragog_solver = None
+#             return 0.0
+#         else:
+#             step_sf = 1.0  # dt scale factor
+#             return next_step(config, dirs, hf_row, hf_all, step_sf)
+#
+#     @staticmethod
+#     def setup_or_update_solver(config: Config, hf_row: dict,
+#                                interior_o: Interior_t, dt: float, dirs: dict):
+#         if interior_o.aragog_solver is None:
+#             AragogRunner.setup_solver(config, hf_row, interior_o)
+#             if config.params.resume:
+#                 AragogRunner.update_solver(dt, hf_row, interior_o,
+#                                    output_dir=dirs["output"])
+#         else:
+#             AragogRunner.update_solver(dt, hf_row, interior_o)
 class AragogRunner():
-
+    # initialized = False
     def __init__(self, config: Config, dirs: dict, hf_row: dict, hf_all:
                  pd.DataFrame, interior_o: Interior_t):
         AragogRunner.setup_logger(config, dirs)
-        dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all,
-                                            interior_o)
-        self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
-        interior_o.aragog_solver.initialize()
-        self.aragog_solver = interior_o.aragog_solver
+        self.dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all)
+        AragogRunner.setup_or_update_solver(config, hf_row, interior_o,
+                                            self.dt, dirs)
+        self.aragog_solver.initialize()
+        # self.aragog_solver = interior_o.aragog_solver
+        # self.initialized = True
+        print("AragogRunner initialization complete.")
+
+    def meta_init(self, config: Config, dirs: dict, hf_row: dict, hf_all:
+                  pd.DataFrame, interior_o: Interior_t):
+        self.dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all,
+                                                 interior_o)
+        AragogRunner.update_solver(self.dt, hf_row, interior_o, dirs["output"])
+        self.aragog_solver.initialize()
 
     @staticmethod
     def setup_logger(config: Config, dirs: dict):
@@ -53,27 +100,25 @@ class AragogRunner():
         aragog_file_logger(console_level=logging.WARNING, file_level=file_level,
                            log_dir=dirs["output"])
 
-    @staticmethod
-    def compute_time_step(config: Config, dirs: dict, hf_row: dict,
+
+    def compute_time_step(self, config: Config, dirs: dict, hf_row: dict,
                           hf_all: pd.DataFrame, interior_o: Interior_t) -> (
             float):
         if interior_o.ic == 1:
-            interior_o.aragog_solver = None
+            self.aragog_solver = None
             return 0.0
         else:
             step_sf = 1.0  # dt scale factor
             return next_step(config, dirs, hf_row, hf_all, step_sf)
 
-    @staticmethod
-    def setup_or_update_solver(config: Config, hf_row: dict,
+
+    def setup_or_update_solver(self, config: Config, hf_row: dict,
                                interior_o: Interior_t, dt: float, dirs: dict):
-        if interior_o.aragog_solver is None:
+        if self.aragog_solver is None:
             AragogRunner.setup_solver(config, hf_row, interior_o)
             if config.params.resume:
                 AragogRunner.update_solver(dt, hf_row, interior_o,
-                                   output_dir=dirs["output"])
-        else:
-            AragogRunner.update_solver(dt, hf_row, interior_o)
+                                           output_dir=dirs["output"])
 
     @staticmethod
     def setup_solver(config:Config, hf_row:dict, interior_o:Interior_t):
@@ -237,42 +282,41 @@ class AragogRunner():
             solver = solver,
             )
 
-        interior_o.aragog_solver = Solver(param)
+        self.aragog_solver = Solver(param)
 
-    @staticmethod
-    def update_solver(dt:float, hf_row:dict, interior_o:Interior_t,
+    def update_solver(self, dt:float, hf_row:dict, interior_o:Interior_t,
                                 output_dir:str = None):
 
         # Set solver time
         # hf_row["Time"] is in yr so do not need to scale as long as scaling
         # time is secs_per_year
-        interior_o.aragog_solver.parameters.solver.start_time = hf_row["Time"]
-        interior_o.aragog_solver.parameters.solver.end_time = (hf_row["Time"]
+        self.aragog_solver.parameters.solver.start_time = hf_row["Time"]
+        self.aragog_solver.parameters.solver.end_time = (hf_row["Time"]
                                                                + dt)
 
         # Get temperature field from previous run
         if output_dir is not None: # read it from output directory
             Tfield = read_last_Tfield(output_dir, hf_row["Time"])
         else: # get it from solver
-            Tfield = interior_o.aragog_solver.temperature_staggered[:, -1]
+            Tfield = self.aragog_solver.temperature_staggered[:, -1]
 
         # Update initial condition
         Tfield = (Tfield /
-                  interior_o.aragog_solver.parameters.scalings.temperature)
+                  self.aragog_solver.parameters.scalings.temperature)
         # switch to user-defined init
-        (interior_o.aragog_solver.parameters.initial_condition.
+        (self.aragog_solver.parameters.initial_condition.
          initial_condition) = 2
-        (interior_o.aragog_solver.parameters.initial_condition.
+        (self.aragog_solver.parameters.initial_condition.
          init_temperature) = Tfield
 
         # Update boundary conditions
-        (interior_o.aragog_solver.parameters.boundary_conditions.
+        (self.aragog_solver.parameters.boundary_conditions.
          outer_boundary_value) = hf_row["F_atm"]
 
         # Update tidal heating within the mantle
-        interior_o.aragog_solver.parameters.energy.tidal_array = (
+        self.aragog_solver.parameters.energy.tidal_array = (
             interior_o.tides /
-            interior_o.aragog_solver.parameters.scalings.power_per_mass)
+            self.aragog_solver.parameters.scalings.power_per_mass)
 
     def run_solver(self, hf_row, interior_o, dirs):
         # Run Aragog solver

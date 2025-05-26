@@ -170,12 +170,25 @@ def run_interior(dirs:dict, config:Config,
         RunSPIDER(dirs, config, hf_all, hf_row, interior_o)
         sim_time, output = ReadSPIDER(dirs, config, hf_row["R_int"], interior_o)
 
+    # elif config.interior.module == 'aragog':
+    #     AragogRunnerInstance = AragogRunner(config, dirs, hf_row, hf_all,
+    #                                         interior_o)
+    #     # Run Aragog
+    #     sim_time, output = AragogRunnerInstance.run_solver(hf_row, interior_o,
+    #                                                        dirs)
     elif config.interior.module == 'aragog':
-        AragogRunnerInstance = AragogRunner(config, dirs, hf_row, hf_all,
-                                            interior_o)
+        if interior_o.AragogRunner == None:
+            interior_o.AragogRunner = AragogRunner(config, dirs, hf_row,
+                                                   hf_all, interior_o)
+            print("interior_o.AragogRunner == None")
+        else:
+            interior_o.AragogRunner.meta_init(config, dirs, hf_row, hf_all,
+                                              interior_o)
+            print("interior_o.AragogRunner != None")
+
         # Run Aragog
-        sim_time, output = AragogRunnerInstance.run_solver(hf_row, interior_o,
-                                                           dirs)
+        sim_time, output = interior_o.AragogRunner.run_solver(hf_row,
+                                                              interior_o, dirs)
 
     elif config.interior.module == 'dummy':
         # Import
