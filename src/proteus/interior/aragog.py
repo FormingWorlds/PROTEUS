@@ -79,19 +79,19 @@ class AragogRunner():
     def __init__(self, config: Config, dirs: dict, hf_row: dict, hf_all:
                  pd.DataFrame, interior_o: Interior_t):
         AragogRunner.setup_logger(config, dirs)
-        self.dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all)
-        AragogRunner.setup_or_update_solver(config, hf_row, interior_o,
+        self.dt = self.compute_time_step(config, dirs, hf_row, hf_all, interior_o)
+        self.setup_or_update_solver(config, hf_row, interior_o,
                                             self.dt, dirs)
         self.aragog_solver.initialize()
         # self.aragog_solver = interior_o.aragog_solver
-        # self.initialized = True
         print("AragogRunner initialization complete.")
 
     def meta_init(self, config: Config, dirs: dict, hf_row: dict, hf_all:
                   pd.DataFrame, interior_o: Interior_t):
-        self.dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all,
+        self.dt = self.compute_time_step(config, dirs, hf_row, hf_all,
                                                  interior_o)
-        AragogRunner.update_solver(self.dt, hf_row, interior_o, dirs["output"])
+        #self.update_solver(self.dt, hf_row, interior_o, dirs["output"])
+        self.setup_or_update_solver(config, hf_row, interior_o, self.dt, dirs)
         self.aragog_solver.initialize()
 
     @staticmethod
@@ -102,8 +102,7 @@ class AragogRunner():
 
 
     def compute_time_step(self, config: Config, dirs: dict, hf_row: dict,
-                          hf_all: pd.DataFrame, interior_o: Interior_t) -> (
-            float):
+                          hf_all: pd.DataFrame, interior_o: Interior_t) -> (float):
         if interior_o.ic == 1:
             self.aragog_solver = None
             return 0.0
@@ -115,14 +114,17 @@ class AragogRunner():
     def setup_or_update_solver(self, config: Config, hf_row: dict,
                                interior_o: Interior_t, dt: float, dirs: dict):
         if self.aragog_solver is None:
-            AragogRunner.setup_solver(config, hf_row, interior_o)
+            self.setup_solver(config, hf_row, interior_o)
             if config.params.resume:
-                AragogRunner.update_solver(dt, hf_row, interior_o,
+                self.update_solver(dt, hf_row, interior_o,
                                            output_dir=dirs["output"])
+        else:
+            self.update_solver(dt, hf_row, interior_o, output_dir=dirs["output"])
 
-    @staticmethod
-    def setup_solver(config:Config, hf_row:dict, interior_o:Interior_t):
 
+    def setup_solver(self, config:Config, hf_row:dict, interior_o:Interior_t):
+
+        print("Set up Aragog solver...")
         scalings = _ScalingsParameters(
             radius = R_earth, # scaling radius [m]
             temperature = 4000, # scaling temperature [K]
@@ -287,6 +289,7 @@ class AragogRunner():
     def update_solver(self, dt:float, hf_row:dict, interior_o:Interior_t,
                                 output_dir:str = None):
 
+        print("Update Aragog solver...")
         # Set solver time
         # hf_row["Time"] is in yr so do not need to scale as long as scaling
         # time is secs_per_year
