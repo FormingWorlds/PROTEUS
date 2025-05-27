@@ -75,10 +75,9 @@ class AragogRunner():
         else:
             if interior_o.ic == 1:
                 AragogRunner.update_structure(config, hf_row, interior_o)
-                interior_o.aragog_solver.reset()
             else:
                 AragogRunner.update_solver(dt, hf_row, interior_o)
-                interior_o.aragog_solver.reset()
+            interior_o.aragog_solver.reset()
 
     @staticmethod
     def setup_solver(config:Config, hf_row:dict, interior_o:Interior_t, outdir:str):
@@ -303,11 +302,14 @@ class AragogRunner():
         the structure which affects the interior mesh.
         """
         if config.struct.module == "self":
-            interior_o.aragog_solver.parameters.mesh.outer_radius = (hf_row["R_int"]
+            interior_o.aragog_solver.parameters.mesh.outer_radius = (
+                hf_row["R_int"]
                 / interior_o.aragog_solver.parameters.scalings.radius)
-            interior_o.aragog_solver.parameters.mesh.inner_radius = (config.struct.corefrac * hf_row["R_int"]
+            interior_o.aragog_solver.parameters.mesh.inner_radius = (
+                config.struct.corefrac * hf_row["R_int"]
                 / interior_o.aragog_solver.parameters.scalings.radius)
-            interior_o.aragog_solver.parameters.mesh.gravitational_acceleration = (hf_row["gravity"]
+            interior_o.aragog_solver.parameters.mesh.gravitational_acceleration = (
+                hf_row["gravity"]
                 / interior_o.aragog_solver.parameters.scalings.gravitational_acceleration)
 
     def run_solver(self, hf_row, interior_o, dirs):
