@@ -100,13 +100,13 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [star.dummy]
         radius           = 1.0       # R_sun
         calculate_radius = true	     # calculate radius using empirical mass-luminosity and mass-radius relations
-        Teff             = 3500.0    # K
+        Teff             = 4500.0    # K
 
 # Orbital system
 [orbit]
     semimajororfinst = 'semimajoraxis'	# whether to define orbit using semi major axis or instellation flux
     instellationflux = 3e-4             	# instellation flux received from the planet in Earth units.
-    semimajoraxis    = 0.1              	# AU
+    semimajoraxis    = 0.15              	# AU
     eccentricity     = 0.0       		# dimensionless
     zenith_angle     = 54.74     		# degrees
     s0_factor        = 0.25      		# dimensionless
@@ -122,9 +122,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
-    mass_tot    = 5.0       # M_earth
-    corefrac    = 0.55      # non-dim., radius fraction
+    set_by       = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
+    mass_tot     = 5.0       # M_earth
+    corefrac     = 0.55      # non-dim., radius fraction
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
 

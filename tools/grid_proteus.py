@@ -468,6 +468,7 @@ class Grid():
         """
 
         max_days = int(max_days) # ensure integer
+        max_jobs = min(max_jobs, self.size) # do not request more jobs than we need
 
         log.info("Generating PROTEUS slurm config for parameter grid '%s'" % self.name)
         log.info("Will run for up to %d days per job" % max_days)
@@ -530,13 +531,13 @@ if __name__=='__main__':
     print("Start GridPROTEUS")
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "test"
+    folder = "scratch/l98d_habrok5"
 
     # Use SLURM?
     use_slurm = False
 
     # Execution limits
-    max_jobs = 320      # maximum number of concurrent tasks
+    max_jobs = 300      # maximum number of concurrent tasks
     max_days = 1         # maximum number of days to run
     max_mem  = 3         # maximum memory per CPU in GB
 
@@ -556,10 +557,6 @@ if __name__=='__main__':
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
     pg.set_dimension_direct("Sulfur", [2, 4, 6, 8, 10])
 
-    pg.add_dimension("Mass", "struct.mass_tot")
-    pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
-
-
     # pg.add_dimension("Eccentricity", "orbit.eccentricity")
     # pg.set_dimension_linspace("Eccentricity", 0.0, 0.15, 25)
 
@@ -571,6 +568,17 @@ if __name__=='__main__':
 
     # pg.add_dimension("Bands", "atmos_clim.agni.spectral_bands")
     # pg.set_dimension_direct("Bands", ["16", "48", "256"])
+
+
+    pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
+    pg.set_dimension_arange("Hydrogen", 8000, 30000, 2000)
+
+    pg.add_dimension("Efficiency", "escape.zephyrus.efficiency")
+    pg.set_dimension_arange("Efficiency", 0.0, 0.25, 0.025)
+
+    pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
+    pg.set_dimension_direct("Redox state", [-3,-2])
+
 
     # Print information
     pg.print_setup()

@@ -127,7 +127,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     corefrac     = 0.55       # non-dim., radius fraction
     core_density = 10738.33   # Core density [kg m-3]
     core_heatcap = 880.0      # Core specific heat capacity [J K-1 kg-1]
-    eos_method   = 2    					# 1: Adams-Williamson / 2: User defined
+    eos_method   = 1    					# 1: Adams-Williamson / 2: User defined
     eos_filepath = 'claire_density_profiles/interior_lookup_data.dat'	# the file containing the EOS data
 
 # Atmosphere - physics table
@@ -209,7 +209,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     [interior.aragog]
         num_levels        = 102       					# Number of Aragog grid levels
-        initial_condition = 2						# 1: Linear, 2: User defined, 3: Adiabat
+        initial_condition = 3						# 1: Linear, 2: User defined, 3: Adiabat
         tolerance         = 1.0e-7    					# solver tolerance
         ini_tmagma        = 3000.0    					# Initial magma surface temperature [K]
         basal_temperature = 7000.0					# Initial basal temperature [K]

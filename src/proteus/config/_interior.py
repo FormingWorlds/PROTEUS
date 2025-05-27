@@ -92,6 +92,10 @@ class Aragog:
         Whether to include gravitational separation in the model. Default is False.
     mixing: bool
         Whether to include mixing in the model. Default is False.
+    tsurf_poststep_change: float
+        Maximum change in surface temperature allowed during a single interior iteration [K].
+    event_triggering: bool
+        Whether to include event triggering in the solver. Default is True.
     """
 
     logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
@@ -107,6 +111,8 @@ class Aragog:
     convection: bool                    = field(default=True)
     gravitational_separation: bool      = field(default=False)
     mixing: bool                        = field(default=False)
+    tsurf_poststep_change: float        = field(default=30, validator=ge(0))
+    event_triggering:bool               = field(default=True)
 
 
 def valid_interiordummy(instance, attribute, value):

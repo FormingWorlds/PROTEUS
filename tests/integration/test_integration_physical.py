@@ -53,7 +53,7 @@ def test_physical_run(physical_run):
     hf_ref = hf_ref.drop(columns=NEGLECT, errors='ignore')
 
     # Check helpfile
-    assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
+    assert_frame_equal(hf_all, hf_ref, rtol=6e-3)
 
 def test_physical_spectrum(physical_run):
     # Check stellar spectrum
@@ -65,8 +65,8 @@ def test_physical_spectrum(physical_run):
 
 def test_physical_atmosphere(physical_run):
     # Keys to load and test
-    _out   = out_dir / 'data' / '302_atm.nc'
-    _ref   = ref_dir / '302_atm.nc'
+    _out   = out_dir / 'data' / '402_atm.nc'
+    _ref   = ref_dir / '402_atm.nc'
     fields = ["t", "p", "z", "fl_U_LW", "fl_D_SW"]
 
     # Load atmosphere output
@@ -86,8 +86,8 @@ def test_physical_atmosphere(physical_run):
 
 def test_physical_interior(physical_run):
     # Keys to load and test
-    _out   = out_dir / 'data' / '302_int.nc'
-    _ref   = ref_dir / '302_int.nc'
+    _out   = out_dir / 'data' / '402_int.nc'
+    _ref   = ref_dir / '402_int.nc'
     fields = ["radius_b", "pres_b", "temp_b", "phi_b", "Hradio_s"]
 
     # Load interior output

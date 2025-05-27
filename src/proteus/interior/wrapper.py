@@ -14,6 +14,7 @@ from scipy import integrate
 from pathlib import Path
 from proteus.interior.aragog import AragogRunner
 from proteus.interior.common import Interior_t
+from proteus.interior.zalmoxis import zalmoxis_solver
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -110,6 +111,7 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     log.info("M_tot: %.1e kg = %.3f M_earth"%(hf_row["M_tot"], hf_row["M_tot"]/M_earth))
     log.info("R_int: %.1e m  = %.3f R_earth"%(hf_row["R_int"], hf_row["R_int"]/R_earth))
     log.info(" ")
+<<<<<<< HEAD
     
 def solve_structure_from_file(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     '''
@@ -137,6 +139,20 @@ def solve_structure_from_file(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     log.info(f'Read data from {config.struct.eos_filepath}: M_int={hf_row["M_int"]/M_earth} and R_int={hf_row["R_int"]/R_earth}\n')
     
 def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
+=======
+
+def determine_interior_radius_with_zalmoxis(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, outdir:str):
+    '''
+    Determine the interior radius (R_int) of the planet using Zalmoxis.'''
+
+    log.info("Using Zalmoxis to solve for interior structure")
+    int_o = Interior_t(get_nlevb(config))
+    int_o.ic = 1
+    zalmoxis_solver(config, outdir, hf_row)
+    run_interior(dirs, config, hf_all, hf_row, int_o)
+
+def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, outdir:str):
+>>>>>>> origin/main
     '''
     Solve for the planet structure based on the method set in the configuration file.
 
@@ -162,7 +178,13 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
 
     # Set by total mass (mantle + core + volatiles)
     elif config.struct.set_by == 'mass_tot':
-        determine_interior_radius(dirs, config, hf_all, hf_row)
+        # Choose the method to determine the interior radius
+        match config.struct.module:
+            case "self":
+                return determine_interior_radius(dirs, config, hf_all, hf_row)
+            case "zalmoxis":
+                return determine_interior_radius_with_zalmoxis(dirs, config, hf_all, hf_row, outdir)
+        raise ValueError(f"Invalid structure interior module selected '{config.interior.module}'")
 
     # Otherwise, error
     else:
