@@ -13,10 +13,11 @@ from typing import TYPE_CHECKING
 import matplotlib as mpl  # noqa
 
 mpl.use('Agg') # noqa
+from string import ascii_letters
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from string import ascii_letters
 
 from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
@@ -125,7 +126,7 @@ def validate_module_versions(dirs:dict, config:Config):
         minor = int(s[1])
         try:
             patch = int(s[2])
-        except:
+        except Exception:
             patch = 0
         return major, minor, patch
 

@@ -155,7 +155,7 @@ class Proteus:
             print_stoptime,
             print_system_configuration,
             remove_excess_files,
-            validate_module_versions
+            validate_module_versions,
         )
 
         #    lookup and reference data
