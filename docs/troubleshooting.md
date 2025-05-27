@@ -6,13 +6,44 @@ encounter errors or other issue that you cannot solve via the standard
 step-by-step guide or the advice below contact the developers (see
 `contact`{.interpreted-text role="doc"}).
 
-## GitHub: Cannot clone module
+## All: Cannot clone module, or Permission denied (publickey)
 
 Have you added your SSH key to GitHub? See these pages for guidance:
+
 * [Checking for existing SSH keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys)
 * [Generating a new SSH key](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent)
 * [Adding a new SSH key to your Github account](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account)
 * [Testing your SSH connection](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection)
+
+## All: Out-of-date modules detected
+
+You will have an error that looks like this:
+```console
+[ INFO  ] Validating module versions
+[ ERROR ] (MODULENAME) module is out of date: (INSTALLED VER) < (REQUIRED VER)
+Uncaught exception
+    ...
+OSError: Out-of-date modules detected. Refer to the Troubleshooting guide on the wiki
+```
+This is because one of the required PROTEUS modules is outdated on your machine. You need to update the abovenamed module before running PROTEUS again.
+
+You can check which modules are out of date manually, by running:
+```console
+proteus doctor
+```
+
+If you have not manually installed this module, simply go to the **PROTEUS** folder and then run these commands:
+```console
+python -m pip install -e .
+```
+
+If you have a "developer" installation of the module, go to the **module's own folder** and run:
+```console
+git checkout main
+git pull
+python -m pip install -U -e .
+```
+
 
 ## MacOS: PETSc tests error
 
@@ -41,12 +72,6 @@ And then also enable Remote Login in your Sharing settings and add your user to 
 Firstly, check that you are in the correct directory when running `make` or `./configure`. If you are, then this could
 be caused by the environment variable `PETSC_DIR` remaining set after a previous PETSc installation. Run `unset PETSC_DIR`
 and try again.
-
-## Linux: `ksh` not found when running SOCRATES
-
-Most Linux distributions do not come with `ksh` installed, while MacOS seems to. If you get an error relating to `ksh` not being found, check that you did all of the installation steps.
-
-One step under *Setup SOCRATES* involves replacing `ksh` with `bash` in all of the SOCRATES executables.
 
 ## Linux: cannot compile PETSc.
 
@@ -96,15 +121,15 @@ ln -s /usr/local/opt/openssl/lib/libssl.3.dylib /Users/USERNAME/opt/anaconda3/en
 ```
 
 ## MacOS: Python error `ModuleNotFoundError: No module named 'yaml'`
-    despite `yaml` being installed via `conda`
 
+Install `yaml` via pip rather than via conda.
 ```console
 python -m pip install pyyaml
 ```
 
 ## MacOS: Missing `ifort` compilers
 
-If the [SOCRATES make]{.title-ref} routine complains about missing `ifort` compilers:
+If installing SOCRATES steps complain about missing `ifort` compilers:
 
 Install Intel compilers from <https://www.intel.com/content/www/us/en/developer/tools/oneapi/toolkits.html>
 
@@ -117,10 +142,12 @@ environment.
 ## MacOS: Errors during PETSc configuration or compilation
 
 One of the following errors during PETSC configuration or compilation steps
-- `"This header is only meant to be used on x86 and x64 architecture"`
-- `#error "This header is only meant to be used on x86 and x64 architecture"`
+```
+This header is only meant to be used on x86 and x64 architecture
+#error "This header is only meant to be used on x86 and x64 architecture
+```
 
-Follow **Option A** in the step-by-step guide to (re-)install `python`
+Install Python via homebrew and use pip to manage packages, rather than Conda.
 
 ## MacOS: `ModuleNotFoundError: No module named '_tkinter'`
 
@@ -136,16 +163,6 @@ brew install python-tk
 If you are connecting to a computer over ssh, make sure to enable X-forwarding. This can be done in your configuration file or as a command line parameter.
 
 If you are using a Mac, install [XQuartz](https://www.xquartz.org/).
-
-## MacOS: `Permission denied (publickey)`
-
-You get this error In the terminal or SourceTree. This means your ssh key is out of date, follow:
-
-1. <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/checking-for-existing-ssh-keys>
-2. <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent>
-3. <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account>
-4. <https://docs.github.com/en/authentication/connecting-to-github-with-ssh/testing-your-ssh-connection>
-
 ## MacOS: YAML library error
 
 Error: `ld: unsupported tapi file type '!tapi-tbd' in YAML file '/Library/Developer/CommandLineTools/SDKs/MacOSX13.sdk/usr/lib/libSystem.tbd' for architecture arm64`
