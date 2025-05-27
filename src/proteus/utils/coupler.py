@@ -16,6 +16,7 @@ mpl.use('Agg') # noqa
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from string import ascii_letters
 
 from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
@@ -115,7 +116,10 @@ def validate_module_versions(dirs:dict, config:Config):
 
     # Split version string into major/minor/patch components
     def _split_ver(vver):
-        vver = vver.split("-")[0].strip("v")
+        # ignore 'alpha' part and remove leading letters
+        vver = vver.split("-")[0].strip(ascii_letters)
+
+        # split into version parts
         s = vver.split(".")
         major = int(s[0])
         minor = int(s[1])
