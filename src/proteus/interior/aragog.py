@@ -58,7 +58,6 @@ class AragogRunner():
                           hf_all: pd.DataFrame, interior_o: Interior_t) -> (
             float):
         if interior_o.ic == 1:
-            #interior_o.aragog_solver = None
             return 0.0
         else:
             step_sf = 1.0  # dt scale factor
@@ -76,7 +75,7 @@ class AragogRunner():
         else:
             if interior_o.ic == 1:
                 AragogRunner.update_structure(config, hf_row, interior_o)
-                interior_o.aragog_solver.initialize()
+                interior_o.aragog_solver.reset()
             else:
                 AragogRunner.update_solver(dt, hf_row, interior_o)
                 interior_o.aragog_solver.reset()
@@ -84,7 +83,6 @@ class AragogRunner():
     @staticmethod
     def setup_solver(config:Config, hf_row:dict, interior_o:Interior_t, outdir:str):
 
-        print("setup solver")
         scalings = _ScalingsParameters(
             radius = R_earth, # scaling radius [m]
             temperature = 4000, # scaling temperature [K]
@@ -267,7 +265,6 @@ class AragogRunner():
     def update_solver(dt:float, hf_row:dict, interior_o:Interior_t,
                                 output_dir:str = None):
 
-        print("update solver")
         # Set solver time
         # hf_row["Time"] is in yr so do not need to scale as long as scaling
         # time is secs_per_year
@@ -301,44 +298,17 @@ class AragogRunner():
 
     @staticmethod
     def update_structure(config: Config, hf_row:dict, interior_o:Interior_t):
-
-        print("update structure")
-        interior_o.aragog_solver.parameters.mesh.outer_radius = hf_row["R_int"] / interior_o.aragog_solver.parameters.scalings.radius
-        interior_o.aragog_solver.parameters.mesh.inner_radius = config.struct.corefrac * hf_row["R_int"] / interior_o.aragog_solver.parameters.scalings.radius
-        interior_o.aragog_solver.parameters.mesh.gravitational_acceleration = hf_row["gravity"] / interior_o.aragog_solver.parameters.scalings.gravitational_acceleration
-
-        '''
-        # Define the inner_radius for the mesh
+        """This update is needed during the inital phase of Proteus
+        (interior_o.ic == 1) as we sometimes run Aragog multiple times to solve
+        the structure which affects the interior mesh.
+        """
         if config.struct.module == "self":
-            inner_radius = config.struct.corefrac * hf_row["R_int"] # core radius [m]
-        elif config.struct.module == "zalmoxis":
-            # Define the inner_radius based on the core radius from Zalmoxis
-            inner_radius = zalmoxis_solver(config, outdir, hf_row) # core radius [m]
-        else:
-            raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
-
-
-        mesh = _MeshParameters(
-            # planet radius [m]
-            outer_radius = hf_row["R_int"],
-            # core radius [m]
-            inner_radius = inner_radius,
-            # basic nodes
-            number_of_nodes = config.interior.aragog.num_levels,
-            mixing_length_profile = "constant",
-            # AdamsWilliamsonEOS parameter [kg/m3]
-            surface_density = 4090,
-            # [m/s-2]
-            gravitational_acceleration = hf_row["gravity"],
-            # AW-EOS parameter [Pa]
-            adiabatic_bulk_modulus = config.interior.bulk_modulus,
-            )
-
-        # Update the mesh if the module is 'zalmoxis'
-        if config.struct.module == 'zalmoxis':
-            mesh.eos_method = 2  # User-defined EOS based on Zalmoxis
-            mesh.eos_file = os.path.join(outdir, "data", "zalmoxis_output.dat") # Zalmoxis output file with mantle parameters
-'''
+            interior_o.aragog_solver.parameters.mesh.outer_radius = (hf_row["R_int"]
+                / interior_o.aragog_solver.parameters.scalings.radius)
+            interior_o.aragog_solver.parameters.mesh.inner_radius = (config.struct.corefrac * hf_row["R_int"]
+                / interior_o.aragog_solver.parameters.scalings.radius)
+            interior_o.aragog_solver.parameters.mesh.gravitational_acceleration = (hf_row["gravity"]
+                / interior_o.aragog_solver.parameters.scalings.gravitational_acceleration)
 
     def run_solver(self, hf_row, interior_o, dirs):
         # Run Aragog solver
