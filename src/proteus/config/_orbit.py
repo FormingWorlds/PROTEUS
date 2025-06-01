@@ -5,6 +5,7 @@ from attrs.validators import ge, gt, in_, lt
 
 from ._converters import none_if_none
 
+from typing import Optional
 
 def phi_tide_validator(instance, attribute, value):
 
@@ -34,7 +35,11 @@ class OrbitDummy:
     """
     H_tide: float   = field(default=0.0, validator=ge(0.0))
     Phi_tide: str   = field(default="<0.3", validator=phi_tide_validator)
-    E_max: float    = field(default=None)
+    t_crit: float = field(default=0)
+    t_max: float  = field(default=0)
+    E_crit: float = field(default=0)
+    E_max: float  = field(default=0)
+    shutdown: str = field(default=None, converter=none_if_none)
 
 @define
 class Lovepy:

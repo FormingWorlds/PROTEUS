@@ -13,7 +13,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def run_dummy_orbit(config:Config, interior_o:Interior_t):
+def run_dummy_orbit(config:Config, interior_o:Interior_t, shutdown):
+#def run_dummy_orbit(config:Config, interior_o:Interior_t):
     """Run the dummy orbit module.
 
     Sets interior tidal heating, return Im(k2) love number value of zero.
@@ -44,11 +45,15 @@ def run_dummy_orbit(config:Config, interior_o:Interior_t):
         if Pt_lt:
             if p < Pt_va:
                 # Heating maximised when fully solid.
-                interior_o.tides[i] = config.orbit.dummy.H_tide * (1-p/Pt_va)
+                interior_o.tides[i] = shutdown * config.orbit.dummy.H_tide * (1-p/Pt_va)
+                #interior_o.tides[i] = config.orbit.dummy.H_tide * (1-p/Pt_va)
         else:
             if p > Pt_va:
                 # Heating maximised when fully liquid.
-                interior_o.tides[i] = config.orbit.dummy.H_tide * (p-Pt_va) / (1-Pt_va)
+                interior_o.tides[i] = shutdown * config.orbit.dummy.H_tide * (p-Pt_va) / (1-Pt_va)
+                #interior_o.tides[i] = config.orbit.dummy.H_tide * (p-Pt_va) / (1-Pt_va)
 
     # Return Im(k2) = 0
     return 0.0
+
+
