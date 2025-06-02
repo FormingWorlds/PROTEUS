@@ -130,7 +130,6 @@ class AragogRunner():
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
 
-
         mesh = _MeshParameters(
             # planet radius [m]
             outer_radius = hf_row["R_int"],
