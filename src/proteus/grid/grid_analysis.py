@@ -25,24 +25,24 @@ if __name__ == '__main__':
     plots_path  = f'{postprocess_path}plots_grid/'        # Path to the directory where the plots will be saved
     plot_dir_exists(plots_path)                     # Check if the plot directory exists. If not, create it.
 
-    # User choose the parameters to post-process the grid
-    output_to_extract = ['esc_rate_total','Phi_global','P_surf','T_surf','M_planet','atm_kg_per_mol']      # Output columns to extract from 'runtime_helpfile.csv' of each case. For the units, check the file src/proteus/utils/coupler.py, lines 348-400 (keys)
+    # # User choose the parameters to post-process the grid
+    # output_to_extract = ['esc_rate_total','Phi_global','P_surf','T_surf','M_planet','atm_kg_per_mol']      # Output columns to extract from 'runtime_helpfile.csv' of each case. For the units, check the file src/proteus/utils/coupler.py, lines 348-400 (keys)
 
-    ### Step 1: Post-processing the grid 
+    # ### Step 1: Post-processing the grid 
 
-    print('-----------------------------------------------------------')
-    print(f'Step 1 : Post-processing the grid {grid_name} ...')  
-    print('-----------------------------------------------------------')
+    # print('-----------------------------------------------------------')
+    # print(f'Step 1 : Post-processing the grid {grid_name} ...')  
+    # print('-----------------------------------------------------------')
 
-    extracted_value = {}                                                                # Initialize the dictionary to store extracted values
-    cases_data = load_grid_cases(grid_path)                                             # Load all simulation cases
-    grid_parameters, case_init_param = get_grid_parameters(grid_path)                   # Extract grid parameters
-    for param in output_to_extract:
-        extracted_value[param] = extract_grid_output(cases_data, param)                 # Extract output values
-    solidification_times = extract_solidification_time(cases_data)                      # Extract the solidification time
-    extracted_value['solidification_time'] = solidification_times                       # Add solidification time to the extracted_values
-    save_grid_data_to_csv(grid_name, cases_data, grid_parameters, case_init_param,
-                      extracted_value, solidification_times, data_dir)                  # Save all the extracted data to a CSV file
+    # extracted_value = {}                                                                # Initialize the dictionary to store extracted values
+    # cases_data = load_grid_cases(grid_path)                                             # Load all simulation cases
+    # grid_parameters, case_init_param = get_grid_parameters(grid_path)                   # Extract grid parameters
+    # for param in output_to_extract:
+    #     extracted_value[param] = extract_grid_output(cases_data, param)                 # Extract output values
+    # solidification_times = extract_solidification_time(cases_data)                      # Extract the solidification time
+    # extracted_value['solidification_time'] = solidification_times                       # Add solidification time to the extracted_values
+    # save_grid_data_to_csv(grid_name, cases_data, grid_parameters, case_init_param,
+    #                   extracted_value, solidification_times, data_dir)                  # Save all the extracted data to a CSV file
 
     ### Step 2: Load data and plot
 
@@ -73,7 +73,7 @@ if __name__ == '__main__':
         'solidification_time': {"label": "Solidification time [yr]",                  "log_scale": True,  "scale": 1.0},
         'T_surf':              {"label": r"T$_{surf}$ [K]",                 "log_scale": False,  "scale": 1.0},
         'M_planet':            {"label": r"M$_p$ [M$_\oplus$]",             "log_scale": False,  "scale": 1.0/5.9722e24}}
-    ecdf_single_plots(grid_params=grid_params, grouped_data=grouped_data, param_settings=param_settings_single, output_settings=output_settings_single, plots_path=plots_path)
+    #ecdf_single_plots(grid_params=grid_params, grouped_data=grouped_data, param_settings=param_settings_single, output_settings=output_settings_single, plots_path=plots_path)
 
     # ECDF Grid Plot
     param_settings_grid = {

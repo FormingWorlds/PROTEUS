@@ -866,6 +866,7 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
 
             # Configure y-axis (shared label added later)
             if j == 0:
+                ax.set_ylabel("") 
                 ticks = [0.0, 0.5, 1.0]
                 ax.set_yticks(ticks)
                 ax.tick_params(axis='y', labelsize=22)
@@ -879,8 +880,11 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
         # After plotting all outputs for this parameter (row), add colorbar or legend
         if colorbar_needed:
             sm = mpl.cm.ScalarMappable(cmap=settings["colormap"], norm=norm)
-            cbar = fig.colorbar(sm, ax=axes[i, :], pad=0.08, aspect=10)
+            # attach the colorbar to the right‐most subplot in row i:
+            rightmost_ax = axes[i, -1]
+            cbar = fig.colorbar(sm,ax=rightmost_ax,pad=0.03,aspect=10)
             cbar.set_label(settings["label"], fontsize=24)
+            # (you can remove or tweak the label‐coords line if it ends up too far to the right)
             cbar.ax.yaxis.set_label_coords(5.5, 0.5)
             ticks = sorted(set(tested_param))
             cbar.set_ticks(ticks)
