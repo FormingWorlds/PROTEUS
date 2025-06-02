@@ -10,9 +10,10 @@ import numpy as np
 from io import StringIO
 import seaborn as sns
 import matplotlib.pyplot as plt
+import matplotlib as mpl
+import matplotlib.cm as cm
 
-
-# Functions for extracting grid data
+##### Functions for extracting grid data #####
 
 def load_grid_cases(grid_dir: Path):
     """
@@ -415,7 +416,7 @@ def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dic
     print('-----------------------------------------------------------')
 
 
-# Functions for plotting grid data results
+##### Functions for plotting grid data results #####
 
 def load_extracted_data(data_path : str | Path, grid_name :str):
 
@@ -662,3 +663,240 @@ def plot_grid_status(cases_data, plot_dir: Path, grid_name: str, status_colors: 
     plt.close()
 
     print(f"Summary plot of grid statuses is available")
+
+def ecdf_single_plots(grid_params: dict, grouped_data: dict, param_settings: dict, output_settings: dict, plots_path: str):
+    """
+    Generates and saves one ECDF plot per combination of output and input parameter.
+
+    Parameters
+    ----------
+
+    grid_params : dict
+        A mapping from parameter names (e.g. "orbit.semimajoraxis") to arrays/lists of tested values.
+
+    grouped_data : dict
+        Dictionary where each key is of the form '[output]_per_[parameter]', and each value is a dict {param_value: [output_values]}.
+
+    param_settings : dict
+        For each input-parameter key, a dict containing:
+            - "label": label of the colormap for the corresponding input parameter
+            - "colormap": a matplotlib colormap (e.g. mpl.cm.plasma)
+            - "log_scale": bool, whether to color-normalize on a log scale
+
+    output_settings : dict
+        For each output key, a dict containing:
+            - "label": label of the x-axis for the corresponding output quantity
+            - "log_scale": bool, whether to plot the x-axis on log scale
+            - "scale":    float, a factor to multiply raw values by before plotting
+
+    plots_path : str
+        Path to the grid where to create "single_plots_ecdf" and save all .png plots
+    """
+    # Create output directory if not already there
+    output_dir = os.path.join(plots_path, "single_plots_ecdf")
+    os.makedirs(output_dir, exist_ok=True)
+
+    for output_name, out_settings in output_settings.items():
+        for param_name, settings in param_settings.items():
+            tested_param = grid_params.get(param_name, [])
+            if len(tested_param) <= 1:
+                # Skip if only a single value was tested
+                continue
+
+            # Plot settings for this input parameter
+            param_label = settings["label"]
+            cmap      = settings["colormap"]
+            color_log = settings.get("log_scale", False)
+
+            # Plot settings for this output
+            x_label  = out_settings["label"]
+            x_log    = out_settings.get("log_scale", False)
+            scale    = out_settings.get("scale", 1.0)
+
+            # Determine if the parameter array is numeric
+            is_numeric = np.issubdtype(np.array(tested_param).dtype, np.number)
+
+            if is_numeric:
+                # Continuous colormap: Normalize either linearly or in log-space
+                if color_log:
+                    norm = mpl.colors.LogNorm(vmin=min(tested_param), vmax=max(tested_param))
+                else:
+                    norm = mpl.colors.Normalize(vmin=min(tested_param), vmax=max(tested_param))
+                color_func = lambda v: cmap(norm(v))
+                colorbar_needed = True
+            else:
+                # Categorical colormap: map each unique value to one color
+                unique_vals = sorted(set(tested_param))
+                cats_cmap   = mpl.colormaps.get_cmap(cmap.name).resampled(len(unique_vals))
+                color_map   = {val: cats_cmap(i) for i, val in enumerate(unique_vals)}
+                color_func  = lambda val: color_map[val]
+                colorbar_needed = False
+
+            # Create a new figure & axes
+            fig, ax = plt.subplots(figsize=(10, 6))
+            data_key = f"{output_name}_per_{param_name}"
+
+            for val in tested_param:
+                # Skip if no data for this value
+                if val not in grouped_data.get(data_key, {}):
+                    continue
+                raw = np.array(grouped_data[data_key][val]) * scale
+                sns.ecdfplot(
+                    data=raw,
+                    log_scale=x_log,
+                    stat="proportion",
+                    color=color_func(val),
+                    linewidth=3,
+                    ax=ax
+                )
+
+            # Axis formatting
+            ax.set_xlabel(x_label, fontsize=14)
+            ax.set_ylabel("Normalized cumulative fraction of simulations", fontsize=14)
+            ax.grid(alpha=0.1)
+
+            # Colorbar or legend
+            if colorbar_needed:
+                sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
+                cbar = fig.colorbar(sm, ax=ax, pad=0.02, aspect=30)
+                cbar.set_label(param_label, fontsize=14)
+                # Set ticks at each tested parameter value
+                ticks = sorted(set(tested_param))
+                cbar.set_ticks(ticks)
+            else:
+                # Build a legend for categorical values
+                unique_vals = sorted(set(tested_param))
+                handles = [
+                    mpl.lines.Line2D([0], [0], color=color_map[val], lw=3, label=str(val))
+                    for val in unique_vals
+                ]
+                ax.legend(handles=handles, loc="lower right", title=param_label)
+
+            # Save and close
+            fname = f"ecdf_{output_name}_per_{param_name.replace('.', '_')}.png"
+            plt.tight_layout()
+            plt.savefig(os.path.join(output_dir, fname), dpi=300)
+            plt.close()
+
+    print(f"All single ECDF plots are available at {output_dir}")
+
+def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, output_settings: dict, plots_path: str):
+    """
+    Creates a grid of ECDF plots where each row corresponds to one input parameter
+    and each column corresponds to one output. Saves the resulting figure as a PNG.
+
+    Parameters
+    ----------
+
+    grid_params : dict
+        A mapping from parameter names (e.g. "orbit.semimajoraxis") to arrays/lists of tested values.
+
+    grouped_data : dict
+        Dictionary where each key is of the form '[output]_per_[parameter]', and each value is a dict {param_value: [output_values]}.
+
+    param_settings : dict
+        For each input-parameter key, a dict containing:
+            - "label": label of the colormap for the corresponding input parameter
+            - "colormap": a matplotlib colormap (e.g. mpl.cm.plasma)
+            - "log_scale": bool, whether to color-normalize on a log scale
+
+    output_settings : dict
+        For each output key, a dict containing:
+            - "label": label of the x-axis for the corresponding output quantity
+            - "log_scale": bool, whether to plot the x-axis on log scale
+            - "scale":    float, a factor to multiply raw values by before plotting
+
+    plots_path : str
+        Path to the grid where to create "single_plots_ecdf" and save all .png plots
+    """
+    # Ensure output directory exists
+    os.makedirs(plots_path, exist_ok=True)
+
+    # List of parameter names (rows) and output names (columns)
+    param_names = list(param_settings.keys())
+    out_names   = list(output_settings.keys())
+
+    # Create subplot grid: rows = parameters, columns = outputs
+    n_rows = len(param_names)
+    n_cols = len(out_names)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 2.5 * n_rows), squeeze=False)
+
+    # Loop through parameters (rows) and outputs (columns)
+    for i, param_name in enumerate(param_names):
+        tested_param = grid_params.get(param_name, [])
+        settings     = param_settings[param_name]
+        # Determine coloring
+        is_numeric = np.issubdtype(np.array(tested_param).dtype, np.number)
+        if is_numeric:
+            norm = mpl.colors.LogNorm(vmin=min(tested_param), vmax=max(tested_param)) if settings.get("log_scale", False) else mpl.colors.Normalize(vmin=min(tested_param), vmax=max(tested_param))
+            color_func = lambda v: settings["colormap"](norm(v))
+            colorbar_needed = True
+        else:
+            unique_vals = sorted(set(tested_param))
+            cmap = mpl.colormaps.get_cmap(settings["colormap"]).resampled(len(unique_vals))
+            color_map = {val: cmap(j) for j, val in enumerate(unique_vals)}
+            color_func = lambda v: color_map[v]
+            colorbar_needed = False
+
+        for j, output_name in enumerate(out_names):
+            ax = axes[i][j]
+            out_settings = output_settings[output_name]
+
+            # Plot one ECDF per tested parameter value
+            for val in tested_param:
+                data_key = f"{output_name}_per_{param_name}"
+                if val not in grouped_data.get(data_key, {}):
+                    continue
+                raw = np.array(grouped_data[data_key][val]) * out_settings.get("scale", 1.0)
+                sns.ecdfplot(
+                    data=raw,
+                    log_scale=out_settings.get("log_scale", False),
+                    color=color_func(val),
+                    linewidth=4,
+                    ax=ax
+                )
+
+            # Configure x-axis labels, ticks, grids
+            if i == n_rows - 1:
+                ax.set_xlabel(out_settings["label"], fontsize=22)
+                ax.xaxis.set_label_coords(0.5, -0.3)
+                ax.tick_params(axis='x', labelsize=22)
+            else:
+                ax.tick_params(axis='x', labelbottom=False)
+
+            # Configure y-axis (shared label added later)
+            if j == 0:
+                ticks = [0.0, 0.5, 1.0]
+                ax.set_yticks(ticks)
+                ax.tick_params(axis='y', labelsize=22)
+            else:
+                ax.set_ylabel("")
+                ax.set_yticks(ticks)
+                ax.tick_params(axis='y', labelleft=False)
+            
+            ax.grid(alpha=0.4)
+
+        # After plotting all outputs for this parameter (row), add colorbar or legend
+        if colorbar_needed:
+            sm = mpl.cm.ScalarMappable(cmap=settings["colormap"], norm=norm)
+            cbar = fig.colorbar(sm, ax=axes[i, :], pad=0.08, aspect=10)
+            cbar.set_label(settings["label"], fontsize=24)
+            cbar.ax.yaxis.set_label_coords(5.5, 0.5)
+            ticks = sorted(set(tested_param))
+            cbar.set_ticks(ticks)
+            cbar.ax.tick_params(labelsize=22)
+        else:
+            handles = [mpl.lines.Line2D([0], [0], color=color_map[val], lw=4, label=str(val)) for val in unique_vals]
+            ax.legend(handles=handles, fontsize=24,bbox_to_anchor=(1.01, 1), loc='upper left')
+
+    # Add a single, shared y-axis label
+    fig.text(0.04, 0.5, 'Normalized cumulative fraction of simulations', va='center', rotation='vertical', fontsize=40)
+
+    # Tweak layout and save
+    plt.tight_layout(rect=[0.08, 0.02, 1, 0.97])
+    filename = "ecdf_grid_plot.png"
+    out_path = os.path.join(plots_path, filename)
+    fig.savefig(out_path, dpi=300)
+    plt.close(fig)
+
+    print(f"Grid ECDF plot saved at {out_path}")

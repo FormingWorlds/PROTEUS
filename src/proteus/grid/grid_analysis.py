@@ -1,5 +1,16 @@
+# This script is used to post-process a grid of PROTEUS simulations.
+# It extracts the output values from the simulation cases, saves them to a CSV file,
+# and generates plots for the grid statuses based on the extracted data. It also generates
+# ECDF single plots and a big grid plot for the input parameters vs extracted outputs.
+
+# The users need to specify the path to the grid directory and the grid name. He also needs 
+# to specify the output columns to extract from the 'runtime_helpfile.csv' of each case. And 
+# update the related plotting variables accordingly.
+
 import os
-from functions_grid_analyze_and_plot import load_grid_cases, get_grid_parameters, extract_grid_output, extract_solidification_time, save_grid_data_to_csv, load_extracted_data, plot_dir_exists, group_output_by_parameter, plot_grid_status
+from postprocess_grid import load_grid_cases, get_grid_parameters, extract_grid_output, extract_solidification_time, save_grid_data_to_csv, load_extracted_data, plot_dir_exists, group_output_by_parameter, plot_grid_status, ecdf_single_plots, ecdf_grid_plot
+import matplotlib.cm as cm
+
 
 if __name__ == '__main__':
 
@@ -8,9 +19,10 @@ if __name__ == '__main__':
     grid_name   = 'escape_grid_habrok_7_params_1Msun'
 
     grid_path   = f'{path_to_grid}{grid_name}/'     # Path to the grid directory
-    data_dir    = f'{grid_path}/extracted_data/'    # Path to the directory where the data will be saved
+    postprocess_path = f'{grid_path}post_processing_grid/'  # Path to the postprocess directory
+    data_dir    = f'{postprocess_path}/extracted_data/'    # Path to the directory where the data will be saved
     os.makedirs(data_dir, exist_ok=True)            # Create the directory if it doesn't exist
-    plots_path  = f'{grid_path}plots_grid/'        # Path to the directory where the plots will be saved
+    plots_path  = f'{postprocess_path}plots_grid/'        # Path to the directory where the plots will be saved
     plot_dir_exists(plots_path)                     # Check if the plot directory exists. If not, create it.
 
     # User choose the parameters to post-process the grid
@@ -41,12 +53,51 @@ if __name__ == '__main__':
     df, grid_params, extracted_outputs = load_extracted_data(data_dir, grid_name)       # Load the data
     grouped_data = group_output_by_parameter(df, grid_params, extracted_outputs)        # Group extracted outputs by grid parameters
     
-    # Plots
+    # Histogram of grid statuses
     plot_grid_status(df, plots_path, grid_name)                                         # Plot the grid statuses in an histogram
+
+    # Single ECDF Plots
+    param_settings_single = {
+        "orbit.semimajoraxis":        {"label": "Semi-major axis [AU]",                   "colormap": cm.plasma,   "log_scale": False},
+        "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
+        "escape.zephyrus.efficiency": {"label": r"Escape efficiency factor $\epsilon$",   "colormap": cm.spring,   "log_scale": False},
+        "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2)$ [IW]",                "colormap": cm.coolwarm, "log_scale": False},
+        "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.rainbow,    "log_scale": False},
+        "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
+        "delivery.elements.H_oceans": {"label": "[H] [Earth's oceans]",                   "colormap": cm.winter,   "log_scale": False}}
+    output_settings_single = {
+        'esc_rate_total':      {"label": "Total escape rate [kg/s]",                  "log_scale": True,  "scale": 1.0},
+        'Phi_global':          {"label": "Melt fraction [%]",                         "log_scale": False, "scale": 100.0},
+        'P_surf':              {"label": "Surface pressure [bar]",                    "log_scale": True,  "scale": 1.0},
+        'atm_kg_per_mol':      {"label": "Mean molecular weight (MMW) [g/mol]",       "log_scale": False,  "scale": 1000.0},
+        'solidification_time': {"label": "Solidification time [yr]",                  "log_scale": True,  "scale": 1.0},
+        'T_surf':              {"label": r"T$_{surf}$ [K]",                 "log_scale": False,  "scale": 1.0},
+        'M_planet':            {"label": r"M$_p$ [M$_\oplus$]",             "log_scale": False,  "scale": 1.0/5.9722e24}}
+    ecdf_single_plots(grid_params=grid_params, grouped_data=grouped_data, param_settings=param_settings_single, output_settings=output_settings_single, plots_path=plots_path)
+
+    # ECDF Grid Plot
+    param_settings_grid = {
+        "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.rainbow,    "log_scale": False},
+        "orbit.semimajoraxis":        {"label": "a [AU]",                                 "colormap": cm.plasma,   "log_scale": False},
+        "escape.zephyrus.efficiency": {"label": r"$\epsilon$",                            "colormap": cm.spring,   "log_scale": False},
+        "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
+        "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2 / IW)$",                "colormap": cm.coolwarm, "log_scale": False},
+        "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
+        "delivery.elements.H_oceans": {"label": "[H] [oceans]",                           "colormap": cm.winter,   "log_scale": False}}
+    output_settings_grid = {
+        'solidification_time': {"label": "Solidification [yr]",             "log_scale": True,  "scale": 1.0},
+        'Phi_global':          {"label": "Melt fraction [%]",               "log_scale": False, "scale": 100.0},
+        'P_surf':              {"label": "Surface pressure [bar]",          "log_scale": True,  "scale": 1.0},
+        'esc_rate_total':      {"label": "Escape rate [kg/s]",              "log_scale": True,  "scale": 1.0},
+        'atm_kg_per_mol':      {"label": "MMW [g/mol]",                     "log_scale": False,  "scale": 1000.0},
+        'T_surf':              {"label": r"T$_{surf}$ [K]",                 "log_scale": False,  "scale": 1.0},
+        'M_planet':            {"label": r"M$_p$ [M$_\oplus$]",             "log_scale": False,  "scale": 1.0/5.9722e24}
+        }
+    ecdf_grid_plot(grid_params=grid_params, grouped_data=grouped_data, param_settings=param_settings_grid, output_settings=output_settings_grid, plots_path=plots_path)
 
     print('-----------------------------------------------------------')
     print(f'Plots saved in {plots_path}')
     print(f'Post-processing of grid {grid_name} completed successfully!')
     print('-----------------------------------------------------------')
-    print('If you want to change the parameters to post-process the grid, please edit the code in PROTEUS/tools/post_processing_grid/grid_analysis.py')
+    print('If you want to change the parameters to post-process the grid, please edit the code in PROTEUS/src/proteus/grid/grid_analysis.py')
     print('-----------------------------------------------------------')
