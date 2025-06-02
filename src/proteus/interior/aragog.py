@@ -45,7 +45,6 @@ class AragogRunner():
         dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all,
                                             interior_o)
         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
-        interior_o.aragog_solver.initialize()
         self.aragog_solver = interior_o.aragog_solver
 
     @staticmethod
@@ -59,7 +58,6 @@ class AragogRunner():
                           hf_all: pd.DataFrame, interior_o: Interior_t) -> (
             float):
         if interior_o.ic == 1:
-            interior_o.aragog_solver = None
             return 0.0
         else:
             step_sf = 1.0  # dt scale factor
@@ -73,8 +71,13 @@ class AragogRunner():
             if config.params.resume:
                 AragogRunner.update_solver(dt, hf_row, interior_o,
                                    output_dir=dirs["output"])
+            interior_o.aragog_solver.initialize()
         else:
-            AragogRunner.update_solver(dt, hf_row, interior_o)
+            if interior_o.ic == 1:
+                AragogRunner.update_structure(config, hf_row, interior_o)
+            else:
+                AragogRunner.update_solver(dt, hf_row, interior_o)
+            interior_o.aragog_solver.reset()
 
     @staticmethod
     def setup_solver(config:Config, hf_row:dict, interior_o:Interior_t, outdir:str):
@@ -126,7 +129,6 @@ class AragogRunner():
             inner_radius = zalmoxis_solver(config, outdir, hf_row) # core radius [m]
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
-
 
         mesh = _MeshParameters(
             # planet radius [m]
@@ -291,6 +293,23 @@ class AragogRunner():
         interior_o.aragog_solver.parameters.energy.tidal_array = (
             interior_o.tides /
             interior_o.aragog_solver.parameters.scalings.power_per_mass)
+
+    @staticmethod
+    def update_structure(config: Config, hf_row:dict, interior_o:Interior_t):
+        """This update is needed during the inital phase of Proteus
+        (interior_o.ic == 1) as we sometimes run Aragog multiple times to solve
+        the structure which affects the interior mesh.
+        """
+        if config.struct.module == "self":
+            interior_o.aragog_solver.parameters.mesh.outer_radius = (
+                hf_row["R_int"]
+                / interior_o.aragog_solver.parameters.scalings.radius)
+            interior_o.aragog_solver.parameters.mesh.inner_radius = (
+                config.struct.corefrac * hf_row["R_int"]
+                / interior_o.aragog_solver.parameters.scalings.radius)
+            interior_o.aragog_solver.parameters.mesh.gravitational_acceleration = (
+                hf_row["gravity"]
+                / interior_o.aragog_solver.parameters.scalings.gravitational_acceleration)
 
     def run_solver(self, hf_row, interior_o, dirs):
         # Run Aragog solver
