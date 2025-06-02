@@ -27,6 +27,7 @@ from aragog.parser import (
 
 from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
+from proteus.interior.zalmoxis import zalmoxis_solver
 from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
 
 if TYPE_CHECKING:
@@ -44,7 +45,6 @@ class AragogRunner():
         dt = AragogRunner.compute_time_step(config, dirs, hf_row, hf_all,
                                             interior_o)
         self.setup_or_update_solver(config, hf_row, interior_o, dt, dirs)
-        interior_o.aragog_solver.initialize()
         self.aragog_solver = interior_o.aragog_solver
 
     @staticmethod
@@ -58,7 +58,6 @@ class AragogRunner():
                           hf_all: pd.DataFrame, interior_o: Interior_t) -> (
             float):
         if interior_o.ic == 1:
-            interior_o.aragog_solver = None
             return 0.0
         else:
             step_sf = 1.0  # dt scale factor
@@ -68,15 +67,20 @@ class AragogRunner():
     def setup_or_update_solver(config: Config, hf_row: dict,
                                interior_o: Interior_t, dt: float, dirs: dict):
         if interior_o.aragog_solver is None:
-            AragogRunner.setup_solver(config, hf_row, interior_o)
+            AragogRunner.setup_solver(config, hf_row, interior_o, dirs["output"])
             if config.params.resume:
                 AragogRunner.update_solver(dt, hf_row, interior_o,
                                    output_dir=dirs["output"])
+            interior_o.aragog_solver.initialize()
         else:
-            AragogRunner.update_solver(dt, hf_row, interior_o)
+            if interior_o.ic == 1:
+                AragogRunner.update_structure(config, hf_row, interior_o)
+            else:
+                AragogRunner.update_solver(dt, hf_row, interior_o)
+            interior_o.aragog_solver.reset()
 
     @staticmethod
-    def setup_solver(config:Config, hf_row:dict, interior_o:Interior_t):
+    def setup_solver(config:Config, hf_row:dict, interior_o:Interior_t, outdir:str):
 
         scalings = _ScalingsParameters(
             radius = R_earth, # scaling radius [m]
@@ -117,11 +121,20 @@ class AragogRunner():
             core_heat_capacity = 880,
             )
 
+        # Define the inner_radius for the mesh
+        if config.struct.module == "self":
+            inner_radius = config.struct.corefrac * hf_row["R_int"] # core radius [m]
+        elif config.struct.module == "zalmoxis":
+            # Define the inner_radius based on the core radius from Zalmoxis
+            inner_radius = zalmoxis_solver(config, outdir, hf_row) # core radius [m]
+        else:
+            raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
+
         mesh = _MeshParameters(
             # planet radius [m]
             outer_radius = hf_row["R_int"],
             # core radius [m]
-            inner_radius = config.struct.corefrac * hf_row["R_int"],
+            inner_radius = inner_radius,
             # basic nodes
             number_of_nodes = config.interior.aragog.num_levels,
             mixing_length_profile = "constant",
@@ -132,6 +145,11 @@ class AragogRunner():
             # AW-EOS parameter [Pa]
             adiabatic_bulk_modulus = config.interior.bulk_modulus,
             )
+
+        # Update the mesh if the module is 'zalmoxis'
+        if config.struct.module == 'zalmoxis':
+            mesh.eos_method = 2  # User-defined EOS based on Zalmoxis
+            mesh.eos_file = os.path.join(outdir, "data", "zalmoxis_output.dat") # Zalmoxis output file with mantle parameters
 
         energy = _EnergyParameters(
             conduction = config.interior.aragog.conduction,
@@ -151,6 +169,8 @@ class AragogRunner():
             initial_condition = 3,
             # initial top temperature (K)
             surface_temperature = config.interior.aragog.ini_tmagma,
+            # initial bottom temperature (K)
+            basal_temperature = 4000,
             )
 
         # Get look up data directory, will be configurable in the future
@@ -273,6 +293,23 @@ class AragogRunner():
         interior_o.aragog_solver.parameters.energy.tidal_array = (
             interior_o.tides /
             interior_o.aragog_solver.parameters.scalings.power_per_mass)
+
+    @staticmethod
+    def update_structure(config: Config, hf_row:dict, interior_o:Interior_t):
+        """This update is needed during the inital phase of Proteus
+        (interior_o.ic == 1) as we sometimes run Aragog multiple times to solve
+        the structure which affects the interior mesh.
+        """
+        if config.struct.module == "self":
+            interior_o.aragog_solver.parameters.mesh.outer_radius = (
+                hf_row["R_int"]
+                / interior_o.aragog_solver.parameters.scalings.radius)
+            interior_o.aragog_solver.parameters.mesh.inner_radius = (
+                config.struct.corefrac * hf_row["R_int"]
+                / interior_o.aragog_solver.parameters.scalings.radius)
+            interior_o.aragog_solver.parameters.mesh.gravitational_acceleration = (
+                hf_row["gravity"]
+                / interior_o.aragog_solver.parameters.scalings.gravitational_acceleration)
 
     def run_solver(self, hf_row, interior_o, dirs):
         # Run Aragog solver

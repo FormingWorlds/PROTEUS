@@ -155,6 +155,7 @@ class Proteus:
             print_stoptime,
             print_system_configuration,
             remove_excess_files,
+            validate_module_versions,
         )
 
         #    lookup and reference data
@@ -162,7 +163,6 @@ class Proteus:
 
         # termination criteria
         from proteus.utils.terminate import check_termination, print_termination_criteria
-
 
         # First things
         start_time = datetime.now()
@@ -195,9 +195,11 @@ class Proteus:
         # Print module configuration
         print_module_configuration(self.directories, self.config, self.config_path)
 
+        # Ensure that submodules are on the correct versions
+        validate_module_versions(self.directories, self.config)
+
         # Print termination criteria
         print_termination_criteria(self.config)
-
         PrintHalfSeparator()
 
         # Count iterations
@@ -245,7 +247,7 @@ class Proteus:
             self.hf_row["T_eqm"] = 2000.0
 
             # Solve interior structure
-            solve_structure(self.directories, self.config, self.hf_all, self.hf_row)
+            solve_structure(self.directories, self.config, self.hf_all, self.hf_row, self.directories["output"])
 
             # Store partial pressures and list of included volatiles
             inc_gases = []

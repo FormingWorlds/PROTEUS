@@ -52,8 +52,10 @@ jobs:
       - name: Symlink gfortran
         if: runner.os == 'macOS'
         run: |
-          sudo ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
-          sudo ln -s /opt/homebrew/Cellar/gcc/12.*/lib/gcc/12/*.dylib /opt/homebrew/lib/
+          if [ ! -L /opt/homebrew/bin/gfortran ]; then
+            sudo ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
+          fi
+          sudo ln -s /opt/homebrew/Cellar/gcc/12.*/lib/gcc/12/*.dylib /opt/homebrew/lib/ || true
           which gfortran
 
       # Setup Julia

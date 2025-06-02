@@ -28,8 +28,18 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     module          = "dummy"
 
 [struct]
-    radius_int  = 1.0    # R_earth
-    corefrac    = 0.55   # non-dim., radius fraction
+    mass_tot    = 1.0                # M_earth
+    corefrac    = 0.55             # non-dim., radius fraction
+
+    module = "zalmoxis"
+
+    [struct.zalmoxis]
+        coremassfrac = 0.325                   # non-dim., core mass fraction
+        inner_mantle_mass_fraction = 0         # non-dim., inner mantle mass fraction
+        weight_iron_frac = 0.325               # non-dim., iron fraction in the planet
+        num_levels = 100                       # number of Zalmoxis radius layers
+        EOSchoice = "Tabulated:iron/silicate"  # iron/silicate for super-Earths, water for water planets with Earth-like rocky cores
+
 
 [atmos_clim]
     module  = "janus"           # Which atmosphere module to use
@@ -43,6 +53,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 
 [interior]
     module = "spider"
+
     [interior.spider]
         ini_entropy      = 2700.0  # Surface entropy conditions [J K-1 kg-1]
 
