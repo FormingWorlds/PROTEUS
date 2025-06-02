@@ -13,9 +13,11 @@ import shutil
 import subprocess
 import sys
 import time
+import csv
 from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
+import argparse
 
 import numpy as np
 
@@ -79,7 +81,7 @@ class Grid():
 
     CONFIG_BASENAME = "case_%05d.toml"
 
-    def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
+    def __init__(self, name:str, base_config_path:str, custome_grid_flat:list, symlink_dir:str="_UNSET"):
 
         # Grid's own name (for versioning, etc.)
         self.name = str(name).strip()
@@ -151,6 +153,13 @@ class Grid():
         # Flattened Grid
         self.flat = []   # List of grid points, each is a dictionary
         self.size = 0    # Total size of grid
+        
+        print(use_custom_grid)
+        if use_custom_grid:
+            
+            self.flat = custom_grid_flat
+            
+            self.size = len(custom_grid_flat)
 
     # Add a new empty dimension to the Grid
     def add_dimension(self,name:str,var:str):
@@ -287,6 +296,7 @@ class Grid():
                     raise Exception("Requested key is too deep for configuration tree")
 
             # Write this configuration file
+            #print("Writing config")
             thisconf.write(self._get_tmpcfg(i))
             os.sync()
 
@@ -337,7 +347,14 @@ class Grid():
                 command = ['/bin/echo','Dummy output. Config file is at "' + cfg_path + '"']
             else:
                 command = ["proteus","start","--offline","--config",cfg_path]
-            subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+            result = subprocess.run(command, shell=False, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                log.error(f"Command failed for {cfg_path}")
+                log.error(f"stdout: {result.stdout}")
+                log.error(f"stderr: {result.stderr}")
+
             time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
 
         # Setup threads
@@ -468,7 +485,6 @@ class Grid():
         """
 
         max_days = int(max_days) # ensure integer
-        max_jobs = min(max_jobs, self.size) # do not request more jobs than we need
 
         log.info("Generating PROTEUS slurm config for parameter grid '%s'" % self.name)
         log.info("Will run for up to %d days per job" % max_days)
@@ -529,60 +545,58 @@ done
 
 if __name__=='__main__':
     print("Start GridPROTEUS")
-
-    # Output folder name, created inside `PROTEUS/output/`
-    folder = "scratch/l98d_habrok5"
+    
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument("usegrid", type=bool)
+    parser.add_argument("gridname", type=str)
+    parser.add_argument("foldername", type=str)
+    parser.add_argument("threads", type=int)
+    parser.add_argument("hbudget", type=int)
+    args = parser.parse_args()
+    
+    config = "planets/fiducial_sub_Neptune.toml"
+    folder = args.foldername
+    
+    use_custom_grid = False
+    
+    custom_grid_name = args.gridname
+    
+    with open(custom_grid_name, "r") as f:
+        reader = csv.DictReader(f)
+        custom_grid_flat = [
+            {
+                "star.dummy.Teff": float(row["star.dummy.Teff"]), 
+                "orbit.semimajoraxis": float(row["orbit.semimajoraxis"]),
+                "delivery.elements.H_ppmw": args.hbudget
+            }
+            for row in reader
+        ]
 
     # Use SLURM?
     use_slurm = False
 
     # Execution limits
-    max_jobs = 300      # maximum number of concurrent tasks
-    max_days = 1         # maximum number of days to run
-    max_mem  = 3         # maximum memory per CPU in GB
-
-    # Base config file
-    config = "planets/l9859d.toml"
+    max_jobs = args.threads # maximum number of concurrent tasks
+    max_days = 1            # maximum number of days to run
+    max_mem  = 3            # maximum memory per CPU in GB
+    
     cfg_base = os.path.join(PROTEUS_DIR,"input",config)
-
-    # Set this string to have the output files created at an alternative location. The
-    #   output 'folder' in `PROTEUS/output/` will then by symbolically linked to this
-    #   alternative location. Useful for when data should be saved on a storage server.
-    # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
     symlink = None
+    pg = Grid(folder, cfg_base, custom_grid_flat, symlink_dir=symlink)
 
-    # Initialise grid object
-    pg = Grid(folder, cfg_base, symlink_dir=symlink)
-
-    pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    pg.set_dimension_direct("Sulfur", [2, 4, 6, 8, 10])
-
-    # pg.add_dimension("Eccentricity", "orbit.eccentricity")
-    # pg.set_dimension_linspace("Eccentricity", 0.0, 0.15, 25)
-
-    # pg.add_dimension("Core fraction", "struct.corefrac")
-    # pg.set_dimension_linspace("Core fraction", 0.35, 0.95, 25)
-
-    # pg.add_dimension("Efficiency", "escape.zephyrus.efficiency")
-    # pg.set_dimension_linspace("Efficiency", 1e-5, 0.5, 26)
-
-    # pg.add_dimension("Bands", "atmos_clim.agni.spectral_bands")
-    # pg.set_dimension_direct("Bands", ["16", "48", "256"])
-
-
-    pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_arange("Hydrogen", 8000, 30000, 2000)
-
-    pg.add_dimension("Efficiency", "escape.zephyrus.efficiency")
-    pg.set_dimension_arange("Efficiency", 0.0, 0.25, 0.025)
-
-    pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_direct("Redox state", [-3,-2])
-
-
-    # Print information
     pg.print_setup()
-    pg.generate()
+    
+    if not use_custom_grid: 
+        
+        pg.add_dimension("hbudget", "delivery.elements.H_ppmw")
+        pg.set_dimension_direct("hbudget", [100,1000,10000])
+        
+        pg.add_dimension("fo2", "outgas.fO2_shift_IW")
+        pg.set_dimension_direct("fo2", np.linspace(-5,5,11))
+        
+        pg.generate()
+        
     pg.print_grid()
 
     # Run the grid

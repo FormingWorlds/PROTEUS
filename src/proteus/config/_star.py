@@ -69,11 +69,14 @@ class StarDummy:
     ----------
     radius: float
         Observed radius [R_sun].
+    calculat_radius: bool
+    	Whether or not to calculate the radius based off of empirical mass-luminosity and mass-radius relation
     Teff: float
         Observed effective temperature [K].
     """
-    radius = field(default=None)
-    Teff   = field(default=None)
+    Teff: float = field(default=5780,validator=gt(0))
+    radius: float = field(default=1.0,validator=gt(0))
+    calculate_radius: bool = field(default=False)
 
 @define
 class Star:

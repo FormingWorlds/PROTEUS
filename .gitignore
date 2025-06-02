@@ -72,6 +72,8 @@ Zalmoxis
 __pycache__
 !output/.gitkeep
 nogit_*
+tools/*.csv
+tools/grid_proteus_SNS*
 
 # From Read the Docs
 ####################
