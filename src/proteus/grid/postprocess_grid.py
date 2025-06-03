@@ -12,6 +12,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 
 ##### Functions for extracting grid data #####
 
@@ -284,50 +285,6 @@ def extract_solidification_time(cases_data: list, phi_crit: float = 0.005):
     print('-----------------------------------------------------------')
 
     return solidification_times
-
-def extract_CHNOS_totals(cases_data: List[dict]) -> List[pd.Series]:
-    """
-    For each case in `cases_data`, compute the row-wise total of H, C, N, O, S.
-
-    Parameters
-    ----------
-    cases_data : List[dict]
-        Each dict must have an 'output_values' key holding a pandas DataFrame.
-
-    Returns
-    -------
-    totals_list : List[pd.Series]
-        One Series per case, indexed as in the original DataFrame, containing
-        the sum H+C+N+O+S at each row. Cases missing any required column are skipped.
-    """
-    # Columns to sum
-    _cols = ['H_kg_total', 'C_kg_total', 'N_kg_total', 'O_kg_total', 'S_kg_total']
-
-    totals_list: List[pd.Series] = []
-    warned = False
-
-    for case in cases_data:
-        df = case.get('output_values')
-        name = case.get('init_parameters', {}).get('name', '<unnamed>')
-        if df is None:
-            continue
-
-        missing = [c for c in _cols if c not in df.columns]
-        if missing:
-            if not warned:
-                print(f"Warning: missing columns {missing!r} in case '{name}'. "
-                      f"Available: {df.columns.tolist()!r}")
-                warned = True
-            continue
-
-        # Compute row-wise sum of the five elements
-        total = df[_cols].sum(axis=1)
-        total.name = f"{name}_CHNOS_total"
-        totals_list.append(total)
-    
-    print(f"Extracted CHNOS totals for {len(totals_list)} cases.")
-    print('-----------------------------------------------------------')
-    return totals_list
 
 def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dict, case_params: Dict[int, Dict[str, Any]],
                           extracted_value: dict, output_to_extract: list, output_dir: Path, phi_crit: float = 0.005):
@@ -904,3 +861,4 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
     plt.close(fig)
 
     print(f"Grid ECDF plot saved at {out_path}")
+
