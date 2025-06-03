@@ -226,6 +226,30 @@ def observe(config_path: Path):
 cli.add_command(offchem)
 cli.add_command(observe)
 
+# ----------------
+# 'grid_analyze' postprocessing commands
+# ----------------
+
+@click.command()
+@click.argument("grid_path", type=str, default=None, required=True)
+@click.argument("grid_name", type=str, default=None, required=True)
+@click.option("--update-csv", is_flag=True, help="Update the CSV file containing extracted data.") # If the user wants to update the CSV file, he needs to specify it in the commad line with this flag. Otherwise, set to Flase by default. 
+
+def grid_analyze(grid_path: str, grid_name: str, update_csv: bool):
+    """Run grid analysis on PROTEUS grid output files 
+
+    GRID_PATH : Path to the output directory containing the PROTEUS grid files. (Do not include the grid name here)
+
+    GRID_NAME : Name of the grid to analyze.
+
+    Example of usage : 
+    
+    proteus grid_analyze /path/to/grid/ grid_name --update-csv
+    """
+    from proteus.grid.post_processing_grid import run_grid_analyze
+    run_grid_analyze(path_to_grid=grid_path, grid_name=grid_name, update_csv=update_csv)
+
+cli.add_command(grid_analyze)
 
 if __name__ == '__main__':
     cli()
