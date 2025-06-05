@@ -19,6 +19,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True, help="Path to TOML config file")
     args = parser.parse_args()
+
     with open(args.config, "rb") as file:
             config = tomllib.load(file)
     config = dict(config)
@@ -32,12 +33,6 @@ if __name__ == '__main__':
     # save
     checkpoint(D_final, logs, Ts, config["directory"])
 
-    # make builder for actual objective
-    # needs to take in the observables via some mapping from names to values
-    # make config take this in
-    # build worker id and iter logic into worker()
-    # build input scaling, make config take these bounds in
-    # look into how BO can be sped up
 
 
 
