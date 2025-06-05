@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
+import math
 
 ##### Functions for extracting grid data #####
 
@@ -104,8 +105,6 @@ def load_grid_cases(grid_dir: Path):
 
     return combined_data
 
-    return combined_data
-
 def get_grid_parameters(grid_dir: str):
     """
     Extract grid parameter names and values from the 'manager.log' file.
@@ -193,9 +192,11 @@ def extract_grid_output(cases_data: list, parameter_name: str):
     parameter_values = []
     columns_printed = False  # Flag to print columns only once
 
-    for case in cases_data:
+    for case_index, case in enumerate(cases_data):
         df = case['output_values']
         if df is None:
+            print(f"Warning: No output values found for case number '{case_index}'")
+            parameter_values.append(np.nan)  # Append NaN if no output values
             continue  # Skip cases with no output
         if parameter_name in df.columns:
             parameter_value = df[parameter_name].iloc[-1]
@@ -327,6 +328,15 @@ def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dic
     # CSV file path
     csv_file = output_dir / f"{grid_name}_extracted_data.csv"
 
+    # (3) Pad each extracted‐output list to length = number of cases
+    num_cases = len(cases_data)
+    for param, val_list in extracted_value.items():
+        print(f"→ param {param!r} has {len(val_list)} entries (should be {len(cases_data)})")
+        missing = num_cases - len(val_list)
+        if missing > 0:
+            # Append 'NA' for each missing case index
+            val_list.extend(['NA'] * missing)
+
     with open(csv_file, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
 
@@ -362,15 +372,90 @@ def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dic
             case_param_values = case_params.get(case_index, {})
             for param in grid_parameters.keys():
                 row.append(case_param_values.get(param, 'NA'))
-            # Add extracted output values for each case
+            # Add extracted‐output values (now every list is length=num_cases)
             for param in extracted_value.keys():
-                value_list = extracted_value.get(param, [])
-                row.append(value_list[case_index] if case_index < len(value_list) else 'NA')
+                value_list = extracted_value[param]
+                row.append(value_list[case_index])
+
             # Write the row to the CSV file
             writer.writerow(row)
 
     print(f"Extracted data has been successfully saved to {csv_file}.")
     print('-----------------------------------------------------------')
+
+def save_error_running_cases(grid_name: str, cases_data: List[Dict[str, Any]], grid_parameters: Dict[str, List[Any]], case_params: Dict[int, Dict[str, Any]],
+    extracted_value: Dict[str, List[Any]], output_to_extract: List[str], output_dir: Path,) -> None:
+    """
+    Scan through `cases_data` and pick out any case whose status is exactly 'error' or 'running',
+    then write those rows (with identical columns) to a separate CSV named
+    '{grid_name}_error_running_cases.csv'.ß
+    """
+    # 1) Find indices with status == 'error' or 'running'
+    error_running_indices = set()
+    for idx, case_data in enumerate(cases_data):
+        status = case_data.get("status", "").lower()
+        if status in ("error", "running"):
+            error_running_indices.add(idx)
+
+    # 2) Find indices with any missing ("NA" or None) in extracted outputs
+    na_indices = set()
+    for param, vals in extracted_value.items():
+        for idx, val in enumerate(vals):
+            # 2) Convert everything to a trimmed uppercase string
+            s = str(val).strip().upper()
+            if s == "" or s == "NA" or s == "None":
+                na_indices.add(idx)
+
+    # 3) Merge both sets of indices
+    bad_indices = sorted(error_running_indices.union(na_indices))
+    if not bad_indices:
+        print("→ No 'error'/'running' or missing-outputs cases found; skipping error/running CSV.")
+        return
+
+    # 4) Path for the new CSV
+    err_csv = output_dir + f"{grid_name}_error_running_cases.csv"
+
+    with open(err_csv, mode="w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+
+        # --- Header block (same style as master CSV) ---
+        writer.writerow(["##########################################"
+                         "#############################################"])
+        writer.writerow([f"Grid name:                               {grid_name}"])
+        writer.writerow([f"Total number of selected cases:          {len(bad_indices)}"])
+        writer.writerow([f"Including statuses: Error or Running     {len(error_running_indices)}"])
+        writer.writerow([f"Including missing-outputs (NA or None)   {len(na_indices)}"]) 
+        writer.writerow(["----------------------------------------------------------"])
+        # Column names row
+        writer.writerow(
+            ["Case number", "Status"]
+            + list(grid_parameters.keys())
+            + list(extracted_value.keys())
+        )
+        writer.writerow(["##########################################"
+                         "#############################################"])
+        writer.writerow([])
+
+        # --- Data rows: only indices in bad_indices ---
+        for case_index in bad_indices:
+            status = cases_data[case_index].get("status", "Unknown") or "Unknown"
+            row = [case_index, f"'{status}'"]
+
+            # Add grid-parameter values for this case
+            for param in grid_parameters.keys():
+                row.append(case_params.get(case_index, {}).get(param, "NA"))
+
+            # Add extracted-output values (which may be "NA" or None)
+            for param in extracted_value.keys():
+                vals = extracted_value[param]
+                if case_index < len(vals):
+                    row.append(vals[case_index])
+                else:
+                    row.append("NA")
+
+            writer.writerow(row)
+
+    print(f"→ Error/Running (and missing-output) CSV saved to: {err_csv}")
 
 ##### Functions for plotting grid data results #####
 
@@ -902,7 +987,7 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
     output_to_extract = ['esc_rate_total','Phi_global','P_surf','T_surf','M_planet','atm_kg_per_mol',
                         'H_kg_atm','O_kg_atm','C_kg_atm','N_kg_atm','S_kg_atm', 'Si_kg_atm', 'Mg_kg_atm', 'Fe_kg_atm', 'Na_kg_atm',
                         'H2O_kg_atm','CO2_kg_atm', 'O2_kg_atm', 'H2_kg_atm', 'CH4_kg_atm', 'CO_kg_atm', 'N2_kg_atm', 'NH3_kg_atm',     
-                        'S2_kg_atm', 'SO2_kg_atm', 'H2S_kg_atm', 'SiO_kg_atm','SiO2_kg_atm', 'MgO_kg_atm', 'FeO2_kg_atm']     
+                        'S2_kg_atm', 'SO2_kg_atm', 'H2S_kg_atm', 'SiO_kg_atm','SiO2_kg_atm', 'MgO_kg_atm', 'FeO2_kg_atm', 'runtime']     
     
     # ------------------------------------------------------------
     #  STEP 1: CSV extraction (only if update_csv=True or CSV missing)
@@ -929,11 +1014,20 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
                         extracted_value, solidification_times, data_dir)                  # Save all the extracted data to a CSV file
         print(f'--> CSV file written to: {csv_file}')
 
+        save_error_running_cases(
+            grid_name=grid_name,
+            cases_data=cases_data,
+            grid_parameters=grid_parameters,
+            case_params=case_init_param,
+            extracted_value=extracted_value,
+            output_to_extract=output_to_extract,
+            output_dir=data_dir)
     else:
         print('-----------------------------------------------------------')
         print(f'Step 1 : Skipped (CSV already exists at {csv_file})')
         print('-----------------------------------------------------------')
     
+
     # ---------------------------------------------
     #  STEP 2: Load data from CSV and make plots
     # ---------------------------------------------

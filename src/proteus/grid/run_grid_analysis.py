@@ -5,7 +5,7 @@
 
 # The users need to specify the path to the grid directory and the grid name. (see the example below)
 # He also needs to specify the output columns to extract from the 'runtime_helpfile.csv' of each case and 
-# update the related plotting variables accordingly. This can be done in the `run_grid_postprocessing` function. (see src/proteus/grid/postprocess_grid.py)
+# update the related plotting variables accordingly. This can be done in the `run_grid_analyze` function. (see src/proteus/grid/postprocess_grid.py)
 
 from post_processing_grid import run_grid_analyze
 
