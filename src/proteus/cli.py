@@ -233,7 +233,7 @@ cli.add_command(observe)
 @click.command()
 @click.argument("grid_path", type=str, default=None, required=True)
 @click.argument("grid_name", type=str, default=None, required=True)
-@click.option("--update-csv", is_flag=True, help="Update the CSV file containing extracted data.") # If the user wants to update the CSV file, he needs to specify it in the commad line with this flag. Otherwise, set to Flase by default. 
+@click.option("--update-csv", is_flag=True, help="Update the CSV file containing extracted data.") # If the user wants to update the CSV file, he needs to specify it in the command line with this flag. Otherwise, set to False by default. 
 
 def grid_analyze(grid_path: str, grid_name: str, update_csv: bool):
     """Run grid analysis on PROTEUS grid output files 
