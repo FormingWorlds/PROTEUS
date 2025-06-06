@@ -151,7 +151,7 @@ PROTEUS will perform this step automatically if enabled in the configuration fil
 
 ## Postprocessing of PROTEUS simulation grids 
 
-Results from a PROTEUS grid can be post-processed using the `proteus grid_analyze` command. 
+Results from a PROTEUS grid can be post-processed using the `proteus grid-analyze` command. 
 
 This will generate a CSV file with extracted data (`your_grid_name_extracted_data.csv`) from the grid results and ECDF plots 
 (see [seaborn.ecdfplot doc](https://seaborn.pydata.org/generated/seaborn.ecdfplot.html)). 
@@ -196,12 +196,12 @@ To get more information about this command, run :
 proteus grid-analyze --help
 ```
 
-*Note to the user : update `output_to_extract` for your grid*
+*Note to the user : update `output_to_extract` and other plotting parameters for your grid*
 
 1. The user can choose the output to extract for each simulations at the last time-step (from the `runtime_helpfile.csv` file of each cases) like 'esc_rate_total','Phi_global','P_surf','T_surf','M_planet'... 
-To do so, the user should go to `PROTEUS/src/proteus/grid/post_processing_grid.py` and modify the variable `output_to_extract` within the `run_grid_analyze` function. 
+To do so, the user should go to `PROTEUS/src/proteus/grid/run_grid_analysis.py` and modify the variable `output_to_extract` within the `run_grid_analyze` function. 
 
-2. In the Step 2 of the same function, the user should also modify accordingly the `param_settings_single` and `output_settings_single` object for generating single plots (same for the grid plot). For this, the user should add the input parameters and output extracted from your grid if this is not already present in the script and comment the one useless for your grid. 
+2. In the Step 2 of the same function, the user should also modify accordingly the `param_settings_single` and `output_settings_single` object for generating single plots (same for the grid plot with `param_settings_grid` and `output_settings_grid`). For this, the user should add the input parameters and output extracted from the grid, if this is not already present in the script and comment the one useless for the grid. 
 
 ## Archiving output files
 
