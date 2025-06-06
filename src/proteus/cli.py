@@ -246,7 +246,7 @@ def grid_analyze(grid_path: str, grid_name: str, update_csv: bool):
     
     proteus grid_analyze /path/to/grid/ grid_name --update-csv
     """
-    from proteus.grid.post_processing_grid import run_grid_analyze
+    from proteus.grid.run_grid_analysis import run_grid_analyze
     run_grid_analyze(path_to_grid=grid_path, grid_name=grid_name, update_csv=update_csv)
 
 cli.add_command(grid_analyze)
