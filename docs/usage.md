@@ -201,7 +201,7 @@ proteus grid-analyze --help
 1. The user can choose the output to extract for each simulations at the last time-step (from the `runtime_helpfile.csv` file of each cases) like 'esc_rate_total','Phi_global','P_surf','T_surf','M_planet'... 
 To do so, the user should go to `PROTEUS/src/proteus/grid/post_processing_grid.py` and modify the variable `output_to_extract` within the `run_grid_analyze` function. 
 
-2. In the Step 2 of the same function, the user should also modify accordingly the `param_settings_single` and `output_settings_single` object for generating single plots (same for the grid plot). For this, the user should add the input parameters and output extracted from your grid if this is not already present in the scripe and comment the one useless for your grid. 
+2. In the Step 2 of the same function, the user should also modify accordingly the `param_settings_single` and `output_settings_single` object for generating single plots (same for the grid plot). For this, the user should add the input parameters and output extracted from your grid if this is not already present in the script and comment the one useless for your grid. 
 
 ## Archiving output files
 
