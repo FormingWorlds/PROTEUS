@@ -153,7 +153,7 @@ PROTEUS will perform this step automatically if enabled in the configuration fil
 
 Results from a PROTEUS grid can be post-processed using the `proteus grid_analyze` command. 
 
-This will generate a CSV file with extrated data (`your_grid_name_extracted_data.csv`) from the grid results and ECDF plots 
+This will generate a CSV file with extracted data (`your_grid_name_extracted_data.csv`) from the grid results and ECDF plots 
 (see [seaborn.ecdfplot doc](https://seaborn.pydata.org/generated/seaborn.ecdfplot.html)). 
 Here is the structure of the generated `post_processing_grid` folder inside the grid directory :
 
