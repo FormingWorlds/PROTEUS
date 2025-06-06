@@ -253,3 +253,4 @@ cli.add_command(grid_analyze)
 
 if __name__ == '__main__':
     cli()
+    

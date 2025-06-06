@@ -159,8 +159,4 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
     print('-----------------------------------------------------------')
     print('If you want to change the parameters to post-process the grid, please edit the code in PROTEUS/src/proteus/grid/post_processing_grid.py')
     print('-----------------------------------------------------------')
-
-if __name__ == "__main__":
-    run_grid_analyze(path_to_grid="/home2/p315557/PROTEUS/output/scratch/",
-                            grid_name="escape_grid_habrok_7_params_1Msun",
-                            update_csv=True)
+    
