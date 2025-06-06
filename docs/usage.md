@@ -160,8 +160,8 @@ Here is the structure of the generated `post_processing_grid` folder inside the 
 ```console
 your_grid_name/
  ├─case_00000                               <---- case of your grid (for the structure refer to the tree from the [## Output and results] section)
- ├─case_00001         
- ├─...                  
+ ├─case_00001  
+ ├─...  
  ├─cfgs                                     <---- folder with all the `input.toml` files for all cases
  ├─logs                                     <---- folder with all the `proteus_case_number.log` files for all cases
  ├─manager.log                              <---- the log file of the grid
@@ -177,7 +177,7 @@ your_grid_name/
  │     └─...
 ```
 
- 
+
  To post-processed the grid and generate ECDF plots for further analysis, use the proteus command line interface:
 
 ```console

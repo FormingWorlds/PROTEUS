@@ -81,7 +81,7 @@ def load_grid_cases(grid_dir: Path):
         else:
             print(f"WARNING : Missing status file in {case.name}")
 
-        # THIS IS ONLY FOR MY CURRENT GRID ON HABROK 
+        # THIS IS ONLY FOR MY CURRENT GRID ON HABROK
         # if status in ('Unknown', 'Empty'):
         #     status = 'Disk quota exceeded'
 
@@ -912,7 +912,7 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
 
             # Configure y-axis (shared label added later)
             if j == 0:
-                ax.set_ylabel("") 
+                ax.set_ylabel("")
                 ticks = [0.0, 0.5, 1.0]
                 ax.set_yticks(ticks)
                 ax.tick_params(axis='y', labelsize=22)
@@ -920,7 +920,7 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
                 ax.set_ylabel("")
                 ax.set_yticks(ticks)
                 ax.tick_params(axis='y', labelleft=False)
-            
+
             ax.grid(alpha=0.4)
 
         # After plotting all outputs for this parameter (row), add colorbar or legend
@@ -950,4 +950,3 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
     plt.close(fig)
 
     print(f"Grid ECDF plot saved at {out_path}")
-    
