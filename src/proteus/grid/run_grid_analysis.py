@@ -6,8 +6,10 @@
 # The users need to specify the path to the grid directory and the grid name. (see the example below)
 # He also needs to specify the output columns to extract from the 'runtime_helpfile.csv' of each case and
 # update the related plotting variables accordingly. This can be done in the `run_grid_analyze` function (see below).
+from __future__ import annotations
 
 from proteus.grid.post_processing_grid import *
+
 
 def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True):
     """

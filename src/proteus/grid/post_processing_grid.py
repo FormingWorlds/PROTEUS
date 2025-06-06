@@ -1,19 +1,20 @@
-import toml
-import re
+from __future__ import annotations
+
 import ast
 import csv
-from typing import Tuple, Dict, List, Any
-from pathlib import Path
 import os
-import pandas as pd
-import numpy as np
+import re
 from io import StringIO
-import seaborn as sns
-import matplotlib.pyplot as plt
+from pathlib import Path
+from typing import Any, Dict, List
+
 import matplotlib as mpl
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
-import math
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import toml
+
 
 ##### Functions for extracting grid data #####
 
@@ -708,7 +709,7 @@ def plot_grid_status(cases_data, plot_dir: Path, grid_name: str, status_colors: 
     plt.savefig(output_path, dpi=300)
     plt.close()
 
-    print(f"Summary plot of grid statuses is available")
+    print("Summary plot of grid statuses is available")
 
 def ecdf_single_plots(grid_params: dict, grouped_data: dict, param_settings: dict, output_settings: dict, plots_path: str):
     """
