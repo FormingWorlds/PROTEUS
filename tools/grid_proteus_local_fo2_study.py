@@ -350,10 +350,10 @@ class Grid():
                 
             result = subprocess.run(command, shell=False, capture_output=True, text=True)
             
-            if result.returncode != 0:
-                log.error(f"Command failed for {cfg_path}")
-                log.error(f"stdout: {result.stdout}")
-                log.error(f"stderr: {result.stderr}")
+            # if result.returncode != 0:
+            #     log.error(f"Command failed for {cfg_path}")
+            #     log.error(f"stdout: {result.stdout}")
+            #     log.error(f"stderr: {result.stderr}")
 
             time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
 

@@ -111,7 +111,6 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     log.info("M_tot: %.1e kg = %.3f M_earth"%(hf_row["M_tot"], hf_row["M_tot"]/M_earth))
     log.info("R_int: %.1e m  = %.3f R_earth"%(hf_row["R_int"], hf_row["R_int"]/R_earth))
     log.info(" ")
-<<<<<<< HEAD
     
 def solve_structure_from_file(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     '''
@@ -137,9 +136,6 @@ def solve_structure_from_file(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     update_gravity(hf_row)
     
     log.info(f'Read data from {config.struct.eos_filepath}: M_int={hf_row["M_int"]/M_earth} and R_int={hf_row["R_int"]/R_earth}\n')
-    
-def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
-=======
 
 def determine_interior_radius_with_zalmoxis(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, outdir:str):
     '''
@@ -152,7 +148,6 @@ def determine_interior_radius_with_zalmoxis(dirs:dict, config:Config, hf_all:pd.
     run_interior(dirs, config, hf_all, hf_row, int_o)
 
 def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, outdir:str):
->>>>>>> origin/main
     '''
     Solve for the planet structure based on the method set in the configuration file.
 
