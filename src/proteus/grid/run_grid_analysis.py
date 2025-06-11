@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from proteus.grid.post_processing_grid import *
-
+import matplotlib.cm as cm
 
 def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True):
     """
