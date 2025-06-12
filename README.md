@@ -25,9 +25,13 @@
 
 
 <!-- markdownlint-disable MD033 -->
-<object data="assets/schematic.svg" type="image/svg+xml" style="max-width: 100%; height: auto;">
-  If you see this text, the PROTEUS schematic image did not render on the website!
-</object>
+<p align="center">
+      <object data="assets/schematic.svg" type="image/svg+xml" style="max-width: 100%; height: auto;">
+      If you see this text, the PROTEUS schematic image did not render on the website! </br>
+      </object>
+      <b>Schematic of PROTEUS components and corresponding modules</b> </br>
+      Ctrl- or cmd-click on the modules to open their doc pages in a new tab
+</p>
 <!-- markdownlint-enable MD033 -->
 
 
