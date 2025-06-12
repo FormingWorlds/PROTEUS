@@ -26,7 +26,7 @@
 
 <!-- markdownlint-disable MD033 -->
 <p align="center">
-      <object data="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/schematic.svg" type="image/svg+xml" style="max-width: 95%; height: auto;">
+      <object data="https://fwl-proteus--429.org.readthedocs.build/en/429/assets/schematic.svg" type="image/svg+xml" style="max-width: 95%; height: auto;">
             <img src="assets/schematic.svg" style="max-width: 95%; height: auto;">
       </object>
       <b>Schematic of PROTEUS components and corresponding modules</b> </br>
