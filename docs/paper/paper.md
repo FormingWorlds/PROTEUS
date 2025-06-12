@@ -1,5 +1,5 @@
 ---
-title: 'The PROTEUS Framework for Planetary Evolution'
+title: 'The PROTEUS framework for planetary evolution'
 tags:
   - astronomy
   - exoplanets
@@ -61,21 +61,27 @@ bibliography: paper.bib
 
 # Summary
 
-Novel astronomical instrumentation such as the James Webb Space Telescope (JWST) enable the spectral characterization of low-mass extrasolar planets, so-called super-Earths and sub-Neptunes. Many of these planets orbit close to their star under high irradiation and on eccentric orbits. These conditions create thermodynamic environments that are potentially similar to the climatic and geodnamic regime of the primitive Earth right after its formation, enabling direct observational access to highly molten phases of planetary evolution, so-called magma ocean epochs. Characterizing the thermodynamic and climatic properties of these worlds may yield critical insights to better understand the geologic and climatic conditions that enabled the origin of life on our own world.
+[PROTEUS](https://github.com/FormingWorlds/PROTEUS) is an adaptive and modular numerical framework designed to address the interdisciplinary challenge of understanding the long-term coupled evolution of the atmospheres and interiors of rocky planets and exoplanets. It iteratively couples the numerical solution of several physical and chemical modules, each of which are designed to accurately describe a specific component of the planet and its environment, for example atmospheric radiative transfer, stellar evolution, volatile outgassing, or mantle convection. Through this method PROTEUS enables to resolve time-sensitive hysteresis processes on a global, planetary scale that are not accessible through steady-state approaches. Its modularity allows robust physical and numerical tests against known analytical solutions and empirical evidence of individual sub-processes. The prime use case of PROTEUS is the simulation of the geophysical evolution and outgassing and escaping atmospheres of lava worlds and temperate rocky exoplanets [@lichtenberg21a; @nicholls24a, @nicholls25a]. Through its modular implementation, PROTEUS offers multiple avenues to extend its functionality in the future, for example toward more volatile-rich planets, solid-state geodynamics, prebiotic and biotic evolution, and statistical inference methods. The documentation can be read online [here](https://fwl-proteus.readthedocs.io/en/latest/).
 
-The atmospheric, surficial, and geologic conditions during magma ocean epochs arise from feedback between multiple coupled and non-linear processes, including mantle melting, geochemical composition, outgassing, greenhouse forcing, condensation, and atmospheric escape, which makes it difficult to robustly identify long-term evolutionary trends that can be compared against astronomical observations. PROTEUS[^1] is an adaptive and modular numerical framework designed to solve this challenge of the long-term coupled evolution of the atmospheres and interiors of rocky  planets and exoplanets. It couples the iterative solution of several physical and chemical modules, each specifically designed to model a specific component or phenomenon of the integrated planetary system. Through this method it enables robust physical and numerical tests against known solutions of individual sub-processes, and thus enables advanced simulation of the geophysical evolution and outgassing and escaping atmospheres of lava worlds and temperate rocky exoplanets [@lichtenberg21a; @nicholls24a, @nicholls25a].
+# Background
 
-PROTEUS is typically used as an executable program, where it reads TOML configuration files from the disk and outputs data files and figures to a specified directory. The documentation can be read online [here](https://fwl-proteus.readthedocs.io/en/latest/).
+Ground-breaking astronomical instrumentation such as the James Webb Space Telescope (JWST) now enable the spectral characterization of low-mass extrasolar planets, so-called super-Earths and sub-Neptunes. Many of these planets orbit close to their star under high irradiation and on eccentric orbits. These conditions create thermodynamic environments that are potentially similar to the climatic and geodnamic regime of the primitive Earth right after its formation, enabling direct observational access to highly molten phases of planetary evolution, so-called magma ocean epochs (Wordworth & Kreidberg 2022). Characterizing the thermodynamic and climatic properties of these worlds may yield critical insights to better understand the geologic and climatic conditions that enabled the origin of life on our own world (Lichtenberg & Miguel 2025).
 
-[^1]: The PROTEUS framework can be found on GitHub [here](https://github.com/FormingWorlds/PROTEUS).
+More here
 
 # Statement of need
 
-Scientific context. Scientifc objectives. State of the art.
+The atmospheric, surficial, and geologic conditions during such magma ocean epochs arise from feedback between multiple coupled and non-linear processes (Elkins-Tanton 2012), including mantle melting, geochemical evolution, outgassing, greenhouse forcing, condensation, and atmospheric escape (Lichtenberg et al. 2023). The interconnectedness of planetary mantle and atmosphere can create interconnected feedback loops that lead to hysteresis of the planetary climate and interior on billion-year timescales.
+
+For example, this is illustrated by the discussion surrounding the 'runaway greenhouse' climate state for Earth and Venus, and for extrasolar planets. If rocky planets are modelled in a steady-state with a pre-exisiting water ocean and freely chosen atmospheric compositions (Way, Yang, Selsis, Madhusudhan), it is found that such planets can retain their water inventory and remain 'habitable' on geologic timescales. However, if modelled as starting in a hot magma ocean state, as predicted by planetary formation scenarios and supported by empirical evidence from the Solar System, these solutions are not recovered (Kite, Lichtenberg, Nicholls, Boer, Shorttle); instead long-lived magma oceans are found to be defining features of planetary evolution, in particular under the extreme stellar irradiation of the currently known exoplanet population.
+
+One key reason for this model divergence is the emerging feedback loop between molten mantle and atmosphere: atmospheric volatiles, including H2O and N and S species, are highly soluble in magmatic fluids (Suer, Sossi, Schaefer), hence the rocky, molten mantle acts as a significant sink of atmospheric volatiles, which selectively draws volatiles out of the atmosphere into the mantle (Dorn & Lichtenberg). This changes the energy transfer through the atmosphere by affecting its pressure, opacity, and reflection propertis, in turn affecting the heat loss or gain of a planet through secular cooling or stellar irradiation (Nicholls). Time-sensitive effects, such as continuing accretion (Itcovitz), internal redox processes (Lichtenberg, Kite), photoevaporation (Cherubim, Wordsworth) induced by the host star, or mantle crystallisation (Maurice), will affect the global planetary equilibrium over time.
+
+Planets with similar atmospheric properties may thus have substantially different bulk volatile fractions if their interior (core and mantle) phase state is different, which presents a critical challenge for astronomical observations that aim to infer compositional and thermodynamic properties of exoplanets from telescopic data. On the other hand, evolutionary hysteresis processes may contribute to resolve observational degeneracies. For instance, the solubilities of N and S species are highly sensitive to the geochemical oxidation state of the planetary mantle (Suer, Shorttle), hence planets with different geochemistries may be distinguished by matchin astronomical observations with time-resolved solutions that connect geochemical with atmospheric considerations over geological timeframes. Providing these geophysical and climatic predictions and enable quantative comparison with empirical data is the primary purpose of PROTEUS.
 
 ![Caption for example figure.\label{fig:example}](figure.png)
 
-# Description of the platform
+# Software ecosystem
 
 | Module | Component | Description | Code | Reference |
 | ------ | --------- | ----------- | ---- | --------- |
@@ -86,7 +92,10 @@ Scientific context. Scientifc objectives. State of the art.
 | ARAGOG | interior | solves interior heat transport of partially molten planets using a temperature formulation | Python | [@bower18] |
 | MORS | star | models the evolution of rotation and high energy emission of stars  | Python | [@johstone21] |
 
-# Comparison with other codes
+# Verification and documentation
+
+
+# Comparison with similar codes
 
 
 # Acknowledgements
