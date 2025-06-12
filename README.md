@@ -24,8 +24,8 @@
 <b>PROTEUS</b> (/ˈproʊtiəs, PROH-tee-əs) is a modular Python framework that simulates the coupled evolution of the atmospheres and interiors of rocky planets and exoplanets. Inspired by the Greek god of elusive sea change, who could change his form at will, PROTEUS is designed to be flexible and adaptable to a wide range of planetary environments. It can foretell the future, but answers only to those who are capable of asking the right questions.<br>
 
 <p align="center">
-      <object data="https://github.com/user-attachments/assets/d9a94c59-ff70-4eb2-a741-a75a04153611" type="image/svg+xml" style="max-width: 95%; height: auto;">
-            <img src="https://github.com/user-attachments/assets/d9a94c59-ff70-4eb2-a741-a75a04153611" style="max-width: 95%; height: auto;">
+      <object data="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/refs/heads/main/docs/assets/schematic.svg" type="image/svg+xml" style="max-width: 95%; height: auto;">
+            <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/refs/heads/main/docs/assets/schematic.svg">
       </object>
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
       Ctrl- or Cmd-click on the modules above to open their webpages.
