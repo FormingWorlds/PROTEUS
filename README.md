@@ -26,7 +26,6 @@
 <p align="center">
       <img src="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/refs/heads/main/docs/assets/schematic.png" style="max-width: 95%; height: auto;">
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
-      Ctrl- or Cmd-click on the modules above to open their webpages.
 </p>
 
 
