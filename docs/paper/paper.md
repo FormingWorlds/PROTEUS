@@ -79,8 +79,6 @@ One key reason for this model divergence is the emerging feedback loop between m
 
 Planets with similar atmospheric properties may thus harbour order of magnitude different bulk volatile fractions if their interior (core and mantle) phase state is different. This presents a critical degeneracy for astronomical observations aiming to infer compositional and thermodynamic properties of exoplanets from telescopic data. On the other hand, evolutionary hysteresis processes may contribute to resolving observational degeneracies. For instance, the solubilities of N and S species are highly sensitive to the compositions properties of the planetary mantle (Suer, Shorttle, Shorttle), hence planets with different geochemistries may be distinguished by matching astronomical observations with time-resolved solutions that connect geochemical with atmospheric considerations over geological timescales. Providing these geophysical and climatic predictions and enable quantative comparison with empirical data from exoplanet astronomy is the primary purpose of the PROTEUS framework in its present form.
 
-![Schematic of PROTEUS components and corresponding modules. \label{fig:schematic}](PROTEUS_schematic.png)
-
 # Software modularisation & verification
 
 As modern research software environments grow, they typically become more difficult to maintain and verify. In particular, with a growing user and developer base, sufficient documentation and tutorials become challenging to update on a continuously evolving basis. From a scientific perspective, disciplinary rigour needs to be maintained while interdisciplinary problems are tackled. From an organisational perspective, term-limited research projects and contracts and changing institutions of researchers and software engineers present challenges for incoming code contributors.
@@ -89,18 +87,31 @@ The PROTEUS framework attempts to tackle these challenges by modularising its so
 
 (i) Modules can be developed and tested in relative isolation. Each module is self-sufficient and can be executed standalone, which enhances developer experience and usability. (ii) Modules can be exchanged through other modules, either on a standing or temporary basis, for example to test the sensitivity of one approach over the other. (iii) PROTEUS is in principle interoperable with a variety of external models that fit into the framework designation. In some instances, this enables re-use and extension of pre-existing, highly robust code bases that are efficient and well-maintained. This prevents students and researchers alike to continuously having to reinvent the wheel of their particular domain.
 
+![Schematic of PROTEUS components and corresponding modules. \label{fig:schematic}](PROTEUS_schematic.png)
 
+Figure \ref{fig:schematic} shows the current state of the PROTEUS framework at the time of submission, including its ecosystem of modules, as previously described in [@Lichtenberg21,@nicholls24,@nicholls25a,@nicholls25c]. Several of the currently existing modules (in addition to the PROTEUS code itself) have been written from scratch for their primary use as module within PROTEUS. Other modules, however, are pre-exisiting codes, which have been adapted and extended to work with the PROTEUS framework. The following table provides a list and brief description of the purpose of each module.
 
-| Module | Component | Description | Code | Reference |
+| Module | Component | Purpose | Language | Reference |
 | ------ | --------- | ----------- | ---- | --------- |
-| JANUS | atmosphere | implements the multicomponent non‐dilute pseudoadiabat | Python | [@graham21] |
-| AGNI | atmosphere | solves the atmosphere energy balance using a Newton-Raphson algorithm | Julia | [@nicholls25a]  |
-| SOCRATES | atmosphere | computes radiative fluxes from atmospheric temperature and composition | Fortran | [@manners24-tech] |
-| SPIDER | interior | solves interior heat transport of partially molten planets using an entropy formulation | C++ | [@bower18] |
-| ARAGOG | interior | solves interior heat transport of partially molten planets using a temperature formulation | Python | [@bower18] |
-| MORS | star | models the evolution of rotation and high energy emission of stars  | Python | [@johstone21] |
+| SPIDER | interior | interior heat transport of partially molten planets using an entropy formulation | C | [@bower18] |
+| CALLIOPE | interior | escape of the atmosphere to space  | Python | [@bower22,@shorttle23,@nicholls25a] |
+| Aragog | interior | interior heat transport of partially molten planets using a temperature formulation | Python | [@bower18] |
+|lovepy | interior | tidal dissipation in the interior | Python | [@hay18,@nicholls25c] |
+| AGNI | atmosphere | atmosphere energy balance using a Newton-Raphson algorithm | Julia | [@nicholls25a, @nicholls25b]  |
+| JANUS | atmosphere | atmosphere energy balance using a multicomponent non‐dilute pseudoadiabat | Python | [@graham21] |
+| ZEPHYRUS | atmosphere | escape of the atmosphere to space  | Python | in prep. |
+| fastchem | atmosphere | equilibrium atmospheric chemistry  | Python | [@Kitzmann23] |
+| VULCAN | atmosphere | disequilibrium atmospheric chemistry  | Python | [@Tsai17] |
+| SOCRATES | atmosphere | radiative fluxes from atmospheric temperature and composition | Fortran | [@manners24-tech] |
+| MORS | star | evolution of rotation and high energy emission of stars  | Python | [@johstone21] |
+| PLATON | observation | synthetic telescopic observations | Python | [@zhang21] |
 
-# Comparison with similar codes
+# Discussion of similar codes
+
+With the advent of increasing precision in exoplanet characterization, and the focus on smaller planets that approach Earth-like radii and densities, the development of coupled atmosphere-interior codes has recently increased the number of research groups working in this direction. Hence, were here focus specifically on the key trait of (a) time evolution of the planet, (b) coupling between the interior (i.e., a change in one system must dynamically affect other system properties), and (c) the planetary mantle and atmosphere must be described in some fashion that enables quantification of mantle crystallization timescales and changes in atmospheric pressure and/or composition. With this definition, a growing number of codes, mostly proprietary, have been developed over the past few years (Schaefer, Hamano, Bower, Krissansen-Totton, Yeng, Kite, Cowan, Cherubim, Maurice, Lebrun/Massol, Salvador, Majumdar, Carone/Barnes, DLR, Korenaga). The majority of these codes built on the principles of [@ElkinsTanton08].
+
+It is critically important for the advancement of science and the exploration of the exoplanet census that a variety of independent models are developed, optimally in an open source fashion, so that individual approaches can be compared against one another, and the community can learn from each other and thus produce better and more robust science. A detailed comparison with these codes would go way beyond the limits of this article. Hence, we here limit our discussion to the traits that we believe are the unique capabilities and implementation aspects of PROTEUS. These are: (i) Its modularised approach, with the advantages described above. (ii) The ability to spatially resolve the planet (so far in 1-D) from the core-mantle boundary to the top of the atmosphere. Critically, this enables the quantification of thermal evolution scenarios that crystallizse inhomogeneously, and not form the bottom-up, as is a common assumption in most other codes. (iii) The wide variety of geochemistries that can be modelled, which are expressed through the redox state at the mantle-atmosphere interface and result in order-of-magnitude varying atmospheric compositions, which are chemically and energetically self-consistently resolved in the atmospheric modules. (iv) The dynamic resolution of interior and atmospheric energy transfers regimes: radiative and convective layers in the atmosphere; conduction and convection in multiple dynamics regimes are resolved. (v) True multi-phase evolution of the mantle, where melt and solid phases are resolved on individual nodes, affecting energy transfer and chemical properties. (vi) Interconnected atmospheric escape that couples to the planetary interior; i.e., the escaping reservoir is linked and/or disconnected from the 'hidden' reservoir in the deep interior, depending on evolutionary state. (vi) Time-resolved changes in the stellar spectrum and energy flux for a wide array of stellar types. (vii) Inclusion of equilibrium and disequilibrium chemistry in the atmosphere. (viii) The inclusion of realistic, measure surface reflection properties for solid and molten surface conditions. (ix) On-the-fyl computation of observational properties, such as emission and transmission spectrum, planet-to-star contrast ratio, bulk density, and other observational properties of interest. (x) Automated testing of individual modules and the PROTEUS framework as a whole using GitHub CLI. And finally, (xi) a usable and growing documentation and tutorials.
+
 
 # Documentation
 
