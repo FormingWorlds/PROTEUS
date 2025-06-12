@@ -359,7 +359,9 @@
       <g class="com.sun.star.drawing.ClosedBezierShape">
        <g id="id29">
         <rect class="BoundingBox" stroke="none" fill="none" x="1317" y="3528" width="4629" height="1533"/>
-        <path fill="rgb(217,210,233)" stroke="none" d="M 1317,3783 C 1317,3643 1431,3528 1572,3528 L 5689,3528 C 5757,3528 5822,3555 5870,3603 5918,3651 5945,3716 5945,3783 L 5945,4805 C 5945,4946 5830,5060 5689,5060 L 1572,5060 C 1431,5060 1317,4946 1317,4805 L 1317,3783 Z "/>
+        <a xlink:href="https://fwl-proteus.readthedocs.io/projects/zephyrus/en/latest/">
+         <path fill="rgb(217,210,233)" stroke="none" d="M 1317,3783 C 1317,3643 1431,3528 1572,3528 L 5689,3528 C 5757,3528 5822,3555 5870,3603 5918,3651 5945,3716 5945,3783 L 5945,4805 C 5945,4946 5830,5060 5689,5060 L 1572,5060 C 1431,5060 1317,4946 1317,4805 L 1317,3783 Z "/>
+        </a>
        </g>
       </g>
       <g class="com.sun.star.drawing.ClosedBezierShape">
@@ -392,7 +394,9 @@
       <g class="com.sun.star.drawing.ClosedBezierShape">
        <g id="id34">
         <rect class="BoundingBox" stroke="none" fill="none" x="73" y="8047" width="4902" height="1696"/>
-        <path fill="none" stroke="rgb(11,83,148)" stroke-width="52" stroke-linejoin="round" d="M 99,8347 C 99,8195 222,8073 373,8073 L 4674,8073 C 4747,8073 4816,8102 4868,8153 4919,8204 4948,8274 4948,8347 L 4948,9442 C 4948,9593 4825,9716 4674,9716 L 373,9716 C 222,9716 99,9593 99,9442 L 99,8347 Z "/>
+        <a xlink:href="https://nichollsh.github.io/AGNI/dev/">
+         <path fill="none" stroke="rgb(11,83,148)" stroke-width="52" stroke-linejoin="round" d="M 99,8347 C 99,8195 222,8073 373,8073 L 4674,8073 C 4747,8073 4816,8102 4868,8153 4919,8204 4948,8274 4948,8347 L 4948,9442 C 4948,9593 4825,9716 4674,9716 L 373,9716 C 222,9716 99,9593 99,9442 L 99,8347 Z "/>
+        </a>
        </g>
       </g>
       <g class="TextShape">
@@ -425,7 +429,9 @@
       <g class="com.sun.star.drawing.ClosedBezierShape">
        <g id="id39">
         <rect class="BoundingBox" stroke="none" fill="none" x="73" y="9899" width="4978" height="1695"/>
-        <path fill="none" stroke="rgb(11,83,148)" stroke-width="52" stroke-linejoin="round" d="M 99,10198 C 99,10047 222,9925 373,9925 L 4750,9925 C 4823,9925 4892,9953 4944,10005 4995,10056 5024,10126 5024,10198 L 5024,11294 C 5024,11445 4901,11567 4750,11567 L 373,11567 C 222,11567 99,11445 99,11294 L 99,10198 Z "/>
+        <a xlink:href="https://fwl-proteus.readthedocs.io/projects/janus/en/latest/">
+         <path fill="none" stroke="rgb(11,83,148)" stroke-width="52" stroke-linejoin="round" d="M 99,10198 C 99,10047 222,9925 373,9925 L 4750,9925 C 4823,9925 4892,9953 4944,10005 4995,10056 5024,10126 5024,10198 L 5024,11294 C 5024,11445 4901,11567 4750,11567 L 373,11567 C 222,11567 99,11445 99,11294 L 99,10198 Z "/>
+        </a>
        </g>
       </g>
       <g class="TextShape">
@@ -458,7 +464,9 @@
       <g class="com.sun.star.drawing.ClosedBezierShape">
        <g id="id44">
         <rect class="BoundingBox" stroke="none" fill="none" x="18867" y="8512" width="4680" height="1584"/>
-        <path fill="none" stroke="rgb(91,15,0)" stroke-width="52" stroke-linejoin="round" d="M 18893,8793 C 18893,8652 19007,8538 19148,8538 L 23265,8538 C 23333,8538 23398,8564 23445,8612 23493,8660 23520,8725 23520,8793 L 23520,9813 C 23520,9955 23406,10069 23265,10069 L 19148,10069 C 19007,10069 18893,9955 18893,9813 L 18893,8793 Z "/>
+        <a xlink:href="https://fwl-proteus.readthedocs.io/projects/calliope/en/latest/">
+         <path fill="none" stroke="rgb(91,15,0)" stroke-width="52" stroke-linejoin="round" d="M 18893,8793 C 18893,8652 19007,8538 19148,8538 L 23265,8538 C 23333,8538 23398,8564 23445,8612 23493,8660 23520,8725 23520,8793 L 23520,9813 C 23520,9955 23406,10069 23265,10069 L 19148,10069 C 19007,10069 18893,9955 18893,9813 L 18893,8793 Z "/>
+        </a>
        </g>
       </g>
       <g class="TextShape">
@@ -485,7 +493,9 @@
       <g class="com.sun.star.drawing.ClosedBezierShape">
        <g id="id48">
         <rect class="BoundingBox" stroke="none" fill="none" x="21075" y="10779" width="4142" height="1584"/>
-        <path fill="none" stroke="rgb(153,0,0)" stroke-width="52" stroke-linejoin="round" d="M 21101,11060 C 21101,10919 21216,10805 21357,10805 L 24935,10805 C 25002,10805 25067,10831 25115,10879 25163,10927 25190,10992 25190,11060 L 25190,12081 C 25190,12222 25076,12336 24935,12336 L 21357,12336 C 21216,12336 21101,12222 21101,12081 L 21101,11060 Z "/>
+        <a xlink:href="https://github.com/FormingWorlds/aragog">
+         <path fill="none" stroke="rgb(153,0,0)" stroke-width="52" stroke-linejoin="round" d="M 21101,11060 C 21101,10919 21216,10805 21357,10805 L 24935,10805 C 25002,10805 25067,10831 25115,10879 25163,10927 25190,10992 25190,11060 L 25190,12081 C 25190,12222 25076,12336 24935,12336 L 21357,12336 C 21216,12336 21101,12222 21101,12081 L 21101,11060 Z "/>
+        </a>
        </g>
       </g>
       <g class="TextShape">
@@ -512,7 +522,9 @@
       <g class="com.sun.star.drawing.ClosedBezierShape">
        <g id="id52">
         <rect class="BoundingBox" stroke="none" fill="none" x="16856" y="10779" width="4141" height="1584"/>
-        <path fill="none" stroke="rgb(153,0,0)" stroke-width="52" stroke-linejoin="round" d="M 16882,11060 C 16882,10919 16996,10805 17137,10805 L 20715,10805 C 20783,10805 20848,10831 20896,10879 20943,10927 20970,10992 20970,11060 L 20970,12081 C 20970,12222 20856,12336 20715,12336 L 17137,12336 C 16996,12336 16882,12222 16882,12081 L 16882,11060 Z "/>
+        <a xlink:href="https://github.com/djbower/spider">
+         <path fill="none" stroke="rgb(153,0,0)" stroke-width="52" stroke-linejoin="round" d="M 16882,11060 C 16882,10919 16996,10805 17137,10805 L 20715,10805 C 20783,10805 20848,10831 20896,10879 20943,10927 20970,10992 20970,11060 L 20970,12081 C 20970,12222 20856,12336 20715,12336 L 17137,12336 C 16996,12336 16882,12222 16882,12081 L 16882,11060 Z "/>
+        </a>
        </g>
       </g>
       <g class="TextShape">
@@ -643,7 +655,9 @@
       <g class="TextShape">
        <g id="id75">
         <rect class="BoundingBox" stroke="none" fill="none" x="15232" y="7542" width="1893" height="1406"/>
-        <text class="SVGTextShape" transform="rotate(29.2 15293 7937)"><tspan class="TextParagraph"><tspan class="TextPosition" x="15293" y="7937"><tspan font-family="Open Sans, sans-serif" font-size="423px" font-weight="400" fill="rgb(91,15,0)" stroke="none" style="white-space: pre">Ingassing</tspan></tspan></tspan></text>
+        <a xlink:href="https://fwl-proteus.readthedocs.io/projects/mors/en/latest/">
+         <text class="SVGTextShape" transform="rotate(29.2 15293 7937)"><tspan class="TextParagraph"><tspan class="TextPosition" x="15293" y="7937"><tspan font-family="Open Sans, sans-serif" font-size="423px" font-weight="400" fill="rgb(91,15,0)" stroke="none" style="white-space: pre">Ingassing</tspan></tspan></tspan></text>
+        </a>
        </g>
       </g>
       <g class="com.sun.star.drawing.ClosedBezierShape">
@@ -1239,7 +1253,9 @@
       <g class="com.sun.star.drawing.ClosedBezierShape">
        <g id="id172">
         <rect class="BoundingBox" stroke="none" fill="none" x="171" y="5860" width="3367" height="1821"/>
-        <path fill="none" stroke="rgb(11,83,148)" stroke-width="52" stroke-linejoin="round" d="M 197,6182 C 197,6018 329,5886 492,5886 L 3216,5886 C 3294,5886 3369,5917 3424,5973 3480,6028 3511,6103 3511,6182 L 3511,7360 C 3511,7522 3379,7654 3216,7654 L 492,7654 C 329,7654 197,7522 197,7360 L 197,6182 Z "/>
+        <a xlink:href="https://github.com/FormingWorlds/VULCAN">
+         <path fill="none" stroke="rgb(11,83,148)" stroke-width="52" stroke-linejoin="round" d="M 197,6182 C 197,6018 329,5886 492,5886 L 3216,5886 C 3294,5886 3369,5917 3424,5973 3480,6028 3511,6103 3511,6182 L 3511,7360 C 3511,7522 3379,7654 3216,7654 L 492,7654 C 329,7654 197,7522 197,7360 L 197,6182 Z "/>
+        </a>
        </g>
       </g>
       <g class="TextShape">
@@ -1251,7 +1267,8 @@
       <g class="TextShape">
        <g id="id174">
         <rect class="BoundingBox" stroke="none" fill="none" x="825" y="6004" width="2068" height="557"/>
-        <text class="SVGTextShape"><tspan class="TextParagraph"><tspan class="TextPosition" x="826" y="6453"><tspan font-family="Arial, sans-serif" font-size="494px" font-weight="700" fill="rgb(11,83,148)" stroke="none" style="white-space: pre">VULCAN</tspan></tspan></tspan></text>
+        <text class="SVGTextShape"><tspan class="TextParagraph"><tspan class="TextPosition" x="826" y="6453"><tspan id="id193" font-family="Arial, sans-serif" font-size="494px" font-weight="700" fill="rgb(11,83,148)" stroke="none" class="UrlField" xlink:href="https://github.com/FormingWorlds/VULCAN"><a xlink:href="https://github.com/FormingWorlds/VULCAN">VULCAN</a></tspan></tspan></tspan></text>
+        <desc class="HyperlinkIdList">id193</desc>
        </g>
       </g>
       <g class="TextShape">
@@ -1271,7 +1288,9 @@
       <g class="com.sun.star.drawing.ClosedBezierShape">
        <g id="id177">
         <rect class="BoundingBox" stroke="none" fill="none" x="19021" y="12537" width="4544" height="1584"/>
-        <path fill="none" stroke="rgb(153,0,0)" stroke-width="52" stroke-linejoin="round" d="M 19047,12818 C 19047,12677 19161,12563 19302,12563 L 23283,12563 C 23350,12563 23415,12589 23463,12637 23511,12685 23538,12750 23538,12818 L 23538,13839 C 23538,13980 23424,14094 23283,14094 L 19302,14094 C 19161,14094 19047,13980 19047,13839 L 19047,12818 Z "/>
+        <a xlink:href="https://github.com/nichollsh/lovepy">
+         <path fill="none" stroke="rgb(153,0,0)" stroke-width="52" stroke-linejoin="round" d="M 19047,12818 C 19047,12677 19161,12563 19302,12563 L 23283,12563 C 23350,12563 23415,12589 23463,12637 23511,12685 23538,12750 23538,12818 L 23538,13839 C 23538,13980 23424,14094 23283,14094 L 19302,14094 C 19161,14094 19047,13980 19047,13839 L 19047,12818 Z "/>
+        </a>
        </g>
       </g>
       <g class="TextShape">
@@ -1283,7 +1302,8 @@
       <g class="TextShape">
        <g id="id179">
         <rect class="BoundingBox" stroke="none" fill="none" x="20414" y="12813" width="1765" height="557"/>
-        <text class="SVGTextShape"><tspan class="TextParagraph"><tspan class="TextPosition" x="20414" y="13262"><tspan font-family="Arial, sans-serif" font-size="494px" font-weight="700" fill="rgb(153,0,0)" stroke="none" style="white-space: pre">LovePy</tspan></tspan></tspan></text>
+        <text class="SVGTextShape"><tspan class="TextParagraph"><tspan class="TextPosition" x="20414" y="13262"><tspan id="id194" font-family="Arial, sans-serif" font-size="494px" font-weight="700" fill="rgb(153,0,0)" stroke="none" class="UrlField" xlink:href="https://github.com/nichollsh/lovepy"><a xlink:href="https://github.com/nichollsh/lovepy">LovePy</a></tspan></tspan></tspan></text>
+        <desc class="HyperlinkIdList">id194</desc>
        </g>
       </g>
       <g class="com.sun.star.drawing.ClosedBezierShape">
@@ -1307,8 +1327,8 @@
       <g class="TextShape">
        <g id="id183">
         <rect class="BoundingBox" stroke="none" fill="none" x="21444" y="1825" width="2039" height="557"/>
-        <text class="SVGTextShape"><tspan class="TextParagraph"><tspan class="TextPosition" x="21444" y="2274"><tspan id="id193" font-family="Arial, sans-serif" font-size="494px" font-weight="700" fill="rgb(69,129,142)" stroke="none" class="UrlField" xlink:href="https://platon.readthedocs.io/"><a xlink:href="https://platon.readthedocs.io/">PLATON</a></tspan></tspan></tspan></text>
-        <desc class="HyperlinkIdList">id193</desc>
+        <text class="SVGTextShape"><tspan class="TextParagraph"><tspan class="TextPosition" x="21444" y="2274"><tspan id="id195" font-family="Arial, sans-serif" font-size="494px" font-weight="700" fill="rgb(69,129,142)" stroke="none" class="UrlField" xlink:href="https://platon.readthedocs.io/"><a xlink:href="https://platon.readthedocs.io/">PLATON</a></tspan></tspan></tspan></text>
+        <desc class="HyperlinkIdList">id195</desc>
        </g>
       </g>
       <g class="TextShape">
