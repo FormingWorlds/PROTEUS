@@ -72,6 +72,9 @@ Zalmoxis
 __pycache__
 !output/.gitkeep
 nogit_*
+*.odg#
+*.ods#
+*.odp#
 
 # From Read the Docs
 ####################
