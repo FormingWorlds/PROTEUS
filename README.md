@@ -27,7 +27,7 @@
 <!-- markdownlint-disable MD033 -->
 <p align="center">
       <object data="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/schematic.svg" type="image/svg+xml" style="max-width: 95%; height: auto;">
-            <img src="assets/schematic.svg">
+            <img src="assets/schematic.svg" style="max-width: 95%; height: auto;">
       </object>
       <b>Schematic of PROTEUS components and corresponding modules</b> </br>
       Ctrl- or cmd-click on the modules to open their doc pages in a new tab
@@ -41,18 +41,19 @@ See the [installation guide](https://fwl-proteus.readthedocs.io/en/latest/instal
 
 ## Contributors
 
-| Name  | Email address |
-| -     | -             |
-Tim Lichtenberg         | tim.lichtenberg[at]rug.nl                                 |
-Harrison Nicholls       | harrison.nicholls[at]physics.ox.ac.uk                     |
-Laurent Soucasse        | l.soucasse[at]esciencecenter.nl                           |
-Mariana Sastre          | m.c.villamil.sastre[at]rug.nl                             |
-Emma Postolec           | e.n.postolec[at]rug.nl                                    |
-Flavia Pascal           | f.pascal[at]student.rug.nl                                |
-Dan J. Bower            | dbower[at]ethz.ch                                         |
-Mark Hammond            | mark.hammond[at]physics.ox.ac.uk                          |
-Stef Smeets             | s.smeets[at]esciencecenter.nl                             |
-Raymond Pierrehumbert   | raymond.pierrehumbert[at]physics.ox.ac.uk                 |
+| Name                    | Email address                               |
+| -                       | -                                           |
+| Tim Lichtenberg         | tim.lichtenberg[at]rug.nl                   |
+| Harrison Nicholls       | harrison.nicholls[at]physics.ox.ac.uk       |
+| Laurent Soucasse        | l.soucasse[at]esciencecenter.nl             |
+| Mariana Sastre          | m.c.villamil.sastre[at]rug.nl               |
+| Emma Postolec           | e.n.postolec[at]rug.nl                      |
+| Flavia Pascal           | f.pascal[at]student.rug.nl                  |
+| Hanno Spreeuw           | h.spreeuw[at]esciencecenter.nl              |
+| Dan J. Bower            | dbower[at]ethz.ch                           |
+| Mark Hammond            | mark.hammond[at]physics.ox.ac.uk            |
+| Stef Smeets             | s.smeets[at]esciencecenter.nl               |
+| Raymond Pierrehumbert   | raymond.pierrehumbert[at]physics.ox.ac.uk   |
 
 ## Repository structure
 
