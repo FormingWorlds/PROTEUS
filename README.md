@@ -26,13 +26,14 @@
 
 <!-- markdownlint-disable MD033 -->
 <p align="center">
-      <object data="https://raw.githubusercontent.com/FormingWorlds/PROTEUS/refs/heads/main/docs/assets/schematic.svg" type="image/svg+xml" style="max-width: 95%; height: auto;">
+      <object data="https://github.com/user-attachments/assets/e732f2d1-4f5f-4fab-a691-63c8a3ebf6d4" type="image/svg+xml" style="max-width: 95%; height: auto;">
             <img src="assets/schematic.svg" style="max-width: 95%; height: auto;">
       </object>
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
       Ctrl- or Cmd-click on the modules above to open their webpages.
 </p>
 <!-- markdownlint-enable MD033 -->
+
 
 
 ## Installation & run instructions
