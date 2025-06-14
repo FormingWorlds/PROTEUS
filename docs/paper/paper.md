@@ -43,7 +43,7 @@ authors:
     affiliation: 3
   - name: Shang-Min Tsai
     orcid: 0000-0002-8163-4608
-  affiliation: 5
+    affiliation: 5
   - name: Raymond T. Pierrehumbert
     orcid: 0000-0002-5887-1197
     affiliation: 2
