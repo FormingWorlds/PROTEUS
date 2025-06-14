@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import glob
 import logging
+import os
 from typing import TYPE_CHECKING
 
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from cmcrameri import cm
@@ -57,8 +57,6 @@ def plot_sflux_cross(
         Current age of star. If not provided, then won't be plotted
     """
 
-    mpl.use('Agg')
-
     # Wavelength targets default value
     if not wl_targets:
         wl_targets = [1.0, 12.0, 50.0, 121.0, 200.0, 400.0, 500.0, 2000.0]
@@ -67,11 +65,8 @@ def plot_sflux_cross(
     files = glob.glob(output_dir+"/data/*.sflux")
     files = natural_sort(files)
 
-    if (len(files) == 0):
-        log.warning("No files found when trying to make sflux_cross plot")
-        return
-    if (len(files) == 1):
-        log.warning("Cannot make sflux_cross plot with only 1 stellar spectrum sample")
+    if len(files) <= 1:
+        log.warning("Insufficient data to make plot_sflux_cross")
         return
 
     log.info("Plot stellar flux (crossection)")
@@ -125,7 +120,8 @@ def plot_sflux_cross(
 
     # Load modern spectrum
     if modern_age > 0:
-        X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
+        modern_fpath = os.path.join(output_dir, "data", "-1.sflux")
+        X = np.loadtxt(modern_fpath, skiprows=2).T
 
     # Plot bins over time
     for i in range(N):
@@ -146,15 +142,16 @@ def plot_sflux_cross(
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_sflux_cross.%s"%plot_format,
-                bbox_inches="tight", dpi=200)
+    fpath = os.path.join(output_dir, "plots", "plot_sflux_cross.%s"%plot_format)
+    fig.savefig(fpath, bbox_inches='tight', dpi=200)
+
 
 
 def plot_sflux_cross_entry(handler: Proteus):
     wl_targets = [1.0, 12.0, 50.0, 121.0, 200.0, 400.0, 500.0, 2000.0]
 
     if handler.config.star.module == "mors":
-        modern_age = handler.config.star.age_now * 1e9
+        modern_age = handler.config.star.mors.age_now * 1e9
     else:
         modern_age = -1
 

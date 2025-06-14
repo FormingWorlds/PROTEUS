@@ -2,7 +2,7 @@
 
 ## Development
 
-*PROTEUS* targets Python 3.11 or newer.
+PROTEUS targets Python 3.12 or newer.
 
 Clone the repository into the `proteus` directory:
 
@@ -27,6 +27,15 @@ conda create -n proteus python=3.12
 conda activate proteus
 pip install -e .[develop]
 ```
+
+### Code style
+
+Variables should be written in lowercase with underscores: `example_variable`.
+Functions should be written in lowercase with underscores: `example_function()`.
+Constants should be written in block capitals: `CONSTANT_VALUE`.
+Lines of code should avoid being longer than 92 characters.
+Functions should include a docstring where possible, describing their purpose and params.
+Indentation deeper than 3 levels should be avoided.
 
 ### Linting
 
@@ -87,6 +96,8 @@ To build the documentation for yourself:
 pip install -e '.[docs]'
 mkdocs serve
 ```
+
+This will generate the markdown files and serve them on a local server. You can view documentation while you edit by copy-pasting the displayed URL into your browser (e.g., `http://127.0.0.1:8000`).
 
 You can find the documentation source in the [docs](https://github.com/FormingWorlds/PROTEUS/tree/main/docs) directory.
 If you are adding new pages, make sure to update the listing in the [`mkdocs.yml`](https://github.com/FormingWorlds/PROTEUS/blob/main/mkdocs.yml) under the `nav` entry.

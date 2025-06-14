@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import glob
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -12,7 +11,8 @@ from cmcrameri import cm
 from matplotlib.ticker import LogLocator, MultipleLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from proteus.atmos_clim.common import read_ncdf_profile
+from proteus.atmos_clim.common import read_atmosphere_data
+from proteus.utils.plot import sample_output
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -20,67 +20,46 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 
-def plot_atmosphere_cbar(output_dir, plot_format="pdf", tmin=1e2):
+def plot_atmosphere_cbar(output_dir, times, profiles, plot_format="pdf"):
 
-    # Gather data files
-    output_files = glob.glob(output_dir+"/data/*_atm.nc")
-    output_times = [ int(str(f).split('/')[-1].split('_')[0]) for f in output_files]
-    sort_mask = np.argsort(output_times)
-    sorted_files = np.array(output_files)[sort_mask]
-    sorted_times = np.array(output_times)[sort_mask]
-
-    if np.amax(sorted_times) < tmin:
-        tmin = 1
-
-    if np.amax(sorted_times) < 2:
-        log.debug("Insufficient data to make plot_atmosphere_cbar")
+    if len(times) < 2:
+        log.warning("Insufficient data to make plot_atmosphere_cbar")
         return
 
     log.info("Plot atmosphere temperatures colourbar")
 
-    # Parse NetCDF files
-    stride = 1
-    sorted_p = []
-    sorted_t = []
-    sorted_z = []
-    sorted_y = []
-    for i in range(0,len(sorted_files),stride):
-        time = sorted_times[i]
-        if time < tmin:
-            continue
-        sorted_y.append(sorted_times[i])
-
-        prof = read_ncdf_profile(sorted_files[i])
-        sorted_p.append(prof["p"] / 1.0e5)  # Convert Pa -> bar
-        sorted_t.append(prof["t"])
-        sorted_z.append(prof["z"] / 1.0e3)  # Convert m -> km
-    nfiles = len(sorted_p)
+    norm = mpl.colors.LogNorm(vmin=max(times[0],1), vmax=times[-1])
+    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)
+    sm.set_array([])
 
     # Initialise plot
     scale = 1.1
+    alpha = 0.6
     fig,ax = plt.subplots(1,1,figsize=(5*scale,4*scale))
     ax.set_ylabel("Pressure [bar]")
     ax.set_xlabel("Temperature [K]")
     ax.invert_yaxis()
     ax.set_yscale("log")
 
-    # Colour mapping
-    norm = mpl.colors.LogNorm(vmin=sorted_y[0], vmax=sorted_y[-1])
-    sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)
-    sm.set_array([])
+    tmp_max = 1000.0
+    prs_max = 1.0
+    for i, t in enumerate( times ):
+        prof = profiles[i]
+        color = sm.to_rgba(t)
+        tmp = prof["t"]
+        prs = prof["p"]/1e5
 
-    # Plot data
-    for i in range(nfiles):
-        a = 0.7
-        c = sm.to_rgba(sorted_y[i])
-        ax.plot(sorted_t[i], sorted_p[i], color=c, alpha=a, zorder=3)
+        tmp_max = max(tmp_max, np.amax(tmp))
+        prs_max = max(prs_max, np.amax(prs))
+
+        ax.plot(tmp, prs, color=color, alpha=alpha, zorder=3)
 
     # Grid
     ax.grid(alpha=0.2, zorder=2)
-    ax.set_xlim(0,np.amax(sorted_t)+100)
+    ax.set_xlim(0,tmp_max+100)
     ax.xaxis.set_minor_locator(MultipleLocator(base=250))
 
-    ax.set_ylim(np.amax(sorted_p)*3, np.amin(sorted_p)/3)
+    ax.set_ylim(bottom=prs_max, top=np.amin(prs))
     ax.yaxis.set_major_locator(LogLocator())
 
     # Plot colourbar
@@ -90,14 +69,17 @@ def plot_atmosphere_cbar(output_dir, plot_format="pdf", tmin=1e2):
     cbar.set_label("Time [yr]")
 
     # Save plot
-    fname = os.path.join(output_dir,"plot_atmosphere_cbar.%s"%plot_format)
+    fname = os.path.join(output_dir,"plots","plot_atmosphere_cbar.%s"%plot_format)
     fig.savefig(fname, bbox_inches='tight', dpi=200)
 
 
 def plot_atmosphere_cbar_entry(handler: Proteus):
-    # Plot fixed set from above
+    plot_times, _ = sample_output(handler, tmin=1e4, extension="_atm.nc", nsamp=40)
+    print("Snapshots:", plot_times)
+    profiles = read_atmosphere_data(handler.directories["output"], plot_times)
+
     plot_atmosphere_cbar(
-        output_dir=handler.directories["output"],
+        handler.directories["output"], plot_times, profiles,
         plot_format=handler.config.params.out.plot_fmt)
 
 

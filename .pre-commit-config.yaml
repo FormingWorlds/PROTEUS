@@ -24,3 +24,10 @@ repos:
       #   types_or: [python, pyi]
 
 exclude: 'examples/.*'
+exclude: |
+            (?x)^(
+                examples/.*|
+                tests/data/.*|
+                docs/assets/.*|
+                (.*?)\.(jpg|gif|doc|pdf|csv|dat|tsv|svg|tsv)
+            )$

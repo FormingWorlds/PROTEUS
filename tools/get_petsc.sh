@@ -43,7 +43,18 @@ cd $workpath
 
 # Configure
 echo "Configure"
-./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 --download-mpich --download-f2cblaslapack --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"
+if [[ "$(hostname -f)" == *"snellius"* ]]; then
+    echo "    We are on Snellius"
+    if ! type mpirun > /dev/null; then
+        echo "    WARNING: MPI not found"
+        exit 1
+    fi
+    mpich=" "
+else
+    mpich="--download-mpich"
+fi
+
+./configure --with-debugging=0 --with-fc=0 --with-cxx=0 --download-sundials2 $mpich --download-f2cblaslapack --COPTFLAGS="-g -O3" --CXXOPTFLAGS="-g -O3"
 
 # Build
 echo "Build"

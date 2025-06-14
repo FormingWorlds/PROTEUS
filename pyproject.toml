@@ -5,17 +5,17 @@ build-backend = "setuptools.build_meta"
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
 name = "fwl-proteus"
-version = "24.12.17"
+version = "25.05.20"
 description = "Coupled atmosphere-interior framework to simulate the temporal evolution of rocky planets"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
 	{name = "Tim Lichtenberg", email = "tim.lichtenberg@rug.nl"},
-	{name = "Harrison Nicholls, email = harrison.nicholls@physics.ox.ac.uk"},
+	{name = "Harrison Nicholls", email = "harrison.nicholls@physics.ox.ac.uk"},
 	{name = "Laurent Soucasse", email = "l.soucasse@esciencecenter.nl"},
 	{name = "Stef Smeets", email = "s.smeets@esciencecenter.nl"},
 	{name = "Dan J. Bower", email = "dbower@ethz.ch"},
-	{name = "Mariana V. Sastre", email = "m.c.villamil.sastre@rug.nl"},
+	{name = "Mariana Sastre", email = "m.c.villamil.sastre@rug.nl"},
 	{name = "Emma Postolec", email = "e.n.postolec@rug.nl"},
 	{name = "Mark Hammond", email = "mark.hammond@physics.ox.ac.uk"},
 	{name = "Patrick Sanan", email = "patrick.sanan@gmail.com"},
@@ -37,26 +37,28 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
     "attrs",
     "cattrs",
     "fwl-janus>=24.11.05",
-    "fwl-mors>=24.11.18",
-    "fwl-calliope>=24.9.10",
-    "fwl-zephyrus>=24.10.15",
-    "aragog>=0.1.9a0",
+    "fwl-mors>=25.05.25",
+    "fwl-calliope>=25.05.01",
+    "fwl-zephyrus>=25.03.11",
+    "aragog>=v0.2.6-alpha",
     "cmcrameri",
     "juliacall",
     "matplotlib",
     "netCDF4",
-    "numpy",
+    "numpy>=2.0.0",
     "pandas",
     "scipy",
+    "sympy",
+    "astropy"
 ]
 
 [project.urls]
@@ -72,6 +74,7 @@ develop = [
     "pillow",
     "pip-tools",
     "pytest >= 8.1",
+    "pytest-dependency",
     "pre-commit",
     "ruff",
 ]
@@ -99,7 +102,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 96
-target-version = "py310"
+target-version = "py312"
 extend-exclude = ["*ipynb"]
 
 [tool.ruff.lint]
@@ -123,7 +126,7 @@ indent-style = "space"
 
 [tool.bumpversion]
 # https://callowayproject.github.io/bump-my-version/howtos/calver/
-current_version = "24.12.17"
+current_version = "25.05.20"
 parse = """(?x)                      # Verbose mode
     (?P<release>                     # The release part
         (?:[1-9][0-9])\\.            # YY.

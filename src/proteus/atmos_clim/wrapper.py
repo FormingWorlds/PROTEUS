@@ -6,20 +6,20 @@ import os
 from typing import TYPE_CHECKING
 
 import pandas as pd
-from scipy.integrate import solve_ivp
+from numpy import pi
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.atmos_clim.common import get_spfile_path
-from proteus.utils.helper import PrintHalfSeparator, UpdateStatusfile, safe_rm
+from proteus.atmos_clim.common import Atmos_t, get_spfile_path
+from proteus.utils.constants import const_R
+from proteus.utils.helper import UpdateStatusfile, safe_rm
 
-atm = None
 log = logging.getLogger("fwl."+__name__)
 
-def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
-                  wl: list, fl:list,
-                  update_stellar_spectrum:bool, hf_all:pd.DataFrame, hf_row:dict):
+def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
+                     wl: list, fl:list,
+                     update_stellar_spectrum:bool, hf_all:pd.DataFrame, hf_row:dict):
     """Run Atmosphere submodule.
 
     Generic function to run an atmospheric simulation with either JANUS, AGNI or dummy.
@@ -27,6 +27,8 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
 
     Parameters
     ----------
+        atmos_o: Atmos_t
+            Atmosphere struct
         config : Config
             Configuration options and other variables
         dirs : dict
@@ -46,10 +48,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
 
     """
 
-    #Warning! Find a way to store atm object for AGNI
-    global atm
-
-    PrintHalfSeparator()
+    log.info("Solving atmosphere...")
 
     # Warnings
     if config.atmos_clim.albedo_pl > 1.0e-9:
@@ -75,7 +74,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
         from proteus.atmos_clim.janus import InitAtm, InitStellarSpectrum, RunJANUS
 
         # Run JANUS
-        no_atm = bool(atm is None)
+        no_atm = bool(atmos_o._atm is None)
         #Enforce surface temperature at first iteration
         if no_atm:
             hf_row["T_surf"] = hf_row["T_magma"]
@@ -85,11 +84,12 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
             spectral_file_nostar = get_spfile_path(dirs["fwl"], config)
             if not os.path.exists(spectral_file_nostar):
                 UpdateStatusfile(dirs, 20)
-                raise Exception("Spectral file does not exist at '%s'" % spectral_file_nostar)
+                raise FileNotFoundError(
+                            "Spectral file does not exist at '%s'" % spectral_file_nostar)
             InitStellarSpectrum(dirs, wl, fl, spectral_file_nostar)
-            atm = InitAtm(dirs, config)
+            atmos_o._atm = InitAtm(dirs, config)
 
-        atm_output = RunJANUS(atm, dirs, config, hf_row, hf_all)
+        atm_output = RunJANUS(atmos_o._atm, dirs, config, hf_row, hf_all)
 
     elif config.atmos_clim.module == 'agni':
         # Import
@@ -104,7 +104,7 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
         # Run AGNI
         # Initialise atmosphere struct
         spfile_path = os.path.join(dirs["output"] , "runtime.sf")
-        no_atm = bool(atm is None)
+        no_atm = bool(atmos_o._atm is None)
         if no_atm or update_stellar_spectrum:
             log.debug("Initialise new atmosphere struct")
 
@@ -119,22 +119,26 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
                 safe_rm(spfile_path+"_k")
 
                 # deallocate old atmosphere
-                deallocate_atmos(atm)
+                deallocate_atmos(atmos_o._atm)
 
             # allocate new
-            atm = init_agni_atmos(dirs, config, hf_row)
+            atmos_o._atm = init_agni_atmos(dirs, config, hf_row)
 
             # Check allocation was ok
-            if not bool(atm.is_alloc):
-                log.error("Failed to allocate atmos struct")
+            if not bool(atmos_o._atm.is_alloc):
                 UpdateStatusfile(dirs, 22)
-                exit(1)
+                raise RuntimeError("Atmosphere struct not allocated")
+
+        # Check if atmosphere is transparent
+        transparent = bool(hf_row["P_surf"] < config.atmos_clim.agni.psurf_thresh)  # bar
 
         # Update profile
-        atm = update_agni_atmos(atm, hf_row, dirs)
+        atmos_o._atm = update_agni_atmos(atmos_o._atm, hf_row, dirs, transparent)
 
         # Run solver
-        atm, atm_output = run_agni(atm, loop_counter["total"], dirs, config, hf_row)
+        atmos_o._atm, atm_output = run_agni(atmos_o._atm,
+                                            loop_counter["total"], dirs, config, hf_row,
+                                            transparent)
 
     elif config.atmos_clim.module == 'dummy':
         # Import
@@ -144,29 +148,58 @@ def RunAtmosphere(config:Config, dirs:dict, loop_counter:dict,
                                     hf_row["R_int"], hf_row["M_int"], hf_row["P_surf"])
 
     # Store atmosphere module output variables
+    #    observables
     hf_row["rho_obs"]= atm_output["rho_obs"] # [kg m-3]
     hf_row["p_obs"]  = atm_output["p_obs"]   # [bar]
-    hf_row["z_obs"]  = atm_output["z_obs"]   # [m]
+    hf_row["R_obs"]  = atm_output["R_obs"]   # [m]
+    #    fluxes
     hf_row["F_atm"]  = atm_output["F_atm"]
     hf_row["F_olr"]  = atm_output["F_olr"]
     hf_row["F_sct"]  = atm_output["F_sct"]
-    hf_row["T_surf"] = atm_output["T_surf"]
     hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
     hf_row["bond_albedo"]= atm_output["albedo"]
-    hf_row["p_xuv"]  = atm_output["p_xuv"]                  # Closest pressure from Pxuv    [bar]
-    hf_row["z_xuv"]  = atm_output["z_xuv"]                  # Height at Pxuv                [m]
-    hf_row["R_xuv"]  = hf_row["R_int"] + hf_row["z_xuv"]    # Radius at z_xuv [m]
+    hf_row["T_surf"] = atm_output["T_surf"]
+    #    escape
+    hf_row["p_xuv"]  = atm_output["p_xuv"]    # Closest pressure to Pxuv    [bar]
+    hf_row["R_xuv"]  = atm_output["R_xuv"]    # Radius at p_xuv [m]
 
-    # Calculate observables (measured at infinite distance)
-    R_obs = hf_row["z_obs"] + hf_row["R_int"] # observed radius [m]
-    hf_row["transit_depth"] =  (R_obs / hf_row["R_star"])**2.0
-    hf_row["contrast_ratio"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
-                                 (R_obs / hf_row["separation"])**2.0
+    # Calculate bolometric observables (measured at infinite distance)
+    update_bolometry(hf_row)
+
+    # Estimate WTG parameter
+    update_wtg_surf(hf_row)
+
+
+def update_wtg_surf(hf_row:dict):
+    '''
+    Update WTG parameter.
+
+    https://royalsocietypublishing.org/doi/full/10.1098/rspa.2016.0107
+    '''
+
+    omega = 2 * pi / hf_row["axial_period"]     # Angular rotation rate
+    R_mix = const_R / hf_row["atm_kg_per_mol"]  # Specific gas constant
+    hf_row["wtg_surf"] = (R_mix * hf_row["T_surf"])**0.5 / (omega * hf_row["R_int"])
+
+
+def update_bolometry(hf_row:dict):
+    '''
+    Update bolometric observables (transit depth, contrast ratio.)
+
+    https://link.springer.com/content/pdf/10.1007/978-3-319-30648-3_40-1.pdf
+    '''
+
+    # Transit depth
+    hf_row["transit_depth"] =  (hf_row["R_obs"]  / hf_row["R_star"])**2.0
+
+    # Eclipse depth
+    #    Accounting for fact that F_ins is scaled to TOA, not to stellar surface.
+    hf_row["eclipse_depth"] = ((hf_row["F_olr"]+hf_row["F_sct"])/hf_row["F_ins"]) * \
+                                 (hf_row["R_obs"] / hf_row["separation"])**2.0
 
 def ShallowMixedOceanLayer(hf_cur:dict, hf_pre:dict):
-
     # This scheme is not typically used, but it maintained here from legacy code
-    # We could consider removing it in the future.
+    from scipy.integrate import solve_ivp
 
     log.info(">>>>>>>>>> Flux convergence scheme <<<<<<<<<<<")
 

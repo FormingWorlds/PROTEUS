@@ -41,9 +41,11 @@ def PrintHalfSeparator():
 
 def multiple(a:int,b:int) -> bool:
     '''
-    Return true if a is an integer multiple of b. Return false if b is zero.
+    Return true if a is an integer multiple of b. Otherwise, return false.
+
+    This is a more robust version of the modulo operator, which can fail if a or b are None, or if b is 0.
     '''
-    if b == 0:
+    if (a is None) or (b is None) or (b == 0):
         return False
     else:
         return bool(a%b == 0)
@@ -130,7 +132,7 @@ def CommentFromStatus(status:int):
         case 10:
             desc = "Completed (solidified)"
         case 11:
-            desc = "Completed (steady-state)"
+            desc = "UNUSED_STATUS_CODE (11)"
         case 12:
             desc = "Completed (maximum iterations)"
         case 13:
@@ -138,7 +140,7 @@ def CommentFromStatus(status:int):
         case 14:
             desc = "Completed (net flux is small)"
         case 15:
-            desc = "Completed (atmosphere escaped)"
+            desc = "Completed (volatiles escaped)"
         # Error cases
         case 20:
             desc = "Error (generic case, or configuration issue)"
@@ -152,6 +154,10 @@ def CommentFromStatus(status:int):
             desc = "Error (Kinetics model)"
         case 25:
             desc = "Error (died, or exit requested by user)"
+        case 26:
+            desc = "Error (Tides/orbit model)"
+        case 27:
+            desc = "Error (Outgassing model)"
         # Default case
         case _:
             desc = "UNHANDLED STATUS (%d)" % status

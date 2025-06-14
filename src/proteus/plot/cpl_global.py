@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
-                logt: bool=True, tmin: float=1e1):
+                logt: bool=True, tmin: float=1e3):
 
     if np.amax(hf_all["Time"]) < 3:
         log.debug("Insufficient data to make plot_global")
@@ -36,12 +36,13 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
     leg_kwargs = {
         "frameon":1,
         "fancybox":True,
-        "framealpha":0.9
+        "framealpha":0.9,
+        "labelspacing":0.2,
+        "columnspacing":1.1,
+        "handletextpad":0.7
     }
 
-    # Magnitude of change in instellation flux
-    F_delta_inst = np.abs(hf["F_ins"] - hf["F_ins"].iloc[0])
-
+    F_asf = np.array(hf["F_ins"]) * config.orbit.s0_factor * (1.0 - config.atmos_clim.albedo_pl) * np.cos(config.orbit.zenith_angle * np.pi/180.0)
 
     #    Volatile parameters (keys=vols, vals=quantites_over_time)
     vol_present = {} # Is present ever? (true/false)
@@ -57,7 +58,7 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
         this_vmr = np.array(hf[vol+"_vmr"])
         vol_present[vol] = True
 
-        if (np.amax(this_vmr) < 1.0e-20) or not config.outgas.calliope.is_included(vol):
+        if np.amax(this_vmr) < 1.0e-10:
             vol_present[vol] = False
             continue
         vol_vmr[vol] = this_vmr
@@ -135,35 +136,40 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
 
     # Set xlim
     xmin = max(tmin, 1.0)
+    xmax = np.amax(hf["Time"])
+    if xmin > xmax/2:
+        xmin = 1.0
     if logt:
-        xmax = max(1.0e6,np.amax(hf["Time"]))
+        xmax = max(1.0e6,xmax)
         xlim = (xmin,10 ** np.ceil(np.log10(xmax*1.1)))
     else:
-        xmax = np.amax(hf["Time"])
-        xlim = (1.0, xmax)
+        xlim = (xmin, xmax)
     for ax in axs:
         ax.set_xlim(xlim[0],  max(xlim[1], xlim[0]+1))
 
-
     # PLOT ax_tl
-    ax_tl.plot( hf["Time"], hf["F_int"],  color=get_colour("int"),  lw=lw, alpha=al,  label="Int.", linestyle='dashed')
-    ax_tl.plot( hf["Time"], hf["F_atm"],  color=get_colour("atm"),  lw=lw, alpha=al,  label="Atm."  )
-    ax_tl.plot( hf["Time"], hf["F_olr"],  color=get_colour("OLR"),  lw=lw, alpha=al,  label="OLR"   )
-    ax_tl.plot( hf["Time"], hf["F_tidal"], color=get_colour("tidal"), lw=lw, alpha=al,  label="Tidal")
-    ax_tl.plot( hf["Time"], hf["F_radio"], color=get_colour("radio"), lw=lw, alpha=al,  label="Radio.")
-    ax_tl.plot( hf["Time"], F_delta_inst, color=get_colour("star"), lw=lw, alpha=al,  label=r"|$\Delta$Inst.|")
+    ax_tl.plot( hf["Time"], hf["F_radio"], color=get_colour("radio"), lw=lw,     alpha=al,  label="Radio")
+    ax_tl.plot( hf["Time"], hf["F_tidal"], color=get_colour("tidal"), lw=lw,     alpha=al,  label="Tidal")
+    ax_tl.plot( hf["Time"], hf["F_int"],   color=get_colour("int"),   lw=lw*1.5, alpha=al,  label="Net (int.)", ls='dashed')
+    ax_tl.plot( hf["Time"], hf["F_atm"],   color=get_colour("atm"),   lw=lw*1.5, alpha=al,  label="Net (atm.)" )
+    ax_tl.plot( hf["Time"], hf["F_olr"],   color=get_colour("OLR"),   lw=lw*0.8, alpha=al,  label="OLR" )
+    ax_tl.plot( hf["Time"], F_asf,         color=get_colour("ASF"),   lw=lw,     alpha=al,  label="ASF" ,ls='dashed' )
     ax_tl.legend(loc='center left', **leg_kwargs)
     ymin, ymax = 0.0, 100.0
-    for k in ("F_int","F_atm","F_olr","F_tidal","F_radio"):
-        ymin = min(ymin, np.amin(hf[k]))
-        ymax = max(ymax, np.amax(hf[k]))
+    for k in ("F_int","F_atm","F_olr","F_tidal","F_radio", F_asf):
+        if type(k) is str:
+            arr = np.array(hf[k])
+        else:
+            arr = np.array(k)
+        ymin = min(ymin, np.amin(arr))
+        ymax = max(ymax, np.amax(arr))
     ax_tl.set_ylim(bottom=ymin/1.5, top=ymax*1.5)
 
     # PLOT ax_cl
     min_temp = np.amin(hf["T_surf"])
-    max_temp = np.amax(hf["T_surf"])
-    ax_cl.plot(hf["Time"], hf["T_surf"], ls="dashed", lw=lw, alpha=al, color=get_colour("int"))
-    ax_cl.plot(hf["Time"], hf["T_surf"], ls="-",      lw=lw, alpha=al, color=get_colour("atm"))
+    max_temp = np.amax(hf["T_magma"])
+    ax_cl.plot(hf["Time"], hf["T_magma"], ls="dashed", lw=lw, alpha=al, color=get_colour("int"))
+    ax_cl.plot(hf["Time"], hf["T_surf"],  ls="-",      lw=lw, alpha=al, color=get_colour("atm"))
     ax_cl.set_ylim(min(1000.0,min_temp-25) , max(3500.0,max_temp+25))
 
     # PLOT ax_bl
@@ -209,8 +215,8 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
     else:
         plt_name += "_lin"
 
-    fig.savefig(output_dir+"/%s.%s"%(plt_name,config.params.out.plot_fmt),
-                bbox_inches='tight', dpi=200)
+    fname = os.path.join(output_dir,"plots","%s.%s"%(plt_name,config.params.out.plot_fmt))
+    fig.savefig(fname,bbox_inches='tight', dpi=200)
 
 
 def plot_global_entry(handler: Proteus):
@@ -224,7 +230,7 @@ def plot_global_entry(handler: Proteus):
             output_dir=handler.directories['output'],
             config=handler.config,
             logt=logt,
-            tmin=1e1,
+            tmin=1e3,
         )
 
 if __name__ == "__main__":

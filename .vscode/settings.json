@@ -10,6 +10,7 @@
     "python.analysis.exclude": [
         "**/__pycache__", "petsc", ".git", "SPIDER", "output"
     ],
+    "python.analysis.diagnosticMode": "openFilesOnly",
     "julia.environmentPath": "${workspaceFolder}/AGNI",
     "fortran.fortls.disabled": true,
     "markdown.validate.enabled": true

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import cattrs
-import tomllib
 
 from ._config import Config
 

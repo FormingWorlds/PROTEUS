@@ -11,7 +11,6 @@ R_sun_cm        = 100 * R_sun           # cm
 M_sun           = 1.988416e30           # kg
 AU              = 1.495978707e+11       # m
 AU_cm           = AU * 100.0            # cm
-R_gas           = 8.31446261815324      # J K−1 mol−1
 M_earth         = 5.972E24              # kg
 R_earth         = 6.335439e6            # m
 R_core_earth    = 3485000.0             # m
@@ -37,16 +36,17 @@ secs_per_day    = secs_per_hour * 24.0
 secs_per_year   = secs_per_day * 365.25
 
 # Values from Pierrehumbert (2010) workbook
+const_R = 8.31446261815324      # J K−1 mol−1
 const_h = 6.626075540e-34    #Planck's constant
 const_c = 2.99792458e8       #Speed of light
 const_k =1.38065812e-23      #Boltzman thermodynamic constant
 const_sigma = 5.67051196e-8  #Stefan-Boltzman constant
 const_G = 6.67428e-11        #Gravitational constant (2006 measurements)
-const_N_avogadro = 6.022136736e23  #Avogadro's number
-const_R_gas = 8.31446261815324 # Universal gas constant, J.K-1.mol-1
+
+B_ein = 2.5
 
 # Supported gases
-vol_list = ["H2O", "CO2", "H2", "CH4", "CO", "N2", "S2", "SO2"]
+vol_list = ["H2O", "CO2", "O2", "H2", "CH4", "CO", "N2", "NH3", "S2", "SO2", "H2S"]
 vap_list = ["SiO", "SiO2", "MgO", "FeO2"]
 gas_list = vol_list + vap_list
 
@@ -96,3 +96,6 @@ radnuc_data = {
         "halflife":  4.468e9    # yr
     },
 }
+
+# Constants for Zalmoxis from Nimmo 2015
+earth_center_pressure = 365e9     # Pa

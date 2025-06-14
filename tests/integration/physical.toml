@@ -50,6 +50,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # termination criteria
     [params.stop]
 
+        strict = true
+
         # required number of iterations
         [params.stop.iters]
             enabled = true
@@ -75,7 +77,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.stop.escape]
             enabled   = false
-            mass_frac = 3e-4      # Stop when atm_mass < this frac of initial mass
+            p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
 
 
 # ----------------------------------------------------
@@ -88,7 +90,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     module  = "mors"
     [star.mors]
-        rot_pctle = 50.0    # rotation percentile
+        rot_pcntle = 50.0       # rotation percentile
         tracks  = "spada" # evolution tracks: spada | baraffe
         age_now = 4.567     # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/sun.txt" # stellar spectrum
@@ -110,13 +112,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         H_tide  = 1e-11  # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
 
+    [orbit.lovepy]
+        visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 # Planetary structure - physics table
 [struct]
-    set_by      = 'mass_tot'
     mass_tot    = 1.0       # M_earth
-    radius_int  = 0.97      # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
+    core_density = 10738.33      # Core density [kg m-3]
+    core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
 
 # Atmosphere - physics table
 [atmos_clim]
@@ -141,10 +145,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
+        solve_energy    = false         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-3          # solver absolute tolerance
         solution_rtol   = 2e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = true          # volatile condensation
+        real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
@@ -152,9 +158,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         spectral_group  = "Frostflow"   # which gas opacities to include
         spectral_bands  = "16"          # how many spectral bands?
         F_atm_bc        = 0             # measure outgoing flux at: (0) TOA | (1) Surface
-        num_levels      = 90           # Number of atmospheric grid levels
-        tropopause      = "none"        # none | skin | dynamic
-        overlap_method    = "ro"          # gas overlap method
+        num_levels      = 130           # Number of atmospheric grid levels
+        tropopause      = "skin"        # none | skin | dynamic
+        overlap_method  = "ro"          # gas overlap method
 
     [atmos_clim.dummy]
         gamma           = 0.8           # atmosphere opacity between 0 and 1
@@ -162,6 +168,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Volatile escape - physics table
 [escape]
 
+    reservoir = "bulk"  # Escaping reservoir: "bulk", "outgas", "pxuv".
     module = "zephyrus"    # Which escape module to use
 
     [escape.zephyrus]
@@ -174,14 +181,16 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Interior - physics table
 [interior]
-    grain_size      = 0.1   # crystal settling grain size [m]
-    F_initial       = 1e6   # Initial heat flux guess [W m-2]
-    radiogenic_heat = true  # enable radiogenic heat production
-    tidal_heat      = false  # enable tidal heat production
-    rheo_phi_loc    = 0.4    # Centre of rheological transition
-    rheo_phi_wid    = 0.15   # Width of rheological transition
+    grain_size      = 0.1           # crystal settling grain size [m]
+    F_initial       = 1e6           # Initial heat flux guess [W m-2]
+    radiogenic_heat = true          # enable radiogenic heat production
+    tidal_heat      = false         # enable tidal heat production
+    rheo_phi_loc    = 0.4           # Centre of rheological transition
+    rheo_phi_wid    = 0.15          # Width of rheological transition
+    bulk_modulus    = 260e9         # Bulk modulus [Pa]
+    melting_dir     = "Monteux-600" # Liquidus from Monteux+2016 and solidus=liquidus-600
 
-    module = "aragog"   # Which interior module to use
+    module = "aragog"               # Which interior module to use
 
     [interior.spider]
         num_levels      = 220       # Number of SPIDER grid levels
@@ -193,9 +202,20 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        num_levels      = 90       # Number of Aragog grid levels
-        tolerance       = 1.0e-7   # solver tolerance
-        ini_tmagma      = 3000.0    # Initial magma surface temperature [K]
+        logging                       = "ERROR"
+        num_levels                    = 90       # Number of Aragog grid levels
+        tolerance                     = 1.0e-7   # solver tolerance
+        ini_tmagma                    = 3000.0   # Initial magma surface temperature [K]
+        inner_boundary_condition      = 1        # 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
+        inner_boundary_value          = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
+        conduction                    = true     # enable conductive heat transfer
+        convection                    = true     # enable convective heat transfer
+        gravitational_separation      = false    # enable gravitational separation
+        mixing                        = false    # enable mixing
+        tsurf_poststep_change         = 30       # threshold of maximum change on surface temperature, compares current and first Tsurf
+        event_triggering              = true    # enable events triggering to avoid abrupt jumps in surface temperature
+
+
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
@@ -212,6 +232,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         include_N2   = true     # Include N2 compound
         include_S2   = true     # Include S2 compound
         include_SO2  = true     # Include SO2 compound
+        include_H2S  = true     # Include H2S compound
+        include_NH3  = true     # Include NH3 compound
         include_H2   = true     # Include H2 compound
         include_CH4  = true     # Include CH4 compound
         include_CO   = true     # Include CO compound
@@ -256,6 +278,17 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         N2   = 0.0          # etc
         S2   = 0.0
         SO2  = 0.0
+        H2S  = 0.0
+        NH3  = 0.0
         H2   = 0.0
         CH4  = 0.0
         CO   = 0.0
+
+# Calculate simulated observations
+[observe]
+
+    # Module with which to calculate the synthetic observables
+    synthesis = "none"
+
+[atmos_chem]
+    module = "none"

@@ -64,6 +64,10 @@ class Volatiles:
         Initial atmospheric partial surface pressure of S2 [bar].
     SO2: float
         Initial atmospheric partial surface pressure of SO2 [bar].
+    H2S: float
+        Initial atmospheric partial surface pressure of H2S [bar].
+    NH3: float
+        Initial atmospheric partial surface pressure of NH3 [bar].
     H2: float
         Initial atmospheric partial surface pressure of H2 [bar].
     CH4: float
@@ -71,14 +75,16 @@ class Volatiles:
     CO: float
         Initial atmospheric partial surface pressure of CO [bar].
     """
-    H2O: float = field(default=0, validator=ge(0))
-    CO2: float = field(default=0, validator=ge(0))
-    N2: float = field(default=0, validator=ge(0))
-    S2: float = field(default=0, validator=ge(0))
-    SO2: float = field(default=0, validator=ge(0))
-    H2: float = field(default=0, validator=ge(0))
-    CH4: float = field(default=0, validator=ge(0))
-    CO: float = field(default=0, validator=ge(0))
+    H2O: float  = field(default=0, validator=ge(0))
+    CO2: float  = field(default=0, validator=ge(0))
+    N2: float   = field(default=0, validator=ge(0))
+    S2: float   = field(default=0, validator=ge(0))
+    SO2: float  = field(default=0, validator=ge(0))
+    H2S: float  = field(default=0, validator=ge(0))
+    NH3: float  = field(default=0, validator=ge(0))
+    H2: float   = field(default=0, validator=ge(0))
+    CH4: float  = field(default=0, validator=ge(0))
+    CO: float   = field(default=0, validator=ge(0))
 
     def get_pressure(self, s: str) -> float:
         """Helper method for getting the pressure for `vol` by string."""
@@ -107,14 +113,15 @@ class Delivery:
     radio_Th: float
         Concentration (ppmw) of thorium at reference age of `t=radio_tref`
     """
-    initial: str = field(validator=in_(('elements', 'volatiles')))
 
     module: str | None = field(validator=in_((None,)), converter=none_if_none)
 
-    elements: Elements
-    volatiles: Volatiles
+    elements: Elements   = field(factory=Elements)
+    volatiles: Volatiles = field(factory=Volatiles)
 
-    radio_tref: float = field(validator=gt(0))
-    radio_U: float    = field(validator=ge(0))
-    radio_K: float    = field(validator=ge(0))
-    radio_Th: float   = field(validator=ge(0))
+    initial: str = field(default='elements', validator=in_(('elements', 'volatiles')))
+
+    radio_tref: float = field(default=4.55,  validator=gt(0))
+    radio_K: float    = field(default=310.0, validator=ge(0))
+    radio_U: float    = field(default=0.031, validator=ge(0))
+    radio_Th: float   = field(default=0.124, validator=ge(0))

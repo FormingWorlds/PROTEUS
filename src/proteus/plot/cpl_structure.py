@@ -26,15 +26,15 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
                         times: list, int_data:list, atm_data:list,
                         module:str, plot_format: str="pdf"):
 
-    if np.amax(times) < 2:
+    if (len(times) < 2) or (np.amax(times) < 2):
         log.debug("Insufficient data to make plot_structure")
         return
 
-    log.info("Plot structure")
-
     if module not in ('spider','aragog'):
-        log.debug("Cannot make structure plot with module '%s'"%module)
+        log.debug("Cannot make structure plot with interior module '%s'"%module)
         return
+
+    log.info("Plot structure")
 
     # helpfile indicies
     hf_idxs = []
@@ -44,8 +44,8 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
 
     # helpfile data
     R_int = np.array(hf_all["R_int"], dtype=float)[hf_idxs]
-    R_obs = np.array(hf_all["z_obs"], dtype=float)[hf_idxs] + R_int
-    R_xuv = np.array(hf_all["z_xuv"], dtype=float)[hf_idxs] + R_int
+    R_obs = np.array(hf_all["R_obs"], dtype=float)[hf_idxs]
+    R_xuv = np.array(hf_all["R_xuv"], dtype=float)[hf_idxs]
 
     # scale to Earth radius
     for r in (R_int, R_obs, R_xuv):
@@ -118,9 +118,10 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
 
     # Decorate plot
     ax.set(xlabel=r"Radius [R$_{\oplus}$]", ylabel="Temperature [K]")
-    ax.legend()
-    ax.grid(zorder=-1, alpha=0.1)
-    leg = ax.legend(framealpha=1.0, loc='upper left')
+    # ax.legend()
+    ax.grid(zorder=-2, alpha=0.1)
+    leg = ax.legend(framealpha=1.0, loc='lower right')
+    leg.set_zorder(99)
     ax.add_artist(leg)
 
     ax.xaxis.set_major_locator(MultipleLocator(0.20))
@@ -141,12 +142,12 @@ def plot_structure(hf_all: pd.DataFrame, output_dir: str,
     hdls = []
     hdls.append(ax.scatter(-100, 0, c='k', s=ms, marker=esc_m, label="Escape level"))
     hdls.append(ax.scatter(-100, 0, c='k', s=ms, marker=obs_m, label="Observed level"))
-    ax.legend(handles=hdls, loc='lower left', framealpha=1.0, )
+    ax.legend(handles=hdls, loc='lower center', framealpha=1.0).set_zorder(99)
 
     plt.close()
     plt.ioff()
 
-    fpath = os.path.join(output_dir, "plot_structure.%s"%plot_format)
+    fpath = os.path.join(output_dir, "plots", "plot_structure.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 

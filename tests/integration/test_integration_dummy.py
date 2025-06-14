@@ -3,7 +3,7 @@ from __future__ import annotations
 import filecmp
 
 import pytest
-from helpers import PROTEUS_ROOT
+from helpers import NEGLECT, PROTEUS_ROOT, df_intersect
 from pandas.testing import assert_frame_equal
 
 from proteus import Proteus
@@ -25,10 +25,12 @@ def test_dummy_run(dummy_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
-    # Neglect these columns
-    neglect = ["CH4_mol_atm", "CH4_mol_total", "CH4_kg_atm", "CH4_kg_total"]
-    hf_all = hf_all.drop(columns=neglect)
-    hf_ref = hf_ref.drop(columns=neglect)
+    # Get intersection
+    hf_all, hf_ref = df_intersect(hf_all, hf_ref)
+
+    # Neglect some columns
+    hf_all = hf_all.drop(columns=NEGLECT, errors='ignore')
+    hf_ref = hf_ref.drop(columns=NEGLECT, errors='ignore')
 
     # Check helpfile
     assert_frame_equal(hf_all, hf_ref, rtol=5e-3)

@@ -48,7 +48,7 @@ def plot_emission(output_dir:str, times:list, plot_format="pdf",
         label = latex_float(t)+" yr"
         color = sm.to_rgba(t)
 
-        atm_file = os.path.join(output_dir, "data", "%d_atm.nc"%t)
+        atm_file = os.path.join(output_dir, "data", "%.0f_atm.nc"%t)
         ds = nc.Dataset(atm_file)
 
         x_arr = []
@@ -120,12 +120,12 @@ def plot_emission(output_dir:str, times:list, plot_format="pdf",
     plt.close()
     plt.ioff()
 
-    fpath = os.path.join(output_dir, "plot_emission.%s"%plot_format)
+    fpath = os.path.join(output_dir, "plots", "plot_emission.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 def plot_emission_entry(handler: Proteus):
 
-    plot_times, _ = sample_output(handler, tmin=1000.0)
+    plot_times, _ = sample_output(handler, tmin=1000.0, extension="_atm.nc")
     print("Snapshots:", plot_times)
 
 

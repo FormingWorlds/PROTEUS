@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from proteus.utils.archive import archive_exists
 from proteus.utils.helper import mol_to_ele
 
 log = logging.getLogger("fwl."+__name__)
@@ -30,11 +31,13 @@ _preset_colours  = {
     "N2" : "#870036",
     "S2" : "#FF8FA1",
     "SO2": "#00008B",
+    "H2S": "#2eff90",
+    "NH3": "#675200",
 
     # Volatile elements
-    "H": "#0000aa",
+    "H": "#0000cc",
     "C": "#ff0000",
-    "O": "#00dd00",
+    "O": "#88bb22",
     "N": "#ffaa00",
     "S": "#ff22ff",
     "P": "#33ccff",
@@ -43,14 +46,23 @@ _preset_colours  = {
     "Fe": "#888888",
     "Si": "#aa2277",
     "Mg": "#996633",
+    "Na": "#ccff00",
 
-    # Energy fluxes
+    # GLobal energy fluxes
     "OLR":   "#dc143c",
     "ASF":   "#4169e1",
     "sct":   "#2e8b57",
     "tidal": "#daa520",
-    "radio": "#1e90ff",
-    "star":  "#ffbbcc",
+    "radio": "#C720DD",
+    "star":  "#FF8FA1",
+
+    # Atmosphere energy fluxes (copied from AGNI)
+    "flux_r": "#c0c0c0",
+    "flux_n": "#000000",
+    "flux_c": "#6495ed",
+    "flux_t": "#ff4400",
+    "flux_o": "#66CD00",
+    "flux_p": "#ecb000",
 
     # Model components
     "atm"     : "#444444",
@@ -83,6 +95,9 @@ def _generate_colour(gas:str):
 
     # For each atom, add the contriution of its rgb components
     for e in atoms.keys():
+        if e not in _preset_colours.keys():
+            log.warning(f"Using fallback colour for '{gas}'")
+            return _preset_colours["_fallback"]
         red += int(_preset_colours[e][1:2],base=16)*atoms[e]
         gre += int(_preset_colours[e][3:4],base=16)*atoms[e]
         blu += int(_preset_colours[e][5:6],base=16)*atoms[e]
@@ -308,12 +323,21 @@ def sample_times(times:list, nsamp:int, tmin:float=1.0):
     return out_t, out_i
 
 
-def sample_output(handler: Proteus, extension:str = ".nc", tmin:float = 1.0, nsamp:int=8):
+def sample_output(handler: Proteus, extension:str = "_atm.nc", tmin:float = 1.0, nsamp:int=8):
 
-    # get all files
-    files = glob.glob(os.path.join(handler.directories["output"], "data", "*"+extension))
+    # get all files in directory
+    files = glob.glob(os.path.join(handler.directories["output/data"], "*"+extension))
+
+    # No files found?
     if len(files) < 1:
-        return []
+
+        # Maybe archived...
+        if archive_exists(handler.directories["output/data"]):
+            log.error("No output files found, but tar archive exists. Extract it first.")
+            return [], []
+
+        # Return empty
+        return [], []
 
     # get times
     times = [int(f.split("/")[-1].split(extension)[0]) for f in files]

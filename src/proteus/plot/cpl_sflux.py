@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import glob
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import matplotlib as mpl
@@ -56,7 +57,6 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0,
 
     """
 
-    mpl.use('Agg')
     star_cmap = plt.get_cmap('Spectral')
 
     # Find and sort files
@@ -64,7 +64,7 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0,
     files = natural_sort(files_unsorted)
 
     if (len(files) == 0):
-        log.warning("No files found when trying to plot stellar flux")
+        log.warning("Insufficient data to make plot_sflux")
         return
 
     log.info("Plot stellar flux")
@@ -127,12 +127,11 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0,
         log.warning("Only one spectrum was found")
 
     ax.set_yscale("log")
-    ax.set_ylabel(r"Flux [erg / (s cm$^2$ nm)]")
+    ax.set_ylabel(r"TOA spectral flux density [erg / (s cm$^2$ nm)]")
 
     ax.set_xscale("log")
     ax.set_xlabel("Wavelength [nm]")
     ax.set_xlim([0.5,max(1.0,wl_max)])
-    ax.set_title("TOA flux versus wavelength")
 
     # Plot historical spectra
     for i in range(N):
@@ -146,16 +145,20 @@ def plot_sflux(output_dir: str, wl_max: float = 6000.0,
 
     # Plot current spectrum (use the copy made in the output directory)
     if plt_modern:
-        X = np.loadtxt(output_dir+'/-1.sflux',skiprows=2).T
-        ax.plot(X[0],X[1],color='black',label='Modern',lw=0.8,alpha=0.9)
+        modern_fpath = os.path.join(output_dir, "data", "-1.sflux")
+        if os.path.isfile(modern_fpath):
+            X = np.loadtxt(modern_fpath,skiprows=2).T
+            ax.plot(X[0],X[1],color='black',label='Modern (1 AU)',lw=0.8,alpha=0.9)
+        else:
+            log.warning(f"Could not find file {modern_fpath}")
 
     if plt_modern or justone:
-        ax.legend()
+        ax.legend(loc='lower left')
 
     plt.close()
     plt.ioff()
-    fig.savefig(output_dir+"/plot_sflux.%s"%plot_format,
-                bbox_inches='tight', dpi=200)
+    fpath = os.path.join(output_dir, "plots", "plot_sflux.%s"%plot_format)
+    fig.savefig(fpath, bbox_inches='tight', dpi=200)
 
 
 def plot_sflux_entry(handler: Proteus):

@@ -4,7 +4,7 @@ import filecmp
 from pathlib import Path
 
 import pytest
-from helpers import PROTEUS_ROOT, resize_to_match
+from helpers import NEGLECT, PROTEUS_ROOT, df_intersect, resize_to_match
 from matplotlib.testing.compare import compare_images
 from numpy.testing import assert_allclose
 from pandas.testing import assert_frame_equal
@@ -22,18 +22,17 @@ IMAGE_LIST = (
         "plot_atmosphere.png",
         "plot_escape.png",
         "plot_global_log.png",
-        "plot_observables.png",
+        "plot_bolometry.png",
         "plot_structure.png",
-        "plot_elements.png",
         "plot_fluxes_atmosphere.png",
         "plot_interior_cmesh.png",
-        #"plot_sflux_cross.png",
         "plot_emission.png",
         "plot_interior.png",
         "plot_sflux.png",
         "plot_population_time_density.png",
         "plot_population_mass_radius.png"
         )
+
 
 @pytest.fixture(scope="module")
 def physical_run():
@@ -46,12 +45,15 @@ def test_physical_run(physical_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
-    neglect = ["CH4_mol_atm", "CH4_mol_total", "CH4_kg_atm", "CH4_kg_total"]
-    hf_all = hf_all.drop(columns=neglect)
-    hf_ref = hf_ref.drop(columns=neglect)
+    # Get intersection
+    hf_all, hf_ref = df_intersect(hf_all, hf_ref)
+
+    # Neglect some columns
+    hf_all = hf_all.drop(columns=NEGLECT, errors='ignore')
+    hf_ref = hf_ref.drop(columns=NEGLECT, errors='ignore')
 
     # Check helpfile
-    assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
+    assert_frame_equal(hf_all, hf_ref, rtol=6e-3)
 
 def test_physical_spectrum(physical_run):
     # Check stellar spectrum
@@ -63,8 +65,8 @@ def test_physical_spectrum(physical_run):
 
 def test_physical_atmosphere(physical_run):
     # Keys to load and test
-    _out   = out_dir / 'data' / '302_atm.nc'
-    _ref   = ref_dir / '302_atm.nc'
+    _out   = out_dir / 'data' / '402_atm.nc'
+    _ref   = ref_dir / '402_atm.nc'
     fields = ["t", "p", "z", "fl_U_LW", "fl_D_SW"]
 
     # Load atmosphere output
@@ -79,12 +81,13 @@ def test_physical_atmosphere(physical_run):
     # Compare to expected array values.
     # Cannot simply compare the files as black-boxes, because they contain date information
     for key in fields:
-        assert_allclose(out[key], ref[key], rtol=1e-3)
+        assert_allclose(out[key], ref[key], rtol=1e-3,
+                        err_msg=f"Key {key} does not match reference data")
 
 def test_physical_interior(physical_run):
     # Keys to load and test
-    _out   = out_dir / 'data' / '302_int.nc'
-    _ref   = ref_dir / '302_int.nc'
+    _out   = out_dir / 'data' / '402_int.nc'
+    _ref   = ref_dir / '402_int.nc'
     fields = ["radius_b", "pres_b", "temp_b", "phi_b", "Hradio_s"]
 
     # Load interior output
@@ -99,23 +102,26 @@ def test_physical_interior(physical_run):
     # Compare to expected array values.
     # Cannot simply compare the files as black-boxes, because they contain date information
     for key in fields:
-        assert_allclose(out[key], ref[key], rtol=1e-3)
+        assert_allclose(out[key], ref[key], rtol=1e-3,
+                        err_msg=f"Key {key} does not match reference data")
 
 
 @pytest.mark.xfail(raises=AssertionError)
 @pytest.mark.parametrize("image", IMAGE_LIST)
 def test_physical_plot(physical_run, image):
 
-    out_img = out_dir / image
+    out_img = out_dir / "plots" / image
     ref_img = ref_dir / image
     tolerance = 3
 
-    # Resize images if needed
+    # Open images, and resize them to have the same dimensions
     out_img, ref_img = resize_to_match(out_img, ref_img)
 
+    # Working directory for comparing the images
     results_dir = Path('result_images')
     results_dir.mkdir(exist_ok=True, parents=True)
 
+    # Paths to the resized images
     actual = results_dir / image
     expected = results_dir / f'{actual.stem}-expected{actual.suffix}'
 

@@ -16,16 +16,16 @@ log = logging.getLogger("fwl."+__name__)
 
 # Run the dummy atmosphere module
 def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:float, M_int:float, P_surf:float):
-    log.info("Running dummy atmosphere...")
+    log.debug("Running dummy atmosphere...")
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
     # It represents a measure of the radiating temperature of the atmosphere above the
     #    surface, relative to the surface temperature itself
     # Setting this to 0 will result in an entirely transparent atmosphere
     # Setting this to 1 will result in an OLR of zero
-    gamma           = 0.7
 
     # Parameters
+    gamma           = config.atmos_clim.dummy.gamma
     zenith_angle    = config.orbit.zenith_angle
     albedo_pl       = config.atmos_clim.albedo_pl
     inst_sf         = config.orbit.s0_factor
@@ -33,9 +33,7 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     skin_d          = config.atmos_clim.surface_d
     skin_k          = config.atmos_clim.surface_k
 
-    log.info("Gamma = %.4f" % gamma)
-    if not (0.0 <= gamma <= 1.0):
-        log.warning("Gamma value is out of bounds; expect unreasonable fluxes")
+    log.debug("Gamma = %.4f" % gamma)
 
     # Simple rad trans
     def _calc_fluxes(x):
@@ -79,11 +77,11 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
             log.info("Found solution after %d iterations" % int(r.iterations))
         else:
             UpdateStatusfile(dirs, 22)
-            raise Exception("Could not find solution for T_surf with dummy_atmosphere")
+            raise RuntimeError("Could not find solution for T_surf with dummy_atmosphere")
 
     else:
         UpdateStatusfile(dirs, 20)
-        raise Exception("Invalid surface state chosen for dummy_atmosphere")
+        raise ValueError("Invalid surface state chosen for dummy_atmosphere")
 
     # Require that the net flux must be upward
     F_atm_lim = fluxes["fl_N"]
@@ -111,11 +109,11 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     output["F_atm"]   = F_atm_lim             # Net flux at TOA
     output["F_olr"]   = fluxes["fl_U_LW"]     # OLR
     output["F_sct"]   = fluxes["fl_U_SW"]     # Scattered SW flux
-    output["z_obs"]   = 0.0
+    output["R_obs"]   = R_int
     output["rho_obs"] = 3 * M_int / (4*np.pi*R_int**3)
     output["albedo"]  = fluxes["fl_U_SW"]/fluxes["fl_D_SW"]
     output["p_xuv"]   = P_surf
-    output["z_xuv"]   = 0.0
+    output["R_xuv"]   = R_int
     output["p_obs"]   = P_surf
 
     return output

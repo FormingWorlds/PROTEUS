@@ -6,13 +6,13 @@ import json
 import logging
 import os
 import platform
-import subprocess
-import sys
+import subprocess as sp
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
+from proteus.interior.common import Interior_t, get_file_tides
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import radnuc_data
 from proteus.utils.helper import UpdateStatusfile, natural_sort, recursive_get
@@ -22,36 +22,32 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-TIDES_FILENAME = ".tides_recent.dat"
-
 class MyJSON( object ):
 
     '''load and access json data'''
 
     def __init__( self, filename ):
         self.filename = filename
+        self.data_d = None
         self._load()
 
     def _load( self ):
-        '''load and store json data from file'''
-        try:
-            json_data  = open( self.filename )
-        except FileNotFoundError:
-            log.error('cannot find file: %s' % self.filename )
-            log.error('please specify times for which data exists')
-            sys.exit(1)
-        self.data_d = json.load( json_data )
-        json_data.close()
+        '''
+        Load json data from file, and store in the class.
+
+        Returns False if file not found.
+        '''
+        if not os.path.isfile( self.filename ):
+            return False
+        with open( self.filename ) as json_data:
+            self.data_d = json.load( json_data )
+        return True
 
     # was get_field_data
     def get_dict( self, keys ):
         '''get all data relating to a particular field'''
-        try:
-            dict_d = recursive_get( self.data_d, keys )
-            return dict_d
-        except NameError:
-            log.error('dictionary for %s does not exist', keys )
-            sys.exit(1)
+        dict_d = recursive_get( self.data_d, keys )
+        return dict_d
 
     # was get_field_units
     def get_dict_units( self, keys ):
@@ -119,8 +115,31 @@ class MyJSON( object ):
         SOLID = (phi<0.05)
         return SOLID
 
-def read_jsons(output_dir:str, times:list):
-    return [MyJSON(os.path.join(output_dir, "data", "%d.json"%t)) for t in times]
+def read_jsons(output_dir:str, times:list) -> list[MyJSON]:
+    """
+    Read JSON files from the output/data/ directory for the specified times.
+
+    Parameters
+    ----------
+    output_dir : str
+        Path to the output directory.
+    times : list
+        List of times (in years) for which to read the JSON files.
+
+    Returns
+    -------
+    jsons : list[MyJSON]
+        List of MyJSON objects containing the data from the JSON files.
+    """
+    jsons = []
+    for t in times:
+        _f = os.path.join(output_dir, "data", "%.0f.json"%t)  # path to file
+        _j = MyJSON(_f)  # load json file
+        if _j.data_d is None:
+            _j = None  # set to None if data could not be read
+        else:
+            jsons.append(_j)  # otherwise, append to list
+    return jsons
 
 def get_all_output_times(odir:str):
     '''
@@ -144,26 +163,12 @@ def get_all_output_times(odir:str):
 
     return time_a
 
-def get_dict_surface_values_for_specific_time( keys_t, time, indir='output'):
-    '''Similar to above, but only loop over all times once and get
-       all requested (surface / zero index) data in one go'''
-
-    data_l = []
-
-    filename = indir + '/data/{}.json'.format(time)
-    myjson_o = MyJSON( filename )
-    for key in keys_t:
-        value = myjson_o.get_dict_values( key )
-        data_l.append( value )
-
-
-    return np.array(data_l)
-
 #====================================================================
 def _try_spider( dirs:dict, config:Config,
                 IC_INTERIOR:int,
                 hf_all:pd.DataFrame, hf_row:dict,
-                step_sf:float, atol_sf:float ):
+                step_sf:float, atol_sf:float, dT_max:float,
+                timeout:float=60*45 ):
     '''
     Try to run spider with the current configuration.
     '''
@@ -173,16 +178,28 @@ def _try_spider( dirs:dict, config:Config,
     if not os.path.isfile(spider_exec):
         raise FileNotFoundError("SPIDER executable could not be found at '%s'"%spider_exec)
 
-    # Bounds on tolereances
-    step_sf = min(1.0, max(1.0e-10, step_sf))
-    atol_sf = min(1.0e10, max(1.0e-10, atol_sf))
+    # Scale factors for when SPIDER is failing to converge
+    step_sf = max(1.0e-10, step_sf)
+    atol_sf = max(1.0e-10, atol_sf)
+
+    # Solver tolerances
+    spider_atol = atol_sf * config.interior.spider.tolerance
+    spider_rtol = atol_sf * config.interior.spider.tolerance_rel
+
+    # Bounds on tolerances
+    spider_rtol = min(spider_rtol, 1e-1)
+    spider_atol = max(spider_atol, 1e-11)
 
     # Recalculate time stepping
     if IC_INTERIOR == 2:
 
-        # Current step number
-        json_file   = MyJSON( dirs["output"]+'data/{}.json'.format(int(hf_row["Time"])) )
-        step        = json_file.get_dict(['step'])
+        # Get step number from last JSON file
+        json_path   = os.path.join(dirs["output/data"], "%.0f.json"%hf_row["Time"])
+        json_file   = MyJSON( json_path )
+        if json_file.data_d is None:
+            UpdateStatusfile(dirs, 21)
+            raise ValueError("JSON file '%s' could not be loaded" % json_path)
+        step = json_file.get_dict(['step'])
 
         # Get new time-step
         dtswitch = next_step(config, dirs, hf_row, hf_all, step_sf)
@@ -192,7 +209,7 @@ def _try_spider( dirs:dict, config:Config,
         nstepsmacro = step + nsteps
         dtmacro = dtswitch
 
-        log.debug("Time options in RunSPIDER: dt=%.2e yrs in %d steps (at i=%d)" %
+        log.debug("SPIDER iteration: dt=%.2e yrs in %d steps (at i=%d)" %
                                                     (dtmacro, nsteps, nstepsmacro))
 
     # For init loop
@@ -201,14 +218,14 @@ def _try_spider( dirs:dict, config:Config,
         dtmacro     = 0
         dtswitch    = 0
 
-    empty_file = os.path.join(dirs["output"],"data", ".spider_tmp")
+    empty_file = os.path.join(dirs["output/data"], ".spider_tmp")
     open(empty_file, 'w').close()
 
     ### SPIDER base call sequence
     call_sequence = [
                         spider_exec,
                         "-options_file",           empty_file,
-                        "-outputDirectory",        dirs["output"]+'data/',
+                        "-outputDirectory",        dirs["output/data"],
                         "-IC_INTERIOR",            "%d"  %(IC_INTERIOR),
                         "-OXYGEN_FUGACITY_offset", "%.6e"%(config.outgas.fO2_shift_IW),  # Relative to the specified buffer
                         "-surface_bc_value",       "%.6e"%(hf_row["F_atm"]),
@@ -222,13 +239,13 @@ def _try_spider( dirs:dict, config:Config,
                         "-grain",                  "%.6e"%(config.interior.grain_size),
                     ]
 
-    # Min of fractional and absolute Ts poststep change
+    # Tolerance on the change in T_magma during a single SPIDER call
     if hf_row["Time"] > 0:
-        dTs_frac = config.interior.spider.tsurf_rtol * float(hf_all["T_surf"].iloc[-1])
-        dT_int_max = np.min([ float(config.interior.spider.tsurf_atol), float(dTs_frac) ])
-        call_sequence.extend(["-tsurf_poststep_change", str(dT_int_max)])
+        dT_poststep = config.interior.spider.tsurf_rtol * hf_row["T_magma"] \
+                    + config.interior.spider.tsurf_atol
     else:
-        call_sequence.extend(["-tsurf_poststep_change", str(config.interior.spider.tsurf_atol)])
+        dT_poststep = float(config.interior.spider.tsurf_atol)
+    call_sequence.extend(["-tsurf_poststep_change", str(min(dT_max, dT_poststep))])
 
     # set surface and core entropy (-1 is a flag to ignore)
     call_sequence.extend(["-ic_surface_entropy", "-1"])
@@ -237,8 +254,8 @@ def _try_spider( dirs:dict, config:Config,
     # Initial condition
     if IC_INTERIOR == 2:
         # get last JSON File
-        last_filename = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output"]+"data/*.json")])[-1]
-        last_filename = os.path.join(dirs["output"], "data", last_filename)
+        last_filename = natural_sort([os.path.basename(x) for x in glob.glob(dirs["output/data"]+"/*.json")])[-1]
+        last_filename = os.path.join(dirs["output/data"], last_filename)
         call_sequence.extend([
                                 "-ic_interior_filename", str(last_filename),
                                 "-activate_poststep",
@@ -253,8 +270,11 @@ def _try_spider( dirs:dict, config:Config,
 
     # Mixing length parameterization: 1: variable | 2: constant
     call_sequence.extend(["-mixing_length", str(config.interior.spider.mixing_length)])
-    call_sequence.extend(["-ts_sundials_atol", str(config.interior.spider.tolerance * atol_sf)])
-    call_sequence.extend(["-ts_sundials_rtol", str(config.interior.spider.tolerance * atol_sf)])
+
+    # Solver tolerances
+    call_sequence.extend(["-ts_sundials_atol", str(spider_atol)])
+    call_sequence.extend(["-ts_sundials_rtol", str(spider_rtol)])
+    call_sequence.extend(["-ts_sundials_type", str(config.interior.spider.solver_type)])
 
     # Rollback
     call_sequence.extend(["-activate_poststep", "-activate_rollback"])
@@ -268,14 +288,13 @@ def _try_spider( dirs:dict, config:Config,
     # Energy transport physics
     call_sequence.extend(["-CONDUCTION", "1"]) # conduction
     call_sequence.extend(["-CONVECTION", "1"]) # convection
-    call_sequence.extend(["-MIXING    ", "1"]) # mixing (latent heat transport)
+    call_sequence.extend(["-MIXING",     "1"]) # mixing (latent heat transport)
     call_sequence.extend(["-SEPARATION", "1"]) # gravitational separation of solid/melt
 
     # Tidal heating
     if config.interior.tidal_heat:
-        tides_file = os.path.join(dirs["output"], "data", TIDES_FILENAME)
         call_sequence.extend(["-HTIDAL", "2"])
-        call_sequence.extend(["-htidal_filename", tides_file])
+        call_sequence.extend(["-htidal_filename", get_file_tides(dirs["output"])])
 
     # Properties lookup data (folder relative to SPIDER src)
     folder = "lookup_data/1TPa-dK09-elec-free/"
@@ -335,7 +354,7 @@ def _try_spider( dirs:dict, config:Config,
     call_sequence.extend(["-param_utbl_const", "1.0E-7"]) # value of parameterisation
 
     # fO2 buffer chosen to define fO2 (7: Iron-Wustite)
-    call_sequence.extend(["-OXYGEN_FUGACITY", "7"])
+    call_sequence.extend(["-OXYGEN_FUGACITY", "2"])
 
     # radionuclides
     if config.interior.radiogenic_heat:
@@ -385,15 +404,25 @@ def _try_spider( dirs:dict, config:Config,
     spider_print = open(dirs["output"]+"spider_recent.log",'w')
     spider_print.write(call_string+"\n")
     spider_print.flush()
-    proc = subprocess.run([call_string],shell=True,stdout=spider_print, env=spider_env)
+    spider_succ = True
+    try:
+        proc = sp.run(call_sequence, timeout=timeout, text=True,
+                                stdout=spider_print, stderr=spider_print, env=spider_env)
+    except sp.TimeoutExpired:
+        log.error("SPIDER process timed-out")
+        spider_succ = False
+    except Exception as e:
+        log.error("SPIDER encountered an error: "+str(type(e)))
+        spider_succ = False
+    else:
+        spider_succ = bool(proc.returncode == 0)
+
     spider_print.close()
-
-    # Check status
-    return bool(proc.returncode == 0)
+    return spider_succ
 
 
-def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
-              hf_all:pd.DataFrame, hf_row:dict, tides_array:np.ndarray ):
+def RunSPIDER( dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict,
+                interior_o:Interior_t):
     '''
     Wrapper function for running SPIDER.
     This wrapper handles cases where SPIDER fails to find a solution.
@@ -408,19 +437,11 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
     spider_success = False  # success?
     attempts = 0            # number of attempts so far
 
-    # write tidal heating file
-    tides_file = os.path.join(dirs["output"], "data", TIDES_FILENAME)
-    if (tides_array is None) or (not config.interior.tidal_heat):
-        tides_array = np.zeros(config.interior.spider.num_levels-1)
-    with open(tides_file,'w') as hdl:
-        # header information
-        hdl.write("# 3 %d \n"%len(tides_array))
-        hdl.write("# Dummy, Tidal heating density \n")
-        hdl.write("# 1.0 1.0 \n")
-
-        # for each level...
-        for h in tides_array:
-            hdl.write("0.0 %.3e \n"%h)
+    # Maximum dT
+    dT_max = 1e99
+    if config.interior.tidal_heat and (np.amax(interior_o.tides) > 1e-10):
+        dT_max = 4.0
+        log.info("Tidal heating active; limiting dT_magma to %.2f K"%dT_max)
 
     # make attempts
     while not spider_success:
@@ -428,7 +449,8 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
         log.debug("Attempt %d" % attempts)
 
         # run SPIDER
-        spider_success = _try_spider(dirs, config, IC_INTERIOR, hf_all, hf_row, step_sf, atol_sf)
+        spider_success = _try_spider(dirs, config, interior_o.ic,
+                                        hf_all, hf_row, step_sf, atol_sf, dT_max)
 
         if spider_success:
             # success
@@ -443,8 +465,8 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
             else:
                 # try again (change tolerance and step size)
                 log.warning("Trying again")
-                step_sf *= 0.5
-                atol_sf *= 4.0
+                step_sf *= 0.1
+                atol_sf *= 10.0
 
     # check status
     if spider_success:
@@ -453,10 +475,10 @@ def RunSPIDER( dirs:dict, config:Config, IC_INTERIOR:int,
     else:
         # failure of all attempts
         UpdateStatusfile(dirs, 21)
-        raise Exception("An error occurred when executing SPIDER (made %d attempts)" % attempts)
+        raise RuntimeError("An error occurred when executing SPIDER (made %d attempts)" % attempts)
 
 
-def ReadSPIDER(dirs:dict, config:Config, R_int:float):
+def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     '''
     Read variables from last SPIDER output JSON file into a dictionary
     '''
@@ -467,45 +489,50 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float):
     ### Read in last SPIDER base parameters
     sim_time = get_all_output_times(dirs["output"])[-1]  # yr, as an integer value
 
-    # SPIDER keys from JSON file that are read in
-    keys_t = ( ('atmosphere','mass_liquid'),
-                ('atmosphere','mass_solid'),
-                ('atmosphere','mass_mantle'),
-                ('atmosphere','mass_core'),
-                ('atmosphere','temperature_surface'),
-                ('rheological_front_phi','phi_global'),
-                ('atmosphere','Fatm'),
-                ('rheological_front_dynamic','depth'),
-                )
+    # load data file
+    json_path   = os.path.join(dirs["output/data"], "%.0f.json"%sim_time)
+    json_file   = MyJSON( json_path )
+    if json_file.data_d is None:
+        UpdateStatusfile(dirs, 21)
+        raise ValueError("JSON file '%s' could not be loaded" % json_path)
 
-    data_a = get_dict_surface_values_for_specific_time( keys_t, sim_time, indir=dirs["output"] )
+    # read scalars
+    json_keys = {
+            "M_mantle_liquid" : ('atmosphere','mass_liquid'),
+            "M_mantle_solid"  : ('atmosphere','mass_solid'),
+            "M_mantle"        : ('atmosphere','mass_mantle'),
+            "M_core"          : ('atmosphere','mass_core'),
+            "T_magma"         : ('atmosphere','temperature_surface'),
+            "Phi_global"      : ('rheological_front_phi','phi_global'),
+            "F_int"           : ('atmosphere','Fatm'),
+            "RF_depth"        : ('rheological_front_dynamic','depth'),
+    }
 
-    json_file = MyJSON( dirs["output"]+'/data/{}.json'.format(sim_time) )
+    # Fill the new dict with scalars, and scale values as required
+    for key in json_keys:
+        output[key] = float(json_file.get_dict_values(json_keys[key]))
+    output["RF_depth"] /= R_int
+
+    # read arrays
     area_b   = json_file.get_dict_values(['data','area_b'])
     Hradio_s = json_file.get_dict_values(['data','Hradio_s'])
     Htidal_s = json_file.get_dict_values(['data','Htidal_s'])
     mass_s   = json_file.get_dict_values(['data','mass_s'])
-    phi_s    = json_file.get_dict_values(['data','phi_s'])
-
-    # Fill the new dict
-    output["M_mantle_liquid"] = float(data_a[0])
-    output["M_mantle_solid"]  = float(data_a[1])
-    output["M_mantle"]        = float(data_a[2])
-
-    # Surface properties
-    output["T_magma"]         = float(data_a[4])
-    output["Phi_global"]      = float(data_a[5])  # global melt fraction
-    output["F_int"]           = float(data_a[6])  # Heat flux from interior
-    output["RF_depth"]        = float(data_a[7])/R_int  # depth of rheological front
-
-    # Melt fraction array
-    output["Phi_array"] = np.array(phi_s)
 
     # Tidal heating
     output["F_tidal"] = np.dot(Htidal_s, mass_s)/area_b[0]
 
     # Radiogenic heating
     output["F_radio"] = np.dot(Hradio_s, mass_s)/area_b[0]
+
+    # Arrays at current time
+    interior_o.phi      = np.array(json_file.get_dict_values(['data','phi_s']))
+    interior_o.density  = np.array(json_file.get_dict_values(['data','rho_s']))
+    interior_o.radius   = np.array(json_file.get_dict_values(['data','radius_b']))
+    interior_o.visc     = np.array(json_file.get_dict_values(['data','visc_b']))[1:]
+    interior_o.mass     = np.array(json_file.get_dict_values(['data','mass_s']))
+    interior_o.temp     = np.array(json_file.get_dict_values(['data','temp_s']))
+    interior_o.pres     = np.array(json_file.get_dict_values(['data','pressure_s']))
 
     # Manually calculate heat flux at near-surface from energy gradient
     # Etot        = json_file.get_dict_values(['data','Etot_b'])

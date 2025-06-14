@@ -4,53 +4,60 @@ These instructions will guide you through the typical installation
 process. The setup is written for MacOS and Linux. Depending on your
 system settings and installed libraries your procedure may differ. If
 one or more of the steps below do not work for you we encourage you to
-first check the `troubleshooting`{.interpreted-text role="doc"} page. If
+first check the [troubleshooting](./troubleshooting.md) page. If
 that does not help you further, please contact the developers (see
-`contact`{.interpreted-text role="doc"}).
+[contact](./contact.md).
 
-## System configuration (MacOS)
+## System pre-configuration
 
-1.  Open the terminal to install the developer tools
+Setting up PROTEUS and its submodules requires extra steps to be performed before following the rest of this guide.
+Follow the instructions below depending on your system configuration.
 
+For installing PROTEUS on a local machine (e.g. your laptop), follow the appropriate section in the [Local machine guide](./local_machine_guide.md).
+
+If you are using a specific server, use the following guides:
+
+* Kapteyn cluster [guide](./kapteyn_cluster_guide.md)
+* Habrok cluster [guide](./habrok_cluster_guide.md)
+* Snellius cluster [guide](./snellius_cluster_guide.md).
+
+
+## Setup a Python environment
+
+We recommend that you use Python version 3.12 for running PROTEUS.
+Python is most easily obtained and managed using [miniforge](https://github.com/conda-forge/miniforge).
 ```console
-xcode-select --install
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh
 ```
 
-2.  Install `FORTRAN NetCDF` library via the most appropriate method for
-    you
+Alternatively, you can download Python from the official website and use [pyenv](https://github.com/pyenv/pyenv).
+
+## Install Julia
+
+Some of the PROTEUS modules are written in Julia, which is broadly similar to Python.
+You should only obtain Julia using the official installer, **not** via your computer's package manager.
 
 ```console
-brew install netcdf
-brew install netcdf-fortran
+curl -fsSL https://install.julialang.org | sh
 ```
 
-Or
+## Set up the PROTEUS framework
 
-```console
-sudo port install netcdf-fortran +gcc8
-```
-
-## System configuration (Linux)
-
-1. Install `FORTRAN NetCDF` via your package manager (e.g\...)
-
-```console
-sudo apt install libnetcdff-dev
-```
-
-## Python environment
-
-You will need to setup Python (>=3.10) on your system. This can be done via brew on MacOS, or with your package manager on Linux. Alternatively, you can use [miniforge](https://github.com/conda-forge/miniforge) or [pyenv](https://github.com/pyenv/pyenv).
-
-## Download the framework
-
-1. Setup environment variables
+1. Create and set environment variables
 
     The environment variable `FWL_DATA` points to the folder where input data are stored.
-    This variable must always be set, so it is best to add this line to your shell rc file.
+    This variable must always be set, so it is best to add this line to your shell rc file .
 
     ```console
-    export FWL_DATA=/your/local/path/
+    mkdir /your/local/path/FWL_DATA
+    echo "export FWL_DATA=/your/local/path/FWL_DATA/" >> "$HOME/.bashrc"
+    ```
+
+    Reload your shell rc file to make the changes effective.
+
+    ```console
+    source "$HOME/.bashrc"
     ```
 
 2. Download PROTEUS base
@@ -63,22 +70,49 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 3. Create a virtual environment
 
     ```console
-    python -m venv .venv
-    source .venv/bin/activate
+    conda create -n proteus python=3.12
     ```
 
-4. Setup radiative transfer code (**SOCRATES**)
+4. Radiative transfer code (**SOCRATES**)
 
     The code can be setup in `./socrates/` using the following script.
 
     ```console
-    source tools/get_socrates.sh
+    ./tools/get_socrates.sh
     ```
 
-    The environemnt variable `RAD_DIR` must always point to the SOCRATES installation path.
-    It is highly recommended that you add this to your shell rc file (e.g. `~/.bashrc`).
+    The environment variable `RAD_DIR` must always point to the SOCRATES installation path.
+    It is highly recommended that you add this to your shell rc file (e.g. `~/.bashrc`), which
+    can be done by running the following command.
 
-5. **Optional** developer installation steps
+    ```console
+    echo "export RAD_DIR=$PWD/socrates/" >> "$HOME/.bashrc"
+    ```
+
+    Reload your shell rc file to make the changes effective. Depending on your shell,
+    you can do this by running:
+
+    ```console
+    source "$HOME/.bashrc"
+    ```
+
+5. Radiative-convective atmosphere model (**AGNI**)
+
+    Installation steps can be found at the [AGNI wiki](https://nichollsh.github.io/AGNI/dev/setup/).
+    They are also reproduced below.
+
+    ```console
+    git clone git@github.com:nichollsh/AGNI.git
+    cd AGNI
+    bash src/get_agni.sh
+    cd ../
+    ```
+
+    Use this `get_agni.sh` script to keep AGNI and its data files up to date. It is
+    important that AGNI is available at `./AGNI/` inside your PROTEUS folder. This can be
+    either a symbolic link or the true location of the submodule.
+
+6. **Optional** developer installation steps
 
     Follow the steps in this section if you want to create editable installations of these submodules.
     Otherwise, go to the next step section.
@@ -87,119 +121,92 @@ You will need to setup Python (>=3.10) on your system. This can be done via brew
 
         ```console
         git clone git@github.com:FormingWorlds/MORS
-        pip install -e MORS/.
+        python -m pip install -e MORS/.
         ```
 
     - JANUS atmosphere model
 
         ```console
         git clone git@github.com:FormingWorlds/JANUS
-        pip install -e JANUS/.
+        python -m pip install -e JANUS/.
         ```
 
     - CALLIOPE outgassing model
 
         ```console
         git clone git@github.com:FormingWorlds/CALLIOPE
-        pip install -e CALLIOPE/.
+        python -m pip install -e CALLIOPE/.
         ```
 
     - ARAGOG interior model
 
         ```console
         git clone git@github.com:ExPlanetology/aragog.git
-        pip install -e aragog/.
+        python -m pip install -e aragog/.
         ```
 
     - ZEPHYRUS escape model
 
         ```console
         git clone git@github.com:FormingWorlds/ZEPHYRUS
-        pip install -e ZEPHYRUS/.
+        python -m pip install -e ZEPHYRUS/.
         ```
 
-6. Setup numerical computing library (**PETSc**)
+7. Setup numerical computing library (**PETSc**)
 
-    You will need to do this particular step in an environment with Python <=3.12.
+    You will need to do this particular step in an environment with Python <= 3.12.
 
     ```console
     ./tools/get_petsc.sh
     ```
 
-7. Setup interior evolution model (**SPIDER**)
+8. Setup interior evolution model (**SPIDER**)
 
     ```console
     ./tools/get_spider.sh
     ```
 
-8. Setup PROTEUS coupled framework
+9. Setup PROTEUS coupled framework
 
     ```console
-    pip install -e .
+    python -m pip install -e .
     ```
 
 
-9. Done! 🚀
+10. Done! 🚀
     Any remaining dependencies will be downloaded when the model is first run.
 
 ## Optional modules
 
-### Radiative-convective atmosphere model (**AGNI**)
 
-Installation steps can be found at the [AGNI wiki](https://nichollsh.github.io/AGNI/dev/setup/).
-They are also reproduced below.
+### Multi-phase tidal heating model (**LovePy**)
 
-1. Setup Julia
+Lovepy is written in Julia. You can use the same environment as AGNI if you wish, but you
+should make sure to follow the installation steps below.
 
-    ```console
-    curl -fsSL https://install.julialang.org | sh
-    ```
+```console
+./tools/get_lovepy.sh
+```
 
-2. Clone the model
+### Synthetic observations calculator (**PLATON**)
 
-    ```console
-    git clone git@github.com:nichollsh/AGNI.git
-    cd AGNI
-    ```
+[PLATON](https://platon.readthedocs.io/en/latest/intro.html) is a forward modelling and
+retrieval tool for exoplanet atmospheres. In PROTEUS, this tool is used to generate
+synthetic transmission and secondary eclipse observations. To get PLATON and its
+dependencies, use the script below.
 
-3. Build AGNI
+```console
+./tools/get_platon.sh
+```
 
-    ```console
-    julia -e 'using Pkg; Pkg.activate("."); Pkg.build()'
-    ```
-
-4. Go back to the PROTEUS directory
-
-    ```console
-    cd ../
-    ```
-
-Consult the AGNI wiki if you encouter issues.
+Note that this script will take some time to run; PLATON will need to download
+about 10 GB of data from the internet.
 
 ### Chemical kinetics atmosphere model (**VULCAN**)
 
-1. Clone the model
+VULCAN is written in Python, however, it is not available in a cohesive package format.
+Obtain VULCAN using the script below.
 
-    ```console
-    git clone git@github.com:exoclime/VULCAN.git
-    cd VULCAN
-    ```
-
-2. Compile the FastChem extension
-
-    ```console
-    cd fastchem_vulcan
-    ```
-
-    On MacOS you will need to edit `make.globaloptions` to reflect  a GNU-compatible `g++` executable, not the Apple one (see
-     [Troubleshooting](./troubleshooting.md) if the next step results in an error.
-
-    ```console
-    make
-    cd ../../
-    ```
-3. Install Python dependencies
-
-    ```console
-    pip install sympy
-    ```
+```console
+./tools/get_vulcan.sh
+```

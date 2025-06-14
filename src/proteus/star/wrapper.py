@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import AU, M_sun, R_sun, const_sigma
+from proteus.utils.constants import AU, M_sun, R_sun, const_sigma, ergcm2stoWm2
+from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -19,6 +20,14 @@ if TYPE_CHECKING:
 def init_star(handler:Proteus):
     '''
     Star-related things to be done when the simulation begins.
+    This includes:
+        - Preparing the stellar model
+        - Reading the present-day stellar spectrum
+
+    Parameters
+    ----------
+        handler : Proteus
+            Proteus object instance
     '''
 
     log.info("Preparing stellar model")
@@ -36,15 +45,39 @@ def init_star(handler:Proteus):
                                         handler.config.star.mors.spec)
 
         # Copy modern spectrum to output folder, for posterity.
-        star_backup_path = os.path.join(handler.directories["output"], "-1.sflux")
+        star_backup_path = os.path.join(handler.directories["output/data"], "-1.sflux")
         shutil.copyfile(star_modern_path, star_backup_path)
 
         match handler.config.star.mors.tracks:
 
             case 'spada':
-                # creates track data
-                handler.stellar_track = mors.Star(Mstar = handler.config.star.mass,
-                                                  percentile = handler.config.star.mors.rot_pctle)
+
+                age_now_Myr = handler.config.star.mors.age_now * 1000 # convert Gyr to Myr
+
+                # Get rotation period or percentile (one of these is None)
+                pcntle = handler.config.star.mors.rot_pcntle
+                period = handler.config.star.mors.rot_period
+
+                if pcntle is not None:
+                    # Rotation set by percentile.
+                    #  The reference age must be 1 Myr for consistency with the assumptions
+                    #  withing `mors.star.Percentile()`.
+                    age_rot_Myr = 1.0
+                    period = None
+                else:
+                    # Rotation set by rotation period.
+                    #  The reference age is set by the current age, for which we have
+                    #  measurements of the envelope's rotation period.
+                    age_rot_Myr = age_now_Myr
+
+                # load and fit track data
+                try:
+                    handler.stellar_track = mors.Star(Mstar = handler.config.star.mass,
+                                                        Age = age_rot_Myr,
+                                                        percentile = pcntle, Prot=period)
+                except Exception as e:
+                    UpdateStatusfile(handler.directories, 23)
+                    raise e
 
                 # load modern spectrum
                 # calculate band-integrated fluxes
@@ -54,9 +87,7 @@ def init_star(handler:Proteus):
 
                 # calculate other properties from modern spectrum
                 handler.star_props = get_spada_synthesis_properties(
-                    handler.stellar_track,
-                    handler.config.star.mors.age_now * 1000, # convert Gyr to Myr
-                )
+                                                handler.stellar_track, age_now_Myr )
 
             case 'baraffe':
                 # creates track data
@@ -155,13 +186,36 @@ def get_new_spectrum(t_star:float, config:Config,
 
 def scale_spectrum_to_toa(fl_arr, sep:float):
     '''
-    Scale stellar fluxes from 1 AU to top of atmosphere
+    Scale stellar fluxes from 1 AU to top of the planet's atmosphere.
+
+    Parameters
+    ----------
+        fl_arr : iterable
+            Stellar fluxes at 1 AU
+        sep : float
+            Planet-star distance, in units of AU
+
+    Returns
+    ----------
+        fl_arr : np.ndarray
+            Incoming stellar radiation scaled to the correct distance.
     '''
     return np.array(fl_arr) * ( (AU / sep)**2 )
 
 def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
     '''
     Write stellar spectrum to file.
+
+    Parameters
+    ----------
+        wl_arr : np.ndarray
+            Wavelength array [nm]
+        fl_arr : np.ndarray
+            Stellar fluxes at 1 AU [erg s-1 cm-2 nm-1]
+        hf_row : dict
+            Current helpfile row
+        output_dir : str
+            Proteus output directory
     '''
 
     log.debug("Writing stellar spectrum to file")
@@ -183,18 +237,36 @@ def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
     )
 
 def update_stellar_quantities(hf_row:dict, config:Config, stellar_track=None):
+    """
+    Wrapper function to update stellar quantities, such as luminosity and radius.
+
+    Modifies hf_row in-place. This function is called during the PROTEUS simulation loop.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Current helpfile row
+        config : Config
+            Proteus configuration object
+        stellar_track
+            Mors stellar track object, if applicable.
+    """
 
     # Update value for star's radius and mass
-    log.info("Update stellar radius and mass")
+    log.debug("Update stellar radius and mass")
     update_stellar_radius(hf_row, config, stellar_track)
     update_stellar_mass(hf_row, config)
 
     # Update value for instellation flux
-    log.info("Update instellation")
+    log.debug("Update stellar fluxes and temperature")
     update_instellation(hf_row, config, stellar_track)
+    update_stellar_temperature(hf_row, config, stellar_track)
+    log.info("    F_ins      = %.2e   W m-2"%hf_row["F_ins"])
+    log.info("    F_xuv      = %.2e   W m-2"%hf_row["F_xuv"])
+    log.info("    T_star     = %.2f    K"%hf_row["T_star"])
 
     # Calculate new eqm temperature
-    log.info("Update equilibrium temperature")
+    log.debug("Update equilibrium temperature")
     update_equilibrium_temperature(hf_row, config)
 
     # Calculate new skin temperature
@@ -229,6 +301,25 @@ def update_stellar_radius(hf_row:dict, config:Config, stellar_track=None):
     # Dimensionalise and store in dictionary
     hf_row["R_star"] = R_star * R_sun
 
+def update_stellar_temperature(hf_row:dict, config:Config, stellar_track=None):
+    '''
+    Update stellar temperature in hf_row, stored in SI units.
+    '''
+
+    # Dummy case
+    if config.star.module == 'dummy':
+        hf_row["T_star"] = config.star.dummy.Teff
+
+    # Mors cases
+    elif config.star.module == 'mors':
+
+        # which track?
+        match config.star.mors.tracks:
+            case 'spada':
+                hf_row["T_star"] = stellar_track.Value(hf_row["age_star"] / 1e6, "Teff")
+            case 'baraffe':
+                hf_row["T_star"] = stellar_track.BaraffeStellarTeff(hf_row["age_star"])
+
 def update_instellation(hf_row:dict, config:Config, stellar_track=None):
     '''
     Update hf_row value of bolometric stellar flux impinging upon the planet.
@@ -238,6 +329,7 @@ def update_instellation(hf_row:dict, config:Config, stellar_track=None):
     if config.star.module == 'dummy':
         from proteus.star.dummy import calc_instellation
         S_0 = calc_instellation(config.star.dummy.Teff, hf_row["R_star"], hf_row["separation"])
+        Fxuv_SI = 0.0
 
     # Mors cases
     elif config.star.module == 'mors':
@@ -245,15 +337,30 @@ def update_instellation(hf_row:dict, config:Config, stellar_track=None):
         # which track?
         match config.star.mors.tracks:
             case 'spada':
-                S_0 = stellar_track.Value(hf_row["age_star"] / 1e6, "Lbol") * 1e-7 \
+
+                age_star = hf_row["age_star"] / 1e6
+
+                # Bolometric flux
+                S_0 = stellar_track.Value(age_star, "Lbol") * 1e-7 \
                         / (4.0 * np.pi * hf_row["separation"]**2.0 )
 
+                # Interpolating the XUV flux at the age of the star
+                Lxuv_cgs = stellar_track.Value(age_star, 'Lx') + \
+                                stellar_track.Value(age_star, 'Leuv')
+                Fxuv_SI = Lxuv_cgs/(4*np.pi * (hf_row["separation"]*1e2)**2) * ergcm2stoWm2
+
             case 'baraffe':
+
+                # Bolometric flux
                 S_0 = stellar_track.BaraffeSolarConstant(hf_row["age_star"],
                                                     hf_row["separation"]/AU)
 
+                # XUV flux not provided by Baraffe tracks
+                Fxuv_SI = 0.0
+
     # Update hf_row dictionary
     hf_row["F_ins"] = S_0
+    hf_row["F_xuv"] = Fxuv_SI
 
 def update_equilibrium_temperature(hf_row:dict, config:Config):
     '''

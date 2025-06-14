@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from .wrapper import RunAtmosphere
+from .wrapper import run_atmosphere
 
 __all__ = [
-    'RunAtmosphere',
+    'run_atmosphere',
 ]

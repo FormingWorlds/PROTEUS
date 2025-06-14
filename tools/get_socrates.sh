@@ -34,7 +34,12 @@ cd "$socpath"
 ./configure
 ./build_code
 
+# Inform user
+echo "SOCRATES has been downloaded and built in $socpath"
+echo "Now add the following to your `~/.bashrc` file:"
+echo "    export RAD_DIR=$socpath"
+
 # Environment
-source ./set_rad_env
-export LD_LIBRARY_PATH=""
+# source ./set_rad_env
+# export LD_LIBRARY_PATH=""
 cd $olddir

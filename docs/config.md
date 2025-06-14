@@ -7,10 +7,20 @@ listed below with short explanations of their purpose and the values
 they accept. Configuration files can contain blank lines. Comments are
 indicated with a `#` symbol. Whitespace indentation is purely stylistic.
 
-Not all of these parameters will be used, depending on the
-configuration, but they must all be provided.
+Many of the parameters have default values, meaning that you do not have to provide them in
+the file. Some parameters are conditionally required. For example, if you use the `mors`
+stellar evolution module (i.e. `star.module == 'mors'`), then you are required to also set
+the variable `star.mors.age_now`. However, if you instead decided to use the `dummy`
+stellar evolution module then the `age_now` parameter is not required.
 
-## Adding a new parameter
+See the `default.toml` configuration for a comprehensive example of all possible parameters.
+
+### Examples
+
+Have a look at the [input configs](https://github.com/FormingWorlds/PROTEUS/tree/main/input)
+for ideas of how to set up your config in practice.
+
+## Developers: adding a new parameter
 
 So, you are developing a new model and want to add some parameters?
 Follow these steps:
@@ -44,11 +54,6 @@ Proteus uses [attrs](https://www.attrs.org) for its
 parameter handling. Please see the [examples](https://www.attrs.org/en/stable/examples.html)
 for more information how to work with attrs.
 
-### Examples
-
-Have a look at the [input configs](https://github.com/FormingWorlds/PROTEUS/tree/main/input)
-for ideas of how to set up your config in practice.
-
 ## Root parameters
 
 ::: proteus.config._config
@@ -67,7 +72,7 @@ for ideas of how to set up your config in practice.
       show_root_toc_entry: False
       members_order: source
 
-## Star
+## Stellar evolution
 
 ::: proteus.config._star
     options:
@@ -76,7 +81,7 @@ for ideas of how to set up your config in practice.
       show_root_toc_entry: False
       members_order: source
 
-## Star system and planetary orbit
+## Orbital evolution and tides
 
 ::: proteus.config._orbit
     options:
@@ -85,9 +90,18 @@ for ideas of how to set up your config in practice.
       show_root_toc_entry: False
       members_order: source
 
-## Planetary structure
+## Interior structure
 
 ::: proteus.config._struct
+    options:
+      heading_level: 3
+      show_root_heading: False
+      show_root_toc_entry: False
+      members_order: source
+
+## Magma ocean and planetary interior
+
+::: proteus.config._interior
     options:
       heading_level: 3
       show_root_heading: False
@@ -112,16 +126,16 @@ for ideas of how to set up your config in practice.
       show_root_toc_entry: False
       members_order: source
 
-## Magma ocean / mantle
+## Atmospheric chemistry
 
-::: proteus.config._interior
+::: proteus.config._atmos_chem
     options:
       heading_level: 3
       show_root_heading: False
       show_root_toc_entry: False
       members_order: source
 
-## Outgassing
+## Volatile outgassing
 
 ::: proteus.config._outgas
     options:
@@ -130,9 +144,18 @@ for ideas of how to set up your config in practice.
       show_root_toc_entry: False
       members_order: source
 
-## Delivery
+## Elemental delivery and accretion
 
 ::: proteus.config._delivery
+    options:
+      heading_level: 3
+      show_root_heading: False
+      show_root_toc_entry: False
+      members_order: source
+
+## Synthetic observations
+
+::: proteus.config._observe
     options:
       heading_level: 3
       show_root_heading: False

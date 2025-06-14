@@ -38,8 +38,10 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
     sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)
     sm.set_array([])
 
+    temp_min, temp_max = 1.0, 3.0
     visc_min, visc_max = 1e99, 0
     flux_min, flux_max = 1e99, 0
+    tide_min, tide_max = 0.0, 1.0
 
     lw=1.5
 
@@ -92,6 +94,8 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
         axs[0].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',  c=color, lw=lw, label=label )
         axs[0].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed', c=color, lw=lw)
         axs[0].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted', c=color, lw=lw)
+        temp_min = min(temp_min, np.amin(yy))
+        temp_max = max(temp_max, np.amax(yy))
 
         # Plot melt fraction
         if module == "aragog":
@@ -119,7 +123,7 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
             yy = ds["Fconv_b"][:]
         elif module == "spider":
             yy =  ds.get_dict_values(['data','Jconv_b'])
-        yy = np.array(yy) / 1e3 # convert units
+        yy = np.array(yy) / 1e3 # convert units to kW/m2
         axs[3].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',   c=color, lw=lw)
         axs[3].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed',  c=color, lw=lw)
         axs[3].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted',  c=color, lw=lw)
@@ -131,30 +135,35 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
             yy = ds["Htidal_s"][:]
         elif module == "spider":
             yy = ds.get_dict_values(['data','Htidal_s'])
-        yy = np.array(yy) * 1e6 # convert units
+        yy = np.array(yy) * 1e9 # convert units to nW/kg
         yy = np.append([yy[0]],yy) # extend to surface (_s arrays are shorter than _b)
         axs[4].plot( yy[MASK_SO], xx_pres[MASK_SO], ls='solid',   c=color, lw=lw)
         axs[4].plot( yy[MASK_MI], xx_pres[MASK_MI], ls='dashed',  c=color, lw=lw)
         axs[4].plot( yy[MASK_ME], xx_pres[MASK_ME], ls='dotted',  c=color, lw=lw)
+        tide_max = max(tide_max, np.amax(yy))
 
     # Decorate figure
     title = '(a) Temperature' #'(a) Temperature, {}'.format(units)
-    axs[0].set( title=title, xlabel=r'$T$ [$10^3$ K]', ylabel=r'$P$ [GPa]')
+    axs[0].set( title=title, xlabel=r'$T$ [1000 K]', ylabel=r'$P$ [GPa]')
+    axs[0].set_xlim(left=temp_min-0.1, right=temp_max+0.1)
     axs[0].set_ylim(top=np.amin(xx_pres), bottom=np.amax(xx_pres))
     axs[0].yaxis.set_minor_locator(MultipleLocator(10.0))
     axs[0].xaxis.set_minor_locator(MultipleLocator(0.25))
-    axs[0].legend( fontsize=8, fancybox=True, framealpha=0.9, loc='lower left')
+    leg1 = axs[0].legend( fontsize=8, fancybox=True, framealpha=0.9, loc='lower left')
+    axs[0].add_artist(leg1)
+
+    hdls = []
+    hdls.append(axs[0].plot([-1,-2],[-1,-2], ls='solid',  c='k', lw=lw, label="Solid")[0])
+    hdls.append(axs[0].plot([-1,-2],[-1,-2], ls='dashed', c='k', lw=lw, label="Mush")[0])
+    hdls.append(axs[0].plot([-1,-2],[-1,-2], ls='dotted', c='k', lw=lw, label="Melt")[0])
+    leg2 = axs[0].legend(handles=hdls, fontsize=8, fancybox=True, framealpha=0.9, loc='upper right')
+    axs[0].add_artist(leg2)
 
     title = '(b) Melt fraction'
     axs[1].set(title=title, xlabel=r'$\phi$ [%]')
     axs[1].set_xlim(left=-5, right=105)
     axs[1].xaxis.set_major_locator(MultipleLocator(25))
     axs[1].xaxis.set_minor_locator(MultipleLocator(5))
-
-    axs[1].plot([-100,-200],[-100,-200], ls='solid',  c='k', lw=lw, label="Solid")
-    axs[1].plot([-100,-200],[-100,-200], ls='dashed', c='k', lw=lw, label="Mush")
-    axs[1].plot([-100,-200],[-100,-200], ls='dotted', c='k', lw=lw, label="Melt")
-    axs[1].legend(fontsize=8, fancybox=True, framealpha=0.9, loc='lower left')
 
     title = '(c) Viscosity'
     axs[2].set( title=title, xlabel=r'$\eta$ [Pa s]')
@@ -168,8 +177,9 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
     axs[3].set_xlim(left=0.0, right=flux_max)
 
     title = '(e) Tidal power density'
-    axs[4].set( title=title, xlabel=r'$H_t$ [$\mu$W kg$^{-1}$]')
-    axs[4].set_xlim(left=0.0)
+    axs[4].set( title=title, xlabel=r'$H_t$ [nW kg$^{-1}$]')
+    axs[4].set_xlim(left=tide_min, right=tide_max*1.5)
+    axs[4].set_xscale("symlog", linthresh=1.0)
 
     # Pressure-depth conversion for y-axis
     axb = axs[-1].twinx()
@@ -182,7 +192,8 @@ def plot_interior(output_dir: str, times: list | np.ndarray, data:list, module:s
     fig.subplots_adjust(wspace=0.05)
     plt.close()
     plt.ioff()
-    fpath = os.path.join(output_dir, "plot_interior.%s"%plot_format)
+
+    fpath = os.path.join(output_dir, "plots", "plot_interior.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 
@@ -192,6 +203,9 @@ def plot_interior_entry(handler: Proteus):
         extension = ".json"
     elif module == "aragog":
         extension = "_int.nc"
+    else:
+        log.warning(f"Cannot make interior plot for module '{module}'")
+        return
     plot_times,_ = sample_output(handler, extension=extension, tmin=1e3)
     print("Snapshots:", plot_times)
 

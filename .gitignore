@@ -12,11 +12,12 @@ socrates_star.txt
 radiation_code.lock
 screenlog.0
 
-# Output folders
+# Output files
 old/
 output/*
 output.link
 output
+slurm*.out
 
 # Development installations
 fwl_data
@@ -55,6 +56,14 @@ Zephyrus
 vulcan
 VULCAN
 Vulcan
+lovepy
+Lovepy
+LOVEPY
+LovePy
+platon
+Platon
+PLATON
+Zalmoxis
 
 # misc
 ######
@@ -63,6 +72,9 @@ Vulcan
 __pycache__
 !output/.gitkeep
 nogit_*
+*.odg#
+*.ods#
+*.odp#
 
 # From Read the Docs
 ####################
@@ -128,6 +140,7 @@ htmlcov/
 .tox/
 .nox/
 .coverage
+coverage.json
 .coverage.*
 .cache
 nosetests.xml
@@ -197,6 +210,11 @@ ENV/
 env.bak/
 venv.bak/
 
+# Platon temp/downloaded files
+*.zip
+transit_depth.png
+eclipse_depth.png
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -224,3 +242,7 @@ cython_debug/
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
 
 .ruff_cache
+
+# Created automatically during PR #351
+Manifest.toml
+Project.toml

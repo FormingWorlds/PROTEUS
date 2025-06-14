@@ -1,4 +1,4 @@
-# Functions used to help run PROTEUS which are mostly submodule agnostic.
+# Functions used to help run PROTEUS which are mostly module agnostic.
 
 # Import utils-specific modules
 from __future__ import annotations
@@ -10,29 +10,15 @@ import subprocess
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+import matplotlib as mpl  # noqa
+
+mpl.use('Agg') # noqa
+from string import ascii_letters
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.common import read_atmosphere_data
-from proteus.interior.wrapper import read_interior_data
-from proteus.plot.cpl_atmosphere import plot_atmosphere
-from proteus.plot.cpl_elements import plot_elements
-from proteus.plot.cpl_emission import plot_emission
-from proteus.plot.cpl_escape import plot_escape
-from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
-from proteus.plot.cpl_fluxes_global import plot_fluxes_global
-from proteus.plot.cpl_global import plot_global
-from proteus.plot.cpl_interior import plot_interior
-from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
-from proteus.plot.cpl_observables import plot_observables
-from proteus.plot.cpl_population import (
-    plot_population_mass_radius,
-    plot_population_time_density,
-)
-from proteus.plot.cpl_sflux import plot_sflux
-from proteus.plot.cpl_sflux_cross import plot_sflux_cross
-from proteus.plot.cpl_structure import plot_structure
 from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
 from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
@@ -41,6 +27,9 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
+
+LOCKFILE_NAME="keepalive"
+AGNI_MIN_VERSION="1.5.0"
 
 def _get_current_time():
     '''
@@ -103,6 +92,109 @@ def _get_julia_version():
     Get the installed Julia version
     '''
     return subprocess.check_output(["julia","--version"]).decode("utf-8").split()[-1]
+
+def validate_module_versions(dirs:dict, config:Config):
+    '''
+    Check that modules are using compatible versions.
+    '''
+
+    log.info("Validating module versions")
+
+    # Read PROTEUS dependencies
+    from importlib.metadata import requires
+    deps_raw = requires("fwl-proteus")
+
+    # Get minimum required version for a module (return None if no version specified)
+    def _get_expver(mod):
+        for v in deps_raw:
+            if "=" not in v:
+                continue
+            vmod = v.split("=")[0].strip(">")  # get name of module
+            vver = v.split("=")[1]             # get req version of module
+            if mod == vmod:
+                return vver
+        return None
+
+    # Split version string into major/minor/patch components
+    def _split_ver(vver):
+        # ignore 'alpha' part and remove leading letters
+        vver = vver.split("-")[0].strip(ascii_letters)
+
+        # split into version parts
+        s = vver.split(".")
+        major = int(s[0])
+        minor = int(s[1])
+        try:
+            patch = int(s[2])
+        except Exception:
+            patch = 0
+        return major, minor, patch
+
+    # Check if actual version is compatible with expected version
+    def _valid_ver(act_str, exp_str, name):
+        # return True of expected is None
+        if exp_str is None:
+            return True
+
+        # convert from string to m/m/p format
+        vact = _split_ver(act_str)
+        vexp = _split_ver(exp_str)
+
+        # Check major, minor, patch
+        for i in range(3):
+            if vact[i] < vexp[i]:
+                log.error(f"{name} module is out of date: {act_str} < {exp_str}")
+                return False
+        return True
+
+    # Loop through required modules...
+    valid = True
+
+    # Interior module
+    match config.interior.module:
+        case 'spider':
+            # do not validate SPIDER version
+            pass
+        case 'aragog':
+            from aragog import __version__ as aragog_version
+            if not _valid_ver(aragog_version, _get_expver("aragog"), "Aragog"):
+                valid = False
+
+    # Atmosphere module
+    match config.atmos_clim.module:
+        case 'janus':
+            from janus import __version__ as janus_version
+            if not _valid_ver(janus_version, _get_expver("fwl-janus"), "JANUS"):
+                valid = False
+        case 'agni':
+            if not _valid_ver(_get_agni_version(dirs), AGNI_MIN_VERSION, "AGNI"):
+                valid = False
+
+    # Outgassing module
+    if config.outgas.module == 'calliope':
+        from calliope import __version__ as calliope_version
+        if not _valid_ver(calliope_version, _get_expver("fwl-calliope"), "CALLIOPE"):
+            valid = False
+
+    # Escape module
+    if config.escape.module == 'zephyrus':
+        from zephyrus import __version__ as zephyrus_version
+        if not _valid_ver(zephyrus_version, _get_expver("fwl-zephyrus"), "ZEPHYRUS"):
+            valid = False
+
+    # Star module
+    if config.star.module == 'mors':
+        from mors import __version__ as mors_version
+        if not _valid_ver(mors_version, _get_expver("fwl-mors"), "MORS"):
+            valid = False
+
+    # Exit
+    if not valid:
+        UpdateStatusfile(dirs, 20)
+        raise EnvironmentError("Out-of-date modules detected. " \
+        "Refer to the Troubleshooting guide on the wiki:\n"\
+        "https://fwl-proteus.readthedocs.io/en/latest/troubleshooting/")
+    log.info(" ")
 
 def print_system_configuration(dirs:dict):
     '''
@@ -174,7 +266,11 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
     log.info(write)
 
     # Escape module
-    log.info("Escape module     %s" % config.escape.module)
+    write = "Escape module     %s" % config.escape.module
+    if config.escape.module == 'zephyrus':
+        from zephyrus import __version__ as zephyrus_version
+        write += " version " + zephyrus_version
+    log.info(write)
 
     # Star module
     write = "Star module       %s" % config.star.module
@@ -185,9 +281,21 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
 
     # Orbit module
     log.info("Orbit module      %s" % config.orbit.module)
+    if config.orbit.module == 'lovepy':
+        log.info("  - Julia         version " + _get_julia_version())
 
     # Delivery module
     log.info("Delivery module   %s" % config.delivery.module)
+
+    # Atmospheric chemistry module
+    log.info("Atmos_chem module %s" % config.atmos_chem.module)
+
+    # Observations synthesis module
+    write = "Observe module    %s" % config.observe.synthesis
+    if config.observe.synthesis == "platon":
+        from platon import __version__ as platon_version
+        write += " version " + platon_version
+    log.info(write)
 
     # End spacer
     log.info(" ")
@@ -205,7 +313,7 @@ def print_citation(config:Config):
     # Core PROTEUS papers
     _cite("Lichtenberg et al. (2021)",
             "https://doi.org/10.1029/2020JE006711")
-    _cite("Nicholls et al. (2024a)",
+    _cite("Nicholls et al. (2024)",
             "https://doi.org/10.1029/2024JE008576")
 
     # Atmosphere module
@@ -214,7 +322,7 @@ def print_citation(config:Config):
             _cite("Graham et al. (2021)",
                     "https://doi.org/10.3847/PSJ/ac214c")
         case 'agni':
-            _cite("Nicholls et al. (2024b)",
+            _cite("Nicholls et al. (2025)",
                     "https://doi.org/10.1093/mnras/stae2772")
         case _:
             pass
@@ -233,7 +341,7 @@ def print_citation(config:Config):
     # Outgassing module
     match config.outgas.module:
         case 'calliope':
-            # Covered by Nicholls et al. (2024a,b)
+            # Covered by Nicholls et al. (2024, 2025)
             pass
         case 'atmodeller':
             # _cite("Bower et al. (2025)", "in prep")
@@ -259,24 +367,44 @@ def print_citation(config:Config):
 
     # Orbit module
     match config.orbit.module:
+        case 'lovepy':
+            _cite("Hay & Matsuyama (2019)",
+                    "https://doi.org/10.3847/1538-4357/ab0c21")
         case _:
             pass
 
     # Delivery module
-    match config.orbit.module:
+    match config.delivery.module:
         case _:
             pass
+
+    # Observations synthesis module
+    match config.observe.synthesis:
+        case "platon":
+            _cite("Zhang et al. (2024)",
+                    "https://doi.org/10.48550/arXiv.2410.22398")
+        case _:
+            pass
+
+    # Atmospheric chemistry module
+    if config.atmos_chem.when != "manually":
+        match config.atmos_chem.module:
+            case "vulcan":
+                _cite("Tsai et al. (2021)",
+                        "https://doi.org/10.3847/1538-4357/ac29bc")
+            case _:
+                pass
 
 def print_header():
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     log.info("                   PROTEUS framework                   ")
-    log.info("            Copyright (C) 2025 Forming Worlds          ")
+    log.info("            Copyright (C) %4d Forming Worlds          "%(datetime.now().year))
     log.info(":::::::::::::::::::::::::::::::::::::::::::::::::::::::")
     log.info(" ")
 
 def print_stoptime(start_time):
     end_time = datetime.now()
-    log.info("Simulation stopped at: " + end_time.strftime("%Y-%m-%d_%H:%M:%S"))
+    log.info("Simulation stopped at: " + _get_current_time())
 
     run_time = end_time - start_time
     run_time = run_time.total_seconds()
@@ -294,22 +422,20 @@ def PrintCurrentState(hf_row:dict):
     Print the current state of the model to the logger
     '''
     log.info("Runtime info...")
-    log.info("    System time  :   %s  "         % _get_current_time())
-    log.info("    Model time   :   %.2e   yr"    % float(hf_row["Time"]))
-    log.info("    T_surf       :   %4.3f   K"    % float(hf_row["T_surf"]))
-    log.info("    T_magma      :   %4.3f   K"    % float(hf_row["T_magma"]))
-    log.info("    P_surf       :   %.2e   bar"   % float(hf_row["P_surf"]))
-    log.info("    Phi_global   :   %.2e   "      % float(hf_row["Phi_global"]))
-    log.info("    Instellation :   %.2e   W m-2" % float(hf_row["F_ins"]))
-    log.info("    F_int        :   %.2e   W m-2" % float(hf_row["F_int"]))
-    log.info("    F_atm        :   %.2e   W m-2" % float(hf_row["F_atm"]))
-    log.info("    |F_net|      :   %.2e   W m-2" % abs(float(hf_row["F_net"])))
+    log.info("    Wall time  = %s  "         % _get_current_time())
+    log.info("    Model time = %.2e   yr"    % float(hf_row["Time"]))
+    log.info("    T_surf     = %8.3f   K"    % float(hf_row["T_surf"]))
+    log.info("    T_magma    = %8.3f   K"    % float(hf_row["T_magma"]))
+    log.info("    P_surf     = %.2e   bar"   % float(hf_row["P_surf"]))
+    log.info("    Phi_global = %.2e   "      % float(hf_row["Phi_global"]))
+    log.info("    F_atm      = %.2e   W m-2" % float(hf_row["F_atm"]))
+    log.info("    F_int      = %.2e   W m-2" % float(hf_row["F_int"]))
 
 def CreateLockFile(output_dir:str):
     '''
     Create a lock file which, if removed, will signal for the simulation to stop.
     '''
-    keepalive_file = os.path.join(output_dir,"keepalive")
+    keepalive_file = os.path.join(output_dir,LOCKFILE_NAME)
     safe_rm(keepalive_file)
     with open(keepalive_file, 'w') as fp:
         fp.write("Removing this file will be interpreted by PROTEUS as a request to stop the simulation loop\n")
@@ -329,9 +455,14 @@ def GetHelpfileKeys():
             # Model tracking
             "Time", # [yr]
 
-            # Orbital dynamics
-            "separation", # [m]
-            "period", # [s]
+            # Orbit semi-major axis and time-averaged separation
+            "semimajorax", "separation", # [m], [m],
+
+            # Orbital period and eccentricity
+            "orbital_period", "eccentricity", # [s], [1]
+
+            # Day length
+            "axial_period", # [s]
 
             # Dry interior radius (calculated) and mass (from config)
             "R_int", "M_int", # [m], [kg]
@@ -342,8 +473,9 @@ def GetHelpfileKeys():
             # Temperatures
             "T_surf", "T_magma", "T_eqm", "T_skin", # all [K]
 
-            # Energy fluxes, all [W m-2]
-            "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins", "F_tidal", "F_radio",
+            # Planet energy fluxes, all in units of [W m-2]
+            "F_int", "F_atm", "F_net", "F_olr", "F_sct", "F_ins", "F_xuv",
+            "F_tidal", "F_radio",
 
             # Interior properties
             "gravity", "Phi_global", "RF_depth", # [m s-2] , [1] , [1]
@@ -352,16 +484,20 @@ def GetHelpfileKeys():
 
             # Stellar
             "M_star", "R_star", "age_star", # [kg], [m], [yr]
+            "T_star", # [K]
 
             # Observational (from infinity)
             "p_obs",    # observered radius [bar]
-            "z_obs",    # observed height relative to R_int [m]
+            "R_obs",    # observed radius [m]
             "rho_obs",  # observed bulk density [kg m-3]
-            "transit_depth", "contrast_ratio", # [1], [1]
-            "bond_albedo", # bond albedo [1]
+            "transit_depth", "eclipse_depth", # [1], [1]
+            "bond_albedo", # bolometric bond albedo [1]
+
+            # Imaginary part of k2 Love Number
+            "Imk2", # [1]
 
             # Escape
-            "esc_rate_total", "p_xuv", "z_xuv", "R_xuv", # [kg s-1], [bar], [m], [m]
+            "esc_rate_total", "p_xuv", "R_xuv", # [kg s-1], [bar], [m]
 
             # Atmospheric composition
             "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]
@@ -387,24 +523,19 @@ def GetHelpfileKeys():
         keys.append(e+"_kg_liquid")
         keys.append(e+"_kg_total")
 
-    # elemental ratios
-    for e1 in element_list:
-        for e2 in element_list:
-            if e1==e2:
-                continue
+    # Diagnostic variables...
 
-            # reversed ratio
-            k = "%s/%s_atm"%(e2,e1)
-            if k in keys:
-                # skip this, since it's redundant to store (for example) the
-                # ratio of H/C when we already have C/H.
-                continue
+    # Weak temperature gradient parameter at the surface
+    keys.append("wtg_surf") # [1]
 
-            # intended ratio to be stored
-            k = "%s/%s_atm"%(e1,e2)
-            if k in keys:
-                continue
-            keys.append(k)
+    # Roche limit (orbital separation at which planet will disintegrate)
+    keys.append("roche_limit") # [m]
+
+    # Hill radius (radius from planet at which the atmosphere becomes unbound)
+    keys.append("hill_radius") # [m]
+
+    # Wall-clock runtime
+    keys.append("runtime") # [s]
 
     return keys
 
@@ -459,7 +590,7 @@ def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
         os.remove(fpath)
 
     # write new file
-    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.6e")
+    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.10e")
     return fpath
 
 def ReadHelpfileFromCSV(output_dir:str):
@@ -474,17 +605,47 @@ def ReadHelpfileFromCSV(output_dir:str):
 def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_snapshots=7):
     """Update plots during runtime for analysis
 
-    Calls various plotting functions which show information about the interior/atmosphere's energy and composition.
+    Calls various plotting functions which show information about the
+    interior/atmosphere's energy and composition.
 
     Parameters
     ----------
-        dirs : dict
-            Directories dictionary
-        config : Config
-            PROTEUS options dictionary.
-        end : bool
-            Is this function being called at the end of the simulation?
+    hf_all : pd.DataFrame
+        Dataframe containing all the output data
+    dirs : dict
+        Dictionary of directories
+    config : Config
+        PROTEUS configuration object
+    end : bool
+        Is this function being called at the end of the simulation?
+    num_snapshots : int
+        Number of snapshots to include in each plot.
     """
+
+    # Import utilities
+    from proteus.atmos_clim.common import read_atmosphere_data
+    from proteus.interior.wrapper import read_interior_data
+
+    # Import plotting functions
+    from proteus.plot.cpl_atmosphere import plot_atmosphere
+    from proteus.plot.cpl_bolometry import plot_bolometry
+    from proteus.plot.cpl_chem_atmosphere import plot_chem_atmosphere
+    from proteus.plot.cpl_emission import plot_emission
+    from proteus.plot.cpl_escape import plot_escape
+    from proteus.plot.cpl_fluxes_atmosphere import plot_fluxes_atmosphere
+    from proteus.plot.cpl_fluxes_global import plot_fluxes_global
+    from proteus.plot.cpl_global import plot_global
+    from proteus.plot.cpl_interior import plot_interior
+    from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
+    from proteus.plot.cpl_population import (
+        plot_population_mass_radius,
+        plot_population_time_density,
+    )
+    from proteus.plot.cpl_sflux import plot_sflux
+    from proteus.plot.cpl_sflux_cross import plot_sflux_cross
+    from proteus.plot.cpl_spectra import plot_spectra
+    from proteus.plot.cpl_structure import plot_structure
+    from proteus.plot.cpl_visual import plot_visual
 
     # Directories
     output_dir = dirs["output"]
@@ -493,9 +654,10 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     # Check model configuration
     dummy_atm = config.atmos_clim.module == 'dummy'
     dummy_int = config.interior.module == 'dummy'
+    agni      = config.atmos_clim.module == 'agni'
     spider    = config.interior.module == 'spider'
     aragog    = config.interior.module == 'aragog'
-    escape    = config.escape.module is not None
+    observed  = bool(config.observe.synthesis is not None)
 
     # Get all output times
     output_times = []
@@ -510,9 +672,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     plot_global(hf_all, output_dir, config)
 
     # Elemental mass inventory
-    if escape:
-        plot_elements(hf_all, output_dir, config.params.out.plot_fmt)
-        plot_escape(hf_all, output_dir, escape_model=config.escape.module, plot_format=config.params.out.plot_fmt)
+    plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:
@@ -540,30 +700,52 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
         plot_interior(output_dir, plot_times, int_data,
                               config.interior.module, config.params.out.plot_fmt)
 
-    # Temperature profiles
+    # Atmosphere profiles
     if not dummy_atm:
         atm_data = read_atmosphere_data(output_dir, plot_times)
 
-        # Atmosphere only
+        # Atmosphere temperature/height profiles
         plot_atmosphere(output_dir, plot_times, atm_data, config.params.out.plot_fmt)
 
-        # Atmosphere and interior, stacked
+        # Atmospheric chemistry
+        plot_chem_atmosphere(output_dir, config.atmos_chem.module,
+                                plot_format=config.params.out.plot_fmt,
+                                plot_offchem=False)
+
+        # Atmosphere and interior, stacked radially
         if not dummy_int:
             plot_structure(hf_all, output_dir, plot_times, int_data, atm_data,
                             config.interior.module, config.params.out.plot_fmt)
 
-        # Flux profiles
-        if config.atmos_clim.module == 'janus':
-            # only do this for JANUS, AGNI does it automatically
-            plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
+        # Energy flux profiles
+        plot_fluxes_atmosphere(output_dir, config.params.out.plot_fmt)
 
     # Only at the end of the simulation
     if end:
-        plot_global(hf_all,         output_dir, config, logt=False)
-        plot_fluxes_global(hf_all,  output_dir, config)
-        plot_observables(hf_all,    output_dir, plot_format=config.params.out.plot_fmt)
 
-        # Check that the simulation ran for long enough to make data
+        # Global plot with linear-time axis
+        plot_global(hf_all,         output_dir, config, logt=False)
+
+        # Energy flux balance
+        plot_fluxes_global(hf_all,  output_dir, config)
+
+        # Bolometric observables
+        plot_bolometry(hf_all,      output_dir, plot_format=config.params.out.plot_fmt)
+
+        # Spectral observables
+        if observed:
+            plot_spectra(output_dir, plot_format=config.params.out.plot_fmt)
+
+        # Chemical profiles
+        if not dummy_atm:
+            plot_chem_atmosphere(output_dir, config.atmos_chem.module,
+                                    plot_format=config.params.out.plot_fmt)
+
+        # Visualise planet and star
+        if agni:
+            plot_visual(hf_all, output_dir, idx=-1, plot_format=config.params.out.plot_fmt)
+
+        # Check that the simulation ran for long enough to make useful plots
         if len(hf_all["Time"]) >= 3:
             plot_population_mass_radius (hf_all, output_dir, fwl_dir,
                                             config.params.out.plot_fmt)
@@ -590,18 +772,46 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
                                     plot_format=config.params.out.plot_fmt)
 
     # Close all figures
-    plt.close()
+    plt.close("all")
 
+def remove_excess_files(outdir:str, rm_spectralfiles:bool=False):
+    """Remove excess files from the output directory
 
-def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
+    Parameters
+    ----------
+    outdir: str
+        Path to the simulation's output directory
+    rm_spectralfiles: bool
+        Whether to remove spectral files
+    """
+
+    # Files to remove, relative to outdir
+    rm_paths = [
+        "agni_recent.log",
+        "data/.spider_tmp",
+        LOCKFILE_NAME
+    ]
+
+    # Remove spectral files if requested
+    if rm_spectralfiles:
+        rm_paths.append("runtime.sf")
+        rm_paths.append("runtime.sf_k")
+
+    # Loop over files
+    for f in rm_paths:
+        f = os.path.join(outdir, f)
+
+        # Remove the file
+        log.debug(f"Removing {f}")
+        safe_rm(f)
+
+def get_proteus_directories(outdir="_unset") -> dict[str, str]:
     """Create dict of proteus directories from root dir.
 
     Parameters
     ----------
-    root_dir : str
-        Proteus root directory
-    out_dir : str, optional
-        Name out output directory
+    outdir : str
+        Name of the simulation's output directory
 
     Returns
     -------
@@ -611,18 +821,23 @@ def get_proteus_directories(*, out_dir: str = 'proteus_out') -> dict[str, str]:
     root_dir = get_proteus_dir()
 
     return {
-        "agni": os.path.join(root_dir, "AGNI"),
-        "input": os.path.join(root_dir, "input"),
-        "output": os.path.join(root_dir, "output", out_dir),
         "proteus":  root_dir,
-        "spider": os.path.join(root_dir, "SPIDER"),
-        "tools": os.path.join(root_dir, "tools"),
-        "vulcan": os.path.join(root_dir, "VULCAN"),
-        "utils": os.path.join(root_dir, "src", "proteus", "utils")
+        "agni":     os.path.join(root_dir, "AGNI"),
+        "lovepy":   os.path.join(root_dir, "lovepy"),
+        "input":    os.path.join(root_dir, "input"),
+        "spider":   os.path.join(root_dir, "SPIDER"),
+        "tools":    os.path.join(root_dir, "tools"),
+        "vulcan":   os.path.join(root_dir, "VULCAN"),
+        "utils":    os.path.join(root_dir, "src", "proteus", "utils"),
+        "output":           os.path.join(root_dir, "output", outdir),
+        "output/data":      os.path.join(root_dir, "output", outdir, "data"),
+        "output/observe":   os.path.join(root_dir, "output", outdir, "observe"),
+        "output/offchem":   os.path.join(root_dir, "output", outdir, "offchem"),
+        "output/plots":     os.path.join(root_dir, "output", outdir, "plots"),
     }
 
 
-def SetDirectories(config: Config) -> dict[str, str]:
+def set_directories(config: Config) -> dict[str, str]:
     """Set directories dictionary
 
     Sets paths to the required directories, based on the configuration provided
@@ -638,13 +853,12 @@ def SetDirectories(config: Config) -> dict[str, str]:
     dirs : dict
         Dictionary of paths to important directories
     """
-    dirs = get_proteus_directories(out_dir=config.params.out.path)
+    dirs = get_proteus_directories(outdir=config.params.out.path)
 
     # FWL data folder
     if os.environ.get('FWL_DATA') is None:
         UpdateStatusfile(dirs, 20)
-        raise Exception("The FWL_DATA environment variable needs to be set up!"
-                        "Did you source PROTEUS.env?")
+        raise EnvironmentError("The FWL_DATA environment variable has not been set")
     else:
         dirs["fwl"] = os.environ.get('FWL_DATA')
 
@@ -654,7 +868,7 @@ def SetDirectories(config: Config) -> dict[str, str]:
 
         if os.environ.get('RAD_DIR') is None:
             UpdateStatusfile(dirs, 20)
-            raise Exception("The RAD_DIR environment variable has not been set")
+            raise EnvironmentError("The RAD_DIR environment variable has not been set")
         else:
             dirs["rad"] = os.environ.get('RAD_DIR')
 
@@ -663,6 +877,3 @@ def SetDirectories(config: Config) -> dict[str, str]:
         dirs[key] = os.path.abspath(dirs[key])+"/"
 
     return dirs
-
-
-# End of file
