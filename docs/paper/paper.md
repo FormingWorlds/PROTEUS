@@ -30,7 +30,7 @@ authors:
   - name: Dan J. Bower
     orcid: 0000-0002-0673-4860
     affiliation: 4
-  - name: Flavia Pascal
+  - name: Flavia C. Pascal
     affiliation: 1
   - name: Hanno Spreeuw
     orcid: 0000-0002-5057-0322
@@ -107,6 +107,7 @@ Interior modules (i) compute the thermal and chemical evolution of the planetary
   - Aragog and SPIDER [@bower18; @sastre25], which describe the interior heat transport of partially molten planets using an entropy and a temperature formalism, respectively.
   - CALLIOPE [@bower22; @shorttle24; @nicholls25a], which describes the escape of the atmosphere to space.
   - LovePy [@hay19; @nicholls25c], which describes solid-phase tidal heating in the planetary mantle.
+  - Zalmoxis [@pascal26], which describes the interior (core and mantle) structure and gravity profile.
 
 Atmosphere modules (ii) compute the energy balance of the planetary atmosphere, including radiative transfer, atmospheric chemistry, and escape processes. These include:
 
