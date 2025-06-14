@@ -41,6 +41,9 @@ authors:
   - name: Stef Smeets
     orcid: 0000-0002-5413-9038
     affiliation: 3
+  - name: Shang-Min Tsai
+    orcid: 0000-0002-8163-4608
+    affiliation: 5
   - name: Raymond T. Pierrehumbert
     orcid: 0000-0002-5887-1197
     affiliation: 2
@@ -53,6 +56,8 @@ affiliations:
    index: 3
  - name: Institute of Geochemistry and Petrology, ETH Zurich, Zurich, Switzerland
    index: 4
+- name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei 106319, Taiwan
+   index: 5
 
 date: June 2025
 bibliography: paper.bib
@@ -85,36 +90,36 @@ As modern research software environments grow, they typically become more diffic
 
 The PROTEUS framework attempts to tackle these challenges by modularising its software ecosystem: physical and chemical processes and sub-systems are isolated and maintained in separate git repositories, each with their own verification through automated testing and documentation. From a software engineering perspective, PROTEUS aims to externalise all modelled physics and chemistry to interoperable sub-modules. Some of the advantages of this approach are:
 
-- Modules can be updated and maintained independently. Each module is self-sufficient and can be executed standalone, which enhances developer experience and usability.
-- Modules can be combined in different ways to create different approaches, which enables the framework to be adapted to a wide range of research questions.
-- Modules can be exchanged through other modules to test the sensitivity of different approaches to the same problem, which enables a more robust understanding of the underlying physics and chemistry.
+ - Modules can be updated and maintained independently. Each module is self-sufficient and can be executed standalone, which enhances developer experience and usability.
+ - Modules can be combined in different ways to create different approaches, which enables the framework to be adapted to a wide range of research questions.
+ - Modules can be exchanged through other modules to test the sensitivity of different approaches to the same problem, which enables a more robust understanding of the underlying physics and chemistry.
 
 PROTEUS is thus in principle interoperable with a variety of external computer codes that fit into the framework designation. In some instances, this enables integration and extension of pre-existing codes, preventing researchers from continuously 'reinventing the wheel' of their scientific domain.
 
 ![Schematic of PROTEUS components and corresponding modules.\label{fig:schematic}](schematic.png){width=90%}
 
-Figure \autoref{fig:schematic} shows the current state of the PROTEUS framework at the time of submission, including its ecosystem of modules, as previously introduced in [@Lichtenberg21; @nicholls24; @nicholls25a,@nicholls25c]. Several of the currently existing modules (in addition to the PROTEUS framework itself) have been written from scratch for their primary use as module within PROTEUS. Other modules are specialised codes, which were originally developed stand-alone, and have been adapted and extended to work with the PROTEUS framework.
+Figure \autoref{fig:schematic} shows the current state of the PROTEUS framework at the time of submission, including its ecosystem of modules, as previously introduced in [@lichtenberg21a; @nicholls24; @nicholls25a,@nicholls25c]. Several of the currently existing modules (in addition to the PROTEUS framework itself) have been written from scratch for their primary use as module within PROTEUS. Other modules are specialised codes, which were originally developed stand-alone, and have been adapted and extended to work with the PROTEUS framework.
 
 Modules are grouped into four main categories: (i) interior, (ii) atmosphere, (iii) environment, (iv) interpretation.
 
 Interior modules (i) compute the thermal and chemical evolution of the planetary mantle and core, such as mantle energy transport process, melting and crystallization, and in- and outgassing of volatiles. These include:
-- SPIDER and Aragog [@bower18; @bower22], which describe the interior heat transport of partially molten planets using an entropy and a temperature formalism, respectively.
-- CALLIOPE [@bower22; @shorttle24; @nicholls25a], which describes the escape of the atmosphere to space.
-- *lovepy* [@hay19; @nicholls25c], which describes solid-phase tidal heating in the planetary mantle.
+  - Aragog and SPIDER [@bower18; @bower22; @sastre25], which describe the interior heat transport of partially molten planets using an entropy and a temperature formalism, respectively.
+  - CALLIOPE [@bower22; @shorttle24; @nicholls25a], which describes the escape of the atmosphere to space.
+  - *lovepy* [@hay19; @nicholls25c], which describes solid-phase tidal heating in the planetary mantle.
 
 Atmosphere modules (ii) compute the energy balance of the planetary atmosphere, including radiative transfer, atmospheric chemistry, and escape processes. These include:
-- AGNI [@nicholls25a; @nicholls25b], which describes the atmosphere energy balance using a radiative-convective model.
-- JANUS [@graham21; @graham22], which describes the atmosphere energy balance using a multicomponent non‐dilute pseudoadiabat.
-- ZEPHYRUS [@postolec25], which describes the escape of the atmosphere to space.
-- fastchem [@Kitzmann23], which describes equilibrium atmospheric chemistry.
-- VULCAN [@Tsai17], which describes disequilibrium atmospheric chemistry.
-- SOCRATES [@manners24-tech], which describes radiative fluxes from atmospheric temperature and composition.
+  - AGNI [@nicholls25a; @nicholls25b], which describes the atmosphere energy balance using a radiative-convective model.
+  - JANUS [@graham21; @graham22], which describes the atmosphere energy balance using a multicomponent non‐dilute pseudoadiabat.
+  - ZEPHYRUS [@postolec25], which describes the escape of the atmosphere to space.
+  - fastchem [@kitzmann24], which describes equilibrium atmospheric chemistry.
+  - VULCAN [@tsai17; @tsai21], which describes disequilibrium atmospheric chemistry.
+  - SOCRATES [@manners24-tech], which describes radiative fluxes from atmospheric temperature and composition.
 
-Star modules (iii) compute the evolution of the host star, including its luminosity and spectral energy distribution:
+Environment modules (iii) compute the evolution of the host star, including its luminosity and spectral energy distribution:
  - MORS [@johstone21], which describes the evolution of rotation and high energy emission of stars.
 
-Interpretation modules (iv) compute the evolution of the host star, including its luminosity and spectral energy distribution:
-- PLATON [@zhang21], which describes synthetic telescopic observations of exoplanets.
+Interpretation modules (iv) compute observational properties of the planet, such as emission and transmission spectra, planet-to-star contrast ratio, and bulk density:
+ - PLATON [@zhang19; @zhang20], which describes synthetic telescopic observations of exoplanets.
 
 
 <!--
