@@ -11,7 +11,6 @@ tags:
   - planetary evolution
   - lava planets
 authors:
-  - name: PROTEUS Collaboration
   - name: Tim Lichtenberg
     orcid: 0000-0002-3286-7683
     corresponding: true
@@ -30,15 +29,11 @@ authors:
   - name: Dan J. Bower
     orcid: 0000-0002-0673-4860
     affiliation: 4
+  - name: Flavia Pascal
+    affiliation: 1
   - name: Stef Smeets
     orcid: 0000-0002-5413-9038
     affiliation: 3
-  - name: Mark Hammond
-    orcid: 0000-0002-6893-522X
-    affiliation: 2
-  - name: Shang-Min Tsai
-    orcid: 0000-0002-8163-4608
-    affiliation: 5
   - name: Raymond T. Pierrehumbert
     orcid: 0000-0002-5887-1197
     affiliation: 2
