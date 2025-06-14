@@ -41,9 +41,9 @@ authors:
   - name: Stef Smeets
     orcid: 0000-0002-5413-9038
     affiliation: 3
-  # - name: Shang-Min Tsai
-  #   orcid: 0000-0002-8163-4608
-  # affiliation: 5
+  - name: Shang-Min Tsai
+    orcid: 0000-0002-8163-4608
+  affiliation: 5
   - name: Raymond T. Pierrehumbert
     orcid: 0000-0002-5887-1197
     affiliation: 2
@@ -56,8 +56,8 @@ affiliations:
    index: 3
  - name: Institute of Geochemistry and Petrology, ETH Zurich, Zurich, Switzerland
    index: 4
-#  - name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei 106319, Taiwan
-#    index: 5
+ - name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei 106319, Taiwan
+   index: 5
 
 date: June 2025
 bibliography: paper.bib
@@ -101,7 +101,7 @@ PROTEUS is thus in principle interoperable with a variety of external computer c
 Figure \autoref{fig:schematic} shows the current state of the PROTEUS framework at the time of submission, including its ecosystem of modules, as previously introduced in [@lichtenberg21a; @nicholls24; @nicholls25a,@nicholls25c]. Several of the currently existing modules (in addition to the PROTEUS framework itself) have been written from scratch for their primary use as module within PROTEUS. Other modules are specialised codes, which were originally developed stand-alone, and have been adapted and extended to work with the PROTEUS framework.
 
 Modules are grouped into four main categories: (i) interior, (ii) atmosphere, (iii) environment, (iv) interpretation.
-<!--
+
 Interior modules (i) compute the thermal and chemical evolution of the planetary mantle and core, such as mantle energy transport process, melting and crystallization, and in- and outgassing of volatiles. These include:
   - Aragog and SPIDER [@bower18; @bower22; @sastre25], which describe the interior heat transport of partially molten planets using an entropy and a temperature formalism, respectively.
   - CALLIOPE [@bower22; @shorttle24; @nicholls25a], which describes the escape of the atmosphere to space.
@@ -119,7 +119,7 @@ Environment modules (iii) compute the evolution of the host star, including its 
  - MORS [@johstone21], which describes the evolution of rotation and high energy emission of stars.
 
 Interpretation modules (iv) compute observational properties of the planet, such as emission and transmission spectra, planet-to-star contrast ratio, and bulk density:
- - PLATON [@zhang19; @zhang20], which describes synthetic telescopic observations of exoplanets. -->
+ - PLATON [@zhang19; @zhang20], which describes synthetic telescopic observations of exoplanets.
 
 
 <!--
