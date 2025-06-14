@@ -76,13 +76,13 @@ Planets with similar atmospheric properties may thus harbour order of magnitude 
 
 As modern research software environments grow, they typically become more difficult to maintain and verify. In particular, with a growing user and developer base, sufficient documentation and tutorials become challenging to update on a continuously evolving basis. From a scientific perspective, disciplinary rigour needs to be upheld while interdisciplinary research problems are tackled. From an organisational perspective, term-limited research projects and changing institutions of researchers present challenges for code consistency.
 
-The PROTEUS framework attempts to tackle these challenges by modularising its software ecosystem: physical and chemical processes and sub-systems are isolated and mainted in separate git repositories, with their own verification and documentation. From a code philosophy perspective, PROTEUS aims to externalise all physics and chemistry to its interoperable sub-modules. The advantages of this are:
+The PROTEUS framework attempts to tackle these challenges by modularising its software ecosystem: physical and chemical processes and sub-systems are isolated and maintained in separate git repositories, each with their own verification through automated testing and documentation. From a software engineering perspective, PROTEUS aims to externalise all modelled physics and chemistry to interoperable sub-modules. The advantages of this approach are:
 
 (i) Modules can be developed and tested in relative isolation. Each module is self-sufficient and can be executed standalone, which enhances developer experience and usability.
 
 (ii) Modules can be exchanged through other modules, either on a standing or temporary basis, for example to test the sensitivity of one approach over the other.
 
-(iii) PROTEUS is in principle interoperable with a variety of external models that fit into the framework designation. In some instances, this enables re-use and extension of pre-existing, highly robust code bases that are efficient and well-maintained. This prevents students and researchers alike to continuously having to reinvent the wheel of their particular domain.
+(iii) PROTEUS is in principle interoperable with a variety of external computer codes that fit into the framework designation. In some instances, this enables integration and extension of pre-existing codes. This prevents students and researchers alike to continuously having to 'reinvent the wheel' of their scientific domain.
 
 ![Schematic of PROTEUS components and corresponding modules. \label{fig:schematic}](PROTEUS_schematic.png)
 
