@@ -98,13 +98,13 @@ PROTEUS is thus in principle interoperable with a variety of external computer c
 
 ![Schematic of PROTEUS components and corresponding modules.\label{fig:schematic}](schematic.png){width=90%}
 
-Figure \autoref{fig:schematic} shows the current state of the PROTEUS framework at the time of submission, including its ecosystem of modules, as previously introduced in [@lichtenberg21a; @nicholls24; @nicholls25a; @nicholls25c]. Several of the currently existing modules (in addition to the PROTEUS framework itself) have been written from scratch for their primary use as module within PROTEUS. Other modules are specialised codes, which were originally developed stand-alone, and have been adapted and extended to work with the PROTEUS framework.
+\autoref{fig:schematic} shows the current state of the PROTEUS framework at the time of submission, including its ecosystem of modules, as previously introduced in [@lichtenberg21a; @nicholls24; @nicholls25a; @nicholls25c]. Several of the currently existing modules (in addition to the PROTEUS framework itself) have been written from scratch for their primary use as module within PROTEUS. Other modules are specialised codes, which were originally developed stand-alone, and have been adapted and extended to work with the PROTEUS framework.
 
 Modules are grouped into four main categories: (i) interior, (ii) atmosphere, (iii) environment, (iv) interpretation.
 
 Interior modules (i) compute the thermal and chemical evolution of the planetary mantle and core, such as mantle energy transport process, melting and crystallization, and in- and outgassing of volatiles. These include:
 
-  - Aragog and SPIDER [@bower18; @bower22; @sastre25], which describe the interior heat transport of partially molten planets using an entropy and a temperature formalism, respectively.
+  - Aragog and SPIDER [@bower18; @sastre25], which describe the interior heat transport of partially molten planets using an entropy and a temperature formalism, respectively.
   - CALLIOPE [@bower22; @shorttle24; @nicholls25a], which describes the escape of the atmosphere to space.
   - lovepy [@hay19; @nicholls25c], which describes solid-phase tidal heating in the planetary mantle.
 
@@ -125,25 +125,7 @@ Interpretation modules (iv) compute observational properties of the planet, such
 
  - PLATON [@zhang19; @zhang20], which describes synthetic telescopic observations of exoplanets.
 
-
-<!--
-The following table provides a list and brief description of the purpose of each module.
-
-| Module | Component | Purpose | Language | Reference |
-| ------ | --------- | ----------- | ---- | --------- |
-| SPIDER | interior | interior heat transport of partially molten planets using an entropy formulation | C | [@bower18] |
-| CALLIOPE | interior | escape of the atmosphere to space  | Python | [@bower22,@shorttle23,@nicholls25a] |
-| Aragog | interior | interior heat transport of partially molten planets using a temperature formulation | Python | [@bower18] |
-|lovepy | interior | tidal dissipation in the interior | Python | [@hay18,@nicholls25c] |
-| AGNI | atmosphere | atmosphere energy balance using a Newton-Raphson algorithm | Julia | [@nicholls25a, @nicholls25b]  |
-| JANUS | atmosphere | atmosphere energy balance using a multicomponent non‐dilute pseudoadiabat | Python | [@graham21] |
-| ZEPHYRUS | atmosphere | escape of the atmosphere to space  | Python | in prep. |
-| fastchem | atmosphere | equilibrium atmospheric chemistry  | Python | [@Kitzmann23] |
-| VULCAN | atmosphere | disequilibrium atmospheric chemistry  | Python | [@Tsai17] |
-| SOCRATES | atmosphere | radiative fluxes from atmospheric temperature and composition | Fortran | [@manners24-tech] |
-| MORS | star | evolution of rotation and high energy emission of stars  | Python | [@johstone21] |
-| PLATON | observation | synthetic telescopic observations | Python | [@zhang21] |
--->
+All module repositories are linked to the PROTEUS framework repository, which provides a single entry point for users to access the entire PROTEUS ecosystem.
 
 # Discussion of similar codes
 
@@ -166,7 +148,7 @@ It is critically important for the exploration of the exoplanet census and refin
 
 # Verification & documentation
 
-PROTEUS implements automated testing and documentation building practices. We use GitHub Actions to automatically run a suite of unit tests, each time code is committed to the public repository or a pull request is opened. The growing test base covers both individual modules within their respective repositories, as well as the PROTEUS framework as a whole. Tests are split into *numerical* tests, which ensure the numerical integrity, and *physical* tests, which compare the code against analytical and numerical results, and empirical data from research publications.
+PROTEUS implements automated testing and documentation building practices. We use GitHub Actions to automatically run a suite of unit tests, each time code is committed to the public repository or a pull request is opened. The growing test base covers both individual modules within their respective repositories, as well as the PROTEUS framework as a whole. Tests are split into *numerical* tests, which ensure the numerical integrity, and *physical* tests, which compare the code against analytical and numerical results, and empirical data from the scientific literature.
 
 The documentation and tutorials for PROTEUS can be [accessed online](https://fwl-proteus.readthedocs.io/en/latest/).
 
