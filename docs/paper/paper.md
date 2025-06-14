@@ -96,7 +96,7 @@ The PROTEUS framework attempts to tackle these challenges by modularising its so
 
 PROTEUS is thus in principle interoperable with a variety of external computer codes that fit into the framework designation. In some instances, this enables integration and extension of pre-existing codes, preventing researchers from continuously 'reinventing the wheel' of their scientific domain.
 
-![Schematic of PROTEUS components and corresponding modules.\label{fig:schematic}](schematic.png){width=90%}
+![Schematic of PROTEUS framework and implemented modules.\label{fig:schematic}](proteus_schematic.png){width=90%}
 
 \autoref{fig:schematic} shows the current state of the PROTEUS framework at the time of submission, including its ecosystem of modules, as previously introduced in [@lichtenberg21a; @nicholls24; @nicholls25a; @nicholls25c]. Several of the currently existing modules (in addition to the PROTEUS framework itself) have been written from scratch for their primary use as module within PROTEUS. Other modules are specialised codes, which were originally developed stand-alone, and have been adapted and extended to work with the PROTEUS framework.
 
@@ -106,14 +106,14 @@ Interior modules (i) compute the thermal and chemical evolution of the planetary
 
   - Aragog and SPIDER [@bower18; @sastre25], which describe the interior heat transport of partially molten planets using an entropy and a temperature formalism, respectively.
   - CALLIOPE [@bower22; @shorttle24; @nicholls25a], which describes the escape of the atmosphere to space.
-  - lovepy [@hay19; @nicholls25c], which describes solid-phase tidal heating in the planetary mantle.
+  - LovePy [@hay19; @nicholls25c], which describes solid-phase tidal heating in the planetary mantle.
 
 Atmosphere modules (ii) compute the energy balance of the planetary atmosphere, including radiative transfer, atmospheric chemistry, and escape processes. These include:
 
   - AGNI [@nicholls25a; @nicholls25b], which describes the atmosphere energy balance using a radiative-convective model.
   - JANUS [@graham21; @graham22], which describes the atmosphere energy balance using a multicomponent non‐dilute pseudoadiabat.
   - ZEPHYRUS [@postolec25], which describes the escape of the atmosphere to space.
-  - fastchem [@kitzmann24], which describes equilibrium atmospheric chemistry.
+  - FASTCHEM [@kitzmann24], which describes equilibrium atmospheric chemistry.
   - VULCAN [@tsai17; @tsai21], which describes disequilibrium atmospheric chemistry.
   - SOCRATES [@manners24-tech], which describes radiative fluxes from atmospheric temperature and composition.
 
