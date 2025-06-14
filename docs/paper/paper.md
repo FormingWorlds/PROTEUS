@@ -18,19 +18,26 @@ authors:
   - name: Harrison Nicholls
     orcid: 0000-0002-8368-4641
     affiliation: 2
+  - name: Laurent Soucasse
+    orcid: 0000-0002-5422-8794
+    affiliation: 3
   - name: Mariana Sastre
     orcid: 0009-0008-7799-7976
     affiliation: 1
   - name: Emma Postolec
+    orcid: 0009-0009-5036-3049
     affiliation: 1
-  - name: Laurent Soucasse
-    orcid: 0000-0002-5422-8794
-    affiliation: 3
   - name: Dan J. Bower
     orcid: 0000-0002-0673-4860
     affiliation: 4
   - name: Flavia Pascal
     affiliation: 1
+  - name: Hanno Spreeuw
+    orcid: 0000-0002-5057-0322
+    affiliation: 3
+  - name: Mark Hammond
+    orcid: 0000-0002-6893-522X
+    affiliation: 2
   - name: Stef Smeets
     orcid: 0000-0002-5413-9038
     affiliation: 3
