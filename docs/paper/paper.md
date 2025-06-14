@@ -46,8 +46,6 @@ affiliations:
    index: 3
  - name: Institute of Geochemistry and Petrology, ETH Zurich, Zurich, Switzerland
    index: 4
- - name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei, Taiwan
-   index: 5
 
 date: June 2025
 bibliography: paper.bib
