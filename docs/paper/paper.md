@@ -106,7 +106,7 @@ Interior modules (i) compute the thermal and chemical evolution of the planetary
   - Aragog and SPIDER [@bower18; @bower22; @sastre25], which describe the interior heat transport of partially molten planets using an entropy and a temperature formalism, respectively.
   - CALLIOPE [@bower22; @shorttle24; @nicholls25a], which describes the escape of the atmosphere to space.
   - *lovepy* [@hay19; @nicholls25c], which describes solid-phase tidal heating in the planetary mantle.
-
+<!--
 Atmosphere modules (ii) compute the energy balance of the planetary atmosphere, including radiative transfer, atmospheric chemistry, and escape processes. These include:
   - AGNI [@nicholls25a; @nicholls25b], which describes the atmosphere energy balance using a radiative-convective model.
   - JANUS [@graham21; @graham22], which describes the atmosphere energy balance using a multicomponent non‐dilute pseudoadiabat.
@@ -119,7 +119,7 @@ Environment modules (iii) compute the evolution of the host star, including its 
  - MORS [@johstone21], which describes the evolution of rotation and high energy emission of stars.
 
 Interpretation modules (iv) compute observational properties of the planet, such as emission and transmission spectra, planet-to-star contrast ratio, and bulk density:
- - PLATON [@zhang19; @zhang20], which describes synthetic telescopic observations of exoplanets.
+ - PLATON [@zhang19; @zhang20], which describes synthetic telescopic observations of exoplanets. -->
 
 
 <!--
