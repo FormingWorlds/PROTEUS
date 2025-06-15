@@ -130,7 +130,7 @@ Interface modules (iii) compute the energy balance and composition of the planet
   - CALLIOPE [@bower22; @shorttle24; @nicholls25a], which simulates the redox-, temperature-, and pressure-controlled in- and outgassing of C-H-N-O-S volatile elements.
   - ZEPHYRUS [@postolec25], which calculates the escape of the atmosphere to space.
 
-Environment modules (iv) compute the evolution of the host star, including its luminosity and spectral energy distribution (yellow boxe in \autoref{fig:schematic}):
+Environment modules (iv) compute the evolution of the host star, including its luminosity and spectral energy distribution (yellow boxes in \autoref{fig:schematic}):
 
  - MORS [@johstone21], which models the evolution of rotation and high energy emission of stars.
 
