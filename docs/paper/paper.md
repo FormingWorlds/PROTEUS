@@ -120,7 +120,7 @@ Interior modules (i) compute the thermal and chemical evolution of the planetary
 
 Atmosphere modules (ii) compute the energy balance of the planetary atmosphere, including radiative transfer, atmospheric chemistry, and escape processes. These include:
 
-  - AGNI [@nicholls25a; @nicholls25b; @hammond25], which describes the atmosphere energy balance using a radiative-convective model and surface reflection properties from laboratory data.
+  - AGNI [@nicholls25a; @nicholls25b], which describes the atmosphere energy balance using a radiative-convective model and surface reflection properties from laboratory data [@hammond25].
   - JANUS [@graham21; @graham22], which describes the atmosphere energy balance using a multicomponent non‐dilute pseudoadiabat.
   - ZEPHYRUS [@postolec25], which describes the escape of the atmosphere to space.
   - FASTCHEM [@kitzmann24], which describes equilibrium atmospheric chemistry.
