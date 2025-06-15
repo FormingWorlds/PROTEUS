@@ -32,9 +32,14 @@ authors:
     affiliation: 4
   - name: Flavia C. Pascal
     affiliation: 1
+  - name: Ben Riegler
+    affiliation: 5
   - name: Hanno Spreeuw
     orcid: 0000-0002-5057-0322
     affiliation: 3
+  - name: Robb Calder
+    orcid: 0009-0002-9247-2437
+    affiliation: 6
   - name: Mark Hammond
     orcid: 0000-0002-6893-522X
     affiliation: 2
@@ -43,21 +48,25 @@ authors:
     affiliation: 3
   - name: Shang-Min Tsai
     orcid: 0000-0002-8163-4608
-    affiliation: 5
+    affiliation: 7
   - name: Raymond T. Pierrehumbert
     orcid: 0000-0002-5887-1197
     affiliation: 2
 affiliations:
  - name: Kapteyn Astronomical Institute, University of Groningen, Groningen, The Netherlands
    index: 1
- - name: Department of Physics, University of Oxford, Oxford, United Kingdom
+ - name: Atmospheric, Ocean and Planetary Physics, University of Oxford, Oxford, United Kingdom
    index: 2
  - name: Netherlands eScience Center, Amsterdam, The Netherlands
    index: 3
  - name: Institute of Geochemistry and Petrology, ETH Zurich, Zurich, Switzerland
    index: 4
- - name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei 106319, Taiwan
+ - name: School of Computation, Information and Technology, Technical University of Munich, Munich, Germany
    index: 5
+ - name: Institute of Astronomy, University of Cambridge, Madingley Road, Cambridge, United Kingdom
+   index: 6
+ - name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei, Taiwan
+   index: 7
 
 date: June 2025
 bibliography: paper.bib
@@ -111,7 +120,7 @@ Interior modules (i) compute the thermal and chemical evolution of the planetary
 
 Atmosphere modules (ii) compute the energy balance of the planetary atmosphere, including radiative transfer, atmospheric chemistry, and escape processes. These include:
 
-  - AGNI [@nicholls25a; @nicholls25b], which describes the atmosphere energy balance using a radiative-convective model.
+  - AGNI [@nicholls25a; @nicholls25b; @hammond25], which describes the atmosphere energy balance using a radiative-convective model and surface reflection properties from laboratory data.
   - JANUS [@graham21; @graham22], which describes the atmosphere energy balance using a multicomponent non‐dilute pseudoadiabat.
   - ZEPHYRUS [@postolec25], which describes the escape of the atmosphere to space.
   - FASTCHEM [@kitzmann24], which describes equilibrium atmospheric chemistry.
