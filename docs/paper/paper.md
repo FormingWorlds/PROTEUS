@@ -63,7 +63,7 @@ affiliations:
    index: 4
  - name: School of Computation, Information and Technology, Technical University of Munich, Munich, Germany
    index: 5
- - name: Institute of Astronomy, University of Cambridge, Madingley Road, Cambridge, United Kingdom
+ - name: Institute of Astronomy, University of Cambridge, Cambridge, United Kingdom
    index: 6
  - name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei, Taiwan
    index: 7
