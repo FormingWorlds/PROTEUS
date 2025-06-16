@@ -37,8 +37,9 @@ def init_locs(n_workers, D):
     return X
 
 
-def worker(objective, process_fun, D_shared, B, T, T_0, x_init, lock, max_len, worker_id, log_list, direct):
+def worker(process_fun, f_w_i, D_shared, B, T, T_0, x_init, lock, max_len, worker_id, log_list, direct):
     task_id = 0
+    torch.manual_seed(os.getpid())
 
     while True:
 
@@ -49,22 +50,24 @@ def worker(objective, process_fun, D_shared, B, T, T_0, x_init, lock, max_len, w
 
         x_in = x_init if task_id == 0 else None
 
-        f = objective(worker_id, task_id)
+        f = f_w_i(worker = worker_id,
+                  iter = task_id)
 
         start_time = time.perf_counter()
-        x, y, t_bo, t_eval, t_lock, t_fit, t_ac = process_fun(f = f, D = D_shared,
-                          B = B,
-                          x_in = x_in,
-                          lock = lock,
-                          worker_id = worker_id,
-                          )
+        x, y, t_bo, t_eval, t_lock, t_fit, t_ac, dist = process_fun(f = f,
+                                                                    D = D_shared,
+                                                                    B = B,
+                                                                    x_in = x_in,
+                                                                    lock = lock,
+                                                                    worker_id = worker_id,
+                                                                    )
         end_time = time.perf_counter()
 
         # Note: if workers finish at very similar times lock contention may occur,
         # causing new query under same data.
         # This means that one worker "waits" (fractions of a second)
         # for the other worker to add their evaluation to the shared data set.
-        # Could flip BO step to only allow new query after evaluation is provided?
+        # (Could flip BO step to only allow new query after evaluation is provided?)
 
         with lock:
             D_shared["X"] = torch.concatenate((D_shared["X"], x))
@@ -82,6 +85,7 @@ def worker(objective, process_fun, D_shared, B, T, T_0, x_init, lock, max_len, w
                                 "t_lock": t_lock,
                                 "t_fit": t_fit,
                                 "t_ac": t_ac,
+                                "dist": dist,
                                 "x_value": x.tolist()[0],
                                 "y_value": float(y),
                             })
@@ -92,25 +96,25 @@ def worker(objective, process_fun, D_shared, B, T, T_0, x_init, lock, max_len, w
         task_id += 1
 
 def parallel_process(objective_builder, *,
-                     parameters, observables,
                      kernel, n_restarts, n_samples,
-                     n_workers, max_len, sim,
-                     D_init_path, directory, ref_config
+                     n_workers, max_len,
+                     D_init_path, directory,
+                     ref_config,
+                     observables,
+                     parameters
                      ):
 
+    f_w_i = partial(objective_builder,
+                    observables = observables,
+                    parameters = parameters,
+                    ref_config = ref_config
+                    )
 
     process_fun = partial(BO_step,
                           k = kernel,
                           n_restarts = n_restarts,
                           n_samples = n_samples,
-                          sim = sim
                           )
-
-    objective = partial(objective_builder,
-                        parameters = parameters,
-                        observables = observables,
-                        ref_config = ref_config,
-                        )
 
 
     t_0 = time.perf_counter()
@@ -141,8 +145,8 @@ def parallel_process(objective_builder, *,
         with lock:
             B[i] = x_init
 
-        p = Process(target=worker, args=(objective,
-                                         process_fun,
+        p = Process(target=worker, args=(process_fun,
+                                         f_w_i,
                                          D_shared,
                                          B,
                                          T,
@@ -152,8 +156,7 @@ def parallel_process(objective_builder, *,
                                          max_len,
                                          i,
                                          log_list,
-                                         directory
-                                         ))
+                                         directory))
         p.start()
         procs.append(p)
     t_1 = time.perf_counter()
@@ -165,7 +168,7 @@ def parallel_process(objective_builder, *,
         p.join()
         t_1 = time.perf_counter()
 
-        print(f"time for {p}: {(t_1-t_0):.2f}")
+        # print(f"time for {p}: {(t_1-t_0):.2f}")
 
     D_final = dict(D_shared)
     logs = list(log_list)

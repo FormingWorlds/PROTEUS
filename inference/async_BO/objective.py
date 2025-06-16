@@ -50,8 +50,9 @@ def update_toml(config_file, updates, output_file):
         toml.dump(config, f)
 
 def run_proteus(parameters: dict,
-                observables: list,
-                worker: int, iter: int,
+                worker: int,
+                iter: int,
+                observables: list|None = None,
                 ref_config = "input/demos/dummy.toml",
                 max_attempts = 2):
     """
@@ -70,37 +71,43 @@ def run_proteus(parameters: dict,
         pd.DataFrame: Output data loaded into a Pandas DataFrame.
     """
 
+    if observables is None:
+            observables = [
+                            "R_int",
+                            "M_planet",
+                            "transit_depth",
+                            "bond_albedo",
+                            ]
 
     run_id = f"w_{worker}/i_{iter}/"
-    out_path = "output/inference/" + run_id + "/runtime_helpfile.csv"
+    out_path = "output/inference/workers/" + run_id + "/runtime_helpfile.csv"
 
     # set path to output
-    parameters["params.out.path"] = run_id
+    parameters["params.out.path"] = "inference/workers/" + run_id
 
     # set path to config file for this run
-    config_path = "input/inference/" + run_id + ".toml"
+    config_path = "input/inference/workers/" + run_id + "input.toml"
 
     for attempt in range(1, max_attempts+1):
         try:
-            # create
+
             update_toml(ref_config, parameters, config_path)
 
-            # Run the simulator as a subprocess
             subprocess.run(
                 ["proteus", "start", "-c", config_path],
                 check=True,
-                stdout=subprocess.DEVNULL # to suppress terminal output
+                # stdout=subprocess.DEVNULL # to suppress terminal output
             )
 
-            # Load the output CSV file into a Pandas DataFrame
             df = pd.read_csv(out_path, delimiter="\t")
 
+            # print(df.iloc[-1][observables].T)
             return df.iloc[-1][observables].T
 
         except subprocess.CalledProcessError as e:
             if attempt < max_attempts:
                 print(f"Attempt {attempt} failed: {e}. Retrying with perturbed parameters...")
-                parameters["struct.corefrac"] += 1e-8
+                parameters["struct.corefrac"] += 1e-1
             else:
                 raise RuntimeError(f"Simulator failed with error: {e}\n\n The inputs were: \n\n {parameters}")
 
@@ -116,54 +123,76 @@ def J(x,
     Get objecitve value at x
 
     Input:
-        x (tensor): normalized 1 x d dimensional input
-        parameters (dict): the parameters to be inferred and their bounds
+        x (tensor): raw 1 x d dimensional input
+        parameters (list): the parameters to be inferred
         true_observables (dict): the observables of the planet under investigation
 
     Output:
         J (tensor): 1 x 1 dimensional objective values
     """
 
-    input = {parameters.keys()[i]: torch.atleast_2d(x)[0, i].item() for i in range(len(parameters))}
+    input = {parameters[i]: x[0, i].item() for i in range(len(parameters))}
     observables = list(true_observables.keys())
 
-    sim = run_proteus(input,
-                      observables,
-                      worker,
-                      iter,
-                      ref_config,
+    sim = run_proteus(parameters=input,
+                      observables=observables,
+                      worker=worker,
+                      iter=iter,
+                      ref_config=ref_config,
                       )
 
-    sim = torch.tensor(sim.values).reshape(1, -1)
-    true_y = torch.tensor(true_observables.values()).reshape(1, -1)
+
+    sim = torch.tensor(sim.values, dtype=dtype).reshape(1, -1)
+    true_y = torch.tensor(list(true_observables.values()), dtype=dtype).reshape(1, -1)
+
+    # print("sim:\n ", sim)
+    # print("true_y:\n ", true_y)
 
     # sim = out_scaler.transform(sim)
     # true_y = out_scaler.transform(true_y)
 
-    J = np.array([((true_y-sim)**2).sum().reshape(1,1)])
-    J = torch.tensor(J).reshape(1, 1)
+    # nummerical stability
+    diff = true_y.log()-sim.log()
 
-    return 1 - J
+    # diff = 1./(true_y) - 1./(sim)
+    # diff = true_y-sim
+    # diff = torch.log(true_y/sim)
+    # diff =  torch.ones(1,1, dtype=dtype) - sim/true_y
+    # print("diff:\n", diff)
+
+    sq_dist = (diff ** 2).sum(dim=1, keepdim=True)
+    J_ = torch.ones(1,1, dtype=dtype) - sq_dist
+    # print("J_ =", J_)
+    return J_
 
 
 def prot_builder(parameters, observables, worker, iter, ref_config):
 
     """
-    Build the PROTEUS inferecen objective.
+    Build the PROTEUS inference objective.
 
     Input
-        params (dict[str:list]): keys the parameters to in infer, values the upper and lower bounds
-        observables (dict[str:float]): keys the observables considered, values the observed values
+        params (dict[str, list]): keys the parameters to in infer, values the upper and lower bounds
+        observables (dict[str, float]): keys the observables considered, values the observed values
 
     """
 
     d = len(parameters)
 
     x_bounds = torch.tensor([[list(parameters.values())[i][j] for i in range(d)] for j in range(2)],
-                            dtype = dtype,
+                            dtype = dtype
                             )
 
     def f(x):
+        """
+        Inference objective
+
+            Input
+                x (torch.tensor): normalized inputs of shape (1,d)
+
+            Output
+                y (torch.tensor): the objective value of shape (1,1)
+        """
 
         x = unnormalize(x, x_bounds)
 
@@ -175,6 +204,8 @@ def prot_builder(parameters, observables, worker, iter, ref_config):
                     ref_config = ref_config,
                     )
 
-        return J_part(x)
+        y = J_part(x)
+
+        return y
 
     return f

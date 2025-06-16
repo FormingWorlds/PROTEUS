@@ -84,12 +84,12 @@ def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
 
 
 
-def BO_step(D, B, f, k, n_restarts, n_samples, sim, lock, worker_id, x_in = None):
+def BO_step(D, B, f, k, n_restarts, n_samples, lock, worker_id, x_in = None):
     """
     Perfrom BO step and plot it. Note: the final q steps will not be plotted.
     """
     t_0_bo = time.perf_counter()
-    noise = 1e-4
+    # noise = 1e-4
 
     if x_in is None:
 
@@ -102,13 +102,14 @@ def BO_step(D, B, f, k, n_restarts, n_samples, sim, lock, worker_id, x_in = None
 
 
         d = X.shape[-1]
-        print("n = ", len(X))
+        print("n =", len(X), ": best objective =", Y.max().item())
+        # print(Y)
 
         t_0_fit = time.perf_counter()
         gp = SingleTaskGP(  train_X=X,
                             train_Y=Y,
                             # covar_module=k,
-                            train_Yvar=torch.full_like(Y, noise),
+                            # train_Yvar=torch.full_like(Y, noise),
                             input_transform=Normalize(d=d),
                             outcome_transform=Standardize(m=1),
                             )
@@ -128,22 +129,26 @@ def BO_step(D, B, f, k, n_restarts, n_samples, sim, lock, worker_id, x_in = None
                                 q=1,
                                 num_restarts=n_restarts,
                                 raw_samples=n_samples,
-                                options={"batch_limit": 50, "maxiter": 200},
+                                options={"batch_limit": 1, "maxiter": 200},
                             )
 
         t_1_ac = time.perf_counter()
 
+
         busys = torch.cat(busys, dim=0)
         mask = torch.ones(busys.size(0), dtype=torch.bool)
         mask[worker_id] = False
-
+        b = busys[mask]
+        dist = torch.min(torch.cdist(b, x)).item()
 
         if d == 1:
             plot_iter(gp=gp, acqf=acqf, X=X, Y=Y, next_x=x,
-                    busys=busys[mask], dir = f"plots/iters/", name=f"BO_{len(X)}_.png")
+                    busys=b, dir = f"plots/iters/", name=f"BO_{len(X)}_.png")
 
     else:
         x = x_in
+
+        dist = None
 
         t_0_lock = 0
         t_1_lock = 0
@@ -159,11 +164,9 @@ def BO_step(D, B, f, k, n_restarts, n_samples, sim, lock, worker_id, x_in = None
         B[worker_id] = x
     t_3_lock = time.perf_counter()
 
+    t_0_ev = time.perf_counter()
     y = f(x)
+    t_1_ev = time.perf_counter()
 
-    if sim:
-        t = (torch.pi/2)**(0.5) * torch.abs(torch.randn(1, dtype=dtype))
-        time.sleep(t.item())
-
-    return x, y, t_1_bo - t_0_bo, t.item(), t_3_lock-t_2_lock+t_1_lock-t_0_lock, t_1_fit-t_0_fit, t_1_ac-t_0_ac
+    return x, y, t_1_bo - t_0_bo, t_1_ev - t_0_ev, t_3_lock-t_2_lock+t_1_lock-t_0_lock, t_1_fit-t_0_fit, t_1_ac-t_0_ac, dist
 

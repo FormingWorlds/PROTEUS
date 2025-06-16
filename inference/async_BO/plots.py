@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import os
 import numpy as np
 from matplotlib.ticker import MaxNLocator
+from matplotlib import cm 
+import matplotlib.colors as mcolors
 
 
 def plot_times(logs, directory, min_text_width=0.88):
@@ -74,13 +76,13 @@ def plot_times(logs, directory, min_text_width=0.88):
     fig.savefig(path + f"parallel.png", dpi = 300)
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(7, 4)) 
 
     ax.hist(
-            df["duration"],
-            bins="auto",
-            color="cornflowerblue",
-            edgecolor="black",
+            df["duration"], 
+            bins="auto", 
+            color="cornflowerblue", 
+            edgecolor="black", 
             alpha=0.8
         )
 
@@ -95,13 +97,13 @@ def plot_times(logs, directory, min_text_width=0.88):
     fig.savefig(path + f"t_hist.png", dpi = 300)
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(7, 4)) 
 
     ax.hist(
-            df["BO_time"],
-            bins="auto",
-            color="cornflowerblue",
-            edgecolor="black",
+            df["BO_time"], 
+            bins="auto", 
+            color="cornflowerblue", 
+            edgecolor="black", 
             alpha=0.8
         )
 
@@ -117,13 +119,13 @@ def plot_times(logs, directory, min_text_width=0.88):
     plt.close(fig)
 
 
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(7, 4)) 
 
     ax.hist(
-            df["t_eval"],
-            bins="auto",
-            color="cornflowerblue",
-            edgecolor="black",
+            df["t_eval"], 
+            bins="auto", 
+            color="cornflowerblue", 
+            edgecolor="black", 
             alpha=0.8
         )
 
@@ -138,36 +140,39 @@ def plot_times(logs, directory, min_text_width=0.88):
     fig.savefig(path + f"eval_t_hist.png", dpi = 300)
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
+    values = df['t_fit'].values
+    positions = np.arange(len(values))   # 0, 1, 2, …, len(df)-1
 
-    ax.hist(
-            df["t_lock"],
-            bins="auto",
-            color="cornflowerblue",
-            edgecolor="black",
-            alpha=0.8
+    num_bins   = 30
+    counts, bin_edges = np.histogram(values, bins=num_bins)
+    bin_indices = np.digitize(values, bin_edges[:-1], right=False)
+
+    avg_positions = []
+    for b in range(1, num_bins+1):
+        pos_in_bin = positions[bin_indices == b]
+        if pos_in_bin.size:
+            avg_positions.append(pos_in_bin.mean())
+        else:
+            avg_positions.append(0)    # or np.nan if you prefer
+
+    norm   = mcolors.Normalize(vmin=min(avg_positions), vmax=max(avg_positions))
+    cmap   = cm.viridis
+    colors = [cmap(norm(p)) for p in avg_positions]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for i in range(num_bins):
+        ax.bar(
+            bin_edges[i], 
+            counts[i], 
+            width=bin_edges[i+1] - bin_edges[i], 
+            color=colors[i], 
+            align='edge'
         )
 
-    ax.set_xlabel("Time (s)", fontsize=12)
-    ax.set_ylabel("Count", fontsize=12)
-    ax.set_title("Distribution of Lock Times", fontsize=14, weight="bold")
-    ax.grid(axis="y", alpha=0.3)
-
-    plt.tight_layout()
-    path = directory+"plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + f"lock_t_hist.png", dpi = 300)
-    plt.close(fig)
-
-    fig, ax = plt.subplots(figsize=(7, 4))
-
-    ax.hist(
-            df["t_fit"],
-            bins="auto",
-            color="cornflowerblue",
-            edgecolor="black",
-            alpha=0.8
-        )
+    sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])  # Dummy mappable
+    cbar = plt.colorbar(sm, ax=ax)
+    cbar.set_label("Average Row Index in Bin")
 
     ax.set_xlabel("Time (s)", fontsize=12)
     ax.set_ylabel("Count", fontsize=12)
@@ -175,20 +180,65 @@ def plot_times(logs, directory, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    path = directory+"plots/"
+    path = os.path.join(directory, "plots")
     os.makedirs(path, exist_ok=True)
-    fig.savefig(path + f"fit_t_hist.png", dpi = 300)
+    fig.savefig(os.path.join(path, "fit_t_hist.png"), dpi=300)
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
+    # fig, ax = plt.subplots(figsize=(7, 4)) 
 
-    ax.hist(
-            df["t_ac"],
-            bins="auto",
-            color="cornflowerblue",
-            edgecolor="black",
-            alpha=0.8
+    # ax.hist(
+    #         df["t_fit"], 
+    #         bins="auto", 
+    #         color="cornflowerblue", 
+    #         edgecolor="black", 
+    #         alpha=0.8
+    #     )
+
+    # ax.set_xlabel("Time (s)", fontsize=12)
+    # ax.set_ylabel("Count", fontsize=12)
+    # ax.set_title("Distribution of Fit Times", fontsize=14, weight="bold")
+    # ax.grid(axis="y", alpha=0.3)
+
+    # plt.tight_layout()
+    # path = directory+"plots/"
+    # os.makedirs(path, exist_ok=True)
+    # fig.savefig(path + f"fit_t_hist.png", dpi = 300)
+    # plt.close(fig)
+
+    values = df['t_ac'].values
+    positions = np.arange(len(values))   # 0, 1, 2, …, len(df)-1
+
+    num_bins   = 30
+    counts, bin_edges = np.histogram(values, bins=num_bins)
+    bin_indices = np.digitize(values, bin_edges[:-1], right=False)
+
+    avg_positions = []
+    for b in range(1, num_bins+1):
+        pos_in_bin = positions[bin_indices == b]
+        if pos_in_bin.size:
+            avg_positions.append(pos_in_bin.mean())
+        else:
+            avg_positions.append(0)    # or np.nan if you prefer
+
+    norm   = mcolors.Normalize(vmin=min(avg_positions), vmax=max(avg_positions))
+    cmap   = cm.viridis
+    colors = [cmap(norm(p)) for p in avg_positions]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for i in range(num_bins):
+        ax.bar(
+            bin_edges[i], 
+            counts[i], 
+            width=bin_edges[i+1] - bin_edges[i], 
+            color=colors[i], 
+            align='edge'
         )
+
+    sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])  # Dummy mappable
+    cbar = plt.colorbar(sm, ax=ax)
+    cbar.set_label("Average Row Index in Bin")
 
     ax.set_xlabel("Time (s)", fontsize=12)
     ax.set_ylabel("Count", fontsize=12)
@@ -196,23 +246,95 @@ def plot_times(logs, directory, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    path = directory+"plots/"
+    path = os.path.join(directory, "plots")
     os.makedirs(path, exist_ok=True)
-    fig.savefig(path + f"ac_t_hist.png", dpi = 300)
+    fig.savefig(os.path.join(path, "ac_t_hist.png"), dpi=300)
     plt.close(fig)
+    # fig, ax = plt.subplots(figsize=(7, 4)) 
+
+    # ax.hist(
+    #         df["t_ac"], 
+    #         bins="auto", 
+    #         color="cornflowerblue", 
+    #         edgecolor="black", 
+    #         alpha=0.8
+    #     )
+
+    # ax.set_xlabel("Time (s)", fontsize=12)
+    # ax.set_ylabel("Count", fontsize=12)
+    # ax.set_title("Distribution of Acquisition Times", fontsize=14, weight="bold")
+    # ax.grid(axis="y", alpha=0.3)
+
+    # plt.tight_layout()
+    # path = directory+"plots/"
+    # os.makedirs(path, exist_ok=True)
+    # fig.savefig(path + f"ac_t_hist.png", dpi = 300)
+    # plt.close(fig)
+
+    # fig, ax = plt.subplots(figsize=(7, 4)) 
+    # df_f = df[df["dist"].notnull()]
+
+    # ax.hist(
+    #         df_f["dist"], 
+    #         bins="auto", 
+    #         color="cornflowerblue", 
+    #         edgecolor="black", 
+    #         alpha=0.8
+    #     )
+
+    # ax.set_xlabel("Distance", fontsize=12)
+    # ax.set_ylabel("Count", fontsize=12)
+    # ax.set_title("Distribution of Query Distance to Busy Location", 
+    #              fontsize=14, weight="bold")
+    # ax.grid(axis="y", alpha=0.3)
+
+    # plt.tight_layout()
+    # path = directory+"plots/"
+    # os.makedirs(path, exist_ok=True)
+    # fig.savefig(path + f"dist_hist.png", dpi = 300)
+    # plt.close(fig)
+
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+
+    df_f = df[df["dist"].notnull()]
+    ax.scatter(
+        df_f.index,
+        df_f["dist"],
+        marker="o",
+        linestyle="-",
+        color="cornflowerblue",
+        alpha=0.8,
+        label="Distance"
+    )
+
+    ax.set_xlabel("Iteration", fontsize=12)
+    ax.set_ylabel("Distance", fontsize=12)
+    ax.set_title("Query Distance to Busy Location",
+                fontsize=14, weight="bold")
+    ax.grid(axis="y", alpha=0.3)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+    plt.tight_layout()
+    path = directory + "plots/"
+    os.makedirs(path, exist_ok=True)
+    fig.savefig(path + "dist_v_iter.png", dpi=300)
+    plt.close(fig)
+
+
 
 def plot_res(D, T, n_init, directory, save = True):
     Y = np.array(D["Y"]).flatten()  # Flatten in case it's (N,1)
-    Y = Y[n_init:]
-
-    y_best = Y[0]
+    Y = Y[n_init:]  
+    
+    y_best = Y[0]                   
     Y_best = [y_best]
 
     for i in range(1,len(Y)):
 
         if Y[i] > y_best:
             y_best = Y[i]
-
+        
         Y_best.append(y_best)
 
     Y_best = np.array(Y_best)
