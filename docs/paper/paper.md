@@ -31,6 +31,7 @@ authors:
     orcid: 0000-0002-0673-4860
     affiliation: 4
   - name: Flavia C. Pascal
+    orcid: 0009-0007-4663-1456
     affiliation: 1
   - name: Ben Riegler
     affiliation: 5
@@ -125,7 +126,7 @@ Atmosphere modules (ii) compute the energy balance and composition of the planet
   - VULCAN [@tsai17; @tsai21], which simulates disequilibrium atmospheric chemistry.
   - SOCRATES [@manners24-tech], which calculates radiative fluxes from atmospheric temperature and composition.
 
-Interface modules (iii) compute the energy balance and composition of the planetary atmosphere, including radiative transfer, and atmospheric chemistry processes (green boxes in \autoref{fig:schematic}). These include:
+Interface modules (iii) compute XXXXXXXX (green boxes in \autoref{fig:schematic}). These include:
 
   - CALLIOPE [@bower22; @shorttle24; @nicholls25a], which simulates the redox-, temperature-, and pressure-controlled in- and outgassing of C-H-N-O-S volatile elements.
   - ZEPHYRUS [@postolec25], which calculates the escape of the atmosphere to space.
