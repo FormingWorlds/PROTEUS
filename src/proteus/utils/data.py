@@ -57,6 +57,71 @@ def get_osf(id: str):
     project = osf.project(id)
     return project.storage('osfstorage')
 
+def download_zenodo(
+    *,
+    folder: str,
+    target: str,
+    zenodo_id: str,
+    desc: str,
+    max_tries: int = 3,
+    wait_time: float = 5,
+) -> bool:
+    """
+    Generic download function for Zenodo.
+
+    Attributes
+    ----------
+    folder: str
+        Filename to download
+    target: str
+        name of target directory
+    zenodo_id: str
+        Zenodo record id
+    desc: str
+        Description for logging
+    max_tries: int
+        Number of tries to download the file
+    wait_time: float
+        Time to wait between tries
+
+    Returns
+    -------
+    bool
+        True if the file was downloaded successfully, False otherwise
+    """
+    log.debug(f"Get {desc}?")
+
+    data_dir = GetFWLData() / target
+    data_dir.mkdir(parents=True, exist_ok=True)
+    folder_dir = data_dir / folder
+
+    if not folder_dir.exists():
+        folder_dir.mkdir(parents=True)
+        log.info(f"Downloading {desc} to {data_dir}")
+        for i in range(max_tries):
+            log.debug(f"    attempt {i+1}")
+            try:
+                cmd = [
+                    "zenodo_get",  # Assuming zenodo_get is in PATH
+                    zenodo_id,
+                    "-o", folder_dir
+                ]
+                out = os.path.join(data_dir, "zenodo.log")
+                log.debug("    logging to %s"%out)
+                with open(out,'w') as hdl:
+                    sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
+                break
+            except RuntimeError as e:
+                log.warning(f"    {desc} download failed: {e}")
+                if i < max_tries - 1:
+                    log.info(f"    Retrying in {wait_time} seconds...")
+                    sleep(wait_time)
+                else:
+                    log.error(f"    Failed to download {desc} after {max_tries} attempts")
+                    return False
+    else:
+        log.debug(f"    {desc} already exists")
+    return True
 
 def download(
     *,
@@ -120,13 +185,18 @@ def download_surface_albedos():
     """
     Download surface optical properties
     """
-    download(
+    #download(
+    #    folder = 'Hammond24',
+    #    target = "surface_albedos",
+    #    osf_id = '2gcd9',
+    #    desc = 'surface albedos'
+    #)
+    download_zenodo(
         folder = 'Hammond24',
         target = "surface_albedos",
-        osf_id = '2gcd9',
+        zenodo_id = '15570167',
         desc = 'surface albedos'
     )
-
 
 def download_spectral_file(name:str, bands:str):
     """
