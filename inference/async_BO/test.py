@@ -1,8 +1,5 @@
 from objective import run_proteus, prot_builder
-from utils import get_nested
 import torch
-import toml
-
 from botorch.utils.transforms import normalize, unnormalize
 dtype = torch.double
 
@@ -62,4 +59,3 @@ y_opt = f(x_true)
 
 print("\nobjective value at true inputs:", y_opt.item())
 
-# print("sanity check passed\n")

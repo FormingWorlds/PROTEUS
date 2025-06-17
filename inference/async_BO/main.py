@@ -40,7 +40,7 @@ if __name__ == '__main__':
 
     assert os.cpu_count()-1 >= config["n_workers"]
 
-    print("lets go!\n")
+    print("\nstarting optimization\n")
     t_0 = time.perf_counter()
     D_final, logs, Ts = parallel_process(objective_builder=prot_builder,
                                          **config

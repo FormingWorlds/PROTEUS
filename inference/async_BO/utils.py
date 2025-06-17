@@ -1,5 +1,4 @@
 import pandas as pd
-from botorch.utils.transforms import unnormalize
 import torch
 import toml
 
@@ -27,6 +26,10 @@ def flatten(d, parent_key='', sep='.'):
 def print_results(D, logs, config):
 
     Y = D["Y"]
+
+    print("Y", len(Y))
+    print("logs", len(logs))
+
     i_opt = Y.argmax()
     log_opt = logs[i_opt]
 

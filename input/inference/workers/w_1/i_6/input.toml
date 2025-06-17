@@ -14,7 +14,7 @@ s0_factor = 0.375
 module = "dummy"
 
 [struct]
-mass_tot = 1.379587929256546
+mass_tot = 1.332641179243871
 corefrac = 0.3
 core_density = 10738.33
 core_heatcap = 880.0
@@ -35,7 +35,7 @@ tidal_heat = false
 module = "dummy"
 
 [outgas]
-fO2_shift_IW = 4.0
+fO2_shift_IW = -4.0
 module = "calliope"
 
 [delivery]
@@ -81,7 +81,7 @@ gamma = 0.05
 rate = 100000.0
 
 [interior.dummy]
-ini_tmagma = 4500.0
+ini_tmagma = 3668.059986535277
 
 [delivery.elements]
 H_ppmw = 200.0

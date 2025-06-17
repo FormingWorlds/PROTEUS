@@ -14,8 +14,8 @@ s0_factor = 0.375
 module = "dummy"
 
 [struct]
-mass_tot = 1.3781576377595246
-corefrac = 0.3
+mass_tot = 1.3580035828479475
+corefrac = 0.3433559427984243
 core_density = 10738.33
 core_heatcap = 880.0
 

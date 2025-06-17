@@ -14,8 +14,8 @@ s0_factor = 0.375
 module = "dummy"
 
 [struct]
-mass_tot = 1.343696353464673
-corefrac = 0.36061126684644024
+mass_tot = 1.6247601003056693
+corefrac = 0.3
 core_density = 10738.33
 core_heatcap = 880.0
 
@@ -81,7 +81,7 @@ gamma = 0.95
 rate = 1.0
 
 [interior.dummy]
-ini_tmagma = 4500.0
+ini_tmagma = 2000.0
 
 [delivery.elements]
 H_ppmw = 200.0

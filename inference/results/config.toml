@@ -1,8 +1,8 @@
-# Created: 2025-06-16T17:28:13.971140+02:00
+# Created: 2025-06-17T14:12:34.160555+02:00
 
 n_workers = 7
 kernel = "RBF"
-max_len = 80
+max_len = 50
 n_restarts = 10
 n_samples = 1000
 directory = "inference/results/"

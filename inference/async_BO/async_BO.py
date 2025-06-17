@@ -116,8 +116,6 @@ def parallel_process(objective_builder, *,
                           n_samples = n_samples,
                           )
 
-
-    t_0 = time.perf_counter()
     mgr = Manager()
 
     with open(D_init_path, "rb") as f:
@@ -129,7 +127,7 @@ def parallel_process(objective_builder, *,
     n_init = len(D_shared["X"])
 
     lock = mgr.Lock()
-    log_list = mgr.list()
+    log_list = mgr.list([None] * n_init)
 
     X_init = init_locs(n_workers, D_shared)
     B = mgr.dict()
@@ -159,22 +157,15 @@ def parallel_process(objective_builder, *,
                                          directory))
         p.start()
         procs.append(p)
-    t_1 = time.perf_counter()
-
-    print(f"manager time: {(t_1-t_0):.2f}")
 
     for p in procs:
-        t_0 = time.perf_counter()
         p.join()
-        t_1 = time.perf_counter()
-
-        # print(f"time for {p}: {(t_1-t_0):.2f}")
 
     D_final = dict(D_shared)
     logs = list(log_list)
     T = [i - T_0 for i in list(T)]
 
-    plot_times(logs, directory)
+    plot_times(logs, directory, n_init)
     plot_res(D_final, T, n_init, directory)
 
 

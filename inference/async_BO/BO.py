@@ -2,7 +2,6 @@ import os
 import time
 import torch
 import matplotlib.pyplot as plt
-from scipy.stats.qmc import Halton
 from botorch.models.transforms import Normalize, Standardize
 from botorch.models import SingleTaskGP
 from botorch.acquisition import (UpperConfidenceBound,

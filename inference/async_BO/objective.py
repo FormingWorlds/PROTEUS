@@ -3,10 +3,7 @@ import subprocess
 import pandas as pd
 import os
 from functools import partial
-
 import torch
-import numpy as np
-
 from botorch.utils.transforms import unnormalize
 
 dtype = torch.double

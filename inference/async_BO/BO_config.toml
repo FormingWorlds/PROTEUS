@@ -2,7 +2,7 @@ n_workers = 7
 
 kernel = "RBF"
 
-max_len = 80
+max_len = 50
 n_restarts = 10
 n_samples = 1000
 

@@ -3,12 +3,12 @@ import matplotlib.pyplot as plt
 import os
 import numpy as np
 from matplotlib.ticker import MaxNLocator
-from matplotlib import cm 
+from matplotlib import cm
 import matplotlib.colors as mcolors
 
 
-def plot_times(logs, directory, min_text_width=0.88):
-    df = pd.DataFrame(logs)
+def plot_times(logs, directory, n_init, min_text_width=0.88):
+    df = pd.DataFrame(logs[n_init:])
     if df.empty:
         print("No logs to display.")
         return
@@ -76,13 +76,13 @@ def plot_times(logs, directory, min_text_width=0.88):
     fig.savefig(path + f"parallel.png", dpi = 300)
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4)) 
+    fig, ax = plt.subplots(figsize=(7, 4))
 
     ax.hist(
-            df["duration"], 
-            bins="auto", 
-            color="cornflowerblue", 
-            edgecolor="black", 
+            df["duration"],
+            bins="auto",
+            color="cornflowerblue",
+            edgecolor="black",
             alpha=0.8
         )
 
@@ -97,13 +97,13 @@ def plot_times(logs, directory, min_text_width=0.88):
     fig.savefig(path + f"t_hist.png", dpi = 300)
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4)) 
+    fig, ax = plt.subplots(figsize=(7, 4))
 
     ax.hist(
-            df["BO_time"], 
-            bins="auto", 
-            color="cornflowerblue", 
-            edgecolor="black", 
+            df["BO_time"],
+            bins="auto",
+            color="cornflowerblue",
+            edgecolor="black",
             alpha=0.8
         )
 
@@ -119,13 +119,13 @@ def plot_times(logs, directory, min_text_width=0.88):
     plt.close(fig)
 
 
-    fig, ax = plt.subplots(figsize=(7, 4)) 
+    fig, ax = plt.subplots(figsize=(7, 4))
 
     ax.hist(
-            df["t_eval"], 
-            bins="auto", 
-            color="cornflowerblue", 
-            edgecolor="black", 
+            df["t_eval"],
+            bins="auto",
+            color="cornflowerblue",
+            edgecolor="black",
             alpha=0.8
         )
 
@@ -162,10 +162,10 @@ def plot_times(logs, directory, min_text_width=0.88):
     fig, ax = plt.subplots(figsize=(8, 5))
     for i in range(num_bins):
         ax.bar(
-            bin_edges[i], 
-            counts[i], 
-            width=bin_edges[i+1] - bin_edges[i], 
-            color=colors[i], 
+            bin_edges[i],
+            counts[i],
+            width=bin_edges[i+1] - bin_edges[i],
+            color=colors[i],
             align='edge'
         )
 
@@ -185,27 +185,6 @@ def plot_times(logs, directory, min_text_width=0.88):
     fig.savefig(os.path.join(path, "fit_t_hist.png"), dpi=300)
     plt.close(fig)
 
-    # fig, ax = plt.subplots(figsize=(7, 4)) 
-
-    # ax.hist(
-    #         df["t_fit"], 
-    #         bins="auto", 
-    #         color="cornflowerblue", 
-    #         edgecolor="black", 
-    #         alpha=0.8
-    #     )
-
-    # ax.set_xlabel("Time (s)", fontsize=12)
-    # ax.set_ylabel("Count", fontsize=12)
-    # ax.set_title("Distribution of Fit Times", fontsize=14, weight="bold")
-    # ax.grid(axis="y", alpha=0.3)
-
-    # plt.tight_layout()
-    # path = directory+"plots/"
-    # os.makedirs(path, exist_ok=True)
-    # fig.savefig(path + f"fit_t_hist.png", dpi = 300)
-    # plt.close(fig)
-
     values = df['t_ac'].values
     positions = np.arange(len(values))   # 0, 1, 2, …, len(df)-1
 
@@ -219,7 +198,7 @@ def plot_times(logs, directory, min_text_width=0.88):
         if pos_in_bin.size:
             avg_positions.append(pos_in_bin.mean())
         else:
-            avg_positions.append(0)    # or np.nan if you prefer
+            avg_positions.append(0)
 
     norm   = mcolors.Normalize(vmin=min(avg_positions), vmax=max(avg_positions))
     cmap   = cm.viridis
@@ -228,10 +207,10 @@ def plot_times(logs, directory, min_text_width=0.88):
     fig, ax = plt.subplots(figsize=(8, 5))
     for i in range(num_bins):
         ax.bar(
-            bin_edges[i], 
-            counts[i], 
-            width=bin_edges[i+1] - bin_edges[i], 
-            color=colors[i], 
+            bin_edges[i],
+            counts[i],
+            width=bin_edges[i+1] - bin_edges[i],
+            color=colors[i],
             align='edge'
         )
 
@@ -250,50 +229,6 @@ def plot_times(logs, directory, min_text_width=0.88):
     os.makedirs(path, exist_ok=True)
     fig.savefig(os.path.join(path, "ac_t_hist.png"), dpi=300)
     plt.close(fig)
-    # fig, ax = plt.subplots(figsize=(7, 4)) 
-
-    # ax.hist(
-    #         df["t_ac"], 
-    #         bins="auto", 
-    #         color="cornflowerblue", 
-    #         edgecolor="black", 
-    #         alpha=0.8
-    #     )
-
-    # ax.set_xlabel("Time (s)", fontsize=12)
-    # ax.set_ylabel("Count", fontsize=12)
-    # ax.set_title("Distribution of Acquisition Times", fontsize=14, weight="bold")
-    # ax.grid(axis="y", alpha=0.3)
-
-    # plt.tight_layout()
-    # path = directory+"plots/"
-    # os.makedirs(path, exist_ok=True)
-    # fig.savefig(path + f"ac_t_hist.png", dpi = 300)
-    # plt.close(fig)
-
-    # fig, ax = plt.subplots(figsize=(7, 4)) 
-    # df_f = df[df["dist"].notnull()]
-
-    # ax.hist(
-    #         df_f["dist"], 
-    #         bins="auto", 
-    #         color="cornflowerblue", 
-    #         edgecolor="black", 
-    #         alpha=0.8
-    #     )
-
-    # ax.set_xlabel("Distance", fontsize=12)
-    # ax.set_ylabel("Count", fontsize=12)
-    # ax.set_title("Distribution of Query Distance to Busy Location", 
-    #              fontsize=14, weight="bold")
-    # ax.grid(axis="y", alpha=0.3)
-
-    # plt.tight_layout()
-    # path = directory+"plots/"
-    # os.makedirs(path, exist_ok=True)
-    # fig.savefig(path + f"dist_hist.png", dpi = 300)
-    # plt.close(fig)
-
 
     fig, ax = plt.subplots(figsize=(7, 4))
 
@@ -325,22 +260,22 @@ def plot_times(logs, directory, min_text_width=0.88):
 
 def plot_res(D, T, n_init, directory, save = True):
     Y = np.array(D["Y"]).flatten()  # Flatten in case it's (N,1)
-    Y = Y[n_init:]  
-    
-    y_best = Y[0]                   
+    Y = Y[n_init:]
+
+    y_best = Y[0]
     Y_best = [y_best]
 
     for i in range(1,len(Y)):
 
         if Y[i] > y_best:
             y_best = Y[i]
-        
+
         Y_best.append(y_best)
 
     Y_best = np.array(Y_best)
     T = np.array(T)            # Assume T aligns with Y
 
-    oracle = 1  # Change as appropriate
+    oracle = 1.  # Change as appropriate
     regret = np.abs(Y_best - oracle)
     log_regret = np.log10(regret + 1e-12)  # add small number to avoid log(0)
     n = np.arange(len(Y_best))
