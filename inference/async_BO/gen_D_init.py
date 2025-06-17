@@ -27,10 +27,11 @@ f = prot_builder(parameters=params,
 
 
 d = len(params)
-n = 3*d
+# n = 3*d
+n = 2
 
 
-torch.manual_seed(1)
+torch.manual_seed(2)
 
 X = torch.rand(n,d, dtype=dtype)
 Y = torch.tensor([f(x[None,:]) for x in X], dtype=dtype).reshape(n,1)

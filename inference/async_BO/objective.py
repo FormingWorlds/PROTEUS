@@ -149,17 +149,16 @@ def J(x,
     # true_y = out_scaler.transform(true_y)
 
     # nummerical stability
-    diff = true_y.log()-sim.log()
-
+    # diff = true_y.log()-sim.log()
     # diff = 1./(true_y) - 1./(sim)
     # diff = true_y-sim
     # diff = torch.log(true_y/sim)
-    # diff =  torch.ones(1,1, dtype=dtype) - sim/true_y
+    diff =  torch.ones(1,1, dtype=dtype) - sim/true_y
     # print("diff:\n", diff)
 
     sq_dist = (diff ** 2).sum(dim=1, keepdim=True)
     J_ = torch.ones(1,1, dtype=dtype) - sq_dist
-    # print("J_ =", J_)
+
     return J_
 
 

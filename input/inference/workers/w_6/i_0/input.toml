@@ -14,8 +14,8 @@ s0_factor = 0.375
 module = "dummy"
 
 [struct]
-mass_tot = 2.3664356231546035
-corefrac = 0.546583331410682
+mass_tot = 1.6990255582330847
+corefrac = 0.7888039492120792
 core_density = 10738.33
 core_heatcap = 880.0
 
@@ -35,7 +35,7 @@ tidal_heat = false
 module = "dummy"
 
 [outgas]
-fO2_shift_IW = 3.9904366307419776
+fO2_shift_IW = 0.9675972624014815
 module = "calliope"
 
 [delivery]
@@ -75,13 +75,13 @@ Phi_tide = "<0.3"
 visc_thresh = 1000000000.0
 
 [atmos_clim.dummy]
-gamma = 0.3267404590745148
+gamma = 0.6386205754705236
 
 [escape.dummy]
-rate = 39228.561221057585
+rate = 47529.62906527202
 
 [interior.dummy]
-ini_tmagma = 3781.641273750328
+ini_tmagma = 4082.9284405214703
 
 [delivery.elements]
 H_ppmw = 200.0
