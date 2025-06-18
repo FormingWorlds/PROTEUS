@@ -58,6 +58,7 @@ dependencies = [
     "pandas",
     "scipy",
     "sympy",
+    "zenodo-get",
     "astropy"
 ]
 

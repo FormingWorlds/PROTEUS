@@ -131,14 +131,15 @@ def download(
                     success = True
             except RuntimeError as e:
                 log.warning(f"    Zenodo download failed: {e}")
-            
+                folder_dir.rmdir()
+
             if not success:
                 try:
                     download_OSF_folder(storage=storage, folders=[folder], data_dir=data_dir)
                     success = True
                 except RuntimeError as e:
                     log.warning(f"    OSF download failed: {e}")
-            
+
             if success:
                 break
 
@@ -157,7 +158,6 @@ def download_surface_albedos():
     """
     Download surface optical properties
     """
-
     download(
         folder = 'Hammond24',
         target = "surface_albedos",
