@@ -41,6 +41,23 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path):
     with open(out,'w') as hdl:
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
 
+def get_zenodo_record(folder: str) -> str | None:
+    """
+    Get Zenodo record ID for a given folder.
+
+    Inputs :
+        - folder : str
+            Folder name to get the Zenodo record ID for
+
+    Returns :
+        - str | None : Zenodo record ID or None if not found
+    """
+    zenodo_map = {
+        'Frostflow/48': '15696415',
+        'Honeyside/4096': '15696457',
+    }
+    return zenodo_map.get(folder, None)
+
 def download_OSF_folder(*, storage, folders: list[str], data_dir: Path):
     """
     Download a specific folder in the OSF repository
@@ -186,7 +203,7 @@ def download_spectral_file(name:str, bands:str):
         folder = f'{name}/{bands}',
         target = "spectral_files",
         osf_id = 'vehxg',
-        zenodo_id= None,
+        zenodo_id= get_zenodo_record(f'{name}/{bands}'),
         desc = f'{name}{bands} spectral file',
     )
 
