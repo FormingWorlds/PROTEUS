@@ -28,5 +28,6 @@ exclude: |
             (?x)^(
                 examples/.*|
                 tests/data/.*|
-                (.*?)\.(jpg|gif|doc|pdf|csv|dat|tsv)
+                docs/assets/.*|
+                (.*?)\.(jpg|gif|doc|pdf|csv|dat|tsv|svg|tsv)
             )$

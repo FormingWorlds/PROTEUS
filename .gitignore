@@ -75,6 +75,10 @@ nogit_*
 tools/*.csv
 tools/grid_proteus_SNS*
 
+*.odg#
+*.ods#
+*.odp#
+
 # From Read the Docs
 ####################
 
