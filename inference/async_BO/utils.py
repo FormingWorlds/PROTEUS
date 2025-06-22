@@ -40,7 +40,7 @@ def print_results(D, logs, config):
 
     params = config["parameters"].keys()
 
-    in_path = f"input/inference/workers/w_{w}/i_{id}/input.toml"
+    in_path = f"output/inference/workers/w_{w}/i_{id}/input.toml"
 
     with open(in_path, "r") as f:
         input = toml.load(f)

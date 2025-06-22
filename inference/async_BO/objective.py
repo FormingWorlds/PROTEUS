@@ -18,7 +18,7 @@ def update_toml(config_file, updates, output_file):
     Parameters:
         config_file (str): Path to the existing .toml file.
         updates (dict): Dictionary of updates to apply, with support for nested keys (e.g., "section.key").
-        output_file (str): Optional path to save the updated .toml file. If None, overwrites the input file.
+        output_file (str): Path to save the updated .toml file. If None, overwrites the input file.
 
     Returns:
         None
@@ -59,7 +59,6 @@ def run_proteus(parameters: dict,
         parameters (dict): parameter, value pairs to change vis a vis reference config
         worker (int): worker id
         iter (int): worker iteration
-        run_name (str): name of experiment, will be used to create input and output directories in input and output folder, can be "directory/name"
         observables (list): PROTEUS output to be return, defaults to some interesting ones
         ref_config (str): path to reference config, defaults to the dummy.toml
         max_attempts (int): number of tries till error
@@ -83,7 +82,7 @@ def run_proteus(parameters: dict,
     parameters["params.out.path"] = "inference/workers/" + run_id
 
     # set path to config file for this run
-    config_path = "input/inference/workers/" + run_id + "input.toml"
+    config_path = "output/inference/workers/" + run_id + "input.toml"
 
     for attempt in range(1, max_attempts+1):
         try:
@@ -96,11 +95,15 @@ def run_proteus(parameters: dict,
                 # stdout=subprocess.DEVNULL # to suppress terminal output
             )
 
+            # call second time to save the config, got overwritten by proteus call
+            update_toml(ref_config, parameters, config_path)
+
             df = pd.read_csv(out_path, delimiter="\t")
 
             # print(df.iloc[-1][observables].T)
             return df.iloc[-1][observables].T
 
+        # temporary fix for nummerical issues
         except subprocess.CalledProcessError as e:
             if attempt < max_attempts:
                 print(f"Attempt {attempt} failed: {e}. Retrying with perturbed parameters...")
