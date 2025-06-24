@@ -53,6 +53,7 @@ def get_zenodo_record(folder: str) -> str | None:
         - str | None : Zenodo record ID or None if not found
     """
     zenodo_map = {
+        'Dayspring/48': '15721749',
         'Frostflow/48': '15696415',
         'Honeyside/4096': '15696457',
     }
@@ -216,7 +217,7 @@ def download_stellar_spectra():
         folder = 'Named',
         target = "stellar_spectra",
         osf_id = '8r2sw',
-        zenodo_id= None,
+        zenodo_id= '15721440',
         desc = 'stellar spectra'
     )
 
@@ -229,7 +230,7 @@ def download_exoplanet_data():
         folder = 'Exoplanets',
         target = "planet_reference",
         osf_id = 'fzwr4',
-        zenodo_id= None,
+        zenodo_id= '15727878',
         desc = 'exoplanet data'
     )
 
@@ -239,10 +240,10 @@ def download_massradius_data():
     Download mass-radius data
     """
     download(
-        folder = 'Mass-radius',
+        folder = 'Zeng2019',
         target = "mass_radius",
-        osf_id = 'fzwr4',
-        zenodo_id= None,
+        osf_id = 'xge8t',
+        zenodo_id= '15727899',
         desc = 'mass radius data'
     )
 
