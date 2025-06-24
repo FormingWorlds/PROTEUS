@@ -445,7 +445,7 @@ def download_Seager_EOS():
     folder='EOS_Seager2007',
     target='EOS_material_properties',
     osf_id='dpkjb',
-    zenodo_id= None,
+    zenodo_id= '15727998',
     desc='EOS Seager2007 material files'
 )
 
