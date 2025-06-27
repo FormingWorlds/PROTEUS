@@ -79,6 +79,6 @@ class Orbit:
     s0_factor: float = field(validator=gt(0))
     semimajororfinst: str = field(default='semimajoraxis',validator=in_(('semimajoraxis','instellationflux')))
     instellationflux: float = field(default=1.0,validator=gt(0))
-    
+
     dummy:  OrbitDummy  = field(factory=OrbitDummy)
     lovepy: Lovepy      = field(factory=Lovepy)

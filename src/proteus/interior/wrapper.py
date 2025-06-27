@@ -2,16 +2,16 @@
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
-import os
 import pandas as pd
-import scipy.optimize as optimise
 import platformdirs
-
+import scipy.optimize as optimise
 from scipy import integrate
-from pathlib import Path
+
 from proteus.interior.aragog import AragogRunner
 from proteus.interior.common import Interior_t
 from proteus.interior.zalmoxis import zalmoxis_solver
@@ -111,30 +111,30 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     log.info("M_tot: %.1e kg = %.3f M_earth"%(hf_row["M_tot"], hf_row["M_tot"]/M_earth))
     log.info("R_int: %.1e m  = %.3f R_earth"%(hf_row["R_int"], hf_row["R_int"]/R_earth))
     log.info(" ")
-    
+
 def solve_structure_from_file(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict):
     '''
     If the interior structure is pre-computed, simply read the radius from the file
     and compute the mass using a numerical integrator
     '''
-    
+
     eos_filepath = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.struct.eos_filepath}")
-    
+
     eos_data = np.loadtxt(eos_filepath)
-    
+
     hf_row["R_int"] = eos_data[-1,0]
-    
+
     calculate_core_mass(hf_row, config)
-    
+
     radius  = eos_data[:,0]
     density = eos_data[:,2]
-    
+
     hf_row["M_mantle"] = integrate.simpson(4*np.pi*radius**2*density,radius)
-    
+
     hf_row["M_int"] = hf_row["M_mantle"] + hf_row["M_core"]
-    
+
     update_gravity(hf_row)
-    
+
     log.info(f'Read data from {config.struct.eos_filepath}: M_int={hf_row["M_int"]/M_earth} and R_int={hf_row["R_int"]/R_earth}\n')
 
 def determine_interior_radius_with_zalmoxis(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, outdir:str):
@@ -160,7 +160,7 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, 
     #and compute the mass using a numerical integrator
     if config.struct.eos_method==2:
         solve_structure_from_file(dirs, config, hf_all, hf_row)
-    
+
     # Set total mass by radius
     # We might need here to setup a determine_interior_mass function as mass calculation depends on gravity
     elif config.struct.set_by == 'radius_int':

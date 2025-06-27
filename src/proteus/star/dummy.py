@@ -5,7 +5,7 @@ import logging
 
 import numpy as np
 
-from proteus.utils.constants import AU, const_sigma, R_sun, Teffs
+from proteus.utils.constants import AU, R_sun, Teffs, const_sigma
 from proteus.utils.phys import planck_wav
 
 log = logging.getLogger("fwl."+__name__)
@@ -52,8 +52,8 @@ def generate_spectrum(tmp:float, calculate_radius:bool, R_star:float):
         # Evaluate planck function in each bin
         for i,wav in enumerate(wl_arr):
             fl_arr[i] = planck_wav(tmp, wav) # W m-2 m-1 at stellar surface
-	
-	# Calculating stellar radius based off of empirical relation
+
+        # Calculating stellar radius based off of empirical relation
         if calculate_radius:
 
             R_star = R_sun*(tmp/Teffs)**1.82
