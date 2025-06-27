@@ -71,15 +71,15 @@ class Aragog:
     num_levels: int
         Number of Aragog grid levels (basic mesh).
     initial_condition: int
-    	How to define the intial temperature profile (1: linear, 2: user defined, 3: adiabat)
+        How to define the intial temperature profile (1: linear, 2: user defined, 3: adiabat)
     tolerance: float
         Solver tolerance.
     ini_tmagma: float
         Initial magma surface temperature [K].
     basal_temperature: float
-    	Temperature at the base of the mantle (if using a linear temperature profile to start)
+        Temperature at the base of the mantle (if using a linear temperature profile to start)
     init_file: str
-    	File containing the initial temperature file for aragog
+        File containing the initial temperature file for aragog
     inner_boundary_condition: int
         Type of inner boundary condition. Choices:  1 (core cooling), 2 (prescribed heat flux), 3 (prescribed temperature).
     inner_boundary_value: float

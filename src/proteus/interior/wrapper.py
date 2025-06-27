@@ -159,7 +159,7 @@ def solve_structure(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_row:dict, 
     #If the interior structure is pre-computed, simply read the radius from the file
     #and compute the mass using a numerical integrator
     if config.struct.eos_method==2:
-    	solve_structure_from_file(dirs, config, hf_all, hf_row)
+        solve_structure_from_file(dirs, config, hf_all, hf_row)
     
     # Set total mass by radius
     # We might need here to setup a determine_interior_mass function as mass calculation depends on gravity

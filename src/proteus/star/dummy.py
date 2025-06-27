@@ -21,7 +21,7 @@ def generate_spectrum(tmp:float, calculate_radius:bool, R_star:float):
         tmp : float
             Temperature [K]
         calculat_radius: bool
-    	    Whether or not to calculate the radius based off of empirical mass-luminosity and mass-radius relation
+            Whether or not to calculate the radius based off of empirical mass-luminosity and mass-radius relation
         R_star : float
             Stellar radius [m]
 
@@ -55,9 +55,9 @@ def generate_spectrum(tmp:float, calculate_radius:bool, R_star:float):
 	
 	# Calculating stellar radius based off of empirical relation
         if calculate_radius:
-	
+
             R_star = R_sun*(tmp/Teffs)**1.82
-	
+
         # Scale from stellar surface to 1 AU
         fl_arr *= (R_star/AU)**2
 

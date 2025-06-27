@@ -52,7 +52,7 @@ class Orbit:
     Attributes
     ----------
     semimajororfinst: str
-    	Whether to use the semi-major axis or instellation flux to define the planet's orbit
+        Whether to use the semi-major axis or instellation flux to define the planet's orbit
     semimajoraxis: float
         Semi-major axis of the planet's orbit [AU].
     instellationflux: float

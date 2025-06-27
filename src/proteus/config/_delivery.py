@@ -21,9 +21,9 @@ class Elements:
         Relative hydrogen inventory, ppmw relative to mantle mass.
     
     use_metallicity: bool
-    	whether or not to specify the elemental abundances in terms of solar metallicity  
+        whether or not to specify the elemental abundances in terms of solar metallicity  
     metallicity: float
-    	Metallicity relative to solar metallicity
+        Metallicity relative to solar metallicity
 
     CH_ratio: float
         Carbon metallicity. C/H mass ratio in combined mantle+atmosphere system.

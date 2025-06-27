@@ -20,7 +20,46 @@ FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_d
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
-def download_folder(*, storage, folders: list[str], data_dir: Path):
+def download_zenodo_folder(zenodo_id: str, folder_dir: Path):
+    """
+    Download a specific Zenodo record into specified folder
+
+    Inputs :
+        - zenodo_id : str
+            Zenodo record ID to download
+        - folder_dir : Path
+            Local directory where the Zenodo record will be downloaded
+    """
+
+    folder_dir.mkdir(parents=True)
+    cmd = [
+            "zenodo_get", zenodo_id,
+            "-o", folder_dir
+        ]
+    out = os.path.join(GetFWLData(), "zenodo.log")
+    log.debug("    logging to %s"%out)
+    with open(out,'w') as hdl:
+        sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
+
+def get_zenodo_record(folder: str) -> str | None:
+    """
+    Get Zenodo record ID for a given folder.
+
+    Inputs :
+        - folder : str
+            Folder name to get the Zenodo record ID for
+
+    Returns :
+        - str | None : Zenodo record ID or None if not found
+    """
+    zenodo_map = {
+        'Dayspring/48': '15721749',
+        'Frostflow/48': '15696415',
+        'Honeyside/4096': '15696457',
+    }
+    return zenodo_map.get(folder, None)
+
+def download_OSF_folder(*, storage, folders: list[str], data_dir: Path):
     """
     Download a specific folder in the OSF repository
 
@@ -57,14 +96,14 @@ def get_osf(id: str):
     project = osf.project(id)
     return project.storage('osfstorage')
 
-
 def download(
     *,
     folder: str,
     target: str,
     osf_id: str,
+    zenodo_id: str | None = None,
     desc: str,
-    max_tries: int = 3,
+    max_tries: int = 2,
     wait_time: float = 5,
 ) -> bool:
     """
@@ -78,6 +117,8 @@ def download(
         name of target directory
     osf_id: str
         OSF project id
+    zenodo_id: str
+        Zenodo record id
     desc: str
         Description for logging
     max_tries: int
@@ -94,23 +135,38 @@ def download(
 
     data_dir = GetFWLData() / target
     data_dir.mkdir(parents=True, exist_ok=True)
+    folder_dir = data_dir / folder
 
-    if not (data_dir / folder).exists():
+    if not folder_dir.exists():
         storage = get_osf(osf_id)
         log.info(f"Downloading {desc} to {data_dir}")
         for i in range(max_tries):
             log.debug(f"    attempt {i+1}")
+            success = False
             try:
-                download_folder(storage=storage, folders=[folder], data_dir=data_dir)
-                break
+                if zenodo_id is not None:
+                    download_zenodo_folder(zenodo_id=zenodo_id, folder_dir=folder_dir)
+                    success = True
             except RuntimeError as e:
-                log.warning(f"    {desc} download failed: {e}")
-                if i < max_tries - 1:
-                    log.info(f"    Retrying in {wait_time} seconds...")
-                    sleep(wait_time)
-                else:
-                    log.error(f"    Failed to download {desc} after {max_tries} attempts")
-                    return False
+                log.warning(f"    Zenodo download failed: {e}")
+                folder_dir.rmdir()
+
+            if not success:
+                try:
+                    download_OSF_folder(storage=storage, folders=[folder], data_dir=data_dir)
+                    success = True
+                except RuntimeError as e:
+                    log.warning(f"    OSF download failed: {e}")
+
+            if success:
+                break
+
+            if i < max_tries - 1:
+                log.info(f"    Retrying in {wait_time} seconds...")
+                sleep(wait_time)
+            else:
+                log.error(f"    Failed to download {desc} after {max_tries} attempts")
+                return False
     else:
         log.debug(f"    {desc} already exists")
     return True
@@ -124,9 +180,9 @@ def download_surface_albedos():
         folder = 'Hammond24',
         target = "surface_albedos",
         osf_id = '2gcd9',
+        zenodo_id = '15570167',
         desc = 'surface albedos'
     )
-
 
 def download_spectral_file(name:str, bands:str):
     """
@@ -148,6 +204,7 @@ def download_spectral_file(name:str, bands:str):
         folder = f'{name}/{bands}',
         target = "spectral_files",
         osf_id = 'vehxg',
+        zenodo_id= get_zenodo_record(f'{name}/{bands}'),
         desc = f'{name}{bands} spectral file',
     )
 
@@ -160,6 +217,7 @@ def download_stellar_spectra():
         folder = 'Named',
         target = "stellar_spectra",
         osf_id = '8r2sw',
+        zenodo_id= '15721440',
         desc = 'stellar spectra'
     )
 
@@ -172,6 +230,7 @@ def download_exoplanet_data():
         folder = 'Exoplanets',
         target = "planet_reference",
         osf_id = 'fzwr4',
+        zenodo_id= '15727878',
         desc = 'exoplanet data'
     )
 
@@ -181,9 +240,10 @@ def download_massradius_data():
     Download mass-radius data
     """
     download(
-        folder = 'Mass-radius',
+        folder = 'Zeng2019',
         target = "mass_radius",
-        osf_id = 'fzwr4',
+        osf_id = 'xge8t',
+        zenodo_id= '15727899',
         desc = 'mass radius data'
     )
 
@@ -212,6 +272,7 @@ def download_melting_curves():
         folder = 'Melting_curves',
         target = "interior_lookup_tables",
         osf_id = 'phsxf',
+        zenodo_id= None,
         desc = 'melting curve data'
     )
 
@@ -384,6 +445,7 @@ def download_Seager_EOS():
     folder='EOS_Seager2007',
     target='EOS_material_properties',
     osf_id='dpkjb',
+    zenodo_id= '15727998',
     desc='EOS Seager2007 material files'
 )
 

@@ -139,7 +139,7 @@ class Struct:
     core_heatcap: float
         Specific heat capacity of the planet's core [J kg-1 K-1]
     eos_method: int
-    	# 1: Adams-Williamson / 2: User defined
+        # 1: Adams-Williamson / 2: User defined
     eos_filepath: str
         location of file containing EOS data
     module: str
