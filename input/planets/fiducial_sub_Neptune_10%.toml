@@ -25,7 +25,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "fiducial_sub_Neptune_10000ppm"
+        path        = "fiducial_sub_Neptune_10%_levels"
         logging     = "DEBUG"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -100,18 +100,18 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [star.dummy]
         radius           = 1.0       # R_sun
         calculate_radius = true	     # calculate radius using empirical mass-luminosity and mass-radius relations
-        Teff             = 4700.0    # K
+        Teff             = 4500.0    # K
 
 # Orbital system
 [orbit]
-    semimajororfinst = 'semimajoraxis'	# whether to define orbit using semi major axis or instellation flux
-    instellationflux = 3e-4             	# instellation flux received from the planet in Earth units.
-    semimajoraxis    = 0.483293              	# AU
+    semimajororfinst = 'instellationflux'	# whether to define orbit using semi major axis or instellation flux
+    instellationflux = 1e-3             	# instellation flux received from the planet in Earth units.
+    semimajoraxis    = 0.15              	# AU
     eccentricity     = 0.0       		# dimensionless
     zenith_angle     = 54.74     		# degrees
     s0_factor        = 0.25      		# dimensionless
 
-    module  = "dummy"
+    module  = "none"
 
     [orbit.dummy]
         H_tide  = 1e-11  # Fixed tidal power density [W kg-1]
@@ -130,7 +130,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = true      # do not allow the planet to heat up
+    prevent_warming = false     # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
@@ -148,15 +148,15 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "48"          # how many spectral bands?
-        num_levels      = 30            # Number of atmospheric grid levels
+        num_levels      = 90            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
-        solve_energy    = true         # solve for energy-conserving atmosphere profile
+        solve_energy    = true          # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-2          # solver absolute tolerance
         solution_rtol   = 1e-1          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = true          # volatile condensation
-        real_gas        = true         # use real-gas equations of state
+        real_gas        = true          # use real-gas equations of state
 
     [atmos_clim.janus]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
@@ -256,7 +256,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         metallicity = 1000.0	 # metallicity relative to solar metallicity
         
         # H_oceans    = 60.0     # Hydrogen inventory in units of equivalent Earth oceans
-        H_ppmw      = 10000.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_ppmw      = 100000.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 0.29       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 10.0     # Carbon inventory in ppmw relative to mantle mass

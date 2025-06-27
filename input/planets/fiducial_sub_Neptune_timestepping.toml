@@ -44,8 +44,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
             propconst    = 52.0   # Proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.03   # Step size atol
-            rtol         = 0.15   # Step size rtol
+            atol         = 0.003   # Step size atol
+            rtol         = 0.015   # Step size rtol
 
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
@@ -104,7 +104,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Orbital system
 [orbit]
-    semimajororfinst = 'instellationflux'	# whether to define orbit using semi major axis or instellation flux
+    semimajororfinst = 'semimajoraxis'	# whether to define orbit using semi major axis or instellation flux
     instellationflux = 3e-4             	# instellation flux received from the planet in Earth units.
     semimajoraxis    = 0.15              	# AU
     eccentricity     = 0.0       		# dimensionless
