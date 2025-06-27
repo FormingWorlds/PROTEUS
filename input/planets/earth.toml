@@ -63,7 +63,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     surf_state      = "fixed"
     rayleigh        = true
     module          = "agni"
-    spectral_group  = 
 
 [escape]
     module = "none"

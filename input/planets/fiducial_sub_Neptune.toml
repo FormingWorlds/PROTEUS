@@ -252,7 +252,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
-        use_metallicity = true	 # whether or not to specify the elemental abundances in terms of solar metallicity 
+        use_metallicity = true	 # whether or not to specify the elemental abundances in terms of solar metallicity
         metallicity = 1000.0	 # metallicity relative to solar metallicity
         
         # H_oceans    = 60.0     # Hydrogen inventory in units of equivalent Earth oceans
