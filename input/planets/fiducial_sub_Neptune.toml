@@ -50,7 +50,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # Termination criteria
     #     Set enabled=true/false in each section to enable/disable that termination criterion
     [params.stop]
-    
+
         # Require criteria to be satisfied twice before model will exit?
         strict = false
 
@@ -116,7 +116,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [orbit.dummy]
         H_tide  = 1e-11  # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
-        
+
     [orbit.lovepy]
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
@@ -254,7 +254,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [delivery.elements]
         use_metallicity = true	 # whether or not to specify the elemental abundances in terms of solar metallicity
         metallicity = 1000.0	 # metallicity relative to solar metallicity
-        
+
         # H_oceans    = 60.0     # Hydrogen inventory in units of equivalent Earth oceans
         H_ppmw      = 1000.0     # Hydrogen inventory in ppmw relative to mantle mass
 
@@ -278,7 +278,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         H2   = 0.0
         CH4  = 0.0
         CO   = 0.0
-        
+
 [observe]
     synthesis = "none"
 
