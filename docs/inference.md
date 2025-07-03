@@ -119,11 +119,11 @@ The optimization will run until `max_len` evaluations are completed or manually 
 
 ## Output
 
-The system generates several outputs:
+The system generates several outputs in the `output/inference/` directory:
 
 ### Data Files
 - `data.pkl`: Final dataset with all evaluated parameters and objectives
-- `logs.pkl`: Detailed logs of each evaluation
+- `logs.pkl`: Detailed logs of each BO step
 - `Ts.pkl`: Timestamps for performance analysis
 
 ### Plots
