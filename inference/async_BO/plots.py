@@ -383,4 +383,3 @@ def plot_res(D, T, n_init, directory, save = True):
 
     else:
         fig.show()
-

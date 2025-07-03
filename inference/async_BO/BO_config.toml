@@ -27,5 +27,3 @@ D_init_path = "inference/data/prot.pth"
 "escape.dummy.rate" = [1.0, 1e5]
 "interior.dummy.ini_tmagma" = [2000, 4500]
 "outgas.fO2_shift_IW" = [-4.0, 4.0]
-
-

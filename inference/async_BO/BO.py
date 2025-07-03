@@ -214,4 +214,3 @@ def BO_step(D, B, f, k, n_restarts, n_samples, lock, worker_id, x_in = None):
     t_1_ev = time.perf_counter()
 
     return x, y, t_1_bo - t_0_bo, t_1_ev - t_0_ev, t_3_lock-t_2_lock+t_1_lock-t_0_lock, t_1_fit-t_0_fit, t_1_ac-t_0_ac, dist
-
