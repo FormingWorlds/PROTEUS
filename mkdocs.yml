@@ -8,6 +8,7 @@ nav:
   - Installation: installation.md
   - Using PROTEUS: usage.md
   - Configuration: config.md
+  - Inference: inference.md
   - Troubleshooting: troubleshooting.md
   - Data files: data.md
   - Kapteyn cluster: kapteyn_cluster_guide.md

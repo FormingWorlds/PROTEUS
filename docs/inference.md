@@ -1,29 +1,29 @@
 # Asynchronous Bayesian Optimization for PROTEUS
 
-This project implements parallel/asynchronous Bayesian Optimization (BO) for parameter inference using the PROTEUS planetary evolution simulator. It uses multiple workers to efficiently explore the parameter space and find optimal matches between simulated and observed planetary characteristics.
+This project implements parallel-asynchronous Bayesian Optimization (BO) for parameter inference using the PROTEUS planetary evolution simulator. It uses multiple workers to efficiently explore the parameter space and find optimal matches between simulated and observed planetary characteristics.
 
 ## Overview
 
 The system performs Bayesian optimization to infer planetary formation parameters by:
 1. Running PROTEUS simulations with different parameter combinations
 2. Comparing simulated observables (planet radius, mass, transit depth, etc.) with target values
-3. Using Gaussian Process models to guide the search toward optimal parameters
-4. Employing multiple parallel workers to accelerate the optimization process
+3. Using Gaussian Process surrogates and acquisition functions to guide the search toward optimal parameters
+4. Employing multiple parallel workers asynchronously to accelerate the optimization process
 
 ## Project Structure
 
-```
-├── main.py                # Main entry point
-├── async_BO.py            # Parallel BO implementation
-├── BO.py                  # Single BO step implementation
-├── objective.py           # PROTEUS interface and objective function
-├── plots.py               # Visualization utilities
-├── utils.py               # Helper functions
-├── gen_D_init.py          # Generate initial data
-├── test.py                # Sanity check script
-├── BO_config.toml         # Configuration file
-└── README.md              # This file
-```
+| File               | Description                               |
+|:-------------------|:------------------------------------------|
+| `main.py`          | Main entry point                          |
+| `async_BO.py`      | Parallel BO implementation                |
+| `BO.py`            | Single BO step implementation             |
+| `objective.py`     | PROTEUS interface and objective function  |
+| `plots.py`         | Visualization utilities                   |
+| `utils.py`         | Helper functions                          |
+| `gen_D_init.py`    | Generate initial data                     |
+| `test.py`          | Sanity check script                       |
+| `BO_config.toml`   | Configuration file                        |
+
 
 ## Dependencies
 
@@ -114,6 +114,9 @@ Where `sim` are the simulated observables and `true` are the target values.
 - Upper Confidence Bound (UCB) acquisition function guides exploration
 - Automatic hyperparameter tuning via marginal likelihood optimization
 
+The optimization will run until `max_len` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
+
+
 ## Output
 
 The system generates several outputs:
@@ -156,22 +159,3 @@ The system prints the final results including:
 - Set `n_workers` to be less than your CPU core count minus 1
 - The system automatically limits thread usage to prevent oversubscription
 - PROTEUS evaluation time typically dominates total runtime
-
-
-## Example Workflow
-
-```bash
-# 1. Set up your configuration
-vim BO_config.toml
-
-# 2. Generate initial data
-python gen_D_init.py
-
-# 3. Run optimization
-python main.py --config BO_config.toml
-
-# 4. Check results in output/inference/results/
-ls output/inference/results/plots/
-```
-
-The optimization will run until `max_len` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.
