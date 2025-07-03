@@ -1,33 +1,62 @@
+"""Bayesian optimization core functions.
+
+This module provides utility functions and the core BO_step function
+for fitting Gaussian processes, optimizing acquisition functions,
+and plotting results during Bayesian optimization.
+
+Functions:
+    unit_bounds: Generate unit hypercube bounds for acquisition optimization.
+    plot_iter: Visualize GP posterior and acquisition function at each iteration.
+    BO_step: Execute a single Bayesian optimization step with timing and logging.
+"""
+from __future__ import annotations
+
 import os
 import time
-import torch
+
 import matplotlib.pyplot as plt
-from botorch.models.transforms import Normalize, Standardize
-from botorch.models import SingleTaskGP
-from botorch.acquisition import (UpperConfidenceBound,
-                                 LogExpectedImprovement,
-                                )
-
-
+import torch
+from botorch.acquisition import (
+    UpperConfidenceBound,
+)
 from botorch.fit import fit_gpytorch_mll
+from botorch.models import SingleTaskGP
+from botorch.models.transforms import Normalize, Standardize
 from botorch.optim import optimize_acqf
-from botorch.utils.transforms import unnormalize
-
 from gpytorch.mlls import ExactMarginalLogLikelihood
-from gpytorch.kernels import RBFKernel, MaternKernel
 
+# Set tensor dtype for consistent precision
 dtype = torch.double
 
 def unit_bounds(d):
+    """Generate unit hypercube bounds for d-dimensional input.
 
-    bounds = torch.tensor([[i for _ in range(d)] for i in range(2)],
-                          dtype=dtype,
-                          )
+    Args:
+        d (int): Dimensionality of the input space.
 
+    Returns:
+        torch.Tensor: Tensor of shape (2, d) where the first row is zeros and the second row is ones.
+    """
+    # Build bounds [[0,...,0], [1,...,1]]
+    bounds = torch.tensor([[0] * d, [1] * d], dtype=dtype)
     return bounds
 
 
 def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
+
+    """Plot the GP posterior and acquisition function for the current iteration.
+
+    Args:
+        gp (SingleTaskGP): Fitted Gaussian Process model.
+        acqf (AcquisitionFunction): Acquisition function instance.
+        X (torch.Tensor): Observed inputs, shape (n, 1).
+        Y (torch.Tensor): Observed outputs, shape (n, 1).
+        next_x (torch.Tensor): Next query point, shape (1, 1).
+        busys (list of torch.Tensor): Busy points to overlay on acquisition plot.
+        dir (str): Directory to save the plot.
+        name (str): Filename for the saved plot.
+    """
+
     fig, ax = plt.subplots(2,1)
 
     xs = (torch.linspace(0,1, 400) ).reshape(-1,1,1) # batch_shape x q=1 x d for acqf
@@ -84,9 +113,28 @@ def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
 
 
 def BO_step(D, B, f, k, n_restarts, n_samples, lock, worker_id, x_in = None):
+
+    """Perform a single Bayesian optimization step.
+
+    Fits a GP to current data, optimizes an acquisition function,
+    updates busy points, evaluates the objective, and logs timing.
+
+    Args:
+        D (dict): Shared dict containing 'X' and 'Y' lists of data.
+        B (dict): Shared dict mapping worker IDs to busy input points.
+        f (callable): Objective function to evaluate.
+        k (Kernel): GPyTorch kernel for the GP covariance.
+        n_restarts (int): Number of restarts for acquisition optimization.
+        n_samples (int): Number of raw samples for acquisition optimization.
+        lock (multiprocessing.Lock): Lock for synchronizing shared state.
+        worker_id (int): ID of the calling worker.
+        x_in (torch.Tensor, optional): Initial input for the first iteration.
+
+    Returns:
+        tuple: (x_next, y_next, bo_duration, eval_duration,
+                lock_duration, fit_duration, acq_duration, min_dist)
     """
-    Perfrom BO step and plot it. Note: the final q steps will not be plotted.
-    """
+
     t_0_bo = time.perf_counter()
     # noise = 1e-4
 
@@ -99,10 +147,8 @@ def BO_step(D, B, f, k, n_restarts, n_samples, lock, worker_id, x_in = None):
             busys = list(B.values())
         t_1_lock = time.perf_counter()
 
-
         d = X.shape[-1]
         print("n =", len(X), ": best objective =", Y.max().item())
-        # print(Y)
 
         t_0_fit = time.perf_counter()
         gp = SingleTaskGP(  train_X=X,
@@ -142,7 +188,7 @@ def BO_step(D, B, f, k, n_restarts, n_samples, lock, worker_id, x_in = None):
 
         if d == 1:
             plot_iter(gp=gp, acqf=acqf, X=X, Y=Y, next_x=x,
-                    busys=b, dir = f"plots/iters/", name=f"BO_{len(X)}_.png")
+                    busys=b, dir = "plots/iters/", name=f"BO_{len(X)}_.png")
 
     else:
         x = x_in

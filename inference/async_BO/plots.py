@@ -1,23 +1,46 @@
-import pandas as pd
-import matplotlib.pyplot as plt
+"""Visualization utilities for asynchronous Bayesian optimization.
+
+This module provides functions to visualize worker execution timelines,
+timing distributions, and optimization performance metrics.
+
+Functions:
+    plot_times: Plot per-worker task timelines and histograms of timing metrics.
+    plot_res: Plot regret and best observed value vs. time and iteration.
+"""
+from __future__ import annotations
+
 import os
-import numpy as np
-from matplotlib.ticker import MaxNLocator
-from matplotlib import cm
+
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from matplotlib import cm
+from matplotlib.ticker import MaxNLocator
 
 
 def plot_times(logs, directory, n_init, min_text_width=0.88):
+
+    """Generate timeline and histograms of process durations.
+
+    Args:
+        logs (list of dict): Log entries containing timing and evaluation data.
+        directory (str): Base directory where plots will be saved ("plots/" appended).
+        n_init (int): Number of initial evaluations to skip when plotting.
+        min_text_width (float): Minimum bar width threshold for white text.
+    """
+    # Build DataFrame skipping initial entries
     df = pd.DataFrame(logs[n_init:])
     if df.empty:
         print("No logs to display.")
         return
 
-    # Normalize times so t0 is zero
+    # Shift timestamps so earliest start_time is zero
     global_t0 = df["start_time"].min()
     df["start"] = df["start_time"] - global_t0
     df["end"] = df["end_time"] - global_t0
 
+    # Identify unique workers and assign colors
     workers = sorted(df["worker"].unique())
     color_map = {w: plt.cm.tab10(i) for i, w in enumerate(workers)}
 
@@ -31,6 +54,7 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     # The x-axis must go at least as far as the rightmost bar end
     xlim_max = max_bar_end + stretch_needed
 
+    # Create timeline plot
     fig, ax = plt.subplots(figsize=(10, 2 + 0.6 * len(workers)))
     for _, row in df.iterrows():
         bar_start = row["start"]
@@ -38,17 +62,22 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
         bar_width = bar_end - bar_start
         bar_center = (bar_start + bar_end) / 2
         worker_y = row["worker"]
+        # Format annotation text for the bar
         if len(row['x_value']) == 1:
             txt = f"(x, y)\n= ({row['x_value'][0]:.2f},{row['y_value']:.2f})\n{row['duration']:.2f}s"
         else:
             txt = f"y = {row['y_value']:.2f}\n{row['duration']:.2f}s"
+        # Draw the bar
         ax.broken_barh(
             [(bar_start, bar_width)],
             (worker_y - 0.4, 0.8),
             facecolors=color_map[row["worker"]],
             edgecolor='k'
         )
-        ax.vlines(bar_end, worker_y - 0.5, worker_y + 0.5, color="gray", lw=1, linestyles='dashed')
+        # Mark end of bar
+        ax.vlines(bar_end, worker_y - 0.5, worker_y + 0.5,
+                  color="gray", lw=1, linestyles='dashed')
+        # Place text inside bar
         ax.text(
             bar_center,
             worker_y,
@@ -59,23 +88,25 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
             color="white" if bar_width > 0.25 else "black",
             fontweight="bold"
         )
-
+    # Label axes and grid
     ax.set_yticks(workers)
     ax.set_yticklabels([f"Worker {w}" for w in workers])
     ax.set_xlabel("Wall clock time (s)")
     ax.set_title("Parallel workers")
     ax.grid(True, axis="x", alpha=0.3)
 
-    padding = 0.05 * xlim_max  # 5% of the x range as padding
+    # Set limits and save figure
+    padding = 0.05 * xlim_max
     xlim_max_padded = xlim_max + padding
 
     ax.set_xlim(left=0, right=xlim_max_padded)
     plt.tight_layout()
     path = directory+"plots/"
     os.makedirs(path, exist_ok=True)
-    fig.savefig(path + f"parallel.png", dpi = 300)
+    fig.savefig(path + "parallel.png", dpi = 300)
     plt.close(fig)
 
+    # Histogram of total durations
     fig, ax = plt.subplots(figsize=(7, 4))
 
     ax.hist(
@@ -94,11 +125,12 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     plt.tight_layout()
     path = directory+"plots/"
     os.makedirs(path, exist_ok=True)
-    fig.savefig(path + f"t_hist.png", dpi = 300)
+    fig.savefig(path + "t_hist.png", dpi = 300)
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(7, 4))
 
+    # Histogram of BO times
     ax.hist(
             df["BO_time"],
             bins="auto",
@@ -115,10 +147,10 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     plt.tight_layout()
     path = directory+"plots/"
     os.makedirs(path, exist_ok=True)
-    fig.savefig(path + f"BO_t_hist.png", dpi = 300)
+    fig.savefig(path + "BO_t_hist.png", dpi = 300)
     plt.close(fig)
 
-
+    # Histogram of evaluation times
     fig, ax = plt.subplots(figsize=(7, 4))
 
     ax.hist(
@@ -137,9 +169,10 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     plt.tight_layout()
     path = directory+"plots/"
     os.makedirs(path, exist_ok=True)
-    fig.savefig(path + f"eval_t_hist.png", dpi = 300)
+    fig.savefig(path + "eval_t_hist.png", dpi = 300)
     plt.close(fig)
 
+    # Colored histogram for fit times
     values = df['t_fit'].values
     positions = np.arange(len(values))   # 0, 1, 2, …, len(df)-1
 
@@ -185,6 +218,7 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     fig.savefig(os.path.join(path, "fit_t_hist.png"), dpi=300)
     plt.close(fig)
 
+    # Colored histogram for acquisition times
     values = df['t_ac'].values
     positions = np.arange(len(values))   # 0, 1, 2, …, len(df)-1
 
@@ -230,8 +264,8 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     fig.savefig(os.path.join(path, "ac_t_hist.png"), dpi=300)
     plt.close(fig)
 
+    # Scatter plot of distance to busy locations
     fig, ax = plt.subplots(figsize=(7, 4))
-
     df_f = df[df["dist"].notnull()]
     ax.scatter(
         df_f.index,
@@ -259,6 +293,17 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
 
 
 def plot_res(D, T, n_init, directory, save = True):
+
+    """Plot regret and best observed value over time and iterations.
+
+    Args:
+        D (dict): Contains 'Y' list of objective values.
+        T (list): Elapsed times corresponding to each evaluation.
+        n_init (int): Number of initial evaluations to skip.
+        directory (str): Base dir where "plots/" subfolder will be created.
+        save (bool): If True, save plots; else display interactively.
+    """
+
     Y = np.array(D["Y"]).flatten()  # Flatten in case it's (N,1)
     Y = Y[n_init:]
 
@@ -304,7 +349,7 @@ def plot_res(D, T, n_init, directory, save = True):
     if save:
         path = directory+"plots/"
         os.makedirs(path, exist_ok=True)
-        fig.savefig(path + f"reg.png", dpi = 300)
+        fig.savefig(path + "reg.png", dpi = 300)
         plt.close(fig)
 
     else:
@@ -319,7 +364,6 @@ def plot_res(D, T, n_init, directory, save = True):
     axes[0].set_xlabel('t')
     axes[0].set_title('Best Value vs Time')
     axes[0].grid(True)
-    #axes[0].legend()
 
     # Bottom: log regret vs n
     axes[1].plot(n, Y_best, marker='o', color='tab:orange')
@@ -328,15 +372,15 @@ def plot_res(D, T, n_init, directory, save = True):
     axes[1].set_title('Best Value vs Step')
     axes[1].grid(True)
     axes[1].xaxis.set_major_locator(MaxNLocator(integer=True))
-    #axes[1].legend()
 
     plt.tight_layout()
 
     if save:
         path = directory+"plots/"
         os.makedirs(path, exist_ok=True)
-        fig.savefig(path + f"best_val.png", dpi = 300)
+        fig.savefig(path + "best_val.png", dpi = 300)
         plt.close(fig)
 
     else:
         fig.show()
+
