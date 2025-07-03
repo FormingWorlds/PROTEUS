@@ -23,7 +23,7 @@ authors = [
 	{name = "Ryan Boukrouche", email = "ryan.boukrouche@astro.su.se"},
 	{name = "Shang-Min Tsai", email = "shangmin.tsai@ucr.edu"},
 	{name = "Hamish Innes", email = "hamish.innes@fu-berlin.de"},
-    {name = "Ben Riegler", email = "ben.riegler@tum.de"},
+  {name = "Ben Riegler", email = "ben.riegler@tum.de"},
 ]
 keywords = [
     "Astronomy",
@@ -64,6 +64,8 @@ dependencies = [
     "botorch",
     "gpytorch",
     "toml",
+    "zenodo-get",
+
 ]
 
 [project.urls]

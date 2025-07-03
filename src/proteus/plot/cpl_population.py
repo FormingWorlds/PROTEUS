@@ -31,7 +31,7 @@ def _get_exo_data(fwl_dir:str):
     return pd.read_csv(popfile,comment="#")
 
 def _get_mr_data(fwl_dir:str):
-    z19 = os.path.join(fwl_dir, "mass_radius", "Mass-radius", "Zeng2019")
+    z19 = os.path.join(fwl_dir, "mass_radius", "Zeng2019")
 
     # Set paths
     curves = {
