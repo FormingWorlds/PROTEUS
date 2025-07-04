@@ -356,6 +356,9 @@ def install_all(export_env: bool):
     rad_dir = socrates_dir.resolve()
     os.environ["RAD_DIR"] = str(rad_dir)
 
+    # Pick up the current shell PATH (which includes the Julia path)
+    env = os.environ.copy()
+
     # --- Step 3: Install AGNI ---
     agni_dir = root / "AGNI"
     if not agni_dir.exists():
@@ -364,7 +367,9 @@ def install_all(export_env: bool):
             subprocess.run(
                 ["git", "clone", "git@github.com:nichollsh/AGNI.git"], check=True
             )
-            subprocess.run(["bash", "src/get_agni.sh"], cwd=agni_dir, check=True)
+            subprocess.run(
+                ["bash", "src/get_agni.sh"], cwd=agni_dir, env=env, check=True
+            )
         except subprocess.CalledProcessError as e:
             click.secho("❌ Failed to install AGNI", fg="red")
             click.echo(e)
