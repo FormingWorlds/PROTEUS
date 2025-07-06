@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import sys
-import subprocess
+import os
 import platform
 import shutil
-import os
+import subprocess
+import sys
 from pathlib import Path
 
 import click
@@ -17,7 +17,9 @@ config_option = click.option(
     "-c",
     "--config",
     "config_path",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path, resolve_path=True),
+    type=click.Path(
+        exists=True, dir_okay=False, path_type=Path, resolve_path=True
+    ),
     help="Path to config file",
     required=True,
 )
@@ -120,7 +122,9 @@ def get():
 
 
 @click.command()
-@click.option("-n", "--name", "name", type=str, help="Name of spectral file group")
+@click.option(
+    "-n", "--name", "name", type=str, help="Name of spectral file group"
+)
 @click.option("-b", "--bands", "bands", type=str, help="Number of bands")
 def spectral(**kwargs):
     """Get spectral files
@@ -305,7 +309,9 @@ def is_julia_installed() -> bool:
 def install_julia():
     click.secho("🐹 Julia is not installed. Installing Julia...", fg="blue")
     if platform.system() == "Windows":
-        click.secho("❌ Auto-installing Julia on Windows is not supported.", fg="red")
+        click.secho(
+            "❌ Auto-installing Julia on Windows is not supported.", fg="red"
+        )
         click.secho(
             "👉 Please install Julia manually: https://julialang.org/downloads/",
             fg="yellow",
@@ -314,13 +320,17 @@ def install_julia():
 
     try:
         subprocess.run(
-            ["bash", "-c", "curl -fsSL https://install.julialang.org | sh"], check=True
+            ["bash", "-c", "curl -fsSL https://install.julialang.org | sh"],
+            check=True,
         )
         click.secho(
-            "✅ Julia installed. You may need to restart your shell.", fg="green"
+            "✅ Julia installed. You may need to restart your shell.",
+            fg="green",
         )
     except subprocess.CalledProcessError:
-        click.secho("❌ Failed to install Julia. Please install manually.", fg="red")
+        click.secho(
+            "❌ Failed to install Julia. Please install manually.", fg="red"
+        )
         raise SystemExit(1)
 
 
@@ -365,7 +375,8 @@ def install_all(export_env: bool):
         click.secho("🧪 Installing AGNI...", fg="blue")
         try:
             subprocess.run(
-                ["git", "clone", "git@github.com:nichollsh/AGNI.git"], check=True
+                ["git", "clone", "git@github.com:nichollsh/AGNI.git"],
+                check=True,
             )
             subprocess.run(
                 ["bash", "src/get_agni.sh"], cwd=agni_dir, env=env, check=True
@@ -385,9 +396,12 @@ def install_all(export_env: bool):
                 click.secho(f"✅ Exported {var} to {rc_file}", fg="green")
             else:
                 click.secho(
-                    f"ℹ️ {var} already exported or shell not recognized", fg="cyan"
+                    f"ℹ️ {var} already exported or shell not recognized",
+                    fg="cyan",
                 )
-        click.secho("🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow")
+        click.secho(
+            "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
+        )
 
     click.secho("🎉 PROTEUS installation completed!", fg="green")
 
