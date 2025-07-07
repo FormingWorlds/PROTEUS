@@ -376,7 +376,7 @@ def install_all(export_env: bool):
         click.secho("🧪 Installing AGNI...", fg="blue")
         try:
             subprocess.run(
-                ["git", "clone", "git@github.com:nichollsh/AGNI.git"],
+                ["git", "clone", "https://github.com/nichollsh/AGNI.git"],
                 check=True,
             )
             subprocess.run(
