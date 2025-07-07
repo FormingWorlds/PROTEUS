@@ -1,0 +1,14 @@
+name: proteus
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Core Python
+  - python=3.13
+  - pip
+
+  # Non-Python dependencies (system-level)
+  - make
+  - gfortran
+  - netcdf-fortran
+  - git  # required for AGNI cloning if Git is not present
