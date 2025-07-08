@@ -43,6 +43,7 @@ See the [installation guide](https://fwl-proteus.readthedocs.io/en/latest/instal
 | Mariana Sastre          | m.c.villamil.sastre[at]rug.nl               |
 | Emma Postolec           | e.n.postolec[at]rug.nl                      |
 | Flavia Pascal           | f.pascal[at]student.rug.nl                  |
+| Ben Riegler             | ben.riegler[at]tum.de                       |
 | Hanno Spreeuw           | h.spreeuw[at]esciencecenter.nl              |
 | Dan J. Bower            | dbower[at]ethz.ch                           |
 | Mark Hammond            | mark.hammond[at]physics.ox.ac.uk            |
@@ -62,6 +63,7 @@ See the [installation guide](https://fwl-proteus.readthedocs.io/en/latest/instal
 | `input/`              | Example configuration files for running the model         |
 | `docs/`               | Documentation source files                                |
 | `examples/`           | Example cases that the model should be able to reproduce  |
+| `inference/`          | Bayesian Optimization powered parameter inference         |
 | `tests/`              | Unit tests for the code                                   |
 | `tools/`              | Tools for setting up the environment                      |
 
