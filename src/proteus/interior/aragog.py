@@ -25,7 +25,6 @@ from aragog.parser import (
     _ScalingsParameters,
     _SolverParameters,
 )
-
 from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
 from proteus.interior.zalmoxis import zalmoxis_solver

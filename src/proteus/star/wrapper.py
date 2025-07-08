@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import AU, M_sun, R_sun, const_sigma, ergcm2stoWm2
+from proteus.utils.constants import AU, M_sun, R_sun, Teffs, const_sigma, ergcm2stoWm2
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("fwl."+__name__)
@@ -184,7 +184,7 @@ def get_new_spectrum(t_star:float, config:Config,
 
     return wl, fl
 
-def scale_spectrum_to_toa(fl_arr, sep:float):
+def scale_spectrum_to_toa(fl_arr, sep:float, config:Config):
     '''
     Scale stellar fluxes from 1 AU to top of the planet's atmosphere.
 
@@ -194,13 +194,19 @@ def scale_spectrum_to_toa(fl_arr, sep:float):
             Stellar fluxes at 1 AU
         sep : float
             Planet-star distance, in units of AU
-
     Returns
     ----------
         fl_arr : np.ndarray
             Incoming stellar radiation scaled to the correct distance.
     '''
-    return np.array(fl_arr) * ( (AU / sep)**2 )
+
+    if config.orbit.semimajororfinst=='instellationflux':
+
+        return np.array(fl_arr) * config.orbit.instellationflux
+
+    else:
+
+        return np.array(fl_arr) * ( (AU / sep)**2 )
 
 def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
     '''
@@ -286,7 +292,14 @@ def update_stellar_radius(hf_row:dict, config:Config, stellar_track=None):
 
     # Dummy case
     if config.star.module == 'dummy':
-        R_star = config.star.dummy.radius
+
+        if config.star.dummy.calculate_radius:
+
+            R_star = (config.star.dummy.Teff/Teffs)**1.82
+
+        else:
+
+            R_star = config.star.dummy.radius
 
     # Mors cases
     elif config.star.module == 'mors':
@@ -328,7 +341,7 @@ def update_instellation(hf_row:dict, config:Config, stellar_track=None):
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import calc_instellation
-        S_0 = calc_instellation(config.star.dummy.Teff, hf_row["R_star"], hf_row["separation"])
+        S_0 = calc_instellation(config.star.dummy.Teff, hf_row["R_star"], hf_row["separation"], config.orbit.semimajororfinst, config.orbit.instellationflux)
         Fxuv_SI = 0.0
 
     # Mors cases

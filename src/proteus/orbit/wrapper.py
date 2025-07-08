@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.interior.common import Interior_t
-from proteus.utils.constants import AU, const_G, secs_per_day
+from proteus.utils.constants import AU, Teffs, const_G, secs_per_day
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -53,19 +53,16 @@ def update_separation(hf_row:dict, config:Config):
         instellationflux = config.orbit.instellationflux
         stellarteff      = config.star.dummy.Teff
 
-        # Coefficients related to stellar flux scaling
+        # Exponents for mass-radius relation and mass-luminoisty relation respectively
         a = 0.8
-        b = 2.3
+        b = 3.5
 
-        # Exponent derived from stellar flux-temperature relationship
+        # Exponent derived from mass-radius and mass-luminosity relation
         exponent = 2 / (1 - 2 * a / b)
 
-        hf_row["separation"] = instellationflux ** (-1/2) * (stellarteff/5780) ** exponent * AU
+        sma = instellationflux ** (-1/2) * (stellarteff/Teffs) ** exponent * AU
 
-    #otherwise calculate orbital separation using semi-major axis
-    else:
-
-        hf_row["separation"] = sma *  (1 + 0.5*ecc*ecc)
+    hf_row["separation"] = sma *  (1 + 0.5*ecc*ecc)
 
 def update_period(hf_row:dict):
     '''

@@ -56,7 +56,14 @@ def generate_spectrum(tmp:float, calculate_radius:bool, R_star:float):
         # Calculating stellar radius based off of empirical relation
         if calculate_radius:
 
-            R_star = R_sun*(tmp/Teffs)**1.82
+            # Exponents for mass-radius relation and mass-luminoisty relation respectively
+            a = 0.8
+            b = 3.5
+
+            # Exponent derived from mass-radius and mass-luminosity relation
+            exponent = 4 / (b / a - 2)
+
+            R_star = R_sun*(tmp/Teffs)**exponent
 
         # Scale from stellar surface to 1 AU
         fl_arr *= (R_star/AU)**2
@@ -88,7 +95,7 @@ def calc_star_luminosity(tmp:float, R_star:float):
     return lum
 
 
-def calc_instellation(tmp:float, R_star:float, sep:float):
+def calc_instellation(tmp:float, R_star:float, sep:float, semimajororfinst:str, instellationflux:float):
     '''
     Calculate planet's instellation based on the star's luminosity.
 
@@ -100,6 +107,10 @@ def calc_instellation(tmp:float, R_star:float, sep:float):
             Star's radius [m]
         sep : float
             Planet-star separation [m]
+        semimajororfinst : str
+            Whether to use the semi-major axis or instellation flux to define the planet's orbit
+        instellationflux: float
+            Instellation flux received from the planet in Earth units.
 
     Returns
     -----------
@@ -107,8 +118,16 @@ def calc_instellation(tmp:float, R_star:float, sep:float):
             Instellation [W m-2]
     '''
 
-    # Get luminosity
-    L_bol = calc_star_luminosity(tmp, R_star)
+    if semimajororfinst=='instellationflux':
 
-    # Return flux at planet-star distance
-    return L_bol / (4 * np.pi * sep * sep)
+        f_earth = R_sun ** 2 * const_sigma * Teffs ** 4 * AU ** (-2)
+
+        return  instellationflux * f_earth
+
+    else:
+
+        # Get luminosity
+        L_bol = calc_star_luminosity(tmp, R_star)
+
+        # Return flux at planet-star distance
+        return L_bol / (4 * np.pi * sep * sep)
