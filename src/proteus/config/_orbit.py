@@ -51,8 +51,8 @@ class Orbit:
 
     Attributes
     ----------
-    semimajororfinst: str
-        Whether to use the semi-major axis or instellation flux to define the planet's orbit
+    instellation_method: str
+        Whether to use the semi-major axis ('sma') or instellation flux ('inst') to define the planet's orbit
     semimajoraxis: float
         Semi-major axis of the planet's orbit [AU].
     instellationflux: float
@@ -77,7 +77,7 @@ class Orbit:
         lt(90),
     ))
     s0_factor: float = field(validator=gt(0))
-    semimajororfinst: str = field(default='semimajoraxis',validator=in_(('semimajoraxis','instellationflux')))
+    instellation_method: str = field(default='sma',validator=in_(('sma','inst')))
     instellationflux: float = field(default=1.0,validator=gt(0))
 
     dummy:  OrbitDummy  = field(factory=OrbitDummy)

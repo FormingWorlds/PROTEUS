@@ -20,10 +20,10 @@ def generate_spectrum(tmp:float, calculate_radius:bool, R_star:float):
     -----------
         tmp : float
             Temperature [K]
-        calculat_radius: bool
+        calculate_radius: bool
             Whether or not to calculate the radius based off of empirical mass-luminosity and mass-radius relation
         R_star : float
-            Stellar radius [m]
+            Stellar radius [solar radii]
 
     Returns
     -----------
@@ -66,7 +66,7 @@ def generate_spectrum(tmp:float, calculate_radius:bool, R_star:float):
             R_star = R_sun*(tmp/Teffs)**exponent
 
         # Scale from stellar surface to 1 AU
-        fl_arr *= (R_star/AU)**2
+        fl_arr *= (R_star*R_sun/AU)**2
 
         # Convert m-1 to nm-1
         fl_arr *= 1e-9
@@ -95,7 +95,7 @@ def calc_star_luminosity(tmp:float, R_star:float):
     return lum
 
 
-def calc_instellation(tmp:float, R_star:float, sep:float, semimajororfinst:str, instellationflux:float):
+def calc_instellation(tmp:float, R_star:float, sep:float):
     '''
     Calculate planet's instellation based on the star's luminosity.
 
@@ -107,10 +107,6 @@ def calc_instellation(tmp:float, R_star:float, sep:float, semimajororfinst:str, 
             Star's radius [m]
         sep : float
             Planet-star separation [m]
-        semimajororfinst : str
-            Whether to use the semi-major axis or instellation flux to define the planet's orbit
-        instellationflux: float
-            Instellation flux received from the planet in Earth units.
 
     Returns
     -----------
@@ -118,16 +114,8 @@ def calc_instellation(tmp:float, R_star:float, sep:float, semimajororfinst:str, 
             Instellation [W m-2]
     '''
 
-    if semimajororfinst=='instellationflux':
+    # Get luminosity
+    L_bol = calc_star_luminosity(tmp, R_star)
 
-        f_earth = R_sun ** 2 * const_sigma * Teffs ** 4 * AU ** (-2)
-
-        return  instellationflux * f_earth
-
-    else:
-
-        # Get luminosity
-        L_bol = calc_star_luminosity(tmp, R_star)
-
-        # Return flux at planet-star distance
-        return L_bol / (4 * np.pi * sep * sep)
+    # Return flux at planet-star distance
+    return L_bol / (4 * np.pi * sep * sep)

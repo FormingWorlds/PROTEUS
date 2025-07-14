@@ -161,7 +161,7 @@ def get_new_spectrum(t_star:float, config:Config,
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import generate_spectrum
-        wl, fl = generate_spectrum(config.star.dummy.Teff, config.star.dummy.calculate_radius, config.star.dummy.radius * R_sun)
+        wl, fl = generate_spectrum(config.star.dummy.Teff, config.star.dummy.calculate_radius, config.star.dummy.radius)
 
     # Mors cases
     elif config.star.module == 'mors':
@@ -200,7 +200,7 @@ def scale_spectrum_to_toa(fl_arr, sep:float, config:Config):
             Incoming stellar radiation scaled to the correct distance.
     '''
 
-    if config.orbit.semimajororfinst=='instellationflux':
+    if config.orbit.instellation_method=='inst':
 
         return np.array(fl_arr) * config.orbit.instellationflux
 
@@ -295,7 +295,14 @@ def update_stellar_radius(hf_row:dict, config:Config, stellar_track=None):
 
         if config.star.dummy.calculate_radius:
 
-            R_star = (config.star.dummy.Teff/Teffs)**1.82
+            # Exponents for mass-radius relation and mass-luminoisty relation respectively
+            a = 0.8
+            b = 3.5
+
+            # Exponent derived from mass-radius and mass-luminosity relation
+            exponent = 4 / (b / a - 2)
+
+            R_star = (config.star.dummy.Teff/Teffs)**exponent
 
         else:
 
@@ -341,7 +348,7 @@ def update_instellation(hf_row:dict, config:Config, stellar_track=None):
     # Dummy case
     if config.star.module == 'dummy':
         from proteus.star.dummy import calc_instellation
-        S_0 = calc_instellation(config.star.dummy.Teff, hf_row["R_star"], hf_row["separation"], config.orbit.semimajororfinst, config.orbit.instellationflux)
+        S_0 = calc_instellation(config.star.dummy.Teff, hf_row["R_star"], hf_row["separation"])
         Fxuv_SI = 0.0
 
     # Mors cases

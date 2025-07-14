@@ -56,10 +56,14 @@ class Mors:
 def valid_stardummy(instance, attribute, value):
     if instance.module != "dummy":
         return
-    if (instance.dummy.radius is None) or (instance.dummy.radius <= 0):
+    if (instance.dummy.radius is not None) and (instance.dummy.Teff <= 0):
         raise ValueError("star.dummy.radius must be > 0")
     if (instance.dummy.Teff is None) or (instance.dummy.Teff <= 0):
         raise ValueError("star.dummy.Teff must be > 0")
+    if (instance.dummy.calculate_radius) and (instance.dummy.radius is not None):
+        raise ValueError("Radius must not be provided when calculate_radius is True.")
+    if (not instance.dummy.calculate_radius) and (instance.dummy.radius is None):
+        raise ValueError("Radius must be set if calculate_radius is False.")
 
 @define
 class StarDummy:
@@ -75,7 +79,7 @@ class StarDummy:
         Observed effective temperature [K].
     """
     Teff: float = field(default=5780,validator=gt(0))
-    radius: float = field(default=1.0,validator=gt(0))
+    radius: float | str = field(default=None,  converter=none_if_none)
     calculate_radius: bool = field(default=False)
 
 @define

@@ -106,15 +106,18 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
         spec    = "stellar_spectra/Named/sun.txt" # path to stellar spectrum file
 
     [star.dummy]
-        radius  = 1.0       # Stellar radius [R_sun]
-        Teff    = 5772.0    # Star's brightness temperature [K]
+        radius  = 1.0                # Stellar radius [R_sun]
+        calculate_radius = true	     # calculate radius using empirical mass-luminosity and mass-radius relations
+        Teff    = 5772.0             # Star's brightness temperature [K]
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 1.0       # AU
-    eccentricity    = 0.0       # dimensionless
-    zenith_angle    = 48.19     # degrees
-    s0_factor       = 0.375     # dimensionless
+    instellation_method = 'sma' # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
+    instellationflux = 1e0      # instellation flux received from the planet in Earth units.
+    semimajoraxis = 1.0         # AU
+    eccentricity = 0.0          # dimensionless
+    zenith_angle = 48.19        # degrees
+    s0_factor = 0.375           # dimensionless
 
     module  = "none"
 
@@ -127,11 +130,12 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 
 # Planetary structure - physics table
 [struct]
-    mass_tot    = 1.0       # M_earth
-    radius_int  = "none"    # R_earth
-    corefrac    = 0.55      # non-dim., radius fraction
-    core_density = 10738.33      # Core density [kg m-3]
-    core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
+    set_by      = 'mass_tot' # Variable to set interior structure: 'radius_int' or 'mass_tot'
+    mass_tot    = 1.0        # M_earth
+    radius_int  = "none"     # R_earth
+    corefrac    = 0.55       # non-dim., radius fraction
+    core_density = 10738.33  # Core density [kg m-3]
+    core_heatcap = 880.0     # Core specific heat capacity [J K-1 kg-1]
 
     module = "zalmoxis"
 
@@ -243,7 +247,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
         gravitational_separation        = false    # enable gravitational separation
         mixing                          = false    # enable mixing
         tsurf_poststep_change           = 30       # threshold of maximum change on surface temperature
-        event_triggering                = true    # enable events triggering to avoid abrupt jumps in surface temperature
+        event_triggering                = true     # enable events triggering to avoid abrupt jumps in surface temperature
+        eos_method  	= 1                        # 1: Adams-Williamson / 2: User defined
+        eos_filepath    = 'none'                   # the file containing the EOS data if EOS is user defined
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
@@ -287,6 +293,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
 
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
+        use_metallicity = false	 # whether or not to specify the elemental abundances in terms of solar metallicity
+        metallicity = 1000	 # metallicity relative to solar metallicity
+    
         H_oceans    = 5.0       # Hydrogen inventory in units of equivalent Earth oceans
         #H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
 
@@ -303,7 +312,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     [delivery.volatiles]
         H2O  = 20.0          # partial pressure of H2O
         CO2  = 30.0          # partial pressure of CO2
-        N2   = 0.0          # etc
+        N2   = 0.0           # etc
         S2   = 0.0
         SO2  = 0.0
         H2S  = 0.0

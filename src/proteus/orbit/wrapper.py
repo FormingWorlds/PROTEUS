@@ -47,21 +47,6 @@ def update_separation(hf_row:dict, config:Config):
     sma = hf_row["semimajorax"] # already in SI units
     ecc = hf_row["eccentricity"]
 
-    #this obtains the orbital separation based on the instellation flux
-    if config.orbit.semimajororfinst == 'instellationflux' and config.star.module == 'dummy':
-
-        instellationflux = config.orbit.instellationflux
-        stellarteff      = config.star.dummy.Teff
-
-        # Exponents for mass-radius relation and mass-luminoisty relation respectively
-        a = 0.8
-        b = 3.5
-
-        # Exponent derived from mass-radius and mass-luminosity relation
-        exponent = 2 / (1 - 2 * a / b)
-
-        sma = instellationflux ** (-1/2) * (stellarteff/Teffs) ** exponent * AU
-
     hf_row["separation"] = sma *  (1 + 0.5*ecc*ecc)
 
 def update_period(hf_row:dict):
@@ -154,7 +139,27 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     # Set semimajor axis and eccentricity.
     #    In the future, these could be allowed to evolve in time.
-    hf_row["semimajorax"]  = config.orbit.semimajoraxis * AU
+
+    #this obtains the orbital separation based on the instellation flux
+    if config.orbit.instellation_method == 'inst' and config.star.module == 'dummy':
+
+        instellationflux = config.orbit.instellationflux
+        stellarteff      = config.star.dummy.Teff
+
+        # Exponents for mass-radius relation and mass-luminoisty relation respectively
+        a = 0.8
+        b = 3.5
+
+        # Exponent derived from mass-radius and mass-luminosity relation
+        exponent = 2 / (1 - 2 * a / b)
+
+        hf_row["semimajorax"] = instellationflux ** (-1/2) * (stellarteff/Teffs) ** exponent * AU
+
+    #otherwise, use the semi-major axis provided by the user
+    else:
+
+        hf_row["semimajorax"] = config.orbit.semimajoraxis * AU
+
     hf_row["eccentricity"] = config.orbit.eccentricity
 
     # Update orbital separation and period

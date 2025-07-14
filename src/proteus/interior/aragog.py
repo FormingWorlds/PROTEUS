@@ -11,6 +11,7 @@ import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import platformdirs
+
 from aragog import Output, Solver, aragog_file_logger
 from aragog.parser import (
     Parameters,
