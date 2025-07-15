@@ -38,6 +38,7 @@ PROTEUS and its submodules are an academic exercise. Their principle purpose is 
 
 <b>
 In summary:
+
 * you generally own all of the code you write and material you create,
 * you give (via the CLA) irrevocable permission for it to be used under the License terms,
 * you are requested to give credit and offer authorship on papers where appropriate.
