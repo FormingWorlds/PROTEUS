@@ -8,6 +8,7 @@ nav:
   - Installation: installation.md
   - Using PROTEUS: usage.md
   - Configuration: config.md
+  - Inference: inference.md
   - Troubleshooting: troubleshooting.md
   - Data files: data.md
   - Kapteyn cluster: kapteyn_cluster_guide.md
@@ -24,7 +25,7 @@ nav:
   - 🔗 CALLIOPE: https://github.com/FormingWorlds/CALLIOPE
   - 🔗 AGNI: https://nichollsh.github.io/AGNI/dev/
   - 🔗 LovePy: https://github.com/nichollsh/lovepy
-  - 🔗 VULCAN: https://github.com/FormingWorlds/VULCAN
+  - 🔗 VULCAN: https://github.com/exoclime/VULCAN
 
 theme:
   name: material

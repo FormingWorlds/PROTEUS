@@ -23,6 +23,7 @@ authors = [
 	{name = "Ryan Boukrouche", email = "ryan.boukrouche@astro.su.se"},
 	{name = "Shang-Min Tsai", email = "shangmin.tsai@ucr.edu"},
 	{name = "Hamish Innes", email = "hamish.innes@fu-berlin.de"},
+  {name = "Ben Riegler", email = "ben.riegler@tum.de"},
 ]
 keywords = [
     "Astronomy",
@@ -49,7 +50,7 @@ dependencies = [
     "fwl-mors>=25.05.25",
     "fwl-calliope>=25.05.01",
     "fwl-zephyrus>=25.03.11",
-    "aragog>=v0.2.5-alpha",
+    "aragog>=v0.2.6-alpha",
     "cmcrameri",
     "juliacall",
     "matplotlib",
@@ -59,6 +60,11 @@ dependencies = [
     "scipy",
     "pre-commit",
     "ruff",
+    "torch",
+    "botorch",
+    "gpytorch",
+    "toml",
+    "zenodo-get",
 ]
 
 [project.urls]

@@ -381,10 +381,11 @@ def zalmoxis_solver(config:Config, outdir:str, hf_row:dict):
     mantle_radii = radii[cmb_index:]
     mantle_pressure = pressure[cmb_index:]
     mantle_density = density[cmb_index:]
+    mantle_gravity = gravity[cmb_index:]
 
     # Save final grids to the output file for the mantle
     with open(output_zalmoxis, 'w') as f:
         for i in range(len(mantle_radii)):
-            f.write(f"{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e}\n")
+            f.write(f"{mantle_radii[i]:.17e} {mantle_pressure[i]:.17e} {mantle_density[i]:.17e} {mantle_gravity[i]:.17e}\n")
 
     return cmb_radius
