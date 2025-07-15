@@ -172,8 +172,13 @@ curl -fsSL https://install.julialang.org | sh
     python -m pip install -e .
     ```
 
+10. Enable pre-commit
 
-10. Done! 🚀
+    ```console
+    pre-commit install -f
+    ```
+
+11. Done! 🚀
     Any remaining dependencies will be downloaded when the model is first run.
 
 ## Optional modules
