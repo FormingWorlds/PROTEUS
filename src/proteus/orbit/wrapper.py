@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.interior.common import Interior_t
-from proteus.utils.constants import AU, const_G, secs_per_day
+from proteus.utils.constants import AU, Teffs, const_G, secs_per_day
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -31,7 +31,7 @@ def init_orbit(handler:Proteus):
         from proteus.orbit.lovepy import import_lovepy
         import_lovepy()
 
-def update_separation(hf_row:dict):
+def update_separation(hf_row:dict, config:Config):
     '''
     Calculate time-averaged orbital separation on an elliptical path.
     https://physics.stackexchange.com/a/715749
@@ -40,6 +40,8 @@ def update_separation(hf_row:dict):
     -------------
         hf_row: dict
             Current helpfile row
+        config : Config
+            Model configuration.
     '''
 
     sma = hf_row["semimajorax"] # already in SI units
@@ -137,11 +139,31 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     # Set semimajor axis and eccentricity.
     #    In the future, these could be allowed to evolve in time.
-    hf_row["semimajorax"]  = config.orbit.semimajoraxis * AU
+
+    #this obtains the orbital separation based on the instellation flux
+    if config.orbit.instellation_method == 'inst' and config.star.module == 'dummy':
+
+        instellationflux = config.orbit.instellationflux
+        stellarteff      = config.star.dummy.Teff
+
+        # Exponents for mass-radius relation and mass-luminoisty relation respectively
+        a = 0.8
+        b = 3.5
+
+        # Exponent derived from mass-radius and mass-luminosity relation
+        exponent = 2 / (1 - 2 * a / b)
+
+        hf_row["semimajorax"] = instellationflux ** (-1/2) * (stellarteff/Teffs) ** exponent * AU
+
+    #otherwise, use the semi-major axis provided by the user
+    else:
+
+        hf_row["semimajorax"] = config.orbit.semimajoraxis * AU
+
     hf_row["eccentricity"] = config.orbit.eccentricity
 
-    # Update orbital separation, orbital period, axial period
-    update_separation(hf_row)
+    # Update orbital separation and period
+    update_separation(hf_row, config)
     update_period(hf_row)
     log.info("    period = %.3f days"%(hf_row["orbital_period"]/secs_per_day))
 
