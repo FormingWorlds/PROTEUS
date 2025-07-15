@@ -59,6 +59,8 @@ Contributing to PROTEUS is relatively straightforward. We use Git to manage the 
 6. One of the Maintainers of the project will review the request.
 7. When ready, the changes will be merged into the `main` branch and are made live!
 
+A series of 'hooks' will check the syntax and validity of your code when committing. With a significant number of people contributing to the codebase, automatic checks are important for preventing programming errors, bugs, stylistic problems, and large files from being committed to the repositories [[ref]](https://en.wikipedia.org/wiki/Lint_(software)).
+
 ## Development rules
 
 ### Versioning
@@ -76,8 +78,6 @@ The version of PROTEUS itself is defined using calendar versioning in the format
 4. Lines of code should avoid being longer than 92 characters where possible
 5. Functions should include a docstring where possible, describing the function's purpose and parameters.
 6. Indentation deeper than 3 levels should be avoided.
-
-Modularity is the central philosophy of PROTEUS.
 
 ### Linting
 

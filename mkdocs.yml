@@ -5,11 +5,12 @@ repo_name: GitHub
 
 nav:
   - Home: index.md
+  - Model description: model.md
   - Installation: installation.md
   - Using PROTEUS: usage.md
   - Configuration: config.md
-  - Inference: inference.md
   - Troubleshooting: troubleshooting.md
+  - Bayesian inference: inference.md
   - Data files: data.md
   - Kapteyn cluster: kapteyn_cluster_guide.md
   - Snellius cluster: snellius_cluster_guide.md

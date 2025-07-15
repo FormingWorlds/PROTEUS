@@ -28,6 +28,7 @@
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
 </p>
 
+See the [model description](https://fwl-proteus.readthedocs.io/en/latest/model/) for an outline of the code and its structure.
 
 ## Installation & run instructions
 
