@@ -295,7 +295,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     [delivery.elements]
         use_metallicity = false	 # whether or not to specify the elemental abundances in terms of solar metallicity
         metallicity = 1000	 # metallicity relative to solar metallicity
-    
+
         H_oceans    = 5.0       # Hydrogen inventory in units of equivalent Earth oceans
         #H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
 
