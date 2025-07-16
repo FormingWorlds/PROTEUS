@@ -23,7 +23,7 @@ For further information on the model, we refer the reader to the model's bibliog
 
 **Works describing PROTEUS**
 
-* Nicholls et al. (2025a)   -- [doi:10.1093/mnras/stae2772](https://doi.org/10.1093/mnras/stae2772)
+* Nicholls et al. (2025a) –– [doi:10.1093/mnras/stae2772](https://doi.org/10.1093/mnras/stae2772) –– [arXiv PDF](https://arxiv.org/pdf/2412.11987)
 * Nicholls et al. (2024) –– [doi:10.1029/2024JE008576](https://doi.org/10.1029/2024JE008576) –– [arXiv PDF](https://arxiv.org/pdf/2411.19137)
 * Lichtenberg et al. (2021) –– [doi:10.1029/2020JE006711](https://doi.org/10.1029/2020JE006711) –– [arXiv PDF](https://arxiv.org/pdf/2101.10991)
 
