@@ -42,7 +42,7 @@ Contributing to PROTEUS is relatively straightforward. We use Git to manage the 
 4. Add these changes to the repository: `git add .`
 5. Commit these changes with a message: `git commit -m MESSAGE`
 4. Push these changes to GitHub: `git push -u origin MY_BRANCH`
-5. When you've got neat set of changes, make a 'pull request' on GitHub [here](https://github.com/FormingWorlds/PROTEUS/pulls). This makes you a Contributor to the project.
+5. When you've got a neat set of changes, make a 'pull request' on GitHub [here](https://github.com/FormingWorlds/PROTEUS/pulls). This makes you a Contributor to the project.
 6. One of the Maintainers of the project will review the request.
 7. When ready, the changes will be merged into the `main` branch and are made live!
 
