@@ -25,7 +25,7 @@ In summary:
 
 * you generally own all of the code you write and material you create,
 * you give irrevocable permission for the code to be used under the license when distributed,
-* you are requested to give offer authorship and give credit in papers as appropriate.
+* you are requested to offer authorship and give credit in papers as appropriate.
 </b>
 
 PROTEUS would not be exist without the efforts of the wider community. Contributions from research scientists, software developers, students, and many others have made development of the current framework possible. Thank you for your interest in contributing to PROTEUS, and the immense task of simulating the lifetimes of entire planets and stars.
