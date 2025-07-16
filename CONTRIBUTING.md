@@ -28,7 +28,7 @@ In summary:
 * you are requested to offer authorship and give credit in papers as appropriate.
 </b>
 
-PROTEUS would not be exist without the efforts of the wider community. Contributions from research scientists, software developers, students, and many others have made development of the current framework possible. Thank you for your interest in contributing to PROTEUS, and the immense task of simulating the lifetimes of entire planets and stars.
+PROTEUS would not exist without the efforts of the wider community. Contributions from research scientists, software developers, students, and many others have made development of the current framework possible. Thank you for your interest in contributing to PROTEUS, and the immense task of simulating the lifetimes of entire planets and stars.
 
 "Alone we can do do so little; together we can do so much." - Helen Keller
 
