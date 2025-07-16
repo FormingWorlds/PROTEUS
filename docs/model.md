@@ -9,7 +9,7 @@ PROTEUS is a modular framework for simulating the time evolution of small (exo)p
 Although PROTEUS aims to treat the problem of *planetary* evolution, it must necessarily also handle external processes which act upon the planet (e.g. tidal heating). We are therefore also modelling the combined system of a planet, the relevant interactions with neighbouring planets, its orbital mechanics, and the evolution of its host star. In PROTEUS, the planet itself is conceptually sub-divided into a vaporised *atmosphere* component, which sits above an *interior* component containing a silicate mantle and metallic core. The schematic below shows a cartoon of the problem under consideration, depicting the most important components. In subdividing the system, PROTEUS acts to facilitate communication between individual software *modules* which each implement a model for a specific part of the overall system. For example: the interior module of PROTEUS simulates the time-evolution of the planet's mantle and core, their cooling, and potential solidification. Conceptually, PROTEUS modules (e.g. the interior) are 'slots' which are filled by specific implementations: the 'models' (e.g. Aragog).
 
 <p align="center">
-      <img src="/assets/schematic.png" style="max-width: 70%; height: auto;"></br>
+      <img src="assets/schematic.png" style="max-width: 70%; height: auto;"></br>
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
 </p>
 

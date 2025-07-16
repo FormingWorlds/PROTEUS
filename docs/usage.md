@@ -22,7 +22,7 @@ proteus start -c input/all_options.toml
 This will run a simulation and write the results to the `output/` folder inside your PROTEUS
 directory.
 
-See the [config guide](https://fwl-proteus.readthedocs.io/en/latest/config/) for information
+See the [config guide](config.html) for information
 on how to edit the configurations files, and an explanation of their structure.
 
 ## Output and results

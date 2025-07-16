@@ -28,11 +28,11 @@
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
 </p>
 
-See the [model description](https://fwl-proteus.readthedocs.io/en/latest/model/) for an outline of the code and its structure.
+See the [model description](model.html) for an outline of the code and its structure.
 
 ## Installation & run instructions
 
-See the [installation guide](https://fwl-proteus.readthedocs.io/en/latest/installation/) and [usage guide](https://fwl-proteus.readthedocs.io/en/latest/usage/) for initial steps and troubleshooting advice. Only attempt to run PROTEUS after you have followed all of the installation instructions.
+See the [installation guide](installation.html) and [usage guide](usage.html) for initial steps and troubleshooting advice. Only attempt to run PROTEUS after you have followed all of the installation instructions.
 
 ## Contributors
 
