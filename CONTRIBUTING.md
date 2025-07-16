@@ -70,6 +70,16 @@ The version of PROTEUS itself is defined using calendar versioning in the format
 5. Functions should include a docstring where possible, describing the function's purpose and parameters.
 6. Indentation deeper than 3 levels should be avoided.
 
+### Large files, outputs, and lookup data
+
+Large files should **not** be committed to the repository. This means model results, plots, and files you create during analysis. Including these will make Git operations sluggish and make version control tricky, as Git is only meant for managing text (e.g. code) files.
+
+You can make files/folders invisible to Git by prepending `nogit_` to their names. For example, anything in a folder called `nogit_analysis/` will be ignored by Git. Large files could then be safely placed in this folder. Model outputs are generated in the `output/` folder, which is also ignored by Git.
+
+Large files can be useful in some cases, such as in the case of lookup-data tables used in the simulations. These files should be kept inside your FWL data folder defined by the `FWL_DATA` environment variable in your shell. Placing large files in this folder allows them to be kept on 'storage' file systems on clusters to avoid reaching your allocation limits.
+
+PROTEUS will download large files from Zenodo when required. These are then kept in the FWL data folder. You can find our Zenodo community [here](https://zenodo.org/communities/proteus_framework/).
+
 ### Linting
 
 Linting is a term for static code analysis to flag programming errors,
@@ -99,23 +109,23 @@ pre-commit install
 
 ### Running tests
 
-PROTEUS uses [pytest](https://docs.pytest.org/en/latest/) to run the tests.
+PROTEUS uses [pytest](https://docs.pytest.org/en/latest/) to run the tests on the code. Tests are important for ensuring that the code behaves as expected, and for finding bugs/errors as soon as they arise. You can read more about software testing in general [here](https://www.geeksforgeeks.org/software-testing/software-testing-basics/).
 
-The tests are run automatically via a Github Action: [tests](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/workflows/tests.yaml).
-
-You can run the tests for yourself using:
+Our tests are run automatically via a Github Action: [tests](https://github.com/FormingWorlds/PROTEUS/blob/main/.github/workflows/tests.yaml). You can also run the tests for yourself using the command:
 
 ```console
 pytest
 ```
 
-To check coverage:
+To check the 'coverage' of the tests:
 
 ```console
 coverage run -m pytest
 coverage report  # to output to terminal
 coverage html    # to generate html report
 ```
+
+The 'coverage' of the tests describes the fraction of the code which is executed while tests are being run. However, care should also be taken to ensure that the *output* of the tests meets expectations.
 
 ### Building the documentation
 
