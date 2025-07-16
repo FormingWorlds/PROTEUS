@@ -80,6 +80,8 @@ plugins:
           merge_init_into_class: yes
           filters: ["!^_"]
 
+use_directory_urls: false
+
 watch:
   - docs/
   - README.md
