@@ -23,11 +23,20 @@ For further information on the model, we refer the reader to the model's bibliog
 
 **Works describing PROTEUS**
 
+* Lichtenberg et al. (in prep.) –– to be submitted to JOSS
 * Nicholls et al. (2025a) –– [doi:10.1093/mnras/stae2772](https://doi.org/10.1093/mnras/stae2772) –– [arXiv PDF](https://arxiv.org/pdf/2412.11987)
 * Nicholls et al. (2024) –– [doi:10.1029/2024JE008576](https://doi.org/10.1029/2024JE008576) –– [arXiv PDF](https://arxiv.org/pdf/2411.19137)
 * Lichtenberg et al. (2021) –– [doi:10.1029/2020JE006711](https://doi.org/10.1029/2020JE006711) –– [arXiv PDF](https://arxiv.org/pdf/2101.10991)
 
+
 ```bibtex
+@ARTICLE{Lichtenberg_2026_JOSS,
+       author = {Tim Lichtenberg, Harrison Nicholls, Laurent Soucasse, Mariana Sastre, Emma Postolec, Dan J. Bower, Flavia C. Pascal, Ben Riegler, Hanno Spreeuw, Robb Calder, Mark Hammond, Stef Smeets, Shang-Min Tsai, Raymond T. Pierrehumbert},
+        title = "The PROTEUS framework for planetary evolution",
+      journal = {JOSS},
+         year = {in prep.},
+        month = jan,
+}
 
 @ARTICLE{Nicholls_2025_MNRAS,
        author = {{Nicholls}, Harrison and {Pierrehumbert}, Raymond T. and {Lichtenberg}, Tim and {Soucasse}, Laurent and {Smeets}, Stef},

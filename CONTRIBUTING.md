@@ -3,7 +3,7 @@
 This page provides an overview on contributing to PROTEUS itself and the ecosystem.
 Anyone who makes a Pull Request to the `main` branch should read this document *fully* first.
 
-## Licensing and ownership
+## Licensing and credit
 
 PROTEUS and its submodules are *free* software and also *open source* software. Roughly, this means that the users have the freedom to run, copy, distribute, study, change and improve the software. The term "free software" is a matter of liberty, not price or monetary value [[ref]](https://www.gnu.org/philosophy/free-sw.html).
 
@@ -18,7 +18,7 @@ The principle purpose of PROTEUS is to generate data to make scientific conclusi
 3. the Maintainers are made aware of when PROTEUS results are used in a scientific paper.
 
 A suggested acknowledgement is:
-> We thank the people who have contributed to PROTEUS and its broader ecosystem for their support and enabling the scientific outputs of this paper.
+> We thank the people who have contributed to PROTEUS and its broader ecosystem for their support and enabling the scientific outputs of this paper. PROTEUS (version XX.XX.XX) may be found online at https://github.com/FormingWorlds
 
 <b>
 In summary:

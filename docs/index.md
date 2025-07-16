@@ -28,11 +28,7 @@
       <b>Schematic of PROTEUS components and corresponding modules.</b> </br>
 </p>
 
-See the [model description](model.html) for an outline of the code and its structure.
-
-## Installation & run instructions
-
-See the [installation guide](installation.html) and [usage guide](usage.html) for initial steps and troubleshooting advice. Only attempt to run PROTEUS after you have followed all of the installation instructions.
+See the [model description](model.html) for an outline of the code and its structure. See the [installation guide](installation.html) and [usage guide](usage.html) for initial steps and troubleshooting advice. Only attempt to run PROTEUS after you have followed all of the installation instructions.
 
 ## Contributors
 
@@ -51,26 +47,9 @@ See the [installation guide](installation.html) and [usage guide](usage.html) fo
 | Stef Smeets             | s.smeets[at]esciencecenter.nl               |
 | Raymond Pierrehumbert   | raymond.pierrehumbert[at]physics.ox.ac.uk   |
 
-## Repository structure
+## Citation and credit
 
-| Object                | Description                                               |
-| -                     | -                                                         |
-| `README.md`           | Overview file                                             |
-| `pyproject.toml`      | Project configuration file                                |
-| `CODE_OF_CONDUCT.md`  | Project code of conduct                                   |
-| `LICENSE.txt`         | Project license                                           |
-| `src/proteus`         | Source code for PROTEUS                                   |
-| `output/`             | Output folder with subfolders for each model run          |
-| `input/`              | Example configuration files for running the model         |
-| `docs/`               | Documentation source files                                |
-| `examples/`           | Example cases that the model should be able to reproduce  |
-| `inference/`          | Bayesian Optimization powered parameter inference         |
-| `tests/`              | Unit tests for the code                                   |
-| `tools/`              | Tools for setting up the environment                      |
-
-## Citation
-
-If you make use of PROTEUS, please reference the following papers, and state the code version used. The code version can be found in the `pyproject.toml` file.
+If you make use of PROTEUS, please reference the following papers, state the code version used, and include an acknowledgement. We provide a suggested acknowledgement in the [contributing page](CONTRIBUTING.html#licensing-and-credit)
 
 ```bibtex
 
