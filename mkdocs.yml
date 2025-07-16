@@ -9,14 +9,14 @@ nav:
   - Installation: installation.md
   - Using PROTEUS: usage.md
   - Configuration: config.md
+  - Contributing: CONTRIBUTING.md
   - Troubleshooting: troubleshooting.md
   - Bayesian inference: inference.md
-  - Data files: data.md
+  - Reference data: data.md
   - Kapteyn cluster: kapteyn_cluster_guide.md
   - Snellius cluster: snellius_cluster_guide.md
   - Habrok cluster: habrok_cluster_guide.md
   - Contact: contact.md
-  - Contributing: CONTRIBUTING.md
   - Code of Conduct: CODE_OF_CONDUCT.md
   - Source code: https://github.com/FormingWorlds/PROTEUS
   - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
