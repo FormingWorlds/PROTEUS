@@ -7,15 +7,13 @@ Anyone who makes a Pull Request to the `main` branch should read this document *
 
 PROTEUS and its submodules are *free* software and also *open source* software. Roughly, this means that the users have the freedom to run, copy, distribute, study, change and improve the software. The term "free software" is a matter of liberty, not price or monetary value [[ref]](https://www.gnu.org/philosophy/free-sw.html).
 
-Specifically, PROTEUS is made available under the *Apache 2.0 License* which is provided in the file `LICENSE.txt`, although some submodules are available under other (similar) licenses.
+PROTEUS is made available under the [Apache 2.0 License](https://choosealicense.com/licenses/apache-2.0/) which permits [[ref]](https://choosealicense.com/licenses/apache-2.0/) commercial use, unlimited distribution, modification of the code elsewhere, and private use. However, there are caveats to these terms: contributors have no liability, the code has no warranty, and a trademark may not be applied [[ref]](https://opensource.com/article/18/2/apache-2-patent-license).
 
-The Apache license permits [[ref]](https://choosealicense.com/licenses/apache-2.0/) commercial use, unlimited distribution, modification of the code elsewhere, and private use. However, there are caveats to these terms: contributors have no liability, the code has no warranty, and a trademark may not be applied [[ref]](https://opensource.com/article/18/2/apache-2-patent-license).
+The license only specifies how the material may be used by both developers and non-developers alike.  By default, as a work is created its copyright belongs to the person who created it [[ref]](https://assets.publishing.service.gov.uk/media/5a7eaf0ae5274a2e87db13f3/c-notice-201402.pdf). Although in some cases your employer/university may be the copyright holder of work you create [[ref]](https://www.fsf.org/licensing/contributor-faq). PROTEUS is not 'owned' by a single entity; the individual parts of the framework are owned by those who made them, and licensed for use and modification by others. More information can be found [here](https://opensource.guide) and [here](https://fossa.com/learn/open-source-licenses/).
 
-This does not specify who *owns* the material (i.e. PROTEUS and its submodules). It only specifies how the material may be used by both developers and non-developers alike.  By default, as a work is created its copyright belongs to the person who created it [[ref]](https://assets.publishing.service.gov.uk/media/5a7eaf0ae5274a2e87db13f3/c-notice-201402.pdf). Although in some cases your employer/university may be the copyright holder of work you create [[ref]](https://www.fsf.org/licensing/contributor-faq). PROTEUS is not 'owned' by a single entity; the individual parts of the framework are owned by the people who made them, and licensed for use and modification by others. More information can be found [here](https://opensource.guide) and [here](https://fossa.com/learn/open-source-licenses/).
+The principle purpose of PROTEUS is to generate data to make scientific conclusions and write papers. It is generally expected that the primary author of a paper is the person who contributed the most work to that project. We ask that:
 
-The principle purpose of PROTEUS (and its submodules) is to generate data which are then used to make scientific conclusions and write papers. It is generally expected that the primary author of a paper is the person who contributed the most work to that specific project. We ask that:
-
-1. authorship is offered to the Contributors based on the relevance of their work in making the paper,
+1. authorship is offered to the Contributors to PROTEUS based on the relevance of their work in a paper,
 2. appropriate credit is provided in the Acknowledgements section of the paper,
 3. the Maintainers are made aware of when PROTEUS results are used in a scientific paper.
 
