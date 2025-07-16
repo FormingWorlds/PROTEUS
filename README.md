@@ -31,6 +31,4 @@ More information can be found on the [documentation](https://fwl-proteus.readthe
 
 You can find help on the [discussions page](https://github.com/orgs/FormingWorlds/discussions?discussions_q) or by [contacting the developers](https://fwl-proteus.readthedocs.io/en/latest/contact/) directly.
 
-## Citation
-
 If you make use of PROTEUS, please reference the papers outlined in the [bibliography](https://fwl-proteus--451.org.readthedocs.build/en/451/model/#bibliography).
