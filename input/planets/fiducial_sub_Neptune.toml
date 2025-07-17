@@ -104,7 +104,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Orbital system
 [orbit]
     instellation_method = 'inst'        # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
-    instellationflux    = 1e-4           # instellation flux received from the planet in Earth units.
+    instellationflux    = 1e-4          # instellation flux received from the planet in Earth units.
     semimajoraxis       = 0.15          # AU
     eccentricity        = 0.0       	# dimensionless
     zenith_angle        = 54.74     	# degrees
@@ -129,7 +129,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = true     # do not allow the planet to heat up
+    prevent_warming = false     # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
@@ -255,7 +255,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         metallicity = 1000	 # metallicity relative to solar metallicity
 
         # H_oceans    = 60.0     # Hydrogen inventory in units of equivalent Earth oceans
-        H_ppmw      = 6580.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_ppmw      = 658.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 0.43       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 10.0     # Carbon inventory in ppmw relative to mantle mass

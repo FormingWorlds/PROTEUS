@@ -199,14 +199,7 @@ def scale_spectrum_to_toa(fl_arr, sep:float, config:Config):
         fl_arr : np.ndarray
             Incoming stellar radiation scaled to the correct distance.
     '''
-
-    if config.orbit.instellation_method=='inst':
-
-        return np.array(fl_arr) * config.orbit.instellationflux
-
-    else:
-
-        return np.array(fl_arr) * ( (AU / sep)**2 )
+    return np.array(fl_arr) * ( (AU / sep)**2 )
 
 def write_spectrum(wl_arr, fl_arr, hf_row:dict, output_dir:str):
     '''
