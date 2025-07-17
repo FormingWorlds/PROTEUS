@@ -58,6 +58,8 @@ dependencies = [
     "numpy>=2.0.0",
     "pandas",
     "scipy",
+    "pre-commit",
+    "ruff",
     "sympy",
     "astropy",
     "torch",
@@ -65,7 +67,6 @@ dependencies = [
     "gpytorch",
     "toml",
     "zenodo-get",
-
 ]
 
 [project.urls]
@@ -82,8 +83,6 @@ develop = [
     "pip-tools",
     "pytest >= 8.1",
     "pytest-dependency",
-    "pre-commit",
-    "ruff",
 ]
 
 docs = [

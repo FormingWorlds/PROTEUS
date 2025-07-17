@@ -136,16 +136,17 @@ def validate_module_versions(dirs:dict, config:Config):
         if exp_str is None:
             return True
 
-        # convert from string to m/m/p format
+        # convert from string to m/m/p format (or y/m/d format)
         vact = _split_ver(act_str)
         vexp = _split_ver(exp_str)
 
         # Check major, minor, patch
         for i in range(3):
-            if vact[i] < vexp[i]:
-                log.error(f"{name} module is out of date: {act_str} < {exp_str}")
-                return False
-        return True
+            if vact[i] >= vexp[i]:
+                return True
+
+        log.error(f"{name} module is out of date: installed {act_str} < expected {exp_str}")
+        return False
 
     # Loop through required modules...
     valid = True
