@@ -379,6 +379,7 @@ def install_all(export_env: bool):
                 ["git", "clone", "https://github.com/nichollsh/AGNI.git"],
                 check=True,
             )
+            subprocess.run(["bash", 'echo "PATH seen by get_agni.sh: $PATH"'])
             subprocess.run(
                 ["bash", "src/get_agni.sh"], cwd=agni_dir, env=env, check=True
             )
