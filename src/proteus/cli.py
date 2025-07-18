@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -307,7 +308,7 @@ def is_julia_installed() -> bool:
     return shutil.which("julia") is not None
 
 
-def install_julia():
+def install_julia_and_get_bin_path() -> Path | None:
     click.secho("🐹 Julia is not installed. Installing Julia...", fg="blue")
     if platform.system() == "Windows":
         click.secho(
@@ -320,18 +321,33 @@ def install_julia():
         raise SystemExit(1)
 
     try:
-        subprocess.run(
+        proc = subprocess.run(
             ["bash", "-c", "curl -fsSL https://install.julialang.org | sh"],
             check=True,
+            capture_output=True,
+            text=True,
         )
+        # Search for the line that shows the install path
+        match = re.search(r"installed at: (.+/bin)", proc.stdout)
         click.secho(
             "✅ Julia installed. You may need to restart your shell.",
             fg="green",
         )
-    except subprocess.CalledProcessError:
+        if match:
+            julia_bin = Path(match.group(1))
+            return julia_bin
+        else:
+            click.secho(
+                "⚠️  Could not determine Julia install path from output."
+            )
+            click.secho(proc.stdout)
+            return None
+    except subprocess.CalledProcessError as e:
         click.secho(
             "❌ Failed to install Julia. Please install manually.", fg="red"
         )
+        if e.stderr:
+            click.secho(e.stderr.strip(), fg="yellow")
         raise SystemExit(1)
 
 
@@ -341,9 +357,6 @@ def install_julia():
 )
 def install_all(export_env: bool):
     """Install Julia (if needed), SOCRATES, AGNI, and configure PROTEUS environment."""
-    # --- Step 0: Julia check ---
-    if not is_julia_installed():
-        install_julia()
 
     # --- Step 1: FWL_DATA directory ---
     fwl_data = resolve_fwl_data_dir()
@@ -367,10 +380,21 @@ def install_all(export_env: bool):
     rad_dir = socrates_dir.resolve()
     os.environ["RAD_DIR"] = str(rad_dir)
 
-    # Pick up the current shell PATH (which includes the Julia path)
     env = os.environ.copy()
 
-    # --- Step 3: Install AGNI ---
+    # --- Step 3: Julia check ---
+    if not is_julia_installed():
+        julia_bin_path = install_julia_and_get_bin_path()
+        if julia_bin_path is not None:
+            # Pick up the current shell PATH (which includes the Julia path)
+            env["PATH"] = f'{julia_bin_path}:{env["PATH"]}'
+        else:
+            click.secho(
+                "⚠️ Julia path not found — subsequent steps may fail",
+                fg="yellow",
+            )
+
+    # --- Step 4: Install AGNI ---
     agni_dir = root / "AGNI"
     if not agni_dir.exists():
         click.secho("🧪 Installing AGNI...", fg="blue")
@@ -392,7 +416,7 @@ def install_all(export_env: bool):
     else:
         click.secho("✅ AGNI already present", fg="green")
 
-    # --- Step 4: Export environment variables ---
+    # --- Step 5: Export environment variables ---
     if export_env:
         for var, value in {"FWL_DATA": fwl_data, "RAD_DIR": rad_dir}.items():
             rc_file = append_to_shell_rc(var, str(value))
