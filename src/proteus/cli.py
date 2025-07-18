@@ -122,10 +122,10 @@ def spectral(**kwargs):
 @click.command()
 def stellar():
     """Get stellar spectra"""
-    from .utils.data import download_evolution_tracks, download_stellar_spectra
+    from .utils.data import download_stellar_tracks, download_stellar_spectra
 
     for track in ["Spada","Baraffe"]:
-        download_evolution_tracks(track)
+        download_stellar_tracks(track)
     download_stellar_spectra()
 
 @click.command()
