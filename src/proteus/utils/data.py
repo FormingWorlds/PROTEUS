@@ -122,9 +122,19 @@ def get_zenodo_record(folder: str) -> str | None:
         - str | None : Zenodo record ID or None if not found
     """
     zenodo_map = {
-        'Dayspring/48':   '15721749',
-        'Frostflow/48':   '15696415',
-        'Honeyside/4096': '15696457',
+        "Frostflow/16"  : "15799743",
+        "Frostflow/48"  : "15696415",
+        "Frostflow/256" : "15799754",
+        "Frostflow/4096": "15799776",
+        "Dayspring/16"  : "15799318",
+        "Dayspring/48"  : "15721749",
+        "Dayspring/256" : "15799474",
+        "Dayspring/4096": "15799495",
+        "Honeyside/16"  : "15799607",
+        "Honeyside/48"  : "15799652",
+        "Honeyside/256" : "15799731",
+        "Honeyside/4096": "15696457",
+        "Oak/318"       : "15743843",
     }
     return zenodo_map.get(folder, None)
 
