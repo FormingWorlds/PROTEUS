@@ -106,7 +106,7 @@ From a software engineering perspective, PROTEUS aims to externalise all modelle
 
 PROTEUS is thus in principle interoperable with a variety of external computer codes that fit into the framework designation. In some instances, this enables integration and extension of pre-existing codes, preventing researchers from continuously 'reinventing the wheel' of their scientific domain.
 
-![Schematic of PROTEUS framework and implemented modules.\label{fig:schematic}](../assets/proteus_schematic.png){width=90%}
+![Schematic of PROTEUS framework and implemented modules.\label{fig:schematic}](../assets/schematic.png){width=90%}
 
 \autoref{fig:schematic} shows the current state of the PROTEUS framework at the time of submission, including its ecosystem of modules, as previously introduced in @lichtenberg21a; @nicholls24; @nicholls25a; @nicholls25c. Several of the currently existing modules (in addition to the PROTEUS framework itself) have been written from scratch for their primary use as module within PROTEUS. Other modules are specialised codes, which were originally developed stand-alone, and have been adapted and extended to work with the PROTEUS framework.
 
