@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import hashlib
 import logging
 import os
 import subprocess as sp
@@ -36,10 +37,78 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path):
             "zenodo_get", zenodo_id,
             "-o", folder_dir
         ]
-    out = os.path.join(GetFWLData(), "zenodo.log")
-    log.debug("    logging to %s"%out)
+    out = os.path.join(GetFWLData(), "zenodo_download.log")
+    log.debug("    zenodo_get, logging to %s"%out)
     with open(out,'w') as hdl:
         sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
+
+def md5(_fname):
+    """Return the md5 hash of a file."""
+
+    # https://stackoverflow.com/a/3431838
+    hash_md5 = hashlib.md5()
+    with open(_fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
+def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=100e6):
+    """
+    Validate the content of a specific Zenodo-provided folder by checking md5 hashes
+
+    Inputs :
+        - zenodo_id : str
+            Zenodo record ID to compare
+        - folder_dir : Path
+            Local directory where the Zenodo record has already been downloaded
+        - hash_maxfilesize
+            Don't validate the md5 hash of files greater than this size (bytes)
+
+    Returns :
+        - valid : bool
+            Is folder valid?
+    """
+
+    # Use zenodo_get to obtain md5 hashes
+    # They will be saved to a txt file in folder_dir
+    cmd = [ "zenodo_get", zenodo_id, "-m" ]
+    out = os.path.join(GetFWLData(), "zenodo_validate.log")
+    log.debug("    zenodo_get, logging to %s"%out)
+    with open(out,'w') as hdl:
+        sp.run(cmd, check=True, stdout=hdl, stderr=hdl, cwd=folder_dir)
+
+    # Check that hashes file exists
+    md5sums_path = os.path.join(folder_dir, "md5sums.txt")
+    if not os.path.isfile(md5sums_path):
+        return False
+
+    # Read hashes file
+    with open(md5sums_path,'r') as hdl:
+        md5sums = hdl.readlines()
+
+    # Check each item in the record...
+    for line in md5sums:
+        sum_expect, name = line.strip().split()
+        file = os.path.join(folder_dir, name)
+
+        # exit here if file does not exist
+        if not os.path.exists(file):
+            log.warning(f"Detected missing '{file}', Zenodo record {zenodo_id}")
+            return False
+
+        # don't check the hashes of very large files, because it's slow
+        if os.path.getsize(file) > hash_maxfilesize:
+            return True
+
+        # check the actual hash of the file on disk, compare to expected
+        sum_actual = md5(file).strip()
+        if sum_actual != sum_expect:
+            log.warning(f"Invalid {file}: expected {sum_expect}, got {sum_actual}")
+            return False
+
+    return True
+
 
 def get_zenodo_record(folder: str) -> str | None:
     """
@@ -53,8 +122,8 @@ def get_zenodo_record(folder: str) -> str | None:
         - str | None : Zenodo record ID or None if not found
     """
     zenodo_map = {
-        'Dayspring/48': '15721749',
-        'Frostflow/48': '15696415',
+        'Dayspring/48':   '15721749',
+        'Frostflow/48':   '15696415',
         'Honeyside/4096': '15696457',
     }
     return zenodo_map.get(folder, None)
@@ -96,6 +165,19 @@ def get_osf(id: str):
     project = osf.project(id)
     return project.storage('osfstorage')
 
+def check_needs_update(dir, zenodo):
+
+    # Trivial case where folder is missing
+    if not os.path.isdir(dir):
+        return True
+
+    # Folder exists but cannot check hashes, so exit here
+    if not zenodo:
+        return False # don't update
+
+    # Folder exists... use Zenodo to check MD5 hashes
+    return not validate_zenodo_folder(zenodo, dir)
+
 def download(
     *,
     folder: str,
@@ -133,34 +215,49 @@ def download(
     """
     log.debug(f"Get {desc}?")
 
+    # Check that target FWL_DATA folder exists
     data_dir = GetFWLData() / target
     data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Path to specific folder (download) within the data_dir folder
     folder_dir = data_dir / folder
 
-    if not folder_dir.exists():
-        storage = get_osf(osf_id)
+    # Check if the folder needs updating
+    folder_invalid = check_needs_update(folder_dir, zenodo_id)
+
+    # Update the folder
+    if folder_invalid:
         log.info(f"Downloading {desc} to {data_dir}")
         for i in range(max_tries):
             log.debug(f"    attempt {i+1}")
             success = False
+
+            # Try Zenodo in the first instance
             try:
                 if zenodo_id is not None:
+                    # download the folder
                     download_zenodo_folder(zenodo_id=zenodo_id, folder_dir=folder_dir)
-                    success = True
+
+                    # validate files ok
+                    success = validate_zenodo_folder(zenodo_id, folder_dir)
             except RuntimeError as e:
                 log.warning(f"    Zenodo download failed: {e}")
                 folder_dir.rmdir()
 
+            # If Zenodo fails, try OSF
             if not success:
                 try:
+                    storage = get_osf(osf_id)
                     download_OSF_folder(storage=storage, folders=[folder], data_dir=data_dir)
                     success = True
                 except RuntimeError as e:
                     log.warning(f"    OSF download failed: {e}")
 
+            # We downloaded the folder without throwing an error
             if success:
                 break
 
+            # Otherwise, try again until giving up
             if i < max_tries - 1:
                 log.info(f"    Retrying in {wait_time} seconds...")
                 sleep(wait_time)
