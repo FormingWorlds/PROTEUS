@@ -23,12 +23,12 @@
 
 <b>PROTEUS</b> (/ˈproʊtiəs, PROH-tee-əs) is a modular Python framework that simulates the coupled evolution of the atmospheres and interiors of rocky planets and exoplanets. Inspired by the Greek god of elusive sea change, who could change his form at will, PROTEUS is designed to be flexible and adaptable to a wide range of planetary environments. It can foretell the future, but answers only to those who are capable of asking the right questions.<br>
 
-More information can be found on the [documentation](https://fwl-proteus.readthedocs.io/en/latest/) pages:
+More information can be found on the [documentation](https://fwl-proteus.readthedocs.io/en/latest/index.html) pages:
 
-* [model description](https://fwl-proteus.readthedocs.io/en/latest/model/)
-* [installation guide](https://fwl-proteus.readthedocs.io/en/latest/installation/)
-* [usage guide](https://fwl-proteus.readthedocs.io/en/latest/usage/)
+* [model description](https://fwl-proteus.readthedocs.io/en/latest/model.html)
+* [installation guide](https://fwl-proteus.readthedocs.io/en/latest/installation.html)
+* [usage guide](https://fwl-proteus.readthedocs.io/en/latest/usage.html)
 
-You can find help on the [discussions page](https://github.com/orgs/FormingWorlds/discussions?discussions_q) or by [contacting the developers](https://fwl-proteus.readthedocs.io/en/latest/contact/) directly.
+You can find help on the [discussions page](https://github.com/orgs/FormingWorlds/discussions?discussions_q) or by [contacting the developers](https://fwl-proteus.readthedocs.io/en/latest/contact.html) directly.
 
-If you make use of PROTEUS, please reference the papers outlined in the [bibliography](https://fwl-proteus--451.org.readthedocs.build/en/451/model/#bibliography).
+If you make use of PROTEUS, please reference the papers outlined in the [bibliography](https://fwl-proteus.readthedocs.io/en/latest/model.html#bibliography).
