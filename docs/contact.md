@@ -1,20 +1,9 @@
 # Contact
 
-You can contact the developers or ask questions via a number of ways,
-and we encourage you to reach out!
+You can contact the developers or ask questions via a number of ways, and we encourage you to reach out!
 
-For questions relating to installation or troubleshooting, please open a
-*Q&A* discussion at [FormingWorlds/Discussions](https://github.com/orgs/FormingWorlds/discussions).
+For most general inquiries, questions relating to installation or troubleshooting, or suggestions for new features, please open a discussion thread in [FormingWorlds/Discussions](https://github.com/orgs/FormingWorlds/discussions). The developer team will be able to quickly respond there.
 
-If you believe you found a bug or would want to suggest a new feature
-within the PROTEUS framework, please do so at the respective
-Issue sites:
+If you believe you found a bug or would want to suggest a new specific feature within the PROTEUS framework, please do so at the respective [Issue](https://github.com/FormingWorlds/PROTEUS/issues) sites of PROTEUS and its modules.
 
-- [PROTEUS/Issues](https://github.com/FormingWorlds/PROTEUS/issues)
-- [JANUS/Issues](https://github.com/FormingWorlds/JANUS/issues)
-- [AGNI/Issues](https://github.com/nichollsh/AGNI/issues)
-- [aragog/Issues](https://github.com/ExPlanetology/aragog/issues)
-- [ZEPHYRUS/Issues](https://github.com/FormingWorlds/ZEPHYRUS/issues)
-
-For general enquiries please write an email to
-<contact@formingworlds.space>.
+For more general enquiries please write an email to <proteus_dev@formingworlds.space>.

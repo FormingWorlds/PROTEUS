@@ -4,22 +4,21 @@ These instructions will guide you through the typical installation
 process. The setup is written for MacOS and Linux. Depending on your
 system settings and installed libraries your procedure may differ. If
 one or more of the steps below do not work for you we encourage you to
-first check the [troubleshooting](./troubleshooting.md) page. If
-that does not help you further, please contact the developers (see
-[contact](./contact.md).
+first check the [troubleshooting](troubleshooting.html) page. If
+that does not help you further, please [contact the developers](contact.html).
 
 ## System pre-configuration
 
 Setting up PROTEUS and its submodules requires extra steps to be performed before following the rest of this guide.
 Follow the instructions below depending on your system configuration.
 
-For installing PROTEUS on a local machine (e.g. your laptop), follow the appropriate section in the [Local machine guide](./local_machine_guide.md).
+For installing PROTEUS on a local machine (e.g. your laptop), follow the appropriate section in the [Local machine guide](local_machine_guide.html).
 
 If you are using a specific server, use the following guides:
 
-* Kapteyn cluster [guide](./kapteyn_cluster_guide.md)
-* Habrok cluster [guide](./habrok_cluster_guide.md)
-* Snellius cluster [guide](./snellius_cluster_guide.md).
+* Kapteyn cluster [guide](kapteyn_cluster_guide.html)
+* Habrok cluster [guide](habrok_cluster_guide.html)
+* Snellius cluster [guide](snellius_cluster_guide.html).
 
 
 ## Setup a Python environment
@@ -172,8 +171,13 @@ curl -fsSL https://install.julialang.org | sh
     python -m pip install -e .
     ```
 
+10. Enable pre-commit
 
-10. Done! 🚀
+    ```console
+    pre-commit install -f
+    ```
+
+11. Done! 🚀
     Any remaining dependencies will be downloaded when the model is first run.
 
 ## Optional modules
