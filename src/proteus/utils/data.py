@@ -4,9 +4,9 @@ import functools
 import hashlib
 import logging
 import os
+import shutil
 import subprocess as sp
 from pathlib import Path
-from time import sleep
 from typing import TYPE_CHECKING
 
 import platformdirs
@@ -32,7 +32,8 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path):
             Local directory where the Zenodo record will be downloaded
     """
 
-    folder_dir.mkdir(parents=True)
+    shutil.rmtree(folder_dir, ignore_errors=True)
+    os.mkdir(folder_dir)
     cmd = [
             "zenodo_get", zenodo_id,
             "-o", folder_dir
@@ -94,7 +95,7 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
 
         # exit here if file does not exist
         if not os.path.exists(file):
-            log.warning(f"Detected missing '{file}', Zenodo record {zenodo_id}")
+            log.warning(f"Detected missing file {name} (Zenodo record {zenodo_id})")
             return False
 
         # don't check the hashes of very large files, because it's slow
@@ -104,7 +105,8 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
         # check the actual hash of the file on disk, compare to expected
         sum_actual = md5(file).strip()
         if sum_actual != sum_expect:
-            log.warning(f"Invalid {file}: expected {sum_expect}, got {sum_actual}")
+            log.warning(f"Detected invalid file {name} (Zenodo record {zenodo_id})")
+            log.warning(f"    expected hash {sum_expect}, got {sum_actual}")
             return False
 
     return True
@@ -176,6 +178,17 @@ def get_osf(id: str):
     return project.storage('osfstorage')
 
 def check_needs_update(dir, zenodo):
+    """
+    Check whether the folder 'dir' needs to be re-downloaded.
+
+    This is the case when it is missing, outdated, or corrupted.
+
+    Inputs :
+        - dir : folder path
+        - zenodo : zenodo record ID
+    """
+
+    log.debug(f"Checking whether {dir} needs updating (record {zenodo})")
 
     # Trivial case where folder is missing
     if not os.path.isdir(dir):
@@ -195,8 +208,7 @@ def download(
     osf_id: str,
     zenodo_id: str | None = None,
     desc: str,
-    max_tries: int = 2,
-    wait_time: float = 5,
+    force: bool = False
 ) -> bool:
     """
     Generic download function.
@@ -213,10 +225,8 @@ def download(
         Zenodo record id
     desc: str
         Description for logging
-    max_tries: int
-        Number of tries to download the file
-    wait_time: float
-        Time to wait between tries
+    force: bool
+        Force a re-download even if valid
 
     Returns
     -------
@@ -233,47 +243,40 @@ def download(
     folder_dir = data_dir / folder
 
     # Check if the folder needs updating
-    folder_invalid = check_needs_update(folder_dir, zenodo_id)
+    folder_invalid = check_needs_update(folder_dir, zenodo_id) or force
 
     # Update the folder
     if folder_invalid:
         log.info(f"Downloading {desc} to {data_dir}")
-        for i in range(max_tries):
-            log.debug(f"    attempt {i+1}")
-            success = False
+        success = False
 
-            # Try Zenodo in the first instance
-            try:
-                if zenodo_id is not None:
-                    # download the folder
-                    download_zenodo_folder(zenodo_id=zenodo_id, folder_dir=folder_dir)
+        # Try Zenodo in the first instance
+        try:
+            if zenodo_id is not None:
+                # download the folder
+                download_zenodo_folder(zenodo_id=zenodo_id, folder_dir=folder_dir)
 
-                    # validate files ok
-                    success = validate_zenodo_folder(zenodo_id, folder_dir)
-            except RuntimeError as e:
-                log.warning(f"    Zenodo download failed: {e}")
-                folder_dir.rmdir()
+                # validate files ok?
+                success = validate_zenodo_folder(zenodo_id, folder_dir)
+        except RuntimeError as e:
+            log.warning(f"    Zenodo download failed: {e}")
+            folder_dir.rmdir()
+        if success:
+            return True
 
-            # If Zenodo fails, try OSF
-            if not success:
-                try:
-                    storage = get_osf(osf_id)
-                    download_OSF_folder(storage=storage, folders=[folder], data_dir=data_dir)
-                    success = True
-                except RuntimeError as e:
-                    log.warning(f"    OSF download failed: {e}")
+        # If Zenodo fails, try OSF
+        try:
+            storage = get_osf(osf_id)
+            download_OSF_folder(storage=storage, folders=[folder], data_dir=data_dir)
+            success = True
+        except RuntimeError as e:
+            log.warning(f"    OSF download failed: {e}")
+        if success:
+            return True
 
-            # We downloaded the folder without throwing an error
-            if success:
-                break
+        log.error(f"    Failed to download {desc} from IDs: Zenodo {zenodo_id}, OSF {osf_id}")
+        return False
 
-            # Otherwise, try again until giving up
-            if i < max_tries - 1:
-                log.info(f"    Retrying in {wait_time} seconds...")
-                sleep(wait_time)
-            else:
-                log.error(f"    Failed to download {desc} after {max_tries} attempts")
-                return False
     else:
         log.debug(f"    {desc} already exists")
     return True
@@ -281,14 +284,14 @@ def download(
 
 def download_surface_albedos():
     """
-    Download surface optical properties
+    Download reflectance data for various surface materials
     """
     download(
         folder = 'Hammond24',
         target = "surface_albedos",
         osf_id = '2gcd9',
         zenodo_id = '15880455',
-        desc = 'surface albedos'
+        desc = 'surface reflectance data'
     )
 
 def download_spectral_file(name:str, bands:str):
@@ -355,9 +358,11 @@ def download_massradius_data():
     )
 
 
-def download_evolution_tracks(track:str):
+def download_stellar_tracks(track:str):
     """
-    Download evolution tracks
+    Download stellar evolution tracks
+
+    Uses the function built-into MORS.
     """
     from mors.data import DownloadEvolutionTracks
     log.debug("Get evolution tracks")
@@ -388,9 +393,9 @@ def _get_sufficient(config:Config):
     if config.star.module == "mors":
         download_stellar_spectra()
         if config.star.mors.tracks == 'spada':
-            download_evolution_tracks("Spada")
+            download_stellar_tracks("Spada")
         else:
-            download_evolution_tracks("Baraffe")
+            download_stellar_tracks("Baraffe")
 
     # Spectral files
     if config.atmos_clim.module in ('janus', 'agni'):

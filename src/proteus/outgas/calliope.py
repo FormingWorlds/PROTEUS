@@ -13,7 +13,6 @@ from calliope.solve import (
     get_target_from_params,
     get_target_from_pressures,
 )
-
 from proteus.outgas.common import expected_keys
 from proteus.utils.constants import element_list, vol_list
 from proteus.utils.helper import UpdateStatusfile
