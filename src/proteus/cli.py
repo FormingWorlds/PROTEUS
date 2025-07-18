@@ -322,7 +322,11 @@ def install_julia_and_get_bin_path() -> Path | None:
 
     try:
         proc = subprocess.run(
-            ["bash", "-c", "curl -fsSL https://install.julialang.org | sh"],
+            [
+                "bash",
+                "-c",
+                "curl -fsSL https://install.julialang.org | sh  -s -- -y",
+            ],
             check=True,
             capture_output=True,
             text=True,
@@ -335,12 +339,15 @@ def install_julia_and_get_bin_path() -> Path | None:
         )
         if match:
             julia_bin = Path(match.group(1))
+            click.secho(
+                f"📦 Detected Julia install path: {julia_bin}", fg="cyan"
+            )
             return julia_bin
         else:
             click.secho(
                 "⚠️  Could not determine Julia install path from output."
             )
-            click.secho(proc.stdout)
+            click.secho(proc.stdout, fg="white")
             return None
     except subprocess.CalledProcessError as e:
         click.secho(
