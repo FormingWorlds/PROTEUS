@@ -112,19 +112,19 @@ From a software engineering perspective, PROTEUS aims to externalise all modelle
 
 PROTEUS is thus in principle interoperable with a variety of external computer codes that fit into the framework designation. In some instances, this enables integration and extension of pre-existing codes, preventing researchers from continuously 'reinventing the wheel' of their scientific domain.
 
-![Schematic of PROTEUS framework and implemented modules.\label{fig:schematic}](../assets/schematic.png){width=95%}
+![Schematic of the PROTEUS framework and implemented modules.\label{fig:schematic}](../assets/schematic.png){width=95%}
 
-\autoref{fig:schematic} shows the current state of the PROTEUS framework at the time of submission, including its ecosystem of modules, as previously introduced in @lichtenberg21a; @nicholls24; @nicholls25a; @nicholls25c. Several of the currently existing modules (in addition to the PROTEUS framework itself) have been written from scratch for their primary use as module within PROTEUS. Other modules are specialised codes, which were originally developed stand-alone, and have been adapted and extended to work with the PROTEUS framework.
+\autoref{fig:schematic} shows the current state of the PROTEUS framework at the time of submission, including its ecosystem of modules, as previously introduced in @lichtenberg21a; @nicholls24; @nicholls25a; @nicholls25c. Several of the currently existing modules (in addition to the PROTEUS framework itself) have been developed from scratch for their primary use as module within PROTEUS. Other modules are specialised codes, which were originally developed standalone, and have been adapted and extended to work with the PROTEUS framework.
 
 Modules are grouped into five main categories: (i) interior, (ii) atmosphere, (iii) interface, (iv) environment, and (v) interpretation.
 
-Interior modules (i) compute the interior structure as well as the thermal and chemical evolution of the planetary mantle and core, such as mantle energy transport process, melting and crystallization (red boxes in \autoref{fig:schematic}). These include:
+Interior modules (i) compute the interior structure as well as the thermal and chemical evolution of the planetary mantle and core, such as energy transport, melting, and crystallization (red boxes in \autoref{fig:schematic}). These include:
 
   - Aragog and SPIDER [@bower18; @sastre25], which describe the interior heat transport of partially molten planets using a temperature and an entropy formalism, respectively.
-  - LovePy [@hay19; @nicholls25c], which simulate mixed-phase tidal heating in the planetary mantle.
+  - LovePy [@hay19; @nicholls25c], which simulates mixed-phase tidal heating in the planetary mantle.
   - Zalmoxis [@pascal26], which calculates the interior (core and mantle) structure and gravity profile.
 
-Atmosphere modules (ii) compute the energy balance and composition of the planetary atmosphere, including radiative transfer, and atmospheric chemistry processes  (blue boxes in \autoref{fig:schematic}). These include:
+Atmosphere modules (ii) compute the energy balance and composition of the planetary atmosphere, including radiative transfer, and atmospheric chemistry (blue boxes in \autoref{fig:schematic}). These include:
 
   - AGNI [@nicholls25a; @nicholls25b], which describes the atmosphere energy balance using a radiative-convective model and surface reflection properties from laboratory data [@hammond25].
   - JANUS [@graham21; @graham22], which treats the atmosphere energy balance using a multicomponent non‐dilute pseudoadiabat.
@@ -139,7 +139,7 @@ Interface modules (iii) compute exchange between two or more planetary layers, i
 
 Environment modules (iv) compute the evolution of the host star, including its luminosity and spectral energy distribution (yellow boxes in \autoref{fig:schematic}):
 
- - MORS [@johstone21], which models the evolution of rotation and high energy emission of stars.
+ - MORS [@johstone21], which models the evolution of rotation, luminosity, and high energy emission of stars.
 
 Interpretation modules (v) compute observational properties of the planet, such as emission and transmission spectra, planet-to-star contrast ratio, and bulk density (purple boxes in \autoref{fig:schematic}):
 
