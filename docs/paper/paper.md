@@ -33,14 +33,14 @@ authors:
   - name: Flavia C. Pascal
     orcid: 0009-0007-4663-1456
     affiliation: 1
-  - name: Ben Riegler
+  - name: Robb Calder
+    orcid: 0009-0002-9247-2437
     affiliation: 5
+  - name: Ben Riegler
+    affiliation: 6
   - name: Hanno Spreeuw
     orcid: 0000-0002-5057-0322
     affiliation: 3
-  - name: Robb Calder
-    orcid: 0009-0002-9247-2437
-    affiliation: 6
   - name: Mark Hammond
     orcid: 0000-0002-6893-522X
     affiliation: 2
@@ -49,9 +49,10 @@ authors:
     affiliation: 3
   - name: Shang-Min Tsai
     orcid: 0000-0002-8163-4608
+    affiliation: 7
   - name: Oliver Shorttle
     orcid: 0000-0002-8713-1446
-    affiliation: 6, 8
+    affiliation: 5, 8
   - name: Raymond T. Pierrehumbert
     orcid: 0000-0002-5887-1197
     affiliation: 2
@@ -64,9 +65,9 @@ affiliations:
    index: 3
  - name: Institute of Geochemistry and Petrology, ETH Zurich, Zurich, Switzerland
    index: 4
- - name: School of Computation, Information and Technology, Technical University of Munich, Munich, Germany
-   index: 5
  - name: Institute of Astronomy, University of Cambridge, Cambridge, United Kingdom
+   index: 5
+ - name: School of Computation, Information and Technology, Technical University of Munich, Munich, Germany
    index: 6
  - name: Institute of Astronomy and Astrophysics, Academia Sinica, Taipei, Taiwan
    index: 7
@@ -110,7 +111,7 @@ From a software engineering perspective, PROTEUS aims to externalise all modelle
 
 PROTEUS is thus in principle interoperable with a variety of external computer codes that fit into the framework designation. In some instances, this enables integration and extension of pre-existing codes, preventing researchers from continuously 'reinventing the wheel' of their scientific domain.
 
-![Schematic of PROTEUS framework and implemented modules.\label{fig:schematic}](../assets/schematic.png){width=90%}
+![Schematic of PROTEUS framework and implemented modules.\label{fig:schematic}](../assets/schematic.png){width=95%}
 
 \autoref{fig:schematic} shows the current state of the PROTEUS framework at the time of submission, including its ecosystem of modules, as previously introduced in @lichtenberg21a; @nicholls24; @nicholls25a; @nicholls25c. Several of the currently existing modules (in addition to the PROTEUS framework itself) have been written from scratch for their primary use as module within PROTEUS. Other modules are specialised codes, which were originally developed stand-alone, and have been adapted and extended to work with the PROTEUS framework.
 
