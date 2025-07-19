@@ -36,7 +36,7 @@ cd "$socpath"
 
 # Inform user
 echo "SOCRATES has been downloaded and built in $socpath"
-echo "Now add the following to your `~/.bashrc` file:"
+echo "Now add the following to your ~/.bashrc file:"
 echo "    export RAD_DIR=$socpath"
 
 # Environment
