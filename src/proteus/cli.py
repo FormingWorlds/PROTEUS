@@ -331,12 +331,13 @@ def install_julia_and_get_bin_path() -> Path | None:
             capture_output=True,
             text=True,
         )
-        # Search for the line that shows the install path
-        match = re.search(r"installed at: (.+/bin)", proc.stdout)
         click.secho(
             "✅ Julia installed. You may need to restart your shell.",
             fg="green",
         )
+        # Search for the line that shows the install path
+        match = re.search(r"^\s*(/.+/bin)\s*$", proc.stdout, re.MULTILINE)
+
         if match:
             julia_bin = Path(match.group(1))
             click.secho(
