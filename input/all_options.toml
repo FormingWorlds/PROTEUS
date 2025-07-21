@@ -133,7 +133,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Mariana Sastre"
     core_density = 10738.33      # Core density [kg m-3]
     core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
 
-    module = "zalmoxis"
+    module = "self"
 
     [struct.zalmoxis]
         coremassfrac = 0.325                   # non-dim., core mass fraction
