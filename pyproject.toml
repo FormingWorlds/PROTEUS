@@ -23,6 +23,7 @@ authors = [
 	{name = "Ryan Boukrouche", email = "ryan.boukrouche@astro.su.se"},
 	{name = "Shang-Min Tsai", email = "shangmin.tsai@ucr.edu"},
 	{name = "Hamish Innes", email = "hamish.innes@fu-berlin.de"},
+  {name = "Ben Riegler", email = "ben.riegler@tum.de"},
 ]
 keywords = [
     "Astronomy",
@@ -57,9 +58,15 @@ dependencies = [
     "numpy>=2.0.0",
     "pandas",
     "scipy",
+    "pre-commit",
+    "ruff",
     "sympy",
+    "astropy",
+    "torch",
+    "botorch",
+    "gpytorch",
+    "toml",
     "zenodo-get",
-    "astropy"
 ]
 
 [project.urls]
@@ -76,8 +83,6 @@ develop = [
     "pip-tools",
     "pytest >= 8.1",
     "pytest-dependency",
-    "pre-commit",
-    "ruff",
 ]
 
 docs = [

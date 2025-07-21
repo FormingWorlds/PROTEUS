@@ -180,7 +180,7 @@ def download_surface_albedos():
         folder = 'Hammond24',
         target = "surface_albedos",
         osf_id = '2gcd9',
-        zenodo_id = '15570167',
+        zenodo_id = '15880455',
         desc = 'surface albedos'
     )
 
