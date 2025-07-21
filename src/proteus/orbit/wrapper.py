@@ -146,9 +146,9 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
         instellationflux = config.orbit.instellationflux
         stellarteff      = config.star.dummy.Teff
 
-        # Exponents for mass-radius relation and mass-luminoisty relation respectively
-        a = 0.8
-        b = 3.5
+        # Exponents for mass-radius relation and mass-luminoisty relation, taken from Eker et. al. (2015) and Demircan et. al. (1990) respectively
+        a = 0.945
+        b = 40.4
 
         # Exponent derived from mass-radius and mass-luminosity relation
         exponent = 2 / (1 - 2 * a / b)

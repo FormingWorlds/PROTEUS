@@ -56,9 +56,9 @@ def generate_spectrum(tmp:float, calculate_radius:bool, R_star:float):
         # Calculating stellar radius based off of empirical relation
         if calculate_radius:
 
-            # Exponents for mass-radius relation and mass-luminoisty relation respectively
-            a = 0.8
-            b = 3.5
+            # Exponents for mass-radius relation and mass-luminoisty relation, taken from Eker et. al. (2015) and Demircan et. al. (1990) respectively
+            a = 0.945
+            b = 4.04
 
             # Exponent derived from mass-radius and mass-luminosity relation
             exponent = 4 / (b / a - 2)
