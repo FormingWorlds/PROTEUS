@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import os
-import platform
-import re
 import shutil
 import subprocess
 import sys
@@ -308,57 +306,6 @@ def is_julia_installed() -> bool:
     return shutil.which("julia") is not None
 
 
-def install_julia_and_get_bin_path() -> Path | None:
-    click.secho("🐹 Julia is not installed. Installing Julia...", fg="blue")
-    if platform.system() == "Windows":
-        click.secho(
-            "❌ Auto-installing Julia on Windows is not supported.", fg="red"
-        )
-        click.secho(
-            "👉 Please install Julia manually: https://julialang.org/downloads/",
-            fg="yellow",
-        )
-        raise SystemExit(1)
-
-    try:
-        proc = subprocess.run(
-            [
-                "bash",
-                "-c",
-                "curl -fsSL https://install.julialang.org | sh  -s -- -y",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        click.secho(
-            "✅ Julia installed. You may need to restart your shell.",
-            fg="green",
-        )
-        # Search for the line that shows the install path
-        match = re.search(r"^\s*(/.+/bin)\s*$", proc.stdout, re.MULTILINE)
-
-        if match:
-            julia_bin = Path(match.group(1))
-            click.secho(
-                f"📦 Detected Julia install path: {julia_bin}", fg="cyan"
-            )
-            return julia_bin
-        else:
-            click.secho(
-                "⚠️  Could not determine Julia install path from output."
-            )
-            click.secho(proc.stdout, fg="white")
-            return None
-    except subprocess.CalledProcessError as e:
-        click.secho(
-            "❌ Failed to install Julia. Please install manually.", fg="red"
-        )
-        if e.stderr:
-            click.secho(e.stderr.strip(), fg="yellow")
-        raise SystemExit(1)
-
-
 @cli.command()
 @click.option(
     "--export-env", is_flag=True, help="Add FWL_DATA and RAD_DIR to shell rc."
@@ -392,15 +339,21 @@ def install_all(export_env: bool):
 
     # --- Step 3: Julia check ---
     if not is_julia_installed():
-        julia_bin_path = install_julia_and_get_bin_path()
-        if julia_bin_path is not None:
-            # Pick up the current shell PATH (which includes the Julia path)
-            env["PATH"] = f'{julia_bin_path}:{env["PATH"]}'
-        else:
-            click.secho(
-                "⚠️ Julia path not found — subsequent steps may fail",
-                fg="yellow",
-            )
+        click.secho("⚠️ Julia not found in PATH.", fg="yellow")
+        click.secho(
+            "   Proteus requires Julia for AGNI.",
+            fg="yellow",
+        )
+        click.secho(
+            "   Please install Julia and ensure it is accessible via your shell PATH.",
+            fg="yellow",
+        )
+        click.secho(f'   Current PATH: {os.environ["PATH"]}', fg="white")
+        click.secho(
+            "❌ Aborting installation — 'proteus install-all' cannot proceed without Julia.",
+            fg="red",
+        )
+        raise SystemExit(1)
 
     # --- Step 4: Install AGNI ---
     agni_dir = root / "AGNI"
