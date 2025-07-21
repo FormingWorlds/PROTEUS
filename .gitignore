@@ -78,6 +78,8 @@ tools/grid_proteus_SNS*
 *.odg#
 *.ods#
 *.odp#
+md5sums.txt
+zenodo*.log
 
 # From Read the Docs
 ####################
