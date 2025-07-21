@@ -104,7 +104,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # Orbital system
 [orbit]
     instellation_method = 'inst'        # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
-    instellationflux    = 1e-4          # instellation flux received from the planet in Earth units.
+    instellationflux    = 100          # instellation flux received from the planet in Earth units.
     semimajoraxis       = 0.15          # AU
     eccentricity        = 0.0       	# dimensionless
     zenith_angle        = 54.74     	# degrees
