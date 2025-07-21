@@ -32,8 +32,8 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path):
             Local directory where the Zenodo record will be downloaded
     """
 
-    shutil.rmtree(folder_dir, ignore_errors=True)
-    os.mkdir(folder_dir)
+    shutil.rmtree(str(folder_dir), ignore_errors=True)
+    folder_dir.mkdir(parents=True)
     cmd = [
             "zenodo_get", zenodo_id,
             "-o", folder_dir
