@@ -148,7 +148,7 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
         # Exponents for mass-radius relation and mass-luminoisty relation, taken from Eker et. al. (2015) and Demircan et. al. (1990) respectively
         a = 0.945
-        b = 40.4
+        b = 4.04
 
         # Exponent derived from mass-radius and mass-luminosity relation
         exponent = 2 / (1 - 2 * a / b)
