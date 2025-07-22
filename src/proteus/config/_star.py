@@ -61,9 +61,9 @@ def valid_stardummy(instance, attribute, value):
     if (instance.dummy.Teff is None) or (instance.dummy.Teff <= 0):
         raise ValueError("star.dummy.Teff must be > 0")
     if (instance.dummy.calculate_radius) and (instance.dummy.radius is not None):
-        raise ValueError("Radius must not be provided when calculate_radius is True.")
+        raise ValueError("Radius must NOT be provided when calculate_radius is True.")
     if (not instance.dummy.calculate_radius) and (instance.dummy.radius is None):
-        raise ValueError("Radius must be set if calculate_radius is False.")
+        raise ValueError("Radius MUST be set if calculate_radius is False.")
 
 @define
 class StarDummy:

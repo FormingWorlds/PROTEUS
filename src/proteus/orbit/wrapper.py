@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.interior.common import Interior_t
-from proteus.utils.constants import AU, Teffs, const_G, secs_per_day
+from proteus.utils.constants import AU, Teff_sun, const_G, secs_per_day
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -153,7 +153,7 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
         # Exponent derived from mass-radius and mass-luminosity relation
         exponent = 2 / (1 - 2 * a / b)
 
-        hf_row["semimajorax"] = instellationflux ** (-1/2) * (stellarteff/Teffs) ** exponent * AU
+        hf_row["semimajorax"] = instellationflux ** (-1/2) * (stellarteff/Teff_sun) ** exponent * AU
 
     #otherwise, use the semi-major axis provided by the user
     else:

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import AU, M_sun, R_sun, Teffs, const_sigma, ergcm2stoWm2
+from proteus.utils.constants import AU, M_sun, R_sun, Teff_sun, const_sigma, ergcm2stoWm2
 from proteus.utils.helper import UpdateStatusfile
 
 log = logging.getLogger("fwl."+__name__)
@@ -287,18 +287,15 @@ def update_stellar_radius(hf_row:dict, config:Config, stellar_track=None):
     if config.star.module == 'dummy':
 
         if config.star.dummy.calculate_radius:
-
             # Exponents for mass-radius relation and mass-luminoisty relation, taken from Eker et. al. (2015) and Demircan et. al. (1990) respectively
             a = 0.945
             b = 4.04
 
             # Exponent derived from mass-radius and mass-luminosity relation
             exponent = 4 / (b / a - 2)
-
-            R_star = (config.star.dummy.Teff/Teffs)**exponent
+            R_star = (config.star.dummy.Teff/Teff_sun)**exponent
 
         else:
-
             R_star = config.star.dummy.radius
 
     # Mors cases

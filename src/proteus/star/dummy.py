@@ -5,7 +5,7 @@ import logging
 
 import numpy as np
 
-from proteus.utils.constants import AU, R_sun, Teffs, const_sigma
+from proteus.utils.constants import AU, R_sun, Teff_sun, const_sigma
 from proteus.utils.phys import planck_wav
 
 log = logging.getLogger("fwl."+__name__)
@@ -63,7 +63,7 @@ def generate_spectrum(tmp:float, calculate_radius:bool, R_star:float):
             # Exponent derived from mass-radius and mass-luminosity relation
             exponent = 4 / (b / a - 2)
 
-            R_star = R_sun*(tmp/Teffs)**exponent
+            R_star = R_sun*(tmp/Teff_sun)**exponent
 
         # Scale from stellar surface to 1 AU
         fl_arr *= (R_star*R_sun/AU)**2
