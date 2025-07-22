@@ -554,6 +554,18 @@ if __name__=='__main__':
     # Initialise grid object
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
+    # Add dimensions to grid... examples:
+    # pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
+    # pg.set_dimension_arange("Redox state", -4.5, 0.0, 0.5)
+
+    # pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
+    # pg.set_dimension_arange("Hydrogen", 16000, 1000, -3000)
+
+    # pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
+    # pg.set_dimension_direct("Sulfur", [2, 4, 6, 8, 10])
+
+    # pg.add_dimension("Mass", "struct.mass_tot")
+    # pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
     pg.set_dimension_direct("Sulfur", [2, 4, 6, 8, 10])
 
