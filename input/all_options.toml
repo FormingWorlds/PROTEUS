@@ -25,6 +25,8 @@
 
 # ----------------------------------------------------
 
+version = "2.0"
+
 # Parameters
 [params]
     # output files
@@ -97,7 +99,7 @@
     age_ini = 0.100     # model initialisation age [Gyr]
 
     module  = "mors"
-    
+
     [star.mors]
         rot_pcntle  = 50.0      # rotation percentile
         rot_period  = "none"    # rotation period [days]

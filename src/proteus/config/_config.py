@@ -45,8 +45,6 @@ class Config:
     ----------
     version: str
         Version of the configuration file.
-    author: str
-        Authors of the configuration file.
     params: Params
         Parameters for code execution, output files, time-stepping, convergence.
     star: Star
@@ -72,7 +70,6 @@ class Config:
     """
 
     version: str = field(validator=validators.in_(('2.0',)))
-    author: str
 
     params: Params
     star: Star
