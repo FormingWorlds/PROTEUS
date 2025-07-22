@@ -59,7 +59,7 @@ s2yr                = 1/(3600*24*365)   # convert [seconds]      to [years]
 # Sun parameters
 Rs                  = 6.957e8       # Solar radius [m]
 Ms                  = 1.98847e30    # Solar mass [kg]
-age_sun             = 4.603e9       # Age of the Sun [yr]
+age_sun             = 4.568e9       # Age of the Sun [yr]
 Teff_sun            = 5780.0        # Effective temperature of the sun [K]
 C_solar             = 2.884e-4      # Solar C/H ratio
 N_solar             = 6.761e-5      # Solar N/H ratio
