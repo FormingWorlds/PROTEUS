@@ -193,7 +193,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     rheo_phi_wid    = 0.15   # Width of rheological transition
     bulk_modulus    = 260e9   # Bulk modulus [Pa]
 
-    module = "spider"   # Which interior module to use
+    module = "aragog"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 110       # Number of SPIDER grid levels
@@ -208,8 +208,6 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         num_levels      = 100       					# Number of Aragog grid levels
         tolerance       = 1.0e-7    					# solver tolerance
         ini_tmagma      = 3000.0    					# Initial magma surface temperature [K]
-        eos_method  	= 1	    					# 1: Adams-Williamson / 2: User defined
-        eos_filepath    = 'claire_density_profiles/SB11_MgFeppv.dat'	# the file containing the EOS data
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]

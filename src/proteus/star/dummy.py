@@ -7,12 +7,50 @@ import numpy as np
 
 from proteus.utils.constants import AU, R_sun, Teff_sun, const_sigma
 from proteus.utils.phys import planck_wav
+from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
 PLANCK_MIN_TEMPERATURE:float = 0.1
 
-def generate_spectrum(tmp:float, calculate_radius:bool, R_star:float):
+def get_star_radius(config:Config):
+    '''
+    Get stellar radius, in units of R_sun
+
+    Uses an empirical scaling law if `calculate_radius = True`. Otherwise takes value from
+    the configuration file provided by the user.
+
+    Parameters
+    -----------
+        config: Config
+            PROTEUS config object
+
+    Returns
+    -----------
+        R_star : float
+            Stellar radius [solar radii]
+    '''
+
+    if config.star.dummy.calculate_radius:
+        # Exponents for mass-radius relation and mass-luminoisty relation, which are
+        # combined to relate the radius and Teff through the Stefan-Boltzmann law.
+        #    Mass-radius
+        #       Demircan et al. (1991), Table 2
+        #       https://articles.adsabs.harvard.edu/pdf/1991Ap%26SS.181..313D
+        #    Mass-luminosity
+        #       Eker et al. (2015), Table 4
+        #       https://iopscience.iop.org/article/10.1088/0004-6256/149/4/131/pdf
+        a = 0.945
+        b = 4.04
+
+        # Exponent derived from mass-radius and mass-luminosity relation
+        exponent = 4 / (b / a - 2)
+        return (config.star.dummy.Teff/Teff_sun)**exponent
+
+    else:
+        return config.star.dummy.radius
+
+def generate_spectrum(tmp:float, R_star:float):
     '''
     Get stellar spectrum at 1 AU, assuming that the star emits like a blackbody.
 
@@ -20,8 +58,6 @@ def generate_spectrum(tmp:float, calculate_radius:bool, R_star:float):
     -----------
         tmp : float
             Temperature [K]
-        calculate_radius: bool
-            Whether or not to calculate the radius based off of empirical mass-luminosity and mass-radius relation
         R_star : float
             Stellar radius [solar radii]
 
@@ -52,18 +88,6 @@ def generate_spectrum(tmp:float, calculate_radius:bool, R_star:float):
         # Evaluate planck function in each bin
         for i,wav in enumerate(wl_arr):
             fl_arr[i] = planck_wav(tmp, wav) # W m-2 m-1 at stellar surface
-
-        # Calculating stellar radius based off of empirical relation
-        if calculate_radius:
-
-            # Exponents for mass-radius relation and mass-luminoisty relation, taken from Eker et. al. (2015) and Demircan et. al. (1990) respectively
-            a = 0.945
-            b = 4.04
-
-            # Exponent derived from mass-radius and mass-luminosity relation
-            exponent = 4 / (b / a - 2)
-
-            R_star = R_sun*(tmp/Teff_sun)**exponent
 
         # Scale from stellar surface to 1 AU
         fl_arr *= (R_star*R_sun/AU)**2

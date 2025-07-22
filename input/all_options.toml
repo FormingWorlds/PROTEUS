@@ -115,7 +115,7 @@ version = "2.0"
 # Orbital system
 [orbit]
     instellation_method = 'sma' # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
-    instellationflux = 1e0      # instellation flux received from the planet in Earth units.
+    instellationflux = 1.0      # instellation flux received from the planet in Earth units.
     semimajoraxis = 1.0         # AU
     eccentricity = 0.0          # dimensionless
     zenith_angle = 48.19        # degrees

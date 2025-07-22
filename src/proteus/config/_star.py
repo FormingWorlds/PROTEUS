@@ -56,14 +56,14 @@ class Mors:
 def valid_stardummy(instance, attribute, value):
     if instance.module != "dummy":
         return
-    if (instance.dummy.radius is not None) and (instance.dummy.Teff <= 0):
+    if (instance.dummy.radius is not None) and (instance.dummy.radius <= 0):
         raise ValueError("star.dummy.radius must be > 0")
     if (instance.dummy.Teff is None) or (instance.dummy.Teff <= 0):
         raise ValueError("star.dummy.Teff must be > 0")
     if (instance.dummy.calculate_radius) and (instance.dummy.radius is not None):
-        raise ValueError("Radius must NOT be provided when calculate_radius is True.")
+        raise ValueError("Radius must be 'none' when calculate_radius is True.")
     if (not instance.dummy.calculate_radius) and (instance.dummy.radius is None):
-        raise ValueError("Radius MUST be set if calculate_radius is False.")
+        raise ValueError("Radius MUST be set >0 when calculate_radius is False.")
 
 @define
 class StarDummy:
@@ -73,14 +73,14 @@ class StarDummy:
     ----------
     radius: float
         Observed radius [R_sun].
-    calculat_radius: bool
-        Whether or not to calculate the radius based off of empirical mass-luminosity and mass-radius relation
+    calculate_radius: bool
+        Calculate the radius using empirical mass-luminosity and mass-radius relation
     Teff: float
         Observed effective temperature [K].
     """
-    Teff: float = field(default=5780,validator=gt(0))
-    radius: float | str = field(default=None,  converter=none_if_none)
-    calculate_radius: bool = field(default=False)
+    Teff: float             = field(default=5780,validator=gt(0))
+    radius: float | str     = field(default=None,  converter=none_if_none)
+    calculate_radius: bool  = field(default=False)
 
 @define
 class Star:

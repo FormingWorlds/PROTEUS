@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.interior.common import Interior_t
-from proteus.utils.constants import AU, Teff_sun, const_G, secs_per_day
+from proteus.utils.constants import AU, const_G, secs_per_day, L_sun
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -142,22 +142,16 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     #this obtains the orbital separation based on the instellation flux
     if config.orbit.instellation_method == 'inst' and config.star.module == 'dummy':
+        from proteus.star.dummy import calc_star_luminosity, get_star_radius
 
-        instellationflux = config.orbit.instellationflux
-        stellarteff      = config.star.dummy.Teff
+        Lbol = calc_star_luminosity(config.star.dummy.Teff, get_star_radius(config))
+        S_earth = L_sun / (4 * np.pi * AU * AU)
+        S_0 = config.orbit.instellationflux * S_earth
 
-        # Exponents for mass-radius relation and mass-luminoisty relation, taken from Eker et. al. (2015) and Demircan et. al. (1990) respectively
-        a = 0.945
-        b = 4.04
-
-        # Exponent derived from mass-radius and mass-luminosity relation
-        exponent = 2 / (1 - 2 * a / b)
-
-        hf_row["semimajorax"] = instellationflux ** (-1/2) * (stellarteff/Teff_sun) ** exponent * AU
+        hf_row["semimajorax"] = np.sqrt( Lbol / (4 * np.pi * S_0))
 
     #otherwise, use the semi-major axis provided by the user
     else:
-
         hf_row["semimajorax"] = config.orbit.semimajoraxis * AU
 
     hf_row["eccentricity"] = config.orbit.eccentricity
