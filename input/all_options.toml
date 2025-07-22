@@ -44,7 +44,7 @@ version = "2.0"
         minimum_rel  = 1e-5   # relative minimum time-step [dimensionless]
         maximum      = 1e7    # maximum time-step [yr]
         initial      = 3e1    # inital step size [yr]
-        starspec     = 1e9    # interval to re-calculate the stellar spectrum
+        starspec     = 1e9    # interval to re-calculate the stellar spectrum [yr]
         starinst     = 1e1    # interval to re-calculate the instellation [yr]
         method       = "adaptive"  # proportional | adaptive | maximum
 
@@ -71,8 +71,8 @@ version = "2.0"
         # required time constraints
         [params.stop.time]
             enabled = true
-            minimum = 1.0e3      # yr, model will certainly run to t > minimum
-            maximum = 4.567e+9   # yr, model will terminate when t > maximum
+            minimum = 1.0e3      # model will certainly run to t > minimum [yr]
+            maximum = 4.567e+9   # model will terminate when t > maximum [yr]
 
         # solidification
         [params.stop.solid]
