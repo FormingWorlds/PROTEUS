@@ -108,9 +108,9 @@ version = "2.0"
         spec        = "stellar_spectra/Named/sun.txt" # path to stellar spectrum file
 
     [star.dummy]
-        radius  = 1.0                # Stellar radius [R_sun]
-        calculate_radius = true	     # calculate radius using empirical mass-luminosity and mass-radius relations
-        Teff    = 5772.0             # Star's brightness temperature [K]
+        radius           = 1.0      # Constant stellar radius [R_sun]
+        calculate_radius = false    # Calculate star radius using scaling from Teff?
+        Teff             = 5772.0   # Star's brightness temperature [K]
 
 # Orbital system
 [orbit]
