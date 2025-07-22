@@ -184,7 +184,7 @@ def get_new_spectrum(t_star:float, config:Config,
 
     return wl, fl
 
-def scale_spectrum_to_toa(fl_arr, sep:float, config:Config):
+def scale_spectrum_to_toa(fl_arr, sep:float):
     '''
     Scale stellar fluxes from 1 AU to top of the planet's atmosphere.
 

@@ -56,14 +56,17 @@ class Mors:
 def valid_stardummy(instance, attribute, value):
     if instance.module != "dummy":
         return
-    if (instance.dummy.radius is not None) and (instance.dummy.radius <= 0):
-        raise ValueError("star.dummy.radius must be > 0")
-    if (instance.dummy.Teff is None) or (instance.dummy.Teff <= 0):
-        raise ValueError("star.dummy.Teff must be > 0")
-    if (instance.dummy.calculate_radius) and (instance.dummy.radius is not None):
-        raise ValueError("Radius must be 'none' when calculate_radius is True.")
-    if (not instance.dummy.calculate_radius) and (instance.dummy.radius is None):
-        raise ValueError("Radius MUST be set >0 when calculate_radius is False.")
+
+    if instance.dummy.calculate_radius:
+        if instance.dummy.radius is not None:
+            raise ValueError("Star radius must be 'none' when calculate_radius is True")
+
+    else:
+        if (instance.dummy.radius is None) or (instance.dummy.radius <= 0):
+            raise ValueError("Star radius MUST be set >0 when calculate_radius is False")
+
+    if (instance.dummy.Teff is None) or (instance.dummy.Teff < 1):
+        raise ValueError("star.dummy.Teff must be >0 K")
 
 @define
 class StarDummy:

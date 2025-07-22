@@ -31,7 +31,7 @@ def init_orbit(handler:Proteus):
         from proteus.orbit.lovepy import import_lovepy
         import_lovepy()
 
-def update_separation(hf_row:dict, config:Config):
+def update_separation(hf_row:dict):
     '''
     Calculate time-averaged orbital separation on an elliptical path.
     https://physics.stackexchange.com/a/715749
@@ -40,8 +40,6 @@ def update_separation(hf_row:dict, config:Config):
     -------------
         hf_row: dict
             Current helpfile row
-        config : Config
-            Model configuration.
     '''
 
     sma = hf_row["semimajorax"] # already in SI units
@@ -157,7 +155,7 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     hf_row["eccentricity"] = config.orbit.eccentricity
 
     # Update orbital separation and period
-    update_separation(hf_row, config)
+    update_separation(hf_row)
     update_period(hf_row)
     log.info("    period = %.3f days"%(hf_row["orbital_period"]/secs_per_day))
 

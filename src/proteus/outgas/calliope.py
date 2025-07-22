@@ -88,20 +88,18 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     if config.delivery.elements.use_metallicity:
 
         CH_ratio = config.delivery.elements.metallicity * C_solar
-        NH_ratio = 0.0
-        SH_ratio = 0.0
+        N_ppmw   = 0.0
+        S_ppmw   = 0.0
 
+        # if planet has nitrogen
         if config.delivery.elements.NH_ratio > 0.0:
-
             NH_ratio = config.delivery.elements.metallicity * N_solar
+            N_ppmw = 1e6 * NH_ratio * H_kg / hf_row["M_mantle"]
 
-        N_ppmw = 1e6 * NH_ratio * H_kg / hf_row["M_mantle"]
-
+        # if planet has sulfur
         if config.delivery.elements.SH_ratio > 0.0:
-
             SH_ratio = config.delivery.elements.metallicity * S_solar
-
-        S_ppmw = 1e6 * SH_ratio * H_kg / hf_row["M_mantle"]
+            S_ppmw = 1e6 * SH_ratio * H_kg / hf_row["M_mantle"]
 
     else:
 

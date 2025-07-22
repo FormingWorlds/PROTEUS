@@ -398,7 +398,7 @@ class Proteus:
                                         )
 
                 # Scale fluxes from 1 AU to TOA
-                self.star_fl = scale_spectrum_to_toa(self.star_fl, self.hf_row["separation"], self.config)
+                self.star_fl = scale_spectrum_to_toa(self.star_fl, self.hf_row["separation"])
 
                 # Save spectrum to file
                 write_spectrum(self.star_wl, self.star_fl,
