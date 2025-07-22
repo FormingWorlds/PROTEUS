@@ -139,11 +139,10 @@ class AragogRunner():
             # basic nodes
             number_of_nodes = config.interior.aragog.num_levels,
             mixing_length_profile = "constant",
-            eos_method = config.struct.eos_method, # 1: Adams-Williamson / 2: User defined
+            eos_method = 1, # 1: Adams-Williamson / 2: User defined
             surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration = hf_row["gravity"], # [m/s-2]
             adiabatic_bulk_modulus = config.interior.bulk_modulus, # AW-EOS parameter [Pa]
-            eos_file = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.struct.eos_filepath}"), # file to read eos data from
             )
 
         # Update the mesh if the module is 'zalmoxis'
