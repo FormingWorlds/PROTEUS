@@ -555,17 +555,9 @@ if __name__=='__main__':
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
     # Add dimensions to grid... examples:
-    # pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    # pg.set_dimension_arange("Redox state", -4.5, 0.0, 0.5)
-
-    # pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    # pg.set_dimension_arange("Hydrogen", 16000, 1000, -3000)
-
-    # pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    # pg.set_dimension_direct("Sulfur", [2, 4, 6, 8, 10])
-
     # pg.add_dimension("Mass", "struct.mass_tot")
     # pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
+
     pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
     pg.set_dimension_direct("Sulfur", [2, 4, 6, 8, 10])
 
@@ -575,12 +567,8 @@ if __name__=='__main__':
     # pg.add_dimension("Core fraction", "struct.corefrac")
     # pg.set_dimension_linspace("Core fraction", 0.35, 0.95, 25)
 
-    # pg.add_dimension("Efficiency", "escape.zephyrus.efficiency")
-    # pg.set_dimension_linspace("Efficiency", 1e-5, 0.5, 26)
-
     # pg.add_dimension("Bands", "atmos_clim.agni.spectral_bands")
     # pg.set_dimension_direct("Bands", ["16", "48", "256"])
-
 
     pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
     pg.set_dimension_arange("Hydrogen", 8000, 30000, 2000)
