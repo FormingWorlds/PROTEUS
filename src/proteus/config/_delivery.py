@@ -8,10 +8,19 @@ from ._converters import none_if_none
 
 @define
 class Elements:
-    """Initial volatile inventory by planetary element abundances.
+    """Initial volatile inventory by planetary *bulk* element abundances.
 
-    For hydrogen: only H_oceans or H_ppmw should be used at any one time.
+    There are various ways to set these. You can specify a metallicity relative to solar
+    alongside a total hydrogen abundance by providing `use_metallicity=True`.
+
+    Instead of metallicity, provide the abundance of each element with either specific
+    mass ratio relative to hydrogen or in terms of the concentration in the mantle.
     For X in {C, N, S}: only XH_ratio or X_ppmw should be used at any one time.
+
+    Hydrogen abundance is set via *either* `H_oceans`, which is the number of oceans of
+    hydrogen in the planet's mantle at initialisation (assumed to be fully molten). Or,
+    you can set the hydrogen abundance in ppm relative to the mantle mass with `H_ppmw`.
+    For hydrogen: only H_oceans or H_ppmw should be used at any one time.
 
     Attributes
     ----------
