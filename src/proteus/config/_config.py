@@ -27,6 +27,11 @@ def spada_zephyrus(instance, attribute, value):
         not ( (instance.star.module == 'mors') and (instance.star.mors.tracks == 'spada')):
         raise ValueError('ZEPHYRUS must be used with MORS and the Spada evolution tracks')
 
+def instmethod_dummy(instance, attribute, value):
+    # Instellation method can only be 'inst' for dummy star module
+    if (instance.orbit.instellation_method == 'inst') and not (instance.star.module == 'dummy'):
+        raise ValueError("Instellation method can only be 'inst' when star.module=dummy ")
+
 def tides_enabled_orbit(instance, attribute, value):
     # Tides in interior requires orbit module to not be None
     if (instance.interior.tidal_heat) and (instance.orbit.module is None):
@@ -35,7 +40,7 @@ def tides_enabled_orbit(instance, attribute, value):
 def observe_resolved_atmosphere(instance, attribute, value):
     # Synthetic observations require a spatially resolved atmosphere profile
     if (instance.observe.synthesis is not None) and (instance.atmos_clim.module == "dummy"):
-        raise ValueError("Interior tidal heating requires an orbit module to be enabled")
+        raise ValueError("Observational synthesis requires that atmos_clim != dummy")
 
 @define
 class Config:
@@ -73,7 +78,7 @@ class Config:
 
     params: Params
     star: Star
-    orbit: Orbit
+    orbit: Orbit = field(validator=(instmethod_dummy,))
     struct: Struct
     atmos_clim: AtmosClim
     atmos_chem: AtmosChem
