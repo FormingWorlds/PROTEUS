@@ -249,8 +249,6 @@ version = "2.0"
         mixing                          = false    # enable mixing
         tsurf_poststep_change           = 30       # threshold of maximum change on surface temperature
         event_triggering                = true     # enable events triggering to avoid abrupt jumps in surface temperature
-        eos_method  	= 1                        # 1: Adams-Williamson / 2: User defined
-        eos_filepath    = 'none'                   # the file containing the EOS data if EOS is user defined
 
     [interior.dummy]
         ini_tmagma      = 3300.0    # Initial magma surface temperature [K]

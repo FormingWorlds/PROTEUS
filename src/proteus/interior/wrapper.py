@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-import platformdirs
 import scipy.optimize as optimise
 
 from proteus.interior.aragog import AragogRunner
@@ -21,8 +20,6 @@ if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
-
-FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 
 def update_gravity(hf_row:dict):
     '''
