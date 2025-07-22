@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import platformdirs
 import scipy.optimize as optimise
-from scipy import integrate
 
 from proteus.interior.aragog import AragogRunner
 from proteus.interior.common import Interior_t

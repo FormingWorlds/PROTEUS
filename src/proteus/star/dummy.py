@@ -5,9 +5,9 @@ import logging
 
 import numpy as np
 
+from proteus.config import Config
 from proteus.utils.constants import AU, R_sun, Teff_sun, const_sigma
 from proteus.utils.phys import planck_wav
-from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
