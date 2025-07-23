@@ -70,10 +70,16 @@ class Aragog:
         Log verbosity of Aragog. Choices: 'INFO', 'DEBUG', 'ERROR', 'WARNING'.
     num_levels: int
         Number of Aragog grid levels (basic mesh).
+    initial_condition: int
+        How to define the intial temperature profile (1: linear, 2: user defined, 3: adiabat)
     tolerance: float
         Solver tolerance.
     ini_tmagma: float
         Initial magma surface temperature [K].
+    basal_temperature: float
+        Temperature at the base of the mantle (if using a linear temperature profile to start)
+    init_file: str
+        File containing the initial temperature file for aragog
     inner_boundary_condition: int
         Type of inner boundary condition. Choices:  1 (core cooling), 2 (prescribed heat flux), 3 (prescribed temperature).
     inner_boundary_value: float
@@ -93,8 +99,11 @@ class Aragog:
     """
 
     logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    ini_tmagma                          = field(default=None)
+    ini_tmagma: float                   = field(default=None)
+    basal_temperature: float            = field(default=7000)
+    init_file: str                      = field(default=None)
     num_levels: int                     = field(default=100,    validator=ge(40))
+    initial_condition: int              = field(default=3)
     tolerance: float                    = field(default=1e-10,  validator=gt(0))
     inner_boundary_condition: int       = field(default=1, validator=ge(0))
     inner_boundary_value:float          = field(default=4000, validator=ge(0))

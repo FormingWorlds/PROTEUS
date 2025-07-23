@@ -160,8 +160,8 @@ def get_new_spectrum(t_star:float, config:Config,
 
     # Dummy case
     if config.star.module == 'dummy':
-        from proteus.star.dummy import generate_spectrum
-        wl, fl = generate_spectrum(config.star.dummy.Teff, config.star.dummy.radius * R_sun)
+        from proteus.star.dummy import generate_spectrum, get_star_radius
+        wl, fl = generate_spectrum(config.star.dummy.Teff, get_star_radius(config))
 
     # Mors cases
     elif config.star.module == 'mors':
@@ -194,7 +194,6 @@ def scale_spectrum_to_toa(fl_arr, sep:float):
             Stellar fluxes at 1 AU
         sep : float
             Planet-star distance, in units of AU
-
     Returns
     ----------
         fl_arr : np.ndarray
@@ -286,7 +285,8 @@ def update_stellar_radius(hf_row:dict, config:Config, stellar_track=None):
 
     # Dummy case
     if config.star.module == 'dummy':
-        R_star = config.star.dummy.radius
+        from proteus.star.dummy import get_star_radius
+        R_star = get_star_radius(config)
 
     # Mors cases
     elif config.star.module == 'mors':
