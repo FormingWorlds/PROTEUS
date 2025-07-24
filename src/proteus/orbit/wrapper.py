@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.interior.common import Interior_t
-from proteus.utils.constants import AU, L_sun, const_G, secs_per_day, R_sun
+from proteus.utils.constants import AU, L_sun, R_sun, const_G, secs_per_day
 
 if TYPE_CHECKING:
     from proteus import Proteus
