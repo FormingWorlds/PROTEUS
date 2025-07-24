@@ -41,12 +41,11 @@ See the [model description](model.html) for an outline of the code and its struc
 | Emma Postolec           | e.n.postolec[at]rug.nl                      |
 | Flavia Pascal           | f.pascal[at]student.rug.nl                  |
 | Ben Riegler             | ben.riegler[at]tum.de                       |
-| Robb Calder             | rdc49[at]cam.ac.uk                          |
 | Hanno Spreeuw           | h.spreeuw[at]esciencecenter.nl              |
 | Dan J. Bower            | dbower[at]ethz.ch                           |
 | Mark Hammond            | mark.hammond[at]physics.ox.ac.uk            |
 | Stef Smeets             | s.smeets[at]esciencecenter.nl               |
-| Robb Calder             | rdc49[at]cam.ac.uk               |
+| Robb Calder             | rdc49[at]cam.ac.uk                          |
 | Raymond Pierrehumbert   | raymond.pierrehumbert[at]physics.ox.ac.uk   |
 
 ## Citation and credit
