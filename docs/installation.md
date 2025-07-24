@@ -24,7 +24,14 @@ If you are using a specific server, use the following guides:
 ## Setup a Python environment
 
 We recommend that you use Python version 3.12 for running PROTEUS.
-Python is most easily obtained and managed using [miniforge](https://github.com/conda-forge/miniforge).
+Python is most easily obtained and managed using either [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux)
+```console
+mkdir -p ~/miniconda3
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+rm ~/miniconda3/miniconda.sh
+```
+or [miniforge](https://github.com/conda-forge/miniforge).
 ```console
 curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
 bash Miniforge3-$(uname)-$(uname -m).sh
