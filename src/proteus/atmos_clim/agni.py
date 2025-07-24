@@ -154,14 +154,10 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
     # Chemistry
     chem_type = config.atmos_clim.agni.chemistry
     include_all = False
-    fc_dir = "_unset"
+    fc_dir = create_tmp_folder()
     if chem_type == 'eq':
-        # equilibrium
         include_all = True
         condensates = []
-
-        # working folder for fastchem coupling
-        fc_dir = create_tmp_folder()
         log.debug("Fastchem work folder: '%s'"%fc_dir)
 
     # Surface single-scattering albedo
