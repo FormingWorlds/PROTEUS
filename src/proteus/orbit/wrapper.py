@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.interior.common import Interior_t
-from proteus.utils.constants import AU, L_sun, const_G, secs_per_day, R_sun
+from proteus.utils.constants import AU, L_sun, R_sun, const_G, secs_per_day
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -147,11 +147,6 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
         S_0 = config.orbit.instellationflux * S_earth
 
         hf_row["semimajorax"] = np.sqrt( Lbol / (4 * np.pi * S_0))
-        
-        print(f'Lbol = {Lbol}')
-        print(f'S_earth = {S_earth}')
-        print(f'S_0 = {S_0}')
-        print(f'sma = {hf_row["semimajorax"]}')
 
     #otherwise, use the semi-major axis provided by the user
     else:
