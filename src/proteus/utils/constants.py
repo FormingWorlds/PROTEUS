@@ -54,19 +54,23 @@ gas_list = vol_list + vap_list
 element_list = ["H", "O", "C", "N", "S", "Si", "Mg", "Fe", "Na"]
 
 ## Constant from Zephyrus
-ergcm2stoWm2  = 1e-3                  # convert [erg s-1 cm-2] to [W m-2]
-s2yr          = 1/(3600*24*365)       # convert [seconds]      to [years]
+ergcm2stoWm2        = 1e-3              # convert [erg s-1 cm-2] to [W m-2]
+s2yr                = 1/(3600*24*365)   # convert [seconds]      to [years]
 # Sun parameters
-Rs      = 6.957e8                      # Solar radius                          [m]
-Ms      = 1.98847e30                   # Solar mass                            [kg]
-age_sun = 4.603e9                      # Age of the Sun                        [yr]
+Rs                  = 6.957e8       # Solar radius [m]
+Ms                  = 1.98847e30    # Solar mass [kg]
+age_sun             = 4.568e9       # Age of the Sun [yr]
+Teff_sun            = 5780.0        # Effective temperature of the sun [K]
+C_solar             = 2.884e-4      # Solar C/H ratio
+N_solar             = 6.761e-5      # Solar N/H ratio
+S_solar             = 1.318e-5      # Solar S/H ratio
 # Earth parameters
-Me_atm            = 5.15e18            # Mass of the Earth atmopshere          [kg]
-Fxuv_earth_10Myr  = 14.67              # Fxuv received on Earth at t = 10 Myr -> see Fig 9. Wordsworth+18 [W m-2]
-Fxuv_earth_today  = 4.64e-3            # Stellar flux received on Earth today  [W m-2]
-age_earth         = 4.543e9            # Age of the Earth                      [yr]
-e_earth           = 0.0167             # Earth eccentricity                    [dimensionless]
-a_earth           = 1                  # Earth semi-major axis                 [au]
+Me_atm              = 5.15e18       # Mass of the Earth atmopshere [kg]
+Fxuv_earth_10Myr    = 14.67         # Fxuv [W m-2] on Earth at 10 Myr, Fig9 Wordsworth+18
+Fxuv_earth_today    = 4.64e-3       # Fxuv [W m-2] received on Earth today
+age_earth           = 4.543e9       # Age of the Earth [yr]
+e_earth             = 0.0167        # Earth orbital eccentricity [dimensionless]
+a_earth             = 1             # Earth orbital semi-major axis [au]
 
 # Radionuclide values below are from Ruedas (2017), via SPIDER
 # Natural concentrations (provided in config file) can

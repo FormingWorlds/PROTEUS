@@ -1,12 +1,11 @@
 # PROTEUS configuration file (version 2.0)
 
 version = "2.0"
-author  = "Harrison Nicholls, Tim Lichtenberg"
 
 [params]
     [params.out]
         path        = "l9859d"
-        logging     = "INFO"
+        logging     = "DEBUG"
         plot_mod    = 30      # Plotting frequency, 0: wait until completion | n: every n iterations
 
     # time-stepping

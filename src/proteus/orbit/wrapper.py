@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.interior.common import Interior_t
-from proteus.utils.constants import AU, const_G, secs_per_day
+from proteus.utils.constants import AU, L_sun, const_G, secs_per_day
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -137,10 +137,24 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     # Set semimajor axis and eccentricity.
     #    In the future, these could be allowed to evolve in time.
-    hf_row["semimajorax"]  = config.orbit.semimajoraxis * AU
+
+    #this obtains the orbital separation based on the instellation flux
+    if config.orbit.instellation_method == 'inst' and config.star.module == 'dummy':
+        from proteus.star.dummy import calc_star_luminosity, get_star_radius
+
+        Lbol = calc_star_luminosity(config.star.dummy.Teff, get_star_radius(config))
+        S_earth = L_sun / (4 * np.pi * AU * AU)
+        S_0 = config.orbit.instellationflux * S_earth
+
+        hf_row["semimajorax"] = np.sqrt( Lbol / (4 * np.pi * S_0))
+
+    #otherwise, use the semi-major axis provided by the user
+    else:
+        hf_row["semimajorax"] = config.orbit.semimajoraxis * AU
+
     hf_row["eccentricity"] = config.orbit.eccentricity
 
-    # Update orbital separation, orbital period, axial period
+    # Update orbital separation and period
     update_separation(hf_row)
     update_period(hf_row)
     log.info("    period = %.3f days"%(hf_row["orbital_period"]/secs_per_day))
