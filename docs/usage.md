@@ -10,7 +10,6 @@ You can directly run PROTEUS using the command:
 ```console
 proteus start -c [cfgfile]
 ```
-
 Where `[cfgfile]` is the path to the required configuration file.
 Pass the flag `--resume` in to resume the simulation from the disk.
 
