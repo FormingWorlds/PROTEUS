@@ -85,9 +85,12 @@ jobs:
           path: ${{ env.pythonLocation }}
           key: ${{ env.pythonLocation }}-${{ hashFiles('pyproject.toml') }}
 
-      - name: Install Python dependencies
+      - name: Install PROTEUS (repo only)
         run:
           python -m pip install -e .[develop]
+
+      - name: Install all PROTEUS external repo dependencies via cli.py.
+        run:
           proteus install-all --export-env
 
       # Get lookup data for PROTEUS
