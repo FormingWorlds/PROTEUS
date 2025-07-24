@@ -320,7 +320,7 @@ def install_all(export_env: bool):
 
     # --- Step 2: Install SOCRATES ---
     root = Path.cwd()
-    socrates_dir = root / "socrates"
+    socrates_dir = root / "SOCRATES"
     if not socrates_dir.exists():
         click.secho("🌤️ Installing SOCRATES...", fg="blue")
         try:
