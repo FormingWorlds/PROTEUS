@@ -21,7 +21,7 @@ We are thankful for the continous support of the larger scientific community and
 
 <p align="center">
   <a href="https://www.simonsfoundation.org/people/tim-lichtenberg/" target="_blank">
-    <img src="assets/logos/SimonsFoundation.png" style="max-width: 35%; height: auto;" alt="Branco Weiss Foundation logo">
+    <img src="assets/logos/SimonsFoundation.png" style="max-width: 35%; height: auto;" alt="Simons Foundation logo">
   </a>
 </p>
 
@@ -29,7 +29,7 @@ We are thankful for the continous support of the larger scientific community and
 
 <p align="center">
   <a href="https://data.snf.ch/grants/grant/178621" target="_blank">
-    <img src="assets/logos/SNSF.png" style="max-width: 35%; height: auto;" alt="Branco Weiss Foundation logo">
+    <img src="assets/logos/SNSF.png" style="max-width: 35%; height: auto;" alt="Swiss National Science Foundation logo">
   </a>
 </p>
 
@@ -37,7 +37,7 @@ We are thankful for the continous support of the larger scientific community and
 
 <p align="center">
   <a href="https://www.rug.nl/research/kapteyn/" target="_blank">
-    <img src="assets/logos/RUG.png" style="max-width: 35%; height: auto;" alt="Branco Weiss Foundation logo">
+    <img src="assets/logos/RUG.png" style="max-width: 35%; height: auto;" alt="University of Groningen logo">
   </a>
 </p>
 
@@ -45,6 +45,6 @@ We are thankful for the continous support of the larger scientific community and
 
 <p align="center">
   <a href="https://www.physics.ox.ac.uk/research/subdepartment/atmospheric-oceanic-and-planetary-physics" target="_blank">
-    <img src="assets/logos/Oxford_white.jpg" style="max-width: 35%; height: auto;" alt="Branco Weiss Foundation logo">
+    <img src="assets/logos/Oxford_white.jpg" style="max-width: 35%; height: auto;" alt="University of Oxford logo">
   </a>
 </p>
