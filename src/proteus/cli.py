@@ -140,7 +140,7 @@ def stellar():
     """Get stellar spectra"""
     from .utils.data import download_stellar_spectra, download_stellar_tracks
 
-    for track in ["Spada","Baraffe"]:
+    for track in ["Spada", "Baraffe"]:
         download_stellar_tracks(track)
     download_stellar_spectra()
 
@@ -311,7 +311,7 @@ def is_julia_installed() -> bool:
     "--export-env", is_flag=True, help="Add FWL_DATA and RAD_DIR to shell rc."
 )
 def install_all(export_env: bool):
-    """Install Julia (if needed), SOCRATES, AGNI, and configure PROTEUS environment."""
+    """Install SOCRATES, AGNI, and configure PROTEUS environment."""
 
     # --- Step 1: FWL_DATA directory ---
     fwl_data = resolve_fwl_data_dir()
