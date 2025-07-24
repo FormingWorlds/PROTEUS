@@ -333,7 +333,7 @@ def install_all(export_env: bool):
         click.secho("✅ SOCRATES already present", fg="green")
 
     rad_dir = socrates_dir.resolve()
-    os.environ["RAD_DIR"] = str(rad_dir)
+    os.environ.setdefault("RAD_DIR", str(rad_dir))
 
     env = os.environ.copy()
 
