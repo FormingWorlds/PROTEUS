@@ -1,6 +1,5 @@
 # PROTEUS configuration file (version 2.0)
 version = "2.0"
-author  = "Harrison Nicholls, Tim Lichtenberg"
 
 [params]
     [params.out]
@@ -55,6 +54,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Orbital system
 [orbit]
+    instellation_method = 'inst'
+    instellationflux = 1.0
     semimajoraxis   = 1.0       # AU
     eccentricity    = 0.0       # dimensionless
     zenith_angle    = 48.19     # degrees

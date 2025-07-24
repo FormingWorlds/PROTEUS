@@ -33,6 +33,7 @@ from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
 if TYPE_CHECKING:
     from proteus.config import Config
 
+
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA',
                                    platformdirs.user_data_dir('fwl_data')))
 
@@ -138,12 +139,10 @@ class AragogRunner():
             # basic nodes
             number_of_nodes = config.interior.aragog.num_levels,
             mixing_length_profile = "constant",
-            # AdamsWilliamsonEOS parameter [kg/m3]
-            surface_density = 4090,
-            # [m/s-2]
-            gravitational_acceleration = hf_row["gravity"],
-            # AW-EOS parameter [Pa]
-            adiabatic_bulk_modulus = config.interior.bulk_modulus,
+            eos_method = 1, # 1: Adams-Williamson / 2: User defined
+            surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
+            gravitational_acceleration = hf_row["gravity"], # [m/s-2]
+            adiabatic_bulk_modulus = config.interior.bulk_modulus, # AW-EOS parameter [Pa]
             )
 
         # Update the mesh if the module is 'zalmoxis'
@@ -166,11 +165,11 @@ class AragogRunner():
             # 1 = linear profile
             # 2 = user-defined profile
             # 3 = adiabatic profile
-            initial_condition = 3,
+            initial_condition = config.interior.aragog.initial_condition,
             # initial top temperature (K)
             surface_temperature = config.interior.aragog.ini_tmagma,
-            # initial bottom temperature (K)
-            basal_temperature = 4000,
+            basal_temperature = config.interior.aragog.basal_temperature,
+            init_file = os.path.join(FWL_DATA_DIR, f"interior_lookup_tables/{config.interior.aragog.init_file}")
             )
 
         # Get look up data directory, will be configurable in the future

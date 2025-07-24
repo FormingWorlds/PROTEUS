@@ -72,6 +72,9 @@ Zalmoxis
 __pycache__
 !output/.gitkeep
 nogit_*
+tools/*.csv
+tools/grid_proteus_SNS*
+
 *.odg#
 *.ods#
 *.odp#
@@ -248,3 +251,6 @@ cython_debug/
 # Created automatically during PR #351
 Manifest.toml
 Project.toml
+
+# Input Files to grid_proteus
+*.csv

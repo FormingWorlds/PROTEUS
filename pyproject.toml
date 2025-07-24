@@ -59,6 +59,7 @@ dependencies = [
     "pandas",
     "scipy",
     "pre-commit",
+    "platformdirs",
     "ruff",
     "sympy",
     "astropy",

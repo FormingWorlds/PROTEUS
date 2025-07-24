@@ -8,10 +8,19 @@ from ._converters import none_if_none
 
 @define
 class Elements:
-    """Initial volatile inventory by planetary element abundances.
+    """Initial volatile inventory by planetary *bulk* element abundances.
 
-    For hydrogen: only H_oceans or H_ppmw should be used at any one time.
+    There are various ways to set these. You can specify a metallicity relative to solar
+    alongside a total hydrogen abundance by providing `use_metallicity=True`.
+
+    Instead of metallicity, provide the abundance of each element with either specific
+    mass ratio relative to hydrogen or in terms of the concentration in the mantle.
     For X in {C, N, S}: only XH_ratio or X_ppmw should be used at any one time.
+
+    Hydrogen abundance is set via *either* `H_oceans`, which is the number of oceans of
+    hydrogen in the planet's mantle at initialisation (assumed to be fully molten). Or,
+    you can set the hydrogen abundance in ppm relative to the mantle mass with `H_ppmw`.
+    For hydrogen: only H_oceans or H_ppmw should be used at any one time.
 
     Attributes
     ----------
@@ -19,6 +28,11 @@ class Elements:
         Absolute hydrogen inventory, units of equivalent Earth oceans.
     H_ppmw: float
         Relative hydrogen inventory, ppmw relative to mantle mass.
+
+    use_metallicity: bool
+        Whether or not to specify the elemental abundances in terms of solar metallicity
+    metallicity: float
+        Elemental metallicity relative to solar metallicity, by mass
 
     CH_ratio: float
         Carbon metallicity. C/H mass ratio in combined mantle+atmosphere system.
@@ -35,6 +49,9 @@ class Elements:
     S_ppmw: float
         Absolute sulfur inventory, ppmw relative to mantle mass.
     """
+    use_metallicity: float = field(default=False)
+    metallicity: float = field(default=1000.0, validator=ge(0))
+
     H_oceans: float = field(default=0.0, validator=ge(0))
     H_ppmw: float   = field(default=0.0, validator=ge(0))
 
