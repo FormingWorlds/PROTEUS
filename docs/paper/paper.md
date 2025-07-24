@@ -1,5 +1,5 @@
 ---
-title: 'PROTEUS: a modular framework for simulating planetary evolution'
+title: 'PROTEUS: A modular framework for simulating planetary evolution'
 tags:
   - astronomy
   - exoplanets
