@@ -50,6 +50,7 @@ curl -fsSL https://install.julialang.org | sh
 
 ## User install (default)
 ### Requirements
+
 1) conda either through miniconda or miniforge (see above). However, currently there seems to be a 
 conflict between Julia and Conda versions of HDF5 and/or NetCDF libaries when using miniforge.
 2) git. If you don't have git, you can install it through conda: `conda install git`.
@@ -59,6 +60,7 @@ conflict between Julia and Conda versions of HDF5 and/or NetCDF libaries when us
 6) 30 minutes of your time (mostly waiting)
 
 ### Steps
+
 1) git clone https://github.com/FormingWorlds/PROTEUS.git
 2) cd PROTEUS
 3) conda env create -f environment.yml
