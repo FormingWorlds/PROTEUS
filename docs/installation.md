@@ -50,21 +50,23 @@ curl -fsSL https://install.julialang.org | sh
 
 ## User install (default)
 ### Requirements
-1) conda either through miniconda or miniforge (see above). However, currently there seems to be a 
+
+1. conda either through miniconda or miniforge (see above). However, currently there seems to be a 
 conflict between Julia and Conda versions of HDF5 and/or NetCDF libaries when using miniforge.
-2) git. If you don't have git, you can install it through conda: `conda install git`.
-3) wget. If you don't have wget, you can install it through conda: `conda install wget`. 
-4) Julia installation (see above)
-5) 20 GB of disk space; Conda (through miniconda) can take 9 GB, Julia 2 GB and a few GB for PROTEUS.
-6) 30 minutes of your time (mostly waiting)
+2. git. If you don't have git, you can install it through conda: `conda install git`.
+3. wget. If you don't have wget, you can install it through conda: `conda install wget`. 
+4. Julia installation (see above)
+5. 20 GB of disk space; Conda (through miniconda) can take 9 GB, Julia 2 GB and a few GB for PROTEUS.
+6. 30 minutes of your time (mostly waiting)
 
 ### Steps
-1) git clone https://github.com/FormingWorlds/PROTEUS.git
-2) cd PROTEUS
-3) conda env create -f environment.yml
-4) conda activate proteus
-5) pip install -e .
-6) proteus install-all --export-env
+
+1. `git clone https://github.com/FormingWorlds/PROTEUS.git`
+2. `cd PROTEUS`
+3. `conda env create -f environment.yml`
+4. `conda activate proteus`
+5. `pip install -e .`
+6. `proteus install-all --export-env`
 
 ### Before running PROTEUS
 If you want to start running PROTEUS right away - i.e. from the same shell that you used to install PROTEUS -
