@@ -16,9 +16,7 @@ config_option = click.option(
     "-c",
     "--config",
     "config_path",
-    type=click.Path(
-        exists=True, dir_okay=False, path_type=Path, resolve_path=True
-    ),
+    type=click.Path(exists=True, dir_okay=False, path_type=Path, resolve_path=True),
     help="Path to config file",
     required=True,
 )
@@ -121,9 +119,7 @@ def get():
 
 
 @click.command()
-@click.option(
-    "-n", "--name", "name", type=str, help="Name of spectral file group"
-)
+@click.option("-n", "--name", "name", type=str, help="Name of spectral file group")
 @click.option("-b", "--bands", "bands", type=str, help="Number of bands")
 def spectral(**kwargs):
     """Get spectral files
@@ -364,9 +360,7 @@ def install_all(export_env: bool):
                 ["git", "clone", "https://github.com/nichollsh/AGNI.git"],
                 check=True,
             )
-            subprocess.run(
-                ["bash", "-c", 'echo "PATH seen by get_agni.sh: $PATH"']
-            )
+            subprocess.run(["bash", "-c", 'echo "PATH seen by get_agni.sh: $PATH"'])
             subprocess.run(
                 ["bash", "src/get_agni.sh"], cwd=agni_dir, env=env, check=True
             )
@@ -388,9 +382,7 @@ def install_all(export_env: bool):
                     f"ℹ️ {var} already exported or shell not recognized",
                     fg="cyan",
                 )
-        click.secho(
-            "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
-        )
+        click.secho("🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow")
 
     click.secho("🎉 PROTEUS installation completed!", fg="green")
 
