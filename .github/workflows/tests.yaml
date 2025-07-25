@@ -70,7 +70,7 @@ jobs:
       # Checkout PROTEUS
       - name: Checkout PROTEUS
         uses: actions/checkout@v4
-        
+
       # Get Lovepy
       - name: Get Lovepy
         run: |
@@ -79,7 +79,7 @@ jobs:
       # Get VULCAN
       - name: Get VULCAN
         run: |
-          ./tools/get_vulcan.sh        
+          ./tools/get_vulcan.sh
 
       # Setup Python using the version defined in the matrix
       - name: Set up Python ${{ matrix.python-version }}
