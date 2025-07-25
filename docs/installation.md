@@ -24,7 +24,14 @@ If you are using a specific server, use the following guides:
 ## Setup a Python environment
 
 We recommend that you use Python version 3.12 for running PROTEUS.
-Python is most easily obtained and managed using [miniforge](https://github.com/conda-forge/miniforge).
+Python is most easily obtained and managed using either [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install#linux)
+```console
+mkdir -p ~/miniconda3
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+rm ~/miniconda3/miniconda.sh
+```
+or [miniforge](https://github.com/conda-forge/miniforge).
 ```console
 curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
 bash Miniforge3-$(uname)-$(uname -m).sh
@@ -41,7 +48,37 @@ You should only obtain Julia using the official installer, **not** via your comp
 curl -fsSL https://install.julialang.org | sh
 ```
 
-## Set up the PROTEUS framework
+## User install (default)
+### Requirements
+1) conda either through miniconda or miniforge (see above). However, currently there seems to be a 
+conflict between Julia and Conda versions of HDF5 and/or NetCDF libaries when using miniforge.
+2) git. If you don't have git, you can install it through conda: `conda install git`.
+3) wget. If you don't have wget, you can install it through conda: `conda install wget`. 
+4) Julia installation (see above)
+5) 20 GB of disk space; Conda (through miniconda) can take 9 GB, Julia 2 GB and a few GB for PROTEUS.
+6) 30 minutes of your time (mostly waiting)
+
+### Steps
+1) git clone https://github.com/FormingWorlds/PROTEUS.git
+2) cd PROTEUS
+3) conda env create -f environment.yml
+4) conda activate proteus
+5) pip install -e .
+6) proteus install-all --export-env
+
+### Before running PROTEUS
+If you want to start running PROTEUS right away - i.e. from the same shell that you used to install PROTEUS -
+you can set your environment variables using e.g. `source ~/.bashrc` (for Bash). This deactivates your current
+conda environment, so you need to enter `conda activate proteus` as well. If you chose `proteus install-all` 
+(i.e. without `--export-env`), you will need to set your PATH, FWL_DATA and RAD_DIR enviroment variables 
+manually.
+
+When you log into the machine that where you installed PROTEUS through `proteus install-all --export-env`, 
+you will have the environment variables FWL_DATA, RAD_DIR set appropriately as your ~/.shellrc file 
+(e.g. ~/.bashrc) has been updated during the install process. However, you still need to enter 
+`conda activate proteus`.
+
+## Developer install
 
 1. Create and set environment variables
 
