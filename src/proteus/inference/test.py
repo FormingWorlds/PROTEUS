@@ -24,6 +24,7 @@ torch.manual_seed(1)
 
 # Reference configuration for the PROTEUS simulator
 ref = "input/demos/dummy.toml"
+output = "output/inference/"
 
 print("\nperform sanity check")
 
@@ -61,6 +62,7 @@ rand_obs = run_proteus(
     observables=obs,
     worker=0,
     iter=0,
+    output=output,
     ref_config=ref
 ).to_dict()
 print("\nsimulated observables:", rand_obs)
@@ -71,7 +73,8 @@ f = prot_builder(
     observables=rand_obs,
     worker=0,
     iter=0,
-    ref_config=ref
+    ref_config=ref,
+    output=output,
 )
 
 # Compute objective at random input

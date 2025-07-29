@@ -190,7 +190,7 @@ def parallel_process(
     n_workers: int,
     max_len: int,
     D_init_path: str,
-    directory: str,
+    output: str,
     ref_config,
     observables,
     parameters
@@ -208,7 +208,7 @@ def parallel_process(
         n_workers (int): Number of parallel worker processes.
         max_len (int): Target total number of evaluations.
         D_init_path (str): Path to pickled initial data dict.
-        directory (str): Output directory for checkpoints and plots.
+        output (str): Output directory for checkpoints and plots.
         ref_config: Reference config to pass to objective_builder.
         observables: List or dict of target observable values.
         parameters: Dict of parameter bounds for inference.
@@ -223,7 +223,8 @@ def parallel_process(
         objective_builder,
         observables=observables,
         parameters=parameters,
-        ref_config=ref_config
+        ref_config=ref_config,
+        output=output,
     )
     process_fun = partial(
         BO_step,
@@ -276,7 +277,7 @@ def parallel_process(
                 max_len,
                 wid,
                 log_list,
-                directory
+                output
             )
         )
         p.start()
@@ -292,7 +293,7 @@ def parallel_process(
     T_elapsed = [t - T0 for t in list(T)]
 
     # Generate diagnostic plots
-    plot_times(logs, directory, n_init)
-    plot_res(D_final, T_elapsed, n_init, directory)
+    plot_times(logs, output, n_init)
+    plot_res(D_final, T_elapsed, n_init, output)
 
     return D_final, logs, T_elapsed

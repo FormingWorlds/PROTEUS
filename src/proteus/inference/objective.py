@@ -11,6 +11,8 @@ from botorch.utils.transforms import unnormalize
 
 dtype = torch.double
 
+from proteus.utils.coupler import get_proteus_directories
+
 def update_toml(config_file: str,
                 updates: dict,
                 output_file: str) -> None:
@@ -48,7 +50,8 @@ def run_proteus(parameters: dict,
                 worker: int,
                 iter: int,
                 observables: list[str],
-                ref_config: str = "input/demos/dummy.toml",
+                ref_config: str,
+                output: str,
                 max_attempts: int = 2) -> pd.Series:
 
     """Run the PROTEUS simulator and return selected observables.
@@ -62,6 +65,7 @@ def run_proteus(parameters: dict,
         iter (int): Iteration identifier for directory organization.
         observables (list[str]): Names of output columns to return.
         ref_config (str): Path to the reference TOML config template.
+        output (str): Path to output relative to PROTEUS output folder
         max_attempts (int): Maximum retry count on simulator failure.
 
     Returns:
@@ -70,24 +74,33 @@ def run_proteus(parameters: dict,
 
     # Construct run-specific paths
     run_id = f"w_{worker}/i_{iter}/"
-    out_dir = os.path.join("output/inference/workers/", run_id)
-    out_path = os.path.join(out_dir, "runtime_helpfile.csv")
-    config_path = os.path.join(out_dir, "input.toml")
+    out_dir = os.path.join(output, "workers", run_id)
+
+    out_abs = get_proteus_directories(out_dir)["output"]
+    out_cfg = os.path.join(out_abs, "input.toml")
+    out_csv = os.path.join(out_abs, "runtime_helpfile.csv")
 
     # Ensure output directory exists
-    os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(out_abs, exist_ok=True)
     # Inject output path into simulation parameters
-    parameters["params.out.path"] = os.path.join("inference/workers/", run_id)
+    parameters["params.out.path"] = out_dir
+
+    print(out_dir)
+    print(out_abs)
+    print(" ")
+    exit(1)
 
     for attempt in range(1, max_attempts + 1):
         try:
             # Generate config and run simulator
-            update_toml(ref_config, parameters, config_path)
-            subprocess.run(["proteus", "start", "-c", config_path], check=True)
+            update_toml(ref_config, parameters, out_cfg)
+            subprocess.run(["proteus", "start", "-c", out_cfg], check=True)
+
             # Re-write config in case simulator mutates it
-            update_toml(ref_config, parameters, config_path)
+            # update_toml(ref_config, parameters, out_cfg)
+
             # Read simulator output
-            df = pd.read_csv(out_path, delimiter="\t")
+            df = pd.read_csv(out_csv, delimiter="\t")
             return df.iloc[-1][observables].T
         except subprocess.CalledProcessError as e:
             if attempt < max_attempts:
@@ -103,6 +116,7 @@ def J(x: torch.Tensor,
       true_observables: dict[str, float] ,
       worker: int,
       iter: int,
+      output: str,
       ref_config: str) -> torch.Tensor:
     """Compute the objective value for a given normalized input.
 
@@ -128,7 +142,8 @@ def J(x: torch.Tensor,
                            worker=worker,
                            iter=iter,
                            observables=list(true_observables.keys()),
-                           ref_config=ref_config)
+                           ref_config=ref_config,
+                           output=output)
     # Convert to tensor and reshape
     sim = torch.tensor(sim_vals.values, dtype=dtype).reshape(1, -1)
     true_y = torch.tensor(list(true_observables.values()), dtype=dtype).reshape(1, -1)
@@ -144,6 +159,7 @@ def prot_builder(parameters: dict[str, list[float]],
                  observables: dict[str, float],
                  worker: int,
                  iter: int,
+                 output: str,
                  ref_config: str) -> callable:
     """Factory returning a BO-compatible objective function for PROTEUS inference.
 
@@ -154,6 +170,7 @@ def prot_builder(parameters: dict[str, list[float]],
         observables (dict): Target observable values.
         worker (int): Worker identifier.
         iter (int): Iteration number (seed) for reproducibility.
+        output (str): Path to output folder relative to PROTEUS output folder
         ref_config (str): Reference TOML config path.
 
     Returns:
@@ -174,7 +191,8 @@ def prot_builder(parameters: dict[str, list[float]],
                             true_observables=observables,
                             worker=worker,
                             iter=iter,
-                            ref_config=ref_config)
+                            ref_config=ref_config,
+                            output=output)
         # Compute objective
         return J_context(x_raw)
 

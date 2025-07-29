@@ -6,14 +6,18 @@ max_len = 25
 n_restarts = 10
 n_samples = 1000
 
+# Path to output folder relative to PROTEUS output folder
 output = "inference/"
 
-ref_config = "demos/dummy.toml"
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/demos/dummy.toml"
 
-# a dictionary with keys "X", "Y" and values torch tensors
-D_init_path = "inference/data/prot.pth"
+# path to 'initial guess' data file relative to PROTEUS root folder
+#   file must contain dictionary with keys "X", "Y" and values torch tensors
+#   if empty string, uses file at 'inference/prot.pth'
+D_init_path = ""
 
-# observables and parameters need to match the ones used to create the D_init_path
+# observables+parameters must match those used to create the D_init_path file
 [observables]
 "R_int" = 7629550.6175
 "M_planet" = 7.9643831975e+24
