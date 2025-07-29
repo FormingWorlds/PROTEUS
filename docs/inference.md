@@ -77,17 +77,17 @@ D_init_path = ""                # Initial data path (if empty, uses `inference/p
 First, create initial training data for the Bayesian optimization:
 
 ```bash
-python gen_D_init.py
+python src/proteus/inference/gen_D_init.py
 ```
 
-This creates `inference/data/prot.pth` with initial parameter-observable pairs.
+This creates a file `prot.pth` with initial parameter-observable pairs in the output folder.
 
 ### 2. Run Optimization
 
 Execute the main optimization script:
 
 ```bash
-python main.py --config BO_config.toml
+python src/proteus/inference/inference.py --config src/proteus/inference/BO_config.toml
 ```
 
 

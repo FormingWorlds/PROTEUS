@@ -15,7 +15,7 @@ from objective import prot_builder
 # Use double precision for all tensor computations
 dtype = torch.double
 
-output = "output/inference/"
+output = "inference/"
 ref_config = "input/demos/dummy.toml"
 
 # Define parameter bounds as [low, high] pairs. These keys must match BO_config.toml.

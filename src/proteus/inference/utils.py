@@ -100,7 +100,7 @@ def print_results(D, logs, config, output):
     sim_opt = df.iloc[-1][observables].T
 
     # Load and flatten the input TOML for this run
-    in_path = f"{output}/workers/w_{w}/i_{id}/input.toml"
+    in_path = f"{output}/workers/w_{w}/i_{id}/init_coupler.toml"
     with open(in_path, "r") as f:
         input = toml.load(f)
     input = flatten(input)  # flatten nested config

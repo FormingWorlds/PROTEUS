@@ -91,8 +91,8 @@ def run_proteus(parameters: dict,
             update_toml(ref_config, parameters, out_cfg)
             subprocess.run(["proteus", "start", "-c", out_cfg, "--offline"], check=True)
 
-            # Re-write config in case simulator mutates it
-            # update_toml(ref_config, parameters, out_cfg)
+            # Re-write config in case simulator mutates or removes it
+            update_toml(ref_config, parameters, out_cfg)
 
             # Read simulator output
             df = pd.read_csv(out_csv, delimiter="\t")

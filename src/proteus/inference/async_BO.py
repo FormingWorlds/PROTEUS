@@ -295,7 +295,7 @@ def parallel_process(
     T_elapsed = [t - T0 for t in list(T)]
 
     # Generate diagnostic plots
-    plot_times(logs, output, n_init)
-    plot_res(D_final, T_elapsed, n_init, output)
+    plot_times(logs, output_abspath, n_init)
+    plot_res(D_final, T_elapsed, n_init, output_abspath)
 
     return D_final, logs, T_elapsed
