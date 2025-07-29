@@ -9,9 +9,9 @@ import toml
 import torch
 from botorch.utils.transforms import unnormalize
 
-dtype = torch.double
-
 from proteus.utils.coupler import get_proteus_directories
+
+dtype = torch.double
 
 def update_toml(config_file: str,
                 updates: dict,

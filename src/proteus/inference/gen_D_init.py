@@ -7,7 +7,6 @@ and saves the resulting dataset to disk for use as the initial data in the BO pi
 """
 from __future__ import annotations
 
-import os
 import pickle
 
 import torch
