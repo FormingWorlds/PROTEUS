@@ -1,10 +1,10 @@
-n_workers = 7
+# Config file for inference scheme
 
-kernel = "RBF"
-
-max_len = 25
-n_restarts = 10
-n_samples = 1000
+n_workers = 7       # Number of parallel workers
+kernel = "RBF"      # Kernel type for GP
+max_len = 25        # Maximum number of evaluations
+n_restarts = 10     # GP optimization restarts
+n_samples = 1000    # Raw samples for acquisition optimization
 
 # Path to output folder relative to PROTEUS output folder
 output = "inference/"
@@ -17,13 +17,15 @@ ref_config = "input/demos/dummy.toml"
 #   if empty string, uses file at 'inference/prot.pth'
 D_init_path = ""
 
-# observables+parameters must match those used to create the D_init_path file
+# Target observables to match
+#   observables+parameters must match those used to create the D_init_path file
 [observables]
 "R_int" = 7629550.6175
 "M_planet" = 7.9643831975e+24
 "transit_depth" = 0.00012026905833
 "bond_albedo" = 0.25
 
+# Parameters to optimize (with bounds)
 [parameters]
 "struct.mass_tot" = [0.5, 3.0]
 "struct.corefrac" = [0.3, 0.9]
