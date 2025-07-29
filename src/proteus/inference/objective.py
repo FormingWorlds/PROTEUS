@@ -85,16 +85,11 @@ def run_proteus(parameters: dict,
     # Inject output path into simulation parameters
     parameters["params.out.path"] = out_dir
 
-    print(out_dir)
-    print(out_abs)
-    print(" ")
-    exit(1)
-
     for attempt in range(1, max_attempts + 1):
         try:
             # Generate config and run simulator
             update_toml(ref_config, parameters, out_cfg)
-            subprocess.run(["proteus", "start", "-c", out_cfg], check=True)
+            subprocess.run(["proteus", "start", "-c", out_cfg, "--offline"], check=True)
 
             # Re-write config in case simulator mutates it
             # update_toml(ref_config, parameters, out_cfg)
@@ -106,7 +101,7 @@ def run_proteus(parameters: dict,
             if attempt < max_attempts:
                 # Slightly perturb to avoid numerical issues
                 print(f"Attempt {attempt} failed: {e}. Retrying...")
-                parameters["struct.corefrac"] = parameters.get("struct.corefrac", 0) + 1e-1
+                parameters["struct.corefrac"] = parameters.get("struct.corefrac", 0) + 1e-9
             else:
                 raise RuntimeError(f"Simulator failed after {max_attempts} attempts: {e}\nInputs: {parameters}")
 

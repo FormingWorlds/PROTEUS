@@ -269,8 +269,6 @@ cli.add_command(offchem)
 cli.add_command(observe)
 
 DEFAULT_DATA_DIR = Path(__file__).resolve().parents[3] / "FWL_DATA"
-print(f"[DEBUG] DEFAULT_DATA_DIR resolves to: {DEFAULT_DATA_DIR}")
-
 
 def resolve_fwl_data_dir() -> Path:
     """Return the FWL_DATA path (env or default)."""
