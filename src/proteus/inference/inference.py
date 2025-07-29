@@ -17,36 +17,35 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # for Mac
 
-import argparse
+# system libraries
 import time
 from datetime import datetime
-
 import toml
 import torch
 from async_BO import checkpoint, parallel_process
 from objective import prot_builder
 from utils import print_results
 
+# proteus libraries
+from proteus.utils.coupler import get_proteus_directories
+
 # Use double precision for all tensor computations
 dtype = torch.double
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Run asynchronous BO with PROTEUS.")
-    parser.add_argument(
-        "--config",
-        type=str,
-        required=True,
-        help="Path to TOML config file containing BO parameters and settings"
-    )
-    args = parser.parse_args()
+# Entry point for inference scheme
+def run_inference(config):
 
-    # Load configuration from TOML file
-    with open(args.config, "r") as file:
-        config = toml.load(file)
+    # dictionary of directories
+    dirs = get_proteus_directories(config["output"])
+
+    # make paths 'safe'
+    config["ref_config"] = os.path.abspath(dirs["input"], config["ref_config"])
+    if not os.path.isfile(config["ref_config"]):
+        raise FileNotFoundError("Cannot find reference config: " + config["ref_config"])
 
     # Create output directory and save a timestamped copy of the config
-    os.makedirs(config["directory"], exist_ok=True)
-    with open(os.path.join(config["directory"], "config.toml"), "w") as file:
+    os.makedirs(dirs["output"], exist_ok=True)
+    with open(os.path.join(dirs["output"], "config.toml"), "w") as file:
         timestamp = datetime.now().astimezone().isoformat()
         file.write(f"# Created: {timestamp}\n\n")
         toml.dump(config, file)
@@ -71,4 +70,24 @@ if __name__ == '__main__':
     print_results(D_final, logs, config)
 
     # Save final data, logs, and timestamps for later analysis
-    checkpoint(D_final, logs, Ts, config["directory"])
+    checkpoint(D_final, logs, Ts, dirs["output"])
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run asynchronous BO with PROTEUS.")
+    parser.add_argument(
+        "--config",
+        type=str,
+        required=True,
+        help="Path to TOML config file containing BO parameters and settings"
+    )
+    args = parser.parse_args()
+
+    # Load configuration from TOML file
+    with open(args.config, "r") as file:
+        config = toml.load(file)
+
+    # run inference scheme
+    run_inference(config)

@@ -6,9 +6,9 @@ max_len = 25
 n_restarts = 10
 n_samples = 1000
 
-directory = "output/inference/results/"
+output = "inference/"
 
-ref_config = "input/demos/dummy.toml"
+ref_config = "demos/dummy.toml"
 
 # a dictionary with keys "X", "Y" and values torch tensors
 D_init_path = "inference/data/prot.pth"
