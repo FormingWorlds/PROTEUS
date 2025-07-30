@@ -12,9 +12,11 @@ The system performs Bayesian optimization to infer planetary formation parameter
 
 ## Project Structure
 
+These files are contained within the folder `src/proteus/inference/`.
+
 | File               | Description                               |
 |:-------------------|:------------------------------------------|
-| `main.py`          | Main entry point                          |
+| `inference.py`     | Main entry point                          |
 | `async_BO.py`      | Parallel BO implementation                |
 | `BO.py`            | Single BO step implementation             |
 | `objective.py`     | PROTEUS interface and objective function  |
@@ -49,9 +51,9 @@ kernel = "RBF"                   # Kernel type for GP
 max_len = 40                     # Maximum number of evaluations
 n_restarts = 10                  # GP optimization restarts
 n_samples = 1000                 # Raw samples for acquisition optimization
-directory = "output/inference/results/"  # Output directory
-ref_config = "input/demos/dummy.toml"    # Reference PROTEUS config
-D_init_path = "inference/data/prot.pth"  # Initial data path
+directory = "inference"          # Path to output folder relative to PROTEUS output folder
+ref_config = "input/demos/dummy.toml"    # Path to reference PROTEUS config
+D_init_path = ""                # Initial data path (if empty, uses `inference/prot.pth`)
 
 [observables]                    # Target observables to match
 "R_int" = 7629550.6175
@@ -75,17 +77,17 @@ D_init_path = "inference/data/prot.pth"  # Initial data path
 First, create initial training data for the Bayesian optimization:
 
 ```bash
-python gen_D_init.py
+python src/proteus/inference/gen_D_init.py
 ```
 
-This creates `inference/data/prot.pth` with initial parameter-observable pairs.
+This creates a file `prot.pth` with initial parameter-observable pairs in the output folder.
 
 ### 2. Run Optimization
 
 Execute the main optimization script:
 
 ```bash
-python main.py --config BO_config.toml
+python src/proteus/inference/inference.py --config src/proteus/inference/BO_config.toml
 ```
 
 

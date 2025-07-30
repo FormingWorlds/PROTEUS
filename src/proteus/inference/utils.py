@@ -65,7 +65,7 @@ def flatten(d, parent_key: str = '', sep: str = '.'):
     return dict(items)
 
 
-def print_results(D, logs, config):
+def print_results(D, logs, config, output):
     """Identify the best evaluation and print its observables and inferred parameters.
 
     Finds the index of the maximum objective value in D['Y'], then:
@@ -77,6 +77,7 @@ def print_results(D, logs, config):
         D (dict): Contains 'X' and 'Y', lists of inputs and objective values.
         logs (list of dict): Log entries with keys 'worker', 'task_id', etc.
         config (dict): Original config with 'observables' and 'parameters' mappings.
+        output (str): Path to output directory for this entire inference call.
     """
     # Convert list of objective values to tensor and find best index
     Y = D["Y"]
@@ -88,7 +89,7 @@ def print_results(D, logs, config):
     id = log_opt["task_id"]  # iteration index
 
     # Read simulator output for this run
-    out_path = f"output/inference/workers/w_{w}/i_{id}/runtime_helpfile.csv"
+    out_path = f"{output}/workers/w_{w}/i_{id}/runtime_helpfile.csv"
     df = pd.read_csv(out_path, delimiter="\t")
 
     # True observables from config
@@ -99,7 +100,7 @@ def print_results(D, logs, config):
     sim_opt = df.iloc[-1][observables].T
 
     # Load and flatten the input TOML for this run
-    in_path = f"output/inference/workers/w_{w}/i_{id}/input.toml"
+    in_path = f"{output}/workers/w_{w}/i_{id}/init_coupler.toml"
     with open(in_path, "r") as f:
         input = toml.load(f)
     input = flatten(input)  # flatten nested config
