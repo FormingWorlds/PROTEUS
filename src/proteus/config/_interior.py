@@ -85,13 +85,17 @@ class Aragog:
     inner_boundary_value: float
         Value of the inner boundary condition, either temperature or heat flux, depending on the chosen condition.
     conduction: bool
-        Whether to include conductive heat transfer in the model. Default is True.
+        Whether to include conductive heat flux in the model. Default is True.
     convection: bool
-        Whether to include convective heat transfer in the model. Default is True.
+        Whether to include convective heat flux in the model. Default is True.
     gravitational_separation: bool
-        Whether to include gravitational separation in the model. Default is False.
+        Whether to include gravitational separation flux in the model. Default is False.
     mixing: bool
-        Whether to include mixing in the model. Default is False.
+        Whether to include mixing flux in the model. Default is False.
+    dilatation: bool
+        Whether to include dilatation source term in the model. Default is False.
+    mass_coordinates: bool
+        Whether to use mass coordinates in the model. Default is False.
     tsurf_poststep_change: float
         Maximum change in surface temperature allowed during a single interior iteration [K].
     event_triggering: bool
@@ -111,6 +115,8 @@ class Aragog:
     convection: bool                    = field(default=True)
     gravitational_separation: bool      = field(default=False)
     mixing: bool                        = field(default=False)
+    dilatation: bool                    = field(default=False)
+    mass_coordinates: bool              = field(default=False)
     tsurf_poststep_change: float        = field(default=30, validator=ge(0))
     event_triggering:bool               = field(default=True)
 

@@ -117,8 +117,6 @@ class AragogRunner():
             # only used in gray body BC, outer_boundary_condition = 1
             equilibrium_temperature = hf_row["T_eqm"],
             # used if inner_boundary_condition = 1
-            core_density = config.struct.core_density,
-            # used if inner_boundary_condition = 1
             core_heat_capacity = 880,
             )
 
@@ -139,10 +137,12 @@ class AragogRunner():
             # basic nodes
             number_of_nodes = config.interior.aragog.num_levels,
             mixing_length_profile = "constant",
+            core_density = config.struct.core_density,
             eos_method = 1, # 1: Adams-Williamson / 2: User defined
             surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration = hf_row["gravity"], # [m/s-2]
             adiabatic_bulk_modulus = config.interior.bulk_modulus, # AW-EOS parameter [Pa]
+            mass_coordinates = config.interior.aragog.mass_coordinates,
             )
 
         # Update the mesh if the module is 'zalmoxis'
@@ -156,6 +156,7 @@ class AragogRunner():
             gravitational_separation = (
                 config.interior.aragog.gravitational_separation),
             mixing = config.interior.aragog.mixing,
+            dilatation = config.interior.aragog.dilatation,
             radionuclides = config.interior.radiogenic_heat,
             tidal = config.interior.tidal_heat,
             tidal_array = interior_o.tides
