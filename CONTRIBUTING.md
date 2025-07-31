@@ -70,7 +70,7 @@ The version of PROTEUS itself is defined using calendar versioning in the format
 
 ### Large files, output, and input data
 
-Large files should **not** be committed to the repository. This means model results, plots, and files you create during analysis. Including these will make Git operations sluggish and make version control tricky, as Git is only meant for managing text (e.g. code) files.
+Large files should **not** be committed to the repository. This means that model results, plots, and files you create during analysis should not be be staged and committed to a PROTEUS online branch. Including these (even accidentally) in the repository will make Git operations sluggish and make version control tricky, as Git is only meant for managing text (e.g. code) files.
 
 You can make files/folders invisible to Git by prepending `nogit_` to their names. For example, anything in a folder called `nogit_analysis/` will be ignored by Git. Large files could then be safely placed in this folder. Model outputs are generated in the `output/` folder, which is also ignored by Git.
 
