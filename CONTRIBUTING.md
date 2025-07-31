@@ -68,15 +68,20 @@ The version of PROTEUS itself is defined using calendar versioning in the format
 5. Functions should include a docstring where possible, describing the function's purpose and parameters.
 6. Indentation deeper than 3 levels should be avoided.
 
-### Large files, outputs, and lookup data
+### Large files, output, and input data
 
-Large files should **not** be committed to the repository. This means model results, plots, and files you create during analysis. Including these will make Git operations sluggish and make version control tricky, as Git is only meant for managing text (e.g. code) files.
+Large files should **not** be committed to the repository. This means that model results, plots, and files you create during analysis should not be be staged and committed to a PROTEUS online branch. Including these (even accidentally) in the repository will make Git operations sluggish and make version control tricky, as Git is only meant for managing text (e.g. code) files.
 
 You can make files/folders invisible to Git by prepending `nogit_` to their names. For example, anything in a folder called `nogit_analysis/` will be ignored by Git. Large files could then be safely placed in this folder. Model outputs are generated in the `output/` folder, which is also ignored by Git.
 
-Large files can be useful in some cases, such as in the case of lookup-data tables used in the simulations. These files should be kept inside your FWL data folder defined by the `FWL_DATA` environment variable in your shell. Placing large files in this folder allows them to be kept on 'storage' file systems on clusters to avoid reaching your allocation limits.
+PROTEUS relies on input data files that can be potentially large. These are stored outside the Git repository in [Zenodo](https://zenodo.org/communities/proteus_framework/), and duplicated in the [OSF](https://osf.io/8dumn/). When running PROTEUS, it will automatically download the necessary input data from Zenodo (or from the OSF in case the connection to Zenodo cannot be established) and store it locally inside your FWL data folder defined by the `FWL_DATA` environment variable in your shell. Placing large files in this folder allows them to be kept on 'storage' file systems on clusters to avoid reaching your allocation limits.
 
-PROTEUS will download large files from Zenodo when required. These are then kept in the FWL data folder. You can find our Zenodo community [here](https://zenodo.org/communities/proteus_framework/).
+If you want to add new input data you can either update a Zenodo record or create a new one.
+
+1. **Updating a record** For instance, if you want to add a new stellar spectra, you will update the `stellar_spectra/Named` record on Zenodo, making sure the file you add is in a consistent format with that of the other files contained in the record.
+2. **Creating a record** If you want instead to add a new model for the absorption properties of the atmosphere, you will create a new Zenodo record named `spectral_files/model_name/number_of_bands` and upload the model files in a consistent format with that of the other spectral files used in PROTEUS. It is important for clarity and data management that the name of the records follow the organisation of the FWL data repository consistently. The next step is to update/create the python download function in PROTEUS located in `src/proteus/utils/data.py` that will download the new data. The created Zenodo record number must be provided. Note that sometimes the download function is located in a submodule (e.g. Mors, Aragog…).
+
+Once your new data is uploaded on Zenodo, do not forget to also upload it on the OSF (and update PROTEUS with the OSF record number when necessary). Some checks have been implemented to detect new input data files but note that it might be necessary in some cases to delete your local input data folder (or the data cache in the CI) to enforce the download of the new data.
 
 ### Linting
 
