@@ -8,14 +8,6 @@
 
 
 ```bibtex
-@ARTICLE{Lichtenberg_2026_JOSS,
-       author = {Tim Lichtenberg, Harrison Nicholls, Laurent Soucasse, Mariana Sastre, Emma Postolec, Dan J. Bower, Flavia C. Pascal, Ben Riegler, Hanno Spreeuw, Robb Calder, Mark Hammond, Stef Smeets, Shang-Min Tsai, Raymond T. Pierrehumbert},
-        title = "The PROTEUS framework for planetary evolution",
-      journal = {JOSS},
-         year = {in prep.},
-        month = jan,
-}
-
 @ARTICLE{Nicholls_2025_MNRAS,
        author = {{Nicholls}, Harrison and {Pierrehumbert}, Raymond T. and {Lichtenberg}, Tim and {Soucasse}, Laurent and {Smeets}, Stef},
         title = "{Convective shutdown in the atmospheres of lava worlds}",

@@ -5,25 +5,24 @@ build-backend = "setuptools.build_meta"
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
 name = "fwl-proteus"
-version = "25.05.20"
+version = "25.07.31"
 description = "Coupled atmosphere-interior framework to simulate the temporal evolution of rocky planets"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-	{name = "Tim Lichtenberg", email = "tim.lichtenberg@rug.nl"},
-	{name = "Harrison Nicholls", email = "harrison.nicholls@physics.ox.ac.uk"},
-	{name = "Laurent Soucasse", email = "l.soucasse@esciencecenter.nl"},
-	{name = "Stef Smeets", email = "s.smeets@esciencecenter.nl"},
-	{name = "Dan J. Bower", email = "dbower@ethz.ch"},
-	{name = "Mariana Sastre", email = "m.c.villamil.sastre@rug.nl"},
-	{name = "Emma Postolec", email = "e.n.postolec@rug.nl"},
-	{name = "Mark Hammond", email = "mark.hammond@physics.ox.ac.uk"},
-	{name = "Patrick Sanan", email = "patrick.sanan@gmail.com"},
-	{name = "Raymond Pierrehumbert", email = "raymond.pierrehumbert@physics.ox.ac.uk"},
-	{name = "Ryan Boukrouche", email = "ryan.boukrouche@astro.su.se"},
-	{name = "Shang-Min Tsai", email = "shangmin.tsai@ucr.edu"},
-	{name = "Hamish Innes", email = "hamish.innes@fu-berlin.de"},
-  {name = "Ben Riegler", email = "ben.riegler@tum.de"},
+    {name="Tim Lichtenberg",         email="tim.lichtenberg@rug.nl"},
+    {name="Harrison Nicholls",       email="harrison.nicholls@physics.ox.ac.uk"},
+    {name="Laurent Soucasse",        email="l.soucasse@esciencecenter.nl"},
+    {name="Mariana Sastre",          email="m.c.villamil.sastre@rug.nl"},
+    {name="Emma Postolec",           email="e.n.postolec@rug.nl"},
+    {name="Flavia Pascal",           email="f.pascal@student.rug.nl"},
+    {name="Ben Riegler",             email="ben.riegler@tum.de"},
+    {name="Hanno Spreeuw",           email="h.spreeuw@esciencecenter.nl"},
+    {name="Dan J. Bower",            email="dbower@ethz.ch"},
+    {name="Mark Hammond",            email="mark.hammond@physics.ox.ac.uk"},
+    {name="Stef Smeets",             email="s.smeets@esciencecenter.nl"},
+    {name="Robb Calder",             email="rdc49@cam.ac.uk"},
+    {name="Raymond T. Pierrehumbert",email="raymond.pierrehumbert@physics.ox.ac.uk"},
 ]
 keywords = [
     "Astronomy",
@@ -133,7 +132,7 @@ indent-style = "space"
 
 [tool.bumpversion]
 # https://callowayproject.github.io/bump-my-version/howtos/calver/
-current_version = "25.05.20"
+current_version = "25.07.31"
 parse = """(?x)                      # Verbose mode
     (?P<release>                     # The release part
         (?:[1-9][0-9])\\.            # YY.

@@ -7,7 +7,6 @@ and saves the resulting dataset to disk for use as the initial data in the BO pi
 """
 from __future__ import annotations
 
-import os
 import pickle
 
 import torch
@@ -15,6 +14,9 @@ from objective import prot_builder
 
 # Use double precision for all tensor computations
 dtype = torch.double
+
+output = "inference/"
+ref_config = "input/demos/dummy.toml"
 
 # Define parameter bounds as [low, high] pairs. These keys must match BO_config.toml.
 params = {
@@ -40,7 +42,8 @@ f = prot_builder(
     observables=observables,
     worker=0,
     iter=0,
-    ref_config="input/demos/dummy.toml"
+    ref_config=ref_config,
+    output=output
 )
 
 # Determine problem dimension (number of parameters)
@@ -59,9 +62,8 @@ Y = torch.stack([f(x[None, :]) for x in X]).reshape(n, 1)
 D = {"X": X, "Y": Y}
 print(f"Generated initial dataset with {n} points in {d}-dim space")
 
-# Ensure output directory exists
-os.makedirs("inference/data/", exist_ok=True)
 # Save dataset for use in BO pipeline
-with open("inference/data/prot.pth", "wb") as f_out:
+fpath = f"{output}/prot.pth"
+with open(fpath, "wb") as f_out:
     pickle.dump(D, f_out)
-    print("Saved initial data to inference/data/prot.pth")
+    print(f"Saved initial-guess data to file: {fpath}")

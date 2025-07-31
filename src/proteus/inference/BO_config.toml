@@ -1,0 +1,35 @@
+# Config file for inference scheme
+
+n_workers = 7       # Number of parallel workers
+kernel = "RBF"      # Kernel type for GP
+max_len = 25        # Maximum number of evaluations
+n_restarts = 10     # GP optimization restarts
+n_samples = 1000    # Raw samples for acquisition optimization
+
+# Path to output folder relative to PROTEUS output folder
+output = "inference/"
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/demos/dummy.toml"
+
+# path to 'initial guess' data file relative to PROTEUS root folder
+#   file must contain dictionary with keys "X", "Y" and values torch tensors
+#   if empty string, uses file at 'inference/prot.pth'
+D_init_path = ""
+
+# Target observables to match
+#   observables+parameters must match those used to create the D_init_path file
+[observables]
+"R_int" = 7629550.6175
+"M_planet" = 7.9643831975e+24
+"transit_depth" = 0.00012026905833
+"bond_albedo" = 0.25
+
+# Parameters to optimize (with bounds)
+[parameters]
+"struct.mass_tot" = [0.5, 3.0]
+"struct.corefrac" = [0.3, 0.9]
+"atmos_clim.dummy.gamma" = [0.05, 0.95]
+"escape.dummy.rate" = [1.0, 1e5]
+"interior.dummy.ini_tmagma" = [2000, 4500]
+"outgas.fO2_shift_IW" = [-4.0, 4.0]

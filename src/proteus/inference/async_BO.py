@@ -26,6 +26,8 @@ from BO import BO_step
 from plots import plot_res, plot_times
 from scipy.stats.qmc import Halton
 
+from proteus.utils.coupler import get_proteus_directories
+
 # Tensor dtype for all computations
 dtype = torch.double
 
@@ -44,9 +46,6 @@ def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
         Ts (list): Shared list of elapsed times (floats).
         output_dir (str): Directory path where pickle files will be saved.
     """
-    # Ensure the directory exists
-    os.makedirs(output_dir, exist_ok=True)
-
     # Persist the data dictionary
     with open(os.path.join(output_dir, "data.pkl"), "wb") as f_data:
         pickle.dump(dict(D), f_data)
@@ -116,7 +115,7 @@ def worker(
         max_len (int): Maximum total number of evaluations.
         worker_id (int): Unique identifier of this worker.
         log_list (Manager.list): Shared list to store per-eval log dicts.
-        output_dir (str): Directory for checkpoint files.
+        output_dir (str): Output directory for the whole inference call (abspath).
     """
     task_id = 0
 
@@ -190,7 +189,7 @@ def parallel_process(
     n_workers: int,
     max_len: int,
     D_init_path: str,
-    directory: str,
+    output: str,
     ref_config,
     observables,
     parameters
@@ -208,7 +207,7 @@ def parallel_process(
         n_workers (int): Number of parallel worker processes.
         max_len (int): Target total number of evaluations.
         D_init_path (str): Path to pickled initial data dict.
-        directory (str): Output directory for checkpoints and plots.
+        output (str): Output directory for checkpoints and plots.
         ref_config: Reference config to pass to objective_builder.
         observables: List or dict of target observable values.
         parameters: Dict of parameter bounds for inference.
@@ -223,7 +222,8 @@ def parallel_process(
         objective_builder,
         observables=observables,
         parameters=parameters,
-        ref_config=ref_config
+        ref_config=ref_config,
+        output=output,
     )
     process_fun = partial(
         BO_step,
@@ -256,6 +256,9 @@ def parallel_process(
     T = mgr.list()
     T0 = time.perf_counter()
 
+    # Absolute path to shared output dir
+    output_abspath = get_proteus_directories(output)["output"]
+
     # Spawn worker processes
     procs = []
     for wid in range(n_workers):
@@ -276,7 +279,7 @@ def parallel_process(
                 max_len,
                 wid,
                 log_list,
-                directory
+                output_abspath
             )
         )
         p.start()
@@ -292,7 +295,7 @@ def parallel_process(
     T_elapsed = [t - T0 for t in list(T)]
 
     # Generate diagnostic plots
-    plot_times(logs, directory, n_init)
-    plot_res(D_final, T_elapsed, n_init, directory)
+    plot_times(logs, output_abspath, n_init)
+    plot_res(D_final, T_elapsed, n_init, output_abspath)
 
     return D_final, logs, T_elapsed
