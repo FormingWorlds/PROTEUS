@@ -382,11 +382,10 @@ def download_melting_curves(config:Config):
     """
     from aragog.data import DownloadLookupTableData
     log.debug("Get melting curve data")
-    MELTING_DIR = (
-            FWL_DATA_DIR /
-            "interior_lookup_tables/Melting_curves/"
-        )
-    dir = MELTING_DIR / config.interior.melting_dir
+    dir = (
+        "Melting_curves/"
+        + config.interior.melting_dir
+    )
     DownloadLookupTableData(dir)
 
 def _get_sufficient(config:Config):
