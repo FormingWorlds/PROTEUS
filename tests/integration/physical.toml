@@ -210,8 +210,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         inner_boundary_value          = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
         conduction                    = true     # enable conductive heat transfer
         convection                    = true     # enable convective heat transfer
-        gravitational_separation      = false    # enable gravitational separation
-        mixing                        = false    # enable mixing
+        gravitational_separation      = true     # enable gravitational separation
+        mixing                        = true     # enable mixing
         tsurf_poststep_change         = 30       # threshold of maximum change on surface temperature, compares current and first Tsurf
         event_triggering              = true    # enable events triggering to avoid abrupt jumps in surface temperature
 

@@ -247,6 +247,8 @@ version = "2.0"
         convection                      = true     # enable convective heat transfer
         gravitational_separation        = false    # enable gravitational separation
         mixing                          = false    # enable mixing
+        dilatation                      = false    # enable dilatation source term
+        mass_coordinates                = false    # enable mass coordinates
         tsurf_poststep_change           = 30       # threshold of maximum change on surface temperature
         event_triggering                = true     # enable events triggering to avoid abrupt jumps in surface temperature
 
