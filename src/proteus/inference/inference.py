@@ -53,14 +53,14 @@ def run_inference(config):
         toml.dump(config, file)
 
     # Ensure there are enough CPU cores for the specified number of workers
-    assert os.cpu_count() - 1 >= config["n_workers"], \
-        f"Not enough CPU cores for {config['n_workers']} workers"
+    if os.cpu_count() - 1 >= config["n_workers"]:
+        raise RuntimeError(f"Not enough CPU cores for {config['n_workers']} workers")
 
 
     # Create initial guess data through the requested method
     create_init(config)
 
-    print("Starting optimisation\n")
+    print(f"Starting optimisation with {config["n_workers"]} workers")
     t_0 = time.perf_counter()
 
     # Execute the parallel BO process

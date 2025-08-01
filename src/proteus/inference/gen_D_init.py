@@ -8,9 +8,12 @@ and saves the resulting dataset to disk for use as the initial data in the BO pi
 from __future__ import annotations
 
 import pickle
-
+import pandas as pd
+from glob import glob
 import torch
+from botorch.utils.transforms import normalize
 import os
+import toml
 from objective import prot_builder, eval_obj
 from proteus.utils.coupler import get_proteus_directories
 
@@ -47,7 +50,6 @@ def create_init(config):
         print( "Source for initial guess: pre-computed grid")
         print(f"    grid = {init_grid}")
         D_init = sample_from_grid(config["output"],
-                                    config["ref_config"],
                                     config["parameters"], config["observables"],
                                     init_grid)
 
@@ -55,34 +57,58 @@ def create_init(config):
     # Inform user
     print(f"Saved initial guess data to D_init pickle file: {D_init}")
 
-def sample_from_grid(output:str, ref_config:str,
+def sample_from_grid(output:str,
                        params:dict, observables:dict,
                        grid_dir:str):
     '''
     Create initial guess data, using pre-computed grid of models as input
     '''
 
-    # This will be used to evaluate the objective function to provide initial samples
-    #     _x is a list of values, each one corresponding to a parameter
+    # We need evaluate the objective function at each grid point to provide initial samples
     #     They are normalised to [0,1] within the bounds of each parameter's axis
-    #     The function returns the value of the objective function for these values
-    def f(_x):
-        return 0.74
+
+    # First, read data and config files from the grid
+    cases = glob(grid_dir + "/case_*/")
+    helps = []
+    confs = []
+    for c in cases:
+        # Data
+        helps.append(pd.read_csv(c+"runtime_helpfile.csv", delimiter="\t"))
+
+        # Config
+        with open(c+"init_coupler.toml", 'r') as f:
+            confs.append(toml.load(f))
+
+    # List of parameter keys for ordering
+    keys = list(params.keys())
 
     # Determine problem dimension (number of parameters)
-    dims = len(params)
+    dims = len(keys)
 
-    # Set random seed for reproducibility
-    torch.manual_seed(2)
+    # Determine number of samples (number of grid points)
+    nsamp = len(helps)
 
-    # Generate n random points in [0,1]^d and evaluate the objective
+    # Parameter bounds
+    bounds = torch.tensor([[params[k][0] for k in keys],
+                           [params[k][1] for k in keys]], dtype=dtype)
+
+    # Generate parameter points at which we will evaluate the objective
     #     Each of the parameters are evaluated in space 0-1, normalised to the bounds
     #     This variable is 2D, with shape [nsamp, dims]
-    X = torch.rand(nsamp, dims, dtype=dtype)
+    X = torch.zeros(nsamp, dims, dtype=dtype)
+    Y = torch.zeros(nsamp, 1, dtype=dtype)
+    for i in range(nsamp):
 
-    # Evaluate the objective function for each of the samples
-    #     This variable is 1D, with shape [nsamp]
-    Y = torch.stack([f(x[None, :]) for x in X]).reshape(nsamp, 1)
+        # Generate normalised parameters
+        raw_x = [confs[i][k] for k in keys]
+        nrm_x = torch.normalize(raw_x, bounds).flatten()
+        X[i,:] = nrm_x[:] # store (list of floats)
+
+        # Get values of observables from grid point data (list of floats)
+        obs_y = helps[i].iloc[-1][observables.keys()].T
+
+        # Evaluate objective and store (float)
+        Y[i] = eval_obj(obs_y, observables.values())
 
     # Package into dataset dict
     D = {"X": X, "Y": Y}
