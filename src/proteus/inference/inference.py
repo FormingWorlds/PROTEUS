@@ -25,6 +25,7 @@ import toml
 import torch
 from async_BO import checkpoint, parallel_process
 from objective import prot_builder
+from gen_D_init import create_init
 from utils import print_results
 
 # proteus libraries
@@ -44,15 +45,6 @@ def run_inference(config):
     if not os.path.isfile(config["ref_config"]):
         raise FileNotFoundError("Cannot find reference config: " + config["ref_config"])
 
-    # file containing the 'initial guess' data
-    if not config["D_init_path"]:
-        config["D_init_path"] = os.path.join(dirs["proteus"], "src", "proteus",
-                                                "inference", "prot.pth")
-    else:
-        config["D_init_path"] = os.path.abspath(config["D_init_path"])
-    if not os.path.isfile(config["D_init_path"]):
-        raise FileNotFoundError("Cannot find D_init_path: " + config["D_init_path"])
-
     # Create output directory and save a timestamped copy of the config
     os.makedirs(dirs["output"], exist_ok=True)
     with open(os.path.join(dirs["output"], "config.toml"), "w") as file:
@@ -64,17 +56,29 @@ def run_inference(config):
     assert os.cpu_count() - 1 >= config["n_workers"], \
         f"Not enough CPU cores for {config['n_workers']} workers"
 
+
+    # Create initial guess data through the requested method
+    create_init(config)
+
     print("Starting optimisation\n")
     t_0 = time.perf_counter()
 
     # Execute the parallel BO process
     D_final, logs, Ts = parallel_process(
-        objective_builder=prot_builder,
-        **config
+        prot_builder,
+        config["kernel"],
+        config["n_restarts"],
+        config["n_samples"],
+        config["n_workers"],
+        config["max_len"],
+        config["output"],
+        config["ref_config"],
+        config["observables"],
+        config["parameters"]
     )
 
     t_1 = time.perf_counter()
-    print(f"this took: {(t_1 - t_0):.2f} seconds\n")
+    print(f"This took: {(t_1 - t_0):.2f} seconds\n")
 
     # Print summary of true vs. simulated observables and inferred parameters
     print_results(D_final, logs, config, dirs["output"])

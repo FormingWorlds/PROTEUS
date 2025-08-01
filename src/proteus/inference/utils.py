@@ -110,7 +110,7 @@ def print_results(D, logs, config, output):
     par_opt = pd.Series({param: input[param] for param in params})
 
     # Print summary to console
-    print("\nbest objective = ", Y[i_opt].item())
-    print("\ntrue observables\n", true_y)
-    print("\nsimulated observables\n", sim_opt)
-    print("\ninferred inputs\n", par_opt)
+    print("\nBest objective = ", Y[i_opt].item())
+    print("\nTrue observables\n", true_y)
+    print("\nSimulated observables\n", sim_opt)
+    print("\nInferred inputs\n", par_opt)
