@@ -24,8 +24,8 @@ from datetime import datetime
 import toml
 import torch
 from async_BO import checkpoint, parallel_process
-from objective import prot_builder
 from gen_D_init import create_init
+from objective import prot_builder
 from utils import print_results
 
 # proteus libraries

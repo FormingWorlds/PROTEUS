@@ -7,14 +7,15 @@ and saves the resulting dataset to disk for use as the initial data in the BO pi
 """
 from __future__ import annotations
 
-import pickle
-import pandas as pd
-from glob import glob
-import torch
-from botorch.utils.transforms import normalize
 import os
+import pickle
+from glob import glob
+
+import pandas as pd
 import toml
-from objective import prot_builder, eval_obj
+import torch
+from objective import eval_obj, prot_builder
+
 from proteus.utils.coupler import get_proteus_directories
 
 # Use double precision for all tensor computations
