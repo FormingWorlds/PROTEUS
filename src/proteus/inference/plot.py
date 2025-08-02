@@ -485,5 +485,3 @@ def plot_result_correlation(par_keys, obs_keys, directory):
     fig.subplots_adjust(wspace=0.02, hspace=0.02)
     fig.savefig(os.path.join(directory, "plots", f"result_correlation.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
-
-
