@@ -13,8 +13,8 @@ from glob import glob
 
 import pandas as pd
 import toml
-from botorch.utils.transforms import normalize
 import torch
+from botorch.utils.transforms import normalize
 
 from proteus.inference.objective import eval_obj, prot_builder
 from proteus.utils.coupler import get_proteus_directories

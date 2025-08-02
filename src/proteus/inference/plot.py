@@ -10,16 +10,17 @@ Functions:
 from __future__ import annotations
 
 import os
-import toml
 from glob import glob
+
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib import cm
-from matplotlib.ticker import MaxNLocator
+import toml
 import torch
 from botorch.utils.transforms import unnormalize
+from matplotlib import cm
+from matplotlib.ticker import MaxNLocator
 
 from proteus.utils.helper import recursive_get
 
