@@ -1,6 +1,6 @@
 # Asynchronous Bayesian Optimization for PROTEUS
 
-This project implements parallel-asynchronous Bayesian Optimization (BO) for parameter inference using the PROTEUS planetary evolution simulator. It uses multiple workers to efficiently explore the parameter space and find optimal matches between simulated and observed planetary characteristics.
+This project implements parallel-asynchronous Bayesian Optimization (BO) for parameter inference using PROTEUS as the  'simulator'. It uses multiple workers to efficiently explore the parameter space and find optimal matches between simulated and observed planetary characteristics. You can also run this BO inference scheme to refine the results of a grid.
 
 ## Overview
 
@@ -24,71 +24,59 @@ These files are contained within the folder `src/proteus/inference/`.
 | `utils.py`         | Helper functions                          |
 | `gen_D_init.py`    | Generate initial data                     |
 | `test.py`          | Sanity check script                       |
-| `BO_config.toml`   | Configuration file                        |
-
-
-## Dependencies
-
-The project requires the following Python packages:
-- `torch` (PyTorch)
-- `botorch` (Bayesian Optimization)
-- `gpytorch` (Gaussian Processes)
-- `scipy`
-- `pandas`
-- `matplotlib`
-- `toml`
-- `numpy`
-
-You also need the PROTEUS simulator installed and accessible via the `proteus` command.
 
 ## Configuration
 
-The main configuration is done through the `BO_config.toml` file:
+The main configuration is done through a TOML-formatted configuration file. An example is included below.
 
 ```toml
-n_workers = 7                    # Number of parallel workers
-kernel = "RBF"                   # Kernel type for GP
-max_len = 40                     # Maximum number of evaluations
-n_restarts = 10                  # GP optimization restarts
-n_samples = 1000                 # Raw samples for acquisition optimization
-directory = "inference"          # Path to output folder relative to PROTEUS output folder
-ref_config = "input/demos/dummy.toml"    # Path to reference PROTEUS config
-D_init_path = ""                # Initial data path (if empty, uses `inference/prot.pth`)
+# Path to output folder where inference will be saved (relative to PROTEUS output folder)
+output = "infer_demo/"
 
-[observables]                    # Target observables to match
-"R_int" = 7629550.6175
-"M_planet" = 7.9643831975e+24
-"transit_depth" = 0.00012026905833
-"bond_albedo" = 0.25
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/demos/dummy.toml"
 
-[parameters]                     # Parameters to optimize (with bounds)
+# Method for initialising the inference scheme (one of these must be 'none')
+init_samps = 2         # Number of samples if starting from scratch.
+init_grid  = 'none'    # Path pre-computed grid (relative to PROTEUS output folder)
+
+# Parameters for Bayesian optimisation
+n_workers  = 7       # Number of parallel workers
+kernel     = "RBF"   # Kernel type for GP
+max_len    = 25      # Maximum number of evaluations
+n_restarts = 10      # GP optimization restarts
+n_samples  = 1000    # Raw samples for acquisition optimization
+
+# Parameters to optimize (with bounds)
+[parameters]
 "struct.mass_tot" = [0.5, 3.0]
 "struct.corefrac" = [0.3, 0.9]
 "atmos_clim.dummy.gamma" = [0.05, 0.95]
 "escape.dummy.rate" = [1.0, 1e5]
 "interior.dummy.ini_tmagma" = [2000, 4500]
 "outgas.fO2_shift_IW" = [-4.0, 4.0]
+
+# Target observables to match
+#   observables+parameters must match those used to create the grid, if using a grid
+[observables]
+"R_int" = 7629550.6175
+"M_planet" = 7.9643831975e+24
+"transit_depth" = 0.00012026905833
+"bond_albedo" = 0.25
 ```
 
 ## Usage
 
-### 1. Generate Initial Data
-
-First, create initial training data for the Bayesian optimization:
+Execute the main optimisation process by using the PROTEUS command-line interface
 
 ```bash
-python src/proteus/inference/gen_D_init.py
+proteus infer --config input/ensembles/example1.infer.toml
 ```
 
-This creates a file `prot.pth` with initial parameter-observable pairs in the output folder.
+In this case, we randomly sample the parameter space to provide a starting point for the
+optimisation. This process must stay open in order to manage the workers.
 
-### 2. Run Optimization
-
-Execute the main optimization script:
-
-```bash
-python src/proteus/inference/inference.py --config src/proteus/inference/BO_config.toml
-```
+We can also provide a better initial guess using the data from a grid.
 
 
 ## How It Works
@@ -121,12 +109,13 @@ The optimization will run until `max_len` evaluations are completed or manually 
 
 ## Output
 
-The system generates several outputs in the `output/inference/` directory:
+The system generates several outputs in:
 
 ### Data Files
 - `data.pkl`: Final dataset with all evaluated parameters and objectives
 - `logs.pkl`: Detailed logs of each BO step
 - `Ts.pkl`: Timestamps for performance analysis
+- `init.pkl`: Data used as an initial guess for starting the optimisation
 
 ### Plots
 - `parallel.png`: Timeline showing parallel worker execution
@@ -148,7 +137,7 @@ The system prints the final results including:
 ## Customization
 
 ### Adding New Parameters
-1. Update the `[parameters]` section in `BO_config.toml`
+1. Update the `[parameters]` section in your inference config file
 2. Ensure the parameter names match PROTEUS configuration keys
 
 ### Changing Observables
