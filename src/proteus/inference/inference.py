@@ -59,7 +59,7 @@ def run_inference(config):
     # Create initial guess data through the requested method
     n_init = create_init(config)
 
-    print(f"Starting optimisation with {config["n_workers"]} workers")
+    print(f"Starting optimisation with {config['n_workers']} workers")
     t_0 = time.perf_counter()
 
     # Execute the parallel BO process
