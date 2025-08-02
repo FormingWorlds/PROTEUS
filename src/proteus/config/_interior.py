@@ -103,7 +103,7 @@ class Aragog:
     """
 
     logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    ini_tmagma: float                   = field(default=None)
+    ini_tmagma                          = field(default=None)
     basal_temperature: float            = field(default=7000)
     init_file: str                      = field(default=None)
     num_levels: int                     = field(default=100,    validator=ge(40))

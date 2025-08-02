@@ -87,32 +87,37 @@ You can find detailed documentation [here](https://tmuxcheatsheet.com/).
 ## Running grids of simulations
 
 It is often useful to run grids of models, where each point in a grid represents a different
-set of parameters. This can be done using the script `tools/grid_proteus.py`.
+set of parameters. This can be done using the command line interface:
 
-You can configure a grid of your choosing by editing the variables at the end of this file.
-With the grid configured to your liking, you can then dispatch the grid in two ways.
+```console
+proteus grid -c path/to/config.grid.toml
+```
+
+You can configure a grid of your choosing by creating a TOML file, specifying the grid's
+axes and determining how they should be run. Grids can be dispatched either with or without
+Slurm, which can allow running large ensembles on high-performance compute clusters.
 
 ### Without Slurm
 
-Firstly, you can set `use_slurm=False`. In this case, `grid_proteus.py` will manage the
+Firstly, you can set `use_slurm = false`. In this case, the GridPROTEUS routine will manage the
 individual subprocesses which compose the grid. The variable `max_jobs` specifies the maximum number of CPU cores
 which should be utilised by the grid at any one time. This is limited by the number of CPU
-cores available on your machine. This method works without SLURM, and can be applied on servers or on multicore personal computers.
+cores available on your machine. This method works without Slurm, and can be applied on servers or
+on multicore personal computers.
 
-You will need to make sure that the `grid_proteus.py` process stays open in order to mange the subprocesses.
+You will need to make sure that PROTEUS stays open in order to mange the subprocesses.
 
 ### With Slurm
 
-Alternatively, you can access high performance compute nodes through the SLURM workload
-manager (e.g. on Habrok and Snellius). This is a two-step process. To do this, set `use_slurm=True` in `grid_proteus.py`,
-and set `max_mem` and `max_days` to specify how much memory should be allocated to each job (each simulation).
-These are nominally 3 GB and 2 days respectively. Ensure that these values are within the limits of the server you are working on.
+Alternatively, you can access high performance compute nodes through the Slurm workload
+manager (e.g. on Habrok and Snellius). This is a two-step process. To do this, set `use_slurm = true`
+your grid's configuration file. You should also then set `max_mem` and `max_days` to specify how much memory should be allocated to each job (each simulation). These are nominally 3 GB and 2 days respectively. Ensure that these values are within the limits of the server you are working on.
 
-With these options enabled, running `grid_proteus.py` will produce a script called `slurm_dispatch.sh` in the
+With these options enabled, running PROTEUS will produce a script called `slurm_dispatch.sh` in the
 specified output folder, as well as write the required configuration files to a subfolder called `cfgs/`.
 
-To dispatch your grid via Slurm, run `sbatch <path>` where `<path>` is the path to the dispatch script created
-by `grid_proteus.py`. You will be prompted to do this in the terminal.
+To dispatch your grid via Slurm, you must then run `sbatch <path>` where `<path>` is the path to the dispatch script created
+by the `proteus grid` command. You will be prompted to do this in the terminal.
 
 Monitor your running jobs with `squeue -u $USER`. To cancel **all** of your running jobs, use `scancel -u $USER`.
 

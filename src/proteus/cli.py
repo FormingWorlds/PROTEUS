@@ -1,6 +1,15 @@
 from __future__ import annotations
 
 import os
+
+# Prevent workers from using each other's CPUs to avoid
+#     oversubscription and improve performance
+os.environ["OMP_NUM_THREADS"] = "1"         # noqa
+os.environ["MKL_NUM_THREADS"] = "1"         # noqa
+os.environ["OPENBLAS_NUM_THREADS"] = "1"    # noqa
+os.environ["NUMEXPR_NUM_THREADS"] = "1"     # noqa
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # noqa
+
 import shutil
 import subprocess
 import sys
@@ -268,12 +277,37 @@ def observe(config_path: Path):
 cli.add_command(offchem)
 cli.add_command(observe)
 
-DEFAULT_DATA_DIR = Path(__file__).resolve().parents[3] / "FWL_DATA"
+# ----------------
+# GridPROTEUS and BO inference scheme
+# ----------------
+
+@click.command()
+@config_option
+def grid(config_path: Path):
+    """Run GridPROTEUS to generate a grid of forward models"""
+    from proteus.grid.manage import grid_from_config
+    grid_from_config(config_path)
+
+@click.command()
+@config_option
+def infer(config_path: Path):
+    """Use Bayesian optimisation to infer parameters from observables"""
+    from proteus.inference.inference import infer_from_config
+    infer_from_config(config_path)
+
+cli.add_command(grid)
+cli.add_command(infer)
+
+# ----------------
+# installer
+# ----------------
 
 def resolve_fwl_data_dir() -> Path:
     """Return the FWL_DATA path (env or default)."""
-    return Path(os.environ.get("FWL_DATA", DEFAULT_DATA_DIR))
-
+    if "FWL_DATA" in os.environ:
+        return Path(os.environ.get("FWL_DATA"))
+    else:
+        raise EnvironmentError("Environment variable FWL_DATA has not been set!")
 
 def append_to_shell_rc(var: str, value: str, shell: str = None) -> Path | None:
     """Append an export line to the appropriate shell rc file."""

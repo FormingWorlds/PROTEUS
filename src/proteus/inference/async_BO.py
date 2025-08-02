@@ -22,10 +22,10 @@ from functools import partial
 from multiprocessing import Manager, Process
 
 import torch
-from BO import BO_step
-from plots import plot_res, plot_times
 from scipy.stats.qmc import Halton
 
+from proteus.inference.plot import plots_perf_converge, plots_perf_timeline
+from proteus.inference.BO import BO_step
 from proteus.utils.coupler import get_proteus_directories
 
 # Tensor dtype for all computations
@@ -182,13 +182,11 @@ def worker(
 
 def parallel_process(
     objective_builder,
-    *,
     kernel,
     n_restarts: int,
     n_samples: int,
     n_workers: int,
     max_len: int,
-    D_init_path: str,
     output: str,
     ref_config,
     observables,
@@ -206,7 +204,6 @@ def parallel_process(
         n_samples (int): Number of raw samples for acquisition optimization.
         n_workers (int): Number of parallel worker processes.
         max_len (int): Target total number of evaluations.
-        D_init_path (str): Path to pickled initial data dict.
         output (str): Output directory for checkpoints and plots.
         ref_config: Reference config to pass to objective_builder.
         observables: List or dict of target observable values.
@@ -232,9 +229,15 @@ def parallel_process(
         n_samples=n_samples
     )
 
+    # Absolute path to shared output dir
+    output_abspath = get_proteus_directories(output)["output"]
+
     mgr = Manager()
 
     # Load initial dataset
+    D_init_path = os.path.join(output_abspath, "init.pkl")
+    if not os.path.isfile(D_init_path):
+        raise FileNotFoundError("Cannot find D_init file: " + D_init_path)
     with open(D_init_path, "rb") as f_init:
         D_init = pickle.load(f_init)
 
@@ -255,9 +258,6 @@ def parallel_process(
     # Shared list for end times
     T = mgr.list()
     T0 = time.perf_counter()
-
-    # Absolute path to shared output dir
-    output_abspath = get_proteus_directories(output)["output"]
 
     # Spawn worker processes
     procs = []
@@ -295,7 +295,7 @@ def parallel_process(
     T_elapsed = [t - T0 for t in list(T)]
 
     # Generate diagnostic plots
-    plot_times(logs, output_abspath, n_init)
-    plot_res(D_final, T_elapsed, n_init, output_abspath)
+    plots_perf_timeline(logs, output_abspath, n_init)
+    plots_perf_converge(D_final, T_elapsed, n_init, output_abspath)
 
     return D_final, logs, T_elapsed

@@ -26,7 +26,7 @@ version = "2.0"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 2e9     # yr, model will terminate when t > maximum
+            maximum = 1e9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]

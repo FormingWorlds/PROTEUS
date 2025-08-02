@@ -31,7 +31,7 @@ from proteus.utils.logs import (
 #     Not setting this variable will allow SciPy to use all available CPU cores,
 #     which can actually slow down performance. Choosing 4 is safe, as this is the limit
 #     on GitHub runners, and is reasonable for desktop PCs and interactive servers.
-os.environ["OMP_NUM_THREADS"] = "4"
+# os.environ["OMP_NUM_THREADS"] = "4"
 
 class Proteus:
     def __init__(self, *, config_path: Path | str) -> None:

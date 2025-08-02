@@ -298,7 +298,8 @@ def calc_surface_pressures(dirs:dict, config:Config, hf_row:dict):
                                                     atol=config.outgas.mass_thresh,
                                                     nguess=int(1e3), nsolve=int(3e3),
                                                     p_guess=p_guess,
-                                                    print_result=False)
+                                                    print_result=False,
+                                                    opt_solver=False)
     except RuntimeError as e:
         log.error("Outgassing calculation with CALLIOPE failed")
         UpdateStatusfile(dirs, 27)

@@ -2,38 +2,31 @@
 
 This module loads configuration parameters, sets up the environment for parallel processing,
 executes the optimization, and handles result printing and checkpointing.
-
-Example:
-    python main.py --config BO_config.toml
 """
 from __future__ import annotations
 
-import os
-
-# Prevent workers from using each other's CPUs to avoid oversubscription and improve performance
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # for Mac
-
 # system libraries
+import os
 import time
 from datetime import datetime
 
 import toml
 import torch
-from async_BO import checkpoint, parallel_process
-from objective import prot_builder
-from utils import print_results
 
 # proteus libraries
 from proteus.utils.coupler import get_proteus_directories
+from proteus.utils.helper import safe_rm
+
+# bayesopt source files
+from proteus.inference.async_BO import checkpoint, parallel_process
+from proteus.inference.gen_D_init import create_init
+from proteus.inference.objective import prot_builder
+from proteus.inference.utils import print_results
 
 # Use double precision for all tensor computations
 dtype = torch.double
 
-# Entry point for inference scheme
+# Entry point for inference scheme, providing infererence-config dict
 def run_inference(config):
 
     # dictionary of directories
@@ -44,37 +37,42 @@ def run_inference(config):
     if not os.path.isfile(config["ref_config"]):
         raise FileNotFoundError("Cannot find reference config: " + config["ref_config"])
 
-    # file containing the 'initial guess' data
-    if not config["D_init_path"]:
-        config["D_init_path"] = os.path.join(dirs["proteus"], "src", "proteus",
-                                                "inference", "prot.pth")
-    else:
-        config["D_init_path"] = os.path.abspath(config["D_init_path"])
-    if not os.path.isfile(config["D_init_path"]):
-        raise FileNotFoundError("Cannot find D_init_path: " + config["D_init_path"])
+    # Create output directory
+    safe_rm(dirs["output"])
+    os.makedirs(dirs["output"])
 
-    # Create output directory and save a timestamped copy of the config
-    os.makedirs(dirs["output"], exist_ok=True)
-    with open(os.path.join(dirs["output"], "config.toml"), "w") as file:
+    # Save a timestamped copy of the config
+    with open(os.path.join(dirs["output"], "copy.infer.toml"), "w") as file:
         timestamp = datetime.now().astimezone().isoformat()
         file.write(f"# Created: {timestamp}\n\n")
         toml.dump(config, file)
 
     # Ensure there are enough CPU cores for the specified number of workers
-    assert os.cpu_count() - 1 >= config["n_workers"], \
-        f"Not enough CPU cores for {config['n_workers']} workers"
+    if config["n_workers"] >= os.cpu_count():
+        raise RuntimeError(f"Not enough CPU cores for {config['n_workers']} workers")
 
-    print("Starting optimisation\n")
+    # Create initial guess data through the requested method
+    create_init(config)
+
+    print(f"Starting optimisation with {config["n_workers"]} workers")
     t_0 = time.perf_counter()
 
     # Execute the parallel BO process
     D_final, logs, Ts = parallel_process(
-        objective_builder=prot_builder,
-        **config
+        prot_builder,
+        config["kernel"],
+        config["n_restarts"],
+        config["n_samples"],
+        config["n_workers"],
+        config["max_len"],
+        config["output"],
+        config["ref_config"],
+        config["observables"],
+        config["parameters"]
     )
 
     t_1 = time.perf_counter()
-    print(f"this took: {(t_1 - t_0):.2f} seconds\n")
+    print(f"This took: {(t_1 - t_0):.2f} seconds\n")
 
     # Print summary of true vs. simulated observables and inferred parameters
     print_results(D_final, logs, config, dirs["output"])
@@ -83,20 +81,11 @@ def run_inference(config):
     checkpoint(D_final, logs, Ts, dirs["output"])
 
 
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Run asynchronous BO with PROTEUS.")
-    parser.add_argument(
-        "--config",
-        type=str,
-        required=True,
-        help="Path to TOML config file containing BO parameters and settings"
-    )
-    args = parser.parse_args()
+def infer_from_config(config_fpath:str):
+    '''Run inference scheme according to the configuration provided'''
 
     # Load configuration from TOML file
-    with open(args.config, "r") as file:
+    with open(config_fpath, "r") as file:
         config = toml.load(file)
 
     # run inference scheme
