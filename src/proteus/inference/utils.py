@@ -21,7 +21,6 @@ import torch
 # Use double precision for tensor computations
 dtype = torch.double
 
-
 def get_nested(config: dict, key: str, sep: str = "."):
     """Retrieve a value from a nested dictionary using a dot-separated key path.
 

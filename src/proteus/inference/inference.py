@@ -12,14 +12,16 @@ from datetime import datetime
 
 import toml
 import torch
-from async_BO import checkpoint, parallel_process
-from gen_D_init import create_init
-from objective import prot_builder
-from utils import print_results
 
 # proteus libraries
 from proteus.utils.coupler import get_proteus_directories
 from proteus.utils.helper import safe_rm
+
+# bayesopt source files
+from proteus.inference.async_BO import checkpoint, parallel_process
+from proteus.inference.gen_D_init import create_init
+from proteus.inference.objective import prot_builder
+from proteus.inference.utils import print_results
 
 # Use double precision for all tensor computations
 dtype = torch.double

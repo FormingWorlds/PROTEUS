@@ -22,10 +22,10 @@ from functools import partial
 from multiprocessing import Manager, Process
 
 import torch
-from BO import BO_step
-from plots import plot_res, plot_times
 from scipy.stats.qmc import Halton
 
+from proteus.inference.plots import plot_res, plot_times
+from proteus.inference.BO import BO_step
 from proteus.utils.coupler import get_proteus_directories
 
 # Tensor dtype for all computations

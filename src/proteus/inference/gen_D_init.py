@@ -13,10 +13,12 @@ from glob import glob
 
 import pandas as pd
 import toml
+from botorch.utils.transforms import normalize
 import torch
-from objective import eval_obj, prot_builder
 
+from proteus.inference.objective import eval_obj, prot_builder
 from proteus.utils.coupler import get_proteus_directories
+from proteus.utils.helper import recursive_get
 
 # Use double precision for all tensor computations
 dtype = torch.double
@@ -100,18 +102,21 @@ def sample_from_grid(output:str,
     Y = torch.zeros(nsamp, 1, dtype=dtype)
     for i in range(nsamp):
 
-        # Generate normalised parameters
-        raw_x = [confs[i][k] for k in keys]
-        nrm_x = torch.normalize(raw_x, bounds).flatten()
+        # Get input parameters from grid configs
+        raw_x = [recursive_get(confs[i],k.split(".")) for k in keys]
+        raw_x = torch.tensor(raw_x, dtype=dtype)
+
+        # Generate normalised INPUT parameters
+        nrm_x = normalize(raw_x, bounds).flatten()
         X[i,:] = nrm_x[:] # store (list of floats)
 
-        # Get values of observables from grid point data (list of floats)
+        # Get values of OUTPUT observables from grid point data (list of floats)
         obs_y = helps[i].iloc[-1][observables.keys()].T
 
         # Evaluate objective and store (float)
-        Y[i] = eval_obj(obs_y, observables.values())
+        Y[i] = eval_obj(obs_y, observables)
 
-    # Package into dataset dict
+    # Package into dataset dict, to be pickled
     D = {"X": X, "Y": Y}
     print(f"Generated initial dataset with {nsamp} points in {dims}-dim space")
 
