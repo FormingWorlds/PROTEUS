@@ -21,7 +21,7 @@ import torch
 from botorch.utils.transforms import unnormalize
 
 dtype = torch.double
-fmt = "pdf"
+fmt = "png"
 dpi = 300
 
 def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
@@ -108,7 +108,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.set_xlim(left=0, right=xlim_max_padded)
     plt.tight_layout()
 
-    fig.savefig(os.path.join(directory, "plots", f"perf_parallel.{fmt}"), dpi = dpi)
+    fig.savefig(os.path.join(directory, "plots", f"perf_parallel.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
     # Histogram of total durations
@@ -128,7 +128,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    fig.savefig(os.path.join(directory, "plots", f"perf_timehist.{fmt}"), dpi = dpi)
+    fig.savefig(os.path.join(directory, "plots", f"perf_timehist.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(7, 4))
@@ -148,7 +148,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    fig.savefig(os.path.join(directory, "plots", f"perf_BO_timehist.{fmt}"), dpi = dpi)
+    fig.savefig(os.path.join(directory, "plots", f"perf_BO_timehist.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
     # Histogram of evaluation times
@@ -168,7 +168,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    fig.savefig(os.path.join(directory, "plots", f"perf_eval_timehist.{fmt}"), dpi = dpi)
+    fig.savefig(os.path.join(directory, "plots", f"perf_eval_timehist.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
     # Colored histogram for fit times
@@ -212,7 +212,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    fig.savefig(os.path.join(directory, "plots", f"perf_fit_timehist.{fmt}"), dpi=dpi)
+    fig.savefig(os.path.join(directory, "plots", f"perf_fit_timehist.{fmt}"), dpi=dpi, bbox_inches='tight')
     plt.close(fig)
 
     # Colored histogram for acquisition times
@@ -256,7 +256,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    fig.savefig(os.path.join(directory, "plots", f"perf_acquisition_timehist.{fmt}"), dpi=dpi)
+    fig.savefig(os.path.join(directory, "plots", f"perf_acquisition_timehist.{fmt}"), dpi=dpi, bbox_inches='tight')
     plt.close(fig)
 
     # Scatter plot of distance to busy locations
@@ -280,7 +280,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     plt.tight_layout()
-    fig.savefig(os.path.join(directory, "plots", f"perf_distance_iters.{fmt}"), dpi=dpi)
+    fig.savefig(os.path.join(directory, "plots", f"perf_distance_iters.{fmt}"), dpi=dpi, bbox_inches='tight')
     plt.close(fig)
 
 
@@ -337,7 +337,7 @@ def plots_perf_converge(D, T, n_init, directory):
     plt.tight_layout()
 
 
-    fig.savefig(os.path.join(directory, "plots", f"perf_regret.{fmt}"), dpi = dpi)
+    fig.savefig(os.path.join(directory, "plots", f"perf_regret.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
     fig, axes = plt.subplots(2, 1, figsize=(8, 6), sharex=False)
@@ -359,16 +359,17 @@ def plots_perf_converge(D, T, n_init, directory):
 
     plt.tight_layout()
 
-    fig.savefig(os.path.join(directory, "plots", f"perf_bestval.{fmt}"), dpi = dpi)
+    fig.savefig(os.path.join(directory, "plots", f"perf_bestval.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
 
-def plot_result_objective(D, parameters, directory):
+def plot_result_objective(D, parameters, n_init, directory):
     """Plot objective function at each sample that was created.
 
     Args:
         D (dict): Contains 'X' and 'Y' lists.
         parameters (dict): Parameter names and bounds
+        n_init (int): Number of initial evaluations (to be highlighted).
         directory (str): Base dir where "plots/" subfolder will be created.
     """
 
@@ -384,16 +385,25 @@ def plot_result_objective(D, parameters, directory):
     X = unnormalize(D['X'], bounds)
     X = np.array(X)
 
+    # Colors
+    C = np.full_like(Y, 'k', dtype=str)
+    C[:n_init] = 'c'
+
+    # Limits
+    ymax = 1.0
+    ymin = np.amin(Y)
+
     # Plot
-    fig,axs = plt.subplots(1, d, sharey=True, figsize=(2*d, 4))
+    fig,axs = plt.subplots(1, d, figsize=(3*d, 4))
     axs[0].set_ylabel("Value of objective")
 
     for i in range(d):
-        axs[i].scatter(X[:,i],Y, color='k', s=10, alpha=0.8)
-        axs[i].set_xlabel(keys[i])
+        axs[i].scatter(X[:,i], Y, c=list(C), s=9, alpha=0.8, zorder=4)
+        axs[i].set_xlabel(keys[i], fontsize=10)
         axs[i].grid(alpha=0.2)
-        axs[i].set_ylim(0,1)
-        if i>0:
+        axs[i].set_ylim(ymin, ymax)
+        if i>=1:
             axs[i].set_yticklabels([])
 
-    fig.savefig(os.path.join(directory, "plots", f"result_objective.{fmt}"), dpi = dpi)
+    fig.subplots_adjust(wspace=0.01)
+    fig.savefig(os.path.join(directory, "plots", f"result_objective.{fmt}"), dpi = dpi, bbox_inches='tight')

@@ -75,7 +75,7 @@ def sample_from_grid(output:str,
     confs = []
     for c in cases:
         # Data
-        helps.append(pd.read_csv(c+"runtime_helpfile.csv", delimiter="\t"))
+        helps.append(pd.read_csv(c+"runtime_helpfile.csv", delimiter=r"\s+"))
 
         # Config
         with open(c+"init_coupler.toml", 'r') as f:

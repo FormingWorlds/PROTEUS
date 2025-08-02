@@ -95,7 +95,7 @@ def run_proteus(parameters: dict,
             update_toml(ref_config, parameters, out_cfg)
 
             # Read simulator output
-            df = pd.read_csv(out_csv, delimiter="\t")
+            df = pd.read_csv(out_csv, delimiter=r"\s+")
             return df.iloc[-1][observables].T
         except subprocess.CalledProcessError as e:
             if attempt < max_attempts:

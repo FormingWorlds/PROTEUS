@@ -105,6 +105,9 @@ version = "2.0"
     fO2_shift_IW    = 2         # log10(ΔIW), atmosphere/interior boundary oxidation state
     module = "calliope"         # Which outgassing module to use
 
+    [outgas.calliope]
+        include_NH3 = false
+
 [delivery]
 
     initial = 'elements'        # "elements" | "volatiles"
@@ -113,7 +116,7 @@ version = "2.0"
     [delivery.elements]
         H_ppmw      = 200.0     # Hydrogen inventory in ppmw relative to mantle mass
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        N_ppmw      = 2.0       # Nitrogen inventory in ppmw relative to mantle mass
+        N_ppmw      = 0.0       # Nitrogen inventory in ppmw relative to mantle mass
         SH_ratio    = 1.0       # Sulfur inventory in ppmw relative to mantle mass
 
 [observe]
