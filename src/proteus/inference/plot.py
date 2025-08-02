@@ -379,6 +379,9 @@ def plot_result_objective(D, parameters, n_init, directory):
     # Get objective function values
     Y = np.array(D['Y']).flatten()
 
+    # Best point
+    i_best = np.argmax(Y)
+
     # Get bounds
     keys = list(parameters.keys())
     d = len(keys)
@@ -391,24 +394,25 @@ def plot_result_objective(D, parameters, n_init, directory):
     # Colors
     C = np.full_like(Y, 'k', dtype=str)
     C[:n_init] = 'c'
+    C[i_best] = 'r'
 
     # Limits
     ymax = 1.0
     ymin = np.amin(Y)
 
     # Plot
-    fig,axs = plt.subplots(1, d, figsize=(3*d, 4))
+    fig,axs = plt.subplots(1, d, figsize=(2.7*d, 3.2))
     axs[0].set_ylabel("Value of objective")
 
     for i in range(d):
         axs[i].scatter(X[:,i], Y, c=list(C), s=9, alpha=0.8, zorder=4)
         axs[i].set_xlabel(keys[i], fontsize=10)
-        axs[i].grid(alpha=0.2)
+        axs[i].grid(alpha=0.2, zorder=0)
         axs[i].set_ylim(ymin, ymax)
         if i>=1:
             axs[i].set_yticklabels([])
 
-    fig.subplots_adjust(wspace=0.01)
+    fig.subplots_adjust(wspace=0.012)
     fig.savefig(os.path.join(directory, "plots", f"result_objective.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
@@ -452,19 +456,25 @@ def plot_result_correlation(par_keys, obs_keys, directory):
     n_par = len(par_keys)
     n_obs = len(obs_keys)
 
-    # Plot
-    fig,axs = plt.subplots(n_obs, n_par, figsize=(4*n_obs, 2*n_par))
-
+    # Make plot
+    fig,axs = plt.subplots(n_obs, n_par, figsize=(2.7*n_par, 2.7*n_obs))
     for i in range(n_par):
         for j in range(n_obs):
+            # plot data
             xx = X[:, i]
             yy = Y[:, j]
-            axs[j,i].scatter(xx, yy, color='k', alpha=0.9, s=8)
+            axs[j,i].scatter(xx, yy, color='k', alpha=0.8, s=8, zorder=4)
 
+            # hide tick labels
             if i>=1:
                 axs[j,i].set_yticklabels([])
+            if j<n_obs-1:
+                axs[j,i].set_xticklabels([])
 
-    # Labels
+            # axis grid
+            axs[j,i].grid(alpha=0.2, zorder=0)
+
+    # Axis labels
     for i in range(n_par):
         axs[-1,i].set_xlabel(par_keys[i], fontsize=10)
     for j in range(n_obs):
