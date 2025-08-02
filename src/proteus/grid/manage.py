@@ -307,17 +307,29 @@ class Grid():
             os.sync()
 
 
-    def run(self,num_threads:int,test_run:bool=False):
+    def run(self,num_threads:int,
+            test_run:bool=False,
+            check_interval:float=15.0,
+            print_interval:float=8):
+        '''
+        Run GridPROTEUS on the current machine.
+
+        The value of `num_threads` will be restricted to the number of available CPUs.
+
+        Parameters
+        ----------
+        - `num_threads:int`         number of CPU cores to use
+        - `test_run:bool`           if true, does not actually run PROTEUS
+        - `check_interval:float`    interval [secs] at which to check status of workers
+        - `print_interval:int`      step interval at which to print (8*15 seconds = 2 minutes)
+        '''
+
         log.info("Running PROTEUS across parameter grid '%s'" % self.name)
 
         time_start = datetime.now()
         log.info("Output path: '%s'" % self.outdir)
         if self.using_symlink:
             log.info("Symlink target: '%s'" % self.symlink_dir)
-
-        check_interval = 15.0 # seconds
-        print_interval = 8   # step interval at which to print (8*15 seconds = 2 minutes)
-
         # do not need more threads than there are points
         num_threads = min(num_threads, self.size)
 

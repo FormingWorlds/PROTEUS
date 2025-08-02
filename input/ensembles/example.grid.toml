@@ -26,13 +26,13 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 # Planet mass set directly
 ["struct.mass_tot"]
     method = "direct"
-    values = [1.85, 2.14, 2.39]
+    values = [0.7, 1.0, 2.0, 3.0]
 
 # Hydrogen inventory set by arange
 ["delivery.elements.H_ppmw"]
     method = "arange"
     start    = 5000
-    stop     = 30000
+    stop     = 20000
     step     = 5000
 
 # Mantle redox state set directly

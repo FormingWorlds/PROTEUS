@@ -90,6 +90,8 @@ J = 1 - ||1 - sim/true||²
 ```
 
 Where `sim` are the simulated observables and `true` are the target values.
+This means that the 'best' value for the objective function is 1. Values closer to 1 represent
+better fits, while smaller values (including negative ones) are worse fits.
 
 ### Parallel Processing
 
@@ -118,15 +120,20 @@ The system generates several outputs in:
 - `init.pkl`: Data used as an initial guess for starting the optimisation
 
 ### Plots
-- `parallel.png`: Timeline showing parallel worker execution
-- `t_hist.png`: Distribution of total evaluation times
-- `BO_t_hist.png`: Distribution of BO computation times
-- `eval_t_hist.png`: Distribution of PROTEUS evaluation times
-- `fit_t_hist.png`: Distribution of GP fitting times
-- `ac_t_hist.png`: Distribution of acquisition optimization times
-- `dist_v_iter.png`: Distance between queries and busy locations
-- `reg.png`: Convergence plots (regret vs time/iterations)
-- `best_val.png`: Best objective value evolution
+The BO scheme will generate many plots upon completion.
+Those prefixed with `perf_` diagnose the performance of the optimisation.
+
+- `perf_parallel.png`: Timeline showing parallel worker execution
+- `perf_timehist.png`: Distribution of total evaluation times
+- `perf_BO_timehist.png`: Distribution of BO computation times
+- `perf_eval_timehist.png`: Distribution of PROTEUS evaluation times
+- `perf_fit_timehist.png`: Distribution of GP fitting times
+- `perf_ac_timehist.png`: Distribution of acquisition optimization times
+- `perf_distance_iters.png`: Distance between queries and busy locations
+- `perf_regret.png`: Convergence plots (regret vs time/iterations)
+- `perf_bestval.png`: Best objective value evolution
+
+Plots prefixed with `result_` are show the results of the optimisation.
 
 ### Results Summary
 The system prints the final results including:

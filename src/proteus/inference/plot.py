@@ -19,8 +19,10 @@ from matplotlib import cm
 from matplotlib.ticker import MaxNLocator
 
 
-def plot_timeline(logs, directory, n_init, min_text_width=0.88):
+def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     """Generate timeline and histograms of process durations.
+
+    This function makes multiple plots
 
     Args:
         logs (list of dict): Log entries containing timing and evaluation data.
@@ -102,7 +104,7 @@ def plot_timeline(logs, directory, n_init, min_text_width=0.88):
     plt.tight_layout()
     path = directory+"plots/"
     os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "parallel.png", dpi = 300)
+    fig.savefig(path + "perf_parallel.png", dpi = 300)
     plt.close(fig)
 
     # Histogram of total durations
@@ -124,7 +126,7 @@ def plot_timeline(logs, directory, n_init, min_text_width=0.88):
     plt.tight_layout()
     path = directory+"plots/"
     os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "t_hist.png", dpi = 300)
+    fig.savefig(path + "perf_timehist.png", dpi = 300)
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(7, 4))
@@ -146,7 +148,7 @@ def plot_timeline(logs, directory, n_init, min_text_width=0.88):
     plt.tight_layout()
     path = directory+"plots/"
     os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "BO_t_hist.png", dpi = 300)
+    fig.savefig(path + "perf_BO_timehist.png", dpi = 300)
     plt.close(fig)
 
     # Histogram of evaluation times
@@ -168,7 +170,7 @@ def plot_timeline(logs, directory, n_init, min_text_width=0.88):
     plt.tight_layout()
     path = directory+"plots/"
     os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "eval_t_hist.png", dpi = 300)
+    fig.savefig(path + "perf_eval_timehist.png", dpi = 300)
     plt.close(fig)
 
     # Colored histogram for fit times
@@ -214,7 +216,7 @@ def plot_timeline(logs, directory, n_init, min_text_width=0.88):
     plt.tight_layout()
     path = os.path.join(directory, "plots")
     os.makedirs(path, exist_ok=True)
-    fig.savefig(os.path.join(path, "fit_t_hist.png"), dpi=300)
+    fig.savefig(os.path.join(path, "perf_fit_timehist.png"), dpi=300)
     plt.close(fig)
 
     # Colored histogram for acquisition times
@@ -260,7 +262,7 @@ def plot_timeline(logs, directory, n_init, min_text_width=0.88):
     plt.tight_layout()
     path = os.path.join(directory, "plots")
     os.makedirs(path, exist_ok=True)
-    fig.savefig(os.path.join(path, "ac_t_hist.png"), dpi=300)
+    fig.savefig(os.path.join(path, "perf_acquisition_timehist.png"), dpi=300)
     plt.close(fig)
 
     # Scatter plot of distance to busy locations
@@ -286,11 +288,11 @@ def plot_timeline(logs, directory, n_init, min_text_width=0.88):
     plt.tight_layout()
     path = directory + "plots/"
     os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "dist_v_iter.png", dpi=300)
+    fig.savefig(path + "perf_distance_iters.png", dpi=300)
     plt.close(fig)
 
 
-def plot_converge(D, T, n_init, directory, save = True):
+def plots_perf_converge(D, T, n_init, directory):
     """Plot regret and best observed value over time and iterations.
 
     Args:
@@ -343,15 +345,10 @@ def plot_converge(D, T, n_init, directory, save = True):
 
     plt.tight_layout()
 
-    if save:
-        path = directory+"plots/"
-        os.makedirs(path, exist_ok=True)
-        fig.savefig(path + "reg.png", dpi = 300)
-        plt.close(fig)
-
-    else:
-         fig.show()
-
+    path = directory+"plots/"
+    os.makedirs(path, exist_ok=True)
+    fig.savefig(path + "perf_regret.png", dpi = 300)
+    plt.close(fig)
 
     fig, axes = plt.subplots(2, 1, figsize=(8, 6), sharex=False)
 
@@ -372,13 +369,9 @@ def plot_converge(D, T, n_init, directory, save = True):
 
     plt.tight_layout()
 
-    if save:
-        path = directory+"plots/"
-        os.makedirs(path, exist_ok=True)
-        fig.savefig(path + "best_val.png", dpi = 300)
-        plt.close(fig)
-
-    else:
-        fig.show()
+    path = directory+"plots/"
+    os.makedirs(path, exist_ok=True)
+    fig.savefig(path + "perf_bestval.png", dpi = 300)
+    plt.close(fig)
 
 
