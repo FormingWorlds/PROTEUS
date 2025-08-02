@@ -88,6 +88,7 @@ def run_inference(config):
     plotBO.plots_perf_timeline(logs, dirs["output"], n_init)
     plotBO.plots_perf_converge(D_final, Ts, n_init, dirs["output"])
     plotBO.plot_result_objective(D_final, config["parameters"], n_init, dirs["output"])
+    plotBO.plot_result_correlation(config["parameters"].keys(), config["observables"].keys(), dirs["output"])
 
 
 def infer_from_config(config_fpath:str):

@@ -115,3 +115,4 @@ def print_results(D, logs, config, output):
     print("\nTrue observables\n", true_y)
     print("\nSimulated observables\n", sim_opt)
     print("\nInferred inputs\n", par_opt)
+

@@ -10,7 +10,8 @@ Functions:
 from __future__ import annotations
 
 import os
-
+import toml
+from glob import glob
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,6 +20,8 @@ from matplotlib import cm
 from matplotlib.ticker import MaxNLocator
 import torch
 from botorch.utils.transforms import unnormalize
+
+from proteus.utils.helper import recursive_get
 
 dtype = torch.double
 fmt = "png"
@@ -407,3 +410,69 @@ def plot_result_objective(D, parameters, n_init, directory):
 
     fig.subplots_adjust(wspace=0.01)
     fig.savefig(os.path.join(directory, "plots", f"result_objective.{fmt}"), dpi = dpi, bbox_inches='tight')
+    plt.close(fig)
+
+
+def plot_result_correlation(par_keys, obs_keys, directory):
+    """Plot correlation between observables and parameters.
+
+    This requires reading output-data files from the disk.
+
+    Args:
+        par_keys (list): Parameter names
+        obs_keys (list): Observable names
+        directory (str): Base dir where the inference was performed.
+    """
+
+    # Convert to lists
+    par_keys = list(par_keys)
+    obs_keys = list(obs_keys)
+
+    # Get directories for all cases of interest
+    cases = glob(directory + "/workers/w_*/i_*/")
+
+    # Extract parameters and observables
+    X,Y = [], []
+    for c in cases:
+        # Read data
+        conf = toml.load(c+"init_coupler.toml")
+        help = pd.read_csv(c+"runtime_helpfile.csv", delimiter=r"\s+")
+
+        # Get parameters and observables
+        xx = [recursive_get(conf,k.split(".")) for k in par_keys]
+        yy = list(help.iloc[-1][obs_keys].T)
+
+        # Store these
+        X.append(xx)
+        Y.append(yy)
+    X = np.array(X, dtype=float)
+    Y = np.array(Y, dtype=float)
+
+    # Axes
+    n_par = len(par_keys)
+    n_obs = len(obs_keys)
+
+    # Plot
+    fig,axs = plt.subplots(n_obs, n_par, figsize=(4*n_obs, 2*n_par))
+
+    for i in range(n_par):
+        for j in range(n_obs):
+            xx = X[:, i]
+            yy = Y[:, j]
+            axs[j,i].scatter(xx, yy, color='k', alpha=0.9, s=8)
+
+            if i>=1:
+                axs[j,i].set_yticklabels([])
+
+    # Labels
+    for i in range(n_par):
+        axs[-1,i].set_xlabel(par_keys[i], fontsize=10)
+    for j in range(n_obs):
+        axs[j, 0].set_ylabel(obs_keys[j], fontsize=10)
+
+    # Decorate
+    fig.subplots_adjust(wspace=0.02, hspace=0.02)
+    fig.savefig(os.path.join(directory, "plots", f"result_correlation.{fmt}"), dpi = dpi, bbox_inches='tight')
+    plt.close(fig)
+
+
