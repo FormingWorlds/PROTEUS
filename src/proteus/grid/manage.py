@@ -13,12 +13,12 @@ import shutil
 import subprocess
 import sys
 import time
-import toml
 from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
 
 import numpy as np
+import toml
 
 from proteus.config import Config, read_config_object
 from proteus.utils.helper import get_proteus_dir
@@ -568,7 +568,7 @@ def grid_from_config(config_fpath:str):
     for key in config.keys():
 
         # Skip those without dots, since they aren't config variables
-        if not ("." in key):
+        if "." not in key:
             continue
 
         # Add dimension
