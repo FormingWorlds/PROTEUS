@@ -17,7 +17,12 @@ import numpy as np
 import pandas as pd
 from matplotlib import cm
 from matplotlib.ticker import MaxNLocator
+import torch
+from botorch.utils.transforms import unnormalize
 
+dtype = torch.double
+fmt = "pdf"
+dpi = 300
 
 def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     """Generate timeline and histograms of process durations.
@@ -102,9 +107,8 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
 
     ax.set_xlim(left=0, right=xlim_max_padded)
     plt.tight_layout()
-    path = directory+"plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "perf_parallel.png", dpi = 300)
+
+    fig.savefig(os.path.join(directory, "plots", f"perf_parallel.{fmt}"), dpi = dpi)
     plt.close(fig)
 
     # Histogram of total durations
@@ -124,9 +128,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    path = directory+"plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "perf_timehist.png", dpi = 300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_timehist.{fmt}"), dpi = dpi)
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(7, 4))
@@ -146,9 +148,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    path = directory+"plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "perf_BO_timehist.png", dpi = 300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_BO_timehist.{fmt}"), dpi = dpi)
     plt.close(fig)
 
     # Histogram of evaluation times
@@ -168,9 +168,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    path = directory+"plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "perf_eval_timehist.png", dpi = 300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_eval_timehist.{fmt}"), dpi = dpi)
     plt.close(fig)
 
     # Colored histogram for fit times
@@ -214,9 +212,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    path = os.path.join(directory, "plots")
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(os.path.join(path, "perf_fit_timehist.png"), dpi=300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_fit_timehist.{fmt}"), dpi=dpi)
     plt.close(fig)
 
     # Colored histogram for acquisition times
@@ -260,9 +256,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    path = os.path.join(directory, "plots")
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(os.path.join(path, "perf_acquisition_timehist.png"), dpi=300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_acquisition_timehist.{fmt}"), dpi=dpi)
     plt.close(fig)
 
     # Scatter plot of distance to busy locations
@@ -286,9 +280,7 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     plt.tight_layout()
-    path = directory + "plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "perf_distance_iters.png", dpi=300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_distance_iters.{fmt}"), dpi=dpi)
     plt.close(fig)
 
 
@@ -300,7 +292,6 @@ def plots_perf_converge(D, T, n_init, directory):
         T (list): Elapsed times corresponding to each evaluation.
         n_init (int): Number of initial evaluations to skip.
         directory (str): Base dir where "plots/" subfolder will be created.
-        save (bool): If True, save plots; else display interactively.
     """
 
     Y = np.array(D["Y"]).flatten()  # Flatten in case it's (N,1)
@@ -345,9 +336,8 @@ def plots_perf_converge(D, T, n_init, directory):
 
     plt.tight_layout()
 
-    path = directory+"plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "perf_regret.png", dpi = 300)
+
+    fig.savefig(os.path.join(directory, "plots", f"perf_regret.{fmt}"), dpi = dpi)
     plt.close(fig)
 
     fig, axes = plt.subplots(2, 1, figsize=(8, 6), sharex=False)
@@ -369,9 +359,41 @@ def plots_perf_converge(D, T, n_init, directory):
 
     plt.tight_layout()
 
-    path = directory+"plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "perf_bestval.png", dpi = 300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_bestval.{fmt}"), dpi = dpi)
     plt.close(fig)
 
 
+def plot_result_objective(D, parameters, directory):
+    """Plot objective function at each sample that was created.
+
+    Args:
+        D (dict): Contains 'X' and 'Y' lists.
+        parameters (dict): Parameter names and bounds
+        directory (str): Base dir where "plots/" subfolder will be created.
+    """
+
+    # Get objective function values
+    Y = np.array(D['Y']).flatten()
+
+    # Get bounds
+    keys = list(parameters.keys())
+    d = len(keys)
+    bounds = torch.tensor([[list(parameters.values())[i][j] for i in range(d)] for j in range(2)])
+
+    # Un-normalise X data
+    X = unnormalize(D['X'], bounds)
+    X = np.array(X)
+
+    # Plot
+    fig,axs = plt.subplots(1, d, sharey=True, figsize=(2*d, 4))
+    axs[0].set_ylabel("Value of objective")
+
+    for i in range(d):
+        axs[i].scatter(X[:,i],Y, color='k', s=10, alpha=0.8)
+        axs[i].set_xlabel(keys[i])
+        axs[i].grid(alpha=0.2)
+        axs[i].set_ylim(0,1)
+        if i>0:
+            axs[i].set_yticklabels([])
+
+    fig.savefig(os.path.join(directory, "plots", f"result_objective.{fmt}"), dpi = dpi)

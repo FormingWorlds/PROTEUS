@@ -22,6 +22,7 @@ from proteus.inference.async_BO import checkpoint, parallel_process
 from proteus.inference.gen_D_init import create_init
 from proteus.inference.objective import prot_builder
 from proteus.inference.utils import print_results
+import proteus.inference.plot as plotBO
 
 # Use double precision for all tensor computations
 dtype = torch.double
@@ -51,8 +52,11 @@ def run_inference(config):
     if config["n_workers"] >= os.cpu_count():
         raise RuntimeError(f"Not enough CPU cores for {config['n_workers']} workers")
 
+    # Create plots directory (will not already exist)
+    os.mkdir(os.path.join(dirs["output"], "plots"))
+
     # Create initial guess data through the requested method
-    create_init(config)
+    n_init = create_init(config)
 
     print(f"Starting optimisation with {config["n_workers"]} workers")
     t_0 = time.perf_counter()
@@ -79,6 +83,11 @@ def run_inference(config):
 
     # Save final data, logs, and timestamps for later analysis
     checkpoint(D_final, logs, Ts, dirs["output"])
+
+    # Make plots
+    plotBO.plots_perf_timeline(logs, dirs["output"], n_init)
+    plotBO.plots_perf_converge(D_final, Ts, n_init, dirs["output"])
+    plotBO.plot_result_objective(D_final, config["parameters"], dirs["output"])
 
 
 def infer_from_config(config_fpath:str):

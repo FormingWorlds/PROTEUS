@@ -43,7 +43,7 @@ def create_init(config):
     if init_samps:
         print( "Source for initial guess: sampling parameter space")
         print(f"    nsamp = {init_samps}")
-        D_init = sample_from_bounds(config["output"],
+        n_init = sample_from_bounds(config["output"],
                                     config["ref_config"],
                                     config["parameters"], config["observables"],
                                     init_samps)
@@ -52,9 +52,11 @@ def create_init(config):
     else:
         print( "Source for initial guess: pre-computed grid")
         print(f"    grid = {init_grid}")
-        D_init = sample_from_grid(config["output"],
+        n_init = sample_from_grid(config["output"],
                                     config["parameters"], config["observables"],
                                     init_grid)
+
+    return n_init
 
 
 def sample_from_grid(output:str,
@@ -122,7 +124,9 @@ def sample_from_grid(output:str,
     D_init_path = f"{proteus_out}/init.pkl"
     with open(D_init_path, "wb") as f_out:
         pickle.dump(D, f_out)
-    return D_init_path
+
+    # Return number of samples
+    return len(Y.flatten())
 
 def sample_from_bounds(output:str, ref_config:str,
                        params:dict, observables:dict,
@@ -166,4 +170,6 @@ def sample_from_bounds(output:str, ref_config:str,
     D_init_path = f"{proteus_out}/init.pkl"
     with open(D_init_path, "wb") as f_out:
         pickle.dump(D, f_out)
-    return D_init_path
+
+    # Return number of samples
+    return len(Y.flatten())

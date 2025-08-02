@@ -24,7 +24,6 @@ from multiprocessing import Manager, Process
 import torch
 from scipy.stats.qmc import Halton
 
-from proteus.inference.plot import plots_perf_converge, plots_perf_timeline
 from proteus.inference.BO import BO_step
 from proteus.utils.coupler import get_proteus_directories
 
@@ -293,9 +292,5 @@ def parallel_process(
     D_final = dict(D_shared)
     logs = list(log_list)
     T_elapsed = [t - T0 for t in list(T)]
-
-    # Generate diagnostic plots
-    plots_perf_timeline(logs, output_abspath, n_init)
-    plots_perf_converge(D_final, T_elapsed, n_init, output_abspath)
 
     return D_final, logs, T_elapsed

@@ -15,6 +15,8 @@ Functions:
 from __future__ import annotations
 
 import pandas as pd
+import pickle
+import os
 import toml
 import torch
 
@@ -113,3 +115,15 @@ def print_results(D, logs, config, output):
     print("\nTrue observables\n", true_y)
     print("\nSimulated observables\n", sim_opt)
     print("\nInferred inputs\n", par_opt)
+
+
+def read_D_from_pkl(output):
+
+    fpath = os.path.join(output, "data.pkl")
+    if not os.path.isfile(fpath):
+        raise FileNotFoundError(f"Cannot find inference result data: {fpath}")
+
+    with open(fpath, 'rb') as hdl:
+        data = pickle.load(hdl)
+
+    return data
