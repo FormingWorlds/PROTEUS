@@ -1,0 +1,72 @@
+# Config file for running a grid of forward models
+
+# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+output = "grid_demo/"
+
+# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+symlink = ""
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/demos/dummy.toml"
+
+# Use SLURM?
+use_slurm = false
+
+# Execution limits
+max_jobs = 10       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 1        # maximum number of days to run (e.g. 1)
+max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+
+# Now define grid axes...
+#    Each axis must be a new section (table) in this file.
+#    Each table corresponds to the name of the parameter to be varied.
+#    Each table name must be written in double quotes.
+#    See examples below
+
+# Planet mass set directly
+["struct.mass_tot"]
+    method = "direct"
+    values = [1.85, 2.14, 2.39]
+
+# Planet bulk S/H ratio set directly
+["delivery.elements.SH_ratio"]
+    method = "direct"
+    values = [2, 4, 6, 8, 10]
+
+# Hydrogen inventory set by arange
+["delivery.elements.H_ppmw"]
+    method = "arange"
+    start    = 800
+    stop     = 30000
+    step     = 2000
+
+# Orbital eccentricity set by logspace
+["orbit.eccentricity"]
+    method = "logspace"
+    start  = 0.0
+    stop   = 0.15
+    count  = 25
+
+# Core radius fraction set by linspace
+["struct.corefrac"]
+    method = "linspace"
+    start  = 0.35
+    stop   = 0.95
+    count  = 25
+
+# Spectral bands set directly
+["atmos_clim.agni.spectral_bands"]
+    method = "direct"
+    values = ["16", "48", "256"]
+
+# Escape efficiency set by arange
+["escape.zephyrus.efficiency"]
+    method   = "arange"
+    start    = 0.0
+    stop     = 0.25
+    step     = 0.025
+
+# Mantle redox state set directly
+["outgas.fO2_shift_IW"]
+    method = "direct"
+    values = [-3, -2]

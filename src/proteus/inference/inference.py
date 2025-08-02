@@ -2,25 +2,13 @@
 
 This module loads configuration parameters, sets up the environment for parallel processing,
 executes the optimization, and handles result printing and checkpointing.
-
-Example:
-    python main.py --config BO_config.toml
 """
 from __future__ import annotations
 
-import os
-
-# Prevent workers from using each other's CPUs to avoid oversubscription and improve performance
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # for Mac
-
 # system libraries
+import os
 import time
 from datetime import datetime
-
 import toml
 import torch
 from async_BO import checkpoint, parallel_process
@@ -30,11 +18,12 @@ from utils import print_results
 
 # proteus libraries
 from proteus.utils.coupler import get_proteus_directories
+from proteus.utils.helper import safe_rm
 
 # Use double precision for all tensor computations
 dtype = torch.double
 
-# Entry point for inference scheme
+# Entry point for inference scheme, providing config dict
 def run_inference(config):
 
     # dictionary of directories
@@ -45,15 +34,18 @@ def run_inference(config):
     if not os.path.isfile(config["ref_config"]):
         raise FileNotFoundError("Cannot find reference config: " + config["ref_config"])
 
-    # Create output directory and save a timestamped copy of the config
-    os.makedirs(dirs["output"], exist_ok=True)
+    # Create output directory
+    safe_rm(dirs["output"])
+    os.makedirs(dirs["output"])
+
+    # Save a timestamped copy of the config
     with open(os.path.join(dirs["output"], "config.toml"), "w") as file:
         timestamp = datetime.now().astimezone().isoformat()
         file.write(f"# Created: {timestamp}\n\n")
         toml.dump(config, file)
 
     # Ensure there are enough CPU cores for the specified number of workers
-    if os.cpu_count() - 1 >= config["n_workers"]:
+    if config["n_workers"] >= os.cpu_count():
         raise RuntimeError(f"Not enough CPU cores for {config['n_workers']} workers")
 
 
@@ -87,20 +79,11 @@ def run_inference(config):
     checkpoint(D_final, logs, Ts, dirs["output"])
 
 
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Run asynchronous BO with PROTEUS.")
-    parser.add_argument(
-        "--config",
-        type=str,
-        required=True,
-        help="Path to TOML config file containing BO parameters and settings"
-    )
-    args = parser.parse_args()
+def infer_from_config(config_fpath:str):
+    '''Run inference scheme according to the configuration provided'''
 
     # Load configuration from TOML file
-    with open(args.config, "r") as file:
+    with open(config_fpath, "r") as file:
         config = toml.load(file)
 
     # run inference scheme

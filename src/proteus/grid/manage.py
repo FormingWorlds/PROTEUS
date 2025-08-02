@@ -527,58 +527,67 @@ done
         time.sleep(2.0)
 
 
-if __name__=='__main__':
-    print("Start GridPROTEUS")
+def grid_from_config(config:str):
+    '''Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)'''
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "scratch/l98d_habrok5"
-
-    # Use SLURM?
-    use_slurm = False
-
-    # Execution limits
-    max_jobs = 300      # maximum number of concurrent tasks
-    max_days = 1         # maximum number of days to run
-    max_mem  = 3         # maximum memory per CPU in GB
-
-    # Base config file
-    config = "planets/l9859d.toml"
-    cfg_base = os.path.join(PROTEUS_DIR,"input",config)
+    folder = str(config["output"])
 
     # Set this string to have the output files created at an alternative location. The
     #   output 'folder' in `PROTEUS/output/` will then by symbolically linked to this
     #   alternative location. Useful for when data should be saved on a storage server.
-    # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
-    symlink = None
+    #   THIS MUST BE AN ABSOLUTE PATH
+    symlink = str(config["symlink"])
+    if symlink.strip().lower() in ("", "none", "false"):
+        symlink = "_UNSET"
+    else:
+        if not os.path.isabs(symlink):
+            raise RuntimeError("Path for symbolic link must be absolute.\n\tGot: "+symlink)
+
+    # Use SLURM?
+    use_slurm = bool(config["slurm"])
+
+    # Execution limits
+    max_jobs = int(config["max_jobs"])   # maximum number of concurrent tasks (e.g. 300)
+    max_days = int(config["max_days"])   # maximum number of days to run (e.g. 1)
+    max_mem  = int(config["max_mem"])   # maximum memory per CPU in GB (e.g. 3)
+
+    # Base config file
+    cfg_base = os.path.join(PROTEUS_DIR,str(config["ref_config"]))
 
     # Initialise grid object
     pg = Grid(folder, cfg_base, symlink_dir=symlink)
 
-    # Add dimensions to grid... examples:
-    # pg.add_dimension("Mass", "struct.mass_tot")
-    # pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
+    # Add dimensions to grid by looping over keys
+    dim = -1
+    for key in config.keys():
 
-    pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    pg.set_dimension_direct("Sulfur", [2, 4, 6, 8, 10])
+        # Skip those without dots, since they aren't config variables
+        if not ("." in key):
+            continue
 
-    # pg.add_dimension("Eccentricity", "orbit.eccentricity")
-    # pg.set_dimension_linspace("Eccentricity", 0.0, 0.15, 25)
+        # Add dimension
+        dim += 1
+        name = "param_%03d"%dim
+        pg.add_dimension(name, key)
 
-    # pg.add_dimension("Core fraction", "struct.corefrac")
-    # pg.set_dimension_linspace("Core fraction", 0.35, 0.95, 25)
+        # Handle each possible method for setting this dimension
+        table = config[key]
+        method = table["method"]
+        if method == "direct":
+            pg.set_dimension_direct(name, list(table["values"]))
 
-    # pg.add_dimension("Bands", "atmos_clim.agni.spectral_bands")
-    # pg.set_dimension_direct("Bands", ["16", "48", "256"])
+        elif method == "linspace":
+            pg.set_dimension_linspace(name, table["start"], table["stop"], table["count"])
 
-    pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_arange("Hydrogen", 8000, 30000, 2000)
+        elif method == "logspace":
+            pg.set_dimension_logspace(name, table["start"], table["stop"], table["count"])
 
-    pg.add_dimension("Efficiency", "escape.zephyrus.efficiency")
-    pg.set_dimension_arange("Efficiency", 0.0, 0.25, 0.025)
+        elif method == "arange":
+            pg.set_dimension_arange(name, table["start"], table["stop"], table["step"])
 
-    pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_direct("Redox state", [-3,-2])
-
+        else:
+            raise ValueError(f"Invalid method for setting dimension: {method}")
 
     # Print information
     pg.print_setup()
