@@ -89,7 +89,9 @@ class Grid():
 
     CONFIG_BASENAME = "case_%06d"
 
-    def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
+    def __init__(self, name:str, base_config_path:str,
+                 symlink_dir:str="_UNSET",
+                 grid_config:str=""):
 
         # Grid's own name (for versioning, etc.)
         self.name = str(name).strip()
@@ -143,6 +145,10 @@ class Grid():
             if os.path.exists(dir):
                 shutil.rmtree(dir)
             os.makedirs(dir)
+
+        # Make copy of grid config file, if there is one
+        if grid_config:
+            shutil.copyfile(grid_config, os.path.join(self.outdir, "copy.grid.toml"))
 
         # Setup logging
         setup_logger(logpath=os.path.join(self.outdir,"manager.log"), logterm=True, level=1)
@@ -564,7 +570,7 @@ def grid_from_config(config_fpath:str):
     cfg_base = os.path.join(PROTEUS_DIR,str(config["ref_config"]))
 
     # Initialise grid object
-    pg = Grid(folder, cfg_base, symlink_dir=symlink)
+    pg = Grid(folder, cfg_base, symlink_dir=symlink, grid_config=config_fpath)
 
     # Add dimensions to grid by looping over keys
     dim = -1
@@ -614,8 +620,8 @@ def grid_from_config(config_fpath:str):
     # Run the grid
     if use_slurm:
         # Generate Slurm batch file, use `sbatch` to submit
-        pg.slurm_config(max_jobs, test_run=False, max_days=max_days, max_mem=max_mem)
+        pg.slurm_config(max_jobs, max_days=max_days, max_mem=max_mem)
     else:
         # Alternatively, let grid_proteus.py manage the jobs
-        pg.run(max_jobs, test_run=False)
+        pg.run(max_jobs)
         log.info("GridPROTEUS finished")

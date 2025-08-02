@@ -57,9 +57,6 @@ def create_init(config):
                                     init_grid)
 
 
-    # Inform user
-    print(f"Saved initial guess data to D_init pickle file: {D_init}")
-
 def sample_from_grid(output:str,
                        params:dict, observables:dict,
                        grid_dir:str):

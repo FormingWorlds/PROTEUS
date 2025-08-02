@@ -26,7 +26,7 @@ from proteus.inference.utils import print_results
 # Use double precision for all tensor computations
 dtype = torch.double
 
-# Entry point for inference scheme, providing config dict
+# Entry point for inference scheme, providing infererence-config dict
 def run_inference(config):
 
     # dictionary of directories
@@ -42,7 +42,7 @@ def run_inference(config):
     os.makedirs(dirs["output"])
 
     # Save a timestamped copy of the config
-    with open(os.path.join(dirs["output"], "config.toml"), "w") as file:
+    with open(os.path.join(dirs["output"], "copy.infer.toml"), "w") as file:
         timestamp = datetime.now().astimezone().isoformat()
         file.write(f"# Created: {timestamp}\n\n")
         toml.dump(config, file)
@@ -50,7 +50,6 @@ def run_inference(config):
     # Ensure there are enough CPU cores for the specified number of workers
     if config["n_workers"] >= os.cpu_count():
         raise RuntimeError(f"Not enough CPU cores for {config['n_workers']} workers")
-
 
     # Create initial guess data through the requested method
     create_init(config)

@@ -19,8 +19,7 @@ from matplotlib import cm
 from matplotlib.ticker import MaxNLocator
 
 
-def plot_times(logs, directory, n_init, min_text_width=0.88):
-
+def plot_timeline(logs, directory, n_init, min_text_width=0.88):
     """Generate timeline and histograms of process durations.
 
     Args:
@@ -291,9 +290,7 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     plt.close(fig)
 
 
-
-def plot_res(D, T, n_init, directory, save = True):
-
+def plot_converge(D, T, n_init, directory, save = True):
     """Plot regret and best observed value over time and iterations.
 
     Args:
@@ -383,3 +380,5 @@ def plot_res(D, T, n_init, directory, save = True):
 
     else:
         fig.show()
+
+
