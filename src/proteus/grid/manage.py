@@ -75,10 +75,19 @@ def setup_logger(logpath:str="new.log",level=1,logterm=True):
 
     return
 
+# Thread targget
+def _thread_target(cfg_path, test, wait):
+    if test:
+        command = ['/bin/echo','Dummy output. Config file is at "' + cfg_path + '"']
+    else:
+        command = ["proteus","start","--offline","--config",cfg_path]
+    subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(wait)  # wait a bit, in case the process exited immediately
+
 # Object for handling the parameter grid
 class Grid():
 
-    CONFIG_BASENAME = "case_%06d.toml"
+    CONFIG_BASENAME = "case_%06d"
 
     def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
 
@@ -215,7 +224,7 @@ class Grid():
         log.info(" ")
 
     def _get_tmpcfg(self, idx:int):
-        return os.path.join(self.cfgdir, self.CONFIG_BASENAME % idx)
+        return os.path.join(self.cfgdir, str(self.CONFIG_BASENAME % idx)+".toml")
 
     # Generate the Grid based on the current configuration
     def generate(self):
@@ -267,7 +276,7 @@ class Grid():
             thisconf:Config = deepcopy(base_config)
 
             # Set case dir relative to PROTEUS/output/
-            thisconf.params.out.path = self.name+"/" + str(self.CONFIG_BASENAME%i) + "/"
+            thisconf.params.out.path = self.name+"/" + str(self.CONFIG_BASENAME%i)+"/"
 
             # Set other parameters
             for key in gp.keys():
@@ -332,15 +341,6 @@ class Grid():
 
         gc.collect()
 
-        # Thread targget
-        def _thread_target(cfg_path):
-            if test_run:
-                command = ['/bin/echo','Dummy output. Config file is at "' + cfg_path + '"']
-            else:
-                command = ["proteus","start","--offline","--config",cfg_path]
-            subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
-
         # Setup threads
         threads = []
         for i in range(self.size):
@@ -358,7 +358,10 @@ class Grid():
                raise Exception("Config file could not be found for case %d!" % i)
 
             # Add process
-            threads.append(multiprocessing.Process(target=_thread_target, args=(cfg_path,)))
+            threads.append(multiprocessing.Process(
+                                target=_thread_target,
+                                args=(cfg_path,test_run,check_interval*3)
+                            ))
 
         # Track statuses
         # 0: queued
@@ -502,7 +505,7 @@ class Grid():
 i=$SLURM_ARRAY_TASK_ID
 
 while [ $i -lt {self.size} ]; do
-    printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}" $((i))
+    printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}.toml" $((i))
     echo executing proteus with config $cfg
     {command} $cfg
     i=$((i+{self.size}))
