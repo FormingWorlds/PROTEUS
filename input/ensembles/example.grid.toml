@@ -28,17 +28,36 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
     method = "direct"
     values = [1.85, 2.14, 2.39]
 
-# Planet bulk S/H ratio set directly
-["delivery.elements.SH_ratio"]
-    method = "direct"
-    values = [2, 4, 6, 8, 10]
-
 # Hydrogen inventory set by arange
 ["delivery.elements.H_ppmw"]
     method = "arange"
-    start    = 800
+    start    = 5000
     stop     = 30000
-    step     = 2000
+    step     = 5000
+
+# Mantle redox state set directly
+# ["outgas.fO2_shift_IW"]
+#     method = "direct"
+#     values = [-3, -2, -1]
+
+# Planet bulk S/H ratio set directly
+# ["delivery.elements.SH_ratio"]
+#     method = "direct"
+#     values = [2, 4, 6, 8]
+
+# Escape efficiency set by arange
+# ["escape.zephyrus.efficiency"]
+#     method   = "arange"
+#     start    = 0.0
+#     stop     = 0.25
+#     step     = 0.05
+
+# Core radius fraction set by linspace
+# ["struct.corefrac"]
+#     method = "linspace"
+#     start  = 0.35
+#     stop   = 0.95
+#     count  = 3
 
 # Orbital eccentricity set by logspace
 # ["orbit.eccentricity"]
@@ -47,26 +66,9 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 #     stop   = 0.15
 #     count  = 25
 
-# Core radius fraction set by linspace
-["struct.corefrac"]
-    method = "linspace"
-    start  = 0.35
-    stop   = 0.95
-    count  = 25
 
 # Spectral bands set directly
 # ["atmos_clim.agni.spectral_bands"]
 #     method = "direct"
 #     values = ["16", "48", "256"]
 
-# Escape efficiency set by arange
-# ["escape.zephyrus.efficiency"]
-#     method   = "arange"
-#     start    = 0.0
-#     stop     = 0.25
-#     step     = 0.025
-
-# Mantle redox state set directly
-["outgas.fO2_shift_IW"]
-    method = "direct"
-    values = [-3, -2]

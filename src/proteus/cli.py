@@ -4,11 +4,11 @@ import os
 
 # Prevent workers from using each other's CPUs to avoid
 #     oversubscription and improve performance
-os.environ["OMP_NUM_THREADS"] = "1"         # noqa
-os.environ["MKL_NUM_THREADS"] = "1"         # noqa
-os.environ["OPENBLAS_NUM_THREADS"] = "1"    # noqa
-os.environ["NUMEXPR_NUM_THREADS"] = "1"     # noqa
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # noqa
+# os.environ["OMP_NUM_THREADS"] = "1"         # noqa
+# os.environ["MKL_NUM_THREADS"] = "1"         # noqa
+# os.environ["OPENBLAS_NUM_THREADS"] = "1"    # noqa
+# os.environ["NUMEXPR_NUM_THREADS"] = "1"     # noqa
+# os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # noqa
 
 import shutil
 import subprocess
