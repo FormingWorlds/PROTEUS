@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import time
+import toml
 from copy import deepcopy
 from datetime import datetime
 from getpass import getuser
@@ -77,7 +78,7 @@ def setup_logger(logpath:str="new.log",level=1,logterm=True):
 # Object for handling the parameter grid
 class Grid():
 
-    CONFIG_BASENAME = "case_%05d.toml"
+    CONFIG_BASENAME = "case_%06d.toml"
 
     def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
 
@@ -266,7 +267,7 @@ class Grid():
             thisconf:Config = deepcopy(base_config)
 
             # Set case dir relative to PROTEUS/output/
-            thisconf.params.out.path = self.name+"/case_%05d/"%i
+            thisconf.params.out.path = self.name+"/" + str(self.CONFIG_BASENAME%i) + "/"
 
             # Set other parameters
             for key in gp.keys():
@@ -427,7 +428,7 @@ class Grid():
         # Check all cases' status files
         for i in range(self.size):
             # find file
-            status_path = os.path.join(self.outdir, "case_%05d"%i, "status")
+            status_path = os.path.join(self.outdir, self.CONFIG_BASENAME%i, "status")
             if not os.path.exists(status_path):
                 raise Exception("Cannot find status file at '%s'" % status_path)
 
@@ -438,7 +439,7 @@ class Grid():
 
             # if still marked as running, it must have died at some point
             if ( 0 <= this_stat <= 9 ):
-                log.warning("Case %05d has status=running but it is not alive. Setting status=died."%i)
+                log.warning("Case %06d has status=running but it is not alive. Setting status=died."%i)
                 with open(status_path,'w') as hdl:
                     hdl.write("25\n")
                     hdl.write("Error (died)\n")
@@ -527,8 +528,12 @@ done
         time.sleep(2.0)
 
 
-def grid_from_config(config:str):
+def grid_from_config(config_fpath:str):
     '''Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)'''
+
+    # Load configuration from TOML file
+    with open(config_fpath, "r") as file:
+        config = toml.load(file)
 
     # Output folder name, created inside `PROTEUS/output/`
     folder = str(config["output"])
@@ -545,7 +550,7 @@ def grid_from_config(config:str):
             raise RuntimeError("Path for symbolic link must be absolute.\n\tGot: "+symlink)
 
     # Use SLURM?
-    use_slurm = bool(config["slurm"])
+    use_slurm = bool(config["use_slurm"])
 
     # Execution limits
     max_jobs = int(config["max_jobs"])   # maximum number of concurrent tasks (e.g. 300)
@@ -592,7 +597,16 @@ def grid_from_config(config:str):
     # Print information
     pg.print_setup()
     pg.generate()
-    pg.print_grid()
+
+    # Sanity check grid size (cannot allow larger values due to format of file paths)
+    if pg.size > 999999:
+        raise ValueError("Number of grid points is too large")
+
+    # Print each grid point if the number of points isn't too large
+    if pg.size < 1e4:
+        pg.print_grid()
+    else:
+        log.warning("Number of grid points exceeds 10000. Will not print them here.")
 
     # Run the grid
     if use_slurm:

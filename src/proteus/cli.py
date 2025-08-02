@@ -295,6 +295,9 @@ def infer(config_path: Path):
     from proteus.inference.inference import infer_from_config
     infer_from_config(config_path)
 
+cli.add_command(grid)
+cli.add_command(infer)
+
 # ----------------
 # installer
 # ----------------
