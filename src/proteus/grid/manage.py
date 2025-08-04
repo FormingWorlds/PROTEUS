@@ -75,7 +75,7 @@ def setup_logger(logpath:str="new.log",level=1,logterm=True):
 
     return
 
-# Thread targget
+# Thread target
 def _thread_target(cfg_path, test, wait):
     if test:
         command = ['/bin/echo','Dummy output. Config file is at "' + cfg_path + '"']
