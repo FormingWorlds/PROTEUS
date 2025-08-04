@@ -133,7 +133,7 @@ Those prefixed with `perf_` diagnose the performance of the optimisation.
 - `perf_regret.png`: Convergence plots (regret vs time/iterations)
 - `perf_bestval.png`: Best objective value evolution
 
-Plots prefixed with `result_` are show the results of the optimisation.
+Plots prefixed with `result_` show the results of the optimisation.
 
 ### Results Summary
 The system prints the final results including:
