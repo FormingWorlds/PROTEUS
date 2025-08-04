@@ -5,6 +5,7 @@ This project implements parallel-asynchronous Bayesian Optimization (BO) for par
 ## Overview
 
 The system performs Bayesian optimization to infer planetary formation parameters by:
+
 1. Running PROTEUS simulations with different parameter combinations
 2. Comparing simulated observables (planet radius, mass, transit depth, etc.) with target values
 3. Using Gaussian Process surrogates and acquisition functions to guide the search toward optimal parameters
@@ -20,14 +21,22 @@ These files are contained within the folder `src/proteus/inference/`.
 | `async_BO.py`      | Parallel BO implementation                |
 | `BO.py`            | Single BO step implementation             |
 | `objective.py`     | PROTEUS interface and objective function  |
-| `plots.py`         | Visualization utilities                   |
-| `utils.py`         | Helper functions                          |
+| `plot.py`          | Visualization utilities                   |
+| `utils.py`         | Helper functions for inference scheme     |
 | `gen_D_init.py`    | Generate initial data                     |
-| `test.py`          | Sanity check script                       |
 
 ## Configuration
 
-The main configuration is done through a TOML-formatted configuration file. An example is included below.
+The main configuration is done through a TOML-formatted configuration file. There are two ways to initialise the inference process:
+
+1. Allowing PROTEUS to randomly sample the parameter space provided in the config.
+2. Using the result of a previously-computed grid of models.
+
+To apply case (1), set the config variable `init_samps=4` to use 4 initial samples. You can choose any number greater than 2, but ideally less than 10. Then set `init_grid='none'`.
+
+If you instead wish to initialise under case (2), where a pre-computed grid provides the initial samples, set the config variable `init_grid=outname` where `outname` is the name of the folder containing the grid inside the shared PROTEUS output folder. Then set `init_samps='none'`.
+
+An example configuration file is shown below.
 
 ```toml
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
@@ -70,7 +79,7 @@ n_samples  = 1000    # Raw samples for acquisition optimization
 Execute the main optimisation process by using the PROTEUS command-line interface
 
 ```bash
-proteus infer --config input/ensembles/example1.infer.toml
+proteus infer --config input/ensembles/example.infer.toml
 ```
 
 In this case, we randomly sample the parameter space to provide a starting point for the

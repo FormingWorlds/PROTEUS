@@ -84,18 +84,17 @@ You can find detailed documentation [here](https://tmuxcheatsheet.com/).
     ```
 - Press `Ctrl + c` to exit the `htop` command.
 
-## Running grids of simulations
+## Running grids of simulations (ensembles)
 
-It is often useful to run grids of models, where each point in a grid represents a different
-set of parameters. This can be done using the command line interface:
+It is often useful to run grids of forward models, where each point in a grid represents a different set of parameters. This can be done using the command line interface:
 
 ```console
 proteus grid -c path/to/config.grid.toml
 ```
 
-You can configure a grid of your choosing by creating a TOML file, specifying the grid's
-axes and determining how they should be run. Grids can be dispatched either with or without
-Slurm, which can allow running large ensembles on high-performance compute clusters.
+You can configure a grid of your choosing by creating a TOML file which specifies the grid's axes and determines how it should be run. An example configuration file for a PROTEUS grid is available at `input/ensembles/example.grid.toml`, which uses the dummy configuration file as a "reference" and then modifies it for every combination of the parameters in the `.grid.toml` file.
+
+Grids can be dispatched with or without using a workload manager. In PROTEUS, we use the [Slurm](https://slurm.schedmd.com/overview.html) workload manager, which can allow running large ensembles of models on high-performance compute clusters. The subsections below detail cases with/without Slurm.
 
 ### Without Slurm
 
@@ -138,6 +137,13 @@ PROTEUS will perform this step automatically when the configuration variable
 `atmos_chem.when` is set to `"offline"`.
 
 
+## Retrieval scheme (Bayesian optimisation)
+
+Retrieval methods efficiently sample a given parameter space in order to find the point at which a forward model best matches some observations. These methods has seen success in recent years, and are often more efficient than naive grid-search methods. However, retrieval schemes usually require that a forward model is fast and inexpensive to run. Bayesian Optimisation is one approach to parameter retrievals; you can read more about it [in this article](https://arxiv.org/abs/1807.02811).
+
+We include a retrieval scheme within PROTEUS. To use our Bayesian optimisation scheme, please see [its dedicated page here](inference.html).
+
+
 ## Postprocessing of results with synthetic observations
 
 Similarly to the offline chemistry, PROTEUS results can be postprocessed to generate
@@ -178,15 +184,16 @@ It tells you about outdated or missing packages, and whether all environment var
 
 ```console
 $ proteus doctor
-Dependencies
-fwl-proteus: ok
-fwl-mors: Update available 24.10.27 -> 24.11.18
+Packages
+aragog: ok
 fwl-calliope: ok
+fwl-janus: ok
+fwl-proteus: ok
+fwl-mors: ok
 fwl-zephyrus: ok
-aragog: Update available 0.1.0a0 -> 0.1.5a0
-AGNI: No package metadata was found for AGNI is not installed.
+AGNI: Update available 1.7.1 -> Ledoux, oceans, water, clouds, and blackbody stars
 
 Environment variables
-FWL_DATA: Variable not set.
-RAD_DIR: Variable not set.
+FWL_DATA: ok
+RAD_DIR: ok
 ```
