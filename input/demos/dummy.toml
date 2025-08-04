@@ -54,8 +54,6 @@ version = "2.0"
 
 # Orbital system
 [orbit]
-    instellation_method = 'inst'
-    instellationflux = 1.0
     semimajoraxis   = 1.0       # AU
     eccentricity    = 0.0       # dimensionless
     zenith_angle    = 48.19     # degrees
