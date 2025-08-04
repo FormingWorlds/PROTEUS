@@ -21,7 +21,7 @@ import numpy as np
 import toml
 
 from proteus.config import Config, read_config_object
-from proteus.utils.helper import get_proteus_dir
+from proteus.utils.helper import get_proteus_dir, recursive_setattr
 
 PROTEUS_DIR=get_proteus_dir()
 
@@ -284,23 +284,9 @@ class Grid():
             # Set case dir relative to PROTEUS/output/
             thisconf.params.out.path = self.name+"/" + str(self.CONFIG_BASENAME%i)+"/"
 
-            # Set other parameters
+            # Set other parameters in Config object
             for key in gp.keys():
-                val = gp[key]
-                bits = key.split(".")
-                depth = len(bits)-1
-
-                # Descend down attributes tree until we are setting the right value
-                #    This could be done with recursion, but we only ever go 2 layers deep
-                #    at most, so it can easily be handled by 'brute force' like this.
-                if depth == 0:
-                    setattr(thisconf,bits[0],val)
-                elif depth == 1:
-                    setattr(getattr(thisconf,bits[0]), bits[1],val)
-                elif depth == 2:
-                    setattr(   getattr( getattr(thisconf,bits[0]),  bits[1] ), bits[2],val)
-                else:
-                    raise Exception("Requested key is too deep for configuration tree")
+                recursive_setattr(thisconf, key, gp[key])
 
             # Write this configuration file
             thisconf.write(self._get_tmpcfg(i))
