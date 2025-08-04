@@ -581,8 +581,6 @@ def get_Seager_EOS():
     if not eos_folder.exists():
         log.debug("Get EOS material properties from Seager et al. (2007)")
         download_Seager_EOS()
-    else:
-        log.debug("EOS material properties already downloaded")
 
     # Build the material_properties_iron_silicate_planets dictionary for iron/silicate planets according to Seager et al. (2007)
     material_properties_iron_silicate_planets = {
