@@ -104,21 +104,18 @@ which should be utilised by the grid at any one time. This is limited by the num
 cores available on your machine. This method works without Slurm, and can be applied on servers or
 on multicore personal computers.
 
-You will need to make sure that PROTEUS stays open in order to mange the subprocesses.
+In this case, you will need to make sure that PROTEUS stays open in order to mange its subprocesses.
 
 ### With Slurm
 
-Alternatively, you can access high performance compute nodes through the Slurm workload
-manager (e.g. on Habrok and Snellius). This is a two-step process. To do this, set `use_slurm = true`
-your grid's configuration file. You should also then set `max_mem` and `max_days` to specify how much memory should be allocated to each job (each simulation). These are nominally 3 GB and 2 days respectively. Ensure that these values are within the limits of the server you are working on.
+Alternatively, you can access high performance compute nodes through the Slurm workload manager (e.g. on Habrok and Snellius). This is a two-step process. To do this, set `use_slurm = true` in your grid's configuration file. Then set `max_mem` and `max_days` to specify how much memory should be allocated to each job (each simulation). These values are nominally 3 GB and 2 days. Ensure that these values are within the limits of the server you are working on.
 
-With these options enabled, running PROTEUS will produce a script called `slurm_dispatch.sh` in the
-specified output folder, as well as write the required configuration files to a subfolder called `cfgs/`.
+With these options enabled, running PROTEUS will produce a script called `slurm_dispatch.sh` in the specified output folder, as well as write the required configuration files to a subfolder called `cfgs/`.
 
-To dispatch your grid via Slurm, you must then run `sbatch <path>` where `<path>` is the path to the dispatch script created
-by the `proteus grid` command. You will be prompted to do this in the terminal.
+To dispatch your grid via Slurm, you **must then run** the command `sbatch <path>` where `<path>` is the path to the dispatch script created by the `proteus grid` command. You will be prompted to do this in the terminal.
 
 Monitor your running jobs with `squeue -u $USER`. To cancel **all** of your running jobs, use `scancel -u $USER`.
+The original PROTEUS process does not need to stay open when using Slurm to manage the subprocesses.
 
 
 ## Postprocessing of results with 'offline' chemistry
@@ -141,7 +138,7 @@ PROTEUS will perform this step automatically when the configuration variable
 
 Retrieval methods efficiently sample a given parameter space in order to find the point at which a forward model best matches some observations. These methods has seen success in recent years, and are often more efficient than naive grid-search methods. However, retrieval schemes usually require that a forward model is fast and inexpensive to run. Bayesian Optimisation is one approach to parameter retrievals; you can read more about it [in this article](https://arxiv.org/abs/1807.02811).
 
-We include a retrieval scheme within PROTEUS. To use our Bayesian optimisation scheme, please see [its dedicated page here](inference.html).
+We have included a retrieval scheme within PROTEUS [ref](https://openreview.net/forum?id=td0CHOy2o6). To use our Bayesian optimisation scheme, please see the instructions on [its dedicated page here](inference.html).
 
 
 ## Postprocessing of results with synthetic observations

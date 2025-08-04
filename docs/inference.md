@@ -34,7 +34,7 @@ The main configuration is done through a TOML-formatted configuration file. Ther
 
 To apply case (1), set the config variable `init_samps=4` to use 4 initial samples. You can choose any number greater than 2, but ideally less than 10. Then set `init_grid='none'`.
 
-If you instead wish to initialise under case (2), where a pre-computed grid provides the initial samples, set the config variable `init_grid=outname` where `outname` is the name of the folder containing the grid inside the shared PROTEUS output folder. Then set `init_samps='none'`.
+If you instead wish to initialise under case (2), where a pre-computed grid provides the initial samples, set the config variable `init_grid='outname'` where `outname` is the name of the folder containing the grid inside the shared PROTEUS output folder. Then set `init_samps='none'`.
 
 An example configuration file is shown below.
 
@@ -84,8 +84,6 @@ proteus infer --config input/ensembles/example.infer.toml
 
 In this case, we randomly sample the parameter space to provide a starting point for the
 optimisation. This process must stay open in order to manage the workers.
-
-We can also provide a better initial guess using the data from a grid.
 
 
 ## How It Works
@@ -143,6 +141,9 @@ Those prefixed with `perf_` diagnose the performance of the optimisation.
 - `perf_bestval.png`: Best objective value evolution
 
 Plots prefixed with `result_` show the results of the optimisation.
+
+- `result_correlation.png`: Scatter plot observables for each parameter, at each sample.
+- `result_objective.png`: Value of objective `J` for each parameter, at each sample.
 
 ### Results Summary
 The system prints the final results including:
