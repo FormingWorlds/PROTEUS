@@ -1,5 +1,9 @@
 # Usage
 
+This page describes how to use PROTEUS. The framework can be run standalone, as a grid of simulations, or as a forward model within a retrieval framework. In all cases you will need to configure the model via a 'configuration file', which you can read about in a [dedicated page here](config.html). If you encounter any problems, please visit the [troubleshooting](troubleshooting.html) page.
+
+We start by describing how to run a single instance of PROTEUS...
+
 ## Running PROTEUS from the terminal
 
 PROTEUS has a command-line interface that can be accessed by running `proteus` on the command line.
@@ -23,6 +27,9 @@ directory.
 
 See the [config guide](config.html) for information
 on how to edit the configurations files, and an explanation of their structure.
+
+PROTEUS will automatically check if any lookup-tables or data need to be downloaded for it to run.
+To disable this functionality, pass the `--offline` flag to the `proteus start` command shown above.
 
 ## Output and results
 
@@ -86,19 +93,19 @@ You can find detailed documentation [here](https://tmuxcheatsheet.com/).
 
 ## Running grids of simulations (ensembles)
 
-It is often useful to run grids of forward models, where each point in a grid represents a different set of parameters. This can be done using the command line interface:
+It is often useful to run grids of forward models, where each point in a grid represents a different set of parameters. This can also be done using the command line interface. For example:
 
 ```console
-proteus grid -c path/to/config.grid.toml
+proteus grid -c input/ensembles/example.grid.toml
 ```
 
-You can configure a grid of your choosing by creating a TOML file which specifies the grid's axes and determines how it should be run. An example configuration file for a PROTEUS grid is available at `input/ensembles/example.grid.toml`, which uses the dummy configuration file as a "reference" and then modifies it for every combination of the parameters in the `.grid.toml` file.
+Configure a grid of your choosing by creating a TOML file which specifies the grid's axes and determines how it should be run. An example configuration file for a PROTEUS grid is available at `input/ensembles/example.grid.toml`, which uses the dummy configuration file as a "reference" and then modifies it for every combination of the parameters in the `.grid.toml` file.
 
 Grids can be dispatched with or without using a workload manager. In PROTEUS, we use the [Slurm](https://slurm.schedmd.com/overview.html) workload manager, which can allow running large ensembles of models on high-performance compute clusters. The subsections below detail cases with/without Slurm.
 
 ### Without Slurm
 
-Firstly, you can set `use_slurm = false`. In this case, the GridPROTEUS routine will manage the
+Firstly, set `use_slurm = false`. In this case, the GridPROTEUS routine will manage the
 individual subprocesses which compose the grid. The variable `max_jobs` specifies the maximum number of CPU cores
 which should be utilised by the grid at any one time. This is limited by the number of CPU
 cores available on your machine. This method works without Slurm, and can be applied on servers or
@@ -117,13 +124,18 @@ To dispatch your grid via Slurm, you **must then run** the command `sbatch <path
 Monitor your running jobs with `squeue -u $USER`. To cancel **all** of your running jobs, use `scancel -u $USER`.
 The original PROTEUS process does not need to stay open when using Slurm to manage the subprocesses.
 
+## Retrieval scheme (Bayesian optimisation)
+
+Retrieval methods efficiently sample a given parameter space in order to find the point at which a forward model best matches some observations. These methods has seen success in recent years, and are often more efficient than naive grid-search methods. However, retrieval schemes usually require that a forward model is fast and inexpensive to run. Bayesian Optimisation is one approach to parameter retrievals; you can read more about it [in this article](https://arxiv.org/abs/1807.02811).
+
+We have included a retrieval scheme within PROTEUS [ref](https://openreview.net/forum?id=td0CHOy2o6). To use our Bayesian optimisation scheme, please see the instructions on [its dedicated page here](inference.html).
 
 ## Postprocessing of results with 'offline' chemistry
 
 PROTEUS includes an "offline" chemistry functionality, which uses results of a simulation
 as an input to the VULCAN chemical kinetics model, capturing the additional physics.
 
-You can access the offline chemistry via the command line interface:
+Access the offline chemistry via the command line interface:
 
 ```console
 proteus offchem -c [cfgfile]
@@ -133,14 +145,6 @@ This will run VULCAN as a subprocess. This command should not be used in batch p
 PROTEUS will perform this step automatically when the configuration variable
 `atmos_chem.when` is set to `"offline"`.
 
-
-## Retrieval scheme (Bayesian optimisation)
-
-Retrieval methods efficiently sample a given parameter space in order to find the point at which a forward model best matches some observations. These methods has seen success in recent years, and are often more efficient than naive grid-search methods. However, retrieval schemes usually require that a forward model is fast and inexpensive to run. Bayesian Optimisation is one approach to parameter retrievals; you can read more about it [in this article](https://arxiv.org/abs/1807.02811).
-
-We have included a retrieval scheme within PROTEUS [ref](https://openreview.net/forum?id=td0CHOy2o6). To use our Bayesian optimisation scheme, please see the instructions on [its dedicated page here](inference.html).
-
-
 ## Postprocessing of results with synthetic observations
 
 Similarly to the offline chemistry, PROTEUS results can be postprocessed to generate
@@ -148,7 +152,7 @@ synthetic observations. Transmission and emission spectra are generated based on
 modelled temperature-pressure profile, as well as atmospheric composition. The composition
 can be set by the output of the offline chemistry calculation (see config file).
 
-You can access the synthetic observation functionality via the command line interface:
+Access the synthetic observation functionality via the command line interface:
 
 ```console
 proteus observe -c [cfgfile]
@@ -163,8 +167,8 @@ large grids of simulations. To counter this, the `params.out.archive_mod` config
 option can be used to tell PROTEUS when to archive its output files. This will gather the
 output files of each run into `.tar` files.
 
-Archiving the output files makes them inaccessible for analysis or plotting. To extract the
-archives from a run, use the proteus command line interface:
+Archiving the output files makes them inaccessible for analysis or plotting. Extract the
+archives from a run using the proteus command line interface:
 ```console
 proteus extract-archives -c [cfgfile]
 ```
@@ -176,7 +180,7 @@ proteus create-archives -c [cfgfile]
 
 ## Version checking
 
-The `proteus doctor` command helps you to diagnose issues with your proteus installation.
+The `proteus doctor` command helps diagnose potential issues with your PROTEUS installation.
 It tells you about outdated or missing packages, and whether all environment variables have been set.
 
 ```console
