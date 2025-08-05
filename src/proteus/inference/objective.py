@@ -82,8 +82,12 @@ def run_proteus(parameters: dict,
 
     # Ensure output directory exists
     os.makedirs(out_abs, exist_ok=True)
+
     # Inject output path into simulation parameters
-    parameters["params.out.path"] = out_dir
+    parameters["params.out.path"]     = out_dir
+
+    # Don't allow workers to make plots
+    parameters["params.out.plot_mod"] = 'none'
 
     for attempt in range(1, max_attempts + 1):
         try:

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 # system libraries
 import os
+import shutil
 import time
 from datetime import datetime
 
@@ -31,33 +32,42 @@ dtype = torch.double
 # Entry point for inference scheme, providing infererence-config dict
 def run_inference(config):
 
+    # Ensure there are enough CPU cores for the specified number of workers
+    if config["n_workers"] >= os.cpu_count():
+        raise RuntimeError(f"Not enough CPU cores for {config['n_workers']} workers")
+
     # dictionary of directories
     dirs = get_proteus_directories(config["output"])
-
-    # path to reference config
-    config["ref_config"] = os.path.join(dirs["proteus"], config["ref_config"])
-    if not os.path.isfile(config["ref_config"]):
-        raise FileNotFoundError("Cannot find reference config: " + config["ref_config"])
 
     # Create output directory
     safe_rm(dirs["output"])
     os.makedirs(dirs["output"])
 
-    # Save a timestamped copy of the config
+    # Save a timestamped copy of the reference config
     with open(os.path.join(dirs["output"], "copy.infer.toml"), "w") as file:
         timestamp = datetime.now().astimezone().isoformat()
         file.write(f"# Created: {timestamp}\n\n")
         toml.dump(config, file)
 
-    # Ensure there are enough CPU cores for the specified number of workers
-    if config["n_workers"] >= os.cpu_count():
-        raise RuntimeError(f"Not enough CPU cores for {config['n_workers']} workers")
+    # Check path to reference config
+    config["ref_config"] = os.path.join(dirs["proteus"], config["ref_config"])
+    if not os.path.isfile(config["ref_config"]):
+        raise FileNotFoundError("Cannot find reference config: " + config["ref_config"])
+
+    # Update ref_config path to point to a copy, in case user removes the original file
+    copy_config = os.path.join(os.path.join(dirs["output"], "ref_config.toml"))
+    shutil.copyfile(config["ref_config"], copy_config)
+    print(f"Copy config to {copy_config}")
+    config["ref_config"] = copy_config
 
     # Create plots directory (will not already exist)
     os.mkdir(os.path.join(dirs["output"], "plots"))
 
     # Create initial guess data through the requested method
     n_init = create_init(config)
+
+    # Maximum number of evaluations during inference (ignoring initial-guess evaluations)
+    max_len = int(config["max_len"]) + max(n_init, config["n_workers"])
 
     print(f"Starting optimisation with {config['n_workers']} workers")
     t_0 = time.perf_counter()
@@ -69,7 +79,7 @@ def run_inference(config):
         config["n_restarts"],
         config["n_samples"],
         config["n_workers"],
-        config["max_len"],
+        max_len,
         config["output"],
         config["ref_config"],
         config["observables"],
@@ -83,13 +93,18 @@ def run_inference(config):
     print_results(D_final, logs, config, dirs["output"])
 
     # Save final data, logs, and timestamps for later analysis
+    print("Saving results...")
     checkpoint(D_final, logs, Ts, dirs["output"])
 
     # Make plots
+    print("Making plots...")
     plotBO.plots_perf_timeline(logs, dirs["output"], n_init)
     plotBO.plots_perf_converge(D_final, Ts, n_init, dirs["output"])
     plotBO.plot_result_objective(D_final, config["parameters"], n_init, dirs["output"])
     plotBO.plot_result_correlation(config["parameters"].keys(), config["observables"].keys(), dirs["output"])
+
+    # Done
+    print(f"Inference completed at {datetime.now().astimezone().isoformat()}")
 
 
 def infer_from_config(config_fpath:str):

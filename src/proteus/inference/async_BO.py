@@ -126,6 +126,7 @@ def worker(
         with lock:
             current_X = D_shared["X"]
         if len(current_X) >= max_len:
+            print(f"Step {len(current_X):4d}, worker {worker_id:03d} exiting")
             break
 
         # For the first iteration, use provided initial point
