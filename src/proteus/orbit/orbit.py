@@ -1,57 +1,47 @@
 # Orbit evolution module
+from typing import TYPE_CHECKING
 
-from proteus.utils.constants import const_G
-import numpy as np
+if TYPE_CHECKING:
+    from proteus.config import Config
+
+from proteus.utils.constants import const_G, AU
+from scipy.integrate import solve_ivp
 
 def de_dt(a, e, params):
+    """
+    ODE describing evolution of orbital eccentricity based on Eq. 16 from Driscoll & Barnes (2015).
+    """
     Imk2, Mst, G, Rpl, Mpl = params
     return (21/2) * Imk2 * Mst**1.5 * G**0.5 * Rpl**5 / (Mpl * a**6.5) * e
 
 def da_dt(a, e, params):
+    """
+    ODE describing evolution of semimajor axis based on Eq. 15 from Driscoll & Barnes (2015).
+    """
     return 2 * a * e * de_dt(a, e, params)
 
-def rk4_step_time(a, e, h, params):
-    # k1
-    k1_e = de_dt(a, e, params)
-    k1_a = da_dt(a, e, params)
+def orbitals(z, params):
+    """
+    Helper function for solving coupled ODEs.
+    """
+    a, e = z
+    return [de_dt(a, e, params), da_dt(a, e, params)]
 
-    # k2
-    k2_e = de_dt(a + h*k1_a/2, e + h*k1_e/2, params)
-    k2_a = da_dt(a + h*k1_a/2, e + h*k1_e/2, params)
+def update_orbit(hf_row:dict, config:Config, dt:float,):
+    """Run the orbital dynamics module.
 
-    # k3
-    k3_e = de_dt(a + h*k2_a/2, e + h*k2_e/2, params)
-    k3_a = da_dt(a + h*k2_a/2, e + h*k2_e/2, params)
+    Updates the semi-major axis and eccentricity.
 
-    # k4
-    k4_e = de_dt(a + h*k3_a, e + h*k3_e, params)
-    k4_a = da_dt(a + h*k3_a, e + h*k3_e, params)
-
-    # Combine
-    e_next = e + (k1_e + 2*k2_e + 2*k3_e + k4_e) / 6
-    a_next = a + (k1_a + 2*k2_a + 2*k3_a + k4_a) / 6
-
-    return a_next, e_next
-
-def find_ae(a0, e0, params, dt, N):
-    h = dt / N
-    t = h
-
-    a = np.zeros(N)
-    e = np.zeros(N)
-
-    a[0] = a0
-    e[0] = e0
-
-    while t < dt:
-        a, e = rk4_step_time(t, a, e, h, params)
-        t += h
-
-    return a[-1], e[-1]
-
-def update_orbit(hf_row:dict, config:Config, dirs:dict):
-
-    Imk2 = hf_row["Imk2"]
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of current runtime variables
+        config : dict
+            Dictionary of configuration options
+        dt : float
+            Time interval over which escape is occuring [yr]
+    """
+    Imk2 = hf_row["Imk2_star"]
 
     Rpl = hf_row["R_int"]
     Mpl = hf_row["M_int"]
@@ -61,37 +51,24 @@ def update_orbit(hf_row:dict, config:Config, dirs:dict):
     ecc = hf_row["eccentricity"]
 
     # Time step
-    from proteus.interior.spider import get_all_output_times
-    current_time = get_all_output_times(dirs["output"])[-1]
+    current_time = hf_row["Time"]
 
+    # Use config parameters as initial guess
     if current_time <= 1:
-        dt = 0
-
-        # Set semimajor axis and eccentricity.
+        # Set semimajor axis and eccentricity from config.
         hf_row["semimajorax"]  = config.orbit.semimajoraxis * AU
         hf_row["eccentricity"] = config.orbit.eccentricity
-
         return
     else:
-        sim_time = get_all_output_times(dirs["output"])[-1]  # yr, as an integer value
-        last_sim_time = get_all_output_times(dirs["output"])[-2]  # yr, as an integer value
+        # Find previous_time from which to evolve orbit to current_time
+        previous_time = current_time - dt
 
-        dt = sim_time - last_sim_time
-
-    # Number of steps
-    N = 10
-
-    # Calculate planet orbit around star
+    # Collect system parameters at previous_time
     params = (Imk2, Mst, const_G, Rpl, Mpl)
 
-    # Find new sma and ecc
-    a, e = find_ae(sma, ecc, params dt, N)
+    # Find new semimajor axis and eccentricity using RK5(4) integration method
+    sol = solve_ivp(orbitals, [previous_time, current_time], [sma, ecc], args=(params))
 
-    # Set semimajor axis and eccentricity.
-    hf_row["semimajorax"]  = a
-    hf_row["eccentricity"] = e
-
-    return
-
-
-
+    # Update semimajor axis and eccentricity
+    hf_row["semimajorax"]  = sol.y[0][-1]
+    hf_row["eccentricity"] = sol.y[1][-1]
