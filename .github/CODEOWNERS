@@ -1,0 +1,5 @@
+# Tutorial:
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# The PROTEUS Maintainer team will automatically be assigned to review each PR to main.
+* @FormingWorlds/proteus-maintainer
