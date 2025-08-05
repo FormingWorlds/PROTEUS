@@ -18,6 +18,7 @@ output/*
 output.link
 output
 slurm*.out
+*.pkl
 
 # Development installations
 fwl_data
@@ -64,6 +65,8 @@ platon
 Platon
 PLATON
 Zalmoxis
+ZALMOXIS
+zalmoxis
 
 # misc
 ######
@@ -245,12 +248,8 @@ dmypy.json
 cython_debug/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
-
 .ruff_cache
 
 # Created automatically during PR #351
 Manifest.toml
 Project.toml
-
-# Input Files to grid_proteus
-*.csv

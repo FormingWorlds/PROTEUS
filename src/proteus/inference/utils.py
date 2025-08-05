@@ -21,7 +21,6 @@ import torch
 # Use double precision for tensor computations
 dtype = torch.double
 
-
 def get_nested(config: dict, key: str, sep: str = "."):
     """Retrieve a value from a nested dictionary using a dot-separated key path.
 
@@ -90,7 +89,7 @@ def print_results(D, logs, config, output):
 
     # Read simulator output for this run
     out_path = f"{output}/workers/w_{w}/i_{id}/runtime_helpfile.csv"
-    df = pd.read_csv(out_path, delimiter="\t")
+    df = pd.read_csv(out_path, delimiter=r"\s+")
 
     # True observables from config
     true_y = pd.Series(config["observables"])
@@ -110,7 +109,7 @@ def print_results(D, logs, config, output):
     par_opt = pd.Series({param: input[param] for param in params})
 
     # Print summary to console
-    print("\nbest objective = ", Y[i_opt].item())
-    print("\ntrue observables\n", true_y)
-    print("\nsimulated observables\n", sim_opt)
-    print("\ninferred inputs\n", par_opt)
+    print("\nBest objective = ", Y[i_opt].item())
+    print("\nTrue observables\n", true_y)
+    print("\nSimulated observables\n", sim_opt)
+    print("\nInferred inputs\n", par_opt)

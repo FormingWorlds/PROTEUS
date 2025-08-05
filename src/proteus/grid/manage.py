@@ -18,9 +18,10 @@ from datetime import datetime
 from getpass import getuser
 
 import numpy as np
+import toml
 
 from proteus.config import Config, read_config_object
-from proteus.utils.helper import get_proteus_dir
+from proteus.utils.helper import get_proteus_dir, recursive_setattr
 
 PROTEUS_DIR=get_proteus_dir()
 
@@ -74,12 +75,23 @@ def setup_logger(logpath:str="new.log",level=1,logterm=True):
 
     return
 
+# Thread target
+def _thread_target(cfg_path, test, wait):
+    if test:
+        command = ['/bin/echo','Dummy output. Config file is at "' + cfg_path + '"']
+    else:
+        command = ["proteus","start","--offline","--config",cfg_path]
+    subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(wait)  # wait a bit, in case the process exited immediately
+
 # Object for handling the parameter grid
 class Grid():
 
-    CONFIG_BASENAME = "case_%05d.toml"
+    CONFIG_BASENAME = "case_%06d"
 
-    def __init__(self, name:str, base_config_path:str, symlink_dir:str="_UNSET"):
+    def __init__(self, name:str, base_config_path:str,
+                 symlink_dir:str="_UNSET",
+                 grid_config:str=""):
 
         # Grid's own name (for versioning, etc.)
         self.name = str(name).strip()
@@ -133,6 +145,10 @@ class Grid():
             if os.path.exists(dir):
                 shutil.rmtree(dir)
             os.makedirs(dir)
+
+        # Make copy of grid config file, if there is one
+        if grid_config:
+            shutil.copyfile(grid_config, os.path.join(self.outdir, "copy.grid.toml"))
 
         # Setup logging
         setup_logger(logpath=os.path.join(self.outdir,"manager.log"), logterm=True, level=1)
@@ -214,7 +230,7 @@ class Grid():
         log.info(" ")
 
     def _get_tmpcfg(self, idx:int):
-        return os.path.join(self.cfgdir, self.CONFIG_BASENAME % idx)
+        return os.path.join(self.cfgdir, str(self.CONFIG_BASENAME % idx)+".toml")
 
     # Generate the Grid based on the current configuration
     def generate(self):
@@ -266,42 +282,40 @@ class Grid():
             thisconf:Config = deepcopy(base_config)
 
             # Set case dir relative to PROTEUS/output/
-            thisconf.params.out.path = self.name+"/case_%05d/"%i
+            thisconf.params.out.path = self.name+"/" + str(self.CONFIG_BASENAME%i)+"/"
 
-            # Set other parameters
+            # Set other parameters in Config object
             for key in gp.keys():
-                val = gp[key]
-                bits = key.split(".")
-                depth = len(bits)-1
-
-                # Descend down attributes tree until we are setting the right value
-                #    This could be done with recursion, but we only ever go 2 layers deep
-                #    at most, so it can easily be handled by 'brute force' like this.
-                if depth == 0:
-                    setattr(thisconf,bits[0],val)
-                elif depth == 1:
-                    setattr(getattr(thisconf,bits[0]), bits[1],val)
-                elif depth == 2:
-                    setattr(   getattr( getattr(thisconf,bits[0]),  bits[1] ), bits[2],val)
-                else:
-                    raise Exception("Requested key is too deep for configuration tree")
+                recursive_setattr(thisconf, key, gp[key])
 
             # Write this configuration file
             thisconf.write(self._get_tmpcfg(i))
             os.sync()
 
 
-    def run(self,num_threads:int,test_run:bool=False):
+    def run(self,num_threads:int,
+            test_run:bool=False,
+            check_interval:float=15.0,
+            print_interval:float=8):
+        '''
+        Run GridPROTEUS on the current machine.
+
+        The value of `num_threads` will be restricted to the number of available CPUs.
+
+        Parameters
+        ----------
+        - `num_threads:int`         number of CPU cores to use
+        - `test_run:bool`           if true, does not actually run PROTEUS
+        - `check_interval:float`    interval [secs] at which to check status of workers
+        - `print_interval:int`      step interval at which to print (8*15 seconds = 2 minutes)
+        '''
+
         log.info("Running PROTEUS across parameter grid '%s'" % self.name)
 
         time_start = datetime.now()
         log.info("Output path: '%s'" % self.outdir)
         if self.using_symlink:
             log.info("Symlink target: '%s'" % self.symlink_dir)
-
-        check_interval = 15.0 # seconds
-        print_interval = 8   # step interval at which to print (8*15 seconds = 2 minutes)
-
         # do not need more threads than there are points
         num_threads = min(num_threads, self.size)
 
@@ -331,15 +345,6 @@ class Grid():
 
         gc.collect()
 
-        # Thread targget
-        def _thread_target(cfg_path):
-            if test_run:
-                command = ['/bin/echo','Dummy output. Config file is at "' + cfg_path + '"']
-            else:
-                command = ["proteus","start","--offline","--config",cfg_path]
-            subprocess.run(command, shell=False, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            time.sleep(check_interval * 3.0)  # wait a bit longer, in case the process exited immediately
-
         # Setup threads
         threads = []
         for i in range(self.size):
@@ -357,7 +362,10 @@ class Grid():
                raise Exception("Config file could not be found for case %d!" % i)
 
             # Add process
-            threads.append(multiprocessing.Process(target=_thread_target, args=(cfg_path,)))
+            threads.append(multiprocessing.Process(
+                                target=_thread_target,
+                                args=(cfg_path,test_run,check_interval*3)
+                            ))
 
         # Track statuses
         # 0: queued
@@ -427,7 +435,7 @@ class Grid():
         # Check all cases' status files
         for i in range(self.size):
             # find file
-            status_path = os.path.join(self.outdir, "case_%05d"%i, "status")
+            status_path = os.path.join(self.outdir, self.CONFIG_BASENAME%i, "status")
             if not os.path.exists(status_path):
                 raise Exception("Cannot find status file at '%s'" % status_path)
 
@@ -438,7 +446,7 @@ class Grid():
 
             # if still marked as running, it must have died at some point
             if ( 0 <= this_stat <= 9 ):
-                log.warning("Case %05d has status=running but it is not alive. Setting status=died."%i)
+                log.warning("Case %06d has status=running but it is not alive. Setting status=died."%i)
                 with open(status_path,'w') as hdl:
                     hdl.write("25\n")
                     hdl.write("Error (died)\n")
@@ -501,7 +509,7 @@ class Grid():
 i=$SLURM_ARRAY_TASK_ID
 
 while [ $i -lt {self.size} ]; do
-    printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}" $((i))
+    printf -v cfg "{self.cfgdir}/{self.CONFIG_BASENAME}.toml" $((i))
     echo executing proteus with config $cfg
     {command} $cfg
     i=$((i+{self.size}))
@@ -527,69 +535,91 @@ done
         time.sleep(2.0)
 
 
-if __name__=='__main__':
-    print("Start GridPROTEUS")
+def grid_from_config(config_fpath:str):
+    '''Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)'''
+
+    # Load configuration from TOML file
+    with open(config_fpath, "r") as file:
+        config = toml.load(file)
 
     # Output folder name, created inside `PROTEUS/output/`
-    folder = "scratch/l98d_habrok5"
-
-    # Use SLURM?
-    use_slurm = False
-
-    # Execution limits
-    max_jobs = 300      # maximum number of concurrent tasks
-    max_days = 1         # maximum number of days to run
-    max_mem  = 3         # maximum memory per CPU in GB
-
-    # Base config file
-    config = "planets/l9859d.toml"
-    cfg_base = os.path.join(PROTEUS_DIR,"input",config)
+    folder = str(config["output"])
 
     # Set this string to have the output files created at an alternative location. The
     #   output 'folder' in `PROTEUS/output/` will then by symbolically linked to this
     #   alternative location. Useful for when data should be saved on a storage server.
-    # symlink = "/network/group/aopp/planetary/RTP035_NICHOLLS_PROTEUS/outputs/"+folder
-    symlink = None
+    #   THIS MUST BE AN ABSOLUTE PATH
+    symlink = str(config["symlink"])
+    if symlink.strip().lower() in ("", "none", "false"):
+        symlink = "_UNSET"
+    else:
+        if not os.path.isabs(symlink):
+            raise RuntimeError("Path for symbolic link must be absolute.\n\tGot: "+symlink)
+
+    # Use SLURM?
+    use_slurm = bool(config["use_slurm"])
+
+    # Execution limits
+    max_jobs = int(config["max_jobs"])   # maximum number of concurrent tasks (e.g. 300)
+    max_days = int(config["max_days"])   # maximum number of days to run (e.g. 1)
+    max_mem  = int(config["max_mem"])   # maximum memory per CPU in GB (e.g. 3)
+
+    # Base config file
+    cfg_base = os.path.join(PROTEUS_DIR,str(config["ref_config"]))
 
     # Initialise grid object
-    pg = Grid(folder, cfg_base, symlink_dir=symlink)
+    pg = Grid(folder, cfg_base, symlink_dir=symlink, grid_config=config_fpath)
 
-    # Add dimensions to grid... examples:
-    # pg.add_dimension("Mass", "struct.mass_tot")
-    # pg.set_dimension_direct("Mass", [1.85, 2.14, 2.39])
+    # Add dimensions to grid by looping over keys
+    dim = -1
+    for key in config.keys():
 
-    pg.add_dimension("Sulfur", "delivery.elements.SH_ratio")
-    pg.set_dimension_direct("Sulfur", [2, 4, 6, 8, 10])
+        # Skip those without dots, since they aren't config variables
+        if "." not in key:
+            continue
 
-    # pg.add_dimension("Eccentricity", "orbit.eccentricity")
-    # pg.set_dimension_linspace("Eccentricity", 0.0, 0.15, 25)
+        # Add dimension
+        dim += 1
+        name = "param_%03d"%dim
+        pg.add_dimension(name, key)
 
-    # pg.add_dimension("Core fraction", "struct.corefrac")
-    # pg.set_dimension_linspace("Core fraction", 0.35, 0.95, 25)
+        # Handle each possible method for setting this dimension
+        table = config[key]
+        method = table["method"]
+        if method == "direct":
+            pg.set_dimension_direct(name, list(table["values"]))
 
-    # pg.add_dimension("Bands", "atmos_clim.agni.spectral_bands")
-    # pg.set_dimension_direct("Bands", ["16", "48", "256"])
+        elif method == "linspace":
+            pg.set_dimension_linspace(name, table["start"], table["stop"], table["count"])
 
-    pg.add_dimension("Hydrogen", "delivery.elements.H_ppmw")
-    pg.set_dimension_arange("Hydrogen", 8000, 30000, 2000)
+        elif method == "logspace":
+            pg.set_dimension_logspace(name, table["start"], table["stop"], table["count"])
 
-    pg.add_dimension("Efficiency", "escape.zephyrus.efficiency")
-    pg.set_dimension_arange("Efficiency", 0.0, 0.25, 0.025)
+        elif method == "arange":
+            pg.set_dimension_arange(name, table["start"], table["stop"], table["step"])
 
-    pg.add_dimension("Redox state", "outgas.fO2_shift_IW")
-    pg.set_dimension_direct("Redox state", [-3,-2])
-
+        else:
+            raise ValueError(f"Invalid method for setting dimension: {method}")
 
     # Print information
     pg.print_setup()
     pg.generate()
-    pg.print_grid()
+
+    # Sanity check grid size (cannot allow larger values due to format of file paths)
+    if pg.size > 999999:
+        raise ValueError("Number of grid points is too large")
+
+    # Print each grid point if the number of points isn't too large
+    if pg.size < 1e4:
+        pg.print_grid()
+    else:
+        log.warning("Number of grid points exceeds 10000. Will not print them here.")
 
     # Run the grid
     if use_slurm:
         # Generate Slurm batch file, use `sbatch` to submit
-        pg.slurm_config(max_jobs, test_run=False, max_days=max_days, max_mem=max_mem)
+        pg.slurm_config(max_jobs, max_days=max_days, max_mem=max_mem)
     else:
         # Alternatively, let grid_proteus.py manage the jobs
-        pg.run(max_jobs, test_run=False)
+        pg.run(max_jobs)
         log.info("GridPROTEUS finished")
