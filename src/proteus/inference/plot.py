@@ -367,7 +367,7 @@ def plots_perf_converge(D, T, n_init, directory):
     plt.close(fig)
 
 
-def plot_result_objective(D, parameters, n_init, directory):
+def plot_result_objective(D, parameters, n_init, directory, yclip=-10):
     """Plot objective function at each sample that was created.
 
     Args:
@@ -375,6 +375,7 @@ def plot_result_objective(D, parameters, n_init, directory):
         parameters (dict): Parameter names and bounds
         n_init (int): Number of initial evaluations (to be highlighted).
         directory (str): Base dir where "plots/" subfolder will be created.
+        yclip (float): minimum limit y-axis scale
     """
 
     # Get objective function values
@@ -382,6 +383,17 @@ def plot_result_objective(D, parameters, n_init, directory):
 
     # Best point
     i_best = np.argmax(Y)
+
+    # Clamp values
+    yclip = -10
+    mask = Y < yclip
+    Y = np.clip(Y, a_min=yclip, a_max=None)
+
+    # Y label
+    if np.any(mask):
+        ylbl = f"Value of objective, clipped to J>{yclip}"
+    else:
+        ylbl = "Value of objective"
 
     # Get bounds
     keys = list(parameters.keys())
@@ -403,35 +415,43 @@ def plot_result_objective(D, parameters, n_init, directory):
 
     # Plot
     fig,axs = plt.subplots(1, d, figsize=(2.7*d, 3.2))
-    axs[0].set_ylabel("Value of objective")
+    axs[0].set_ylabel(ylbl)
 
+    # plot data
     for i in range(d):
-        axs[i].scatter(X[:,i], Y, c=list(C), s=9, alpha=0.8, zorder=4)
+        # clipped points
+        axs[i].scatter(X[mask,i], Y[mask], c=list(C[mask]), s=11, alpha=0.8, zorder=4, marker='v', edgecolors='none')
+
+        # unclipped points
+        axs[i].scatter(X[~mask,i], Y[~mask], c=list(C[~mask]), s=10, alpha=0.6, zorder=5, marker='o', edgecolors='none')
+
+        # configure axis
         axs[i].set_xlabel(keys[i], fontsize=10)
         axs[i].grid(alpha=0.2, zorder=0)
         axs[i].set_ylim(ymin, ymax)
         if i>=1:
             axs[i].set_yticklabels([])
 
+    # save plot
     fig.subplots_adjust(wspace=0.012)
     fig.savefig(os.path.join(directory, "plots", f"result_objective.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
 
-def plot_result_correlation(par_keys, obs_keys, directory):
+def plot_result_correlation(pars:dict, obs:dict, directory):
     """Plot correlation between observables and parameters.
 
     This requires reading output-data files from the disk.
 
     Args:
-        par_keys (list): Parameter names
-        obs_keys (list): Observable names
+        par_keys (dict): Parameter names and bounds
+        obs_keys (dict): Observable names and target values
         directory (str): Base dir where the inference was performed.
     """
 
     # Convert to lists
-    par_keys = list(par_keys)
-    obs_keys = list(obs_keys)
+    par_keys = list(pars.keys())
+    obs_keys = list(obs.keys())
 
     # Get directories for all cases of interest
     cases = glob(directory + "/workers/w_*/i_*/")
@@ -474,6 +494,9 @@ def plot_result_correlation(par_keys, obs_keys, directory):
 
             # axis grid
             axs[j,i].grid(alpha=0.2, zorder=0)
+
+            # observables
+            axs[j,i].axhline(y=obs[obs_keys[j]], color='tab:red', alpha=0.5)
 
     # Axis labels
     for i in range(n_par):

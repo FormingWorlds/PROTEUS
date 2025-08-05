@@ -57,7 +57,6 @@ def run_inference(config):
     # Update ref_config path to point to a copy, in case user removes the original file
     copy_config = os.path.join(os.path.join(dirs["output"], "ref_config.toml"))
     shutil.copyfile(config["ref_config"], copy_config)
-    print(f"Copy config to {copy_config}")
     config["ref_config"] = copy_config
 
     # Create plots directory (will not already exist)
@@ -101,7 +100,9 @@ def run_inference(config):
     plotBO.plots_perf_timeline(logs, dirs["output"], n_init)
     plotBO.plots_perf_converge(D_final, Ts, n_init, dirs["output"])
     plotBO.plot_result_objective(D_final, config["parameters"], n_init, dirs["output"])
-    plotBO.plot_result_correlation(config["parameters"].keys(), config["observables"].keys(), dirs["output"])
+    plotBO.plot_result_correlation(config["parameters"],
+                                    config["observables"],
+                                    dirs["output"])
 
     # Done
     print(f"Inference completed at {datetime.now().astimezone().isoformat()}")
