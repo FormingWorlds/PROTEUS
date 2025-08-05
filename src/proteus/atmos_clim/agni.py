@@ -565,10 +565,13 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     # Calculate observables
     # ---------------------------
 
+    # Set observed level
+    atmos.transspec_p = float(config.atmos_clim.agni.p_obs * 1e5) # convert to Pa
+
     # observed height and derived bulk density
     jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
     rho_obs = float(atmos.transspec_rho)
-    p_obs   = float(atmos.transspec_p) # set by peak of contribution function
+    p_obs   = float(atmos.transspec_p)
     r_obs   = float(atmos.transspec_r)
 
     # ---------------------------

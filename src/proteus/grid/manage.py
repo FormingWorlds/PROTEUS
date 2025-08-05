@@ -146,9 +146,12 @@ class Grid():
                 shutil.rmtree(dir)
             os.makedirs(dir)
 
-        # Make copy of grid config file, if there is one
+        # Make copy of GRID config file, if there is one
         if grid_config:
             shutil.copyfile(grid_config, os.path.join(self.outdir, "copy.grid.toml"))
+
+        # Make copy of REFERENCE config file
+        shutil.copyfile(self.conf, os.path.join(self.outdir, "ref_config.toml"))
 
         # Setup logging
         setup_logger(logpath=os.path.join(self.outdir,"manager.log"), logterm=True, level=1)
@@ -433,23 +436,24 @@ class Grid():
             # / end while loop
 
         # Check all cases' status files
-        for i in range(self.size):
-            # find file
-            status_path = os.path.join(self.outdir, self.CONFIG_BASENAME%i, "status")
-            if not os.path.exists(status_path):
-                raise Exception("Cannot find status file at '%s'" % status_path)
+        if not test_run:
+            for i in range(self.size):
+                # find file
+                status_path = os.path.join(self.outdir, self.CONFIG_BASENAME%i, "status")
+                if not os.path.exists(status_path):
+                    raise Exception("Cannot find status file at '%s'" % status_path)
 
-            # read file
-            with open(status_path,'r') as hdl:
-                lines = hdl.readlines()
-            this_stat = int(lines[0])
+                # read file
+                with open(status_path,'r') as hdl:
+                    lines = hdl.readlines()
+                this_stat = int(lines[0])
 
-            # if still marked as running, it must have died at some point
-            if ( 0 <= this_stat <= 9 ):
-                log.warning("Case %06d has status=running but it is not alive. Setting status=died."%i)
-                with open(status_path,'w') as hdl:
-                    hdl.write("25\n")
-                    hdl.write("Error (died)\n")
+                # if still marked as running, it must have died at some point
+                if ( 0 <= this_stat <= 9 ):
+                    log.warning("Case %06d has status=running but it is not alive. Setting status=died."%i)
+                    with open(status_path,'w') as hdl:
+                        hdl.write("25\n")
+                        hdl.write("Error (died)\n")
 
         time_end = datetime.now()
         log.info("All processes finished at: "+str(time_end.strftime('%Y-%m-%d_%H:%M:%S')))
@@ -535,7 +539,7 @@ done
         time.sleep(2.0)
 
 
-def grid_from_config(config_fpath:str):
+def grid_from_config(config_fpath:str, test_run:bool=False):
     '''Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)'''
 
     # Load configuration from TOML file
@@ -618,8 +622,8 @@ def grid_from_config(config_fpath:str):
     # Run the grid
     if use_slurm:
         # Generate Slurm batch file, use `sbatch` to submit
-        pg.slurm_config(max_jobs, max_days=max_days, max_mem=max_mem)
+        pg.slurm_config(max_jobs, test_run=test_run, max_days=max_days, max_mem=max_mem)
     else:
         # Alternatively, let grid_proteus.py manage the jobs
-        pg.run(max_jobs)
+        pg.run(max_jobs, test_run=test_run, check_interval=10)
         log.info("GridPROTEUS finished")
