@@ -136,7 +136,10 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     log.info("Evolve orbit and tides...")
 
     # Set semimajor axis and eccentricity.
-    #    In the future, these could be allowed to evolve in time.
+    from proteus.orbit.orbit import update_orbit
+    update_orbit(hf_row, config, interior_o.dt)
+    log.info("    sma = %.3f AU"%(hf_row["semimajorax"]/AU))
+    log.info("    ecc = %.3f "%(hf_row["eccentricity"]))
 
     #this obtains the orbital separation based on the instellation flux
     if config.orbit.instellation_method == 'inst' and config.star.module == 'dummy':
