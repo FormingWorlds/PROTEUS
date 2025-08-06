@@ -11,9 +11,9 @@ init_samps = 2        # Number of random samples if starting from scratch.
 init_grid  = 'none'   # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Parameters for Bayesian optimisation
-n_workers  = 4       # Number of parallel workers
+n_workers  = 2       # Number of parallel workers
 kernel     = "RBF"   # Kernel type for GP
-max_len    = 4      # Maximum number of evaluations
+max_len    = 2      # Maximum number of evaluations
 n_restarts = 10      # GP optimization restarts
 n_samples  = 1000    # Raw samples for acquisition optimization
 

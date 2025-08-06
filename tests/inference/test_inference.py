@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import filecmp
 import os
+import pickle
 
 import pytest
 from helpers import PROTEUS_ROOT
@@ -28,5 +29,27 @@ def test_inference_config(inference_run):
     # Copy of base config is identical to base config
     assert filecmp.cmp(OUT_DIR / 'ref_config.toml', BASE_CONFIG, shallow=False)
 
-    # Check that case config files have been written
-    # assert os.path.isfile(OUT_DIR / 'cfgs' / 'case_000000.toml')
+def test_inference_init(inference_run):
+    # Check that init data was written
+    assert os.path.isfile(OUT_DIR / 'init.pkl')
+
+    # Chec init data format
+    with open(OUT_DIR / 'data.pkl', 'rb') as hdl:
+        data = pickle.load(hdl)
+    assert "X" in data.keys()
+    assert "Y" in data.keys()
+
+def test_inference_output(inference_run):
+    # Check that output results exist
+    assert os.path.isfile(OUT_DIR / 'data.pkl')
+
+    # Check output result format
+    with open(OUT_DIR / 'data.pkl', 'rb') as hdl:
+        data = pickle.load(hdl)
+    assert "X" in data.keys()
+    assert "Y" in data.keys()
+    assert len(data["Y"]) > 2
+
+    # Check plots exist
+    assert os.path.isfile(OUT_DIR / 'plots' / 'result_correlation.png')
+    assert os.path.isfile(OUT_DIR / 'plots' / 'result_objective.png')

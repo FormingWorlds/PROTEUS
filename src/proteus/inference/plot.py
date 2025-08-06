@@ -298,7 +298,7 @@ def plots_perf_converge(D, T, n_init, directory):
         directory (str): Base dir where "plots/" subfolder will be created.
     """
 
-    Y = np.array(D["Y"]).flatten()  # Flatten in case it's (N,1)
+    Y = np.array(D["Y"], copy=None, dtype=float).flatten()  # Flatten in case it's (N,1)
     Y = Y[n_init:]
 
     y_best = Y[0]
@@ -379,7 +379,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-10):
     """
 
     # Get objective function values
-    Y = np.array(D['Y']).flatten()
+    Y = np.array(D['Y'], copy=None, dtype=float).flatten()
 
     # Best point
     i_best = np.argmax(Y)
@@ -402,7 +402,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-10):
 
     # Un-normalise X data
     X = unnormalize(D['X'], bounds)
-    X = np.array(X)
+    X = np.array(X, copy=None, dtype=float)
 
     # Colors
     C = np.full_like(Y, 'k', dtype=str)

@@ -19,18 +19,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     # time-stepping
     [params.dt]
         minimum      = 1e2    # yr, minimum time-step
-        maximum      = 3e7    # yr, maximum time-step
+        maximum      = 1e7    # yr, maximum time-step
         initial      = 1e2    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e1    # yr, interval to re-calculate the instellation
-        method       = "adaptive"  # proportional | adaptive | maximum
-
-        [params.dt.proportional]
-            propconst    = 52.0   # Proportionality constant
-
-        [params.dt.adaptive]
-            atol         = 0.02   # Step size atol
-            rtol         = 0.10   # Step size rtol
+        method       = "maximum"  # proportional | adaptive | maximum
 
     # termination criteria
     [params.stop]
@@ -47,7 +40,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 1e10     # yr, model will terminate when t > maximum
+            maximum = 1e8     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -153,17 +146,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     module = "calliope"         # Which outgassing module to use
 
     [outgas.calliope]
-        include_H2O  = true     # Include H2O compound
-        include_CO2  = true     # Include CO2 compound
-        include_N2   = true     # Include N2 compound
-        include_S2   = true     # Include S2 compound
-        include_SO2  = true     # Include SO2 compound
-        include_H2S  = true     # Include H2S compound
-        include_NH3  = true     # Include NH3 compound
-        include_H2   = true     # Include H2 compound
-        include_CH4  = true     # Include CH4 compound
-        include_CO   = true     # Include CO compound
-        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
+        include_NH3  = false     # Include NH3 compound
 
 # Volatile delivery - physics table
 [delivery]
@@ -182,8 +165,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
-        H_oceans    = 6.0       # Hydrogen inventory in units of equivalent Earth oceans
-        # H_ppmw      = 0.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_oceans    = 0.0       # Hydrogen inventory in units of equivalent Earth oceans
+        H_ppmw      = 100.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 0.0       # Carbon inventory in ppmw relative to mantle mass
