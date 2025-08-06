@@ -4,9 +4,9 @@ version = "2.0"
 [params]
     [params.out]
         path        = "dummy"
-        logging     = "DEBUG"
+        logging     = "ERROR"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
-        write_mod   = 50      # Write CSV frequency, 0: wait until completion | n: every n iterations
+        write_mod   = 100      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 'none'
 
     [params.dt]
@@ -55,12 +55,11 @@ version = "2.0"
 # Orbital system
 [orbit]
     semimajoraxis   = 0.7       # AU
-    eccentricity    = 0.2     # dimensionless
+    eccentricity    = 0.2       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
 
-    evolve = true
-
+    evolve  = true
     module  = "dummy"
 
     [orbit.dummy]

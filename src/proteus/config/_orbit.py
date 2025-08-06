@@ -21,7 +21,9 @@ def phi_tide_validator(instance, attribute, value):
 
 @define
 class OrbitDummy:
-    """Dummy orbit module.
+    """Dummy orbit/tidal heating module.
+
+    Uses a fixed tidal heating power density and love number.
 
     Attributes
     ----------

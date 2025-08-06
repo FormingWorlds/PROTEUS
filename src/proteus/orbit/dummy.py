@@ -16,7 +16,7 @@ log = logging.getLogger("fwl."+__name__)
 def run_dummy_orbit(config:Config, interior_o:Interior_t):
     """Run the dummy orbit module.
 
-    Sets interior tidal heating, return Im(k2) love number value of zero.
+    Sets interior tidal heating, returns Im(k2) value from config.
 
     Parameters
     ----------
