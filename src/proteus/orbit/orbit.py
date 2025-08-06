@@ -31,7 +31,7 @@ def orbitals(t, z, params):
     Helper function for solving coupled ODEs.
     """
     a, e = z
-    return [de_dt(a, e, params), da_dt(a, e, params)]
+    return [da_dt(a, e, params), de_dt(a, e, params)]
 
 
 def evolve_orbital(hf_row:dict, config:Config, dt:float):
