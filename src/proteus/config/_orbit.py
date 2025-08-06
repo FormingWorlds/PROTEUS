@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import ge, gt, in_, lt
+from attrs.validators import ge, gt, in_, le, lt
 
 from ._converters import none_if_none
 
@@ -29,9 +29,12 @@ class OrbitDummy:
         Fixed global heating rate from tides [W kg-1].
     Phi_tide: str
         Inequality which, if locally true, determines in which regions tides are applied.
+    Imk2: float
+        Imaginary part of k2 Love number, which is usually negative.
     """
     H_tide: float   = field(default=0.0, validator=ge(0.0))
     Phi_tide: str   = field(default="<0.3", validator=phi_tide_validator)
+    Imk2: float     = field(default=0.0, validator=le(0.0))
 
 @define
 class Lovepy:
@@ -53,12 +56,12 @@ class Orbit:
     ----------
     instellation_method: str
         Whether to use the semi-major axis ('sma') or instellation flux ('inst') to define the planet's orbit
-    semimajoraxis: float
-        Semi-major axis of the planet's orbit [AU].
     instellationflux: float
         Instellation flux received from the planet in Earth units.
+    semimajoraxis: float
+        Initial semi-major axis of the planet's orbit [AU].
     eccentricity: float
-        Eccentricity of the planet's orbit.
+        Initial Eccentricity of the planet's orbit.
     zenith_angle: float
         Characteristic angle of incoming stellar radiation, relative to the zenith [deg].
     s0_factor: float
@@ -79,6 +82,7 @@ class Orbit:
     s0_factor: float = field(validator=gt(0))
     instellation_method: str = field(default='sma',validator=in_(('sma','inst')))
     instellationflux: float = field(default=1.0,validator=gt(0))
+    evolve: bool = field(default=False)
 
     dummy:  OrbitDummy  = field(factory=OrbitDummy)
     lovepy: Lovepy      = field(factory=Lovepy)

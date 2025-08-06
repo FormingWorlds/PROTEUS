@@ -135,29 +135,32 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     log.info("Evolve orbit and tides...")
 
-    # Set semimajor axis and eccentricity.
-    from proteus.orbit.orbit import update_orbit
-    update_orbit(hf_row, config, interior_o.dt)
-    log.info("    sma = %.3f AU"%(hf_row["semimajorax"]/AU))
-    log.info("    ecc = %.3f "%(hf_row["eccentricity"]))
+    # Set semimajor axis and eccentricity, through the desired method...
+    if config.orbit.evolve:
+        # set by orbital evolution, based on tidal love number
+        from proteus.orbit.orbit import evolve_orbital
+        evolve_orbital(hf_row, config, interior_o.dt)
 
-    #this obtains the orbital separation based on the instellation flux
-    if config.orbit.instellation_method == 'inst' and config.star.module == 'dummy':
-        from proteus.star.dummy import calc_star_luminosity, get_star_radius
-
-        Lbol = calc_star_luminosity(config.star.dummy.Teff, get_star_radius(config)*R_sun)
-        S_earth = L_sun / (4 * np.pi * AU * AU)
-        S_0 = config.orbit.instellationflux * S_earth
-
-        hf_row["semimajorax"] = np.sqrt( Lbol / (4 * np.pi * S_0))
-
-    #otherwise, use the semi-major axis provided by the user
     else:
-        hf_row["semimajorax"] = config.orbit.semimajoraxis * AU
+        # orbital parameters are held constant over time
+        hf_row["eccentricity"] = config.orbit.eccentricity
+        hf_row["semimajorax"]  = config.orbit.semimajoraxis * AU
 
-    hf_row["eccentricity"] = config.orbit.eccentricity
+        # set semi-major axis to obtain a particular bolometric instellation flux
+        if config.orbit.instellation_method == 'inst' and config.star.module == 'dummy':
+            from proteus.star.dummy import calc_star_luminosity, get_star_radius
 
-    # Update orbital separation and period
+            Lbol = calc_star_luminosity(config.star.dummy.Teff, get_star_radius(config)*R_sun)
+            S_earth = L_sun / (4 * np.pi * AU * AU)
+            S_0 = config.orbit.instellationflux * S_earth
+
+            hf_row["semimajorax"] = np.sqrt( Lbol / (4 * np.pi * S_0))
+
+    # Inform user
+    log.info("    smaxis = %.5f AU"%(hf_row["semimajorax"]/AU))
+    log.info("    eccen. = %.5f   "%(hf_row["eccentricity"]))
+
+    # Update orbital separation and period, from other variables above
     update_separation(hf_row)
     update_period(hf_row)
     log.info("    period = %.3f days"%(hf_row["orbital_period"]/secs_per_day))
@@ -172,14 +175,10 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     if max(hf_row["R_obs"], hf_row["R_xuv"]) > hf_row["hill_radius"]:
         log.warning("Atmosphere extends beyond the Hill radius")
 
-    # Exit here if not modelling tides
-    if config.orbit.module is None:
-        return
-
     # Initialise, set tidal heating to zero
     interior_o.tides = np.zeros(len(interior_o.phi))
 
-    # Call tides module
+    # Call tides module, calculates heating rates and new love number
     if config.orbit.module == 'dummy':
         from proteus.orbit.dummy import run_dummy_orbit
         hf_row["Imk2"] = run_dummy_orbit(config, interior_o)
@@ -188,6 +187,9 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
         from proteus.orbit.lovepy import run_lovepy
         hf_row["Imk2"] = run_lovepy(hf_row, dirs, interior_o,
                                         config.orbit.lovepy.visc_thresh)
+
+    else:
+        hf_row["Imk2"] = 0.0
 
     # Print info
     log.info("    H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))

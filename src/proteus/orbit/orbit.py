@@ -1,11 +1,17 @@
 # Orbit evolution module
+from __future__ import annotations
+
+import logging
 from typing import TYPE_CHECKING
+
+from scipy.integrate import solve_ivp
+
+from proteus.utils.constants import AU, const_G
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
-from proteus.utils.constants import const_G, AU
-from scipy.integrate import solve_ivp
+log = logging.getLogger("fwl."+__name__)
 
 def de_dt(a, e, params):
     """
@@ -20,15 +26,16 @@ def da_dt(a, e, params):
     """
     return 2 * a * e * de_dt(a, e, params)
 
-def orbitals(z, params):
+def orbitals(t, z, params):
     """
     Helper function for solving coupled ODEs.
     """
     a, e = z
     return [de_dt(a, e, params), da_dt(a, e, params)]
 
-def update_orbit(hf_row:dict, config:Config, dt:float,):
-    """Run the orbital dynamics module.
+
+def evolve_orbital(hf_row:dict, config:Config, dt:float):
+    """Evolve the planet's orbital parameters module.
 
     Updates the semi-major axis and eccentricity.
 
@@ -41,17 +48,17 @@ def update_orbit(hf_row:dict, config:Config, dt:float,):
         dt : float
             Time interval over which escape is occuring [yr]
     """
-    Imk2 = hf_row["Imk2_star"]
+    Imk2 = hf_row["Imk2"]
 
     Rpl = hf_row["R_int"]
     Mpl = hf_row["M_int"]
     Mst = hf_row["M_star"]
 
-    sma = hf_row["semimajorax"]
-    ecc = hf_row["eccentricity"]
+    sma = float(hf_row["semimajorax"])
+    ecc = float(hf_row["eccentricity"])
 
     # Time step
-    current_time = hf_row["Time"]
+    current_time = float(hf_row["Time"])
 
     # Use config parameters as initial guess
     if current_time <= 1:
@@ -67,7 +74,8 @@ def update_orbit(hf_row:dict, config:Config, dt:float,):
     params = (Imk2, Mst, const_G, Rpl, Mpl)
 
     # Find new semimajor axis and eccentricity using RK5(4) integration method
-    sol = solve_ivp(orbitals, [previous_time, current_time], [sma, ecc], args=(params))
+    log.debug("Integrate sma and ecc with solve_ivp")
+    sol = solve_ivp(orbitals, [previous_time, current_time], [sma, ecc], args=(params,))
 
     # Update semimajor axis and eccentricity
     hf_row["semimajorax"]  = sol.y[0][-1]
