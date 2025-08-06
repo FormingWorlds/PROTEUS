@@ -64,7 +64,7 @@ def flatten(d, parent_key: str = '', sep: str = '.'):
     return dict(items)
 
 
-def print_results(D, logs, config, output):
+def print_results(D, logs, config, output, n_init):
     """Identify the best evaluation and print its observables and inferred parameters.
 
     Finds the index of the maximum objective value in D['Y'], then:
@@ -77,10 +77,13 @@ def print_results(D, logs, config, output):
         logs (list of dict): Log entries with keys 'worker', 'task_id', etc.
         config (dict): Original config with 'observables' and 'parameters' mappings.
         output (str): Path to output directory for this entire inference call.
+        n_init (int): Number of initial guess data points.
     """
-    # Convert list of objective values to tensor and find best index
+    # Convert list of objective values to tensor
     Y = D["Y"]
-    i_opt = Y.argmax()
+
+    # Find best index, ignoring the initial points
+    i_opt: int = Y[n_init:].argmax() + n_init
     log_opt = logs[i_opt]
 
     # Extract identifiers of the best run

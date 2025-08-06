@@ -144,8 +144,7 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
         # Import
         from proteus.atmos_clim.dummy import RunDummyAtm
         # Run dummy atmosphere model
-        atm_output = RunDummyAtm(dirs, config, hf_row["T_magma"], hf_row["F_ins"],
-                                    hf_row["R_int"], hf_row["M_int"], hf_row["P_surf"])
+        atm_output = RunDummyAtm(dirs, config, hf_row)
 
     # Store atmosphere module output variables
     #    observables

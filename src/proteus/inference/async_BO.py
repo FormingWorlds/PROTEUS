@@ -249,7 +249,7 @@ def parallel_process(
     n_init = len(D_shared["X"])
 
     lock = mgr.Lock()
-    log_list = mgr.list([None] * n_init)
+    log_list = mgr.list([None] * n_init) # no logs from init data
 
     # Generate initial candidate locations and busy-map
     X_init = init_locs(n_workers, D_shared)

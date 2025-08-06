@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import const_sigma
+from proteus.utils.constants import const_R, const_sigma
 from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 # Run the dummy atmosphere module
-def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:float, M_int:float, P_surf:float):
+def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     log.debug("Running dummy atmosphere...")
 
     # Gamma factor: VERY simple parameterisation for the radiative properties of the atmosphere.
@@ -33,13 +33,15 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     skin_d          = config.atmos_clim.surface_d
     skin_k          = config.atmos_clim.surface_k
 
-    log.debug("Gamma = %.4f" % gamma)
+    # Copy variables
+    T_magma = float(hf_row["T_magma"])
 
     # Simple rad trans
     def _calc_fluxes(x):
         # surface emission and stellar flux
         fl_U_LW = const_sigma * (x - gamma * x)**4.0
-        fl_D_SW = F_ins * (1.0 - albedo_pl) * inst_sf * np.cos(zenith_angle * np.pi / 180.0)
+        fl_D_SW =  hf_row["F_ins"] * (1.0 - albedo_pl) * \
+                    inst_sf * np.cos(zenith_angle * np.pi / 180.0)
 
         # surface reflection
         fl_U_SW = fl_D_SW * albedo_s
@@ -64,7 +66,7 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
         # We need to solve for the state where fl_N = f_skn
         # This function takes T_surf_atm as the input value, and returns fl_N - f_skn
         def _resid(x):
-            F_skn = skin_k / skin_d * (T_magma - x)
+            F_skn = skin_k / skin_d * (hf_row["T_magma"] - x)
             _f = _calc_fluxes(x)
             return _f["fl_N"] - F_skn
 
@@ -100,20 +102,20 @@ def RunDummyAtm( dirs:dict, config:Config, T_magma:float, F_ins:float, R_int:flo
     log.info("    F_olr  =  %.3e  W m-2" % fluxes["fl_U_LW"])
     log.info("    F_sct  =  %.3e  W m-2" % fluxes["fl_U_SW"])
 
-    # Escape level always at surface for dummy atmosphere
-    if config.escape.module == 'zephyrus':
-        log.warning("Setting escape level to surface because dummy atmosphere is used")
+    # Scale height used to calculate observed radius
+    atm_H = const_R * T_surf_atm / (hf_row["atm_kg_per_mol"] * hf_row["gravity"])
+    R_obs = hf_row["R_int"] + atm_H * config.atmos_clim.dummy.height_factor
 
     output = {}
     output["T_surf"]  = T_surf_atm
     output["F_atm"]   = F_atm_lim             # Net flux at TOA
     output["F_olr"]   = fluxes["fl_U_LW"]     # OLR
     output["F_sct"]   = fluxes["fl_U_SW"]     # Scattered SW flux
-    output["R_obs"]   = R_int
-    output["rho_obs"] = 3 * M_int / (4*np.pi*R_int**3)
+    output["R_obs"]   = R_obs
+    output["rho_obs"] = 3 * hf_row["M_int"] / (4*np.pi*R_obs**3)
     output["albedo"]  = fluxes["fl_U_SW"]/fluxes["fl_D_SW"]
-    output["p_xuv"]   = P_surf
-    output["R_xuv"]   = R_int
-    output["p_obs"]   = P_surf
+    output["p_xuv"]   = hf_row["P_surf"]
+    output["R_xuv"]   = R_obs
+    output["p_obs"]   = hf_row["P_surf"]
 
     return output
