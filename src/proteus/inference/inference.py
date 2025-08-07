@@ -65,9 +65,10 @@ def run_inference(config):
     # Create initial guess data through the requested method
     n_init = create_init(config)
 
-    # Maximum number of evaluations during inference (ignoring initial evaluations)
-    max_len = int(config["max_len"]) + max(n_init, config["n_workers"])
+    # Maximum number of evaluations during inference (offset by initial evaluations)
+    max_len = max(int(config["max_len"]),1) + n_init
 
+    print(" ")
     print(f"Starting optimisation with {config['n_workers']} workers")
     t_0 = time.perf_counter()
 
@@ -86,7 +87,9 @@ def run_inference(config):
     )
 
     t_1 = time.perf_counter()
-    print(f"This took: {(t_1 - t_0):.2f} seconds\n")
+    print(f"This took: {(t_1 - t_0):.2f} seconds")
+    print("-----------------------------------")
+    print(" ")
 
     # Print summary of true vs. simulated observables and inferred parameters
     print_results(D_final, logs, config, dirs["output"], n_init)
@@ -105,6 +108,7 @@ def run_inference(config):
                                     dirs["output"])
 
     # Done
+    print(" ")
     print(f"Inference completed at {datetime.now().astimezone().isoformat()}")
 
 

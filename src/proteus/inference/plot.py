@@ -367,7 +367,7 @@ def plots_perf_converge(D, T, n_init, directory):
     plt.close(fig)
 
 
-def plot_result_objective(D, parameters, n_init, directory, yclip=-10):
+def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
     """Plot objective function at each sample that was created.
 
     Args:
@@ -426,29 +426,34 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-10):
         # unclipped points
         axs[1,i].scatter(X[~mask,i], Y[~mask], c=list(C[~mask]), s=10, alpha=0.6, zorder=5, marker='o', edgecolors='none')
 
-        # configure axis
+        # configure axes
         axs[1,i].set_xlabel(keys[i], fontsize=10)
         axs[1,i].grid(alpha=0.2, zorder=0)
         axs[1,i].set_ylim(ymin, ymax)
         if i>=1:
             axs[1,i].set_yticklabels([])
         axs[0,i].set_yticklabels([])
+        axs[0,i].set_xticklabels([])
 
     # plot histograms
     for i in range(d):
         x1 = X[:n_init, i]   # only initial values
         x2 = X[n_init:, i]   # after initial values
-        axs[0,i].hist([x2,x1], bins=11, color=['k','c'],
-                stacked=True, histtype='barstacked',
-                zorder=2)
+        axs[0,i].hist([x2,x1], bins=11,
+                        stacked=True, histtype='barstacked', color=['k','c'],
+                        zorder=2)
 
         # median and stddev
         x_med = np.median(x2)
         x_std = np.std(x2)
         axs[0,i].set_title(f"{x_med:3f}"+r"$\pm$"+f"{x_std:3f}", fontsize=8, color='r')
 
-        # overplot median
-        axs[0,i].axvline(x=x_med, zorder=4, color='r', alpha=0.8)
+        # overplot median in both panels
+        for j in (0,1):
+            axs[j,i].axvline(x=x_med, zorder=4, color='r', alpha=0.8)
+
+        # grid
+        axs[0,i].grid(alpha=0.2, zorder=0, axis='x')
 
     # save plot
     fig.subplots_adjust(wspace=0.012, hspace=0.022)

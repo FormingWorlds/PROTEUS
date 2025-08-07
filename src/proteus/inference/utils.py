@@ -14,9 +14,11 @@ Functions:
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import toml
 import torch
+from botorch.utils.transforms import unnormalize
 
 # Use double precision for tensor computations
 dtype = torch.double
@@ -80,6 +82,7 @@ def print_results(D, logs, config, output, n_init):
         n_init (int): Number of initial guess data points.
     """
     # Convert list of objective values to tensor
+    X = D["X"]
     Y = D["Y"]
 
     # Find best index, ignoring the initial points
@@ -99,7 +102,7 @@ def print_results(D, logs, config, output, n_init):
     observables = list(true_y.keys())
 
     # Simulated observables: last row of the CSV
-    sim_opt = df.iloc[-1][observables].T
+    sim_opt = list(df.iloc[-1][observables].T)
 
     # Load and flatten the input TOML for this run
     in_path = f"{output}/workers/w_{w}/i_{id}/init_coupler.toml"
@@ -109,10 +112,32 @@ def print_results(D, logs, config, output, n_init):
 
     # Extract inferred parameter values in original order
     params = config["parameters"].keys()
-    par_opt = pd.Series({param: input[param] for param in params})
 
     # Print summary to console
-    print("\nBest objective = ", Y[i_opt].item())
-    print("\nTrue observables\n", true_y)
-    print("\nSimulated observables\n", sim_opt)
-    print("\nInferred inputs\n", par_opt)
+    print(f"Best objective is (i={i_opt}): J={Y[i_opt].item()})")
+    print(f"{'Observable':18s} | True        | Simulated   | Diff %")
+    for i,k in enumerate(observables):
+        tru = true_y[k]
+        obs = sim_opt[i]
+        dif = 100*(obs-tru)/tru
+        print(f"{k:18s}   {tru:8.4e}    {obs:8.4e}    {dif:+.3f}")
+    print("")
+    print(f"{'Parameter':28s} | Simulated val @ best J")
+    for i,k in enumerate(list(params)):
+        print(f"{k:28s}   {str(input[k]):20s}")
+    print("-----------------------------------")
+    print(" ")
+
+    # Print parameter statistics
+    d = len(params)
+    bounds = torch.tensor([[list(config["parameters"].values())[i][j] for i in range(d)]
+                            for j in range(2)])
+    X_samp = np.array(unnormalize(X, bounds), copy=None, dtype=float)[n_init:,:]
+    print(f"Sample statistics (N={len(X_samp)})")
+    print(f"{'Parameter':28s} | Median ± stddev")
+    for i,k in enumerate(list(params)):
+        x_med = np.median(X_samp[:,i])
+        x_std = np.std(X_samp[:,i])
+        print(f"{k:28s}   {x_med:.4f} ± {x_std:.4f}")
+    print("-----------------------------------")
+    print(" ")
