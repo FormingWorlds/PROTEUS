@@ -8,6 +8,7 @@ import pandas as pd
 import toml
 import torch
 from botorch.utils.transforms import unnormalize
+from numpy import log10
 
 from proteus.utils.coupler import get_proteus_directories
 
@@ -109,16 +110,29 @@ def run_proteus(parameters: dict,
             else:
                 raise RuntimeError(f"Simulator failed after {max_attempts} attempts: {e}\nInputs: {parameters}")
 
-def eval_obj(sim_vals, true_observables):
+def eval_obj(sim_dict, tru_dict):
     '''Evaluate objective function, given simulated and true values of observables'''
 
+    sim_vals = []
+    tru_vals = []
+    for k in sim_dict.keys():
+        # some variables scale logarithmically
+        if ("vmr" in k) or (k in ("P_surf","Time","semimajorax","eccentricity")):
+            sim_vals.append(log10( max(sim_dict[k],1e-30) ))
+            tru_vals.append(log10( max(tru_dict[k],1e-30) ))
+        # others are just linear
+        else:
+            sim_vals.append(sim_dict[k])
+            tru_vals.append(tru_dict[k])
+
     # Convert to tensor and reshape
-    sim = torch.tensor(sim_vals.values, dtype=dtype).reshape(1, -1)
-    true_y = torch.tensor(list(true_observables.values()), dtype=dtype).reshape(1, -1)
+    sim = torch.tensor(sim_vals, dtype=dtype).reshape(1, -1)
+    true_y = torch.tensor(tru_vals, dtype=dtype).reshape(1, -1)
 
     # Compute normalized difference and squared distance
     diff = torch.ones(1, 1, dtype=dtype) - sim / true_y
     sq_dist = (diff ** 2).sum(dim=1, keepdim=True)
+
     # Return final objective
     return torch.ones(1, 1, dtype=dtype) - sq_dist
 

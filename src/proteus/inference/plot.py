@@ -52,7 +52,12 @@ def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
 
     # Identify unique workers and assign colors
     workers = sorted(df["worker"].unique())
-    color_map = {w: plt.cm.tab10(i) for i, w in enumerate(workers)}
+    color_map = {}
+    for i,w in enumerate(workers):
+        if i < 10:
+            color_map[w] = plt.cm.tab10(i)
+        else:
+            color_map[w] = np.clip(np.random.random_sample(3), a_min=0.05, a_max=0.95)
 
     # Find bar widths and the rightmost endpoint
     bar_widths = df["end"] - df["start"]
@@ -385,7 +390,6 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
     i_best = np.argmax(Y)
 
     # Clamp values
-    yclip = -10
     mask = Y < yclip
     Y = np.clip(Y, a_min=yclip, a_max=None)
 
@@ -509,17 +513,22 @@ def plot_result_correlation(pars:dict, obs:dict, directory):
             yy = Y[:, j]
             axs[j,i].scatter(xx, yy, color='k', alpha=0.8, s=8, zorder=4)
 
+            # axis grid
+            axs[j,i].grid(alpha=0.2, zorder=0)
+
+            # observables
+            axs[j,i].axhline(y=obs[obs_keys[j]], color='g', alpha=0.5, label="Observed")
+
+            # these variables are more natural on a log-scale
+            if ("vmr" in obs_keys[j]) or (obs_keys[j] == "P_surf"):
+                axs[j,i].set_yscale("log")
+
             # hide tick labels
             if i>=1:
                 axs[j,i].set_yticklabels([])
             if j<n_obs-1:
                 axs[j,i].set_xticklabels([])
 
-            # axis grid
-            axs[j,i].grid(alpha=0.2, zorder=0)
-
-            # observables
-            axs[j,i].axhline(y=obs[obs_keys[j]], color='g', alpha=0.5, label="Observed")
 
     # Legend
     axs[0,0].legend()
