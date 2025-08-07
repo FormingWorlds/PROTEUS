@@ -17,6 +17,7 @@ from proteus.plot.cpl_sflux_cross import plot_sflux_cross_entry
 from proteus.plot.cpl_spectra import plot_spectra_entry
 from proteus.plot.cpl_structure import plot_structure_entry
 from proteus.plot.cpl_visual import plot_visual_entry
+from proteus.plot.cpl_orbit import plot_orbit_entry
 
 plot_dispatch = {
     'atmosphere':           plot_atmosphere_entry,
@@ -28,6 +29,7 @@ plot_dispatch = {
     'global':               plot_global_entry,
     'interior':             plot_interior_entry,
     'interior_cmesh':       plot_interior_cmesh_entry,
+    'orbit':                plot_orbit_entry,
     'bolometry':            plot_bolometry_entry,
     'spectra':              plot_spectra_entry,
     'sflux':                plot_sflux_entry,

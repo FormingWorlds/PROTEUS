@@ -23,28 +23,52 @@ def plot_orbit(hf_all:pd.DataFrame, output_dir:str, plot_format:str="pdf", t0:fl
 
     log.info("Plot orbit")
 
-    # make plot
-    lw = 1.2
-    scale = 1.1
-    fig,axl = plt.subplots(1,1, figsize=(7*scale,4*scale))
+    # Plotting parameters
+    lw=2.0
+    fig_ratio=(1,2)
+    fig_scale=4.0
+
+    fig,axs = plt.subplots(1,2, figsize=(fig_ratio[0]*fig_scale, fig_ratio[1]*fig_scale), sharex=True)
+    ax_t = axs[0][0]
+    ax_b = axs[0][1]
 
     # left axis
-    axl.plot(time, hf_all["semimajorax"], lw=lw, color='k')
-    axl.set_ylabel("Semi-major axis [m]")
+    ax_t.plot(time, hf_all["semimajorax"], lw=lw, color='k')
+    ax_t.set_ylabel("Semi-major axis [m]")
 
     # right axis
-    axr = axl.twinx()
+    ax_tr = ax_t.twinx()
     color = "tab:red"
-    axr.plot(time, hf_all["eccentricity"], lw=lw, color=color)
-    axr.set_ylabel("Eccentricity")
-    axr.yaxis.label.set_color(color)
-    axr.tick_params(axis='y', colors=color)
+    ax_tr.plot(time, hf_all["eccentricity"], lw=lw, color=color)
+    ax_tr.set_ylabel("Eccentricity")
+    ax_tr.yaxis.label.set_color(color)
+    ax_tr.tick_params(axis='y', colors=color)
 
     # x-axis
-    axl.set_xlabel("Time [yr]")
-    axl.set_xscale("log")
-    axl.set_xlim(left=t0, right=np.amax(time))
-    axl.grid(alpha=0.2)
+    ax_t.set_xlabel("Time [yr]")
+    ax_t.set_xscale("log")
+    ax_t.set_xlim(left=t0, right=np.amax(time))
+    ax_t.grid(alpha=0.2)
+
+
+    # left axis
+    ax_b.plot(time, hf_all["semimajorax_sat"], lw=lw, color='k')
+    ax_b.set_ylabel("Semi-major axis [m]")
+
+    # right axis
+    ax_br = ax_b.twinx()
+    color = "tab:red"
+    ax_br.plot(time, hf_all["axial_period"]/3600, lw=lw, color=color)
+    ax_br.set_ylabel("Length of Day")
+    ax_br.yaxis.label.set_color(color)
+    ax_br.tick_params(axis='y', colors=color)
+
+    # x-axis
+    ax_b.set_xlabel("Time [yr]")
+    ax_b.set_xscale("log")
+    ax_b.set_xlim(left=t0, right=np.amax(time))
+    ax_b.grid(alpha=0.2)
+
 
     plt.close()
     plt.ioff()
