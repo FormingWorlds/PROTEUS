@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from proteus.utils.constants import AU, const_G
+from proteus.utils.constants import AU, const_G, secs_per_hour
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -18,8 +18,8 @@ def Ltot(ω, a, params):
     """
     Total angular momentum of Earth-Moon system.
     """
-    I, G, Mpl, Msa, *_ = params
-    return I*ω + Mpl*(G*(Mpl+Msa)*a)
+    I, _, G, Mpl, Msa, _ = params
+    return I*ω + Mpl*(G*(Mpl+Msa)*a)**0.5
 
 def dω_dt(a, ω, params):
     """
@@ -61,37 +61,66 @@ def update_satellite(hf_row:dict, config:Config, dt:float):
     Mpl = hf_row["M_int"]
     Msa = hf_row["M_sat"]
 
-    sma = float(hf_row["semimajorax_sat"])
-    omega = float(hf_row["planet_rotation_freq"])
+    # Calculate bulk tidal power
+    dE_tidal = hf_row["F_tidal"] * 4 * np.pi * Rpl**2 # Js-1
+
+    # Calculate moment of inertia of planet (assuming solid sphere)
+    I = 2/5 * Mpl * Rpl**2 # kg.m-1
 
     # Time step
     current_time = float(hf_row["Time"])
 
     # Use config parameters as initial guess
     if current_time <= 1:
-        # Set semimajor axis and rotation frequency from config.
-        hf_row["semimajorax_sat"]    = config.orbit.semimajoraxis_sat * AU
-        hf_row["planet_rotation_freq"] = config.orbit.rotation_freq
+        # Set semimajor axis, rotation frequency, and system AM from config.
+        uks = 0
+        try:
+            hf_row["semimajorax_sat"] = config.orbit.semimajoraxis_sat * AU # m
+            sma = float(hf_row["semimajorax_sat"])
+        except:
+            uks += 1
+        try:
+            hf_row["axial_period"] = config.orbit.lod * secs_per_hour       # s
+            omega = 2 * np.pi / float(hf_row["axial_period"])
+        except:
+            uks += 2
+        try:
+            hf_row["system_am"] = config.orbit.system_am                    # kg.m2.s-1
+            L = hf_row["system_am"]
+        except:
+            uks += 3
+
+        if uks == 6:
+            log.error("Cannot solve initial system, too many unknowns")
+        elif uks == 3:
+            hf_row["system_am"] = I*omega + Mpl*(const_G*(Mpl+Msa)*sma)**0.5
+            log.info("    sys.am = %.5f kg.m2.s-1"%(hf_row["system_am"]))
+        elif uks == 2:
+            hf_row["axial_period"] = 2 * np.pi * I / (L - Mpl*(const_G*(Mpl+Msa)*sma)**0.5)
+            log.info("    axial. = %.5f h "%(hf_row["axial_period"]/secs_per_hour))
+        elif uks == 1:
+            hf_row["semimajorax_sat"] = ((L - I*omega)/Mpl)**2 / (const_G*(Mpl+Msa))
+            log.info("    smaxis = %.5f km"%(hf_row["semimajorax_sat"]/1000))
+        else:
+            log.info("User provided all unknowns to describe the planet-satellite system")
         return
     else:
         # Find previous_time from which to evolve orbit to current_time
         previous_time = current_time - dt
 
-    # Calculate bulk tidal power
-    dE_tidal = hf_row["F_tidal"] * 4 * np.pi * Rpl**2 # Js-1
-
-    # Define moment of inertia of Earth
-    I = 8.04e37 # kg.m-1
-    # Define combined angular momentum of Earth-Moon system
-    L = 3.61e34 # kg.m2.s-1
+    # Set semimajor axis, rotation frequency, and system AM from config.
+    sma = float(hf_row["semimajorax_sat"])
+    omega = 2 * np.pi / float(hf_row["axial_period"])
+    # Could be allowed to vary to mimic resonance effects
+    L = hf_row["system_am"]
 
     # Collect system parameters at previous_time
     params = (I, L, const_G, Mpl, Msa, dE_tidal)
 
-    # Find new semimajor axis and eccentricity using RK5(4) integration method
+    # Find new semimajor axis and axial frequency using RK5(4) integration method
     log.debug("Integrate sma and omega with solve_ivp")
     sol = solve_ivp(orbitals, [previous_time, current_time], [sma, omega], args=(params,))
 
-    # Update semimajor axis and eccentricity
-    hf_row["semimajorax_sat"]    = sol.y[0][-1]
-    hf_row["planet_rotation_freq"] = 2 * np.pi / sol.y[1][-1]
+    # Update semimajor axis and axial period
+    hf_row["semimajorax_sat"] = sol.y[0][-1]
+    hf_row["axial_period"] = 2 * np.pi / sol.y[1][-1]
