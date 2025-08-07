@@ -391,7 +391,7 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-10):
 
     # Y label
     if np.any(mask):
-        ylbl = f"Value of objective, clipped to J>{yclip}"
+        ylbl = f"Value of objective\nclipped to J>{yclip}"
     else:
         ylbl = "Value of objective"
 
@@ -407,33 +407,51 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-10):
     # Colors
     C = np.full_like(Y, 'k', dtype=str)
     C[:n_init] = 'c'
-    C[i_best] = 'r'
+    C[i_best] = 'm'
 
     # Limits
     ymax = 1.0
     ymin = np.amin(Y)
 
     # Plot
-    fig,axs = plt.subplots(1, d, figsize=(2.7*d, 3.2))
-    axs[0].set_ylabel(ylbl)
+    fig,axs = plt.subplots(2, d, figsize=(2.7*d, 3.2))
+    axs[0,0].set_ylabel("Histogram")
+    axs[1,0].set_ylabel(ylbl)
 
-    # plot data
+    # plot scatter points
     for i in range(d):
         # clipped points
-        axs[i].scatter(X[mask,i], Y[mask], c=list(C[mask]), s=11, alpha=0.8, zorder=4, marker='v', edgecolors='none')
+        axs[1,i].scatter(X[mask,i], Y[mask], c=list(C[mask]), s=11, alpha=0.8, zorder=4, marker='v', edgecolors='none')
 
         # unclipped points
-        axs[i].scatter(X[~mask,i], Y[~mask], c=list(C[~mask]), s=10, alpha=0.6, zorder=5, marker='o', edgecolors='none')
+        axs[1,i].scatter(X[~mask,i], Y[~mask], c=list(C[~mask]), s=10, alpha=0.6, zorder=5, marker='o', edgecolors='none')
 
         # configure axis
-        axs[i].set_xlabel(keys[i], fontsize=10)
-        axs[i].grid(alpha=0.2, zorder=0)
-        axs[i].set_ylim(ymin, ymax)
+        axs[1,i].set_xlabel(keys[i], fontsize=10)
+        axs[1,i].grid(alpha=0.2, zorder=0)
+        axs[1,i].set_ylim(ymin, ymax)
         if i>=1:
-            axs[i].set_yticklabels([])
+            axs[1,i].set_yticklabels([])
+        axs[0,i].set_yticklabels([])
+
+    # plot histograms
+    for i in range(d):
+        x1 = X[:n_init, i]   # only initial values
+        x2 = X[n_init:, i]   # after initial values
+        axs[0,i].hist([x2,x1], bins=11, color=['k','c'],
+                stacked=True, histtype='barstacked',
+                zorder=2)
+
+        # median and stddev
+        x_med = np.median(x2)
+        x_std = np.std(x2)
+        axs[0,i].set_title(f"{x_med:3f}"+r"$\pm$"+f"{x_std:3f}", fontsize=8, color='r')
+
+        # overplot median
+        axs[0,i].axvline(x=x_med, zorder=4, color='r', alpha=0.8)
 
     # save plot
-    fig.subplots_adjust(wspace=0.012)
+    fig.subplots_adjust(wspace=0.012, hspace=0.022)
     fig.savefig(os.path.join(directory, "plots", f"result_objective.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
@@ -496,7 +514,10 @@ def plot_result_correlation(pars:dict, obs:dict, directory):
             axs[j,i].grid(alpha=0.2, zorder=0)
 
             # observables
-            axs[j,i].axhline(y=obs[obs_keys[j]], color='tab:red', alpha=0.5)
+            axs[j,i].axhline(y=obs[obs_keys[j]], color='g', alpha=0.5, label="Observed")
+
+    # Legend
+    axs[0,0].legend()
 
     # Axis labels
     for i in range(n_par):
