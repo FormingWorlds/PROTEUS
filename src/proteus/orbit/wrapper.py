@@ -76,10 +76,6 @@ def update_period(hf_row:dict):
     # Orbital period [seconds]
     hf_row["orbital_period"] = 2 * np.pi * (sma*sma*sma/mu)**0.5
 
-    # Axial period [seconds]
-    #   Assuming that the planet is tidally locked
-    hf_row["axial_period"] = hf_row["orbital_period"]
-
 def update_hillradius(hf_row:dict):
     '''
     Calculate Hill radius.
@@ -163,7 +159,18 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     # Update orbital separation and period, from other variables above
     update_separation(hf_row)
     update_period(hf_row)
+
     log.info("    period = %.3f days"%(hf_row["orbital_period"]/secs_per_day))
+
+    if config.orbit.satellite:
+        # set by orbital evolution, based on tidal love number
+        from proteus.orbit.satellite import update_satellite
+        update_satellite(hf_row, config, interior_o.dt)
+
+    else:
+        # Axial period [seconds]
+        #   Assuming that the planet is tidally locked
+        hf_row["axial_period"] = hf_row["orbital_period"]
 
     # Update Roche limit
     update_rochelimit(hf_row)
@@ -190,6 +197,9 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     else:
         hf_row["Imk2"] = 0.0
+
+    # Call tides module for satellite, calculates heating rates and new love number
+    # To Do
 
     # Print info
     log.info("    H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
