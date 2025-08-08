@@ -641,6 +641,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     from proteus.plot.cpl_global import plot_global
     from proteus.plot.cpl_interior import plot_interior
     from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
+    from proteus.plot.cpl_orbit import plot_orbit
     from proteus.plot.cpl_population import (
         plot_population_mass_radius,
         plot_population_time_density,
@@ -650,7 +651,6 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     from proteus.plot.cpl_spectra import plot_spectra
     from proteus.plot.cpl_structure import plot_structure
     from proteus.plot.cpl_visual import plot_visual
-    from proteus.plot.cpl_orbit import plot_orbit
 
     # Directories
     output_dir = dirs["output"]

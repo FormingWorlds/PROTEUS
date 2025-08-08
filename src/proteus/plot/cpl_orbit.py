@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import AU, secs_per_day, secs_per_hour
+from proteus.utils.constants import AU, secs_per_hour
 
 if TYPE_CHECKING:
     from proteus import Proteus
