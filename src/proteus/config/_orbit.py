@@ -49,47 +49,75 @@ class Lovepy:
     """
     visc_thresh: float = field(default=1e9, validator=gt(0))
 
+def ax_valid(instance, attribute, value):
+    if value is None:
+        return
+
+    if float(value) <= 0:
+        raise ValueError(f"Initial axial period must be >0 hours, got {value}")
 
 @define
 class Orbit:
-    """Planetary orbital parameters.
+    """Planetary and satellite orbital parameters.
+
+    Includes initial conditions, and options for enabling dynamical evolution.
 
     Attributes
     ----------
-    instellation_method: str
-        Whether to use the semi-major axis ('sma') or instellation flux ('inst') to define the planet's orbit
-    instellationflux: float
-        Instellation flux received from the planet in Earth units.
     semimajoraxis: float
         Initial semi-major axis of the planet's orbit [AU].
     eccentricity: float
         Initial Eccentricity of the planet's orbit.
+    instellation_method: str
+        Whether to use the semi-major axis ('sma') or instellation flux ('inst') to define the planet's orbit
+    instellationflux: float
+        Instellation flux received from the planet in Earth units.
+
     zenith_angle: float
         Characteristic angle of incoming stellar radiation, relative to the zenith [deg].
     s0_factor: float
         Scale factor applies to incoming stellar radiation to represent planetary rotation and heat redistribution.
+
+    evolve: bool
+        Allow the planet's orbit to evolve based on eccentricity tides?
+    axial_period: float | None
+        Planet initial day length [hours], will use orbital period if value is None.
+
+    satellite: bool
+        Model a satellite (moon) orbiting the planet and solve for its orbit?
+    semimajoraxis_sat: float
+        Satellit initial semi-major axis  [m]
+
     module: str | None
         Select orbit module to use. Choices: 'none', 'dummy', 'lovepy'.
     """
-    module: str | None = field(validator=in_((None, 'dummy', 'lovepy')),converter=none_if_none)
+
+    # Tidal heating modules
+    module: str | None   = field(validator=in_((None, 'dummy', 'lovepy')),
+                                converter=none_if_none)
+
+    # Planet initial orbital parameter
     semimajoraxis: float = field(validator=gt(0))
-    eccentricity: float = field(validator=(
-        ge(0),
-        lt(1),
-    ))
-    zenith_angle: float  = field(validator=(
-        ge(0),
-        lt(90),
-    ))
-    s0_factor: float = field(validator=gt(0))
-    instellation_method: str = field(default='sma',validator=in_(('sma','inst')))
-    instellationflux: float = field(default=1.0,validator=gt(0))
+    eccentricity: float  = field(validator=(ge(0), lt(1),))
+
+    # Climate parameters set by rotation of planet
+    zenith_angle: float  = field(validator=(ge(0),lt(90),))
+    s0_factor: float     = field(validator=gt(0))
+
+    # Allow the planet's orbit to evolve based on eccentricity tides?
     evolve: bool = field(default=False)
+
+    # Initial day length for planet [hours]
+    # If none, assume 1:1 spin orbit resonance
+    axial_period = field(default=None,
+                            validator=ax_valid, converter=none_if_none)
+
+    # Satellite orbit
+    satellite: bool          = field(default=False)
+    semimajoraxis_sat: float = field(default=3e8, validator=gt(0))
 
     dummy:  OrbitDummy  = field(factory=OrbitDummy)
     lovepy: Lovepy      = field(factory=Lovepy)
 
-    satellite: bool     = field(default=False)
-    semimajoraxis_sat: float = field(validator=gt(0))
-    lod: float          = field(validator=gt(0))
-    # system_am: float = field(validator=gt(0))
+    instellation_method: str = field(default='sma',validator=in_(('sma','inst')))
+    instellationflux: float = field(default=1.0,validator=gt(0))

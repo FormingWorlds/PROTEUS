@@ -73,8 +73,13 @@ def update_satellite(hf_row:dict, config:Config, dt:float):
     # Use config parameters as initial guess
     if current_time <= 1:
         # Set satellite semimajor axis, planet rotation frequency from config.
-        hf_row["semimajorax_sat"] = config.orbit.semimajoraxis_sat * AU # m
-        hf_row["axial_period"] = config.orbit.lod * secs_per_hour       # s
+        hf_row["semimajorax_sat"] = float(config.orbit.semimajoraxis_sat)     # m
+
+        if config.orbit.axial_period is None:
+            # set by user to 'none', use 1:1 SOR
+            hf_row["axial_period"] = float(hf_row["orbital_period"])
+        else:
+            hf_row["axial_period"] = float(config.orbit.axial_period) * secs_per_hour
 
         # Calculate system angular momentum
         sma = float(hf_row["semimajorax_sat"])

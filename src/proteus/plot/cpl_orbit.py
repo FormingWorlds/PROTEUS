@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from proteus.utils.constants import AU, secs_per_day, secs_per_hour
+
 if TYPE_CHECKING:
     from proteus import Proteus
 
@@ -17,7 +19,7 @@ log = logging.getLogger("fwl."+__name__)
 def plot_orbit(hf_all:pd.DataFrame, output_dir:str, plot_format:str="pdf", t0:float=100.0):
 
     time = np.array(hf_all["Time"] )
-    if np.amax(time) < 2:
+    if np.amax(time) <= t0:
         log.debug("Insufficient data to make plot_orbit")
         return
 
@@ -25,43 +27,49 @@ def plot_orbit(hf_all:pd.DataFrame, output_dir:str, plot_format:str="pdf", t0:fl
 
     # Plotting parameters
     lw=2.0
-    fig_ratio=(1,2)
-    fig_scale=4.0
+    figscale = 1.4
+    yext = 1.05
 
-    fig,axs = plt.subplots(1,2, figsize=(fig_ratio[0]*fig_scale, fig_ratio[1]*fig_scale), sharex=True)
-    ax_t = axs[0][0]
-    ax_b = axs[0][1]
+    fig,axs = plt.subplots(2,1, figsize=(5*figscale,4*figscale), sharex=True)
+    ax_t = axs[0]
+    ax_b = axs[1]
 
     # left axis
-    ax_t.plot(time, hf_all["semimajorax"], lw=lw, color='k')
-    ax_t.set_ylabel("Semi-major axis [m]")
+    y = hf_all["semimajorax"]/AU
+    ax_t.plot(time, y, lw=lw, color='k')
+    ax_t.set_ylabel("Planet semi-major axis [AU]")
+    ax_t.set_ylim(0, np.amax(y)*yext)
 
     # right axis
     ax_tr = ax_t.twinx()
     color = "tab:red"
-    ax_tr.plot(time, hf_all["eccentricity"], lw=lw, color=color)
-    ax_tr.set_ylabel("Eccentricity")
+    y = hf_all["eccentricity"]
+    ax_tr.plot(time, y, lw=lw, color=color)
+    ax_tr.set_ylabel("Planet orbital ccentricity")
     ax_tr.yaxis.label.set_color(color)
     ax_tr.tick_params(axis='y', colors=color)
+    ax_tr.set_ylim(np.amin(y)/yext, np.amax(y)*yext)
 
     # x-axis
-    ax_t.set_xlabel("Time [yr]")
     ax_t.set_xscale("log")
     ax_t.set_xlim(left=t0, right=np.amax(time))
     ax_t.grid(alpha=0.2)
 
-
     # left axis
-    ax_b.plot(time, hf_all["semimajorax_sat"], lw=lw, color='k')
-    ax_b.set_ylabel("Semi-major axis [m]")
+    y = hf_all["semimajorax_sat"]/1e6
+    ax_b.plot(time, y, lw=lw, color='k')
+    ax_b.set_ylabel(r"Satellite semi-major axis [$10^6$m]")
+    ax_b.set_ylim(0, np.amax(y)*yext)
 
     # right axis
     ax_br = ax_b.twinx()
     color = "tab:red"
-    ax_br.plot(time, hf_all["axial_period"]/3600, lw=lw, color=color)
-    ax_br.set_ylabel("Length of Day")
+    y = hf_all["axial_period"]/secs_per_hour
+    ax_br.plot(time, y, lw=lw, color=color)
+    ax_br.set_ylabel("Planet axial period [hours]")
     ax_br.yaxis.label.set_color(color)
     ax_br.tick_params(axis='y', colors=color)
+    ax_br.set_ylim(0, np.amax(y)*yext)
 
     # x-axis
     ax_b.set_xlabel("Time [yr]")
@@ -72,6 +80,8 @@ def plot_orbit(hf_all:pd.DataFrame, output_dir:str, plot_format:str="pdf", t0:fl
 
     plt.close()
     plt.ioff()
+
+    fig.tight_layout()
 
     fpath = os.path.join(output_dir, "plots", "plot_orbit.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')

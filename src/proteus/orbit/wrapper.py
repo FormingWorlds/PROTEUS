@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.interior.common import Interior_t
-from proteus.utils.constants import AU, L_sun, R_sun, const_G, secs_per_day
+from proteus.utils.constants import AU, L_sun, R_sun, const_G, secs_per_day, secs_per_hour
 
 if TYPE_CHECKING:
     from proteus import Proteus
@@ -168,9 +168,16 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
         update_satellite(hf_row, config, interior_o.dt)
 
     else:
+        # Satellite SMA
+        hf_row["semimajorax_sat"] = float(config.orbit.semimajoraxis_sat)
+
         # Axial period [seconds]
-        #   Assuming that the planet is tidally locked
-        hf_row["axial_period"] = hf_row["orbital_period"]
+        if config.orbit.axial_period is None:
+            # set by user to 'none', use 1:1 SOR
+            hf_row["axial_period"] = hf_row["orbital_period"]
+        else:
+            # set by user with float, use that
+            hf_row["axial_period"] = float(config.orbit.axial_period) * secs_per_hour
 
     # Update Roche limit
     update_rochelimit(hf_row)

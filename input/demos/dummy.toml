@@ -54,18 +54,23 @@ version = "2.0"
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.7       # AU
-    eccentricity    = 0.2       # dimensionless
+    semimajoraxis   = 0.4       # AU
+    eccentricity    = 0.6       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
+    axial_period    = 'none'    # hours, or provide 'none' to set as tidally locked
 
     evolve  = true
+
+    satellite = false
+    semimajoraxis_sat = 300e6
+
     module  = "dummy"
 
     [orbit.dummy]
         H_tide   = 1e-9     # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
-        Imk2     = -1e3     # Fixed Im(k2) love number
+        Imk2     = -1e5     # Fixed Im(k2) love number
 
     [orbit.lovepy]
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
