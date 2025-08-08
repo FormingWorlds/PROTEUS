@@ -89,7 +89,7 @@ class Orbit:
     dummy:  OrbitDummy  = field(factory=OrbitDummy)
     lovepy: Lovepy      = field(factory=Lovepy)
 
-    satellite: bool = field(default=False)
+    satellite: bool     = field(default=False)
     semimajoraxis_sat: float = field(validator=gt(0))
-    lod: float = field(validator=gt(0))
-    system_am: float = field(validator=gt(0))
+    lod: float          = field(validator=gt(0))
+    # system_am: float = field(validator=gt(0))

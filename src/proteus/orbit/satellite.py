@@ -72,38 +72,25 @@ def update_satellite(hf_row:dict, config:Config, dt:float):
 
     # Use config parameters as initial guess
     if current_time <= 1:
-        # Set semimajor axis, rotation frequency, and system AM from config.
-        uks = 0
-        try:
-            hf_row["semimajorax_sat"] = config.orbit.semimajoraxis_sat * AU # m
-            sma = float(hf_row["semimajorax_sat"])
-        except:
-            uks += 1
-        try:
-            hf_row["axial_period"] = config.orbit.lod * secs_per_hour       # s
-            omega = 2 * np.pi / float(hf_row["axial_period"])
-        except:
-            uks += 2
-        try:
-            hf_row["system_am"] = config.orbit.system_am                    # kg.m2.s-1
-            L = hf_row["system_am"]
-        except:
-            uks += 3
+        # Set satellite semimajor axis, planet rotation frequency from config.
+        hf_row["semimajorax_sat"] = config.orbit.semimajoraxis_sat * AU # m
+        hf_row["axial_period"] = config.orbit.lod * secs_per_hour       # s
 
-        if uks == 6:
-            log.error("Cannot solve initial system, too many unknowns")
-        elif uks == 3:
-            hf_row["system_am"] = I*omega + Mpl*(const_G*(Mpl+Msa)*sma)**0.5
-            log.info("    sys.am = %.5f kg.m2.s-1"%(hf_row["system_am"]))
-        elif uks == 2:
-            hf_row["axial_period"] = 2 * np.pi * I / (L - Mpl*(const_G*(Mpl+Msa)*sma)**0.5)
-            log.info("    axial. = %.5f h "%(hf_row["axial_period"]/secs_per_hour))
-        elif uks == 1:
-            hf_row["semimajorax_sat"] = ((L - I*omega)/Mpl)**2 / (const_G*(Mpl+Msa))
-            log.info("    smaxis = %.5f km"%(hf_row["semimajorax_sat"]/1000))
-        else:
-            log.info("User provided all unknowns to describe the planet-satellite system")
-        return
+        # Calculate system angular momentum
+        sma = float(hf_row["semimajorax_sat"])
+        omega = 2 * np.pi / float(hf_row["axial_period"])
+
+        hf_row["system_am"] = I*omega + Mpl*(const_G*(Mpl+Msa)*sma)**0.5
+        log.info("    sys.am = %.5f kg.m2.s-1"%(hf_row["system_am"]))
+
+        # hf_row["system_am"] = config.orbit.system_am                    # kg.m2.s-1
+        # L = hf_row["system_am"]
+
+        # hf_row["axial_period"] = 2 * np.pi * I / (L - Mpl*(const_G*(Mpl+Msa)*sma)**0.5)
+        # log.info("    axial. = %.5f h "%(hf_row["axial_period"]/secs_per_hour))
+
+        # hf_row["semimajorax_sat"] = ((L - I*omega)/Mpl)**2 / (const_G*(Mpl+Msa))
+        # log.info("    smaxis = %.5f km"%(hf_row["semimajorax_sat"]/1000))
     else:
         # Find previous_time from which to evolve orbit to current_time
         previous_time = current_time - dt
@@ -111,14 +98,15 @@ def update_satellite(hf_row:dict, config:Config, dt:float):
     # Set semimajor axis, rotation frequency, and system AM from config.
     sma = float(hf_row["semimajorax_sat"])
     omega = 2 * np.pi / float(hf_row["axial_period"])
+
     # Could be allowed to vary to mimic resonance effects
     L = hf_row["system_am"]
 
     # Collect system parameters at previous_time
     params = (I, L, const_G, Mpl, Msa, dE_tidal)
 
-    # Find new semimajor axis and axial frequency using RK5(4) integration method
-    log.debug("Integrate sma and omega with solve_ivp")
+    # Find new satellite semimajor axis and axial frequency using RK5(4) integration method
+    log.debug("Integrate satellite's sma and planet's omega with solve_ivp")
     sol = solve_ivp(orbitals, [previous_time, current_time], [sma, omega], args=(params,))
 
     # Update semimajor axis and axial period
