@@ -88,6 +88,7 @@ def print_results(D, logs, config, output, n_init):
     # Find best index, ignoring the initial points
     i_opt: int = Y[n_init:].argmax() + n_init
     log_opt = logs[i_opt]
+    J_opt: float = Y[i_opt].item()
 
     # Extract identifiers of the best run
     w = log_opt["worker"]
@@ -114,15 +115,16 @@ def print_results(D, logs, config, output, n_init):
     params = config["parameters"].keys()
 
     # Print summary to console
-    print(f"Best objective is (i={i_opt}): J={Y[i_opt].item()})")
-    print(f"{'Observable':18s} | True        | Simulated   | Diff %")
+    print(f"Best case (i={i_opt}) sampled has J={J_opt:+.4f}")
+    print(f"With config at {in_path}")
+    print(f"{'Observables':18s} | True        | Simulated   | Diff %")
     for i,k in enumerate(observables):
         tru = true_y[k]
         obs = sim_opt[i]
         dif = 100*(obs-tru)/tru
         print(f"{k:18s}   {tru:8.4e}    {obs:8.4e}    {dif:+.3f}")
     print("")
-    print(f"{'Parameter':28s} | Simulated val @ best J")
+    print(f"{'Parameters':28s} | Simulated val @ best J")
     for i,k in enumerate(list(params)):
         print(f"{k:28s}   {str(input[k]):20s}")
     print("-----------------------------------")
@@ -133,8 +135,8 @@ def print_results(D, logs, config, output, n_init):
     bounds = torch.tensor([[list(config["parameters"].values())[i][j] for i in range(d)]
                             for j in range(2)])
     X_samp = np.array(unnormalize(X, bounds), copy=None, dtype=float)[n_init:,:]
-    print(f"Sample statistics (N={len(X_samp)})")
-    print(f"{'Parameter':28s} | Median ± stddev")
+    print(f"Ensemble statistics (N={len(X_samp)})")
+    print(f"{'Parameters':28s} | Median ± stddev")
     for i,k in enumerate(list(params)):
         x_med = np.median(X_samp[:,i])
         x_std = np.std(X_samp[:,i])

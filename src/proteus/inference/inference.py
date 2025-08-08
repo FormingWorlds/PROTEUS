@@ -96,11 +96,11 @@ def run_inference(config):
     print_results(D_final, logs, config, dirs["output"], n_init)
 
     # Save final data, logs, and timestamps for later analysis
-    print("Saving results...")
+    print(f"Saving results in {dirs['output']}")
     checkpoint(D_final, logs, Ts, dirs["output"])
 
     # Make plots
-    print("Making plots...")
+    print("Making plots")
     plotBO.plots_perf_timeline(logs, dirs["output"], n_init)
     plotBO.plots_perf_converge(D_final, Ts, n_init, dirs["output"])
     plotBO.plot_result_objective(D_final, config["parameters"], n_init, dirs["output"])
