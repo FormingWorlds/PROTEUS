@@ -85,11 +85,11 @@ def update_satellite(hf_row:dict, config:Config, dt:float):
         sma = float(hf_row["semimajorax_sat"])
         omega = 2 * np.pi / float(hf_row["axial_period"])
 
-        hf_row["system_am"] = I*omega + Mpl*(const_G*(Mpl+Msa)*sma)**0.5
-        log.info("    sys.am = %.5f kg.m2.s-1"%(hf_row["system_am"]))
+        hf_row["plan_sat_am"] = I*omega + Mpl*(const_G*(Mpl+Msa)*sma)**0.5
+        log.info("    sys.am = %.5f kg.m2.s-1"%(hf_row["plan_sat_am"]))
 
-        # hf_row["system_am"] = config.orbit.system_am                    # kg.m2.s-1
-        # L = hf_row["system_am"]
+        # hf_row["plan_sat_am"] = config.orbit.plan_sat_am                    # kg.m2.s-1
+        # L = hf_row["plan_sat_am"]
 
         # hf_row["axial_period"] = 2 * np.pi * I / (L - Mpl*(const_G*(Mpl+Msa)*sma)**0.5)
         # log.info("    axial. = %.5f h "%(hf_row["axial_period"]/secs_per_hour))
@@ -105,7 +105,7 @@ def update_satellite(hf_row:dict, config:Config, dt:float):
     omega = 2 * np.pi / float(hf_row["axial_period"])
 
     # Could be allowed to vary to mimic resonance effects
-    L = hf_row["system_am"]
+    L = hf_row["plan_sat_am"]
 
     # Collect system parameters at previous_time
     params = (I, L, const_G, Mpl, Msa, dE_tidal)

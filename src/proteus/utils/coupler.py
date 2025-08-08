@@ -463,7 +463,7 @@ def GetHelpfileKeys():
             "orbital_period", "eccentricity", # [s], [1]
 
             # Satellite orbit semi-major axis and system angular momentum
-            "semimajorax_sat", "system_am", # [m], [kg m2 s-1],
+            "semimajorax_sat", "plan_sat_am", # [m], [kg m2 s-1],
 
             # Day length
             "axial_period", # [s]
