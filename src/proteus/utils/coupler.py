@@ -650,6 +650,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     from proteus.plot.cpl_spectra import plot_spectra
     from proteus.plot.cpl_structure import plot_structure
     from proteus.plot.cpl_visual import plot_visual
+    from proteus.plot.cpl_orbit import plot_orbit
 
     # Directories
     output_dir = dirs["output"]
@@ -677,6 +678,10 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Elemental mass inventory
     plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
+
+    # Planet and satellite orbit parameters
+    if config.orbit.evolve or config.orbit.satellite:
+        plot_orbit(hf_all, output_dir, config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:
