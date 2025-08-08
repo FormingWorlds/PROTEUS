@@ -35,7 +35,12 @@ def instmethod_dummy(instance, attribute, value):
 def instmethod_evolve(instance, attribute, value):
     # Orbital evolution not supported when installation_method is 'inst'
     if (instance.orbit.instellation_method == 'inst') and instance.orbit.evolve:
-        raise ValueError("Orbital evolution not supported for `instellation_method='inst'`")
+        raise ValueError("Planet orbital evolution not supported for `instellation_method='inst'`")
+
+def satellite_evolve(instance, attribute, value):
+    # Planetary orbital evolution not supported when also modelling satellite
+    if instance.orbit.satellite and instance.orbit.evolve:
+        raise ValueError("Planet orbital evolution cannot be used simultaneously with a satellite")
 
 def tides_enabled_orbit(instance, attribute, value):
     # Tides in interior requires orbit module to not be None
@@ -83,7 +88,7 @@ class Config:
 
     params: Params
     star: Star
-    orbit: Orbit = field(validator=(instmethod_dummy,instmethod_evolve))
+    orbit: Orbit = field(validator=(instmethod_dummy,instmethod_evolve,satellite_evolve))
     struct: Struct
     atmos_clim: AtmosClim
     atmos_chem: AtmosChem
