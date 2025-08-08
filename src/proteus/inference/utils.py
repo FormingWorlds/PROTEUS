@@ -21,7 +21,6 @@ import torch
 # Use double precision for tensor computations
 dtype = torch.double
 
-
 def get_nested(config: dict, key: str, sep: str = "."):
     """Retrieve a value from a nested dictionary using a dot-separated key path.
 
@@ -65,7 +64,7 @@ def flatten(d, parent_key: str = '', sep: str = '.'):
     return dict(items)
 
 
-def print_results(D, logs, config, output):
+def print_results(D, logs, config, output, n_init):
     """Identify the best evaluation and print its observables and inferred parameters.
 
     Finds the index of the maximum objective value in D['Y'], then:
@@ -78,10 +77,13 @@ def print_results(D, logs, config, output):
         logs (list of dict): Log entries with keys 'worker', 'task_id', etc.
         config (dict): Original config with 'observables' and 'parameters' mappings.
         output (str): Path to output directory for this entire inference call.
+        n_init (int): Number of initial guess data points.
     """
-    # Convert list of objective values to tensor and find best index
+    # Convert list of objective values to tensor
     Y = D["Y"]
-    i_opt = Y.argmax()
+
+    # Find best index, ignoring the initial points
+    i_opt: int = Y[n_init:].argmax() + n_init
     log_opt = logs[i_opt]
 
     # Extract identifiers of the best run
@@ -90,7 +92,7 @@ def print_results(D, logs, config, output):
 
     # Read simulator output for this run
     out_path = f"{output}/workers/w_{w}/i_{id}/runtime_helpfile.csv"
-    df = pd.read_csv(out_path, delimiter="\t")
+    df = pd.read_csv(out_path, delimiter=r"\s+")
 
     # True observables from config
     true_y = pd.Series(config["observables"])
@@ -110,7 +112,7 @@ def print_results(D, logs, config, output):
     par_opt = pd.Series({param: input[param] for param in params})
 
     # Print summary to console
-    print("\nbest objective = ", Y[i_opt].item())
-    print("\ntrue observables\n", true_y)
-    print("\nsimulated observables\n", sim_opt)
-    print("\ninferred inputs\n", par_opt)
+    print("\nBest objective = ", Y[i_opt].item())
+    print("\nTrue observables\n", true_y)
+    print("\nSimulated observables\n", sim_opt)
+    print("\nInferred inputs\n", par_opt)

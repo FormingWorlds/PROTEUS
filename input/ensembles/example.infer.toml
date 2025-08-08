@@ -1,0 +1,30 @@
+# Config file for inference scheme
+
+# Path to output folder where inference will be saved (relative to PROTEUS output folder)
+output = "infer_demo/"
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/demos/dummy.toml"
+
+# Method for initialising the inference scheme (one of these must be 'none')
+init_samps = 'none'         # Number of random samples if starting from scratch.
+init_grid  = 'grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
+
+# Parameters for Bayesian optimisation
+n_workers  = 7       # Number of parallel workers
+kernel     = "RBF"   # Kernel type for GP
+max_len    = 20      # Maximum number of evaluations
+n_restarts = 10      # GP optimization restarts
+n_samples  = 1000    # Raw samples for acquisition optimization
+
+# Parameters to optimize (with bounds)
+[parameters]
+"struct.mass_tot" = [0.7, 3.0]
+"struct.corefrac" = [0.3, 0.9]
+"delivery.elements.H_ppmw" = [6e3, 2e4]
+"outgas.fO2_shift_IW" = [-3.0, 5.0]
+
+# Target observables to match by optimisation
+[observables]
+"R_obs" = 7.9950245489e6
+"H2O_vmr" = 0.41

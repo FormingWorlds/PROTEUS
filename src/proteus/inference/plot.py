@@ -10,18 +10,28 @@ Functions:
 from __future__ import annotations
 
 import os
+from glob import glob
 
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import toml
+import torch
+from botorch.utils.transforms import unnormalize
 from matplotlib import cm
 from matplotlib.ticker import MaxNLocator
 
+from proteus.utils.helper import recursive_get
 
-def plot_times(logs, directory, n_init, min_text_width=0.88):
+dtype = torch.double
+fmt = "png"
+dpi = 300
 
+def plots_perf_timeline(logs, directory, n_init, min_text_width=0.88):
     """Generate timeline and histograms of process durations.
+
+    This function makes multiple plots
 
     Args:
         logs (list of dict): Log entries containing timing and evaluation data.
@@ -101,9 +111,8 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
 
     ax.set_xlim(left=0, right=xlim_max_padded)
     plt.tight_layout()
-    path = directory+"plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "parallel.png", dpi = 300)
+
+    fig.savefig(os.path.join(directory, "plots", f"perf_parallel.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
     # Histogram of total durations
@@ -123,9 +132,7 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    path = directory+"plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "t_hist.png", dpi = 300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_timehist.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(7, 4))
@@ -145,9 +152,7 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    path = directory+"plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "BO_t_hist.png", dpi = 300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_BO_timehist.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
     # Histogram of evaluation times
@@ -167,9 +172,7 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    path = directory+"plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "eval_t_hist.png", dpi = 300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_eval_timehist.{fmt}"), dpi = dpi, bbox_inches='tight')
     plt.close(fig)
 
     # Colored histogram for fit times
@@ -213,9 +216,7 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    path = os.path.join(directory, "plots")
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(os.path.join(path, "fit_t_hist.png"), dpi=300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_fit_timehist.{fmt}"), dpi=dpi, bbox_inches='tight')
     plt.close(fig)
 
     # Colored histogram for acquisition times
@@ -259,9 +260,7 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     ax.grid(axis="y", alpha=0.3)
 
     plt.tight_layout()
-    path = os.path.join(directory, "plots")
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(os.path.join(path, "ac_t_hist.png"), dpi=300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_acquisition_timehist.{fmt}"), dpi=dpi, bbox_inches='tight')
     plt.close(fig)
 
     # Scatter plot of distance to busy locations
@@ -285,15 +284,11 @@ def plot_times(logs, directory, n_init, min_text_width=0.88):
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     plt.tight_layout()
-    path = directory + "plots/"
-    os.makedirs(path, exist_ok=True)
-    fig.savefig(path + "dist_v_iter.png", dpi=300)
+    fig.savefig(os.path.join(directory, "plots", f"perf_distance_iters.{fmt}"), dpi=dpi, bbox_inches='tight')
     plt.close(fig)
 
 
-
-def plot_res(D, T, n_init, directory, save = True):
-
+def plots_perf_converge(D, T, n_init, directory):
     """Plot regret and best observed value over time and iterations.
 
     Args:
@@ -301,10 +296,9 @@ def plot_res(D, T, n_init, directory, save = True):
         T (list): Elapsed times corresponding to each evaluation.
         n_init (int): Number of initial evaluations to skip.
         directory (str): Base dir where "plots/" subfolder will be created.
-        save (bool): If True, save plots; else display interactively.
     """
 
-    Y = np.array(D["Y"]).flatten()  # Flatten in case it's (N,1)
+    Y = np.array(D["Y"], copy=None, dtype=float).flatten()  # Flatten in case it's (N,1)
     Y = Y[n_init:]
 
     y_best = Y[0]
@@ -346,15 +340,9 @@ def plot_res(D, T, n_init, directory, save = True):
 
     plt.tight_layout()
 
-    if save:
-        path = directory+"plots/"
-        os.makedirs(path, exist_ok=True)
-        fig.savefig(path + "reg.png", dpi = 300)
-        plt.close(fig)
 
-    else:
-         fig.show()
-
+    fig.savefig(os.path.join(directory, "plots", f"perf_regret.{fmt}"), dpi = dpi, bbox_inches='tight')
+    plt.close(fig)
 
     fig, axes = plt.subplots(2, 1, figsize=(8, 6), sharex=False)
 
@@ -375,11 +363,148 @@ def plot_res(D, T, n_init, directory, save = True):
 
     plt.tight_layout()
 
-    if save:
-        path = directory+"plots/"
-        os.makedirs(path, exist_ok=True)
-        fig.savefig(path + "best_val.png", dpi = 300)
-        plt.close(fig)
+    fig.savefig(os.path.join(directory, "plots", f"perf_bestval.{fmt}"), dpi = dpi, bbox_inches='tight')
+    plt.close(fig)
 
+
+def plot_result_objective(D, parameters, n_init, directory, yclip=-10):
+    """Plot objective function at each sample that was created.
+
+    Args:
+        D (dict): Contains 'X' and 'Y' lists.
+        parameters (dict): Parameter names and bounds
+        n_init (int): Number of initial evaluations (to be highlighted).
+        directory (str): Base dir where "plots/" subfolder will be created.
+        yclip (float): minimum limit y-axis scale
+    """
+
+    # Get objective function values
+    Y = np.array(D['Y'], copy=None, dtype=float).flatten()
+
+    # Best point
+    i_best = np.argmax(Y)
+
+    # Clamp values
+    yclip = -10
+    mask = Y < yclip
+    Y = np.clip(Y, a_min=yclip, a_max=None)
+
+    # Y label
+    if np.any(mask):
+        ylbl = f"Value of objective, clipped to J>{yclip}"
     else:
-        fig.show()
+        ylbl = "Value of objective"
+
+    # Get bounds
+    keys = list(parameters.keys())
+    d = len(keys)
+    bounds = torch.tensor([[list(parameters.values())[i][j] for i in range(d)] for j in range(2)])
+
+    # Un-normalise X data
+    X = unnormalize(D['X'], bounds)
+    X = np.array(X, copy=None, dtype=float)
+
+    # Colors
+    C = np.full_like(Y, 'k', dtype=str)
+    C[:n_init] = 'c'
+    C[i_best] = 'r'
+
+    # Limits
+    ymax = 1.0
+    ymin = np.amin(Y)
+
+    # Plot
+    fig,axs = plt.subplots(1, d, figsize=(2.7*d, 3.2))
+    axs[0].set_ylabel(ylbl)
+
+    # plot data
+    for i in range(d):
+        # clipped points
+        axs[i].scatter(X[mask,i], Y[mask], c=list(C[mask]), s=11, alpha=0.8, zorder=4, marker='v', edgecolors='none')
+
+        # unclipped points
+        axs[i].scatter(X[~mask,i], Y[~mask], c=list(C[~mask]), s=10, alpha=0.6, zorder=5, marker='o', edgecolors='none')
+
+        # configure axis
+        axs[i].set_xlabel(keys[i], fontsize=10)
+        axs[i].grid(alpha=0.2, zorder=0)
+        axs[i].set_ylim(ymin, ymax)
+        if i>=1:
+            axs[i].set_yticklabels([])
+
+    # save plot
+    fig.subplots_adjust(wspace=0.012)
+    fig.savefig(os.path.join(directory, "plots", f"result_objective.{fmt}"), dpi = dpi, bbox_inches='tight')
+    plt.close(fig)
+
+
+def plot_result_correlation(pars:dict, obs:dict, directory):
+    """Plot correlation between observables and parameters.
+
+    This requires reading output-data files from the disk.
+
+    Args:
+        par_keys (dict): Parameter names and bounds
+        obs_keys (dict): Observable names and target values
+        directory (str): Base dir where the inference was performed.
+    """
+
+    # Convert to lists
+    par_keys = list(pars.keys())
+    obs_keys = list(obs.keys())
+
+    # Get directories for all cases of interest
+    cases = glob(directory + "/workers/w_*/i_*/")
+
+    # Extract parameters and observables
+    X,Y = [], []
+    for c in cases:
+        # Read data
+        conf = toml.load(c+"init_coupler.toml")
+        help = pd.read_csv(c+"runtime_helpfile.csv", delimiter=r"\s+")
+
+        # Get parameters and observables
+        xx = [recursive_get(conf,k.split(".")) for k in par_keys]
+        yy = list(help.iloc[-1][obs_keys].T)
+
+        # Store these
+        X.append(xx)
+        Y.append(yy)
+    X = np.array(X, dtype=float)
+    Y = np.array(Y, dtype=float)
+
+    # Axes
+    n_par = len(par_keys)
+    n_obs = len(obs_keys)
+
+    # Make plot
+    fig,axs = plt.subplots(n_obs, n_par, figsize=(2.7*n_par, 2.7*n_obs))
+    for i in range(n_par):
+        for j in range(n_obs):
+            # plot data
+            xx = X[:, i]
+            yy = Y[:, j]
+            axs[j,i].scatter(xx, yy, color='k', alpha=0.8, s=8, zorder=4)
+
+            # hide tick labels
+            if i>=1:
+                axs[j,i].set_yticklabels([])
+            if j<n_obs-1:
+                axs[j,i].set_xticklabels([])
+
+            # axis grid
+            axs[j,i].grid(alpha=0.2, zorder=0)
+
+            # observables
+            axs[j,i].axhline(y=obs[obs_keys[j]], color='tab:red', alpha=0.5)
+
+    # Axis labels
+    for i in range(n_par):
+        axs[-1,i].set_xlabel(par_keys[i], fontsize=10)
+    for j in range(n_obs):
+        axs[j, 0].set_ylabel(obs_keys[j], fontsize=10)
+
+    # Decorate
+    fig.subplots_adjust(wspace=0.02, hspace=0.02)
+    fig.savefig(os.path.join(directory, "plots", f"result_correlation.{fmt}"), dpi = dpi, bbox_inches='tight')
+    plt.close(fig)

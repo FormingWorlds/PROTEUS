@@ -82,8 +82,12 @@ def run_proteus(parameters: dict,
 
     # Ensure output directory exists
     os.makedirs(out_abs, exist_ok=True)
+
     # Inject output path into simulation parameters
-    parameters["params.out.path"] = out_dir
+    parameters["params.out.path"]     = out_dir
+
+    # Don't allow workers to make plots
+    parameters["params.out.plot_mod"] = 'none'
 
     for attempt in range(1, max_attempts + 1):
         try:
@@ -95,7 +99,7 @@ def run_proteus(parameters: dict,
             update_toml(ref_config, parameters, out_cfg)
 
             # Read simulator output
-            df = pd.read_csv(out_csv, delimiter="\t")
+            df = pd.read_csv(out_csv, delimiter=r"\s+")
             return df.iloc[-1][observables].T
         except subprocess.CalledProcessError as e:
             if attempt < max_attempts:
@@ -105,6 +109,18 @@ def run_proteus(parameters: dict,
             else:
                 raise RuntimeError(f"Simulator failed after {max_attempts} attempts: {e}\nInputs: {parameters}")
 
+def eval_obj(sim_vals, true_observables):
+    '''Evaluate objective function, given simulated and true values of observables'''
+
+    # Convert to tensor and reshape
+    sim = torch.tensor(sim_vals.values, dtype=dtype).reshape(1, -1)
+    true_y = torch.tensor(list(true_observables.values()), dtype=dtype).reshape(1, -1)
+
+    # Compute normalized difference and squared distance
+    diff = torch.ones(1, 1, dtype=dtype) - sim / true_y
+    sq_dist = (diff ** 2).sum(dim=1, keepdim=True)
+    # Return final objective
+    return torch.ones(1, 1, dtype=dtype) - sq_dist
 
 def J(x: torch.Tensor,
       parameters: list[str],
@@ -113,7 +129,7 @@ def J(x: torch.Tensor,
       iter: int,
       output: str,
       ref_config: str) -> torch.Tensor:
-    """Compute the objective value for a given normalized input.
+    """Run PROTEUS, and then compute the objective value for a given normalized input.
 
     Transforms normalized `x` to raw parameters, runs the simulator,
     and computes the squared-error based objective:
@@ -131,7 +147,8 @@ def J(x: torch.Tensor,
     Returns:
         torch.Tensor: Objective value tensor of shape (1, 1).
     """
-    # Map normalized x to raw parameter dict
+
+    # Map normalized x to raw parameter dict and run PROTEUS
     raw = {parameters[i]: x[0, i].item() for i in range(len(parameters))}
     sim_vals = run_proteus(parameters=raw,
                            worker=worker,
@@ -139,15 +156,9 @@ def J(x: torch.Tensor,
                            observables=list(true_observables.keys()),
                            ref_config=ref_config,
                            output=output)
-    # Convert to tensor and reshape
-    sim = torch.tensor(sim_vals.values, dtype=dtype).reshape(1, -1)
-    true_y = torch.tensor(list(true_observables.values()), dtype=dtype).reshape(1, -1)
 
-    # Compute normalized difference and squared distance
-    diff = torch.ones(1, 1, dtype=dtype) - sim / true_y
-    sq_dist = (diff ** 2).sum(dim=1, keepdim=True)
-    # Return final objective
-    return torch.ones(1, 1, dtype=dtype) - sq_dist
+    # Return value of objective function given these results
+    return eval_obj(sim_vals, true_observables)
 
 
 def prot_builder(parameters: dict[str, list[float]],

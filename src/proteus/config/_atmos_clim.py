@@ -48,6 +48,8 @@ class Agni:
     ----------
     p_top: float
         Top of atmosphere grid pressure [bar].
+    p_obs: float
+        Pressure level probed by observations [bar]
     spectral_group: str
         Spectral file codename defining the gas opacities to be included. See [documentation](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/spectral_files.pdf).
     spectral_bands: str
@@ -77,6 +79,7 @@ class Agni:
     spectral_group: str     = field(default=None)
     spectral_bands: str     = field(default=None)
     p_top: float            = field(default=1e-5, validator=gt(0))
+    p_obs: float            = field(default=20e-3, validator=gt(0))
     surf_material: str      = field(default="surface_albedos/Hammond24/lunarmarebasalt.dat")
     num_levels: int         = field(default=40, validator=ge(15))
     chemistry: str          = field(default="none",
@@ -144,13 +147,21 @@ class Janus:
 class Dummy:
     """Dummy atmosphere module.
 
+    A parametrised model of the atmosphere designed for debugging. The greenhouse effect
+    is captured by `gamma` which produces a transparent atmosphere when 0, and a completely
+    opaque atmosphere when 1. The height of the atmosphere equals the scale height times
+    the `height_factor` variable.
+
     Attributes
     ----------
     gamma: float
-        Atmosphere opacity between 0 and 1.
+        Atmosphere opacity factor between 0 and 1.
+    height_factor: float
+        A multiplying factor applied to the ideal-gas scale height.
     """
 
-    gamma: float = field(default=0.7, validator=(ge(0),le(1)) )
+    gamma: float         = field(default=0.7, validator=(ge(0),le(1)))
+    height_factor: float = field(default=3.0, validator=ge(0))
 
 
 @define

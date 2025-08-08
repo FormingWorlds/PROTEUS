@@ -105,8 +105,8 @@ def plot_sflux_cross(
     ax.set_xlabel("Time [yr]")
     ax.set_title("TOA flux versus time")
 
-    vmin = max(time_t[0],1.0)
-    vmax = time_t[-1]
+    vmin = max(time_t[0], 1.0)
+    vmax = max(time_t[-1], vmin+1.0)
     ax.set_xlim([vmin,vmax])
 
     # Find indices for wavelength bins

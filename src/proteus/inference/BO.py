@@ -148,7 +148,9 @@ def BO_step(D, B, f, k, n_restarts, n_samples, lock, worker_id, x_in = None):
         t_1_lock = time.perf_counter()
 
         d = X.shape[-1]
-        print("n =", len(X), ": best objective =", Y.max().item())
+        step = len(X)
+        best = Y.max().item()
+        print(f"Step {step:4d}, best objective = {best:.5f}")
 
         t_0_fit = time.perf_counter()
         gp = SingleTaskGP(  train_X=X,
