@@ -70,6 +70,7 @@ def run_inference(config):
 
     print(" ")
     print(f"Starting optimisation with {config['n_workers']} workers")
+    print(f"Maximum step count is {max_len}, starting at {n_init}")
     t_0 = time.perf_counter()
 
     # Execute the parallel BO process

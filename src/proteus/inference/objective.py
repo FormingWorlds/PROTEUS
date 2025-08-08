@@ -92,9 +92,13 @@ def run_proteus(parameters: dict,
 
     for attempt in range(1, max_attempts + 1):
         try:
-            # Generate config and run simulator
+            # Generate config
             update_toml(ref_config, parameters, out_cfg)
-            subprocess.run(["proteus", "start", "-c", out_cfg, "--offline"], check=True)
+
+            # Run PROTEUS
+            subprocess.run(["proteus", "start", "-c", out_cfg, "--offline"],
+                            check=True, text=True,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
             # Re-write config in case simulator mutates or removes it
             update_toml(ref_config, parameters, out_cfg)
@@ -102,6 +106,7 @@ def run_proteus(parameters: dict,
             # Read simulator output
             df = pd.read_csv(out_csv, delimiter=r"\s+")
             return df.iloc[-1][observables].T
+
         except subprocess.CalledProcessError as e:
             if attempt < max_attempts:
                 # Slightly perturb to avoid numerical issues
