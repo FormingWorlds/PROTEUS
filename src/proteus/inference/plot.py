@@ -456,8 +456,11 @@ def plot_result_objective(D, parameters, n_init, directory, yclip=-12):
         for j in (0,1):
             axs[j,i].axvline(x=x_med, zorder=4, color='r', alpha=0.8)
 
+        # overplot best in both panels
+        axs[j,i].axvline(x=X[i_best,i], zorder=5, color='m', alpha=0.8)
+
         # grid
-        axs[0,i].grid(alpha=0.2, zorder=0, axis='x')
+        axs[j,i].grid(alpha=0.2, zorder=0, axis='x')
 
     # save plot
     fig.subplots_adjust(wspace=0.012, hspace=0.022)
