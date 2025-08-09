@@ -88,6 +88,8 @@ def update_satellite(hf_row:dict, config:Config, dt:float):
         hf_row["plan_sat_am"] = I*omega + Mpl*(const_G*(Mpl+Msa)*sma)**0.5
         log.info("    sys.am = %.5f kg.m2.s-1"%(hf_row["plan_sat_am"]))
 
+        return
+
         # hf_row["plan_sat_am"] = config.orbit.plan_sat_am                    # kg.m2.s-1
         # L = hf_row["plan_sat_am"]
 
