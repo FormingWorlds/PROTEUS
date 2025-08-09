@@ -16,7 +16,7 @@ log = logging.getLogger("fwl."+__name__)
 def run_dummy_orbit(config:Config, interior_o:Interior_t):
     """Run the dummy orbit module.
 
-    Sets interior tidal heating, return Im(k2) love number value of zero.
+    Sets interior tidal heating, returns Im(k2) value from config.
 
     Parameters
     ----------
@@ -28,7 +28,7 @@ def run_dummy_orbit(config:Config, interior_o:Interior_t):
     Returns
     ----------
         Imk2_love: float
-            Always has a value of zero with this module.
+            Always returns the value provided in the config.
     """
 
     # Default case; zero heating throughout the mantle
@@ -50,5 +50,4 @@ def run_dummy_orbit(config:Config, interior_o:Interior_t):
                 # Heating maximised when fully liquid.
                 interior_o.tides[i] = config.orbit.dummy.H_tide * (p-Pt_va) / (1-Pt_va)
 
-    # Return Im(k2) = 0
-    return 0.0
+    return config.orbit.dummy.Imk2

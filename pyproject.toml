@@ -120,6 +120,7 @@ select = [
 ]
 ignore = [
     "E501", # Line too long
+    "E741", # Ambiguous variable name
 ]
 
 [tool.ruff.lint.isort]
