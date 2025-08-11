@@ -3,16 +3,16 @@ version = "2.0"
 
 [params]
     [params.out]
-        path        = "dummy_star"
-        logging     = "INFO"
+        path        = "orbit_dummy"
+        logging     = "ERROR"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         write_mod   = 400      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 'none'
 
     [params.dt]
-        minimum      = 1e2    # yr, minimum time-step
-        maximum      = 3e7    # yr, maximum time-step
-        initial      = 1e2    # yr, inital step size
+        minimum      = 1e3    # yr, minimum time-step
+        maximum      = 1e7    # yr, maximum time-step
+        initial      = 1e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e1    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
@@ -26,7 +26,7 @@ version = "2.0"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 1e9     # yr, model will terminate when t > maximum
+            maximum = 1e7     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -54,7 +54,7 @@ version = "2.0"
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.02      # AU
+    semimajoraxis   = 0.02       # AU
     eccentricity    = 0.5       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
@@ -62,14 +62,13 @@ version = "2.0"
 
     evolve  = true
 
-    satellite         = false
-    mass_sat          = 7.347e22
-    semimajoraxis_sat = 32e6
+    satellite = false
+    semimajoraxis_sat = 300e6
 
     module  = "dummy"
 
     [orbit.dummy]
-        H_tide   = 1e-7     # Fixed tidal power density [W kg-1]
+        H_tide   = 1e-9     # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
         Imk2     = -1e5     # Fixed Im(k2) love number
 
@@ -85,13 +84,13 @@ version = "2.0"
 
 # Atmosphere - physics table
 [atmos_clim]
-    surf_state = "fixed"  # surface scheme: "mixed_layer" | "fixed" | "skin"
-    albedo_pl  = 0.1   	  # Bond albedo (scattering)
-    module     = "dummy"  # Which atmosphere module to use
-    rayleigh   = false
+    surf_state      = "fixed"    # surface scheme: "mixed_layer" | "fixed" | "skin"
+    albedo_pl       = 0.1   	# Bond albedo (scattering)
+    module  = "dummy"           # Which atmosphere module to use
+    rayleigh = false
 
     [atmos_clim.dummy]
-        gamma  = 0.8      # atmosphere opacity between 0 and 1
+        gamma           = 0.7           # atmosphere opacity between 0 and 1
 
 [escape]
 
@@ -102,7 +101,7 @@ version = "2.0"
 
 [interior]
     radiogenic_heat = false  # enable radiogenic heat production
-    tidal_heat      = true  # enable tidal heat production
+    tidal_heat      = false  # enable tidal heat production
     module = "dummy"   # Which interior module to use
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]

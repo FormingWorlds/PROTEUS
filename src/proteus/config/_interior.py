@@ -140,9 +140,15 @@ class InteriorDummy:
     ----------
     ini_tmagma: float
         Initial magma surface temperature [K].
+    tmagma_atol: float
+        Max absolute change in surface temperature [K] during a single iteration.
+    tmagma_rtol: float
+        Max relative change in surface temperature [K] during a single iteration.
     """
 
     ini_tmagma = field(default=None)
+    tmagma_atol: float = field(default=30.0, validator=ge(0))
+    tmagma_rtol: float = field(default=0.05, validator=ge(0))
 
 @define
 class Interior:

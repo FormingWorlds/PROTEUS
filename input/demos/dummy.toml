@@ -54,13 +54,13 @@ version = "2.0"
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.02       # AU
-    eccentricity    = 0.5       # dimensionless
+    semimajoraxis   = 0.5       # AU
+    eccentricity    = 0.1       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
     axial_period    = 'none'    # hours, or provide 'none' to set as tidally locked
 
-    evolve  = true
+    evolve  = false
 
     satellite = false
     semimajoraxis_sat = 300e6
