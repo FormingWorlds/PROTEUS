@@ -104,7 +104,7 @@ def plot_orbit_system(hf_all:pd.DataFrame, output_dir:str, plot_format:str="pdf"
     fig,ax = plt.subplots(1,1, figsize=(4*figscale,4*figscale))
 
     # plot star
-    ax.scatter(0,0,color='orange', s=50, zorder=4, label='Star', marker='*')
+    ax.scatter(0,0,color='orange', s=60, zorder=4, label='Star', marker='*')
 
     # Colors
     times = np.array(hf_all["Time"][:])
@@ -127,13 +127,13 @@ def plot_orbit_system(hf_all:pd.DataFrame, output_dir:str, plot_format:str="pdf"
         f = a*e
 
         # plot ellipse of planet orbit
-        x = a * np.cos(t) + f
+        x = a * np.cos(t) - f
         y = b * np.sin(t)
         ax.plot(x, y, color=col, alpha=0.8, zorder=5, lw=lw_pla)
 
         # plot satellite orbit around planet
         asat = hf_row["semimajorax_sat"] / AU
-        x0 = np.amax(x)
+        x0 = np.amin(x)
         xx = asat * np.cos(t) + x0
         yy = asat * np.sin(t)
         ax.plot(xx, yy, lw=lw_sat, color=col, alpha=0.4, zorder=5)
@@ -162,14 +162,14 @@ def plot_orbit_system(hf_all:pd.DataFrame, output_dir:str, plot_format:str="pdf"
     ax.plot([],[],label="Moon orbit",   c='purple',lw=lw_sat)
 
     # decorate
-    rmax *= 1.1
+    rmax *= 1.2
     lims = (-rmax, rmax)
     ax.set_xlim(lims)
     ax.set_ylim(lims)
     ax.set_xticklabels([])
     ax.set_ylabel("Distance [AU]")
     ax.grid(zorder=0, alpha=0.3)
-    ax.legend(loc='upper left')
+    ax.legend(loc='upper right')
 
 
     plt.close()

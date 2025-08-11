@@ -23,7 +23,7 @@ def init_orbit(handler:Proteus):
     if module == "None":
         return
 
-    log.info(f"Preparing orbit/tides model '{module}'")
+    log.info(f"Preparing tides model '{module}'")
     if not handler.config.interior.tidal_heat:
         log.warning("Tidal heating is disabled within interior configuration!")
 
@@ -199,8 +199,7 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
-        hf_row["Imk2"] = run_lovepy(hf_row, dirs, interior_o,
-                                        config.orbit.lovepy.visc_thresh)
+        hf_row["Imk2"] = run_lovepy(hf_row, dirs, interior_o, config)
 
     else:
         hf_row["Imk2"] = 0.0

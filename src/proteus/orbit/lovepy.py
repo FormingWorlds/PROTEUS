@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import juliacall
 import numpy as np
@@ -9,6 +10,9 @@ from juliacall import Main as jl
 
 from proteus.interior.common import Interior_t
 from proteus.utils.helper import UpdateStatusfile
+
+if TYPE_CHECKING:
+    from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -18,14 +22,14 @@ def import_lovepy():
 
 def _jlarr(arr:np.array):
     # Make copy of array, reverse order, and convert to Julia type
-    return juliacall.convert(jl.Array[jl.LovePy.prec, 1], arr[::-1])
+    cop = np.array(arr, copy=True, dtype=float).flatten()
+    return juliacall.convert(jl.Array[jl.LovePy.prec, 1], cop)
 
 def _jlsca(sca:float):
     # Make a copy of a scalar, and convert to Julia type
     return juliacall.convert(jl.LovePy.prec, sca)
 
-def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t,
-                    visc_thresh:float, ncalc:int=1200) -> float:
+def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t, config:Config) -> float:
     """Run the lovepy tidal heating module.
 
     Sets the interior tidal heating and returns Im(k2) love number.
@@ -38,59 +42,74 @@ def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t,
             Dictionary of directories.
         interior_o: Interior_t
             Struct containing interior arrays at current time.
-        visc_thresh: float
-            Minimum viscosity required for heating [Pa s]
-        ncalc: int
-            Number of layers to use for tidal calculation, optional.
+        config: Config
+            PROTEUS config object
     Returns
     ----------
         Imk2_love: float
     """
 
     # Calculate angular frequency of rotation
-    omega = 2 * np.pi / hf_row["orbital_period"]
+    omega = _jlsca(2 * np.pi / hf_row["orbital_period"])
+    ecc   = _jlsca(hf_row["eccentricity"])
 
-    # Truncate arrays based on valid viscosity range
-    i_top = interior_o.nlev_s-1
-    for i in range(interior_o.nlev_s-1,0,-1):
-        if interior_o.visc[i] >= visc_thresh:
+    # Copy arrays
+    arr_keys = ("density", "visc", "shear", "bulk", "mass", "radius")
+    lov = {k:np.array(getattr(interior_o, k), copy=True, dtype=float) for k in arr_keys}
+
+    # Reverse arrays if using SPIDER
+    #  Such that i=0 is at the CMB
+    if config.interior.module == "spider":
+        for k in arr_keys:
+            lov[k] = lov[k][::-1]
+
+    # Get viscous region
+    for i in range(interior_o.nlev_s):
+        if lov["visc"][i] <= config.orbit.lovepy.visc_thresh:
             i_top = i
+            break
 
     # Check if fully liquid
-    if i_top == interior_o.nlev_s-1:
+    if i_top <= 2:
         return 0.0
 
     # Construct arrays for lovepy
-    lov_density = interior_o.density[i_top:]
-    lov_visc    = interior_o.visc[i_top:]
-    lov_shear   = interior_o.shear[i_top:]
-    lov_bulk    = interior_o.bulk[i_top:]
-    lov_mass    = interior_o.mass[i_top:]
-    lov_radius  = interior_o.radius[i_top:] # radius array length N+1
+    for k in arr_keys:
+        if k == "radius":
+            i = i_top + 1
+        else:
+            i = i_top
+        lov[k] = _jlarr(lov[k][:i])
 
     # Calculate heating using lovepy
     try:
         power_prf, power_blk, Imk2 = \
-            jl.calc_lovepy_tides(_jlsca(omega),
-                                 _jlsca(hf_row["eccentricity"]),
-                                 _jlarr(lov_density),
-                                 _jlarr(lov_radius),
-                                 _jlarr(lov_visc),
-                                 _jlarr(lov_shear),
-                                 _jlarr(lov_bulk),
-                                 ncalc=int(ncalc)
+            jl.calc_lovepy_tides(omega, ecc,
+                                 lov["density"],
+                                 lov["radius"],
+                                 lov["visc"],
+                                 lov["shear"],
+                                 lov["bulk"],
+                                 ncalc=int(config.orbit.lovepy.ncalc)
                                  )
     except juliacall.JuliaError as e:
         UpdateStatusfile(dirs, 26)
         log.error(e)
         raise RuntimeError("Encountered problem when running lovepy module")
 
-    # Store result
-    interior_o.tides[i_top:] = np.array(power_prf)[::-1]
-    interior_o.tides[-1] = interior_o.tides[-2]
+    # Pad power array to make it full length
+    tides = np.zeros(np.shape(interior_o.tides), dtype=float)
+    tides[:i_top] = power_prf[:]
+    tides[0] = tides[1]
 
-    # Verify result
-    power_blk /= np.sum(lov_mass)
+    # Store result, flipping for SPIDER
+    if config.interior.module == "spider":
+       interior_o.tides[:] = tides[::-1]
+    else:
+        interior_o.tides[:] = tides[:]
+
+    # Verify result against bulk calculation
+    power_blk /= np.sum(lov["mass"])
     log.debug("    power from bulk calc: %.3e W kg-1"%power_blk)
 
     # Return imaginary part of k2 love number
