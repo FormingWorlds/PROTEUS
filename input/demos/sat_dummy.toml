@@ -3,8 +3,8 @@ version = "2.0"
 
 [params]
     [params.out]
-        path        = "dummy"
-        logging     = "ERROR"
+        path        = "dummy_sat"
+        logging     = "INFO"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         write_mod   = 400      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 'none'
@@ -54,21 +54,22 @@ version = "2.0"
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.5       # AU
-    eccentricity    = 0.1       # dimensionless
+    semimajoraxis   = 1         # AU
+    eccentricity    = 0.0167    # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
-    axial_period    = 'none'    # hours, or provide 'none' to set as tidally locked
+    axial_period    = 6         # hours, or provide 'none' to set as tidally locked
 
     evolve  = false
 
-    satellite = false
-    semimajoraxis_sat = 300e6
+    satellite         = true
+    mass_sat          = 7.347e22
+    semimajoraxis_sat = 32e6
 
     module  = "dummy"
 
     [orbit.dummy]
-        H_tide   = 1e-9     # Fixed tidal power density [W kg-1]
+        H_tide   = 1e-7     # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
         Imk2     = -1e5     # Fixed Im(k2) love number
 
@@ -84,13 +85,13 @@ version = "2.0"
 
 # Atmosphere - physics table
 [atmos_clim]
-    surf_state      = "fixed"    # surface scheme: "mixed_layer" | "fixed" | "skin"
-    albedo_pl       = 0.1   	# Bond albedo (scattering)
-    module  = "dummy"           # Which atmosphere module to use
-    rayleigh = false
+    surf_state = "fixed"  # surface scheme: "mixed_layer" | "fixed" | "skin"
+    albedo_pl  = 0.1   	  # Bond albedo (scattering)
+    module     = "dummy"  # Which atmosphere module to use
+    rayleigh   = false
 
     [atmos_clim.dummy]
-        gamma           = 0.7           # atmosphere opacity between 0 and 1
+        gamma  = 0.8      # atmosphere opacity between 0 and 1
 
 [escape]
 
@@ -101,7 +102,7 @@ version = "2.0"
 
 [interior]
     radiogenic_heat = false  # enable radiogenic heat production
-    tidal_heat      = false  # enable tidal heat production
+    tidal_heat      = true  # enable tidal heat production
     module = "dummy"   # Which interior module to use
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
