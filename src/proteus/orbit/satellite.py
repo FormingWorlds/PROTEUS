@@ -59,7 +59,6 @@ def update_satellite(hf_row:dict, config:Config, dt:float):
     """
     Rpl = hf_row["R_int"]
     Mpl = hf_row["M_int"]
-    Msa = hf_row["M_sat"]
 
     # Calculate bulk tidal power
     dE_tidal = hf_row["F_tidal"] * 4 * np.pi * Rpl**2 # Js-1
@@ -72,8 +71,11 @@ def update_satellite(hf_row:dict, config:Config, dt:float):
 
     # Use config parameters as initial guess
     if current_time <= 1:
-        # Set satellite semimajor axis, planet rotation frequency from config.
-        hf_row["semimajorax_sat"] = float(config.orbit.semimajoraxis_sat)     # m
+        # Set satellite semimajor axis, satellite mass, and planet rotation frequency from config.
+        hf_row["semimajorax_sat"] = float(config.orbit.semimajoraxis_sat)  # m
+        hf_row["M_sat"]           = float(config.orbit.mass_sat)           # kg
+
+        Msa = hf_row["M_sat"]
 
         if config.orbit.axial_period is None:
             # set by user to 'none', use 1:1 SOR
@@ -102,9 +104,10 @@ def update_satellite(hf_row:dict, config:Config, dt:float):
         # Find previous_time from which to evolve orbit to current_time
         previous_time = current_time - dt
 
-    # Set semimajor axis, rotation frequency, and system AM from config.
+    # Set semimajor axis, rotation frequency, satellite mass, and system AM from config.
     sma = float(hf_row["semimajorax_sat"])
     omega = 2 * np.pi / float(hf_row["axial_period"])
+    Msa = hf_row["M_sat"]
 
     # Could be allowed to vary to mimic resonance effects
     L = hf_row["plan_sat_am"]

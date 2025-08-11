@@ -114,6 +114,7 @@ class Orbit:
 
     # Satellite orbit
     satellite: bool          = field(default=False)
+    mass_sat: float          = field(default=7.347e22, validator=gt(0))
     semimajoraxis_sat: float = field(default=3e8, validator=gt(0))
 
     dummy:  OrbitDummy  = field(factory=OrbitDummy)
