@@ -1,0 +1,132 @@
+# PROTEUS configuration file (version 2.0)
+version = "2.0"
+
+[params]
+    [params.out]
+        path        = "dummy_star"
+        logging     = "INFO"
+        plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
+        write_mod   = 400      # Write CSV frequency, 0: wait until completion | n: every n iterations
+        archive_mod = 'none'
+
+    [params.dt]
+        minimum      = 1e2    # yr, minimum time-step
+        maximum      = 3e7    # yr, maximum time-step
+        initial      = 1e2    # yr, inital step size
+        starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
+        starinst     = 1e1    # yr, interval to re-calculate the instellation
+        method       = "adaptive"  # proportional | adaptive | maximum
+
+        [params.dt.adaptive]
+            atol         = 0.02   # Step size atol
+            rtol         = 0.10   # Step size rtol
+
+    [params.stop]
+        # required time constraints
+        [params.stop.time]
+            enabled = true
+            minimum = 1.0e3     # yr, model will certainly run to t > minimum
+            maximum = 1e9     # yr, model will terminate when t > maximum
+
+        # solidification
+        [params.stop.solid]
+            enabled  = false
+            phi_crit = 0.005  # non-dim., model will terminate when global melt fraction < phi_crit
+
+        # radiative equilibrium
+        [params.stop.radeqm]
+            enabled = false
+            atol    = 0.2     # absolute tolerance [W m-2]
+            rtol    = 1e-3    # relative tolerance
+
+        [params.stop.escape]
+            enabled   = true
+            p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
+
+
+[star]
+    mass    = 1.0       # M_sun
+    age_ini = 0.100     # Gyr, model initialisation/start age
+    module  = "dummy"
+    [star.dummy]
+        radius  = 1.0       # R_sun
+        Teff    = 5772.0    # K
+
+# Orbital system
+[orbit]
+    semimajoraxis   = 0.02      # AU
+    eccentricity    = 0.5       # dimensionless
+    zenith_angle    = 48.19     # degrees
+    s0_factor       = 0.375     # dimensionless
+    axial_period    = 'none'    # hours, or provide 'none' to set as tidally locked
+
+    evolve  = true
+
+    satellite         = false
+    mass_sat          = 7.347e22
+    semimajoraxis_sat = 32e6
+
+    module  = "dummy"
+
+    [orbit.dummy]
+        H_tide   = 1e-7     # Fixed tidal power density [W kg-1]
+        Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
+        Imk2     = -1e5     # Fixed Im(k2) love number
+
+    [orbit.lovepy]
+        visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
+
+# Planetary structure - physics table
+[struct]
+    mass_tot     = 1.0           # Total planet mass [M_earth]
+    corefrac     = 0.55          # non-dim., radius fraction
+    core_density = 10738.33      # Core density [kg m-3]
+    core_heatcap = 880.0         # Core specific heat capacity [J K-1 kg-1]
+
+# Atmosphere - physics table
+[atmos_clim]
+    surf_state = "fixed"  # surface scheme: "mixed_layer" | "fixed" | "skin"
+    albedo_pl  = 0.1   	  # Bond albedo (scattering)
+    module     = "dummy"  # Which atmosphere module to use
+    rayleigh   = false
+
+    [atmos_clim.dummy]
+        gamma  = 0.8      # atmosphere opacity between 0 and 1
+
+[escape]
+
+    reservoir = "outgas"  # Escaping reservoir: "bulk", "outgas", "pxuv".
+    module = "dummy"     # Which escape module to use
+    [escape.dummy]
+        rate        = 1.0e5           # Bulk unfractionated escape rate [kg s-1]
+
+[interior]
+    radiogenic_heat = false  # enable radiogenic heat production
+    tidal_heat      = true  # enable tidal heat production
+    module = "dummy"   # Which interior module to use
+    [interior.dummy]
+        ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
+
+[outgas]
+    fO2_shift_IW    = 2         # log10(ΔIW), atmosphere/interior boundary oxidation state
+    module = "calliope"         # Which outgassing module to use
+
+    [outgas.calliope]
+        include_NH3 = false
+
+[delivery]
+
+    initial = 'elements'        # "elements" | "volatiles"
+    module = "none"
+
+    [delivery.elements]
+        H_ppmw      = 200.0     # Hydrogen inventory in ppmw relative to mantle mass
+        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
+        N_ppmw      = 0.0       # Nitrogen inventory in ppmw relative to mantle mass
+        SH_ratio    = 1.0       # Sulfur inventory in ppmw relative to mantle mass
+
+[observe]
+    synthesis = "none"
+
+[atmos_chem]
+    module = "none"
