@@ -53,10 +53,6 @@ def run_dummy_int(config:Config, dirs:dict,
     # Interior structure
     output["M_mantle"] = calculate_simple_mantle_mass(hf_row["R_int"], config.struct.corefrac)
 
-    # Numerical parameters
-    tsurf_atol  = 30.0 # max abs change in surface temperature
-    tsurf_rtol  = 0.02 # max rel change in surface temperature
-
     # Physical parameters
     tmp_init = config.interior.dummy.ini_tmagma # Initial magma temperature
     tmp_liq  = 2700.0    # Liquidus
@@ -104,7 +100,7 @@ def run_dummy_int(config:Config, dirs:dict,
         dt = next_step(config, dirs, hf_row, hf_all, 1.0)
 
         # limit time-step based on max change to T_magma
-        dtmp_max = hf_row["T_magma"] * tsurf_rtol + tsurf_atol
+        dtmp_max = hf_row["T_magma"] * config.interior.dummy.tmagma_rtol + config.interior.dummy.tmagma_atol
         dt = min(dt, abs(dtmp_max / dTdt) / secs_per_year) # years
 
         # update T_magma

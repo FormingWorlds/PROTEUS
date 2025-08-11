@@ -480,7 +480,7 @@ class Proteus:
 
             # Write helpfile to disk
             if multiple(self.loops["total"], self.config.params.out.write_mod):
-                    WriteHelpfileToCSV(self.directories["output"], self.hf_all)
+                WriteHelpfileToCSV(self.directories["output"], self.hf_all)
 
             # Print info to terminal and log file
             PrintCurrentState(self.hf_row)

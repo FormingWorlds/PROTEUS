@@ -232,5 +232,5 @@ def check_termination(handler: Proteus) -> bool:
                 log.info("Termination criteria satisfied once")
 
     # Reset statusfile to 'Running'
-    UpdateStatusfile(handler.directories, 1)
+    # UpdateStatusfile(handler.directories, 1)
     return False
