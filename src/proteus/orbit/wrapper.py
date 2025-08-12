@@ -195,6 +195,8 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     update_rochelimit(hf_row)
     if hf_row["separation"] < hf_row["roche_limit"]:
         log.warning("Planet is orbiting within the Roche limit of its star")
+    elif hf_row["perihelion"] < hf_row["roche_limit"]:
+        log.warning("Planet is (partially) orbiting within the Roche limit of its star")
 
     # Update Hill radius
     update_hillradius(hf_row)

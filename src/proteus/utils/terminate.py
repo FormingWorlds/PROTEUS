@@ -88,6 +88,22 @@ def _check_escape(handler: Proteus) -> bool:
 
     return False
 
+# Planet has disintegrated
+def _check_perihelion(handler: Proteus) -> bool:
+    log.debug("Check perihelion")
+
+    perihelion = handler.hf_row["perihelion"]
+    roche_limit = handler.hf_row["roche_limit"]
+    offset = handler.config.params.stop.disint.offset
+    log.debug("    per, roc = %.3e, %.3e  m"%(perihelion, roche_limit-offset))
+
+    if perihelion <= roche_limit - offset:
+        UpdateStatusfile(handler.directories, 16)
+        _msg_termination("Planet has disintegrated")
+        return True
+
+    return False
+
 # Maximum time
 def _check_maxtime(handler: Proteus) -> bool:
     log.debug("Check maximum time")
@@ -184,6 +200,10 @@ def check_termination(handler: Proteus) -> bool:
     # Atmosphere has escaped
     if handler.config.params.stop.escape.enabled:
         finished = finished or _check_escape(handler)
+
+    # Planet has disintegrated
+    if handler.config.params.stop.disint.enabled:
+        finished = finished or _check_perihelion(handler)
 
     # Maximum time reached
     if handler.config.params.stop.time.enabled:
