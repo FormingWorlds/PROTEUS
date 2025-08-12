@@ -456,8 +456,8 @@ def GetHelpfileKeys():
             # Model tracking
             "Time", # [yr]
 
-            # Orbit semi-major axis and time-averaged separation
-            "semimajorax", "separation", # [m], [m],
+            # Orbit semi-major axis, time-averaged separation, perihelion, and perigee
+            "semimajorax", "separation", "perihelion", "perigee", # [m], [m], [m], [m],
 
             # Orbital period and eccentricity
             "orbital_period", "eccentricity", # [s], [1]
