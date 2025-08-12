@@ -160,7 +160,7 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     update_separation(hf_row)
     update_period(hf_row)
 
-    log.info("    Orb period = %.3f days"%(hf_row["orbital_period"]/secs_per_day))
+    log.info("    Orb period = %.5f days"%(hf_row["orbital_period"]/secs_per_day))
 
     if config.orbit.satellite:
         # set by orbital evolution, based on tidal love number

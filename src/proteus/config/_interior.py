@@ -100,6 +100,8 @@ class Aragog:
         Maximum change in surface temperature allowed during a single interior iteration [K].
     event_triggering: bool
         Whether to include event triggering in the solver. Default is True.
+    bulk_modulus: float
+        Adiabatic bulk modulus AW-EOS parameter [Pa].
     """
 
     logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
@@ -119,6 +121,7 @@ class Aragog:
     mass_coordinates: bool              = field(default=False)
     tsurf_poststep_change: float        = field(default=30, validator=ge(0))
     event_triggering:bool               = field(default=True)
+    bulk_modulus: float                 = field(default=260e9, validator=gt(0))
 
 
 def valid_interiordummy(instance, attribute, value):
@@ -185,8 +188,6 @@ class Interior:
         Centre of rheological transition in terms of melt fraction
     rheo_phi_wid: float
         Width of rheological transition in terms of melt fraction
-    bulk_modulus: float
-        Fixed bulk modulus of each layer [Pa].
 
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
@@ -213,4 +214,3 @@ class Interior:
     F_initial: float        = field(default=1e3,    validator=gt(0))
     rheo_phi_loc: float     = field(default=0.3,    validator=(gt(0),lt(1)))
     rheo_phi_wid: float     = field(default=0.15,   validator=(gt(0),lt(1)))
-    bulk_modulus: float     = field(default=260e9,  validator=gt(0))

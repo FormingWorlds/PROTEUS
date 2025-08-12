@@ -29,8 +29,9 @@ def run_escape(config:Config, hf_row:dict, dt:float, stellar_track):
     """
 
     if not config.escape.module:
-        # solvevol_target is undefined?
-        pass
+        hf_row["esc_rate_total"] = 0.0
+        log.info("Escape is disabled, bulk rate = %.2e kg s-1"%hf_row["esc_rate_total"])
+        return
 
     elif config.escape.module == 'zephyrus':
         hf_row["esc_rate_total"] = run_zephyrus(config, hf_row, stellar_track)
