@@ -32,7 +32,7 @@ authors:
 
 - given-names: "Robb"
   family-names: "Calder"
-  orcid: "https://orcid.org/0009-0002-9247-2437
+  orcid: "https://orcid.org/0009-0002-9247-2437"
 
 - given-names: "Ben"
   family-names: "Riegler"
@@ -63,6 +63,6 @@ authors:
 
 title: "PROTEUS"
 version: 25.07.31
-doi: 10.xx/xx.xx
+doi: 10.0000/xxxx/xxxx
 date-released: 2025-07-31
 url: "https://github.com/FormingWorlds/PROTEUS"
