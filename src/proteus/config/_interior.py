@@ -150,8 +150,6 @@ class InteriorDummy:
         Mantle mass density [kg m-3].
     mantle_cp: float
         Mantle specific heat capacity [J kg-1 K-1]
-    core_cp: float
-        Core specific heat capacity [J kg-1 K-1]
     mantle_tliq: float
         Mantle liquidus temperature [K]
     mantle_tsol: float
@@ -167,7 +165,6 @@ class InteriorDummy:
     mantle_tsol: float = field(default=1700.0, validator=ge(0))
     mantle_rho: float  = field(default=4.55e3, validator=gt(0))
     mantle_cp: float   = field(default=1792.0, validator=ge(0))
-    core_cp: float     = field(default=880.0,  validator=ge(0))
     H_radio: float     = field(default=0.0,    validator=ge(0))
 
 @define

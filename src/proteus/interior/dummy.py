@@ -70,7 +70,7 @@ def run_dummy_int(config:Config, dirs:dict,
 
     # Interior heat capacity [J K-1]
     cp_int = config.interior.dummy.mantle_cp*output["M_mantle"] \
-                + config.interior.dummy.core_cp*hf_row["M_core"]
+                + config.struct.core_heatcap*hf_row["M_core"]
 
     # Subtract tidal contribution to the total heat flux.
     #    This heat energy is generated only in the mantle, not in the core.

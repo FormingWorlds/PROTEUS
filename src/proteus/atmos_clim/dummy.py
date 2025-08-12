@@ -61,7 +61,7 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     # conductive lid
     elif config.atmos_clim.surf_state == 'skin':
         log.info("Calculating fluxes with dummy atmosphere and CBL")
-        import scipy.optimize as optimise
+        from scipy.optimize import root_scalar
 
         # We need to solve for the state where fl_N = f_skn
         # This function takes T_surf_atm as the input value, and returns fl_N - f_skn
@@ -70,13 +70,13 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
             _f = _calc_fluxes(x)
             return _f["fl_N"] - F_skn
 
-        r = optimise.root_scalar(_resid, method='secant', x0=T_magma, x1=T_magma-10.0,
+        r = root_scalar(_resid, method='secant', x0=T_magma, x1=T_magma-10.0,
                                         xtol=1.0e-7, maxiter=40)
         T_surf_atm = float(r.root)
         fluxes = _calc_fluxes(T_surf_atm)
 
         if r.converged:
-            log.info("Found solution after %d iterations" % int(r.iterations))
+            log.debug("    Found solution after %d iterations" % int(r.iterations))
         else:
             UpdateStatusfile(dirs, 22)
             raise RuntimeError("Could not find solution for T_surf with dummy_atmosphere")
@@ -95,16 +95,15 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (fluxes["fl_N"] , F_atm_lim))
 
-    # Return result
-    log.info("Resultant values:")
-    log.info("    T_surf =  %.3e  K"     % T_surf_atm)
-    log.info("    F_atm  =  %.3e  W m-2" % F_atm_lim)
-    log.info("    F_olr  =  %.3e  W m-2" % fluxes["fl_U_LW"])
-    log.info("    F_sct  =  %.3e  W m-2" % fluxes["fl_U_SW"])
-
     # Scale height used to calculate observed radius
     atm_H = const_R * T_surf_atm / (hf_row["atm_kg_per_mol"] * hf_row["gravity"])
     R_obs = hf_row["R_int"] + atm_H * config.atmos_clim.dummy.height_factor
+
+    # Return result
+    log.info("    T_surf     =  %.3e  K"     % T_surf_atm)
+    log.info("    F_atm      =  %.3e  W m-2" % F_atm_lim)
+    log.info("    F_olr      =  %.3e  W m-2" % fluxes["fl_U_LW"])
+    log.info("    F_sct      =  %.3e  W m-2" % fluxes["fl_U_SW"])
 
     output = {}
     output["T_surf"]  = T_surf_atm
