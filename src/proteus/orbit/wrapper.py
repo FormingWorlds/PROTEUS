@@ -153,14 +153,14 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
             hf_row["semimajorax"] = np.sqrt( Lbol / (4 * np.pi * S_0))
 
     # Inform user
-    log.info("    smaxis = %.5f AU"%(hf_row["semimajorax"]/AU))
-    log.info("    eccen. = %.5f   "%(hf_row["eccentricity"]))
+    log.info("    Orb SMaxis = %.5f AU"%(hf_row["semimajorax"]/AU))
+    log.info("    Orb eccent = %.5f   "%(hf_row["eccentricity"]))
 
     # Update orbital separation and period, from other variables above
     update_separation(hf_row)
     update_period(hf_row)
 
-    log.info("    period = %.3f days"%(hf_row["orbital_period"]/secs_per_day))
+    log.info("    Orb period = %.3f days"%(hf_row["orbital_period"]/secs_per_day))
 
     if config.orbit.satellite:
         # set by orbital evolution, based on tidal love number
@@ -208,5 +208,5 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     # To Do
 
     # Print info
-    log.info("    H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
-    log.info("    Im(k2) = %.1e "%hf_row["Imk2"])
+    log.info("    Pla H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
+    log.info("    Pla Im(k2) = %.1e "%hf_row["Imk2"])

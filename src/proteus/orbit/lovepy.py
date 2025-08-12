@@ -63,23 +63,39 @@ def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t, config:Config) -> 
         for k in arr_keys:
             lov[k] = lov[k][::-1]
 
-    # Get viscous region
-    for i in range(interior_o.nlev_s):
-        if lov["visc"][i] <= config.orbit.lovepy.visc_thresh:
-            i_top = i
-            break
+    # Get viscous region and check if fully liquid
+    i_top = 0  # index of topmost cell which has visc>visc_thresh
+    if config.interior.module == "dummy":
+        if lov["visc"][0] < config.orbit.lovepy.visc_thresh:
+            return 0.0
 
-    # Check if fully liquid
-    if i_top <= 2:
-        return 0.0
+        # Construct arrays for lovepy (we need two cells, three edges here)
+        for k in arr_keys:
+            if k == "radius":
+                rmid = np.median(lov["radius"])
+                arr = [lov["radius"][0], rmid, lov["radius"][1]]
+                lov[k] = _jlarr(arr[:])
+            else:
+                arr = [lov[k][0],lov[k][0]]
+                lov[k] = _jlarr(arr[:])
 
-    # Construct arrays for lovepy
-    for k in arr_keys:
-        if k == "radius":
-            i = i_top + 1
-        else:
-            i = i_top
-        lov[k] = _jlarr(lov[k][:i])
+    else:
+        # for spider/aragog, loop from bottom upwards
+        for i in range(interior_o.nlev_s):
+            if lov["visc"][i] >= config.orbit.lovepy.visc_thresh:
+                i_top = i
+
+        # fully liquid
+        if i_top <= 1:
+            return 0.0
+
+        # Construct arrays for lovepy
+        for k in arr_keys:
+            if k == "radius":
+                i = i_top + 1
+            else:
+                i = i_top
+            lov[k] = _jlarr(lov[k][:i])
 
     # Calculate heating using lovepy
     try:
@@ -97,20 +113,26 @@ def run_lovepy(hf_row:dict, dirs:dict, interior_o:Interior_t, config:Config) -> 
         log.error(e)
         raise RuntimeError("Encountered problem when running lovepy module")
 
-    # Pad power array to make it full length
-    tides = np.zeros(np.shape(interior_o.tides), dtype=float)
-    tides[:i_top] = power_prf[:]
-    tides[0] = tides[1]
 
-    # Store result, flipping for SPIDER
-    if config.interior.module == "spider":
-       interior_o.tides[:] = tides[::-1]
+    # Extract result and store
+    if config.interior.module == "dummy":
+        interior_o.tides[0] = power_prf[1]
+
     else:
-        interior_o.tides[:] = tides[:]
+        # Pad power array to make it full length
+        tides = np.zeros(np.shape(interior_o.tides), dtype=float)
+        tides[:i_top] = power_prf[:]
+        tides[0] = tides[1]
 
-    # Verify result against bulk calculation
-    power_blk /= np.sum(lov["mass"])
-    log.debug("    power from bulk calc: %.3e W kg-1"%power_blk)
+        # Store result, flipping for SPIDER
+        if config.interior.module == "spider":
+            interior_o.tides[:] = tides[::-1]
+        else:
+            interior_o.tides[:] = tides[:]
+
+        # Verify result against bulk calculation
+        power_blk /= np.sum(lov["mass"])
+        log.debug("    power from bulk calc: %.3e W kg-1"%power_blk)
 
     # Return imaginary part of k2 love number
     return float(Imk2)

@@ -129,8 +129,10 @@ def valid_interiordummy(instance, attribute, value):
     if (not ini_tmagma) or (ini_tmagma <= 200.0) :
         raise ValueError("`interior.dummy.ini_tmagma` must be >200")
 
-    if instance.radiogenic_heat:
-        raise ValueError("Dummy interior module does not support radiogenic heating")
+    tliq = instance.dummy.mantle_tliq
+    tsol = instance.dummy.mantle_tsol
+    if tliq <= tsol:
+        raise ValueError(f"Dummy liquidus ({tliq}K) must be greater than solidus ({tsol}K)")
 
 @define
 class InteriorDummy:
@@ -144,11 +146,29 @@ class InteriorDummy:
         Max absolute change in surface temperature [K] during a single iteration.
     tmagma_rtol: float
         Max relative change in surface temperature [K] during a single iteration.
+    mantle_rho: float
+        Mantle mass density [kg m-3].
+    mantle_cp: float
+        Mantle specific heat capacity [J kg-1 K-1]
+    core_cp: float
+        Core specific heat capacity [J kg-1 K-1]
+    mantle_tliq: float
+        Mantle liquidus temperature [K]
+    mantle_tsol: float
+        Mantle solidus temperature [K]
+    H_radio: float
+        Constant radiogenic heating rate [W kg-1]
     """
 
     ini_tmagma = field(default=None)
-    tmagma_atol: float = field(default=30.0, validator=ge(0))
-    tmagma_rtol: float = field(default=0.05, validator=ge(0))
+    tmagma_atol: float = field(default=30.0,   validator=ge(0))
+    tmagma_rtol: float = field(default=0.05,   validator=ge(0))
+    mantle_tliq: float = field(default=2700.0, validator=ge(0))
+    mantle_tsol: float = field(default=1700.0, validator=ge(0))
+    mantle_rho: float  = field(default=4.55e3, validator=gt(0))
+    mantle_cp: float   = field(default=1792.0, validator=ge(0))
+    core_cp: float     = field(default=880.0,  validator=ge(0))
+    H_radio: float     = field(default=0.0,    validator=ge(0))
 
 @define
 class Interior:
