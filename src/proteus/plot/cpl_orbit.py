@@ -4,9 +4,12 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from cmcrameri import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from proteus.utils.constants import AU, secs_per_hour
 
@@ -86,6 +89,96 @@ def plot_orbit(hf_all:pd.DataFrame, output_dir:str, plot_format:str="pdf", t0:fl
     fpath = os.path.join(output_dir, "plots", "plot_orbit.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
+def plot_orbit_system(hf_all:pd.DataFrame, output_dir:str, plot_format:str="pdf", t0=1e3):
+
+    if np.amax(hf_all["Time"]) <= t0+1:
+        log.debug("Insufficient data to make plot_system")
+        return
+
+    log.info("Plot orbit_system")
+
+    # Plotting parameters
+    lw_pla = 1.2
+    lw_sat = 0.8
+    figscale = 1.4
+    fig,ax = plt.subplots(1,1, figsize=(4*figscale,4*figscale))
+
+    # plot star
+    ax.scatter(0,0,color='orange', s=60, zorder=4, label='Star', marker='*')
+
+    # Colors
+    times = np.array(hf_all["Time"][:])
+    norm = mpl.colors.LogNorm(vmin=t0, vmax=times[-1])
+    sm = plt.cm.ScalarMappable(cmap=cm.batlow, norm=norm)
+    sm.set_array([])
+
+    # plot planet at time
+    t = np.linspace(0, np.pi*2, 80)
+    def _plot_planet(i):
+        hf_row = hf_all.iloc[i]
+        col = sm.to_rgba(hf_row["Time"])
+
+        # planet orbit parameters
+        a = hf_row["semimajorax"] / AU
+        e = hf_row["eccentricity"]
+        b = a * np.sqrt(1-e*e)
+
+        # location of focus
+        f = a*e
+
+        # plot ellipse of planet orbit
+        x = a * np.cos(t) - f
+        y = b * np.sin(t)
+        ax.plot(x, y, color=col, alpha=0.8, zorder=5, lw=lw_pla)
+
+        # plot satellite orbit around planet
+        asat = hf_row["semimajorax_sat"] / AU
+        x0 = np.amin(x)
+        xx = asat * np.cos(t) + x0
+        yy = asat * np.sin(t)
+        ax.plot(xx, yy, lw=lw_sat, color=col, alpha=0.4, zorder=5)
+
+        return max(rmax, np.amax(np.abs(x)))
+
+    # make orbits
+    rmax = 0.01
+    for i in range(len(hf_all)):
+        rmax = max(_plot_planet(i), rmax)
+
+    # roche radius of star
+    roche = hf_all.iloc[-1]["roche_limit"] / AU
+    ax.plot(roche * np.cos(t), roche * np.sin(t), ls='dashed',
+                c='tab:red', label="Roche limit")
+
+
+    # Plot colourbar
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('bottom', size='5%', pad=-0.2)
+    cbar = fig.colorbar(sm, cax=cax, orientation='horizontal')
+    cbar.set_label("Time [yr]")
+
+    # dummy labels
+    ax.plot([],[],label="Planet orbit", c='purple',lw=lw_pla)
+    ax.plot([],[],label="Moon orbit",   c='purple',lw=lw_sat)
+
+    # decorate
+    rmax *= 1.2
+    lims = (-rmax, rmax)
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+    ax.set_xticklabels([])
+    ax.set_ylabel("Distance [AU]")
+    ax.grid(zorder=0, alpha=0.3)
+    ax.legend(loc='upper right')
+
+
+    plt.close()
+    plt.ioff()
+
+    fig.tight_layout()
+
+    fpath = os.path.join(output_dir, "plots", "plot_orbit_system.%s"%plot_format)
+    fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
 def plot_orbit_entry(handler: Proteus):
     # read helpfile
@@ -93,6 +186,11 @@ def plot_orbit_entry(handler: Proteus):
 
     # make plot
     plot_orbit(
+        hf_all,
+        handler.directories["output"],
+        plot_format=handler.config.params.out.plot_fmt,
+    )
+    plot_orbit_system(
         hf_all,
         handler.directories["output"],
         plot_format=handler.config.params.out.plot_fmt,

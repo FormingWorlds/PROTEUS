@@ -92,7 +92,6 @@ version = "2.0"
     tidal_heat      = false             # enable tidal heat production
     rheo_phi_loc    = 0.4               # Centre of rheological transition
     rheo_phi_wid    = 0.15              # Width of rheological transition
-    bulk_modulus    = 260e9             # Bulk modulus [Pa]
     melting_dir     = "Monteux-600"     # Liquidus from Monteux+2016 and solidus=liquidus-600
 
     module = "aragog"   # Which interior module to use

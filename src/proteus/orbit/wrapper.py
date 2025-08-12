@@ -23,7 +23,7 @@ def init_orbit(handler:Proteus):
     if module == "None":
         return
 
-    log.info(f"Preparing orbit/tides model '{module}'")
+    log.info(f"Preparing tides model '{module}'")
     if not handler.config.interior.tidal_heat:
         log.warning("Tidal heating is disabled within interior configuration!")
 
@@ -153,14 +153,14 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
             hf_row["semimajorax"] = np.sqrt( Lbol / (4 * np.pi * S_0))
 
     # Inform user
-    log.info("    smaxis = %.5f AU"%(hf_row["semimajorax"]/AU))
-    log.info("    eccen. = %.5f   "%(hf_row["eccentricity"]))
+    log.info("    Orb SMaxis = %.5f AU"%(hf_row["semimajorax"]/AU))
+    log.info("    Orb eccent = %.5f   "%(hf_row["eccentricity"]))
 
     # Update orbital separation and period, from other variables above
     update_separation(hf_row)
     update_period(hf_row)
 
-    log.info("    period = %.3f days"%(hf_row["orbital_period"]/secs_per_day))
+    log.info("    Orb period = %.5f days"%(hf_row["orbital_period"]/secs_per_day))
 
     if config.orbit.satellite:
         # set by orbital evolution, based on tidal love number
@@ -199,8 +199,7 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
-        hf_row["Imk2"] = run_lovepy(hf_row, dirs, interior_o,
-                                        config.orbit.lovepy.visc_thresh)
+        hf_row["Imk2"] = run_lovepy(hf_row, dirs, interior_o, config)
 
     else:
         hf_row["Imk2"] = 0.0
@@ -209,5 +208,5 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     # To Do
 
     # Print info
-    log.info("    H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
-    log.info("    Im(k2) = %.1e "%hf_row["Imk2"])
+    log.info("    Pla H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
+    log.info("    Pla Im(k2) = %.1e "%hf_row["Imk2"])
