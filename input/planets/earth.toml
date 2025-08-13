@@ -10,14 +10,14 @@ version = "2.0"
         write_mod   = 2
 
     [params.dt]
-        starspec     = 1e7
+        starspec     = 1e8
         starinst     = 1e2
-        minimum      = 2e6
+        minimum      = 1e6
         initial      = 2e6
 
         [params.dt.adaptive]
             atol         = 0.03
-            rtol         = 0.13
+            rtol         = 0.12
 
     [params.stop]
 
