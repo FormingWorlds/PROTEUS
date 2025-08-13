@@ -6,6 +6,8 @@ version = "2.0"
     [params.out]
         path        = "earth"
         logging     = "INFO"
+        plot_mod    = 10
+        write_mod   = 2
 
     [params.dt]
         starspec     = 3e6
@@ -17,24 +19,21 @@ version = "2.0"
 
     [params.stop]
 
-        [params.stop.iters]
-            enabled = true
-
         [params.stop.time]
             enabled = true
             maximum = 4.567e+9
 
         [params.stop.solid]
-            enabled  = true
+            enabled  = false
             phi_crit = 0.005
 
         [params.stop.radeqm]
-            enabled = true
+            enabled = false
             atol    = 0.1
             rtol    = 1e-3
 
         [params.stop.escape]
-            enabled   = true
+            enabled   = false
             p_stop    = 1.0
 
 [star]
@@ -61,20 +60,24 @@ version = "2.0"
 [atmos_clim]
     surf_state      = "fixed"
     rayleigh        = true
+    condensation    = true
     module          = "agni"
 
     [atmos_clim.agni]
         spectral_group = "Dayspring"
-        spectral_bands = "48"
+        spectral_bands = "16"
 
 [escape]
     module = "none"
 
 [interior]
-    radiogenic_heat = true
+    radiogenic_heat = false
     tidal_heat      = false
 
-    module = "aragog"
+    module = "dummy"
+
+    [interior.dummy]
+        init_tmagma = 3000.0
 
     [interior.aragog]
         ini_tmagma = 3000.0

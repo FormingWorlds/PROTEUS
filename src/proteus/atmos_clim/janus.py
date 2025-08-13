@@ -303,5 +303,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["rho_obs"]= rho_obs          # observed density [kg m-3]
     output["p_xuv"]  = p_xuv/1e5        # Closest pressure from Pxuv    [bar]
     output["R_xuv"]  = r_xuv            # Radius at Pxuv                [m]
+    output["ocean_areacov"] = 0.0
+    output["ocean_maxdepth"]= 0.0
 
     return output
