@@ -401,7 +401,8 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
                             chem_type = chem_type,
 
                             conduct=False, convect=True, sens_heat=True,
-                            latent=config.atmos_clim.agni.condensation, rainout=True,
+                            latent=config.atmos_clim.agni.latent_heat,
+                            rainout=config.atmos_clim.agni.condensation,
 
                             max_steps=int(max_steps), max_runtime=900.0,
                             conv_atol=float(config.atmos_clim.agni.solution_atol),
@@ -584,16 +585,14 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     LW_flux_up =    np.array(atmos.flux_u_lw)
     SW_flux_up =    np.array(atmos.flux_u_sw)
     SW_flux_down =  np.array(atmos.flux_d_sw)
-    T_surf =        float(atmos.tmp_surf)
+    albedo = SW_flux_up[0]/SW_flux_down[0]
 
     # Print info to user
-    if config.atmos_clim.condensation:
-        log.info("    oceans = %.3f %% area covered"%float(atmos.ocean_areacov*100))
-        log.info("    oceans = %.3f km maxdepth"%float(atmos.ocean_maxdepth/1e3))
-    log.debug("    T_surf = %.3f K"%T_surf)
-    log.info("    R_obs  = %.3f km"%float(float(atmos.transspec_r)/1e3))
-    log.info("    F_top  = %.2e W m-2"%float(tot_flux[0]))
-    log.info("    F_bot  = %.2e W m-2"%float(tot_flux[-1]))
+    if config.atmos_clim.agni.condensation:
+        log.info("    oceans area frac   = %6.3f %%"%float(atmos.ocean_areacov*100))
+        log.info("    oceans max depth   = %6.3f km"%float(atmos.ocean_maxdepth/1e3))
+    log.info("    R_obs photosphere  = %6.1f km"%float(atmos.transspec_r/1e3))
+    log.info("    Planet Bond albedo = %6.3f %%"%float(albedo*100))
 
     # New flux from SOCRATES
     F_atm_new = tot_flux[0]
@@ -621,11 +620,11 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     output["F_atm"]         = F_atm_lim
     output["F_olr"]         = LW_flux_up[0]
     output["F_sct"]         = SW_flux_up[0]
-    output["T_surf"]        = T_surf
+    output["T_surf"]        = float(atmos.tmp_surf)
     output["p_obs"]         = float(atmos.transspec_p)/1e5 # convert [Pa] to [bar]
     output["R_obs"]         = float(atmos.transspec_r)
     output["rho_obs"]       = float(atmos.transspec_rho)
-    output["albedo"]        = SW_flux_up[0]/SW_flux_down[0]
+    output["albedo"]        = albedo
     output["p_xuv"]         = p_xuv/1e5        # Closest pressure from Pxuv    [bars]
     output["R_xuv"]         = r_xuv            # Radius at Pxuv                [m]
     output["ocean_areacov"] = float(atmos.ocean_areacov)

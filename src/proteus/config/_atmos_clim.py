@@ -34,6 +34,9 @@ def valid_agni(instance, attribute, value):
     if instance.agni.chemistry and instance.agni.condensation:
         raise ValueError("`atmos_clim.agni`: Cannot enable condensation and chemistry at the same time")
 
+    if instance.agni.latent_heat and not instance.agni.condensation:
+        raise ValueError("`atmos_clim.agni`: Must set `condensation=true` if setting `latent_heat=true`")
+
     # set spectral files?
     if not instance.agni.spectral_group:
         raise ValueError("Must set atmos_clim.agni.spectral_group")
@@ -69,7 +72,9 @@ class Agni:
     overlap_method: str
         Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
     condensation: bool
-        Enable volatile condensation/phase change in the atmosphere.
+        Enable volatile rainout in the atmosphere and ocean formation below.
+    latent_heat: bool
+        Account for latent heat from condense/evap when solving temperature profile.
     real_gas: bool
         Use real gas equations of state in atmosphere, where possible.
     psurf_thresh: float
@@ -90,6 +95,7 @@ class Agni:
     solution_rtol: float    = field(default=0.15,  validator=gt(0))
     overlap_method: str     = field(default='ee', validator=check_overlap)
     condensation: bool      = field(default=False)
+    latent_heat: bool       = field(default=False)
     real_gas: bool          = field(default=False)
     psurf_thresh: bool      = field(default=0.1, validator=ge(0))
 
