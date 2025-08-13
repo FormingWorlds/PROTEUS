@@ -39,10 +39,15 @@ version = "2.0"
             atol    = 0.2     # absolute tolerance [W m-2]
             rtol    = 1e-3    # relative tolerance
 
+        # atmospheric escape
         [params.stop.escape]
             enabled   = true
             p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
 
+        # disintegration
+        [params.stop.disint]
+            enabled   = false
+            offset    = 0.0  # correction to calculated Roche limit [m]
 
 [star]
     mass    = 1.0       # M_sun
