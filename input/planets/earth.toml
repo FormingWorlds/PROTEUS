@@ -12,10 +12,11 @@ version = "2.0"
     [params.dt]
         starspec     = 3e6
         starinst     = 1e2
+        minimum      = 1e4
 
         [params.dt.adaptive]
             atol         = 0.02
-            rtol         = 0.07
+            rtol         = 0.10
 
     [params.stop]
 
@@ -63,7 +64,7 @@ version = "2.0"
     module          = "agni"
 
     [atmos_clim.agni]
-        condensation    = true
+        condensation   = true
         spectral_group = "Dayspring"
         spectral_bands = "16"
 
@@ -77,7 +78,7 @@ version = "2.0"
     module = "dummy"
 
     [interior.dummy]
-        ini_tmagma = 3000.0
+        ini_tmagma = 2800.0
 
     [interior.aragog]
         ini_tmagma = 3000.0

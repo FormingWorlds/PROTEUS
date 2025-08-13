@@ -43,7 +43,7 @@ def run_escape(config:Config, hf_row:dict, dt:float, stellar_track):
         raise ValueError(f"Invalid escape model: {config.escape.module}")
 
     log.info(
-        "Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1"
+        "Bulk escape rate = %.2e kg s-1"
         % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"])
         )
 
