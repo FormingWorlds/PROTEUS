@@ -10,10 +10,10 @@ version = "2.0"
         write_mod   = 2
 
     [params.dt]
-        starspec     = 1e7
+        starspec     = 1e8
         starinst     = 1e2
-        minimum      = 3e4
-        initial      = 3e4
+        minimum      = 1e6
+        initial      = 2e6
 
         [params.dt.adaptive]
             atol         = 0.03
@@ -63,13 +63,13 @@ version = "2.0"
     surf_state      = "fixed"
     rayleigh        = true
     module          = "agni"
-    albedo_pl       = 0.15      # test guess, contribution from clouds
+    albedo_pl       = 0.2      # test guess, contribution from clouds
 
     [atmos_clim.agni]
         p_top          = 1e-4
         condensation   = true
         spectral_group = "Dayspring"
-        spectral_bands = "16"
+        spectral_bands = "48"
 
 [escape]
     module = "zephyrus"
@@ -97,7 +97,7 @@ version = "2.0"
     module = "none"
 
     [delivery.elements]
-        H_oceans    = 3.0       # Hydrogen inventory in units of equivalent Earth oceans
+        H_oceans    = 1.0       # Hydrogen inventory in units of equivalent Earth oceans
         # H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
