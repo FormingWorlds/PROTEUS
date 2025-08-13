@@ -50,12 +50,6 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
 
     parr = atm_profile["pl"] * 1e-5  # convert to bar
 
-    # Check that the arrays are the right way up
-    if parr[1] > parr[0]:
-        # needs flipping
-        for key in atm_profile.keys():
-            atm_profile[key] = atm_profile[key][::-1]
-
     # Get year
     year = float(nc_fpath.split("/")[-1].split("_atm")[0])
 
@@ -114,7 +108,6 @@ def plot_chem_atmosphere( output_dir:str, chem_module:str, plot_format="pdf",
     ax.xaxis.set_major_locator(LogLocator(numticks=1000))
 
     ax.set_ylabel("Pressure [bar]")
-    ax.invert_yaxis()
     ax.set_yscale("log")
     ax.set_ylim(bottom=np.amax(parr), top=np.amin(parr))
     ax.yaxis.set_major_locator(LogLocator(numticks=1000))
