@@ -100,6 +100,8 @@ class Aragog:
         Maximum change in surface temperature allowed during a single interior iteration [K].
     event_triggering: bool
         Whether to include event triggering in the solver. Default is True.
+    bulk_modulus: float
+        Adiabatic bulk modulus AW-EOS parameter [Pa].
     """
 
     logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
@@ -119,6 +121,7 @@ class Aragog:
     mass_coordinates: bool              = field(default=False)
     tsurf_poststep_change: float        = field(default=30, validator=ge(0))
     event_triggering:bool               = field(default=True)
+    bulk_modulus: float                 = field(default=260e9, validator=gt(0))
 
 
 def valid_interiordummy(instance, attribute, value):
@@ -129,8 +132,10 @@ def valid_interiordummy(instance, attribute, value):
     if (not ini_tmagma) or (ini_tmagma <= 200.0) :
         raise ValueError("`interior.dummy.ini_tmagma` must be >200")
 
-    if instance.radiogenic_heat:
-        raise ValueError("Dummy interior module does not support radiogenic heating")
+    tliq = instance.dummy.mantle_tliq
+    tsol = instance.dummy.mantle_tsol
+    if tliq <= tsol:
+        raise ValueError(f"Dummy liquidus ({tliq}K) must be greater than solidus ({tsol}K)")
 
 @define
 class InteriorDummy:
@@ -140,9 +145,30 @@ class InteriorDummy:
     ----------
     ini_tmagma: float
         Initial magma surface temperature [K].
+    tmagma_atol: float
+        Max absolute change in surface temperature [K] during a single iteration.
+    tmagma_rtol: float
+        Max relative change in surface temperature [K] during a single iteration.
+    mantle_rho: float
+        Mantle mass density [kg m-3].
+    mantle_cp: float
+        Mantle specific heat capacity [J kg-1 K-1]
+    mantle_tliq: float
+        Mantle liquidus temperature [K]
+    mantle_tsol: float
+        Mantle solidus temperature [K]
+    H_radio: float
+        Constant radiogenic heating rate [W kg-1]
     """
 
     ini_tmagma = field(default=None)
+    tmagma_atol: float = field(default=30.0,   validator=ge(0))
+    tmagma_rtol: float = field(default=0.05,   validator=ge(0))
+    mantle_tliq: float = field(default=2700.0, validator=ge(0))
+    mantle_tsol: float = field(default=1700.0, validator=ge(0))
+    mantle_rho: float  = field(default=4.55e3, validator=gt(0))
+    mantle_cp: float   = field(default=1792.0, validator=ge(0))
+    H_radio: float     = field(default=0.0,    validator=ge(0))
 
 @define
 class Interior:
@@ -162,8 +188,6 @@ class Interior:
         Centre of rheological transition in terms of melt fraction
     rheo_phi_wid: float
         Width of rheological transition in terms of melt fraction
-    bulk_modulus: float
-        Fixed bulk modulus of each layer [Pa].
 
     module: str
         Module for simulating the magma ocean. Choices: 'spider', 'aragog', 'dummy'.
@@ -190,4 +214,3 @@ class Interior:
     F_initial: float        = field(default=1e3,    validator=gt(0))
     rheo_phi_loc: float     = field(default=0.3,    validator=(gt(0),lt(1)))
     rheo_phi_wid: float     = field(default=0.15,   validator=(gt(0),lt(1)))
-    bulk_modulus: float     = field(default=260e9,  validator=gt(0))

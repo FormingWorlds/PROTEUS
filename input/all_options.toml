@@ -115,17 +115,19 @@ version = "2.0"
 # Orbital system
 [orbit]
     instellation_method = 'sma' # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
-    instellationflux = 1.0      # instellation flux received from the planet in Earth units.
-    semimajoraxis = 1.0         # AU
-    eccentricity = 0.0          # dimensionless
-    zenith_angle = 48.19        # degrees
-    s0_factor = 0.375           # dimensionless
+    instellationflux = 1.0      # instellation flux received from the planet in [Earth units]
+    semimajoraxis = 1.0         # initial semi-major axis of planet's orbit [AU]
+    eccentricity = 0.0          # initial eccentricity of planet's orbit [dimensionless]
+    zenith_angle = 48.19        # characteristic zenith angle [degrees]
+    s0_factor = 0.375           # instellation scale factor [dimensionless]
 
-    module  = "none"
+    evolve  = false             # whether to evolve the SMaxis and eccentricity
+    module  = "none"            # module used to calculate tidal heating
 
     [orbit.dummy]
         H_tide  = 1e-7      # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
+        Imk2    = 0.0       # Fixed imaginary part of k2 love number, cannot be positive
 
     [orbit.lovepy]
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
@@ -222,7 +224,6 @@ version = "2.0"
     tidal_heat      = false         # enable tidal heat production
     rheo_phi_loc    = 0.6           # Centre of rheological transition
     rheo_phi_wid    = 0.2           # Width of rheological transition
-    bulk_modulus    = 260e9         # Bulk modulus [Pa]
 
     module = "aragog"       # Which interior module to use
 

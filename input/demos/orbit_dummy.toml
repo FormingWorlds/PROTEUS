@@ -3,16 +3,16 @@ version = "2.0"
 
 [params]
     [params.out]
-        path        = "dummy"
+        path        = "orbit_dummy"
         logging     = "ERROR"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         write_mod   = 400      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 'none'
 
     [params.dt]
-        minimum      = 1e2    # yr, minimum time-step
-        maximum      = 3e7    # yr, maximum time-step
-        initial      = 1e2    # yr, inital step size
+        minimum      = 1e3    # yr, minimum time-step
+        maximum      = 1e7    # yr, maximum time-step
+        initial      = 1e3    # yr, inital step size
         starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e1    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
@@ -26,7 +26,7 @@ version = "2.0"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 1e9     # yr, model will terminate when t > maximum
+            maximum = 1e7     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -54,13 +54,13 @@ version = "2.0"
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.5       # AU
-    eccentricity    = 0.1       # dimensionless
+    semimajoraxis   = 0.02       # AU
+    eccentricity    = 0.5       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
     axial_period    = 'none'    # hours, or provide 'none' to set as tidally locked
 
-    evolve  = false
+    evolve  = true
 
     satellite = false
     semimajoraxis_sat = 300e6

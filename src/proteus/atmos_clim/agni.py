@@ -207,6 +207,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         use_all_gases=include_all,
                         fastchem_work = fc_dir,
                         real_gas = config.atmos_clim.agni.real_gas,
+                        check_integrity = False, # don't check thermo files every time
 
                         skin_d=config.atmos_clim.surface_d,
                         skin_k=config.atmos_clim.surface_k,
@@ -365,7 +366,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         # default parameters
         linesearch  = 2
         easy_start  = False
-        dx_max      = config.interior.spider.tsurf_atol*2+5.0
+        dx_max      = float(config.atmos_clim.agni.dx_max)
         ls_increase = 1.01
         perturb_all = True
         max_steps   = 70
@@ -400,7 +401,8 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
                             chem_type = chem_type,
 
                             conduct=False, convect=True, sens_heat=True,
-                            latent=config.atmos_clim.agni.condensation, rainout=True,
+                            latent=config.atmos_clim.agni.latent_heat,
+                            rainout=config.atmos_clim.agni.condensation,
 
                             max_steps=int(max_steps), max_runtime=900.0,
                             conv_atol=float(config.atmos_clim.agni.solution_atol),
@@ -537,22 +539,34 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     log.debug("Running AGNI...")
     time_str = "%d"%hf_row["Time"]
 
+    # ---------------------------
     # Solve atmosphere
+    # ---------------------------
+
+    # Transparent case
     if bool(atmos.transparent):
         # no opacity
         log.info("Using transparent solver")
         atmos = _solve_transparent(atmos, config)
 
+    # Opaque case
     else:
-        # has opacity
+        # full solver
         if config.atmos_clim.agni.solve_energy:
             log.info("Using nonlinear solver to conserve fluxes")
             atmos = _solve_energy(atmos, loops_total, dirs, config)
+
+        # simplified T(p)
         else:
             log.info("Using prescribed temperature profile")
             atmos = _solve_once(atmos, config)
 
+    # Set observed pressure, get observed radius
+    atmos.transspec_p = float(config.atmos_clim.agni.p_obs * 1e5) # converted to Pa
+    jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
+
     # Write output data
+    log.debug("AGNI write to NetCDF file")
     ncdf_path = os.path.join(dirs["output"],"data",time_str+"_atm.nc")
     jl.AGNI.save.write_ncdf(atmos, ncdf_path)
 
@@ -561,18 +575,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
         cff = os.path.join(dirs["output/plots"], f"plot_cff.{config.params.out.plot_fmt}")
         jl.AGNI.plotting.plot_contfunc1(atmos, cff)
 
-    # ---------------------------
-    # Calculate observables
-    # ---------------------------
-
-    # Set observed level
-    atmos.transspec_p = float(config.atmos_clim.agni.p_obs * 1e5) # convert to Pa
-
-    # observed height and derived bulk density
-    jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
-    rho_obs = float(atmos.transspec_rho)
-    p_obs   = float(atmos.transspec_p)
-    r_obs   = float(atmos.transspec_r)
 
     # ---------------------------
     # Parse results
@@ -583,7 +585,14 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     LW_flux_up =    np.array(atmos.flux_u_lw)
     SW_flux_up =    np.array(atmos.flux_u_sw)
     SW_flux_down =  np.array(atmos.flux_d_sw)
-    T_surf =        float(atmos.tmp_surf)
+    albedo = SW_flux_up[0]/SW_flux_down[0]
+
+    # Print info to user
+    if config.atmos_clim.agni.condensation:
+        log.info("    oceans area frac   = %6.3f %%"%float(atmos.ocean_areacov*100))
+        log.info("    oceans max depth   = %6.3f km"%float(atmos.ocean_maxdepth/1e3))
+    log.info("    R_obs photosphere  = %6.1f km"%float(atmos.transspec_r/1e3))
+    log.info("    Planet Bond albedo = %6.3f %%"%float(albedo*100))
 
     # New flux from SOCRATES
     F_atm_new = tot_flux[0]
@@ -597,11 +606,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
-    log.info("    T_surf = %.3f K"%float(atmos.tmp_surf))
-    log.info("    R_obs  = %.3f km"%float(r_obs/1e3))
-    log.info("    F_top  = %.2e W m-2"%float(tot_flux[0]))
-    log.info("    F_bot  = %.2e W m-2"%float(tot_flux[-1]))
-
     # XUV height in atm
     if config.escape.module == 'zephyrus':
         # escape level set by zephyrus config
@@ -613,15 +617,17 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
 
     # final things to store
     output = {}
-    output["F_atm"]  = F_atm_lim
-    output["F_olr"]  = LW_flux_up[0]
-    output["F_sct"]  = SW_flux_up[0]
-    output["T_surf"] = T_surf
-    output["p_obs"]  = p_obs/1e5 # convert [Pa] to [bar]
-    output["R_obs"]  = r_obs
-    output["rho_obs"]= rho_obs
-    output["albedo"] = SW_flux_up[0]/SW_flux_down[0]
-    output["p_xuv"]  = p_xuv/1e5        # Closest pressure from Pxuv    [bars]
-    output["R_xuv"]  = r_xuv            # Radius at Pxuv                [m]
+    output["F_atm"]         = F_atm_lim
+    output["F_olr"]         = LW_flux_up[0]
+    output["F_sct"]         = SW_flux_up[0]
+    output["T_surf"]        = float(atmos.tmp_surf)
+    output["p_obs"]         = float(atmos.transspec_p)/1e5 # convert [Pa] to [bar]
+    output["R_obs"]         = float(atmos.transspec_r)
+    output["rho_obs"]       = float(atmos.transspec_rho)
+    output["albedo"]        = albedo
+    output["p_xuv"]         = p_xuv/1e5        # Closest pressure from Pxuv    [bars]
+    output["R_xuv"]         = r_xuv            # Radius at Pxuv                [m]
+    output["ocean_areacov"] = float(atmos.ocean_areacov)
+    output["ocean_maxdepth"]= float(atmos.ocean_maxdepth)
 
     return atmos, output
