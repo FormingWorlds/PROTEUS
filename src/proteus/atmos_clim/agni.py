@@ -366,7 +366,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         # default parameters
         linesearch  = 2
         easy_start  = False
-        dx_max      = config.interior.spider.tsurf_atol*2+5.0
+        dx_max      = float(config.atmos_clim.agni.dx_max)
         ls_increase = 1.01
         perturb_all = True
         max_steps   = 70

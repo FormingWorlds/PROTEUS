@@ -79,6 +79,8 @@ class Agni:
         Use real gas equations of state in atmosphere, where possible.
     psurf_thresh: float
         Use the transparent-atmosphere solver when P_surf is less than this value [bar].
+    dx_max: float
+        Nominal maximum step size to T(p) during the solver process, although this is dynamic.
     """
 
     spectral_group: str     = field(default=None)
@@ -98,6 +100,7 @@ class Agni:
     latent_heat: bool       = field(default=False)
     real_gas: bool          = field(default=False)
     psurf_thresh: bool      = field(default=0.1, validator=ge(0))
+    dx_max: float           = field(default=35.0, validator=gt(1))
 
     @property
     def chemistry_int(self) -> int:

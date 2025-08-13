@@ -64,6 +64,7 @@ version = "2.0"
     module          = "agni"
 
     [atmos_clim.agni]
+        p_top          = 1e-4
         condensation   = true
         spectral_group = "Dayspring"
         spectral_bands = "16"
@@ -78,7 +79,7 @@ version = "2.0"
     module = "dummy"
 
     [interior.dummy]
-        ini_tmagma = 2800.0
+        ini_tmagma = 2700.0
 
     [interior.aragog]
         ini_tmagma = 3000.0
