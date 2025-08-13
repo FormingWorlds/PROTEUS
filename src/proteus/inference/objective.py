@@ -10,6 +10,7 @@ import torch
 from botorch.utils.transforms import unnormalize
 from numpy import log10
 
+from proteus.utils.constants import gas_list
 from proteus.utils.coupler import get_proteus_directories
 
 dtype = torch.double
@@ -90,30 +91,27 @@ def run_proteus(parameters: dict,
     # Don't allow workers to make plots
     parameters["params.out.plot_mod"] = 'none'
 
-    for attempt in range(1, max_attempts + 1):
-        try:
-            # Generate config
-            update_toml(ref_config, parameters, out_cfg)
+    # Generate config
+    update_toml(ref_config, parameters, out_cfg)
 
-            # Run PROTEUS
-            subprocess.run(["proteus", "start", "-c", out_cfg, "--offline"],
-                            check=True, text=True,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    # Run PROTEUS
+    subprocess.run(["proteus", "start", "-c", out_cfg, "--offline"],
+                    check=True, text=True,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
-            # Re-write config in case simulator mutates or removes it
-            update_toml(ref_config, parameters, out_cfg)
+    # Re-write config in case simulator mutates or removes it
+    update_toml(ref_config, parameters, out_cfg)
 
-            # Read simulator output
-            df = pd.read_csv(out_csv, delimiter=r"\s+")
-            return df.iloc[-1][observables].T
+    # Read simulator output
+    df_row = pd.read_csv(out_csv, delimiter=r"\s+").iloc[-1]
 
-        except subprocess.CalledProcessError as e:
-            if attempt < max_attempts:
-                # Slightly perturb to avoid numerical issues
-                print(f"Attempt {attempt} failed: {e}. Retrying...")
-                parameters["struct.corefrac"] = parameters.get("struct.corefrac", 0) + 1e-9
-            else:
-                raise RuntimeError(f"Simulator failed after {max_attempts} attempts: {e}\nInputs: {parameters}")
+    # Handle case where atmosphere has escaped
+    #   Set VMRs and MMW to zero
+    if df_row["P_surf"] < 1e-30:
+        df_row["atm_kg_per_mol"] = 0.0
+        df_row[gas_list] = 0.0
+
+    return df_row[observables].T
 
 def eval_obj(sim_dict, tru_dict):
     '''Evaluate objective function, given simulated and true values of observables'''
