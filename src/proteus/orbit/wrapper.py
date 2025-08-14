@@ -218,9 +218,10 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     else:
         hf_row["Imk2"] = 0.0
 
+    # Print info
+    if config.orbit.module is not None:
+        log.info("    Pla H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
+        log.info("    Pla Im(k2) = %.1e "%hf_row["Imk2"])
+
     # Call tides module for satellite, calculates heating rates and new love number
     # To Do
-
-    # Print info
-    log.info("    Pla H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
-    log.info("    Pla Im(k2) = %.1e "%hf_row["Imk2"])
