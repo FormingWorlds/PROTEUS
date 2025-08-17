@@ -36,6 +36,9 @@ def update_separation(hf_row:dict):
     Calculate time-averaged orbital separation on an elliptical path.
     https://physics.stackexchange.com/a/715749
 
+    Calculate periapsis distance on an elliptical path.
+    https://mathworld.wolfram.com/Periapsis.html
+
     Parameters
     -------------
         hf_row: dict
@@ -45,7 +48,16 @@ def update_separation(hf_row:dict):
     sma = hf_row["semimajorax"] # already in SI units
     ecc = hf_row["eccentricity"]
 
-    hf_row["separation"] = sma *  (1 + 0.5*ecc*ecc)
+    sma_sat = hf_row["semimajorax_sat"] # already in SI units
+
+    # Time-averaged separation
+    hf_row["separation"] = sma * (1 + 0.5*ecc*ecc)
+
+    # Periapsis distance around star
+    hf_row["perihelion"] = sma * (1 - ecc)
+
+    # Periapsis distance around planet (assuming circular orbiting satellite)
+    hf_row["perigee"]    = sma_sat
 
 def update_period(hf_row:dict):
     '''
@@ -181,8 +193,10 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     # Update Roche limit
     update_rochelimit(hf_row)
-    if hf_row["separation"] < hf_row["roche_limit"]:
+    if hf_row["separation"] <= hf_row["roche_limit"] + float(config.params.stop.disint.offset):
         log.warning("Planet is orbiting within the Roche limit of its star")
+    elif hf_row["perihelion"] <= hf_row["roche_limit"] + float(config.params.stop.disint.offset):
+        log.warning("Planet is (partially) orbiting within the Roche limit of its star")
 
     # Update Hill radius
     update_hillradius(hf_row)

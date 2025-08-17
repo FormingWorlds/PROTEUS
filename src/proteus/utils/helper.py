@@ -141,6 +141,8 @@ def CommentFromStatus(status:int):
             desc = "Completed (net flux is small)"
         case 15:
             desc = "Completed (volatiles escaped)"
+        case 16:
+            desc = "Completed (planet disintegrated)"
         # Error cases
         case 20:
             desc = "Error (generic case, or configuration issue)"
