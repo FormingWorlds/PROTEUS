@@ -11,7 +11,7 @@ from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_oarr_from_parr, get_spfile_path
-from proteus.utils.constants import gas_list
+from proteus.utils.constants import gas_list, element_list, element_mmw, gas_atoms
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, multiple, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
@@ -607,13 +607,19 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
     # XUV height in atm
-    if config.escape.module == 'zephyrus':
-        # escape level set by zephyrus config
-        p_xuv = config.escape.zephyrus.Pxuv # [bar]
-    else:
-        # escape level set to surface
-        p_xuv = hf_row["P_surf"] # [bar]
+    p_xuv = hf_row["P_xuv"] # [bar]
     p_xuv, r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv*1e5) # [Pa], [m]
+
+    # Composition at XUV height
+    elems = {e:0.0 for e in element_list}  # moles of each atom
+    # loop over gases...
+    for gas in gas_list:
+        # get VMR of this gas at PXUV
+        # for each atom in this gas, add to total number
+        for e in element_list:
+            raise # check this ...
+            elems[e] += gas_atoms[gas][e] * element_mmw[e] / asdasd
+
 
     # final things to store
     output = {}
@@ -626,7 +632,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     output["T_obs"]         = float(atmos.transspec_t)
     output["rho_obs"]       = float(atmos.transspec_rho)
     output["albedo"]        = albedo
-    output["p_xuv"]         = p_xuv/1e5        # Closest pressure from Pxuv    [bars]
+    output["p_xuv"]         = p_xuv/1e5        # Closest pressure to Pxuv      [bars]
     output["R_xuv"]         = r_xuv            # Radius at Pxuv                [m]
     output["ocean_areacov"] = float(atmos.ocean_areacov)
     output["ocean_maxdepth"]= float(atmos.ocean_maxdepth)

@@ -12,9 +12,9 @@ from proteus.utils.constants import element_list
 # Import BOREAS from local path
 BOREAS_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                            "..","..","..","boreas"))
+print(BOREAS_PATH)
 sys.path.append(BOREAS_PATH)
-import boreas # noqa
-from boreas import Main as bm
+from boreas import Main as bm # noqa
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -72,6 +72,7 @@ def run_boreas(config:Config, hf_row:dict):
     # Store bulk outputs
     hf_row["esc_rate_total"] = fr_result["Mdot"]  * 1e-3    # g/s   ->  kg/s
     hf_row["R_xuv"]          = fr_result["REUV"]  * 1e-2    # cm    ->  m
+    hf_row["P_xuv"]          = fr_result["PEUV"] ; raise  # check this
     hf_row["cs_xuv"]         = fr_result["cs"]    * 1e-2    # cm/s  ->  m/s
 
     # Convert escape fluxes to rates, and store

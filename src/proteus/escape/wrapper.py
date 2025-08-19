@@ -37,7 +37,7 @@ def run_escape(config:Config, hf_row:dict, dt:float):
                                     min_thresh=config.outgas.mass_thresh)
 
     elif config.escape.module == 'zephyrus':
-        hf_row["esc_rate_total"] = run_zephyrus(config, hf_row)
+        run_zephyrus(config, hf_row)
         calc_unfract_fluxes(hf_row, reservoir=config.escape.reservoir,
                                     min_thresh=config.outgas.mass_thresh)
 
@@ -76,6 +76,9 @@ def run_dummy(Mdot: float, hf_row:dict):
     # Set sound speed to zero
     hf_row["cs_xuv"] = 0.0
 
+    # Set Pxuv to Psurf
+    hf_row["P_xuv"] = hf_row["P_surf"]
+
 def run_zephyrus(config:Config, hf_row:dict)->float:
     """Run ZEPHYRUS escape model.
 
@@ -87,10 +90,6 @@ def run_zephyrus(config:Config, hf_row:dict)->float:
             Dictionary of configuration options
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
-    Returns
-    -------
-        mlr : float
-            Bulk escape rate [kg s-1]
     """
 
     from zephyrus.escape import EL_escape
@@ -109,7 +108,8 @@ def run_zephyrus(config:Config, hf_row:dict)->float:
                     hf_row["F_xuv"],    # [W m-2]
                     scaling = 3)
 
-    return mlr
+    hf_row["esc_rate_total"] = mlr
+    hf_row["P_xuv"] = config.escape.zephyrus.Pxuv
 
 def calc_unfract_fluxes(hf_row:dict, reservoir:str, min_thresh:float):
     """Calculate elemental escape rates, without fractionating.
@@ -150,17 +150,16 @@ def calc_unfract_fluxes(hf_row:dict, reservoir:str, min_thresh:float):
 
     # calculate the current mass mixing ratio for each element
     #     if escape is unfractionating, this should be conserved
-    emr = {}
     for e in res.keys():
-        emr[e] = res[e]/M_vols
-        log.debug("    %2s (%s) mass ratio = %.2e "%(e,reservoir,emr[e]))
+        hf_row[e+"_mmr_xuv"] = res[e]/M_vols
+        log.debug("    %2s (%s) mass ratio = %.2e "%(e,reservoir,hf_row[e+"_mmr_xuv"]))
 
     # for each element, calculate new TOTAL mass inventory
     log.info("Elemental escape fluxes:")
     for e in res.keys():
 
         # elemental escape flux [kg/s]
-        hf_row["esc_rate_"+e] = hf_row["esc_rate_total"] * emr[e]
+        hf_row["esc_rate_"+e] = hf_row["esc_rate_total"] * hf_row[e+"_mmr_xuv"]
 
         # Print info
         if hf_row["esc_rate_"+e] > 1:

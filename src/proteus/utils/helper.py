@@ -300,3 +300,9 @@ def recursive_setattr(obj, attr:str, value):
     else:
         L = attr.split('.')
         recursive_setattr(getattr(obj, L[0]), '.'.join(L[1:]), value)
+
+def emr_from_vmr(vmrs:dict):
+    """Calculate elemental mass ratios from molecule volume mixing ratios
+    """
+
+

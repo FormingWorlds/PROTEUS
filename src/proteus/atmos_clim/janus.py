@@ -285,12 +285,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         rho_obs = calc_observed_rho(atm)
 
     # XUV height in atm
-    if config.escape.module == 'zephyrus':
-        # escape level set by zephyrus config
-        p_xuv = config.escape.zephyrus.Pxuv # [bar]
-    else:
-        # escape level set to surface
-        p_xuv = hf_row["P_surf"] # [bar]
+    p_xuv = hf_row["P_xuv"] # [bar]
     p_xuv, r_xuv = get_oarr_from_parr(atm.p, r_arr, p_xuv*1e5) # [Pa], [m]
 
     # final things to store
@@ -304,7 +299,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["T_obs"]  = t_obs            # observed level [K]
     output["R_obs"]  = r_obs            # observed level [m]
     output["rho_obs"]= rho_obs          # observed density [kg m-3]
-    output["p_xuv"]  = p_xuv/1e5        # Closest pressure from Pxuv    [bar]
+    output["p_xuv"]  = p_xuv/1e5        # Closest pressure to Pxuv    [bar]
     output["R_xuv"]  = r_xuv            # Radius at Pxuv                [m]
     output["ocean_areacov"] = 0.0
     output["ocean_maxdepth"]= 0.0
