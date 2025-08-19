@@ -1,6 +1,7 @@
 # Functions used to handle escape
 from __future__ import annotations
 
+import numpy as np
 import logging
 from typing import TYPE_CHECKING
 
@@ -11,7 +12,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-def run_escape(config:Config, hf_row:dict, dt:float, stellar_track):
+def run_escape(config:Config, hf_row:dict, dt:float):
     """Run Escape submodule.
 
     Generic function to run escape calculation using ZEPHYRUS or dummy.
@@ -24,39 +25,66 @@ def run_escape(config:Config, hf_row:dict, dt:float, stellar_track):
             Dictionary of helpfile variables, at this iteration only
         dt : float
             Time interval over which escape is occuring [yr]
-        stellar_track : mors star object
-            Mors star object storing spada track data.
     """
 
     if not config.escape.module:
-        hf_row["esc_rate_total"] = 0.0
         log.info(f"Escape is disabled, bulk rate = {hf_row["esc_rate_total"]:.2e} kg s-1")
-        return
-
-    elif config.escape.module == 'zephyrus':
-        hf_row["esc_rate_total"] = run_zephyrus(config, hf_row, stellar_track)
+        run_dummy(0.0, hf_row)
+        return # return now, since elemental inventories will be unchanged
 
     elif config.escape.module == 'dummy':
-        hf_row["esc_rate_total"] = config.escape.dummy.rate
+        run_dummy(config.escape.dummy.rate, hf_row)
+        calc_unfract_fluxes(hf_row, reservoir=config.escape.reservoir,
+                                    min_thresh=config.outgas.mass_thresh)
+
+    elif config.escape.module == 'zephyrus':
+        hf_row["esc_rate_total"] = run_zephyrus(config, hf_row)
+        calc_unfract_fluxes(hf_row, reservoir=config.escape.reservoir,
+                                    min_thresh=config.outgas.mass_thresh)
+
+    elif config.escape.module == 'boreas':
+        run_boreas(config, hf_row)
 
     else:
         raise ValueError(f"Invalid escape model: {config.escape.module}")
 
     log.info(f"Bulk escape rate = {hf_row["esc_rate_total"]:.2e} kg s-1")
 
-    # calculate new elemental inventories
-    solvevol_target = calc_new_elements(hf_row, dt,
-                                            config.escape.reservoir,
-                                            min_thresh=config.outgas.mass_thresh)
+    # calculate new elemental inventories from loss over duration `dt`
+    solvevol_target = calc_new_elements(hf_row, dt, config.outgas.mass_thresh)
 
     # store new elemental inventories
     for e in element_list:
-        if e == "O":
-            continue
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
-def run_zephyrus(config, hf_row, stellar_track):
-    """Run energy-limited escape (for now) model.
+
+def run_dummy(Mdot, hf_row:dict):
+    """Run dummy escape model.
+
+    Uses a fixed mass loss rate and does not fractionate.
+
+    Parameters
+    ----------
+        Mdot : float
+            Bulk escape rate [kg s-1]
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+    """
+
+    # Set bulk escape rate based on value from user
+    hf_row["esc_rate_total"] = float(Mdot)
+
+
+def run_boreas(config:Config, hf_row:dict):
+    """Run Marilina escape model.
+
+    Calculates the mass loss rate of each element.
+    Updates the quantities in hf_row as appropriate.
+
+    Default treatment is fixed:
+        Light-Major species: H
+        Heavy-Major species: O
+        Heavy-Minor species: C, N
 
     Parameters
     ----------
@@ -64,8 +92,83 @@ def run_zephyrus(config, hf_row, stellar_track):
             Dictionary of configuration options
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
-        stellar_track : mors star object
-            Mors star object storing spada track data.
+    Returns
+    -------
+        result: dict
+            Dictionary containing model results
+    """
+
+    from boreas import Main as bm
+
+    log.info("Running fractionated escape (mml) ...")
+
+    # Set parameters for escape
+    params          = bm.ModelParams()
+
+    # Pass elemental mixing ratios from Rxuv
+    for e in element_list:
+        setattr(params, f"X_{e}",  hf_row[f"{e}_mmr_xuv"])
+
+    # Set parameters from config provided by user
+    params.kappa_p      = config.escape.kappa_p
+    params.sigma_EUV    = config.escape.boreas.sigma_XUV
+    params.alpha_rec    = config.escape.boreas.alpha_rec
+    params.light_major  = config.escape.boreas.light_major
+    params.heavy_major  = config.escape.boreas.heavy_major
+    params.heavy_minor  = config.escape.boreas.heavy_minor
+    params.eff          = config.escape.boreas.efficiency
+
+    # Set parameters from atmosphere calculation
+    params.Teq       = hf_row["T_obs"]              # K
+    params.FEUV      = hf_row["F_xuv"] * 1e7        # XUV flux, converted to ergs cm-2 s-1
+    params.rplanet   = hf_row["R_obs"] * 1e2        # convert m to cm
+    params.mplanet   = hf_row["M_planet"] * 1e3     # convert kg to g
+
+    # Initalise objects
+    mass_loss       = bm.MassLoss(params)
+    fractionation   = bm.Fractionation(params)
+
+    # Run bulk mass loss calculation
+    ml_result = mass_loss.compute_mass_loss_parameters()
+
+    # Run fractionation calculation
+    fr_result = fractionation.execute_fractionation(mass_loss, ml_result)
+
+    # Store bulk outputs
+    hf_row["esc_rate_total"] = fr_result["Mdot"]  * 1e-3    # g/s   ->  kg/s
+    hf_row["R_xuv"]          = fr_result["REUV"]  * 1e-2    # cm    ->  m
+    hf_row["cs_xuv"]         = fr_result["cs"]    * 1e-2    # cm/s  ->  m/s
+
+    # Convert escape fluxes to rates, and store
+    for e in element_list:
+        # default is zero
+        key = "Phi_"+e
+        hf_row["esc_rate_"+e] = 0.0
+
+        # set escape rate if we have result from BOREAS
+        if key in fr_result.keys():
+            # convert g/cm2/s  ->  kg/m^2/s
+            flx = fr_result[key] * 10
+
+            # get global rate [kg/s] from flux through Rxuv
+            hf_row["esc_rate_O"] = flx * 4 * np.pi * (hf_row["R_xuv"])**2
+
+    # Get fractionation factors with respect to `light_major`
+    # x_O/C/N        dimensioness, wrt H
+
+
+
+def run_zephyrus(config:Config, hf_row:dict)->float:
+    """Run ZEPHYRUS escape model.
+
+    Calculates the bulk mass loss rate of all elements.
+
+    Parameters
+    ----------
+        config : dict
+            Dictionary of configuration options
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
     Returns
     -------
         mlr : float
@@ -90,27 +193,22 @@ def run_zephyrus(config, hf_row, stellar_track):
 
     return mlr
 
-def calc_new_elements(hf_row:dict, dt:float, reservoir:str, min_thresh:float=1e10):
-    """Calculate new elemental inventory based on escape rate.
+def calc_unfract_fluxes(hf_row:dict, reservoir:str, min_thresh:float):
+    """Calculate elemental escape rates, without fractionating.
+
+    Updates the elemental escape fluxes in hf_row.
 
     Parameters
     ----------
         hf_row : dict
             Dictionary of helpfile variables, at this iteration only
-        dt : float
-            Time-step length [years]
         reservoir: str
             Element reservoir representing the escaping composition (bulk, outgas, pxuv)
         min_thresh: float
             Minimum threshold for element mass [kg]. Inventories below this are set to zero.
-
-    Returns
-    -------
-        tgt : dict
-            Volatile element whole-planet inventories [kg]
     """
 
-    # which reservoir?
+     # which reservoir?
     match reservoir:
         case "bulk":
             key = "_kg_total"
@@ -132,7 +230,7 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str, min_thresh:float=1e1
     # check if we just desiccated the planet...
     if M_vols < min_thresh:
         log.debug("    Total mass of volatiles below threshold in escape calculation")
-        return res
+        return
 
     # calculate the current mass mixing ratio for each element
     #     if escape is unfractionating, this should be conserved
@@ -142,21 +240,45 @@ def calc_new_elements(hf_row:dict, dt:float, reservoir:str, min_thresh:float=1e1
         log.debug("    %2s (%s) mass ratio = %.2e "%(e,reservoir,emr[e]))
 
     # for each element, calculate new TOTAL mass inventory
-    tgt = {}
     log.info("Elemental escape fluxes:")
     for e in res.keys():
 
-        # elemental escape flux [kg/year]
-        esc_rate_elem = hf_row["esc_rate_total"] * emr[e] * secs_per_year
-        if esc_rate_elem > 1:
-            log.info("    %2s = %.2e kg yr-1"%(e,esc_rate_elem))
+        # elemental escape flux [kg/s]
+        hf_row["esc_rate_"+e] = hf_row["esc_rate_total"] * emr[e]
 
+        # Print info
+        if hf_row["esc_rate_"+e] > 1:
+            log.info("    %2s = %.2e kg yr-1"%(e,hf_row["esc_rate_"+e]*secs_per_year))
+
+
+def calc_new_elements(hf_row:dict, dt:float, min_thresh:float):
+    """Calculate new elemental inventory based on escape rate.
+
+    Parameters
+    ----------
+        hf_row : dict
+            Dictionary of helpfile variables, at this iteration only
+        dt : float
+            Time-step length [years]
+        min_thresh: float
+            Minimum threshold for element mass [kg]. Inventories below this are set to zero.
+
+    Returns
+    -------
+        tgt : dict
+            Volatile element whole-planet inventories [kg]
+    """
+
+    # New target elemental inventory
+    tgt = {}
+
+    for e in element_list:
         # subtract lost mass from TOTAL mass of element e
-        tgt[e] = hf_row[e+"_kg_total"] - esc_rate_elem * dt
+        tgt[e] = hf_row[e+"_kg_total"] - hf_row["esc_rate_"+e] * dt * secs_per_year
 
         # below threshold, set to zero
         if tgt[e] < min_thresh:
-            log.debug("    %2s total inventory below thresh, set to zero"%(e))
+            log.debug("    %2s total inventory below threshold, setting to 0 kg"%(e))
             tgt[e] = 0.0
 
         # do not allow negative masses

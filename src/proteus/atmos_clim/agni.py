@@ -10,7 +10,7 @@ import numpy as np
 from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
-from proteus.atmos_clim.common import get_radius_from_pressure, get_spfile_path
+from proteus.atmos_clim.common import get_oarr_from_parr, get_spfile_path
 from proteus.utils.constants import gas_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, multiple, safe_rm
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
@@ -613,7 +613,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     else:
         # escape level set to surface
         p_xuv = hf_row["P_surf"] # [bar]
-    p_xuv, r_xuv = get_radius_from_pressure(atmos.p, atmos.r, p_xuv*1e5) # [Pa], [m]
+    p_xuv, r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv*1e5) # [Pa], [m]
 
     # final things to store
     output = {}
@@ -623,6 +623,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     output["T_surf"]        = float(atmos.tmp_surf)
     output["p_obs"]         = float(atmos.transspec_p)/1e5 # convert [Pa] to [bar]
     output["R_obs"]         = float(atmos.transspec_r)
+    output["T_obs"]         = float(atmos.transspec_tmp)
     output["rho_obs"]       = float(atmos.transspec_rho)
     output["albedo"]        = albedo
     output["p_xuv"]         = p_xuv/1e5        # Closest pressure from Pxuv    [bars]

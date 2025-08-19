@@ -412,7 +412,7 @@ class Proteus:
             ############### ESCAPE
             if (self.loops["total"] > self.loops["init_loops"]+2) and (not self.desiccated):
                 PrintHalfSeparator()
-                run_escape(self.config, self.hf_row, self.interior_o.dt, self.stellar_track)
+                run_escape(self.config, self.hf_row, self.interior_o.dt)
 
             ############### / ESCAPE
 

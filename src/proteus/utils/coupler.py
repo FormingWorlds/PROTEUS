@@ -490,18 +490,16 @@ def GetHelpfileKeys():
             "M_star", "R_star", "age_star", # [kg], [m], [yr]
             "T_star", # [K]
 
-            # Observational (from infinity)
+            # Photospheric properties
             "p_obs",    # observered radius [bar]
             "R_obs",    # observed radius [m]
+            "T_obs",    # observed temperature [K]
             "rho_obs",  # observed bulk density [kg m-3]
             "transit_depth", "eclipse_depth", # [1], [1]
             "bond_albedo", # bolometric bond albedo [1]
 
             # Imaginary part of k2 Love Number
             "Imk2", # [1]
-
-            # Escape
-            "esc_rate_total", "p_xuv", "R_xuv", # [kg s-1], [bar], [m]
 
             # Surface liquid-ocean statistics
             "ocean_areacov", "ocean_maxdepth", # [1], [m]
@@ -530,7 +528,16 @@ def GetHelpfileKeys():
         keys.append(e+"_kg_liquid")
         keys.append(e+"_kg_total")
 
-    # Diagnostic variables...
+    # Composition at XUV level
+    for e in element_list:
+        keys.append(e+"_mmr_xuv")   # mass mixing ratio of elements at R_XUV
+    keys.extend(["p_xuv", "R_xuv"]) # [bar], [m]
+
+    # Escape variables
+    keys.append("cs_xuv")           # sound speed [m/s]
+    keys.append("esc_rate_total")   # bulk escape rate [kg/s]
+    for e in element_list:
+        keys.append("esc_rate_"+e)  # escape rate of each element [kg s-1]
 
     # Weak temperature gradient parameter at the surface
     keys.append("wtg_surf") # [1]

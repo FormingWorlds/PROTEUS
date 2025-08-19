@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import in_
+from attrs.validators import in_, ge, le
 
 from ._converters import none_if_none
-
 
 def valid_zephyrus(instance, attribute, value):
     if instance.module != "zephyrus":
@@ -31,8 +30,8 @@ class Zephyrus:
     tidal: bool
         Tidal contribution enabled
     """
-    Pxuv: float       = field(default=5e-5)
-    efficiency: float = field(default=0.1)
+    Pxuv: float       = field(default=5e-5, validator=ge(0))
+    efficiency: float = field(default=0.1,  validator=(ge(0), le(1)))
     tidal: bool       = field(default=False)
 
 def valid_escapedummy(instance, attribute, value):
@@ -52,29 +51,74 @@ class EscapeDummy:
     rate: float
         Bulk unfractionated escape rate [kg s-1]
     """
-    rate = field(default=None)
+    rate: float = field(default=0.0, validator=ge(0))
+
+def valid_escapeboreas(instance, attribute, value):
+    if instance.module != "boreas":
+        return
+
+@define
+class EscapeBoreas:
+    """BOREAS escape module.
+
+    Attributes
+    ----------
+    light_major: str
+        The single major light-weight atom (usually hydrogen) to drag-off all others.
+    heavy_major: str
+        The single major heavy-weight atom (usually oxygen) to drag-off all heavy_minor.
+    heavy_minor: str
+        Multiple minor atoms which can be dragged by the major species.
+    efficiency: float
+        Energy efficiency factor.
+    alpha_rec: float
+        Recombination coefficient [cm3 s-1]
+    sigma_XUV: float
+        Absorption cross-section in XUV [cm2 molecule-1]
+    kappa_p: float
+        Gas opacity in XUV [cm2 g-1]
+    """
+    light_major:str   = field(default='H')
+    heavy_major:str   = field(default='O')
+    heavy_minor:str   = field(default='CN')
+    efficiency: float = field(default=0.1,      validator=(ge(0), le(1)))
+    alpha_rec: float  = field(default=2.6e-13,  validator=ge(0))
+    sigma_XUV: float  = field(default=1.89e-18, validator=ge(0))
+    kappa_p: float    = field(default=4e-3,     validator=ge(0))
+
+def valid_reservoir(instance, attribute, value):
+
+    ress = ('bulk','outgas', 'pxuv')
+    if instance.reservoir not in ress:
+        raise ValueError(f"Escape reservoir must be one of: {ress}")
+
+    if (instance.module == "boreas") and (instance.reservoir != "pxuv"):
+        raise ValueError("Escape reservoir must be 'pxuv' when using module 'boreas'")
 
 @define
 class Escape:
-    """Escape parameters, model selection.
+    """Escape parameters and module selection.
 
     Attributes
     ----------
     reservoir: str
-        Element reservoir representing the escaping composition. Choices: bulk, outgas, pxuv
+        Reservoir representing the escaping composition. Choices: bulk, outgas.
     module: str | None
         Escape module to use. Choices: "none", "dummy", "zephyrus".
     zephyrus: Zephyrus
         Parameters for zephyrus module.
     dummy: EscapeDummy
         Parameters for dummy escape module.
+    boreas: EscapeBoreas
+        Parameters for BOREAS escape module.
     """
 
     module: str | None = field(
-        validator=in_((None, 'dummy', 'zephyrus')), converter=none_if_none
+        validator=in_((None, 'dummy', 'zephyrus', 'boreas')), converter=none_if_none
         )
 
-    zephyrus: Zephyrus = field(factory=Zephyrus,    validator=valid_zephyrus)
-    dummy: EscapeDummy = field(factory=EscapeDummy, validator=valid_escapedummy)
+    zephyrus: Zephyrus   = field(factory=Zephyrus,      validator=valid_zephyrus)
+    dummy: EscapeDummy   = field(factory=EscapeDummy,   validator=valid_escapedummy)
+    boreas: EscapeBoreas = field(factory=EscapeBoreas,  validator=valid_escapeboreas)
 
-    reservoir: str = field(default='outgas', validator=in_(('bulk','outgas','pxuv')))
+    reservoir: str = field(default='outgas', validator=valid_reservoir)

@@ -11,7 +11,7 @@ import janus.set_socrates_env  # noqa
 import numpy as np
 import pandas as pd
 
-from proteus.atmos_clim.common import get_radius_from_pressure
+from proteus.atmos_clim.common import get_oarr_from_parr
 from proteus.utils.constants import vap_list, vol_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder
 
@@ -271,13 +271,15 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
 
     # observables
     p_obs = float(config.atmos_clim.janus.p_obs)*1e5 # converted to Pa
-    r_arr = np.array(atm.z[:]) + hf_row["R_int"]
+    r_arr = np.array(atm.z[:],   copy=True, dtype=float) + hf_row["R_int"]
+    t_arr = np.array(atm.tmp[:], copy=True, dtype=float)
     rho_obs = -1.0
     if atm.height_error:
         log.error("Hydrostatic integration failed in JANUS!")
     else:
         # find observed level [m] at p ~ p_obs
-        _, r_obs = get_radius_from_pressure(atm.p, r_arr, p_obs)
+        _, r_obs = get_oarr_from_parr(atm.p, r_arr, p_obs)
+        _, t_obs = get_oarr_from_parr(atm.p, t_arr, p_obs) # [Pa], [m]
 
         # calc observed density [kg m-3]
         rho_obs = calc_observed_rho(atm)
@@ -289,7 +291,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     else:
         # escape level set to surface
         p_xuv = hf_row["P_surf"] # [bar]
-    p_xuv, r_xuv = get_radius_from_pressure(atm.p, r_arr, p_xuv*1e5) # [Pa], [m]
+    p_xuv, r_xuv = get_oarr_from_parr(atm.p, r_arr, p_xuv*1e5) # [Pa], [m]
 
     # final things to store
     output={}
@@ -299,6 +301,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["F_sct"]  = atm.SW_flux_up[0] # Scattered SW flux
     output["albedo"] = atm.SW_flux_up[0] / atm.SW_flux_down[0]
     output["p_obs"]  = p_obs/1e5        # observed level [bar]
+    output["T_obs"]  = t_obs            # observed level [K]
     output["R_obs"]  = r_obs            # observed level [m]
     output["rho_obs"]= rho_obs          # observed density [kg m-3]
     output["p_xuv"]  = p_xuv/1e5        # Closest pressure from Pxuv    [bar]
