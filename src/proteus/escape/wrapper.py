@@ -4,8 +4,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 from proteus.utils.constants import element_list, secs_per_year
 
 if TYPE_CHECKING:
@@ -44,6 +42,7 @@ def run_escape(config:Config, hf_row:dict, dt:float):
                                     min_thresh=config.outgas.mass_thresh)
 
     elif config.escape.module == 'boreas':
+        from proteus.escape.boreas import run_boreas
         run_boreas(config, hf_row)
 
     else:
@@ -58,8 +57,7 @@ def run_escape(config:Config, hf_row:dict, dt:float):
     for e in element_list:
         hf_row[e + "_kg_total"] = solvevol_target[e]
 
-
-def run_dummy(Mdot, hf_row:dict):
+def run_dummy(Mdot: float, hf_row:dict):
     """Run dummy escape model.
 
     Uses a fixed mass loss rate and does not fractionate.
@@ -73,91 +71,10 @@ def run_dummy(Mdot, hf_row:dict):
     """
 
     # Set bulk escape rate based on value from user
-    hf_row["esc_rate_total"] = float(Mdot)
+    hf_row["esc_rate_total"] = Mdot
 
-
-def run_boreas(config:Config, hf_row:dict):
-    """Run Marilina escape model.
-
-    Calculates the mass loss rate of each element.
-    Updates the quantities in hf_row as appropriate.
-
-    Default treatment is fixed:
-        Light-Major species: H
-        Heavy-Major species: O
-        Heavy-Minor species: C, N
-
-    Parameters
-    ----------
-        config : dict
-            Dictionary of configuration options
-        hf_row : dict
-            Dictionary of helpfile variables, at this iteration only
-    Returns
-    -------
-        result: dict
-            Dictionary containing model results
-    """
-
-    from boreas import Main as bm
-
-    log.info("Running fractionated escape (mml) ...")
-
-    # Set parameters for escape
-    params          = bm.ModelParams()
-
-    # Pass elemental mixing ratios from Rxuv
-    for e in element_list:
-        setattr(params, f"X_{e}",  hf_row[f"{e}_mmr_xuv"])
-
-    # Set parameters from config provided by user
-    params.kappa_p      = config.escape.kappa_p
-    params.sigma_EUV    = config.escape.boreas.sigma_XUV
-    params.alpha_rec    = config.escape.boreas.alpha_rec
-    params.light_major  = config.escape.boreas.light_major
-    params.heavy_major  = config.escape.boreas.heavy_major
-    params.heavy_minor  = config.escape.boreas.heavy_minor
-    params.eff          = config.escape.boreas.efficiency
-
-    # Set parameters from atmosphere calculation
-    params.Teq       = hf_row["T_obs"]              # K
-    params.FEUV      = hf_row["F_xuv"] * 1e7        # XUV flux, converted to ergs cm-2 s-1
-    params.rplanet   = hf_row["R_obs"] * 1e2        # convert m to cm
-    params.mplanet   = hf_row["M_planet"] * 1e3     # convert kg to g
-
-    # Initalise objects
-    mass_loss       = bm.MassLoss(params)
-    fractionation   = bm.Fractionation(params)
-
-    # Run bulk mass loss calculation
-    ml_result = mass_loss.compute_mass_loss_parameters()
-
-    # Run fractionation calculation
-    fr_result = fractionation.execute_fractionation(mass_loss, ml_result)
-
-    # Store bulk outputs
-    hf_row["esc_rate_total"] = fr_result["Mdot"]  * 1e-3    # g/s   ->  kg/s
-    hf_row["R_xuv"]          = fr_result["REUV"]  * 1e-2    # cm    ->  m
-    hf_row["cs_xuv"]         = fr_result["cs"]    * 1e-2    # cm/s  ->  m/s
-
-    # Convert escape fluxes to rates, and store
-    for e in element_list:
-        # default is zero
-        key = "Phi_"+e
-        hf_row["esc_rate_"+e] = 0.0
-
-        # set escape rate if we have result from BOREAS
-        if key in fr_result.keys():
-            # convert g/cm2/s  ->  kg/m^2/s
-            flx = fr_result[key] * 10
-
-            # get global rate [kg/s] from flux through Rxuv
-            hf_row["esc_rate_O"] = flx * 4 * np.pi * (hf_row["R_xuv"])**2
-
-    # Get fractionation factors with respect to `light_major`
-    # x_O/C/N        dimensioness, wrt H
-
-
+    # Set sound speed to zero
+    hf_row["cs_xuv"] = 0.0
 
 def run_zephyrus(config:Config, hf_row:dict)->float:
     """Run ZEPHYRUS escape model.
@@ -215,8 +132,6 @@ def calc_unfract_fluxes(hf_row:dict, reservoir:str, min_thresh:float):
             key = "_kg_total"
         case "outgas":
             key = "_kg_atm"
-        case "pxuv":
-            raise ValueError("Fractionation at p_xuv is not yet supported")
         case _:
             raise ValueError(f"Invalid escape reservoir '{reservoir}'")
 

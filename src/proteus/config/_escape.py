@@ -96,6 +96,9 @@ def valid_reservoir(instance, attribute, value):
     if (instance.module == "boreas") and (instance.reservoir != "pxuv"):
         raise ValueError("Escape reservoir must be 'pxuv' when using module 'boreas'")
 
+    if (instance.module != "boreas") and (instance.reservoir == "pxuv"):
+        raise ValueError("Escape reservoir cannot be 'pxuv' unless using module 'boreas'")
+
 @define
 class Escape:
     """Escape parameters and module selection.

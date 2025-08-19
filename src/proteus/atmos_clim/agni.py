@@ -623,7 +623,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     output["T_surf"]        = float(atmos.tmp_surf)
     output["p_obs"]         = float(atmos.transspec_p)/1e5 # convert [Pa] to [bar]
     output["R_obs"]         = float(atmos.transspec_r)
-    output["T_obs"]         = float(atmos.transspec_tmp)
+    output["T_obs"]         = float(atmos.transspec_t)
     output["rho_obs"]       = float(atmos.transspec_rho)
     output["albedo"]        = albedo
     output["p_xuv"]         = p_xuv/1e5        # Closest pressure from Pxuv    [bars]
