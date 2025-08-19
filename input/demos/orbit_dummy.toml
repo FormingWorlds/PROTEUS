@@ -4,7 +4,7 @@ version = "2.0"
 [params]
     [params.out]
         path        = "orbit_dummy"
-        logging     = "ERROR"
+        logging     = "INFO"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         write_mod   = 400      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 'none'
@@ -39,9 +39,15 @@ version = "2.0"
             atol    = 0.2     # absolute tolerance [W m-2]
             rtol    = 1e-3    # relative tolerance
 
+        # atmospheric escape
         [params.stop.escape]
             enabled   = true
-            p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
+            p_stop    = 1.0   # bar, model will terminate with p_surf < p_stop
+
+        # disintegration
+        [params.stop.disint]
+            enabled   = true
+            offset    = 1.8e9 # correction to calculated Roche limit [m]
 
 
 [star]
