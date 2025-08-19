@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from attrs import define, field
-from attrs.validators import in_, ge, le
+from attrs.validators import ge, in_, le
 
 from ._converters import none_if_none
+
 
 def valid_zephyrus(instance, attribute, value):
     if instance.module != "zephyrus":

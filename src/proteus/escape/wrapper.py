@@ -1,9 +1,10 @@
 # Functions used to handle escape
 from __future__ import annotations
 
-import numpy as np
 import logging
 from typing import TYPE_CHECKING
+
+import numpy as np
 
 from proteus.utils.constants import element_list, secs_per_year
 
