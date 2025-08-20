@@ -47,7 +47,7 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
     # User choose the output to extract from 'runtime_helpfile.csv' of each case (always the [-1] element of the column).
     # For the units, check the file src/proteus/utils/coupler.py, lines 348-400 (keys)
 
-    output_to_extract = ['esc_rate_total','Phi_global','P_surf','T_surf','M_planet','atm_kg_per_mol',
+    output_to_extract = ['Time','esc_rate_total','Phi_global','P_surf','T_surf','M_planet','R_obs','p_xuv', 'R_xuv', 'atm_kg_per_mol',
                         'H_kg_atm','O_kg_atm','C_kg_atm','N_kg_atm','S_kg_atm', 'Si_kg_atm', 'Mg_kg_atm', 'Fe_kg_atm', 'Na_kg_atm',
                         'H2O_kg_atm','CO2_kg_atm', 'O2_kg_atm', 'H2_kg_atm', 'CH4_kg_atm', 'CO_kg_atm', 'N2_kg_atm', 'NH3_kg_atm',
                         'S2_kg_atm', 'SO2_kg_atm', 'H2S_kg_atm', 'SiO_kg_atm','SiO2_kg_atm', 'MgO_kg_atm', 'FeO2_kg_atm', 'runtime']
@@ -115,7 +115,9 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
         "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2)$ [IW]",                "colormap": cm.coolwarm, "log_scale": False},
         "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.rainbow,  "log_scale": False},
         "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
-        "delivery.elements.H_oceans": {"label": "[H] [Earth's oceans]",                   "colormap": cm.winter,   "log_scale": False},
+        "delivery.elements.H_oceans": {"label": "[H] [Earth's oceans]",                   "colormap": cm.winter,   "log_scale": True},
+        #"delivery.elements.SH_ratio": {"label": "S/H ratio",                              "colormap": cm.autumn,   "log_scale": False},
+        #"escape.reservoir":           {"label": "Reservoir",                              "colormap": cm.viridis,  "log_scale": False}
         }
     output_settings_single = {
         'esc_rate_total':      {"label": "Total escape rate [kg/s]",                  "log_scale": True,  "scale": 1.0},
@@ -127,7 +129,7 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
         'M_planet':            {"label": r"M$_p$ [M$_\oplus$]",             "log_scale": False,  "scale": 1.0/5.9722e24},
         'H_kg_atm':            {"label": r"[H$_{atm}$] [kg]",               "log_scale": True,  "scale": 1.0}
         }
-    ecdf_single_plots(grid_params=grid_params, grouped_data=grouped_data, param_settings=param_settings_single, output_settings=output_settings_single, plots_path=plots_path)
+    #ecdf_single_plots(grid_params=grid_params, grouped_data=grouped_data, param_settings=param_settings_single, output_settings=output_settings_single, plots_path=plots_path)
 
     # ECDF Grid Plot
     # The user needs to comment the parameters he didn't used in the grid/ add the ones non-listed here. Same for the outputs.
@@ -138,15 +140,18 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
         "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
         "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2 / IW)$",                "colormap": cm.coolwarm, "log_scale": False},
         "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
-        "delivery.elements.H_oceans": {"label": "[H] [oceans]",                           "colormap": cm.winter,   "log_scale": False}}
+        "delivery.elements.H_oceans": {"label": "[H] [oceans]",                           "colormap": cm.winter,   "log_scale": True},
+        #"delivery.elements.SH_ratio": {"label": "S/H ratio",                              "colormap": cm.autumn,   "log_scale": False},
+        #"escape.reservoir":           {"label": "Reservoir",                              "colormap": cm.viridis,  "log_scale": False}
+        }
     output_settings_grid = {
         'solidification_time': {"label": "Solidification [yr]",             "log_scale": True,  "scale": 1.0},
         'Phi_global':          {"label": "Melt fraction [%]",               "log_scale": False, "scale": 100.0},
-        'P_surf':              {"label": "Surface pressure [bar]",          "log_scale": True,  "scale": 1.0},
+        'P_surf':              {"label": r"P$_{surf}$ [bar]",          "log_scale": True,  "scale": 1.0},
         'esc_rate_total':      {"label": "Escape rate [kg/s]",              "log_scale": True,  "scale": 1.0},
-        'atm_kg_per_mol':      {"label": "MMW [g/mol]",                     "log_scale": False,  "scale": 1000.0},
         'T_surf':              {"label": r"T$_{surf}$ [K]",                 "log_scale": False,  "scale": 1.0},
-        'M_planet':            {"label": r"M$_p$ [M$_\oplus$]",             "log_scale": False,  "scale": 1.0/5.9722e24},
+        'atm_kg_per_mol':      {"label": "MMW [g/mol]",                     "log_scale": False,  "scale": 1000.0},
+        # 'M_planet':            {"label": r"M$_p$ [M$_\oplus$]",             "log_scale": False,  "scale": 1.0/5.9722e24},
         'H_kg_atm':            {"label": r"[H$_{atm}$] [kg]",               "log_scale": True,  "scale": 1.0},
         #'O_kg_atm':            {"label": r"[O$_{atm}$] [kg]",               "log_scale": True,  "scale": 1.0},
         #'C_kg_atm':            {"label": r"[C$_{atm}$] [kg]",               "log_scale": True,  "scale": 1.0},
