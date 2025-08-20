@@ -83,6 +83,7 @@ def run_dummy(Mdot: float, hf_row:dict):
 
     # Set Pxuv to Psurf
     hf_row["p_xuv"] = hf_row["P_surf"]
+    hf_row["R_xuv"] = hf_row["R_int"]
 
 def run_zephyrus(config:Config, hf_row:dict)->float:
     """Run ZEPHYRUS escape model.
@@ -115,6 +116,7 @@ def run_zephyrus(config:Config, hf_row:dict)->float:
 
     hf_row["esc_rate_total"] = mlr
     hf_row["p_xuv"] = config.escape.zephyrus.Pxuv
+    hf_row["R_xuv"] = 0.0  # to be calc'd by atmosphere module
 
 def calc_unfract_fluxes(hf_row:dict, reservoir:str, min_thresh:float):
     """Calculate elemental escape rates, without fractionating.

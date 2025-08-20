@@ -608,9 +608,15 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
-    # XUV height in atm
-    p_xuv = hf_row["p_xuv"] * 1e5 # convert to Pa
-    p_xuv, r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv) # [Pa], [m]
+    # p_xuv from R_xuv
+    if config.escape.xuv_defined_by_radius:
+        r_xuv = hf_row["R_xuv"]
+        p_xuv = get_oarr_from_parr(atmos.r, atmos.p, r_xuv)[1] * 1e-5 # bar
+
+    # R_xuv from p_xuv
+    else:
+        p_xuv =  hf_row["p_xuv"]
+        r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv * 1e5)[1] # m
 
     # final things to store
     output = {}
@@ -623,14 +629,14 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     output["T_obs"]         = float(atmos.transspec_t)
     output["rho_obs"]       = float(atmos.transspec_rho)
     output["albedo"]        = albedo
-    output["p_xuv"]         = p_xuv/1e5        # Closest pressure to Pxuv      [bars]
-    output["R_xuv"]         = r_xuv            # Radius at Pxuv                [m]
+    output["p_xuv"]         = p_xuv            # Pressure at Rxuv   [bars]
+    output["R_xuv"]         = r_xuv            # Radius at Pxuv     [m]
     output["ocean_areacov"] = float(atmos.ocean_areacov)
     output["ocean_maxdepth"]= float(atmos.ocean_maxdepth)
 
     # set composition at xuv
     for g in gas_list:
-        _, x_xuv = get_oarr_from_parr(atmos.p, atmos.gas_vmr[g], p_xuv)
+        _, x_xuv = get_oarr_from_parr(atmos.p, atmos.gas_vmr[g], p_xuv*1e5)
         hf_row[g+"_xuv"] = x_xuv
 
     return atmos, output

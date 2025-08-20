@@ -284,9 +284,15 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         # calc observed density [kg m-3]
         rho_obs = calc_observed_rho(atm)
 
-    # XUV height in atm
-    p_xuv = hf_row["p_xuv"] * 1e5 # [Pa]
-    p_xuv, r_xuv = get_oarr_from_parr(atm.p, r_arr, p_xuv) # [Pa], [m]
+    # p_xuv from R_xuv
+    if config.escape.xuv_defined_by_radius:
+        r_xuv = hf_row["R_xuv"]
+        p_xuv = get_oarr_from_parr(r_arr, atm.p, r_xuv)[1] * 1e-5 # bar
+
+    # R_xuv from p_xuv
+    else:
+        p_xuv = hf_row["p_xuv"]
+        r_xuv = get_oarr_from_parr(atm.p, r_arr, p_xuv * 1e5)[1] # m
 
     # final things to store
     output={}
@@ -299,7 +305,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["T_obs"]  = t_obs            # observed level [K]
     output["R_obs"]  = r_obs            # observed level [m]
     output["rho_obs"]= rho_obs          # observed density [kg m-3]
-    output["p_xuv"]  = p_xuv/1e5        # Closest pressure to Pxuv    [bar]
+    output["p_xuv"]  = p_xuv            # Closest pressure to Pxuv    [bar]
     output["R_xuv"]  = r_xuv            # Radius at Pxuv                [m]
     output["ocean_areacov"] = 0.0
     output["ocean_maxdepth"]= 0.0
@@ -307,7 +313,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     # set composition at Pxuv
     for g in gas_list:
         if g in atm.x_gas.keys():
-            _, x_xuv = get_oarr_from_parr(atm.p, atm.x_gas[g], p_xuv)
+            _, x_xuv = get_oarr_from_parr(atm.p, atm.x_gas[g], p_xuv*1e5)
         else:
             x_xuv = 0.0
         hf_row[g+"_xuv"] = x_xuv

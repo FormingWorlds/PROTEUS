@@ -90,14 +90,14 @@ class EscapeBoreas:
     efficiency: float = field(default=0.1,      validator=(ge(0), le(1)))
     alpha_rec: float  = field(default=2.6e-13,  validator=ge(0))
     sigma_XUV: float  = field(default=1.89e-18, validator=ge(0))
-    kappa_H2O: float  = field(default=4e-3,   validator=ge(0))
-    kappa_H2:  float  = field(default=4e-3,   validator=ge(0))
-    kappa_O2:  float  = field(default=4e-3,   validator=ge(0))
-    kappa_CO2: float  = field(default=4e-3,   validator=ge(0))
-    kappa_CO:  float  = field(default=4e-3,   validator=ge(0))
-    kappa_CH4: float  = field(default=4e-3,   validator=ge(0))
-    kappa_N2:  float  = field(default=4e-3,   validator=ge(0))
-    kappa_NH3: float  = field(default=4e-3,   validator=ge(0))
+    kappa_H2:  float  = field(default=1e-2,   validator=ge(0))
+    kappa_H2O: float  = field(default=1e-0,   validator=ge(0))
+    kappa_O2:  float  = field(default=1e-0,   validator=ge(0))
+    kappa_CO2: float  = field(default=1e-0,   validator=ge(0))
+    kappa_CO:  float  = field(default=1e-0,   validator=ge(0))
+    kappa_CH4: float  = field(default=1e-0,   validator=ge(0))
+    kappa_N2:  float  = field(default=1e-0,   validator=ge(0))
+    kappa_NH3: float  = field(default=1e-0,   validator=ge(0))
 
 def valid_reservoir(instance, attribute, value):
 
@@ -138,3 +138,15 @@ class Escape:
     boreas: EscapeBoreas = field(factory=EscapeBoreas,  validator=valid_escapeboreas)
 
     reservoir: str = field(default='outgas', validator=valid_reservoir)
+
+    @property
+    def xuv_defined_by_radius(self) -> int:
+        """Does Rxuv define the escape level?
+
+        If it does, return True.
+        If the escape level is instead set by Pxuv, then return False.
+        """
+        if self.module == 'boreas':
+            return True
+        else:
+            return False
