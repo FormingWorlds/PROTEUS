@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import glob
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -11,6 +12,7 @@ from matplotlib import patches, ticker
 
 from proteus.atmos_clim.common import read_ncdf_profile
 from proteus.utils.constants import R_earth
+from proteus.utils.helper import natural_sort
 from proteus.utils.visual import cs_srgb as colsys
 from proteus.utils.visual import interp_spec
 
@@ -34,14 +36,15 @@ def plot_visual(hf_all:pd.DataFrame, output_dir:str,
     R_int = float(hf_all["R_int"].iloc[idx])
     obs = R_int * view
 
-    # Get output NetCDF file
+    # Get time at this index, and path to NetCDF file
     time  = hf_all["Time"].iloc[idx]
-    fpath = os.path.join(output_dir,"data","%.0f_atm.nc"%time)
-    if not os.path.exists(fpath):
-        log.warning(f"Cannot find file {fpath}")
+    files = glob.glob(os.path.join(output_dir, "data", "*_atm.nc"))
+    if len(files) == 0:
+        log.warning("No atmosphere NetCDF files found in output folder")
         if os.path.exists(os.path.join(output_dir,"data","data.tar")):
             log.warning("You may need to extract archived data files")
         return
+    fpath = natural_sort(files)[idx]
 
     # Read data
     keys = ["ba_U_LW", "ba_U_SW", "ba_D_SW", "bandmin", "bandmax", "pl", "tmpl", "rl"]

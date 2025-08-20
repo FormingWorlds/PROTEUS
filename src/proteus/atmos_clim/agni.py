@@ -11,8 +11,14 @@ from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_oarr_from_parr, get_spfile_path
-from proteus.utils.constants import gas_list, element_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, multiple, safe_rm, gas_vmr_to_emr
+from proteus.utils.constants import element_list, gas_list
+from proteus.utils.helper import (
+    UpdateStatusfile,
+    create_tmp_folder,
+    gas_vmr_to_emr,
+    multiple,
+    safe_rm,
+)
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 if TYPE_CHECKING:
@@ -604,7 +610,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
     # XUV height in atm
-    p_xuv = hf_row["P_xuv"] * 1e5 # convert to Pa
+    p_xuv = hf_row["p_xuv"] * 1e5 # convert to Pa
     p_xuv, r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv) # [Pa], [m]
 
     # Composition at XUV height

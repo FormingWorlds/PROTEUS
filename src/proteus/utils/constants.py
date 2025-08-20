@@ -1,7 +1,6 @@
 # Physical, numerical, etc constants
 from __future__ import annotations
 
-
 # Astronomical constants
 L_sun           = 3.828e+26             # W, IAU definition
 R_sun           = 6.957e8               # m

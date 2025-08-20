@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 from typing import TYPE_CHECKING
+
 import numpy as np
 
 from proteus.utils.constants import element_list
@@ -72,22 +73,20 @@ def run_boreas(config:Config, hf_row:dict):
     # Store bulk outputs
     hf_row["esc_rate_total"] = fr_result["Mdot"]  * 1e-3    # g/s   ->  kg/s
     hf_row["R_xuv"]          = fr_result["REUV"]  * 1e-2    # cm    ->  m
-    hf_row["P_xuv"]          = fr_result["PEUV"] ; raise  # check this
+    hf_row["p_xuv"]          = fr_result["PEUV"]  * 0.1     # Ba    ->  Pa
     hf_row["cs_xuv"]         = fr_result["cs"]    * 1e-2    # cm/s  ->  m/s
 
     # Convert escape fluxes to rates, and store
     for e in element_list:
-        # default is zero
-        key = "Phi_"+e
-        hf_row["esc_rate_"+e] = 0.0
-
-        # set escape rate if we have result from BOREAS
-        if key in fr_result.keys():
+        try:
             # convert g/cm2/s  ->  kg/m^2/s
-            flx = fr_result[key] * 10
+            flx = fr_result["Phi_"+e] * 10
 
             # get global rate [kg/s] from flux through Rxuv
-            hf_row["esc_rate_O"] = flx * 4 * np.pi * (hf_row["R_xuv"])**2
+            hf_row["esc_rate_"+e] = flx * 4 * np.pi * (hf_row["R_xuv"])**2
+
+        except KeyError:
+            hf_row["esc_rate_"+e] = 0.0
 
     # Get fractionation factors with respect to `light_major`
     # x_O/C/N        dimensioness, wrt H

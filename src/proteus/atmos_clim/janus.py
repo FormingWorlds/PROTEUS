@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.atmos_clim.common import get_oarr_from_parr
-from proteus.utils.constants import vap_list, vol_list, element_list
+from proteus.utils.constants import element_list, vap_list, vol_list
 from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, gas_vmr_to_emr
 
 if TYPE_CHECKING:
@@ -285,7 +285,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         rho_obs = calc_observed_rho(atm)
 
     # XUV height in atm
-    p_xuv = hf_row["P_xuv"] * 1e5 # [Pa]
+    p_xuv = hf_row["p_xuv"] * 1e5 # [Pa]
     p_xuv, r_xuv = get_oarr_from_parr(atm.p, r_arr, p_xuv) # [Pa], [m]
 
     # Composition at XUV height (elemental mass ratios)
