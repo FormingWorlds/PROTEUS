@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
-import boreas
+
 import numpy as np
 
+import boreas
 from proteus.utils.constants import element_list
 from proteus.utils.helper import eval_gas_mmw
 
@@ -93,7 +94,7 @@ def run_boreas(config:Config, hf_row:dict):
     # Print info to user
     regime_map = {"RL":"recomb-limited", "EL":"energy-limited", "DL":"diffusion-limited"}
     log.info("Escape regime is "+regime_map[fr_result['regime']])
-    log.info(f"Fractionation coefficients:")
+    log.info("Fractionation coefficients:")
     for e in ('O','C','N'):
         log.info(f"    {e:2s} = {fr_result['x_'+e]:.6f}")
 

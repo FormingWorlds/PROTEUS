@@ -11,7 +11,7 @@ from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_oarr_from_parr, get_spfile_path
-from proteus.utils.constants import element_list, gas_list
+from proteus.utils.constants import gas_list
 from proteus.utils.helper import (
     UpdateStatusfile,
     create_tmp_folder,
