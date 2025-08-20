@@ -64,28 +64,40 @@ class EscapeBoreas:
 
     Attributes
     ----------
-    light_major: str
-        The single major light-weight atom (usually hydrogen) to drag-off all others.
-    heavy_major: str
-        The single major heavy-weight atom (usually oxygen) to drag-off all heavy_minor.
-    heavy_minor: str
-        Multiple minor atoms which can be dragged by the major species.
     efficiency: float
         Energy efficiency factor.
     alpha_rec: float
         Recombination coefficient [cm3 s-1]
     sigma_XUV: float
         Absorption cross-section in XUV [cm2 molecule-1]
-    kappa_p: float
-        Gas opacity in XUV [cm2 g-1]
+    kappa_H2O: float
+        H2O opacity in XUV [cm2 g-1]
+    kappa_H2: float
+        H2 opacity in XUV [cm2 g-1]
+    kappa_O2: float
+        O2 opacity in XUV [cm2 g-1]
+    kappa_CO2: float
+        CO2 opacity in XUV [cm2 g-1]
+    kappa_CO: float
+        CO opacity in XUV [cm2 g-1]
+    kappa_CH4: float
+        CH4 opacity in XUV [cm2 g-1]
+    kappa_N2: float
+        N2 opacity in XUV [cm2 g-1]
+    kappa_NH3: float
+        NH3 opacity in XUV [cm2 g-1]
     """
-    light_major:str   = field(default='H')
-    heavy_major:str   = field(default='O')
-    heavy_minor:str   = field(default='CN')
     efficiency: float = field(default=0.1,      validator=(ge(0), le(1)))
     alpha_rec: float  = field(default=2.6e-13,  validator=ge(0))
     sigma_XUV: float  = field(default=1.89e-18, validator=ge(0))
-    kappa_p: float    = field(default=4e-3,     validator=ge(0))
+    kappa_H2O: float  = field(default=4e-3,   validator=ge(0))
+    kappa_H2:  float  = field(default=4e-3,   validator=ge(0))
+    kappa_O2:  float  = field(default=4e-3,   validator=ge(0))
+    kappa_CO2: float  = field(default=4e-3,   validator=ge(0))
+    kappa_CO:  float  = field(default=4e-3,   validator=ge(0))
+    kappa_CH4: float  = field(default=4e-3,   validator=ge(0))
+    kappa_N2:  float  = field(default=4e-3,   validator=ge(0))
+    kappa_NH3: float  = field(default=4e-3,   validator=ge(0))
 
 def valid_reservoir(instance, attribute, value):
 

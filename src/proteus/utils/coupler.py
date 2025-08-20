@@ -268,9 +268,13 @@ def print_module_configuration(dirs:dict, config:Config, config_path:str):
 
     # Escape module
     write = "Escape module     %s" % config.escape.module
-    if config.escape.module == 'zephyrus':
-        from zephyrus import __version__ as zephyrus_version
-        write += " version " + zephyrus_version
+    match config.escape.module:
+        case 'zephyrus':
+            from zephyrus import __version__ as zephyrus_version
+            write += " version " + zephyrus_version
+        case 'boreas':
+            from boreas import __version__ as boreas_version
+            write += " version " + boreas_version
     log.info(write)
 
     # Star module
@@ -518,8 +522,9 @@ def GetHelpfileKeys():
         keys.append(s+"_kg_solid")
         keys.append(s+"_kg_liquid")
         keys.append(s+"_kg_total")
-        keys.append(s+"_vmr")
-        keys.append(s+"_bar")
+        keys.append(s+"_vmr")   # vmr at surface
+        keys.append(s+"_bar")   # partial pressure at surface
+        keys.append(s+"_xuv")   # vmr at XUV level
 
     # element masses
     for e in element_list:
@@ -528,13 +533,8 @@ def GetHelpfileKeys():
         keys.append(e+"_kg_liquid")
         keys.append(e+"_kg_total")
 
-    # Composition at XUV level
-    for e in element_list:
-        keys.append(e+"_mmr_xuv")   # mass mixing ratio of elements at R_XUV
-    keys.extend(["p_xuv", "R_xuv"]) # [bar], [m]
-
     # Escape variables
-    keys.append("cs_xuv")           # sound speed [m/s]
+    keys.extend(["p_xuv", "R_xuv", "cs_xuv"]) # [bar], [m], [m/s]
     keys.append("esc_rate_total")   # bulk escape rate [kg/s]
     for e in element_list:
         keys.append("esc_rate_"+e)  # escape rate of each element [kg s-1]

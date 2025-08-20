@@ -12,8 +12,8 @@ import numpy as np
 import pandas as pd
 
 from proteus.atmos_clim.common import get_oarr_from_parr
-from proteus.utils.constants import element_list, vap_list, vol_list
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, gas_vmr_to_emr
+from proteus.utils.constants import gas_list, vap_list, vol_list
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -288,13 +288,6 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     p_xuv = hf_row["p_xuv"] * 1e5 # [Pa]
     p_xuv, r_xuv = get_oarr_from_parr(atm.p, r_arr, p_xuv) # [Pa], [m]
 
-    # Composition at XUV height (elemental mass ratios)
-    compose_xuv = {}
-    for gas in atm.x_gas.keys():
-        _, x_xuv = get_oarr_from_parr(atm.p, atm.x_gas[gas], p_xuv)
-        compose_xuv[gas] = x_xuv
-    emr = gas_vmr_to_emr(compose_xuv)
-
     # final things to store
     output={}
     output["T_surf"] = atm.ts            # Surface temperature [K]
@@ -311,10 +304,12 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["ocean_areacov"] = 0.0
     output["ocean_maxdepth"]= 0.0
 
-    for e in element_list:
-        try:
-            output[e+"_mmr_xuv"] = emr[e]
-        except KeyError:
-            output[e+"_mmr_xuv"] = 0.0
+    # set composition at Pxuv
+    for g in gas_list:
+        if g in atm.x_gas.keys():
+            _, x_xuv = get_oarr_from_parr(atm.p, atm.x_gas[g], p_xuv)
+        else:
+            x_xuv = 0.0
+        hf_row[g+"_xuv"] = x_xuv
 
     return output

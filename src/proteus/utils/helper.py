@@ -305,8 +305,6 @@ def recursive_setattr(obj, attr:str, value):
 
 def gas_vmr_to_emr(gases:dict):
     """Calculate elemental mass ratios from gas volume mixing ratios
-
-
     """
 
     # Numbers and masses of each element
@@ -332,3 +330,11 @@ def gas_vmr_to_emr(gases:dict):
 
     return emr
 
+def eval_gas_mmw(gas:str):
+    """Evalulate gas mmw [kg mol-1] from its atoms"""
+
+    atoms = mol_to_ele(gas)
+    mmw = 0.0
+    for e in atoms:
+        mmw += atoms[e] * element_mmw[e]
+    return mmw

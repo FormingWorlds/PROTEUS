@@ -15,7 +15,6 @@ from proteus.utils.constants import element_list, gas_list
 from proteus.utils.helper import (
     UpdateStatusfile,
     create_tmp_folder,
-    gas_vmr_to_emr,
     multiple,
     safe_rm,
 )
@@ -613,13 +612,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     p_xuv = hf_row["p_xuv"] * 1e5 # convert to Pa
     p_xuv, r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv) # [Pa], [m]
 
-    # Composition at XUV height
-    compose_xuv = {}
-    for gas in gas_list:
-        _, x_xuv = get_oarr_from_parr(atmos.p, atmos.gas_vmr[gas], p_xuv)
-        compose_xuv[gas] = x_xuv
-    emr = gas_vmr_to_emr(compose_xuv)
-
     # final things to store
     output = {}
     output["F_atm"]         = F_atm_lim
@@ -636,10 +628,9 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     output["ocean_areacov"] = float(atmos.ocean_areacov)
     output["ocean_maxdepth"]= float(atmos.ocean_maxdepth)
 
-    for e in element_list:
-        try:
-            output[e+"_mmr_xuv"] = emr[e]
-        except KeyError:
-            output[e+"_mmr_xuv"] = 0.0
+    # set composition at xuv
+    for g in gas_list:
+        _, x_xuv = get_oarr_from_parr(atmos.p, atmos.gas_vmr[g], p_xuv)
+        hf_row[g+"_xuv"] = x_xuv
 
     return atmos, output

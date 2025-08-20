@@ -50,6 +50,11 @@ def run_escape(config:Config, hf_row:dict, dt:float):
 
     log.info(f"Bulk escape rate = {hf_row["esc_rate_total"]:.2e} kg s-1")
 
+    log.info("Elemental escape fluxes:")
+    for e in element_list:
+        if hf_row["esc_rate_"+e] > 1e-100:
+            log.info("    %2s = %.2e kg yr-1"%(e,hf_row["esc_rate_"+e]*secs_per_year))
+
     # calculate new elemental inventories from loss over duration `dt`
     solvevol_target = calc_new_elements(hf_row, dt, config.outgas.mass_thresh)
 
@@ -151,19 +156,9 @@ def calc_unfract_fluxes(hf_row:dict, reservoir:str, min_thresh:float):
     # calculate the current mass mixing ratio for each element
     #     if escape is unfractionating, this should be conserved
     for e in res.keys():
-        hf_row[e+"_mmr_xuv"] = res[e]/M_vols
-        log.debug("    %2s (%s) mass ratio = %.2e "%(e,reservoir,hf_row[e+"_mmr_xuv"]))
-
-    # for each element, calculate new TOTAL mass inventory
-    log.info("Elemental escape fluxes:")
-    for e in res.keys():
-
-        # elemental escape flux [kg/s]
-        hf_row["esc_rate_"+e] = hf_row["esc_rate_total"] * hf_row[e+"_mmr_xuv"]
-
-        # Print info
-        if hf_row["esc_rate_"+e] > 1:
-            log.info("    %2s = %.2e kg yr-1"%(e,hf_row["esc_rate_"+e]*secs_per_year))
+        emr = res[e]/M_vols
+        log.debug("    %2s (%s) mass ratio = %.2e "%(e,reservoir,emr))
+        hf_row["esc_rate_"+e] = hf_row["esc_rate_total"] * emr
 
 
 def calc_new_elements(hf_row:dict, dt:float, min_thresh:float):

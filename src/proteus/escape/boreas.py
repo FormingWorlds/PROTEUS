@@ -2,25 +2,20 @@
 from __future__ import annotations
 
 import logging
-import os
-import sys
 from typing import TYPE_CHECKING
-
+import boreas
 import numpy as np
 
-from proteus.utils.constants import element_list
-
-# Import BOREAS from local path
-BOREAS_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__),
-                                           "..","..","..","boreas"))
-print(BOREAS_PATH)
-sys.path.append(BOREAS_PATH)
-from boreas import Main as bm # noqa
+from proteus.utils.constants import element_list, gas_list
+from proteus.utils.helper import eval_gas_mmw
 
 if TYPE_CHECKING:
     from proteus.config import Config
 
 log = logging.getLogger("fwl."+__name__)
+
+# Supported gases
+BOREAS_GASES = ("H2O", "H2" , "O2" , "CO2", "CO" , "CH4", "N2" , "NH3")
 
 def run_boreas(config:Config, hf_row:dict):
     """Run BOREAS escape model.
@@ -39,19 +34,23 @@ def run_boreas(config:Config, hf_row:dict):
     log.info("Running fractionated escape (BOREAS) ...")
 
     # Set parameters for escape
-    params          = bm.ModelParams()
+    params          = boreas.ModelParams()
 
-    # Pass elemental mixing ratios from Rxuv
-    for e in element_list:
-        setattr(params, f"X_{e}",  hf_row[f"{e}_mmr_xuv"])
+    # Set gas MASS mixing ratios from VOLUME mixing ratios
+    #    first, get MMW of relevant gases at this layer
+    mmw_xuv = 0.0
+    for g in BOREAS_GASES:
+        mmw_xuv += hf_row[g+"_xuv"] * eval_gas_mmw(g)
+    for g in BOREAS_GASES:
+        mmr = hf_row[g+"_xuv"] * eval_gas_mmw(g) / mmw_xuv
+        setattr(params, "X_"+g, mmr)
 
     # Set parameters from config provided by user
-    params.kappa_p      = config.escape.kappa_p
+    for g in BOREAS_GASES:
+        kappa = getattr(config.escape.boreas,"kappa_"+g)
+        setattr(params, "kappa_"+g, kappa)
     params.sigma_EUV    = config.escape.boreas.sigma_XUV
     params.alpha_rec    = config.escape.boreas.alpha_rec
-    params.light_major  = config.escape.boreas.light_major
-    params.heavy_major  = config.escape.boreas.heavy_major
-    params.heavy_minor  = config.escape.boreas.heavy_minor
     params.eff          = config.escape.boreas.efficiency
 
     # Set parameters from atmosphere calculation
@@ -61,19 +60,19 @@ def run_boreas(config:Config, hf_row:dict):
     params.mplanet   = hf_row["M_planet"] * 1e3     # convert kg to g
 
     # Initalise objects
-    mass_loss       = bm.MassLoss(params)
-    fractionation   = bm.Fractionation(params)
+    mass_loss       = boreas.MassLoss(params)
+    fractionation   = boreas.Fractionation(params)
 
     # Run bulk mass loss calculation
-    ml_result = mass_loss.compute_mass_loss_parameters()
+    ml_result = mass_loss.compute_mass_loss_parameters(
+                    [params.mplanet], [params.rplanet], [params.Teq])
 
     # Run fractionation calculation
-    fr_result = fractionation.execute_fractionation(mass_loss, ml_result)
+    fr_result = fractionation.execute(ml_result, mass_loss)[0]
 
     # Store bulk outputs
     hf_row["esc_rate_total"] = fr_result["Mdot"]  * 1e-3    # g/s   ->  kg/s
     hf_row["R_xuv"]          = fr_result["REUV"]  * 1e-2    # cm    ->  m
-    hf_row["p_xuv"]          = fr_result["PEUV"]  * 0.1     # Ba    ->  Pa
     hf_row["cs_xuv"]         = fr_result["cs"]    * 1e-2    # cm/s  ->  m/s
 
     # Convert escape fluxes to rates, and store
@@ -81,6 +80,7 @@ def run_boreas(config:Config, hf_row:dict):
         try:
             # convert g/cm2/s  ->  kg/m^2/s
             flx = fr_result["Phi_"+e] * 10
+            log.debug(f"Escape flux of {e}: {flx:.3e} kg m-2 s-1")
 
             # get global rate [kg/s] from flux through Rxuv
             hf_row["esc_rate_"+e] = flx * 4 * np.pi * (hf_row["R_xuv"])**2
@@ -88,5 +88,9 @@ def run_boreas(config:Config, hf_row:dict):
         except KeyError:
             hf_row["esc_rate_"+e] = 0.0
 
-    # Get fractionation factors with respect to `light_major`
-    # x_O/C/N        dimensioness, wrt H
+    # Print info to user
+    log.info(f"Escape regime: {fr_result['regime']}")
+    log.info(f"Fractionation coefficients:")
+    for e in ('O','C','N'):
+        log.info(f"    {e:2s} = {fr_result['x_'+e]}")
+

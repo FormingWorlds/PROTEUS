@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import const_R, const_sigma, element_list, gas_list
-from proteus.utils.helper import UpdateStatusfile, gas_vmr_to_emr
+from proteus.utils.constants import const_R, const_sigma, gas_list
+from proteus.utils.helper import UpdateStatusfile
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -99,9 +99,6 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     atm_H = const_R * T_surf_atm / (hf_row["atm_kg_per_mol"] * hf_row["gravity"])
     R_obs = hf_row["R_int"] + atm_H * config.atmos_clim.dummy.height_factor
 
-    # Elemental composition for scape
-    emr = gas_vmr_to_emr({g:hf_row[g+"_vmr"] for g in gas_list})
-
     # Return result
     log.info("    T_surf     =  %.3e  K"     % T_surf_atm)
     log.info("    F_atm      =  %.3e  W m-2" % F_atm_lim)
@@ -124,10 +121,8 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     output["ocean_areacov"] = 0.0
     output["ocean_maxdepth"]= 0.0
 
-    for e in element_list:
-        try:
-            output[e+"_mmr_xuv"] = emr[e]
-        except KeyError:
-            output[e+"_mmr_xuv"] = 0.0
+    # gas composition for escape equal to surface composition
+    for g in gas_list:
+        hf_row[g+"_xuv"]  = hf_row[g+"_vmr"]
 
     return output
