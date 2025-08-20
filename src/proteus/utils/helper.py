@@ -10,6 +10,8 @@ import shutil
 
 import numpy as np
 
+from proteus.utils.constants import element_list, element_mmw
+
 log = logging.getLogger("fwl."+__name__)
 
 def get_proteus_dir():
@@ -301,8 +303,32 @@ def recursive_setattr(obj, attr:str, value):
         L = attr.split('.')
         recursive_setattr(getattr(obj, L[0]), '.'.join(L[1:]), value)
 
-def emr_from_vmr(vmrs:dict):
-    """Calculate elemental mass ratios from molecule volume mixing ratios
+def gas_vmr_to_emr(gases:dict):
+    """Calculate elemental mass ratios from gas volume mixing ratios
+
+
     """
 
+    # Numbers and masses of each element
+    M_e = {e:0.0 for e in element_list}
+
+    # Loop over gases
+    for g in gases.keys():
+        # split into atoms
+        atoms = mol_to_ele(g)
+
+        # vmr of this gas
+        vmr = gases[g]
+
+        # add mass of atoms in this molecule to element counter
+        for e in atoms:
+            M_e[e] += atoms[e] * vmr * element_mmw[e]
+
+    # Get total mass of all atoms in these gases (per unit mole of mixture)
+    M_tot = sum(list(M_e.values()))
+
+    # Get mass mixing ratios of elements
+    emr = {e:M_e[e]/M_tot for e in element_list if M_e[e]>1e-20}
+
+    return emr
 

@@ -11,8 +11,8 @@ from juliacall import Main as jl
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_oarr_from_parr, get_spfile_path
-from proteus.utils.constants import gas_list, element_list, element_mmw, gas_atoms
-from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, multiple, safe_rm
+from proteus.utils.constants import gas_list, element_list
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, multiple, safe_rm, gas_vmr_to_emr
 from proteus.utils.logs import GetCurrentLogfileIndex, GetLogfilePath
 
 if TYPE_CHECKING:
@@ -505,8 +505,7 @@ def _solve_transparent(atmos, config:Config):
                                         max_steps=int(max_steps))
     return atmos
 
-def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
-                hf_row:dict, transparent:bool):
+def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     """Run AGNI atmosphere model.
 
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -524,8 +523,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
-        transparent : bool
-            Find solution assuming a transparent atmosphere
 
     Returns
     ----------
@@ -607,19 +604,15 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
     # XUV height in atm
-    p_xuv = hf_row["P_xuv"] # [bar]
-    p_xuv, r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv*1e5) # [Pa], [m]
+    p_xuv = hf_row["P_xuv"] * 1e5 # convert to Pa
+    p_xuv, r_xuv = get_oarr_from_parr(atmos.p, atmos.r, p_xuv) # [Pa], [m]
 
     # Composition at XUV height
-    elems = {e:0.0 for e in element_list}  # moles of each atom
-    # loop over gases...
+    compose_xuv = {}
     for gas in gas_list:
-        # get VMR of this gas at PXUV
-        # for each atom in this gas, add to total number
-        for e in element_list:
-            raise # check this ...
-            elems[e] += gas_atoms[gas][e] * element_mmw[e] / asdasd
-
+        _, x_xuv = get_oarr_from_parr(atmos.p, atmos.gas_vmr[gas], p_xuv)
+        compose_xuv[gas] = x_xuv
+    emr = gas_vmr_to_emr(compose_xuv)
 
     # final things to store
     output = {}
@@ -636,5 +629,11 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     output["R_xuv"]         = r_xuv            # Radius at Pxuv                [m]
     output["ocean_areacov"] = float(atmos.ocean_areacov)
     output["ocean_maxdepth"]= float(atmos.ocean_maxdepth)
+
+    for e in element_list:
+        try:
+            output[e+"_mmr_xuv"] = emr[e]
+        except KeyError:
+            output[e+"_mmr_xuv"] = 0.0
 
     return atmos, output

@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from proteus.utils.constants import const_R, const_sigma
-from proteus.utils.helper import UpdateStatusfile
+from proteus.utils.constants import const_R, const_sigma, element_list, gas_list
+from proteus.utils.helper import UpdateStatusfile, gas_vmr_to_emr
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -99,12 +99,16 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     atm_H = const_R * T_surf_atm / (hf_row["atm_kg_per_mol"] * hf_row["gravity"])
     R_obs = hf_row["R_int"] + atm_H * config.atmos_clim.dummy.height_factor
 
+    # Elemental composition for scape
+    emr = gas_vmr_to_emr({g:hf_row[g+"_vmr"] for g in gas_list})
+
     # Return result
     log.info("    T_surf     =  %.3e  K"     % T_surf_atm)
     log.info("    F_atm      =  %.3e  W m-2" % F_atm_lim)
     log.info("    F_olr      =  %.3e  W m-2" % fluxes["fl_U_LW"])
     log.info("    F_sct      =  %.3e  W m-2" % fluxes["fl_U_SW"])
 
+    # Pack output
     output = {}
     output["T_surf"]  = T_surf_atm
     output["F_atm"]   = F_atm_lim             # Net flux at TOA
@@ -119,5 +123,11 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     output["T_obs"]   = hf_row["T_surf"]
     output["ocean_areacov"] = 0.0
     output["ocean_maxdepth"]= 0.0
+
+    for e in element_list:
+        try:
+            output[e+"_mmr_xuv"] = emr[e]
+        except KeyError:
+            output[e+"_mmr_xuv"] = 0.0
 
     return output

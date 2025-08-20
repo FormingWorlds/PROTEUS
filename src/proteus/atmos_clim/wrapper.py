@@ -137,8 +137,7 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
 
         # Run solver
         atmos_o._atm, atm_output = run_agni(atmos_o._atm,
-                                            loop_counter["total"], dirs, config, hf_row,
-                                            transparent)
+                                            loop_counter["total"], dirs, config, hf_row)
 
     elif config.atmos_clim.module == 'dummy':
         # Import

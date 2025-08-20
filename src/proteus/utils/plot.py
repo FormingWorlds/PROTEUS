@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from proteus.utils.archive import archive_exists
-from proteus.utils.constants import gas_atoms
+from proteus.utils.helper import mol_to_ele
 
 log = logging.getLogger("fwl."+__name__)
 
@@ -83,7 +83,7 @@ def _generate_colour(gas:str):
 
     # Break into atoms
     try:
-        atoms = gas_atoms[gas]
+        atoms = mol_to_ele(gas)
     except ValueError:
         log.warning(f"Using fallback colour for '{gas}'")
         return _preset_colours["_fallback"]
