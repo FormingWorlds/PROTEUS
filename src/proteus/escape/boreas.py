@@ -62,7 +62,11 @@ def run_boreas(config:Config, hf_row:dict):
     params.mplanet   = hf_row["M_planet"] * 1e3     # convert kg to g
     params.mmw_outflow_eff = None
 
-    # Initalise objects
+    # Finalise parameters
+    params._recompute_composites()
+    params._init_opacities()
+
+    # Init compute objects
     mass_loss       = boreas.MassLoss(params)
     fractionation   = boreas.Fractionation(params)
 

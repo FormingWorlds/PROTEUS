@@ -43,7 +43,8 @@ def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf") :
     ax2 = axs[2]   # Psurf and Rxuv
     axr = ax2.twinx()
 
-    ax0.set_xlim(left=0, right=np.amax(time)*1.01)
+    ax2.set_xlim(left=0, right=np.amax(time))
+    ax2.set_xlabel("Time [yr]")
 
     # By element
     total = np.zeros(len(time))
@@ -76,25 +77,23 @@ def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf") :
 
     # Decorate top plot
     ax0.set_ylabel(r"Mass [%s]"%M_ulbl)
-    ax0.set_yscale("symlog", linthresh=1e-3)
-    ax0.legend(loc='upper left', bbox_to_anchor=(1.0, 0.99), labelspacing=0.2)
+    ax0.set_yscale("symlog", linthresh=1e-1)
+    ax0.legend(loc='upper left', bbox_to_anchor=(1.0, 0.8), labelspacing=0.4)
     ax0.set_ylim(0, np.amax(total)*1.5)
 
     # Plot bulk escape rate (mass per yr)
     y = np.array(hf_crop['esc_rate_total']) * secs_per_year *1e6 / M_uval
-    ax1.plot(time, y, lw=lw, color='k', ls='dotted', label="Bulk")
+    ax1.plot(time, y, lw=lw, color='k', ls='dotted')
 
     # Decorate middle plot
-    ax1.set_ylabel('Escape rate [%s / Myr]'%M_ulbl)
-    ax1.set_xlabel("Time [yr]")
+    ax1.set_ylabel('Esc rate [%s / Myr]'%M_ulbl)
     ax1.set_ylim(0, np.amax(y))
-    ax1.legend(loc='center left', bbox_to_anchor=(1.0, 0.5), labelspacing=0.2)
 
     # Plot Rxuv
     y = hf_crop["R_xuv"]/R_earth
     ax2.plot(time, y, color='k', lw=lw)
     ax2.set_ylabel(r"XUV radius [R$_\oplus$]")
-    ax2.set_ylim(np.amin(hf_crop["R_int"]/R_earth), np.amax(y)*1.05)
+    ax2.set_ylim(np.amin(hf_crop["R_int"]/R_earth), np.amax(y)+0.1)
 
     # Plot surface pressure
     color = 'seagreen'
@@ -115,7 +114,8 @@ def plot_escape(hf_all:pd.DataFrame, output_dir:str, plot_format="pdf") :
         ax.axvline(tmax, color=color, alpha=alpha, ls='dashdot', label=lbl)
 
     # Adjust
-    fig.subplots_adjust(hspace=0.03)
+    fig.subplots_adjust(hspace=0.04)
+    fig.align_ylabels()
     plt.close()
     plt.ioff()
 
