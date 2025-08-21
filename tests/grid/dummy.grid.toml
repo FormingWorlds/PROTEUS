@@ -1,0 +1,50 @@
+# Config file for running a grid of forward models
+
+# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+output = "dummy_grid"
+
+# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+symlink = ""
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "tests/grid/base.toml"
+
+# Use SLURM?
+use_slurm = false
+
+# Execution limits
+max_jobs = 2       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 1        # maximum number of days to run (e.g. 1)
+max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+
+# Now define grid axes...
+#    Each axis must be a new section (table) in this file.
+#    Each table corresponds to the name of the parameter to be varied.
+#    Each table name must be written in double quotes.
+#    See examples below
+
+# Planet mass set directly
+["struct.mass_tot"]
+    method = "direct"
+    values = [0.7,]
+
+# Hydrogen inventory set by arange
+["delivery.elements.H_ppmw"]
+    method = "arange"
+    start    = 1000
+    stop     = 2000
+    step     = 1000
+
+# Core radius fraction set by linspace
+["struct.corefrac"]
+    method = "linspace"
+    start  = 0.35
+    stop   = 0.95
+    count  = 2
+
+# Orbital eccentricity set by logspace
+["orbit.eccentricity"]
+    method = "logspace"
+    start  = 0.001
+    stop   = 0.15
+    count  = 3

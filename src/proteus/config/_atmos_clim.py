@@ -34,6 +34,9 @@ def valid_agni(instance, attribute, value):
     if instance.agni.chemistry and instance.agni.condensation:
         raise ValueError("`atmos_clim.agni`: Cannot enable condensation and chemistry at the same time")
 
+    if instance.agni.latent_heat and not instance.agni.condensation:
+        raise ValueError("`atmos_clim.agni`: Must set `condensation=true` if setting `latent_heat=true`")
+
     # set spectral files?
     if not instance.agni.spectral_group:
         raise ValueError("Must set atmos_clim.agni.spectral_group")
@@ -48,6 +51,8 @@ class Agni:
     ----------
     p_top: float
         Top of atmosphere grid pressure [bar].
+    p_obs: float
+        Pressure level probed by observations [bar]
     spectral_group: str
         Spectral file codename defining the gas opacities to be included. See [documentation](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/spectral_files.pdf).
     spectral_bands: str
@@ -67,16 +72,21 @@ class Agni:
     overlap_method: str
         Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
     condensation: bool
-        Enable volatile condensation/phase change in the atmosphere.
+        Enable volatile rainout in the atmosphere and ocean formation below.
+    latent_heat: bool
+        Account for latent heat from condense/evap when solving temperature profile.
     real_gas: bool
         Use real gas equations of state in atmosphere, where possible.
     psurf_thresh: float
         Use the transparent-atmosphere solver when P_surf is less than this value [bar].
+    dx_max: float
+        Nominal maximum step size to T(p) during the solver process, although this is dynamic.
     """
 
     spectral_group: str     = field(default=None)
     spectral_bands: str     = field(default=None)
     p_top: float            = field(default=1e-5, validator=gt(0))
+    p_obs: float            = field(default=20e-3, validator=gt(0))
     surf_material: str      = field(default="surface_albedos/Hammond24/lunarmarebasalt.dat")
     num_levels: int         = field(default=40, validator=ge(15))
     chemistry: str          = field(default="none",
@@ -87,8 +97,10 @@ class Agni:
     solution_rtol: float    = field(default=0.15,  validator=gt(0))
     overlap_method: str     = field(default='ee', validator=check_overlap)
     condensation: bool      = field(default=False)
+    latent_heat: bool       = field(default=False)
     real_gas: bool          = field(default=False)
     psurf_thresh: bool      = field(default=0.1, validator=ge(0))
+    dx_max: float           = field(default=35.0, validator=gt(1))
 
     @property
     def chemistry_int(self) -> int:
@@ -144,13 +156,21 @@ class Janus:
 class Dummy:
     """Dummy atmosphere module.
 
+    A parametrised model of the atmosphere designed for debugging. The greenhouse effect
+    is captured by `gamma` which produces a transparent atmosphere when 0, and a completely
+    opaque atmosphere when 1. The height of the atmosphere equals the scale height times
+    the `height_factor` variable.
+
     Attributes
     ----------
     gamma: float
-        Atmosphere opacity between 0 and 1.
+        Atmosphere opacity factor between 0 and 1.
+    height_factor: float
+        A multiplying factor applied to the ideal-gas scale height.
     """
 
-    gamma: float = field(default=0.7, validator=(ge(0),le(1)) )
+    gamma: float         = field(default=0.7, validator=(ge(0),le(1)))
+    height_factor: float = field(default=3.0, validator=ge(0))
 
 
 @define

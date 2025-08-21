@@ -27,6 +27,21 @@ def spada_zephyrus(instance, attribute, value):
         not ( (instance.star.module == 'mors') and (instance.star.mors.tracks == 'spada')):
         raise ValueError('ZEPHYRUS must be used with MORS and the Spada evolution tracks')
 
+def instmethod_dummy(instance, attribute, value):
+    # Instellation method 'inst' only support for dummy star module
+    if (instance.orbit.instellation_method == 'inst') and not (instance.star.module == 'dummy'):
+        raise ValueError("Instellation method can only be 'inst' when star.module=dummy ")
+
+def instmethod_evolve(instance, attribute, value):
+    # Orbital evolution not supported when installation_method is 'inst'
+    if (instance.orbit.instellation_method == 'inst') and instance.orbit.evolve:
+        raise ValueError("Planet orbital evolution not supported for `instellation_method='inst'`")
+
+def satellite_evolve(instance, attribute, value):
+    # Planetary orbital evolution not supported when also modelling satellite
+    if instance.orbit.satellite and instance.orbit.evolve:
+        raise ValueError("Planet orbital evolution cannot be used simultaneously with a satellite")
+
 def tides_enabled_orbit(instance, attribute, value):
     # Tides in interior requires orbit module to not be None
     if (instance.interior.tidal_heat) and (instance.orbit.module is None):
@@ -35,7 +50,7 @@ def tides_enabled_orbit(instance, attribute, value):
 def observe_resolved_atmosphere(instance, attribute, value):
     # Synthetic observations require a spatially resolved atmosphere profile
     if (instance.observe.synthesis is not None) and (instance.atmos_clim.module == "dummy"):
-        raise ValueError("Interior tidal heating requires an orbit module to be enabled")
+        raise ValueError("Observational synthesis requires that atmos_clim != dummy")
 
 @define
 class Config:
@@ -45,8 +60,6 @@ class Config:
     ----------
     version: str
         Version of the configuration file.
-    author: str
-        Authors of the configuration file.
     params: Params
         Parameters for code execution, output files, time-stepping, convergence.
     star: Star
@@ -72,11 +85,10 @@ class Config:
     """
 
     version: str = field(validator=validators.in_(('2.0',)))
-    author: str
 
     params: Params
     star: Star
-    orbit: Orbit
+    orbit: Orbit = field(validator=(instmethod_dummy,instmethod_evolve,satellite_evolve))
     struct: Struct
     atmos_clim: AtmosClim
     atmos_chem: AtmosChem

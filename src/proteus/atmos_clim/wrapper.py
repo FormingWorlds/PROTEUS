@@ -144,24 +144,16 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
         # Import
         from proteus.atmos_clim.dummy import RunDummyAtm
         # Run dummy atmosphere model
-        atm_output = RunDummyAtm(dirs, config, hf_row["T_magma"], hf_row["F_ins"],
-                                    hf_row["R_int"], hf_row["M_int"], hf_row["P_surf"])
+        atm_output = RunDummyAtm(dirs, config, hf_row)
 
-    # Store atmosphere module output variables
-    #    observables
-    hf_row["rho_obs"]= atm_output["rho_obs"] # [kg m-3]
-    hf_row["p_obs"]  = atm_output["p_obs"]   # [bar]
-    hf_row["R_obs"]  = atm_output["R_obs"]   # [m]
-    #    fluxes
-    hf_row["F_atm"]  = atm_output["F_atm"]
-    hf_row["F_olr"]  = atm_output["F_olr"]
-    hf_row["F_sct"]  = atm_output["F_sct"]
-    hf_row["F_net"]  = hf_row["F_int"] - hf_row["F_atm"]
-    hf_row["bond_albedo"]= atm_output["albedo"]
-    hf_row["T_surf"] = atm_output["T_surf"]
-    #    escape
-    hf_row["p_xuv"]  = atm_output["p_xuv"]    # Closest pressure to Pxuv    [bar]
-    hf_row["R_xuv"]  = atm_output["R_xuv"]    # Radius at p_xuv [m]
+    # Store variables common to `hf_row` and `atm_output`
+    for key in atm_output.keys():
+        if key in hf_row.keys():
+            hf_row[key] = atm_output[key]
+
+    # Copy special cases
+    hf_row["F_net"]       = hf_row["F_int"] - hf_row["F_atm"]
+    hf_row["bond_albedo"] = atm_output["albedo"]
 
     # Calculate bolometric observables (measured at infinite distance)
     update_bolometry(hf_row)

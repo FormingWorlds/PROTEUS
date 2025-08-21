@@ -5,17 +5,21 @@ repo_name: GitHub
 
 nav:
   - Home: index.md
+  - Model description: model.md
   - Installation: installation.md
   - Using PROTEUS: usage.md
   - Configuration: config.md
+  - Contributing: CONTRIBUTING.md
+  - Bibliography: bibliography.md
   - Troubleshooting: troubleshooting.md
-  - Data files: data.md
+  - Bayesian inference: inference.md
+  - Reference data: data.md
   - Kapteyn cluster: kapteyn_cluster_guide.md
   - Habrok cluster: habrok_cluster_guide.md
   - Snellius cluster: snellius_cluster_guide.md
   - Contact: contact.md
-  - Contributing: CONTRIBUTING.md
   - Code of Conduct: CODE_OF_CONDUCT.md
+  - Funding: funding.md
   - Source code: https://github.com/FormingWorlds/PROTEUS
   - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
   - 🔗 MORS: https://fwl-proteus.readthedocs.io/projects/mors/
@@ -25,6 +29,7 @@ nav:
   - 🔗 AGNI: https://nichollsh.github.io/AGNI/dev/
   - 🔗 LovePy: https://github.com/nichollsh/lovepy
   - 🔗 VULCAN: https://github.com/FormingWorlds/VULCAN
+  - 🔗 Zalmoxis: https://github.com/FormingWorlds/Zalmoxis
 
 theme:
   name: material
@@ -77,6 +82,8 @@ plugins:
           members_order: alphabetical
           merge_init_into_class: yes
           filters: ["!^_"]
+
+use_directory_urls: false
 
 watch:
   - docs/

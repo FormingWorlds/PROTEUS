@@ -31,15 +31,6 @@ def mass_radius_valid(instance, attribute, value):
             raise ValueError("The interior radius must be < 10 R_earth")
 
 def valid_zalmoxis(instance, attribute, value):
-    """Validate the Zalmoxis parameters.
-    This function checks the values of the Zalmoxis parameters and raises
-    ValueError if any of them are invalid. Specifically, it checks:
-    - `max_iterations_outer` must be > 2
-    - `max_iterations_inner` must be > 12
-    - `max_iterations_pressure` must be > 12
-    - `inner_mantle_mass_fraction` must be 0 when `EOSchoice` is 'Tabulated:iron/silicate'
-    - `coremassfrac` and `inner_mantle_mass_fraction` must add up to <= 75% when `EOSchoice` is 'Tabulated:water'
-    """
     if instance.module != "zalmoxis":
         return
 
@@ -120,7 +111,7 @@ class Zalmoxis:
     absolute_tolerance: float         = field(default=1e-6, validator=ge(0))
 
     target_surface_pressure: float    = field(default=101325, validator=ge(0))
-    pressure_tolerance: float         = field(default=1e11, validator=ge(0))
+    pressure_tolerance: float         = field(default=1e9, validator=ge(0))
     max_iterations_pressure: int      = field(default=200, validator=ge(1))
     pressure_adjustment_factor: float = field(default=1.1, validator=ge(0))
 
@@ -128,12 +119,18 @@ class Zalmoxis:
 class Struct:
     """Planetary structure (mass, radius).
 
+    Attributes
+    ----------
+    corefrac: float
+        Fraction of the planet's interior radius corresponding to the core.
+    module: str
+        Module for solving the planet's interior structure. Choices: 'self', 'zalmoxis'.
+    zalmoxis: Zalmoxis or None
+        Zalmoxis parameters if module is 'zalmoxis'.
     mass_tot: float
         Total mass of the planet [M_earth]
     radius_int: float
         Radius of the atmosphere-mantle boundary [R_earth]
-    corefrac: float
-        Fraction of the planet's interior radius corresponding to the core.
     core_density: float
         Density of the planet's core [kg m-3]
     core_heatcap: float
@@ -147,11 +144,10 @@ class Struct:
     module: Optional[str] = field(default='self', validator=lambda inst, attr, val: val is None or val in ('self', 'zalmoxis'))
     zalmoxis: Optional[Zalmoxis] = field(default=None, validator=lambda inst, attr, val: val is None or valid_zalmoxis(inst, attr, val))
 
+    core_density: float          = field(default=10738.33, validator=gt(0))
+    core_heatcap: float 	 = field(default=880.0,    validator=gt(0))
     mass_tot                = field(default='none', validator=mass_radius_valid, converter=none_if_none)
     radius_int              = field(default='none', validator=mass_radius_valid, converter=none_if_none)
-
-    core_density: float     = field(default=10738.33, validator=gt(0))
-    core_heatcap: float     = field(default=880.0,    validator=gt(0))
 
     @property
     def set_by(self) -> str:

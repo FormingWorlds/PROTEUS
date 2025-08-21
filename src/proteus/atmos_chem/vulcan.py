@@ -290,7 +290,11 @@ def run_vulcan_offline(dirs:dict, config:Config, hf_row:dict) -> bool:
     vcfg.loss_eps           = 1e-1
     vcfg.flux_cri           = 0.1
 
+    # Self-consistent RCE solver
+    vcfg.agni_call_frq  = 0
+
     # Folders
+    vcfg.clean_output       =   False
     vcfg.output_dir         =   vulcan_out
     vcfg.plot_dir           =   vulcan_plt
     vcfg.movie_dir          =   vulcan_plt+"/frames/"

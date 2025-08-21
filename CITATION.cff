@@ -14,11 +14,6 @@ authors:
   given-names: "Laurent"
   orcid: "https://orcid.org/0000-0002-5422-8794"
 
-- given-names: "Stef"
-  family-names: "Smeets"
-  affiliation: "Netherlands eScience Center"
-  orcid: "https://orcid.org/0000-0001-5107-3531"
-
 - family-names: "Sastre"
   given-names: "Mariana"
   orcid: "https://orcid.org/0000-0000-0000-0000"
@@ -31,8 +26,43 @@ authors:
   given-names: "Dan"
   orcid: "https://orcid.org/0000-0002-0673-4860"
 
+- given-names: "Flavia C."
+  family-names: "Pascal"
+  orcid: "https://orcid.org/0009-0007-4663-1456"
+
+- given-names: "Robb"
+  family-names: "Calder"
+  orcid: "https://orcid.org/0009-0002-9247-2437"
+
+- given-names: "Ben"
+  family-names: "Riegler"
+
+- given-names: "Hanno"
+  family-names: "Spreeuw"
+  orcid: "https://orcid.org/0000-0002-5057-0322"
+
+- given-names: "Mark"
+  family-names: "Hammond"
+  orcid: "https://orcid.org/0000-0002-6893-522X"
+
+- given-names: "Stef"
+  family-names: "Smeets"
+  orcid: "https://orcid.org/0000-0002-5413-9038"
+
+- given-names: "Shang-Min"
+  family-names: "Tsai"
+  orcid: "https://orcid.org/0000-0002-8163-4608"
+
+- given-names: "Oliver"
+  family-names: "Shorttle"
+  orcid: "https://orcid.org/0000-0002-8713-1446"
+
+- given-names: "Raymond T."
+  family-names: "Pierrehumbert"
+  orcid: "https://orcid.org/0000-0002-5887-1197"
+
 title: "PROTEUS"
-version: 25.05.20
-doi: 10.xx/xx.xx
-date-released: 2025-05-20
+version: 25.07.31
+doi: 10.0000/xxxx/xxxx
+date-released: 2025-07-31
 url: "https://github.com/FormingWorlds/PROTEUS"

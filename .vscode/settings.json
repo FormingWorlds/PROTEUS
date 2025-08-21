@@ -12,5 +12,6 @@
     ],
     "python.analysis.diagnosticMode": "openFilesOnly",
     "julia.environmentPath": "${workspaceFolder}/AGNI",
-    "fortran.fortls.disabled": true
+    "fortran.fortls.disabled": true,
+    "markdown.validate.enabled": true
 }

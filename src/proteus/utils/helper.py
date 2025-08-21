@@ -141,6 +141,8 @@ def CommentFromStatus(status:int):
             desc = "Completed (net flux is small)"
         case 15:
             desc = "Completed (volatiles escaped)"
+        case 16:
+            desc = "Completed (planet disintegrated)"
         # Error cases
         case 20:
             desc = "Error (generic case, or configuration issue)"
@@ -257,3 +259,44 @@ def recursive_get(d, keys):
     if len(keys) == 1:
         return d[keys[0]]
     return recursive_get(d[keys[0]], keys[1:])
+
+def recursive_getattr(obj, attr:str):
+    """Get object's attribute. May use dot notation.
+
+    https://gist.github.com/alixedi/4695abcd259d1493ac9c
+
+    ```python
+    >>> class C(object): pass
+    >>> a = C()
+    >>> a.b = C()
+    >>> a.b.c = 4
+    >>> rec_getattr(a, 'b.c')
+    4
+    ```
+    """
+    if '.' not in attr:
+        return getattr(obj, attr)
+    else:
+        L = attr.split('.')
+        return recursive_getattr(getattr(obj, L[0]), '.'.join(L[1:]))
+
+def recursive_setattr(obj, attr:str, value):
+    """Set object's attribute. May use dot notation.
+
+    https://gist.github.com/alixedi/4695abcd259d1493ac9c
+
+    ```python
+    >>> class C(object): pass
+    >>> a = C()
+    >>> a.b = C()
+    >>> a.b.c = 4
+    >>> rec_setattr(a, 'b.c', 2)
+    >>> a.b.c
+    2
+    ```
+    """
+    if '.' not in attr:
+        setattr(obj, attr, value)
+    else:
+        L = attr.split('.')
+        recursive_setattr(getattr(obj, L[0]), '.'.join(L[1:]), value)

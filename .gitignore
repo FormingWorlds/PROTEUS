@@ -18,6 +18,7 @@ output/*
 output.link
 output
 slurm*.out
+*.pkl
 
 # Development installations
 fwl_data
@@ -64,6 +65,8 @@ platon
 Platon
 PLATON
 Zalmoxis
+ZALMOXIS
+zalmoxis
 
 # misc
 ######
@@ -71,7 +74,15 @@ Zalmoxis
 .DS_Store
 __pycache__
 !output/.gitkeep
-nogit_*
+nogit*
+tools/*.csv
+tools/grid_proteus_SNS*
+
+*.odg#
+*.ods#
+*.odp#
+md5sums.txt
+zenodo*.log
 
 # From Read the Docs
 ####################
@@ -237,7 +248,6 @@ dmypy.json
 cython_debug/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
-
 .ruff_cache
 
 # Created automatically during PR #351

@@ -1,5 +1,9 @@
 # Usage
 
+This page describes how to use PROTEUS. The framework can be run standalone, as a grid of simulations, or as a forward model within a retrieval framework. In all cases you will need to configure the model via a 'configuration file', which you can read about in a [dedicated page here](config.html). If you encounter any problems, please visit the [troubleshooting](troubleshooting.html) page.
+
+We start by describing how to run a single instance of PROTEUS...
+
 ## Running PROTEUS from the terminal
 
 PROTEUS has a command-line interface that can be accessed by running `proteus` on the command line.
@@ -10,7 +14,6 @@ You can directly run PROTEUS using the command:
 ```console
 proteus start -c [cfgfile]
 ```
-
 Where `[cfgfile]` is the path to the required configuration file.
 Pass the flag `--resume` in to resume the simulation from the disk.
 
@@ -22,8 +25,11 @@ proteus start -c input/all_options.toml
 This will run a simulation and write the results to the `output/` folder inside your PROTEUS
 directory.
 
-See the [config guide](https://fwl-proteus.readthedocs.io/en/latest/config/) for information
+See the [config guide](config.html) for information
 on how to edit the configurations files, and an explanation of their structure.
+
+PROTEUS will automatically check if any lookup-tables or data need to be downloaded for it to run.
+To disable this functionality, pass the `--offline` flag to the `proteus start` command shown above.
 
 ## Output and results
 
@@ -85,45 +91,51 @@ You can find detailed documentation [here](https://tmuxcheatsheet.com/).
     ```
 - Press `Ctrl + c` to exit the `htop` command.
 
-## Running grids of simulations
+## Running grids of simulations (ensembles)
 
-It is often useful to run grids of models, where each point in a grid represents a different
-set of parameters. This can be done using the script `tools/grid_proteus.py`.
+It is often useful to run grids of forward models, where each point in a grid represents a different set of parameters. This can also be done using the command line interface. For example:
 
-You can configure a grid of your choosing by editing the variables at the end of this file.
-With the grid configured to your liking, you can then dispatch the grid in two ways.
+```console
+proteus grid -c input/ensembles/example.grid.toml
+```
+
+Configure a grid of your choosing by creating a TOML file which specifies the grid's axes and determines how it should be run. An example configuration file for a PROTEUS grid is available at `input/ensembles/example.grid.toml`, which uses the dummy configuration file as a "reference" and then modifies it for every combination of the parameters in the `.grid.toml` file.
+
+Grids can be dispatched with or without using a workload manager. In PROTEUS, we use the [Slurm](https://slurm.schedmd.com/overview.html) workload manager, which can allow running large ensembles of models on high-performance compute clusters. The subsections below detail cases with/without Slurm.
 
 ### Without Slurm
 
-Firstly, you can set `use_slurm=False`. In this case, `grid_proteus.py` will manage the
+Firstly, set `use_slurm = false`. In this case, the GridPROTEUS routine will manage the
 individual subprocesses which compose the grid. The variable `max_jobs` specifies the maximum number of CPU cores
 which should be utilised by the grid at any one time. This is limited by the number of CPU
-cores available on your machine. This method works without SLURM, and can be applied on servers or on multicore personal computers.
+cores available on your machine. This method works without Slurm, and can be applied on servers or
+on multicore personal computers.
 
-You will need to make sure that the `grid_proteus.py` process stays open in order to mange the subprocesses.
+In this case, you will need to make sure that PROTEUS stays open in order to mange its subprocesses.
 
 ### With Slurm
 
-Alternatively, you can access high performance compute nodes through the SLURM workload
-manager (e.g. on Habrok and Snellius). This is a two-step process. To do this, set `use_slurm=True` in `grid_proteus.py`,
-and set `max_mem` and `max_days` to specify how much memory should be allocated to each job (each simulation).
-These are nominally 3 GB and 2 days respectively. Ensure that these values are within the limits of the server you are working on.
+Alternatively, you can access high performance compute nodes through the Slurm workload manager (e.g. on Habrok and Snellius). This is a two-step process. To do this, set `use_slurm = true` in your grid's configuration file. Then set `max_mem` and `max_days` to specify how much memory should be allocated to each job (each simulation). These values are nominally 3 GB and 2 days. Ensure that these values are within the limits of the server you are working on.
 
-With these options enabled, running `grid_proteus.py` will produce a script called `slurm_dispatch.sh` in the
-specified output folder, as well as write the required configuration files to a subfolder called `cfgs/`.
+With these options enabled, running PROTEUS will produce a script called `slurm_dispatch.sh` in the specified output folder, as well as write the required configuration files to a subfolder called `cfgs/`.
 
-To dispatch your grid via Slurm, run `sbatch <path>` where `<path>` is the path to the dispatch script created
-by `grid_proteus.py`. You will be prompted to do this in the terminal.
+To dispatch your grid via Slurm, you **must then run** the command `sbatch <path>` where `<path>` is the path to the dispatch script created by the `proteus grid` command. You will be prompted to do this in the terminal.
 
 Monitor your running jobs with `squeue -u $USER`. To cancel **all** of your running jobs, use `scancel -u $USER`.
+The original PROTEUS process does not need to stay open when using Slurm to manage the subprocesses.
 
+## Retrieval scheme (Bayesian optimisation)
+
+Retrieval methods efficiently sample a given parameter space in order to find the point at which a forward model best matches some observations. These methods has seen success in recent years, and are often more efficient than naive grid-search methods. However, retrieval schemes usually require that a forward model is fast and inexpensive to run. Bayesian Optimisation is one approach to parameter retrievals; you can read more about it [in this article](https://arxiv.org/abs/1807.02811).
+
+We have included a retrieval scheme within PROTEUS [ref](https://openreview.net/forum?id=td0CHOy2o6). To use our Bayesian optimisation scheme, please see the instructions on [its dedicated page here](inference.html).
 
 ## Postprocessing of results with 'offline' chemistry
 
 PROTEUS includes an "offline" chemistry functionality, which uses results of a simulation
 as an input to the VULCAN chemical kinetics model, capturing the additional physics.
 
-You can access the offline chemistry via the command line interface:
+Access the offline chemistry via the command line interface:
 
 ```console
 proteus offchem -c [cfgfile]
@@ -133,7 +145,6 @@ This will run VULCAN as a subprocess. This command should not be used in batch p
 PROTEUS will perform this step automatically when the configuration variable
 `atmos_chem.when` is set to `"offline"`.
 
-
 ## Postprocessing of results with synthetic observations
 
 Similarly to the offline chemistry, PROTEUS results can be postprocessed to generate
@@ -141,7 +152,7 @@ synthetic observations. Transmission and emission spectra are generated based on
 modelled temperature-pressure profile, as well as atmospheric composition. The composition
 can be set by the output of the offline chemistry calculation (see config file).
 
-You can access the synthetic observation functionality via the command line interface:
+Access the synthetic observation functionality via the command line interface:
 
 ```console
 proteus observe -c [cfgfile]
@@ -210,8 +221,8 @@ large grids of simulations. To counter this, the `params.out.archive_mod` config
 option can be used to tell PROTEUS when to archive its output files. This will gather the
 output files of each run into `.tar` files.
 
-Archiving the output files makes them inaccessible for analysis or plotting. To extract the
-archives from a run, use the proteus command line interface:
+Archiving the output files makes them inaccessible for analysis or plotting. Extract the
+archives from a run using the proteus command line interface:
 ```console
 proteus extract-archives -c [cfgfile]
 ```
@@ -223,20 +234,21 @@ proteus create-archives -c [cfgfile]
 
 ## Version checking
 
-The `proteus doctor` command helps you to diagnose issues with your proteus installation.
+The `proteus doctor` command helps diagnose potential issues with your PROTEUS installation.
 It tells you about outdated or missing packages, and whether all environment variables have been set.
 
 ```console
 $ proteus doctor
-Dependencies
-fwl-proteus: ok
-fwl-mors: Update available 24.10.27 -> 24.11.18
+Packages
+aragog: ok
 fwl-calliope: ok
+fwl-janus: ok
+fwl-proteus: ok
+fwl-mors: ok
 fwl-zephyrus: ok
-aragog: Update available 0.1.0a0 -> 0.1.5a0
-AGNI: No package metadata was found for AGNI is not installed.
+AGNI: Update available 1.7.1 -> Ledoux, oceans, water, clouds, and blackbody stars
 
 Environment variables
-FWL_DATA: Variable not set.
-RAD_DIR: Variable not set.
+FWL_DATA: ok
+RAD_DIR: ok
 ```

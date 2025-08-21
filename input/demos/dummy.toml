@@ -1,13 +1,12 @@
 # PROTEUS configuration file (version 2.0)
 version = "2.0"
-author  = "Harrison Nicholls, Tim Lichtenberg"
 
 [params]
     [params.out]
         path        = "dummy"
         logging     = "ERROR"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
-        write_mod   = 50      # Write CSV frequency, 0: wait until completion | n: every n iterations
+        write_mod   = 400      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 'none'
 
     [params.dt]
@@ -20,14 +19,14 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
         [params.dt.adaptive]
             atol         = 0.02   # Step size atol
-            rtol         = 0.12   # Step size rtol
+            rtol         = 0.10   # Step size rtol
 
     [params.stop]
         # required time constraints
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 2e9     # yr, model will terminate when t > maximum
+            maximum = 1e9     # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -55,16 +54,23 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 1.0       # AU
-    eccentricity    = 0.0       # dimensionless
+    semimajoraxis   = 0.5       # AU
+    eccentricity    = 0.1       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
+    axial_period    = 'none'    # hours, or provide 'none' to set as tidally locked
+
+    evolve  = false
+
+    satellite = false
+    semimajoraxis_sat = 300e6
 
     module  = "dummy"
 
     [orbit.dummy]
-        H_tide  = 1e-9  # Fixed tidal power density [W kg-1]
+        H_tide   = 1e-9     # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
+        Imk2     = -1e5     # Fixed Im(k2) love number
 
     [orbit.lovepy]
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
@@ -104,6 +110,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     fO2_shift_IW    = 2         # log10(ΔIW), atmosphere/interior boundary oxidation state
     module = "calliope"         # Which outgassing module to use
 
+    [outgas.calliope]
+        include_NH3 = false
+
 [delivery]
 
     initial = 'elements'        # "elements" | "volatiles"
@@ -112,7 +121,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [delivery.elements]
         H_ppmw      = 200.0     # Hydrogen inventory in ppmw relative to mantle mass
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        N_ppmw      = 2.0       # Nitrogen inventory in ppmw relative to mantle mass
+        N_ppmw      = 0.0       # Nitrogen inventory in ppmw relative to mantle mass
         SH_ratio    = 1.0       # Sulfur inventory in ppmw relative to mantle mass
 
 [observe]

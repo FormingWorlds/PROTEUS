@@ -136,16 +136,17 @@ def validate_module_versions(dirs:dict, config:Config):
         if exp_str is None:
             return True
 
-        # convert from string to m/m/p format
+        # convert from string to m/m/p format (or y/m/d format)
         vact = _split_ver(act_str)
         vexp = _split_ver(exp_str)
 
         # Check major, minor, patch
         for i in range(3):
-            if vact[i] < vexp[i]:
-                log.error(f"{name} module is out of date: {act_str} < {exp_str}")
-                return False
-        return True
+            if vact[i] >= vexp[i]:
+                return True
+
+        log.error(f"{name} module is out of date: installed {act_str} < expected {exp_str}")
+        return False
 
     # Loop through required modules...
     valid = True
@@ -455,11 +456,14 @@ def GetHelpfileKeys():
             # Model tracking
             "Time", # [yr]
 
-            # Orbit semi-major axis and time-averaged separation
-            "semimajorax", "separation", # [m], [m],
+            # Orbit semi-major axis, time-averaged separation, perihelion, and perigee
+            "semimajorax", "separation", "perihelion", "perigee", # [m], [m], [m], [m],
 
             # Orbital period and eccentricity
             "orbital_period", "eccentricity", # [s], [1]
+
+            # Satellite orbit semi-major axis, mass, and planet-satellite system angular momentum
+            "semimajorax_sat", "M_sat", "plan_sat_am", # [m], [kg], [kg m2 s-1],
 
             # Day length
             "axial_period", # [s]
@@ -498,6 +502,9 @@ def GetHelpfileKeys():
 
             # Escape
             "esc_rate_total", "p_xuv", "R_xuv", # [kg s-1], [bar], [m]
+
+            # Surface liquid-ocean statistics
+            "ocean_areacov", "ocean_maxdepth", # [1], [m]
 
             # Atmospheric composition
             "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]
@@ -637,6 +644,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     from proteus.plot.cpl_global import plot_global
     from proteus.plot.cpl_interior import plot_interior
     from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
+    from proteus.plot.cpl_orbit import plot_orbit
     from proteus.plot.cpl_population import (
         plot_population_mass_radius,
         plot_population_time_density,
@@ -673,6 +681,10 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Elemental mass inventory
     plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
+
+    # Planet and satellite orbit parameters
+    if config.orbit.evolve or config.orbit.satellite:
+        plot_orbit(hf_all, output_dir, config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:
@@ -826,6 +838,7 @@ def get_proteus_directories(outdir="_unset") -> dict[str, str]:
         "lovepy":   os.path.join(root_dir, "lovepy"),
         "input":    os.path.join(root_dir, "input"),
         "spider":   os.path.join(root_dir, "SPIDER"),
+        "aragog":   os.path.join(root_dir, "aragog"),
         "tools":    os.path.join(root_dir, "tools"),
         "vulcan":   os.path.join(root_dir, "VULCAN"),
         "utils":    os.path.join(root_dir, "src", "proteus", "utils"),

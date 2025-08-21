@@ -88,6 +88,22 @@ def _check_escape(handler: Proteus) -> bool:
 
     return False
 
+# Planet has disintegrated
+def _check_separation(handler: Proteus) -> bool:
+    log.debug("Check separation")
+
+    separation = handler.hf_row["separation"]
+    roche_limit = handler.hf_row["roche_limit"]
+    offset = handler.config.params.stop.disint.offset
+    log.debug("    sep, roc = %.3e, %.3e  m"%(separation, roche_limit-offset))
+
+    if separation <= roche_limit + offset:
+        UpdateStatusfile(handler.directories, 16)
+        _msg_termination("Planet has disintegrated")
+        return True
+
+    return False
+
 # Maximum time
 def _check_maxtime(handler: Proteus) -> bool:
     log.debug("Check maximum time")
@@ -185,6 +201,10 @@ def check_termination(handler: Proteus) -> bool:
     if handler.config.params.stop.escape.enabled:
         finished = finished or _check_escape(handler)
 
+    # Planet has disintegrated
+    if handler.config.params.stop.disint.enabled:
+        finished = finished or _check_separation(handler)
+
     # Maximum time reached
     if handler.config.params.stop.time.enabled:
         finished = finished or _check_maxtime(handler)
@@ -232,5 +252,5 @@ def check_termination(handler: Proteus) -> bool:
                 log.info("Termination criteria satisfied once")
 
     # Reset statusfile to 'Running'
-    UpdateStatusfile(handler.directories, 1)
+    # UpdateStatusfile(handler.directories, 1)
     return False
