@@ -1,0 +1,274 @@
+version = "2.0"
+
+[params]
+resume = false
+offline = false
+[params.out]
+path = "SNS_stellar_spectra_tests/case_00002/"
+logging = "DEBUG"
+plot_fmt = "png"
+write_mod = 1
+plot_mod = 1
+archive_mod = "none"
+remove_sf = false
+
+[params.dt]
+starspec = 300000000.0
+starinst = 100.0
+method = "adaptive"
+minimum = 300.0
+minimum_rel = 1e-06
+maximum = 10000000.0
+initial = 1000.0
+
+[params.dt.proportional]
+propconst = 52.0
+
+[params.dt.adaptive]
+atol = 0.03
+rtol = 0.15
+
+[params.stop]
+strict = false
+[params.stop.iters]
+enabled = true
+minimum = 5
+maximum = 9000
+
+[params.stop.time]
+enabled = true
+maximum = 20000000000.0
+minimum = 1000.0
+
+[params.stop.solid]
+phi_crit = 0.01
+enabled = true
+
+[params.stop.radeqm]
+enabled = true
+atol = 0.2
+rtol = 0.001
+
+[params.stop.escape]
+enabled = false
+p_stop = 1
+
+[star]
+module = "mors"
+mass = 0.465
+age_ini = 0.1
+
+[star.mors]
+age_now = 3.0
+spec = "stellar_spectra/Named/gj849.txt"
+rot_pcntle = "none"
+rot_period = "none"
+tracks = "spada"
+
+[star.dummy]
+Teff = 3467.0
+radius = "none"
+calculate_radius = true
+
+[orbit]
+module = "none"
+semimajoraxis = 0.0278256
+eccentricity = 0.0
+zenith_angle = 54.74
+s0_factor = 0.25
+instellation_method = "sma"
+instellationflux = 27.0
+
+[orbit.dummy]
+H_tide = 1e-11
+Phi_tide = "<0.3"
+
+[orbit.lovepy]
+visc_thresh = 1000000000.0
+
+[struct]
+corefrac = 0.55
+module = "self"
+zalmoxis = "none"
+core_density = 10738.33
+core_heatcap = 880.0
+mass_tot = 5.0
+radius_int = "none"
+
+[atmos_clim]
+module = "agni"
+surf_state = "skin"
+prevent_warming = false
+surface_d = 0.01
+surface_k = 2.0
+cloud_enabled = false
+cloud_alpha = 0.0
+surf_greyalbedo = 0.0
+albedo_pl = 0.0
+rayleigh = true
+tmp_minimum = 0.5
+tmp_maximum = 5000.0
+
+[atmos_clim.agni]
+spectral_group = "Dayspring"
+spectral_bands = "48"
+p_top = 1e-05
+surf_material = "greybody"
+num_levels = 30
+chemistry = "none"
+solve_energy = true
+solution_atol = 0.01
+solution_rtol = 0.1
+overlap_method = "ee"
+condensation = true
+real_gas = true
+psurf_thresh = 0.1
+
+[atmos_clim.janus]
+spectral_group = "Dayspring"
+spectral_bands = "48"
+p_top = 1e-05
+p_obs = 0.001
+F_atm_bc = 0
+num_levels = 90
+tropopause = "none"
+overlap_method = "ee"
+
+[atmos_clim.dummy]
+gamma = 0.3
+
+[atmos_chem]
+module = "none"
+when = "manually"
+photo_on = true
+Kzz_on = true
+Kzz_const = "none"
+moldiff_on = true
+updraft_const = 0.0
+
+[atmos_chem.vulcan]
+clip_fl = 1e-20
+clip_vmr = 1e-10
+make_funs = true
+ini_mix = "profile"
+fix_surf = false
+network = "SNCHO"
+save_frames = false
+yconv_cri = 0.05
+slope_cri = 0.0001
+
+[escape]
+module = "none"
+reservoir = "outgas"
+
+[escape.zephyrus]
+Pxuv = 0.01
+efficiency = 1.0
+tidal = false
+
+[escape.dummy]
+rate = 0.0
+
+[interior]
+module = "spider"
+melting_dir = "Monteux-600"
+radiogenic_heat = true
+tidal_heat = false
+grain_size = 0.1
+F_initial = 100000.0
+rheo_phi_loc = 0.4
+rheo_phi_wid = 0.15
+bulk_modulus = 260000000000.0
+
+[interior.spider]
+ini_entropy = 3000.0
+ini_dsdr = -4.698e-06
+num_levels = 110
+mixing_length = 2
+tolerance = 1e-07
+tolerance_rel = 1e-10
+solver_type = "bdf"
+tsurf_atol = 20.0
+tsurf_rtol = 0.01
+
+[interior.aragog]
+logging = "ERROR"
+ini_tmagma = 3000.0
+basal_temperature = 7000
+init_file = "none"
+num_levels = 100
+initial_condition = 3
+tolerance = 1e-07
+inner_boundary_condition = 1
+inner_boundary_value = 4000
+conduction = true
+convection = true
+gravitational_separation = false
+mixing = false
+tsurf_poststep_change = 30
+event_triggering = true
+
+[interior.dummy]
+ini_tmagma = 3500.0
+
+[outgas]
+fO2_shift_IW = -3.0
+module = "calliope"
+mass_thresh = 1e+16
+
+[outgas.calliope]
+T_floor = 700.0
+include_H2O = true
+include_CO2 = true
+include_N2 = true
+include_S2 = true
+include_SO2 = true
+include_H2S = true
+include_NH3 = true
+include_H2 = true
+include_CH4 = true
+include_CO = true
+rtol = 0.0001
+xtol = 1e-06
+
+[outgas.atmodeller]
+some_parameter = "some_value"
+
+[delivery]
+module = "none"
+initial = "elements"
+radio_tref = 4.55
+radio_K = 310.0
+radio_U = 0.031
+radio_Th = 0.124
+
+[delivery.elements]
+use_metallicity = 0.0
+metallicity = 1000.0
+H_oceans = 0.0
+H_ppmw = 709.0
+CH_ratio = 0.32
+C_ppmw = 0.0
+NH_ratio = 0.09
+N_ppmw = 0.0
+SH_ratio = 0.0
+S_ppmw = 0.0
+
+[delivery.volatiles]
+H2O = 0.0
+CO2 = 0.0
+N2 = 0.0
+S2 = 0.0
+SO2 = 0.0
+H2S = 0
+NH3 = 0
+H2 = 0.0
+CH4 = 0.0
+CO = 0.0
+
+[observe]
+synthesis = "none"
+
+[observe.platon]
+downsample = 8
+clip_vmr = 1e-08
