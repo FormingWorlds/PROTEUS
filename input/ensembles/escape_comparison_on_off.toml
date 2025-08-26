@@ -1,0 +1,29 @@
+# Config file for running a grid of forward models
+
+# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+output = "scratch/escape_comparison_on_off/"
+
+# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+symlink = ""
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/demos/escape_comparison.toml"
+
+# Use SLURM?
+use_slurm = true
+
+# Execution limits
+max_jobs = 2       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 3        # maximum number of days to run (e.g. 1)
+max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+
+# Now define grid axes...
+#    Each axis must be a new section (table) in this file.
+#    Each table corresponds to the name of the parameter to be varied.
+#    Each table name must be written in double quotes.
+#    See examples below
+
+# Atmosphere module set directly
+["escape.module"]
+    method = "direct"
+    values = ['none', 'zephyrus']

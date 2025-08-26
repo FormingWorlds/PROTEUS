@@ -1,0 +1,59 @@
+# Config file for running a grid of forward models
+
+# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+output = "scratch/escape_grid_0_485Msun/"
+
+# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+symlink = ""
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/demos/escape_grid_0_485Msun.toml"
+
+# Use SLURM?
+use_slurm = true
+
+# Execution limits
+max_jobs = 500       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 5        # maximum number of days to run (e.g. 1)
+max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+
+# Now define grid axes...
+#    Each axis must be a new section (table) in this file.
+#    Each table corresponds to the name of the parameter to be varied.
+#    Each table name must be written in double quotes.
+#    See examples below
+
+# Atmosphere module set directly
+["atmos_clim.module"]
+    method = "direct"
+    values = ['agni', 'janus']
+
+# Semi-major axis set by direct
+["orbit.semimajoraxis"]
+    method = "direct"
+    values = [0.0188, 0.0939, 0.1877]
+
+# Escape efficiency set by direct
+["escape.zephyrus.efficiency"]
+    method   = "direct"
+    values = [0.1, 0.5, 1.0]
+
+# XUV Pressure set by direct
+["escape.zephyrus.Pxuv"]
+    method   = "direct"
+    values = [1e-5, 1e1]
+
+# Oxygen fugacity set by direct
+["outgas.fO2_shift_IW"]
+    method = "direct"
+    values = [-4, 0, 4]
+
+# Planet bulk C/H ratio set by direct
+["delivery.elements.CH_ratio"]
+    method = "direct"
+    values = [0.1, 1.0, 2.0]
+
+# Hydrogen inventory set by direct
+["delivery.elements.H_oceans"]
+    method = "direct"
+    values = [1.0, 5.0, 10.0]

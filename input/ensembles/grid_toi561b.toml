@@ -1,0 +1,46 @@
+# Config file for running a grid of forward models
+
+# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+output = "scratch/toi561b_grid_sun_spectrum_updated"
+
+# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+symlink = ""
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/planets/toi561b.toml"
+
+# Use SLURM?
+use_slurm = true
+
+# Execution limits
+max_jobs = 100       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 3        # maximum number of days to run (e.g. 1)
+max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+
+# Now define grid axes...
+#    Each axis must be a new section (table) in this file.
+#    Each table corresponds to the name of the parameter to be varied.
+#    Each table name must be written in double quotes.
+#    See examples below
+
+# Escape efficiency factor set directly
+["escape.zephyrus.efficiency"]
+    method = "direct"
+    values = [0.1, 1.0]
+
+# Planet bulk C/H ratio set directly
+["delivery.elements.CH_ratio"]
+    method = "direct"
+    values = [0.1, 1.0, 2.0]
+
+# Planet bulk S/H ratio set directly
+["delivery.elements.SH_ratio"]
+    method = "direct"
+    values = [0.216, 2.16, 21.6]
+
+# Hydrogen inventory set by arange
+["delivery.elements.H_oceans"]
+    method = "logspace"
+    start    = 1.0
+    stop     = 1000.0
+    count     = 4
