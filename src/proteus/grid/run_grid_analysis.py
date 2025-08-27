@@ -126,15 +126,16 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
     # Single ECDF Plots
     # The user needs to comment the parameters he didn't used in the grid/ add the ones non-listed here. Same for the outputs.
     param_settings_single = {
-        "orbit.semimajoraxis":        {"label": "Semi-major axis [AU]",                   "colormap": cm.plasma,   "log_scale": False},
-        "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
-        "escape.zephyrus.efficiency": {"label": r"Escape efficiency factor $\epsilon$",   "colormap": cm.spring,   "log_scale": False},
-        "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2)$ [IW]",                "colormap": cm.coolwarm, "log_scale": False},
-        "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.rainbow,  "log_scale": False},
-        "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
-        "delivery.elements.H_oceans": {"label": "[H] [Earth's oceans]",                   "colormap": cm.winter,   "log_scale": True},
-        #"delivery.elements.SH_ratio": {"label": "S/H ratio",                              "colormap": cm.autumn,   "log_scale": False},
-        #"escape.reservoir":           {"label": "Reservoir",                              "colormap": cm.viridis,  "log_scale": False}
+        # "orbit.semimajoraxis":        {"label": "Semi-major axis [AU]",                   "colormap": cm.plasma,   "log_scale": False},
+        # "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
+        # "escape.zephyrus.efficiency": {"label": r"Escape efficiency factor $\epsilon$",   "colormap": cm.spring,   "log_scale": False},
+        # "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2)$ [IW]",                "colormap": cm.coolwarm, "log_scale": False},
+        # "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.rainbow,  "log_scale": False},
+        # "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
+        # "delivery.elements.H_oceans": {"label": "[H] [Earth's oceans]",                   "colormap": cm.winter,   "log_scale": False},
+        # "delivery.elements.SH_ratio": {"label": "S/H ratio",                              "colormap": cm.autumn,   "log_scale": False},
+        # "escape.reservoir":           {"label": "Reservoir",                              "colormap": cm.viridis,  "log_scale": False}
+        "escape.module":           {"label": "Escape module",                              "colormap": cm.RdYlGn,  "log_scale": False}
         }
     output_settings_single = {
         'esc_rate_total':      {"label": "Total escape rate [kg/s]",                  "log_scale": True,  "scale": 1.0},
@@ -151,22 +152,23 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
     # ECDF Grid Plot
     # The user needs to comment the parameters he didn't used in the grid/ add the ones non-listed here. Same for the outputs.
     param_settings_grid = {
-        #"atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.rainbow,    "log_scale": False},
-        #"orbit.semimajoraxis":        {"label": "a [AU]",                                 "colormap": cm.plasma,   "log_scale": False},
-        "escape.zephyrus.efficiency": {"label": r"$\epsilon$",                            "colormap": cm.spring,   "log_scale": False},
-        #"escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
-        #"outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2 / IW)$",                "colormap": cm.coolwarm, "log_scale": False},
-        "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
-        "delivery.elements.H_oceans": {"label": "[H] [oceans]",                           "colormap": cm.winter,   "log_scale": True},
-        "delivery.elements.SH_ratio": {"label": "S/H ratio",                              "colormap": cm.autumn,   "log_scale": False},
-        "escape.reservoir":           {"label": "Reservoir",                              "colormap": cm.viridis,  "log_scale": False}
+        # "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.rainbow,    "log_scale": False},
+        # "orbit.semimajoraxis":        {"label": "a [AU]",                                 "colormap": cm.plasma,   "log_scale": False},
+        # "escape.zephyrus.efficiency": {"label": r"$\epsilon$",                            "colormap": cm.spring,   "log_scale": False},
+        # "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
+        # "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2 / IW)$",                "colormap": cm.coolwarm, "log_scale": False},
+        # "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
+        # "delivery.elements.H_oceans": {"label": "[H] [oceans]",                           "colormap": cm.winter,   "log_scale": True},
+        # "delivery.elements.SH_ratio": {"label": "S/H ratio",                              "colormap": cm.autumn,   "log_scale": True},
+        # "escape.reservoir":           {"label": "Reservoir",                              "colormap": cm.viridis,  "log_scale": False}
+        "escape.module":           {"label": "Escape module",                              "colormap": cm.RdYlGn,  "log_scale": False}
         }
     output_settings_grid = {
         'solidification_time': {"label": "Solidification [yr]",             "log_scale": True,  "scale": 1.0},
         'Phi_global':          {"label": "Melt fraction [%]",               "log_scale": False, "scale": 100.0},
         'P_surf':              {"label": r"P$_{surf}$ [bar]",          "log_scale": True,  "scale": 1.0},
         'esc_rate_total':      {"label": "Escape rate [kg/s]",              "log_scale": True,  "scale": 1.0},
-        'T_surf':              {"label": r"T$_{surf}$ [K]",                 "log_scale": False,  "scale": 1.0},
+        'T_surf':              {"label": r"T$_{surf}$ [$10^3$ K]",                 "log_scale": False,  "scale": 1.0/1000.0},
         'atm_kg_per_mol':      {"label": "MMW [g/mol]",                     "log_scale": False,  "scale": 1000.0},
         # 'M_planet':            {"label": r"M$_p$ [M$_\oplus$]",             "log_scale": False,  "scale": 1.0/5.9722e24},
         'H_kg_atm':            {"label": r"[H$_{atm}$] [kg]",               "log_scale": True,  "scale": 1.0},

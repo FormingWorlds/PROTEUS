@@ -15,7 +15,6 @@ import pandas as pd
 import seaborn as sns
 import toml
 
-
 ##### Functions for extracting grid data #####
 
 def load_grid_cases(grid_dir: Path):
@@ -330,8 +329,6 @@ def save_grid_data_to_csv(grid_name: str, cases_data: list, grid_parameters: dic
     csv_file = output_dir / f"{grid_name}_extracted_data.csv"
 
     # Write CSV file
-    num_cases = len(cases_data)
-
     with open(csv_file, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
 
@@ -769,14 +766,16 @@ def ecdf_single_plots(grid_params: dict, grouped_data: dict, param_settings: dic
                     norm = mpl.colors.LogNorm(vmin=min(tested_param), vmax=max(tested_param))
                 else:
                     norm = mpl.colors.Normalize(vmin=min(tested_param), vmax=max(tested_param))
-                color_func = lambda v: cmap(norm(v))
+                def color_func(v):
+                    return cmap(norm(v))
                 colorbar_needed = True
             else:
                 # Categorical colormap: map each unique value to one color
                 unique_vals = sorted(set(tested_param))
                 cats_cmap   = mpl.colormaps.get_cmap(cmap.name).resampled(len(unique_vals))
                 color_map   = {val: cats_cmap(i) for i, val in enumerate(unique_vals)}
-                color_func  = lambda val: color_map[val]
+                def color_func(val):
+                    return color_map[val]
                 colorbar_needed = False
 
             # Create a new figure & axes
@@ -871,18 +870,32 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
     # Loop through parameters (rows) and outputs (columns)
     for i, param_name in enumerate(param_names):
         tested_param = grid_params.get(param_name, [])
-        settings     = param_settings[param_name]
+        if not tested_param:
+            print(f"⚠️ Skipping {param_name} — no tested values found in grid_params")
+            continue
+
+        settings = param_settings[param_name]
+
         # Determine coloring
         is_numeric = np.issubdtype(np.array(tested_param).dtype, np.number)
         if is_numeric:
-            norm = mpl.colors.LogNorm(vmin=min(tested_param), vmax=max(tested_param)) if settings.get("log_scale", False) else mpl.colors.Normalize(vmin=min(tested_param), vmax=max(tested_param))
-            color_func = lambda v: settings["colormap"](norm(v))
+            vmin, vmax = min(tested_param), max(tested_param)
+            if vmin == vmax:
+                # avoid log/normalize errors with constant values
+                vmin, vmax = vmin - 1e-9, vmax + 1e-9
+            if settings.get("log_scale", False):
+                norm = mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
+            else:
+                norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+            def color_func(v):
+                return settings["colormap"](norm(v))
             colorbar_needed = True
         else:
             unique_vals = sorted(set(tested_param))
             cmap = mpl.colormaps.get_cmap(settings["colormap"]).resampled(len(unique_vals))
             color_map = {val: cmap(j) for j, val in enumerate(unique_vals)}
-            color_func = lambda v: color_map[v]
+            def color_func(v):
+                return color_map[v]
             colorbar_needed = False
 
         for j, output_name in enumerate(out_names):
@@ -900,6 +913,7 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
                     log_scale=out_settings.get("log_scale", False),
                     color=color_func(val),
                     linewidth=4,
+                    linestyle='-',
                     ax=ax
                 )
 

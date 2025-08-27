@@ -28,7 +28,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
     [params.out]
         path        = "scratch/escape_comparison_on_off"
         logging     = "INFO"
-        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 15      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 0      # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive

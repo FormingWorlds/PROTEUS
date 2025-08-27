@@ -13,8 +13,8 @@ ref_config = "input/planets/toi561b.toml"
 use_slurm = true
 
 # Execution limits
-max_jobs = 100       # maximum number of concurrent tasks (e.g. 500 on Habrok)
-max_days = 3        # maximum number of days to run (e.g. 1)
+max_jobs = 75       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 5        # maximum number of days to run (e.g. 1)
 max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 
 # Now define grid axes...
