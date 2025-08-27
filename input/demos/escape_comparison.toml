@@ -27,8 +27,8 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
     # output files
     [params.out]
         path        = "scratch/escape_comparison_on_off"
-        logging     = "INFO"
-        plot_mod    = 15      # Plotting frequency, 0: wait until completion | n: every n iterations
+        logging     = "DEBUG"
+        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 0      # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
@@ -169,7 +169,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
     tmp_minimum     = 0.5           # temperature floor on solver
     tmp_maximum     = 5000.0        # temperature ceiling on solver
 
-    module  = "agni"           # Which atmosphere module to use
+    module  = "janus"           # Which atmosphere module to use
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
@@ -202,7 +202,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
 [escape]
 
     module      = "zephyrus"    # Which escape module to use
-    reservoir   = "outgas"  # Escaping reservoir: "bulk", "outgas", "pxuv".
+    reservoir   = "bulk"  # Escaping reservoir: "bulk", "outgas", "pxuv".
 
 
     [escape.zephyrus]
