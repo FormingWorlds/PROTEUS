@@ -1,7 +1,7 @@
 # Config file for running a grid of forward models
 
 # Path to output folder where grid will be saved (relative to PROTEUS output folder)
-output = "scratch/toi561b_grid_sun_spectrum_updated"
+output = "scratch/toi561b_grid"
 
 # Make `output` a symbolic link to this absolute location. To disable: set to empty string.
 symlink = ""

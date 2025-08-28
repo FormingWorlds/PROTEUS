@@ -128,14 +128,14 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
     param_settings_single = {
         # "orbit.semimajoraxis":        {"label": "Semi-major axis [AU]",                   "colormap": cm.plasma,   "log_scale": False},
         # "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
-        # "escape.zephyrus.efficiency": {"label": r"Escape efficiency factor $\epsilon$",   "colormap": cm.spring,   "log_scale": False},
+        "escape.zephyrus.efficiency": {"label": r"Escape efficiency factor $\epsilon$",   "colormap": cm.spring,   "log_scale": False},
         # "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2)$ [IW]",                "colormap": cm.coolwarm, "log_scale": False},
         # "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.rainbow,  "log_scale": False},
-        # "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
-        # "delivery.elements.H_oceans": {"label": "[H] [Earth's oceans]",                   "colormap": cm.winter,   "log_scale": False},
-        # "delivery.elements.SH_ratio": {"label": "S/H ratio",                              "colormap": cm.autumn,   "log_scale": False},
+        "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
+        "delivery.elements.H_oceans": {"label": "[H] [Earth's oceans]",                   "colormap": cm.winter,   "log_scale": False},
+        "delivery.elements.SH_ratio": {"label": "S/H ratio",                              "colormap": cm.autumn,   "log_scale": False},
         # "escape.reservoir":           {"label": "Reservoir",                              "colormap": cm.viridis,  "log_scale": False}
-        "escape.module":           {"label": "Escape module",                              "colormap": cm.RdYlGn,  "log_scale": False}
+        # "escape.module":           {"label": "Escape module",                              "colormap": cm.RdYlGn,  "log_scale": False}
         }
     output_settings_single = {
         'esc_rate_total':      {"label": "Total escape rate [kg/s]",                  "log_scale": True,  "scale": 1.0},
@@ -154,14 +154,14 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
     param_settings_grid = {
         # "atmos_clim.module":          {"label": "Atmosphere module",                      "colormap": cm.rainbow,    "log_scale": False},
         # "orbit.semimajoraxis":        {"label": "a [AU]",                                 "colormap": cm.plasma,   "log_scale": False},
-        # "escape.zephyrus.efficiency": {"label": r"$\epsilon$",                            "colormap": cm.spring,   "log_scale": False},
+        "escape.zephyrus.efficiency": {"label": r"$\epsilon$",                            "colormap": cm.spring,   "log_scale": False},
         # "escape.zephyrus.Pxuv":       {"label": r"$P_{XUV}$ [bar]",                       "colormap": cm.cividis,  "log_scale": True},
         # "outgas.fO2_shift_IW":        {"label": r"$\log_{10}(fO_2 / IW)$",                "colormap": cm.coolwarm, "log_scale": False},
-        # "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
-        # "delivery.elements.H_oceans": {"label": "[H] [oceans]",                           "colormap": cm.winter,   "log_scale": True},
-        # "delivery.elements.SH_ratio": {"label": "S/H ratio",                              "colormap": cm.autumn,   "log_scale": True},
+        "delivery.elements.CH_ratio": {"label": "C/H ratio",                              "colormap": cm.copper,   "log_scale": False},
+        "delivery.elements.H_oceans": {"label": "[H] [oceans]",                           "colormap": cm.winter,   "log_scale": True},
+        "delivery.elements.SH_ratio": {"label": "S/H ratio",                              "colormap": cm.autumn,   "log_scale": True},
         # "escape.reservoir":           {"label": "Reservoir",                              "colormap": cm.viridis,  "log_scale": False}
-        "escape.module":           {"label": "Escape module",                              "colormap": cm.RdYlGn,  "log_scale": False}
+        # "escape.module":           {"label": "Escape module",                              "colormap": cm.RdYlGn,  "log_scale": False}
         }
     output_settings_grid = {
         'solidification_time': {"label": "Solidification [yr]",             "log_scale": True,  "scale": 1.0},

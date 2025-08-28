@@ -83,7 +83,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
         rot_period = 'none'     # rotation period [days]
         tracks  = "spada"       # evolution tracks: spada | baraffe
         age_now = 11            # [Gyr] from Lacedelli et al., 2022
-        spec    = "stellar_spectra/Named/sun.txt"   # stellar spectrum
+        spec    = "stellar_spectra/Named/toi561.txt"   # stellar spectrum
 
     [star.dummy]
         radius  = 0.843     # from Lacedelli et al., 2022 [R_sun]
