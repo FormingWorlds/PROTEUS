@@ -117,7 +117,7 @@ def update_rochelimit(hf_row:dict):
 
     hf_row["roche_limit"] = Rpl * (2 * Mst/Mpl)**(1.0/3)
 
-def update_energy_budget(hf_row:dict, dirs:dict, total_E_last):
+def update_energy_budget(hf_row:dict, dirs:dict, dt:float, total_E_last:float):
     '''
     Calculate total dissipated energy.
 
@@ -132,52 +132,55 @@ def update_energy_budget(hf_row:dict, dirs:dict, total_E_last):
             Current helpfile row
         dirs: dict
             Dictionary of directories.
+        dt : float
+            Time interval [yr]
+        total_E_last: float
+            Energy disipated by tides up till previous timestep.
     '''
 
-    from proteus.interior.spider import get_all_output_times, get_dict_surface_values_for_specific_time
-    current_time = get_all_output_times(dirs["output"])[-1]
+    # Time step
+    current_time = float(hf_row["Time"])
 
     if current_time <= 1:
         log.info("Skipping energy budget in first iterations")
         return 0
     else:
-        sim_time = get_all_output_times(dirs["output"])[-1]  # yr, as an integer value
-        last_sim_time = get_all_output_times(dirs["output"])[-2]  # yr, as an integer value
+        # Find previous_time from which to evolve orbit to current_time
+        previous_time = current_time - dt
 
+    # Define keys for data extraction
     keys_t = (('data', 'rho_s'), ('data', 'radius_s'), ('data', 'Htidal_s'))
 
-    # data_a = get_dict_surface_values_for_specific_time(keys_t, sim_time, indir=dirs["output"])
-    data_b = get_dict_surface_values_for_specific_time(keys_t, last_sim_time, indir=dirs["output"])
+    # Extract interior data
+    from proteus.interior.spider import get_dict_surface_values_for_specific_time
+    data_previous = get_dict_surface_values_for_specific_time(keys_t, previous_time, indir=dirs["output"])
+    area_current  = get_dict_surface_values_for_specific_time((('data', 'area_b'),), previous_time, indir=dirs["output"])[0]
 
-    area = get_dict_surface_values_for_specific_time((('data', 'area_b'),), last_sim_time, indir=dirs["output"])[0]
+    # Calculate power input by tides at current time
+    power_current = hf_row["F_tidal"] * area_current[0] # current power
 
-    data_a = hf_row["F_tidal"] * area[0] # current power
-    # data_b =
+    # Find the increase in energy dissipated by tides
+    if data_previous is not None and len(data_previous) > 0:
 
-    if data_b is not None and len(data_b) > 0:
-        #sep_a = np.abs(np.diff(data_a[1]))
-        #vol_a = 4/3 * np.pi * ((data_a[1][1:] + sep_a)**3 - (data_a[1][1:])**3)
+        # Calculate the volume of the interior shells
+        sep_b = np.abs(np.diff(data_previous[1]))
+        vol_b = 4/3 * np.pi * ((data_previous[1][1:] + sep_b)**3 - (data_previous[1][1:])**3)
 
-        #avg_rho_a = np.convolve(data_a[0], [0.5, 0.5], "valid")
-        #avg_Htide_a = np.convolve(data_a[2], [0.5, 0.5], "valid")
+        # Find the density and tidal power input in each shell
+        avg_rho_b = np.convolve(data_previous[0], [0.5, 0.5], "valid")
+        avg_Htide_b = np.convolve(data_previous[2], [0.5, 0.5], "valid")
 
-        sep_b = np.abs(np.diff(data_b[1]))
-        vol_b = 4/3 * np.pi * ((data_b[1][1:] + sep_b)**3 - (data_b[1][1:])**3)
+        # Calculate the power input by tides at previous time
+        power_previous = np.sum(vol_b * avg_rho_b * avg_Htide_b)
 
-        avg_rho_b = np.convolve(data_b[0], [0.5, 0.5], "valid")
-        avg_Htide_b = np.convolve(data_b[2], [0.5, 0.5], "valid")
+        # Calculate the mean power and energy input between current and previous time
+        hf_row["tot_tidal"] = power_current
+        mean_power = 0.5 * (power_current + power_previous)
+        mean_E = mean_power * dt * 31556926
 
-        #tidal_a = np.sum(vol_a * avg_rho_a * avg_Htide_a)
-        tidal_a = data_a
-        tidal_b = np.sum(vol_b * avg_rho_b * avg_Htide_b)
-
-        hf_row["tot_tidal"] = tidal_a
-        mean_power = 0.5 * (tidal_a + tidal_b)
-
-        mean_E = mean_power * (sim_time - last_sim_time) * 31556926
-
-        log.info(f"    Time : {last_sim_time:.2e} --> {sim_time:.2e} yr")
-        log.info(f"    Power: {tidal_b:.2e} --> {tidal_a:.2e} W")
+        # Update log file
+        log.info(f"    Time : {previous_time:.2e} --> {current_time:.2e} yr")
+        log.info(f"    Power: {power_previous:.2e} --> {power_current:.2e} W")
         log.info("Mean  Power  = %.1e W)"%mean_power)
         log.info("Mean  Energy = %.1e J)"%mean_E)
 
@@ -188,12 +191,28 @@ def update_energy_budget(hf_row:dict, dirs:dict, total_E_last):
         raise ValueError('Could not access interior data.')
 
 def log_interp(zz, xx, yy):
+    '''
+    Interpolate based on log scale value zz between xx and yy.
+    '''
     logz = np.log10(zz)
     logx = np.log10(xx)
     logy = np.log10(yy)
     return np.power(10.0, np.interp(logz, logx, logy))
 
 def shutdown_val(trigger:str, hf_row:dict, config:Config):
+    '''
+    Calculate the shutdown factor.
+
+    Parameters
+    -------------
+        trigger: str
+            parameter that triggered shutdown
+        hf_row: dict
+            Current helpfile row
+        config : dict
+            Dictionary of configuration options
+    '''
+    # Define critical, maximum, and current value of trigger parameter
     if trigger == "t":
         icrit = config.orbit.dummy.t_crit
         imax  = config.orbit.dummy.t_max
@@ -204,8 +223,10 @@ def shutdown_val(trigger:str, hf_row:dict, config:Config):
         imax  = config.orbit.dummy.E_max
         current = hf_row["tot_tid_E"]
 
+    # Define profile used for shutdown
     profile = config.orbit.dummy.shutdown
 
+    # Calculate shutdown factor
     if profile == "direct" or current > imax:
         shutdown = 0
 
@@ -218,18 +239,20 @@ def shutdown_val(trigger:str, hf_row:dict, config:Config):
     elif profile == "quadratic":
         shutdown = np.interp(current**2, [icrit**2, imax**2], [1, 0])
 
+    # Update log file
     log.info(f"Shutdown active: H_tide {config.orbit.dummy.H_tide:.2e} --> {shutdown*config.orbit.dummy.H_tide:.2e} W kg-1")
 
     return shutdown
 
 def run_orbit(hf_row:dict, hf_all:dict, config:Config, dirs:dict, interior_o:Interior_t):
-#def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     """Update parameters relating to orbital evolution and tides.
 
     Parameters
     ----------
         hf_row : dict
             Dictionary of current runtime variables
+        hf_all : dict
+            Dictionary of all runtime variables
         config : Config
             Model configuration.
         dirs: dict
@@ -270,64 +293,78 @@ def run_orbit(hf_row:dict, hf_all:dict, config:Config, dirs:dict, interior_o:Int
     # Call tides module
     if config.orbit.module == 'dummy':
 
-        shutdown = 1
+        # Set shutdown factor
+        shutdown = 1 # Default case without shutdown
 
         if config.orbit.dummy.shutdown:
+            # Past tidal energy values
             try:
-                total_E_last = hf_all["tot_tid_E"].iloc[-1]
-                #log.info(f"last hf_all: {total_E_last}")
-
                 energy_values = np.array(hf_all["tot_tid_E"])
-            except:
-                total_E_last = 0
+                total_E_last = energy_values[-1]
+            except (KeyError, IndexError):
                 energy_values = np.array([0])
+                total_E_last = 0
 
-            total_E = update_energy_budget(hf_row, dirs, total_E_last)
-            #log.info(f"hf_row: {hf_row["tot_tid_E"]}")
+
+            # Current tidal energy value
+            total_E = update_energy_budget(hf_row, dirs, interior_o.dt, total_E_last)
             hf_row["tot_tid_E"] = total_E
 
+            # Time shutdown condition
             t_crit = config.orbit.dummy.t_crit
             if t_crit == 0:
+                # shutdown dissabled
                 t_shutdown = 1
 
             else:
+                # Shutdown enabled
                 if hf_row["Time"] > t_crit:
                     trigger = "t"
                     log.info("Tidal shutdown active!")
+                    # Calculate shutdown factor based on scaling
                     t_shutdown = shutdown_val(trigger, hf_row, config)
                 else:
                     t_shutdown = 1
 
+            # Energy shutdown condition
             E_crit = config.orbit.dummy.E_crit
             if E_crit == 0:
+                # shutdown dissabled
                 E_shutdown = 1
+
+                # Critical energy is irrelevant
                 crit = None
 
             elif E_crit == 1:
-
+                # Find largest increase in dissipated energy
                 largest_step = np.max(np.diff(np.append(energy_values, total_E)))
+
+                # Update critical energy value
                 crit = config.orbit.dummy.E_max - 1.1 * largest_step
 
             else:
+                # Critical energy from config
                 crit = E_crit
 
             if crit:
+                # Shutdown enabled
                 if hf_row["tot_tid_E"] > crit:
                     trigger = "E"
                     log.info("Tidal shutdown active!")
+                    # Calculate shutdown factor based on scaling
                     E_shutdown = shutdown_val(trigger, hf_row, config)
                 else:
                     E_shutdown = 1
 
-
+            # Find most restrictive shutdown factor
             shutdown = min(t_shutdown, E_shutdown)
 
+            # Update log file
             log.info("Shutdown fraction = %.3e J)"%shutdown)
             log.info("Total Energy = %.1e J)"%hf_row["tot_tid_E"])
 
         from proteus.orbit.dummy import run_dummy_orbit
         hf_row["Imk2"] = run_dummy_orbit(config, interior_o, shutdown)
-        #hf_row["Imk2"] = run_dummy_orbit(config, interior_o)
 
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
