@@ -5,7 +5,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 [params]
     # output files
     [params.out]
-        path        = "physical_agni"
+        path        = "agni"
         logging     = "DEBUG"
         plot_mod    = 0      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended

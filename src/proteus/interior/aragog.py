@@ -339,7 +339,7 @@ class AragogRunner():
                   "T_magma": aragog_output.solution_top_temperature,
                   "Phi_global": aragog_output.melt_fraction_global,
                   "RF_depth": aragog_output.rheological_front,
-                  "F_int": aragog_output.total_heat_flux_basic[-1, -1]}
+                  "F_int": aragog_output.total_heat_flux_basic[-3, -1]} # node near top
 
         if output["Phi_global"] > (1.0 - 1.0e-8):
             output["M_mantle_liquid"] = output["M_mantle"]

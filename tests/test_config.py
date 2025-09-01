@@ -1,3 +1,4 @@
+# Test whether config parser works 
 from __future__ import annotations
 
 from itertools import chain

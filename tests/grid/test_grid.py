@@ -1,3 +1,4 @@
+# This test runs the PROTEUS grid functionality, for a small grid of simple models
 from __future__ import annotations
 
 import filecmp
