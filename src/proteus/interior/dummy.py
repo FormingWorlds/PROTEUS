@@ -16,11 +16,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-# Constants
-MANTLE_RHO  = 4.55e3 # kg m-3
-MANTLE_VISC = 1e10 # Pa s
-
-def calculate_simple_mantle_mass(radius:float, corefrac:float)->float:
+def calculate_simple_mantle_mass(radius:float, corefrac:float, density:float)->float:
     '''
     A very simple interior structure model.
 
@@ -33,7 +29,7 @@ def calculate_simple_mantle_mass(radius:float, corefrac:float)->float:
     mantle_volume = (4 * np.pi / 3) * (radius**3 - (radius*corefrac)**3)
 
     # Get mass [in SI units]
-    mantle_mass = mantle_volume * MANTLE_RHO
+    mantle_mass = mantle_volume * density
 
     log.debug("Total mantle mass = %.2e kg" % mantle_mass)
     if mantle_mass <= 0.0:
@@ -51,14 +47,14 @@ def run_dummy_int(config:Config, dirs:dict,
     output["F_int"] = hf_row["F_atm"]
 
     # Interior structure
-    output["M_mantle"] = calculate_simple_mantle_mass(hf_row["R_int"], config.struct.corefrac)
+    output["M_mantle"] = calculate_simple_mantle_mass(hf_row["R_int"],
+                                                      config.struct.corefrac,
+                                                      config.interior.dummy.mantle_rho)
 
     # Physical parameters
-    tmp_init = config.interior.dummy.ini_tmagma # Initial magma temperature
-    tmp_liq  = 2700.0    # Liquidus
-    tmp_sol  = 1700.0    # Solidus
-    cp_m     = 1792.0    # Mantle specific heat capacity, J kg-1 K-1
-    cp_c     = 880.0     # Core specific heat capacity, J kg-1 K-1
+    tmp_liq  = config.interior.dummy.mantle_tliq    # Liquidus
+    tmp_sol  = config.interior.dummy.mantle_tsol    # Solidus
+    tmp_init = config.interior.dummy.ini_tmagma     # Initial magma temperature
     area     = 4 * np.pi * hf_row["R_int"]**2
 
     # Get mantle melt fraction as a function of temperature
@@ -73,7 +69,8 @@ def run_dummy_int(config:Config, dirs:dict,
         return  (tmp-tmp_sol)/(tmp_liq-tmp_sol )
 
     # Interior heat capacity [J K-1]
-    cp_int = cp_m*output["M_mantle"] + cp_c*hf_row["M_core"]
+    cp_int = config.interior.dummy.mantle_cp*output["M_mantle"] \
+                + config.struct.core_heatcap*hf_row["M_core"]
 
     # Subtract tidal contribution to the total heat flux.
     #    This heat energy is generated only in the mantle, not in the core.
@@ -82,8 +79,8 @@ def run_dummy_int(config:Config, dirs:dict,
         tidal_flux = interior_o.tides[0] * output["M_mantle"] / area
     output["F_tidal"] = tidal_flux
 
-    # Radiogenic heating not included
-    output["F_radio"] = 0.0
+    # Radiogenic heating constant with time
+    output["F_radio"] = config.interior.dummy.H_radio * output["M_mantle"] / area
 
     # Total flux loss
     F_loss = output["F_int"] - output["F_tidal"] - output["F_radio"]
@@ -116,11 +113,11 @@ def run_dummy_int(config:Config, dirs:dict,
     # Store arrays
     interior_o.phi     = np.array([output["Phi_global"]])
     interior_o.mass    = np.array([output["M_mantle"]])
-    interior_o.visc    = np.array([MANTLE_VISC])
-    interior_o.density = np.array([MANTLE_RHO])
+    interior_o.visc    = np.array([1.0])    # placeholder to be updated elsewhere
+    interior_o.density = np.array([config.interior.dummy.mantle_rho])
     interior_o.temp    = np.array([output["T_magma"]])
     interior_o.pres    = np.array([hf_row["P_surf"]])
-    interior_o.radius  = np.array([hf_row["R_int"], R_core])
+    interior_o.radius  = np.array([R_core, hf_row["R_int"]])
 
     sim_time = hf_row["Time"] + dt
     return sim_time, output

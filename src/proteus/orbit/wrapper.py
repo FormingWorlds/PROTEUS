@@ -23,7 +23,7 @@ def init_orbit(handler:Proteus):
     if module == "None":
         return
 
-    log.info(f"Preparing orbit/tides model '{module}'")
+    log.info(f"Preparing tides model '{module}'")
     if not handler.config.interior.tidal_heat:
         log.warning("Tidal heating is disabled within interior configuration!")
 
@@ -36,6 +36,9 @@ def update_separation(hf_row:dict):
     Calculate time-averaged orbital separation on an elliptical path.
     https://physics.stackexchange.com/a/715749
 
+    Calculate periapsis distance on an elliptical path.
+    https://mathworld.wolfram.com/Periapsis.html
+
     Parameters
     -------------
         hf_row: dict
@@ -45,7 +48,16 @@ def update_separation(hf_row:dict):
     sma = hf_row["semimajorax"] # already in SI units
     ecc = hf_row["eccentricity"]
 
-    hf_row["separation"] = sma *  (1 + 0.5*ecc*ecc)
+    sma_sat = hf_row["semimajorax_sat"] # already in SI units
+
+    # Time-averaged separation
+    hf_row["separation"] = sma * (1 + 0.5*ecc*ecc)
+
+    # Periapsis distance around star
+    hf_row["perihelion"] = sma * (1 - ecc)
+
+    # Periapsis distance around planet (assuming circular orbiting satellite)
+    hf_row["perigee"]    = sma_sat
 
 def update_period(hf_row:dict):
     '''
@@ -153,14 +165,14 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
             hf_row["semimajorax"] = np.sqrt( Lbol / (4 * np.pi * S_0))
 
     # Inform user
-    log.info("    smaxis = %.5f AU"%(hf_row["semimajorax"]/AU))
-    log.info("    eccen. = %.5f   "%(hf_row["eccentricity"]))
+    log.info("    Orb SMaxis = %.5f AU"%(hf_row["semimajorax"]/AU))
+    log.info("    Orb eccent = %.5f   "%(hf_row["eccentricity"]))
 
     # Update orbital separation and period, from other variables above
     update_separation(hf_row)
     update_period(hf_row)
 
-    log.info("    period = %.3f days"%(hf_row["orbital_period"]/secs_per_day))
+    log.info("    Orb period = %.5f days"%(hf_row["orbital_period"]/secs_per_day))
 
     if config.orbit.satellite:
         # set by orbital evolution, based on tidal love number
@@ -181,8 +193,10 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     # Update Roche limit
     update_rochelimit(hf_row)
-    if hf_row["separation"] < hf_row["roche_limit"]:
+    if hf_row["separation"] <= hf_row["roche_limit"] + float(config.params.stop.disint.offset):
         log.warning("Planet is orbiting within the Roche limit of its star")
+    elif hf_row["perihelion"] <= hf_row["roche_limit"] + float(config.params.stop.disint.offset):
+        log.warning("Planet is (partially) orbiting within the Roche limit of its star")
 
     # Update Hill radius
     update_hillradius(hf_row)
@@ -199,15 +213,15 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
 
     elif config.orbit.module == 'lovepy':
         from proteus.orbit.lovepy import run_lovepy
-        hf_row["Imk2"] = run_lovepy(hf_row, dirs, interior_o,
-                                        config.orbit.lovepy.visc_thresh)
+        hf_row["Imk2"] = run_lovepy(hf_row, dirs, interior_o, config)
 
     else:
         hf_row["Imk2"] = 0.0
 
+    # Print info
+    if config.orbit.module is not None:
+        log.info("    Pla H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
+        log.info("    Pla Im(k2) = %.1e "%hf_row["Imk2"])
+
     # Call tides module for satellite, calculates heating rates and new love number
     # To Do
-
-    # Print info
-    log.info("    H_tide = %.1e W kg-1 (mean) "%np.mean(interior_o.tides))
-    log.info("    Im(k2) = %.1e "%hf_row["Imk2"])

@@ -46,8 +46,11 @@ class Lovepy:
     ----------
     visc_thresh: float
         Minimum viscosity required for heating [Pa s].
+    ncalc: int
+        Number of interpoltaed interior levels to use for solving tidal heating rates.
     """
     visc_thresh: float = field(default=1e9, validator=gt(0))
+    ncalc: int = field(default=1000, validator=gt(100))
 
 def ax_valid(instance, attribute, value):
     if value is None:
@@ -69,14 +72,14 @@ class Orbit:
     eccentricity: float
         Initial Eccentricity of the planet's orbit.
     instellation_method: str
-        Whether to use the semi-major axis ('sma') or instellation flux ('inst') to define the planet's orbit
+        Whether to use the semi-major axis ('sma') or instellation flux ('inst') to define the planet's initial orbit
     instellationflux: float
-        Instellation flux received from the planet in Earth units.
+        Instellation flux initially received by the planet in Earth units.
 
     zenith_angle: float
         Characteristic angle of incoming stellar radiation, relative to the zenith [deg].
     s0_factor: float
-        Scale factor applies to incoming stellar radiation to represent planetary rotation and heat redistribution.
+        Scale factor applies to incoming stellar radiation to represent planetary rotation.
 
     evolve: bool
         Allow the planet's orbit to evolve based on eccentricity tides?

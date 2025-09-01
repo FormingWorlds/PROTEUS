@@ -141,7 +141,7 @@ class AragogRunner():
             eos_method = 1, # 1: Adams-Williamson / 2: User defined
             surface_density = 4090, # AdamsWilliamsonEOS parameter [kg/m3]
             gravitational_acceleration = hf_row["gravity"], # [m/s-2]
-            adiabatic_bulk_modulus = config.interior.bulk_modulus, # AW-EOS parameter [Pa]
+            adiabatic_bulk_modulus = config.interior.aragog.bulk_modulus, # AW-EOS parameter [Pa]
             mass_coordinates = config.interior.aragog.mass_coordinates,
             )
 

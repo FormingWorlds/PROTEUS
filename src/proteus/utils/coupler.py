@@ -456,8 +456,8 @@ def GetHelpfileKeys():
             # Model tracking
             "Time", # [yr]
 
-            # Orbit semi-major axis and time-averaged separation
-            "semimajorax", "separation", # [m], [m],
+            # Orbit semi-major axis, time-averaged separation, perihelion, and perigee
+            "semimajorax", "separation", "perihelion", "perigee", # [m], [m], [m], [m],
 
             # Orbital period and eccentricity
             "orbital_period", "eccentricity", # [s], [1]
@@ -502,6 +502,9 @@ def GetHelpfileKeys():
 
             # Escape
             "esc_rate_total", "p_xuv", "R_xuv", # [kg s-1], [bar], [m]
+
+            # Surface liquid-ocean statistics
+            "ocean_areacov", "ocean_maxdepth", # [1], [m]
 
             # Atmospheric composition
             "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]

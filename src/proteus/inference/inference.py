@@ -65,10 +65,12 @@ def run_inference(config):
     # Create initial guess data through the requested method
     n_init = create_init(config)
 
-    # Maximum number of evaluations during inference (ignoring initial evaluations)
-    max_len = int(config["max_len"]) + max(n_init, config["n_workers"])
+    # Maximum number of evaluations during inference (offset by initial evaluations)
+    max_len = max(int(config["max_len"]),1) + n_init
 
+    print(" ")
     print(f"Starting optimisation with {config['n_workers']} workers")
+    print(f"Maximum step count is {max_len}, starting at {n_init}")
     t_0 = time.perf_counter()
 
     # Execute the parallel BO process
@@ -86,17 +88,19 @@ def run_inference(config):
     )
 
     t_1 = time.perf_counter()
-    print(f"This took: {(t_1 - t_0):.2f} seconds\n")
+    print(f"This took: {(t_1 - t_0):.2f} seconds")
+    print("-----------------------------------")
+    print(" ")
 
     # Print summary of true vs. simulated observables and inferred parameters
     print_results(D_final, logs, config, dirs["output"], n_init)
 
     # Save final data, logs, and timestamps for later analysis
-    print("Saving results...")
+    print(f"Saving results in {dirs['output']}")
     checkpoint(D_final, logs, Ts, dirs["output"])
 
     # Make plots
-    print("Making plots...")
+    print("Making plots")
     plotBO.plots_perf_timeline(logs, dirs["output"], n_init)
     plotBO.plots_perf_converge(D_final, Ts, n_init, dirs["output"])
     plotBO.plot_result_objective(D_final, config["parameters"], n_init, dirs["output"])
@@ -105,6 +109,7 @@ def run_inference(config):
                                     dirs["output"])
 
     # Done
+    print(" ")
     print(f"Inference completed at {datetime.now().astimezone().isoformat()}")
 
 

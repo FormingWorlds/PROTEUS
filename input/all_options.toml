@@ -224,7 +224,6 @@ version = "2.0"
     tidal_heat      = false         # enable tidal heat production
     rheo_phi_loc    = 0.6           # Centre of rheological transition
     rheo_phi_wid    = 0.2           # Width of rheological transition
-    bulk_modulus    = 260e9         # Bulk modulus [Pa]
 
     module = "aragog"       # Which interior module to use
 
