@@ -4,10 +4,10 @@ import os
 
 # Prevent workers from using each other's CPUs to avoid
 #     oversubscription and improve performance
-os.environ["OMP_NUM_THREADS"] = "1"         # noqa
-os.environ["MKL_NUM_THREADS"] = "1"         # noqa
-os.environ["OPENBLAS_NUM_THREADS"] = "1"    # noqa
-os.environ["NUMEXPR_NUM_THREADS"] = "1"     # noqa
+os.environ["OMP_NUM_THREADS"] = "1"  # noqa
+os.environ["MKL_NUM_THREADS"] = "1"  # noqa
+os.environ["OPENBLAS_NUM_THREADS"] = "1"  # noqa
+os.environ["NUMEXPR_NUM_THREADS"] = "1"  # noqa
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # noqa
 
 import shutil
@@ -281,19 +281,24 @@ cli.add_command(observe)
 # GridPROTEUS and BO inference scheme
 # ----------------
 
+
 @click.command()
 @config_option
 def grid(config_path: Path):
     """Run GridPROTEUS to generate a grid of forward models"""
     from proteus.grid.manage import grid_from_config
+
     grid_from_config(config_path)
+
 
 @click.command()
 @config_option
 def infer(config_path: Path):
     """Use Bayesian optimisation to infer parameters from observables"""
     from proteus.inference.inference import infer_from_config
+
     infer_from_config(config_path)
+
 
 cli.add_command(grid)
 cli.add_command(infer)
@@ -302,12 +307,16 @@ cli.add_command(infer)
 # installer
 # ----------------
 
+
 def resolve_fwl_data_dir() -> Path:
     """Return the FWL_DATA path (env or default)."""
     if "FWL_DATA" in os.environ:
         return Path(os.environ.get("FWL_DATA"))
     else:
-        raise EnvironmentError("Environment variable FWL_DATA has not been set!")
+        raise EnvironmentError(
+            "Environment variable FWL_DATA has not been set!"
+        )
+
 
 def append_to_shell_rc(var: str, value: str, shell: str = None) -> Path | None:
     """Append an export line to the appropriate shell rc file."""
@@ -425,6 +434,89 @@ def install_all(export_env: bool):
         )
 
     click.secho("🎉 PROTEUS installation completed!", fg="green")
+
+
+@cli.command()
+@click.option(
+    "--export-env",
+    is_flag=True,
+    help="Re-add FWL_DATA and RAD_DIR to shell rc.",
+)
+def update_all(export_env: bool):
+    """Update SOCRATES, AGNI, and refresh PROTEUS environment."""
+
+    root = Path.cwd()
+
+    # --- Step 1: FWL_DATA check ---
+    try:
+        fwl_data = resolve_fwl_data_dir()
+    except EnvironmentError:
+        click.secho(
+            "❌ FWL_DATA not set. Run `proteus install-all` first.", fg="red"
+        )
+        raise SystemExit(1)
+    click.secho(f"📂 Using FWL_DATA: {fwl_data}", fg="green")
+
+    # --- Step 2: Update SOCRATES ---
+    socrates_dir = root / "socrates"
+    if socrates_dir.exists():
+        click.secho("🌤️ Updating SOCRATES...", fg="blue")
+        try:
+            subprocess.run(["bash", "tools/get_socrates.sh"], check=True)
+            click.secho("✅ SOCRATES updated", fg="green")
+        except subprocess.CalledProcessError as e:
+            click.secho("❌ Failed to update SOCRATES", fg="red")
+            click.echo(e)
+    else:
+        click.secho(
+            "⚠️ SOCRATES not found. Run `proteus install-all`.", fg="yellow"
+        )
+
+    rad_dir = socrates_dir.resolve()
+    os.environ.setdefault("RAD_DIR", str(rad_dir))
+
+    # --- Step 3: Julia check ---
+    if not is_julia_installed():
+        click.secho("⚠️ Julia not found in PATH.", fg="yellow")
+        click.secho("   Cannot update AGNI without Julia.", fg="yellow")
+    else:
+        # --- Step 4: Update AGNI ---
+        agni_dir = root / "AGNI"
+        if agni_dir.exists():
+            click.secho("🧪 Updating AGNI...", fg="blue")
+            try:
+                subprocess.run(["git", "pull"], cwd=agni_dir, check=True)
+                subprocess.run(
+                    ["bash", "src/get_agni.sh"],
+                    cwd=agni_dir,
+                    env=os.environ,
+                    check=True,
+                )
+                click.secho("✅ AGNI updated", fg="green")
+            except subprocess.CalledProcessError as e:
+                click.secho("❌ Failed to update AGNI", fg="red")
+                click.echo(e)
+        else:
+            click.secho(
+                "⚠️ AGNI not found. Run `proteus install-all`.", fg="yellow"
+            )
+
+    # --- Step 5: Refresh environment exports ---
+    if export_env:
+        for var, value in {"FWL_DATA": fwl_data, "RAD_DIR": rad_dir}.items():
+            rc_file = append_to_shell_rc(var, str(value))
+            if rc_file:
+                click.secho(f"✅ Exported {var} to {rc_file}", fg="green")
+            else:
+                click.secho(
+                    f"ℹ️ {var} already exported or shell not recognized",
+                    fg="cyan",
+                )
+        click.secho(
+            "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
+        )
+
+    click.secho("🎉 PROTEUS update completed!", fg="green")
 
 
 if __name__ == "__main__":
