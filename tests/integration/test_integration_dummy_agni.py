@@ -33,7 +33,7 @@ def dummy_agni_run():
 
     return runner
 
-def test_dummy_agni_run(dummy_agni):
+def test_dummy_agni_run(dummy_agni_run):
     '''
     Test that the AGNI run completes without error and produces correct output
     '''
@@ -52,14 +52,14 @@ def test_dummy_agni_run(dummy_agni):
     assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
 
 @pytest.mark.dependency()
-def test_dummy_agni_archive(dummy_agni):
+def test_dummy_agni_archive(dummy_agni_run):
     '''
     Test that the archive files are able to be extracted and created again
 
     The archive files were automatically created during the run.
     '''
 
-    data_dir = dummy_agni.directories["output/data"]
+    data_dir = dummy_agni_run.directories["output/data"]
 
     # Check that the archive file exists
     assert os.path.isfile(os.path.join(data_dir, "data.tar"))
@@ -68,13 +68,13 @@ def test_dummy_agni_archive(dummy_agni):
     assert not os.path.isfile(os.path.join(data_dir, "0_atm.nc"))
 
     # Extract archives
-    dummy_agni.extract_archives()
+    dummy_agni_run.extract_archives()
 
     # Check that the extracted files now exist
     assert os.path.isfile(os.path.join(data_dir, "0_atm.nc"))
 
 @pytest.mark.dependency(depends=["test_dummy_agni_archive"])
-def test_dummy_agni_atmosphere(dummy_agni):
+def test_dummy_agni_atmosphere(dummy_agni_run):
     '''
     Test that the modelled profiles match the reference data
     '''
@@ -88,7 +88,7 @@ def test_dummy_agni_atmosphere(dummy_agni):
     out = read_atmosphere(_out, extra_keys=fields)
 
     # Compare to config
-    assert len(out["tmpl"]) == dummy_agni.config.atmos_clim.agni.num_levels+1
+    assert len(out["tmpl"]) == dummy_agni_run.config.atmos_clim.agni.num_levels+1
     assert np.all(out["Kzz"] >= 0)
     assert np.all(out["rl"][:-1] - out["rl"][1:] > 0)
 
@@ -101,13 +101,13 @@ def test_dummy_agni_atmosphere(dummy_agni):
                         err_msg=f"Key {key} does not match reference data")
 
 @pytest.mark.dependency(depends=["test_dummy_agni_archive"])
-def test_dummy_agni_offchem(dummy_agni):
+def test_dummy_agni_offchem(dummy_agni_run):
     '''
     Test that the offline chemistry is working and matches reference data
     '''
 
     # run offline chemistry and load result
-    df_out = dummy_agni.offline_chemistry()
+    df_out = dummy_agni_run.offline_chemistry()
 
     # Print result, captured if assertions fail
     print(df_out)
@@ -119,11 +119,11 @@ def test_dummy_agni_offchem(dummy_agni):
     assert np.all(df_out["H2O"].values >= 0)
 
     # load reference data
-    module = dummy_agni.config.atmos_chem.module
+    module = dummy_agni_run.config.atmos_chem.module
     df_ref = read_result(out_dir, module)
 
     # validate dataframes
     assert_frame_equal(df_out, df_ref, rtol=5e-3)
 
     # make plot
-    plot_chem_atmosphere(out_dir, module, plot_format=dummy_agni.config.params.out.plot_fmt)
+    plot_chem_atmosphere(out_dir, module, plot_format=dummy_agni_run.config.params.out.plot_fmt)
