@@ -30,6 +30,9 @@ log = logging.getLogger("fwl."+__name__)
 
 LOCKFILE_NAME="keepalive"
 AGNI_MIN_VERSION="1.5.0"
+HELPFILE_SEP="\t"
+HELPFILE_FMT="%.10e"
+HELPFILE_NME="runtime_helpfile.csv"
 
 def _get_current_time():
     '''
@@ -580,31 +583,51 @@ def ExtendHelpfile(current_hf:pd.DataFrame, new_row:dict):
     return pd.concat([current_hf, new_row], ignore_index=True)
 
 
-def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame):
+def WriteHelpfileToCSV(output_dir:str, current_hf:pd.DataFrame, append:dict={}):
     '''
-    Write helpfile to a CSV file
+    Write helpfile dataframe to a CSV file on the disk
+
+    Appends rather than writing a new file, if `append` dictionary is provided
+
+    Parameters
+    ----------
+    output_dir : str
+        Path to output folder.
+    current_hf : pd.DataFrame
+        Dataframe containing all the output data.
+    append : dict
+        Row to append.
     '''
-    log.debug("Writing helpfile to CSV file")
+
+    log.debug("Writing helpfile dataframe to disk")
 
     # check for invalid or missing keys
     difference = set(GetHelpfileKeys()) - set(current_hf.keys())
     if len(difference) > 0:
         raise Exception("There are mismatched keys in helpfile: "+str(difference))
 
-    # remove old file
-    fpath = os.path.join(output_dir , "runtime_helpfile.csv")
-    if os.path.exists(fpath):
-        os.remove(fpath)
+    # path to helpfile
+    fpath  = os.path.join(output_dir , HELPFILE_NME)
+    exists = os.path.isfile(fpath)
 
-    # write new file
-    current_hf.to_csv(fpath, index=False, sep="\t", float_format="%.10e")
+    # append to existing file
+    if exists and append:
+        hf_row = pd.DataFrame.from_dict({k:[v] for k,v in append.items()})
+        hf_row.to_csv(fpath, mode='a', header=False, index=False, sep=HELPFILE_SEP, float_format=HELPFILE_FMT)
+
+    # not appending, write to new file
+    else:
+        if exists:
+            os.remove(fpath)
+        current_hf.to_csv(fpath, mode='w', header=False, index=False, sep=HELPFILE_SEP, float_format=HELPFILE_FMT)
+
     return fpath
 
 def ReadHelpfileFromCSV(output_dir:str):
     '''
     Read helpfile from disk CSV file to DataFrame
     '''
-    fpath = os.path.join(output_dir , "runtime_helpfile.csv")
+    fpath = os.path.join(output_dir , HELPFILE_NME)
     if not os.path.exists(fpath):
         raise Exception("Cannot find helpfile at '%s'"%fpath)
     return pd.read_csv(fpath, sep=r"\s+")
