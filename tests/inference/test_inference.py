@@ -1,3 +1,4 @@
+# This test runs the BO inference scheme with PROTEUS for a few evaluations
 from __future__ import annotations
 
 import filecmp
