@@ -1,5 +1,8 @@
 # Config file for inference scheme
 
+# Set seed for reproducibility
+seed = 2
+
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
 output = "infer_demo/"
 
@@ -7,15 +10,16 @@ output = "infer_demo/"
 ref_config = "input/demos/dummy.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
-init_samps = 'none'         # Number of random samples if starting from scratch.
-init_grid  = 'grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
+init_samps = '2'         # Number of random samples if starting from scratch.
+init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Parameters for Bayesian optimisation
-n_workers  = 7       # Number of parallel workers
-kernel     = "RBF"   # Kernel type for GP
-max_len    = 20      # Maximum number of evaluations
-n_restarts = 10      # GP optimization restarts
-n_samples  = 1000    # Raw samples for acquisition optimization
+n_workers  = 7        # Number of parallel workers
+kernel     = "MAT"    # Kernel type for GP, "RBF" | "MAT"
+acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI"
+n_steps    = 30       # Total number of evaluations (i.e. BO steps)
+n_restarts = 10       # GP optimization restarts
+n_samples  = 1000     # Raw samples for acquisition optimization
 
 # Parameters to optimize (with bounds)
 [parameters]

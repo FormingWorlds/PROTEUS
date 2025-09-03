@@ -23,6 +23,8 @@ from multiprocessing import Manager, Process
 
 import torch
 from scipy.stats.qmc import Halton
+import numpy
+from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scaled_prior
 
 from proteus.inference.BO import BO_step
 from proteus.utils.coupler import get_proteus_directories
@@ -58,12 +60,13 @@ def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
         pickle.dump(list(Ts), f_ts)
 
 
-def init_locs(n_workers: int, D: dict) -> torch.Tensor:
+def init_locs(n_workers: int, D: dict, seed:int) -> torch.Tensor:
     """Generate initial sample locations using a Halton sequence.
 
     Args:
         n_workers (int): Number of initial points to generate.
         D (dict): Shared dict with key 'X' to infer problem dimension.
+        seed (int): Seed for reproducibility.
 
     Returns:
         torch.Tensor: Tensor of shape (n_workers, d) in [0,1]^d for initial sampling.
@@ -72,7 +75,7 @@ def init_locs(n_workers: int, D: dict) -> torch.Tensor:
     d = D["X"].shape[-1]
 
     # Create a scrambled Halton sampler
-    sampler = Halton(d=d, scramble=True)
+    sampler = Halton(d=d, rng=numpy.random.default_rng(seed), scramble=True)
     samples = sampler.random(n=n_workers)
 
     # Convert to Torch tensor
@@ -87,6 +90,7 @@ def worker(
     T,
     T0: float,
     x_init: torch.Tensor,
+    n_init:int,
     lock,
     max_len: int,
     worker_id: int,
@@ -118,15 +122,12 @@ def worker(
     """
     task_id = 0
 
-    # Seed PyTorch RNG for reproducibility per process
-    torch.manual_seed(os.getpid())
-
     while True:
         # Check if we've reached the maximum number of evaluations
-        with lock:
-            current_X = D_shared["X"]
+
+        current_X = D_shared["X"]
         if len(current_X) >= max_len:
-            print(f"Step {len(current_X):4d}, worker {worker_id:03d} exiting")
+            print(f"Worker {worker_id:03d} exiting")
             break
 
         # For the first iteration, use provided initial point
@@ -145,13 +146,17 @@ def worker(
             lock=lock,
             worker_id=worker_id
         )
+
         t_end = time.perf_counter()
 
         # Acquire lock to update shared structures and persist state
         with lock:
+
             # Append new data to shared X and Y
-            D_shared["X"] = torch.cat((D_shared["X"], x_new), dim=0)
-            D_shared["Y"] = torch.cat((D_shared["Y"], y_new), dim=0)
+            X = torch.cat((D_shared["X"], x_new), dim=0)
+            D_shared["X"] = X
+            Y = torch.cat((D_shared["Y"], y_new), dim=0)
+            D_shared["Y"] = Y
 
             # Record end timestamp
             T.append(t_end)
@@ -173,21 +178,30 @@ def worker(
                 "y_value": float(y_new),
             })
 
-            # Compute relative timestamps and checkpoint
-            Ts = [t - T0 for t in list(T)]
-            checkpoint(D_shared, log_list, Ts, output_dir)
+        # Compute relative timestamps and checkpoint
+            D_snap = dict(D_shared)
+            log_snap = list(log_list)
+            Ts_snap = [t - T0 for t in list(T)]
+
+        checkpoint(D_snap, log_snap, Ts_snap, output_dir)
+
+        step = len(X) - n_init
+        current_best = Y.max().item()
+        print(f"Step {step:4d}, best objective = {current_best:.5f}")
 
         task_id += 1
 
 
 def parallel_process(
     objective_builder,
-    kernel,
+    kernel: str,
+    acqf: str,
     n_restarts: int,
     n_samples: int,
     n_workers: int,
     max_len: int,
     output: str,
+    seed: int,
     ref_config,
     observables,
     parameters
@@ -199,12 +213,14 @@ def parallel_process(
 
     Args:
         objective_builder (callable): Factory to build per-worker objective f.
-        kernel: Covariance kernel for the Gaussian process.
+        kernel (str): Covariance kernel for the Gaussian process.
+        acqf (str): Acquisition function for BO step.
         n_restarts (int): Number of restarts in acquisition optimization.
         n_samples (int): Number of raw samples for acquisition optimization.
         n_workers (int): Number of parallel worker processes.
-        max_len (int): Target total number of evaluations.
+        max_len (int): Target total number of evaluations, including initial data.
         output (str): Output directory for checkpoints and plots.
+        seed (int): Seed for random state, ensuring reproducibility
         ref_config: Reference config to pass to objective_builder.
         observables: List or dict of target observable values.
         parameters: Dict of parameter bounds for inference.
@@ -222,9 +238,23 @@ def parallel_process(
         ref_config=ref_config,
         output=output,
     )
+
+    # Build kernel
+    d = len(parameters)
+    if kernel == "RBF":
+        kernel = get_covar_module_with_dim_scaled_prior(ard_num_dims=d,
+                                                        use_rbf_kernel=True)
+    elif kernel == "MAT":
+        # defaults to Matern-5/2
+        kernel = get_covar_module_with_dim_scaled_prior(ard_num_dims=d,
+                                                        use_rbf_kernel=False)
+    else:
+        raise ValueError("Unknown kernel, choices are RBF or MAT")
+
     process_fun = partial(
         BO_step,
         k=kernel,
+        acqf=acqf,
         n_restarts=n_restarts,
         n_samples=n_samples
     )
@@ -252,12 +282,15 @@ def parallel_process(
     log_list = mgr.list([None] * n_init) # no logs from init data
 
     # Generate initial candidate locations and busy-map
-    X_init = init_locs(n_workers, D_shared)
+    X_init = init_locs(n_workers, D_shared, seed)
     B = mgr.dict()
 
     # Shared list for end times
     T = mgr.list()
     T0 = time.perf_counter()
+
+    # Set up step constraint
+    max_steps = max_len - (n_workers -1)
 
     # Spawn worker processes
     procs = []
@@ -275,8 +308,9 @@ def parallel_process(
                 T,
                 T0,
                 x0,
+                n_init,
                 lock,
-                max_len,
+                max_steps,
                 wid,
                 log_list,
                 output_abspath
