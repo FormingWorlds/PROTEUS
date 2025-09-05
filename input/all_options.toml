@@ -91,7 +91,7 @@ version = "2.0"
 
         # disintegration
         [params.stop.disint]
-            enabled   = true
+            enabled   = false
 
             roche_enabled = true
             offset_roche  = 0 # correction to calculated Roche limit [m]
