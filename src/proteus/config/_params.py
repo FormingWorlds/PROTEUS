@@ -211,7 +211,7 @@ class StopDisint:
     Attributes
     ----------
     enabled: bool
-        Enable criteria if True
+        Enable all planet disintegration criteria if True
     roche_enabled: bool
         Disable Roche limit criterion
     offset_roche: float
