@@ -466,7 +466,7 @@ def GetHelpfileKeys():
             "semimajorax_sat", "M_sat", "plan_sat_am", # [m], [kg], [kg m2 s-1],
 
             # Day length
-            "axial_period", # [s]
+            "axial_period", "breakup_period", # [s], [s]
 
             # Dry interior radius (calculated) and mass (from config)
             "R_int", "M_int", # [m], [kg]
