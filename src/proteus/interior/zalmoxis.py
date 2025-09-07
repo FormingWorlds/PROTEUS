@@ -5,6 +5,7 @@ import logging
 import os
 
 import numpy as np
+from zalmoxis.zalmoxis import main
 
 from proteus.config import Config
 from proteus.utils.constants import (
@@ -13,7 +14,6 @@ from proteus.utils.constants import (
     element_list,
 )
 from proteus.utils.data import get_Seager_EOS
-from zalmoxis.zalmoxis import main
 
 # Set up logging
 logger = logging.getLogger("fwl."+__name__)
@@ -72,7 +72,8 @@ def load_zalmoxis_configuration(config:Config, hf_row:dict):
         "target_surface_pressure": config.struct.zalmoxis.target_surface_pressure,
         "pressure_tolerance": config.struct.zalmoxis.pressure_tolerance,
         "max_iterations_pressure": config.struct.zalmoxis.max_iterations_pressure,
-        "pressure_adjustment_factor": config.struct.zalmoxis.pressure_adjustment_factor
+        "pressure_adjustment_factor": config.struct.zalmoxis.pressure_adjustment_factor,
+        "verbose": config.struct.zalmoxis.verbose
     }
 
 def load_zalmoxis_material_dictionaries():
@@ -107,6 +108,10 @@ def zalmoxis_solver(config:Config, outdir: str, hf_row:dict):
     mass_enclosed = model_results["mass_enclosed"]
     cmb_mass = model_results["cmb_mass"]
     core_mantle_mass = model_results["core_mantle_mass"]
+    converged = model_results["converged"]
+    converged_pressure = model_results["converged_pressure"]
+    converged_density = model_results["converged_density"]
+    converged_mass = model_results["converged_mass"]
 
     # Extract the index of the core-mantle boundary mass in the mass array
     cmb_index = np.argmax(mass_enclosed >= cmb_mass)
@@ -132,6 +137,7 @@ def zalmoxis_solver(config:Config, outdir: str, hf_row:dict):
     logger.info(f"Core-mantle boundary mass fraction: {mass_enclosed[cmb_index] / mass_enclosed[-1]:.3f}")
     logger.info(f"Core radius fraction: {cmb_radius / planet_radius:.4f}")
     logger.info(f"Inner mantle radius fraction: {radii[np.argmax(mass_enclosed >= core_mantle_mass)] / planet_radius:.4f}")
+    logger.info(f"Overall Convergence Status: {converged} with Pressure: {converged_pressure}, Density: {converged_density}, Mass: {converged_mass}")
 
     # Update the surface radius, interior radius, and mass in the hf_row
     hf_row["R_int"] = planet_radius

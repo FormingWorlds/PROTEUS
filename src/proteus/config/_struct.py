@@ -115,6 +115,8 @@ class Zalmoxis:
     max_iterations_pressure: int      = field(default=200, validator=ge(1))
     pressure_adjustment_factor: float = field(default=1.1, validator=ge(0))
 
+    verbose: bool                   = field(default=False)
+
 @define
 class Struct:
     """Planetary structure (mass, radius).
