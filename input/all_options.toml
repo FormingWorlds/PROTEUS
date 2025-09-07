@@ -89,6 +89,16 @@ version = "2.0"
             enabled = true
             p_stop  = 5.0        # Stop surface pressure is less than this value
 
+        # disintegration
+        [params.stop.disint]
+            enabled   = false
+
+            roche_enabled = true
+            offset_roche  = 0 # correction to calculated Roche limit [m]
+
+            spin_enabled  = true
+            offset_spin   = 0 # correction to calculated Breakup period [s]
+
 
 # ----------------------------------------------------
 # Star

@@ -211,12 +211,23 @@ class StopDisint:
     Attributes
     ----------
     enabled: bool
-        Enable criteria if True
-    offset: float
+        Enable all planet disintegration criteria if True
+    roche_enabled: bool
+        Disable Roche limit criterion
+    offset_roche: float
         Absolute correction (+/-) to (increase/decrease) calculated Roche limit [m].
+    spin_enabled: bool
+        Disable Breakup period criterion
+    offset_spin: float
+        Absolute correction (+/-) to (increase/decrease) calculated Breakup period [s].
     """
-    enabled: bool   = field(default=False)
-    offset: float   = field(default=0)
+    enabled: bool       = field(default=False)
+
+    roche_enabled: bool = field(default=True)
+    offset_roche: float = field(default=0)
+
+    spin_enabled: bool = field(default=True)
+    offset_spin: float  = field(default=0)
 
 @define
 class StopParams:
