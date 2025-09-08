@@ -486,6 +486,8 @@ def update_all(export_env: bool):
             click.secho("🧪 Updating AGNI...", fg="blue")
             try:
                 subprocess.run(["git", "pull"], cwd=agni_dir, check=True)
+                combined_path = os.path.join(agni_dir, 'src')
+                print(f"{os.path.isdir(combined_path) = }")
                 subprocess.run(
                     ["bash", "src/get_agni.sh"],
                     cwd=agni_dir,
