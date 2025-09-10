@@ -101,10 +101,10 @@ class Zalmoxis:
     mantle_mass_fraction: float  = field(default=0, validator=(ge(0), lt(1)))
     weight_iron_frac: float           = field(default=0.325, validator=(gt(0), lt(1)))
 
-    num_levels: int                   = field(default=100)
+    num_levels: int                   = field(default=150)
 
-    max_iterations_outer: int         = field(default=20, validator=ge(1))
-    tolerance_outer: float            = field(default=1e-3, validator=ge(0))
+    max_iterations_outer: int         = field(default=100, validator=ge(1))
+    tolerance_outer: float            = field(default=3e-3, validator=ge(0))
     max_iterations_inner: int         = field(default=100, validator=ge(1))
     tolerance_inner: float            = field(default=1e-4, validator=ge(0))
     relative_tolerance: float         = field(default=1e-5, validator=ge(0))
