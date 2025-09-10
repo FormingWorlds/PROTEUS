@@ -165,7 +165,7 @@ version = "2.0"
         relative_tolerance          = 1e-5      # relative tolerance for solve_ivp
         absolute_tolerance          = 1e-6      # absolute tolerance for solve_ivp
         target_surface_pressure     = 101325    # target surface pressure
-        pressure_tolerance          = 1e9      # tolerance surface pressure
+        pressure_tolerance          = 1e9       # tolerance surface pressure
         max_iterations_pressure     = 200       # max. iterations for the innermost loop
         pressure_adjustment_factor  = 1.1       # factor for adjusting the pressure in the innermost loop
 
