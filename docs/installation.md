@@ -28,7 +28,8 @@ Python is most easily obtained and managed using either [miniconda](https://www.
 ```console
 mkdir -p ~/miniconda3
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+bash ~/miniconda3/miniconda.sh 
+# choose an install folder where you have plenty of disk space!
 rm ~/miniconda3/miniconda.sh
 ```
 or [miniforge](https://github.com/conda-forge/miniforge).
