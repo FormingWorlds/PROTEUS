@@ -79,6 +79,11 @@ you will have the environment variables FWL_DATA, RAD_DIR set appropriately as y
 (e.g. ~/.bashrc) has been updated during the install process. However, you still need to enter 
 `conda activate proteus`.
 
+### Updating PROTEUS
+
+1. `conda activate proteus` (if not already activated)
+2. `proteus update-all` 
+
 ## Developer install
 
 1. Create and set environment variables
