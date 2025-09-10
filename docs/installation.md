@@ -54,10 +54,9 @@ curl -fsSL https://install.julialang.org | sh
 1. conda either through miniconda or miniforge (see above). However, currently there seems to be a 
 conflict between Julia and Conda versions of HDF5 and/or NetCDF libaries when using miniforge.
 2. git. If you don't have git, you can install it through conda: `conda install git`.
-3. wget. If you don't have wget, you can install it through conda: `conda install wget`. 
-4. Julia installation (see above)
-5. 20 GB of disk space; Conda (through miniconda) can take 9 GB, Julia 2 GB and a few GB for PROTEUS.
-6. 30 minutes of your time (mostly waiting)
+3. Julia installation (see above)
+4. 20 GB of disk space; Conda (through miniconda) can take 9 GB, Julia 2 GB and a few GB for PROTEUS.
+5. 30 minutes of your time (mostly waiting)
 
 ### Steps
 
