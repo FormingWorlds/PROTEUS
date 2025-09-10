@@ -109,6 +109,7 @@ you will have the environment variables FWL_DATA, RAD_DIR set appropriately as y
 
     ```console
     conda create -n proteus python=3.12
+    conda activate proteus
     ```
 
 4. Radiative transfer code (**SOCRATES**)
