@@ -352,6 +352,26 @@ def is_julia_installed() -> bool:
     "--export-env", is_flag=True, help="Add FWL_DATA and RAD_DIR to shell rc."
 )
 def install_all(export_env: bool):
+    # --- Step 0: Check available disk space---
+    available_disk_space_in_B = shutil.disk_usage(".").free
+    G = 1e9
+    available_disk_space_in_GB = available_disk_space_in_B / G
+    required_disk_space_in_GB = 20
+    if not available_disk_space_in_GB > required_disk_space_in_GB:
+        click.secho(
+            f"⚠️ You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.",
+            fg="yellow",
+        )
+        click.secho(
+            f"   To be safe, make sure you have at least {required_disk_space_in_GB:d} GB of free disk space.",
+            fg="yellow",
+        )
+        click.secho(
+            "❌ Aborting installation — 'proteus install-all'.",
+            fg="red",
+        )
+        raise SystemExit(1)
+
     """Install SOCRATES, AGNI, and configure PROTEUS environment."""
 
     # --- Step 1: FWL_DATA directory ---
@@ -443,6 +463,25 @@ def install_all(export_env: bool):
     help="Re-add FWL_DATA and RAD_DIR to shell rc.",
 )
 def update_all(export_env: bool):
+    # --- Step 0: Check available disk space---
+    available_disk_space_in_B = shutil.disk_usage(".").free
+    G = 1e9
+    available_disk_space_in_GB = available_disk_space_in_B / G
+    required_disk_space_in_GB = 5
+    if not available_disk_space_in_GB > required_disk_space_in_GB:
+        click.secho(
+            f"⚠️ You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.",
+            fg="yellow",
+        )
+        click.secho(
+            f"   To be safe, make sure you have at least {required_disk_space_in_GB:d} GB of free disk space.",
+            fg="yellow",
+        )
+        click.secho(
+            "❌ Aborting installation — 'proteus update-all'.",
+            fg="red",
+        )
+        raise SystemExit(1)
     """Update SOCRATES, AGNI, and refresh PROTEUS environment."""
 
     root = Path.cwd()
@@ -486,7 +525,7 @@ def update_all(export_env: bool):
             click.secho("🧪 Updating AGNI...", fg="blue")
             try:
                 subprocess.run(["git", "pull"], cwd=agni_dir, check=True)
-                combined_path = os.path.join(agni_dir, 'src')
+                combined_path = os.path.join(agni_dir, "src")
                 print(f"{os.path.isdir(combined_path) = }")
                 subprocess.run(
                     ["bash", "src/get_agni.sh"],
