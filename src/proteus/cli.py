@@ -25,9 +25,7 @@ config_option = click.option(
     "-c",
     "--config",
     "config_path",
-    type=click.Path(
-        exists=True, dir_okay=False, path_type=Path, resolve_path=True
-    ),
+    type=click.Path(exists=True, dir_okay=False, path_type=Path, resolve_path=True),
     help="Path to config file",
     required=True,
 )
@@ -130,9 +128,7 @@ def get():
 
 
 @click.command()
-@click.option(
-    "-n", "--name", "name", type=str, help="Name of spectral file group"
-)
+@click.option("-n", "--name", "name", type=str, help="Name of spectral file group")
 @click.option("-b", "--bands", "bands", type=str, help="Number of bands")
 def spectral(**kwargs):
     """Get spectral files
@@ -313,9 +309,7 @@ def resolve_fwl_data_dir() -> Path:
     if "FWL_DATA" in os.environ:
         return Path(os.environ.get("FWL_DATA"))
     else:
-        raise EnvironmentError(
-            "Environment variable FWL_DATA has not been set!"
-        )
+        raise EnvironmentError("Environment variable FWL_DATA has not been set!")
 
 
 def append_to_shell_rc(var: str, value: str, shell: str = None) -> Path | None:
@@ -356,7 +350,7 @@ def install_all(export_env: bool):
     available_disk_space_in_B = shutil.disk_usage(".").free
     G = 1e9
     available_disk_space_in_GB = available_disk_space_in_B / G
-    required_disk_space_in_GB = 20
+    required_disk_space_in_GB = 10
     if not available_disk_space_in_GB > required_disk_space_in_GB:
         click.secho(
             f"⚠️ You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.",
@@ -425,9 +419,7 @@ def install_all(export_env: bool):
                 ["git", "clone", "https://github.com/nichollsh/AGNI.git"],
                 check=True,
             )
-            subprocess.run(
-                ["bash", "-c", 'echo "PATH seen by get_agni.sh: $PATH"']
-            )
+            subprocess.run(["bash", "-c", 'echo "PATH seen by get_agni.sh: $PATH"'])
             subprocess.run(
                 ["bash", "src/get_agni.sh"], cwd=agni_dir, env=env, check=True
             )
@@ -449,9 +441,7 @@ def install_all(export_env: bool):
                     f"ℹ️ {var} already exported or shell not recognized",
                     fg="cyan",
                 )
-        click.secho(
-            "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
-        )
+        click.secho("🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow")
 
     click.secho("🎉 PROTEUS installation completed!", fg="green")
 
@@ -490,9 +480,7 @@ def update_all(export_env: bool):
     try:
         fwl_data = resolve_fwl_data_dir()
     except EnvironmentError:
-        click.secho(
-            "❌ FWL_DATA not set. Run `proteus install-all` first.", fg="red"
-        )
+        click.secho("❌ FWL_DATA not set. Run `proteus install-all` first.", fg="red")
         raise SystemExit(1)
     click.secho(f"📂 Using FWL_DATA: {fwl_data}", fg="green")
 
@@ -507,9 +495,7 @@ def update_all(export_env: bool):
             click.secho("❌ Failed to update SOCRATES", fg="red")
             click.echo(e)
     else:
-        click.secho(
-            "⚠️ SOCRATES not found. Run `proteus install-all`.", fg="yellow"
-        )
+        click.secho("⚠️ SOCRATES not found. Run `proteus install-all`.", fg="yellow")
 
     rad_dir = socrates_dir.resolve()
     os.environ.setdefault("RAD_DIR", str(rad_dir))
@@ -538,9 +524,7 @@ def update_all(export_env: bool):
                 click.secho("❌ Failed to update AGNI", fg="red")
                 click.echo(e)
         else:
-            click.secho(
-                "⚠️ AGNI not found. Run `proteus install-all`.", fg="yellow"
-            )
+            click.secho("⚠️ AGNI not found. Run `proteus install-all`.", fg="yellow")
 
     # --- Step 5: Refresh environment exports ---
     if export_env:
@@ -553,9 +537,7 @@ def update_all(export_env: bool):
                     f"ℹ️ {var} already exported or shell not recognized",
                     fg="cyan",
                 )
-        click.secho(
-            "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
-        )
+        click.secho("🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow")
 
     click.secho("🎉 PROTEUS update completed!", fg="green")
 
