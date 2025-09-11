@@ -38,8 +38,6 @@ curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Mi
 bash Miniforge3-$(uname)-$(uname -m).sh
 ```
 
-Alternatively, you can download Python from the official website and use [pyenv](https://github.com/pyenv/pyenv).
-
 ## Install Julia
 
 Some of the PROTEUS modules are written in Julia, which is broadly similar to Python.

@@ -105,8 +105,7 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     rm /dataserver/users/formingworlds/<username>/miniforge3/miniforge.sh
     ``` 
     For both Miniconda and conda-forge follow the instructions wrt updating your `~/.shellrc` file.
-   
-
+    
 ## Queuing Manager: Condormaster
 
 - To use the queuing manager on the Kapteyn cluster, you first need to SSH into Norma1 or Norma2.
