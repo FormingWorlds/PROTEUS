@@ -61,7 +61,51 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     source "$HOME/.bashrc"
     ```
 
-5. You can now follow the usual installation steps [here](installation.html).
+5. You can now follow the usual installation steps [here](installation.html), but, since your home folder is capped
+   at 9GB, you need to install Julia and miniconda or conda-forge in "/dataserver/users/formingworlds/<username>".
+    ### Julia considerations
+    If you have already installed Julia in your home folder, you could remove that through `rm -rf ~/.julia`.
+ 
+    If you install Julia through Juliaup this involves:
+    ```console
+    export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
+    curl -fsSL https://install.julialang.org | sh
+    ```
+
+    To also make sure that the Julia ecosystem, such as Julia packages, are also not installed in `$HOME`, add `JULIA_DEPOT_PATH` to your `~/.shellrc`, e.g. `~/.bashrc`:
+    ```console
+    export JULIA_DEPOT_PATH=/dataserver/users/formingworlds/<username>/.julia
+    ```
+    Setting only this variable will be sufficient if you have not installed Julia through Juliaup.
+    In any case, it is best to have both of these Julia environment variables exported when you log in,
+    so please add this to your `~/.shellrc`, e.g. `~/.bashrc`:
+    ```console
+    export JULIAUP_HOME=/dataserver/users/formingworlds/<username>/.juliaup
+    export JULIA_DEPOT_PATH="/dataserver/users/formingworlds/<username>/.julia"
+    ```
+  
+    ### Miniconda and conda-forge considerations
+    When installing miniconda or conda-forge, make sure you do not choose the default path, which is always your home folder. Adjust it to `/dataserver/users/formingworlds/<username>`.
+    Alternatively, you can set default paths upfront for miniconda:
+    ```console
+    mkdir -p /dataserver/users/formingworlds/<username>/miniconda3
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O 
+        /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
+    bash /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh -b -u -p 
+        /dataserver/users/formingworlds/<username>/miniconda3
+    rm /dataserver/users/formingworlds/<username>/miniconda3/miniconda.sh
+    ```
+    and similarly for conda-forge:
+    ```console
+    mkdir -p /dataserver/users/formingworlds/${USER}/miniforge3
+    wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh" -O 
+        /dataserver/users/formingworlds/<username>/miniforge3/miniforge.sh
+    bash /dataserver/users/formingworlds/<username>/miniforge3/miniforge.sh -b -p 
+        /dataserver/users/formingworlds/<username>/miniforge3
+    rm /dataserver/users/formingworlds/<username>/miniforge3/miniforge.sh
+    ``` 
+    For both Miniconda and conda-forge follow the instructions wrt updating your `~/.shellrc` file.
+   
 
 ## Queuing Manager: Condormaster
 
