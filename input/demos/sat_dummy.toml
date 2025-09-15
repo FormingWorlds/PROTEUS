@@ -47,7 +47,12 @@ version = "2.0"
         # disintegration
         [params.stop.disint]
             enabled   = false
-            offset    = 0.0  # correction to calculated Roche limit [m]
+
+            roche_enabled = false
+            offset_roche  = 0 # correction to calculated Roche limit [m]
+
+            spin_enabled  = false
+            offset_spin   = 0 # correction to calculated Breakup period [s]
 
 [star]
     mass    = 1.0       # M_sun

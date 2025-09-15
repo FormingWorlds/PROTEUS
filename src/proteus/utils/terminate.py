@@ -94,10 +94,25 @@ def _check_separation(handler: Proteus) -> bool:
 
     separation = handler.hf_row["separation"]
     roche_limit = handler.hf_row["roche_limit"]
-    offset = handler.config.params.stop.disint.offset
+    offset = handler.config.params.stop.disint.offset_roche
     log.debug("    sep, roc = %.3e, %.3e  m"%(separation, roche_limit-offset))
 
     if separation <= roche_limit + offset:
+        UpdateStatusfile(handler.directories, 16)
+        _msg_termination("Planet has disintegrated")
+        return True
+
+    return False
+
+def _check_spinrate(handler: Proteus) -> bool:
+    log.debug("Check spin rate")
+
+    axial_period = handler.hf_row["axial_period"]
+    breakup_period = handler.hf_row["breakup_period"]
+    offset = handler.config.params.stop.disint.offset_spin
+    log.debug("    axr, bur = %.3e, %.3e  s"%(axial_period, breakup_period))
+
+    if axial_period <= breakup_period + offset:
         UpdateStatusfile(handler.directories, 16)
         _msg_termination("Planet has disintegrated")
         return True
@@ -203,7 +218,11 @@ def check_termination(handler: Proteus) -> bool:
 
     # Planet has disintegrated
     if handler.config.params.stop.disint.enabled:
-        finished = finished or _check_separation(handler)
+        if handler.config.params.stop.disint.roche_enabled:
+            finished = finished or _check_separation(handler)
+
+        if handler.config.params.stop.disint.spin_enabled:
+            finished = finished or _check_spinrate(handler)
 
     # Maximum time reached
     if handler.config.params.stop.time.enabled:

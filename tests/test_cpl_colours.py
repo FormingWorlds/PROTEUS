@@ -1,3 +1,4 @@
+# Test whether some of the plot helper functions work as expected
 from __future__ import annotations
 
 from proteus.utils.plot import _preset_colours, get_colour, latexify
