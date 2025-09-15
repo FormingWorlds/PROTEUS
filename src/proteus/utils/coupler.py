@@ -161,6 +161,12 @@ def validate_module_versions(dirs:dict, config:Config):
             if not _valid_ver(aragog_version, _get_expver("aragog"), "Aragog"):
                 valid = False
 
+    # Struct module
+    if config.struct.module == 'zalmoxis':
+        from zalmoxis import __version__ as zalmoxis_version
+        if not _valid_ver(zalmoxis_version, _get_expver("fwl-zalmoxis"), "ZALMOXIS"):
+            valid = False
+
     # Atmosphere module
     match config.atmos_clim.module:
         case 'janus':
