@@ -14,13 +14,16 @@ OUT_DIR = PROTEUS_ROOT / 'output' / 'dummy_grid'
 GRID_CONFIG = PROTEUS_ROOT / 'tests' / 'grid' / 'dummy.grid.toml'
 BASE_CONFIG = PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml'
 
-@pytest.fixture(scope="module")
+
+@pytest.fixture(scope='module')
 def grid_run():
     grid_from_config(GRID_CONFIG, test_run=True)
+
 
 def test_grid_run(grid_run):
     # Call fixture to ensure that it has run without error
     pass
+
 
 def test_grid_config(grid_run):
     # Copy of grid's config exists in output dir
@@ -31,6 +34,7 @@ def test_grid_config(grid_run):
 
     # Check that case config files have been written
     assert os.path.isfile(OUT_DIR / 'cfgs' / 'case_000000.toml')
+
 
 def test_grid_log(grid_run):
     # Read logfile and check for expected statements

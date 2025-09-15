@@ -15,9 +15,8 @@ from proteus.utils.coupler import get_proteus_directories
 
 dtype = torch.double
 
-def update_toml(config_file: str,
-                updates: dict,
-                output_file: str) -> None:
+
+def update_toml(config_file: str, updates: dict, output_file: str) -> None:
     """Update values in a TOML configuration file.
 
     Loads the configuration from `config_file`, applies updates provided in the
@@ -48,14 +47,15 @@ def update_toml(config_file: str,
         toml.dump(config, f)
 
 
-def run_proteus(parameters: dict,
-                worker: int,
-                iter: int,
-                observables: list[str],
-                ref_config: str,
-                output: str,
-                max_attempts: int = 2) -> pd.Series:
-
+def run_proteus(
+    parameters: dict,
+    worker: int,
+    iter: int,
+    observables: list[str],
+    ref_config: str,
+    output: str,
+    max_attempts: int = 2,
+) -> pd.Series:
     """Run the PROTEUS simulator and return selected observables.
 
     Builds a per-run TOML file, invokes the `proteus` CLI, and reads the resulting CSV.
@@ -75,54 +75,59 @@ def run_proteus(parameters: dict,
     """
 
     # Construct run-specific paths
-    run_id = f"w_{worker}/i_{iter}/"
-    out_dir = os.path.join(output, "workers", run_id)
+    run_id = f'w_{worker}/i_{iter}/'
+    out_dir = os.path.join(output, 'workers', run_id)
 
-    out_abs = get_proteus_directories(out_dir)["output"]
-    out_cfg = os.path.join(out_abs, "input.toml")
-    out_csv = os.path.join(out_abs, "runtime_helpfile.csv")
+    out_abs = get_proteus_directories(out_dir)['output']
+    out_cfg = os.path.join(out_abs, 'input.toml')
+    out_csv = os.path.join(out_abs, 'runtime_helpfile.csv')
 
     # Ensure output directory exists
     os.makedirs(out_abs, exist_ok=True)
 
     # Inject output path into simulation parameters
-    parameters["params.out.path"]     = out_dir
+    parameters['params.out.path'] = out_dir
 
     # Don't allow workers to make plots
-    parameters["params.out.plot_mod"] = 'none'
+    parameters['params.out.plot_mod'] = 'none'
 
     # Generate config
     update_toml(ref_config, parameters, out_cfg)
 
     # Run PROTEUS
-    subprocess.run(["proteus", "start", "-c", out_cfg, "--offline"],
-                    check=True, text=True,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    subprocess.run(
+        ['proteus', 'start', '-c', out_cfg, '--offline'],
+        check=True,
+        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
+    )
 
     # Re-write config in case simulator mutates or removes it
     update_toml(ref_config, parameters, out_cfg)
 
     # Read simulator output
-    df_row = pd.read_csv(out_csv, delimiter=r"\s+").iloc[-1]
+    df_row = pd.read_csv(out_csv, delimiter=r'\s+').iloc[-1]
 
     # Handle case where atmosphere has escaped
     #   Set VMRs and MMW to zero
-    if df_row["P_surf"] < 1e-30:
-        df_row["atm_kg_per_mol"] = 0.0
+    if df_row['P_surf'] < 1e-30:
+        df_row['atm_kg_per_mol'] = 0.0
         df_row[gas_list] = 0.0
 
     return df_row[observables].T
 
+
 def eval_obj(sim_dict, tru_dict):
-    '''Evaluate objective function, given simulated and true values of observables'''
+    """Evaluate objective function, given simulated and true values of observables"""
 
     sim_vals = []
     tru_vals = []
     for k in sim_dict.keys():
         # some variables scale logarithmically
-        if ("vmr" in k) or (k in ("P_surf","Time","semimajorax","eccentricity")):
-            sim_vals.append(log10( max(sim_dict[k],1e-30) ))
-            tru_vals.append(log10( max(tru_dict[k],1e-30) ))
+        if ('vmr' in k) or (k in ('P_surf', 'Time', 'semimajorax', 'eccentricity')):
+            sim_vals.append(log10(max(sim_dict[k], 1e-30)))
+            tru_vals.append(log10(max(tru_dict[k], 1e-30)))
         # others are just linear
         else:
             sim_vals.append(sim_dict[k])
@@ -134,18 +139,21 @@ def eval_obj(sim_dict, tru_dict):
 
     # Compute normalized difference and squared distance
     diff = torch.ones(1, 1, dtype=dtype) - sim / true_y
-    sq_dist = (diff ** 2).sum(dim=1, keepdim=True)
+    sq_dist = (diff**2).sum(dim=1, keepdim=True)
 
     # Return final objective
     return torch.ones(1, 1, dtype=dtype) - sq_dist
 
-def J(x: torch.Tensor,
-      parameters: list[str],
-      true_observables: dict[str, float] ,
-      worker: int,
-      iter: int,
-      output: str,
-      ref_config: str) -> torch.Tensor:
+
+def J(
+    x: torch.Tensor,
+    parameters: list[str],
+    true_observables: dict[str, float],
+    worker: int,
+    iter: int,
+    output: str,
+    ref_config: str,
+) -> torch.Tensor:
     """Run PROTEUS, and then compute the objective value for a given normalized input.
 
     Transforms normalized `x` to raw parameters, runs the simulator,
@@ -167,23 +175,27 @@ def J(x: torch.Tensor,
 
     # Map normalized x to raw parameter dict and run PROTEUS
     raw = {parameters[i]: x[0, i].item() for i in range(len(parameters))}
-    sim_vals = run_proteus(parameters=raw,
-                           worker=worker,
-                           iter=iter,
-                           observables=list(true_observables.keys()),
-                           ref_config=ref_config,
-                           output=output)
+    sim_vals = run_proteus(
+        parameters=raw,
+        worker=worker,
+        iter=iter,
+        observables=list(true_observables.keys()),
+        ref_config=ref_config,
+        output=output,
+    )
 
     # Return value of objective function given these results
     return eval_obj(sim_vals, true_observables)
 
 
-def prot_builder(parameters: dict[str, list[float]],
-                 observables: dict[str, float],
-                 worker: int,
-                 iter: int,
-                 output: str,
-                 ref_config: str) -> callable:
+def prot_builder(
+    parameters: dict[str, list[float]],
+    observables: dict[str, float],
+    worker: int,
+    iter: int,
+    output: str,
+    ref_config: str,
+) -> callable:
     """Factory returning a BO-compatible objective function for PROTEUS inference.
 
     Precomputes bounds for unnormalization and embeds simulation context.
@@ -201,21 +213,24 @@ def prot_builder(parameters: dict[str, list[float]],
     """
     # Build bounds tensor for unnormalization
     d = len(parameters)
-    bounds = torch.tensor([[list(parameters.values())[i][j] for i in range(d)] for j in range(2)],
-                          dtype=dtype)
+    bounds = torch.tensor(
+        [[list(parameters.values())[i][j] for i in range(d)] for j in range(2)], dtype=dtype
+    )
 
     def f(x_norm: torch.Tensor) -> torch.Tensor:
         """Inference objective function accepting normalized inputs."""
         # Convert normalized to raw inputs
         x_raw = unnormalize(x_norm, bounds)
         # Partially apply J with fixed context
-        J_context = partial(J,
-                            parameters=list(parameters.keys()),
-                            true_observables=observables,
-                            worker=worker,
-                            iter=iter,
-                            ref_config=ref_config,
-                            output=output)
+        J_context = partial(
+            J,
+            parameters=list(parameters.keys()),
+            true_observables=observables,
+            worker=worker,
+            iter=iter,
+            ref_config=ref_config,
+            output=output,
+        )
         # Compute objective
         return J_context(x_raw)
 

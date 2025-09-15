@@ -7,16 +7,17 @@ from ._converters import none_if_none
 
 
 def valid_zephyrus(instance, attribute, value):
-    if instance.module != "zephyrus":
+    if instance.module != 'zephyrus':
         return
 
     Pxuv = instance.zephyrus.Pxuv
     if (not Pxuv) or (Pxuv < 0) or (Pxuv > 10):
-        raise ValueError("`zephyrus.Pxuv` must be >0 and < 10 bar")
+        raise ValueError('`zephyrus.Pxuv` must be >0 and < 10 bar')
 
     efficiency = instance.zephyrus.efficiency
     if (not efficiency) or (efficiency < 0) or (efficiency > 1):
-        raise ValueError("`zephyrus.efficiency` must be >=0 and <=1")
+        raise ValueError('`zephyrus.efficiency` must be >=0 and <=1')
+
 
 @define
 class Zephyrus:
@@ -31,17 +32,20 @@ class Zephyrus:
     tidal: bool
         Tidal contribution enabled
     """
-    Pxuv: float       = field(default=5e-5)
+
+    Pxuv: float = field(default=5e-5)
     efficiency: float = field(default=0.1)
-    tidal: bool       = field(default=False)
+    tidal: bool = field(default=False)
+
 
 def valid_escapedummy(instance, attribute, value):
-    if instance.module != "dummy":
+    if instance.module != 'dummy':
         return
 
     rate = instance.dummy.rate
-    if (not rate) or (rate < 0) :
-        raise ValueError("`escape.dummy.rate` must be >0")
+    if (not rate) or (rate < 0):
+        raise ValueError('`escape.dummy.rate` must be >0')
+
 
 @define
 class EscapeDummy:
@@ -52,7 +56,9 @@ class EscapeDummy:
     rate: float
         Bulk unfractionated escape rate [kg s-1]
     """
+
     rate = field(default=None)
+
 
 @define
 class Escape:
@@ -72,9 +78,9 @@ class Escape:
 
     module: str | None = field(
         validator=in_((None, 'dummy', 'zephyrus')), converter=none_if_none
-        )
+    )
 
-    zephyrus: Zephyrus = field(factory=Zephyrus,    validator=valid_zephyrus)
+    zephyrus: Zephyrus = field(factory=Zephyrus, validator=valid_zephyrus)
     dummy: EscapeDummy = field(factory=EscapeDummy, validator=valid_escapedummy)
 
-    reservoir: str = field(default='outgas', validator=in_(('bulk','outgas','pxuv')))
+    reservoir: str = field(default='outgas', validator=in_(('bulk', 'outgas', 'pxuv')))

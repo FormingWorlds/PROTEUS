@@ -5,16 +5,18 @@ from attrs.validators import ge, gt, in_, lt
 
 
 def valid_spider(instance, attribute, value):
-    if instance.module != "spider":
+    if instance.module != 'spider':
         return
 
     ini_entropy = instance.spider.ini_entropy
-    if (not ini_entropy) or (ini_entropy <= 200.0) :
-        raise ValueError("`interior.spider.ini_entropy` must be >200")
+    if (not ini_entropy) or (ini_entropy <= 200.0):
+        raise ValueError('`interior.spider.ini_entropy` must be >200')
+
 
 def valid_path(instance, attribute, value):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"'{attribute.name}' must be a non-empty string")
+
 
 @define
 class Spider:
@@ -41,24 +43,26 @@ class Spider:
     solver_type: str
         Numerical integrator. Choices: 'adams', 'bdf'.
     """
-    ini_entropy          = field(default=None)
-    ini_dsdr: float      = field(default=-4.698e-6,  validator=lt(0))
-    num_levels: int      = field(default=190,        validator=ge(40))
-    mixing_length: int   = field(default=2,          validator=in_((1,2)))
-    tolerance: float     = field(default=1e-10,      validator=gt(0))
-    tolerance_rel: float = field(default=1e-10,      validator=gt(0))
-    solver_type: str     = field(default="bdf",      validator=in_(("adams", "bdf")))
-    tsurf_atol: float    = field(default=10.0,       validator=gt(0))
-    tsurf_rtol: float    = field(default=0.01,       validator=gt(0))
+
+    ini_entropy = field(default=None)
+    ini_dsdr: float = field(default=-4.698e-6, validator=lt(0))
+    num_levels: int = field(default=190, validator=ge(40))
+    mixing_length: int = field(default=2, validator=in_((1, 2)))
+    tolerance: float = field(default=1e-10, validator=gt(0))
+    tolerance_rel: float = field(default=1e-10, validator=gt(0))
+    solver_type: str = field(default='bdf', validator=in_(('adams', 'bdf')))
+    tsurf_atol: float = field(default=10.0, validator=gt(0))
+    tsurf_rtol: float = field(default=0.01, validator=gt(0))
 
 
 def valid_aragog(instance, attribute, value):
-    if instance.module != "aragog":
+    if instance.module != 'aragog':
         return
 
     ini_tmagma = instance.aragog.ini_tmagma
-    if (not ini_tmagma) or (ini_tmagma <= 200.0) :
-        raise ValueError("`interior.aragog.ini_tmagma` must be >200")
+    if (not ini_tmagma) or (ini_tmagma <= 200.0):
+        raise ValueError('`interior.aragog.ini_tmagma` must be >200')
+
 
 @define
 class Aragog:
@@ -104,38 +108,39 @@ class Aragog:
         Adiabatic bulk modulus AW-EOS parameter [Pa].
     """
 
-    logging: str                        = field(default='ERROR',validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
-    ini_tmagma                          = field(default=None)
-    basal_temperature: float            = field(default=7000)
-    init_file: str                      = field(default=None)
-    num_levels: int                     = field(default=100,    validator=ge(40))
-    initial_condition: int              = field(default=3)
-    tolerance: float                    = field(default=1e-10,  validator=gt(0))
-    inner_boundary_condition: int       = field(default=1, validator=ge(0))
-    inner_boundary_value:float          = field(default=4000, validator=ge(0))
-    conduction: bool                    = field(default=True)
-    convection: bool                    = field(default=True)
-    gravitational_separation: bool      = field(default=False)
-    mixing: bool                        = field(default=False)
-    dilatation: bool                    = field(default=False)
-    mass_coordinates: bool              = field(default=False)
-    tsurf_poststep_change: float        = field(default=30, validator=ge(0))
-    event_triggering:bool               = field(default=True)
-    bulk_modulus: float                 = field(default=260e9, validator=gt(0))
+    logging: str = field(default='ERROR', validator=in_(('INFO', 'DEBUG', 'ERROR', 'WARNING')))
+    ini_tmagma = field(default=None)
+    basal_temperature: float = field(default=7000)
+    init_file: str = field(default=None)
+    num_levels: int = field(default=100, validator=ge(40))
+    initial_condition: int = field(default=3)
+    tolerance: float = field(default=1e-10, validator=gt(0))
+    inner_boundary_condition: int = field(default=1, validator=ge(0))
+    inner_boundary_value: float = field(default=4000, validator=ge(0))
+    conduction: bool = field(default=True)
+    convection: bool = field(default=True)
+    gravitational_separation: bool = field(default=False)
+    mixing: bool = field(default=False)
+    dilatation: bool = field(default=False)
+    mass_coordinates: bool = field(default=False)
+    tsurf_poststep_change: float = field(default=30, validator=ge(0))
+    event_triggering: bool = field(default=True)
+    bulk_modulus: float = field(default=260e9, validator=gt(0))
 
 
 def valid_interiordummy(instance, attribute, value):
-    if instance.module != "dummy":
+    if instance.module != 'dummy':
         return
 
     ini_tmagma = instance.dummy.ini_tmagma
-    if (not ini_tmagma) or (ini_tmagma <= 200.0) :
-        raise ValueError("`interior.dummy.ini_tmagma` must be >200")
+    if (not ini_tmagma) or (ini_tmagma <= 200.0):
+        raise ValueError('`interior.dummy.ini_tmagma` must be >200')
 
     tliq = instance.dummy.mantle_tliq
     tsol = instance.dummy.mantle_tsol
     if tliq <= tsol:
-        raise ValueError(f"Dummy liquidus ({tliq}K) must be greater than solidus ({tsol}K)")
+        raise ValueError(f'Dummy liquidus ({tliq}K) must be greater than solidus ({tsol}K)')
+
 
 @define
 class InteriorDummy:
@@ -162,13 +167,14 @@ class InteriorDummy:
     """
 
     ini_tmagma = field(default=None)
-    tmagma_atol: float = field(default=30.0,   validator=ge(0))
-    tmagma_rtol: float = field(default=0.05,   validator=ge(0))
+    tmagma_atol: float = field(default=30.0, validator=ge(0))
+    tmagma_rtol: float = field(default=0.05, validator=ge(0))
     mantle_tliq: float = field(default=2700.0, validator=ge(0))
     mantle_tsol: float = field(default=1700.0, validator=ge(0))
-    mantle_rho: float  = field(default=4.55e3, validator=gt(0))
-    mantle_cp: float   = field(default=1792.0, validator=ge(0))
-    H_radio: float     = field(default=0.0,    validator=ge(0))
+    mantle_rho: float = field(default=4.55e3, validator=gt(0))
+    mantle_cp: float = field(default=1792.0, validator=ge(0))
+    H_radio: float = field(default=0.0, validator=ge(0))
+
 
 @define
 class Interior:
@@ -201,16 +207,16 @@ class Interior:
         Set of melting curves to use in the model.
     """
 
-    module: str             = field(validator=in_(('spider', 'aragog', 'dummy')))
-    melting_dir: str        = field(default="Monteux-600",validator=valid_path)
-    radiogenic_heat: bool   = field(default=True)
-    tidal_heat: bool        = field(default=True)
+    module: str = field(validator=in_(('spider', 'aragog', 'dummy')))
+    melting_dir: str = field(default='Monteux-600', validator=valid_path)
+    radiogenic_heat: bool = field(default=True)
+    tidal_heat: bool = field(default=True)
 
-    spider: Spider          = field(factory=Spider,        validator=valid_spider)
-    aragog: Aragog          = field(factory=Aragog,        validator=valid_aragog)
-    dummy: InteriorDummy    = field(factory=InteriorDummy, validator=valid_interiordummy)
+    spider: Spider = field(factory=Spider, validator=valid_spider)
+    aragog: Aragog = field(factory=Aragog, validator=valid_aragog)
+    dummy: InteriorDummy = field(factory=InteriorDummy, validator=valid_interiordummy)
 
-    grain_size: float       = field(default=0.1,    validator=gt(0))
-    F_initial: float        = field(default=1e3,    validator=gt(0))
-    rheo_phi_loc: float     = field(default=0.3,    validator=(gt(0),lt(1)))
-    rheo_phi_wid: float     = field(default=0.15,   validator=(gt(0),lt(1)))
+    grain_size: float = field(default=0.1, validator=gt(0))
+    F_initial: float = field(default=1e3, validator=gt(0))
+    rheo_phi_loc: float = field(default=0.3, validator=(gt(0), lt(1)))
+    rheo_phi_wid: float = field(default=0.15, validator=(gt(0), lt(1)))
