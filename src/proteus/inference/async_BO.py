@@ -21,10 +21,10 @@ import time
 from functools import partial
 from multiprocessing import Manager, Process
 
-import torch
-from scipy.stats.qmc import Halton
 import numpy
+import torch
 from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scaled_prior
+from scipy.stats.qmc import Halton
 
 from proteus.inference.BO import BO_step
 from proteus.utils.coupler import get_proteus_directories

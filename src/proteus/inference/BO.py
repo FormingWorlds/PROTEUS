@@ -16,10 +16,7 @@ import time
 
 import matplotlib.pyplot as plt
 import torch
-from botorch.acquisition import (
-    UpperConfidenceBound,
-    LogExpectedImprovement
-)
+from botorch.acquisition import LogExpectedImprovement, UpperConfidenceBound
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from botorch.models.transforms import Normalize, Standardize
