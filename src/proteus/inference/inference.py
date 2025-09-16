@@ -66,22 +66,26 @@ def run_inference(config):
     n_init = create_init(config)
 
     # Maximum number of evaluations during inference (offset by initial evaluations)
-    max_len = max(int(config["max_len"]),1) + n_init
+    max_len = max(int(config["n_steps"]),1) + n_init
 
     print(" ")
-    print(f"Starting optimisation with {config['n_workers']} workers")
-    print(f"Maximum step count is {max_len}, starting at {n_init}")
+    print(f"Starting optimisation with {config['n_workers']} workers and {n_init} initial samples")
+    print(f"Performing {config["n_steps"]} BO steps for a final total {n_init + config["n_steps"]} samples")
     t_0 = time.perf_counter()
+
+
 
     # Execute the parallel BO process
     D_final, logs, Ts = parallel_process(
         prot_builder,
         config["kernel"],
+        config["acqf"],
         config["n_restarts"],
         config["n_samples"],
         config["n_workers"],
         max_len,
         config["output"],
+        config["seed"],
         config["ref_config"],
         config["observables"],
         config["parameters"]

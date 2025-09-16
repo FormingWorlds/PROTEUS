@@ -106,7 +106,7 @@ def print_results(D, logs, config, output, n_init):
     sim_opt = list(df.iloc[-1][observables].T)
 
     # Load and flatten the input TOML for this run
-    in_path = f"{output}/workers/w_{w}/i_{id}/init_coupler.toml"
+    in_path = f"{output}workers/w_{w}/i_{id}/init_coupler.toml"
     with open(in_path, "r") as f:
         input = toml.load(f)
     input = flatten(input)  # flatten nested config
@@ -114,8 +114,8 @@ def print_results(D, logs, config, output, n_init):
     # Extract inferred parameter values in original order
     params = config["parameters"].keys()
 
-    # Print summary to console
-    print(f"Best case (i={i_opt}) sampled has J={J_opt:+.4f}")
+    # Print summary to console, account for python index vs step index and n_init
+    print(f"Best case sampled at step {i_opt+1-n_init} has J={J_opt:+.4f}")
     print(f"With config at {in_path}")
     print(f"{'Observables':18s} | True        | Simulated   | Diff %")
     for i,k in enumerate(observables):
@@ -134,6 +134,7 @@ def print_results(D, logs, config, output, n_init):
     d = len(params)
     bounds = torch.tensor([[list(config["parameters"].values())[i][j] for i in range(d)]
                             for j in range(2)])
+    # remove intial data
     X_samp = np.array(unnormalize(X, bounds), copy=None, dtype=float)[n_init:,:]
     print(f"Ensemble statistics (N={len(X_samp)})")
     print(f"{'Parameters':28s} | Median ± stddev")
