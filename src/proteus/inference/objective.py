@@ -109,7 +109,8 @@ def run_proteus(parameters: dict,
     #   Set VMRs and MMW to zero
     if df_row["P_surf"] < 1e-30:
         df_row["atm_kg_per_mol"] = 0.0
-        df_row[gas_list] = 0.0
+        for g in gas_list:
+            df_row[g+"_vmr"] = 0.0
 
     return df_row[observables].T
 
@@ -120,7 +121,7 @@ def eval_obj(sim_dict, tru_dict):
     tru_vals = []
     for k in sim_dict.keys():
         # some variables scale logarithmically
-        if ("vmr" in k) or (k in ("P_surf","Time","semimajorax","eccentricity")):
+        if ("vmr" in k) or (k in ("P_surf","Time","semimajorax")):
             sim_vals.append(log10( max(sim_dict[k],1e-30) ))
             tru_vals.append(log10( max(tru_dict[k],1e-30) ))
         # others are just linear

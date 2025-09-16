@@ -97,7 +97,7 @@ version = "2.0"
     reservoir = "outgas"  # Escaping reservoir: "bulk", "outgas", "pxuv".
     module = "dummy"     # Which escape module to use
     [escape.dummy]
-        rate        = 1.0e7           # Bulk unfractionated escape rate [kg s-1]
+        rate        = 1e6           # Bulk unfractionated escape rate [kg s-1]
 
 [interior]
     radiogenic_heat = false  # enable radiogenic heat production
@@ -119,7 +119,7 @@ version = "2.0"
     module = "none"
 
     [delivery.elements]
-        H_ppmw      = 200.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_ppmw      = 3e3     # Hydrogen inventory in ppmw relative to mantle mass
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         N_ppmw      = 0.0       # Nitrogen inventory in ppmw relative to mantle mass
         SH_ratio    = 1.0       # Sulfur inventory in ppmw relative to mantle mass
