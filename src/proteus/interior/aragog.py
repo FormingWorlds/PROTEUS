@@ -27,7 +27,6 @@ from aragog.parser import (
 
 from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
-from proteus.interior.zalmoxis import zalmoxis_solver
 from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
 
 if TYPE_CHECKING:
@@ -126,6 +125,7 @@ class AragogRunner:
             inner_radius = config.struct.corefrac * hf_row['R_int']  # core radius [m]
         elif config.struct.module == 'zalmoxis':
             # Define the inner_radius based on the core radius from Zalmoxis
+            from proteus.interior.zalmoxis import zalmoxis_solver
             inner_radius = zalmoxis_solver(config, outdir, hf_row)  # core radius [m]
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")

@@ -40,7 +40,7 @@ version = "2.0"
             rtol    = 1e-3    # relative tolerance
 
         [params.stop.escape]
-            enabled   = true
+            enabled   = false
             p_stop    = 1.0  # bar, model will terminate with p_surf < p_stop
 
 
@@ -97,7 +97,7 @@ version = "2.0"
     reservoir = "outgas"  # Escaping reservoir: "bulk", "outgas", "pxuv".
     module = "dummy"     # Which escape module to use
     [escape.dummy]
-        rate        = 1.0e5           # Bulk unfractionated escape rate [kg s-1]
+        rate        = 1.0e7           # Bulk unfractionated escape rate [kg s-1]
 
 [interior]
     radiogenic_heat = false  # enable radiogenic heat production
