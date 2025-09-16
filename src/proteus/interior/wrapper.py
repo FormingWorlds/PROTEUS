@@ -7,10 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
-
-from proteus.interior.aragog import AragogRunner
 from proteus.interior.common import Interior_t
-from proteus.interior.zalmoxis import zalmoxis_solver
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -131,6 +128,8 @@ def determine_interior_radius_with_zalmoxis(
     Determine the interior radius (R_int) of the planet using Zalmoxis."""
 
     log.info('Using Zalmoxis to solve for interior structure')
+    from proteus.interior.zalmoxis import zalmoxis_solver
+
     int_o = Interior_t(get_nlevb(config))
     int_o.ic = 1
     zalmoxis_solver(config, outdir, hf_row)
@@ -221,6 +220,7 @@ def run_interior(
         sim_time, output = ReadSPIDER(dirs, config, hf_row['R_int'], interior_o)
 
     elif config.interior.module == 'aragog':
+        from proteus.interior.aragog import AragogRunner
         AragogRunnerInstance = AragogRunner(config, dirs, hf_row, hf_all, interior_o)
         # Run Aragog
         sim_time, output = AragogRunnerInstance.run_solver(hf_row, interior_o, dirs)

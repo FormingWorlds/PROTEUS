@@ -10,7 +10,7 @@ output = "infer_demo/"
 ref_config = "input/demos/dummy.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
-init_samps = '2'         # Number of random samples if starting from scratch.
+init_samps = 2         # Number of random samples if starting from scratch.
 init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Parameters for Bayesian optimisation
