@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
+
 from proteus.interior.common import Interior_t
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
