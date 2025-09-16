@@ -10,15 +10,13 @@ import tarfile
 
 from proteus.utils.helper import safe_rm
 
-log = logging.getLogger('fwl.' + __name__)
+log = logging.getLogger("fwl."+__name__)
 
-
-def _tarfile_from_dir(dir: str) -> str:
+def _tarfile_from_dir(dir:str) -> str:
     name = os.path.split(dir)[-1]
-    return os.path.join(dir, f'{name}.tar')
+    return os.path.join(dir, f"{name}.tar")
 
-
-def archive_exists(dir: str, ignore_warnings: bool = False) -> bool:
+def archive_exists(dir:str, ignore_warnings:bool=False) -> bool:
     """
     Check if the archive tar file exists inside a directory.
 
@@ -40,12 +38,11 @@ def archive_exists(dir: str, ignore_warnings: bool = False) -> bool:
     exists = os.path.exists(tar)
 
     if (not exists) and (not ignore_warnings):
-        log.warning(f'The archive tar file does not exist: {tar}')
+        log.warning(f"The archive tar file does not exist: {tar}")
 
     return exists
 
-
-def create(dir: str, remove_files: bool = True) -> str:
+def create(dir:str, remove_files:bool=True) -> str:
     """
     Create a new tar archive from a directory of files, placing the tar inside that directory.
 
@@ -66,25 +63,25 @@ def create(dir: str, remove_files: bool = True) -> str:
 
     # Tar file path
     dir = os.path.abspath(dir)
-    log.debug(f'Creating new archive of {dir}')
+    log.debug(f"Creating new archive of {dir}")
 
     # Check if the directory exists
     if not os.path.exists(dir):
-        log.error(f'Directory {dir} does not exist. Cannot archive it.')
+        log.error(f"Directory {dir} does not exist. Cannot archive it.")
         return
 
     # Check if the tar file exists
     if archive_exists(dir, ignore_warnings=True):
-        log.error(f'Archive tar file for {dir} already exists. Will not create a new one.')
+        log.error(f"Archive tar file for {dir} already exists. Will not create a new one.")
         return
 
     # List files in directory
-    files = glob.glob(os.path.join(dir, '*'))
+    files = glob.glob(os.path.join(dir, "*"))
     files = [os.path.abspath(f) for f in files]
 
     # Add files to new tar file
     tar = _tarfile_from_dir(dir)
-    with tarfile.open(tar, 'w') as tar_file:
+    with tarfile.open(tar, "w") as tar_file:
         for f in files:
             tar_file.add(f, arcname=os.path.split(f)[-1])
 
@@ -97,8 +94,7 @@ def create(dir: str, remove_files: bool = True) -> str:
     # Return path to the tar file
     return tar
 
-
-def append(dir: str, remove_files: bool = True) -> str:
+def append(dir:str, remove_files:bool=True) -> str:
     """
     Add files within `dir`, into `dir/dir.tar` excluding those in `exclude`.
 
@@ -119,20 +115,20 @@ def append(dir: str, remove_files: bool = True) -> str:
 
     # Paths
     dir = os.path.abspath(dir)
-    log.debug(f'Appending files to archive in {dir}')
+    log.debug(f"Appending files to archive in {dir}")
 
     # Check if the tar file exists
     if not archive_exists(dir, ignore_warnings=False):
-        log.error('Cannot append to archive.')
+        log.error("Cannot append to archive.")
         return
 
     # List files in directory
-    files = glob.glob(os.path.join(dir, '*'))
+    files = glob.glob(os.path.join(dir, "*"))
     files = [os.path.abspath(f) for f in files]
 
     # Append file to existing tar file
     tar = _tarfile_from_dir(dir)
-    with tarfile.open(tar, 'a') as tar_file:
+    with tarfile.open(tar, "a") as tar_file:
         for f in files:
             tar_file.add(f, arcname=os.path.split(f)[-1])
 
@@ -144,8 +140,7 @@ def append(dir: str, remove_files: bool = True) -> str:
 
     return tar
 
-
-def extract(dir: str, remove_tar: bool = False, ignore_warnings: bool = False) -> str:
+def extract(dir:str, remove_tar:bool=False, ignore_warnings:bool=False) -> str:
     """
     Extract the tar file contained within a directory, placing the content within that directory.
 
@@ -170,12 +165,12 @@ def extract(dir: str, remove_tar: bool = False, ignore_warnings: bool = False) -
     # Paths
     dir = os.path.abspath(dir)
     tar = _tarfile_from_dir(dir)
-    log.debug(f'Extracting tar file inside {dir}')
+    log.debug(f"Extracting tar file inside {dir}")
 
     # Check if the directory exists
     if not os.path.exists(dir):
-        log.error(f'Directory {dir} does not exist.')
-        log.error('Cannot extract archive.')
+        log.error(f"Directory {dir} does not exist.")
+        log.error("Cannot extract archive.")
         return
 
     # Check if the tar file exists
@@ -183,15 +178,14 @@ def extract(dir: str, remove_tar: bool = False, ignore_warnings: bool = False) -
         return
 
     # Extract tar file
-    with tarfile.open(tar, 'r') as tar_file:
+    with tarfile.open(tar, "r") as tar_file:
         tar_file.extractall(dir)
 
     # Remove tar file
     if remove_tar:
         safe_rm(tar)
 
-
-def update(dir: str, remove_files: bool = True) -> None:
+def update(dir:str, remove_files:bool=True) -> None:
     """
     Create and/or update a data file archive.
 
@@ -221,8 +215,7 @@ def update(dir: str, remove_files: bool = True) -> None:
     else:
         create(dir, remove_files=remove_files)
 
-
-def remove_old(dir: str, before: float) -> None:
+def remove_old(dir:str, before:float) -> None:
     """
     Remove files from the directory, except archives and those corresponding to times
     greater than or equal to `before`.
@@ -239,19 +232,19 @@ def remove_old(dir: str, before: float) -> None:
     dir = os.path.abspath(dir)
 
     # Files
-    files = glob.glob(os.path.join(dir, '*'))
+    files = glob.glob(os.path.join(dir, "*"))
 
     # Remove files
     for f in files:
         name = os.path.split(f)[-1]
 
         # Keep archives
-        if name.endswith('.tar'):
+        if name.endswith(".tar"):
             keep = True
 
         # Keep nc and json files, for time >= before
-        elif name.endswith('.nc') or name.endswith('.json'):
-            age = int(name.split('.')[0].split('_')[0])
+        elif name.endswith(".nc") or name.endswith(".json"):
+            age = int(name.split(".")[0].split("_")[0])
             keep = age >= before
 
         # Do not keep other files

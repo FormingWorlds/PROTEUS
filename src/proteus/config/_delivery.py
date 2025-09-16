@@ -49,21 +49,20 @@ class Elements:
     S_ppmw: float
         Absolute sulfur inventory, ppmw relative to mantle mass.
     """
-
     use_metallicity: float = field(default=False)
     metallicity: float = field(default=1000.0, validator=ge(0))
 
     H_oceans: float = field(default=0.0, validator=ge(0))
-    H_ppmw: float = field(default=0.0, validator=ge(0))
+    H_ppmw: float   = field(default=0.0, validator=ge(0))
 
     CH_ratio: float = field(default=0.0, validator=ge(0))
-    C_ppmw: float = field(default=0.0, validator=ge(0))
+    C_ppmw: float   = field(default=0.0, validator=ge(0))
 
     NH_ratio: float = field(default=0.0, validator=ge(0))
-    N_ppmw: float = field(default=0.0, validator=ge(0))
+    N_ppmw: float   = field(default=0.0, validator=ge(0))
 
     SH_ratio: float = field(default=0.0, validator=ge(0))
-    S_ppmw: float = field(default=0.0, validator=ge(0))
+    S_ppmw: float   = field(default=0.0, validator=ge(0))
 
 
 @define
@@ -93,22 +92,20 @@ class Volatiles:
     CO: float
         Initial atmospheric partial surface pressure of CO [bar].
     """
-
-    H2O: float = field(default=0, validator=ge(0))
-    CO2: float = field(default=0, validator=ge(0))
-    N2: float = field(default=0, validator=ge(0))
-    S2: float = field(default=0, validator=ge(0))
-    SO2: float = field(default=0, validator=ge(0))
-    H2S: float = field(default=0, validator=ge(0))
-    NH3: float = field(default=0, validator=ge(0))
-    H2: float = field(default=0, validator=ge(0))
-    CH4: float = field(default=0, validator=ge(0))
-    CO: float = field(default=0, validator=ge(0))
+    H2O: float  = field(default=0, validator=ge(0))
+    CO2: float  = field(default=0, validator=ge(0))
+    N2: float   = field(default=0, validator=ge(0))
+    S2: float   = field(default=0, validator=ge(0))
+    SO2: float  = field(default=0, validator=ge(0))
+    H2S: float  = field(default=0, validator=ge(0))
+    NH3: float  = field(default=0, validator=ge(0))
+    H2: float   = field(default=0, validator=ge(0))
+    CH4: float  = field(default=0, validator=ge(0))
+    CO: float   = field(default=0, validator=ge(0))
 
     def get_pressure(self, s: str) -> float:
         """Helper method for getting the pressure for `vol` by string."""
         return getattr(self, s)
-
 
 @define
 class Delivery:
@@ -136,12 +133,12 @@ class Delivery:
 
     module: str | None = field(validator=in_((None,)), converter=none_if_none)
 
-    elements: Elements = field(factory=Elements)
+    elements: Elements   = field(factory=Elements)
     volatiles: Volatiles = field(factory=Volatiles)
 
     initial: str = field(default='elements', validator=in_(('elements', 'volatiles')))
 
-    radio_tref: float = field(default=4.55, validator=gt(0))
-    radio_K: float = field(default=310.0, validator=ge(0))
-    radio_U: float = field(default=0.031, validator=ge(0))
-    radio_Th: float = field(default=0.124, validator=ge(0))
+    radio_tref: float = field(default=4.55,  validator=gt(0))
+    radio_K: float    = field(default=310.0, validator=ge(0))
+    radio_U: float    = field(default=0.031, validator=ge(0))
+    radio_Th: float   = field(default=0.124, validator=ge(0))

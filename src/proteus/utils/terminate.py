@@ -13,183 +13,167 @@ if TYPE_CHECKING:
     from proteus import Proteus
     from proteus.config import Config
 
-log = logging.getLogger('fwl.' + __name__)
-
+log = logging.getLogger("fwl."+__name__)
 
 # Summarise convergence criteria
-def print_termination_criteria(config: Config):
-    log.info('Active termination criteria')
+def print_termination_criteria(config:Config):
+    log.info("Active termination criteria")
 
     def _print_criterion(state, msg):
-        log.info(f'    {msg:16} {"✔" if state else "✗"}  ')
+        log.info(f"    {msg:16} {'✔' if state else '✗'}  ")
 
     # Optionally enabled:
-    _print_criterion(config.params.stop.solid.enabled, 'Solidification')
-    _print_criterion(config.params.stop.radeqm.enabled, 'Energy balance')
-    _print_criterion(config.params.stop.escape.enabled, 'Volatile escape')
-    _print_criterion(config.params.stop.time.enabled, 'Maximum time')
-    _print_criterion(config.params.stop.iters.enabled, 'Maximum loops')
+    _print_criterion(config.params.stop.solid.enabled,  "Solidification")
+    _print_criterion(config.params.stop.radeqm.enabled, "Energy balance")
+    _print_criterion(config.params.stop.escape.enabled, "Volatile escape")
+    _print_criterion(config.params.stop.time.enabled,   "Maximum time")
+    _print_criterion(config.params.stop.iters.enabled,  "Maximum loops")
 
     # Always enabled:
-    _print_criterion(True, 'Keepalive file')
-
+    _print_criterion(True, "Keepalive file")
 
 # Print message in common format
-def _msg_termination(msg: str):
-    log.info('')
-    log.info(f'===> {msg}! <===')
-    log.info('')
-
+def _msg_termination(msg:str):
+    log.info("")
+    log.info(f"===> {msg}! <===")
+    log.info("")
 
 # Solidified condition
 def _check_solid(handler: Proteus) -> bool:
-    log.debug('Check solidification')
-    if handler.hf_row['Phi_global'] <= handler.config.params.stop.solid.phi_crit:
+    log.debug("Check solidification")
+    if handler.hf_row["Phi_global"] <= handler.config.params.stop.solid.phi_crit:
         UpdateStatusfile(handler.directories, 10)
-        _msg_termination('Planet solidified!')
+        _msg_termination("Planet solidified!")
         return True
     return False
 
-
 # Energy balance condition
 def _check_radeqm(handler: Proteus) -> bool:
-    log.debug('Check energy balance / radeqm')
+    log.debug("Check energy balance / radeqm")
 
     # Radiative equilibrium nominally occurs when F_atm is zero.
     # However, with tidal heating included, this is offset by the interior
     #   heat production of the planet. Energy balance is instead achieved
     #   when F_atm and F_tidal are equal.
 
-    F_eps = handler.hf_row['F_atm'] - handler.hf_row['F_tidal'] - handler.hf_row['F_radio']
-    F_ref = (
-        abs(handler.hf_row['F_atm']) * handler.config.params.stop.radeqm.rtol
-        + handler.config.params.stop.radeqm.atol
-    )
-    log.debug('    val, req = %.3e, %.3e  W m-2' % (F_eps, F_ref))
+    F_eps = handler.hf_row["F_atm"] - handler.hf_row["F_tidal"] - handler.hf_row["F_radio"]
+    F_ref = abs(handler.hf_row["F_atm"]) * handler.config.params.stop.radeqm.rtol + handler.config.params.stop.radeqm.atol
+    log.debug("    val, req = %.3e, %.3e  W m-2"%(F_eps, F_ref))
 
     if abs(F_eps) <= F_ref:
         UpdateStatusfile(handler.directories, 14)
-        _msg_termination('Planet has reached global energy balance')
+        _msg_termination("Planet has reached global energy balance")
         return True
 
-    # Simulation when wants to warm up but cannot do so
+     # Simulation when wants to warm up but cannot do so
     if handler.config.atmos_clim.prevent_warming and (F_eps < 0):
         UpdateStatusfile(handler.directories, 14)
-        _msg_termination('Planet is no longer cooling')
+        _msg_termination("Planet is no longer cooling")
         return True
 
     return False
-
 
 # Volatiles have escaped
 def _check_escape(handler: Proteus) -> bool:
-    log.debug('Check escape')
+    log.debug("Check escape")
 
-    P_surf = handler.hf_row['P_surf']
+    P_surf = handler.hf_row["P_surf"]
     P_stop = handler.config.params.stop.escape.p_stop
-    log.debug('    val, req = %.3e, %.3e  bar' % (P_surf, P_stop))
+    log.debug("    val, req = %.3e, %.3e  bar"%(P_surf, P_stop))
 
     if P_surf <= P_stop:
         UpdateStatusfile(handler.directories, 15)
-        _msg_termination('Atmosphere has escaped')
+        _msg_termination("Atmosphere has escaped")
         return True
 
     return False
-
 
 # Planet has disintegrated
 def _check_separation(handler: Proteus) -> bool:
-    log.debug('Check separation')
+    log.debug("Check separation")
 
-    separation = handler.hf_row['separation']
-    roche_limit = handler.hf_row['roche_limit']
+    separation = handler.hf_row["separation"]
+    roche_limit = handler.hf_row["roche_limit"]
     offset = handler.config.params.stop.disint.offset_roche
-    log.debug('    sep, roc = %.3e, %.3e  m' % (separation, roche_limit - offset))
+    log.debug("    sep, roc = %.3e, %.3e  m"%(separation, roche_limit-offset))
 
     if separation <= roche_limit + offset:
         UpdateStatusfile(handler.directories, 16)
-        _msg_termination('Planet has disintegrated')
+        _msg_termination("Planet has disintegrated")
         return True
 
     return False
 
-
 def _check_spinrate(handler: Proteus) -> bool:
-    log.debug('Check spin rate')
+    log.debug("Check spin rate")
 
-    axial_period = handler.hf_row['axial_period']
-    breakup_period = handler.hf_row['breakup_period']
+    axial_period = handler.hf_row["axial_period"]
+    breakup_period = handler.hf_row["breakup_period"]
     offset = handler.config.params.stop.disint.offset_spin
-    log.debug('    axr, bur = %.3e, %.3e  s' % (axial_period, breakup_period))
+    log.debug("    axr, bur = %.3e, %.3e  s"%(axial_period, breakup_period))
 
     if axial_period <= breakup_period + offset:
         UpdateStatusfile(handler.directories, 16)
-        _msg_termination('Planet has disintegrated')
+        _msg_termination("Planet has disintegrated")
         return True
 
     return False
-
 
 # Maximum time
 def _check_maxtime(handler: Proteus) -> bool:
-    log.debug('Check maximum time')
+    log.debug("Check maximum time")
 
-    if handler.hf_row['Time'] >= handler.config.params.stop.time.maximum:
+    if handler.hf_row["Time"] >= handler.config.params.stop.time.maximum:
         UpdateStatusfile(handler.directories, 13)
-        _msg_termination('Target time reached')
+        _msg_termination("Target time reached")
         return True
     return False
 
-
 # Minimum time (return true when exit is allowed)
-def _check_mintime(handler: Proteus, finished: bool) -> bool:
-    log.debug('Check minimum time')
+def _check_mintime(handler: Proteus, finished:bool) -> bool:
+    log.debug("Check minimum time")
 
-    if handler.hf_row['Time'] < handler.config.params.stop.time.minimum:
+    if handler.hf_row["Time"] < handler.config.params.stop.time.minimum:
         if finished:
             # Model thinks that it is done
-            log.warning('Minimum integration time has not been reached')
-            log.warning('    Model will continue')
+            log.warning("Minimum integration time has not been reached")
+            log.warning("    Model will continue")
             UpdateStatusfile(handler.directories, 1)
-        return False  # do not exit
+        return False # do not exit
     return True
-
 
 # Maximum iterations
 def _check_maxiter(handler: Proteus) -> bool:
-    log.debug('Check maximum iterations')
+    log.debug("Check maximum iterations")
 
-    if handler.loops['total'] > handler.loops['total_loops']:
+    if handler.loops["total"] > handler.loops["total_loops"]:
         UpdateStatusfile(handler.directories, 12)
-        _msg_termination('Maximum number of iterations reached')
+        _msg_termination("Maximum number of iterations reached")
         return True
     return False
 
-
 # Minimum iterations (return true when exit is allowed)
-def _check_miniter(handler: Proteus, finished: bool) -> bool:
-    log.debug('Check minimum iterations')
+def _check_miniter(handler: Proteus, finished:bool) -> bool:
+    log.debug("Check minimum iterations")
 
     # Number of iterations not reached
-    if handler.loops['total'] <= handler.loops['total_min']:
+    if handler.loops["total"] <= handler.loops["total_min"]:
         if finished:
             # Model thinks that it is done
-            log.warning('Minimum number of iterations has not been reached')
-            log.warning('    Model will continue')
+            log.warning("Minimum number of iterations has not been reached")
+            log.warning("    Model will continue")
             UpdateStatusfile(handler.directories, 1)
-        return False  # do not exit
+        return False # do not exit
     return True
 
-
 def _check_keepalive(handler: Proteus) -> bool:
-    log.debug('Check keepalive file')
+    log.debug("Check keepalive file")
 
     if not os.path.exists(handler.lockfile):
         UpdateStatusfile(handler.directories, 25)
-        _msg_termination('Model termination was requested')
+        _msg_termination("Model termination was requested")
         return True
     return False
-
 
 def check_termination(handler: Proteus) -> bool:
     """
@@ -261,8 +245,8 @@ def check_termination(handler: Proteus) -> bool:
         if finished:
             handler.finished_prev = True
             handler.finished_both = True
-            log.info('Termination criteria satisfied')
-            log.debug('Model will exit')
+            log.info("Termination criteria satisfied")
+            log.debug("Model will exit")
             return True
 
     # Strict check
@@ -273,18 +257,18 @@ def check_termination(handler: Proteus) -> bool:
             if finished:
                 # convergence is also satisfied at this iteration
                 handler.finished_both = True
-                log.info('Termination criteria satisfied twice')
-                log.debug('Model will exit')
+                log.info("Termination criteria satisfied twice")
+                log.debug("Model will exit")
                 return True
             else:
                 # convergence no longer satisfied - reset flags
                 handler.finished_prev = False
-                log.warning('Termination criteria no longer satisfied')
+                log.warning("Termination criteria no longer satisfied")
         else:
             # previous iteration DID NOT satisfy criteria...
             handler.finished_prev = finished
             if finished:
-                log.info('Termination criteria satisfied once')
+                log.info("Termination criteria satisfied once")
 
     # Reset statusfile to 'Running'
     # UpdateStatusfile(handler.directories, 1)

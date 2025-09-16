@@ -32,25 +32,23 @@ class Calliope:
     include_CO: bool
         If True, include CO outgassing.
     """
-
-    T_floor: float = field(default=700.0, validator=validators.gt(0.0))
-    include_H2O: bool = True
-    include_CO2: bool = True
-    include_N2: bool = True
-    include_S2: bool = True
-    include_SO2: bool = True
-    include_H2S: bool = True
-    include_NH3: bool = True
-    include_H2: bool = True
-    include_CH4: bool = True
-    include_CO: bool = True
-    rtol: float = field(default=1e-4, validator=validators.gt(0.0))
-    xtol: float = field(default=1e-6, validator=validators.gt(0.0))
+    T_floor: float      = field(default=700.0, validator=validators.gt(0.0))
+    include_H2O: bool   = True
+    include_CO2: bool   = True
+    include_N2: bool    = True
+    include_S2: bool    = True
+    include_SO2: bool   = True
+    include_H2S: bool   = True
+    include_NH3: bool   = True
+    include_H2: bool    = True
+    include_CH4: bool   = True
+    include_CO: bool    = True
+    rtol: float         = field(default=1e-4, validator=validators.gt(0.0))
+    xtol: float         = field(default=1e-6, validator=validators.gt(0.0))
 
     def is_included(self, vol: str) -> bool:
         """Helper method for getting flag if `vol` is included in outgassing."""
         return getattr(self, f'include_{vol}')
-
 
 @define
 class Atmodeller:
@@ -61,9 +59,7 @@ class Atmodeller:
     some_parameter: str
         Not used currently.
     """
-
-    some_parameter: str = field(default='some_value')
-
+    some_parameter: str = field(default="some_value")
 
 @define
 class Outgas:
@@ -82,12 +78,11 @@ class Outgas:
     atmodeller: Atmodeller
         Parameters for atmodeller module.
     """
-
     fO2_shift_IW: float
 
     module: str = field(validator=validators.in_(('calliope',)))
 
     mass_thresh: float = field(default=1e16, validator=validators.gt(0.0))
 
-    calliope: Calliope = field(factory=Calliope)
-    atmodeller: Atmodeller = field(factory=Atmodeller)
+    calliope: Calliope      = field(factory=Calliope)
+    atmodeller: Atmodeller  = field(factory=Atmodeller)

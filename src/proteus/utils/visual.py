@@ -5,8 +5,7 @@ import numpy as np
 from scipy.interpolate import PchipInterpolator
 
 # CIE Color Matching Functions
-cmf = np.array(
-    [
+cmf = np.array([
         [380, 0.0014, 0.0000, 0.0065],
         [385, 0.0022, 0.0001, 0.0105],
         [390, 0.0042, 0.0001, 0.0201],
@@ -88,14 +87,11 @@ cmf = np.array(
         [770, 0.0001, 0.0000, 0.0000],
         [775, 0.0001, 0.0000, 0.0000],
         [780, 0.0000, 0.0000, 0.0000],
-    ]
-)
-
+    ])
 
 def xyz_from_xy(x, y):
     """Return the vector (x, y, 1-x-y)."""
-    return np.array((x, y, 1 - x - y))
-
+    return np.array((x, y, 1-x-y))
 
 class ColourSystem:
     """A class representing a colour system.
@@ -138,9 +134,9 @@ class ColourSystem:
         rgb = self.T.dot(xyz)
         if np.any(rgb < 0):
             # We're not in the RGB gamut: approximate by desaturating
-            w = -np.min(rgb)
+            w = - np.min(rgb)
             rgb += w
-        if not np.all(rgb == 0):
+        if not np.all(rgb==0):
             # Normalize the rgb vector
             rgb /= np.max(rgb)
 
@@ -162,9 +158,9 @@ class ColourSystem:
 
         """
 
-        XYZ = np.sum(spec[:, np.newaxis] * cmf[:, 1:], axis=0)
+        XYZ = np.sum(spec[:, np.newaxis] * cmf[:,1:], axis=0)
         den = np.sum(XYZ)
-        if den == 0.0:
+        if den == 0.:
             return XYZ
         return XYZ / den
 
@@ -174,35 +170,27 @@ class ColourSystem:
         xyz = self.spec_to_xyz(spec)
         return self.xyz_to_rgb(xyz, out_fmt)
 
-
 # Interpolate input spectrum (nanometre) to required wavelength axis
 def interp_spec(wl, fl):
     itp = PchipInterpolator(wl, fl)
-    return itp(cmf[:, 0])
-
+    return itp(cmf[:,0])
 
 # set whitepoint
 # https://en.wikipedia.org/wiki/Standard_illuminant?useskin=vector
 illuminant_D65 = xyz_from_xy(0.3127, 0.3291)
 
 # define colorspaces
-cs_hdtv = ColourSystem(
-    red=xyz_from_xy(0.67, 0.33),
-    green=xyz_from_xy(0.21, 0.71),
-    blue=xyz_from_xy(0.15, 0.06),
-    white=illuminant_D65,
-)
+cs_hdtv = ColourSystem(red=xyz_from_xy(0.67, 0.33),
+                       green=xyz_from_xy(0.21, 0.71),
+                       blue=xyz_from_xy(0.15, 0.06),
+                       white=illuminant_D65)
 
-cs_smpte = ColourSystem(
-    red=xyz_from_xy(0.63, 0.34),
-    green=xyz_from_xy(0.31, 0.595),
-    blue=xyz_from_xy(0.155, 0.070),
-    white=illuminant_D65,
-)
+cs_smpte = ColourSystem(red=xyz_from_xy(0.63, 0.34),
+                        green=xyz_from_xy(0.31, 0.595),
+                        blue=xyz_from_xy(0.155, 0.070),
+                        white=illuminant_D65)
 
-cs_srgb = ColourSystem(
-    red=xyz_from_xy(0.64, 0.33),
-    green=xyz_from_xy(0.30, 0.60),
-    blue=xyz_from_xy(0.15, 0.06),
-    white=illuminant_D65,
-)
+cs_srgb = ColourSystem(red=xyz_from_xy(0.64, 0.33),
+                       green=xyz_from_xy(0.30, 0.60),
+                       blue=xyz_from_xy(0.15, 0.06),
+                       white=illuminant_D65)

@@ -5,12 +5,10 @@ def none_if_none(val: str) -> str | None:
     """Convert 'none' string into None literal."""
     return None if val == 'none' else val
 
-
 def zero_if_none(val: str) -> float:
     """Convert 'none' string into float zero."""
     print(val)
     return 0.0 if val == 'none' else val
-
 
 def dict_replace_none(data):
     """
@@ -26,5 +24,5 @@ def dict_replace_none(data):
         if v is not None:
             new_data[k] = v
         else:
-            new_data[k] = 'none'
+            new_data[k] = "none"
     return new_data

@@ -18,11 +18,12 @@ from proteus.utils.coupler import ReadHelpfileFromCSV
 
 out_dir = PROTEUS_ROOT / 'output' / 'dummy_agni'
 ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'dummy_agni'
-config_path = PROTEUS_ROOT / 'tests' / 'integration' / 'dummy_agni.toml'
+config_path = PROTEUS_ROOT /'tests' / 'integration' / 'dummy_agni.toml'
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def dummy_agni_run():
+
     # Run simulation
     runner = Proteus(config_path=config_path)
     runner.start()
@@ -32,11 +33,10 @@ def dummy_agni_run():
 
     return runner
 
-
 def test_dummy_agni_run(dummy_agni_run):
-    """
+    '''
     Test that the AGNI run completes without error and produces correct output
-    """
+    '''
 
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
@@ -51,64 +51,60 @@ def test_dummy_agni_run(dummy_agni_run):
     # Check helpfile
     assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
 
-
 @pytest.mark.dependency()
 def test_dummy_agni_archive(dummy_agni_run):
-    """
+    '''
     Test that the archive files are able to be extracted and created again
 
     The archive files were automatically created during the run.
-    """
+    '''
 
-    data_dir = dummy_agni_run.directories['output/data']
+    data_dir = dummy_agni_run.directories["output/data"]
 
     # Check that the archive file exists
-    assert os.path.isfile(os.path.join(data_dir, 'data.tar'))
+    assert os.path.isfile(os.path.join(data_dir, "data.tar"))
 
     # Check that the already-archived files do not exist loosely in the data directory
-    assert not os.path.isfile(os.path.join(data_dir, '0_atm.nc'))
+    assert not os.path.isfile(os.path.join(data_dir, "0_atm.nc"))
 
     # Extract archives
     dummy_agni_run.extract_archives()
 
     # Check that the extracted files now exist
-    assert os.path.isfile(os.path.join(data_dir, '0_atm.nc'))
+    assert os.path.isfile(os.path.join(data_dir, "0_atm.nc"))
 
-
-@pytest.mark.dependency(depends=['test_dummy_agni_archive'])
+@pytest.mark.dependency(depends=["test_dummy_agni_archive"])
 def test_dummy_agni_atmosphere(dummy_agni_run):
-    """
+    '''
     Test that the modelled profiles match the reference data
-    """
+    '''
 
     # Keys to load and test
-    _out = out_dir / 'data' / '99002_atm.nc'
-    _ref = ref_dir / '99002_atm.nc'
-    fields = ['tmpl', 'pl', 'rl', 'fl_U_LW', 'fl_D_SW', 'fl_cnvct', 'Kzz']
+    _out   = out_dir / 'data' / '99002_atm.nc'
+    _ref   = ref_dir / '99002_atm.nc'
+    fields = ["tmpl", "pl", "rl", "fl_U_LW", "fl_D_SW", "fl_cnvct", "Kzz"]
 
     # Load atmosphere output
     out = read_atmosphere(_out, extra_keys=fields)
 
     # Compare to config
-    assert len(out['tmpl']) == dummy_agni_run.config.atmos_clim.agni.num_levels + 1
-    assert np.all(out['Kzz'] >= 0)
-    assert np.all(out['rl'][:-1] - out['rl'][1:] > 0)
+    assert len(out["tmpl"]) == dummy_agni_run.config.atmos_clim.agni.num_levels+1
+    assert np.all(out["Kzz"] >= 0)
+    assert np.all(out["rl"][:-1] - out["rl"][1:] > 0)
 
     # Load atmosphere reference
     ref = read_atmosphere(_ref, extra_keys=fields)
 
     # Compare to expected array values.
     for key in fields:
-        assert_allclose(
-            out[key], ref[key], rtol=1e-3, err_msg=f'Key {key} does not match reference data'
-        )
+        assert_allclose(out[key], ref[key], rtol=1e-3,
+                        err_msg=f"Key {key} does not match reference data")
 
-
-@pytest.mark.dependency(depends=['test_dummy_agni_archive'])
+@pytest.mark.dependency(depends=["test_dummy_agni_archive"])
 def test_dummy_agni_offchem(dummy_agni_run):
-    """
+    '''
     Test that the offline chemistry is working and matches reference data
-    """
+    '''
 
     # run offline chemistry and load result
     df_out = dummy_agni_run.offline_chemistry()
@@ -118,9 +114,9 @@ def test_dummy_agni_offchem(dummy_agni_run):
 
     # validate output
     assert df_out is not None
-    assert 'Kzz' in df_out.columns
-    assert 'H2O' in df_out.columns
-    assert np.all(df_out['H2O'].values >= 0)
+    assert "Kzz" in df_out.columns
+    assert "H2O" in df_out.columns
+    assert np.all(df_out["H2O"].values >= 0)
 
     # load reference data
     module = dummy_agni_run.config.atmos_chem.module

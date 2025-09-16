@@ -17,31 +17,30 @@ from proteus.utils.coupler import ReadHelpfileFromCSV
 
 out_dir = PROTEUS_ROOT / 'output' / 'aragog_janus'
 ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'aragog_janus'
-config_path = PROTEUS_ROOT / 'tests' / 'integration' / 'aragog_janus.toml'
+config_path = PROTEUS_ROOT /'tests' / 'integration' / 'aragog_janus.toml'
 
 IMAGE_LIST = (
-    'plot_atmosphere.png',
-    'plot_escape.png',
-    'plot_global_log.png',
-    'plot_bolometry.png',
-    'plot_structure.png',
-    'plot_fluxes_atmosphere.png',
-    'plot_interior_cmesh.png',
-    'plot_emission.png',
-    'plot_interior.png',
-    'plot_sflux.png',
-    'plot_population_time_density.png',
-    'plot_population_mass_radius.png',
-)
+        "plot_atmosphere.png",
+        "plot_escape.png",
+        "plot_global_log.png",
+        "plot_bolometry.png",
+        "plot_structure.png",
+        "plot_fluxes_atmosphere.png",
+        "plot_interior_cmesh.png",
+        "plot_emission.png",
+        "plot_interior.png",
+        "plot_sflux.png",
+        "plot_population_time_density.png",
+        "plot_population_mass_radius.png"
+        )
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope="module")
 def aragog_janus_run():
     runner = Proteus(config_path=config_path)
     runner.start()
 
     return runner
-
 
 def test_aragog_janus_run(aragog_janus_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
@@ -57,7 +56,6 @@ def test_aragog_janus_run(aragog_janus_run):
     # Check helpfile
     assert_frame_equal(hf_all, hf_ref, rtol=6e-3)
 
-
 def test_aragog_janus_spectrum(aragog_janus_run):
     # Check stellar spectrum
 
@@ -66,18 +64,17 @@ def test_aragog_janus_spectrum(aragog_janus_run):
 
     assert filecmp.cmp(_out, _ref, shallow=False)
 
-
 def test_aragog_janus_atmosphere(aragog_janus_run):
     # Keys to load and test
-    _out = out_dir / 'data' / '402_atm.nc'
-    _ref = ref_dir / '402_atm.nc'
-    fields = ['t', 'p', 'z', 'fl_U_LW', 'fl_D_SW']
+    _out   = out_dir / 'data' / '402_atm.nc'
+    _ref   = ref_dir / '402_atm.nc'
+    fields = ["t", "p", "z", "fl_U_LW", "fl_D_SW"]
 
     # Load atmosphere output
     out = read_atmosphere(_out, extra_keys=fields)
 
     # Compare to config
-    assert len(out['t']) == aragog_janus_run.config.atmos_clim.janus.num_levels * 2 + 1
+    assert len(out["t"]) == aragog_janus_run.config.atmos_clim.janus.num_levels*2+1
 
     # Load atmosphere reference
     ref = read_atmosphere(_ref, extra_keys=fields)
@@ -85,22 +82,20 @@ def test_aragog_janus_atmosphere(aragog_janus_run):
     # Compare to expected array values.
     # Cannot simply compare the files as black-boxes, because they contain date information
     for key in fields:
-        assert_allclose(
-            out[key], ref[key], rtol=1e-3, err_msg=f'Key {key} does not match reference data'
-        )
-
+        assert_allclose(out[key], ref[key], rtol=1e-3,
+                        err_msg=f"Key {key} does not match reference data")
 
 def test_aragog_janus_interior(aragog_janus_run):
     # Keys to load and test
-    _out = out_dir / 'data' / '402_int.nc'
-    _ref = ref_dir / '402_int.nc'
-    fields = ['radius_b', 'pres_b', 'temp_b', 'phi_b', 'Hradio_s']
+    _out   = out_dir / 'data' / '402_int.nc'
+    _ref   = ref_dir / '402_int.nc'
+    fields = ["radius_b", "pres_b", "temp_b", "phi_b", "Hradio_s"]
 
     # Load interior output
     out = read_interior(_out)
 
     # Compare to config
-    assert len(out['radius_b']) == aragog_janus_run.config.interior.aragog.num_levels
+    assert len(out["radius_b"]) == aragog_janus_run.config.interior.aragog.num_levels
 
     # Load interior reference
     ref = read_interior(_ref)
@@ -108,15 +103,15 @@ def test_aragog_janus_interior(aragog_janus_run):
     # Compare to expected array values.
     # Cannot simply compare the files as black-boxes, because they contain date information
     for key in fields:
-        assert_allclose(
-            out[key], ref[key], rtol=1e-3, err_msg=f'Key {key} does not match reference data'
-        )
+        assert_allclose(out[key], ref[key], rtol=1e-3,
+                        err_msg=f"Key {key} does not match reference data")
 
 
 @pytest.mark.xfail(raises=AssertionError)
-@pytest.mark.parametrize('image', IMAGE_LIST)
+@pytest.mark.parametrize("image", IMAGE_LIST)
 def test_aragog_janus_plot(aragog_janus_run, image):
-    out_img = out_dir / 'plots' / image
+
+    out_img = out_dir / "plots" / image
     ref_img = ref_dir / image
     tolerance = 3
 
@@ -138,6 +133,4 @@ def test_aragog_janus_plot(aragog_janus_run, image):
     # Use compare_images to compare the resized files
     result = compare_images(actual=str(actual), expected=str(expected), tol=tolerance)
 
-    assert result is None, (
-        f'The two PNG files {image} differ more than the allowed tolerance: {result}'
-    )
+    assert result is None, f"The two PNG files {image} differ more than the allowed tolerance: {result}"

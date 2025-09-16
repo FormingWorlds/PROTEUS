@@ -16,22 +16,23 @@ from proteus.utils.plot import latex_float, sample_output
 if TYPE_CHECKING:
     from proteus import Proteus
 
-log = logging.getLogger('fwl.' + __name__)
+log = logging.getLogger("fwl."+__name__)
 
+def plot_emission(output_dir:str, times:list, plot_format="pdf",
+                cumulative=False, xmax=2e4):
 
-def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=False, xmax=2e4):
     if len(np.unique(times)) < 3:
-        log.warning('Insufficient data to make plot_emission')
+        log.warning("Insufficient data to make plot_emission")
         return
 
-    log.info('Plot emission spectrum')
+    log.info("Plot emission spectrum")
 
-    norm = mpl.colors.LogNorm(vmin=max(times[0], 1), vmax=times[-1])
+    norm = mpl.colors.LogNorm(vmin=max(times[0],1), vmax=times[-1])
     sm = plt.cm.ScalarMappable(cmap=cm.batlowK_r, norm=norm)
     sm.set_array([])
 
     scale = 1.7
-    fig, ax = plt.subplots(1, 1, figsize=(4 * scale, 3 * scale))
+    fig,ax = plt.subplots(1,1, figsize=(4*scale,3*scale))
 
     # atmosphere level to plot emission from
     atm_lvl = 0
@@ -39,24 +40,25 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
     # plotting
     al = 0.9
     lw = 1.2
-    ymax = 1e-20  # updated below
+    ymax = 1e-20 # updated below
     ymin = 1e20  # updated below
 
-    for i, t in enumerate(times):
-        label = latex_float(t) + ' yr'
+    for i, t in enumerate( times ):
+
+        label = latex_float(t)+" yr"
         color = sm.to_rgba(t)
 
-        atm_file = os.path.join(output_dir, 'data', '%.0f_atm.nc' % t)
+        atm_file = os.path.join(output_dir, "data", "%.0f_atm.nc"%t)
         ds = nc.Dataset(atm_file)
 
         x_arr = []
         w_arr = []
-        y_arr = np.array(ds['ba_U_LW'][atm_lvl, :]) + np.array(ds['ba_U_SW'][atm_lvl, :])
+        y_arr = np.array(ds["ba_U_LW"][atm_lvl,:]) + np.array(ds["ba_U_SW"][atm_lvl,:])
 
         # reversed?
-        if ds['bandmin'][1] < ds['bandmin'][0]:
-            bandmin = np.array(ds['bandmin'][::-1])
-            bandmax = np.array(ds['bandmax'][::-1])
+        if ds["bandmin"][1] < ds["bandmin"][0]:
+            bandmin = np.array(ds["bandmin"][::-1])
+            bandmax = np.array(ds["bandmax"][::-1])
             y_arr = y_arr[::-1]
         else:
             bandmin = np.array(ds['bandmin'][:])
@@ -66,9 +68,9 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
 
         if cumulative:
             # bin edges
-            x_arr = [bandmin[0] * 1e9]
+            x_arr = [bandmin[0]*1e9]
             for b in bandmax:
-                x_arr.append(b * 1e9)
+                x_arr.append(b*1e9)
 
             # copy array
             b_arr = np.zeros(len(y_arr))
@@ -77,7 +79,7 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
             # calulate cumulative emission
             y_arr = [0.0]
             for y in b_arr:
-                y_arr.append(y_arr[-1] + y)
+                y_arr.append(y_arr[-1]+y)
 
             x_arr = np.array(x_arr)
             y_arr = np.array(y_arr)
@@ -90,7 +92,7 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
         ds.close()
 
         # find maximum x value
-        imax = np.argmin(np.abs(x_arr - xmax)) + 1
+        imax = np.argmin(np.abs(x_arr-xmax)) + 1
         imax = min(imax, len(x_arr))
         x_arr = x_arr[:imax]
         w_arr = w_arr[:imax]
@@ -101,41 +103,41 @@ def plot_emission(output_dir: str, times: list, plot_format='pdf', cumulative=Fa
         ymin = min(ymin, np.amin(y_arr))
 
     # Decorate
-    ax.legend(fontsize=8, fancybox=True, framealpha=0.5)
-    ax.set_yscale('log')
+    ax.legend( fontsize=8, fancybox=True, framealpha=0.5 )
+    ax.set_yscale("log")
     if cumulative:
-        ax.set_ylabel(r'Cumulative emission [erg s$^{-1}$ cm$^{-2}$]')
+        ax.set_ylabel(r"Cumulative emission [erg s$^{-1}$ cm$^{-2}$]")
     else:
-        ax.set_ylabel(r'Flux density [erg s$^{-1}$ cm$^{-2}$ nm$^{-1}$]')
+        ax.set_ylabel(r"Flux density [erg s$^{-1}$ cm$^{-2}$ nm$^{-1}$]")
     ax.yaxis.set_major_locator(LogLocator(numticks=100))
 
-    ax.set_xlabel('Wavelength [nm]')
-    ax.set_xscale('log')
+    ax.set_xlabel("Wavelength [nm]")
+    ax.set_xscale("log")
 
     ax.set_xlim(left=np.amin(x_arr), right=np.amax(x_arr))
-    ax.set_ylim(bottom=ymin / 2, top=ymax * 2)
+    ax.set_ylim(bottom=ymin/2, top=ymax*2)
 
     plt.close()
     plt.ioff()
 
-    fpath = os.path.join(output_dir, 'plots', 'plot_emission.%s' % plot_format)
+    fpath = os.path.join(output_dir, "plots", "plot_emission.%s"%plot_format)
     fig.savefig(fpath, dpi=200, bbox_inches='tight')
 
-
 def plot_emission_entry(handler: Proteus):
-    plot_times, _ = sample_output(handler, tmin=1000.0, extension='_atm.nc')
-    print('Snapshots:', plot_times)
+
+    plot_times, _ = sample_output(handler, tmin=1000.0, extension="_atm.nc")
+    print("Snapshots:", plot_times)
+
 
     # Plot fixed set from above
     plot_emission(
-        handler.directories['output'],
+        handler.directories["output"],
         plot_times,
         plot_format=handler.config.params.out.plot_fmt,
-    )
+   )
 
 
 if __name__ == '__main__':
     from proteus.plot._cpl_helpers import get_handler_from_argv
-
     handler = get_handler_from_argv()
     plot_emission_entry(handler)
