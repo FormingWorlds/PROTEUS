@@ -309,7 +309,8 @@ def resolve_fwl_data_dir() -> Path:
     if "FWL_DATA" in os.environ:
         return Path(os.environ.get("FWL_DATA"))
     else:
-        raise EnvironmentError("Environment variable FWL_DATA has not been set!")
+        # Return a default path to install FWL data.
+        return Path("../FWL_DATA")
 
 
 def append_to_shell_rc(var: str, value: str, shell: str = None) -> Path | None:
