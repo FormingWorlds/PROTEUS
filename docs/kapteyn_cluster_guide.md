@@ -105,6 +105,15 @@ Follow the instructions at [VS Code Instructions Kapteyn Cluster](https://docs.g
     rm /dataserver/users/formingworlds/<username>/miniforge3/miniforge.sh
     ``` 
     For both Miniconda and conda-forge follow the instructions wrt updating your `~/.shellrc` file.
+
+    ### Pip cache consideration
+    The pip cache can easily take more than 3 GB when installing PROTEUS and this may exceed your 
+    disk quota on your home directory. Therefore, you need to setup your pip cache folder in a different
+    place:
+    ```console
+    mkdir /dataserver/users/formingworlds/${USER}/.pip-cache
+    export PIP_CACHE_DIR=/dataserver/users/formingworlds/${USER}/.pip-cache 
+    ```
     
 ## Queuing Manager: Condormaster
 
