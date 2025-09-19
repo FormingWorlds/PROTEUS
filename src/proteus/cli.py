@@ -486,8 +486,12 @@ def update_all(export_env: bool):
     """Update SOCRATES, AGNI, and refresh PROTEUS environment."""
 
     root = Path.cwd()
+    # --- Step 1: update all Python packages ---
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-U", "-e", "."], check=True
+    )
 
-    # --- Step 1: FWL_DATA check ---
+    # --- Step 2: FWL_DATA check ---
     try:
         fwl_data = resolve_fwl_data_dir()
     except EnvironmentError:
@@ -497,7 +501,7 @@ def update_all(export_env: bool):
         raise SystemExit(1)
     click.secho(f"📂 Using FWL_DATA: {fwl_data}", fg="green")
 
-    # --- Step 2: Update SOCRATES ---
+    # --- Step 3: Update SOCRATES ---
     socrates_dir = root / "socrates"
     if socrates_dir.exists():
         click.secho("🌤️ Updating SOCRATES...", fg="blue")
@@ -515,12 +519,12 @@ def update_all(export_env: bool):
     rad_dir = socrates_dir.resolve()
     os.environ.setdefault("RAD_DIR", str(rad_dir))
 
-    # --- Step 3: Julia check ---
+    # --- Step 4: Julia check ---
     if not is_julia_installed():
         click.secho("⚠️ Julia not found in PATH.", fg="yellow")
         click.secho("   Cannot update AGNI without Julia.", fg="yellow")
     else:
-        # --- Step 4: Update AGNI ---
+        # --- Step 5: Update AGNI ---
         agni_dir = root / "AGNI"
         if agni_dir.exists():
             click.secho("🧪 Updating AGNI...", fg="blue")
@@ -543,7 +547,7 @@ def update_all(export_env: bool):
                 "⚠️ AGNI not found. Run `proteus install-all`.", fg="yellow"
             )
 
-    # --- Step 5: Refresh environment exports ---
+    # --- Step 6: Refresh environment exports ---
     if export_env:
         for var, value in {"FWL_DATA": fwl_data, "RAD_DIR": rad_dir}.items():
             rc_file = append_to_shell_rc(var, str(value))
