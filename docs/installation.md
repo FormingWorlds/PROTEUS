@@ -28,7 +28,8 @@ Python is most easily obtained and managed using either [miniconda](https://www.
 ```console
 mkdir -p ~/miniconda3
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+bash ~/miniconda3/miniconda.sh 
+# choose an install folder where you have plenty of disk space!
 rm ~/miniconda3/miniconda.sh
 ```
 or [miniforge](https://github.com/conda-forge/miniforge).
@@ -36,8 +37,6 @@ or [miniforge](https://github.com/conda-forge/miniforge).
 curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
 bash Miniforge3-$(uname)-$(uname -m).sh
 ```
-
-Alternatively, you can download Python from the official website and use [pyenv](https://github.com/pyenv/pyenv).
 
 ## Install Julia
 
@@ -54,10 +53,9 @@ curl -fsSL https://install.julialang.org | sh
 1. conda either through miniconda or miniforge (see above). However, currently there seems to be a 
 conflict between Julia and Conda versions of HDF5 and/or NetCDF libaries when using miniforge.
 2. git. If you don't have git, you can install it through conda: `conda install git`.
-3. wget. If you don't have wget, you can install it through conda: `conda install wget`. 
-4. Julia installation (see above)
-5. 20 GB of disk space; Conda (through miniconda) can take 9 GB, Julia 2 GB and a few GB for PROTEUS.
-6. 30 minutes of your time (mostly waiting)
+3. Julia installation (see above)
+4. 20 GB of disk space; Conda (through miniconda) can take 9 GB, Julia 2 GB and a few GB for PROTEUS.
+5. 30 minutes of your time (mostly waiting)
 
 ### Steps
 
@@ -79,6 +77,11 @@ When you log into the machine that where you installed PROTEUS through `proteus 
 you will have the environment variables FWL_DATA, RAD_DIR set appropriately as your ~/.shellrc file 
 (e.g. ~/.bashrc) has been updated during the install process. However, you still need to enter 
 `conda activate proteus`.
+
+### Updating PROTEUS
+
+1. `conda activate proteus` (if not already activated)
+2. `proteus update-all` 
 
 ## Developer install
 
@@ -109,6 +112,7 @@ you will have the environment variables FWL_DATA, RAD_DIR set appropriately as y
 
     ```console
     conda create -n proteus python=3.12
+    conda activate proteus
     ```
 
 4. Radiative transfer code (**SOCRATES**)
