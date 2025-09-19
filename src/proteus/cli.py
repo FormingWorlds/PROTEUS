@@ -25,7 +25,9 @@ config_option = click.option(
     "-c",
     "--config",
     "config_path",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path, resolve_path=True),
+    type=click.Path(
+        exists=True, dir_okay=False, path_type=Path, resolve_path=True
+    ),
     help="Path to config file",
     required=True,
 )
@@ -128,7 +130,9 @@ def get():
 
 
 @click.command()
-@click.option("-n", "--name", "name", type=str, help="Name of spectral file group")
+@click.option(
+    "-n", "--name", "name", type=str, help="Name of spectral file group"
+)
 @click.option("-b", "--bands", "bands", type=str, help="Number of bands")
 def spectral(**kwargs):
     """Get spectral files
@@ -307,13 +311,15 @@ cli.add_command(infer)
 def resolve_fwl_data_dir() -> Path:
     """Return the FWL_DATA path (env or default)."""
     if "FWL_DATA" in os.environ:
-        return Path(os.environ.get("FWL_DATA"))
+        return Path(os.environ["FWL_DATA"])
     else:
         # Return a default path to install FWL data.
         return Path("../FWL_DATA")
 
 
-def append_to_shell_rc(var: str, value: str, shell: str = None) -> Path | None:
+def append_to_shell_rc(
+    var: str, value: str, shell: str | None = None
+) -> Path | None:
     """Append an export line to the appropriate shell rc file."""
     shell = shell or os.environ.get("SHELL", "")
     shell_rc_map = {
@@ -420,7 +426,9 @@ def install_all(export_env: bool):
                 ["git", "clone", "https://github.com/nichollsh/AGNI.git"],
                 check=True,
             )
-            subprocess.run(["bash", "-c", 'echo "PATH seen by get_agni.sh: $PATH"'])
+            subprocess.run(
+                ["bash", "-c", 'echo "PATH seen by get_agni.sh: $PATH"']
+            )
             subprocess.run(
                 ["bash", "src/get_agni.sh"], cwd=agni_dir, env=env, check=True
             )
@@ -442,7 +450,9 @@ def install_all(export_env: bool):
                     f"ℹ️ {var} already exported or shell not recognized",
                     fg="cyan",
                 )
-        click.secho("🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow")
+        click.secho(
+            "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
+        )
 
     click.secho("🎉 PROTEUS installation completed!", fg="green")
 
@@ -481,7 +491,9 @@ def update_all(export_env: bool):
     try:
         fwl_data = resolve_fwl_data_dir()
     except EnvironmentError:
-        click.secho("❌ FWL_DATA not set. Run `proteus install-all` first.", fg="red")
+        click.secho(
+            "❌ FWL_DATA not set. Run `proteus install-all` first.", fg="red"
+        )
         raise SystemExit(1)
     click.secho(f"📂 Using FWL_DATA: {fwl_data}", fg="green")
 
@@ -496,7 +508,9 @@ def update_all(export_env: bool):
             click.secho("❌ Failed to update SOCRATES", fg="red")
             click.echo(e)
     else:
-        click.secho("⚠️ SOCRATES not found. Run `proteus install-all`.", fg="yellow")
+        click.secho(
+            "⚠️ SOCRATES not found. Run `proteus install-all`.", fg="yellow"
+        )
 
     rad_dir = socrates_dir.resolve()
     os.environ.setdefault("RAD_DIR", str(rad_dir))
@@ -525,7 +539,9 @@ def update_all(export_env: bool):
                 click.secho("❌ Failed to update AGNI", fg="red")
                 click.echo(e)
         else:
-            click.secho("⚠️ AGNI not found. Run `proteus install-all`.", fg="yellow")
+            click.secho(
+                "⚠️ AGNI not found. Run `proteus install-all`.", fg="yellow"
+            )
 
     # --- Step 5: Refresh environment exports ---
     if export_env:
@@ -538,7 +554,9 @@ def update_all(export_env: bool):
                     f"ℹ️ {var} already exported or shell not recognized",
                     fg="cyan",
                 )
-        click.secho("🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow")
+        click.secho(
+            "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
+        )
 
     click.secho("🎉 PROTEUS update completed!", fg="green")
 
