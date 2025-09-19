@@ -427,9 +427,6 @@ def install_all(export_env: bool):
                 check=True,
             )
             subprocess.run(
-                ["bash", "-c", 'echo "PATH seen by get_agni.sh: $PATH"']
-            )
-            subprocess.run(
                 ["bash", "src/get_agni.sh"], cwd=agni_dir, env=env, check=True
             )
         except subprocess.CalledProcessError as e:
