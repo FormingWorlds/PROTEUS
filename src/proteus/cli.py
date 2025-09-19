@@ -314,7 +314,7 @@ def resolve_fwl_data_dir() -> Path:
         return Path(os.environ["FWL_DATA"])
     else:
         # Return a default path to install FWL data.
-        return Path("../FWL_DATA")
+        return Path(__file__).resolve().parent.parent / "FWL_DATA"
 
 
 def append_to_shell_rc(
