@@ -1,3 +1,4 @@
+# This test runs PROTEUS with aragog interior and janus atmosphere, then the plots
 from __future__ import annotations
 
 import filecmp
@@ -14,9 +15,9 @@ from proteus.atmos_clim.common import read_ncdf_profile as read_atmosphere
 from proteus.interior.aragog import read_ncdf as read_interior
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
-out_dir = PROTEUS_ROOT / 'output' / 'physical'
-ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'physical'
-config_path = PROTEUS_ROOT /'tests' / 'integration' / 'physical.toml'
+out_dir = PROTEUS_ROOT / 'output' / 'aragog_janus'
+ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'aragog_janus'
+config_path = PROTEUS_ROOT /'tests' / 'integration' / 'aragog_janus.toml'
 
 IMAGE_LIST = (
         "plot_atmosphere.png",
@@ -35,13 +36,13 @@ IMAGE_LIST = (
 
 
 @pytest.fixture(scope="module")
-def physical_run():
+def aragog_janus_run():
     runner = Proteus(config_path=config_path)
     runner.start()
 
     return runner
 
-def test_physical_run(physical_run):
+def test_aragog_janus_run(aragog_janus_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
     hf_ref = ReadHelpfileFromCSV(ref_dir)
 
@@ -55,7 +56,7 @@ def test_physical_run(physical_run):
     # Check helpfile
     assert_frame_equal(hf_all, hf_ref, rtol=6e-3)
 
-def test_physical_spectrum(physical_run):
+def test_aragog_janus_spectrum(aragog_janus_run):
     # Check stellar spectrum
 
     _out = out_dir / 'data' / '0.sflux'
@@ -63,7 +64,7 @@ def test_physical_spectrum(physical_run):
 
     assert filecmp.cmp(_out, _ref, shallow=False)
 
-def test_physical_atmosphere(physical_run):
+def test_aragog_janus_atmosphere(aragog_janus_run):
     # Keys to load and test
     _out   = out_dir / 'data' / '402_atm.nc'
     _ref   = ref_dir / '402_atm.nc'
@@ -73,7 +74,7 @@ def test_physical_atmosphere(physical_run):
     out = read_atmosphere(_out, extra_keys=fields)
 
     # Compare to config
-    assert len(out["t"]) == physical_run.config.atmos_clim.janus.num_levels*2+1
+    assert len(out["t"]) == aragog_janus_run.config.atmos_clim.janus.num_levels*2+1
 
     # Load atmosphere reference
     ref = read_atmosphere(_ref, extra_keys=fields)
@@ -84,7 +85,7 @@ def test_physical_atmosphere(physical_run):
         assert_allclose(out[key], ref[key], rtol=1e-3,
                         err_msg=f"Key {key} does not match reference data")
 
-def test_physical_interior(physical_run):
+def test_aragog_janus_interior(aragog_janus_run):
     # Keys to load and test
     _out   = out_dir / 'data' / '402_int.nc'
     _ref   = ref_dir / '402_int.nc'
@@ -94,7 +95,7 @@ def test_physical_interior(physical_run):
     out = read_interior(_out)
 
     # Compare to config
-    assert len(out["radius_b"]) == physical_run.config.interior.aragog.num_levels
+    assert len(out["radius_b"]) == aragog_janus_run.config.interior.aragog.num_levels
 
     # Load interior reference
     ref = read_interior(_ref)
@@ -108,7 +109,7 @@ def test_physical_interior(physical_run):
 
 @pytest.mark.xfail(raises=AssertionError)
 @pytest.mark.parametrize("image", IMAGE_LIST)
-def test_physical_plot(physical_run, image):
+def test_aragog_janus_plot(aragog_janus_run, image):
 
     out_img = out_dir / "plots" / image
     ref_img = ref_dir / image

@@ -48,7 +48,7 @@ def plot_orbit(hf_all:pd.DataFrame, output_dir:str, plot_format:str="pdf", t0:fl
     color = "tab:red"
     y = hf_all["eccentricity"]
     ax_tr.plot(time, y, lw=lw, color=color)
-    ax_tr.set_ylabel("Planet orbital ccentricity")
+    ax_tr.set_ylabel("Planet orbital eccentricity")
     ax_tr.yaxis.label.set_color(color)
     ax_tr.tick_params(axis='y', colors=color)
     ax_tr.set_ylim(np.amin(y)/yext, np.amax(y)*yext)

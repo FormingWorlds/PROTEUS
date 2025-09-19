@@ -39,6 +39,9 @@ If you instead wish to initialise under case (2), where a pre-computed grid prov
 An example configuration file is shown below.
 
 ```toml
+# Set seed for reproducibility
+seed = 2
+
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
 output = "infer_demo/"
 
@@ -46,32 +49,28 @@ output = "infer_demo/"
 ref_config = "input/demos/dummy.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
-init_samps = 2         # Number of samples if starting from scratch.
-init_grid  = 'none'    # Path pre-computed grid (relative to PROTEUS output folder)
+init_samps = '2'         # Number of random samples if starting from scratch.
+init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Parameters for Bayesian optimisation
-n_workers  = 7       # Number of parallel workers
-kernel     = "RBF"   # Kernel type for GP
-max_len    = 25      # Maximum number of evaluations
-n_restarts = 10      # GP optimization restarts
-n_samples  = 1000    # Raw samples for acquisition optimization
+n_workers  = 7        # Number of parallel workers
+kernel     = "MAT"    # Kernel type for GP, "RBF" | "MAT"
+acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI"
+n_steps    = 30       # Total number of evaluations (i.e. BO steps)
+n_restarts = 10       # GP optimization restarts
+n_samples  = 1000     # Raw samples for acquisition optimization
 
 # Parameters to optimize (with bounds)
 [parameters]
-"struct.mass_tot" = [0.5, 3.0]
+"struct.mass_tot" = [0.7, 3.0]
 "struct.corefrac" = [0.3, 0.9]
-"atmos_clim.dummy.gamma" = [0.05, 0.95]
-"escape.dummy.rate" = [1.0, 1e5]
-"interior.dummy.ini_tmagma" = [2000, 4500]
-"outgas.fO2_shift_IW" = [-4.0, 4.0]
+"delivery.elements.H_ppmw" = [6e3, 2e4]
+"outgas.fO2_shift_IW" = [-3.0, 5.0]
 
-# Target observables to match
-#   observables+parameters must match those used to create the grid, if using a grid
+# Target observables to match by optimisation
 [observables]
-"R_int" = 7629550.6175
-"M_planet" = 7.9643831975e+24
-"transit_depth" = 0.00012026905833
-"bond_albedo" = 0.25
+"R_obs" = 7.9950245489e6
+"H2O_vmr" = 0.41
 ```
 
 ## Usage
@@ -110,7 +109,7 @@ better fits, while smaller values (including negative ones) are worse fits.
 ### Bayesian Optimization
 
 - Uses Gaussian Process (GP) models to predict objective values
-- Upper Confidence Bound (UCB) acquisition function guides exploration
+- Acquisition function guides exploration-exploitation trade-off on search space
 - Automatic hyperparameter tuning via marginal likelihood optimization
 
 The optimization will run until `max_len` evaluations are completed or manually stopped. Results are continuously saved and can be resumed if needed.

@@ -120,6 +120,12 @@ Our tests are run automatically via a Github Action: [tests](https://github.com/
 pytest
 ```
 
+Or to run a specific test containing a keyword:
+
+```console
+pytest -k keyword
+```
+
 To check the 'coverage' of the tests:
 
 ```console
@@ -129,6 +135,8 @@ coverage html    # to generate html report
 ```
 
 The 'coverage' of the tests describes the fraction of the code which is executed while tests are being run. However, care should also be taken to ensure that the *output* of the tests meets expectations.
+
+The test files are located in the `tests/` folder. The pytest library will automatically find functions contained within Python files in this folder, and run them as tests. A test fails if a function raises an errors or fails an assertion.
 
 ### Building the documentation
 
