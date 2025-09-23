@@ -22,7 +22,7 @@ version = "2.0"
         method       = "adaptive"  # proportional | adaptive | maximum
         [params.dt.adaptive]
             atol         = 0.03  # Step size atol
-            rtol         = 0.13   # Step size rtol
+            rtol         = 0.14   # Step size rtol
 
     [params.stop]
 
@@ -48,20 +48,20 @@ version = "2.0"
 # Star
 [star]
 
-    mass    = 0.273      # M_sun
+    mass    = 0.2923      # M_sun
     age_ini = 0.05     # Gyr, model initialisation/start age
 
     module  = "mors"
     [star.mors]
-        rot_period = 80.9       # rotation period
+        rot_period = 77.5       # rotation period
         tracks  = "spada" # evolution tracks: spada | baraffe
-        age_now = 4.40     # Gyr, current age of star used for scaling
+        age_now = 2.8     # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/l-98-59.txt" # stellar spectrum
 
 
 [orbit]
-    semimajoraxis   = 0.0486    # AU
-    eccentricity    = 0.098      # dimensionless
+    semimajoraxis   = 0.0494    # AU
+    eccentricity    = 0.006      # dimensionless
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 
@@ -70,8 +70,8 @@ version = "2.0"
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 [struct]
-    mass_tot    = 2.14       # M_earth
-    corefrac    = 0.55      # non-dim., radius fraction
+    mass_tot    = 1.64       # M_earth
+    corefrac    = 0.2      # non-dim., radius fraction
 
 [atmos_clim]
     prevent_warming = true     # do not allow the planet to heat up
@@ -94,7 +94,7 @@ version = "2.0"
         solution_rtol   = 0.13          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
-        real_gas        = true          # use real-gas equations of state
+        real_gas        = false          # use real-gas equations of state
 
 [escape]
     module = "zephyrus"
@@ -119,12 +119,15 @@ version = "2.0"
         tolerance_rel   = 1e-9      # relative solver tolerance
         tsurf_atol      = 5.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
-        ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
+
+    [interior.dummy]
+        ini_tmagma = 3000.0
 
 
 [outgas]
-    fO2_shift_IW    = -3         # log10(ΔIW), atmosphere/interior boundary oxidation state
+    fO2_shift_IW    = -5         # log10(ΔIW), atmosphere/interior boundary oxidation state
     module = "calliope"         # Which outgassing module to use
 
 [delivery]
@@ -132,13 +135,13 @@ version = "2.0"
     module = "none"
 
     [delivery.elements]
-        H_ppmw      = 800.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_ppmw      = 35000.0     # Hydrogen inventory in ppmw relative to mantle mass
         CH_ratio    = 1.0        # C/H mass ratio in mantle/atmosphere system
         NH_ratio    = 0.018       # N/H mass ratio in mantle/atmosphere system
-        SH_ratio    = 8.0       # S/H mass ratio in mantle/atmosphere system
+        SH_ratio    = 5.0       # S/H mass ratio in mantle/atmosphere system
 
 [observe]
-    synthesis = "platon"
+    synthesis = "none"
 
 # Atmospheric chemistry postprocessing
 [atmos_chem]
