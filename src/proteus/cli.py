@@ -19,6 +19,8 @@ import click
 
 from proteus import Proteus
 from proteus import __version__ as proteus_version
+from proteus.config import read_config_object
+from proteus.utils.data import download_sufficient_data
 from proteus.utils.logs import setup_logger
 
 config_option = click.option(
@@ -460,7 +462,13 @@ def install_all(export_env: bool):
     is_flag=True,
     help="Re-add FWL_DATA and RAD_DIR to shell rc.",
 )
-def update_all(export_env: bool):
+@click.option(
+    "--config-path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=Path("input/all_options.toml"),
+    help="Path to the TOML config file",
+)
+def update_all(export_env: bool, config_path: Path):
     # --- Step 0: Check available disk space---
     available_disk_space_in_B = shutil.disk_usage(".").free
     G = 1e9
@@ -555,6 +563,16 @@ def update_all(export_env: bool):
                 )
         click.secho(
             "🔁 Please run: source ~/.bashrc (or your shell rc)", fg="yellow"
+        )
+
+    # --- Step 7: Update input data.
+    if config_path.exists():
+        # Only try data download if a config file is present.
+        configuration = read_config_object(config_path)
+        download_sufficient_data(configuration)
+    else:
+        click.echo(
+            f"⚠️ No config file found at {config_path}, skipping data download."
         )
 
     click.secho("🎉 PROTEUS update completed!", fg="green")
