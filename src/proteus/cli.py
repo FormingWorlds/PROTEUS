@@ -570,6 +570,7 @@ def update_all(export_env: bool, config_path: Path):
         # Only try data download if a config file is present.
         configuration = read_config_object(config_path)
         download_sufficient_data(configuration)
+        click.secho("✅ Additional data has been downloaded.", fg="green")
     else:
         click.echo(
             f"⚠️ No config file found at {config_path}, skipping data download."
