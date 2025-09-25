@@ -1,7 +1,7 @@
 # Config file for running a grid of forward models
 
 # Path to output folder where grid will be saved (relative to PROTEUS output folder)
-output = "scratch/l98d_updated1/"
+output = "scratch/l98d_updated4/"
 
 # Make `output` a symbolic link to this absolute location. To disable: set to empty string.
 symlink = ""
@@ -13,7 +13,7 @@ ref_config = "input/planets/l9859d.toml"
 use_slurm = true
 
 # Execution limits
-max_jobs = 200       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_jobs = 250       # maximum number of concurrent tasks (e.g. 500 on Habrok)
 max_days = 2        # maximum number of days to run (e.g. 1)
 max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 
@@ -24,31 +24,31 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 #    See examples below
 
 # Planet mass set directly
-["struct.mass_tot"]
-    method = "direct"
-    values = [1.57, 1.64, 1.71]
+# ["struct.mass_tot"]
+#     method = "direct"
+#     values = [1.57, 1.64, 1.71]
 
 # Hydrogen inventory set by arange
 ["delivery.elements.H_ppmw"]
     method = "arange"
-    start    = 20000
-    stop     = 40000
-    step     = 5000
+    start    = 5000
+    stop     = 45000
+    step     = 8000
 
 # Mantle redox state set directly
 ["outgas.fO2_shift_IW"]
     method = "direct"
-    values = [-5, -3, -1]
+    values = [-6, -5, -4, -3]
 
 # Planet bulk S/H ratio set directly
 ["delivery.elements.SH_ratio"]
     method = "direct"
-    values = [5, 8]
+    values = [5, 10, 15, 30]
 
 # Core radius fraction set by linspace
 ["struct.corefrac"]
     method = "direct"
-    values = [0.2, 0.4, 0.6]
+    values = [0.20, 0.25, 0.30, 0.45]
 
 # Escape efficiency set by arange
 # ["escape.zephyrus.efficiency"]

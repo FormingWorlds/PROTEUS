@@ -93,6 +93,8 @@ class Star:
 
     Attributes
     ----------
+    bol_scale: float
+        Scale factor to increase the luminosity.
     mass: float
         Stellar mass [M_sun]. Note that for Mors,
         it should be between 0.1 and 1.25 solar masses.
@@ -117,3 +119,5 @@ class Star:
 
     mors: Mors       = field(factory=Mors,      validator=valid_mors)
     dummy: StarDummy = field(factory=StarDummy, validator=valid_stardummy)
+
+    bol_scale: float= field(default=1.0, validator=ge(0.0))
