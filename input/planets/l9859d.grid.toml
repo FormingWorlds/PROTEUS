@@ -1,7 +1,7 @@
 # Config file for running a grid of forward models
 
 # Path to output folder where grid will be saved (relative to PROTEUS output folder)
-output = "scratch/l98d_updated4/"
+output = "scratch/l98d_updated5/"
 
 # Make `output` a symbolic link to this absolute location. To disable: set to empty string.
 symlink = ""
@@ -31,24 +31,26 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 # Hydrogen inventory set by arange
 ["delivery.elements.H_ppmw"]
     method = "arange"
-    start    = 5000
-    stop     = 45000
-    step     = 8000
+    start    = 10000
+    stop     = 40000
+    step     = 5000
 
 # Mantle redox state set directly
 ["outgas.fO2_shift_IW"]
     method = "direct"
-    values = [-6, -5, -4, -3]
+    values = [-5.0, -4.5, -4.0, -3.5, -3.0]
 
 # Planet bulk S/H ratio set directly
 ["delivery.elements.SH_ratio"]
-    method = "direct"
-    values = [5, 10, 15, 30]
+    method = "arange"
+    start    = 2
+    stop     = 22
+    step     = 5
 
 # Core radius fraction set by linspace
 ["struct.corefrac"]
     method = "direct"
-    values = [0.20, 0.25, 0.30, 0.45]
+    values = [0.15, 0.20, 0.25, 0.30, 0.40]
 
 # Escape efficiency set by arange
 # ["escape.zephyrus.efficiency"]
