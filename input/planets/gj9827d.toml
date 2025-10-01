@@ -1,0 +1,121 @@
+# PROTEUS configuration file (version 2.0)
+
+version = "2.0"
+
+# ----------------------------------------------------
+# Parameters
+[params]
+    # output files
+    [params.out]
+        path        = "gj9827d"
+        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
+
+# ----------------------------------------------------
+# Star
+[star]
+
+    mass    = 0.606      # M_sun
+    age_ini = 0.100     # Gyr, model initialisation/start age
+
+    module  = "mors"
+    [star.mors]
+        rot_period = 28.16      # rotation rate
+        tracks  = "spada"       # evolution tracks: spada | baraffe
+        age_now = 10.0          # Gyr, current age of star used for scaling
+        spec    = "stellar_spectra/Named/trappist-1.txt" # stellar spectrum
+
+# Orbital system
+[orbit]
+    semimajoraxis   = 0.0563    # AU
+    eccentricity    = 0.00      # dimensionless
+    zenith_angle    = 54.74     # degrees
+    s0_factor       = 0.25      # dimensionless
+
+    module  = "none"
+
+# Planetary structure - physics table
+[struct]
+    mass_tot    = 3.02       # M_earth
+    corefrac    = 0.55      # non-dim., radius fraction
+
+# Atmosphere - physics table
+[atmos_clim]
+    surface_d       = 0.01      # m, conductive skin thickness
+    surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
+    surf_state      = "skin"    # surface scheme: "mixed_layer" | "fixed" | "skin"
+    surf_greyalbedo = 0.2       # surface grey albedo
+    rayleigh        = true      # Enable rayleigh scattering
+
+    module  = "agni"           # Which atmosphere module to use
+
+    [atmos_clim.agni]
+        p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_bands  = "16"         # how many spectral bands?
+        num_levels      = 40            # Number of atmospheric grid levels
+        chemistry       = "eq"        # "none" | "eq"
+        surf_material   = "greybody"    # surface material file for scattering
+        solve_energy    = true         # solve for energy-conserving atmosphere profile
+        solution_atol   = 1e-2          # solver absolute tolerance
+        solution_rtol   = 5e-2          # solver relative tolerance
+        overlap_method  = "ee"          # gas overlap method
+        condensation    = false          # volatile condensation
+        real_gas        = true          # use real-gas equations of state
+
+# Volatile escape - physics table
+[escape]
+    module = "zephyrus"    # Which escape module to use
+
+# Interior - physics table
+[interior]
+    radiogenic_heat = true  # enable radiogenic heat production
+    tidal_heat      = false  # enable tidal heat production
+
+    module = "spider"   # Which interior module to use
+
+    [interior.spider]
+        num_levels      = 120       # Number of SPIDER grid levels
+        tolerance       = 1.0e-10   # solver tolerance
+        tsurf_atol      = 20.0      # tsurf_poststep_change
+        tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
+        ini_entropy     = 3300.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
+
+    [interior.aragog]
+        logging         = "ERROR"
+        num_levels      = 220       # Number of Aragog grid levels
+        tolerance       = 1.0e-10   # solver tolerance
+        ini_tmagma      = 3200.0    # Initial magma surface temperature [K]
+
+    [interior.dummy]
+        ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
+
+# Outgassing - physics table
+[outgas]
+    fO2_shift_IW    = 4         # log10(ΔIW), atmosphere/interior boundary oxidation state
+    module = "calliope"         # Which outgassing module to use
+
+     [outgas.calliope]
+        solubility   = false    # enable solubility?
+        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
+
+
+# Volatile delivery - physics table
+[delivery]
+    initial = 'elements'        # "elements" | "volatiles"
+
+    module = "none"
+
+    # Set initial volatile inventory by planetary element abundances
+    [delivery.elements]
+        H_ppmw      = 1e4       # Hydrogen inventory in ppmw relative to mantle mass
+        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
+        NH_ratio    = 0.1       # N/H mass ratio in mantle/atmosphere system
+        SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
+
+# Calculate simulated observations
+[observe]
+    synthesis = "none"
+
+[atmos_chem]
+    module = "none"
