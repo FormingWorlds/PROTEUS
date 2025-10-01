@@ -333,6 +333,10 @@ def gas_vmr_to_emr(gases:dict):
 def eval_gas_mmw(gas:str):
     """Evalulate gas mmw [kg mol-1] from its atoms"""
 
+    # gas is just an element
+    if gas in element_mmw.keys():
+        return element_mmw[gas]
+
     atoms = mol_to_ele(gas)
     mmw = 0.0
     for e in atoms:

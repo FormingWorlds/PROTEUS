@@ -68,8 +68,16 @@ class EscapeBoreas:
         Energy efficiency factor.
     alpha_rec: float
         Recombination coefficient [cm3 s-1]
-    sigma_XUV: float
-        Absorption cross-section in XUV [cm2 molecule-1]
+    sigma_H: float
+        Absorption cross-section of H in XUV [cm2]
+    sigma_O: float
+        Absorption cross-section of O in XUV [cm2]
+    sigma_C: float
+        Absorption cross-section of C in XUV [cm2]
+    sigma_N: float
+        Absorption cross-section of N in XUV [cm2]
+    sigma_S: float
+        Absorption cross-section of S in XUV [cm2]
     kappa_H2O: float
         Grey H2O opacity in IR [cm2 g-1]
     kappa_H2: float
@@ -86,10 +94,22 @@ class EscapeBoreas:
         Grey N2 opacity in IR [cm2 g-1]
     kappa_NH3: float
         Grey NH3 opacity in IR [cm2 g-1]
+    kappa_H2S: float
+        Grey H2S opacity in IR [cm2 g-1]
+    kappa_SO2: float
+        Grey SO2 opacity in IR [cm2 g-1]
+    kappa_S2: float
+        Grey S2 opacity in IR [cm2 g-1]
     """
     efficiency: float = field(default=0.1,      validator=(ge(0), le(1)))
     alpha_rec: float  = field(default=2.6e-13,  validator=ge(0))
-    sigma_XUV: float  = field(default=1.89e-18, validator=ge(0))
+
+    sigma_H: float    = field(default=1.89e-18, validator=ge(0))
+    sigma_O: float    = field(default=2.00e-18, validator=ge(0))
+    sigma_C: float    = field(default=2.50e-18, validator=ge(0))
+    sigma_N: float    = field(default=3.00e-18, validator=ge(0))
+    sigma_S: float    = field(default=6.00e-18, validator=ge(0))
+
     kappa_H2:  float  = field(default=1e-2,     validator=ge(0))
     kappa_H2O: float  = field(default=1e-0,     validator=ge(0))
     kappa_O2:  float  = field(default=1e-0,     validator=ge(0))
@@ -98,6 +118,10 @@ class EscapeBoreas:
     kappa_CH4: float  = field(default=1e-0,     validator=ge(0))
     kappa_N2:  float  = field(default=1e-0,     validator=ge(0))
     kappa_NH3: float  = field(default=1e-0,     validator=ge(0))
+    kappa_H2S: float  = field(default=1e-0,     validator=ge(0))
+    kappa_SO2: float  = field(default=1e-0,     validator=ge(0))
+    kappa_S2: float   = field(default=1e-0,     validator=ge(0))
+
 
 def valid_reservoir(instance, attribute, value):
 

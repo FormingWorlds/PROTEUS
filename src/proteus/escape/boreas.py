@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 log = logging.getLogger("fwl."+__name__)
 
 # Supported gases
-BOREAS_GASES = ("H2O", "H2" , "O2" , "CO2", "CO" , "CH4", "N2" , "NH3")
-BOREAS_ELEMS = ('H','C','O','N')
+BOREAS_GASES = ("H2O", "H2" , "O2" , "CO2", "CO" , "CH4", "N2" , "NH3", "H2S", "SO2", "S2")
+BOREAS_ELEMS = ('H','C','O','N','S')
 
 def run_boreas(config:Config, hf_row:dict):
     """Run BOREAS escape model.
@@ -50,14 +50,15 @@ def run_boreas(config:Config, hf_row:dict):
 
     # Set parameters from config provided by user
     for g in BOREAS_GASES:
-        params.kappa[g] = getattr(config.escape.boreas,"kappa_"+g)
-    params.sigma_EUV    = config.escape.boreas.sigma_XUV
+        params.kappa[g]    = getattr(config.escape.boreas,"kappa_"+g)
+    for e in BOREAS_ELEMS:
+        params.sigma_XUV[e] = getattr(config.escape.boreas,"sigma_"+e)
     params.alpha_rec    = config.escape.boreas.alpha_rec
     params.eff          = config.escape.boreas.efficiency
 
     # Set parameters from atmosphere calculation
     params.Teq       = hf_row["T_obs"]              # K
-    params.FEUV      = hf_row["F_xuv"] * 1e3        # XUV flux, converted to ergs cm-2 s-1
+    params.FXUV      = hf_row["F_xuv"] * 1e3        # XUV flux, converted to ergs cm-2 s-1
     params.rplanet   = hf_row["R_obs"] * 1e2        # convert m to cm
     params.mplanet   = hf_row["M_planet"] * 1e3     # convert kg to g
     params.mmw_outflow_eff = None
@@ -80,7 +81,7 @@ def run_boreas(config:Config, hf_row:dict):
     # Store bulk outputs (rate, sound speed, escape level)
     hf_row["esc_rate_total"] = fr_result["Mdot"]  * 1e-3    # g/s   ->  kg/s
     hf_row["cs_xuv"]         = fr_result["cs"]    * 1e-2    # cm/s  ->  m/s
-    hf_row["R_xuv"]          = fr_result["REUV"]  * 1e-2    # cm    ->  m
+    hf_row["R_xuv"]          = fr_result["RXUV"]  * 1e-2    # cm    ->  m
     hf_row["p_xuv"]          = 0.0  # to be calc'd by atmosphere module
 
     # Convert escape fluxes to rates, and store
@@ -100,6 +101,7 @@ def run_boreas(config:Config, hf_row:dict):
     regime_map = {"RL":"recomb-limited", "EL":"energy-limited", "DL":"diffusion-limited"}
     log.info("Escape regime is "+regime_map[fr_result['regime']])
     log.info("Fractionation coefficients:")
-    for e in ('O','C','N'):
-        log.info(f"    {e:2s} = {fr_result['x_'+e]:.6f}")
+    for e in BOREAS_ELEMS:
+        if e != 'H':
+            log.info(f"    {e:2s} = {fr_result['x_'+e]:.6f}")
 
