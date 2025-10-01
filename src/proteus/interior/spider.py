@@ -168,7 +168,7 @@ def _try_spider( dirs:dict, config:Config,
                 IC_INTERIOR:int,
                 hf_all:pd.DataFrame, hf_row:dict,
                 step_sf:float, atol_sf:float, dT_max:float,
-                timeout:float=60*45 ):
+                timeout:float=60*15 ):
     '''
     Try to run spider with the current configuration.
     '''
