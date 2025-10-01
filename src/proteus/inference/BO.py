@@ -16,9 +16,7 @@ import time
 
 import matplotlib.pyplot as plt
 import torch
-from botorch.acquisition import (
-    UpperConfidenceBound,
-)
+from botorch.acquisition import LogExpectedImprovement, UpperConfidenceBound
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from botorch.models.transforms import Normalize, Standardize
@@ -112,7 +110,7 @@ def plot_iter(gp, acqf, X, Y, next_x, busys, dir, name):
 
 
 
-def BO_step(D, B, f, k, n_restarts, n_samples, lock, worker_id, x_in = None):
+def BO_step(D, B, f, k, acqf, n_restarts, n_samples, lock, worker_id, x_in = None):
 
     """Perform a single Bayesian optimization step.
 
@@ -124,6 +122,7 @@ def BO_step(D, B, f, k, n_restarts, n_samples, lock, worker_id, x_in = None):
         B (dict): Shared dict mapping worker IDs to busy input points.
         f (callable): Objective function to evaluate.
         k (Kernel): GPyTorch kernel for the GP covariance.
+        acqf (str): Acquisition function.
         n_restarts (int): Number of restarts for acquisition optimization.
         n_samples (int): Number of raw samples for acquisition optimization.
         lock (multiprocessing.Lock): Lock for synchronizing shared state.
@@ -148,14 +147,13 @@ def BO_step(D, B, f, k, n_restarts, n_samples, lock, worker_id, x_in = None):
         t_1_lock = time.perf_counter()
 
         d = X.shape[-1]
-        step = len(X)
+
         best = Y.max().item()
-        print(f"Step {step:4d}, best objective = {best:.5f}")
 
         t_0_fit = time.perf_counter()
         gp = SingleTaskGP(  train_X=X,
                             train_Y=Y,
-                            # covar_module=k,
+                            covar_module=k,
                             # train_Yvar=torch.full_like(Y, noise),
                             input_transform=Normalize(d=d),
                             outcome_transform=Standardize(m=1),
@@ -168,8 +166,14 @@ def BO_step(D, B, f, k, n_restarts, n_samples, lock, worker_id, x_in = None):
         t_1_fit = time.perf_counter()
 
         t_0_ac = time.perf_counter()
-        acqf = UpperConfidenceBound(gp, beta = 2.)
-        # acqf = LogExpectedImprovement(gp, best_f=torch.max(Y))
+
+        # build acquisition function
+        if acqf == "UCB":
+            acqf = UpperConfidenceBound(gp, beta = 2.)
+        elif acqf =="LogEI":
+            acqf = LogExpectedImprovement(gp, best_f=best)
+        else:
+            raise ValueError("Unknown acquisition function, choices are UCB or LogEI")
 
         x, _ = optimize_acqf(   acq_function=acqf, # expects outputs shape (N)
                                 bounds=unit_bounds(d),
@@ -187,6 +191,11 @@ def BO_step(D, B, f, k, n_restarts, n_samples, lock, worker_id, x_in = None):
         mask[worker_id] = False
         b = busys[mask]
         dist = torch.min(torch.cdist(b, x)).item()
+
+        # if dist < 1e-2:
+        #     print("close query!")
+        #     print("busys\n", busys)
+        #     print("query", x)
 
         if d == 1:
             plot_iter(gp=gp, acqf=acqf, X=X, Y=Y, next_x=x,

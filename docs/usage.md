@@ -192,6 +192,7 @@ fwl-janus: ok
 fwl-proteus: ok
 fwl-mors: ok
 fwl-zephyrus: ok
+fwl-zalmoxis: ok
 AGNI: Update available 1.7.1 -> Ledoux, oceans, water, clouds, and blackbody stars
 
 Environment variables

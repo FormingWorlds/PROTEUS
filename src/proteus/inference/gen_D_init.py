@@ -46,7 +46,7 @@ def create_init(config):
         n_init = sample_from_bounds(config["output"],
                                     config["ref_config"],
                                     config["parameters"], config["observables"],
-                                    init_samps)
+                                    init_samps, config["seed"])
 
     # read from grid
     else:
@@ -130,7 +130,7 @@ def sample_from_grid(output:str,
 
 def sample_from_bounds(output:str, ref_config:str,
                        params:dict, observables:dict,
-                       nsamp:int):
+                       nsamp:int, seed:int):
     '''
     Create initial guess data, sampling the parameter space at random.
     '''
@@ -149,13 +149,11 @@ def sample_from_bounds(output:str, ref_config:str,
     # Determine problem dimension (number of parameters)
     dims = len(params)
 
-    # Set random seed for reproducibility
-    torch.manual_seed(2)
-
     # Generate n random points in [0,1]^d and evaluate the objective
     #     Each of the parameters are evaluated in space 0-1, normalised to the bounds
     #     This variable is 2D, with shape [nsamp, dims]
-    X = torch.rand(nsamp, dims, dtype=dtype)
+    X = torch.rand(nsamp, dims,
+                   generator=torch.manual_seed(seed), dtype=dtype)
 
     # Evaluate the objective function for each of the samples
     #     This variable is 1D, with shape [nsamp]

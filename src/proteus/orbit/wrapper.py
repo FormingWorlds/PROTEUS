@@ -125,6 +125,25 @@ def update_rochelimit(hf_row:dict):
 
     hf_row["roche_limit"] = Rpl * (2 * Mst/Mpl)**(1.0/3)
 
+def update_breakup_period(hf_row:dict):
+    '''
+    Calculate Breakup period.
+
+    Using equation from: https://arxiv.org/abs/2508.09273
+    (Note, the equation contains a typo, it should
+    read: 2pi/T = Ω = sqrt( G Mp / Rp^3 ). )
+
+    Parameters
+    -------------
+        hf_row: dict
+            Current helpfile row
+    '''
+
+    Rpl = hf_row["R_int"]
+    Mpl = hf_row["M_int"]
+
+    hf_row["breakup_period"] = 2*np.pi/np.sqrt(const_G*Mpl/(Rpl**3))
+
 
 def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
     """Update parameters relating to orbital evolution and tides.
@@ -191,11 +210,16 @@ def run_orbit(hf_row:dict, config:Config, dirs:dict, interior_o:Interior_t):
             # set by user with float, use that
             hf_row["axial_period"] = float(config.orbit.axial_period) * secs_per_hour
 
+    # Update Breakup period
+    update_breakup_period(hf_row)
+    if hf_row["axial_period"] <= hf_row["breakup_period"] + float(config.params.stop.disint.offset_spin):
+        log.warning("Planet is spinning faster than the Breakup rate")
+
     # Update Roche limit
     update_rochelimit(hf_row)
-    if hf_row["separation"] <= hf_row["roche_limit"] + float(config.params.stop.disint.offset):
+    if hf_row["separation"] <= hf_row["roche_limit"] + float(config.params.stop.disint.offset_roche):
         log.warning("Planet is orbiting within the Roche limit of its star")
-    elif hf_row["perihelion"] <= hf_row["roche_limit"] + float(config.params.stop.disint.offset):
+    elif hf_row["perihelion"] <= hf_row["roche_limit"] + float(config.params.stop.disint.offset_roche):
         log.warning("Planet is (partially) orbiting within the Roche limit of its star")
 
     # Update Hill radius

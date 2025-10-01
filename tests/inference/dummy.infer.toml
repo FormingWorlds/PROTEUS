@@ -1,7 +1,10 @@
 # Config file for running a grid of forward models
 
+# Set seed for reproducibility
+seed = 2
+
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "dummy_inference"
+output = "dummy_inference/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
 ref_config = "tests/inference/base.toml"
@@ -12,10 +15,11 @@ init_grid  = 'none'   # Path pre-computed grid (relative to PROTEUS output folde
 
 # Parameters for Bayesian optimisation
 n_workers  = 2       # Number of parallel workers
-kernel     = "RBF"   # Kernel type for GP
-max_len    = 2      # Maximum number of evaluations
-n_restarts = 10      # GP optimization restarts
-n_samples  = 1000    # Raw samples for acquisition optimization
+kernel     = "MAT"    # Kernel type for GP, "RBF" | "MAT"
+acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI"
+n_steps    = 30       # Total number of evaluations (i.e. BO steps)
+n_restarts = 10       # GP optimization restarts
+n_samples  = 1000     # Raw samples for acquisition optimization
 
 # Parameters to optimize (with bounds)
 [parameters]

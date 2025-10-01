@@ -27,7 +27,6 @@ from aragog.parser import (
 
 from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
-from proteus.interior.zalmoxis import zalmoxis_solver
 from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
 
 if TYPE_CHECKING:
@@ -125,6 +124,7 @@ class AragogRunner():
             inner_radius = config.struct.corefrac * hf_row["R_int"] # core radius [m]
         elif config.struct.module == "zalmoxis":
             # Define the inner_radius based on the core radius from Zalmoxis
+            from proteus.interior.zalmoxis import zalmoxis_solver
             inner_radius = zalmoxis_solver(config, outdir, hf_row) # core radius [m]
         else:
             raise ValueError("Invalid module configuration. Expected 'self' or 'zalmoxis'.")
@@ -339,7 +339,7 @@ class AragogRunner():
                   "T_magma": aragog_output.solution_top_temperature,
                   "Phi_global": aragog_output.melt_fraction_global,
                   "RF_depth": aragog_output.rheological_front,
-                  "F_int": aragog_output.convective_heat_flux_basic[-1, -1]}
+                  "F_int": aragog_output.total_heat_flux_basic[-3, -1]} # node near top
 
         if output["Phi_global"] > (1.0 - 1.0e-8):
             output["M_mantle_liquid"] = output["M_mantle"]
