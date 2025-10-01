@@ -8,7 +8,47 @@ version = "2.0"
     # output files
     [params.out]
         path        = "gj9827d"
-        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
+        plot_mod    = 100
+        write_mod   = 10
+
+     # time-stepping
+    [params.dt]
+        minimum      = 1e6    # absolute minimum time-step [years]
+        minimum_rel  = 5e-3   # relative minimum time-step [dimensionless]
+        maximum      = 5e8    # maximum time-step [yr]
+        initial      = 3e1    # inital step size [yr]
+        starspec     = 1e10    # interval to re-calculate the stellar spectrum [yr]
+        starinst     = 1e1    # interval to re-calculate the instellation [yr]
+        method       = "adaptive"  # proportional | adaptive | maximum
+
+        [params.dt.proportional]
+            propconst    = 52.0   # Proportionality constant
+
+        [params.dt.adaptive]
+            atol         = 0.04   # Step size atol
+            rtol         = 0.14   # Step size rtol
+
+
+    # required time constraints
+    [params.stop.time]
+        enabled = true
+        minimum = 1.0e3      # model will certainly run to t > minimum [yr]
+        maximum = 10e9   # model will terminate when t > maximum [yr]
+
+    # solidification
+    [params.stop.solid]
+        enabled  = false
+        phi_crit = 0.01      # non-dim., model will terminate when global melt fraction < phi_crit
+
+    # radiative equilibrium
+    [params.stop.radeqm]
+        enabled = false
+        atol    = 0.2        # absolute tolerance [W m-2]
+        rtol    = 1e-3       # relative tolerance
+
+    [params.stop.escape]
+        enabled = true
+        p_stop  = 5.0        # Stop surface pressure is less than this value
 
 # ----------------------------------------------------
 # Star
@@ -19,10 +59,10 @@ version = "2.0"
 
     module  = "mors"
     [star.mors]
-        rot_period = 28.16      # rotation rate
+        rot_pcntle = 50.0      # rotation rate
         tracks  = "spada"       # evolution tracks: spada | baraffe
         age_now = 10.0          # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/trappist-1.txt" # stellar spectrum
+        spec    = "stellar_spectra/Named/hd85512.txt" # stellar spectrum
 
 # Orbital system
 [orbit]
@@ -50,7 +90,7 @@ version = "2.0"
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
-        spectral_group  = "Dayspring"   # which gas opacities to include
+        spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "16"         # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "eq"        # "none" | "eq"
@@ -60,18 +100,26 @@ version = "2.0"
         solution_rtol   = 5e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false          # volatile condensation
-        real_gas        = true          # use real-gas equations of state
+        real_gas        = false          # use real-gas equations of state
+
+    [atmos_clim.dummy]
+        gamma = 0.9
 
 # Volatile escape - physics table
 [escape]
     module = "zephyrus"    # Which escape module to use
 
+    [escape.zephyrus]
+        Pxuv        = 5e-5          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
+        efficiency  = 0.1           # Escape efficiency factor
+        tidal       = false         # Tidal contribution enabled
+
 # Interior - physics table
 [interior]
-    radiogenic_heat = true  # enable radiogenic heat production
+    radiogenic_heat = false  # enable radiogenic heat production
     tidal_heat      = false  # enable tidal heat production
 
-    module = "spider"   # Which interior module to use
+    module = "dummy"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 120       # Number of SPIDER grid levels
@@ -83,9 +131,9 @@ version = "2.0"
 
     [interior.aragog]
         logging         = "ERROR"
-        num_levels      = 220       # Number of Aragog grid levels
+        num_levels      = 120       # Number of Aragog grid levels
         tolerance       = 1.0e-10   # solver tolerance
-        ini_tmagma      = 3200.0    # Initial magma surface temperature [K]
+        ini_tmagma      = 3000.0    # Initial magma surface temperature [K]
 
     [interior.dummy]
         ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
@@ -96,7 +144,7 @@ version = "2.0"
     module = "calliope"         # Which outgassing module to use
 
      [outgas.calliope]
-        solubility   = false    # enable solubility?
+        solubility   = true    # enable solubility?
         T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
 
