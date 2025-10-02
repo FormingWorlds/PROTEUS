@@ -7,14 +7,15 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "gj9827d"
+        path        = "gj9827d_oxid_poor_force"
+        logging     = "INFO"
         plot_mod    = 100
-        write_mod   = 10
+        write_mod   = 5
 
      # time-stepping
     [params.dt]
-        minimum      = 1e6    # absolute minimum time-step [years]
-        minimum_rel  = 5e-3   # relative minimum time-step [dimensionless]
+        minimum      = 1e4    # absolute minimum time-step [years]
+        minimum_rel  = 2e-2   # relative minimum time-step [dimensionless]
         maximum      = 5e8    # maximum time-step [yr]
         initial      = 3e1    # inital step size [yr]
         starspec     = 1e10    # interval to re-calculate the stellar spectrum [yr]
@@ -25,8 +26,8 @@ version = "2.0"
             propconst    = 52.0   # Proportionality constant
 
         [params.dt.adaptive]
-            atol         = 0.04   # Step size atol
-            rtol         = 0.14   # Step size rtol
+            atol         = 0.05   # Step size atol
+            rtol         = 0.15   # Step size rtol
 
 
     # required time constraints
@@ -91,13 +92,13 @@ version = "2.0"
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "16"         # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
+        spectral_bands  = "48"         # how many spectral bands?
+        num_levels      = 50            # Number of atmospheric grid levels
         chemistry       = "eq"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
-        solution_atol   = 1e-2          # solver absolute tolerance
-        solution_rtol   = 5e-2          # solver relative tolerance
+        solution_atol   = 1e-1          # solver absolute tolerance
+        solution_rtol   = 8e-2          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false          # volatile condensation
         real_gas        = false          # use real-gas equations of state
@@ -116,17 +117,19 @@ version = "2.0"
 
 # Interior - physics table
 [interior]
-    radiogenic_heat = false  # enable radiogenic heat production
+    radiogenic_heat = true  # enable radiogenic heat production
     tidal_heat      = false  # enable tidal heat production
 
-    module = "dummy"   # Which interior module to use
+    module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 120       # Number of SPIDER grid levels
-        tolerance       = 1.0e-10   # solver tolerance
-        tsurf_atol      = 20.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
-        ini_entropy     = 3300.0    # Surface entropy conditions [J K-1 kg-1]
+        num_levels      = 180       # Number of SPIDER grid levels
+        mixing_length   = 2         # Mixing length parameterization
+        tolerance       = 1e-10      # absolute solver tolerance
+        tolerance_rel   = 1e-9      # relative solver tolerance
+        tsurf_atol      = 5.0      # tsurf_poststep_change
+        tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
+        ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
@@ -144,7 +147,7 @@ version = "2.0"
     module = "calliope"         # Which outgassing module to use
 
      [outgas.calliope]
-        solubility   = true    # enable solubility?
+        solubility   = false    # enable solubility?
         T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
 

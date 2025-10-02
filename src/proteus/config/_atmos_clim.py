@@ -81,6 +81,12 @@ class Agni:
         Use the transparent-atmosphere solver when P_surf is less than this value [bar].
     dx_max: float
         Nominal maximum step size to T(p) during the solver process, although this is dynamic.
+    max_steps: int
+        Maximum number of iterations before giving up.
+    perturb_all: bool
+        Recalculate entire jacobian matrix at every iteration?
+    mlt_criterion: str
+        Convection criterion. Options: (l)edoux, (s)chwarzschild.
     """
 
     spectral_group: str     = field(default=None)
@@ -101,6 +107,9 @@ class Agni:
     real_gas: bool          = field(default=False)
     psurf_thresh: bool      = field(default=0.1, validator=ge(0))
     dx_max: float           = field(default=35.0, validator=gt(1))
+    max_steps: int          = field(default=70, validator=gt(2))
+    perturb_all: bool       = field(default=True)
+    mlt_criterion: str      = field(default='l', validator=in_(('l','s',)))
 
     @property
     def chemistry_int(self) -> int:
