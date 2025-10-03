@@ -7,16 +7,16 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "gj9827d_oxid_poor_force"
-        logging     = "INFO"
-        plot_mod    = 100
+        path        = "gj9827d_1"
+        logging     = "DEBUG"
+        plot_mod    = 50
         write_mod   = 5
 
      # time-stepping
     [params.dt]
         minimum      = 1e4    # absolute minimum time-step [years]
-        minimum_rel  = 2e-2   # relative minimum time-step [dimensionless]
-        maximum      = 5e8    # maximum time-step [yr]
+        minimum_rel  = 1e-2   # relative minimum time-step [dimensionless]
+        maximum      = 1e8    # maximum time-step [yr]
         initial      = 3e1    # inital step size [yr]
         starspec     = 1e10    # interval to re-calculate the stellar spectrum [yr]
         starinst     = 1e1    # interval to re-calculate the instellation [yr]
@@ -34,7 +34,7 @@ version = "2.0"
     [params.stop.time]
         enabled = true
         minimum = 1.0e3      # model will certainly run to t > minimum [yr]
-        maximum = 10e9   # model will terminate when t > maximum [yr]
+        maximum = 5.0e9   # model will terminate when t > maximum [yr]
 
     # solidification
     [params.stop.solid]
@@ -62,7 +62,7 @@ version = "2.0"
     [star.mors]
         rot_pcntle = 50.0      # rotation rate
         tracks  = "spada"       # evolution tracks: spada | baraffe
-        age_now = 10.0          # Gyr, current age of star used for scaling
+        age_now = 5.465          # Gyr, current age of star used for scaling
         spec    = "stellar_spectra/Named/hd85512.txt" # stellar spectrum
 
 # Orbital system
@@ -93,7 +93,7 @@ version = "2.0"
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "48"         # how many spectral bands?
-        num_levels      = 50            # Number of atmospheric grid levels
+        num_levels      = 52            # Number of atmospheric grid levels
         chemistry       = "eq"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
@@ -129,7 +129,7 @@ version = "2.0"
         tolerance_rel   = 1e-9      # relative solver tolerance
         tsurf_atol      = 5.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
-        ini_entropy     = 3100.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 3150.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
@@ -143,11 +143,11 @@ version = "2.0"
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = 4         # log10(ΔIW), atmosphere/interior boundary oxidation state
+    fO2_shift_IW    = 0         # log10(ΔIW), atmosphere/interior boundary oxidation state
     module = "calliope"         # Which outgassing module to use
 
      [outgas.calliope]
-        solubility   = false    # enable solubility?
+        solubility   = true    # enable solubility?
         T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
 
@@ -159,7 +159,7 @@ version = "2.0"
 
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
-        H_ppmw      = 1e4       # Hydrogen inventory in ppmw relative to mantle mass
+        H_ppmw      = 2e4       # Hydrogen inventory in ppmw relative to mantle mass
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
         NH_ratio    = 0.1       # N/H mass ratio in mantle/atmosphere system
         SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
