@@ -216,7 +216,7 @@ version = "2.0"
 [escape]
 
     module     = "zephyrus"         # Which escape module to use
-    reservoir  = "outgas"           # Reservoir that sets escaping gas composition
+    reservoir  = "outgas"           # Reservoir that sets escaping composition when fractionation disabled
 
     [escape.zephyrus]
         Pxuv        = 5e-5          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]

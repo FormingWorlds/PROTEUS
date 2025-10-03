@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 import boreas
-from proteus.utils.constants import element_list
+from proteus.utils.constants import element_list, element_mmw, const_Nav
 from proteus.utils.helper import eval_gas_mmw
+from proteus.escape.common import calc_unfract_fluxes
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -78,17 +79,29 @@ def run_boreas(config:Config, hf_row:dict):
     # Run fractionation calculation
     fr_result = fractionation.execute(ml_result, mass_loss)[0]
 
+    # Print info
+    regime_map = {"RL":"recomb-limited", "EL":"energy-limited", "DL":"diffusion-limited"}
+    log.info("Escape regime is "+regime_map[fr_result['regime']])
+
     # Store bulk outputs (rate, sound speed, escape level)
     hf_row["esc_rate_total"] = fr_result["Mdot"]  * 1e-3    # g/s   ->  kg/s
     hf_row["cs_xuv"]         = fr_result["cs"]    * 1e-2    # cm/s  ->  m/s
     hf_row["R_xuv"]          = fr_result["RXUV"]  * 1e-2    # cm    ->  m
     hf_row["p_xuv"]          = 0.0  # to be calc'd by atmosphere module
 
+    # If not doing fractionation, overwrite fluxes...
+    if not config.escape.boreas.fractionate:
+        calc_unfract_fluxes(hf_row, reservoir=config.escape.reservoir,
+                                    min_thresh=config.outgas.mass_thresh)
+        return
+
+    # If we ARE doing fractionation, parse results from BOREAS...
+
     # Convert escape fluxes to rates, and store
     for e in element_list:
         if e in BOREAS_ELEMS:
-            # convert g/cm2/s  ->  kg/m^2/s
-            flx = fr_result["phi_"+e] * 10
+            # convert atoms/cm2/s  ->  kg/m^2/s
+            flx = fr_result[f"phi_{e}_num"] * getattr(params, 'm_'+e) * 1e-3 * 100**2
             log.debug(f"Escape flux of {e}: {flx:.3e} kg m-2 s-1")
 
             # get global rate [kg/s] from flux through Rxuv
@@ -98,8 +111,6 @@ def run_boreas(config:Config, hf_row:dict):
             hf_row["esc_rate_"+e] = 0.0
 
     # Print info to user
-    regime_map = {"RL":"recomb-limited", "EL":"energy-limited", "DL":"diffusion-limited"}
-    log.info("Escape regime is "+regime_map[fr_result['regime']])
     log.info("Fractionation coefficients:")
     for e in BOREAS_ELEMS:
         if e != 'H':

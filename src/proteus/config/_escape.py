@@ -64,6 +64,8 @@ class EscapeBoreas:
 
     Attributes
     ----------
+    fractionate: bool
+        Enable elemental fractionation in outflow?
     efficiency: float
         Energy efficiency factor.
     alpha_rec: float
@@ -101,6 +103,7 @@ class EscapeBoreas:
     kappa_S2: float
         Grey S2 opacity in IR [cm2 g-1]
     """
+    fractionate: bool = field(default=True)
     efficiency: float = field(default=0.1,      validator=(ge(0), le(1)))
     alpha_rec: float  = field(default=2.6e-13,  validator=ge(0))
 
@@ -124,16 +127,9 @@ class EscapeBoreas:
 
 
 def valid_reservoir(instance, attribute, value):
-
-    ress = ('bulk','outgas', 'pxuv')
+    ress = ('bulk','outgas')
     if instance.reservoir not in ress:
         raise ValueError(f"Escape reservoir must be one of: {ress}")
-
-    if (instance.module == "boreas") and (instance.reservoir != "pxuv"):
-        raise ValueError("Escape reservoir must be 'pxuv' when using module 'boreas'")
-
-    if (instance.module != "boreas") and (instance.reservoir == "pxuv"):
-        raise ValueError("Escape reservoir cannot be 'pxuv' unless using module 'boreas'")
 
 @define
 class Escape:
@@ -142,7 +138,7 @@ class Escape:
     Attributes
     ----------
     reservoir: str
-        Reservoir representing the escaping composition. Choices: bulk, outgas.
+        Escaping composition when not doing fractionation. Choices: bulk, outgas.
     module: str | None
         Escape module to use. Choices: "none", "dummy", "zephyrus".
     zephyrus: Zephyrus

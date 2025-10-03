@@ -9,7 +9,7 @@ version = "2.0"
     [params.out]
         logging     = "INFO"
         path        = "boreas"
-        plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
+        plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
 
     # time-stepping
     [params.dt]
@@ -100,13 +100,33 @@ version = "2.0"
 
 [escape]
 
-    reservoir = "pxuv"  # Escaping reservoir: "bulk", "outgas", "pxuv".
+    reservoir = "outgas"  # Escaping reservoir when fractionation disabled
     module = "boreas"    # Which escape module to use
 
     [escape.boreas]
-        efficiency  = 0.1
-        alpha_rec   = 2.6e-13
-        sigma_XUV   = 1.89e-18
+        fractionate = false
+        efficiency = 0.1
+
+        alpha_rec = 2.6e-13
+
+        sigma_H = 1.89e-18
+        sigma_O = 2e-18
+        sigma_C = 2.5e-18
+        sigma_N = 3e-18
+        sigma_S = 6e-18
+
+        kappa_H2 = 0.01
+        kappa_H2O = 1.0
+        kappa_O2 = 1.0
+        kappa_CO2 = 1.0
+        kappa_CO = 1.0
+        kappa_CH4 = 1.0
+        kappa_N2 = 1.0
+        kappa_NH3 = 1.0
+        kappa_H2S = 1.0
+        kappa_SO2 = 1.0
+        kappa_S2 = 1.0
+
 
     [escape.zephyrus]
         Pxuv        = 1e-4          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
