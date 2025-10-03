@@ -34,9 +34,14 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
 
     # Planet properties
     solvevol_inp["M_mantle"]    = hf_row["M_mantle"]
-    solvevol_inp["Phi_global"]  = hf_row["Phi_global"]
     solvevol_inp["gravity"]     = hf_row["gravity"]
     solvevol_inp["radius"]      = hf_row["R_int"]
+
+    # Mantle melt fraction
+    if config.outgas.calliope.solubility:
+        solvevol_inp["Phi_global"] = hf_row["Phi_global"]
+    else:
+        solvevol_inp["Phi_global"] = 0.0
 
     # Surface properties
     solvevol_inp["T_magma"]     =  hf_row["T_magma"]
