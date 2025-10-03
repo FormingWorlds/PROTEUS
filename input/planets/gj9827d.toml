@@ -92,8 +92,8 @@ version = "2.0"
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "48"         # how many spectral bands?
-        num_levels      = 52            # Number of atmospheric grid levels
+        spectral_bands  = "16"         # how many spectral bands?
+        num_levels      = 45            # Number of atmospheric grid levels
         chemistry       = "eq"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
