@@ -7,8 +7,8 @@ import os
 from typing import TYPE_CHECKING
 
 import numpy as np
-from juliacall import convert
 from juliacall import Main as jl
+from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_radius_from_pressure, get_spfile_path
