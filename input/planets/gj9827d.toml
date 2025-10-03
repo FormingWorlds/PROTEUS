@@ -126,8 +126,8 @@ version = "2.0"
     [interior.spider]
         num_levels      = 120       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1e-6      # absolute solver tolerance
-        tolerance_rel   = 1e-5      # relative solver tolerance
+        tolerance       = 1e-10     # absolute solver tolerance
+        tolerance_rel   = 1e-9      # relative solver tolerance
         tsurf_atol      = 10.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
         ini_entropy     = 3150.0    # Surface entropy conditions [J K-1 kg-1]
@@ -161,7 +161,7 @@ version = "2.0"
     # Set initial volatile inventory by planetary element abundances
     [delivery.elements]
         H_ppmw      = 2e4       # Hydrogen inventory in ppmw relative to mantle mass
-        CH_ratio    = 0.0016       # C/H mass ratio in mantle/atmosphere system
+        CH_ratio    = 1.0 #0.0016       # C/H mass ratio in mantle/atmosphere system
         NH_ratio    = 0.1       # N/H mass ratio in mantle/atmosphere system
         SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
 
