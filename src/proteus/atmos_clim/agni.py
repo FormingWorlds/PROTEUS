@@ -372,7 +372,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         ls_increase  = 1.01
         ls_max_steps = 20
         ls_min_scale = 1e-5
-        perturb_chem = False
+        perturb_chem = True
         perturb_all  = bool(config.atmos_clim.agni.perturb_all)
         max_steps    = int(config.atmos_clim.agni.max_steps)
         chem_type    = int(config.atmos_clim.agni.chemistry_int)
@@ -386,14 +386,12 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         # parameters for the first iteration
         if loops_total == 0:
             easy_start  = True
-            perturb_chem = True
 
         # try different solver parameters if struggling
         if attempts == 2:
             linesearch  = 1
             dx_max     *= 2.0
             ls_increase = 1.1
-            perturb_chem = True
             perturb_all = True
 
         log.debug("Solver parameters:")
