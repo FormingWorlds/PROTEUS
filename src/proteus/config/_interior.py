@@ -109,7 +109,7 @@ class Aragog:
     basal_temperature: float            = field(default=7000)
     init_file: str                      = field(default=None)
     num_levels: int                     = field(default=100,    validator=ge(40))
-    initial_condition: int              = field(default=3)
+    initial_condition: int              = field(default=1, validator=in_((1,2,3,)))
     tolerance: float                    = field(default=1e-10,  validator=gt(0))
     inner_boundary_condition: int       = field(default=1, validator=ge(0))
     inner_boundary_value:float          = field(default=4000, validator=ge(0))
