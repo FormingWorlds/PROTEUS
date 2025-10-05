@@ -135,10 +135,10 @@ version = "2.0"
     evolve  = false             # whether to evolve the SMaxis and eccentricity
     module  = "none"            # module used to calculate tidal heating
 
-    axial_period = "none"       # planet's initial day length; will use orbital period if 'none'
+    axial_period = "none"       # planet's initial day length [hours]; will use orbital period if 'none'
     satellite = false           # include satellite (moon)?
     mass_sat = 7.347e+22        # mass of satellite [kg]
-    semimajoraxis_sat = 3e8     # initial SMA of satellite's orbit
+    semimajoraxis_sat = 3e8     # initial SMA of satellite's orbit [m]
 
     [orbit.dummy]
         H_tide  = 1e-7      # Fixed tidal power density [W kg-1]
@@ -208,7 +208,7 @@ version = "2.0"
         latent_heat     = false         # include latent heat release by phase change?
         real_gas        = true          # use real-gas equations of state
         psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
-        dx_max          = 35.0          # maximum temperature step allowed by solver
+        dx_max          = 35.0          # maximum temperature step [kelvin] allowed by solver
         max_steps       = 70            # max steps allowed by solver during each iteration
         perturb_all     = true          # updated entire jacobian each step?
         mlt_criterion   = "l"           # MLT convection stability criterion; (l)edoux or (s)chwarzschild
