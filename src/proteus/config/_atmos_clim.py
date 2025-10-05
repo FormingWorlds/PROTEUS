@@ -101,7 +101,7 @@ class Agni:
     condensation: bool      = field(default=False)
     latent_heat: bool       = field(default=False)
     real_gas: bool          = field(default=False)
-    psurf_thresh: bool      = field(default=0.1, validator=ge(0))
+    psurf_thresh: float     = field(default=0.1, validator=ge(0))
     dx_max: float           = field(default=35.0, validator=gt(1))
     max_steps: int          = field(default=70, validator=gt(2))
     perturb_all: bool       = field(default=True)

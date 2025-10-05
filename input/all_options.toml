@@ -133,7 +133,7 @@ version = "2.0"
     s0_factor = 0.375           # instellation scale factor [dimensionless]
 
     evolve  = false             # whether to evolve the SMaxis and eccentricity
-    module  = "none"            # module used to calculate tidal heating
+    module  = "lovepy"          # module used to calculate tidal heating
 
     axial_period = "none"       # planet's initial day length [hours]; will use orbital period if 'none'
     satellite = false           # include satellite (moon)?
@@ -200,13 +200,13 @@ version = "2.0"
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
-        solve_energy    = false         # solve for energy-conserving atmosphere profile
-        solution_atol   = 1e-3          # solver absolute tolerance
-        solution_rtol   = 2e-2          # solver relative tolerance
+        solve_energy    = true          # solve for energy-conserving atmosphere profile
+        solution_atol   = 0.5           # solver absolute tolerance
+        solution_rtol   = 0.15          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = true          # volatile condensation
+        condensation    = false         # volatile condensation
         latent_heat     = false         # include latent heat release by phase change?
-        real_gas        = true          # use real-gas equations of state
+        real_gas        = false         # use real-gas equations of state
         psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
         dx_max          = 35.0          # maximum temperature step [kelvin] allowed by solver
         max_steps       = 70            # max steps allowed by solver during each iteration
