@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from juliacall import Main as jl
+from juliacall import convert
 from scipy.interpolate import PchipInterpolator
 
 from proteus.atmos_clim.common import get_radius_from_pressure, get_spfile_path
@@ -208,6 +209,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         fastchem_work = fc_dir,
                         real_gas = config.atmos_clim.agni.real_gas,
                         check_integrity = False, # don't check thermo files every time
+                        mlt_criterion = convert(jl.Char,config.atmos_clim.agni.mlt_criterion),
 
                         skin_d=config.atmos_clim.surface_d,
                         skin_k=config.atmos_clim.surface_k,
@@ -364,30 +366,33 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         log.info("Attempt %d" % attempts)
 
         # default parameters
-        linesearch  = 2
-        easy_start  = False
-        dx_max      = float(config.atmos_clim.agni.dx_max)
-        ls_increase = 1.01
-        perturb_all = True
-        max_steps   = 70
-        chem_type   = int(config.atmos_clim.agni.chemistry_int)
+        linesearch   = 2
+        easy_start   = False
+        dx_max       = float(config.atmos_clim.agni.dx_max)
+        ls_increase  = 1.01
+        ls_max_steps = 20
+        ls_min_scale = 1e-5
+        perturb_chem = True
+        perturb_all  = bool(config.atmos_clim.agni.perturb_all)
+        max_steps    = int(config.atmos_clim.agni.max_steps)
+        chem_type    = int(config.atmos_clim.agni.chemistry_int)
 
-        # first few iterations
+        # parameters during initial few iterations
         if loops_total < 3:
-            dx_max = 200.0
+            dx_max = 300.0
             ls_increase = 1.1
             max_steps   = 200
 
-        # very first iteration parameters
+        # parameters for the first iteration
         if loops_total == 0:
             easy_start  = True
-            dx_max      = 300.0
 
         # try different solver parameters if struggling
         if attempts == 2:
             linesearch  = 1
             dx_max     *= 2.0
             ls_increase = 1.1
+            perturb_all = True
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -409,8 +414,10 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
                             conv_rtol=float(config.atmos_clim.agni.solution_rtol),
 
                             ls_increase=float(ls_increase), ls_method=int(linesearch),
+                            ls_max_steps=int(ls_max_steps), ls_min_scale=float(ls_min_scale),
+
                             dx_max=float(dx_max), easy_start=easy_start,
-                            perturb_all=perturb_all,
+                            perturb_all=perturb_all, perturb_chem=perturb_chem,
 
                             save_frames=False, modplot=int(modplot),
                             plot_jacobian=plot_jacobian
