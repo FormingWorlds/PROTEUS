@@ -6,7 +6,7 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "chili_protocol_earth"
+        path        = "chili_protocol_tr1b"
         logging     = "INFO"
         plot_mod    = 20      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -81,7 +81,7 @@ version = "2.0"
 [star]
 
     # Physical parameters
-    mass    = 1.0       # stellar mass [M_sun]
+    mass    = 0.10       # stellar mass [M_sun]
     age_ini = 0.050     # model initialisation age [Gyr]
 
     module  = "mors"
@@ -90,8 +90,8 @@ version = "2.0"
         rot_pcntle  = 50.0      # rotation percentile
         rot_period  = "none"    # rotation period [days]
         tracks      = "spada"   # evolution tracks: spada | baraffe
-        age_now     = 4.567     # current age of star [Gyr]
-        spec        = "stellar_spectra/Named/sun.txt" # path to stellar spectrum file
+        age_now     = 7.6     # current age of star [Gyr]
+        spec        = "stellar_spectra/Named/trappist-1.txt" # path to stellar spectrum file
 
     [star.dummy]
         radius           = 1.0      # Constant stellar radius [R_sun]
@@ -100,7 +100,7 @@ version = "2.0"
 
 # Orbital system
 [orbit]
-    semimajoraxis = 1.0         # initial semi-major axis of planet's orbit [AU]
+    semimajoraxis = 0.01154        # initial semi-major axis of planet's orbit [AU]
     eccentricity = 0.0          # initial eccentricity of planet's orbit [dimensionless]
     zenith_angle = 48.19        # characteristic zenith angle [degrees]
     s0_factor = 0.375           # instellation scale factor [dimensionless]
