@@ -6,13 +6,13 @@ version = "2.0"
 [params]
     # output files
     [params.out]
-        path        = "chili_protocol"
+        path        = "chili_protocol_earth"
         logging     = "INFO"
-        plot_mod    = 3      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
+        plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
-        archive_mod = 5      # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
-        remove_sf = false    # Remove SOCRATES spectral file when simulation ends.
+        archive_mod = 50      # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
+        remove_sf   = true    # Remove SOCRATES spectral file when simulation ends.
 
     # time-stepping
     [params.dt]
@@ -82,14 +82,14 @@ version = "2.0"
 
     # Physical parameters
     mass    = 1.0       # stellar mass [M_sun]
-    age_ini = 0.100     # model initialisation age [Gyr]
+    age_ini = 0.050     # model initialisation age [Gyr]
 
     module  = "mors"
 
     [star.mors]
         rot_pcntle  = 50.0      # rotation percentile
         rot_period  = "none"    # rotation period [days]
-        tracks      = "bhac"   # evolution tracks: spada | baraffe
+        tracks      = "spada"   # evolution tracks: spada | baraffe
         age_now     = 4.567     # current age of star [Gyr]
         spec        = "stellar_spectra/Named/sun.txt" # path to stellar spectrum file
 
@@ -106,7 +106,7 @@ version = "2.0"
     s0_factor = 0.375           # instellation scale factor [dimensionless]
 
     evolve  = false             # whether to evolve the SMaxis and eccentricity
-    module  = "lovepy"          # module used to calculate tidal heating
+    module  = "dummy"          # module used to calculate tidal heating
 
     axial_period = "none"       # planet's initial day length [hours]; will use orbital period if 'none'
     satellite = false           # include satellite (moon)?
@@ -132,7 +132,7 @@ version = "2.0"
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = true      # do not allow the planet to heat up
+    prevent_warming = false      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
@@ -150,16 +150,16 @@ version = "2.0"
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         p_obs           = 0.02          # bar, level probed in transmission
         spectral_group  = "Honeyside"   # which gas opacities to include
-        spectral_bands  = "48"          # how many spectral bands?
-        num_levels      = 40            # Number of atmospheric grid levels
+        spectral_bands  = "16"          # how many spectral bands?
+        num_levels      = 42            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true          # solve for energy-conserving atmosphere profile
         solution_atol   = 0.5           # solver absolute tolerance
         solution_rtol   = 0.15          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = false         # volatile condensation
-        latent_heat     = false         # include latent heat release by phase change?
+        condensation    = true         # volatile condensation
+        latent_heat     = true         # include latent heat release by phase change?
         real_gas        = false         # use real-gas equations of state
         psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
         dx_max          = 35.0          # maximum temperature step [kelvin] allowed by solver
@@ -189,12 +189,10 @@ version = "2.0"
 [interior]
     grain_size      = 0.1           # crystal settling grain size [m]
     F_initial       = 1e3           # Initial heat flux guess [W m-2]
-    radiogenic_heat = false         # enable radiogenic heat production
-    tidal_heat      = false         # enable tidal heat production
+    radiogenic_heat = true         # enable radiogenic heat production
+    tidal_heat      = true         # enable tidal heat production
     rheo_phi_loc    = 0.6           # Centre of rheological transition
     rheo_phi_wid    = 0.2           # Width of rheological transition
-    melting_dir     = "Monteux-600" # Name of folder constaining melting curves
-
 
     module = "spider"       # Which interior module to use
 
@@ -230,12 +228,12 @@ version = "2.0"
         include_CO2  = true     # Include CO2 compound
         include_N2   = true     # Include N2 compound
         include_S2   = true     # Include S2 compound
-        include_SO2  = true     # Include SO2 compound
-        include_H2S  = true     # Include H2S compound
-        include_NH3  = true     # Include NH3 compound
-        include_H2   = true     # Include H2 compound
-        include_CH4  = true     # Include CH4 compound
-        include_CO   = true     # Include CO compound
+        include_SO2  = false     # Include SO2 compound
+        include_H2S  = false     # Include H2S compound
+        include_NH3  = false     # Include NH3 compound
+        include_H2   = false     # Include H2 compound
+        include_CH4  = false     # Include CH4 compound
+        include_CO   = false     # Include CO compound
         T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
         rtol         = 0.0001   # Relative mass tolerance
         xtol         = 1e-06    # Absolute mass tolerance
@@ -261,33 +259,11 @@ version = "2.0"
 
     # Set initial volatile inventory by planetary element abundances if [initial = 'elements']
     [delivery.elements]
-        use_metallicity = false	 # whether or not to specify the elemental abundances in terms of solar metallicity
-        metallicity = 1000	 # metallicity relative to solar metallicity
+        C_kg   = 5.458e20       # Carbon inventory  kg of C
+        H_kg   = 1.119e20       # Hydrogen inventory
+        N_kg   = 0.0       # Nitrogen inventory
+        S_kg   = 0.0       # Sulfur inventory
 
-        H_oceans    = 5.0       # Hydrogen inventory in units of equivalent Earth oceans
-        #H_ppmw      = 109.0    # Hydrogen inventory in ppmw relative to mantle mass
-
-        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        # C_ppmw      = 0.0     # Carbon inventory in ppmw relative to mantle mass
-
-        NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
-        # N_ppmw      = 0.5     # Nitrogen inventory in ppmw relative to mantle mass
-
-        SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
-        # S_ppmw      = 2.0     # Sulfur inventory in ppmw relative to mantle mass
-
-    # Set initial volatile inventory by partial pressures in atmosphere if [initial = 'volatiles']
-    [delivery.volatiles]
-        H2O  = 20.0             # partial pressure of H2O
-        CO2  = 30.0             # partial pressure of CO2
-        N2   = 0.0              # etc.
-        S2   = 0.0
-        SO2  = 0.0
-        H2S  = 0.0
-        NH3  = 0.0
-        H2   = 0.0
-        CH4  = 0.0
-        CO   = 0.0
 
 # Atmospheric chemistry postprocessing
 [atmos_chem]
