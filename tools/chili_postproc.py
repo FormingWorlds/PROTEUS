@@ -10,7 +10,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from proteus.utils.constants import secs_per_year
+from proteus.utils.constants import R_earth
 
 # Simulation folder
 if len(sys.argv) != 2:
@@ -26,10 +26,25 @@ hf_all = pd.read_csv(hfpath, delimiter=r'\s+')
 
 # Write to expected format
 out = {}
-out["t(yr)"]         = np.array(hf_all["Time"].iloc[:]) / secs_per_year
-out["Tsurf(K)"]      = np.array(hf_all["T_surf"].iloc[:])
-out["pH2O(bar)"]     = np.array(hf_all["H2O_bar"].iloc[:])
-out["phi(vol_frac)"] = np.array(hf_all["Phi_global_vol"].iloc[:])
+out["t(yr)"]            = np.array(hf_all["Time"].iloc[:])
+out["Tsurf(K)"]         = np.array(hf_all["T_surf"].iloc[:])
+out["phi(vol_frac)"]    = np.array(hf_all["Phi_global_vol"].iloc[:])
+out["massC_solid(kg)"]  = np.array(hf_all["C_kg_solid"].iloc[:])
+out["massC_melt(kg)"]   = np.array(hf_all["C_kg_liquid"].iloc[:])
+out["massH_solid(kg)"]  = np.array(hf_all["H_kg_solid"].iloc[:])
+out["massH_melt(kg)"]   = np.array(hf_all["H_kg_liquid"].iloc[:])
+out["massO_atm(kg)"]    = np.array(hf_all["O_kg_atm"].iloc[:])
+out["massO_atm(kg)"]    = np.array(hf_all["O_kg_atm"].iloc[:])
+out["pH2O(bar)"]        = np.array(hf_all["H2O_bar"].iloc[:])
+out["pCO2(bar)"]        = np.array(hf_all["CO2_bar"].iloc[:])
+out["pCO(bar)"]         = np.array(hf_all["CO_bar"].iloc[:])
+out["pH2(bar)"]         = np.array(hf_all["H2_bar"].iloc[:])
+out["pCH4(bar)"]        = np.array(hf_all["CH4_bar"].iloc[:])
+out["pO2(bar)"]         = np.array(hf_all["O2_bar"].iloc[:])
+out["Rtrans(Re)"]       = np.array(hf_all["R_planet"].iloc[:]) / R_earth
+
+# Derive a representative potential temperature [K]
+out["Tpot(K)"]  = np.ones_like(out["Tsurf(K)"])
 
 outpath = os.path.join(simdir, "chili.csv")
 pd.DataFrame(out).to_csv(outpath, sep=',', index=False, float_format="%.10e")
