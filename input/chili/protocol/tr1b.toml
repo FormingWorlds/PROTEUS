@@ -48,11 +48,11 @@ version = "2.0"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3      # model will certainly run to t > minimum [yr]
-            maximum = 7.0e+9   # model will terminate when t > maximum [yr]
+            maximum = 5.0e+9   # model will terminate when t > maximum [yr]
 
         # solidification
         [params.stop.solid]
-            enabled  = true
+            enabled  = false
             phi_crit = 0.05      # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
@@ -158,7 +158,7 @@ version = "2.0"
         solution_atol   = 0.1           # solver absolute tolerance
         solution_rtol   = 0.12          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = true         # volatile condensation
+        condensation    = false         # volatile condensation
         latent_heat     = false         # include latent heat release by phase change?
         real_gas        = false         # use real-gas equations of state
         psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
