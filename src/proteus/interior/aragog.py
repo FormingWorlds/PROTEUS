@@ -352,6 +352,9 @@ class AragogRunner():
             output["M_mantle_solid"] = (output["M_mantle"] *
                                         (1.0 - output["Phi_global"]))
 
+        # CHANGE ME
+        output["Phi_global_vol"]    = output["Phi_global"]
+
         # Calculate surface area
         radii = aragog_output.radii_km_basic * 1e3 # [m]
         area  = 4 * np.pi * radii[-1]**2 # [m^2]

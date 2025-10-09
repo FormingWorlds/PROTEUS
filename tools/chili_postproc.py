@@ -21,16 +21,12 @@ if not os.path.isfile(hfpath):
    raise FileNotFoundError(f"Cannot find {hfpath}")
 hf_all = pd.read_csv(hfpath, delimiter=r'\s+')
 
-# Read simulation interior profiles
-# TODO
-phi_volfrac = np.array(hf_all["Phi_global"].iloc[:]) # REPLACE ME
-
 # Write to expected format
 out = {}
 out["t(yr)"]         = np.array(hf_all["Time"].iloc[:]) / secs_per_year
 out["Tsurf(K)"]      = np.array(hf_all["T_surf"].iloc[:])
 out["pH2O(bar)"]     = np.array(hf_all["H2O_bar"].iloc[:])
-out["phi(vol_frac)"] = phi_volfrac
+out["phi(vol_frac)"] = np.array(hf_all["Phi_global"].iloc[:])
 
 outpath = os.path.join(simdir, "chili.csv")
 pd.DataFrame(out).to_csv(outpath, sep=',', index=False, float_format="%.10e")

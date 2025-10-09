@@ -491,6 +491,7 @@ def GetHelpfileKeys():
             "gravity", "Phi_global", "RF_depth", # [m s-2] , [1] , [1]
             "M_core", "M_mantle", "M_planet",    # all [kg]
             "M_mantle_solid", "M_mantle_liquid", # all [kg]
+            "Phi_global_vol", # [1]
 
             # Stellar
             "M_star", "R_star", "age_star", # [kg], [m], [yr]
