@@ -29,7 +29,7 @@ out = {}
 out["t(yr)"]         = np.array(hf_all["Time"].iloc[:]) / secs_per_year
 out["Tsurf(K)"]      = np.array(hf_all["T_surf"].iloc[:])
 out["pH2O(bar)"]     = np.array(hf_all["H2O_bar"].iloc[:])
-out["phi(vol_frac)"] = np.array(hf_all["Phi_global"].iloc[:])
+out["phi(vol_frac)"] = np.array(hf_all["Phi_global_vol"].iloc[:])
 
 outpath = os.path.join(simdir, "chili.csv")
 pd.DataFrame(out).to_csv(outpath, sep=',', index=False, float_format="%.10e")
