@@ -77,15 +77,15 @@ axes[1, 0].tick_params(axis='both', labelsize=14)
 
 # Panel 5 : Melt fraction
 axes[1, 1].plot(out["t(yr)"], out["phi(vol_frac)"],  linewidth=2)
-axes[1, 1].set_ylabel(r'$\rm \phi$ [mass frac]', fontsize=14)
+axes[1, 1].set_ylabel(r'$\rm \phi$ [volume frac]', fontsize=14)
 axes[1, 1].tick_params(axis='both', labelsize=14)
 
 # Panel 6 : Mass of volatile in solid and melt
 m_unit = 1e16
-axes[1, 2].plot(out["t(yr)"], out["massC_solid(kg)"]/m_unit, label=r'$\rm C_{solid}$', linewidth=2)
-axes[1, 2].plot(out["t(yr)"], out["massC_melt(kg)"]/m_unit,  label=r'$\rm C_{melt}$', linewidth=2, linestyle='--')
-axes[1, 2].plot(out["t(yr)"], out["massH_solid(kg)"]/m_unit, label=r'$\rm H_{solid}$', linewidth=2)
-axes[1, 2].plot(out["t(yr)"], out["massH_melt(kg)"]/m_unit,  label=r'$\rm H_{melt}$', linewidth=2, linestyle='--')
+axes[1, 2].plot(out["t(yr)"], out["massC_solid(kg)"]/m_unit, label=r'$\rm C_{solid}$', linewidth=2, color=get_colour('C'))
+axes[1, 2].plot(out["t(yr)"], out["massC_melt(kg)"]/m_unit,  label=r'$\rm C_{melt}$',  linewidth=2, linestyle='--', color=get_colour('C'))
+axes[1, 2].plot(out["t(yr)"], out["massH_solid(kg)"]/m_unit, label=r'$\rm H_{solid}$', linewidth=2, color=get_colour('H'))
+axes[1, 2].plot(out["t(yr)"], out["massH_melt(kg)"]/m_unit,  label=r'$\rm H_{melt}$',  linewidth=2, linestyle='--', color=get_colour('H'))
 axes[1, 2].set_ylabel(r'$m_i$ [$10^{16}$ kg]', fontsize=14)
 axes[1, 2].set_yscale('symlog')
 axes[1, 2].tick_params(axis='both', labelsize=14)
