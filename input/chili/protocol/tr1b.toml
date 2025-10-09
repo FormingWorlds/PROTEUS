@@ -11,7 +11,7 @@ version = "2.0"
         plot_mod    = 20      # Plotting frequency, 0: wait until completion | n: every n iterations | none: do not plot
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
-        archive_mod = 50      # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
+        archive_mod = 'none'      # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
         remove_sf   = true    # Remove SOCRATES spectral file when simulation ends.
 
     # time-stepping
@@ -52,8 +52,8 @@ version = "2.0"
 
         # solidification
         [params.stop.solid]
-            enabled  = false
-            phi_crit = 0.05      # non-dim., model will terminate when global melt fraction < phi_crit
+            enabled  = true
+            phi_crit = 0.03      # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
@@ -150,19 +150,19 @@ version = "2.0"
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         p_obs           = 0.02          # bar, level probed in transmission
         spectral_group  = "Dayspring"   # which gas opacities to include
-        spectral_bands  = "256"          # how many spectral bands?
-        num_levels      = 48            # Number of atmospheric grid levels
+        spectral_bands  = "48"          # how many spectral bands?
+        num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true          # solve for energy-conserving atmosphere profile
         solution_atol   = 0.1           # solver absolute tolerance
-        solution_rtol   = 0.12          # solver relative tolerance
+        solution_rtol   = 0.1          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
         condensation    = false         # volatile condensation
         latent_heat     = false         # include latent heat release by phase change?
         real_gas        = false         # use real-gas equations of state
         psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
-        dx_max          = 35.0          # maximum temperature step [kelvin] allowed by solver
+        dx_max          = 10.0          # maximum temperature step [kelvin] allowed by solver
         max_steps       = 70            # max steps allowed by solver during each iteration
         perturb_all     = true          # updated entire jacobian each step?
         mlt_criterion   = "l"           # MLT convection stability criterion; (l)edoux or (s)chwarzschild

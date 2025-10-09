@@ -394,6 +394,13 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
             ls_increase = 1.1
             perturb_all = True
 
+        elif attempts == 3:
+            linesearch  = 1
+            dx_max     *= 2.0
+            ls_increase = 1.1
+            perturb_all = True
+            easy_start  = True
+
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
             linesearch, str(easy_start), dx_max, ls_increase
