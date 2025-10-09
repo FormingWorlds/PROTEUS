@@ -1,13 +1,13 @@
 # Config file for running a grid of forward models
 
 # Path to output folder where grid will be saved (relative to PROTEUS output folder)
-output = "scratch/escape_grid_0_485Msun/"
+output = "scratch/escape_grid_0_194Msun/"
 
 # Make `output` a symbolic link to this absolute location. To disable: set to empty string.
 symlink = ""
 
 # Path to base (reference) config file relative to PROTEUS root folder
-ref_config = "input/demos/escape_grid_0_485Msun.toml"
+ref_config = "input/demos/escape_grid_0_194Msun.toml"
 
 # Use SLURM?
 use_slurm = true
@@ -31,7 +31,7 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 # Semi-major axis set by direct
 ["orbit.semimajoraxis"]
     method = "direct"
-    values = [0.0188, 0.0939, 0.1877]
+    values = [0.006618, 0.033091, 0.066182]
 
 # Escape efficiency set by direct
 ["escape.zephyrus.efficiency"]

@@ -40,7 +40,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
         minimum_rel  = 1e-5   # relative minimum time-step [dimensionless]
         maximum      = 3e7    # yr, maximum time-step
         initial      = 1e4    # yr, inital step size
-        starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
+        starspec     = 100e6    # yr, interval to re-calculate the stellar spectrum
         starinst     = 100    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
 
@@ -157,7 +157,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = false      # do not allow the planet to heat up
+    prevent_warming = false     # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     cloud_enabled   = false     # enable water cloud radiative effects
@@ -272,7 +272,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
         include_H2   = true     # Include H2 compound
         include_CH4  = true     # Include CH4 compound
         include_CO   = true     # Include CO compound
-        T_floor      = 2300.0    # Temperature floor applied to outgassing calculation [K].
+        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
     [outgas.atmodeller]
         some_parameter = "some_value"
@@ -326,7 +326,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
 [atmos_chem]
 
     module  = "vulcan"          # Atmospheric chemistry module
-    when    = "offline"        # When to run chemistry (manually, offline, online)
+    when    = "manually"        # When to run chemistry (manually, offline, online)
 
     # Physics flags
     photo_on        = true      # Enable photochemistry

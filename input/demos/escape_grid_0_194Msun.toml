@@ -26,7 +26,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
 [params]
     # output files
     [params.out]
-        path        = "scratch/escape_grid_0_485Msun"
+        path        = "scratch/escape_0_194Msun"
         logging     = "INFO"
         plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "pdf"  # Plotting image file format, "png" or "pdf" recommended
@@ -40,7 +40,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
         minimum_rel  = 1e-5   # relative minimum time-step [dimensionless]
         maximum      = 3e7    # yr, maximum time-step
         initial      = 1e4    # yr, inital step size
-        starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
+        starspec     = 1e8    # yr, interval to re-calculate the stellar spectrum
         starinst     = 100    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
 
@@ -68,7 +68,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
         [params.stop.time]
             enabled = true
             minimum = 1.0e3     # yr, model will certainly run to t > minimum
-            maximum = 8.8e+9   # yr, model will terminate when t > maximum
+            maximum = 5e+9   # yr, model will terminate when t > maximum
 
         # solidification
         [params.stop.solid]
@@ -92,21 +92,21 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
 [star]
 
     # Physical parameters
-    mass    = 0.485       # M_sun
+    mass    = 0.194       # M_sun
     age_ini = 0.100     # Gyr, model initialisation/start age
 
     module  = "mors"
     [star.mors]
-        rot_pcntle = 10.0     # rotation percentile
-        # rot_period = 40     # rotation period [days]
+        rot_pcntle = 50.0     # rotation percentile
+        # rot_period = 122    # rotation period [days]
         tracks  = "spada"   # evolution tracks: spada | baraffe
-        age_now = 8.8     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/gj176.txt" # stellar spectrum
+        age_now = 5     # Gyr, current age of star used for scaling
+        spec    = "stellar_spectra/Named/gj1132.txt" # stellar spectrum
 
     [star.dummy]
-        radius  = 0.474       # R_sun
+        radius  = 0.2211       # R_sun
         calculate_radius = false    # Calculate star radius using scaling from Teff?
-        Teff    = 3632.0    # K
+        Teff    = 3229.0    # K
 
 # Orbital system
 [orbit]
@@ -272,7 +272,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
         include_H2   = true     # Include H2 compound
         include_CH4  = true     # Include CH4 compound
         include_CO   = true     # Include CO compound
-        T_floor      = 2300.0    # Temperature floor applied to outgassing calculation [K].
+        T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
 
     [outgas.atmodeller]
         some_parameter = "some_value"
@@ -326,7 +326,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
 [atmos_chem]
 
     module  = "vulcan"          # Atmospheric chemistry module
-    when    = "offline"        # When to run chemistry (manually, offline, online)
+    when    = "manually"        # When to run chemistry (manually, offline, online)
 
     # Physics flags
     photo_on        = true      # Enable photochemistry

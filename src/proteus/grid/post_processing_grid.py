@@ -651,7 +651,7 @@ def plot_grid_status(cases_data, plot_dir: Path, grid_name: str, status_colors: 
                 for formatted, original in zip(formatted_status_keys, status_counts.index)}
     else:
         palette = sns.color_palette("Accent", len(status_counts))
-        formatted_status_keys = [s.replace("d (", "d \n (") for s in status_counts.index]
+        formatted_status_keys = [s.replace(" (", " \n (") for s in status_counts.index]
         palette = dict(zip(formatted_status_keys, palette))
 
     # Prepare dataframe for plotting

@@ -1,7 +1,7 @@
 # Config file for running a grid of forward models
 
 # Path to output folder where grid will be saved (relative to PROTEUS output folder)
-output = "scratch/escape_comparison_on_off/"
+output = "scratch/escape_comparison_on_off_0_1_AU_fo2_6_H_oceans_10/"
 
 # Make `output` a symbolic link to this absolute location. To disable: set to empty string.
 symlink = ""

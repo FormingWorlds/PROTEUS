@@ -44,3 +44,5 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
     start    = 1.0
     stop     = 1000.0
     count     = 4
+
+# Add CMF

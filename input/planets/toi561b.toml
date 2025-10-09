@@ -22,7 +22,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
         minimum_rel  = 1e-5   # relative minimum time-step [dimensionless]
         maximum      = 1.1e10   # yr, maximum time-step
         initial      = 1e3    # yr, inital step size
-        starspec     = 1e9    # yr, interval to re-calculate the stellar spectrum
+        starspec     = 1e8    # yr, interval to re-calculate the stellar spectrum
         starinst     = 1e2    # yr, interval to re-calculate the instellation
         method       = "adaptive"  # proportional | adaptive | maximum
 
@@ -42,9 +42,9 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
 
         # required number of iterations
         [params.stop.iters]
-            enabled = true
+            enabled = false
             minimum = 5
-            maximum = 9000
+            maximum = 5e6
 
         # required time constraints
         [params.stop.time]
@@ -79,7 +79,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
     module  = "mors"
 
     [star.mors]
-        rot_pcntle = 20.0       # rotation percentile -> slow rotator because the star is old ?
+        rot_pcntle = 50.0       # rotation percentile
         rot_period = 'none'     # rotation period [days]
         tracks  = "spada"       # evolution tracks: spada | baraffe
         age_now = 11            # [Gyr] from Lacedelli et al., 2022
@@ -252,7 +252,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
         include_H2   = true     # Include H2 compound
         include_CH4  = true     # Include CH4 compound
         include_CO   = true     # Include CO compound
-        T_floor      = 2310.0   # Temperature floor applied to outgassing calculation [K].
+        T_floor      = 700 .0   # Temperature floor applied to outgassing calculation [K].
 
     [outgas.atmodeller]
         some_parameter = "some_value"
@@ -306,7 +306,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg, Emma Postolec"
 [atmos_chem]
 
     module  = "vulcan"          # Atmospheric chemistry module
-    when    = "offline"        # When to run chemistry (manually, offline, online)
+    when    = "manually"        # When to run chemistry (manually, offline, online)
 
     # Physics flags
     photo_on        = true      # Enable photochemistry

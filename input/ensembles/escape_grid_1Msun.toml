@@ -13,7 +13,7 @@ ref_config = "input/demos/escape_grid_1Msun.toml"
 use_slurm = true
 
 # Execution limits
-max_jobs = 500       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_jobs = 1000       # maximum number of concurrent tasks (e.g. 500 on Habrok)
 max_days = 5        # maximum number of days to run (e.g. 1)
 max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
 
