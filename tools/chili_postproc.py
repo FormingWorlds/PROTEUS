@@ -54,14 +54,12 @@ fig, axes = plt.subplots(2, 3, figsize=(20, 10), sharex=False)
 
 # Panel 1 : Surface Temperature
 axes[0, 0].plot(out["t(yr)"], out["Tsurf(K)"], linewidth=2)
-axes[0, 0].set_xlabel('Time [yr]', fontsize=14)
 axes[0, 0].set_ylabel(r'$\rm T_{surf}$ [K]', fontsize=14)
 axes[0, 0].tick_params(axis='both', labelsize=14)
 
 # Panel 2 : Partial pressures
 for g in ["H2O", "CO2", "CO", "H2", "CH4", "O2"]:
     axes[0, 1].plot(out["t(yr)"], out[f"p{g}(bar)"], label=latexify(g), color=get_colour(g), linewidth=2)
-axes[0, 1].set_xlabel('Time [yr]', fontsize=14)
 axes[0, 1].set_ylabel(r'$\rm p_{i}$ [bar]', fontsize=14)
 axes[0, 1].set_yscale('log')
 axes[0, 1].tick_params(axis='both', labelsize=14)
@@ -69,31 +67,27 @@ axes[0, 1].legend(loc='best', fontsize=10)
 
 # Panel 3 : Transit radius
 axes[0, 2].plot(out["t(yr)"], out["Rtrans(Re)"], linewidth=2)
-axes[0, 2].set_xlabel('Time [yr]', fontsize=14)
 axes[0, 2].set_ylabel(r'$\rm R_{trans}$ [R$_{\oplus}$]', fontsize=14)
 axes[0, 2].tick_params(axis='both', labelsize=14)
 
 # Panel 4 : Potential temperature
 axes[1, 0].plot(out["t(yr)"], out["Tpot(K)"],  linewidth=2)
-axes[1, 0].set_xlabel('Time [yr]', fontsize=14)
 axes[1, 0].set_ylabel(r'$\rm T_{pot}$ [K]', fontsize=14)
 axes[1, 0].tick_params(axis='both', labelsize=14)
 
 # Panel 5 : Melt fraction
 axes[1, 1].plot(out["t(yr)"], out["phi(vol_frac)"],  linewidth=2)
-axes[1, 1].set_xlabel('Time [yr]', fontsize=14)
 axes[1, 1].set_ylabel(r'$\rm \phi$ [mass frac]', fontsize=14)
 axes[1, 1].tick_params(axis='both', labelsize=14)
 
 # Panel 6 : Mass of volatile in solid and melt
-axes[1, 2].plot(out["t(yr)"], out["massC_solid(kg)"], label=r'$\rm C_{solid}$', linewidth=2)
-axes[1, 2].plot(out["t(yr)"], out["massC_melt(kg)"], label=r'$\rm C_{melt}$', linewidth=2, linestyle='--')
-axes[1, 2].plot(out["t(yr)"], out["massH_solid(kg)"], label=r'$\rm H_{solid}$', linewidth=2)
-axes[1, 2].plot(out["t(yr)"], out["massH_melt(kg)"], label=r'$\rm H_{melt}$', linewidth=2, linestyle='--')
-axes[1, 2].set_xlabel('Time [yr]', fontsize=14)
-axes[1, 2].set_ylabel(r'$m_i$ [kg]', fontsize=14)
-
-axes[1, 2].set_yscale('log')
+m_unit = 1e16
+axes[1, 2].plot(out["t(yr)"], out["massC_solid(kg)"]/m_unit, label=r'$\rm C_{solid}$', linewidth=2)
+axes[1, 2].plot(out["t(yr)"], out["massC_melt(kg)"]/m_unit,  label=r'$\rm C_{melt}$', linewidth=2, linestyle='--')
+axes[1, 2].plot(out["t(yr)"], out["massH_solid(kg)"]/m_unit, label=r'$\rm H_{solid}$', linewidth=2)
+axes[1, 2].plot(out["t(yr)"], out["massH_melt(kg)"]/m_unit,  label=r'$\rm H_{melt}$', linewidth=2, linestyle='--')
+axes[1, 2].set_ylabel(r'$m_i$ [$10^{16}$ kg]', fontsize=14)
+axes[1, 2].set_yscale('symlog')
 axes[1, 2].tick_params(axis='both', labelsize=14)
 axes[1, 2].legend(loc='best', fontsize=10)
 
@@ -118,6 +112,8 @@ for ax in axes.flatten():
 
     # set scales
     ax.set_xscale('log')
+    ax.set_xlabel('Time [yr]', fontsize=14)
+
 
 # Save the figure
 fig.suptitle('CHILI-MIP Protocol Simulation', fontsize=16)
