@@ -556,6 +556,9 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     interior_o.temp     = np.array(json_file.get_dict_values(['data','temp_s']))
     interior_o.pres     = np.array(json_file.get_dict_values(['data','pressure_s']))
 
+    vshell = json_file.get_dict_values(['data','volume_s'])
+    mshell = interior_o.density * vshell
+
     # Entropy at each layer [J kg-1 K]
     entropy = np.array(json_file.get_dict_values(['data','S_s']))
 
@@ -565,16 +568,14 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
         rho_melt_arr[i] = interp_rho_melt(entropy[i], interior_o.pres[i], interior_o.lookup_rho_melt)
 
     # Determine volume of melt at each layer
-    vmelt = interior_o.phi * interior_o.mass / rho_melt_arr
+    vmelt = interior_o.phi * mshell / rho_melt_arr
 
     # Total volume of each layer
-    vshell = json_file.get_dict_values(['data','volume_s'])
     volume_mantle = np.sum(vshell)
-    # volume_mantle = 4/3*np.pi*( interior_o.radius[0]**3 - interior_o.radius[-1]**3 )
 
     # Global melt fraction by volume
-    # output["Phi_global_vol"] = np.sum(vmelt)/volume_mantle
-    output["Phi_global_vol"] = float(output["Phi_global"])
+    output["Phi_global_vol"] = np.sum(vmelt)/volume_mantle
+    # output["Phi_global_vol"] = float(output["Phi_global"])
 
     # Manually calculate heat flux at near-surface from energy gradient
     # Etot        = json_file.get_dict_values(['data','Etot_b'])
