@@ -164,7 +164,7 @@ def get_all_output_times(odir:str):
 
     return time_a
 
-def interp_rho_pure_melt(entropy, pressure):
+def interp_rho_melt(S, P, lookup):
     '''
     Return density of pure melt at given entropy and pressure.
 
@@ -172,18 +172,14 @@ def interp_rho_pure_melt(entropy, pressure):
     ---------------
     - entropy: float     entropy of layer [J kg-1 K-1]
     - pressure: float    pressure of layer [Pa]
+    - lookup: str    directory of SPIDER installation
 
     Returns
     -----------------
     - density: float    density of pure melt [kg m-3]
     '''
 
-    folder = "lookup_data/1TPa-dK09-elec-free/"
-    data = np.genfromtxt(folder+"density_melt.dat")
-    scaled = data[1:] * data[0]
-    grid = scaled.reshape(95, 2020, 3)
-
-    Pvals, Svals, rho_grid = grid[0, :, 0], grid[:, 0, 1], grid[:, :, 2]
+    Pvals, Svals, rho_grid = lookup[0, :, 0], lookup[:, 0, 1], lookup[:, :, 2]
     interp = RegularGridInterpolator((Pvals, Svals), rho_grid.T, bounds_error=False, fill_value=None)
 
     rho = interp(np.column_stack((np.atleast_1d(P), np.atleast_1d(S))))
@@ -566,7 +562,7 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     # Get density of pure-melt at each layer
     rho_melt_arr = np.ones_like(interior_o.pres)
     for i in range(len(interior_o.pres)):
-        rho_melt_arr[i] = interp_rho_pure_melt(entropy[i], interior_o.pres[i])
+        rho_melt_arr[i] = interp_rho_melt(entropy[i], interior_o.pres[i], interior_o.lookup_rho_melt)
 
     # Determine volume of melt at each layer
     vmelt = interior_o.phi * interior_o.mass / rho_melt_arr
