@@ -18,7 +18,7 @@ version = "2.0"
     [params.dt]
         minimum      = 1e4    # absolute minimum time-step [years]
         minimum_rel  = 1e-5   # relative minimum time-step [dimensionless]
-        maximum      = 1e7    # maximum time-step [yr]
+        maximum      = 1e6    # maximum time-step [yr]
         initial      = 3e1    # inital step size [yr]
         starspec     = 1e7    # interval to re-calculate the stellar spectrum [yr]
         starinst     = 1e1    # interval to re-calculate the instellation [yr]
@@ -53,7 +53,7 @@ version = "2.0"
         # solidification
         [params.stop.solid]
             enabled  = true
-            phi_crit = 0.03      # non-dim., model will terminate when global melt fraction < phi_crit
+            phi_crit = 0.02      # non-dim., model will terminate when global melt fraction < phi_crit
 
         # radiative equilibrium
         [params.stop.radeqm]
@@ -102,11 +102,11 @@ version = "2.0"
 [orbit]
     semimajoraxis = 0.01154        # initial semi-major axis of planet's orbit [AU]
     eccentricity = 0.0          # initial eccentricity of planet's orbit [dimensionless]
-    zenith_angle = 48.19        # characteristic zenith angle [degrees]
-    s0_factor = 0.375           # instellation scale factor [dimensionless]
+    zenith_angle = 54.74        # characteristic zenith angle [degrees]
+    s0_factor = 0.25           # instellation scale factor [dimensionless]
 
     evolve  = false             # whether to evolve the SMaxis and eccentricity
-    module  = "lovepy"          # module used to calculate tidal heating
+    module  = "none"          # module used to calculate tidal heating
 
     axial_period = "none"       # planet's initial day length [hours]; will use orbital period if 'none'
     satellite = false           # include satellite (moon)?
@@ -191,8 +191,8 @@ version = "2.0"
     grain_size      = 0.1           # crystal settling grain size [m]
     F_initial       = 1e3           # Initial heat flux guess [W m-2]
     radiogenic_heat = true         # enable radiogenic heat production
-    tidal_heat      = true         # enable tidal heat production
-    rheo_phi_loc    = 0.6           # Centre of rheological transition
+    tidal_heat      = false         # enable tidal heat production
+    rheo_phi_loc    = 0.3           # Centre of rheological transition
     rheo_phi_wid    = 0.2           # Width of rheological transition
 
     module = "spider"       # Which interior module to use
