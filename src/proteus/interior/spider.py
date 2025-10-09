@@ -573,7 +573,8 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     # volume_mantle = 4/3*np.pi*( interior_o.radius[0]**3 - interior_o.radius[-1]**3 )
 
     # Global melt fraction by volume
-    output["Phi_global_vol"] = np.sum(vmelt)/volume_mantle
+    # output["Phi_global_vol"] = np.sum(vmelt)/volume_mantle
+    output["Phi_global_vol"] = float(output["Phi_global"])
 
     # Manually calculate heat flux at near-surface from energy gradient
     # Etot        = json_file.get_dict_values(['data','Etot_b'])
@@ -581,6 +582,15 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     # area        = json_file.get_dict_values(['data','area_b'])
     # E0          = Etot[1] - (Etot[2]-Etot[1]) * (rad[2]-rad[1]) / (rad[1]-rad[0])
     # F_int2      = E0/area[0]
+
+    # Get estimate of potential temperature
+    Fconv = json_file.get_dict_values(['data','Jconv_b'])
+    Fcond = json_file.get_dict_values(['data','Jcond_b'])
+    for i in range(len(Fconv)):
+        if Fconv[i] > Fcond[i]:
+            break
+    i = min(i, len(interior_o.temp)-1)
+    output["T_pot"] = float(interior_o.temp[i])
 
     # Limit F_int to positive values
     if config.atmos_clim.prevent_warming:

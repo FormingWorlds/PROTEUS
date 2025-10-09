@@ -27,7 +27,8 @@ hf_all = pd.read_csv(hfpath, delimiter=r'\s+')
 # Write to expected format
 out = {}
 out["t(yr)"]            = np.array(hf_all["Time"].iloc[:])
-out["Tsurf(K)"]         = np.array(hf_all["T_surf"].iloc[:])
+out["Tsurf(K)"]         = np.array(hf_all["T_pot"].iloc[:])
+out["Tpot(K)"]         = np.array(hf_all["T_surf"].iloc[:])
 out["phi(vol_frac)"]    = np.array(hf_all["Phi_global_vol"].iloc[:])
 out["massC_solid(kg)"]  = np.array(hf_all["C_kg_solid"].iloc[:])
 out["massC_melt(kg)"]   = np.array(hf_all["C_kg_liquid"].iloc[:])
@@ -42,9 +43,6 @@ out["pH2(bar)"]         = np.array(hf_all["H2_bar"].iloc[:])
 out["pCH4(bar)"]        = np.array(hf_all["CH4_bar"].iloc[:])
 out["pO2(bar)"]         = np.array(hf_all["O2_bar"].iloc[:])
 out["Rtrans(Re)"]       = np.array(hf_all["R_planet"].iloc[:]) / R_earth
-
-# Derive a representative potential temperature [K]
-out["Tpot(K)"]  = np.ones_like(out["Tsurf(K)"])
 
 outpath = os.path.join(simdir, "chili.csv")
 pd.DataFrame(out).to_csv(outpath, sep=',', index=False, float_format="%.10e")
