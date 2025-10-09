@@ -42,7 +42,7 @@ out["pCO(bar)"]         = np.array(hf_all["CO_bar"].iloc[:])
 out["pH2(bar)"]         = np.array(hf_all["H2_bar"].iloc[:])
 out["pCH4(bar)"]        = np.array(hf_all["CH4_bar"].iloc[:])
 out["pO2(bar)"]         = np.array(hf_all["O2_bar"].iloc[:])
-out["Rtrans(Re)"]       = np.array(hf_all["R_planet"].iloc[:]) / R_earth
+out["Rtrans(Re)"]       = np.array(hf_all["R_obs"].iloc[:]) / R_earth
 
 outpath = os.path.join(simdir, "chili.csv")
 pd.DataFrame(out).to_csv(outpath, sep=',', index=False, float_format="%.10e")
