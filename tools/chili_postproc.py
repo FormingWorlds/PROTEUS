@@ -2,11 +2,14 @@
 # Postprocess output into CHILI-MIP format
 
 # Import modules
-import sys, os
-import matplotlib.pyplot as plt
+from __future__ import annotations
+
+import os
+import sys
+
 import numpy as np
 import pandas as pd
-from proteus.interior.wrapper import get_all_output_times, read_interior_data
+
 from proteus.utils.constants import secs_per_year
 
 # Simulation folder
