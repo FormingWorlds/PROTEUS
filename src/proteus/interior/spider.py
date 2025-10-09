@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+from scipy.interpolate import RegularGridInterpolator
 
 from proteus.interior.common import Interior_t, get_file_tides
 from proteus.interior.timestep import next_step
@@ -177,7 +178,16 @@ def interp_rho_pure_melt(entropy, pressure):
     - density: float    density of pure melt [kg m-3]
     '''
 
-    return 1.0
+    folder = "lookup_data/1TPa-dK09-elec-free/"
+    data = np.genfromtxt(folder+"density_melt.dat")
+    scaled = data[1:] * data[0]
+    grid = scaled.reshape(95, 2020, 3)
+
+    Pvals, Svals, rho_grid = grid[0, :, 0], grid[:, 0, 1], grid[:, :, 2]
+    interp = RegularGridInterpolator((Pvals, Svals), rho_grid.T, bounds_error=False, fill_value=None)
+
+    rho = interp(np.column_stack((np.atleast_1d(P), np.atleast_1d(S))))
+    return rho
 
 #====================================================================
 def _try_spider( dirs:dict, config:Config,
