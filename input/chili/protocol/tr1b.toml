@@ -26,7 +26,7 @@ initial = 30.0
 propconst = 52.0
 
 [params.dt.adaptive]
-atol = 0.02
+atol = 0.03
 rtol = 0.09
 
 [params.stop]
@@ -113,13 +113,13 @@ radius_int = "none"
 
 [atmos_clim]
 module = "agni"
-surf_state = "fixed"
-prevent_warming = false
+surf_state = "skin"
+prevent_warming = true
 surface_d = 0.01
 surface_k = 2.0
 cloud_enabled = false
 cloud_alpha = 0.0
-surf_greyalbedo = 0.1
+surf_greyalbedo = 0.0
 albedo_pl = 0.1
 rayleigh = false
 tmp_minimum = 0.5
