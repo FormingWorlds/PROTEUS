@@ -43,7 +43,7 @@ maximum = 5000000000.0
 minimum = 1000.0
 
 [params.stop.solid]
-phi_crit = 0.03
+phi_crit = 0.05
 enabled = true
 
 [params.stop.radeqm]
