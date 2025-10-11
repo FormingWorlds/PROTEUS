@@ -65,13 +65,22 @@ def get_file_tides(outdir:str):
 
 # Structure for holding interior variables at the current time-step
 class Interior_t():
-    def __init__(self, nlev_b:int):
+    def __init__(self, nlev_b:int, spider_dir=None):
 
         # Initial condition flag  (-1: init, 1: start, 2: running)
         self.ic = -1
 
         # Current time step length [yr]
         self.dt = 1.0
+
+        # Lookup data for SPIDER
+        self.lookup_rho_melt = None
+        if spider_dir:
+            folder = os.path.join(spider_dir,"lookup_data","1TPa-dK09-elec-free") + "/"
+            data = np.genfromtxt(folder+"density_melt.dat")
+            sfact = np.array([1000000000.0, 4805046.659407042, 1000.0])
+            scaled = data * sfact
+            self.lookup_rho_melt = scaled.reshape(95, 2020, 3)
 
         self.aragog_solver = None
 

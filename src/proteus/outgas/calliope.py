@@ -70,7 +70,8 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     # Calculate hydrogen inventory...
 
     #    absolute part (H_kg = H_oceans * number_ocean_moles * molar_mass['H2'])
-    H_abs = float(config.delivery.elements.H_oceans) * mass_ocean
+    H_abs  = float(config.delivery.elements.H_oceans) * mass_ocean
+    H_abs += float(config.delivery.elements.H_kg)
 
     #    relative part (H_kg = H_rel * 1e-6 * M_mantle)
     H_rel = config.delivery.elements.H_ppmw * 1e-6 * hf_row["M_mantle"]
@@ -118,11 +119,14 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
                 invalid = True
         else:
             # calculate C/H ratio for calliope from C_kg and H_kg
-            CH_ratio = config.delivery.elements.C_ppmw * 1e-6 * hf_row["M_mantle"] / H_kg
+            C_kg  = float(config.delivery.elements.C_ppmw) * 1e-6 * hf_row["M_mantle"]
+            C_kg += float(config.delivery.elements.C_kg)
+            CH_ratio = C_kg / H_kg
 
         # Calculate nitrogen inventory (we need N_ppmw for calliope)
         NH_ratio = float(config.delivery.elements.NH_ratio)
         N_ppmw   = float(config.delivery.elements.N_ppmw)
+        N_ppmw  += float(config.delivery.elements.N_kg) / (1e-6 * hf_row["M_mantle"])
         if NH_ratio > 1e-10:
             # check that N_ppmw isn't also set
             if N_ppmw > 1e-10:
@@ -134,6 +138,7 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
         # Calculate sulfur inventory (we need S_ppmw for calliope)
         SH_ratio = float(config.delivery.elements.SH_ratio)
         S_ppmw   = float(config.delivery.elements.S_ppmw)
+        S_ppmw  += float(config.delivery.elements.S_kg) / (1e-6 * hf_row["M_mantle"])
         if SH_ratio > 1e-10:
             # check that S_ppmw isn't also set
             if S_ppmw> 1e-10:
@@ -148,6 +153,7 @@ def construct_options(dirs:dict, config:Config, hf_row:dict):
     if invalid:
         log.error("  a) set X by metallicity, e.g. XH_ratio=1.2 and X_ppmw=0")
         log.error("  b) set X by concentration, e.g. XH_ratio=0 and X_ppmw=2.01")
+        log.error("  Can also specify X_ppmw and X_kg together, to set the absolute X inventory")
         UpdateStatusfile(dirs, 20)
         raise ValueError("Invalid volatile inventory configuration")
 

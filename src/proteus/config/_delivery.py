@@ -26,6 +26,8 @@ class Elements:
     ----------
     H_oceans: float
         Absolute hydrogen inventory, units of equivalent Earth oceans.
+    H_kg: float
+        Absolute hydrogen inventory, kg.
     H_ppmw: float
         Relative hydrogen inventory, ppmw relative to mantle mass.
 
@@ -36,16 +38,22 @@ class Elements:
 
     CH_ratio: float
         Carbon metallicity. C/H mass ratio in combined mantle+atmosphere system.
+    C_kg: float
+        Absolute carbon inventory, kg.
     C_ppmw: float
         Relative carbon inventory, ppmw relative to mantle mass.
 
     NH_ratio: float
         Nitrogen metallicity. N/H mass ratio in combined mantle+atmosphere system.
+    N_kg: float
+        Absolute nitrogen inventory, kg.
     N_ppmw: float
         Relative nitrogen inventory, ppmw relative to mantle mass.
 
     SH_ratio: float
         Sulfur metallicity. C/H mass ratio in combined mantle+atmosphere system.
+    S_kg: float
+        Absolute sulfur inventory, kg.
     S_ppmw: float
         Absolute sulfur inventory, ppmw relative to mantle mass.
     """
@@ -53,15 +61,19 @@ class Elements:
     metallicity: float = field(default=1000.0, validator=ge(0))
 
     H_oceans: float = field(default=0.0, validator=ge(0))
+    H_kg: float     = field(default=0.0, validator=ge(0))
     H_ppmw: float   = field(default=0.0, validator=ge(0))
 
     CH_ratio: float = field(default=0.0, validator=ge(0))
+    C_kg: float     = field(default=0.0, validator=ge(0))
     C_ppmw: float   = field(default=0.0, validator=ge(0))
 
     NH_ratio: float = field(default=0.0, validator=ge(0))
+    N_kg: float     = field(default=0.0, validator=ge(0))
     N_ppmw: float   = field(default=0.0, validator=ge(0))
 
     SH_ratio: float = field(default=0.0, validator=ge(0))
+    S_kg: float     = field(default=0.0, validator=ge(0))
     S_ppmw: float   = field(default=0.0, validator=ge(0))
 
 

@@ -207,6 +207,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         condensates=condensates,
                         use_all_gases=include_all,
                         fastchem_work = fc_dir,
+                        fastchem_floor = config.atmos_clim.agni.fastchem_floor,
                         real_gas = config.atmos_clim.agni.real_gas,
                         check_integrity = False, # don't check thermo files every time
                         mlt_criterion = convert(jl.Char,config.atmos_clim.agni.mlt_criterion),
@@ -393,6 +394,13 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
             dx_max     *= 2.0
             ls_increase = 1.1
             perturb_all = True
+
+        elif attempts == 3:
+            linesearch  = 1
+            dx_max     *= 2.0
+            ls_increase = 1.1
+            perturb_all = True
+            easy_start  = True
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
