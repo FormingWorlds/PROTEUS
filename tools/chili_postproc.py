@@ -72,15 +72,19 @@ for tau in tau_target:
     iclose = np.argmin(np.abs(tau - out["t(yr)"]))
     tclose = out["t(yr)"][iclose]
     print(f"    {tau:.2e} -> {tclose:.2e} yr")
-    ncfile = os.path.join(simdir, "data", f"{tclose:.0f}_atm.nc")
+    if (tclose > tau*10) or (tclose < tau/10):
+        print("    too far from target time, skipping")
+        continue
 
+    ncfile = os.path.join(simdir, "data", f"{tclose:.0f}_atm.nc")
     with nc.Dataset(ncfile) as ds:
         tarr = np.array(ds.variables["tmp"][:])
         parr = np.array(ds.variables["p"][:]  ) * 1e-5
         zarr = np.array(ds.variables["r"][:]  ) - np.amin(ds.variables["r"])
     X = np.array([tarr, parr, zarr]).T
     H = "T(K),p(bar),z(m)"
-    f = os.path.join(simdir,f"chili_{tau:.1e}.csv")
+    csvname = f"chili_logt={np.log10(tclose):.2f}".replace(".","p") + ".csv"
+    f = os.path.join(simdir,csvname)
     print(f"      {f}")
     np.savetxt(f, X, fmt="%.10e", delimiter=',', header=H)
 
@@ -144,7 +148,7 @@ axes[1, 1].text(4.5e1, 0.5*0.01, r'$\rm \phi$ = 0.01', va='top', ha='right', fon
 for ax in axes.flatten():
 
     # reference times
-    for tau in [200e6, 1e9, 4.567e9]:
+    for tau in tau_target:
         ax.axvline(tau, color='silver', linestyle='--', linewidth=1)
 
     # set scales

@@ -27,7 +27,7 @@ propconst = 52.0
 
 [params.dt.adaptive]
 atol = 0.03
-rtol = 0.09
+rtol = 0.10
 
 [params.stop]
 strict = false
@@ -80,7 +80,7 @@ radius = 1.0
 calculate_radius = false
 
 [orbit]
-module = "lovepy"
+module = "none"
 semimajoraxis = 0.01154
 eccentricity = 0.0
 zenith_angle = 48.19
@@ -113,7 +113,7 @@ radius_int = "none"
 
 [atmos_clim]
 module = "agni"
-surf_state = "skin"
+surf_state = "fixed"
 prevent_warming = true
 surface_d = 0.01
 surface_k = 2.0
@@ -197,7 +197,7 @@ rate = 0.0
 module = "spider"
 melting_dir = "Monteux-600"
 radiogenic_heat = true
-tidal_heat = true
+tidal_heat = false
 grain_size = 0.1
 F_initial = 1000.0
 rheo_phi_loc = 0.5
