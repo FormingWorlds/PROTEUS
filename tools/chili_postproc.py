@@ -8,15 +8,16 @@ import os
 import sys
 
 import matplotlib as mpl
+
 mpl.use("Agg") # noqa
 import matplotlib.pyplot as plt
+import netCDF4 as nc
 import numpy as np
 import pandas as pd
-import netCDF4 as nc
 
-from proteus.utils.plot import get_colour, latexify
-from proteus.utils.constants import R_earth, vol_list
 from proteus.config import read_config_object
+from proteus.utils.constants import R_earth, vol_list
+from proteus.utils.plot import get_colour, latexify
 
 # Target times for sampling profile [years]
 tau_target = [1e3, 1e4, 1e5, 1e7, 1e9]
