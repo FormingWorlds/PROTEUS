@@ -106,6 +106,7 @@ class Agni:
     max_steps: int          = field(default=70, validator=gt(2))
     perturb_all: bool       = field(default=True)
     mlt_criterion: str      = field(default='l', validator=in_(('l','s',)))
+    fastchem_floor:float    = field(default=273.0, validator=gt(0.0))
 
     @property
     def chemistry_int(self) -> int:
