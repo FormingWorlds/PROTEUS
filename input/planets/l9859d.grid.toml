@@ -1,7 +1,7 @@
 # Config file for running a grid of forward models
 
 # Path to output folder where grid will be saved (relative to PROTEUS output folder)
-output = "scratch/l98d_updated6/"
+output = "scratch/l98d_updated7/"
 
 # Make `output` a symbolic link to this absolute location. To disable: set to empty string.
 symlink = ""
@@ -33,19 +33,17 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
     method = "arange"
     start    = 10000
     stop     = 35000
-    step     = 5000
+    step     = 6000
 
 # Mantle redox state set directly
 ["outgas.fO2_shift_IW"]
     method = "direct"
-    values = [-5.0, -4.5, -4.0, -3.5, -3.0, -2.5]
+    values = [-5.0, -4.5, -4.0, -3.5, -3.0, -2.5, -2.0, -1.5]
 
 # Planet bulk S/H ratio set directly
 ["delivery.elements.SH_ratio"]
-    method = "linspace"
-    start    = 1
-    stop     = 16
-    count    = 5
+    method = "direct"
+    values = [1.0, 2.0, 4.0, 8.0]
 
 # Core radius fraction set by linspace
 ["struct.corefrac"]
