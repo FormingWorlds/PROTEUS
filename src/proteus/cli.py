@@ -359,7 +359,7 @@ def install_all(export_env: bool):
     available_disk_space_in_B = shutil.disk_usage(".").free
     G = 1e9
     available_disk_space_in_GB = available_disk_space_in_B / G
-    required_disk_space_in_GB = 10
+    required_disk_space_in_GB = 5
     if not available_disk_space_in_GB > required_disk_space_in_GB:
         click.secho(
             f"⚠️ You have {available_disk_space_in_GB:.3f} GB of disk space at your disposal.",

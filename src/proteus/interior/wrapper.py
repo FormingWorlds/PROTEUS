@@ -54,7 +54,11 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     log.info("Using %s interior module to solve structure"%config.interior.module)
 
     # Initial guess for interior radius and gravity
-    int_o = Interior_t(get_nlevb(config))
+    if config.interior.module == "spider":
+        spider_dir = dirs["spider"]
+    else:
+        spider_dir = None
+    int_o = Interior_t(get_nlevb(config), spider_dir=spider_dir)
     int_o.ic = 1
     hf_row["R_int"] = R_earth
     calculate_core_mass(hf_row, config)
@@ -257,6 +261,7 @@ def run_interior(dirs:dict, config:Config,
     if verbose:
         log.info("    T_magma    = %.3f K"%hf_row["T_magma"])
         log.info("    Phi_global = %.3f  "%hf_row["Phi_global"])
+        log.info("    Phi_global_vol = %.3f  "%hf_row["Phi_global_vol"])
         log.info("    RF_depth   = %.3f  " %hf_row["RF_depth"])
         log.info("    F_int      = %.2e W m-2" %hf_row["F_int"])
         log.info("    F_tidal    = %.2e W m-2" %hf_row["F_tidal"])

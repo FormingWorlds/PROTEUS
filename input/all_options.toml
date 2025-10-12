@@ -11,17 +11,17 @@
 # ----------------------------------------------------
 
 # The general structure is:
-#   [root]     metadata
-#   [params]   parameters for code execution, output files, time-stepping, convergence
-#   [star]     stellar parameters, model selection
-#   [orbit]    planetary orbital parameters
-#   [struct]   planetary structure (mass, radius)
-#   [atmos]    atmosphere parameters, model selection
-#   [escape]   escape parameters, model selection
-#   [interior] magma ocean model selection and parameters
-#   [outgas]   outgassing parameters (fO2) and included volatiles
-#   [delivery] initial volatile inventory, and delivery model selection
-#   [observe]  synthetic observations
+#   [params]        parameters for code execution, output files, time-stepping, convergence
+#   [star]          stellar parameters, model selection
+#   [orbit]         planetary orbital parameters
+#   [struct]        planetary structure (mass, radius)
+#   [atmos_clim]    atmosphere climate parameters, model selection
+#   [atmos_chem]    atmosphere chemistry parameters, model selection
+#   [escape]        escape parameters, model selection
+#   [interior]      magma ocean model selection and parameters
+#   [outgas]        outgassing parameters (fO2) and included volatiles
+#   [delivery]      initial volatile inventory, and delivery model selection
+#   [observe]       synthetic observations
 
 # ----------------------------------------------------
 
@@ -37,6 +37,7 @@ version = "2.0"
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
         write_mod   = 1      # Write CSV frequency, 0: wait until completion | n: every n iterations
         archive_mod = 5      # Archive frequency, 0: wait until completion | n: every n iterations | none: do not archive
+        remove_sf = false    # Remove SOCRATES spectral file when simulation ends.
 
     # time-stepping
     [params.dt]
@@ -132,7 +133,12 @@ version = "2.0"
     s0_factor = 0.375           # instellation scale factor [dimensionless]
 
     evolve  = false             # whether to evolve the SMaxis and eccentricity
-    module  = "none"            # module used to calculate tidal heating
+    module  = "lovepy"          # module used to calculate tidal heating
+
+    axial_period = "none"       # planet's initial day length [hours]; will use orbital period if 'none'
+    satellite = false           # include satellite (moon)?
+    mass_sat = 7.347e+22        # mass of satellite [kg]
+    semimajoraxis_sat = 3e8     # initial SMA of satellite's orbit [m]
 
     [orbit.dummy]
         H_tide  = 1e-7      # Fixed tidal power density [W kg-1]
@@ -153,6 +159,7 @@ version = "2.0"
     module       = "self"       # self | zalmoxis
 
     [struct.zalmoxis]
+        verbose                     = false     # verbose printing?
         coremassfrac                = 0.325     # core mass fraction [non-dim.]
         inner_mantle_mass_fraction  = 0         # inner mantle mass fraction [non-dim.]
         weight_iron_frac            = 0.325     # iron fraction in the planet [non-dim.]
@@ -187,17 +194,24 @@ version = "2.0"
 
     [atmos_clim.agni]
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
+        p_obs           = 0.02          # bar, level probed in transmission
         spectral_group  = "Honeyside"   # which gas opacities to include
         spectral_bands  = "48"          # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
         chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
-        solve_energy    = false         # solve for energy-conserving atmosphere profile
-        solution_atol   = 1e-3          # solver absolute tolerance
-        solution_rtol   = 2e-2          # solver relative tolerance
+        solve_energy    = true          # solve for energy-conserving atmosphere profile
+        solution_atol   = 0.5           # solver absolute tolerance
+        solution_rtol   = 0.15          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = true          # volatile condensation
-        real_gas        = true          # use real-gas equations of state
+        condensation    = false         # volatile condensation
+        latent_heat     = false         # include latent heat release by phase change?
+        real_gas        = false         # use real-gas equations of state
+        psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
+        dx_max          = 35.0          # maximum temperature step [kelvin] allowed by solver
+        max_steps       = 70            # max steps allowed by solver during each iteration
+        perturb_all     = true          # updated entire jacobian each step?
+        mlt_criterion   = "l"           # MLT convection stability criterion; (l)edoux or (s)chwarzschild
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
@@ -211,6 +225,7 @@ version = "2.0"
 
     [atmos_clim.dummy]
         gamma           = 0.01          # atmosphere opacity between 0 and 1
+        height_factor   = 3.0           # observed height is this times the scale height
 
 # Volatile escape - physics table
 [escape]
@@ -234,6 +249,8 @@ version = "2.0"
     tidal_heat      = false         # enable tidal heat production
     rheo_phi_loc    = 0.6           # Centre of rheological transition
     rheo_phi_wid    = 0.2           # Width of rheological transition
+    melting_dir     = "Monteux-600" # Name of folder constaining melting curves
+
 
     module = "aragog"       # Which interior module to use
 
@@ -249,22 +266,33 @@ version = "2.0"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        num_levels                      = 50       # Number of Aragog grid levels
-        tolerance                       = 1.0e-7   # solver tolerance
-        ini_tmagma                      = 3300.0   # Initial magma surface temperature [K]
-        inner_boundary_condition        = 1        # 1 = core cooling model, 2 = prescribed heat flux, 3 = prescribed temperature
-        inner_boundary_value            = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
-        conduction                      = true     # enable conductive heat transfer
-        convection                      = true     # enable convective heat transfer
-        gravitational_separation        = false    # enable gravitational separation
-        mixing                          = false    # enable mixing
-        dilatation                      = false    # enable dilatation source term
-        mass_coordinates                = false    # enable mass coordinates
-        tsurf_poststep_change           = 30       # threshold of maximum change on surface temperature
-        event_triggering                = true     # enable events triggering to avoid abrupt jumps in surface temperature
+        logging                  = "ERROR"  # Aragog log verbosity
+        num_levels               = 50       # Number of Aragog grid levels
+        tolerance                = 1.0e-7   # solver tolerance
+        initial_condition        = 3        # Initial T(p); 1: linear, 2: user defined, 3: adiabat
+        ini_tmagma               = 3300.0   # Initial magma surface temperature [K]
+        basal_temperature        = 7000.0   # CMB temperature when initial boundary = 1
+        inner_boundary_condition = 1        # 1 = core cooling model, 2 = prescribed heat flux, 3 = prescribed temperature
+        inner_boundary_value     = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
+        conduction               = true     # enable conductive heat transfer
+        convection               = true     # enable convective heat transfer
+        gravitational_separation = false    # enable gravitational separation
+        mixing                   = false    # enable mixing
+        dilatation               = false    # enable dilatation source term
+        mass_coordinates         = false    # enable mass coordinates
+        tsurf_poststep_change    = 30       # threshold of maximum change on surface temperature
+        event_triggering         = true     # enable events triggering to avoid abrupt jumps in surface temperature
+        bulk_modulus             = 260e9    # Adiabatic bulk modulus AW-EOS parameter [Pa].
 
     [interior.dummy]
-        ini_tmagma      = 3300.0    # Initial magma surface temperature [K]
+        ini_tmagma  = 3300.0    # Initial magma surface temperature [K]
+        tmagma_atol = 30.0      # Max absolute Tsurf change in each step
+        tmagma_rtol = 0.05      # Max relative Tsurf change in each step
+        mantle_tliq = 2700.0    # Liquidus temperature
+        mantle_tsol = 1700.0    # Solidus temperature
+        mantle_rho  = 4550.0    # Mantle density [kg m-3]
+        mantle_cp   = 1792.0    # Mantle heat capacity [J K-1 kg-1]
+        H_ratio     = 0.0       # Radiogenic heating [W/kg]
 
 # Outgassing - physics table
 [outgas]
@@ -284,6 +312,9 @@ version = "2.0"
         include_CH4  = true     # Include CH4 compound
         include_CO   = true     # Include CO compound
         T_floor      = 700.0    # Temperature floor applied to outgassing calculation [K].
+        rtol         = 0.0001   # Relative mass tolerance
+        xtol         = 1e-06    # Absolute mass tolerance
+        solubility   = true     # Enable solubility?
 
     [outgas.atmodeller]
         some_parameter = "some_value"
@@ -363,3 +394,7 @@ version = "2.0"
 
     # Module with which to calculate the synthetic observables
     synthesis = "none"
+
+    [observe.platon]
+        downsample = 8      # Factor to downsample opacities
+        clip_vmr   = 1e-8   # Minimum VMR for a species to be included
