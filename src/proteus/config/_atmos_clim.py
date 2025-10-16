@@ -83,6 +83,16 @@ class Agni:
         Recalculate entire jacobian matrix at every iteration?
     mlt_criterion: str
         Convection criterion. Options: (l)edoux, (s)chwarzschild.
+    fastchem_floor:float
+        Minimum temperature allowed to be sent to FC
+    fastchem_maxiter_chem:int
+        Maximum FC iterations (chemistry)
+    fastchem_maxiter_solv:int
+        Maximum FC iterations (internal solver)
+    fastchem_xtol_chem:float
+        FC solver tolerance (chemistry)
+    fastchem_xtol_elem:float
+        FC solver tolerance (elemental)
     """
 
     spectral_group: str     = field(default=None)
@@ -106,7 +116,11 @@ class Agni:
     max_steps: int          = field(default=70, validator=gt(2))
     perturb_all: bool       = field(default=True)
     mlt_criterion: str      = field(default='l', validator=in_(('l','s',)))
-    fastchem_floor:float    = field(default=273.0, validator=gt(0.0))
+    fastchem_floor:float        = field(default=150.0, validator=gt(0.0))
+    fastchem_maxiter_chem:int   = field(default=60000, validator=gt(200))
+    fastchem_maxiter_solv:int   = field(default=20000, validator=gt(200))
+    fastchem_xtol_chem:float    = field(default=1e-4,  validator=gt(0.0))
+    fastchem_xtol_elem:float    = field(default=1e-4,  validator=gt(0.0))
 
     @property
     def chemistry_int(self) -> int:

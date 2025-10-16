@@ -212,6 +212,7 @@ version = "2.0"
         max_steps       = 70            # max steps allowed by solver during each iteration
         perturb_all     = true          # updated entire jacobian each step?
         mlt_criterion   = "l"           # MLT convection stability criterion; (l)edoux or (s)chwarzschild
+        
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure
@@ -340,16 +341,20 @@ version = "2.0"
         metallicity = 1000	 # metallicity relative to solar metallicity
 
         H_oceans    = 5.0       # Hydrogen inventory in units of equivalent Earth oceans
-        #H_ppmw      = 109.0    # Hydrogen inventory in ppmw relative to mantle mass
+        # H_ppmw      = 109.0     # Hydrogen inventory in ppmw relative to mantle mass
+        # H_kg       = 1e20       # Hydrogen inventory in kg
 
         CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
-        # C_ppmw      = 0.0     # Carbon inventory in ppmw relative to mantle mass
+        # C_ppmw     = 0.0        # Carbon inventory in ppmw relative to mantle mass
+        # C_kg       = 1e20       # Carbon inventory in kg
 
         NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
-        # N_ppmw      = 0.5     # Nitrogen inventory in ppmw relative to mantle mass
+        # N_ppmw      = 0.5       # Nitrogen inventory in ppmw relative to mantle mass
+        # N_kg       = 1e20       # Nitrogen inventory in kg
 
         SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
-        # S_ppmw      = 2.0     # Sulfur inventory in ppmw relative to mantle mass
+        # S_ppmw      = 2.0       # Sulfur inventory in ppmw relative to mantle mass
+        # S_kg       = 1e20       # Sulfur inventory in kg
 
     # Set initial volatile inventory by partial pressures in atmosphere if [initial = 'volatiles']
     [delivery.volatiles]
