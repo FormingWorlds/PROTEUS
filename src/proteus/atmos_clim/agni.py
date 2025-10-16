@@ -207,7 +207,11 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         condensates=condensates,
                         use_all_gases=include_all,
                         fastchem_work = fc_dir,
-                        fastchem_floor = config.atmos_clim.agni.fastchem_floor,
+                        fastchem_floor        = config.atmos_clim.agni.fastchem_floor,
+                        fastchem_maxiter_chem = config.atmos_clim.agni.fastchem_maxiter_chem,
+                        fastchem_maxiter_solv = config.atmos_clim.agni.fastchem_maxiter_solv,
+                        fastchem_xtol_chem    = config.atmos_clim.agni.fastchem_xtol_chem,
+                        fastchem_xtol_elem    = config.atmos_clim.agni.fastchem_xtol_elem,
                         real_gas = config.atmos_clim.agni.real_gas,
                         check_integrity = False, # don't check thermo files every time
                         mlt_criterion = convert(jl.Char,config.atmos_clim.agni.mlt_criterion),
