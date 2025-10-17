@@ -83,6 +83,7 @@ PACKAGES = (
     PythonPackage(name='fwl-proteus'),
     PythonPackage(name='fwl-mors'),
     PythonPackage(name='fwl-zephyrus'),
+    PythonPackage(name='fwl-zalmoxis'),
     GitPackage(name='AGNI', owner='nichollsh', version_getter=partial(_get_agni_version, DIRS)),
 )
 

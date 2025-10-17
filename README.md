@@ -28,7 +28,8 @@ More information can be found on the [documentation](https://fwl-proteus.readthe
 * [model description](https://fwl-proteus.readthedocs.io/en/latest/model.html)
 * [installation guide](https://fwl-proteus.readthedocs.io/en/latest/installation.html)
 * [usage guide](https://fwl-proteus.readthedocs.io/en/latest/usage.html)
+* [contributing guide](https://fwl-proteus.readthedocs.io/en/latest/CONTRIBUTING.html)
 
-You can find help on the [discussions page](https://github.com/orgs/FormingWorlds/discussions?discussions_q) or by [contacting the developers](https://fwl-proteus.readthedocs.io/en/latest/contact.html) directly.
+You can find help on the [discussions page](https://github.com/orgs/FormingWorlds/discussions) or by [contacting the developers](https://fwl-proteus.readthedocs.io/en/latest/contact.html) directly.
 
-If you make use of PROTEUS, please reference the papers outlined in the [bibliography](https://fwl-proteus.readthedocs.io/en/latest/model.html#bibliography).
+If you make use of PROTEUS, please reference the papers outlined in the [bibliography](https://fwl-proteus.readthedocs.io/en/latest/bibliography.html).

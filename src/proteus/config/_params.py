@@ -204,6 +204,30 @@ class StopEscape:
     enabled: bool   = field(default=True)
     p_stop:float    = field(default=1, validator=(gt(0),lt(1e6)))
 
+@define
+class StopDisint:
+    """Parameters for planet disintegration stopping criteria.
+
+    Attributes
+    ----------
+    enabled: bool
+        Enable all planet disintegration criteria if True
+    roche_enabled: bool
+        Disable Roche limit criterion
+    offset_roche: float
+        Absolute correction (+/-) to (increase/decrease) calculated Roche limit [m].
+    spin_enabled: bool
+        Disable Breakup period criterion
+    offset_spin: float
+        Absolute correction (+/-) to (increase/decrease) calculated Breakup period [s].
+    """
+    enabled: bool       = field(default=False)
+
+    roche_enabled: bool = field(default=True)
+    offset_roche: float = field(default=0)
+
+    spin_enabled: bool = field(default=True)
+    offset_spin: float  = field(default=0)
 
 @define
 class StopParams:
@@ -223,12 +247,15 @@ class StopParams:
         Parameters for radiative equilibrium criteria.
     escape: StopEscape
         Parameters for escape criteria.
+    disint: StopDisint
+        Parameters for planet disintegration criteria.
     """
     iters: StopIters   = field(factory=StopIters)
     time: StopTime     = field(factory=StopTime)
     solid: StopSolid   = field(factory=StopSolid)
     radeqm: StopRadeqm = field(factory=StopRadeqm)
     escape: StopEscape = field(factory=StopEscape)
+    disint: StopDisint = field(factory=StopDisint)
 
     strict: bool        = field(default=False)
 

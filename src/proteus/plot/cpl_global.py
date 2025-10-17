@@ -182,14 +182,14 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
 
     # PLOT ax_tr
     ax_tr.plot( hf["Time"], hf["P_surf"], color='black', linestyle='dashed', lw=lw*1.5, label=r'Total')
-    bar_min, bar_max = 0.1, 10.0
+    bar_min, bar_max = 0.1, 1.0
     bar_max = max(bar_max, np.amax(hf["P_surf"]))
     for vol in gas_list:
         if not vol_present[vol]:
             continue
         ax_tr.plot( hf["Time"], vol_bars[vol], color=get_colour(vol), lw=lw, alpha=al, label=latexify(vol))
         bar_min = min(bar_min, np.amin(vol_bars[vol]))
-    ax_tr.set_ylim(max(1.0e-7,min(bar_min, 1.0e-1)), bar_max * 2.0)
+    ax_tr.set_ylim(max(1.0e-5,min(bar_min, 1.0e-1)), bar_max * 2.0)
     ax_tr.yaxis.set_major_locator(ticker.LogLocator(base=10.0, numticks=5) )
 
     # PLOT ax_cr

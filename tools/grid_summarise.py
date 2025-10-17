@@ -28,7 +28,7 @@ def summarise(pgrid_dir:str, opts:list):
     status = np.full(N, -1, dtype=int)
     cmmnts = np.full(N, "", dtype=str)
     for i in range(N):
-        status_path = os.path.join(pgrid_dir, "case_%05d"%i, "status")
+        status_path = os.path.join(pgrid_dir, "case_%06d"%i, "status")
         if not os.path.exists(status_path):
             raise Exception("Cannot find status file at '%s'" % status_path)
         with open(status_path,'r') as hdl:
@@ -47,7 +47,7 @@ def summarise(pgrid_dir:str, opts:list):
         else:
             comment = CommentFromStatus(i)
         pct = float(count)/N*100.0
-        print("  %-4d (%2d%%) %s" % (count,pct,comment))
+        print("  %-5d (%2d%%) %s" % (count,pct,comment))
 
     # Check options
     gen_cases = {
@@ -78,7 +78,7 @@ def summarise(pgrid_dir:str, opts:list):
                     for s in gen_cases[g]:  # for each case within this general case
                         if status[i] == s:
                             e_any = True
-                            print("  Case %-4d : Code %-2d - %s" % (i,s, CommentFromStatus(s)))
+                            print("  Case %-5d : Code %-2d - %s" % (i,s, CommentFromStatus(s)))
                 if not e_any:
                     print("  (None)")
 
@@ -91,7 +91,7 @@ def summarise(pgrid_dir:str, opts:list):
             for i in range(N):
                 if status[i] == code:
                     e_any = True
-                    print("  Case %-4d : Code %-2d - %s" % (i,code, CommentFromStatus(code)))
+                    print("  Case %-5d : Code %-2d - %s" % (i,code, CommentFromStatus(code)))
             if not e_any:
                 print("  (None)")
 

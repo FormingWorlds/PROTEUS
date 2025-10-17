@@ -1,3 +1,4 @@
+# Test importing PROTEUS as a python library
 from __future__ import annotations
 
 from proteus import __version__

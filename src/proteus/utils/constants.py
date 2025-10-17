@@ -100,6 +100,3 @@ radnuc_data = {
         "halflife":  4.468e9    # yr
     },
 }
-
-# Constants for Zalmoxis from Nimmo 2015
-earth_center_pressure = 365e9     # Pa

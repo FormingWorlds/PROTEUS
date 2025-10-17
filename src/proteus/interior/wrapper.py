@@ -8,9 +8,7 @@ import numpy as np
 import pandas as pd
 import scipy.optimize as optimise
 
-from proteus.interior.aragog import AragogRunner
 from proteus.interior.common import Interior_t
-from proteus.interior.zalmoxis import zalmoxis_solver
 from proteus.utils.constants import M_earth, R_earth, const_G, element_list
 from proteus.utils.helper import UpdateStatusfile
 
@@ -56,7 +54,11 @@ def determine_interior_radius(dirs:dict, config:Config, hf_all:pd.DataFrame, hf_
     log.info("Using %s interior module to solve structure"%config.interior.module)
 
     # Initial guess for interior radius and gravity
-    int_o = Interior_t(get_nlevb(config))
+    if config.interior.module == "spider":
+        spider_dir = dirs["spider"]
+    else:
+        spider_dir = None
+    int_o = Interior_t(get_nlevb(config), spider_dir=spider_dir)
     int_o.ic = 1
     hf_row["R_int"] = R_earth
     calculate_core_mass(hf_row, config)
@@ -111,6 +113,8 @@ def determine_interior_radius_with_zalmoxis(dirs:dict, config:Config, hf_all:pd.
     Determine the interior radius (R_int) of the planet using Zalmoxis.'''
 
     log.info("Using Zalmoxis to solve for interior structure")
+    from proteus.interior.zalmoxis import zalmoxis_solver
+
     int_o = Interior_t(get_nlevb(config))
     int_o.ic = 1
     zalmoxis_solver(config, outdir, hf_row)
@@ -188,6 +192,7 @@ def run_interior(dirs:dict, config:Config,
         sim_time, output = ReadSPIDER(dirs, config, hf_row["R_int"], interior_o)
 
     elif config.interior.module == 'aragog':
+        from proteus.interior.aragog import AragogRunner
         AragogRunnerInstance = AragogRunner(config, dirs, hf_row, hf_all,
                                             interior_o)
         # Run Aragog
@@ -207,7 +212,9 @@ def run_interior(dirs:dict, config:Config,
             hf_row[k] = output[k]
 
     # Update rheological parameters
-    interior_o.update_rheology()
+    #    Only calculate viscosity here if using dummy module
+    calc_visc = bool(config.interior.module == "dummy")
+    interior_o.update_rheology(visc=calc_visc)
 
     # Ensure values are >= 0
     for k in ("M_mantle","M_mantle_liquid","M_mantle_solid","M_core","Phi_global"):
@@ -254,6 +261,7 @@ def run_interior(dirs:dict, config:Config,
     if verbose:
         log.info("    T_magma    = %.3f K"%hf_row["T_magma"])
         log.info("    Phi_global = %.3f  "%hf_row["Phi_global"])
+        log.info("    Phi_global_vol = %.3f  "%hf_row["Phi_global_vol"])
         log.info("    RF_depth   = %.3f  " %hf_row["RF_depth"])
         log.info("    F_int      = %.2e W m-2" %hf_row["F_int"])
         log.info("    F_tidal    = %.2e W m-2" %hf_row["F_tidal"])

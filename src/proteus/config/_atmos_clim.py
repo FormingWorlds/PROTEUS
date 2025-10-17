@@ -30,9 +30,8 @@ def valid_agni(instance, attribute, value):
     if (not instance.agni.solve_energy) and (instance.surf_state == 'skin'):
         raise ValueError("Must set `agni.solve_energy=true` if using `surf_state='skin'`")
 
-    # cannot set condensation and chemistry at the same time
-    if instance.agni.chemistry and instance.agni.condensation:
-        raise ValueError("`atmos_clim.agni`: Cannot enable condensation and chemistry at the same time")
+    if instance.agni.latent_heat and not instance.agni.condensation:
+        raise ValueError("`atmos_clim.agni`: Must set `condensation=true` if setting `latent_heat=true`")
 
     # set spectral files?
     if not instance.agni.spectral_group:
@@ -48,6 +47,8 @@ class Agni:
     ----------
     p_top: float
         Top of atmosphere grid pressure [bar].
+    p_obs: float
+        Pressure level probed by observations [bar]
     spectral_group: str
         Spectral file codename defining the gas opacities to be included. See [documentation](https://raw.githubusercontent.com/FormingWorlds/PROTEUS/main/docs/assets/spectral_files.pdf).
     spectral_bands: str
@@ -67,16 +68,37 @@ class Agni:
     overlap_method: str
         Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
     condensation: bool
-        Enable volatile condensation/phase change in the atmosphere.
+        Enable volatile rainout in the atmosphere and ocean formation below.
+    latent_heat: bool
+        Account for latent heat from condense/evap when solving temperature profile.
     real_gas: bool
         Use real gas equations of state in atmosphere, where possible.
     psurf_thresh: float
         Use the transparent-atmosphere solver when P_surf is less than this value [bar].
+    dx_max: float
+        Nominal maximum step size to T(p) during the solver process, although this is dynamic.
+    max_steps: int
+        Maximum number of iterations before giving up.
+    perturb_all: bool
+        Recalculate entire jacobian matrix at every iteration?
+    mlt_criterion: str
+        Convection criterion. Options: (l)edoux, (s)chwarzschild.
+    fastchem_floor:float
+        Minimum temperature allowed to be sent to FC
+    fastchem_maxiter_chem:int
+        Maximum FC iterations (chemistry)
+    fastchem_maxiter_solv:int
+        Maximum FC iterations (internal solver)
+    fastchem_xtol_chem:float
+        FC solver tolerance (chemistry)
+    fastchem_xtol_elem:float
+        FC solver tolerance (elemental)
     """
 
     spectral_group: str     = field(default=None)
     spectral_bands: str     = field(default=None)
     p_top: float            = field(default=1e-5, validator=gt(0))
+    p_obs: float            = field(default=20e-3, validator=gt(0))
     surf_material: str      = field(default="surface_albedos/Hammond24/lunarmarebasalt.dat")
     num_levels: int         = field(default=40, validator=ge(15))
     chemistry: str          = field(default="none",
@@ -87,8 +109,18 @@ class Agni:
     solution_rtol: float    = field(default=0.15,  validator=gt(0))
     overlap_method: str     = field(default='ee', validator=check_overlap)
     condensation: bool      = field(default=False)
+    latent_heat: bool       = field(default=False)
     real_gas: bool          = field(default=False)
-    psurf_thresh: bool      = field(default=0.1, validator=ge(0))
+    psurf_thresh: float     = field(default=0.1, validator=ge(0))
+    dx_max: float           = field(default=35.0, validator=gt(1))
+    max_steps: int          = field(default=70, validator=gt(2))
+    perturb_all: bool       = field(default=True)
+    mlt_criterion: str      = field(default='l', validator=in_(('l','s',)))
+    fastchem_floor:float        = field(default=150.0, validator=gt(0.0))
+    fastchem_maxiter_chem:int   = field(default=60000, validator=gt(200))
+    fastchem_maxiter_solv:int   = field(default=20000, validator=gt(200))
+    fastchem_xtol_chem:float    = field(default=1e-4,  validator=gt(0.0))
+    fastchem_xtol_elem:float    = field(default=1e-4,  validator=gt(0.0))
 
     @property
     def chemistry_int(self) -> int:
@@ -144,13 +176,21 @@ class Janus:
 class Dummy:
     """Dummy atmosphere module.
 
+    A parametrised model of the atmosphere designed for debugging. The greenhouse effect
+    is captured by `gamma` which produces a transparent atmosphere when 0, and a completely
+    opaque atmosphere when 1. The height of the atmosphere equals the scale height times
+    the `height_factor` variable.
+
     Attributes
     ----------
     gamma: float
-        Atmosphere opacity between 0 and 1.
+        Atmosphere opacity factor between 0 and 1.
+    height_factor: float
+        A multiplying factor applied to the ideal-gas scale height.
     """
 
-    gamma: float = field(default=0.7, validator=(ge(0),le(1)) )
+    gamma: float         = field(default=0.7, validator=(ge(0),le(1)))
+    height_factor: float = field(default=3.0, validator=ge(0))
 
 
 @define

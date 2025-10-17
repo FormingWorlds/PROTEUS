@@ -376,17 +376,17 @@ def download_interior_lookuptables():
     log.debug("Get interior lookup tables")
     DownloadLookupTableData()
 
-def download_melting_curves():
+def download_melting_curves(config:Config):
     """
     Download melting curve data
     """
-    download(
-        folder = 'Melting_curves',
-        target = "interior_lookup_tables",
-        osf_id = 'phsxf',
-        zenodo_id= None,
-        desc = 'melting curve data'
+    from aragog.data import DownloadLookupTableData
+    log.debug("Get melting curve data")
+    dir = (
+        "Melting_curves/"
+        + config.interior.melting_dir
     )
+    DownloadLookupTableData(dir)
 
 def _get_sufficient(config:Config):
     # Star stuff
@@ -421,7 +421,7 @@ def _get_sufficient(config:Config):
     # Interior look up tables
     if config.interior.module == "aragog":
         download_interior_lookuptables()
-        download_melting_curves()
+        download_melting_curves(config)
 
 
 def download_sufficient_data(config:Config):
@@ -581,8 +581,6 @@ def get_Seager_EOS():
     if not eos_folder.exists():
         log.debug("Get EOS material properties from Seager et al. (2007)")
         download_Seager_EOS()
-    else:
-        log.debug("EOS material properties already downloaded")
 
     # Build the material_properties_iron_silicate_planets dictionary for iron/silicate planets according to Seager et al. (2007)
     material_properties_iron_silicate_planets = {

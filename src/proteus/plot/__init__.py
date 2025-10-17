@@ -11,6 +11,7 @@ from proteus.plot.cpl_fluxes_global import plot_fluxes_global_entry
 from proteus.plot.cpl_global import plot_global_entry
 from proteus.plot.cpl_interior import plot_interior_entry
 from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh_entry
+from proteus.plot.cpl_orbit import plot_orbit_entry
 from proteus.plot.cpl_population import plot_population_entry
 from proteus.plot.cpl_sflux import plot_sflux_entry
 from proteus.plot.cpl_sflux_cross import plot_sflux_cross_entry
@@ -28,6 +29,7 @@ plot_dispatch = {
     'global':               plot_global_entry,
     'interior':             plot_interior_entry,
     'interior_cmesh':       plot_interior_cmesh_entry,
+    'orbit':                plot_orbit_entry,
     'bolometry':            plot_bolometry_entry,
     'spectra':              plot_spectra_entry,
     'sflux':                plot_sflux_entry,

@@ -29,8 +29,9 @@ def run_escape(config:Config, hf_row:dict, dt:float, stellar_track):
     """
 
     if not config.escape.module:
-        # solvevol_target is undefined?
-        pass
+        hf_row["esc_rate_total"] = 0.0
+        log.info(f"Escape is disabled, bulk rate = {hf_row["esc_rate_total"]:.2e} kg s-1")
+        return
 
     elif config.escape.module == 'zephyrus':
         hf_row["esc_rate_total"] = run_zephyrus(config, hf_row, stellar_track)
@@ -41,10 +42,7 @@ def run_escape(config:Config, hf_row:dict, dt:float, stellar_track):
     else:
         raise ValueError(f"Invalid escape model: {config.escape.module}")
 
-    log.info(
-        "Bulk escape rate: %.2e kg yr-1 = %.2e kg s-1"
-        % (hf_row["esc_rate_total"] * secs_per_year, hf_row["esc_rate_total"])
-        )
+    log.info(f"Bulk escape rate = {hf_row["esc_rate_total"]:.2e} kg s-1")
 
     # calculate new elemental inventories
     solvevol_target = calc_new_elements(hf_row, dt,

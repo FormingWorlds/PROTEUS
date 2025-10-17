@@ -10,6 +10,7 @@ nav:
   - Using PROTEUS: usage.md
   - Configuration: config.md
   - Contributing: CONTRIBUTING.md
+  - Bibliography: bibliography.md
   - Troubleshooting: troubleshooting.md
   - Bayesian inference: inference.md
   - Reference data: data.md
@@ -18,6 +19,7 @@ nav:
   - Habrok cluster: habrok_cluster_guide.md
   - Contact: contact.md
   - Code of Conduct: CODE_OF_CONDUCT.md
+  - Funding: funding.md
   - Source code: https://github.com/FormingWorlds/PROTEUS
   - Issues page: https://github.com/FormingWorlds/PROTEUS/issues
   - 🔗 MORS: https://fwl-proteus.readthedocs.io/projects/mors/

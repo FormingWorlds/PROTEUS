@@ -161,6 +161,12 @@ def validate_module_versions(dirs:dict, config:Config):
             if not _valid_ver(aragog_version, _get_expver("aragog"), "Aragog"):
                 valid = False
 
+    # Struct module
+    if config.struct.module == 'zalmoxis':
+        from zalmoxis import __version__ as zalmoxis_version
+        if not _valid_ver(zalmoxis_version, _get_expver("fwl-zalmoxis"), "ZALMOXIS"):
+            valid = False
+
     # Atmosphere module
     match config.atmos_clim.module:
         case 'janus':
@@ -456,14 +462,17 @@ def GetHelpfileKeys():
             # Model tracking
             "Time", # [yr]
 
-            # Orbit semi-major axis and time-averaged separation
-            "semimajorax", "separation", # [m], [m],
+            # Orbit semi-major axis, time-averaged separation, perihelion, and perigee
+            "semimajorax", "separation", "perihelion", "perigee", # [m], [m], [m], [m],
 
             # Orbital period and eccentricity
             "orbital_period", "eccentricity", # [s], [1]
 
+            # Satellite orbit semi-major axis, mass, and planet-satellite system angular momentum
+            "semimajorax_sat", "M_sat", "plan_sat_am", # [m], [kg], [kg m2 s-1],
+
             # Day length
-            "axial_period", # [s]
+            "axial_period", "breakup_period", # [s], [s]
 
             # Dry interior radius (calculated) and mass (from config)
             "R_int", "M_int", # [m], [kg]
@@ -482,6 +491,7 @@ def GetHelpfileKeys():
             "gravity", "Phi_global", "RF_depth", # [m s-2] , [1] , [1]
             "M_core", "M_mantle", "M_planet",    # all [kg]
             "M_mantle_solid", "M_mantle_liquid", # all [kg]
+            "Phi_global_vol", "T_pot", # [1], [K]
 
             # Stellar
             "M_star", "R_star", "age_star", # [kg], [m], [yr]
@@ -499,6 +509,9 @@ def GetHelpfileKeys():
 
             # Escape
             "esc_rate_total", "p_xuv", "R_xuv", # [kg s-1], [bar], [m]
+
+            # Surface liquid-ocean statistics
+            "ocean_areacov", "ocean_maxdepth", # [1], [m]
 
             # Atmospheric composition
             "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]
@@ -638,6 +651,7 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
     from proteus.plot.cpl_global import plot_global
     from proteus.plot.cpl_interior import plot_interior
     from proteus.plot.cpl_interior_cmesh import plot_interior_cmesh
+    from proteus.plot.cpl_orbit import plot_orbit
     from proteus.plot.cpl_population import (
         plot_population_mass_radius,
         plot_population_time_density,
@@ -674,6 +688,10 @@ def UpdatePlots( hf_all:pd.DataFrame, dirs:dict, config:Config, end=False, num_s
 
     # Elemental mass inventory
     plot_escape(hf_all, output_dir, plot_format=config.params.out.plot_fmt)
+
+    # Planet and satellite orbit parameters
+    if config.orbit.evolve or config.orbit.satellite:
+        plot_orbit(hf_all, output_dir, config.params.out.plot_fmt)
 
     # Which times do we have atmosphere data for?
     if not dummy_atm:

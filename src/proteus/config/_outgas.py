@@ -10,27 +10,33 @@ class Calliope:
     Attributes
     ----------
     T_floor: float
-        Temperature floor applied to outgassing calculation [K].
+        Temperature floor applied to chemistry calculation [K].
     include_H2O: bool
-        If True, include H2O outgassing.
+        If True, include H2O.
     include_CO2: bool
-        If True, include CO2 outgassing.
+        If True, include CO2.
     include_N2: bool
-        If True, include N2 outgassing.
+        If True, include N2.
     include_S2: bool
-        If True, include S2 outgassing.
+        If True, include S2.
     include_SO2: bool
-        If True, include SO2 outgassing.
+        If True, include SO2.
     include_H2S: bool
-        If True, include H2S outgassing.
+        If True, include H2S.
     include_NH3: bool
-        If True, include NH3 outgassing.
+        If True, include NH3.
     include_H2: bool
-        If True, include H2 outgassing.
+        If True, include H2.
     include_CH4: bool
-        If True, include CH4 outgassing.
+        If True, include CH4.
     include_CO: bool
-        If True, include CO outgassing.
+        If True, include CO.
+    rtol: float
+        Relative tolerance on solver for mass conservation.
+    xtol: float
+        Absolute tolerance on solver for mass conservation.
+    solubility: bool
+        Enable solubility of volatiles into melt.
     """
     T_floor: float      = field(default=700.0, validator=validators.gt(0.0))
     include_H2O: bool   = True
@@ -45,6 +51,7 @@ class Calliope:
     include_CO: bool    = True
     rtol: float         = field(default=1e-4, validator=validators.gt(0.0))
     xtol: float         = field(default=1e-6, validator=validators.gt(0.0))
+    solubility: bool    = True
 
     def is_included(self, vol: str) -> bool:
         """Helper method for getting flag if `vol` is included in outgassing."""

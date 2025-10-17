@@ -39,7 +39,7 @@ def valid_zalmoxis(instance, attribute, value):
     max_iterations_pressure = instance.zalmoxis.max_iterations_pressure
     EOSchoice = instance.zalmoxis.EOSchoice
     core_mass_fraction = instance.zalmoxis.coremassfrac
-    inner_mantle_mass_fraction = instance.zalmoxis.inner_mantle_mass_fraction
+    mantle_mass_fraction = instance.zalmoxis.mantle_mass_fraction
     mass_tot = instance.mass_tot
 
     if mass_tot is None:
@@ -51,11 +51,11 @@ def valid_zalmoxis(instance, attribute, value):
     if max_iterations_pressure < 13:
         raise ValueError("`interior.zalmoxis.max_iterations_pressure` must be > 12")
     if EOSchoice == "Tabulated:iron/silicate":
-        if inner_mantle_mass_fraction != 0:
-            raise ValueError("`interior.zalmoxis.inner_mantle_mass_fraction` must be 0 when `EOSchoice` is 'Tabulated:iron/silicate' (only 2 layers are modeled).")
+        if mantle_mass_fraction != 0:
+            raise ValueError("`interior.zalmoxis.mantle_mass_fraction` must be 0 when `EOSchoice` is 'Tabulated:iron/silicate' (only 2 layers are modeled).")
     if EOSchoice == "Tabulated:water":
-        if core_mass_fraction + inner_mantle_mass_fraction > 0.75:
-            raise ValueError("`interior.zalmoxis.coremassfrac` and `interior.zalmoxis.inner_mantle_mass_fraction` must add up to <= 75% when `EOSchoice` is 'Tabulated:water' (see the definition of water planets according to Seager 2007).")
+        if core_mass_fraction + mantle_mass_fraction > 0.75:
+            raise ValueError("`interior.zalmoxis.coremassfrac` and `interior.zalmoxis.mantle_mass_fraction` must add up to <= 75% when `EOSchoice` is 'Tabulated:water' (see the definition of water planets according to Seager 2007).")
 
 @define
 class Zalmoxis:
@@ -67,8 +67,8 @@ class Zalmoxis:
         EOS choice of Zalmoxis. Choices: "Tabulated:iron/silicate", "Tabulated:water".
     coremassfrac: float
         Fraction of the planet's interior mass corresponding to the core.
-    inner_mantle_mass_fraction: float
-        Fraction of the planet's interior mass corresponding to the inner mantle (needed for modeling more than 2 layers).
+    mantle_mass_fraction: float
+        Fraction of the planet's interior mass corresponding to the mantle (needed for modeling more than 2 layers).
     weight_iron_frac: float
         Fraction of the planet's mass that is iron.
     num_levels: int
@@ -98,13 +98,13 @@ class Zalmoxis:
     EOSchoice: str                    = field(default="Tabulated:iron/silicate", validator=in_(("Tabulated:iron/silicate", "Tabulated:water")))
 
     coremassfrac: float               = field(default=0.325, validator=(gt(0), lt(1)))
-    inner_mantle_mass_fraction: float  = field(default=0, validator=(ge(0), lt(1)))
+    mantle_mass_fraction: float  = field(default=0, validator=(ge(0), lt(1)))
     weight_iron_frac: float           = field(default=0.325, validator=(gt(0), lt(1)))
 
-    num_levels: int                   = field(default=100)
+    num_levels: int                   = field(default=150)
 
-    max_iterations_outer: int         = field(default=20, validator=ge(1))
-    tolerance_outer: float            = field(default=1e-3, validator=ge(0))
+    max_iterations_outer: int         = field(default=100, validator=ge(1))
+    tolerance_outer: float            = field(default=3e-3, validator=ge(0))
     max_iterations_inner: int         = field(default=100, validator=ge(1))
     tolerance_inner: float            = field(default=1e-4, validator=ge(0))
     relative_tolerance: float         = field(default=1e-5, validator=ge(0))
@@ -114,6 +114,8 @@ class Zalmoxis:
     pressure_tolerance: float         = field(default=1e9, validator=ge(0))
     max_iterations_pressure: int      = field(default=200, validator=ge(1))
     pressure_adjustment_factor: float = field(default=1.1, validator=ge(0))
+
+    verbose: bool                   = field(default=False)
 
 @define
 class Struct:

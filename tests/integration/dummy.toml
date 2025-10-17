@@ -81,16 +81,19 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 1.0       # AU
-    eccentricity    = 0.0       # dimensionless
+    semimajoraxis   = 0.8       # AU
+    eccentricity    = 0.5       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
+
+    evolve = true
 
     module  = "dummy"
 
     [orbit.dummy]
         H_tide  = 1e-9  # Fixed tidal power density [W kg-1]
         Phi_tide = "<0.3"   # Tidal heating applied when inequality locally satisfied
+        Imk2    = -1e5
 
     [orbit.lovepy]
         visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
