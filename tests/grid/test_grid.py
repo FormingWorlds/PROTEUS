@@ -8,6 +8,7 @@ import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus.grid.manage import grid_from_config
+from proteus.grid.pack import pack as gpack
 from proteus.grid.summarise import summarise as gsummarise
 
 OUT_DIR = PROTEUS_ROOT / 'output' / 'dummy_grid'
@@ -43,4 +44,8 @@ def test_grid_log(grid_run):
 
 def test_grid_summarise(grid_run):
     # Test running grid-summarise command
-    gsummarise(OUT_DIR)
+    assert gsummarise(OUT_DIR)
+
+def test_grid_pack(grid_run):
+    # Test running grid-pack command
+    assert gpack(OUT_DIR)
