@@ -93,6 +93,7 @@ def summarise(pgrid_dir:str, tgt_status:str=None):
                 print("  (None)")
 
     # code cases
+    tgt_status = tgt_status.replace("status=", "code=")
     if "code" in tgt_status:
         matched = True
         code = int(tgt_status.replace(" ","").split("=")[-1])

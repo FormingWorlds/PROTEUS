@@ -45,6 +45,8 @@ def test_grid_log(grid_run):
 def test_grid_summarise(grid_run):
     # Test running grid-summarise command
     assert gsummarise(OUT_DIR)
+    assert gsummarise(OUT_DIR, "completed")
+    assert gsummarise(OUT_DIR, "status=11")
 
 def test_grid_pack(grid_run):
     # Test running grid-pack command
