@@ -325,13 +325,19 @@ cli.add_command(infer)
 @click.option(
     "-s",
     "--status",
-    is_flag=True,
-    default=False,
+    default=None,
+    type=str,
     help="List cases with this status. " \
     "For example: 'completed', 'running', 'error', or 'code=x' for some error code x.",
 )
 def grid_summarise(output_path: Path, status: str):
-    """Summarise the current status of a grid"""
+    """
+    Summarise the current status of a grid, showing which fraction of cases end with
+    each status code.
+
+    Provide `status` to have the command explicitly list cases which end with a particular
+    status code.
+    """
     from proteus.grid.summarise import summarise as gsummarise
     gsummarise(output_path, status)
 

@@ -9,7 +9,7 @@ import numpy as np
 from proteus.utils.helper import CommentFromStatus
 
 
-def summarise(pgrid_dir:str, status:str):
+def summarise(pgrid_dir:str, tgt_status:str=None):
     if (not os.path.exists(pgrid_dir)) or (not os.path.isdir(pgrid_dir)):
         raise Exception("Invalid path '%s'" % pgrid_dir)
 
@@ -21,6 +21,7 @@ def summarise(pgrid_dir:str, status:str):
 
     # Statuses
     # Check `utils.helper.CommentFromStatus` for information on error codes
+    print("Checking statuses...")
     status = np.full(N, -1, dtype=int)
     cmmnts = np.full(N, "", dtype=str)
     for i in range(N):
@@ -58,15 +59,17 @@ def summarise(pgrid_dir:str, status:str):
     }
 
     # sanitise input
-    status = str(status).strip().lower()
-    if (status=="complete"):
-            status = "completed"
+    if not tgt_status:
+        return
+    tgt_status = str(tgt_status).strip().lower()
+    if (tgt_status=="complete"):
+            tgt_status = "completed"
 
     matched = False
 
     # general cases
     for g in gen_cases.keys():  # for each general case
-        if status == g.lower():
+        if tgt_status == g.lower():
             matched = True
             print("%s cases:" % g)
             e_any = False
@@ -75,13 +78,14 @@ def summarise(pgrid_dir:str, status:str):
                     if status[i] == s:
                         e_any = True
                         print("  Case %-5d : Code %-2d - %s" % (i,s, CommentFromStatus(s)))
+                        break
             if not e_any:
                 print("  (None)")
 
     # code cases
-    if "code" in status:
+    if "code" in tgt_status:
         matched = True
-        code = int(status.replace(" ","").split("=")[-1])
+        code = int(tgt_status.replace(" ","").split("=")[-1])
         print("Code %d cases:" % code)
         e_any = False
         for i in range(N):
@@ -92,12 +96,6 @@ def summarise(pgrid_dir:str, status:str):
             print("  (None)")
 
     if not matched:
-        print("Invalid status category '%s'" % status)
+        print("Invalid status category '%s'" % tgt_status)
         print("Run `proteus grid-summarise --help` for info on using this command")
         return
-
-def print_help():
-    print("Command usage: proteus grid-summarise -o [output] [status]")
-    print("    [output] = path to Grid output folder, required")
-    print("    [status] = status categories to print, optional")
-    print("             ")
