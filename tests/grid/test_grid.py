@@ -43,4 +43,4 @@ def test_grid_log(grid_run):
 
 def test_grid_summarise(grid_run):
     # Test running grid-summarise command
-    gsummarise(OUT_DIR, "help")
+    gsummarise(OUT_DIR)

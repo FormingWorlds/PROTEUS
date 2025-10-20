@@ -10,8 +10,16 @@ from proteus.utils.helper import CommentFromStatus
 
 
 def summarise(pgrid_dir:str, tgt_status:str=None):
+    '''
+    Summarise current status of grid.
+
+    Parameters
+    -------------
+    * `pgrid_dir`   path to grid folder.
+    * `tgt_status`  optional; print case numbers of all runs which have this status.
+    '''
     if (not os.path.exists(pgrid_dir)) or (not os.path.isdir(pgrid_dir)):
-        raise Exception("Invalid path '%s'" % pgrid_dir)
+        raise FileNotFoundError("Invalid path '%s'" % pgrid_dir)
 
     # Find folders
     pgrid_dir = os.path.abspath(pgrid_dir)
@@ -27,7 +35,7 @@ def summarise(pgrid_dir:str, tgt_status:str=None):
     for i in range(N):
         status_path = os.path.join(pgrid_dir, "case_%06d"%i, "status")
         if not os.path.exists(status_path):
-            raise Exception("Cannot find status file at '%s'" % status_path)
+            raise FileNotFoundError("Cannot find status file at '%s'" % status_path)
         with open(status_path,'r') as hdl:
             lines = hdl.readlines()
         status[i] = int(lines[0])
@@ -49,18 +57,20 @@ def summarise(pgrid_dir:str, tgt_status:str=None):
     # Check options
     gen_cases = {
         # Broad categories
-        "Running":   list(range(0,  10, 1)),
-        "Completed": list(range(10, 20, 1)),
-        "Error":     list(range(20, 30, 1)),
-        "All":       list(range(0,100,1)),
+        "Running":   list(range(0,  10,  1)),
+        "Completed": list(range(10, 20,  1)),
+        "Error":     list(range(20, 30,  1)),
+        "All":       list(range(0,  100, 1)),
         # Narrower categories
-        "Solidified": [10],
-        "Steady":     [11]
+        "Solidified":    [10],
+        "Steady":        [11, 14],
+        "Escaped":       [15],
+        "Disintegrated": [16],
     }
 
     # sanitise input
     if not tgt_status:
-        return
+        return True
     tgt_status = str(tgt_status).strip().lower()
     if (tgt_status=="complete"):
             tgt_status = "completed"
@@ -98,4 +108,5 @@ def summarise(pgrid_dir:str, tgt_status:str=None):
     if not matched:
         print("Invalid status category '%s'" % tgt_status)
         print("Run `proteus grid-summarise --help` for info on using this command")
-        return
+
+    return matched
