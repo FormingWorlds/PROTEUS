@@ -11,7 +11,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 def pack(grid:str, plots:bool=True, zip:bool=True):
     '''Pack most-important data for all cases into a single folder; optionally zip it.'''
     if (not os.path.exists(grid)) or (not os.path.isdir(grid)):
-        raise Exception("Invalid path '%s'" % grid)
+        raise FileNotFoundError("Invalid path '%s'" % grid)
 
     grid = os.path.abspath(grid)
     print(f"Grid dir: {grid}")
@@ -24,10 +24,7 @@ def pack(grid:str, plots:bool=True, zip:bool=True):
     # find case_* subdirectories
     case_dirs = list(glob(grid+"/case_*"))
     if not case_dirs:
-        print("Cannot find any subfolders containing grid cases!")
-        return False
-    else:
-        print("Case subfolders exist")
+        raise FileNotFoundError("Cannot find any subfolders containing grid cases!")
 
     # copy top-level files in grid output folder
     for tf in ["manager.log", "ref_config.toml", "copy.grid.toml"]:
@@ -65,3 +62,4 @@ def pack(grid:str, plots:bool=True, zip:bool=True):
                 zf.write(file_path, arcname)
 
     print("Done!")
+    return True
