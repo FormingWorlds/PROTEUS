@@ -34,6 +34,17 @@ config_option = click.option(
     required=True,
 )
 
+output_option = click.option(
+    "-o",
+    "--output",
+    "output_path",
+    type=click.Path(
+        exists=True, dir_okay=True, path_type=Path, resolve_path=True
+    ),
+    help="Path to output folder",
+    required=True,
+)
+
 
 @click.group()
 @click.version_option(version=proteus_version)
@@ -280,7 +291,7 @@ cli.add_command(offchem)
 cli.add_command(observe)
 
 # ----------------
-# GridPROTEUS and BO inference scheme
+# GridPROTEUS and BO inference scheme, runners
 # ----------------
 
 
@@ -304,6 +315,32 @@ def infer(config_path: Path):
 
 cli.add_command(grid)
 cli.add_command(infer)
+
+# ----------------
+# Grid status check and grid packaging
+# ----------------
+
+@cli.command()
+@output_option
+@click.option(
+    "-s",
+    "--status",
+    is_flag=True,
+    default=False,
+    help="List all points with this specific status",
+)
+def grid_summarise(output_path: Path, status: str):
+    """Summarise the current status of a grid"""
+    from proteus.grid.summarise import summarise as gsummarise
+    gsummarise(output_path, status)
+
+
+@cli.command()
+@output_option
+def grid_pack(output_path: Path):
+    """Packagage grid points into single ZIP file, for easy backup and sharing"""
+    from proteus.grid.pack import pack as gpack
+    gpack(output_path)
 
 # ----------------
 # installer
