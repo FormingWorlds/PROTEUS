@@ -104,7 +104,9 @@ def run_dummy_int(config:Config, dirs:dict,
         output["T_magma"] = hf_row["T_magma"] +  dTdt * dt * secs_per_year
 
     # Store scalars
+    output["T_pot"]             = float(output["T_magma"])
     output["Phi_global"]        = _calc_phi(output["T_magma"])
+    output["Phi_global_vol"]    = output["Phi_global"]
     output["M_mantle_liquid"]   = output["M_mantle"] * output["Phi_global"]
     output["M_mantle_solid"]    = output["M_mantle"] - output["M_mantle_liquid"]
     output["RF_depth"]          = output["Phi_global"] * (1- config.struct.corefrac)
