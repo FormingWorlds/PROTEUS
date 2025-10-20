@@ -355,9 +355,10 @@ class Grid():
 
             # Check cfg exists
             cfgexists = False
-            waitfor   = 4.0
-            for _ in range(int(waitfor*100)):  # do n=100*wait_for checks
-                time.sleep(0.01)
+            waitfor   = 3.0
+            waitcount = 100.0
+            for _ in range(int(waitfor*waitcount)):  # do N=waitcount*waitfor checks
+                time.sleep(1/waitcount)
                 if os.path.exists(cfg_path):
                     cfgexists = True
                     break
@@ -429,7 +430,7 @@ class Grid():
 
             # Short sleeps while doing initial dispatch
             if step < num_threads:
-                time.sleep(2.0)
+                time.sleep(1.0)
             else:
                 time.sleep(check_interval)
             step += 1
@@ -539,7 +540,7 @@ done
         time.sleep(2.0)
 
 
-def grid_from_config(config_fpath:str, test_run:bool=False):
+def grid_from_config(config_fpath:str, test_run:bool=False, check_interval:float=15.0):
     '''Run GridPROTEUS using the parameters in a config file (xxx.grid.toml)'''
 
     # Load configuration from TOML file
@@ -625,5 +626,5 @@ def grid_from_config(config_fpath:str, test_run:bool=False):
         pg.slurm_config(max_jobs, test_run=test_run, max_days=max_days, max_mem=max_mem)
     else:
         # Alternatively, let grid_proteus.py manage the jobs
-        pg.run(max_jobs, test_run=test_run, check_interval=10)
+        pg.run(max_jobs, test_run=test_run, check_interval=check_interval)
         log.info("GridPROTEUS finished")

@@ -18,7 +18,7 @@ BASE_CONFIG = PROTEUS_ROOT / 'tests' / 'grid' / 'base.toml'
 
 @pytest.fixture(scope="module")
 def grid_run():
-    grid_from_config(GRID_CONFIG, test_run=True)
+    grid_from_config(GRID_CONFIG, test_run=False, check_interval=1)
 
 def test_grid_run(grid_run):
     # Call fixture to ensure that it has run without error
@@ -32,7 +32,7 @@ def test_grid_config(grid_run):
     assert filecmp.cmp(OUT_DIR / 'ref_config.toml', BASE_CONFIG, shallow=False)
 
     # Check that case config files have been written
-    assert os.path.isfile(OUT_DIR / 'cfgs' / 'case_000000.toml')
+    assert os.path.isfile(OUT_DIR / 'cfgs' / f'case_{0:06d}.toml')
 
 def test_grid_log(grid_run):
     # Read logfile and check for expected statements
