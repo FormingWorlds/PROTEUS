@@ -6,7 +6,7 @@ We start by describing how to run a single instance of PROTEUS...
 
 ## Running PROTEUS from the terminal
 
-PROTEUS has a command-line interface that can be accessed by running `proteus` on the command line.
+PROTEUS has a command-line interface (CLI) that can be accessed by running `proteus` on the command line.
 Try `proteus --help` to see the available commands!
 
 You can directly run PROTEUS using the command:
@@ -87,7 +87,7 @@ You can find detailed documentation [here](https://tmuxcheatsheet.com/).
 - The above started simulation will store the output data in the PROTEUS `output/` folder. You can check the progress of the simulation by looking at the log files in this folder. The log files are named according to the simulation name and contain information about the simulation's progress and any errors that may have occurred.
 - If you want to check if you are using CPUs on the cluster, use the command:
     ```console
-    htop
+    htop -u $USER
     ```
 - Press `Ctrl + c` to exit the `htop` command.
 
@@ -123,6 +123,28 @@ To dispatch your grid via Slurm, you **must then run** the command `sbatch <path
 
 Monitor your running jobs with `squeue -u $USER`. To cancel **all** of your running jobs, use `scancel -u $USER`.
 The original PROTEUS process does not need to stay open when using Slurm to manage the subprocesses.
+
+## Viewing grid status
+
+Use the CLI to view the status of a grid, such as to check cases which are finished. For example, the command below will summarise the top-level statuses of the demo grid.
+
+```console
+proteus grid-summarise -o output/grid_demo/
+```
+
+Add `-s` find out which cases have a particular status. For example, the command below will list all completed cases.
+
+```console
+proteus grid-summarise -o output/grid_demo/ -s completed
+```
+
+## Packaging grid results
+
+Use the CLI to package the results of a grid into a zip file; e.g. for sharing or backing-up. The command below will create `pack.zip` in the `grid_demo/` folder. This does not store all the data for each case - only the most important files.
+
+```console
+proteus grid-pack -o output/grid_demo/
+```
 
 ## Retrieval scheme (Bayesian optimisation)
 
@@ -246,6 +268,7 @@ fwl-janus: ok
 fwl-proteus: ok
 fwl-mors: ok
 fwl-zephyrus: ok
+fwl-zalmoxis: ok
 AGNI: Update available 1.7.1 -> Ledoux, oceans, water, clouds, and blackbody stars
 
 Environment variables

@@ -221,7 +221,11 @@ class Proteus:
         download_sufficient_data(self.config)
 
         # Initialise interior and atmosphere objects
-        self.interior_o = Interior_t(get_nlevb(self.config))
+        if self.config.interior.module == "spider":
+            spider_dir = self.directories["spider"]
+        else:
+            spider_dir = None
+        self.interior_o = Interior_t(get_nlevb(self.config), spider_dir=spider_dir)
         self.atmos_o    = Atmos_t()
 
         # Is the model resuming from a previous state?

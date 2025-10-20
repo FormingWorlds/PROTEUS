@@ -1,0 +1,72 @@
+# Config file for running a grid of forward models
+
+# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+output = "scratch/l98d_updated7/"
+
+# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+symlink = ""
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/planets/l9859d.toml"
+
+# Use SLURM?
+use_slurm = true
+
+# Execution limits
+max_jobs = 300       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 2        # maximum number of days to run (e.g. 1)
+max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+
+# Now define grid axes...
+#    Each axis must be a new section (table) in this file.
+#    Each table corresponds to the name of the parameter to be varied.
+#    Each table name must be written in double quotes.
+#    See examples below
+
+# Planet mass set directly
+# ["struct.mass_tot"]
+#     method = "direct"
+#     values = [1.57, 1.64, 1.71]
+
+# Hydrogen inventory set by arange
+["delivery.elements.H_ppmw"]
+    method = "arange"
+    start    = 10000
+    stop     = 35000
+    step     = 6000
+
+# Mantle redox state set directly
+["outgas.fO2_shift_IW"]
+    method = "direct"
+    values = [-5.0, -4.5, -4.0, -3.5, -3.0, -2.5, -2.0, -1.5]
+
+# Planet bulk S/H ratio set directly
+["delivery.elements.SH_ratio"]
+    method = "direct"
+    values = [1.0, 2.0, 4.0, 8.0]
+
+# Core radius fraction set by linspace
+["struct.corefrac"]
+    method = "direct"
+    values = [0.15, 0.20, 0.25, 0.30, 0.35]
+
+# Escape efficiency set by arange
+# ["escape.zephyrus.efficiency"]
+#     method   = "arange"
+#     start    = 0.0
+#     stop     = 0.25
+#     step     = 0.05
+
+
+# Orbital eccentricity set by logspace
+# ["orbit.eccentricity"]
+#     method = "logspace"
+#     start  = 0.001
+#     stop   = 0.15
+#     count  = 25
+
+
+# Spectral bands set directly
+# ["atmos_clim.agni.spectral_bands"]
+#     method = "direct"
+#     values = ["16", "48", "256"]

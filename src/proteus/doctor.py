@@ -73,7 +73,7 @@ class GitPackage(BasePackage):
         response = requests.get(
             f'https://api.github.com/repos/{self.owner}/{self.name}/releases/latest'
         )
-        return response.json()['name']
+        return response.json()['tag_name']
 
 
 PACKAGES = (
@@ -83,6 +83,7 @@ PACKAGES = (
     PythonPackage(name='fwl-proteus'),
     PythonPackage(name='fwl-mors'),
     PythonPackage(name='fwl-zephyrus'),
+    PythonPackage(name='fwl-zalmoxis'),
     GitPackage(name='AGNI', owner='nichollsh', version_getter=partial(_get_agni_version, DIRS)),
 )
 

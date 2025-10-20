@@ -359,8 +359,8 @@ def update_instellation(hf_row:dict, config:Config, stellar_track=None):
                 Fxuv_SI = 0.0
 
     # Update hf_row dictionary
-    hf_row["F_ins"] = S_0
-    hf_row["F_xuv"] = Fxuv_SI
+    hf_row["F_ins"] = S_0 * config.star.bol_scale
+    hf_row["F_xuv"] = Fxuv_SI * config.star.bol_scale
 
 def update_equilibrium_temperature(hf_row:dict, config:Config):
     '''

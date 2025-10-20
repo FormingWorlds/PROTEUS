@@ -3,11 +3,12 @@ channels:
   - conda-forge
 dependencies:
   # Core Python
-  - python=3.12
+  - python=3.13
   - pip
   - pytest
 
   # Non-Python dependencies (system-level)
+  - wget
   - make
   - gfortran
   - netcdf-fortran

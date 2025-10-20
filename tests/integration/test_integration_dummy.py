@@ -1,3 +1,4 @@
+# This test runs PROTEUS using only the dummy modules
 from __future__ import annotations
 
 import filecmp
@@ -19,7 +20,7 @@ def dummy_run():
 
     runner = Proteus(config_path=config_path)
 
-    runner.start()
+    runner.start(offline=True)
 
 # run the integration
 def test_dummy_run(dummy_run):

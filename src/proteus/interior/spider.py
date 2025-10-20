@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+from scipy.interpolate import RegularGridInterpolator
 
 from proteus.interior.common import Interior_t, get_file_tides
 from proteus.interior.timestep import next_step
@@ -163,12 +164,33 @@ def get_all_output_times(odir:str):
 
     return time_a
 
+def interp_rho_melt(S, P, lookup):
+    '''
+    Return density of pure melt at given entropy and pressure.
+
+    Parameters
+    ---------------
+    - entropy: float     entropy of layer [J kg-1 K-1]
+    - pressure: float    pressure of layer [Pa]
+    - lookup: str    directory of SPIDER installation
+
+    Returns
+    -----------------
+    - density: float    density of pure melt [kg m-3]
+    '''
+
+    Pvals, Svals, rho_grid = lookup[0, :, 0], lookup[:, 0, 1], lookup[:, :, 2]
+    interp = RegularGridInterpolator((Pvals, Svals), rho_grid.T, bounds_error=False, fill_value=None)
+
+    rho = interp(np.column_stack((np.atleast_1d(P), np.atleast_1d(S))))
+    return rho
+
 #====================================================================
 def _try_spider( dirs:dict, config:Config,
                 IC_INTERIOR:int,
                 hf_all:pd.DataFrame, hf_row:dict,
                 step_sf:float, atol_sf:float, dT_max:float,
-                timeout:float=60*45 ):
+                timeout:float=60*15 ):
     '''
     Try to run spider with the current configuration.
     '''
@@ -534,12 +556,42 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     interior_o.temp     = np.array(json_file.get_dict_values(['data','temp_s']))
     interior_o.pres     = np.array(json_file.get_dict_values(['data','pressure_s']))
 
+    vshell = json_file.get_dict_values(['data','volume_s'])
+    mshell = interior_o.density * vshell
+
+    # Entropy at each layer [J kg-1 K]
+    entropy = np.array(json_file.get_dict_values(['data','S_s']))
+
+    # Get density of pure-melt at each layer
+    rho_melt_arr = np.ones_like(interior_o.pres)
+    for i in range(len(interior_o.pres)):
+        rho_melt_arr[i] = interp_rho_melt(entropy[i], interior_o.pres[i], interior_o.lookup_rho_melt)
+
+    # Determine volume of melt at each layer
+    vmelt = interior_o.phi * mshell / rho_melt_arr
+
+    # Total volume of each layer
+    volume_mantle = np.sum(vshell)
+
+    # Global melt fraction by volume
+    output["Phi_global_vol"] = np.sum(vmelt)/volume_mantle
+    # output["Phi_global_vol"] = float(output["Phi_global"])
+
     # Manually calculate heat flux at near-surface from energy gradient
     # Etot        = json_file.get_dict_values(['data','Etot_b'])
     # rad         = json_file.get_dict_values(['data','radius_b'])
     # area        = json_file.get_dict_values(['data','area_b'])
     # E0          = Etot[1] - (Etot[2]-Etot[1]) * (rad[2]-rad[1]) / (rad[1]-rad[0])
     # F_int2      = E0/area[0]
+
+    # Get estimate of potential temperature
+    Fconv = json_file.get_dict_values(['data','Jconv_b'])
+    Fcond = json_file.get_dict_values(['data','Jcond_b'])
+    for i in range(len(Fconv)):
+        if Fconv[i] > Fcond[i]:
+            break
+    i = min(i, len(interior_o.temp)-1)
+    output["T_pot"] = float(interior_o.temp[i])
 
     # Limit F_int to positive values
     if config.atmos_clim.prevent_warming:

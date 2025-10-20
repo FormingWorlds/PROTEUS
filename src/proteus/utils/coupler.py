@@ -161,6 +161,12 @@ def validate_module_versions(dirs:dict, config:Config):
             if not _valid_ver(aragog_version, _get_expver("aragog"), "Aragog"):
                 valid = False
 
+    # Struct module
+    if config.struct.module == 'zalmoxis':
+        from zalmoxis import __version__ as zalmoxis_version
+        if not _valid_ver(zalmoxis_version, _get_expver("fwl-zalmoxis"), "ZALMOXIS"):
+            valid = False
+
     # Atmosphere module
     match config.atmos_clim.module:
         case 'janus':
@@ -466,7 +472,7 @@ def GetHelpfileKeys():
             "semimajorax_sat", "M_sat", "plan_sat_am", # [m], [kg], [kg m2 s-1],
 
             # Day length
-            "axial_period", # [s]
+            "axial_period", "breakup_period", # [s], [s]
 
             # Dry interior radius (calculated) and mass (from config)
             "R_int", "M_int", # [m], [kg]
@@ -485,6 +491,7 @@ def GetHelpfileKeys():
             "gravity", "Phi_global", "RF_depth", # [m s-2] , [1] , [1]
             "M_core", "M_mantle", "M_planet",    # all [kg]
             "M_mantle_solid", "M_mantle_liquid", # all [kg]
+            "Phi_global_vol", "T_pot", # [1], [K]
 
             # Stellar
             "M_star", "R_star", "age_star", # [kg], [m], [yr]
