@@ -124,6 +124,28 @@ To dispatch your grid via Slurm, you **must then run** the command `sbatch <path
 Monitor your running jobs with `squeue -u $USER`. To cancel **all** of your running jobs, use `scancel -u $USER`.
 The original PROTEUS process does not need to stay open when using Slurm to manage the subprocesses.
 
+## Viewing grid status
+
+To view the status of a grid of models, such as to check if any cases have finished or are still running, use the CLI. For example, the command below will summarise the top-level statuses of the demo grid.
+
+```console
+proteus grid-summarise -o output/grid_demo/`
+```
+
+You can add the `-s` flag to find out which cases have a particular status. For example, the command below will list all completed cases.
+
+```console
+proteus grid-summarise -o output/grid_demo/ -s completed
+```
+
+## Packaging grid results
+
+To package the top-level results of a grid into a single zip file, for sharing or backing-up the data, use the CLI. The command below will create a file called `pack.zip` in the `grid_demo/` output folder. Note that this does not store all data for each case - only the most important files.
+
+```console
+proteus grid-pack -o output/grid_demo/`
+```
+
 ## Retrieval scheme (Bayesian optimisation)
 
 Retrieval methods efficiently sample a given parameter space in order to find the point at which a forward model best matches some observations. These methods has seen success in recent years, and are often more efficient than naive grid-search methods. However, retrieval schemes usually require that a forward model is fast and inexpensive to run. Bayesian Optimisation is one approach to parameter retrievals; you can read more about it [in this article](https://arxiv.org/abs/1807.02811).

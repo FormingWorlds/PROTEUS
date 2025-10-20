@@ -73,7 +73,7 @@ class GitPackage(BasePackage):
         response = requests.get(
             f'https://api.github.com/repos/{self.owner}/{self.name}/releases/latest'
         )
-        return response.json()['name']
+        return response.json()['tag_name']
 
 
 PACKAGES = (
