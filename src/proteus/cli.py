@@ -327,7 +327,8 @@ cli.add_command(infer)
     "--status",
     is_flag=True,
     default=False,
-    help="List all points with this specific status",
+    help="List cases with this status. " \
+    "For example: 'completed', 'running', 'error', or 'code=x' for some error code x.",
 )
 def grid_summarise(output_path: Path, status: str):
     """Summarise the current status of a grid"""
@@ -392,6 +393,7 @@ def is_julia_installed() -> bool:
     "--export-env", is_flag=True, help="Add FWL_DATA and RAD_DIR to shell rc."
 )
 def install_all(export_env: bool):
+    """Install PROTEUS, required submodules, and get lookup data from online sources."""
     # --- Step 0: Check available disk space---
     available_disk_space_in_B = shutil.disk_usage(".").free
     G = 1e9
@@ -506,6 +508,7 @@ def install_all(export_env: bool):
     help="Path to the TOML config file",
 )
 def update_all(export_env: bool, config_path: Path):
+    """Update PROTEUS, submodules, and lookup data from online sources."""
     # --- Step 0: Check available disk space---
     available_disk_space_in_B = shutil.disk_usage(".").free
     G = 1e9

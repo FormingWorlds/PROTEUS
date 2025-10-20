@@ -9,7 +9,7 @@ import numpy as np
 from proteus.utils.helper import CommentFromStatus
 
 
-def summarise(pgrid_dir:str, opts:list):
+def summarise(pgrid_dir:str, status:str):
     if (not os.path.exists(pgrid_dir)) or (not os.path.isdir(pgrid_dir)):
         raise Exception("Invalid path '%s'" % pgrid_dir)
 
@@ -56,46 +56,48 @@ def summarise(pgrid_dir:str, opts:list):
         "Solidified": [10],
         "Steady":     [11]
     }
-    for o in opts:
-        # sanitise input
-        o = str(o).strip().lower()
-        if (o=="complete"):
-             o = "completed"
 
-        matched = False
+    # sanitise input
+    status = str(status).strip().lower()
+    if (status=="complete"):
+            status = "completed"
 
-        # general cases
-        for g in gen_cases.keys():  # for each general case
-            if o == g.lower():
-                matched = True
-                print("%s cases:" % g)
-                e_any = False
-                for i in range(N):  # for each grid point
-                    for s in gen_cases[g]:  # for each case within this general case
-                        if status[i] == s:
-                            e_any = True
-                            print("  Case %-5d : Code %-2d - %s" % (i,s, CommentFromStatus(s)))
-                if not e_any:
-                    print("  (None)")
+    matched = False
 
-        # code cases
-        if "code" in o:
+    # general cases
+    for g in gen_cases.keys():  # for each general case
+        if status == g.lower():
             matched = True
-            code = int(o.replace(" ","").split("=")[-1])
-            print("Code %d cases:" % code)
+            print("%s cases:" % g)
             e_any = False
-            for i in range(N):
-                if status[i] == code:
-                    e_any = True
-                    print("  Case %-5d : Code %-2d - %s" % (i,code, CommentFromStatus(code)))
+            for i in range(N):  # for each grid point
+                for s in gen_cases[g]:  # for each case within this general case
+                    if status[i] == s:
+                        e_any = True
+                        print("  Case %-5d : Code %-2d - %s" % (i,s, CommentFromStatus(s)))
             if not e_any:
                 print("  (None)")
 
-        if not matched:
-            print("Invalid status category '%s'" % o)
+    # code cases
+    if "code" in status:
+        matched = True
+        code = int(status.replace(" ","").split("=")[-1])
+        print("Code %d cases:" % code)
+        e_any = False
+        for i in range(N):
+            if status[i] == code:
+                e_any = True
+                print("  Case %-5d : Code %-2d - %s" % (i,code, CommentFromStatus(code)))
+        if not e_any:
+            print("  (None)")
+
+    if not matched:
+        print("Invalid status category '%s'" % status)
+        print("Run `proteus grid-summarise --help` for info on using this command")
+        return
 
 def print_help():
-    print("Command usage: GridSummarise.py [fold] (opt1) (opt2) (opt3) ...")
-    print("    [fold] = path to Pgrid output folder, required")
-    print("    [optN] = status categories to print, optional")
-    print("             'completed', 'running', 'error', or 'code=[c]' for some error code [c]")
+    print("Command usage: proteus grid-summarise -o [output] [status]")
+    print("    [output] = path to Grid output folder, required")
+    print("    [status] = status categories to print, optional")
+    print("             ")

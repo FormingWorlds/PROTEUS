@@ -8,6 +8,7 @@ import pytest
 from helpers import PROTEUS_ROOT
 
 from proteus.grid.manage import grid_from_config
+from proteus.grid.summarise import summarise as gsummarise
 
 OUT_DIR = PROTEUS_ROOT / 'output' / 'dummy_grid'
 
@@ -39,3 +40,7 @@ def test_grid_log(grid_run):
     assert 'Flattened grid points' in lines
     assert 'values   : [1000.0, 2000.0]' in lines
     assert 'All cases have exited' in lines
+
+def test_grid_summarise(grid_run):
+    # Test running grid-summarise command
+    gsummarise(OUT_DIR, "help")
