@@ -48,13 +48,16 @@ def test_grid_summarise(grid_run):
 
 def test_grid_pack(grid_run):
     # Test running grid-pack command
-    assert gpack(OUT_DIR, plots=True, zip=True)
+    assert gpack(OUT_DIR, plots=True, zip=True, rmdir_pack=False)
 
     # check pack folder exists
     assert os.path.isdir(OUT_DIR / 'pack')
 
     # check manager.log exists in pack folder
     assert os.path.isfile(OUT_DIR / 'pack' / 'manager.log')
+
+    # check helpfile exists for case 0
+    assert os.path.isfile(OUT_DIR / 'pack' / f'case_{0:06d}' / 'runtime_helpfile.csv')
 
     # check zip exists
     assert os.path.isfile(OUT_DIR / 'pack.zip')

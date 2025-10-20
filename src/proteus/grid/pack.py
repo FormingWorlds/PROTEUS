@@ -8,7 +8,7 @@ from shutil import copyfile, rmtree
 from zipfile import ZIP_DEFLATED, ZipFile
 
 
-def pack(grid:str, plots:bool=True, zip:bool=True):
+def pack(grid:str, plots:bool=True, zip:bool=True, rmdir_pack:bool=True):
     '''Pack most-important data for all cases into a single folder; optionally zip it.'''
     if (not os.path.exists(grid)) or (not os.path.isdir(grid)):
         raise FileNotFoundError("Invalid path '%s'" % grid)
@@ -72,6 +72,7 @@ def pack(grid:str, plots:bool=True, zip:bool=True):
         print(f"Archive size is {os.path.getsize(zip_path)/1e6:.1f} MB")
 
         # remove `pack` folder now that we have zipped it
-        rmtree(pack)
+        if rmdir_pack:
+            rmtree(pack)
 
     return True

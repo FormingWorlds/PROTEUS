@@ -6,7 +6,7 @@ We start by describing how to run a single instance of PROTEUS...
 
 ## Running PROTEUS from the terminal
 
-PROTEUS has a command-line interface that can be accessed by running `proteus` on the command line.
+PROTEUS has a command-line interface (CLI) that can be accessed by running `proteus` on the command line.
 Try `proteus --help` to see the available commands!
 
 You can directly run PROTEUS using the command:
@@ -87,7 +87,7 @@ You can find detailed documentation [here](https://tmuxcheatsheet.com/).
 - The above started simulation will store the output data in the PROTEUS `output/` folder. You can check the progress of the simulation by looking at the log files in this folder. The log files are named according to the simulation name and contain information about the simulation's progress and any errors that may have occurred.
 - If you want to check if you are using CPUs on the cluster, use the command:
     ```console
-    htop
+    htop -u $USER
     ```
 - Press `Ctrl + c` to exit the `htop` command.
 
@@ -126,13 +126,13 @@ The original PROTEUS process does not need to stay open when using Slurm to mana
 
 ## Viewing grid status
 
-To view the status of a grid of models, such as to check if any cases have finished or are still running, use the CLI. For example, the command below will summarise the top-level statuses of the demo grid.
+Use the CLI to view the status of a grid, such as to check cases which are finished. For example, the command below will summarise the top-level statuses of the demo grid.
 
 ```console
-proteus grid-summarise -o output/grid_demo/`
+proteus grid-summarise -o output/grid_demo/
 ```
 
-You can add the `-s` flag to find out which cases have a particular status. For example, the command below will list all completed cases.
+Add `-s` find out which cases have a particular status. For example, the command below will list all completed cases.
 
 ```console
 proteus grid-summarise -o output/grid_demo/ -s completed
@@ -140,10 +140,10 @@ proteus grid-summarise -o output/grid_demo/ -s completed
 
 ## Packaging grid results
 
-To package the top-level results of a grid into a single zip file, for sharing or backing-up the data, use the CLI. The command below will create a file called `pack.zip` in the `grid_demo/` output folder. Note that this does not store all data for each case - only the most important files.
+Use the CLI to package the results of a grid into a zip file; e.g. for sharing or backing-up. The command below will create `pack.zip` in the `grid_demo/` folder. This does not store all the data for each case - only the most important files.
 
 ```console
-proteus grid-pack -o output/grid_demo/`
+proteus grid-pack -o output/grid_demo/
 ```
 
 ## Retrieval scheme (Bayesian optimisation)
