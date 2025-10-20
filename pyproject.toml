@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
 [project]
 name = "fwl-proteus"
-version = "25.10.15"
+version = "25.10.20"
 description = "Coupled atmosphere-interior framework to simulate the temporal evolution of rocky planets"
 readme = "README.md"
 requires-python = ">=3.11"
