@@ -34,6 +34,17 @@ config_option = click.option(
     required=True,
 )
 
+output_option = click.option(
+    "-o",
+    "--output",
+    "output_path",
+    type=click.Path(
+        exists=True, dir_okay=True, path_type=Path, resolve_path=True
+    ),
+    help="Path to output folder",
+    required=True,
+)
+
 
 @click.group()
 @click.version_option(version=proteus_version)
@@ -280,7 +291,7 @@ cli.add_command(offchem)
 cli.add_command(observe)
 
 # ----------------
-# GridPROTEUS and BO inference scheme
+# GridPROTEUS and BO inference scheme, runners
 # ----------------
 
 
@@ -304,6 +315,39 @@ def infer(config_path: Path):
 
 cli.add_command(grid)
 cli.add_command(infer)
+
+# ----------------
+# Grid status check and grid packaging
+# ----------------
+
+@cli.command()
+@output_option
+@click.option(
+    "-s",
+    "--status",
+    default=None,
+    type=str,
+    help="List cases with this status. " \
+    "For example: 'completed', 'running', 'error', or 'code=x' for some error code x.",
+)
+def grid_summarise(output_path: Path, status: str):
+    """
+    Summarise the current status of a grid, showing which fraction of cases end with
+    each status code.
+
+    Provide `status` to have the command explicitly list cases which end with a particular
+    status code.
+    """
+    from proteus.grid.summarise import summarise as gsummarise
+    gsummarise(output_path, status)
+
+
+@cli.command()
+@output_option
+def grid_pack(output_path: Path):
+    """Packagage grid points into single ZIP file, for easy backup and sharing"""
+    from proteus.grid.pack import pack as gpack
+    gpack(output_path)
 
 # ----------------
 # installer
@@ -355,6 +399,7 @@ def is_julia_installed() -> bool:
     "--export-env", is_flag=True, help="Add FWL_DATA and RAD_DIR to shell rc."
 )
 def install_all(export_env: bool):
+    """Install PROTEUS, required submodules, and get lookup data from online sources."""
     # --- Step 0: Check available disk space---
     available_disk_space_in_B = shutil.disk_usage(".").free
     G = 1e9
@@ -469,6 +514,7 @@ def install_all(export_env: bool):
     help="Path to the TOML config file",
 )
 def update_all(export_env: bool, config_path: Path):
+    """Update PROTEUS, submodules, and lookup data from online sources."""
     # --- Step 0: Check available disk space---
     available_disk_space_in_B = shutil.disk_usage(".").free
     G = 1e9
