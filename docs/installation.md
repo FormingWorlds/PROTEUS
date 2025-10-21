@@ -28,7 +28,7 @@ Python is most easily obtained and managed using either [miniconda](https://www.
 ```console
 mkdir -p ~/miniconda3
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-bash ~/miniconda3/miniconda.sh 
+bash ~/miniconda3/miniconda.sh
 # choose an install folder where you have plenty of disk space!
 rm ~/miniconda3/miniconda.sh
 ```
@@ -50,7 +50,7 @@ curl -fsSL https://install.julialang.org | sh
 ## User install (default)
 ### Requirements
 
-1. conda either through miniconda or miniforge (see above). However, currently there seems to be a 
+1. conda either through miniconda or miniforge (see above). However, currently there seems to be a
 conflict between Julia and Conda versions of HDF5 and/or NetCDF libaries when using miniforge.
 2. git. If you don't have git, you can install it through conda: `conda install git`.
 3. Julia installation (see above)
@@ -69,19 +69,19 @@ conflict between Julia and Conda versions of HDF5 and/or NetCDF libaries when us
 ### Before running PROTEUS
 If you want to start running PROTEUS right away - i.e. from the same shell that you used to install PROTEUS -
 you can set your environment variables using e.g. `source ~/.bashrc` (for Bash). This deactivates your current
-conda environment, so you need to enter `conda activate proteus` as well. If you chose `proteus install-all` 
-(i.e. without `--export-env`), you will need to set your PATH, FWL_DATA and RAD_DIR enviroment variables 
+conda environment, so you need to enter `conda activate proteus` as well. If you chose `proteus install-all`
+(i.e. without `--export-env`), you will need to set your PATH, FWL_DATA and RAD_DIR enviroment variables
 manually.
 
-When you log into the machine that where you installed PROTEUS through `proteus install-all --export-env`, 
-you will have the environment variables FWL_DATA, RAD_DIR set appropriately as your ~/.shellrc file 
-(e.g. ~/.bashrc) has been updated during the install process. However, you still need to enter 
+When you log into the machine that where you installed PROTEUS through `proteus install-all --export-env`,
+you will have the environment variables FWL_DATA, RAD_DIR set appropriately as your ~/.shellrc file
+(e.g. ~/.bashrc) has been updated during the install process. However, you still need to enter
 `conda activate proteus`.
 
 ### Updating PROTEUS
 
 1. `conda activate proteus` (if not already activated)
-2. `proteus update-all` 
+2. `proteus update-all`
 
 ## Developer install
 
@@ -146,13 +146,16 @@ you will have the environment variables FWL_DATA, RAD_DIR set appropriately as y
     ```console
     git clone git@github.com:nichollsh/AGNI.git
     cd AGNI
-    bash src/get_agni.sh
+    bash src/get_agni.sh 0
     cd ../
     ```
 
     Use this `get_agni.sh` script to keep AGNI and its data files up to date. It is
     important that AGNI is available at `./AGNI/` inside your PROTEUS folder. This can be
     either a symbolic link or the true location of the submodule.
+
+    The argument of provided to the script (integer from 0 to 20) indicates which tests AGNI
+    should run. Here a value of `0` means that the tests are skipped.
 
 6. **Optional** developer installation steps
 
