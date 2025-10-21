@@ -55,7 +55,7 @@ def observe_resolved_atmosphere(instance, attribute, value):
 def janus_escape_atmosphere(instance, attribute, value):
     # Using escape.zephyrus with JANUS requires params.stop.escape to be true
     if (instance.escape.module == "zephyrus") and (instance.atmos_clim.module != "janus"):
-        raise ValueError("Using ZEHPYRUS escape module with JANUS atmosphere module requires params.stop.escape to be enabled")
+        raise ValueError("Using ZEHPYRUS escape module with JANUS atmosphere module requires params.stop.escape.enable = true with p_stop > 0")
 
 @define
 class Config:
