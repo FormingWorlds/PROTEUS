@@ -158,7 +158,7 @@ The documentation is hosted on [readthedocs](https://readthedocs.io/projects/fwl
 
 ### Making a release
 
-The versioning scheme we use is [CalVer](https://calver.org/).
+The versioning scheme we use is [CalVer](https://calver.org/), in the format `YY.MM.DD`, without a leading 'v'. This means that releases are made based on the date of the release.
 
 0. Update requirements files:
 
