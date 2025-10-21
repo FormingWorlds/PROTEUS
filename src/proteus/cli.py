@@ -474,7 +474,7 @@ def install_all(export_env: bool):
                 check=True,
             )
             subprocess.run(
-                ["bash", "src/get_agni.sh"], cwd=agni_dir, env=env, check=True
+                ["bash", "src/get_agni.sh", "0"], cwd=agni_dir, env=env, check=True
             )
         except subprocess.CalledProcessError as e:
             click.secho("❌ Failed to install AGNI", fg="red")
@@ -582,7 +582,7 @@ def update_all(export_env: bool, config_path: Path):
             try:
                 subprocess.run(["git", "pull"], cwd=agni_dir, check=True)
                 subprocess.run(
-                    ["bash", "src/get_agni.sh"],
+                    ["bash", "src/get_agni.sh", "0"],
                     cwd=agni_dir,
                     env=os.environ,
                     check=True,
