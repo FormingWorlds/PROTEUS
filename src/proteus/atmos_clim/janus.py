@@ -96,7 +96,7 @@ def InitAtm(dirs:dict, config:Config):
 
     return atm
 
-def UpdateStateAtm(atm, hf_row:dict, tropopause):
+def UpdateStateAtm(atm, config:Config, hf_row:dict, tropopause):
     """UpdateStateAtm
 
     Update the atm object state with current iteration variables
@@ -105,6 +105,8 @@ def UpdateStateAtm(atm, hf_row:dict, tropopause):
     ----------
         atm : atmos
             Atmosphere object
+        config : Config
+            Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
         tropopause
@@ -112,7 +114,7 @@ def UpdateStateAtm(atm, hf_row:dict, tropopause):
     """
 
     atm.setSurfaceTemperature(hf_row["T_surf"])
-    atm.setSurfacePressure(hf_row["P_surf"]*1e5)
+    atm.setSurfacePressure(max(hf_row["P_surf"],config.atmos_clim.janus.p_top*1.1)*1e5)
     atm.setPlanetProperties(hf_row["R_int"], hf_row["M_int"])
 
     # Warn about rock vapours
