@@ -4,9 +4,9 @@ import functools
 import hashlib
 import logging
 import os
-import shutil
 import subprocess as sp
 from pathlib import Path
+from time import sleep
 from typing import TYPE_CHECKING
 
 import platformdirs
@@ -21,6 +21,7 @@ log = logging.getLogger("fwl."+__name__)
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
 MAX_ATTEMPTS = 3
+RETRY_WAIT   = 5.0 # seconds
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
@@ -57,6 +58,7 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
             return True
         else:
             log.warning(f"Failed to get data from Zenodo (ID {zenodo_id})")
+            sleep(RETRY_WAIT)
 
     # Return status indicating that file/folder is invalid, if failed
     log.error(f"Could not obtain data for Zenodo record {zenodo_id}")
@@ -114,6 +116,7 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
             break
         else:
             log.warning(f"Failed to get checksum from Zenodo (ID {zenodo_id})")
+            sleep(RETRY_WAIT)
 
     # Return status indicating that file/folder is invalid, if failed
     if not zenodo_ok:
