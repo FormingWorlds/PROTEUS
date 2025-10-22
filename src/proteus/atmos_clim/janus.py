@@ -183,7 +183,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
 
 
     #Update atmosphere with current variables
-    UpdateStateAtm(atm, config, hf_row, config.atmos_clim.janus.tropopause)
+    UpdateStateAtm(atm, hf_row, config.atmos_clim.janus.tropopause)
 
     # Change dir
     cwd = os.getcwd()
