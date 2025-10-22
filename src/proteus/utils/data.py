@@ -15,6 +15,8 @@ from osfclient.api import OSF
 if TYPE_CHECKING:
     from proteus.config import Config
 
+from proteus.utils.helper import safe_rm
+
 log = logging.getLogger("fwl."+__name__)
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
@@ -54,7 +56,7 @@ def md5(_fname):
     return hash_md5.hexdigest()
 
 
-def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=100e6):
+def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=100e6)->bool:
     """
     Validate the content of a specific Zenodo-provided folder by checking md5 hashes
 
@@ -72,16 +74,33 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
     """
 
     # Use zenodo_get to obtain md5 hashes
-    # They will be saved to a txt file in folder_dir
-    cmd = [ "zenodo_get", zenodo_id, "-m" ]
+    #     They will be saved to a txt file in folder_dir
+    md5sums_path = os.path.join(folder_dir, "md5sums.txt")
     out = os.path.join(GetFWLData(), "zenodo_validate.log")
     log.debug("    zenodo_get, logging to %s"%out)
-    with open(out,'w') as hdl:
-        sp.run(cmd, check=True, stdout=hdl, stderr=hdl, cwd=folder_dir)
+    zenodo_ok = False
+    for i in range(3): # 3 attempts max
 
-    # Check that hashes file exists
-    md5sums_path = os.path.join(folder_dir, "md5sums.txt")
-    if not os.path.isfile(md5sums_path):
+        # remove file
+        safe_rm(md5sums_path)
+
+        # try making request
+        with open(out,'w') as hdl:
+            proc = sp.run([ "zenodo_get", zenodo_id, "-m" ],
+                            stdout=hdl, stderr=hdl, cwd=folder_dir)
+
+        # process exited fine and file exists?
+        zenodo_ok = (proc.returncode==0) and os.path.isfile(md5sums_path)
+
+        # try again?
+        if zenodo_ok:
+            break
+        else:
+            log.warning(f"Failed to get checksum from Zenodo (ID {zenodo_id})")
+
+    # Return status indicating that file/folder is invalid, if failed
+    if not zenodo_ok:
+        log.error(f"Could not obtain checksum for Zenodo record {zenodo_id}")
         return False
 
     # Read hashes file
