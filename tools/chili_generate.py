@@ -6,8 +6,8 @@
 from __future__ import annotations
 
 import os
-from glob import glob
 from copy import deepcopy
+from glob import glob
 
 import toml
 
