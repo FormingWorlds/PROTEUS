@@ -1,8 +1,6 @@
 version = "2.0"
 
 [params]
-resume = false
-offline = false
 
 [params.out]
 path = "chili_base"
@@ -208,7 +206,7 @@ radio_Th = 0.124
 [delivery.elements]
 use_metallicity = false
 H_kg = 4.7e20
-C_kg = 2.72e20
+C_kg = 2.73e20
 N_kg = 0.0
 S_kg = 0.0
 

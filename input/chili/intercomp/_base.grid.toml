@@ -1,0 +1,16 @@
+output = "chili_base_grid/"
+symlink = ""
+ref_config = "input/chili/intercomp/_base.toml"
+use_slurm = false
+
+max_jobs = 16       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 1        # maximum number of days to run (e.g. 1)
+max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+
+["delivery.elements.H_kg"]
+    method = "direct"
+    values = ["4.70e20", "1.60e20", "7.80e20", "16e20"]
+
+["delivery.elements.C_kg"]
+    method = "direct"
+    values = ["2.73e20", "1.36e20", "2.72e20", "5.44e20"]
