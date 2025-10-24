@@ -1,32 +1,32 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: For when something is going wrong
 title: ''
-labels: ''
+labels: 'Bug'
 assignees: ''
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+**Problem description**
+A description of what is actually happening.
+
+**Expected behavior**
+A description of what you would have expected to happen.
 
 **To Reproduce**
 Steps to reproduce the behavior:
 1. Go to '...'
 2. Click on '....'
-3. Scroll down to '....'
-4. See error
+3. See error
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+**Evidence**
+Add screenshots and logs to help explain your problem.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+**Description of computer used**
+For example: MacOS Version 13, Fedora Linux, Habrok server.
 
-**Description of computer used (please complete the following information):**
- - OS: [e.g. Ubuntu]
- - Python [e.g. 3.11]
- - Branch name [e.g. testing]
-
-**Additional context**
+**Additional notes**
 Add any other context about the problem here.
+
+**Relevant people**
+Tag relevant people here.

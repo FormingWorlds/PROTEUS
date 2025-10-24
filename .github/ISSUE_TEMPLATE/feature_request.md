@@ -1,20 +1,23 @@
 ---
 name: Feature request
-about: Suggest an idea for this project
+about: For when something needs to be changed, added, or removed
 title: ''
 labels: ''
 assignees: ''
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+**Feature description**
+A short description of what you would like to be done; e.g. a new feature to be added.
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+**Preferred solution**
+Your suggested or preferred solution for implementing this feature or change.
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+**Alternative solutions**
+Alterative solutions for implementation
 
 **Additional context**
-Add any other context or screenshots about the feature request here.
+Any other additional context. You can expand with more detail here, add papers, etc.
+
+**Relevant people**
+Tag people who should know about this request.
