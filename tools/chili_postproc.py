@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import sys
 from glob import glob
+from shutil import copyfile
 
 import matplotlib as mpl
 
@@ -21,12 +22,27 @@ from proteus.config import read_config_object
 from proteus.utils.constants import R_earth, vol_list
 from proteus.utils.plot import get_colour, latexify
 
-# Target times for sampling profile [years]
-tau_target = [1e3, 1e4, 1e5, 1e7, 1e9]
+# Target times for sampling profile [log years]
+tau_target = [3, 4, 5, 7, 9]
 
 def postproc_once(simdir:str):
     '''Run postprocessing steps for a single simulation'''
     print(f"Simulation dir: {simdir}")
+
+    # Determine file name
+    try:
+        name = os.path.basename(simdir).split("_")[-1].replace("/","")
+        match name:
+            case "tr1b":
+                name = "trappist1b"
+            case "tr1e":
+                name = "trappist1e"
+            case "tr1a":
+                name = "trappist1alpha"
+            case _:
+                pass
+    except Exception:
+        name = "PLANET"
 
     # Read simulation helpfile
     hfpath = os.path.join(simdir, "runtime_helpfile.csv")
@@ -34,8 +50,13 @@ def postproc_once(simdir:str):
         raise FileNotFoundError(f"Cannot find {hfpath}")
     hf_all = pd.read_csv(hfpath, delimiter=r'\s+')
 
+    # Copy config
+    print("Copy config file")
+    config_path = os.path.join(simdir, "init_coupler.toml")
+    copyfile(config_path, os.path.join(simdir,f"evolution-proteus-{name}-config.in"))
+
     # Read config
-    config = read_config_object(os.path.join(simdir, "init_coupler.toml"))
+    config = read_config_object(config_path)
 
     # Write to expected format
     out = {}
@@ -62,18 +83,21 @@ def postproc_once(simdir:str):
     out["flux_ASR(W/m2)"]   = np.array(hf_all["F_ins"].iloc[:]) * config.orbit.s0_factor * (1-config.atmos_clim.albedo_pl)
     out["thick_surf_bl(m)"] = np.ones_like(out["t(yr)"]) * config.atmos_clim.surface_d
 
+
     # Write to scalar CSV
     print("Write CSV file for scalars")
-    outpath = os.path.join(simdir, "chili.csv")
+    outpath = os.path.join(simdir, f"evolution-proteus-{name}-data.csv")
+    print(f"    {outpath}")
     pd.DataFrame(out).to_csv(outpath, sep=',', index=False, float_format="%.10e")
 
     # Write TPZ profiles at required times
     print("Write CSV files for profiles")
     for tau in tau_target:
-        iclose = np.argmin(np.abs(tau - out["t(yr)"]))
+        tau_time = 10**tau
+        iclose = np.argmin(np.abs(tau_time - out["t(yr)"]))
         tclose = out["t(yr)"][iclose]
-        print(f"    {tau:.2e} -> {tclose:.2e} yr")
-        if (tclose > tau*10) or (tclose < tau/10):
+        print(f"    tau{tau} -> {tclose:.2e} yr")
+        if (tclose > tau_time*10) or (tclose < tau_time/10):
             print("    too far from target time, skipping")
             continue
 
@@ -84,7 +108,7 @@ def postproc_once(simdir:str):
             zarr = np.array(ds.variables["r"][:]  ) - np.amin(ds.variables["r"])
         X = np.array([tarr, parr, zarr]).T
         H = "T(K),p(bar),z(m)"
-        csvname = f"chili_logt={np.log10(tclose):.2f}".replace(".","p") + ".csv"
+        csvname = f"evolution-proteus-{name}-tau{tau}-data.csv"
         f = os.path.join(simdir,csvname)
         print(f"      {f}")
         np.savetxt(f, X, fmt="%.10e", delimiter=',', header=H)
