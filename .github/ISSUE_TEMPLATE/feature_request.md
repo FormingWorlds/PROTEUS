@@ -7,17 +7,14 @@ assignees: ''
 
 ---
 
-**Feature description**
+## Feature description
 A short description of what you would like to be done; e.g. a new feature to be added.
 
-**Preferred solution**
+## Preferred solution
 Your suggested or preferred solution for implementing this feature or change.
 
-**Alternative solutions**
-Alterative solutions for implementation
+## Additional information
+Any other additional context; e.g. more details, related papers, other solutions.
 
-**Additional context**
-Any other additional context. You can expand with more detail here, add papers, etc.
-
-**Relevant people**
+## Relevant people
 Tag people who should know about this request.

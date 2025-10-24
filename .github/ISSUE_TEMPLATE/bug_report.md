@@ -7,26 +7,20 @@ assignees: ''
 
 ---
 
-**Problem description**
-A description of what is actually happening.
+## Problem description
+A description of what is happening, and steps outlining what causes it to happen.
 
-**Expected behavior**
+## Expected behavior
 A description of what you would have expected to happen.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. See error
-
-**Evidence**
+## Evidence
 Add screenshots and logs to help explain your problem.
 
-**Description of computer used**
-For example: MacOS Version 13, Fedora Linux, Habrok server.
+## My computer
+Describe the computer used to run the code when the bug was found; e.g Fedora Linux with Python 3.12
 
-**Additional notes**
-Add any other context about the problem here.
+## Additional notes
+Add any other context about the problem here; e.g. suggest potential solutions
 
-**Relevant people**
+## Relevant people
 Tag relevant people here.
