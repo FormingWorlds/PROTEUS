@@ -232,4 +232,3 @@ network = "SNCHO"
 save_frames = true
 yconv_cri = 0.05
 slope_cri = 0.0001
-
