@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 # Generate PROTEUS config files for CHILI intercomparison project
+from __future__ import annotations
 
-import toml
 import os
 from copy import deepcopy
-from numpy import pi
 
-# Constants
-cG    = 6.67430e-11    # m3 kg-1 s-2
-cMsun = 1.989e30       # kg
-cday  = 60*60*24.0     # s
+import toml
 
 # Folder containing configuration files
 intercomp = os.path.dirname(os.path.abspath(__file__))
@@ -50,11 +46,6 @@ for p in ("earth","venus"):
     grd[p]["output"]     = f"chili_{p}_grid/"
     grd[p]["ref_config"] = f"input/chili/intercomp/{p}.toml"
 
-    pth = os.path.join(intercomp, p+".grid.toml")
-    with open(pth,'w') as hdl:
-        toml.dump(grd[p], hdl)
-    print(f"Wrote {p:5s} grid to {pth}")
-
 # ------------------------
 # TRAPPIST-1 b/e/alpha (Table 4 of protocol paper)
 for p in ("tr1a","tr1b","tr1e"):
@@ -67,12 +58,26 @@ cfg["tr1a"]["orbit"]["semimajorax"] = 6.750e-4 # AU
 
 
 # ------------------------
-# Write all planet configs
+# Write configs for all planets
 for p in cfg.keys():
-    pth = os.path.join(intercomp, p+".toml")
+    if p == "base":
+        continue
+
+    pth = os.path.join(intercomp, f"{p}.toml")
     with open(pth,'w') as hdl:
         toml.dump(cfg[p], hdl)
+
     print(f"Wrote {p:5s} config to {pth}")
+
+# Write configs for Earth+Venus grids
+for p in ("earth", "venus"):
+
+    pth = os.path.join(intercomp, f"{p}.grid.toml")
+    with open(pth,'w') as hdl:
+        toml.dump(grd[p], hdl)
+
+    print(f"Wrote {p:5s} grid to {pth}")
+
 
 # Exit
 print(" ")
