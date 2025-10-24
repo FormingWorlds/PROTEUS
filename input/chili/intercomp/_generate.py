@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from glob import glob
 from copy import deepcopy
 
 import toml
@@ -21,11 +22,16 @@ grd = {"base":toml.load(pth_grid)}
 print(f"Loaded grid config from {pth_grid}")
 print(" ")
 
+# Remove old configs
+for f in glob(os.path.join(intercomp,"*.toml")):
+    if "/_" not in f:
+        os.remove(f)
+
 # ------------------------
 # Earth and Venus (Table 2 of protocol paper)
 for p in ("earth","venus"):
     cfg[p] = deepcopy(cfg["base"])
-    cfg[p]["output"] = f"chili_{p}/"
+    cfg[p]["params"]["out"]["path"] = f"chili_{p}"
     cfg[p]["star"]["mass"] = 1.0  # Msun
 
 # Planet mass
@@ -40,7 +46,7 @@ cfg["venus"]["orbit"]["semimajorax"] = 0.723  # AU
 cfg["earth"]["star"]["bol_scale"] = 1005.3/920.0
 cfg["venus"]["star"]["bol_scale"] = 1.0
 
-# Write grid configs (H and C inventories) for these two planets
+# Grid configs (H and C inventories) for these two planets
 for p in ("earth","venus"):
     grd[p] = deepcopy(grd["base"])
     grd[p]["output"]     = f"chili_{p}_grid/"
