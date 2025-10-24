@@ -19,13 +19,15 @@ print(f"Loaded base config from {pth_base}")
 # Load grid config
 pth_grid = os.path.join(intercomp,"_base.grid.toml")
 grd = {"base":toml.load(pth_grid)}
-print(f"Loaded grid config from {pth_grid}")
-print(" ")
+print(f"Loaded base grid from {pth_grid}")
 
+# ------------------------
 # Remove old configs
+print(" ")
 for f in glob(os.path.join(intercomp,"*.toml")):
-    if "/_" not in f:
+    if "_base" not in f:
         os.remove(f)
+print("Removed old configs")
 
 # ------------------------
 # Earth and Venus (Table 2 of protocol paper)
@@ -39,8 +41,8 @@ cfg["earth"]["struct"]["mass_tot"] = 1.0    # Mearth
 cfg["venus"]["struct"]["mass_tot"] = 0.815  # Mearth
 
 # Orbital distance
-cfg["earth"]["orbit"]["semimajorax"] = 1.0    # AU
-cfg["venus"]["orbit"]["semimajorax"] = 0.723  # AU
+cfg["earth"]["orbit"]["semimajoraxis"] = 1.0    # AU
+cfg["venus"]["orbit"]["semimajoraxis"] = 0.723  # AU
 
 # Scale bolometric flux to match Baraffe tracks at t=t0
 cfg["earth"]["star"]["bol_scale"] = 1005.3/920.0
@@ -58,13 +60,14 @@ for p in ("tr1a","tr1b","tr1e"):
     cfg[p] = deepcopy(cfg["base"])
     cfg[p]["output"] = f"chili_{p}/"
     cfg[p]["star"]["mass"] = 0.1      # Msun
-cfg["tr1b"]["orbit"]["semimajorax"] = 1.154e-2 # AU
-cfg["tr1e"]["orbit"]["semimajorax"] = 2.295e-2 # AU
-cfg["tr1a"]["orbit"]["semimajorax"] = 6.750e-4 # AU
+cfg["tr1b"]["orbit"]["semimajoraxis"] = 1.154e-2 # AU
+cfg["tr1e"]["orbit"]["semimajoraxis"] = 2.295e-2 # AU
+cfg["tr1a"]["orbit"]["semimajoraxis"] = 6.750e-4 # AU
 
 
 # ------------------------
 # Write configs for all planets
+print(" ")
 for p in cfg.keys():
     if p == "base":
         continue
@@ -73,7 +76,7 @@ for p in cfg.keys():
     with open(pth,'w') as hdl:
         toml.dump(cfg[p], hdl)
 
-    print(f"Wrote {p:5s} config to {pth}")
+    print(f"Wrote new {p:5s} config to {pth}")
 
 # Write configs for Earth+Venus grids
 for p in ("earth", "venus"):
@@ -82,7 +85,7 @@ for p in ("earth", "venus"):
     with open(pth,'w') as hdl:
         toml.dump(grd[p], hdl)
 
-    print(f"Wrote {p:5s} grid to {pth}")
+    print(f"Wrote new {p:5s} grid to {pth}")
 
 
 # Exit
