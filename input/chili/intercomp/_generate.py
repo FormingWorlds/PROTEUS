@@ -45,8 +45,8 @@ cfg["earth"]["orbit"]["semimajoraxis"] = 1.0    # AU
 cfg["venus"]["orbit"]["semimajoraxis"] = 0.723  # AU
 
 # Scale bolometric flux to match Baraffe tracks at t=t0
-cfg["earth"]["star"]["bol_scale"] = 1005.3/920.0
-cfg["venus"]["star"]["bol_scale"] = 1.0
+cfg["earth"]["star"]["bol_scale"] = 920.0  / 1005.3
+cfg["venus"]["star"]["bol_scale"] = 1760.0 / 1923.1
 
 # Grid configs (H and C inventories) for these two planets
 for p in ("earth","venus"):
