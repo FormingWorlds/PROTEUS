@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-# Generate PROTEUS config files for CHILI intercomparison project
+
+# Script to generate PROTEUS config files for the CHILI intercomparison project.
+# See `input/chili/readme.txt` for more information.
+
 from __future__ import annotations
 
 import os
@@ -9,7 +12,7 @@ from copy import deepcopy
 import toml
 
 # Folder containing configuration files
-intercomp = os.path.dirname(os.path.abspath(__file__))
+intercomp = os.path.abspath(os.path.join(os.path.dirname(__file__),"..","input","chili","intercomp"))
 
 # Load base config
 pth_base = os.path.join(intercomp,"_base.toml")
@@ -45,7 +48,7 @@ cfg["earth"]["orbit"]["semimajoraxis"] = 1.0    # AU
 cfg["venus"]["orbit"]["semimajoraxis"] = 0.723  # AU
 
 # Scale bolometric flux to match Baraffe tracks at t=t0
-cfg["earth"]["star"]["bol_scale"] = 920.0  / 1005.3
+cfg["earth"]["star"]["bol_scale"] = 920.0 / 1005.3
 cfg["venus"]["star"]["bol_scale"] = 1760.0 / 1923.1
 
 # Grid configs (H and C inventories) for these two planets
@@ -55,7 +58,7 @@ for p in ("earth","venus"):
     grd[p]["ref_config"] = f"input/chili/intercomp/{p}.toml"
 
 # ------------------------
-# TRAPPIST-1 b/e/alpha (Table 4 of protocol paper)
+# TRAPPIST-1 b/e/α (Table 4 of protocol paper)
 for p in ("tr1a","tr1b","tr1e"):
     cfg[p] = deepcopy(cfg["base"])
     cfg[p]["output"] = f"chili_{p}/"
