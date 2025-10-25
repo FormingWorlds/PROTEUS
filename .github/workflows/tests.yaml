@@ -120,7 +120,7 @@ jobs:
 
       # Run PROTEUS tests
       - name: Test with pytest
-        run: coverage run -m pytest
+        run: LD_LIBRARY_PATH="" coverage run -m pytest
 
       # Upload result if tests fail
       - name: Upload result as artifact
