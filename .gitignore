@@ -12,6 +12,8 @@ socrates_star.txt
 radiation_code.lock
 screenlog.0
 chili.csv
+input/chili/intercomp/*.toml
+!input/chili/intercomp/_*
 
 # Output files
 old/
