@@ -62,7 +62,7 @@ jobs:
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: '1.12'
+          version: '1.11'
 
       - name: Cache Julia
         uses: julia-actions/cache@v2
@@ -120,7 +120,7 @@ jobs:
 
       # Run PROTEUS tests
       - name: Test with pytest
-        run: LD_LIBRARY_PATH="" coverage run -m pytest
+        run: coverage run -m pytest
 
       # Upload result if tests fail
       - name: Upload result as artifact
