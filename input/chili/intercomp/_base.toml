@@ -130,7 +130,7 @@ dx_max = 10.0
 max_steps = 70
 perturb_all = true
 mlt_criterion = "l"
-fastchem_floor = 100.0
+fastchem_floor = 273.0
 
 [atmos_clim.dummy]
 gamma = 0.01
