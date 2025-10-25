@@ -260,9 +260,9 @@ def update_stellar_quantities(hf_row:dict, config:Config, stellar_track=None):
     log.debug("Update stellar fluxes and temperature")
     update_instellation(hf_row, config, stellar_track)
     update_stellar_temperature(hf_row, config, stellar_track)
-    log.info("    F_ins      = %.2e   W m-2"%hf_row["F_ins"])
-    log.info("    F_xuv      = %.2e   W m-2"%hf_row["F_xuv"])
-    log.info("    T_star     = %.2f    K"%hf_row["T_star"])
+    log.info("    F_ins      = %.3e   W m-2"%hf_row["F_ins"])
+    log.info("    F_xuv      = %.3e   W m-2"%hf_row["F_xuv"])
+    log.info("    T_star     = %.3f    K"%hf_row["T_star"])
 
     # Calculate new eqm temperature
     log.debug("Update equilibrium temperature")
