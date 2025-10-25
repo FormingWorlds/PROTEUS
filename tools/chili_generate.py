@@ -62,7 +62,7 @@ for p in ("earth","venus"):
 for p in ("tr1a","tr1b","tr1e"):
     cfg[p] = deepcopy(cfg["base"])
     cfg[p]["params"]["out"]["path"]  = f"chili_{p}"
-    cfg[p]["params"]["stop"]["time"]["maximum"] = 7.6 - cfg[p]["star"]["age_ini"] # Gyr
+    cfg[p]["params"]["stop"]["time"]["maximum"] = (7.6 - cfg[p]["star"]["age_ini"])*1e9
     cfg[p]["star"]["mass"] = 0.1      # Msun
 cfg["tr1b"]["orbit"]["semimajoraxis"] = 1.154e-2 # AU
 cfg["tr1e"]["orbit"]["semimajoraxis"] = 2.295e-2 # AU
