@@ -61,11 +61,12 @@ for p in ("earth","venus"):
 # TRAPPIST-1 b/e/α (Table 4 of protocol paper)
 for p in ("tr1a","tr1b","tr1e"):
     cfg[p] = deepcopy(cfg["base"])
-    cfg[p]["output"] = f"chili_{p}/"
+    cfg[p]["params"]["out"]["path"]  = f"chili_{p}"
+    cfg[p]["params"]["stop"]["time"]["maximum"] = (7.6 - cfg[p]["star"]["age_ini"])*1e9
     cfg[p]["star"]["mass"] = 0.1      # Msun
 cfg["tr1b"]["orbit"]["semimajoraxis"] = 1.154e-2 # AU
 cfg["tr1e"]["orbit"]["semimajoraxis"] = 2.295e-2 # AU
-cfg["tr1a"]["orbit"]["semimajoraxis"] = 6.750e-4 # AU
+cfg["tr1a"]["orbit"]["semimajoraxis"] = 3.0e-3 #6.750e-4 # AU
 
 
 # ------------------------

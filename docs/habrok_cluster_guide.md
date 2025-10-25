@@ -30,7 +30,7 @@ Once you are connected to one of the interactive servers, use these steps to con
     echo "module purge" >>  "$HOME/.bashrc"
     ```
     ```console
-    echo "module load netCDF-Fortran"  >>  "$HOME/.bashrc"
+    echo "module load netCDF-Fortran libarchive"  >>  "$HOME/.bashrc"
     ```
 
 2. Log out of Habrok, and then login again

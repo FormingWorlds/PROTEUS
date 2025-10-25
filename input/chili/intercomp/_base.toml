@@ -7,7 +7,7 @@ path = "chili_base"
 logging = "INFO"
 plot_fmt = "png"
 write_mod = 1
-plot_mod = 20
+plot_mod = 25
 archive_mod = "none"
 remove_sf = true
 
@@ -19,6 +19,7 @@ minimum = 10000.0
 minimum_rel = 1e-05
 maximum = 10000000.0
 initial = 30.0
+
 [params.dt.adaptive]
 atol = 0.03
 rtol = 0.10
@@ -112,11 +113,11 @@ tmp_maximum = 5000.0
 [atmos_clim.agni]
 spectral_group = "Dayspring"
 spectral_bands = "48"
-p_top = 1e-05
+p_top = 1e-04
 p_obs = 0.02
 surf_material = "greybody"
-num_levels = 42
-chemistry = "none"
+num_levels = 45
+chemistry = "eq"
 solve_energy = true
 solution_atol = 0.1
 solution_rtol = 0.1
@@ -129,7 +130,7 @@ dx_max = 10.0
 max_steps = 70
 perturb_all = true
 mlt_criterion = "l"
-fastchem_floor = 100.0
+fastchem_floor = 273.0
 
 [atmos_clim.dummy]
 gamma = 0.01
@@ -154,9 +155,9 @@ rheo_phi_loc = 0.5
 rheo_phi_wid = 0.2
 
 [interior.spider]
-ini_entropy = 3000.0
+ini_entropy = 3300.0
 ini_dsdr = -4.698e-06
-num_levels = 140
+num_levels = 150
 mixing_length = 2
 tolerance = 1e-08
 tolerance_rel = 1e-08

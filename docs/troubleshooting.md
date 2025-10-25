@@ -204,3 +204,10 @@ compile and link steps:
 ```console
 -L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib/`.
 ```
+
+## All: Julia compatibility error / OpenSSL_jll
+
+There are incompatibilities between Python and some versions of Julia. For example, Julia version 1.12 is not yet supported, because it requires a version of the OpenSSL library that is incompatible with Python.
+
+You must make sure to only use Python versions 3.12 and 3.13, and Julia version 1.11 to avoid these problems.
+

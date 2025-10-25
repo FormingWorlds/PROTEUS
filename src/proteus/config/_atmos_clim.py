@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le
@@ -38,6 +39,15 @@ def valid_agni(instance, attribute, value):
         raise ValueError("Must set atmos_clim.agni.spectral_group")
     if not instance.agni.spectral_bands:
         raise ValueError("Must set atmos_clim.agni.spectral_bands")
+
+    # fastchem installed?
+    if instance.agni.chemistry == "eq":
+        FC_DIR = os.environ.get("FC_DIR")
+        if FC_DIR:
+            if not os.path.isdir(FC_DIR):
+                raise FileNotFoundError(f"Fastchem not found at FC_DIR={FC_DIR}")
+        else:
+            raise EnvironmentError("Chemistry is enabled but environment variable `FC_DIR` is not set")
 
 @define
 class Agni:
