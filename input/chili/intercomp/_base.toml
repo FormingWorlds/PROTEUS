@@ -4,10 +4,10 @@ version = "2.0"
 
 [params.out]
 path = "chili_base"
-logging = "DEBUG"
+logging = "INFO"
 plot_fmt = "png"
 write_mod = 1
-plot_mod = 20
+plot_mod = 25
 archive_mod = "none"
 remove_sf = true
 
@@ -19,6 +19,7 @@ minimum = 10000.0
 minimum_rel = 1e-05
 maximum = 10000000.0
 initial = 30.0
+
 [params.dt.adaptive]
 atol = 0.03
 rtol = 0.10
