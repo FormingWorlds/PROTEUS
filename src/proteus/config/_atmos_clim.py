@@ -6,7 +6,7 @@ import os
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le
 
-from ._converters import none_if_none
+from ._converters import lowercase, none_if_none
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -87,6 +87,8 @@ class Agni:
         Use the transparent-atmosphere solver when P_surf is less than this value [bar].
     dx_max: float
         Nominal maximum step size to T(p) during the solver process, although this is dynamic.
+    dx_max_ini: float
+        Initial maximum step size to T(p) when AGNI is called in the first few PROTEUS loops.
     max_steps: int
         Maximum number of iterations before giving up.
     perturb_all: bool
@@ -103,6 +105,8 @@ class Agni:
         FC solver tolerance (chemistry)
     fastchem_xtol_elem:float
         FC solver tolerance (elemental)
+    ini_profile: str
+        Shape of initial T(p) guess: 'loglinear', 'isothermal', 'dry_adiabat', 'analytic'.
     """
 
     spectral_group: str     = field(default=None)
@@ -122,7 +126,8 @@ class Agni:
     latent_heat: bool       = field(default=False)
     real_gas: bool          = field(default=False)
     psurf_thresh: float     = field(default=0.1, validator=ge(0))
-    dx_max: float           = field(default=35.0, validator=gt(1))
+    dx_max: float           = field(default=35.0,  validator=gt(1))
+    dx_max_ini: float       = field(default=300.0, validator=gt(1))
     max_steps: int          = field(default=70, validator=gt(2))
     perturb_all: bool       = field(default=True)
     mlt_criterion: str      = field(default='l', validator=in_(('l','s',)))
@@ -131,6 +136,11 @@ class Agni:
     fastchem_maxiter_solv:int   = field(default=20000, validator=gt(200))
     fastchem_xtol_chem:float    = field(default=1e-4,  validator=gt(0.0))
     fastchem_xtol_elem:float    = field(default=1e-4,  validator=gt(0.0))
+    ini_profile: str        = field(default='loglinear',
+                                    converter=lowercase,
+                                    validator=in_(('loglinear','isothermal',
+                                                   'dry_adiabat','analytic'))
+                                    )
 
     @property
     def chemistry_int(self) -> int:

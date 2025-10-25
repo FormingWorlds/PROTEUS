@@ -234,13 +234,25 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                                 "data", "%.0f_atm.nc"%int(sorted(nc_times)[-1]))
         jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
 
-    # Otherwise, set to initial guess
+    # Otherwise, set profile initial guess
     else:
-        tmp_top = 400.0
-        tmp_top = min(tmp_top, hf_row["T_surf"])
-        log.debug("Initialised log-linear (top = %.2f K)"%tmp_top)
-        jl.AGNI.setpt.loglinear_b(atmos, -0.5 * hf_row["T_surf"])
-        jl.AGNI.setpt.stratosphere_b(atmos, tmp_top)
+        # do as requested by user in the config
+        log.info(f"Initialising T(p) as {config.atmos_clim.agni.ini_profile}")
+        match config.atmos_clim.agni.ini_profile:
+            case "loglinear":
+                jl.AGNI.setpt.loglinear_b(atmos, -0.5 * hf_row["T_surf"])
+            case "isothermal":
+                jl.AGNI.setpt.isothermal_b(atmos, hf_row["T_surf"])
+            case "dry_adiabat":
+                jl.AGNI.setpt.dry_adiabat_b(atmos)
+            case "analytic":
+                jl.AGNI.setpt.analytic_b(atmos)
+            case _:
+                log.error("Invalid initial profile selected")
+                return
+
+        # lower-limit on initial profile
+        jl.AGNI.setpt.stratosphere_b(atmos, min(400.0, hf_row["T_surf"]))
 
     # Logging
     sync_log_files(dirs["output"])
@@ -384,7 +396,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
 
         # parameters during initial few iterations
         if loops_total < 3:
-            dx_max = 300.0
+            dx_max      = float(config.atmos_clim.agni.dx_max_ini)
             ls_increase = 1.1
             max_steps   = 200
 

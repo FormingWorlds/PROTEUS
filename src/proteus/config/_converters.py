@@ -26,3 +26,6 @@ def dict_replace_none(data):
         else:
             new_data[k] = "none"
     return new_data
+
+def lowercase(val: str) -> str:
+    return val.lower()

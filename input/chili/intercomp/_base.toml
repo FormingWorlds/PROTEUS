@@ -117,7 +117,7 @@ p_top = 1e-04
 p_obs = 0.02
 surf_material = "greybody"
 num_levels = 45
-chemistry = "eq"
+chemistry = "none"
 solve_energy = true
 solution_atol = 0.1
 solution_rtol = 0.1
@@ -131,6 +131,7 @@ max_steps = 70
 perturb_all = true
 mlt_criterion = "l"
 fastchem_floor = 273.0
+ini_profile = "isothermal"
 
 [atmos_clim.dummy]
 gamma = 0.01
