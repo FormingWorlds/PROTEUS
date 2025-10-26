@@ -98,7 +98,7 @@ radius_int = "none"
 
 [atmos_clim]
 module = "agni"
-surf_state = "fixed"
+surf_state = "skin"
 prevent_warming = true
 surface_d = 0.01
 surface_k = 2.0
@@ -126,7 +126,7 @@ condensation = false
 latent_heat = false
 real_gas = true
 psurf_thresh = 0.1
-dx_max     = 10.0
+dx_max     = 15.0
 dx_max_ini = 200.0
 max_steps = 70
 perturb_all = true
@@ -157,7 +157,7 @@ rheo_phi_loc = 0.5
 rheo_phi_wid = 0.2
 
 [interior.spider]
-ini_entropy = 3300.0
+ini_entropy = 3200.0
 ini_dsdr = -4.698e-06
 num_levels = 150
 mixing_length = 2
