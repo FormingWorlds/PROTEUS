@@ -459,6 +459,103 @@ def save_error_running_cases(grid_name: str, cases_data: List[Dict[str, Any]], g
 
     print(f"→ Error/Running (and missing‐output) CSV saved to: {err_csv}")
 
+def save_completed_cases(
+    grid_name: str,
+    cases_data: List[Dict[str, Any]],
+    grid_parameters: Dict[str, List[Any]],
+    case_params: Dict[int, Dict[str, Any]],
+    extracted_value: Dict[str, List[Any]],
+    output_to_extract: List[str],
+    output_dir: Path,
+) -> None:
+    """
+    Save all cases whose status starts with 'Completed' into a separate CSV file
+    named '{grid_name}_filtered.csv'.
+
+    Parameters
+    ----------
+    grid_name : str
+        Name of the grid.
+
+    cases_data : list
+        List of dictionaries containing simulation data.
+
+    grid_parameters : dict
+        A dictionary where each key is a parameter name, and its corresponding values
+        used for the entire grid is a list.
+
+    case_params : dict
+        Dictionary containing each case number with the name and values of the
+        tested parameters in this grid.
+
+    extracted_value : dict
+        A dictionary containing the extracted values of the specified parameter
+        for all cases of the grid.
+
+    output_to_extract : list
+        List of output values extracted from each simulation in the grid.
+
+    output_dir : Path
+        Directory where the generated CSV file will be saved.
+        Created if it does not exist.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Identify indices where status starts with "Completed" (case-insensitive, trimmed)
+    completed_indices = []
+    for idx, case_data in enumerate(cases_data):
+        status_raw = case_data.get("status", "")
+        # Normalize status string safely
+        if not isinstance(status_raw, str):
+            continue
+        status_clean = status_raw.strip().lower().replace('\xa0', ' ')  # replace non-breaking spaces if any
+        if status_clean.startswith("completed"):
+            completed_indices.append(idx)
+
+    if not completed_indices:
+        print("→ No cases with status starting with 'Completed' found; skipping filtered CSV.")
+        return
+
+    # Build output path
+    filtered_csv = output_dir / f"{grid_name}_filtered.csv"
+
+    with open(filtered_csv, mode="w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+
+        # Header block
+        writer.writerow(["#############################################################################################################"])
+        writer.writerow([f"Grid name:                               {grid_name}"])
+        writer.writerow([f"Total number of 'Completed*' cases:      {len(completed_indices)}"])
+        writer.writerow(["----------------------------------------------------------"])
+        writer.writerow(
+            ["Case number", "Status"]
+            + list(grid_parameters.keys())
+            + list(extracted_value.keys())
+        )
+        writer.writerow(["#############################################################################################################"])
+        writer.writerow([])
+
+        # Write each completed case row
+        for case_index in completed_indices:
+            status = cases_data[case_index].get("status", "Unknown") or "Unknown"
+            row = [case_index, f"'{status}'"]
+
+            # Add grid parameter values
+            for param in grid_parameters.keys():
+                row.append(case_params.get(case_index, {}).get(param, "NA"))
+
+            # Add extracted outputs
+            for param in extracted_value.keys():
+                vals = extracted_value[param]
+                if case_index < len(vals):
+                    row.append(vals[case_index])
+                else:
+                    row.append("NA")
+
+            writer.writerow(row)
+
+    print(f"→ Completed* cases CSV saved to: {filtered_csv}")
 
 ##### Functions for plotting grid data results #####
 
@@ -902,6 +999,19 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
             ax = axes[i][j]
             out_settings = output_settings[output_name]
 
+            # Add panel number in upper-left corner
+            panel_number = i * n_cols + j + 1  # number of panels left-to-right, top-to-bottom
+            ax.text(
+                0.02, 0.98,               # relative position in axes coordinates
+                str(panel_number),         # text to display
+                transform=ax.transAxes,    # use axis-relative coordinates
+                fontsize=18,
+                fontweight='bold',
+                va='top',                  # vertical alignment
+                ha='left',                  # horizontal alignment
+                color='black'
+            )
+
             # Plot one ECDF per tested parameter value
             for val in tested_param:
                 data_key = f"{output_name}_per_{param_name}"
@@ -945,8 +1055,13 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
             rightmost_ax = axes[i, -1]
             cbar = fig.colorbar(sm,ax=rightmost_ax,pad=0.03,aspect=10)
             cbar.set_label(settings["label"], fontsize=24)
-            # (you can remove or tweak the label‐coords line if it ends up too far to the right)
-            cbar.ax.yaxis.set_label_coords(5.5, 0.5)
+            # This is for plot 0.194Msun
+            # if param_name == "orbit.semimajoraxis":
+            #     cbar.ax.yaxis.set_label_coords(9.5, 0.5)
+            # else:
+            #     cbar.ax.yaxis.set_label_coords(6, 0.5)
+            # This is for 1Msun
+            cbar.ax.yaxis.set_label_coords(6, 0.5)
             ticks = sorted(set(tested_param))
             cbar.set_ticks(ticks)
             cbar.ax.tick_params(labelsize=22)
@@ -962,6 +1077,7 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
     filename = "ecdf_grid_plot.png"
     out_path = os.path.join(plots_path, filename)
     fig.savefig(out_path, dpi=300)
+    #fig.savefig('/home2/p315557/PROTEUS/nogit_files/nogit_code/paper1_plots/plots/1Msun_ecdf_grid_plot.png', dpi=300)
     plt.close(fig)
 
     print(f"Grid ECDF plot saved at {out_path}")
