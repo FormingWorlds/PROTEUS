@@ -112,17 +112,17 @@ tmp_maximum = 5000.0
 
 [atmos_clim.agni]
 spectral_group = "Dayspring"
-spectral_bands = "48"
+spectral_bands = "256"
 p_top = 1e-04
 p_obs = 0.02
 surf_material = "surface_albedos/Hammond24/lunarmarebasalt.dat"
-num_levels = 45
+num_levels = 50
 chemistry = "none"
 solve_energy = true
 solution_atol = 0.1
 solution_rtol = 0.1
 overlap_method = "ee"
-condensation = true
+condensation = false
 latent_heat = false
 real_gas = true
 psurf_thresh = 0.1
