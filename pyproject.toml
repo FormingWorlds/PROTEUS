@@ -51,6 +51,7 @@ dependencies = [
     "fwl-zephyrus>=25.03.11",
     "aragog>=v0.2.8-alpha",
     "fwl-zalmoxis>=25.09.07",
+    "boreas@git+https://github.com/ExoInteriors/BOREAS"
     "cmcrameri",
     "juliacall",
     "matplotlib",
