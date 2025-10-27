@@ -35,7 +35,7 @@ def run_boreas(config:Config, hf_row:dict):
             Dictionary of helpfile variables, at this iteration only
     """
 
-    log.info("Running fractionated escape (BOREAS)...")
+    log.info("Running escape...")
 
     # Set parameters for escape
     params          = boreas.ModelParams()
