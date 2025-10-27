@@ -60,7 +60,7 @@ version = "2.0"
         spec    = "stellar_spectra/Named/trappist-1.txt" # stellar spectrum
 
 [orbit]
-    semimajoraxis   = 0.01       # AU
+    semimajoraxis   = 0.1       # AU
     eccentricity    = 0.0       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
@@ -105,15 +105,13 @@ version = "2.0"
 
     [escape.boreas]
         fractionate = true
-        efficiency = 0.01
-
-        alpha_rec = 2.6e-13
+        efficiency = 0.1
 
         sigma_H = 1.89e-18
-        sigma_O = 2e-18
-        sigma_C = 2.5e-18
-        sigma_N = 3e-18
-        sigma_S = 6e-18
+        sigma_O = 2.00e-18
+        sigma_C = 2.50e-18
+        sigma_N = 3.00e-18
+        sigma_S = 6.00e-18
 
         kappa_H2 = 0.01
         kappa_H2O = 1.0

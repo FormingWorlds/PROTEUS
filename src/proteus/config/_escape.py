@@ -68,8 +68,6 @@ class EscapeBoreas:
         Enable elemental fractionation in outflow?
     efficiency: float
         Energy efficiency factor.
-    alpha_rec: float
-        Recombination coefficient [cm3 s-1]
     sigma_H: float
         Absorption cross-section of H in XUV [cm2]
     sigma_O: float
@@ -105,7 +103,6 @@ class EscapeBoreas:
     """
     fractionate: bool = field(default=True)
     efficiency: float = field(default=0.1,      validator=(ge(0), le(1)))
-    alpha_rec: float  = field(default=2.6e-13,  validator=ge(0))
 
     sigma_H: float    = field(default=1.89e-18, validator=ge(0))
     sigma_O: float    = field(default=2.00e-18, validator=ge(0))

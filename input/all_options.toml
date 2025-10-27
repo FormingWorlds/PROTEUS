@@ -246,6 +246,26 @@ version = "2.0"
     [escape.dummy]
         rate        = 0.0           # Bulk unfractionated escape rate [kg s-1]
 
+     [escape.boreas]
+        fractionate  = true         # Include fractionation in outflow?
+        efficiency   = 0.1          # Escape efficiency factor
+        sigma_H   = 1.89e-18        # H absorption cross-section in XUV [cm2]
+        sigma_O   = 2.00e-18        # O absorption ^
+        sigma_C   = 2.50e-18        # C absorption ^
+        sigma_N   = 3.00e-18        # N absorption ^
+        sigma_S   = 6.00e-18        # S absorption ^
+        kappa_H2  = 0.01            # H2  opacity in IR, grey [cm2 g-1]
+        kappa_H2O = 1.0             # H2O opacity ^
+        kappa_O2  = 1.0             # O2  opacity ^
+        kappa_CO2 = 1.0             # CO2 opacity ^
+        kappa_CO  = 1.0             # CO  opacity ^
+        kappa_CH4 = 1.0             # CH4 opacity ^
+        kappa_N2  = 1.0             # N2  opacity ^
+        kappa_NH3 = 1.0             # NH3 opacity ^
+        kappa_H2S = 1.0             # H2S opacity ^
+        kappa_SO2 = 1.0             # SO2 opacity ^
+        kappa_S2  = 1.0             # S2  opacity ^
+
 # Interior - physics table
 [interior]
     grain_size      = 0.1           # crystal settling grain size [m]
