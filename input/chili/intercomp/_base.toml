@@ -5,9 +5,9 @@ version = "2.0"
 [params.out]
 path = "chili_base"
 logging = "INFO"
-plot_fmt = "png"
-write_mod = 1
-plot_mod = 25
+plot_fmt = "pdf"
+write_mod = 2
+plot_mod = 30
 archive_mod = "none"
 remove_sf = true
 
@@ -99,7 +99,7 @@ radius_int = "none"
 [atmos_clim]
 module = "agni"
 surf_state = "skin"
-prevent_warming = false
+prevent_warming = true
 surface_d = 0.01
 surface_k = 2.0
 cloud_enabled = false
@@ -119,7 +119,7 @@ surf_material = "surface_albedos/Hammond24/lunarmarebasalt.dat"
 num_levels = 50
 chemistry = "none"
 solve_energy = true
-solution_atol = 0.1
+solution_atol = 0.08
 solution_rtol = 0.1
 overlap_method = "ee"
 condensation = false

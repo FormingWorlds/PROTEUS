@@ -75,7 +75,6 @@ cfg["tr1b"]["orbit"]["semimajoraxis"] = 1.154e-2 # AU
 cfg["tr1e"]["orbit"]["semimajoraxis"] = 2.295e-2 # AU
 cfg["tr1a"]["orbit"]["semimajoraxis"] = 6.750e-4 # AU     2.0e-3
 
-
 # ------------------------
 # Write configs for all planets
 print(" ")
