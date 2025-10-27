@@ -11,6 +11,11 @@ from glob import glob
 
 import toml
 
+# Options
+use_scratch = True      # Store output in scratch folder
+
+# -----------------------------------------------
+
 # Folder containing configuration files
 intercomp = os.path.abspath(os.path.join(os.path.dirname(__file__),"..","input","chili","intercomp"))
 
@@ -54,14 +59,16 @@ cfg["venus"]["star"]["bol_scale"] = 1760.0 / 1923.1
 # Grid configs (H and C inventories) for these two planets
 for p in ("earth","venus"):
     grd[p] = deepcopy(grd["base"])
-    grd[p]["output"]     = f"chili_{p}_grid/"
+    grd[p]["output"]     = "scratch/" if use_scratch else ""
+    grd[p]["output"]    += f"chili_{p}_grid/"
     grd[p]["ref_config"] = f"input/chili/intercomp/{p}.toml"
 
 # ------------------------
 # TRAPPIST-1 b/e/α (Table 4 of protocol paper)
 for p in ("tr1a","tr1b","tr1e"):
     cfg[p] = deepcopy(cfg["base"])
-    cfg[p]["params"]["out"]["path"]  = f"chili_{p}"
+    cfg[p]["params"]["out"]["path"]  = "scratch/" if use_scratch else ""
+    cfg[p]["params"]["out"]["path"] += f"chili_{p}/"
     cfg[p]["params"]["stop"]["time"]["maximum"] = (7.6 - cfg[p]["star"]["age_ini"])*1e9
     cfg[p]["star"]["mass"] = 0.09      # Msun
 cfg["tr1b"]["orbit"]["semimajoraxis"] = 1.154e-2 # AU
