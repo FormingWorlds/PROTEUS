@@ -4,12 +4,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import boreas
 import numpy as np
 
-import boreas
-from proteus.utils.constants import element_list, element_mmw, const_Nav
-from proteus.utils.helper import eval_gas_mmw
 from proteus.escape.common import calc_unfract_fluxes
+from proteus.utils.constants import AU, element_list
+from proteus.utils.helper import eval_gas_mmw
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -40,6 +40,12 @@ def run_boreas(config:Config, hf_row:dict):
     # Set parameters for escape
     params          = boreas.ModelParams()
 
+    # These should not matter, but set them to be sure
+    params.albedo   = 0.0
+    params.beta     = 1.0
+    params.epsilon  = 1.0
+    params.aplau    = hf_row["semimajorax"] / AU
+
     # Set gas MASS mixing ratios from VOLUME mixing ratios
     #    first, get MMW of relevant gases at this layer
     mmw_xuv = 0.0
@@ -54,7 +60,6 @@ def run_boreas(config:Config, hf_row:dict):
         params.kappa[g]    = getattr(config.escape.boreas,"kappa_"+g)
     for e in BOREAS_ELEMS:
         params.sigma_XUV[e] = getattr(config.escape.boreas,"sigma_"+e)
-    params.alpha_rec    = config.escape.boreas.alpha_rec
     params.eff          = config.escape.boreas.efficiency
 
     # Set parameters from atmosphere calculation
@@ -115,4 +120,3 @@ def run_boreas(config:Config, hf_row:dict):
     for e in BOREAS_ELEMS:
         if e != 'H':
             log.info(f"    {e:2s} = {fr_result['x_'+e]:.6f}")
-

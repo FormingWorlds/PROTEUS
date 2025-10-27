@@ -95,7 +95,14 @@ def _get_julia_version():
 
 def validate_module_versions(dirs:dict, config:Config):
     '''
-    Check that modules are using compatible versions.
+    Raises an environment error if module versions are invalid/incompatible.
+
+    Parameters
+    -----------
+    - dirs:dict
+        Directories dictionary
+    - config:Config
+        PROTEUS config object
     '''
 
     log.info("Validating module versions")
@@ -130,15 +137,33 @@ def validate_module_versions(dirs:dict, config:Config):
             patch = 0
         return major, minor, patch
 
-    # Check if actual version is compatible with expected version
-    def _valid_ver(act_str, exp_str, name):
-        # return True of expected is None
+    def _valid_ver(act_str:str, exp_str:str, name:str) -> bool:
+        '''Check if found version is compatible with expected version.
+
+        Parameters
+        -----------
+        - act_str:str
+            Actual module version found installed
+        - exp_str:str
+            Expected or required version of the module
+        - name:str
+            Module name
+
+        Returns
+        ----------
+        - bool
+            Version is compatible
+        '''
+
+        # return True if expected is None
         if exp_str is None:
             return True
 
         # convert from string to m/m/p format (or y/m/d format)
         vact = _split_ver(act_str)
         vexp = _split_ver(exp_str)
+
+        log.debug(f"Parsed {name:10s} version as {vact}. Requires>={vexp}")
 
         # Check major, minor, patch
         for i in range(3):
@@ -158,42 +183,39 @@ def validate_module_versions(dirs:dict, config:Config):
             pass
         case 'aragog':
             from aragog import __version__ as aragog_version
-            if not _valid_ver(aragog_version, _get_expver("aragog"), "Aragog"):
-                valid = False
+            valid &= _valid_ver(aragog_version, _get_expver("fwl-aragog"), "Aragog")
 
     # Struct module
     if config.struct.module == 'zalmoxis':
         from zalmoxis import __version__ as zalmoxis_version
-        if not _valid_ver(zalmoxis_version, _get_expver("fwl-zalmoxis"), "ZALMOXIS"):
-            valid = False
+        valid &= _valid_ver(zalmoxis_version, _get_expver("fwl-zalmoxis"), "Zalmoxis")
 
     # Atmosphere module
     match config.atmos_clim.module:
         case 'janus':
             from janus import __version__ as janus_version
-            if not _valid_ver(janus_version, _get_expver("fwl-janus"), "JANUS"):
-                valid = False
+            valid &= _valid_ver(janus_version, _get_expver("fwl-janus"), "JANUS")
         case 'agni':
-            if not _valid_ver(_get_agni_version(dirs), AGNI_MIN_VERSION, "AGNI"):
-                valid = False
+            valid &= _valid_ver(_get_agni_version(dirs), AGNI_MIN_VERSION, "AGNI")
 
     # Outgassing module
     if config.outgas.module == 'calliope':
         from calliope import __version__ as calliope_version
-        if not _valid_ver(calliope_version, _get_expver("fwl-calliope"), "CALLIOPE"):
-            valid = False
+        valid &= _valid_ver(calliope_version, _get_expver("fwl-calliope"), "CALLIOPE")
 
     # Escape module
-    if config.escape.module == 'zephyrus':
-        from zephyrus import __version__ as zephyrus_version
-        if not _valid_ver(zephyrus_version, _get_expver("fwl-zephyrus"), "ZEPHYRUS"):
-            valid = False
+    match config.escape.module:
+        case 'zephyrus':
+            from zephyrus import __version__ as zephyrus_version
+            valid &= _valid_ver(zephyrus_version, _get_expver("fwl-zephyrus"), "ZEPHYRUS")
+        case 'boreas':
+            from boreas import __version__ as boreas_version
+            valid &= _valid_ver(boreas_version, _get_expver("boreas"), "BOREAS")
 
     # Star module
     if config.star.module == 'mors':
         from mors import __version__ as mors_version
-        if not _valid_ver(mors_version, _get_expver("fwl-mors"), "MORS"):
-            valid = False
+        valid &= _valid_ver(mors_version, _get_expver("fwl-mors"), "MORS")
 
     # Exit
     if not valid:
