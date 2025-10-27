@@ -8,7 +8,7 @@ import boreas
 import numpy as np
 
 from proteus.escape.common import calc_unfract_fluxes
-from proteus.utils.constants import AU, element_list
+from proteus.utils.constants import AU, element_list, gas_list
 from proteus.utils.helper import eval_gas_mmw
 
 if TYPE_CHECKING:
@@ -16,9 +16,11 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("fwl."+__name__)
 
-# Supported gases
-BOREAS_GASES = ("H2O", "H2" , "O2" , "CO2", "CO" , "CH4", "N2" , "NH3", "H2S", "SO2", "S2")
-BOREAS_ELEMS = ('H','C','O','N','S')
+# Get set of shared-supported gases
+BOREAS_GASES = set(boreas.ModelParams().kappa.keys()) & set(gas_list)
+
+# Get set of shared-supported elements
+BOREAS_ELEMS = set(boreas.ModelParams().sigma_XUV.keys()) & set(element_list)
 
 def run_boreas(config:Config, hf_row:dict):
     """Run BOREAS escape model.
@@ -46,21 +48,21 @@ def run_boreas(config:Config, hf_row:dict):
     params.epsilon  = 1.0
     params.aplau    = hf_row["semimajorax"] / AU
 
+    # Set parameters from config provided by user
+    for g in BOREAS_GASES:
+        params.kappa[g] = getattr(config.escape.boreas,f"kappa_{g}")
+    for e in BOREAS_ELEMS:
+        params.sigma_XUV[e] = getattr(config.escape.boreas,f"sigma_{e}")
+    params.eff = config.escape.boreas.efficiency
+
     # Set gas MASS mixing ratios from VOLUME mixing ratios
     #    first, get MMW of relevant gases at this layer
     mmw_xuv = 0.0
     for g in BOREAS_GASES:
-        mmw_xuv += hf_row[g+"_xuv"] * eval_gas_mmw(g)
+        mmw_xuv += hf_row[f"{g}_xuv"] * eval_gas_mmw(g)
     for g in BOREAS_GASES:
-        mmr = hf_row[g+"_xuv"] * eval_gas_mmw(g) / mmw_xuv
-        setattr(params, "X_"+g, mmr)
-
-    # Set parameters from config provided by user
-    for g in BOREAS_GASES:
-        params.kappa[g]    = getattr(config.escape.boreas,"kappa_"+g)
-    for e in BOREAS_ELEMS:
-        params.sigma_XUV[e] = getattr(config.escape.boreas,"sigma_"+e)
-    params.eff          = config.escape.boreas.efficiency
+        mmr = hf_row[f"{g}_xuv"] * eval_gas_mmw(g) / mmw_xuv
+        setattr(params, f"X_{g}", mmr)
 
     # Set parameters from atmosphere calculation
     params.Teq       = hf_row["T_obs"]              # K
