@@ -219,6 +219,7 @@ version = "2.0"
         fastchem_xtol_chem    = 1e-4    # FC solver tolerance (chemistry)
         fastchem_xtol_elem    = 1e-4    # FC solver tolerance (elemental)
         ini_profile     = 'loglinear'   # Initial guess for temperature profile shape
+        ls_default      = 2             # Default linesearch method (0:none, 1:gs, 2:bt)
 
     [atmos_clim.janus]
         p_top           = 1.0e-6        # bar, top of atmosphere grid pressure

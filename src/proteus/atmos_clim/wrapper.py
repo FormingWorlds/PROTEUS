@@ -134,16 +134,12 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
                 UpdateStatusfile(dirs, 22)
                 raise RuntimeError("Atmosphere struct not allocated")
 
-        # Check if atmosphere is transparent
-        transparent = bool(hf_row["P_surf"] < config.atmos_clim.agni.psurf_thresh)  # bar
-
         # Update profile
-        atmos_o._atm = update_agni_atmos(atmos_o._atm, hf_row, dirs, transparent)
+        atmos_o._atm = update_agni_atmos(atmos_o._atm, hf_row, dirs, config)
 
         # Run solver
         atmos_o._atm, atm_output = run_agni(atmos_o._atm,
-                                            loop_counter["total"], dirs, config, hf_row,
-                                            transparent)
+                                            loop_counter["total"], dirs, config, hf_row)
 
     elif config.atmos_clim.module == 'dummy':
         # Import
@@ -157,6 +153,7 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
             hf_row[key] = atm_output[key]
 
     # Copy special cases
+    hf_row["rho_obs"]     = 3 * hf_row["M_tot"] / (4*pi*hf_row["R_obs"]**3)
     hf_row["F_net"]       = hf_row["F_int"] - hf_row["F_atm"]
     hf_row["bond_albedo"] = atm_output["albedo"]
 

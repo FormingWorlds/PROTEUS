@@ -107,6 +107,8 @@ class Agni:
         FC solver tolerance (elemental)
     ini_profile: str
         Shape of initial T(p) guess: 'loglinear', 'isothermal', 'dry_adiabat', 'analytic'.
+    ls_default: int
+        Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking.
     """
 
     spectral_group: str     = field(default=None)
@@ -141,6 +143,7 @@ class Agni:
                                     validator=in_(('loglinear','isothermal',
                                                    'dry_adiabat','analytic'))
                                     )
+    ls_default: int         = field(default=2, validator=in_((0,1,2)))
 
     @property
     def chemistry_int(self) -> int:

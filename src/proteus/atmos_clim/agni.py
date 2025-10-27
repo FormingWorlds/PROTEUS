@@ -268,7 +268,7 @@ def deallocate_atmos(atmos):
     safe_rm(str(atmos.fastchem_work))
 
 
-def update_agni_atmos(atmos, hf_row:dict, dirs:dict, transparent:bool):
+def update_agni_atmos(atmos, hf_row:dict, dirs:dict, config:Config):
     """Update atmosphere struct.
 
     Sets the new boundary conditions and composition.
@@ -281,8 +281,8 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, transparent:bool):
             Dictionary containing simulation variables for current iteration
         dirs : dict
             Directories dictionary
-        transparent : bool
-            If True, the atmosphere is configured to be transparent to radiation
+        config: Config
+            PROTEUS config object
 
     Returns
     ----------
@@ -308,10 +308,15 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, transparent:bool):
 
     # ---------------------
     # Transparent mode?
-    if transparent:
+    if hf_row["P_surf"] < config.atmos_clim.agni.psurf_thresh:
+
+        # set p_boa to threshold value [bar]
+        atmos.p_boa = float(config.atmos_clim.agni.psurf_thresh) * 1.0e-5
+
+        # update struct to handle this mode of operation
         jl.AGNI.atmosphere.make_transparent_b(atmos)
-        atmos.tmp[:]  = float(atmos.tmp_surf)
-        atmos.tmpl[:] = float(atmos.tmp_surf)
+
+        # return here - don't do anything else to the `atmos` struct
         return atmos
 
     # ---------------------
@@ -383,7 +388,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         log.info("Attempt %d" % attempts)
 
         # default parameters
-        linesearch   = 2
+        linesearch   = int(config.atmos_clim.agni.ls_default)
         easy_start   = False
         dx_max       = float(config.atmos_clim.agni.dx_max)
         ls_increase  = 1.01
@@ -537,7 +542,7 @@ def _solve_transparent(atmos, config:Config):
     return atmos
 
 def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
-                hf_row:dict, transparent:bool):
+                hf_row:dict):
     """Run AGNI atmosphere model.
 
     Calculates the temperature structure of the atmosphere and the fluxes, etc.
@@ -555,8 +560,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
             Configuration options and other variables
         hf_row : dict
             Dictionary containing simulation variables for current iteration
-        transparent : bool
-            Find solution assuming a transparent atmosphere
 
     Returns
     ----------
@@ -568,7 +571,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
 
     # Inform
     log.debug("Running AGNI...")
-    time_str = "%d"%hf_row["Time"]
 
     # ---------------------------
     # Solve atmosphere
@@ -578,10 +580,15 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     if bool(atmos.transparent):
         # no opacity
         log.info("Using transparent solver")
+        atmos.transspec_p = float(atmos.p_boa)
         atmos = _solve_transparent(atmos, config)
 
     # Opaque case
     else:
+
+        # Set observed pressure
+        atmos.transspec_p = float(config.atmos_clim.agni.p_obs * 1e5) # converted to Pa
+
         # full solver
         if config.atmos_clim.agni.solve_energy:
             log.info("Using nonlinear solver to conserve fluxes")
@@ -592,13 +599,12 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
             log.info("Using prescribed temperature profile")
             atmos = _solve_once(atmos, config)
 
-    # Set observed pressure, get observed radius
-    atmos.transspec_p = float(config.atmos_clim.agni.p_obs * 1e5) # converted to Pa
+    # Calculate planet transit radius (to be stored in NetCDF)
     jl.AGNI.atmosphere.calc_observed_rho_b(atmos)
 
     # Write output data
     log.debug("AGNI write to NetCDF file")
-    ncdf_path = os.path.join(dirs["output"],"data",time_str+"_atm.nc")
+    ncdf_path = os.path.join(dirs["output"],"data","%.0f_atm.nc"%hf_row["Time"])
     jl.AGNI.save.write_ncdf(atmos, ncdf_path)
 
     # Make plots
@@ -617,12 +623,16 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     SW_flux_up =    np.array(atmos.flux_u_sw)
     SW_flux_down =  np.array(atmos.flux_d_sw)
     albedo = SW_flux_up[0]/SW_flux_down[0]
+    if bool(atmos.transparent):
+        R_obs = float(hf_row["R_int"])
+    else:
+        R_obs = float(atmos.transspec_r)
 
     # Print info to user
     if config.atmos_clim.agni.condensation:
         log.info("    oceans area frac   = %6.3f %%"%float(atmos.ocean_areacov*100))
         log.info("    oceans max depth   = %6.3f km"%float(atmos.ocean_maxdepth/1e3))
-    log.info("    R_obs photosphere  = %6.1f km"%float(atmos.transspec_r/1e3))
+    log.info("    R_obs photosphere  = %6.1f km"%float(R_obs/1e3))
     log.info("    Planet Bond albedo = %6.3f %%"%float(albedo*100))
 
     # New flux from SOCRATES
@@ -653,8 +663,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     output["F_sct"]         = SW_flux_up[0]
     output["T_surf"]        = float(atmos.tmp_surf)
     output["p_obs"]         = float(atmos.transspec_p)/1e5 # convert [Pa] to [bar]
-    output["R_obs"]         = float(atmos.transspec_r)
-    output["rho_obs"]       = float(atmos.transspec_rho)
+    output["R_obs"]         = R_obs
     output["albedo"]        = albedo
     output["p_xuv"]         = p_xuv/1e5        # Closest pressure from Pxuv    [bars]
     output["R_xuv"]         = r_xuv            # Radius at Pxuv                [m]
