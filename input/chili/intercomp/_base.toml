@@ -12,7 +12,7 @@ archive_mod = "none"
 remove_sf = true
 
 [params.dt]
-starspec = 10000000.0
+starspec = 1e9
 starinst = 10.0
 method = "adaptive"
 minimum = 1000.0
@@ -21,7 +21,7 @@ maximum = 10000000.0
 initial = 30.0
 
 [params.dt.adaptive]
-atol = 0.03
+atol = 0.02
 rtol = 0.09
 
 [params.stop]
@@ -99,7 +99,7 @@ radius_int = "none"
 [atmos_clim]
 module = "agni"
 surf_state = "skin"
-prevent_warming = true
+prevent_warming = false
 surface_d = 0.01
 surface_k = 2.0
 cloud_enabled = false

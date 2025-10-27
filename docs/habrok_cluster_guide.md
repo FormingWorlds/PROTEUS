@@ -78,5 +78,5 @@ See the section on running grids in the PROTEUS [usage guide](./usage.html#runni
 
 You can also submit single PROTEUS runs to the nodes. For example:
 ```console
-sbatch --mem-per-cpu=3G --wrap "proteus start -oc input/all_options.toml"
+sbatch --mem-per-cpu=3G --time=1440 --wrap "proteus start -oc input/all_options.toml"
 ```
