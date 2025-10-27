@@ -310,11 +310,12 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, config:Config):
     # Transparent mode?
     if hf_row["P_surf"] < config.atmos_clim.agni.psurf_thresh:
 
-        # set p_boa to threshold value [bar]
-        atmos.p_boa = float(config.atmos_clim.agni.psurf_thresh) * 1.0e-5
+        # set p_boa to threshold value [bar -> Pa]
+        atmos.p_boa = float(config.atmos_clim.agni.psurf_thresh) * 1.0e5
 
         # update struct to handle this mode of operation
         jl.AGNI.atmosphere.make_transparent_b(atmos)
+        jl.AGNI.setpt.isothermal_b(atmos, hf_row["T_surf"])
 
         # return here - don't do anything else to the `atmos` struct
         return atmos

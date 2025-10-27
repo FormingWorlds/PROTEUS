@@ -48,8 +48,12 @@ def plot_atmosphere( output_dir:str, times:list, profiles:list, plot_format="pdf
         zmax = max(zmax, np.amax(zarr))
         pmax = max(pmax, np.amax(parr))
 
-        ax0.plot( prof["t"], zarr, color=color, label=label, lw=1.5, zorder=i+2)
-        ax1.plot( prof["t"], parr, color=color, label=label, lw=1.5, zorder=i+2)
+        ls = 'solid'
+        if prof["transparent"]:
+            ls = 'dotted'
+
+        ax0.plot( prof["t"], zarr, color=color, label=label, lw=1.5, zorder=i+2, ls=ls)
+        ax1.plot( prof["t"], parr, color=color, label=label, lw=1.5, zorder=i+2, ls=ls)
 
     #####  T-Z
     ax0.set_ylabel(r"Height [km]")

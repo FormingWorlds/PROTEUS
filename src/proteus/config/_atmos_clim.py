@@ -27,6 +27,14 @@ def valid_agni(instance, attribute, value):
     if instance.module != "agni":
         return
 
+    # ensure psurf_thresh is greater than p_top, to avoid upside-down atmosphere in transparent mode
+    if instance.agni.p_top > instance.agni.psurf_thresh:
+        raise ValueError("Must set `agni.p_top` to be less than `agni.psurf_thresh`")
+
+    # ensure p_obs is greater than p_top
+    if instance.agni.p_top > instance.agni.p_obs:
+        raise ValueError("Must set `agni.p_top` to be less than `agni.p_obs`")
+
     # agni must solve_energy=true if surf_state=skin
     if (not instance.agni.solve_energy) and (instance.surf_state == 'skin'):
         raise ValueError("Must set `agni.solve_energy=true` if using `surf_state='skin'`")
