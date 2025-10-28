@@ -4,9 +4,9 @@ import functools
 import hashlib
 import logging
 import os
-import shutil
 import subprocess as sp
 from pathlib import Path
+from time import sleep
 from typing import TYPE_CHECKING
 
 import platformdirs
@@ -15,13 +15,17 @@ from osfclient.api import OSF
 if TYPE_CHECKING:
     from proteus.config import Config
 
+from proteus.utils.helper import safe_rm
+
 log = logging.getLogger("fwl."+__name__)
 
 FWL_DATA_DIR = Path(os.environ.get('FWL_DATA', platformdirs.user_data_dir('fwl_data')))
+MAX_ATTEMPTS = 3
+RETRY_WAIT   = 5.0 # seconds
 
 log.debug(f'FWL data location: {FWL_DATA_DIR}')
 
-def download_zenodo_folder(zenodo_id: str, folder_dir: Path):
+def download_zenodo_folder(zenodo_id: str, folder_dir: Path)->bool:
     """
     Download a specific Zenodo record into specified folder
 
@@ -30,18 +34,35 @@ def download_zenodo_folder(zenodo_id: str, folder_dir: Path):
             Zenodo record ID to download
         - folder_dir : Path
             Local directory where the Zenodo record will be downloaded
+
+    Returns :
+        - zenodo_ok : bool
+            Did the download/request complete successfully?
     """
 
-    shutil.rmtree(str(folder_dir), ignore_errors=True)
-    folder_dir.mkdir(parents=True)
-    cmd = [
-            "zenodo_get", zenodo_id,
-            "-o", folder_dir
-        ]
     out = os.path.join(GetFWLData(), "zenodo_download.log")
     log.debug("    zenodo_get, logging to %s"%out)
-    with open(out,'w') as hdl:
-        sp.run(cmd, check=True, stdout=hdl, stderr=hdl)
+    for i in range(MAX_ATTEMPTS):
+
+        # remove folder
+        safe_rm(folder_dir)
+        folder_dir.mkdir(parents=True)
+
+        # try making request
+        with open(out,'w') as hdl:
+            proc = sp.run(["zenodo_get", zenodo_id,"-o", folder_dir],
+                            stdout=hdl, stderr=hdl)
+
+        # worked ok?
+        if (proc.returncode==0) and os.path.exists(folder_dir):
+            return True
+        else:
+            log.warning(f"Failed to get data from Zenodo (ID {zenodo_id})")
+            sleep(RETRY_WAIT)
+
+    # Return status indicating that file/folder is invalid, if failed
+    log.error(f"Could not obtain data for Zenodo record {zenodo_id}")
+    return False
 
 def md5(_fname):
     """Return the md5 hash of a file."""
@@ -54,7 +75,7 @@ def md5(_fname):
     return hash_md5.hexdigest()
 
 
-def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=100e6):
+def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=100e6)->bool:
     """
     Validate the content of a specific Zenodo-provided folder by checking md5 hashes
 
@@ -72,16 +93,34 @@ def validate_zenodo_folder(zenodo_id: str, folder_dir: Path, hash_maxfilesize=10
     """
 
     # Use zenodo_get to obtain md5 hashes
-    # They will be saved to a txt file in folder_dir
-    cmd = [ "zenodo_get", zenodo_id, "-m" ]
+    #     They will be saved to a txt file in folder_dir
+    md5sums_path = os.path.join(folder_dir, "md5sums.txt")
     out = os.path.join(GetFWLData(), "zenodo_validate.log")
     log.debug("    zenodo_get, logging to %s"%out)
-    with open(out,'w') as hdl:
-        sp.run(cmd, check=True, stdout=hdl, stderr=hdl, cwd=folder_dir)
+    zenodo_ok = False
+    for i in range(MAX_ATTEMPTS):
 
-    # Check that hashes file exists
-    md5sums_path = os.path.join(folder_dir, "md5sums.txt")
-    if not os.path.isfile(md5sums_path):
+        # remove file
+        safe_rm(md5sums_path)
+
+        # try making request
+        with open(out,'w') as hdl:
+            proc = sp.run([ "zenodo_get", zenodo_id, "-m" ],
+                            stdout=hdl, stderr=hdl, cwd=folder_dir)
+
+        # process exited fine and file exists?
+        zenodo_ok = (proc.returncode==0) and os.path.isfile(md5sums_path)
+
+        # try again?
+        if zenodo_ok:
+            break
+        else:
+            log.warning(f"Failed to get checksum from Zenodo (ID {zenodo_id})")
+            sleep(RETRY_WAIT)
+
+    # Return status indicating that file/folder is invalid, if failed
+    if not zenodo_ok:
+        log.error(f"Could not obtain checksum for Zenodo record {zenodo_id}")
         return False
 
     # Read hashes file
@@ -254,10 +293,9 @@ def download(
         try:
             if zenodo_id is not None:
                 # download the folder
-                download_zenodo_folder(zenodo_id=zenodo_id, folder_dir=folder_dir)
-
-                # validate files ok?
-                success = validate_zenodo_folder(zenodo_id, folder_dir)
+                if download_zenodo_folder(zenodo_id=zenodo_id, folder_dir=folder_dir):
+                    # files validated ok?
+                    success = validate_zenodo_folder(zenodo_id, folder_dir)
         except RuntimeError as e:
             log.warning(f"    Zenodo download failed: {e}")
             folder_dir.rmdir()

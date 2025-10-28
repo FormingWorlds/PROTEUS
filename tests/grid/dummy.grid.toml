@@ -41,10 +41,3 @@ max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
     start  = 0.35
     stop   = 0.95
     count  = 2
-
-# Orbital eccentricity set by logspace
-["orbit.eccentricity"]
-    method = "logspace"
-    start  = 0.001
-    stop   = 0.15
-    count  = 3

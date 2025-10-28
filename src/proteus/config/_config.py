@@ -52,6 +52,11 @@ def observe_resolved_atmosphere(instance, attribute, value):
     if (instance.observe.synthesis is not None) and (instance.atmos_clim.module == "dummy"):
         raise ValueError("Observational synthesis requires that atmos_clim != dummy")
 
+def janus_escape_atmosphere(instance, attribute, value):
+    # Using escape.zephyrus with JANUS requires params.stop.escape to be True
+    if (instance.escape.module == "zephyrus") and (instance.atmos_clim.module == "janus") and (instance.params.stop.escape is False):
+        raise ValueError("When using escape.zephyrus with JANUS, params.stop.escape must be True.")
+
 @define
 class Config:
     """Root config parameters.

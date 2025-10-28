@@ -1,32 +1,26 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: For when something is going wrong
 title: ''
-labels: ''
+labels: 'Bug'
 assignees: ''
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+## Problem description
+A description of what is happening, and steps outlining what causes it to happen.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+## Expected behavior
+A description of what you would have expected to happen.
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+## Evidence
+Add screenshots and logs to help explain your problem.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+## My computer
+Describe the computer used to run the code when the bug was found; e.g Fedora Linux with Python 3.12
 
-**Description of computer used (please complete the following information):**
- - OS: [e.g. Ubuntu]
- - Python [e.g. 3.11]
- - Branch name [e.g. testing]
+## Additional notes
+Add any other context about the problem here; e.g. suggest potential solutions
 
-**Additional context**
-Add any other context about the problem here.
+## Relevant people
+Tag relevant people here.

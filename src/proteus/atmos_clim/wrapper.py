@@ -6,7 +6,7 @@ import os
 from typing import TYPE_CHECKING
 
 import pandas as pd
-from numpy import pi
+from numpy import pi, unique
 
 if TYPE_CHECKING:
     from proteus.config import Config
@@ -86,7 +86,12 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
                 UpdateStatusfile(dirs, 20)
                 raise FileNotFoundError(
                             "Spectral file does not exist at '%s'" % spectral_file_nostar)
-            InitStellarSpectrum(dirs, wl, fl, spectral_file_nostar)
+
+            idx = unique(wl, return_index=True)[1]
+            wl_un = wl[idx]
+            fl_un = fl[idx]
+
+            InitStellarSpectrum(dirs, wl_un, fl_un, spectral_file_nostar)
             atmos_o._atm = InitAtm(dirs, config)
 
         atm_output = RunJANUS(atmos_o._atm, dirs, config, hf_row, hf_all)
