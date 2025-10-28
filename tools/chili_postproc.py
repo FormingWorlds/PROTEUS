@@ -202,7 +202,7 @@ def postproc_grid(griddir:str):
     N = len(cases)
     for i,c in enumerate(cases):
         print(f"[{i+1:2d}/{N:-2d}]  case:{c.split("_")[-1]}")
-        postproc_once(c)
+        name = postproc_once(c)
         print("-----------------------------")
         print(" ")
 
@@ -216,6 +216,7 @@ def postproc_grid(griddir:str):
         l = c.split("_")[-1].replace("/","")
         ax.plot(x,y,label=l, lw=1.5, alpha=0.8, zorder=4)
     ax.set(xscale='log', xlabel='Time [yr]', ylabel=r'$\rm T_{surf}$ [K]')
+    ax.set_title(f"Planet: {name}")
     ax.set_xlim(left=10.0)
     ax.grid(zorder=-2, alpha=0.8)
     ax.legend(fontsize=10)
