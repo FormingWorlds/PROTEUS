@@ -186,7 +186,7 @@ you will have the environment variables FWL_DATA, RAD_DIR set appropriately as y
     - ARAGOG interior model
 
         ```console
-        git clone git@github.com:ExPlanetology/aragog.git
+        git clone git@github.com:FormingWorlds/aragog.git
         python -m pip install -e aragog/.
         ```
 

@@ -574,8 +574,7 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     volume_mantle = np.sum(vshell)
 
     # Global melt fraction by volume
-    output["Phi_global_vol"] = np.sum(vmelt)/volume_mantle
-    # output["Phi_global_vol"] = float(output["Phi_global"])
+    output["Phi_global_vol"] = min(1.0, max(0.0, np.sum(vmelt)/volume_mantle))
 
     # Manually calculate heat flux at near-surface from energy gradient
     # Etot        = json_file.get_dict_values(['data','Etot_b'])

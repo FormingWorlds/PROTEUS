@@ -175,8 +175,6 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
 
     """
 
-    from janus.utils.observed_rho import calc_observed_rho
-
     # Runtime info
     log.debug("Running JANUS...")
     time = hf_row["Time"]
@@ -275,7 +273,6 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     p_obs = float(config.atmos_clim.janus.p_obs)*1e5 # converted to Pa
     r_arr = np.array(atm.z[:],   copy=True, dtype=float) + hf_row["R_int"]
     t_arr = np.array(atm.tmp[:], copy=True, dtype=float)
-    rho_obs = -1.0
     if atm.height_error:
         log.error("Hydrostatic integration failed in JANUS!")
     else:
@@ -283,17 +280,14 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         _, r_obs = get_oarr_from_parr(atm.p, r_arr, p_obs)
         _, t_obs = get_oarr_from_parr(atm.p, t_arr, p_obs) # [Pa], [m]
 
-        # calc observed density [kg m-3]
-        rho_obs = calc_observed_rho(atm)
-
     # p_xuv from R_xuv
     if config.escape.xuv_defined_by_radius:
-        r_xuv = hf_row["R_xuv"]
+        r_xuv = hf_row["R_xuv"] # m
         p_xuv = get_oarr_from_parr(r_arr, atm.p, r_xuv)[1] * 1e-5 # bar
 
     # R_xuv from p_xuv
     else:
-        p_xuv = hf_row["p_xuv"]
+        p_xuv = hf_row["p_xuv"] # bar
         r_xuv = get_oarr_from_parr(atm.p, r_arr, p_xuv * 1e5)[1] # m
 
     # final things to store
@@ -306,7 +300,6 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["p_obs"]  = p_obs/1e5        # observed level [bar]
     output["T_obs"]  = t_obs            # observed level [K]
     output["R_obs"]  = r_obs            # observed level [m]
-    output["rho_obs"]= rho_obs          # observed density [kg m-3]
     output["p_xuv"]  = p_xuv            # Closest pressure to Pxuv    [bar]
     output["R_xuv"]  = r_xuv            # Radius at Pxuv                [m]
     output["ocean_areacov"] = 0.0

@@ -21,6 +21,18 @@ class Atmos_t():
         # Atmosphere object internal to JANUS or AGNI
         self._atm = None
 
+def ncdf_flag_to_bool(var)->bool:
+    '''Convert NetCDF flag (y/n) to Python bool (true/false)'''
+    v = str(var[0].tobytes().decode()).lower()
+
+    # check against expected
+    if v == 'y':
+        return True
+    elif v == 'n':
+        return False
+    else:
+        raise ValueError(f"Could not parse NetCDF atmos flag variable \n {var}")
+
 def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
     """Read data from atmosphere NetCDF output file.
 
@@ -91,6 +103,13 @@ def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
 
         out["r"].append(r[i])
         out["r"].append(rl[i+1])
+
+    # flags
+    for fk in ("transparent", "solved", "converged"):
+        if fk in ds.variables.keys():
+            out[fk] = ncdf_flag_to_bool(ds.variables[fk])
+        else:
+            out[fk] = False # if not available
 
     # Read extra keys
     for key in extra_keys:

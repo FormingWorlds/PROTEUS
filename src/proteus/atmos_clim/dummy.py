@@ -112,7 +112,6 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     output["F_olr"]   = fluxes["fl_U_LW"]     # OLR
     output["F_sct"]   = fluxes["fl_U_SW"]     # Scattered SW flux
     output["R_obs"]   = R_obs
-    output["rho_obs"] = 3 * hf_row["M_int"] / (4*np.pi*R_obs**3)
     output["albedo"]  = fluxes["fl_U_SW"]/fluxes["fl_D_SW"]
     output["p_xuv"]   = hf_row["P_surf"]
     output["R_xuv"]   = R_obs

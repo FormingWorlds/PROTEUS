@@ -87,11 +87,19 @@ def natural_sort(lst):
         return [convert(c) for c in re.split("([0-9]+)", key)]
     return sorted(lst, key = alphanum_key)
 
-# Create a temporary folder
 def create_tmp_folder():
-    tmp_dir = "/tmp/proteus_%d/" % np.random.randint(int(1e12),int(1e13-1))
-    if os.path.exists(tmp_dir):
-        shutil.rmtree(tmp_dir,ignore_errors=True)
+    '''Create a folder for temporary files'''
+
+    # Try $TMPDIR environment variable used on e.g. Habrok
+    tmp_dir = os.environ.get("TMPDIR")
+    if (not tmp_dir) or (not os.path.isdir(tmp_dir)):
+        tmp_dir = "/tmp"
+
+    # Append random name to /tmp
+    tmp_dir = tmp_dir + "/proteus_%d/" % np.random.randint(int(1e12),int(1e13-1))
+
+    # Make empty
+    safe_rm(tmp_dir)
     os.makedirs(tmp_dir)
     return tmp_dir
 
