@@ -174,7 +174,6 @@ class AragogRunner():
             )
 
         # Get look up data directory, will be configurable in the future
-
         LOOK_UP_DIR = (
             FWL_DATA_DIR /
             "interior_lookup_tables/1TPa-dK09-elec-free/"
