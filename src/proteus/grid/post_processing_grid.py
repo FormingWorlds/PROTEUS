@@ -1018,6 +1018,11 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
                 if val not in grouped_data.get(data_key, {}):
                     continue
                 raw = np.array(grouped_data[data_key][val]) * out_settings.get("scale", 1.0)
+                # Plot ECDf if output == df['H_kg_atm'] then plot only values > 1e10
+                if output_name.endswith('_kg_atm'):
+                    raw = raw[raw > 0]
+                else:
+                    raw = raw
                 sns.ecdfplot(
                     data=raw,
                     log_scale=out_settings.get("log_scale", False),
@@ -1074,10 +1079,10 @@ def ecdf_grid_plot(grid_params: dict, grouped_data: dict, param_settings: dict, 
 
     # Tweak layout and save
     plt.tight_layout(rect=[0.08, 0.02, 1, 0.97])
-    filename = "ecdf_grid_plot.png"
-    out_path = os.path.join(plots_path, filename)
-    fig.savefig(out_path, dpi=300)
-    #fig.savefig('/home2/p315557/PROTEUS/nogit_files/nogit_code/paper1_plots/plots/1Msun_ecdf_grid_plot.png', dpi=300)
+    #filename = "ecdf_grid_plot.png"
+    #out_path = os.path.join(plots_path, filename)
+    #fig.savefig(out_path, dpi=300)
+    fig.savefig('/home2/p315557/PROTEUS/nogit_files/nogit_code/paper1_plots/plots/1Msun_ecdf_grid_plot_species.png', dpi=300)
     plt.close(fig)
 
-    print(f"Grid ECDF plot saved at {out_path}")
+    #print(f"Grid ECDF plot saved at {out_path}")
