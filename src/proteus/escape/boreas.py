@@ -59,9 +59,9 @@ def run_boreas(config:Config, hf_row:dict):
     #    first, get MMW of relevant gases at this layer
     mmw_xuv = 0.0
     for g in BOREAS_GASES:
-        mmw_xuv += hf_row[f"{g}_xuv"] * eval_gas_mmw(g)
+        mmw_xuv += hf_row[f"{g}_vmr_xuv"] * eval_gas_mmw(g)
     for g in BOREAS_GASES:
-        mmr = hf_row[f"{g}_xuv"] * eval_gas_mmw(g) / mmw_xuv
+        mmr = hf_row[f"{g}_vmr_xuv"] * eval_gas_mmw(g) / mmw_xuv
         setattr(params, f"X_{g}", mmr)
 
     # Set parameters from atmosphere calculation

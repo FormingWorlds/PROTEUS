@@ -682,6 +682,6 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config, hf_row:dict):
     # set composition at xuv
     for g in gas_list:
         _, x_xuv = get_oarr_from_parr(atmos.p, atmos.gas_vmr[g], p_xuv*1e5)
-        hf_row[g+"_xuv"] = x_xuv
+        hf_row[g+"_vmr_xuv"] = x_xuv
 
     return atmos, output

@@ -122,6 +122,6 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
 
     # gas composition for escape equal to surface composition
     for g in gas_list:
-        hf_row[g+"_xuv"]  = hf_row[g+"_vmr"]
+        hf_row[g+"_vmr_xuv"] = float(hf_row[g+"_vmr"])
 
     return output

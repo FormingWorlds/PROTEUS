@@ -311,6 +311,6 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
             _, x_xuv = get_oarr_from_parr(atm.p, atm.x_gas[g], p_xuv*1e5)
         else:
             x_xuv = 0.0
-        hf_row[g+"_xuv"] = x_xuv
+        hf_row[g+"_vmr_xuv"] = x_xuv
 
     return output

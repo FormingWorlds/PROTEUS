@@ -182,11 +182,11 @@ def get_spfile_path(fwl_dir:str, config:Config):
     # Construct file path
     return os.path.join(fwl_dir,"spectral_files",group,bands,group)+".sf"
 
-def get_oarr_from_parr(p_arr, o_arr, p_tgt):
+def get_oarr_from_parr(p_arr:list, o_arr:list, p_tgt:float) -> tuple:
     """
     Get the value of o_array corresponding to the p_tgt level in p_arr.
 
-    Parameters:
+    Parameters
     ----------------
         p_arr: list
             Pressure array
@@ -195,7 +195,7 @@ def get_oarr_from_parr(p_arr, o_arr, p_tgt):
         p_tgt: float
             Target pressure
 
-    Returns:
+    Returns
     ----------------
         p_close: float
             Closest pressure in the array

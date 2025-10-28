@@ -551,9 +551,9 @@ def GetHelpfileKeys():
         keys.append(s+"_kg_solid")
         keys.append(s+"_kg_liquid")
         keys.append(s+"_kg_total")
-        keys.append(s+"_vmr")   # vmr at surface
-        keys.append(s+"_bar")   # partial pressure at surface
-        keys.append(s+"_xuv")   # vmr at XUV level
+        keys.append(s+"_vmr")       # vmr at surface
+        keys.append(s+"_bar")       # partial pressure at surface
+        keys.append(s+"_vmr_xuv")   # vmr at XUV level
 
     # element masses
     for e in element_list:
