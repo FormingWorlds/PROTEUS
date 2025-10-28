@@ -103,7 +103,7 @@ version = "2.0"
 # Orbital system
 [orbit]
     instellation_method = 'inst'        # whether to define orbit using semi major axis ('sma') or instellation flux ('inst')
-    instellationflux    = 100          # instellation flux received from the planet in Earth units.
+    instellationflux    = 1             # instellation flux received from the planet in Earth units.
     semimajoraxis       = 0.15          # AU
     eccentricity        = 0.0       	# dimensionless
     zenith_angle        = 54.74     	# degrees
@@ -191,7 +191,7 @@ version = "2.0"
     rheo_phi_loc    = 0.4    # Centre of rheological transition
     rheo_phi_wid    = 0.15   # Width of rheological transition
 
-    module = "aragog"   # Which interior module to use
+    module = "spider"   # Which interior module to use
 
     [interior.spider]
         num_levels      = 110       # Number of SPIDER grid levels
@@ -203,7 +203,7 @@ version = "2.0"
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
-        num_levels      = 100       					# Number of Aragog grid levels
+        num_levels      = 110       					# Number of Aragog grid levels
         tolerance       = 1.0e-7    					# solver tolerance
         ini_tmagma      = 3000.0    					# Initial magma surface temperature [K]
 
@@ -251,7 +251,7 @@ version = "2.0"
         metallicity = 1000	 # metallicity relative to solar metallicity
 
         # H_oceans    = 60.0     # Hydrogen inventory in units of equivalent Earth oceans
-        H_ppmw      = 709.0     # Hydrogen inventory in ppmw relative to mantle mass
+        H_ppmw      = 3546.0     # Hydrogen inventory in ppmw relative to mantle mass
 
         CH_ratio    = 0.32       # C/H mass ratio in mantle/atmosphere system
         # C_ppmw      = 10.0     # Carbon inventory in ppmw relative to mantle mass

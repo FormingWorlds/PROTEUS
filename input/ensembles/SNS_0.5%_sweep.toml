@@ -1,0 +1,40 @@
+# Config file for running a grid of forward models
+
+# Path to output folder where grid will be saved (relative to PROTEUS output folder)
+output = "SNS_0.5%_sweep_test/"
+
+# Make `output` a symbolic link to this absolute location. To disable: set to empty string.
+symlink = ""
+
+# Path to base (reference) config file relative to PROTEUS root folder
+ref_config = "input/planets/fiducial_sub_Neptune.toml"
+
+# Use SLURM?
+use_slurm = false
+
+# Execution limits
+max_jobs = 80       # maximum number of concurrent tasks (e.g. 500 on Habrok)
+max_days = 1        # maximum number of days to run (e.g. 1)
+max_mem  = 3        # maximum memory per CPU in GB (e.g. 3)
+
+# Now define grid axes...
+#    Each axis must be a new section (table) in this file.
+#    Each table corresponds to the name of the parameter to be varied.
+#    Each table name must be written in double quotes.
+#    See examples below
+
+["delivery.elements.H_ppmw"]
+    method = "direct"
+    values = [2128]
+
+["star.dummy.Teff"]
+    method = "linspace"
+    start    = 4900
+    stop     = 6300
+    count    = 8
+
+["orbit.instellationflux"]
+    method = "linspace"
+    start    = 11
+    stop     = 12
+    count    = 10

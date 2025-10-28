@@ -88,11 +88,7 @@ class Config:
 
     params: Params
     star: Star
-<<<<<<< HEAD
-    orbit: Orbit = field(validator=(instmethod_dummy,))
-=======
     orbit: Orbit = field(validator=(instmethod_dummy,instmethod_evolve,satellite_evolve))
->>>>>>> 6149738b64138283ff9d6b07d887a6506528b03a
     struct: Struct
     atmos_clim: AtmosClim
     atmos_chem: AtmosChem
