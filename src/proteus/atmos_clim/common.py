@@ -23,25 +23,12 @@ class Atmos_t():
 
 def ncdf_flag_to_bool(var)->bool:
     '''Convert NetCDF flag (y/n) to Python bool (true/false)'''
-    v = var[:]
-    if isinstance(v,(np.bytes_, bytes)):
-        # from netcdf, convert bytes arr -> str
-        convert = var[:].decode()[0]
-    else:
-        if isinstance(var[0],int):
-            # already bytes -> int, so do int -> str
-            convert = chr(var[0])
-        else:
-            # presumably already a string?
-            convert = var[0]
-
-    # convert to lowercase
-    convert = convert.lower()
+    v = str(var[0].tobytes().decode()).lower()
 
     # check against expected
-    if convert == 'y':
+    if v == 'y':
         return True
-    elif convert == 'n':
+    elif v == 'n':
         return False
     else:
         raise ValueError(f"Could not parse NetCDF atmos flag variable \n {var}")
