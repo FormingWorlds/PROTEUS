@@ -192,6 +192,17 @@ def run_grid_analyze(path_to_grid: str, grid_name: str, update_csv: bool = True)
         #'S_kg_atm':            {"label": r"[S$_{atm}$] [kg]",               "log_scale": True,  "scale": 1.0}
         }
     ecdf_grid_plot(grid_params=grid_params, grouped_data=grouped_data, param_settings=param_settings_grid, output_settings=output_settings_grid, plots_path=plots_path)
+    output_settings_grid_species = {
+        'atm_kg_per_mol':      {"label": "MMW [g/mol]",                     "log_scale": False,  "scale": 1000.0},
+        'H_kg_atm':            {"label": r"[H$_{\rm atm}$] [kg]",               "log_scale": True,  "scale": 1.0},
+        'O_kg_atm':            {"label": r"[O$_{\rm atm}$] [kg]",               "log_scale": True,  "scale": 1.0},
+        'C_kg_atm':            {"label": r"[C$_{\rm atm}$] [kg]",               "log_scale": True,  "scale": 1.0},
+        'N_kg_atm':            {"label": r"[N$_{\rm atm}$] [kg]",               "log_scale": True,  "scale": 1.0},
+        'S_kg_atm':            {"label": r"[S$_{\rm atm}$] [kg]",               "log_scale": True,  "scale": 1.0}
+        }
+    ecdf_grid_plot(grid_params=grid_params, grouped_data=grouped_data, param_settings=param_settings_grid, output_settings=output_settings_grid_species, plots_path=plots_path)
+    print("Values N in atm :", df['N_kg_atm'].values)
+    print("Values N in atm 1 < N < 1e12 :", 1 < df['N_kg_atm'].values[df['N_kg_atm'].values < 1e13])
 
     print('-----------------------------------------------------------')
     print(f'Plots saved in {plots_path}')
