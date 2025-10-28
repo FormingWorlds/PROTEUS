@@ -157,11 +157,12 @@ class Escape:
     reservoir: str = field(default='outgas', validator=valid_reservoir)
 
     @property
-    def xuv_defined_by_radius(self) -> int:
+    def xuv_defined_by_radius(self) -> bool:
         """Does Rxuv define the escape level?
 
-        If it does, return True.
-        If the escape level is instead set by Pxuv, then return False.
+        If the escape level is defined by constant Pxuv, then return False. This depends
+        on the escape module used. BOREAS calculates both Pxuv and Rxuv, while the default
+        assumes that Pxuv is constant, which is used to find Rxuv from the r(p) profile.
         """
         if self.module == 'boreas':
             return True
