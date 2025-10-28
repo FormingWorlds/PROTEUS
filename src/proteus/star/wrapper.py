@@ -17,9 +17,16 @@ if TYPE_CHECKING:
     from proteus import Proteus
     from proteus.config import Config
 
+# Mass limits on stellar tracks [Msun]
+MASS_LIM = {
+    "spada":   (0.10, 1.25),
+    "baraffe": (0.01, 1.40)
+}
+
 def init_star(handler:Proteus):
     '''
     Star-related things to be done when the simulation begins.
+
     This includes:
         - Preparing the stellar model
         - Reading the present-day stellar spectrum
@@ -48,6 +55,13 @@ def init_star(handler:Proteus):
         star_backup_path = os.path.join(handler.directories["output/data"], "-1.sflux")
         shutil.copyfile(star_modern_path, star_backup_path)
 
+        # Clip mass if required
+        Mstar = float(handler.config.star.mass)
+        Mstar = max(Mstar, MASS_LIM[handler.config.star.mors.tracks][0])
+        Mstar = min(Mstar, MASS_LIM[handler.config.star.mors.tracks][1])
+        if Mstar != handler.config.star.mass:
+            log.warning(f"Star mass out of range. Clipped to {Mstar} Msun")
+
         match handler.config.star.mors.tracks:
 
             case 'spada':
@@ -72,7 +86,8 @@ def init_star(handler:Proteus):
 
                 # load and fit track data
                 try:
-                    handler.stellar_track = mors.Star(Mstar = handler.config.star.mass,
+                    # clip mass
+                    handler.stellar_track = mors.Star(Mstar = Mstar,
                                                         Age = age_rot_Myr,
                                                         percentile = pcntle, Prot=period)
                 except Exception as e:
@@ -91,7 +106,7 @@ def init_star(handler:Proteus):
 
             case 'baraffe':
                 # creates track data
-                handler.stellar_track = mors.BaraffeTrack(handler.config.star.mass)
+                handler.stellar_track = mors.BaraffeTrack(Mstar)
 
                 # load modern spectrum
                 handler.star_modern_wl, handler.star_modern_fl = mors.ModernSpectrumLoad(
@@ -103,7 +118,8 @@ def init_star(handler:Proteus):
 
 def get_spada_synthesis_properties(spada_track, age: float):
     """Calculate properties of star for spectrum synthesis
-       Mimic the GetProperties function of mors synthesis module using whole track data.
+
+    Mimic the GetProperties function of mors synthesis module using whole track data.
 
     Parameters
     ----------
