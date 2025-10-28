@@ -22,13 +22,29 @@ class Atmos_t():
         self._atm = None
 
 def ncdf_flag_to_bool(var)->bool:
-    '''Convert NetCDF bytes char (y/n or t/f) to Python bool (true/false)'''
-    try:
-        convert = str(var[0].tostring().decode())
-        return
-    except Exception:
-        convert = str(var[0]).lower()
-    return bool(convert.lower() in ('y','t'))
+    '''Convert NetCDF flag (y/n) to Python bool (true/false)'''
+    v = var[:]
+    if isinstance(v,(np.bytes_, bytes)):
+        # from netcdf, convert bytes arr -> str
+        convert = var[:].decode()[0]
+    else:
+        if isinstance(var[0],int):
+            # already bytes -> int, so do int -> str
+            convert = chr(var[0])
+        else:
+            # presumably already a string?
+            convert = var[0]
+
+    # convert to lowercase
+    convert = convert.lower()
+
+    # check against expected
+    if convert == 'y':
+        return True
+    elif convert == 'n':
+        return False
+    else:
+        raise ValueError(f"Could not parse NetCDF atmos flag variable \n {var}")
 
 def read_ncdf_profile(nc_fpath:str, extra_keys:list=[]):
     """Read data from atmosphere NetCDF output file.
