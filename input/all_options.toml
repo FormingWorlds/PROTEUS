@@ -283,15 +283,20 @@ version = "2.0"
     module = "aragog"       # Which interior module to use
 
     [interior.spider]
-        num_levels      = 100       # Number of SPIDER grid levels
-        mixing_length   = 2         # Mixing length parameterization
-        tolerance       = 1.0e-8    # absolute solver tolerance
-        tolerance_rel   = 1.0e-8    # relative solver tolerance
-        solver_type     = "bdf"     # SUNDIALS solver method
-        tsurf_atol      = 20.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
-        ini_entropy     = 3000.0    # Surface entropy conditions [J K-1 kg-1]
-        ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
+        num_levels               = 100       # Number of SPIDER grid levels
+        mixing_length            = 2         # Mixing length parameterization
+        tolerance                = 1.0e-8    # absolute solver tolerance
+        tolerance_rel            = 1.0e-8    # relative solver tolerance
+        solver_type              = "bdf"     # SUNDIALS solver method
+        tsurf_atol               = 20.0      # tsurf_poststep_change
+        tsurf_rtol               = 0.02      # tsurf_poststep_change_frac
+        ini_entropy              = 3000.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_dsdr                 = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
+        conduction               = true      # enable conductive heat transfer
+        convection               = true      # enable convective heat transfer
+        gravitational_separation = true      # enable gravitational separation
+        mixing                   = true      # enable mixing
+        matprop_smooth_width     = 1e-2      # melt-fraction window width over which to smooth material properties
 
     [interior.aragog]
         logging                  = "ERROR"  # Aragog log verbosity
