@@ -14,7 +14,7 @@ def valid_spider(instance, attribute, value):
 
     # at least one energy term enabled
     spider = instance.spider
-    if not (spider.conduction or spider.convection or spider.mixing or spider.gravitation_separation):
+    if not (spider.conduction or spider.convection or spider.mixing or spider.gravitational_separation):
         raise ValueError("Must enable at least one energy transport term in SPIDER")
 
 def valid_path(instance, attribute, value):
@@ -82,7 +82,7 @@ def valid_aragog(instance, attribute, value):
 
     # at least one energy term enabled
     aragog = instance.aragog
-    if not (aragog.conduction or aragog.convection or aragog.mixing or aragog.gravitation_separation):
+    if not (aragog.conduction or aragog.convection or aragog.mixing or aragog.gravitational_separation):
         raise ValueError("Must enable at least one energy transport term in Aragog")
 
 @define
