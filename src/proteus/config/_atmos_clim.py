@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from attrs import define, field
 from attrs.validators import ge, gt, in_, le
 
-from ._converters import none_if_none
+from ._converters import lowercase, none_if_none
 
 log = logging.getLogger('fwl.' + __name__)
 
@@ -26,6 +27,14 @@ def valid_agni(instance, attribute, value):
     if instance.module != "agni":
         return
 
+    # ensure psurf_thresh is greater than p_top, to avoid upside-down atmosphere in transparent mode
+    if instance.agni.p_top > instance.agni.psurf_thresh:
+        raise ValueError("Must set `agni.p_top` to be less than `agni.psurf_thresh`")
+
+    # ensure p_obs is greater than p_top
+    if instance.agni.p_top > instance.agni.p_obs:
+        raise ValueError("Must set `agni.p_top` to be less than `agni.p_obs`")
+
     # agni must solve_energy=true if surf_state=skin
     if (not instance.agni.solve_energy) and (instance.surf_state == 'skin'):
         raise ValueError("Must set `agni.solve_energy=true` if using `surf_state='skin'`")
@@ -38,6 +47,15 @@ def valid_agni(instance, attribute, value):
         raise ValueError("Must set atmos_clim.agni.spectral_group")
     if not instance.agni.spectral_bands:
         raise ValueError("Must set atmos_clim.agni.spectral_bands")
+
+    # fastchem installed?
+    if instance.agni.chemistry == "eq":
+        FC_DIR = os.environ.get("FC_DIR")
+        if FC_DIR:
+            if not os.path.isdir(FC_DIR):
+                raise FileNotFoundError(f"Fastchem not found at FC_DIR={FC_DIR}")
+        else:
+            raise EnvironmentError("Chemistry is enabled but environment variable `FC_DIR` is not set")
 
 @define
 class Agni:
@@ -77,6 +95,8 @@ class Agni:
         Use the transparent-atmosphere solver when P_surf is less than this value [bar].
     dx_max: float
         Nominal maximum step size to T(p) during the solver process, although this is dynamic.
+    dx_max_ini: float
+        Initial maximum step size to T(p) when AGNI is called in the first few PROTEUS loops.
     max_steps: int
         Maximum number of iterations before giving up.
     perturb_all: bool
@@ -93,6 +113,10 @@ class Agni:
         FC solver tolerance (chemistry)
     fastchem_xtol_elem:float
         FC solver tolerance (elemental)
+    ini_profile: str
+        Shape of initial T(p) guess: 'loglinear', 'isothermal', 'dry_adiabat', 'analytic'.
+    ls_default: int
+        Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking.
     """
 
     spectral_group: str     = field(default=None)
@@ -112,7 +136,8 @@ class Agni:
     latent_heat: bool       = field(default=False)
     real_gas: bool          = field(default=False)
     psurf_thresh: float     = field(default=0.1, validator=ge(0))
-    dx_max: float           = field(default=35.0, validator=gt(1))
+    dx_max: float           = field(default=35.0,  validator=gt(1))
+    dx_max_ini: float       = field(default=300.0, validator=gt(1))
     max_steps: int          = field(default=70, validator=gt(2))
     perturb_all: bool       = field(default=True)
     mlt_criterion: str      = field(default='l', validator=in_(('l','s',)))
@@ -121,6 +146,12 @@ class Agni:
     fastchem_maxiter_solv:int   = field(default=20000, validator=gt(200))
     fastchem_xtol_chem:float    = field(default=1e-4,  validator=gt(0.0))
     fastchem_xtol_elem:float    = field(default=1e-4,  validator=gt(0.0))
+    ini_profile: str        = field(default='loglinear',
+                                    converter=lowercase,
+                                    validator=in_(('loglinear','isothermal',
+                                                   'dry_adiabat','analytic'))
+                                    )
+    ls_default: int         = field(default=2, validator=in_((0,1,2)))
 
     @property
     def chemistry_int(self) -> int:

@@ -307,11 +307,11 @@ def _try_spider( dirs:dict, config:Config,
     call_sequence.extend(["-time0",     "1.0E5"])
     call_sequence.extend(["-pressure0", "10.0E5"])
 
-    # Energy transport physics
-    call_sequence.extend(["-CONDUCTION", "1"]) # conduction
-    call_sequence.extend(["-CONVECTION", "1"]) # convection
-    call_sequence.extend(["-MIXING",     "1"]) # mixing (latent heat transport)
-    call_sequence.extend(["-SEPARATION", "1"]) # gravitational separation of solid/melt
+    # Energy transport physics (true->'1', false->'0')
+    call_sequence.extend(["-CONDUCTION", str(int(config.interior.spider.conduction))])
+    call_sequence.extend(["-CONVECTION", str(int(config.interior.spider.convection))])
+    call_sequence.extend(["-MIXING",     str(int(config.interior.spider.mixing))])
+    call_sequence.extend(["-SEPARATION", str(int(config.interior.spider.gravitational_separation))])
 
     # Tidal heating
     if config.interior.tidal_heat:
@@ -356,7 +356,7 @@ def _try_spider( dirs:dict, config:Config,
 
     # smoothing of material properties across liquidus and solidus
     # units of melt fraction (non-dimensional)
-    call_sequence.extend(["-matprop_smooth_width", "1.0E-2"])
+    call_sequence.extend(["-matprop_smooth_width", "%.6e"%(config.interior.spider.matprop_smooth_width)])
 
     # Viscosity behaviour (rheological transition location and width, melt fractions)
     call_sequence.extend(["-phi_critical", "%.6e"%(config.interior.rheo_phi_loc)])
@@ -574,8 +574,7 @@ def ReadSPIDER(dirs:dict, config:Config, R_int:float, interior_o:Interior_t):
     volume_mantle = np.sum(vshell)
 
     # Global melt fraction by volume
-    output["Phi_global_vol"] = np.sum(vmelt)/volume_mantle
-    # output["Phi_global_vol"] = float(output["Phi_global"])
+    output["Phi_global_vol"] = min(1.0, max(0.0, np.sum(vmelt)/volume_mantle))
 
     # Manually calculate heat flux at near-surface from energy gradient
     # Etot        = json_file.get_dict_values(['data','Etot_b'])

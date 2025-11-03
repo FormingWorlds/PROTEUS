@@ -12,6 +12,11 @@ def valid_spider(instance, attribute, value):
     if (not ini_entropy) or (ini_entropy <= 200.0) :
         raise ValueError("`interior.spider.ini_entropy` must be >200")
 
+    # at least one energy term enabled
+    spider = instance.spider
+    if not (spider.conduction or spider.convection or spider.mixing or spider.gravitational_separation):
+        raise ValueError("Must enable at least one energy transport term in SPIDER")
+
 def valid_path(instance, attribute, value):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"'{attribute.name}' must be a non-empty string")
@@ -40,16 +45,31 @@ class Spider:
         Initial interior specific entropy gradient [J K-1 kg-1 m-1].
     solver_type: str
         Numerical integrator. Choices: 'adams', 'bdf'.
+    conduction: bool
+        Whether to include conductive heat flux in the model.
+    convection: bool
+        Whether to include convective heat flux in the model.
+    gravitational_separation: bool
+        Whether to include gravitational separation flux in the model.
+    mixing: bool
+        Whether to include mixing flux in the model.
+    matprop_smooth_width: float
+        Window width, in melt-fraction, for smoothing properties across liquidus and solidus
     """
-    ini_entropy          = field(default=None)
-    ini_dsdr: float      = field(default=-4.698e-6,  validator=lt(0))
-    num_levels: int      = field(default=190,        validator=ge(40))
-    mixing_length: int   = field(default=2,          validator=in_((1,2)))
-    tolerance: float     = field(default=1e-10,      validator=gt(0))
-    tolerance_rel: float = field(default=1e-10,      validator=gt(0))
-    solver_type: str     = field(default="bdf",      validator=in_(("adams", "bdf")))
-    tsurf_atol: float    = field(default=10.0,       validator=gt(0))
-    tsurf_rtol: float    = field(default=0.01,       validator=gt(0))
+    ini_entropy                     = field(default=None)
+    ini_dsdr: float                 = field(default=-4.698e-6,  validator=lt(0))
+    num_levels: int                 = field(default=190,        validator=ge(40))
+    mixing_length: int              = field(default=2,          validator=in_((1,2)))
+    tolerance: float                = field(default=1e-10,      validator=gt(0))
+    tolerance_rel: float            = field(default=1e-10,      validator=gt(0))
+    solver_type: str                = field(default="bdf",      validator=in_(("adams", "bdf")))
+    tsurf_atol: float               = field(default=10.0,       validator=gt(0))
+    tsurf_rtol: float               = field(default=0.01,       validator=gt(0))
+    conduction: bool                = field(default=True)
+    convection: bool                = field(default=True)
+    gravitational_separation: bool  = field(default=True)
+    mixing: bool                    = field(default=True)
+    matprop_smooth_width: float     = field(default=1e-2,   validator=(gt(0),lt(1)))
 
 
 def valid_aragog(instance, attribute, value):
@@ -59,6 +79,11 @@ def valid_aragog(instance, attribute, value):
     ini_tmagma = instance.aragog.ini_tmagma
     if (not ini_tmagma) or (ini_tmagma <= 200.0) :
         raise ValueError("`interior.aragog.ini_tmagma` must be >200")
+
+    # at least one energy term enabled
+    aragog = instance.aragog
+    if not (aragog.conduction or aragog.convection or aragog.mixing or aragog.gravitational_separation):
+        raise ValueError("Must enable at least one energy transport term in Aragog")
 
 @define
 class Aragog:
