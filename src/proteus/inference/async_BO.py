@@ -26,7 +26,7 @@ import torch
 from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scaled_prior
 from scipy.stats.qmc import Halton
 
-from proteus.inference.BO import BO_step
+from proteus.inference.BO import BO_step, init_locs
 from proteus.utils.coupler import get_proteus_directories
 
 # Tensor dtype for all computations
@@ -60,26 +60,28 @@ def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
         pickle.dump(list(Ts), f_ts)
 
 
-def init_locs(n_workers: int, D: dict, seed:int) -> torch.Tensor:
-    """Generate initial sample locations using a Halton sequence.
+# def init_locs(n_workers: int, D: dict, seed:int) -> torch.Tensor:
+#     """Generate initial sample locations using a Halton sequence.
 
-    Args:
-        n_workers (int): Number of initial points to generate.
-        D (dict): Shared dict with key 'X' to infer problem dimension.
-        seed (int): Seed for reproducibility.
+#     Args:
+#         n_workers (int): Number of initial points to generate.
+#         D (dict): Shared dict with key 'X' to infer problem dimension.
+#         seed (int): Seed for reproducibility.
 
-    Returns:
-        torch.Tensor: Tensor of shape (n_workers, d) in [0,1]^d for initial sampling.
-    """
-    # Determine the input dimension from existing data
-    d = D["X"].shape[-1]
+#     Returns:
+#         torch.Tensor: Tensor of shape (n_workers, d) in [0,1]^d for initial sampling.
+#     """
+#     # Determine the input dimension from existing data
+#     d = D["X"].shape[-1]
 
-    # Create a scrambled Halton sampler
-    sampler = Halton(d=d, rng=numpy.random.default_rng(seed), scramble=True)
-    samples = sampler.random(n=n_workers)
+#     # Create a scrambled Halton sampler
+#     sampler = Halton(d=d, rng=numpy.random.default_rng(seed), scramble=True)
+#     samples = sampler.random(n=n_workers)
 
-    # Convert to Torch tensor
-    return torch.tensor(samples, dtype=dtype)
+#     # Convert to Torch tensor
+#     return torch.tensor(samples, dtype=dtype)
+
+
 
 
 def worker(
@@ -282,7 +284,7 @@ def parallel_process(
     log_list = mgr.list([None] * n_init) # no logs from init data
 
     # Generate initial candidate locations and busy-map
-    X_init = init_locs(n_workers, D_shared, seed)
+    X_init = init_locs(n_workers, D_shared)
     B = mgr.dict()
 
     # Shared list for end times

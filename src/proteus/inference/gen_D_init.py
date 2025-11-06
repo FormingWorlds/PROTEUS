@@ -10,11 +10,16 @@ from __future__ import annotations
 import os
 import pickle
 from glob import glob
+import time
 
 import pandas as pd
+import numpy as np
 import toml
 import torch
 from botorch.utils.transforms import normalize
+from scipy.stats.qmc import Halton
+from multiprocessing import Pool
+from functools import partial
 
 from proteus.inference.objective import eval_obj, prot_builder
 from proteus.utils.coupler import get_proteus_directories
@@ -128,6 +133,18 @@ def sample_from_grid(output:str,
     # Return number of samples
     return len(Y.flatten())
 
+def f_aug(x, iter, builder_args):
+    f = prot_builder(
+                    parameters=builder_args["parameters"],
+                    observables=builder_args["observables"],
+                    worker=-1,
+                    iter=iter,
+                    ref_config=builder_args["ref_config"],
+                    output=builder_args["output"]
+                    )
+
+    return f(x)
+
 def sample_from_bounds(output:str, ref_config:str,
                        params:dict, observables:dict,
                        nsamp:int, seed:int):
@@ -137,27 +154,43 @@ def sample_from_bounds(output:str, ref_config:str,
 
     # Build the PROTEUS-based objective function with fixed context
     #    This will be used to evaluate the objective function to provide initial samples
-    f = prot_builder(
-        parameters=params,
-        observables=observables,
-        worker=0,
-        iter=0,
-        ref_config=ref_config,
-        output=output
-    )
 
     # Determine problem dimension (number of parameters)
     dims = len(params)
 
+    # prepare parallel proteus runs
+    builder_args =  dict(parameters=params,
+                         observables=observables,
+                         ref_config=ref_config,
+                         output=output)
+
     # Generate n random points in [0,1]^d and evaluate the objective
     #     Each of the parameters are evaluated in space 0-1, normalised to the bounds
     #     This variable is 2D, with shape [nsamp, dims]
-    X = torch.rand(nsamp, dims,
-                   generator=torch.manual_seed(seed), dtype=dtype)
+
+    sampler = Halton(d=dims, rng=np.random.default_rng(seed), scramble=True)
+    X = sampler.random(n=nsamp)
+    X = torch.tensor(X, dtype=dtype)
+
+    # X = torch.rand(nsamp, dims,
+    #                generator=torch.manual_seed(seed), dtype=dtype)
 
     # Evaluate the objective function for each of the samples
     #     This variable is 1D, with shape [nsamp]
-    Y = torch.stack([f(x[None, :]) for x in X]).reshape(nsamp, 1)
+
+    aug_args = [(x[None, :], i, builder_args) for i, x in enumerate(X)]
+
+    avail_cpus = os.cpu_count() - 1
+    t0 = time.perf_counter()
+    with Pool(processes=avail_cpus) as pool:
+        results = pool.starmap(f_aug, aug_args)
+    t1 = time.perf_counter()
+
+    print(f"Initial sampling took {(t1-t0):.2f}s")
+
+    Y = torch.vstack(results)
+
+    # Y = torch.stack([f(x[None, :]) for x in X]).reshape(nsamp, 1)
 
     # Package into dataset dict
     D = {"X": X, "Y": Y}
