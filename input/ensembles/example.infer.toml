@@ -1,7 +1,7 @@
 # Config file for inference scheme
 
 # Set seed for reproducibility
-seed = 2
+seed = 1
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
 output = "infer_demo/"
@@ -14,10 +14,10 @@ init_samps = 2         # Number of random samples if starting from scratch.
 init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Parameters for Bayesian optimisation
-n_workers  = 7        # Number of parallel workers
+n_workers  = 3        # Number of parallel workers
 kernel     = "MAT"    # Kernel type for GP, "RBF" | "MAT"
-acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI"
-n_steps    = 30       # Total number of evaluations (i.e. BO steps)
+acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI" | "E-LogEI"
+n_steps    = 20       # Total number of evaluations (i.e. BO steps)
 n_restarts = 10       # GP optimization restarts
 n_samples  = 1000     # Raw samples for acquisition optimization
 
@@ -25,12 +25,12 @@ n_samples  = 1000     # Raw samples for acquisition optimization
 [parameters]
 "struct.mass_tot" = [0.7, 3.0]
 "struct.corefrac" = [0.3, 0.9]
-"delivery.elements.H_ppmw" = [1e3, 2e4]
-"outgas.fO2_shift_IW" = [-3.0, 5.0]
-"escape.dummy.rate" = [1e5, 1e7]
+# "delivery.elements.H_ppmw" = [1e3, 2e4]
+# "outgas.fO2_shift_IW" = [-3.0, 5.0]
+# "escape.dummy.rate" = [1e5, 1e7]
 
 # Target observables to match by optimisation
 [observables]
-"R_obs" = 6.4781639626e+6
-"H2O_vmr" = 7.5032517428e-1
-"P_surf" = 3.8198606763e+3
+"R_obs" = 7965615.4204
+"H2O_vmr" = 0.7073762847
+# "P_surf" = 3.8198606763e+3
