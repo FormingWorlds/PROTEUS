@@ -230,6 +230,7 @@ class Proteus:
         # Initialise atmosphere object
         self.atmos_o  = Atmos_t()
         if self.config.atmos_clim.albedo_from_file:
+            log.debug("Reading albedo data from file")
             self.atmos_o.albedo_o = Albedo_t(self.config.atmos_clim.albedo_pl)
 
         # Is the model resuming from a previous state?
