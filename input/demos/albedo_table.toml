@@ -34,10 +34,11 @@ version = "2.0"
 
 [atmos_clim]
     module  = "dummy"            # Which atmosphere module to use
+    prevent_warming = false
 
     rayleigh        = false
     cloud_enabled   = false
-    albedo_pl       = "nogit_albedo_clear.csv"
+    albedo_pl       = "nogit_albedo_cloudy.csv"
     surf_greyalbedo = 0.3
 
     [atmos_clim.agni]

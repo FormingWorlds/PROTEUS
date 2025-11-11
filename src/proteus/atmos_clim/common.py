@@ -217,12 +217,14 @@ class Albedo_t():
     Store and evaluate bond albedo as a function of other variables.
     """
 
-    def __init__(self, csvfile:str) -> bool:
+    def __init__(self, csvfile:str):
 
         # Data table
         self._data:pd.DataFrame = None
+        self.ok = False
 
         # Interpolator
+        self._lims:dict = {}  # axis limits
         self._interp = None
 
         # Read data file
@@ -231,23 +233,46 @@ class Albedo_t():
         if os.path.isfile(csvfile):
             try:
                 self._data = pd.read_csv(csvfile, dtype=float)
-            except RuntimeError as e:
-                log.error(f"Could not read file '{csvfile}'")
+            except Exception as e:
+                log.error(f"Could not parse lookup data from file '{csvfile}'")
                 self._data = None
-                return False
+                return
         else:
             log.error(f"Could not find file '{csvfile}'")
-            return False
+            return
+
+        # Check that file has required keys
+        for k in ("tmp", "albedo"):
+            if k not in self._data.keys():
+                log.error(f"Albedo lookup data does not have required key '{k}'")
+                log.error(f"    File: {csvfile}")
+                return
+
+        # Store axis limits
+        for k in self._data.keys():
+            self._lims[k] = (np.amin(self._data[k]), np.amax(self._data[k]))
 
         # Process data by interpolation
-        self._interp = PchipInterpolator(self._data["tmp"], self._data["albedo"], extrapolate=True)
+        self.ok = True
+        self._interp = PchipInterpolator(self._data["tmp"], self._data["albedo"])
 
     def evaluate(self, tmp:float) -> float:
         """
         Evalulate bond albedo at a given temperature [K]
         """
-        if self._interp:
-            return float(self._interp(tmp))
+        if self._interp or not self.ok:
+
+            # Ensure valid range on input parameters
+            tmp = min(max(tmp, self._lims["tmp"][0]), self._lims["tmp"][1])
+
+            # Evaluate albedo
+            alb = float(self._interp(tmp))
+
+            # Ensure valid range on output albedo
+            if not (0 < alb < 1):
+                log.warning(f"Interpolated `albedo_pl` is out of range: {alb}")
+            return min(max(alb, 0.0), 1.0)
+
         else:
             log.error("Cannot evaluate bond albedo. Lookup data not loaded!")
-            return False
+            return None
