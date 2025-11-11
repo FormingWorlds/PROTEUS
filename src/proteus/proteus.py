@@ -106,7 +106,7 @@ class Proteus:
 
         #    atmosphere solver
         from proteus.atmos_clim import run_atmosphere
-        from proteus.atmos_clim.common import Atmos_t, Albedo_t
+        from proteus.atmos_clim.common import Albedo_t, Atmos_t
 
         #    escape and outgas
         from proteus.escape.wrapper import run_escape

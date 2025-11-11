@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 import netCDF4 as nc
 import numpy as np
-from scipy.interpolate import PchipInterpolator
 import pandas as pd
+from scipy.interpolate import PchipInterpolator
 
 from proteus.utils.helper import find_nearest
 
@@ -233,7 +233,7 @@ class Albedo_t():
         if os.path.isfile(csvfile):
             try:
                 self._data = pd.read_csv(csvfile, dtype=float)
-            except Exception as e:
+            except Exception:
                 log.error(f"Could not parse lookup data from file '{csvfile}'")
                 self._data = None
                 return
