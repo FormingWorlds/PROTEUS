@@ -33,11 +33,12 @@ version = "2.0"
     corefrac    = 0.55          # Radius fraction [non-dim.]
 
 [atmos_clim]
-    module  = "agni"            # Which atmosphere module to use
+    module  = "dummy"            # Which atmosphere module to use
 
     rayleigh        = false
     cloud_enabled   = false
     albedo_pl       = "nogit_albedo_clear.csv"
+    surf_greyalbedo = 0.3
 
     [atmos_clim.agni]
         spectral_group  = "Honeyside"   # Which gas opacities to include

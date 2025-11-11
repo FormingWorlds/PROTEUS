@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import netCDF4 as nc
 import numpy as np
 from scipy.interpolate import PchipInterpolator
+import pandas as pd
 
 from proteus.utils.helper import find_nearest
 
@@ -216,24 +217,30 @@ class Albedo_t():
     Store and evaluate bond albedo as a function of other variables.
     """
 
-    def __init__(self, csvfile:str):
+    def __init__(self, csvfile:str) -> bool:
 
         # Data table
-        self._data = None
+        self._data:pd.DataFrame = None
 
         # Interpolator
         self._interp = None
 
         # Read data file
-        #   row 0: temperature [K]
-        #   row 1: bond albedo [-]
+        #   tmp     ->   temperature [K]
+        #   albedo  ->   bond albedo [-]
         if os.path.isfile(csvfile):
-            self._data = np.loadtxt(csvfile, delimiter=',', dtype=float)
+            try:
+                self._data = pd.read_csv(csvfile, dtype=float)
+            except RuntimeError as e:
+                log.error(f"Could not read file '{csvfile}'")
+                self._data = None
+                return False
         else:
-            raise FileNotFoundError(csvfile)
+            log.error(f"Could not find file '{csvfile}'")
+            return False
 
         # Process data by interpolation
-        self._interp = PchipInterpolator(self._data[0], self._data[1], extrapolate=True)
+        self._interp = PchipInterpolator(self._data["tmp"], self._data["albedo"], extrapolate=True)
 
     def evaluate(self, tmp:float) -> float:
         """
@@ -242,4 +249,5 @@ class Albedo_t():
         if self._interp:
             return float(self._interp(tmp))
         else:
-            raise RuntimeError("Cannot evaluate bond albedo. Lookup data not loaded!")
+            log.error("Cannot evaluate bond albedo. Lookup data not loaded!")
+            return False
