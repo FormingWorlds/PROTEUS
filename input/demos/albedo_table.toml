@@ -1,0 +1,81 @@
+# PROTEUS configuration file
+
+# This is a minimal outline of a PROTEUS configuration file. Since it only has a few
+# options specified, the simulation will rely on the defaults in all_options.toml.
+# For configuration see https://fwl-proteus.readthedocs.io/en/latest/config.html
+
+# ----------------------------------------------------
+
+version = "2.0"
+
+[params]
+    [params.out]
+        path        = "albedo_table"
+
+[star]
+    mass    = 1.0               # [M_sun]
+    age_ini = 0.100             # Model initialisation/start age [Gyr]
+    module  = "mors"
+    [star.mors]
+        rot_pcntle = 50.0       # Rotation percentile
+        age_now = 4.567         # Current age of star used for scaling [Gyr]
+        spec    = "stellar_spectra/Named/sun.txt"   # Stellar spectrum
+
+[orbit]
+    semimajoraxis   = 1.0       # [AU]
+    eccentricity    = 0.0       # [dimensionless]
+    zenith_angle    = 48.19     # [degrees]
+    s0_factor       = 0.375     # [dimensionless]
+    module          = "none"
+
+[struct]
+    mass_tot    = 1.0           # [M_earth]
+    corefrac    = 0.55          # Radius fraction [non-dim.]
+
+[atmos_clim]
+    module  = "agni"            # Which atmosphere module to use
+
+    rayleigh        = false
+    cloud_enabled   = false
+    albedo_pl       = "nogit_albedo_clear.csv"
+
+    [atmos_clim.agni]
+        spectral_group  = "Honeyside"   # Which gas opacities to include
+        spectral_bands  = "48"  # How many spectral bands
+
+[escape]
+    module = "zephyrus"
+
+[interior]
+    module = "dummy"
+    tidal_heat = false
+
+    [interior.aragog]
+        ini_tmagma = 3300.0     # Initial magma surface temperature [K]
+
+    [interior.dummy]
+        ini_tmagma = 4000.0
+
+[outgas]
+    fO2_shift_IW    = 4         # Atmosphere/interior boundary oxidation state [log10(ΔIW)]
+    module = "calliope"         # Which outgassing module to use
+
+[delivery]
+    initial = 'elements'        # Which initial inventory to use?
+    module = "none"
+
+    # Set initial volatile inventory by planetary element abundances
+    [delivery.elements]
+        H_oceans    = 5.0       # Hydrogen inventory in units of equivalent Earth oceans
+        CH_ratio    = 1.0       # C/H mass ratio in mantle/atmosphere system
+        NH_ratio    = 0.5       # N/H mass ratio in mantle/atmosphere system
+        SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
+
+# Calculate simulated observations
+[observe]
+
+    # Module with which to calculate the synthetic observables
+    synthesis = "none"
+
+[atmos_chem]
+    module = "none"

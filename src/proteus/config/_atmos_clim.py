@@ -290,7 +290,7 @@ class AtmosClim:
     cloud_enabled: bool     = field(default=False)
     cloud_alpha: float      = field(default=0.0, validator=(ge(0), le(1)))
     surf_greyalbedo:float   = field(default=0.2, validator=(ge(0),le(1)))
-    albedo_pl: float|str    = field(default=0.0, validator=valid_albedo)
+    albedo_pl               = field(default=0.0, validator=valid_albedo)
     rayleigh: bool          = field(default=True,validator=warn_if_dummy)
     tmp_minimum: float      = field(default=0.5, validator=gt(0))
     tmp_maximum: float      = field(default=5000.0,

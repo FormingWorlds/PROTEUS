@@ -63,8 +63,10 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
 
         # Update value of input albedo
         if config.atmos_clim.albedo_from_file:
+            log.debug("Set albedo by interpolation from file")
             hf_row["albedo_pl"] = atmos_o.albedo_o.evaluate(hf_row["T_surf"])
         else:
+            log.debug("Set albedo by constant value from config")
             hf_row["albedo_pl"] = float(config.atmos_clim.albedo_pl)
 
     # Handle new surface temperature
