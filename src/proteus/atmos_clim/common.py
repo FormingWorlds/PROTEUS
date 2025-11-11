@@ -240,6 +240,6 @@ class Albedo_t():
         Evalulate bond albedo at a given temperature [K]
         """
         if self._interp:
-            return self._interp(tmp)
+            return float(self._interp(tmp))
         else:
             raise RuntimeError("Cannot evaluate bond albedo. Lookup data not loaded!")

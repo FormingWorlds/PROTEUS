@@ -384,7 +384,7 @@ def update_equilibrium_temperature(hf_row:dict, config:Config):
     '''
 
     # Absorbed stellar flux
-    F_asf = hf_row["F_ins"] * config.orbit.s0_factor * (1-config.atmos_clim.albedo_pl)
+    F_asf = hf_row["F_ins"] * config.orbit.s0_factor * (1-hf_row["albedo_pl"])
 
     # Planetary equilibrium temperature
     hf_row["T_eqm"] = (F_asf / const_sigma)**(1.0/4.0)
