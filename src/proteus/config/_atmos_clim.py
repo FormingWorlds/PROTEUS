@@ -256,8 +256,8 @@ class AtmosClim:
         Surface energy balance scheme. Choices: "mixed_layer", "fixed", "skin".
     surf_greyalbedo : float
         Grey surface albedo.
-    albedo_pl: float
-        Planetary/bold albedo used to emulate scattering [dimensionless].
+    albedo_pl: float | str
+        Planetary/bold albedo used to emulate scattering. Can be float (0 to 1) or str (path to CSV file containing lookup data).
     rayleigh: bool
         Include Rayleigh scattering in the radiative transfer calculations.
     tmp_minimum: float
