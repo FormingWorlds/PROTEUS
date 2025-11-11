@@ -497,12 +497,15 @@ def GetHelpfileKeys():
             "M_star", "R_star", "age_star", # [kg], [m], [yr]
             "T_star", # [K]
 
+
             # Observational (from infinity)
             "p_obs",    # observered radius [bar]
             "R_obs",    # observed radius [m]
             "rho_obs",  # observed bulk density [kg m-3]
             "transit_depth", "eclipse_depth", # [1], [1]
-            "bond_albedo", # bolometric bond albedo [1]
+
+            "albedo_pl",   # input bond albedo [1]
+            "bond_albedo", # output bond albedo [1]
 
             # Imaginary part of k2 Love Number
             "Imk2", # [1]

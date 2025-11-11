@@ -186,7 +186,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
                         hf_row["F_ins"],
                         config.orbit.s0_factor,
-                        config.atmos_clim.albedo_pl,
+                        hf_row["albedo_pl"],
                         config.orbit.zenith_angle,
 
                         hf_row["T_surf"],

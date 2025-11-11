@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import netCDF4 as nc
 import numpy as np
+from scipy.interpolate import PchipInterpolator
 
 from proteus.utils.helper import find_nearest
 
@@ -20,6 +21,9 @@ class Atmos_t():
     def __init__(self):
         # Atmosphere object internal to JANUS or AGNI
         self._atm = None
+
+        # Albedo lookup object
+        self.albedo_o:Albedo_t = None
 
 def ncdf_flag_to_bool(var)->bool:
     '''Convert NetCDF flag (y/n) to Python bool (true/false)'''
@@ -205,3 +209,37 @@ def get_radius_from_pressure(p_arr, r_arr, p_tgt):
 
     p_close, idx = find_nearest(p_arr, p_tgt)
     return float(p_close), float(r_arr[idx])
+
+
+class Albedo_t():
+    """
+    Store and evaluate bond albedo as a function of other variables.
+    """
+
+    def __init__(self, csvfile:str):
+
+        # Data table
+        self._data = None
+
+        # Interpolator
+        self._interp = None
+
+        # Read data file
+        #   row 0: temperature [K]
+        #   row 1: bond albedo [-]
+        if os.path.isfile(csvfile):
+            self._data = np.loadtxt(csvfile, delimiter=',', dtype=float)
+        else:
+            raise FileNotFoundError(csvfile)
+
+        # Process data by interpolation
+        self._interp = PchipInterpolator(self._data[0], self._data[1], extrapolate=True)
+
+    def evaluate(self, tmp:float) -> float:
+        """
+        Evalulate bond albedo at a given temperature [K]
+        """
+        if self._interp:
+            return self._interp(tmp)
+        else:
+            raise RuntimeError("Cannot evaluate bond albedo. Lookup data not loaded!")
