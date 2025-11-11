@@ -310,4 +310,9 @@ class AtmosClim:
     @property
     def albedo_from_file(self) -> bool:
         """Is albedo set by lookup table or not?"""
-        return isinstance(self.albedo_pl, str)
+        if isinstance(self.albedo_pl, str):
+            return True
+        elif isinstance(self.albedo_pl, float):
+            return False
+        else:
+            raise ValueError("Cannot determine configuration for setting `albedo_pl`")
