@@ -64,10 +64,10 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
         # Update value of input albedo
         if config.atmos_clim.albedo_from_file:
             hf_row["albedo_pl"] = float(atmos_o.albedo_o.evaluate(hf_row["T_surf"]))
-            log.info(f"Set albedo by interpolation: {hf_row["albedo_pl"]*100:.3f}%")
+            log.info(f"Set albedo by interpolation: {hf_row['albedo_pl']*100:.3f}%")
         else:
             hf_row["albedo_pl"] = float(config.atmos_clim.albedo_pl)
-            log.debug(f"Set albedo by config: {hf_row["albedo_pl"]*100:.3f}%")
+            log.debug(f"Set albedo by config: {hf_row['albedo_pl']*100:.3f}%")
 
     else:
         # Held at zero

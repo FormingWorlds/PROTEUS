@@ -259,9 +259,23 @@ class Albedo_t():
     def evaluate(self, tmp:float) -> float:
         """
         Evalulate bond albedo at a given temperature [K]
-        """
-        if self._interp or not self.ok:
 
+        Parameters
+        -----------
+        - tmp: float
+            Surface temperature [K]
+
+        Returns
+        ------------
+        - albedo_pl: float
+            Planetary bond albedo (from 0 to 1)
+        """
+
+        if (not self._interp) or (not self.ok):
+            log.error("Cannot evaluate bond albedo. Lookup data not loaded!")
+            return None
+
+        else:
             # Ensure valid range on input parameters
             tmp = min(max(tmp, self._lims["tmp"][0]), self._lims["tmp"][1])
 
@@ -269,10 +283,6 @@ class Albedo_t():
             alb = float(self._interp(tmp))
 
             # Ensure valid range on output albedo
-            if not (0 < alb < 1):
+            if not (0 <= alb <= 1):
                 log.warning(f"Interpolated `albedo_pl` is out of range: {alb}")
             return min(max(alb, 0.0), 1.0)
-
-        else:
-            log.error("Cannot evaluate bond albedo. Lookup data not loaded!")
-            return None

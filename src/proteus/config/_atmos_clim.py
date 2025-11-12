@@ -227,11 +227,13 @@ class Dummy:
 def valid_albedo(instance, attribute, value):
 
     if isinstance(value, str):
-        return True
+        return
 
     elif isinstance(value, float):
         if not (0 <= value <= 1):
             raise ValueError("The value of `albedo_pl` must be between 0 and 1")
+        else:
+            return
 
     else:
         raise ValueError("The value of `albedo_pl` must be a string or a float")
@@ -257,7 +259,7 @@ class AtmosClim:
     surf_greyalbedo : float
         Grey surface albedo.
     albedo_pl: float | str
-        Planetary/bold albedo used to emulate scattering. Can be float (0 to 1) or str (path to CSV file containing lookup data).
+        Planetary bond albedo used to emulate scattering. Can be float (0 to 1) or str (path to CSV file containing lookup data).
     rayleigh: bool
         Include Rayleigh scattering in the radiative transfer calculations.
     tmp_minimum: float
