@@ -40,7 +40,7 @@ version = "2.0"
 
     rayleigh        = false
     cloud_enabled   = false
-    albedo_pl       = "tests/data/albedo_lookup/cloudy.csv"
+    albedo_pl       = "tests/data/integration/albedo_lookup/cloudy.csv"
     surf_greyalbedo = 0.3
 
     [atmos_clim.agni]

@@ -1,24 +1,26 @@
 # This test runs PROTEUS using only the dummy modules
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 from helpers import NEGLECT, PROTEUS_ROOT, df_intersect
-from pandas.testing import assert_frame_equal
+from pandas.testing import assert_frame_equal, assert_series_equal
 
 from proteus import Proteus
 from proteus.utils.coupler import ReadHelpfileFromCSV
 
 out_dir = PROTEUS_ROOT / 'output' / 'albedo_lookup'
-ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'albedo_lookup'
+ref_dir = PROTEUS_ROOT / 'tests' / 'data' / 'integration' / 'albedo_lookup'
+config_path = PROTEUS_ROOT / 'tests' / 'integration' / 'albedo_lookup.toml'
 
 
 @pytest.fixture(scope="module")
 def albedo_run():
-    config_path = ref_dir /  'config.toml'
-
     runner = Proteus(config_path=config_path)
 
     runner.start(offline=True)
+
+    return runner
 
 # check result
 def test_albedo_helpfile(albedo_run):
@@ -36,6 +38,26 @@ def test_albedo_helpfile(albedo_run):
     # Check helpfile
     assert_frame_equal(hf_all, hf_ref, rtol=5e-3)
 
+# check albedo interpolation
+def test_albedo_interp(albedo_run):
+
+    # check loaded data ok
+    assert albedo_run.atmos_o.albedo_o.ok
+
+    # read data file
+    data = pd.read_csv(ref_dir / 'cloudy.csv')
+    data_tmp = data["tmp"][:]
+    data_alb = pd.Series(data["albedo"])
+    inte_alb = pd.Series(data_alb)
+
+    # interpolate as at runtime
+    for i in range(len(data_alb)):
+        inte_alb[i] = albedo_run.atmos_o.albedo_o.evaluate(data_tmp[i])
+
+    # compare
+    assert_series_equal(data_alb, inte_alb, atol=1e-7, check_names=False)
+
+
 # Check physics
 def test_albedo_physics(albedo_run):
     hf_all = ReadHelpfileFromCSV(out_dir)
@@ -52,3 +74,4 @@ def test_albedo_physics(albedo_run):
     # reasonable surface temperatures
     assert row_1["T_surf"] < row_0["T_surf"]
     assert row_1["T_surf"] > 100.0
+
