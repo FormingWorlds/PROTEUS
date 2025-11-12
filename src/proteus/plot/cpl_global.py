@@ -42,7 +42,7 @@ def plot_global(hf_all: pd.DataFrame, output_dir: str, config: Config,
         "handletextpad":0.7
     }
 
-    F_asf = np.array(hf["F_ins"]) * config.orbit.s0_factor * (1.0 - config.atmos_clim.albedo_pl) * np.cos(config.orbit.zenith_angle * np.pi/180.0)
+    F_asf = np.array(hf["F_ins"]) * config.orbit.s0_factor * (1.0 - hf["albedo_pl"]) * np.cos(config.orbit.zenith_angle * np.pi/180.0)
 
     #    Volatile parameters (keys=vols, vals=quantites_over_time)
     vol_present = {} # Is present ever? (true/false)
