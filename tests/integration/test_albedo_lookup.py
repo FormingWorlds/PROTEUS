@@ -74,4 +74,3 @@ def test_albedo_physics(albedo_run):
     # reasonable surface temperatures
     assert row_1["T_surf"] < row_0["T_surf"]
     assert row_1["T_surf"] > 100.0
-
