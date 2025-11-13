@@ -204,8 +204,10 @@ version = "2.0"
         solution_atol   = 0.5           # solver absolute tolerance
         solution_rtol   = 0.15          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = false         # include volatile rainout upon condensation
-        latent_heat     = false         # include latent heat release by phase change?
+        rainout         = false         # include volatile rainout upon condensation
+        latent_heat     = false         # include latent heat release by phase change? Requires `rainout=true`
+        convection      = true          # include convective heat transport, with MLT
+        conduction      = false         # include conductive heat transport, with Fourier's law
         real_gas        = false         # use real-gas equations of state
         psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
         dx_max_ini      = 300.0         # initial maximum temperature step [kelvin] allowed by solver

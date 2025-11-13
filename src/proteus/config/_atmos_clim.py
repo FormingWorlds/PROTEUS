@@ -85,10 +85,14 @@ class Agni:
         Relative tolerance on the atmosphere solution.
     overlap_method: str
         Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
-    condensation: bool
+    rainout: bool
         Enable volatile rainout in the atmosphere and ocean formation below.
     latent_heat: bool
-        Account for latent heat from condense/evap when solving temperature profile.
+        Account for latent heat from condense/evap when solving temperature profile. Requires `rainout=true`.
+    convection: bool
+        Account for convective heat transport, using MLT.
+    conduction: bool
+        Account for conductive heat transport, using Fourier's law.
     real_gas: bool
         Use real gas equations of state in atmosphere, where possible.
     psurf_thresh: float
@@ -132,8 +136,10 @@ class Agni:
     solution_atol: float    = field(default=0.5,  validator=gt(0))
     solution_rtol: float    = field(default=0.15,  validator=gt(0))
     overlap_method: str     = field(default='ee', validator=check_overlap)
-    condensation: bool      = field(default=False)
+    rainout: bool           = field(default=False)
     latent_heat: bool       = field(default=False)
+    convection: bool        = field(default=False)
+    conduction: bool        = field(default=False)
     real_gas: bool          = field(default=False)
     psurf_thresh: float     = field(default=0.1, validator=ge(0))
     dx_max: float           = field(default=35.0,  validator=gt(1))
@@ -152,11 +158,6 @@ class Agni:
                                                    'dry_adiabat','analytic'))
                                     )
     ls_default: int         = field(default=2, validator=in_((0,1,2)))
-
-    @property
-    def chemistry_int(self) -> int:
-        """Return integer state for agni."""
-        return 1 if self.chemistry else 0
 
 def valid_janus(instance, attribute, value):
     if instance.module != "janus":

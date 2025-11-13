@@ -153,10 +153,9 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
             condensates = condensates[:-1]
 
     # Chemistry
-    chem_type = config.atmos_clim.agni.chemistry
     include_all = False
     fc_dir = create_tmp_folder()
-    if chem_type == 'eq':
+    if config.atmos_clim.agni.chemistry == 'eq':
         include_all = True
         condensates = []
         log.debug("Fastchem work folder: '%s'"%fc_dir)
@@ -398,7 +397,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         perturb_chem = True
         perturb_all  = bool(config.atmos_clim.agni.perturb_all)
         max_steps    = int(config.atmos_clim.agni.max_steps)
-        chem_type    = int(config.atmos_clim.agni.chemistry_int)
+        chemistry    = bool(config.atmos_clim.agni.chemistry == 'eq')
 
         # parameters during initial few iterations
         if loops_total < 3:
@@ -433,9 +432,11 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         agni_success = jl.AGNI.solver.solve_energy_b(atmos,
                             sol_type  = int(config.atmos_clim.surf_state_int),
                             method    = int(1),
-                            chem_type = chem_type,
+                            chemistry = chemistry,
 
-                            conduct=False, convect=True, sens_heat=True,
+                            conduct=config.atmos_clim.agni.conduction,
+                            convect=config.atmos_clim.agni.convection,
+                            sens_heat=config.atmos_clim.agni.sens_heat,
                             latent=config.atmos_clim.agni.latent_heat,
                             rainout=config.atmos_clim.agni.condensation,
 
