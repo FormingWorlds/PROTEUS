@@ -203,7 +203,11 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
                         albedo_s=config.atmos_clim.surf_greyalbedo,
                         surface_material=surface_material,
+
                         condensates=condensates,
+                        phs_timescale=config.atmos_clim.agni.phs_timescale,
+                        evap_efficiency=config.atmos_clim.agni.evap_efficiency,
+
                         use_all_gases=include_all,
                         fastchem_work = fc_dir,
                         fastchem_floor        = config.atmos_clim.agni.fastchem_floor,
@@ -432,7 +436,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         agni_success = jl.AGNI.solver.solve_energy_b(atmos,
                             sol_type  = int(config.atmos_clim.surf_state_int),
                             method    = int(1),
-                            chemistry = chemistry,
+                            chem      = chemistry,
 
                             conduct=config.atmos_clim.agni.conduction,
                             convect=config.atmos_clim.agni.convection,
@@ -443,6 +447,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
                             max_steps=int(max_steps), max_runtime=900.0,
                             conv_atol=float(config.atmos_clim.agni.solution_atol),
                             conv_rtol=float(config.atmos_clim.agni.solution_rtol),
+                            fdo=int(config.atmos_clim.agni.fdo),
 
                             ls_increase=float(ls_increase), ls_method=int(linesearch),
                             ls_max_steps=int(ls_max_steps), ls_min_scale=float(ls_min_scale),
@@ -504,9 +509,8 @@ def _solve_once(atmos, config:Config):
     jl.AGNI.setpt.stratosphere_b(atmos, 0.5)
 
     # do chemistry
-    chem_int = config.atmos_clim.agni.chemistry_int
-    if chem_int > 0:
-        jl.AGNI.chemistry.fastchem_eqm_b(atmos, chem_int, True)
+    if config.atmos_clim.agni.chemistry > 0:
+        jl.AGNI.chemistry.fastchem_eqm_b(atmos, True)
 
     # solve fluxes
     jl.AGNI.energy.calc_fluxes_b(atmos, True, False, True, False, False, calc_cf=True)

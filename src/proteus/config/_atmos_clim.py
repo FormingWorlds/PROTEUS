@@ -85,6 +85,10 @@ class Agni:
         Relative tolerance on the atmosphere solution.
     overlap_method: str
         Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
+    phs_timescale: float
+        Characteristic timescale of phase changes [seconds].
+    evap_efficiency: bool
+        Efficiency of raindrop re-evaporation (0 to 1).
     rainout: bool
         Enable volatile rainout in the atmosphere and ocean formation below.
     latent_heat: bool
@@ -136,6 +140,8 @@ class Agni:
     solution_atol: float    = field(default=0.5,  validator=gt(0))
     solution_rtol: float    = field(default=0.15,  validator=gt(0))
     overlap_method: str     = field(default='ee', validator=check_overlap)
+    phs_timescale: float    = field(default=1e6, validator=gt(0))
+    evap_efficiency: float  = field(default=0.05, validator=(le(1), ge(0)))
     rainout: bool           = field(default=False)
     latent_heat: bool       = field(default=False)
     convection: bool        = field(default=False)
