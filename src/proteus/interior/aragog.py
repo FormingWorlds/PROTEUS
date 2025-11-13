@@ -11,6 +11,7 @@ import netCDF4 as nc
 import numpy as np
 import pandas as pd
 import platformdirs
+
 from aragog import Output, Solver, aragog_file_logger
 from aragog.parser import (
     Parameters,
@@ -24,7 +25,6 @@ from aragog.parser import (
     _ScalingsParameters,
     _SolverParameters,
 )
-
 from proteus.interior.common import Interior_t
 from proteus.interior.timestep import next_step
 from proteus.utils.constants import R_earth, radnuc_data, secs_per_year
@@ -177,7 +177,7 @@ class AragogRunner():
         LOOK_UP_DIR = (
             FWL_DATA_DIR /
             "interior_lookup_tables/1TPa-dK09-elec-free/"
-            "MgSiO3_Wolf_Bower_2018/"
+            "MgSiO3_Wolf_Bower_2018_1TPa/"
         )
         MELTING_DIR = (
             FWL_DATA_DIR /
