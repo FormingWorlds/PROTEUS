@@ -80,12 +80,10 @@ def run_inference(config):
         prot_builder,
         config["kernel"],
         config["acqf"],
-        config["n_restarts"],
-        config["n_samples"],
         config["n_workers"],
         max_len,
         config["output"],
-        config["seed"],
+        # config["seed"],
         config["ref_config"],
         config["observables"],
         config["parameters"]

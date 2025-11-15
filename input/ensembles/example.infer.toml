@@ -4,22 +4,20 @@
 seed = 1
 
 # Path to output folder where inference will be saved (relative to PROTEUS output folder)
-output = "infer_demo/"
+output = "infer_toy/BO/"
 
 # Path to base (reference) config file relative to PROTEUS root folder
 ref_config = "input/demos/dummy.toml"
 
 # Method for initialising the inference scheme (one of these must be 'none')
-init_samps = 2         # Number of random samples if starting from scratch.
+init_samps = 10        # Number of random samples if starting from scratch.
 init_grid  = 'none' # grid_demo/'   # Path pre-computed grid (relative to PROTEUS output folder)
 
 # Parameters for Bayesian optimisation
-n_workers  = 3        # Number of parallel workers
-kernel     = "MAT"    # Kernel type for GP, "RBF" | "MAT"
+n_workers  = 6        # Number of parallel workers
+kernel     = "MAT3/2"    # Kernel type for GP, "RBF" | "MAT1/2" | "MAT3/2" | "MAT5/2"
 acqf       = "LogEI"  # Acquisition function, "UCB" | "LogEI" | "E-LogEI"
-n_steps    = 20       # Total number of evaluations (i.e. BO steps)
-n_restarts = 10       # GP optimization restarts
-n_samples  = 1000     # Raw samples for acquisition optimization
+n_steps    = 50       # Total number of evaluations (i.e. BO steps)
 
 # Parameters to optimize (with bounds)
 [parameters]
@@ -31,6 +29,6 @@ n_samples  = 1000     # Raw samples for acquisition optimization
 
 # Target observables to match by optimisation
 [observables]
-"R_obs" = 7965615.4204
-"H2O_vmr" = 0.7073762847
-# "P_surf" = 3.8198606763e+3
+"R_obs" = 7965615.42040000017732382
+# "H2O_vmr" = 0.69457002234999998
+"P_surf" = 16333.19793399999980466

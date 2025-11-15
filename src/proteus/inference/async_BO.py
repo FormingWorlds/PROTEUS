@@ -28,6 +28,7 @@ from scipy.stats.qmc import Halton
 
 from proteus.inference.BO import BO_step, init_locs
 from proteus.utils.coupler import get_proteus_directories
+from utils import get_kernel_w_prior
 
 # Tensor dtype for all computations
 dtype = torch.double
@@ -198,12 +199,9 @@ def parallel_process(
     objective_builder,
     kernel: str,
     acqf: str,
-    n_restarts: int,
-    n_samples: int,
     n_workers: int,
     max_len: int,
     output: str,
-    seed: int,
     ref_config,
     observables,
     parameters
@@ -217,12 +215,9 @@ def parallel_process(
         objective_builder (callable): Factory to build per-worker objective f.
         kernel (str): Covariance kernel for the Gaussian process.
         acqf (str): Acquisition function for BO step.
-        n_restarts (int): Number of restarts in acquisition optimization.
-        n_samples (int): Number of raw samples for acquisition optimization.
         n_workers (int): Number of parallel worker processes.
         max_len (int): Target total number of evaluations, including initial data.
         output (str): Output directory for checkpoints and plots.
-        seed (int): Seed for random state, ensuring reproducibility
         ref_config: Reference config to pass to objective_builder.
         observables: List or dict of target observable values.
         parameters: Dict of parameter bounds for inference.
@@ -244,12 +239,26 @@ def parallel_process(
     # Build kernel
     d = len(parameters)
     if kernel == "RBF":
-        kernel = get_covar_module_with_dim_scaled_prior(ard_num_dims=d,
-                                                        use_rbf_kernel=True)
-    elif kernel == "MAT":
-        # defaults to Matern-5/2
-        kernel = get_covar_module_with_dim_scaled_prior(ard_num_dims=d,
-                                                        use_rbf_kernel=False)
+        kernel = get_kernel_w_prior(ard_num_dims=d,
+                                    use_rbf_kernel=True)
+    elif kernel == "MAT1/2":
+
+        kernel = get_kernel_w_prior(ard_num_dims=d,
+                                    use_rbf_kernel=False,
+                                    nu=0.5
+                                    )
+    elif kernel == "MAT3/2":
+
+        kernel = get_kernel_w_prior(ard_num_dims=d,
+                                    use_rbf_kernel=False,
+                                    nu=1.5
+                                    )
+    elif kernel == "MAT5/2":
+
+        kernel = get_kernel_w_prior(ard_num_dims=d,
+                                    use_rbf_kernel=False,
+                                    nu=2.5
+                                    )
     else:
         raise ValueError("Unknown kernel, choices are RBF or MAT")
 
@@ -257,8 +266,6 @@ def parallel_process(
         BO_step,
         k=kernel,
         acqf=acqf,
-        n_restarts=n_restarts,
-        n_samples=n_samples
     )
 
     # Absolute path to shared output dir
