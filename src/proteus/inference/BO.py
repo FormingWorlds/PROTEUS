@@ -81,8 +81,6 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in = None):
 
         d = X.shape[-1]
 
-        # print("worker ", worker_id, "samples ", len(X), "\n")
-
         best = Y.max().item()
 
         t_0_fit = time.perf_counter()
@@ -127,11 +125,6 @@ def BO_step(D, B, f, k, acqf, lock, worker_id, x_in = None):
         mask[worker_id] = False
         b = busys[mask]
         dist = torch.min(torch.cdist(b, x)).item()
-
-        # if dist < 1e-2:
-        #     print("close query!")
-        #     print("busys\n", busys)
-        #     print("query", x)
 
         if d == 1:
             plot_iter(gp=gp, acqf=acqf, X=X, Y=Y, next_x=x,
@@ -180,7 +173,7 @@ def init_locs(n_workers: int, D: dict) -> torch.Tensor:
     best = Y.max().item()
 
     noise = 1e-4
-    kernel = get_kernel_w_prior(d, use_rbf_kernel=False, nu=0.5)
+    kernel = get_kernel_w_prior(d, use_rbf_kernel=False, nu=1.5)
     gp = SingleTaskGP(  train_X=X,
                         train_Y=Y,
                         covar_module=kernel,
@@ -192,7 +185,7 @@ def init_locs(n_workers: int, D: dict) -> torch.Tensor:
     lik = gp.likelihood
     mll = ExactMarginalLogLikelihood(lik, gp)
     fit_gpytorch_mll(mll, optimizer=fit_gpytorch_mll_torch,
-                         kwargs={"pick_best_of_all_attempts" : True, "max_attempts" : 10})
+                     kwargs={"pick_best_of_all_attempts" : True, "max_attempts" : 10})
 
     # build acquisition function
     acqf = qLogExpectedImprovement(gp, best_f=best)

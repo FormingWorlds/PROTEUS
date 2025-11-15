@@ -83,7 +83,7 @@ def run_inference(config):
         config["n_workers"],
         max_len,
         config["output"],
-        # config["seed"],
+        config["seed"],
         config["ref_config"],
         config["observables"],
         config["parameters"]

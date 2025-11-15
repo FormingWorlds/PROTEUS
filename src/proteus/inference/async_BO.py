@@ -60,31 +60,6 @@ def checkpoint(D: dict, logs: list, Ts: list, output_dir: str) -> None:
     with open(os.path.join(output_dir, "Ts.pkl"), "wb") as f_ts:
         pickle.dump(list(Ts), f_ts)
 
-
-# def init_locs(n_workers: int, D: dict, seed:int) -> torch.Tensor:
-#     """Generate initial sample locations using a Halton sequence.
-
-#     Args:
-#         n_workers (int): Number of initial points to generate.
-#         D (dict): Shared dict with key 'X' to infer problem dimension.
-#         seed (int): Seed for reproducibility.
-
-#     Returns:
-#         torch.Tensor: Tensor of shape (n_workers, d) in [0,1]^d for initial sampling.
-#     """
-#     # Determine the input dimension from existing data
-#     d = D["X"].shape[-1]
-
-#     # Create a scrambled Halton sampler
-#     sampler = Halton(d=d, rng=numpy.random.default_rng(seed), scramble=True)
-#     samples = sampler.random(n=n_workers)
-
-#     # Convert to Torch tensor
-#     return torch.tensor(samples, dtype=dtype)
-
-
-
-
 def worker(
     process_fun,
     build_obj,
@@ -194,7 +169,6 @@ def worker(
 
         task_id += 1
 
-
 def parallel_process(
     objective_builder,
     kernel: str,
@@ -202,9 +176,10 @@ def parallel_process(
     n_workers: int,
     max_len: int,
     output: str,
-    ref_config,
-    observables,
-    parameters
+    seed:int,
+    ref_config: str,
+    observables: dict,
+    parameters: dict
 ) -> tuple[dict, list, list]:
     """Orchestrate parallel asynchronous Bayesian optimization.
 
@@ -218,15 +193,19 @@ def parallel_process(
         n_workers (int): Number of parallel worker processes.
         max_len (int): Target total number of evaluations, including initial data.
         output (str): Output directory for checkpoints and plots.
-        ref_config: Reference config to pass to objective_builder.
-        observables: List or dict of target observable values.
-        parameters: Dict of parameter bounds for inference.
+        seed (int): Random seed for some degree of reproducibility
+        ref_config (str): Path to reference config to pass to objective_builder.
+        observables (dict): Target observables (keys) and values.
+        parameters (dict):  Parameters (keys) with bounds (values) for inference.
 
     Returns:
         D_final (dict): Final 'X' and 'Y' data after all evaluations.
         logs (list): List of per-evaluation log dicts.
         T (list): List of elapsed times from the start of optimization.
     """
+
+    # torch.manual_seed(seed)
+
     # Partially apply builder and BO_step with fixed settings
     build_obj = partial(
         objective_builder,
