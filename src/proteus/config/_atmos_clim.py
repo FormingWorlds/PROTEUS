@@ -155,7 +155,7 @@ class Agni:
     dx_max_ini: float       = field(default=300.0, validator=gt(1))
     max_steps: int          = field(default=70, validator=gt(2))
     perturb_all: bool       = field(default=True)
-    mlt_criterion: str      = field(default='l', validator=in_(('l','s',)))
+    mlt_criterion: str      = field(default='s', validator=in_(('l','s',)))
     fastchem_floor:float        = field(default=150.0, validator=gt(0.0))
     fastchem_maxiter_chem:int   = field(default=60000, validator=gt(200))
     fastchem_maxiter_solv:int   = field(default=20000, validator=gt(200))

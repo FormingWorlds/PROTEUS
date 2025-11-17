@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 
 from proteus.utils.constants import element_list, gas_list, secs_per_hour, secs_per_minute
-from proteus.utils.helper import UpdateStatusfile, get_proteus_dir, safe_rm
+from proteus.utils.helper import UpdateStatusfile, create_tmp_folder, get_proteus_dir, safe_rm
 from proteus.utils.plot import sample_times
 
 if TYPE_CHECKING:
@@ -894,6 +894,13 @@ def set_directories(config: Config) -> dict[str, str]:
             raise EnvironmentError("The RAD_DIR environment variable has not been set")
         else:
             dirs["rad"] = os.environ.get('RAD_DIR')
+
+    # Temporary directory
+    if config.params.out.logging == "DEBUG":
+        dirs["temp"] = dirs["output"]
+    else:
+        dirs["temp"] = create_tmp_folder()
+    log.info(f"Temporary-file working dir: {dirs["temp"]}")
 
     # Get abspaths
     for key in dirs.keys():

@@ -160,6 +160,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         io_dir = dirs["output"]
     else:
         io_dir = create_tmp_folder()
+    log.info(f"Temporary-file working dir: {io_dir}")
 
     # composition
     vol_dict = _construct_voldict(hf_row, dirs)
