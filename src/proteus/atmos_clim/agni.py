@@ -23,6 +23,7 @@ log = logging.getLogger("fwl."+__name__)
 
 # Constant
 AGNI_LOGFILE_NAME="agni_recent.log"
+ALWAYS_DRY = ("CO", "N2", "H2")
 
 def sync_log_files(outdir:str):
     # Logfile paths
@@ -85,6 +86,32 @@ def _construct_voldict(hf_row:dict, dirs:dict):
 
     return vol_dict
 
+def _determine_condensates(vol_list:list):
+    """Determine which gases will be condensable.
+
+    Need to ensure that there's at least one 'dry' gas with non-zero opacity.
+
+    Parameters
+    -----------
+        config : Config
+            Configuration options and other variables
+        vol_list: list
+            List of included gases.
+
+    Returns
+    ----------
+        condensates : list
+            List of allowed-condensable gases
+    """
+
+    # single-gas case must be dry
+    if len(vol_list) == 1:
+        log.warning("Cannot include rainout condensation with only one gas!")
+        return []
+
+    # all dry gases...
+    return [v for v in vol_list if v not in ALWAYS_DRY]
+
 
 def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
     """Initialise atmosphere struct for use by AGNI.
@@ -128,37 +155,22 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         input_sf =      get_spfile_path(dirs["fwl"], config)
         input_star =    sflux_path
 
+    # Fast I/O folder
+    if config.params.out.logging == "DEBUG":
+        io_dir = dirs["output"]
+    else:
+        io_dir = create_tmp_folder()
+
     # composition
     vol_dict = _construct_voldict(hf_row, dirs)
 
     # set condensation
     condensates = []
     if config.atmos_clim.agni.condensation:
-        if len(vol_dict) == 1:
-            # single-gas case
-            condensates = list(vol_dict.keys())
-        else:
-            # get sorted gases (in order of decreasing VMR at the surface)
-            vol_sorted = sorted(vol_dict.items(), key=lambda item: item[1])[::-1]
-
-            # Set gases as condensates...
-            condensates = ['H2O'] # always prefer H2O
-            for v in vol_sorted:
-                # add gas if it has non-zero abundance
-                if (v[1] > 1e-30) and (v[0] not in condensates):
-                    condensates.append(v[0])
-
-            # Remove the least abundant gas from the list, so that we have something to
-            #     fill the background with if everything else condenses at a given level
-            condensates = condensates[:-1]
+        condensates = _determine_condensates(vol_dict.keys())
 
     # Chemistry
-    include_all = False
-    fc_dir = create_tmp_folder()
-    if config.atmos_clim.agni.chemistry == 'eq':
-        include_all = True
-        condensates = []
-        log.debug("Fastchem work folder: '%s'"%fc_dir)
+    include_all = bool(config.atmos_clim.agni.chemistry == 'eq')
 
     # Surface single-scattering albedo
     surface_material = config.atmos_clim.agni.surf_material
@@ -197,6 +209,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
                         vol_dict, "",
 
+                        IO_DIR = io_dir,
                         flag_rayleigh = config.atmos_clim.rayleigh,
                         flag_cloud    = config.atmos_clim.cloud_enabled,
                         overlap_method  = config.atmos_clim.agni.overlap_method,
@@ -209,7 +222,6 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
                         evap_efficiency=config.atmos_clim.agni.evap_efficiency,
 
                         use_all_gases=include_all,
-                        fastchem_work = fc_dir,
                         fastchem_floor        = config.atmos_clim.agni.fastchem_floor,
                         fastchem_maxiter_chem = config.atmos_clim.agni.fastchem_maxiter_chem,
                         fastchem_maxiter_solv = config.atmos_clim.agni.fastchem_maxiter_solv,
@@ -394,11 +406,11 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         # default parameters
         linesearch   = int(config.atmos_clim.agni.ls_default)
         easy_start   = False
+        grey_start   = False
         dx_max       = float(config.atmos_clim.agni.dx_max)
         ls_increase  = 1.01
         ls_max_steps = 20
         ls_min_scale = 1e-5
-        perturb_chem = True
         perturb_all  = bool(config.atmos_clim.agni.perturb_all)
         max_steps    = int(config.atmos_clim.agni.max_steps)
         chemistry    = bool(config.atmos_clim.agni.chemistry == 'eq')
@@ -414,11 +426,17 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
             easy_start  = True
 
         # try different solver parameters if struggling
-        if attempts == 2:
+        if attempts == 1:
+            pass
+
+        elif attempts == 2:
             linesearch  = 1
             dx_max     *= 2.0
             ls_increase = 1.1
             perturb_all = True
+
+            if loops_total == 0:
+                grey_start  = True
 
         elif attempts == 3:
             linesearch  = 1
@@ -426,6 +444,11 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
             ls_increase = 1.1
             perturb_all = True
             easy_start  = True
+
+        else:
+            # Max attempts
+            log.error("Maximum attempts when executing AGNI")
+            break
 
         log.debug("Solver parameters:")
         log.debug("    ls_method=%d, easy_start=%s, dx_max=%.1f, ls_increase=%.2f"%(
@@ -452,8 +475,9 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
                             ls_increase=float(ls_increase), ls_method=int(linesearch),
                             ls_max_steps=int(ls_max_steps), ls_min_scale=float(ls_min_scale),
 
-                            dx_max=float(dx_max), easy_start=easy_start,
-                            perturb_all=perturb_all, perturb_chem=perturb_chem,
+                            dx_max=float(dx_max),
+                            easy_start=easy_start, grey_start=grey_start,
+                            perturb_all=perturb_all,
 
                             save_frames=False, modplot=int(modplot),
                             plot_jacobian=plot_jacobian
@@ -468,13 +492,9 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
             log.info("Attempt %d succeeded" % attempts)
             break
         else:
-            # failure
+            # failure, loop again...
             log.warning("Attempt %d failed" % attempts)
 
-            # Max attempts
-            if attempts >= 2:
-                log.error("Maximum attempts when executing AGNI")
-                break
     return atmos
 
 def _solve_once(atmos, config:Config):
@@ -494,8 +514,10 @@ def _solve_once(atmos, config:Config):
     """
 
     # set temperature profile
-    #    rainout volatiles
-    rained = jl.AGNI.setpt.prevent_surfsupersat_b(atmos)
+    #    rainout volatiles at surface
+    rained = jl.AGNI.chemistry.calc_composition_b(atmos,
+                                                    config.atmos_clim.agni.condensation,
+                                                    False, False)
     rained = bool(rained)
     if rained:
         log.info("    gases are condensing at the surface")
@@ -509,11 +531,13 @@ def _solve_once(atmos, config:Config):
     jl.AGNI.setpt.stratosphere_b(atmos, 0.5)
 
     # do chemistry
-    if config.atmos_clim.agni.chemistry > 0:
-        jl.AGNI.chemistry.fastchem_eqm_b(atmos, True)
+    jl.AGNI.chemistry.calc_composition_b(atmos,
+                                            config.atmos_clim.agni.condensation,
+                                            config.atmos_clim.agni.chemistry == 'eq',
+                                            config.atmos_clim.agni.condensation)
 
     # solve fluxes
-    jl.AGNI.energy.calc_fluxes_b(atmos, True, False, True, False, False, calc_cf=True)
+    jl.AGNI.energy.calc_fluxes_b(atmos, radiative=True, convective=True)
 
     # fill kzz values
     jl.AGNI.energy.fill_Kzz_b(atmos)

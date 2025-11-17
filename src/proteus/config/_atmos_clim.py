@@ -89,14 +89,16 @@ class Agni:
         Characteristic timescale of phase changes [seconds].
     evap_efficiency: bool
         Efficiency of raindrop re-evaporation (0 to 1).
-    rainout: bool
-        Enable volatile rainout in the atmosphere and ocean formation below.
+    condensation: bool
+        Enable volatile condensation in the atmosphere and ocean formation below.
     latent_heat: bool
-        Account for latent heat from condense/evap when solving temperature profile. Requires `rainout=true`.
+        Account for latent heat from condense/evap when solving temperature profile. Requires `condensation=true`.
     convection: bool
         Account for convective heat transport, using MLT.
     conduction: bool
         Account for conductive heat transport, using Fourier's law.
+    sens_heat: bool
+        Include sensible heat flux at surface
     real_gas: bool
         Use real gas equations of state in atmosphere, where possible.
     psurf_thresh: float
@@ -132,7 +134,7 @@ class Agni:
     p_top: float            = field(default=1e-5, validator=gt(0))
     p_obs: float            = field(default=20e-3, validator=gt(0))
     surf_material: str      = field(default="surface_albedos/Hammond24/lunarmarebasalt.dat")
-    num_levels: int         = field(default=40, validator=ge(15))
+    num_levels: int         = field(default=40, validator=ge(25))
     chemistry: str          = field(default="none",
                                     validator=in_((None, "eq")),
                                     converter=none_if_none)
@@ -142,10 +144,11 @@ class Agni:
     overlap_method: str     = field(default='ee', validator=check_overlap)
     phs_timescale: float    = field(default=1e6, validator=gt(0))
     evap_efficiency: float  = field(default=0.05, validator=(le(1), ge(0)))
-    rainout: bool           = field(default=False)
+    condensation: bool      = field(default=True)
     latent_heat: bool       = field(default=False)
-    convection: bool        = field(default=False)
-    conduction: bool        = field(default=False)
+    convection: bool        = field(default=True)
+    conduction: bool        = field(default=True)
+    sens_heat: bool         = field(default=True)
     real_gas: bool          = field(default=False)
     psurf_thresh: float     = field(default=0.1, validator=ge(0))
     dx_max: float           = field(default=35.0,  validator=gt(1))
@@ -164,6 +167,7 @@ class Agni:
                                                    'dry_adiabat','analytic'))
                                     )
     ls_default: int         = field(default=2, validator=in_((0,1,2)))
+    fdo: int                = field(default=2, validator=in_((2,4)))
 
 def valid_janus(instance, attribute, value):
     if instance.module != "janus":
