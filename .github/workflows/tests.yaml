@@ -134,10 +134,9 @@ jobs:
 
       # Full physical integration
       - name: Full physical integration
-        run: proteus start -c input/all_options.toml
         uses: actions/upload-artifact@v4
-        with:
-          name: full-physical-integration
+        run: |
+          proteus start -c input/all_options.toml 
           path: |
             output/full_physical/plot/plot_*.png
             output/full_physical/runtime_helpfile.csv
