@@ -27,7 +27,7 @@ def RunDummyAtm( dirs:dict, config:Config, hf_row:dict):
     # Parameters
     gamma           = config.atmos_clim.dummy.gamma
     zenith_angle    = config.orbit.zenith_angle
-    albedo_pl       = config.atmos_clim.albedo_pl
+    albedo_pl       = float(hf_row["albedo_pl"])
     inst_sf         = config.orbit.s0_factor
     albedo_s        = config.atmos_clim.surf_greyalbedo
     skin_d          = config.atmos_clim.surface_d

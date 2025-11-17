@@ -224,6 +224,20 @@ class Dummy:
     height_factor: float = field(default=3.0, validator=ge(0))
 
 
+def valid_albedo(instance, attribute, value):
+
+    if isinstance(value, str):
+        return
+
+    elif isinstance(value, float):
+        if not (0 <= value <= 1):
+            raise ValueError("The value of `albedo_pl` must be between 0 and 1")
+        else:
+            return
+
+    else:
+        raise ValueError("The value of `albedo_pl` must be a string or a float")
+
 @define
 class AtmosClim:
     """Atmosphere parameters, model selection.
@@ -244,8 +258,8 @@ class AtmosClim:
         Surface energy balance scheme. Choices: "mixed_layer", "fixed", "skin".
     surf_greyalbedo : float
         Grey surface albedo.
-    albedo_pl: float
-        Planetary/bold albedo used to emulate scattering [dimensionless].
+    albedo_pl: float | str
+        Planetary bond albedo used to emulate scattering. Can be float (0 to 1) or str (path to CSV file containing lookup data).
     rayleigh: bool
         Include Rayleigh scattering in the radiative transfer calculations.
     tmp_minimum: float
@@ -278,7 +292,7 @@ class AtmosClim:
     cloud_enabled: bool     = field(default=False)
     cloud_alpha: float      = field(default=0.0, validator=(ge(0), le(1)))
     surf_greyalbedo:float   = field(default=0.2, validator=(ge(0),le(1)))
-    albedo_pl: float        = field(default=0.0, validator=(ge(0), le(1)))
+    albedo_pl               = field(default=0.0, validator=valid_albedo)
     rayleigh: bool          = field(default=True,validator=warn_if_dummy)
     tmp_minimum: float      = field(default=0.5, validator=gt(0))
     tmp_maximum: float      = field(default=5000.0,
@@ -286,7 +300,7 @@ class AtmosClim:
 
     @property
     def surf_state_int(self) -> int:
-        """Return integer state for agni."""
+        """Return integer surface boundary condition for agni."""
         match self.surf_state:
             case 'fixed':
                 return 1
@@ -294,3 +308,13 @@ class AtmosClim:
                 return 2
             case _:
                 raise ValueError(f"Invalid surf_state for AGNI: '{self.surf_state}'")
+
+    @property
+    def albedo_from_file(self) -> bool:
+        """Is albedo set by lookup table or not?"""
+        if isinstance(self.albedo_pl, str):
+            return True
+        elif isinstance(self.albedo_pl, float):
+            return False
+        else:
+            raise ValueError("Cannot determine configuration for setting `albedo_pl`")

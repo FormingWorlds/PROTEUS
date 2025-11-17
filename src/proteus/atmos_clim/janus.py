@@ -76,7 +76,7 @@ def InitAtm(dirs:dict, config:Config):
                 lwm = 0.8, # Liquid water mass fraction [kg/kg]
                 clfr = 0.8, # Water cloud fraction
                 albedo_s = config.atmos_clim.surf_greyalbedo,
-                albedo_pl = config.atmos_clim.albedo_pl,
+                albedo_pl = 0.0, # will be overwritten
                 zenith_angle = config.orbit.zenith_angle,
                 )
 
@@ -131,7 +131,8 @@ def UpdateStateAtm(atm, config:Config, hf_row:dict, tropopause):
     atm.setVolatiles(vol_mixing)
 
     atm.instellation = hf_row["F_ins"]
-    atm.tmp_magma = hf_row["T_magma"]
+    atm.albedo_pl = hf_row["albedo_pl"]
+    atm.tmp_magma  = hf_row["T_magma"]
     if tropopause == "skin":
         atm.trppT = hf_row["T_skin"]
     else:
