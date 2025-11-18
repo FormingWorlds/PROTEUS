@@ -155,7 +155,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         input_star =    sflux_path
 
     # Fast I/O folder
-    if config.params.out.logging == "DEBUG":
+    if config.atmos_clim.agni.verbosity >= 2:
         io_dir = dirs["output"]
     else:
         io_dir = create_tmp_folder()
@@ -245,8 +245,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
         log.debug("Load NetCDF profile")
 
         nc_times = [ int(s.split("/")[-1].split("_")[0]) for s in nc_files]
-        nc_path  = os.path.join(dirs["output"],
-                                "data", "%.0f_atm.nc"%int(sorted(nc_times)[-1]))
+        nc_path  = os.path.join(dirs["output"],"data", f"{sorted(nc_times)[-1]:.0f}_atm.nc")
         jl.AGNI.setpt.fromncdf_b(atmos, nc_path)
 
     # Otherwise, set profile initial guess
@@ -354,7 +353,8 @@ def update_agni_atmos(atmos, hf_row:dict, dirs:dict, config:Config):
 
     # ---------------------
     # Update surface pressure [Pa] and generate new grid
-    atmos.p_boa = 1.0e5 * float(hf_row["P_surf"])
+    atmos.p_oboa = 1.0e5 * float(hf_row["P_surf"])
+    atmos.p_boa = atmos.p_boa
     jl.AGNI.atmosphere.generate_pgrid_b(atmos)
 
     # ---------------------
@@ -409,8 +409,6 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
         grey_start   = False
         dx_max       = float(config.atmos_clim.agni.dx_max)
         ls_increase  = 1.01
-        ls_max_steps = 20
-        ls_min_scale = 1e-5
         perturb_all  = bool(config.atmos_clim.agni.perturb_all)
         max_steps    = int(config.atmos_clim.agni.max_steps)
         chemistry    = bool(config.atmos_clim.agni.chemistry == 'eq')
@@ -455,6 +453,9 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
             linesearch, str(easy_start), dx_max, ls_increase
         ))
 
+        # Update solver
+        jl.AGNI.solver.ls_increase  = float(ls_increase)
+
         # Try solving temperature profile
         agni_success = jl.AGNI.solver.solve_energy_b(atmos,
                             sol_type  = int(config.atmos_clim.surf_state_int),
@@ -472,8 +473,7 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
                             conv_rtol=float(config.atmos_clim.agni.solution_rtol),
                             fdo=int(config.atmos_clim.agni.fdo),
 
-                            ls_increase=float(ls_increase), ls_method=int(linesearch),
-                            ls_max_steps=int(ls_max_steps), ls_min_scale=float(ls_min_scale),
+                            ls_method=int(linesearch),
 
                             dx_max=float(dx_max),
                             easy_start=easy_start, grey_start=grey_start,

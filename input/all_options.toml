@@ -205,10 +205,10 @@ version = "2.0"
         solution_atol   = 0.5           # solver absolute tolerance
         solution_rtol   = 0.15          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = true         # include volatile rainout upon condensation
+        condensation    = true          # include volatile rainout upon condensation
         latent_heat     = false         # include latent heat release when `condensation=true`?
         convection      = true          # include convective heat transport, with MLT
-        conduction      = true         # include conductive heat transport, with Fourier's law
+        conduction      = true          # include conductive heat transport, with Fourier's law
         sens_heat       = true          # include sensible heat flux near surface, with TKE scheme
         real_gas        = false         # use real-gas equations of state
         psurf_thresh    = 0.1           # bar, surface pressure where we switch to 'transparent' mode
@@ -222,7 +222,7 @@ version = "2.0"
         fastchem_maxiter_solv = 20000   # Maximum FC iterations (internal solver)
         fastchem_xtol_chem    = 1e-4    # FC solver tolerance (chemistry)
         fastchem_xtol_elem    = 1e-4    # FC solver tolerance (elemental)
-        ini_profile     = 'loglinear'   # Initial guess for temperature profile shape
+        ini_profile     = 'isothermal'  # Initial guess for temperature profile shape
         ls_default      = 2             # Default linesearch method (0:none, 1:gs, 2:bt)
         fdo             = 2             # finite-difference order (options: 2, 4)
 

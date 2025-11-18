@@ -81,7 +81,7 @@ version = "2.0"
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels               = 70       # Number of SPIDER grid levels
+        num_levels               = 120       # Number of SPIDER grid levels
         mixing_length            = 2         # Mixing length parameterization
         tolerance                = 1.0e-8    # absolute solver tolerance
         tolerance_rel            = 1.0e-8    # relative solver tolerance
