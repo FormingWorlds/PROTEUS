@@ -700,5 +700,12 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     output["R_xuv"]         = r_xuv            # Radius at Pxuv                [m]
     output["ocean_areacov"] = float(atmos.ocean_areacov)
     output["ocean_maxdepth"]= float(atmos.ocean_maxdepth)
+    output["P_surf_clim"]   = float(atmos.p_boa) / 1e5 # Calculated Psurf [bar]
+
+    for g in gas_list:
+        try:
+            output[g+"_ocean"] = float(atmos.ocean_tot[g])
+        except:
+            output[g+"_ocean"] = 0.0
 
     return atmos, output

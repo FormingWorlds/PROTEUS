@@ -513,14 +513,11 @@ def GetHelpfileKeys():
             # Escape
             "esc_rate_total", "p_xuv", "R_xuv", # [kg s-1], [bar], [m]
 
-            # Surface liquid-ocean statistics
-            "ocean_areacov", "ocean_maxdepth", # [1], [m]
-
-            # Atmospheric composition
+            # Atmospheric composition from outgassing
             "M_atm", "P_surf", "atm_kg_per_mol", # [kg], [bar], [kg mol-1]
             ]
 
-    # gases
+    # gases from outgassing
     for s in gas_list:
         keys.append(s+"_mol_atm")
         keys.append(s+"_mol_solid")
@@ -530,7 +527,7 @@ def GetHelpfileKeys():
         keys.append(s+"_kg_solid")
         keys.append(s+"_kg_liquid")
         keys.append(s+"_kg_total")
-        keys.append(s+"_vmr")
+        keys.append(s+"_vmr")       # surface volume mixing ratio
         keys.append(s+"_bar")
 
     # element masses
@@ -539,6 +536,13 @@ def GetHelpfileKeys():
         keys.append(e+"_kg_solid")
         keys.append(e+"_kg_liquid")
         keys.append(e+"_kg_total")
+
+    # from atmosphere climate calculation
+    keys.append("P_surf_clim")      # updated psurf after climate calc
+    keys.append("ocean_areacov")    # area fraction [1]
+    keys.append("ocean_maxdepth")   # max depth [m]
+    for s in gas_list:
+        keys.append(s+"_ocean")     # surface reservoir [kg/m^2]
 
     # Diagnostic variables...
 
