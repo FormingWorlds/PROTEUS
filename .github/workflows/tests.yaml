@@ -137,15 +137,6 @@ jobs:
         run: |
           proteus start -c input/all_options.toml 
 
-      # Upload results from full physical integration
-      - name: Upload results from full physical integration
-        uses: actions/upload-artifact@v4
-        with:
-          name: full-physical-integration
-          path: |
-            output/full_physical/plot/plot_*.png
-            output/full_physical/runtime_helpfile.csv      
-
       - name: Report coverage
         run: |
           coverage json
