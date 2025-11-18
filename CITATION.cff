@@ -1,5 +1,8 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
+title: "PROTEUS Framework for Planetary Evolution"
+version: 25.10.15
+license: "Apache-2.0"
 
 authors:
 - family-names: "Lichtenberg"
@@ -60,9 +63,3 @@ authors:
 - given-names: "Raymond T."
   family-names: "Pierrehumbert"
   orcid: "https://orcid.org/0000-0002-5887-1197"
-
-title: "PROTEUS"
-version: 25.10.15
-doi: 10.0000/xxxx/xxxx
-date-released: 2025-10-15
-url: "https://github.com/FormingWorlds/PROTEUS"
