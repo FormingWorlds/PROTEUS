@@ -1,13 +1,12 @@
 # PROTEUS configuration file (version 2.0)
 version = "2.0"
-author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # ----------------------------------------------------
 # Parameters
 [params]
     # output files
     [params.out]
-        path        = "TOI-1807b"
+        path        = "dummy_aragog"
         logging     = "INFO"
         plot_mod    = 1      # Plotting frequency, 0: wait until completion | n: every n iterations
         plot_fmt    = "png"  # Plotting image file format, "png" or "pdf" recommended
@@ -32,19 +31,16 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 # ----------------------------------------------------
 # Star
 [star]
-    mass    = 0.8       # M_sun
+    mass    = 1.0       # M_sun
     age_ini = 0.100     # Gyr, model initialisation/start age
-    module  = "mors"
-    [star.mors]
-        rot_pcntle = 50.0       # rotation percentile
-        rot_period = "none"     # rotation period [days]
-        tracks  = "spada"       # evolution tracks: spada | baraffe
-        age_now = 4.567         # current age of star [Gyr]
-        spec    = "stellar_spectra/Named/trappist-1.txt" # path to stellar spectrum file
+    module  = "dummy"
+    [star.dummy]
+        radius  = 1.0       # R_sun
+        Teff    = 5772.0    # K
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.012       # AU
+    semimajoraxis   = 1.0       # AU
     eccentricity    = 0.0       # dimensionless
     zenith_angle    = 48.19     # degrees
     s0_factor       = 0.375     # dimensionless
@@ -52,12 +48,11 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Planetary structure - physics table
 [struct]
-    radius_int  = 1.37       # R_earth
-    corefrac    = 0.55      # non-dim., radius fraction
+    radius_int  = 0.9       # R_earth
+    corefrac    = 0.65      # non-dim., radius fraction
 
 # Atmosphere - physics table
 [atmos_clim]
-    prevent_warming = true      # do not allow the planet to heat up
     surface_d       = 0.01      # m, conductive skin thickness
     surface_k       = 2.0       # W m-1 K-1, conductive skin thermal conductivity
     surf_state      = "fixed"   # surface scheme: "mixed_layer" | "fixed" | "skin"
@@ -82,52 +77,45 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
     [atmos_clim.dummy]
         gamma           = 0.01           # atmosphere opacity between 0 and 1
 
-# Volatile escape - physics table
 [escape]
 
-    module = "none"             # Which escape module to use
-    reservoir = "outgas"        # Reservoir that sets escaping gas composition
-
-    [escape.zephyrus]
-        Pxuv        = 5e-5          # Pressure at which XUV radiation become opaque in the planetary atmosphere [bar]
-        efficiency  = 0.1           # Escape efficiency factor
-        tidal       = false         # Tidal contribution enabled
+    reservoir = "bulk"  # Escaping reservoir: "bulk", "outgas", "pxuv".
+    module = "dummy"    # Which escape module to use
 
     [escape.dummy]
-        rate        = 0.0         # Bulk unfractionated escape rate [kg s-1]
+        rate        = 2.0e4         # Bulk unfractionated escape rate [kg s-1]
 
 [interior]
     grain_size      = 0.1               # crystal settling grain size [m]
-    F_initial       = 1e3               # Initial heat flux guess [W m-2]
+    F_initial       = 1e6               # Initial heat flux guess [W m-2]
     radiogenic_heat = false             # enable radiogenic heat production
     tidal_heat      = false             # enable tidal heat production
     rheo_phi_loc    = 0.4               # Centre of rheological transition
     rheo_phi_wid    = 0.15              # Width of rheological transition
-    bulk_modulus    = 260e9             # Bulk modulus [Pa]
-    melting_dir     = "Wolf_Bower+2018"     # Liquidus from Monteux+2016 and solidus=liquidus-600
+    melting_dir     = "Monteux-600"     # Liquidus from Monteux+2016 and solidus=liquidus-600
 
     module = "aragog"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 60       # Number of SPIDER grid levels
+        num_levels      = 220       # Number of SPIDER grid levels
         mixing_length   = 2         # Mixing length parameterization
         tolerance       = 1.0e-10   # solver tolerance
         tsurf_atol      = 30.0      # tsurf_poststep_change
         tsurf_rtol      = 0.02      # tsurf_poststep_change_frac
-        ini_entropy     = 2497.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_entropy     = 2700.0    # Surface entropy conditions [J K-1 kg-1]
         ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
 
     [interior.aragog]
         num_levels                      = 50       # Number of Aragog grid levels
         tolerance                       = 1.0e-7   # solver tolerance
-        ini_tmagma                      = 2570.0   # Initial magma surface temperature [K]
-        inner_boundary_condition        = 3        # 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
+        ini_tmagma                      = 3300.0   # Initial magma surface temperature [K]
+        inner_boundary_condition        = 1        # 1 = core cooling model, 2=prescribed heatflux, 3 = prescribed temperature
         inner_boundary_value            = 4000     # core temperature [K], if inner_boundary_condition = 3. CMB heat flux [W/m^2], if if inner_boundary_condition = 2
         conduction                      = true     # enable conductive heat transfer
         convection                      = true     # enable convective heat transfer
-        gravitational_separation        = true    # enable gravitational separation
-        mixing                          = true    # enable mixing
-        tsurf_poststep_change           = 5       # threshold of maximum change on surface temperature, compares current and first Tsurf
+        gravitational_separation        = false    # enable gravitational separation
+        mixing                          = false    # enable mixing
+        tsurf_poststep_change           = 30       # threshold of maximum change on surface temperature, compares current and first Tsurf
         event_triggering                = true    # enable events triggering to avoid abrupt jumps in surface temperature
 
 
@@ -136,23 +124,18 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
 
 # Outgassing - physics table
 [outgas]
-    fO2_shift_IW    = 5         # log10(ΔIW), atmosphere/interior boundary oxidation state
+    fO2_shift_IW    = 2         # log10(ΔIW), atmosphere/interior boundary oxidation state
 
     module = "calliope"         # Which outgassing module to use
 
     [outgas.calliope]
-        include_H2O  = true     # Include H2O compound
-        include_CO2  = true     # Include CO2 compound
-        include_N2   = true     # Include N2 compound
-        include_S2   = true     # Include S2 compound
-        include_SO2  = true    # Include SO2 compound
-        include_H2S  = true     # Include H2S compound
-        include_NH3  = true     # Include NH3 compound
-        include_H2   = true    # Include H2 compound
-        include_CH4  = true    # Include CH4 compound
-        include_CO   = true    # Include CO compound
+        include_SO2  = false     # Include SO2 compound
+        include_H2S  = false     # Include H2S compound
+        include_NH3  = false     # Include NH3 compound
+        include_H2   = false     # Include H2 compound
+        include_CH4  = false     # Include CH4 compound
+        include_CO   = false     # Include CO compound
 
-# Volatile delivery - physics table
 [delivery]
 
     # Radionuclide parameters
@@ -179,7 +162,7 @@ author  = "Harrison Nicholls, Tim Lichtenberg"
         N_ppmw      = 1.0       # Nitrogen inventory in ppmw relative to mantle mass
 
         #SH_ratio    = 2.0       # S/H mass ratio in mantle/atmosphere system
-        S_ppmw      = 8     # Sulfur inventory in ppmw relative to mantle mass
+        S_ppmw      = 1.0     # Sulfur inventory in ppmw relative to mantle mass
 
     # Set initial volatile inventory by partial pressures in atmosphere
     [delivery.volatiles]
