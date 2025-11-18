@@ -193,6 +193,7 @@ version = "2.0"
     module  = "agni"            # Which atmosphere module to use
 
     [atmos_clim.agni]
+        verbosity       = 1             # output verbosity for agni (0:none, 1:info, 2:debug)
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         p_obs           = 0.02          # bar, level probed in transmission
         spectral_group  = "Honeyside"   # which gas opacities to include

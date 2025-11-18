@@ -63,6 +63,8 @@ class Agni:
 
     Attributes
     ----------
+    verbosity: int
+        Logging and output verbosity for agni (0:none, 1:info, 2:debug)
     p_top: float
         Top of atmosphere grid pressure [bar].
     p_obs: float
@@ -129,6 +131,7 @@ class Agni:
         Default linesearch method. 0: disabled, 1: goldensection, 2: backtracking.
     """
 
+    verbosity: int          = field(default=1, validator=in_((0,1,2,)))
     spectral_group: str     = field(default=None)
     spectral_bands: str     = field(default=None)
     p_top: float            = field(default=1e-5, validator=gt(0))
@@ -143,7 +146,7 @@ class Agni:
     solution_rtol: float    = field(default=0.15,  validator=gt(0))
     overlap_method: str     = field(default='ee', validator=check_overlap)
     phs_timescale: float    = field(default=1e6, validator=gt(0))
-    evap_efficiency: float  = field(default=0.05, validator=(le(1), ge(0)))
+    evap_efficiency: float  = field(default=0.01, validator=(le(1), ge(0)))
     condensation: bool      = field(default=True)
     latent_heat: bool       = field(default=False)
     convection: bool        = field(default=True)
@@ -161,7 +164,7 @@ class Agni:
     fastchem_maxiter_solv:int   = field(default=20000, validator=gt(200))
     fastchem_xtol_chem:float    = field(default=1e-4,  validator=gt(0.0))
     fastchem_xtol_elem:float    = field(default=1e-4,  validator=gt(0.0))
-    ini_profile: str        = field(default='loglinear',
+    ini_profile: str        = field(default='isothermal',
                                     converter=lowercase,
                                     validator=in_(('loglinear','isothermal',
                                                    'dry_adiabat','analytic'))

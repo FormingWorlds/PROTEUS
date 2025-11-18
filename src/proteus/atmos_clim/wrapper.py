@@ -129,7 +129,7 @@ def run_atmosphere(atmos_o:Atmos_t, config:Config, dirs:dict, loop_counter:dict,
 
             # first run?
             if no_atm:
-                activate_julia(dirs)
+                activate_julia(dirs, config.atmos_clim.agni.verbosity)
                 # surface temperature guess
                 hf_row["T_surf"] = hf_row["T_magma"]
             else:

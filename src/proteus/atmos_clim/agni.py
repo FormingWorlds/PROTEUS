@@ -46,7 +46,7 @@ def sync_log_files(outdir:str):
     with open(agni_logpath, "w") as hdl:
         hdl.write("")
 
-def activate_julia(dirs:dict):
+def activate_julia(dirs:dict, verbosity:int):
 
     log.info("Activating Julia environment")
     jl.seval("using Pkg")
@@ -63,7 +63,6 @@ def activate_julia(dirs:dict):
     # Setup logging from AGNI
     #    This handle will be kept open throughout the PROTEUS simulation, so the file
     #    should not be deleted at runtime. However, it will be emptied when appropriate.
-    verbosity = 1
     logpath = os.path.join(dirs["output"], AGNI_LOGFILE_NAME)
     jl.AGNI.setup_logging(logpath, verbosity)
 
