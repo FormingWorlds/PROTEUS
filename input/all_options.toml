@@ -205,8 +205,9 @@ version = "2.0"
         solution_atol   = 0.5           # solver absolute tolerance
         solution_rtol   = 0.15          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
-        condensation    = true          # include volatile rainout upon condensation
-        latent_heat     = false         # include latent heat release when `condensation=true`?
+        rainout         = true          # include volatile condensation/evaporation aloft
+        latent_heat     = false         # include latent heat release when `rainout=true`?
+        oceans          = true          # form liquid oceans at planet surface?
         convection      = true          # include convective heat transport, with MLT
         conduction      = true          # include conductive heat transport, with Fourier's law
         sens_heat       = true          # include sensible heat flux near surface, with TKE scheme

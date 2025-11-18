@@ -39,8 +39,8 @@ def valid_agni(instance, attribute, value):
     if (not instance.agni.solve_energy) and (instance.surf_state == 'skin'):
         raise ValueError("Must set `agni.solve_energy=true` if using `surf_state='skin'`")
 
-    if instance.agni.latent_heat and not instance.agni.condensation:
-        raise ValueError("`atmos_clim.agni`: Must set `condensation=true` if setting `latent_heat=true`")
+    if instance.agni.latent_heat and not instance.agni.rainout:
+        raise ValueError("`atmos_clim.agni`: Must set `rainout=true` if setting `latent_heat=true`")
 
     # set spectral files?
     if not instance.agni.spectral_group:
@@ -91,8 +91,10 @@ class Agni:
         Characteristic timescale of phase changes [seconds].
     evap_efficiency: bool
         Efficiency of raindrop re-evaporation (0 to 1).
-    condensation: bool
-        Enable volatile condensation in the atmosphere and ocean formation below.
+    rainout: bool
+        Enable volatile condensation and evaporation in the atmosphere.
+    oceans: bool
+        Enable volatile ocean formation at the surface.
     latent_heat: bool
         Account for latent heat from condense/evap when solving temperature profile. Requires `condensation=true`.
     convection: bool
@@ -147,7 +149,8 @@ class Agni:
     overlap_method: str     = field(default='ee', validator=check_overlap)
     phs_timescale: float    = field(default=1e6, validator=gt(0))
     evap_efficiency: float  = field(default=0.01, validator=(le(1), ge(0)))
-    condensation: bool      = field(default=True)
+    rainout: bool           = field(default=True)
+    oceans: bool            = field(default=True)
     latent_heat: bool       = field(default=False)
     convection: bool        = field(default=True)
     conduction: bool        = field(default=True)

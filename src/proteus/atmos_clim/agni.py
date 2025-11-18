@@ -166,7 +166,7 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
     # set condensation
     condensates = []
-    if config.atmos_clim.agni.condensation:
+    if config.atmos_clim.agni.oceans or config.atmos_clim.agni.rainout:
         condensates = _determine_condensates(vol_dict.keys())
 
     # Chemistry
@@ -466,7 +466,8 @@ def _solve_energy(atmos, loops_total:int, dirs:dict, config:Config):
                             convect=config.atmos_clim.agni.convection,
                             sens_heat=config.atmos_clim.agni.sens_heat,
                             latent=config.atmos_clim.agni.latent_heat,
-                            rainout=config.atmos_clim.agni.condensation,
+                            rainout=config.atmos_clim.agni.rainout,
+                            oceans=config.atmos_clim.agni.oceans,
 
                             max_steps=int(max_steps), max_runtime=900.0,
                             conv_atol=float(config.atmos_clim.agni.solution_atol),
@@ -516,7 +517,7 @@ def _solve_once(atmos, config:Config):
     # set temperature profile
     #    rainout volatiles at surface
     rained = jl.AGNI.chemistry.calc_composition_b(atmos,
-                                                    config.atmos_clim.agni.condensation,
+                                                    config.atmos_clim.agni.oceans,
                                                     False, False)
     rained = bool(rained)
     if rained:
@@ -524,7 +525,7 @@ def _solve_once(atmos, config:Config):
     #    dry convection
     jl.AGNI.setpt.dry_adiabat_b(atmos)
     #    condensation above
-    if config.atmos_clim.agni.condensation:
+    if config.atmos_clim.agni.rainout:
         for gas in gas_list:
             jl.AGNI.setpt.saturation_b(atmos, str(gas))
     #    temperature floor in stratosphere
@@ -532,9 +533,9 @@ def _solve_once(atmos, config:Config):
 
     # do chemistry
     jl.AGNI.chemistry.calc_composition_b(atmos,
-                                            config.atmos_clim.agni.condensation,
+                                            config.atmos_clim.agni.oceans,
                                             config.atmos_clim.agni.chemistry == 'eq',
-                                            config.atmos_clim.agni.condensation)
+                                            config.atmos_clim.agni.rainout)
 
     # solve fluxes
     jl.AGNI.energy.calc_fluxes_b(atmos, radiative=True, convective=True)
@@ -659,7 +660,7 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
         R_obs = float(atmos.transspec_r)
 
     # Print info to user
-    if config.atmos_clim.agni.condensation:
+    if config.atmos_clim.agni.oceans:
         log.info("    oceans area frac   = %6.3f %%"%float(atmos.ocean_areacov*100))
         log.info("    oceans max depth   = %6.3f km"%float(atmos.ocean_maxdepth/1e3))
     log.info("    R_obs photosphere  = %6.1f km"%float(R_obs/1e3))
