@@ -48,8 +48,9 @@ def init_star(handler:Proteus):
         # Path to the modern spectrum
         #   i.e. that observed by a telescope, or derived from various observations.
         #   This is what we download from OSF.
-        star_modern_path = os.path.join(handler.directories["fwl"],
-                                        handler.config.star.mors.spec)
+        star_modern_path = os.path.join(handler.directories["fwl"], "stellar_spectra/Named",
+                                        handler.config.star.mors.star_name.strip().lower().replace(" ", "-") + ".txt")
+        log.info(f"Using stellar spectrum file: {star_modern_path}")
 
         # Copy modern spectrum to output folder, for posterity.
         star_backup_path = os.path.join(handler.directories["output/data"], "-1.sflux")

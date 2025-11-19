@@ -13,8 +13,8 @@ def valid_mors(instance, attribute, value):
     if (instance.mors.age_now is None) or (instance.mors.age_now <= 0):
         raise ValueError("mors.age_now must be > 0")
 
-    if instance.mors.spec is None:
-        raise ValueError("Must provide mors.spec")
+    if instance.mors.star_name is None:
+        raise ValueError("Must provide mors.star_name")
 
     set_pcntle = instance.mors.rot_pcntle is not None
     set_period = instance.mors.rot_period is not None
@@ -44,11 +44,11 @@ class Mors:
         Stellar evolution track to be used. Choices: 'spada', 'baraffe'.
     age_now: float
         Observed estimated age of the star [Gyr].
-    spec: str
-        Name of file containing stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars) for potential file names.
+    star_name: str
+        Name of the star, to find appropriate stellar spectrum. See [documentation](https://fwl-proteus.readthedocs.io/en/latest/data/#stars).
     """
     age_now         = field(default=None)
-    spec            = field(default=None)
+    star_name       = field(default=None)
     rot_pcntle      = field(default=None, converter=none_if_none)
     rot_period      = field(default=None, converter=none_if_none)
     tracks: str     = field(default='spada', validator=in_(('spada', 'baraffe')))
