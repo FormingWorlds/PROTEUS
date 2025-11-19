@@ -91,10 +91,13 @@ def DownloadModernSpectrum(name, distance):
                 resstr = "var"
 
             ok = False
-            for v in ["22","23","24"]:
+            for v in ["v22","v23-v24","v25"]:
 
-                source = "https://archive.stsci.edu/missions/hlsp/muscles/%s/hlsp_muscles_multi_multi_%s_broadband_v%s_adapt-%s-res-sed.fits"%(star, star, v, resstr)
+                source = f"https://archive.stsci.edu/missions/hlsp/muscles/{v}/{star}/hlsp_muscles_multi_multi_{star}_broadband_{v}_adapt-{resstr}-res-sed.fits"
+                print(f"looking for: {source}")
                 resp = requests.get(source, verify=cert) # Download file
+
+                print(f"\tResponse code: {resp.status_code}")
 
                 if resp.status_code != 404:
                     ok = True
