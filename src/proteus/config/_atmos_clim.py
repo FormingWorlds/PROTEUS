@@ -87,6 +87,10 @@ class Agni:
         Relative tolerance on the atmosphere solution.
     overlap_method: str
         Gas overlap method. Choices: random overlap ("ro"), RO with resorting+rebinning ("rorr"), equivalent extinction ("ee").
+    surf_roughness: float
+        Characteristic surface roughness scale [metres].
+    surf_windspeed: float
+        Characteristic surface wind speed [m/s].
     phs_timescale: float
         Characteristic timescale of phase changes [seconds].
     evap_efficiency: bool
@@ -146,6 +150,8 @@ class Agni:
     solve_energy: bool      = field(default=True)
     solution_atol: float    = field(default=0.5,  validator=gt(0))
     solution_rtol: float    = field(default=0.15,  validator=gt(0))
+    surf_roughness: float   = field(default=1e-3, validator=gt(0))
+    surf_windspeed: float   = field(default=2.0,  validator=gt(0))
     overlap_method: str     = field(default='ee', validator=check_overlap)
     phs_timescale: float    = field(default=1e6, validator=gt(0))
     evap_efficiency: float  = field(default=0.01, validator=(le(1), ge(0)))

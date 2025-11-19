@@ -216,6 +216,8 @@ def init_agni_atmos(dirs:dict, config:Config, hf_row:dict):
 
                         albedo_s=config.atmos_clim.surf_greyalbedo,
                         surface_material=surface_material,
+                        surf_roughness=config.atmos_clim.agni.surf_roughness,
+                        surf_windspeed=config.atmos_clim.agni.surf_windspeed,
 
                         condensates=condensates,
                         phs_timescale=config.atmos_clim.agni.phs_timescale,

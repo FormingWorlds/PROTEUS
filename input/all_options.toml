@@ -205,6 +205,8 @@ version = "2.0"
         solution_atol   = 0.5           # solver absolute tolerance
         solution_rtol   = 0.15          # solver relative tolerance
         overlap_method  = "ee"          # gas overlap method
+        surf_roughness  = 1e-3          # characteristic surface roughness [m]
+        surf_windspeed  = 2.0           # characteristic surface wind speed [m/s].
         rainout         = true          # include volatile condensation/evaporation aloft
         latent_heat     = false         # include latent heat release when `rainout=true`?
         oceans          = true          # form liquid oceans at planet surface?
