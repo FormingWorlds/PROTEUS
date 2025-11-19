@@ -705,9 +705,9 @@ def run_agni(atmos, loops_total:int, dirs:dict, config:Config,
     output["P_surf_clim"]   = float(atmos.p_boa) / 1e5 # Calculated Psurf [bar]
 
     for g in gas_list:
-        try:
+        if g in list(atmos.gas_names):
             output[g+"_ocean"] = float(atmos.ocean_tot[g])
-        except:
+        else:
             output[g+"_ocean"] = 0.0
 
     return atmos, output
