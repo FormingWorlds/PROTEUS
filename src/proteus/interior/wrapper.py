@@ -261,11 +261,12 @@ def run_interior(dirs:dict, config:Config,
     if verbose:
         log.info("    T_magma    = %.3f K"%hf_row["T_magma"])
         log.info("    Phi_global = %.3f  "%hf_row["Phi_global"])
-        log.info("    Phi_global_vol = %.3f  "%hf_row["Phi_global_vol"])
         log.info("    RF_depth   = %.3f  " %hf_row["RF_depth"])
         log.info("    F_int      = %.2e W m-2" %hf_row["F_int"])
-        log.info("    F_tidal    = %.2e W m-2" %hf_row["F_tidal"])
-        log.info("    F_radio    = %.2e W m-2" %hf_row["F_radio"])
+        if config.interior.tidal_heat:
+            log.info("    F_tidal    = %.2e W m-2" %hf_row["F_tidal"])
+        if config.interior.radiogenic_heat:
+            log.info("    F_radio    = %.2e W m-2" %hf_row["F_radio"])
 
     # Actual time step size
     interior_o.dt = float(sim_time) - hf_row["Time"]
