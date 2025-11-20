@@ -270,6 +270,9 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         log.warning("Change in F_atm [W m-2] limited in this step!")
         log.warning("    %g  ->  %g" % (F_atm_new , F_atm_lim))
 
+    # Calculated surface pressure (might be different to input)
+    P_surf_clim = atm.ps / 1e5 # bar
+
     # observables
     p_obs = float(config.atmos_clim.janus.p_obs)*1e5 # converted to Pa
     r_arr = np.array(atm.z[:]) + hf_row["R_int"]
@@ -285,7 +288,7 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
         p_xuv = config.escape.zephyrus.Pxuv # [bar]
     else:
         # escape level set to surface
-        p_xuv = hf_row["P_surf"] # [bar]
+        p_xuv = P_surf_clim # [bar]
     p_xuv, r_xuv = get_radius_from_pressure(atm.p, r_arr, p_xuv*1e5) # [Pa], [m]
 
     # final things to store
@@ -299,7 +302,6 @@ def RunJANUS(atm, dirs:dict, config:Config, hf_row:dict, hf_all:pd.DataFrame,
     output["R_obs"]  = r_obs            # observed level [m]
     output["p_xuv"]  = p_xuv/1e5        # Closest pressure from Pxuv    [bar]
     output["R_xuv"]  = r_xuv            # Radius at Pxuv                [m]
-    output["ocean_areacov"] = 0.0
-    output["ocean_maxdepth"]= 0.0
+    output["P_surf_clim"] = P_surf_clim # calculated surface pressure [bar]
 
     return output
