@@ -9,17 +9,16 @@ from __future__ import annotations
 
 import os
 import pickle
-from glob import glob
 import time
+from glob import glob
+from multiprocessing import Pool
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import toml
 import torch
 from botorch.utils.transforms import normalize
 from scipy.stats.qmc import Halton
-from multiprocessing import Pool
-from functools import partial
 
 from proteus.inference.objective import eval_obj, prot_builder
 from proteus.utils.coupler import get_proteus_directories
