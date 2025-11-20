@@ -132,6 +132,11 @@ jobs:
             output/physical/plot/plot_*.png
             output/physical/runtime_helpfile.csv
 
+      # Full physical integration
+      - name: Full physical integration
+        run: |
+          proteus start -c input/all_options.toml 
+
       - name: Report coverage
         run: |
           coverage json
