@@ -22,9 +22,9 @@ from functools import partial
 from multiprocessing import Manager, Process
 
 import torch
-from utils import get_kernel_w_prior
 
 from proteus.inference.BO import BO_step, init_locs
+from proteus.inference.utils import get_kernel_w_prior
 from proteus.utils.coupler import get_proteus_directories
 
 # Tensor dtype for all computations

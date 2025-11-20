@@ -27,7 +27,8 @@ from botorch.models.transforms import Normalize, Standardize
 from botorch.optim import optimize_acqf
 from botorch.optim.fit import fit_gpytorch_mll_torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
-from utils import get_kernel_w_prior
+
+from proteus.inference.utils import get_kernel_w_prior
 
 # Set tensor dtype for consistent precision
 dtype = torch.double

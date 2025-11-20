@@ -26,8 +26,8 @@ from botorch.utils.transforms import unnormalize
 from gpytorch.constraints.constraints import GreaterThan
 from gpytorch.kernels import MaternKernel, RBFKernel
 from gpytorch.priors.torch_priors import LogNormalPrior
-from objective import eval_obj
 
+from proteus.inference.objective import eval_obj
 from proteus.utils.constants import gas_list
 
 # Use double precision for tensor computations

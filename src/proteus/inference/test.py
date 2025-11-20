@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import torch
 from botorch.utils.transforms import unnormalize
-from objective import prot_builder, run_proteus
+
+from proteus.inference.objective import prot_builder, run_proteus
 
 dtype = torch.double
 # Fix random seed for reproducibility
