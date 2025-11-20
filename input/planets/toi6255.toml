@@ -8,35 +8,39 @@ version = "2.0"
     # output files
     [params.out]
         logging     = "DEBUG"
-        path        = "trappist1c"
+        path        = "toi6255b"
         plot_mod    = 5      # Plotting frequency, 0: wait until completion | n: every n iterations
 
 # ----------------------------------------------------
 # Star
 [star]
 
-    mass    = 0.1      # M_sun
+    # Physical parameters
+    mass    = 0.353      # M_sun
     age_ini = 0.100     # Gyr, model initialisation/start age
 
     module  = "mors"
     [star.mors]
-        rot_pcntle = 50.0       # rotation percentile
+        rot_pcntle = 40.0     # rotation percentile
+        rot_period = "none"    # rotation period [days]
         tracks  = "spada" # evolution tracks: spada | baraffe
-        age_now = 7.6     # Gyr, current age of star used for scaling
-        spec    = "stellar_spectra/Named/trappist-1.txt" # stellar spectrum
+        age_now = 6    # Gyr, current age of star used for scaling
+        spec    = "stellar_spectra/Named/gj176.txt" # stellar spectrum
 
 # Orbital system
 [orbit]
-    semimajoraxis   = 0.01580    # AU
-    eccentricity    = 0.00654      # dimensionless
+    semimajoraxis   = 0.0053    # AU
+    eccentricity    = 0.0      # dimensionless
     zenith_angle    = 54.74     # degrees
     s0_factor       = 0.25      # dimensionless
 
-    module  = "none"
+    module  = "lovepy"
+    [orbit.lovepy]
+        visc_thresh = 1e9   # Minimum viscosity required for heating [Pa s]
 
 # Planetary structure - physics table
 [struct]
-    mass_tot    = 1.308       # M_earth
+    radius_int  = 1.079       # R_earth
     corefrac    = 0.55      # non-dim., radius fraction
 
 # Atmosphere - physics table
@@ -50,18 +54,20 @@ version = "2.0"
     module  = "agni"           # Which atmosphere module to use
 
     [atmos_clim.agni]
+        verbosity       = 2
         p_top           = 1.0e-5        # bar, top of atmosphere grid pressure
         spectral_group  = "Dayspring"   # which gas opacities to include
         spectral_bands  = "48"         # how many spectral bands?
         num_levels      = 40            # Number of atmospheric grid levels
-        chemistry       = "eq"        # "none" | "eq"
+        chemistry       = "none"        # "none" | "eq"
         surf_material   = "greybody"    # surface material file for scattering
         solve_energy    = true         # solve for energy-conserving atmosphere profile
         solution_atol   = 1e-2          # solver absolute tolerance
         solution_rtol   = 5e-2          # solver relative tolerance
-        overlap_method  = "ee"          # gas overlap method
+        overlap_method    = "ee"          # gas overlap method
         rainout   = true          # volatile condensation
-        real_gas        = false          # use real-gas equations of state
+        real_gas        = true          # use real-gas equations of state
+        ini_profile     = 'isothermal'
 
 # Volatile escape - physics table
 [escape]
@@ -70,26 +76,25 @@ version = "2.0"
 # Interior - physics table
 [interior]
     radiogenic_heat = true  # enable radiogenic heat production
-    tidal_heat      = false  # enable tidal heat production
+    tidal_heat      = true  # enable tidal heat production
 
     module = "spider"   # Which interior module to use
 
     [interior.spider]
-        num_levels      = 200       # Number of SPIDER grid levels
-        tolerance       = 1.0e-10   # solver tolerance
-        tsurf_atol      = 20.0      # tsurf_poststep_change
-        tsurf_rtol      = 0.01      # tsurf_poststep_change_frac
-        ini_entropy     = 3300.0    # Surface entropy conditions [J K-1 kg-1]
-        ini_dsdr        = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
-
-    [interior.aragog]
-        logging         = "ERROR"
-        num_levels      = 220       # Number of Aragog grid levels
-        tolerance       = 1.0e-10   # solver tolerance
-        ini_tmagma      = 3200.0    # Initial magma surface temperature [K]
-
-    [interior.dummy]
-        ini_tmagma      = 3500.0    # Initial magma surface temperature [K]
+        num_levels               = 120       # Number of SPIDER grid levels
+        mixing_length            = 2         # Mixing length parameterization
+        tolerance                = 1.0e-8    # absolute solver tolerance
+        tolerance_rel            = 1.0e-8    # relative solver tolerance
+        solver_type              = "bdf"     # SUNDIALS solver method
+        tsurf_atol               = 20.0      # tsurf_poststep_change
+        tsurf_rtol               = 0.02      # tsurf_poststep_change_frac
+        ini_entropy              = 3000.0    # Surface entropy conditions [J K-1 kg-1]
+        ini_dsdr                 = -4.698e-6 # Interior entropy gradient [J K-1 kg-1 m-1]
+        conduction               = true      # enable conductive heat transfer
+        convection               = true      # enable convective heat transfer
+        gravitational_separation = true      # enable gravitational separation
+        mixing                   = true      # enable mixing
+        matprop_smooth_width     = 1e-2      # melt-fraction window width over which to smooth material properties
 
 # Outgassing - physics table
 [outgas]
