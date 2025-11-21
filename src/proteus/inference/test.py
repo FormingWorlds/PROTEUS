@@ -79,4 +79,4 @@ f = prot_builder(
 
 # Compute objective at random input
 y = f(x)
-print("\nobjective value at random input (should be optimal, i.e., 1.0):", y.item())
+print("\nobjective value at random input (should be optimal, i.e., 10.0):", y.item())

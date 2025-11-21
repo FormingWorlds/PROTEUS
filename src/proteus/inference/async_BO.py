@@ -239,7 +239,7 @@ def parallel_process(
                                     nu=2.5
                                     )
     else:
-        raise ValueError("Unknown kernel, choices are RBF or MAT")
+        raise ValueError("Unknown kernel, choices are RBF or MAT{1/2, 3/2, 5/2}")
 
     process_fun = partial(
         BO_step,
