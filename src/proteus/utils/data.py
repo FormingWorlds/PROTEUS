@@ -369,6 +369,29 @@ def download_stellar_spectra():
         desc = 'stellar spectra'
     )
 
+def download_phoenix():
+    """
+    Download phoenix synthetic spectra
+    """
+    download(
+        folder = 'Phoenix',
+        target = "stellar_spectra",
+        osf_id =  None,
+        zenodo_id= '',
+        desc = 'phoenix synthetic stellar spectra'
+    )
+
+def download_muscles():
+    """
+    Download muscles stellar spectra
+    """
+    download(
+        folder = 'Muscles',
+        target = "stellar_spectra",
+        osf_id =  None,
+        zenodo_id= '',
+        desc = 'muscles stellar spectra'
+    )
 
 def download_exoplanet_data():
     """
